@@ -238,7 +238,7 @@ def merge_placeholder(session_factory, *, source_username, target_username,
     XRAS deletes *source* and folds its roles into *target*, after which XRAS
     sends the real username and the blocked handoff can proceed. This does not
     create a SAM account — SAM never creates users — so a person with no SAM
-    row correctly stays on *Accounts Needed*, re-classified from "erroneously
+    row correctly stays on *Pending Users*, re-classified from "erroneously
     reconciled placeholder" to an ordinary "create".
 
     The client refuses if *target* does not already resolve in XRAS: the API

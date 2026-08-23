@@ -1645,13 +1645,6 @@
     ]
   ],
   [
-    "allocations_dashboard.xras_pending_requests_fragment",
-    "/allocations/xras_pending_requests_fragment",
-    [
-      "GET"
-    ]
-  ],
-  [
     "allocations_dashboard.xras_recheck",
     "/allocations/xras_recheck/<int:action_id>",
     [

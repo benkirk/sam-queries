@@ -1,8 +1,8 @@
 """XRAS action-log page and its worklist card fragments.
 
 The read surface of the Allocations -> XRAS tab: the ``/xras`` page shell plus
-the five HTMX fragment routes it loads (action log, activity/pending, accounts,
-the shared window control, and pending requests). Moved verbatim out of
+the four HTMX fragment routes it loads (action log, activity/pending, the
+Pending Users worklist, and the shared window control). Moved out of
 ``blueprint.py``; the constants and filter/facet helpers live in ``_shared``.
 """
 
@@ -33,8 +33,11 @@ from sam.queries.xras_activation import (
 from sam.queries.xras_accounts import (
     CLASSIFICATION_ABSENT,
     CLASSIFICATION_INACTIVE,
+    SOURCE_ACTION_LOG,
+    SOURCE_REPORTS,
     enrich_worklist,
     get_account_worklist,
+    load_pending_worklist_rows,
     stamp_project_existence,
     stamp_waiting_days,
     worklist_counts,
@@ -46,10 +49,10 @@ from ._shared import (
     ORIGIN_KNOWN, ORIGIN_PLACEHOLDER, _ACCOUNT_CLASSIFICATION_LABELS,
     _ACCOUNTS_ENRICH_BUDGET, _ACCOUNTS_FORM_ID, _ACCOUNTS_TARGET,
     _ACTIVITY_TAG_LABELS, _ACTIVITY_WINDOW_PILLS, _ORIGIN_LABELS,
-    _PENDING_FORM_ID, _PENDING_TARGET, _XRAS_ACTIVITY_FORM_ID,
+    _SOURCE_LABELS, _XRAS_ACTIVITY_FORM_ID,
     _XRAS_ACTIVITY_TARGET, _XRAS_FORM_ID, _XRAS_FRAGMENT_TARGET,
     _account_facets, _activity_facets, _filter_accounts, _filter_activity,
-    _parse_activity_window, _parse_xras_filters, _pending_account_total,
+    _parse_activity_window, _parse_xras_filters,
     _request_facets, _submitted_since,
 )
 
@@ -280,27 +283,21 @@ def xras_pending_fragment():
 @login_required
 @require_permission(Permission.VIEW_XRAS)
 def xras_accounts_fragment():
-    """HTMX fragment: accounts that must be created or reactivated for XRAS.
+    """HTMX fragment: the Pending Users worklist — everyone who needs a SAM
+    account before an XRAS handoff can land, from BOTH feeds.
 
-    Two states here are **designed, not broken**, and both are what a reviewer
-    will see first:
+    Feed A (posted ``xras_action_log`` rows) is always available; Feed B (the
+    sweep's lookahead at approved, not-yet-pushed requests) is contingent on the
+    outbound API and a published sweep. They are unioned on the casefolded
+    username, with a per-row source badge and received-push rows pinned first.
+    When Feed B is unavailable the card shows the received-push half and a
+    degraded-half note says which state it is in — never a blank tab.
 
-    - **Unconfigured.** With `XRAS_OUTGOING_ENABLED` off — the shipped state,
-      and what staging shows — the worklist still renders in full from the
-      inbound action log. Only the person detail and the `isReconciled`
-      closure signal are unavailable, and a muted note says so.
-    - **Empty.** Production has zero rows until ACCESS is repointed at SAM and
-      `xras_action_log` starts filling. An empty card is a true report.
-
-    PII is gated **here**, not in the template. Person detail — name, email,
-    organization, academic status, residence country — is assembled only for a
-    viewer holding MANAGE_XRAS, so a VIEW_XRAS response never carries it and a
-    view-source cannot leak what the page chose not to draw. Same rule as the
-    raw-payload panel and the notification recipients above.
-
-    `is_reconciled` is deliberately on the VIEW_XRAS side of that line: it is a
-    boolean about account state, not a personal detail, and it is the signal
-    that tells an operator an item is about to close itself.
+    PII is gated **here**, not in the template, and **after** the merge: person
+    detail is assembled only for a viewer holding MANAGE_XRAS, so a VIEW_XRAS
+    response never carries it. `is_reconciled` is deliberately on the VIEW_XRAS
+    side of that line — a boolean about account state, not a personal detail,
+    and the signal that an item is about to close itself.
     """
     from sam.integration.xras_api import xras_api_configured
 
@@ -309,51 +306,59 @@ def xras_accounts_fragment():
     selected_classes = [c for c in request.args.getlist('classification') if c]
     selected_roles = [r for r in request.args.getlist('role') if r]
     selected_origins = [o for o in request.args.getlist('origin') if o]
+    selected_sources = [s for s in request.args.getlist('source') if s]
+    selected_requests = [r for r in request.args.getlist('request_number') if r]
 
-    rows = get_account_worklist(db.session,
-                                since=window['since'], until=window['until'])
+    # Feed B, filtered BEFORE injection: after the merge every Feed-A row would
+    # pass `_submitted_since` (no submit_date => kept), so the window has to bite
+    # here or it would never narrow the pending half. `pending_hidden` is the
+    # Feed-B-scoped "outside the date filter" count -- denominator is the
+    # snapshot's rows, not its counts total.
+    feed = load_pending_worklist_rows()
+    pending = [r for r in feed.rows if _submitted_since(r, window['since'])]
+    pending_hidden = len(feed.rows) - len(pending)
 
-    # WARNING: Feed A ONLY, on purpose. This tab is the accounts blocking actions
-    # that have already POSTED -- a claim our own audit table can always make.
-    # The lookahead at what XRAS approved but has not sent is the sibling tab,
-    # contingent on the outbound API being configured, so merging them trades a
-    # guarantee for a maybe. The union lives where it is needed: `sam-admin
-    # xras --accounts`.
+    rows = get_account_worklist(db.session, since=window['since'],
+                                until=window['until'], pending_rows=pending)
+
     stamp_waiting_days(rows)
-
-    # One query for the whole card, so the Request column can link the numbers
-    # SAM already has a project for. Feed A only — the sibling Feed-B route
-    # deliberately does not call this: its cohort is `numbers - known`, so
-    # every row there is a number with no project by construction.
+    # Safe after the merge copies each action dict: this writes `is_project` in
+    # place, and Feed-B actions gain it too so `request_cell` can link them.
     stamp_project_existence(db.session, rows)
 
-    # Enrichment is best-effort and never fatal: an outage or an unconfigured
-    # deployment leaves `person` None and flags the batch, so the card degrades
-    # to counts and usernames rather than returning 500.
+    # Enrichment is best-effort and never fatal: it skips rows Feed B already
+    # carried a person for, and an outage leaves the rest `person=None`.
     enrichment = enrich_worklist(rows, max_lookups=_ACCOUNTS_ENRICH_BUDGET)
 
     if not may_manage:
-        # Drop the PII before it can reach a template, a log line, or a
-        # response body. `is_reconciled` survives — see the docstring.
+        # After the merge every row is a copy, so strip in place -- and only
+        # here, never on `feed.rows`/`pending`, which are still the cached
+        # snapshot's own dicts. `is_reconciled` survives -- see the docstring.
         for row in rows:
             row['person'] = None
 
-    selected_requests = [r for r in request.args.getlist('request_number') if r]
-
-    class_facets = _account_facets(rows, 'classification', roles=selected_roles)
-    role_facets = _account_facets(rows, 'role', classifications=selected_classes)
+    class_facets = _account_facets(rows, 'classification', roles=selected_roles,
+                                   sources=selected_sources)
+    role_facets = _account_facets(rows, 'role', classifications=selected_classes,
+                                  sources=selected_sources)
     origin_facets = _account_facets(rows, 'origin',
+                                    classifications=selected_classes,
+                                    roles=selected_roles,
+                                    sources=selected_sources)
+    source_facets = _account_facets(rows, 'source',
                                     classifications=selected_classes,
                                     roles=selected_roles)
     request_facets = _request_facets(rows, classifications=selected_classes)
 
     rows = _filter_accounts(rows, classifications=selected_classes,
-                            roles=selected_roles, origins=selected_origins)
+                            roles=selected_roles, origins=selected_origins,
+                            sources=selected_sources)
     if selected_requests:
         # The operator working one project's activation wants only its rows.
         rows = [r for r in rows
                 if {a['request_number'] for a in r['actions']} & set(selected_requests)]
 
+    snapshot = feed.snapshot or {}
     return render_template(
         'dashboards/allocations/partials/xras_accounts_card.html',
         rows=rows,
@@ -373,13 +378,21 @@ def xras_accounts_fragment():
         origin_values=[{'value': k, 'label': _ORIGIN_LABELS[k],
                         'count': origin_facets.get(k, 0)}
                        for k in (ORIGIN_PLACEHOLDER, ORIGIN_KNOWN)],
+        source_values=[{'value': k, 'label': _SOURCE_LABELS[k],
+                        'count': source_facets.get(k, 0)}
+                       for k in (SOURCE_ACTION_LOG, SOURCE_REPORTS)],
         request_values=request_facets,
-        # What the sibling tab holds, so neither reads as the whole queue.
-        # Counts only — never its rows, which would defeat the tab split.
-        pending_total=_pending_account_total(),
+        # The Feed-B half's state, so the card can render a degraded-half note
+        # and its freshness line instead of pretending it saw everything.
+        feed_checked=feed.checked,
+        feed_reason=feed.reason,
+        feed_generated_at=snapshot.get('generated_at'),
+        feed_window_days=snapshot.get('window_days'),
+        pending_hidden=pending_hidden,
         selected_classifications=selected_classes,
         selected_roles=selected_roles,
         selected_origins=selected_origins,
+        selected_sources=selected_sources,
         selected_requests=selected_requests,
         form_id=_ACCOUNTS_FORM_ID,
         fragment_url=url_for('allocations_dashboard.xras_accounts_fragment'),
@@ -413,86 +426,4 @@ def xras_window_fragment():
         'dashboards/allocations/partials/xras_window_control.html',
         window=window, window_pill_choices=_ACTIVITY_WINDOW_PILLS,
         form_id='xras-window-filters')
-
-
-@bp.route('/xras_pending_requests_fragment')
-@login_required
-@require_permission(Permission.VIEW_XRAS)
-def xras_pending_requests_fragment():
-    """HTMX fragment: Feed B — XRAS requests SAM has no project for yet.
-
-    **Read from a cache the `xras_sweep` task publishes, never computed
-    here.** The enumeration behind this is 21 pages and 60-90 seconds against
-    `api.xras.org`; no htmx round-trip can afford it, which is why the sweep
-    is a producer and this is a consumer. The tab is therefore exactly as
-    fresh as the last successful sweep, and it says so.
-
-    Three distinct empty states, and conflating them would mislead:
-
-    - **unconfigured** — `XRAS_OUTGOING_ENABLED` is off, so no sweep can run.
-    - **no snapshot** — configured, but no sweep has published yet (the task
-      may be disabled, or this is the first hour after a deploy).
-    - **published and empty** — a real sweep found nothing pending, which is
-      the healthy steady state.
-
-    Same PII rule as the accounts tab: person detail only for MANAGE_XRAS,
-    stripped in the route so a VIEW_XRAS response never carries it.
-    """
-    from sam.integration.xras_api import xras_api_configured
-    from sam.integration.xras_api.cache import load_pending_worklist
-
-    may_manage = has_permission(current_user, Permission.MANAGE_XRAS)
-    configured = xras_api_configured()
-    snapshot = load_pending_worklist() if configured else None
-
-    rows = list(snapshot.get('rows') or []) if snapshot else []
-    # The snapshot is written by the task and read here, so the two can be on
-    # different code — `stamp_waiting_days` backfills rather than assuming the
-    # publisher already derived it. Stamped on read, never cached: an age is
-    # the one field whose value depends on when you asked.
-    stamp_waiting_days(rows)
-    window = _parse_activity_window(request.args)
-    selected_requests = [r for r in request.args.getlist('request_number') if r]
-    selected_classes = [c for c in request.args.getlist('classification') if c]
-
-    # WARNING: a shared control that silently does nothing on one tab is worse
-    # than no control, so the pills mean the same here as on the other two:
-    # "what showed up in the last N days". For Feed B that is `submitDate`, NOT
-    # the period of performance -- a pending request's allocation almost always
-    # ends a year out, so a one-sided window on it keeps every row at every
-    # width and the pill looks dead. The period of performance bounds what the
-    # SWEEP collects, and the header reports that width so the two never blur.
-    rows = [r for r in rows if _submitted_since(r, window['since'])]
-
-    if not may_manage:
-        rows = [{**r, 'person': None} for r in rows]
-
-    class_facets = _account_facets(rows, 'classification')
-    request_facets = _request_facets(rows, classifications=selected_classes)
-
-    rows = _filter_accounts(rows, classifications=selected_classes)
-    if selected_requests:
-        rows = [r for r in rows
-                if {a['request_number'] for a in r['actions']} & set(selected_requests)]
-
-    return render_template(
-        'dashboards/allocations/partials/xras_pending_requests_card.html',
-        rows=rows,
-        snapshot=snapshot,
-        configured=configured,
-        may_manage=may_manage,
-        counts=worklist_counts(rows),
-        classification_values=[
-            {'value': key,
-             'label': _ACCOUNT_CLASSIFICATION_LABELS.get(key, key),
-             'count': class_facets.get(key, 0)}
-            for key in (CLASSIFICATION_ABSENT, CLASSIFICATION_INACTIVE)],
-        request_values=request_facets,
-        selected_classifications=selected_classes,
-        selected_requests=selected_requests,
-        form_id=_PENDING_FORM_ID,
-        fragment_url=url_for(
-            'allocations_dashboard.xras_pending_requests_fragment'),
-        target_id=_PENDING_TARGET,
-    )
 

@@ -187,10 +187,9 @@ def test_mobile_swaps_the_thumbs_for_selects(auth_client, url, form_id):
 
 
 #: The per-tab facet forms on /allocations/xras. Each owns its own chip state
-#: and its own fragment; NONE of them carries date state, because the three
+#: and its own fragment; NONE of them carries date state, because the two
 #: worklist tabs share one window control rendered in the page shell.
-XRAS_FACET_FORMS = ('xras-activity-filters', 'xras-accounts-filters',
-                    'xras-pending-filters')
+XRAS_FACET_FORMS = ('xras-activity-filters', 'xras-accounts-filters')
 
 
 def test_the_xras_page_keeps_one_date_pair_per_form(auth_client):
@@ -238,8 +237,7 @@ def test_the_xras_page_keeps_one_date_pair_per_form(auth_client):
     # ...and no fragment emits a date pair of its own any more. A fragment
     # that started rendering `window_pills` again would put a second pair in
     # the shared form the moment its tab loaded.
-    for endpoint in ('xras_pending_fragment', 'xras_accounts_fragment',
-                     'xras_pending_requests_fragment'):
+    for endpoint in ('xras_pending_fragment', 'xras_accounts_fragment'):
         fragment = auth_client.get(f'/allocations/{endpoint}').data.decode()
         assert 'name="start_date"' not in fragment, (
             f'{endpoint} renders its own date pair; the window is shared now')

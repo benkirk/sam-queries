@@ -262,25 +262,16 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # routes in `xras_remediation_routes.py`, all of which render into that
     # page's fragments and nowhere else.
     #
-    # `xras_accounts_card.html` joins the list because the Accounts Needed tab
-    # now offers the same merge modal on a stuck placeholder — deliberately the
-    # same shell, so an operator meets one merge dialogue however they arrive.
-    #
-    # The three cards below also reach #userDetailsModal / #projectDetailsModal:
-    # a username or projcode the row has ALREADY resolved against SAM opens the
-    # shared entity modal, same as everywhere else in the app. Both shells come
-    # from base_allocations.html (:31 project, :33 user), which xras.html
-    # extends — so the single host page carries them.
+    # `xras_accounts_card.html` (the Pending Users card) offers the same merge
+    # modal on a stuck placeholder — deliberately the same shell, so an operator
+    # meets one merge dialogue however they arrive. It also reaches
+    # #userDetailsModal / #projectDetailsModal: a username or projcode the row
+    # has ALREADY resolved against SAM opens the shared entity modal, same as
+    # everywhere else. Both shells come from base_allocations.html (:31 project,
+    # :33 user), which xras.html extends — so the single host page carries them.
     'dashboards/allocations/partials/xras_accounts_card.html': [
         'auditDetailsModal', 'auditDetailsModalBody',
         'projectDetailsModal', 'projectDetailsModalBody',
-        'userDetailsModal', 'userDetailsModalBody'],
-    # The Pending Requests tab's Request column now links each request number to
-    # the read-only detail modal when an outbound read is configured (else it
-    # degrades to plain text) — so it reaches #auditDetailsModal like its sibling
-    # cards, on top of the #userDetailsModal it already used.
-    'dashboards/allocations/partials/xras_pending_requests_card.html': [
-        'auditDetailsModal', 'auditDetailsModalBody',
         'userDetailsModal', 'userDetailsModalBody'],
     # The card's Request cell links each request number to #auditDetailsModal
     # (the single detail-modal opener) and the SAM cell keeps the

@@ -21,7 +21,9 @@ from sam.integration.xras_api import XrasSourceUnavailable
 from sam.manage import xras_remediation as remediation
 from sam.queries.xras_actions import XRAS_ACTION_SORT_COLUMNS
 from sam.queries.xras_activation import ACTIVITY_TAGS
-from sam.queries.xras_accounts import CLASSIFICATION_ABSENT, CLASSIFICATION_INACTIVE
+from sam.queries.xras_accounts import (CLASSIFICATION_ABSENT,
+                                       CLASSIFICATION_INACTIVE,
+                                       SOURCE_ACTION_LOG, SOURCE_REPORTS)
 
 
 def _session_factory():
@@ -360,8 +362,17 @@ _ORIGIN_LABELS = {
     ORIGIN_KNOWN: 'Known identity',
 }
 
+#: The ``source`` facet, keyed on the provenance tags a worklist row carries.
+#: A received-push row is the more urgent flavor (a push already arrived and is
+#: blocked); a pending-request row is the lookahead. A row may carry both.
+_SOURCE_LABELS = {
+    SOURCE_ACTION_LOG: 'Received push',
+    SOURCE_REPORTS: 'Pending request',
+}
 
-def _filter_accounts(rows, *, classifications=None, roles=None, origins=None):
+
+def _filter_accounts(rows, *, classifications=None, roles=None, origins=None,
+                     sources=None):
     """Facet filters: ANDed across dimensions, ORed within one.
 
     *origins* is the ``placeholder`` dimension, expressed as the two values a
@@ -371,6 +382,10 @@ def _filter_accounts(rows, *, classifications=None, roles=None, origins=None):
     whose account lapsed. Those are different pieces of work for different
     people, and until now the only way to tell them apart was to read the shape
     of the username.
+
+    *sources* is the provenance dimension — which feed put the row here. A row
+    is kept when ANY selected source is one it carries, so a both-feeds row
+    survives either filter.
 
     WARNING: Deliberately **not** defaulted. The rule on this card is *no selection =
     no filter*, and defaulting one dimension on would make an empty facet row
@@ -384,10 +399,11 @@ def _filter_accounts(rows, *, classifications=None, roles=None, origins=None):
     if origins:
         wanted = {o == ORIGIN_PLACEHOLDER for o in origins}
         out = [r for r in out if bool(r['placeholder']) in wanted]
+    if sources:
+        out = [r for r in out
+               if any(s in (r.get('sources') or ()) for s in sources)]
     return out
 
-
-_PENDING_FORM_ID = 'xras-pending-filters'
 
 #: Requests to offer as chips. A worklist spanning dozens of projects would
 #: otherwise render a chip wall; the cap is on the CHIPS, not the rows, and
@@ -438,7 +454,8 @@ def _request_facets(rows, *, classifications=None):
     return [{'value': k, 'count': v} for k, v in ordered[:_MAX_REQUEST_CHIPS]]
 
 
-def _account_facets(rows, dimension, *, classifications=None, roles=None):
+def _account_facets(rows, dimension, *, classifications=None, roles=None,
+                    sources=None):
     """Self-excluding counts for one dimension.
 
     A dimension's rollup omits its own filter — scope it by itself and every
@@ -446,12 +463,13 @@ def _account_facets(rows, dimension, *, classifications=None, roles=None):
     from switchers into a dead end. Same rule as :func:`_activity_facets`.
     """
     if dimension == 'classification':
-        scoped = _filter_accounts(rows, roles=roles)
+        scoped = _filter_accounts(rows, roles=roles, sources=sources)
         return {key: sum(1 for r in scoped if r['classification'] == key)
                 for key in (CLASSIFICATION_ABSENT, CLASSIFICATION_INACTIVE)}
 
     if dimension == 'role':
-        scoped = _filter_accounts(rows, classifications=classifications)
+        scoped = _filter_accounts(rows, classifications=classifications,
+                                  sources=sources)
         counts = {}
         for row in scoped:
             for role in row['roles']:
@@ -460,47 +478,21 @@ def _account_facets(rows, dimension, *, classifications=None, roles=None):
 
     if dimension == 'origin':
         scoped = _filter_accounts(rows, classifications=classifications,
-                                  roles=roles)
+                                  roles=roles, sources=sources)
         return {
             ORIGIN_PLACEHOLDER: sum(1 for r in scoped if r['placeholder']),
             ORIGIN_KNOWN: sum(1 for r in scoped if not r['placeholder']),
         }
 
+    if dimension == 'source':
+        scoped = _filter_accounts(rows, classifications=classifications,
+                                  roles=roles)
+        # A both-feeds row counts in both, so this is not a partition.
+        return {key: sum(1 for r in scoped if key in (r.get('sources') or ()))
+                for key in (SOURCE_ACTION_LOG, SOURCE_REPORTS)}
+
     raise ValueError(f'unknown account facet dimension {dimension!r}')
 
 
-def _pending_account_total():
-    """How many accounts the *other* tab is holding, or ``None``.
-
-    WARNING: Counts only. Reading the sibling feed's rows into this card would undo
-    the split the two tabs exist to draw — one is what has posted, the other is
-    a lookahead at what XRAS may send. But a card that reports "8" while 18
-    more sit one click away is a queue that reads as smaller than it is, and
-    that is the failure this whole change is about.
-
-    ``None`` means "could not look", which is the honest answer when the
-    outbound API is off or no sweep has published — distinct from zero.
-    """
-    from sam.integration.xras_api import xras_api_configured
-
-    if not xras_api_configured():
-        return None
-    try:
-        from sam.integration.xras_api.cache import load_pending_worklist
-
-        snapshot = load_pending_worklist()
-    except Exception:                                # noqa: BLE001
-        # Cache backends are infrastructure. A cross-reference is a courtesy;
-        # it must never be the reason the worklist 500s.
-        current_app.logger.warning(
-            'xras accounts: could not read the pending worklist for the '
-            'cross-reference', exc_info=True)
-        return None
-    if not snapshot:
-        return None
-    return (snapshot.get('counts') or {}).get('total')
-
-
-_PENDING_TARGET = 'alloc-xras-pending-requests'
 _WINDOW_TARGET = 'alloc-xras-window'
 

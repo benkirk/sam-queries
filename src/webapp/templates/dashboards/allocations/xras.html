@@ -70,12 +70,7 @@
         <li class="nav-item" role="presentation">
             <button class="nav-link" data-bs-toggle="tab"
                     data-bs-target="#xras-pane-accounts" type="button"
-                    role="tab">Accounts Needed</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" data-bs-toggle="tab"
-                    data-bs-target="#xras-pane-pending" type="button"
-                    role="tab">Pending Requests</button>
+                    role="tab">Pending Users</button>
         </li>
     </ul>
     {# Its own swap target: the pills must re-render to restyle the active
@@ -110,10 +105,7 @@
        macro says so in as many words. Every dimension the card offers needs a
        line in this form. #}
     <select name="origin" multiple hidden></select>
-    <select name="request_number" multiple hidden></select>
-</form>
-<form id="xras-pending-filters" class="d-none">
-    <select name="classification" multiple hidden></select>
+    <select name="source" multiple hidden></select>
     <select name="request_number" multiple hidden></select>
 </form>
 {% if has_permission(Permission.MANAGE_XRAS) %}
@@ -137,6 +129,8 @@
              hx-swap="innerHTML"></div>
     </div>
 
+    {# Pending Users: both feeds unioned. The fragment owns the degraded-half
+       note for when Feed B is unconfigured, unpublished, or unreadable. #}
     <div class="tab-pane fade" id="xras-pane-accounts" role="tabpanel">
         <div id="alloc-xras-accounts"
              hx-get="{{ url_for('allocations_dashboard.xras_accounts_fragment') }}"
@@ -144,24 +138,14 @@
              hx-include="#xras-window-filters, #xras-accounts-filters"
              hx-swap="innerHTML"></div>
     </div>
-
-    {# Feed B. Gated on the outgoing API and on a sweep having published; the
-       fragment owns all three of those empty states. #}
-    <div class="tab-pane fade" id="xras-pane-pending" role="tabpanel">
-        <div id="alloc-xras-pending-requests"
-             hx-get="{{ url_for('allocations_dashboard.xras_pending_requests_fragment') }}"
-             hx-trigger="load, refreshXrasTab from:body, submit from:#xras-window-filters, submit from:#xras-pending-filters"
-             hx-include="#xras-window-filters, #xras-pending-filters"
-             hx-swap="innerHTML"></div>
-    </div>
 </div>
 
 {% if has_permission(Permission.MANAGE_XRAS) %}
 {# The operator WRITE surface
-   A CARD, not a fourth tab: `#xrasWorklistTabs` stays at three, which the e2e
-   suite pins. The three tabs are read-only views of the same window; this is
+   A CARD, not a third tab: `#xrasWorklistTabs` stays at two, which the e2e
+   suite pins. The two tabs are read-only views of the same window; this is
    a different kind of thing — every control on it changes production XRAS —
-   and burying it as a peer of "Accounts Needed" would understate that.
+   and burying it as a peer of "Pending Users" would understate that.
 
    Double-gated: this block and every route behind it check MANAGE_XRAS. The
    template gate keeps a view-only operator from seeing controls they cannot
