@@ -300,7 +300,10 @@
                        trigger, so the modal link is safe (no capture-phase
                        conflict, and no five-cell toggle split, which went with the
                        expansion). A plain <a> with an inner `.font-monospace`,
-                       NOT `.btn` — `.btn` uppercases (dashboard.css). #}
+                       NOT `.btn` — `.btn` uppercases (dashboard.css). The number
+                       is capped and truncated: usually 8 chars, but a wide date
+                       filter drags in a pathological long projcode that would
+                       otherwise blow the whole column wide (full value on hover). #}
                     <td class="text-nowrap">
                         <a href="#" class="text-decoration-none"
                            title="Full request detail (read-only)"
@@ -308,7 +311,8 @@
                            hx-get="{{ url_for('allocations_dashboard.xras_request_detail',
                                               request_number=row.request_number) }}"
                            hx-target="#auditDetailsModalBody"
-                           hx-swap="innerHTML"><span class="font-monospace">{{ row.request_number }}</span></a>
+                           hx-swap="innerHTML"><span class="font-monospace d-inline-block text-truncate align-bottom"
+                                 style="max-width:8rem;" title="{{ row.request_number }}">{{ row.request_number }}</span></a>
                         {% if row.refreshed_at %}
                         {# The tell that this row was patched after a write
                            rather than swept — so an operator can see their own
