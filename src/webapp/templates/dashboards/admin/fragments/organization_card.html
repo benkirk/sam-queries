@@ -79,8 +79,26 @@
                             <td class="text-muted small">{{ org.description or '—' }}</td>
                             <td>
                                 {% set mc = org_to_mnemonic.get(org.organization_id) %}
-                                {% if mc %}<span class="badge bg-secondary font-monospace">{{ mc }}</span>
-                                {% else %}<span class="text-muted">—</span>{% endif %}
+                                {% if mc %}
+                                <span class="badge bg-secondary font-monospace">{{ mc }}</span>
+                                {% elif has_permission(Permission.CREATE_ORG_METADATA) %}
+                                {# Same linker the Institutions card has. Org resolution is
+                                   name-only (no "Name, City" fallback), so the prefill is
+                                   org.name. The modal/route/form all already exist. #}
+                                <button class="btn btn-link p-0 border-0"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#createMnemonicCodeModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_code_create_form', description=org.name) }}"
+                                        hx-target="#createMnemonicCodeFormContainer"
+                                        hx-trigger="click"
+                                        title="No mnemonic match — click to create one">
+                                    <span class="badge bg-warning text-dark font-monospace">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                    </span>
+                                </button>
+                                {% else %}
+                                <span class="badge bg-secondary font-monospace text-white-50" title="No mnemonic match — project routing may fail"><i class="fas fa-exclamation-triangle"></i></span>
+                                {% endif %}
                             </td>
                             <td>{{ org.users|length }}</td>
                             <td class="text-end">
