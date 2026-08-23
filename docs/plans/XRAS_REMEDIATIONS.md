@@ -37,7 +37,7 @@ automated.
 2. **Status scope**: Approved + Submitted + Under Review; status is a facet.
 3. **Placement**: new card between the worklist tabs and the action log, own facet-chip form,
    honoring the shared window pills. Action log untouched in v1. NOT a 4th worklist tab.
-4. **Merge entry — both surfaces**: per-row on Accounts Needed (rows with placeholder ∧
+4. **Merge entry — both surfaces**: per-row on Pending Users (rows with placeholder ∧
    is_reconciled) AND from the Remediations card; one shared modal keyed by username.
 5. Merge is **permissive** (any target via the standard user picker) with a fragility warning —
    operator discernment, never automation. Feed B stays as-is for now.
@@ -259,9 +259,10 @@ snapshot surgically:**
   new status and an "updated since sweep" tell until the next sweep drops it naturally — the
   operator must see the effect, not a vanishing row.
 - **Merge**: patch every index entry whose roster carries the placeholder username (re-fetch those
-  requests — typically 1-2), AND drop/patch the username's row in the Feed-B `worklist` key so the
-  Pending Requests tab agrees. `invalidate_person()` ×2 covers the people bucket; Accounts Needed
-  classifies live on render, so that row clears itself.
+  requests — typically 1-2), AND drop the username's row in the Feed-B `worklist` key
+  (`drop_pending_worklist_row`) so the pending-request half of Pending Users agrees.
+  `invalidate_person()` ×2 covers the people bucket; the received-push half classifies live on
+  render, so that row clears itself.
 - **Failure is non-fatal**: on `XrasSourceUnavailable` the patch is skipped and logged; the modal's
   success message appends "the card may lag until the next hourly sweep." The write itself was
   already verified and audited.
@@ -333,7 +334,7 @@ Ten new routes (fragment + 4 GET forms + 5 POSTs), all
 `@login_required @require_permission(Permission.MANAGE_XRAS)`; route-map snapshot regenerated
 (`ROUTE_MAP_REGEN=1`) with the diff showing exactly the additions.
 
-### 7.4 Accounts Needed entry — edit `partials/xras_accounts_card.html`
+### 7.4 Pending Users entry — edit `partials/xras_accounts_card.html`
 
 "Resolve identity (merge in XRAS)…" button inside the **expansion panel** above
 `person_detail(row.person)`, visible when `may_manage ∧ row.placeholder ∧ row.is_reconciled`
@@ -391,7 +392,7 @@ One PR vs staging with an ordered commit series, after the probe:
 4. ✅ **Sweep broadening + second cache key** — two extra passes, per-status budgets, the
    `requests_index` key, and a refactor guard on the worklist payload's shape. 11 tests.
 5. ✅ **UI** — 10 routes in `xras_remediation_routes.py`, the card, three modals, three form
-   schemas, the Accounts Needed merge entry, route-map regen, modal-shell pin, e2e file. 44 tests.
+   schemas, the Pending Users merge entry, route-map regen, modal-shell pin, e2e file. 44 tests.
 6. ⏳ **Arm** — flip `XRAS_WRITE_ENABLED` in `values.yaml` + its drift test, same commit. **Not
    done**: the whole design is fail-closed until this is a deliberate, reviewed act, and Ben owns
    deploy mechanics. § 10 has the verification steps.
@@ -434,7 +435,7 @@ stale requests this card exists for, so a generic "no matches" would read as "no
 - Write-path smoke (prod, operator-approved): merge `mding-user-efmlx` → `mding` (Case B, the
   ready-to-fix fixture) from the UI; a withdraw/re-submit round-trip on NCAR0007's Supplement
   30578; confirm audit rows, cache invalidation, **the surgical snapshot patch rendering the new
-  state in the same interaction** (no sweep run between write and render), and the Accounts Needed
+  state in the same interaction** (no sweep run between write and render), and the Pending Users
   row clearing.
 
 ## 11. Open questions / assumptions for Ben

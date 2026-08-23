@@ -92,7 +92,7 @@ renders each stored `error_messages` line annotated:
 | Error family | Rendered hint |
 |---|---|
 | mnemonic (§ 3.2) | "Data fix: organization/institution mnemonic — open the org admin page" |
-| PI / username missing (§ 3.3) | "Work the Accounts Needed row for `{username}`" (deep link) |
+| PI / username missing (§ 3.3) | "Work the Pending Users row for `{username}`" (deep link) |
 | contract missing/ambiguous (§ 3.4-5) | "Create/link contract `{grant}`" (contracts surface) |
 | resource key (§ 3.1) | "Mapping gap — `sam-admin xras --validate-mapping`; adding a row moves GET bytes (parity note)" |
 | dates / amounts (§ 3.6-7) | "Award-side — this needs ACCESS; the editor cannot reach the Approved stage" |
@@ -143,7 +143,7 @@ impersonated user, on the re-submit modal). This section and § 2.1 are the SAM-
 ### 2.1 Push-readiness: a SAM-side preflight of every action XRAS has not pushed — tier B
 
 **Promoted to [`XRAS_PUSH_READINESS.md`](XRAS_PUSH_READINESS.md); this is the pointer.**
-The premise this section first had — "the Accounts Needed rows already carry a
+The premise this section first had — "the Pending Users received-push rows already carry a
 `validate_only` preflight; generalize it to Feed B" — was half wrong: only Feed-A rows run
 it, Feed-B rows always read "not checked", no synthesizer exists, and the sweep publishes
 none of the fields a preflight needs. It is a new capability: synthesize the inbound action
@@ -153,7 +153,7 @@ from the `reports/requests` payload (a real translation — resource id → repo
 publish a verdict **per action** — New, Renewal, Extension, Supplement, Adjustment, on
 requests of any status — with `stage` (Approved / Requested) and `push_state`
 (seen in the log / applied-inferred / pending / unknown). Renders on the Remediations card
-and the Pending Requests tab, with a per-request "Re-check now"; calibrated during triage
+and the Pending Users tab, with a per-request "Re-check now"; calibrated during triage
 week by comparing predicted verdicts with the real 422s as they arrive. Two honesty rules
 carry over: the verdict is advisory, and a row that cannot be synthesized says so rather
 than guessing green.
@@ -234,7 +234,7 @@ mis-series. Folding `--validate-opportunities` into § 2.3's digest still stands
 [`XRAS_ACCOUNT_QUEUE.md`](XRAS_ACCOUNT_QUEUE.md) § 1 (`xras_account_event`,
 note-and-hide) is the other proactive surface and is already designed; triage week with
 two people working the queue is precisely its recorded trigger. Nothing to add here
-except: if § 1.3's hints deep-link into the Accounts Needed rows, the queue gets busier,
+except: if § 1.3's hints deep-link into the Pending Users rows, the queue gets busier,
 and the trigger arrives sooner.
 
 ### 2.6 Cutover-week hardening: siblings, not duplicates — tier A

@@ -3,8 +3,8 @@
 **Status: research + live-proven capability, NOT built.** This is a handoff
 document. It records what the outbound XRAS credential can and cannot *write*,
 proven against production on 2026-08-20, and designs one prototypical fixup —
-clearing a wrongly-reconciled ARC placeholder off the **Accounts Needed for
-XRAS Handoffs** card — so a future session can build it without re-probing a
+clearing a wrongly-reconciled ARC placeholder off the **Pending Users**
+card — so a future session can build it without re-probing a
 destructive API. The direction is the same as
 [`XRAS_OUTGOING_QUERIES.md`](XRAS_OUTGOING_QUERIES.md): SAM calling *out* to
 `https://api.xras.org/v1/…`. Everything here is the **write** half that document
@@ -22,7 +22,7 @@ deliberately left closed.
 
 ## 1. The problem this targets
 
-The **Accounts Needed for XRAS Handoffs** tab
+The **Pending Users** tab
 (`/allocations/xras`, `xras_accounts_fragment`) lists people who must exist and
 be active in SAM before an approved XRAS action can be applied. A row is an ARC
 **placeholder** — the `<name>-user-<token>` username XRAS mints for a researcher
@@ -313,14 +313,14 @@ mis-flagged placeholder). This addendum is about closing a *request* — the
 the one write primitive the credential holds for it: **action withdrawal**. It
 shares the write client, credential, and audit table (§ 6), so it is worth
 building alongside the merge fixup, but it is a distinct operator action on a
-distinct surface (the **Pending Requests** tab, not **Accounts Needed**).
+*Pending request* row (it closes a request), not on a *Received push* row.
 
 ### The problem it closes
 
 Requests approved years ago and never pushed still surface — as
-`status=Approved` rows in `GET /v1/reports/requests`, which feed SAM's **Pending
-Requests** tab, and whose rosters can put a long-departed PI on **Accounts
-Needed** as a phantom "reactivate" nag. The person is not the problem; the stale
+`status=Approved` rows in `GET /v1/reports/requests`, which feed the *Pending
+request* rows of **Pending Users**, and whose rosters can put a long-departed PI
+there as a phantom "reactivate" nag. The person is not the problem; the stale
 approval is. Measured tell from the session: PI `bjsmith` is **`active=0` in
 SAM**, and that inactivity is the *only* reason the handoff surface demanded a
 reactivation — the nag is driven purely by XRAS `status=Approved`, with **zero
@@ -347,8 +347,8 @@ Three findings, each load-bearing:
    is a real, available operation — not just "retract a pending submission."
 2. **For a single-action request, withdrawing that action flips the whole
    `requestStatus` Approved → Incomplete** — which **removes it from
-   `GET /v1/reports/requests?status=Approved`**, i.e. off the Pending Requests
-   tab and out of the sweep's dropped-push diff. That is the mechanism that
+   `GET /v1/reports/requests?status=Approved`**, i.e. drops its *Pending request*
+   row and takes it out of the sweep's dropped-push diff. That is the mechanism that
    actually "closes" the stale request from SAM's point of view.
 3. **A multi-action request does not fully close this way.** NCAR0007 kept its
    `Approved` status because its legitimate New action survived — you withdraw
@@ -376,17 +376,17 @@ Three findings, each load-bearing:
 
 ### Trigger and UX sketch
 
-- **Where.** The **Pending Requests** tab (`xras_pending_requests_card.html`), not
-  Accounts Needed — this operates on requests. Gate on `MANAGE_XRAS`.
+- **Where.** A *Pending request* row on the **Pending Users** tab
+  (`xras_accounts_card.html`) — this operates on requests. Gate on `MANAGE_XRAS`.
 - **Trigger.** An `Approved` request that is stale by policy — e.g. approved > N
   years, no matching `project.projcode` (the sweep's dropped-push signal already
   computes this), and/or all resources decommissioned, and/or PI inactive/departed.
   Surface these as a distinct "stale / abandoned" facet rather than auto-acting.
 - **Action.** Per request, list its non-terminal actions; the operator withdraws
   the abandoned one(s), impersonating the PI, behind a popover that states plainly:
-  *"This de-approves the selected action back to a draft in XRAS. The request will
-  drop off Pending Requests. It can be resubmitted by the PI. It does not delete
-  anything."* Then re-GET to confirm the status moved (§ 2: never trust the 200),
+  *"This de-approves the selected action back to a draft in XRAS. The request's
+  pending row will drop off Pending Users. It can be resubmitted by the PI. It does
+  not delete anything."* Then re-GET to confirm the status moved (§ 2: never trust the 200),
   and write the audit row (request number, action id, PI impersonated, operator,
   before/after status).
 
@@ -398,13 +398,13 @@ answer opposite questions and must not be conflated in the UI:
 | | Merge fixup (body) | Withdraw (this addendum) |
 |---|---|---|
 | Object | a **person** (placeholder) | a **request/action** |
-| Surface | Accounts Needed | Pending Requests |
+| Row | a *Received push* row | a *Pending request* row |
 | Primitive | `POST …/merge/…` (deletes placeholder) | `DELETE …/actions/…/submit` (de-approves) |
 | Impersonation | none (user-agnostic) | **the request's PI**, required |
 | Reversible | effectively no | yes (resubmit) |
 | Fixes the nag by | giving XRAS the right username | removing the stale Approved row |
 
 Sometimes the *same* phantom "reactivate X" row is caused by a stale request, not
-a mis-flagged person — so an operator working Accounts Needed needs both tools
+a mis-flagged person — so an operator working Pending Users needs both tools
 reachable, and needs to know which one the situation calls for. That is the one
 place the two features touch.

@@ -90,7 +90,7 @@ largest cause.
 
 So the fix is **not code that creates accounts.** It is a worklist that tells the team
 who does: *who*, *why*, and — behind `MANAGE_XRAS` — with what detail. That is
-Allocations → XRAS → **Accounts Needed**, and it is why every remedy on that card names
+Allocations → XRAS → **Pending Users**, and it is why every remedy on that card names
 an artifact ("New account", "Reactivation") rather than an action, and why the card
 carries a banner saying SAM cannot perform either.
 
@@ -108,33 +108,33 @@ one ticket per project.
 
 ---
 
-## 3 · The two feeds, and why there are two tabs
+## 3 · The two feeds, one tab
 
-Both tabs on Allocations → XRAS are person-keyed and answer *"who needs an account"*.
-They differ in what they are evidence of, and the difference decides which one you can
-trust when the other is unavailable.
+The **Pending Users** tab on Allocations → XRAS is person-keyed and answers *"who needs
+an account"*. It is fed by two sources, unioned on the casefolded username, each carrying
+a **Source** badge so a row says which feed put it there:
 
-| | **Accounts Needed** | **Pending Requests** |
+| | **Received push** | **Pending request** |
 |---|---|---|
 | Source | `xras_action_log` — our own audit table | `GET /v1/reports/requests` via `xras_sweep` |
 | Means | precisely the actions that **have posted** | approved in XRAS, **may or may not** have posted |
 | Availability | **always** | only while `XRAS_OUTGOING_ENABLED` is on *and* a sweep has published |
-| Empty means | nothing has posted yet | not configured, not swept, or genuinely nothing pending |
 
-**Overlap between them is normal**, and neither is a subset of the other in general. They
-are kept apart because merging them would trade a guarantee for a maybe: the first is a
-claim we can always make, the second is a lookahead that disappears when a lever is off.
+**Overlap between the feeds is normal**, and neither is a subset of the other. A received
+push is the more urgent flavor — a push already arrived and is blocked — so those rows
+sort first, and their count is the health metric for the proactive side: it trends toward
+zero once the pending-request work lands ahead of the push. When the pending half is
+unavailable (a lever off, no sweep) the card shows the received-push rows and a
+degraded-half note says which state it is in, rather than a blank tab.
 
-Each tab says what it is and points at the other, so neither reads as the whole queue.
-Where the *union* is actually wanted — scripting, and any digest built later — it is
-`sam-admin xras --accounts`, which merges both on the casefolded username and reports
-`pending_checked` so a caller can tell "Feed B was empty" from "Feed B was unreadable".
+`sam-admin xras --accounts` shows the same union on the CLI and reports `pending_checked`
+so a caller can tell "the pending feed was empty" from "the pending feed was unreadable".
 
 ⚠️ **The window pills mean "what showed up in the last N days"**, and that is
-`received_time` on one feed and `submitDate` on the other — the same question asked of
-two feeds that date themselves differently. Do not filter Pending Requests on its period
-of performance; that was tried, and because a pending allocation almost always ends a
-year out it keeps every row at every width and the control looks dead.
+`received_time` for a received push and `submitDate` for a pending request — the same
+question asked of two feeds that date themselves differently. Do not filter the pending
+half on its period of performance; that was tried, and because a pending allocation almost
+always ends a year out it keeps every row at every width and the control looks dead.
 
 ---
 

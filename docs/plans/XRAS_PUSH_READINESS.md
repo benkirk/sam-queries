@@ -20,7 +20,7 @@ Extension, Supplement, Adjustment, on requests of any status: *"if XRAS pushed t
 today, would `POST /api/xras/v1/actions` land?"* Computed by synthesizing the inbound action
 from the `reports/requests` payload and running
 `dispatch_action(session, synthetic, validate_only=True)` — the same call `--recheck` and
-the Accounts Needed card make, which returns before `management_transaction` is ever opened
+the Pending Users card make, which returns before `management_transaction` is ever opened
 (`sam/xras/handlers/base.py::run`). The verdict carries the same ordered 422 list a real
 push would get, so the playbook's catalog applies *before* the 422 exists, while the fix
 window is open and nobody at XRAS has burned a push.
@@ -82,7 +82,7 @@ exactly why `pending` needs `seen_in_log` to split it after the repoint.
 
 ## 3 · Phase 0 — fix the shared preflight helper (tier A, ships first, small)
 
-`sam/queries/xras_accounts.py::_validate` is what the Accounts Needed card and
+`sam/queries/xras_accounts.py::_validate` is what the Pending Users card and
 `sam-admin xras --accounts` call for Feed-A rows. Two latent faults, both verified:
 
 1. **No handler registration on the CLI/sweep path.** Handlers register by import side
@@ -242,13 +242,13 @@ rules, Ben pulls it.
 |---|---|
 | **Remediations card** (`partials/xras_remediations_card.html`, `MANAGE_XRAS`) | per-request flags column gets a roll-up badge (worst candidate action: `would fail (N)` > `would park` > `unchecked` > `would land`); the actions subtable gets two cells per action — verdict (tooltip = messages or gaps, with `stage` when not Approved) and push state (`pushed <date> · <status>` / `applied?` / `pending` / `—`). New facet chips for verdict and push state; default hides `seen_in_log` |
 | **Request modal** (`xras/modals.py`, `xras_request_detail.html`) | a "SAM pre-flight" section per action: messages (decorated by the § 1.3 remedy hints when they land), gaps, `resolved` summary, push evidence; `MANAGE_XRAS` only — the synthesized payload, collapsed |
-| **Pending Requests tab** (`partials/xras_pending_requests_card.html`, `VIEW_XRAS`) | the actions subtable gains the same Pre-flight column the Accounts card already has (`xras_accounts_card.html`, the "not checked / would succeed / would fail (N)" idiom); Feed-B rows stop saying "not checked" |
+| **Pending Users tab** (`partials/xras_accounts_card.html`, `VIEW_XRAS`) | the expansion subtable already carries the Pre-flight column for received-push rows ("not checked / would succeed / would fail (N)"); this fills it for the *Pending request* rows, which currently read "not checked" |
 | **Re-check now** (`MANAGE_XRAS`) | POST → live `get_request_by_number()` → preflight the request's candidate actions → `patch_requests_index()` (the `XRAS_REMEDIATIONS.md` § 6 coherence idiom) + patch the worklist row → `refreshXrasTab`. Degrades **200** with a reason when the read client is unavailable — htmx will not swap a 4xx into an open modal |
 | **CLI** | `sam-admin xras --readiness [--format json]` → `kind: xras_readiness`, reads the published snapshot (no network); rows sorted red → amber → green; an empty board exits 0 |
 
 Gates: route-map snapshot regen (`ROUTE_MAP_REGEN=1`), RBAC tests (403 for view-only on
-the POST), a template gate that the Pending Requests subtable carries the column, the CLI
-envelope test.
+the POST), a template gate that the Pending Users subtable carries the column for
+pending-request rows, the CLI envelope test.
 
 ---
 
@@ -268,8 +268,9 @@ is the only way to grade it.
 
 Local: `docker compose up webdev --watch` → `docker compose exec webdev sam-admin tasks --run
 xras_sweep --force` (needs `XRAS_OUTGOING_ENABLED=1` + key; otherwise the skip path) →
-Allocations → XRAS: Remediations badges + modal section; the Pending Requests Pre-flight
-column; Re-check now patching in the same interaction; `sam-admin xras --readiness`. Ben
+Allocations → XRAS: Remediations badges + modal section; the Pending Users Pre-flight
+column on pending-request rows; Re-check now patching in the same interaction;
+`sam-admin xras --readiness`. Ben
 runs `pytest` by hand. Prod: read-only by construction; watch `detail.preflight` on the
 first sweeps, then `preflight_calibration` once pushes arrive.
 

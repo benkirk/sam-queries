@@ -28,8 +28,7 @@ In the order you will reach for them:
 | Surface | What it answers |
 |---|---|
 | XRAS → **Pending Activations & Notifications** | Everything received, filterable, raw payload behind `MANAGE_XRAS` |
-| XRAS → **Accounts Needed** | *Feed A.* The usernames on actions already received that have no usable SAM account. This is § 3.3's fix, as a worklist |
-| XRAS → **Pending Requests** | *Feed B.* Approved XRAS requests **not yet pushed** — the same problem *before* the action arrives. Renders the `xras_sweep` snapshot, not a live call |
+| XRAS → **Pending Users** | Who needs a SAM account before a handoff can land, both feeds unioned with a per-row **Source** badge: *Received push* (usernames on actions already received, § 3.3's fix as a worklist) and *Pending request* (approved XRAS requests **not yet pushed** — the same problem before the action arrives, from the `xras_sweep` snapshot). Received pushes sort first |
 | `sam-admin xras --summary --last 24h` | Status counts at a glance |
 | `sam-admin xras --status failed --last 24h` | The 400s and 422s, with their error lists |
 | `sam-admin xras --status manual --last 24h` | What parked, and **why** (`outcome_reason`) |
@@ -39,7 +38,7 @@ In the order you will reach for them:
 | `sam-admin xras --person <username>` | One identity from XRAS. Three outcomes on purpose: found `0`, no such username `1`, could-not-ask `2` |
 | `sam-admin xras --validate-mapping` | The resource-key map, **both sides** — § 3.1 |
 | `sam-admin xras --validate-opportunities` | The `opportunityId` map, both sides — § 3.9, the silent one |
-| `sam-admin tasks --history --task xras_sweep --format json` | Whether the sweep is actually feeding the Pending Requests tab — § 3.9 |
+| `sam-admin tasks --history --task xras_sweep --format json` | Whether the sweep is actually feeding the pending-request half of Pending Users — § 3.9 |
 
 Add `--format json` for anything you want to pipe.
 
@@ -59,11 +58,12 @@ the dashboard — use one of those. Left unfixed on purpose (see § 6).
   this port did not introduce and cannot fix from code (§ 3, rows 2 and 3).
 - **`Date Adjustment` and `Transfer` park.** By design, parity-correct, and now visible.
   A parked row is an outcome, not an incident.
-- **A populated *Pending Requests* tab beside an empty *Accounts Needed* tab is correct
-  before the repoint.** The two feeds fail empty for opposite reasons, which is why both
-  exist. Feed A reads `xras_action_log` — 0 rows until XRAS repoints, a *designed* empty
-  state. Feed B reaches `api.xras.org` directly and worked in production on 2026-08-20:
-  22 requests, 18 accounts needed. Do not spend day one debugging the empty half.
+- **Before the repoint, every Pending Users row is a *Pending request*; the first
+  *Received push* row is the first sign XRAS has repointed.** The two feeds fail empty for
+  opposite reasons. Received pushes read `xras_action_log` — 0 rows until XRAS repoints, a
+  *designed* empty state. Pending requests reach `api.xras.org` directly and worked in
+  production on 2026-08-20: 22 requests, 18 accounts needed. Do not spend day one debugging
+  the empty received-push half.
 
 ---
 
@@ -174,7 +174,7 @@ own failure is silent and is in § 3.9.
 Unreconciled ARC placeholder identities — the username on the award has never been
 reconciled to a SAM user.
 
-**Fix: work the *Accounts Needed* tab, or `sam-admin xras --accounts`.** Not "identity
+**Fix: work the *Pending Users* tab, or `sam-admin xras --accounts`.** Not "identity
 reconciliation" — that is a category, not a loop. #458 made it a worklist, and it is the
 highest-value surface on this page:
 
@@ -199,8 +199,8 @@ highest-value surface on this page:
   so the card also surfaces **mnemonic and resource-key** rejections on the same rows —
   it is not only about accounts. That overlaps § 3.2 deliberately.
 
-Feed B — the *Pending Requests* tab — is the same question asked **before** the action
-arrives, which is the only pre-emptive surface in this document.
+The pending-request half of *Pending Users* is the same question asked **before** the
+action arrives, which is the only pre-emptive surface in this document.
 
 Note a blank username renders as `Username  is missing` with a double space; that is the
 payload, not a formatting bug.
@@ -320,12 +320,12 @@ most likely the first Wyoming opportunity, which is exactly the case the rule ex
 put in front of a person.
 
 **9b · `published: true` is not `publish_backend: 'redis'` by luck.**
-The *Pending Requests* tab renders what `xras_sweep` published, not a live call. The task
-can succeed while publishing into a per-pod cache that dies with the pod — this happened
-in production on 2026-08-20, and the ledger said `published: true` while the tab stayed
-empty. `published` is now true **only** for `redis`.
+The pending-request half of *Pending Users* renders what `xras_sweep` published, not a live
+call. The task can succeed while publishing into a per-pod cache that dies with the pod —
+this happened in production on 2026-08-20, and the ledger said `published: true` while the
+half stayed empty. `published` is now true **only** for `redis`.
 
-**Empty Pending Requests tab + a `succeeded` ledger row → read `publish_backend` first:**
+**No pending-request rows + a `succeeded` ledger row → read `publish_backend` first:**
 
 ```bash
 sam-admin tasks --history --task xras_sweep --format json | jq '.runs[0].detail'
