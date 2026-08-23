@@ -54,7 +54,6 @@ short-circuits it, because nothing happened to verify.
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 from urllib.parse import quote
@@ -66,7 +65,7 @@ from sam.integration.xras_api.base import (
     XrasWriteNotConfigured,
     XrasWriteRejected,
 )
-from sam.integration.xras_api.client import XrasApiClient, _unwrap
+from sam.integration.xras_api.client import XrasApiClient, _XrasTransport, _unwrap
 from sam.integration.xras_api.config import XrasApiConfig
 
 logger = logging.getLogger(__name__)
@@ -76,63 +75,17 @@ logger = logging.getLogger(__name__)
 XA_ADMIN_CONTEXT = 'submit'
 
 
-@dataclass(frozen=True)
-class RoleType:
-    """One NCAR role type, in all three of the spellings the API uses.
-
-    ``type_id`` is what the roster reports and the projcode-keyed route wants;
-    ``name`` is what the route this client uses wants; ``display`` is XRAS's
-    own operator vocabulary, which the UI should render so that SAM and the
-    XRAS admin app read alike.
-    """
-
-    type_id: int
-    name: str
-    display: str
-
-
-#: ``GET /v1/types/roles`` for the NCAR process, read live 2026-08-21. There is
-#: no co-PI in this process. PRIVILEGE(#10): three spellings are carried only
-#: because the two role families disagree on the encoding.
-#: Hardcoded rather than fetched: it is three rows
-#: that have not changed since the process opened, a wrong value here is a
-#: 400 rather than a silent mis-write, and the alternative is a network call in
-#: the path of rendering a form.
-ROLE_TYPES: Tuple[RoleType, ...] = (
-    RoleType(13, 'PI', 'Project Lead'),
-    RoleType(14, 'Allocation Manager', 'Project Admin'),
-    RoleType(19, 'User', 'User'),
+# The role-type vocabulary (``RoleType``, ``ROLE_TYPES``, ``role_type``,
+# ``PI_ROLE_TYPE_ID``) now lives in the dependency-light ``vocabulary`` module
+# so the read path can import the one authoritative table without pulling in
+# this write client. Re-exported here because the package ``__init__`` and
+# several callers import these names from ``admin_client``.
+from sam.integration.xras_api.vocabulary import (  # noqa: E402
+    PI_ROLE_TYPE_ID,
+    ROLE_TYPES,
+    RoleType,
+    role_type,
 )
-
-#: The roleTypeId that owns a request. Withdraw, re-submit and role changes are
-#: all authorized against a role-holder, and probe P2 showed the PI and the
-#: Allocation Manager are **not** interchangeable — the same action validated
-#: for the PI and failed for the Allocation Manager. Impersonate this one.
-#: PRIVILEGE(#5): an ``admin``-context key might act as SAM itself and retire
-#: the whole impersonation apparatus.
-PI_ROLE_TYPE_ID = 13
-
-_BY_ID = {r.type_id: r for r in ROLE_TYPES}
-_BY_NAME = {r.name.casefold(): r for r in ROLE_TYPES}
-
-
-def role_type(key: Any) -> RoleType:
-    """Resolve a role type from an id, a wire name, or a :class:`RoleType`.
-
-    Raises:
-        ValueError: unknown role type. Deliberately loud — the alternative is
-            posting an unrecognised value into a URL path.
-    """
-    if isinstance(key, RoleType):
-        return key
-    if isinstance(key, int) or (isinstance(key, str) and key.isdigit()):
-        found = _BY_ID.get(int(key))
-    else:
-        found = _BY_NAME.get(str(key).strip().casefold())
-    if found is None:
-        raise ValueError(f'unknown XRAS role type {key!r}; '
-                         f'expected one of {[r.name for r in ROLE_TYPES]}')
-    return found
 
 
 #: XA-CONTEXT → the resource/allocation-date **stage** that context writes.
@@ -223,26 +176,29 @@ class XrasWriteResult:
         return 'unverified'
 
 
-class XrasAdminClient:
-    """Single-attempt, self-verifying writes against the XRAS admin surface."""
+class XrasAdminClient(_XrasTransport):
+    """Single-attempt, self-verifying writes against the XRAS admin surface.
+
+    Inherits the shared transport (:class:`~sam.integration.xras_api.client._XrasTransport`):
+    the session, the URL builder, the per-call :meth:`_headers`, and the
+    idempotent retrying :meth:`_get` used for the ``submit``-context
+    verification reads. It adds the single-attempt :meth:`_write` and the write
+    verbs. Its ``XA-CONTEXT`` is ``submit`` and a 4xx on any call raises
+    :class:`XrasWriteRejected` (the :meth:`_client_error` override below).
+    """
+
+    #: Mirror of the read client's context knob — see the module docstring for
+    #: why one class cannot serve both contexts. Not a knob.
+    _CONTEXT = XA_ADMIN_CONTEXT
 
     def __init__(self, config: Optional[XrasApiConfig] = None,
                  reader: Optional[XrasApiClient] = None) -> None:
-        self.config = config or XrasApiConfig.from_environment()
+        super().__init__(config)
         #: Report-context reads used for verification. A separate object
         #: because the Reports family 401s under ``submit`` — see the module
         #: docstring. PRIVILEGE(#2): a key that could read
         #: ``GET /v1/requests/<rid>`` would delete this whole delegate.
         self.reader = reader or XrasApiClient(self.config)
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'SAM/1.0 (+https://sam.hpc.ucar.edu)',
-            'Accept': 'application/json',
-            'XA-API-KEY': self.config.api_key,
-            'XA-ALLOCATIONS-PROCESS': self.config.allocations_process,
-            'XA-CONTEXT': XA_ADMIN_CONTEXT,
-            'XA-USER': self.config.api_user,
-        })
 
     @classmethod
     def from_environment(cls, config: Optional[XrasApiConfig] = None,
@@ -264,76 +220,26 @@ class XrasAdminClient:
         return cls(resolved, reader=reader)
 
     # ── internals ───────────────────────────────────────────────────────
+    #
+    # The session, ``_url``, ``_headers`` and the idempotent retrying ``_get``
+    # are inherited unchanged from ``_XrasTransport``. ``_get`` here is the
+    # submit-context verification read (the Reports family answers under
+    # ``report``, so those go via ``self.reader`` instead); the single-attempt
+    # rule below in ``_write`` is what distinguishes this client's *writes*.
 
-    def _url(self, path: str) -> str:
-        return f"{self.config.base_url}/{path.lstrip('/')}"
+    def _client_error(self, url: str, status: int,
+                      response: 'requests.Response') -> None:
+        """A 4xx on any call here is a deterministic write refusal.
 
-    @staticmethod
-    def _headers(xa_user: Optional[str],
-                 context: Optional[str] = None) -> Optional[Dict[str, str]]:
-        """Per-request impersonation and (optionally) context override.
-
-        Passed to the individual call rather than mutated onto the session:
-        one client instance serves several requests with different PIs, and a
-        session-level ``XA-USER`` would leak whichever one was set last. The
-        same is true of ``XA-CONTEXT`` — the session default is ``submit``
-        (Requested stage), and the Approved-stage editors override it per call
-        with ``admin`` rather than mutating the shared session.
+        Overrides the base (which raises :class:`XrasSourceUnavailable`) so a
+        ``submit``-context GET refusal carries the status the way ``_write``'s
+        does — ``401`` (no role on the request), ``404`` (target did not
+        resolve). ``errors[]`` parsing stays in :meth:`_write`, the only place
+        a 4xx body carries a validation list.
         """
-        headers: Dict[str, str] = {}
-        if xa_user:
-            headers['XA-USER'] = xa_user
-        if context:
-            headers['XA-CONTEXT'] = context
-        return headers or None
-
-    def _get(self, path: str, *, params: Optional[Mapping[str, Any]] = None,
-             xa_user: Optional[str] = None,
-             context: Optional[str] = None) -> Optional[Any]:
-        """Submit-context GET. Retries 5xx like the read client; 404 → ``None``.
-
-        Reads are idempotent, so this keeps the read client's retry policy —
-        the single-attempt rule in this module applies to :meth:`_write`.
-        """
-        url = self._url(path)
-        last_error: Optional[Exception] = None
-
-        for attempt in range(self.config.max_retries):
-            try:
-                response = self.session.request(
-                    'GET', url, params=params,
-                    headers=self._headers(xa_user, context),
-                    timeout=self.config.timeout)
-            except requests.RequestException as exc:
-                last_error = exc
-                if attempt == self.config.max_retries - 1:
-                    break
-                time.sleep(2 ** attempt)
-                continue
-
-            status = response.status_code
-            if status == 404:
-                return None
-            if 400 <= status < 500:
-                raise XrasWriteRejected(
-                    f'{url} returned HTTP {status}: {response.text[:200]}',
-                    status=status)
-            if status >= 500:
-                last_error = requests.HTTPError(f'HTTP {status}')
-                if attempt == self.config.max_retries - 1:
-                    break
-                time.sleep(2 ** attempt)
-                continue
-
-            try:
-                return _unwrap(response.json())
-            except ValueError as exc:
-                raise XrasSourceUnavailable(
-                    f'{url} returned non-JSON body: {exc}') from exc
-
-        raise XrasSourceUnavailable(
-            f'{url} unreachable after {self.config.max_retries} attempts: '
-            f'{last_error}')
+        raise XrasWriteRejected(
+            f'{url} returned HTTP {status}: {response.text[:200]}',
+            status=status)
 
     def _write(self, method: str, path: str, *,
                params: Optional[Mapping[str, Any]] = None,

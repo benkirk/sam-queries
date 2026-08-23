@@ -114,7 +114,9 @@ def _client(monkeypatch, responses, *, reader=None, **config_kwargs):
     client = XrasAdminClient(config, reader=reader or _FakeReader({}))
     monkeypatch.setattr(client.session, 'request',
                         MagicMock(side_effect=responses))
-    monkeypatch.setattr('sam.integration.xras_api.admin_client.time.sleep',
+    # The retrying GET (and its backoff sleep) is inherited from the shared
+    # transport in ``client``; the admin client's own writes never sleep.
+    monkeypatch.setattr('sam.integration.xras_api.client.time.sleep',
                         lambda _s: None)
     return client
 

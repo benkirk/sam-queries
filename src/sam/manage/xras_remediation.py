@@ -349,37 +349,27 @@ def resubmit_action(session_factory, *, request_number, request_id, action_id,
 def _action_op(operation, session_factory, *, request_number, request_id,
                action_id, pi_username, operator, comment, client,
                preflight=None) -> RemediationOutcome:
-    from sam.integration.xras_api.base import XrasSourceUnavailable, XrasWriteRejected
-
-    admin = _client(client)
-    event_id = _open_event(session_factory, operation=operation,
-                           created_by=operator, xa_user=pi_username,
-                           request_number=request_number, request_id=request_id,
-                           action_id=action_id, comment=comment)
-
-    try:
-        if operation == 'withdraw_action':
-            result = admin.withdraw_action(request_id, action_id,
-                                           request_number=request_number,
-                                           xa_user=pi_username)
-        else:
-            result = admin.submit_action(request_id, action_id,
+    """Withdraw or re-submit one action — the shared editor body with the
+    action dispatch. Withdraw and re-submit are the two ``_act`` verbs; the
+    only variation here is which one runs and whether re-submit preflights."""
+    if operation == 'withdraw_action':
+        def dispatch(admin):
+            return admin.withdraw_action(request_id, action_id,
                                          request_number=request_number,
-                                         xa_user=pi_username,
-                                         preflight=bool(preflight))
-    except XrasWriteRejected as exc:
-        _close_event(session_factory, event_id, **_rejection_fields(exc))
-        return RemediationOutcome(event_id, status='rejected', error=str(exc),
-                                  result=exc)
-    except XrasSourceUnavailable as exc:
-        _close_event(session_factory, event_id, status='error',
-                     outcome_reason=str(exc))
-        return RemediationOutcome(event_id, status='error', error=str(exc))
+                                         xa_user=pi_username)
+    else:
+        def dispatch(admin):
+            return admin.submit_action(request_id, action_id,
+                                       request_number=request_number,
+                                       xa_user=pi_username,
+                                       preflight=bool(preflight))
 
-    _close_event(session_factory, event_id, **_outcome_fields(result))
-    patched = _refresh_index_entry(request_number) if result.succeeded else True
-    return RemediationOutcome(event_id, result=result, status=result.status,
-                              patched=patched)
+    return _editor_op(
+        operation, session_factory, dispatch,
+        open_fields=dict(created_by=operator, xa_user=pi_username,
+                         request_number=request_number, request_id=request_id,
+                         action_id=action_id, comment=comment),
+        request_number=request_number, client=client)
 
 
 def change_role(session_factory, *, add, request_number, request_id, username,
@@ -399,58 +389,54 @@ def change_role(session_factory, *, add, request_number, request_id, username,
     whole feature exists to clean up.
     """
     from sam.integration.xras_api.admin_client import role_type
-    from sam.integration.xras_api.base import XrasSourceUnavailable, XrasWriteRejected
 
-    admin = _client(client)
     resolved = role_type(role) if role is not None else None
 
-    event_id = _open_event(
-        session_factory, operation='add_role' if add else 'remove_role',
-        created_by=operator, xa_user=xa_user, username=username,
-        request_number=request_number, request_id=request_id,
-        role_id=None if add else role_id,
-        role_type=resolved.name if resolved else None, comment=comment)
+    if add:
+        def dispatch(admin):
+            return admin.add_role(request_id, resolved, username,
+                                  request_number=request_number,
+                                  xa_user=xa_user)
+        # The roleId only exists once XRAS has assigned it, so an add's audit
+        # row learns its own identifier at completion — and that identifier is
+        # what an undo would need. (A remove already knows its roleId at open.)
+        def close_extra(result):
+            return {'role_id': result.extra.get('role_id')}
+    else:
+        def dispatch(admin):
+            return admin.remove_role(request_id, role_id,
+                                     request_number=request_number,
+                                     xa_user=xa_user)
+        close_extra = None
 
-    try:
-        if add:
-            result = admin.add_role(request_id, resolved, username,
-                                    request_number=request_number,
-                                    xa_user=xa_user)
-        else:
-            result = admin.remove_role(request_id, role_id,
-                                       request_number=request_number,
-                                       xa_user=xa_user)
-    except XrasWriteRejected as exc:
-        _close_event(session_factory, event_id, **_rejection_fields(exc))
-        return RemediationOutcome(event_id, status='rejected', error=str(exc),
-                                  result=exc)
-    except XrasSourceUnavailable as exc:
-        _close_event(session_factory, event_id, status='error',
-                     outcome_reason=str(exc))
-        return RemediationOutcome(event_id, status='error', error=str(exc))
-
-    # The roleId only exists once XRAS has assigned it, so an add's audit row
-    # learns its own identifier at completion — and that identifier is what an
-    # undo would need.
-    _close_event(session_factory, event_id,
-                 role_id=result.extra.get('role_id') if add else None,
-                 **_outcome_fields(result))
-    patched = _refresh_index_entry(request_number) if result.succeeded else True
-    return RemediationOutcome(event_id, result=result, status=result.status,
-                              patched=patched)
+    return _editor_op(
+        'add_role' if add else 'remove_role', session_factory, dispatch,
+        open_fields=dict(created_by=operator, xa_user=xa_user, username=username,
+                         request_number=request_number, request_id=request_id,
+                         role_id=None if add else role_id,
+                         role_type=resolved.name if resolved else None,
+                         comment=comment),
+        request_number=request_number, client=client, close_extra=close_extra)
 
 
 # ── the request editor (Part B): resources & allocation dates ────────────
 
 def _editor_op(operation, session_factory, dispatch, *, open_fields,
-               request_number, client=None) -> RemediationOutcome:
-    """Shared open→dispatch→close→patch body for the editor verbs.
+               request_number, client=None, close_extra=None
+               ) -> RemediationOutcome:
+    """Shared open→dispatch→close→patch body for **every** remediation verb.
 
-    Identical in shape to ``_action_op``/``change_role``: the audit row is
-    committed ``attempted`` before the write leaves, closed on a fresh session
-    after, and the card entry is patched only on a verified success. The verbs
-    differ only in which client call runs and which columns the ``attempted``
-    row carries, both passed in.
+    The audit row is committed ``attempted`` before the write leaves, closed on
+    a fresh session after, and the card entry is patched only on a verified
+    success. Each verb differs only in what is passed in: ``dispatch`` runs the
+    client call, ``open_fields`` are the columns the ``attempted`` row carries,
+    and the optional ``close_extra(result) -> dict`` contributes extra columns
+    to the success close (``add_role`` uses it to record the ``roleId`` XRAS
+    only assigns at completion).
+
+    Also the body behind ``_action_op`` (withdraw/re-submit) and ``change_role``
+    (add/remove role) — they were three copies of this skeleton until they were
+    folded onto it.
     """
     from sam.integration.xras_api.base import (
         XrasSourceUnavailable,
@@ -471,7 +457,8 @@ def _editor_op(operation, session_factory, dispatch, *, open_fields,
                      outcome_reason=str(exc))
         return RemediationOutcome(event_id, status='error', error=str(exc))
 
-    _close_event(session_factory, event_id, **_outcome_fields(result))
+    extra = close_extra(result) if close_extra else {}
+    _close_event(session_factory, event_id, **extra, **_outcome_fields(result))
     patched = _refresh_index_entry(request_number) if result.succeeded else True
     return RemediationOutcome(event_id, result=result, status=result.status,
                               patched=patched)

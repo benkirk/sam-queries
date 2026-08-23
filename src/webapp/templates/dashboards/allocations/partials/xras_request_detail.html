@@ -14,9 +14,8 @@
   actions and write buttons come from the SHARED include so they can never drift
   from the card row.
 #}
-<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
-    Request — {{ request_number }}
-</h5>
+{% import 'dashboards/allocations/partials/xras_modal_shell.html' as shell %}
+{% call shell.modal_title() %}Request — {{ request_number }}{% endcall %}
 
 {% if flash %}
 <div class="alert alert-success py-2 small">{{ flash }}</div>
@@ -358,6 +357,4 @@
 </div>
 {% endif %}
 
-<div class="d-flex justify-content-end mt-3">
-    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Done</button>
-</div>
+{{ shell.done_footer() }}

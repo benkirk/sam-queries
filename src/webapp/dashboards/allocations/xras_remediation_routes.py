@@ -124,6 +124,27 @@ def _degraded(message, *, title='XRAS unavailable'):
         title=title, message=message)
 
 
+def _render_xras_modal(*, build, template, noun, not_found, log_label):
+    """Shared body for the three read-only detail modals (request/user/opportunity).
+
+    Every one does the same four things and differs only in the four arguments:
+    run ``build()``; degrade with a **200** on an XRAS outage (htmx will not swap
+    a 4xx into an already-open modal — see the module docstring); show
+    ``not_found()`` when XRAS holds no such thing (``build`` returned ``None``);
+    else render ``template`` with the built context. ``noun`` fills the standard
+    outage line and ``log_label`` names the warning.
+    """
+    try:
+        context = build()
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('%s: %s', log_label, exc)
+        return _degraded(f'Showing this {noun} needs a live read from XRAS, '
+                         'and XRAS is not answering.')
+    if context is None:
+        return not_found()
+    return render_template(template, **context)
+
+
 def _read_client():
     from sam.integration.xras_api import XrasApiClient
     return XrasApiClient.from_environment()
@@ -1254,15 +1275,11 @@ def xras_request_detail(request_number: str):
     Degrades with a **200** on an XRAS outage, like every modal GET here: htmx
     will not swap a 4xx into an already-open modal.
     """
-    try:
-        context = _detail_context(request_number)
-    except XrasSourceUnavailable as exc:
-        current_app.logger.warning('xras request detail: %s', exc)
-        return _degraded('Showing this request needs a live read from XRAS, '
-                         'and XRAS is not answering.')
-    if context is None:
-        return htmx_modal_not_found('Request')
-    return render_template(_DETAIL_FORM, **context)
+    return _render_xras_modal(
+        build=lambda: _detail_context(request_number),
+        template=_DETAIL_FORM, noun='request',
+        not_found=lambda: htmx_modal_not_found('Request'),
+        log_label='xras request detail')
 
 
 def _render_detail(request_number, *, flash=None, flash_error=None):
@@ -1355,18 +1372,14 @@ def xras_user_detail(username: str):
     matching the sibling cards. Degrades with a **200** on an outage.
     """
     back = request.args.get('request_number') or None
-    try:
-        context = _user_context(username, back_request_number=back)
-    except XrasSourceUnavailable as exc:
-        current_app.logger.warning('xras user detail: %s', exc)
-        return _degraded('Showing this user needs a live read from XRAS, and '
-                         'XRAS is not answering.')
-    if context is None:
-        return _degraded(
+    return _render_xras_modal(
+        build=lambda: _user_context(username, back_request_number=back),
+        template=_USER_DETAIL_FORM, noun='user',
+        not_found=lambda: _degraded(
             f'XRAS has no account named "{username}". A placeholder is often '
             'gone because it was merged into a real identity; the card will '
-            'catch up on the next sweep.', title='Unknown XRAS user')
-    return render_template(_USER_DETAIL_FORM, **context)
+            'catch up on the next sweep.', title='Unknown XRAS user'),
+        log_label='xras user detail')
 
 
 # ---------------------------------------------------------------------------
@@ -1414,17 +1427,14 @@ def xras_opportunity_detail(opportunity_id: int):
     modal GET here.
     """
     back = request.args.get('request_number') or None
-    try:
-        context = _opportunity_context(opportunity_id, back_request_number=back)
-    except XrasSourceUnavailable as exc:
-        current_app.logger.warning('xras opportunity detail: %s', exc)
-        return _degraded('Showing this opportunity needs a live read from '
-                         'XRAS, and XRAS is not answering.')
-    if context is None:
-        return _degraded(
+    return _render_xras_modal(
+        build=lambda: _opportunity_context(opportunity_id,
+                                           back_request_number=back),
+        template=_OPPORTUNITY_DETAIL_FORM, noun='opportunity',
+        not_found=lambda: _degraded(
             f'XRAS has no opportunity #{opportunity_id}.',
-            title='Unknown opportunity')
-    return render_template(_OPPORTUNITY_DETAIL_FORM, **context)
+            title='Unknown opportunity'),
+        log_label='xras opportunity detail')
 
 
 # ── the request editor (Part B): resource amounts & allocation dates ─────

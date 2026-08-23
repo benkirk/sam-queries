@@ -306,10 +306,17 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # Back link and its in-panel Request links target the body, no toggle.
     'dashboards/allocations/partials/xras_user_detail.html': [
         'auditDetailsModalBody'],
-    # The opportunity detail modal — reached from the Remediations group header
-    # (data-bs-toggle from the closed modal) and the request modal header (plain
-    # hx-get into the open body). Body only; its Back link targets the body.
-    'dashboards/allocations/partials/xras_opportunity_detail.html': [
+    # The shared modal-shell macros (title / back link / done footer) for the
+    # three detail modals. Loaded via {% import %}, which the closure walker
+    # does not follow, so it reads as a runtime fragment; its back_link macro
+    # targets #auditDetailsModalBody. Used only by the three XRAS detail modals,
+    # all rendered only into xras.html, which ships the shell.
+    #
+    # xras_opportunity_detail.html is no longer listed: its only shell target
+    # was the Back link, which now lives in this shared shell. xras_request_detail
+    # and xras_user_detail keep their entries — they still target the body
+    # directly (the editors / the in-panel Request links).
+    'dashboards/allocations/partials/xras_modal_shell.html': [
         'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_resource_form.html': [
         'auditDetailsModalBody'],
