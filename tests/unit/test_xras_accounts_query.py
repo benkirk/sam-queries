@@ -59,6 +59,21 @@ def _payload(name: str) -> dict:
     return json.loads((FIXTURES / name).read_text())
 
 
+@pytest.fixture
+def no_committed_placeholder(serial_file_lock):
+    """Hold off `test_xras_accounts_card.py`'s committed fixture rows.
+
+    WARNING: that file COMMITs a real `users` row for PLACEHOLDER_USERNAME with
+    `active=False`, under this same lock name. Any assertion here that pins a
+    CLASSIFICATION for a username the JSON fixtures carry is a race against it:
+    while the row exists the classifier correctly answers `inactive`, and the
+    expected `absent` never appears. Asserting mere presence is safe and needs
+    no lock. Reproduce by inserting that row by hand and running these two.
+    """
+    with serial_file_lock('xras_accounts_committed_fixtures'):
+        yield
+
+
 def _pending_record(*usernames, submit_date='2026-07-14', **kwargs):
     """A Feed-B RosterRecord: no arrival of its own, only a ``submitDate``.
 
@@ -219,11 +234,13 @@ class TestFeedA:
     """Rosters out of ``xras_action_log.raw_payload``."""
 
     #: WARNING: Assertions here must be scoped to the rows the test itself created.
-    #: `tests/unit/test_xras_accounts_card.py` COMMITS an `xras_action_log`
-    #: row (its route reads through Flask-SQLAlchemy's own connection and only
-    #: sees committed rows), and xdist workers share one database — so a bare
-    #: `records_from_action_log(...) == []` is a race against that fixture,
-    #: not an assertion about this test's data.
+    #: `tests/unit/test_xras_accounts_card.py` COMMITS an `xras_action_log` row
+    #: AND a `users` row (its route reads through Flask-SQLAlchemy's own
+    #: connection and only sees committed rows), and xdist workers share one
+    #: database — so a bare `records_from_action_log(...) == []` is a race
+    #: against that fixture, not an assertion about this test's data. A test
+    #: pinning a classification for a fixture username needs
+    #: `no_committed_placeholder`.
 
     def _log_row(self, session, payload_name, **kwargs):
         from sam.integration.xras import XrasActionLog
@@ -237,7 +254,8 @@ class TestFeedA:
         session.flush()
         return row
 
-    def test_it_extracts_the_roster_and_classifies_it(self, session):
+    def test_it_extracts_the_roster_and_classifies_it(
+            self, session, no_committed_placeholder):
         self._log_row(session, PLACEHOLDER_FIXTURE, action_type='New',
                       request_number='NCAR4227')
         records = records_from_action_log(session, validate=False)
@@ -500,7 +518,8 @@ class TestItIsRegimeProof:
         rows = classify_accounts(session, records)
         assert PLACEHOLDER_USERNAME in {r['username'] for r in rows}
 
-    def test_the_same_roster_classifies_alike_in_every_regime(self, session):
+    def test_the_same_roster_classifies_alike_in_every_regime(
+            self, session, no_committed_placeholder):
         """Flip only the status; the answer must not move."""
         import json
         from datetime import datetime as dt
