@@ -344,7 +344,11 @@
                        a bare `row.admin.name` would 500 the whole card for the
                        hour between a deploy and the next sweep. #}
                     <td>{% if row.admin is defined and row.admin %}{{ row.admin.name or row.admin.username or '—' }}{% else %}—{% endif %}</td>
-                    <td class="text-nowrap">{{ row.submit_date | fmt_date }}</td>
+                    {# The current handoff's date (activity_date), so the column
+                       agrees with the date filter — a 2022 request with a recent
+                       Extension reads its Extension date, matching admin. Falls
+                       back to the request date on a pre-activity_date snapshot. #}
+                    <td class="text-nowrap">{{ (row.activity_date or row.submit_date) | fmt_date }}</td>
                     <td class="small text-muted text-nowrap">
                         {{ row.begin_date | fmt_date }} – {{ row.end_date | fmt_date }}
                     </td>

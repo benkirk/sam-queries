@@ -237,6 +237,18 @@ class TestTheEntry:
     def test_refreshed_at_defaults_absent_so_the_tell_means_something(self):
         assert request_index_entry(_payload())['refreshed_at'] is None
 
+    def test_activity_date_uses_the_latest_action_not_the_request(self):
+        from datetime import date
+        p = _payload(submitDate='2022-06-16T00:00:00Z')
+        p['actions'] = [
+            {'actionId': 1, 'actionType': 'New', 'actionStatus': 'Approved',
+             'entryDate': '2022-06-16'},
+            {'actionId': 2, 'actionType': 'Extension', 'actionStatus': 'Submitted',
+             'entryDate': '2026-08-21'}]      # submitDate null, entryDate recent
+        e = request_index_entry(p)
+        assert e['activity_date'] == date(2026, 8, 21)   # the recent Extension
+        assert e['submit_date'] == date(2022, 6, 16)     # request date unchanged
+
 
 def _verdict(status, *, push_state='pending'):
     return {'status': status, 'push_state': push_state}

@@ -161,6 +161,11 @@ def actions_from_payload(payload: Dict[str, Any],
             'action_type': _text(action.get('actionType')),
             'action_status': status,
             'submit_date': _as_date(action.get('submitDate')),
+            # The recency signal: an Extension's own submitDate is often null, so
+            # the entry stamps when it arrived. This is what a date filter must
+            # window on — a 2022 request with an Extension entered 2 days ago is
+            # recent activity, like admin's "Recent Submissions" shows it.
+            'entry_date': _as_date(action.get('entryDate')),
             # Snapshot-derived *offers*, not permissions. The modal's live read
             # is the authority on legality; these only decide which button to
             # draw, and drawing one that XRAS then refuses is a 4xx the modal
@@ -252,12 +257,21 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
 
     roster = roster_from_payload(payload)
     actions = actions_from_payload(payload, preflights)
+    # Most-recent activity across the request's actions — what a date filter must
+    # window on. Falls back to the request's own submitDate for a request whose
+    # actions carry no date.
+    _adates = [d for a in actions
+               for d in (a.get('entry_date') or a.get('submit_date'),) if d]
+    activity_date = max(_adates) if _adates else _as_date(payload.get('submitDate'))
     return {
         'request_number': number,
         'request_id': request_id,
         'status': _text(payload.get('requestStatus')),
         'request_type': _text(payload.get('requestType')),
         'submit_date': _as_date(payload.get('submitDate')),
+        # The date the operator cares about: when the current handoff was
+        # submitted, not when the request was first created years ago.
+        'activity_date': activity_date,
         'begin_date': _as_date(payload.get('beginDate')),
         'end_date': _as_date(payload.get('endDate')),
         'pending_push': bool(pending_push),

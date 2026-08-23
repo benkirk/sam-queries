@@ -299,20 +299,25 @@ def _has_worklist():
 
 
 def _in_window(row, since):
-    """Keep a row with no submit date.
+    """Keep a row with no date.
 
-    Missing information is not evidence of age, and on **this** card an older
-    row is the more urgent one — a 2015 approval nobody pushed is the whole
-    point — so a date filter may narrow the view but must never silently drop
-    the rows the card exists to surface. The header says how many it hid.
+    Windows on ``activity_date`` — when the current handoff was submitted — NOT
+    the request's original creation: a 2022 request with an Extension entered two
+    days ago is recent activity and must show in a 7-day filter (admin's "Recent
+    Submissions" keys on the same signal). ``submit_date`` is the fallback for a
+    snapshot swept before ``activity_date`` existed.
+
+    Missing information is not evidence of age, and on this card an older row is
+    the more urgent one — a 2015 approval nobody pushed is the whole point — so a
+    filter narrows the view but never silently drops a dateless row.
     """
     if since is None:
         return True
-    submitted = row.get('submit_date')
-    if submitted is None:
+    when = row.get('activity_date') or row.get('submit_date')
+    if when is None:
         return True
     start = since.date() if hasattr(since, 'date') else since
-    return submitted >= start
+    return when >= start
 
 
 def _search(rows, needle):
