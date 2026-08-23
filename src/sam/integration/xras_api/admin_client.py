@@ -75,63 +75,17 @@ logger = logging.getLogger(__name__)
 XA_ADMIN_CONTEXT = 'submit'
 
 
-@dataclass(frozen=True)
-class RoleType:
-    """One NCAR role type, in all three of the spellings the API uses.
-
-    ``type_id`` is what the roster reports and the projcode-keyed route wants;
-    ``name`` is what the route this client uses wants; ``display`` is XRAS's
-    own operator vocabulary, which the UI should render so that SAM and the
-    XRAS admin app read alike.
-    """
-
-    type_id: int
-    name: str
-    display: str
-
-
-#: ``GET /v1/types/roles`` for the NCAR process, read live 2026-08-21. There is
-#: no co-PI in this process. PRIVILEGE(#10): three spellings are carried only
-#: because the two role families disagree on the encoding.
-#: Hardcoded rather than fetched: it is three rows
-#: that have not changed since the process opened, a wrong value here is a
-#: 400 rather than a silent mis-write, and the alternative is a network call in
-#: the path of rendering a form.
-ROLE_TYPES: Tuple[RoleType, ...] = (
-    RoleType(13, 'PI', 'Project Lead'),
-    RoleType(14, 'Allocation Manager', 'Project Admin'),
-    RoleType(19, 'User', 'User'),
+# The role-type vocabulary (``RoleType``, ``ROLE_TYPES``, ``role_type``,
+# ``PI_ROLE_TYPE_ID``) now lives in the dependency-light ``vocabulary`` module
+# so the read path can import the one authoritative table without pulling in
+# this write client. Re-exported here because the package ``__init__`` and
+# several callers import these names from ``admin_client``.
+from sam.integration.xras_api.vocabulary import (  # noqa: E402
+    PI_ROLE_TYPE_ID,
+    ROLE_TYPES,
+    RoleType,
+    role_type,
 )
-
-#: The roleTypeId that owns a request. Withdraw, re-submit and role changes are
-#: all authorized against a role-holder, and probe P2 showed the PI and the
-#: Allocation Manager are **not** interchangeable — the same action validated
-#: for the PI and failed for the Allocation Manager. Impersonate this one.
-#: PRIVILEGE(#5): an ``admin``-context key might act as SAM itself and retire
-#: the whole impersonation apparatus.
-PI_ROLE_TYPE_ID = 13
-
-_BY_ID = {r.type_id: r for r in ROLE_TYPES}
-_BY_NAME = {r.name.casefold(): r for r in ROLE_TYPES}
-
-
-def role_type(key: Any) -> RoleType:
-    """Resolve a role type from an id, a wire name, or a :class:`RoleType`.
-
-    Raises:
-        ValueError: unknown role type. Deliberately loud — the alternative is
-            posting an unrecognised value into a URL path.
-    """
-    if isinstance(key, RoleType):
-        return key
-    if isinstance(key, int) or (isinstance(key, str) and key.isdigit()):
-        found = _BY_ID.get(int(key))
-    else:
-        found = _BY_NAME.get(str(key).strip().casefold())
-    if found is None:
-        raise ValueError(f'unknown XRAS role type {key!r}; '
-                         f'expected one of {[r.name for r in ROLE_TYPES]}')
-    return found
 
 
 #: XA-CONTEXT → the resource/allocation-date **stage** that context writes.

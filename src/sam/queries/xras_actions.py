@@ -789,7 +789,7 @@ def propose_opportunity_mapping(session, opportunity_payloads) -> Dict[str, Any]
     proposed:
 
     1. ``sam.xras.opportunity_types`` — XRAS's own ``allocationTypeId`` plus its
-       primary ``panelId``, through a seven-entry constant.
+       primary ``panelId``, through an eight-entry constant.
     2. The free-text ladder in ``sam.xras.extractors``, run on the opportunity's
        name and type.
 

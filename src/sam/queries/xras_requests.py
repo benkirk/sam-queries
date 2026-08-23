@@ -44,6 +44,10 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
+from sam.integration.xras_api.vocabulary import (
+    ADMIN_ROLE_TYPE_ID,
+    PI_ROLE_TYPE_ID,
+)
 from sam.queries.xras_accounts import is_placeholder
 
 #: Action fields carried into the entry. The states are what the card's
@@ -60,13 +64,10 @@ TERMINAL_ACTION_STATUSES = ('Rejected', 'Cancelled', 'Withdrawn')
 #: ``Submitted``, so nothing may test for the latter.
 DRAFT_ACTION_STATUS = 'Incomplete'
 
-PI_ROLE_TYPE_ID = 13
-#: XRAS ``Allocation Manager`` — SAM's language for it is **Project Admin**.
-#: Kept here beside the PI id (same convention) rather than imported from
-#: admin_client's ``ROLE_TYPES`` (``RoleType(14, 'Allocation Manager',
-#: 'Project Admin')``), which is the write client and does not belong on the
-#: read path.
-ADMIN_ROLE_TYPE_ID = 14
+# ``PI_ROLE_TYPE_ID`` / ``ADMIN_ROLE_TYPE_ID`` come from the dependency-light
+# ``xras_api.vocabulary`` module (imported above) — one authoritative table,
+# no write client on the read path. Re-exported at module scope so existing
+# ``from sam.queries.xras_requests import PI_ROLE_TYPE_ID`` callers still work.
 
 
 def _as_date(value: Any):
