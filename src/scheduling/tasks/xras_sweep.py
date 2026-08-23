@@ -314,6 +314,10 @@ def _run_preflights(ctx, client, session, all_payloads, *, since, detail):
                'rechecked': 0, 'failed': 0, 'manual': 0, 'unchecked': 0,
                'by_push_state': {}, 'by_stage': {}}
     detail['preflight'] = summary
+    # Calibration: when a candidate has ALSO been pushed for real, compare the
+    # prediction against the log outcome — the only way to grade the field map.
+    calibration = {'compared': 0, 'agree': 0, 'sample': []}
+    detail['preflight_calibration'] = calibration
     if not candidates:
         return {}, set()
 
@@ -356,10 +360,33 @@ def _run_preflights(ctx, client, session, all_payloads, *, since, detail):
             summary['by_push_state'].get(verdict.push_state, 0) + 1
         summary['by_stage'][verdict.stage] = \
             summary['by_stage'].get(verdict.stage, 0) + 1
+        _calibrate(calibration, verdict, log_seen.get(verdict.action_id))
         if number and verdict.action_id is not None:
             by_number.setdefault(number, {})[verdict.action_id] = \
                 verdict_to_dict(verdict)
     return by_number, numbers
+
+
+#: Predicted preflight status -> the ``xras_action_log.status`` it should match
+#: if the field map is right. ``unchecked`` makes no prediction to grade.
+_CALIBRATION_EXPECTED = {'rechecked': 'processed', 'failed': 'failed',
+                         'manual': 'manual'}
+
+
+def _calibrate(calibration, verdict, seen) -> None:
+    """Tally one prediction against the real push outcome, when there is one."""
+    expected = _CALIBRATION_EXPECTED.get(verdict.status)
+    actual = (seen or {}).get('status')
+    if expected is None or actual not in ('processed', 'failed', 'manual'):
+        return
+    calibration['compared'] += 1
+    agree = expected == actual
+    if agree:
+        calibration['agree'] += 1
+    if len(calibration['sample']) < _MAX_REPORTED:
+        calibration['sample'].append(
+            {'action_id': verdict.action_id, 'predicted': verdict.status,
+             'actual': actual, 'agree': agree})
 
 
 def _apply_worklist_preflights(enumerated, index_entries) -> None:
@@ -686,6 +713,8 @@ def xras_sweep(ctx) -> TaskResult:
         # did not reach the preflight (no requests, or an early build failure) —
         # distinct from a run that checked and found nothing.
         'preflight': {},
+        # Predicted-vs-actual, for the actions that have since been pushed.
+        'preflight_calibration': {},
     }
 
     if not xras_api_configured():

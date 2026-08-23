@@ -143,6 +143,30 @@ def _detail_grants(payload):
     return grants
 
 
+def _actual_log_outcomes(action_ids):
+    """Latest ``xras_action_log`` outcome per action_id, for the calibration view.
+
+    Read straight from ``db.session`` (committed rows), keyed by ``action_id``:
+    the modal shows the prediction beside what actually happened when XRAS pushed.
+    """
+    from sam.integration.xras import XrasActionLog
+
+    ids = [i for i in action_ids if i is not None]
+    if not ids:
+        return {}
+    outcomes = {}
+    for row in (db.session.query(XrasActionLog)
+                .filter(XrasActionLog.action_id.in_(set(ids)))
+                .order_by(XrasActionLog.xras_action_log_id.asc()).all()):
+        # Ascending id, so the last write for an action_id wins.
+        outcomes[row.action_id] = {'status': row.status,
+                                   'http_status': row.http_status,
+                                   'error_messages': row.error_messages,
+                                   'received_time': row.received_time,
+                                   'raw_payload': row.raw_payload}
+    return outcomes
+
+
 def _detail_context(request_number, *, flash=None, flash_error=None):
     """Everything the detail modal renders, or ``None`` if the request is gone.
 
@@ -169,8 +193,12 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
         payload, pending_push=bool((entry or {}).get('pending_push', True)),
         preflights=preflights)
     detail_actions = _detail_actions(payload)
+    actuals = _actual_log_outcomes(a['action_id'] for a in detail_actions)
     for action in detail_actions:
         action['preflight'] = preflights.get(action['action_id'])
+        # The real push outcome, if this action has since been posted — the
+        # calibration comparison the request modal renders against the prediction.
+        action['actual'] = actuals.get(action['action_id'])
     xa_user, is_pi, placeholder = _impersonation(entry, live=payload)
 
     return {

@@ -322,6 +322,22 @@
         {% if pf.gaps %}
         <div class="text-muted">Not synthesized: {{ pf.gaps | join(', ') }}</div>
         {% endif %}
+        {# Calibration: the prediction beside what actually happened when XRAS
+           pushed this action. Present only once a real push has landed. #}
+        {% if action.actual %}
+        <div class="mt-1 pt-1 border-top">
+            <span class="text-muted">Predicted</span>
+            {% if pf.status == 'rechecked' %}would land{% elif pf.status == 'failed' %}would fail ({{ pf.messages | length }}){% elif pf.status == 'manual' %}would park{% else %}unchecked{% endif %}
+            <span class="text-muted">· Actual</span>
+            <span class="font-monospace">{{ action.actual.status }}{% if action.actual.http_status %} {{ action.actual.http_status }}{% endif %}</span>
+            {% if action.actual.raw_payload %}
+            <details class="mt-1">
+                <summary class="text-muted">Payload XRAS sent</summary>
+                <pre class="small mt-1 mb-0" style="white-space: pre-wrap; word-break: break-word;">{{ action.actual.raw_payload }}</pre>
+            </details>
+            {% endif %}
+        </div>
+        {% endif %}
     </div>
     {% endif %}
 </div>

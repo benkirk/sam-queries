@@ -1271,6 +1271,38 @@ class TestPreflightInTheSweep:
         # The row still publishes, just without a verdict.
         assert load_requests_index()['rows'][0]['actions'][0]['preflight'] is None
 
+    def test_detail_carries_the_calibration_plumbing(self, ctx, wire):
+        wire([[_pending_request(1, 'NCAR0001', actions=((7, 'Approved'),))]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert set(detail['preflight_calibration']) == {'compared', 'agree',
+                                                        'sample'}
+
+
+class TestCalibration:
+    """Grading a prediction against the real push outcome."""
+
+    def _verdict(self, status, action_id=7):
+        from types import SimpleNamespace
+        return SimpleNamespace(status=status, action_id=action_id)
+
+    def test_a_correct_prediction_agrees(self):
+        cal = {'compared': 0, 'agree': 0, 'sample': []}
+        mod._calibrate(cal, self._verdict('failed'), {'status': 'failed'})
+        mod._calibrate(cal, self._verdict('rechecked', 8), {'status': 'processed'})
+        assert cal['compared'] == 2 and cal['agree'] == 2
+
+    def test_a_wrong_prediction_is_compared_but_disagrees(self):
+        cal = {'compared': 0, 'agree': 0, 'sample': []}
+        mod._calibrate(cal, self._verdict('rechecked'), {'status': 'failed'})
+        assert cal['compared'] == 1 and cal['agree'] == 0
+
+    def test_unchecked_and_non_terminal_make_no_comparison(self):
+        cal = {'compared': 0, 'agree': 0, 'sample': []}
+        mod._calibrate(cal, self._verdict('unchecked'), {'status': 'failed'})
+        mod._calibrate(cal, self._verdict('failed'), {'status': 'received'})
+        mod._calibrate(cal, self._verdict('failed'), None)
+        assert cal['compared'] == 0
+
 
 class TestAFailedIndexBuildDoesNotPublish:
     """WARNING: ``[]`` is a real answer (nothing to remediate) and publishes; a
