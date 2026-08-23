@@ -203,7 +203,8 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'auditDetailsModal', 'auditDetailsModalBody'],
     'dashboards/admin/fragments/organization_card.html': [
         'createAoiFormContainer', 'createAoiGroupFormContainer', 'createAoiGroupModal',
-        'createAoiModal', 'createNsfProgramFormContainer', 'createNsfProgramModal',
+        'createAoiModal', 'createMnemonicCodeFormContainer', 'createMnemonicCodeModal',
+        'createNsfProgramFormContainer', 'createNsfProgramModal',
         'createOrganizationFormContainer', 'createOrganizationModal'],
     'dashboards/admin/fragments/project_allocation_tree_htmx.html': [
         'editAllocationModal'],

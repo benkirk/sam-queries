@@ -116,6 +116,13 @@ def xras_remediations_fragment():
     configured = xras_api_configured()
     write_enabled = xras_write_configured()
 
+    # The mnemonic-unblock ranking rides the same snapshot the card already loaded —
+    # no extra fetch. It resolves each failing PI's org against the DB (why it needs
+    # db.session). The strip points at Admin -> Organizations to fix; the write action
+    # lives there, so this page stays read-only about org metadata.
+    from sam.queries.xras_mnemonic_report import mnemonic_unblock_report
+    mnemonic_summary = mnemonic_unblock_report(db.session, payload)
+
     rows = list(payload.get('rows') or []) if payload else []
     swept_total = len(rows)
 
@@ -170,6 +177,7 @@ def xras_remediations_fragment():
         window_total=window_total,
         search=search,
         snapshot=payload,
+        mnemonic_summary=mnemonic_summary,
         configured=configured,
         write_enabled=write_enabled,
         # Distinguishes "no sweep at all" from "a sweep that predates this

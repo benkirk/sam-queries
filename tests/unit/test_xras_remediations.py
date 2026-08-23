@@ -292,6 +292,39 @@ class TestRecheckNow:
         assert 'PI ghost is not in database' in body
 
 
+class TestMnemonicUnblockStrip:
+    """The § 2.2 ranking strip on the Remediations card — points at Admin to fix."""
+
+    def _publish_mnemonic_failure(self, pi_username):
+        from sam.xras.errors import mnemonic_internal_failed
+        payload = _payload('EXAM0001')
+        payload['roles'][0]['person']['username'] = pi_username
+        verdict = {'status': 'failed', 'would_succeed': False,
+                   'messages': [mnemonic_internal_failed()], 'gaps': [],
+                   'service': 'add', 'stage': 'Approved', 'action_status': 'Approved',
+                   'request_status': 'Approved', 'push_state': 'pending',
+                   'push_detail': None, 'resolved': None,
+                   'checked_at': '2026-08-23T09:00:00'}
+        xras_cache.store_requests_index({
+            'generated_at': datetime.now(), 'statuses': ['Approved'],
+            'extra_statuses': {},
+            'rows': [request_index_entry(payload, pending_push=True,
+                                         preflights={7: verdict})]})
+
+    def test_an_unknown_pi_renders_the_no_affiliation_line(self, auth_client,
+                                                           configured):
+        # A PI SAM does not know can't resolve an org -> the 'unresolved' bucket,
+        # which the strip surfaces as the no-affiliation line. Deterministic
+        # without committing users.
+        self._publish_mnemonic_failure('ghost-user-strip-xyz')
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'no current affiliation' in body
+
+    def test_view_only_is_still_forbidden(self, view_only_client, configured):
+        self._publish_mnemonic_failure('ghost-user-strip-xyz')
+        assert view_only_client.get(FRAGMENT).status_code == 403
+
+
 class TestItIsACardNotATab:
 
     def test_the_worklist_still_has_exactly_two_tabs(self, auth_client):
