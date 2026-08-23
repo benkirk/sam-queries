@@ -182,6 +182,21 @@
         htmx.trigger(form, 'submit');
     });
 
+    /* Sortable column header: write sort_by + sort_dir into the filter form's
+     * hidden fields, then submit it — so sort is form state and survives every
+     * facet/window change, exactly like a chip. The form must carry hidden
+     * `sort_by` / `sort_dir` inputs. Pairs with sort_header() in sort_link.html. */
+    window.registerAction('set-sort-submit', function (el) {
+        var form = document.getElementById(el.dataset.formId);
+        if (!form) { return; }
+        var by = form.elements['sort_by'];
+        var dir = form.elements['sort_dir'];
+        if (!by || !dir) { return; }
+        by.value = el.dataset.sortBy || '';
+        dir.value = el.dataset.sortDir || 'desc';
+        htmx.trigger(form, 'submit');
+    });
+
     /* Ladder range control (dashboards/fragments/ladder_range.html, and its
      * age_band_range wrapper).
      *

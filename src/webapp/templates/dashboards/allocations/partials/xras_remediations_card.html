@@ -1,5 +1,6 @@
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {#
   XRAS Remediations — the operator WRITE surface.
 
@@ -224,7 +225,9 @@
                stretches. #}
             <thead class="table-subtle">
                 <tr>
-                    <th style="width:9rem;">Request</th>
+                    {# Sortable within each opportunity group; the facet columns
+                       (Type / Status / SAM) are the chips' job, not the header's. #}
+                    <th style="width:9rem;">{{ sort_header('request', 'Request') }}</th>
                     {# The request's in-flight action type (New / Supplement /
                        Renewal / …) — what admin.xras.org names it, and the "what
                        kind of handoff" facet dimension. #}
@@ -238,10 +241,10 @@
                        "Project Admin" is SAM's language for the XRAS "Allocation
                        Manager" role (ROLE_TYPES in admin_client.py); blank on the
                        many requests that name no admin. #}
-                    <th style="width:50%;">Project lead</th>
-                    <th style="width:50%;">Project Admin</th>
-                    <th class="text-nowrap" style="width:7rem;">Submitted</th>
-                    <th class="text-nowrap" style="width:11rem;">Period</th>
+                    <th style="width:50%;">{{ sort_header('lead', 'Project lead') }}</th>
+                    <th style="width:50%;">{{ sort_header('admin', 'Project Admin') }}</th>
+                    <th class="text-nowrap" style="width:7rem;">{{ sort_header('submitted', 'Submitted') }}</th>
+                    <th class="text-nowrap" style="width:11rem;">{{ sort_header('period', 'Period') }}</th>
                     {# Wide enough for the two badges side by side (readiness +
                        project), which is now the rule rather than the exception —
                        a swept request almost always has both. #}

@@ -54,14 +54,14 @@ from sam.schemas.forms import (
 from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
 from webapp.extensions import db
 from webapp.utils.form_handler import FormError, HtmxFormHandler
-from webapp.utils.htmx import htmx_modal_not_found, htmx_success_message
+from webapp.utils.htmx import htmx_modal_not_found, htmx_success_message, read_sort
 from webapp.utils.rbac import Permission, require_permission
 
 from .. import bp
 from ._shared import (
     _XRAS_MODAL_TRIGGERS, _degraded, _entry, _impersonation, _index,
     _live_request, _parse_activity_window, _read_client, _role_options,
-    _session_factory,
+    _session_factory, sort_rows,
 )
 from .modals import _render_detail
 
@@ -180,10 +180,16 @@ def xras_remediations_fragment():
     # these; `incomplete` rows it cannot, so they are not counted).
     not_checked_count = sum(1 for r in rows if not r.get('preflight_rollup'))
 
+    # No forced default: with no header clicked the sweep's order stands within
+    # each group, and sort_rows is a no-op.
+    sort = read_sort(request.args, set(_REMEDIATION_SORT), default_dir='desc')
+
     return render_template(
         _CARD,
         not_checked_count=not_checked_count,
-        groups=_group_by_opportunity(rows),
+        groups=_group_by_opportunity(rows, sort=sort),
+        sort=sort,
+        sortable_columns=set(_REMEDIATION_SORT),
         total=len(rows),
         swept_total=swept_total,
         window_total=window_total,
@@ -442,8 +448,22 @@ def _readiness_facet(scoped_rows):
             for v, label in _READINESS_LABELS if counts.get(v, 0)]
 
 
-def _group_by_opportunity(rows):
-    """Group for the nested table, preserving the sweep's ordering."""
+#: Sortable non-facet columns -> row sort key. The facet columns (status / type /
+#: opportunity / SAM project / readiness) are the chips' job, not the header's.
+_REMEDIATION_SORT = {
+    'request': lambda r: (r.get('request_number') or '').casefold(),
+    'lead': lambda r: ((r.get('pi') or {}).get('name')
+                       or (r.get('pi') or {}).get('username') or '').casefold(),
+    'admin': lambda r: ((r.get('admin') or {}).get('name')
+                        or (r.get('admin') or {}).get('username') or '').casefold(),
+    'submitted': lambda r: r.get('activity_date') or r.get('submit_date'),
+    'period': lambda r: r.get('end_date') or r.get('begin_date'),
+}
+
+
+def _group_by_opportunity(rows, sort=None):
+    """Group for the nested table, preserving the sweep's ordering. When `sort` is
+    given, rows are ordered by it WITHIN each group (the groups keep their order)."""
     groups = []
     seen = {}
     for row in rows:
@@ -453,6 +473,9 @@ def _group_by_opportunity(rows):
                           'rows': []}
             groups.append(seen[name])
         seen[name]['rows'].append(row)
+    if sort:
+        for group in groups:
+            group['rows'] = sort_rows(group['rows'], sort, _REMEDIATION_SORT)
     return groups
 
 

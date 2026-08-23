@@ -1,5 +1,6 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {#
   One request number, linked when SAM has a project by that name.
 
@@ -226,13 +227,15 @@
         <table class="table table-sm table-hover mb-0 align-middle">
             <thead class="table-subtle">
                 <tr>
-                    <th style="width:190px; white-space:nowrap;">Username</th>
+                    {# Sortable non-facet columns; Needs / Role / Source / Request /
+                       XRAS identity are the chips' job, not the header's. #}
+                    <th style="width:190px; white-space:nowrap;">{{ sort_header('username', 'Username') }}</th>
                     <th style="width:170px; white-space:nowrap;">Needs</th>
                     <th style="width:110px;">Role</th>
                     <th style="width:140px; white-space:nowrap;">Source</th>
                     <th style="width:180px; white-space:nowrap;">Request</th>
                     {% if may_manage %}
-                    <th style="width:99%; min-width:12rem;">Person</th>
+                    <th style="width:99%; min-width:12rem;">{{ sort_header('person', 'Person') }}</th>
                     {% endif %}
                     <th style="width:120px; white-space:nowrap;">XRAS identity</th>
                     {# WARNING: Waiting, NOT "last seen". `last_seen` is when we most
@@ -241,7 +244,7 @@
                        an operator nothing. This is how long they have been
                        blocking something, which is the only field on the card
                        that says whether the queue is being worked. #}
-                    <th style="width:120px; white-space:nowrap;">Waiting</th>
+                    <th style="width:120px; white-space:nowrap;">{{ sort_header('waiting', 'Waiting') }}</th>
                 </tr>
             </thead>
             <tbody>

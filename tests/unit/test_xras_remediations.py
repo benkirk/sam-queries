@@ -400,6 +400,33 @@ class TestActionsColumnAndFacet:
         assert 'Supplement' not in body       # neither the cell nor the facet
 
 
+class TestSortableColumns:
+    """Non-facet headers sort rows within each opportunity group, as form state."""
+
+    def test_a_header_sorts_within_the_group_both_ways(self, auth_client, configured):
+        # All three share the default opportunity -> one group.
+        _publish(_payload('EXAM0003'), _payload('EXAM0001'), _payload('EXAM0002'))
+        asc = auth_client.get(
+            FRAGMENT + '?sort_by=request&sort_dir=asc').get_data(as_text=True)
+        desc = auth_client.get(
+            FRAGMENT + '?sort_by=request&sort_dir=desc').get_data(as_text=True)
+        assert asc.index('EXAM0001') < asc.index('EXAM0003')
+        assert desc.index('EXAM0003') < desc.index('EXAM0001')
+
+    def test_headers_are_form_based_so_sort_survives_facet_clicks(self, auth_client,
+                                                                  configured):
+        _publish(_payload())
+        body = auth_client.get(
+            FRAGMENT + '?sort_by=request&sort_dir=asc').get_data(as_text=True)
+        assert 'set-sort-submit' in body            # writes the form, not a URL
+        assert 'data-sort-by="request"' in body
+
+    def test_an_unknown_sort_column_is_ignored(self, auth_client, configured):
+        _publish(_payload('EXAM0001'))
+        assert auth_client.get(
+            FRAGMENT + '?sort_by=bogus&sort_dir=asc').status_code == 200
+
+
 class TestCheckAll:
     """The header 'Check all' batch re-check over the not-checked rows in view."""
 

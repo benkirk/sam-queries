@@ -107,6 +107,10 @@
     <select name="origin" multiple hidden></select>
     <select name="source" multiple hidden></select>
     <select name="request_number" multiple hidden></select>
+    {# Sort is form state (set-sort-submit writes these), so it survives every
+       facet/window change, not just a header click. #}
+    <input type="hidden" name="sort_by" value="">
+    <input type="hidden" name="sort_dir" value="">
 </form>
 {% if has_permission(Permission.MANAGE_XRAS) %}
 {# The Remediations card's facet state. Same rule as the forms above: every
@@ -119,6 +123,10 @@
     <select name="push" multiple hidden></select>
     <select name="readiness" multiple hidden></select>
     <select name="request_number" multiple hidden></select>
+    {# Sort is form state (set-sort-submit writes these), so it survives every
+       facet/window change, not just a header click. #}
+    <input type="hidden" name="sort_by" value="">
+    <input type="hidden" name="sort_dir" value="">
 </form>
 {% endif %}
 

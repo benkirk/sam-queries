@@ -275,6 +275,20 @@ def _parse_activity_window(args) -> dict:
             'until': None, 'start_date': '', 'end_date': '', 'custom': False}
 
 
+def sort_rows(rows, sort, keymap):
+    """In-Python sort of snapshot rows by a whitelisted column, None-last in both
+    directions. ``keymap`` maps a ``sort_by`` value to a row-key function; an
+    unknown/absent column leaves the order untouched."""
+    keyfn = keymap.get((sort or {}).get('sort_by'))
+    if not keyfn:
+        return list(rows)
+    reverse = (sort or {}).get('sort_dir') == 'desc'
+    present = [r for r in rows if keyfn(r) is not None]
+    absent = [r for r in rows if keyfn(r) is None]
+    present.sort(key=keyfn, reverse=reverse)
+    return present + absent
+
+
 def _row_activity_type(row) -> str:
     """The chip value for the action-type dimension.
 

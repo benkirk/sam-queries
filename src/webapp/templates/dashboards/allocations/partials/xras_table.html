@@ -1,5 +1,5 @@
 {% from 'dashboards/fragments/pagination.html' import pagination %}
-{% from 'dashboards/fragments/sort_link.html' import sort_link with context %}
+{% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
@@ -62,11 +62,11 @@
     <table class="table table-sm table-striped table-hover mb-0 audit-table">
         <thead class="table-subtle">
             <tr>
-                <th style="white-space:nowrap;">{{ sort_link('received_time', 'Received') }}</th>
-                <th style="width:120px;">{{ sort_link('action_type', 'Type') }}</th>
-                <th style="width:130px;">{{ sort_link('request_number', 'Request #') }}</th>
-                <th style="width:150px;">{{ sort_link('status', 'Status') }}</th>
-                <th style="width:130px;">{{ sort_link('projcode_result', 'Result') }}</th>
+                <th style="white-space:nowrap;">{{ sort_header('received_time', 'Received') }}</th>
+                <th style="width:120px;">{{ sort_header('action_type', 'Type') }}</th>
+                <th style="width:130px;">{{ sort_header('request_number', 'Request #') }}</th>
+                <th style="width:150px;">{{ sort_header('status', 'Status') }}</th>
+                <th style="width:130px;">{{ sort_header('projcode_result', 'Result') }}</th>
                 <th style="width:99%;">Errors</th>
                 <th class="text-end" style="white-space:nowrap;">Actions</th>
             </tr>
