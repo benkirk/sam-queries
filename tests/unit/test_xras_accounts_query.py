@@ -33,10 +33,12 @@ from factories import make_user
 
 from sam.queries.xras_accounts import (
     ActionRef,
+    PendingFeed,
     RosterRecord,
     classify_accounts,
     enrich_worklist,
     is_placeholder,
+    load_pending_worklist_rows,
     merge_worklists,
     records_from_action_log,
     records_from_report_requests,
@@ -730,3 +732,76 @@ class TestMergeWorklists:
         b = [{'username': 'aaa', 'classification': 'inactive', 'roles': (),
               'actions': [], 'sources': [], 'waiting_since': None}]
         assert [r['username'] for r in merge_worklists(a, b)] == ['zzz', 'aaa']
+
+    def test_received_push_rows_lead(self):
+        # A Feed-A row is the more urgent flavor -- a push already arrived and is
+        # blocked -- so it leads even a lexically earlier pending-only row.
+        a = [{'username': 'zzz_push', 'classification': 'absent', 'roles': (),
+              'actions': [], 'sources': ['action_log'], 'waiting_since': None}]
+        b = [{'username': 'aaa_pending', 'classification': 'absent', 'roles': (),
+              'actions': [], 'sources': ['reports'], 'waiting_since': None}]
+        assert [r['username'] for r in merge_worklists(a, b)] == [
+            'zzz_push', 'aaa_pending']
+
+    def test_the_merge_copies_action_dicts_it_does_not_alias(self):
+        # stamp_project_existence writes action['is_project'] in place; the
+        # primary rows are the cached snapshot's own objects, so the merge must
+        # copy each action or the mutation leaks into the next render.
+        pending_action = {'request_number': 'NCAR0002'}
+        b = [{'username': 'ghost', 'classification': 'absent', 'roles': (),
+              'actions': [pending_action], 'sources': ['reports'],
+              'waiting_since': None}]
+        merged = merge_worklists([], b)
+        merged[0]['actions'][0]['is_project'] = True
+        assert 'is_project' not in pending_action
+
+    def test_counts_split_by_source(self):
+        rows = merge_worklists(
+            [{'username': 'a', 'classification': 'absent', 'roles': (),
+              'actions': [], 'sources': ['action_log'], 'waiting_since': None,
+              'placeholder': False, 'is_reconciled': None}],
+            [{'username': 'a', 'classification': 'absent', 'roles': (),
+              'actions': [], 'sources': ['reports'], 'waiting_since': None,
+              'placeholder': False, 'is_reconciled': None},
+             {'username': 'b', 'classification': 'absent', 'roles': (),
+              'actions': [], 'sources': ['reports'], 'waiting_since': None,
+              'placeholder': False, 'is_reconciled': None}])
+        counts = worklist_counts(rows)
+        # A row on both feeds counts in both.
+        assert counts['received_push'] == 1
+        assert counts['pending_request'] == 2
+
+
+class TestLoadPendingWorklistRows:
+    """The three degraded states are distinct facts, not one empty list."""
+
+    def _patch(self, monkeypatch, *, configured=True, loader=None):
+        monkeypatch.setattr('sam.integration.xras_api.xras_api_configured',
+                            lambda: configured)
+        if loader is not None:
+            monkeypatch.setattr(
+                'sam.integration.xras_api.cache.load_pending_worklist', loader)
+
+    def test_unconfigured(self, monkeypatch):
+        self._patch(monkeypatch, configured=False)
+        feed = load_pending_worklist_rows()
+        assert feed == PendingFeed(reason='unconfigured')
+        assert feed.checked is False and feed.rows == []
+
+    def test_no_snapshot(self, monkeypatch):
+        self._patch(monkeypatch, loader=lambda: None)
+        feed = load_pending_worklist_rows()
+        assert feed.reason == 'no_snapshot' and feed.checked is False
+
+    def test_unreadable_never_raises(self, monkeypatch):
+        self._patch(monkeypatch,
+                    loader=lambda: (_ for _ in ()).throw(RuntimeError('no redis')))
+        feed = load_pending_worklist_rows()
+        assert feed.reason == 'unreadable' and feed.checked is False
+
+    def test_success_carries_rows_and_snapshot(self, monkeypatch):
+        snap = {'rows': [{'username': 'x'}], 'generated_at': None}
+        self._patch(monkeypatch, loader=lambda: snap)
+        feed = load_pending_worklist_rows()
+        assert feed.checked is True and feed.reason is None
+        assert feed.rows == [{'username': 'x'}] and feed.snapshot is snap
