@@ -60,10 +60,23 @@ action the sweep enumerates**, any request status.
 **Cannot check**, and says so: projcode-pool / GID exhaustion (execute-time only), and
 anything ACCESS will put on the wire that differs from the reports view — hence § 7.
 
-**Open probe / ask (Steve Peckins)**: does the reports payload expose push state?
-`states[]` shows workflow states ("Conflicts Verified", "Reviewers Assigned");
-`finalReview` / `finalReviews[]` are unprobed. xras_admin stores each push's response, so
-XRAS knows. If it is exposed, it replaces the inference layer outright.
+**Probed 2026-08-23 — the reports payload does NOT expose push state.** Read-only, report
+context, the newest 400 Approved requests (455 actions) plus one `request_numbers/<n>`
+read, and the public apidoc (`requests/by_id`, `reports/*`, every `types/*` page). Action
+keys are exactly `actionId, actionStatus, actionType, adminComments, allocationDates,
+collaborators, documents, entryDate, finalReview, finalReviews, isDeleted,
+opportunityAttributes, resourceAttributes, resources, states, userComments` (the
+per-number route adds `returnedForCorrections`); `states[]` is always the two review
+states, `finalReview` is always empty, `finalReviews[]` always `[]`,
+`opportunityAttributes.attributeValue` is free-text data-use answers, and `adminComments`
+is reviewer guidance ("save processed data to campaign store" — not a push record). So
+the inference layer above stands, and a field from XRAS would need a product change, not a
+probe. Two side facts the probe settled: **`actionStatus` carries `Submitted` and `Under
+Review` at the action level** (besides Approved / Declined), so "not yet approved" is
+readable per action without consulting `requestStatus`; and the Approved-with-no-project
+set in that slice was eight 2026 `New` tokens (`NCAR42xx`) — a population that, given
+New's ~30% success rate, mixes *never pushed* with *pushed to legacy and failed*, which is
+exactly why `pending` needs `seen_in_log` to split it after the repoint.
 
 ---
 
@@ -262,6 +275,6 @@ first sweeps, then `preflight_calibration` once pushes arrive.
 
 ## 9 · Not in this plan
 
-The digest line (§ 2.3 of the brainstorm) carrying "N would bounce"; any write to XRAS; a
-push-state field from XRAS (pending the § 2 probe — if it exists, it replaces
-`infer_applied`).
+The digest line (§ 2.3 of the brainstorm) carrying "N would bounce"; any write to XRAS.
+(A push-state field from XRAS was probed on 2026-08-23 and does not exist — § 2; asking
+for one is a product ask, outside this plan.)
