@@ -54,22 +54,16 @@ from ._shared import (
 )
 
 
-# ============================================================================
-# XRAS action log — the operator surface for POST /api/xras/v1/actions
+# XRAS action log -- the operator surface for POST /api/xras/v1/actions.
 #
-# Gating, and why it is two permissions:
-#   VIEW_XRAS    the page, the table, the filters, the error lists. Swept into
-#                ALL_VIEW by name, so every operator bundle already has it.
-#   MANAGE_XRAS  the raw-payload panel and the replay button. The payload is the
-#                request body verbatim and carries participant names, emails,
-#                phones and grant-officer contacts.
+# Two permissions: VIEW_XRAS covers the page, table, filters and error lists
+# (swept into ALL_VIEW by name); MANAGE_XRAS covers the raw-payload panel and
+# the replay button, the payload being the request body verbatim with
+# participant names, emails, phones and grant-officer contacts.
 #
 # Plain require_permission(), NOT require_permission_any_facility(): an XRAS
-# action is not facility-scopable. It arrives before we know its facility (a New
-# action has no project yet) and a malformed body has none at all — there is
-# nothing to intersect a scope against. See the note in rbac.py's
-# USER_FACILITY_PERMISSIONS.
-# ============================================================================
+# action is not facility-scopable -- it arrives before we know its facility, and
+# a malformed body has none at all. See rbac.py's USER_FACILITY_PERMISSIONS.
 
 
 def _xras_action_types():
@@ -130,18 +124,12 @@ def xras_fragment():
         offset=offset, limit=page['per_page'],
     )
     total = count_recent_xras_actions(db.session, **filters)
-    # Facet counts, computed with SELF-EXCLUSION: each dimension's rollup omits
-    # its OWN filter while honoring every other one.
-    #
-    # This is what makes the chips switchers rather than dead ends. Scoping a
-    # dimension by itself drives every unselected value to zero the moment one is
-    # picked — click "failed" and the other four statuses all read 0, so there is
-    # no way to move to another status without first clearing the filter. The
-    # jobs explorer's facet strip learned the same lesson (service.jobs_facets
-    # passes self_exclude).
-    #
-    # Two GROUP BY queries instead of one; both are served by the
-    # (status, action_type) triage index.
+    # Facet counts with SELF-EXCLUSION: each dimension's rollup omits its OWN
+    # filter while honoring every other one. That is what makes the chips
+    # switchers rather than dead ends -- scope a dimension by itself and picking
+    # "failed" drives the other four statuses to 0, with no way to move between
+    # them without clearing the filter first. Costs two GROUP BY queries instead
+    # of one, both served by the (status, action_type) triage index.
     _facet_common = dict(
         request_number=filters['request_number'],
         start_date=filters['start_date'], end_date=filters['end_date'],
@@ -151,24 +139,23 @@ def xras_fragment():
     type_facet = summarize_xras_actions(
         db.session, status=filters['status'], **_facet_common)
 
-    # Every status renders, including at zero — an absent bucket would read as
-    # "not measured" rather than "none". `summarize_xras_actions` already seeds
-    # the five, so iterating its dict gives that for free, in vocabulary order.
+    # Every status renders, including at zero -- an absent bucket reads as "not
+    # measured" rather than "none". `summarize_xras_actions` seeds the five, so
+    # iterating its dict gives that for free, in vocabulary order.
     #
-    # WARNING: Iterated, not re-derived from XRAS_ACTION_STATUSES. That spelling dropped
-    # any status outside the vocabulary — which the query layer goes out of its way
-    # to keep, because it is a bug worth surfacing — while the headline total above
-    # still counted it, so the strip disagreed with its own total.
+    # WARNING: iterated, NOT re-derived from XRAS_ACTION_STATUSES. That spelling
+    # drops any status outside the vocabulary -- which the query layer goes out
+    # of its way to keep, being a bug worth surfacing -- while the headline
+    # total still counts it, so the strip disagrees with its own total. A stray
+    # appends rather than reshuffles: the five are a stable strip an operator
+    # scans by position.
     #
-    # A stray appends rather than reshuffling: the five are a stable strip an
-    # operator scans by position.
-    #
-    # Its chip filters even though `all_statuses` (line ~1295) still offers only the
-    # five: `set-filter-submit` synthesizes a missing <option> before setting the
-    # value (static/js/actions.js:152-160). The offer list is deliberately NOT
-    # widened the way `_xras_action_types` widens its own — an unsampled action type
-    # is normal traffic, a stray status is only ever a bad write, and presenting one
-    # as a standing filter choice would dress a bug up as a category.
+    # A stray chip still filters even though `all_statuses` offers only the
+    # five, because `set-filter-submit` synthesizes a missing <option> before
+    # setting the value. The offer list is deliberately NOT widened the way
+    # `_xras_action_types` widens its own: an unsampled action type is normal
+    # traffic, a stray status is only ever a bad write, and offering it as a
+    # standing filter choice would dress a bug up as a category.
     status_facets = [{'value': s, 'count': n}
                      for s, n in status_facet['by_status'].items()]
 
@@ -235,11 +222,10 @@ def xras_pending_fragment():
     rows = get_xras_activity(db.session,
                              since=window['since'], until=window['until'])
 
-    # Facets are computed over the *unfiltered* window set, each dimension
-    # dropping its own selection — the same self-exclusion `facet_notifications`
-    # and `xras_fragment` keep. Scope a dimension by itself and every unselected
-    # value falls to zero the moment one is picked, and the chips stop being
-    # switchers.
+    # Facets over the *unfiltered* window set, each dimension dropping its own
+    # selection -- the same self-exclusion `facet_notifications` and
+    # `xras_fragment` keep, and for the same reason: scope a dimension by itself
+    # and the chips stop being switchers.
     tag_facets = _activity_facets(rows, 'tag', types=selected_types)
     type_facets = _activity_facets(rows, 'activity_type', tags=selected_tags)
 
@@ -278,20 +264,16 @@ def xras_pending_fragment():
     )
 
 
-# ---------------------------------------------------------------------------
-# Account-creation worklist — read-only.
+# Account-creation worklist -- who must exist in SAM before an XRAS handoff can
+# succeed. Unreconciled ARC placeholder identities are 55% of production XRAS
+# failures and account creation is manual, so this is the operator's queue for
+# the largest single cause of failure.
 #
-# Who must exist in SAM before an XRAS handoff can succeed. Unreconciled ARC
-# placeholder identities are 55% of production XRAS failures, and account
-# creation is manual, so this card is the operator's queue for the largest
-# single cause of failure.
-#
-# Read-only in this PR by design. Operator notes and dismissal need storage
-# that `XrasActivationEvent` cannot provide — its `project_id` is NOT NULL and
-# project-scoped, while this worklist is username-keyed and for a New request
-# the project does not exist yet. That table (`xras_account_event`) is the
-# immediate follow-up; shipping the buttons before it would be dead UI.
-# ---------------------------------------------------------------------------
+# Read-only by design: operator notes and dismissal need storage
+# `XrasActivationEvent` cannot provide, its `project_id` being NOT NULL and
+# project-scoped while this worklist is username-keyed and a New request has no
+# project yet. `xras_account_event` is the follow-up; buttons before it would be
+# dead UI.
 
 
 @bp.route('/xras_accounts_fragment')
@@ -331,13 +313,12 @@ def xras_accounts_fragment():
     rows = get_account_worklist(db.session,
                                 since=window['since'], until=window['until'])
 
-    # WARNING: Feed A ONLY, on purpose — this tab is precisely the accounts blocking
-    # actions that have already POSTED, which is a claim we can always make
-    # from our own audit table. The lookahead at what XRAS has approved but not
-    # yet sent is the sibling tab, and it is contingent on the outbound API
-    # being configured. Merging them would trade a guarantee for a maybe. The
-    # union is available where it is actually needed — `sam-admin xras
-    # --accounts`, and whatever digest comes after it.
+    # WARNING: Feed A ONLY, on purpose. This tab is the accounts blocking actions
+    # that have already POSTED -- a claim our own audit table can always make.
+    # The lookahead at what XRAS approved but has not sent is the sibling tab,
+    # contingent on the outbound API being configured, so merging them trades a
+    # guarantee for a maybe. The union lives where it is needed: `sam-admin
+    # xras --accounts`.
     stamp_waiting_days(rows)
 
     # One query for the whole card, so the Request column can link the numbers
@@ -474,16 +455,13 @@ def xras_pending_requests_fragment():
     selected_requests = [r for r in request.args.getlist('request_number') if r]
     selected_classes = [c for c in request.args.getlist('classification') if c]
 
-    # WARNING: A shared control that silently does nothing on one tab is worse than
-    # no control, so the pills mean the same thing here as on the other two:
-    # "what showed up in the last N days". For Feed B that is `submitDate`.
-    #
-    # Filtering on the period of performance was tried first and is wrong: a
-    # pending request's allocation almost always ends a year out, so a
-    # one-sided window keeps every row at every width and the pill looks dead
-    # — the exact complaint this is fixing. The period of performance stays
-    # where it belongs, bounding what the SWEEP collects; the header reports
-    # that width so the two are never confused.
+    # WARNING: a shared control that silently does nothing on one tab is worse
+    # than no control, so the pills mean the same here as on the other two:
+    # "what showed up in the last N days". For Feed B that is `submitDate`, NOT
+    # the period of performance -- a pending request's allocation almost always
+    # ends a year out, so a one-sided window on it keeps every row at every
+    # width and the pill looks dead. The period of performance bounds what the
+    # SWEEP collects, and the header reports that width so the two never blur.
     rows = [r for r in rows if _submitted_since(r, window['since'])]
 
     if not may_manage:

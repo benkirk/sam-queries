@@ -32,82 +32,74 @@ from sqlalchemy.orm import Session
 from sam.integration.xras import XrasActionLog
 from sam.projects.projects import Project
 
-#: The values ``xras_action_log.status`` may take, in lifecycle order.
-#: ``status`` is a plain ``varchar(16)`` — this tuple is the vocabulary, and it is
-#: what the page's filter dropdown and the summary rollup enumerate. Adding a
-#: member therefore costs **no DDL**, which is why ``unmapped`` could be added
-#: without reopening the cutover's DBA ticket.
+#: The values ``xras_action_log.status`` may take, in lifecycle order. ``status``
+#: is a plain ``varchar(16)``, so this tuple is the whole vocabulary and adding a
+#: member costs no DDL.
 #:
-#: ``processed`` is **unvalidated**: no handler exists yet, so nothing writes it.
-#: It is listed because the UI must render it, not because it has been observed.
+#: ``processed`` is **unvalidated**: no handler writes it yet. It is listed
+#: because the UI must render it, not because it has been observed.
 #:
-#: ``unmapped`` is the odd one: it is not an action's lifecycle state at all, but a
-#: request for a path this blueprint does not implement (see
-#: :mod:`webapp.api.xras.unmapped`). It is deliberately **not** folded into
-#: ``manual`` — that is the four-cause parking cohort operators filter on during
-#: triage — nor into ``failed``, which would inflate the failure rate the dashboard
-#: reports for something that never claimed to be supported.
+#: ``unmapped`` is not a lifecycle state at all but a request for a path this
+#: blueprint does not implement (:mod:`webapp.api.xras.unmapped`). Deliberately
+#: NOT folded into ``manual`` -- the four-cause parking cohort operators filter
+#: on -- nor into ``failed``, which would inflate the dashboard's failure rate
+#: for something that never claimed to be supported.
 XRAS_ACTION_STATUSES = ('received', 'processed', 'manual', 'failed', 'rechecked',
                         'unmapped')
 
-#: Action types on the wire, for the filter dropdown. This is legacy's own declared
-#: vocabulary (``action/domain/model/Action.java``: ``// New, Extension, Supplement,
-#: Transfer, Renewal, Adjustment, Advance``), corrected against real payloads.
+#: Action types on the wire, for the filter dropdown: legacy's own declared
+#: vocabulary (``action/domain/model/Action.java``), corrected against real
+#: payloads.
 #:
-#: WARNING: There is **no ``actionType`` of "Update"**. "Update" is a *handler*, not a
-#: type: legacy dispatches on the pair ``(actionType, does the project exist)``, and
-#: ``UpdateProjectActionService`` fires on ``New`` or ``Renewal`` when the projcode
-#: already exists (``AddProjectActionService`` takes ``New`` when it does not). The
-#: ``new_uwis0071_existing_ok.json`` fixture is that case. An earlier version of this
-#: tuple listed ``'Update'`` and ``'Adjust'``, neither of which XRAS has ever sent.
+#: WARNING: there is **no ``actionType`` of "Update"**, and none of "Adjust".
+#: "Update" is a *handler*: legacy dispatches on ``(actionType, does the project
+#: exist)``, so ``UpdateProjectActionService`` fires on ``New`` or ``Renewal``
+#: when the projcode already exists, and ``AddProjectActionService`` on ``New``
+#: when it does not (fixture ``new_uwis0071_existing_ok.json``).
 #:
-#: Deliberately *not* a constraint — ``XrasActionSchema`` applies no enum to
-#: ``actionType`` (no co-PI role has ever been sampled, and Transfer / Renewal /
-#: Advance still have zero samples), so an unrecognised type must still list and
-#: still filter. Callers union this with whatever ``DISTINCT action_type`` holds.
+#: Deliberately *not* a constraint -- ``XrasActionSchema`` applies no enum to
+#: ``actionType``, and Transfer / Renewal / Advance still have zero samples, so
+#: an unrecognized type must still list and still filter. Callers union this
+#: with whatever ``DISTINCT action_type`` holds.
 #:
-#: WARNING: This is the **inbound** vocabulary and spells ``'Supplement'``. The
-#: *outbound* one in ``queries/xras_access.py`` (``_SQL_ACTIONS``) spells the
-#: same concept ``'Supplemental'``, because that CASE maps our own
+#: WARNING: this is the **inbound** vocabulary and spells ``'Supplement'``. The
+#: outbound one in ``queries/xras_access.py`` (``_SQL_ACTIONS``) spells the same
+#: concept ``'Supplemental'``, because that CASE maps our own
 #: ``allocation_transaction.transaction_type`` onto legacy's response bytes.
-#: Neither is wrong and neither may be "fixed" to match the other — the
-#: outbound spelling is pinned by the byte-clean parity gate. Noted in both
-#: places because this codebase has already burned a sprint on a one-word
-#: field-name mismatch.
+#: Neither may be "fixed" to match the other -- the outbound spelling is pinned
+#: by the byte-clean parity gate. Noted in both places because this codebase has
+#: already burned a sprint on a one-word field-name mismatch.
 XRAS_ACTION_TYPES = ('New', 'Renewal', 'Extension', 'Supplement',
                      'Transfer', 'Adjustment', 'Advance', 'Date Adjustment')
 
-#: WARNING: ``Date Adjustment`` was added 2026-08-11 and is **not serviced**. It reached us
-#: through the manual-fallback subject line of four forwarded payloads — the mechanism
-#: ``XRAS_REIMPLEMENTATION.md`` § 1.4 identifies as the only record of the action types
-#: SAM does not service — and it is absent from every other document because nothing
-#: had ever seen it.
+#: WARNING: ``Date Adjustment`` is **not serviced**, on purpose. It is known only
+#: from the manual-fallback subject line of four forwarded payloads -- the
+#: mechanism ``XRAS_REIMPLEMENTATION.md`` § 1.4 names as the only record of the
+#: action types SAM does not service -- and is absent from every other document.
 #:
-#: It is listed here so the XRAS tab offers it as a filter chip **before** the first
-#: row exists (``_xras_action_types`` unions this with observed values, so after that
-#: it would appear anyway). Listing it changes no dispatch: ``select_service`` has no
-#: arm for it, so it parks as ``manual`` — which is exactly what legacy does, there
-#: being no ``DateAdjustProjectActionService``.
+#: It is listed so the XRAS tab offers it as a filter chip before the first row
+#: exists. That changes no dispatch: ``select_service`` has no arm for it, so it
+#: parks as ``manual``, which is what legacy does too (there is no
+#: ``DateAdjustProjectActionService``).
 #:
-#: Not serviced on purpose. Its payloads are Extension-shaped (dates, no resources),
-#: so routing them to ``extend`` is a one-line change — and wrong twice over: an
-#: Extension ignores ``actionBeginDate`` entirely (``date_adjustment_uwas0141`` asks
-#: for one that differs from its allocation's), and rejects an end date earlier than
-#: the current one, which is the likeliest reason a *separate* action type exists at
-#: all. See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *What the corpus still does not cover*.
+#: Its payloads are Extension-shaped (dates, no resources), so routing them to
+#: ``extend`` is a one-line change -- and wrong twice over. An Extension ignores
+#: ``actionBeginDate`` entirely (``date_adjustment_uwas0141`` asks for one that
+#: differs from its allocation's) and rejects an end date earlier than the
+#: current one, which is the likeliest reason a separate action type exists at
+#: all. See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``.
 
 #: Wire spellings that mean the same handler, ``alias -> canonical``.
 #:
-#: XRAS sends ``actionType: "Adjustment"`` (measured — see
-#: ``adjustment_uwis0064_manual.json``), but legacy's
-#: ``AdjustProjectActionService.isServiceable`` tests ``equals("Adjust")``. The two
-#: never match, so that handler has never once fired and every Adjustment falls
-#: through ``ProjectActionServiceSelector`` to the manual-email fallback. Nothing has
-#: shipped here yet, so SAM accepts **both** spellings rather than reproducing the
-#: mismatch (see ``docs/xras/incoming/XRAS_REIMPLEMENTATION.md`` § 9, legacy defect 4).
+#: XRAS sends ``actionType: "Adjustment"`` (measured, ``adjustment_uwis0064_manual.json``)
+#: but legacy's ``AdjustProjectActionService.isServiceable`` tests
+#: ``equals("Adjust")``. The two never match, so that handler has never once
+#: fired and every Adjustment falls through to the manual-email fallback. SAM
+#: accepts **both** spellings rather than reproduce the mismatch
+#: (``XRAS_REIMPLEMENTATION.md`` § 9, legacy defect 4).
 #:
-#: This is a **read-side** concern only. ``xras_action_log.action_type`` always
-#: records what actually arrived, verbatim — the audit trail's whole job.
+#: **Read-side only.** ``xras_action_log.action_type`` always records what
+#: arrived, verbatim -- the audit trail's whole job.
 XRAS_ACTION_TYPE_ALIASES = {'Adjust': 'Adjustment'}
 
 
@@ -119,11 +111,10 @@ def canonical_action_type(value: Optional[str]) -> Optional[str]:
 def expand_action_types(value):
     """Widen an action-type filter to cover every spelling of the types requested.
 
-    Filtering for ``'Adjustment'`` must return rows recorded as ``'Adjust'`` too,
-    since they are the same action (see :data:`XRAS_ACTION_TYPE_ALIASES`). Symmetric
-    by construction — each request is canonicalised *before* it is expanded, so
-    asking by either spelling yields both. Accepts a scalar, an iterable or ``None``,
-    and preserves that shape so it can sit directly in front of the ``_in`` helper.
+    Filtering for ``'Adjustment'`` must also return rows recorded as ``'Adjust'``.
+    Symmetric by construction, since each request is canonicalized before it is
+    expanded. Preserves scalar / iterable / ``None`` shape so it can sit directly
+    in front of the ``_in`` helper.
     """
     if value is None:
         return None
@@ -142,32 +133,30 @@ def expand_action_types(value):
     # A single type with no aliases stays a scalar so the emitted SQL is unchanged.
     return widened[0] if scalar and len(widened) == 1 else widened
 
-#: The local XRAS request-number token family — what XRAS sends as
+#: The local XRAS request-number token family -- what XRAS sends as
 #: ``requestNumber`` for a New action, before any projcode exists. At NCAR these
-#: look like ``NCAR4253``. A different site re-points these two names and nothing
-#: else; ``startswith`` takes a tuple, so a family of prefixes costs nothing.
+#: look like ``NCAR4253``; another site re-points these two names and nothing
+#: else.
 #:
 #: WARNING: **DISPLAY ONLY. These must never decide whether a request number is a
-#: projcode.** :func:`_annotate_project_existence` asks the *database*, and has
-#: to: a token is projcode-**shaped**. Measured against real data, projcodes are
-#: ``AAAA####`` (``UCUB0166``, ``UBOI0007``, ``NACD0009``) and ``NCAR4232`` is the
-#: same eight-character shape, so no prefix or shape rule can tell them apart —
-#: and a site holding a projcode that begins ``NCAR`` would have it misclassified
-#: outright. ``test_a_projcode_shaped_like_a_request_token_is_still_a_project``
-#: exists to fail the moment someone "simplifies" that lookup into a match.
+#: projcode.** :func:`_annotate_project_existence` asks the database, and has to:
+#: a token is projcode-*shaped*. Projcodes measure as ``AAAA####`` (``UCUB0166``,
+#: ``NACD0009``) and ``NCAR4232`` is the same eight characters, so no prefix or
+#: shape rule can separate them -- and a site whose projcodes begin ``NCAR``
+#: would have them misclassified outright.
+#: ``test_a_projcode_shaped_like_a_request_token_is_still_a_project`` fails the
+#: moment someone "simplifies" that lookup into a match.
 #:
-#: What they are legitimately for: telling an *unresolvable but expected* request
-#: number (a New action whose project does not exist yet — normal) apart from an
-#: *unrecognised* one (an Extension naming a projcode that is not in SAM — a
-#: deleted or renamed project, or a mis-sent payload), and seeding the filter
-#: box's example.
+#: What they are for: telling an unresolvable but expected request number (a New
+#: action whose project does not exist yet) apart from an unrecognized one (an
+#: Extension naming a projcode not in SAM), and seeding the filter box example.
 XRAS_REQUEST_TOKEN_PREFIXES = ('NCAR',)
 XRAS_REQUEST_TOKEN_EXAMPLE = 'NCAR4253'
 
-#: URL-facing sort key -> column. Mirrors ``ALLOCATION_TRANSACTION_SORT_COLUMNS``
-#: in ``queries/allocations.py``: the dashboard whitelists ``sort_by`` against this
-#: dict's keys and the query re-validates below (defense in depth — a raw column
-#: name must never reach ``order_by``).
+#: URL-facing sort key -> column, mirroring ``ALLOCATION_TRANSACTION_SORT_COLUMNS``
+#: in ``queries/allocations.py``. The dashboard whitelists ``sort_by`` against
+#: these keys and the query re-validates: a raw column name must never reach
+#: ``order_by``.
 XRAS_ACTION_SORT_COLUMNS = {
     'received_time': XrasActionLog.received_time,
     'action_type': XrasActionLog.action_type,

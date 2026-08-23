@@ -178,6 +178,7 @@ the recorded starting number still holds. Nothing else from prior sessions is ne
 | 9 + 5 (start) | 36.3% | 33.5% | 21.7% | 41.7% | **33.6%** |
 | 5 (3 files) | 36.3% | 33.0% | 21.7% | 41.7% | **33.4%** |
 | 5 (6 files) | 36.2% | 32.9% | 21.2% | 41.7% | **33.3%** |
+| 5 (10 files) | 36.2% | 32.8% | 21.2% | 41.7% | **33.2%** |
 
 Phases 0 and 1 move the ratio by design: neither removes prose. Phase 0 lands
 the gate, and Phase 1 rewrites decorative characters in place rather than
@@ -388,14 +389,24 @@ or tight group, and re-run `doc_ratio.py` per commit.
 1100 -> 1047. That is -428 lines over six files. The rate is uneven and the
 reason is legible: files whose comments are *headers and policy* give ~20%,
 files whose comments are already one tight block per code step give ~2%.
-`jobs/routes.py` is the second kind -- 19 blocks rewritten for 27 lines. Every commit is
+`jobs/routes.py` is the second kind -- 19 blocks rewritten for 27 lines.
+
+Then `queries/xras_actions.py` 903 -> 874, `webapp/run.py` 519 -> 484,
+`allocations/xras/card_routes.py` 528 -> 498, `queries/xras_accounts.py`
+830 -> 797. -127 more. Three of these carried the same phrasing defect Phase 1b
+was built to remove, in a form its regex does not match -- a comment arguing
+with its own earlier revision ("An earlier version of this tuple listed...",
+"An earlier version read only received/failed/manual"). All three now state the
+rule in the present tense and keep the measurement that justifies it. Every commit is
 verified prose-only by comparing docstring-stripped ASTs against `HEAD`
 (`ast.unparse` round-trip), not by eyeballing the diff.
 
-**Remaining, in order:** `queries/xras_actions.py` (88),
-`webapp/run.py` (83), `allocations/xras/card_routes.py` (82),
-`queries/xras_accounts.py` (75), `integration/xras.py` (72),
-`allocations/blueprint.py` (69). `tasks/xras_sweep.py` (163) and
+**Remaining, in order:** `integration/xras.py` (72),
+`allocations/blueprint.py` (69), `utils/config_inspect.py` (65),
+`dashboards/user/blueprint.py` (64), `queries/xras_access.py` (57),
+`tasks/deactivate_expired.py` (56), `admin/projects_routes.py` (51),
+`api/xras/actions.py` (49), then the long tail of ~40 files at 20-45 lines
+each. `tasks/xras_sweep.py` (163) and
 `tasks/xras_notices.py` (50) are on the do-not-cut list in section 4 and are
 skipped.
 

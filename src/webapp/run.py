@@ -7,26 +7,18 @@ import uuid
 import time
 from datetime import datetime
 
-# Disarm a module-name shadow, BEFORE any project import
+# Disarm a module-name shadow, BEFORE any project import.
 #
-# The dev container runs `python3 ./src/webapp/run.py` (containers/webapp/
-# Dockerfile, development target), which makes src/webapp `sys.path[0]`. The
-# top-level module name `config` (src/config.py, the SAMConfig both this
-# package and sam.fmt import) is then shadowed by THIS directory's config.py,
-# and webapp/config.py's own `from config import SAMConfig` resolves to
-# itself:
-#
-#     ImportError: cannot import name 'SAMConfig' from partially initialized
-#     module 'config' (.../src/webapp/config.py)
-#
-# Whether that fires depends on import ORDER — on whether anything asks for
-# `config` before it is correctly cached — which makes it a landmine that an
-# unrelated change re-arms. Adding `sam.notify` to sam/__init__.py hoisted
-# sam.fmt to the front of the chain and detonated it exactly that way.
-#
-# Dropping the script directory is safe: every project package is reachable
-# via src/ (editable install), and this file's own imports are all absolute
-# and package-qualified. Under gunicorn (`webapp.run:create_app()`)
+# The dev container runs `python3 ./src/webapp/run.py`, making src/webapp
+# `sys.path[0]`. The top-level module name `config` (src/config.py, the
+# SAMConfig this package and sam.fmt both import) is then shadowed by THIS
+# directory's config.py, and webapp/config.py's own `from config import
+# SAMConfig` resolves to itself with an ImportError from a partially
+# initialized module. Whether it fires depends on import ORDER, which makes it
+# a landmine an unrelated change can re-arm -- adding `sam.notify` to
+# sam/__init__.py hoisted sam.fmt to the front of the chain and did exactly
+# that. Dropping the script directory is safe: every package is reachable via
+# src/, and this file's imports are all package-qualified. Under gunicorn
 # sys.path[0] is the cwd, so this is a no-op.
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:] = [p for p in sys.path
@@ -82,26 +74,21 @@ def create_app(*, config_overrides: dict | None = None):
     """
     import os
 
-    # Load environment-based configuration. Validation is skipped when the
-    # caller passes `config_overrides=` (the test harness does this to
-    # point Flask-SQLAlchemy at the mysql-test container via SAM_TEST_DB_URL,
-    # and conftest.py never reads `SAM_DB_USERNAME` etc.). Production
-    # callers pass no overrides and see the original validate-on-startup
-    # behavior — fail fast if the runtime env is missing required vars.
+    # Validation is skipped when the caller passes `config_overrides=`, which
+    # the test harness does to point Flask-SQLAlchemy at the mysql-test
+    # container. Production callers pass none and fail fast on a missing var.
     cfg = get_webapp_config()
     if config_overrides is None:
         cfg.validate()
 
     app = Flask(__name__)
 
-    # Trust N proxy hops in X-Forwarded-* so request.remote_addr / url scheme
-    # reflect the real client behind the ingress (and any LB in front of it).
-    # Flask-Limiter and audit tooling key on request.remote_addr, so this is
-    # what makes per-IP limiting honest. The correct N is the EXACT number of
-    # trusted proxies that append to X-Forwarded-For — setting it too high lets
-    # a client spoof its IP (ProxyFix would trust an attacker-supplied entry),
-    # so it defaults to 1 (safe) and is tuned via PROXYFIX_X_FOR once the real
-    # chain is confirmed from the gunicorn access log (which now logs xff=…).
+    # Trust N proxy hops in X-Forwarded-* so request.remote_addr reflects the
+    # real client, which is what makes Flask-Limiter's per-IP limiting honest.
+    # WARNING: N must be the EXACT number of trusted proxies appending to
+    # X-Forwarded-For. Too high and ProxyFix trusts an attacker-supplied entry,
+    # letting a client spoof its IP -- hence the default of 1, tuned via
+    # PROXYFIX_X_FOR once the real chain is confirmed from the access log's xff.
     from werkzeug.middleware.proxy_fix import ProxyFix
     _pf_for = int(os.environ.get('PROXYFIX_X_FOR', '1'))
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=_pf_for, x_proto=1, x_host=1, x_prefix=1)
@@ -140,31 +127,23 @@ def create_app(*, config_overrides: dict | None = None):
 
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_options
 
-    # system_status bind — uses its own pool config because it talks to a
-    # different backend (postgres on the shared `csg-postgres` cluster, not
-    # the main SAM MySQL). We do NOT override pool_size / max_overflow from
-    # the main engine — server-side `idle_session_timeout` on `csg-postgres`
-    # (configured in the hpc-usage-queries peer repo's helm chart) reaps
-    # truly-idle connections, so a generous per-worker pool no longer
-    # accumulates. The per-bind dict is kept primarily so we can attach
-    # postgres-specific `application_name` + driver-correct SSL handling
-    # below. `pool_recycle=600` provides client-side symmetry with the
-    # server-side reap window. Env-overridable for non-postgres backends.
+    # system_status has its own pool config because it talks to postgres on the
+    # shared `csg-postgres` cluster, not the main SAM MySQL. A generous
+    # per-worker pool is safe: server-side `idle_session_timeout` reaps idle
+    # connections and `pool_recycle=600` mirrors that window client-side. The
+    # per-bind dict exists mainly to carry the postgres `application_name` and
+    # driver-correct SSL handling below.
     status_pool = {
         'pool_size':     int(os.getenv('STATUS_DB_POOL_SIZE', 10)),
         'max_overflow':  int(os.getenv('STATUS_DB_POOL_MAX_OVERFLOW', 20)),
         'pool_pre_ping': True,
         'pool_recycle':  int(os.getenv('STATUS_DB_POOL_RECYCLE', 600)),
     }
-    # Driver-correct connect_args:
-    #   - postgres: sslmode (if required) + application_name so pg_stat_activity
-    #     can attribute connections to a specific pod / engine for diagnosis.
-    #   - MySQL: ssl dict (if required). MySQL has no postgres-style
-    #     application_name; pymysql connection attributes use a different
-    #     mechanism we don't wire up here.
-    # Always set connect_args explicitly so the system_status engine does
-    # NOT inherit the MySQL-style ssl dict from the main SAM engine when
-    # SAM_DB_REQUIRE_SSL=true (which would be wrong for the postgres driver).
+    # Driver-correct connect_args: postgres takes sslmode plus an
+    # application_name so pg_stat_activity can attribute a connection to a pod;
+    # MySQL takes an ssl dict and has no application_name equivalent. Always set
+    # explicitly, or the system_status engine inherits the MySQL-style ssl dict
+    # from the main SAM engine under SAM_DB_REQUIRE_SSL=true.
     status_require_ssl = os.getenv('STATUS_DB_REQUIRE_SSL', 'false').lower() in ('true', '1', 'yes')
     status_driver = os.getenv('STATUS_DB_DRIVER', 'mysql').lower()
     pod_id = os.environ.get('HOSTNAME') or socket.gethostname()
@@ -239,22 +218,14 @@ def create_app(*, config_overrides: dict | None = None):
     from webapp.caching import caching
     caching.init_app(app)
 
-    # =========================================================================
-    # RATE LIMITING INITIALIZATION
-    # =========================================================================
-    # Flask-Limiter, keyed per-API-key/per-user/per-IP. Storage backend is
-    # Redis when RATELIMIT_STORAGE_URI is set and reachable, otherwise
-    # per-worker memory:// with a startup warning (mirrors caching facade).
-    # The 429 errorhandler is registered as a side-effect of init_app.
+    # Flask-Limiter, keyed per-API-key/per-user/per-IP. Redis when
+    # RATELIMIT_STORAGE_URI is set and reachable, else per-worker memory:// with
+    # a startup warning. init_app also registers the 429 errorhandler.
     from webapp.limiter import limiter
     limiter.init_app(app)
-    # =========================================================================
 
-    # =========================================================================
-    # AUDIT LOGGING INITIALIZATION
-    # =========================================================================
-    # Track INSERT/UPDATE/DELETE operations on SAM database models
-    # Excludes: system_status database, ApiCredentials model - see audit/events.py
+    # Track INSERT/UPDATE/DELETE on SAM models. Excludes the system_status
+    # database and ApiCredentials -- see audit/events.py.
     if app.config.get('AUDIT_ENABLED', True):
         from webapp.audit import init_audit
         init_audit(
@@ -371,11 +342,10 @@ def create_app(*, config_overrides: dict | None = None):
     from webapp.vendor_assets import vendor_assets_context_processor
     app.context_processor(vendor_assets_context_processor)
 
-    # Dark mode. Rendered straight onto <html data-bs-theme="..."> in both
-    # page shells, so the theme is correct in the FIRST BYTE of HTML: no
-    # flash to prevent, no <head> script for the nonce-free CSP to forbid,
-    # no localStorage read racing the paint. See webapp/utils/htmx.py
-    # read_theme() and docs/plans/implemented/DARK_MODE.md.
+    # Dark mode, rendered straight onto <html data-bs-theme="..."> in both page
+    # shells so the theme is correct in the FIRST BYTE of HTML: no flash to
+    # prevent, no <head> script for the nonce-free CSP to forbid, no
+    # localStorage read racing the paint. See docs/plans/implemented/DARK_MODE.md.
     @app.context_processor
     def theme_context_processor():
         from webapp.utils.htmx import read_theme
@@ -456,12 +426,10 @@ def create_app(*, config_overrides: dict | None = None):
     import sam.fmt as fmt
     fmt.register_jinja_filters(app)
 
-    # In dev, Jinja's mtime-based auto-reload doesn't reliably detect template
-    # changes through Docker's bind-mount/watch-sync — the file mtime in the
-    # container updates correctly but the running Jinja env still serves the
-    # cached compile. Disable the env's template cache entirely in debug mode
-    # so every render re-reads from disk. Negligible cost in dev, no effect
-    # on production.
+    # Jinja's mtime-based auto-reload does not reliably see template changes
+    # through Docker's bind-mount/watch-sync: the container mtime updates but
+    # the running env still serves the cached compile. Disable the template
+    # cache in debug so every render re-reads from disk.
     if app.config.get('DEBUG'):
         app.jinja_env.cache = None
 
@@ -482,12 +450,10 @@ def create_app(*, config_overrides: dict | None = None):
     )
     def index():
         if current_user.is_authenticated:
-            # Redirect admin-capable users to admin dashboard, others to
-            # user dashboard. Gate on the same permission that gates the
-            # Admin nav tab (see templates/dashboards/base.html), so the
-            # redirect target is always something the user can actually
-            # access — including users granted admin via
-            # USER_PERMISSION_OVERRIDES rather than a group bundle.
+            # Gate on the same permission that gates the Admin nav tab, so the
+            # redirect target is always something the user can reach --
+            # including one granted admin via USER_PERMISSION_OVERRIDES rather
+            # than a group bundle.
             from webapp.utils.rbac import has_permission_any_facility, Permission
             if has_permission_any_facility(current_user, Permission.ACCESS_ADMIN_DASHBOARD):
                 return redirect(url_for('admin_dashboard.index'))
