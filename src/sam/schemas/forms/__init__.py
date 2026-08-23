@@ -238,6 +238,16 @@ from .operational import (
 from .xras_activation import (
     XrasActivationEventForm,
 )
+from .xras_remediation import (
+    XrasMergeForm,
+    XrasRemediationReasonForm,
+    XrasRoleForm,
+    XrasResourceAmountForm,
+    XrasActionDatesForm,
+    XrasRequestAttributesForm,
+    XrasActionFieldsForm,
+    XrasAddActionForm,
+)
 # XRAS action ingest — plain marshmallow, deliberately NOT HtmxFormSchema
 # (JSON body with five nested arrays; see the module docstring).
 from .xras import (
@@ -327,6 +337,14 @@ __all__ = [
     'EditWallclockExemptionForm',
     # XRAS action ingest
     'XrasActivationEventForm',
+    'XrasMergeForm',
+    'XrasRemediationReasonForm',
+    'XrasRoleForm',
+    'XrasResourceAmountForm',
+    'XrasActionDatesForm',
+    'XrasRequestAttributesForm',
+    'XrasActionFieldsForm',
+    'XrasAddActionForm',
     'XrasActionSchema',
     'XrasActionResourceSchema',
     'XrasActionRoleSchema',

@@ -701,6 +701,25 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     text-transform: none;
 }
 
+/* An identifier that happens to be clickable — NOT a button that happens to
+   hold one. Pair with `btn btn-link p-0` wherever a projcode or username in
+   a table opens its entity modal.
+
+   ⚠️ The size has to come off the BUTTON, which is why this class exists at
+   all rather than another declaration on the rule above. `.btn` sets
+   1.25rem, so `font-size: inherit` on the inner <span> inherits *that* —
+   20px next to 14px neighbours — and looks like it did nothing. Measured
+   before and after; the first attempt was exactly that no-op.
+
+   Not `:has(.font-monospace)`, which would catch all 8 existing call sites
+   for free: this ships to whatever browser an operator has, and a silent
+   layout dependency on `:has()` is not worth saving one class attribute. */
+.btn-entity {
+    font-size: inherit;
+    line-height: inherit;
+    vertical-align: baseline;
+}
+
 .btn-primary {
     --bs-btn-bg: var(--ncar-blue);
     --bs-btn-border-color: var(--ncar-blue);

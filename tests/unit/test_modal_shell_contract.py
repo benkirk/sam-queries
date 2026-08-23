@@ -256,6 +256,82 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'projectDetailsModal', 'projectDetailsModalBody'],
     'dashboards/allocations/partials/xras_pending_event_form.html': [
         'auditDetailsModalBody'],
+    # The Remediations family. Every one of these is reached only from
+    # `xras.html`, the same single host page as the pending card above, and it
+    # includes partials/audit_details_modal.html — verified by grepping the
+    # routes in `xras_remediation_routes.py`, all of which render into that
+    # page's fragments and nowhere else.
+    #
+    # `xras_accounts_card.html` joins the list because the Accounts Needed tab
+    # now offers the same merge modal on a stuck placeholder — deliberately the
+    # same shell, so an operator meets one merge dialogue however they arrive.
+    #
+    # The three cards below also reach #userDetailsModal / #projectDetailsModal:
+    # a username or projcode the row has ALREADY resolved against SAM opens the
+    # shared entity modal, same as everywhere else in the app. Both shells come
+    # from base_allocations.html (:31 project, :33 user), which xras.html
+    # extends — so the single host page carries them.
+    'dashboards/allocations/partials/xras_accounts_card.html': [
+        'auditDetailsModal', 'auditDetailsModalBody',
+        'projectDetailsModal', 'projectDetailsModalBody',
+        'userDetailsModal', 'userDetailsModalBody'],
+    # The Pending Requests tab's Request column now links each request number to
+    # the read-only detail modal when an outbound read is configured (else it
+    # degrades to plain text) — so it reaches #auditDetailsModal like its sibling
+    # cards, on top of the #userDetailsModal it already used.
+    'dashboards/allocations/partials/xras_pending_requests_card.html': [
+        'auditDetailsModal', 'auditDetailsModalBody',
+        'userDetailsModal', 'userDetailsModalBody'],
+    # The card's Request cell links each request number to #auditDetailsModal
+    # (the single detail-modal opener) and the SAM cell keeps the
+    # #projectDetailsModal badge link.
+    'dashboards/allocations/partials/xras_remediations_card.html': [
+        'auditDetailsModal', 'auditDetailsModalBody',
+        'projectDetailsModal', 'projectDetailsModalBody'],
+    # The shared roster/actions strip, included only by the read-only detail
+    # modal. Its controls swap #auditDetailsModalBody in place and carry NO
+    # data-bs-toggle="modal" — clicked inside the open modal that would hide it —
+    # so it references the body id alone, not the modal shell.
+    'dashboards/allocations/partials/_xras_remediation_actions.html': [
+        'auditDetailsModalBody'],
+    # The read-only + editor detail modal and its two editor forms, all reached
+    # only from xras.html (same host page as the card) and all rendering into
+    # #auditDetailsModalBody. The detail modal's Requested-stage editors and the
+    # forms' Back/Save all target that body.
+    'dashboards/allocations/partials/xras_request_detail.html': [
+        'auditDetailsModalBody'],
+    # The XRAS User detail modal — the person-side analogue of the request
+    # detail. Swapped into the same body from a roster username (plain hx-get)
+    # or the Accounts-Needed card (data-bs-toggle from the closed modal); its
+    # Back link and its in-panel Request links target the body, no toggle.
+    'dashboards/allocations/partials/xras_user_detail.html': [
+        'auditDetailsModalBody'],
+    # The shared modal-shell macros (title / back link / done footer) for the
+    # three detail modals. Loaded via {% import %}, which the closure walker
+    # does not follow, so it reads as a runtime fragment; its back_link macro
+    # targets #auditDetailsModalBody. Used only by the three XRAS detail modals,
+    # all rendered only into xras.html, which ships the shell.
+    #
+    # xras_opportunity_detail.html is no longer listed: its only shell target
+    # was the Back link, which now lives in this shared shell. xras_request_detail
+    # and xras_user_detail keep their entries — they still target the body
+    # directly (the editors / the in-panel Request links).
+    'dashboards/allocations/partials/xras_modal_shell.html': [
+        'auditDetailsModalBody'],
+    'dashboards/allocations/partials/xras_resource_form.html': [
+        'auditDetailsModalBody'],
+    'dashboards/allocations/partials/xras_dates_form.html': [
+        'auditDetailsModalBody'],
+    'dashboards/allocations/partials/xras_attributes_form.html': [
+        'auditDetailsModalBody'],
+    'dashboards/allocations/partials/xras_action_fields_form.html': [
+        'auditDetailsModalBody'],
+    'dashboards/allocations/partials/xras_add_action_form.html': [
+        'auditDetailsModalBody'],
+    'dashboards/allocations/partials/xras_merge_form.html': [
+        'auditDetailsModalBody'],
+    'dashboards/allocations/partials/xras_action_form.html': [
+        'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_pending_history_modal.html': [
         'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_table.html': [

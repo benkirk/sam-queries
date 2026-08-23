@@ -1,5 +1,51 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{#
+  One request number, linked when SAM has a project by that name.
+
+  A macro because it renders in TWO places on this card — the summary row's
+  Request column and the per-action table inside the expansion — and a
+  hand-repeated copy is how the two drift. `is_project` is stamped once per
+  card by `stamp_project_existence`; see its docstring for why there are two
+  states here and three on the action log.
+#}
+{% macro request_cell(number, is_project, configured=false) -%}
+{%- if not number -%}<span class="text-muted">—</span>
+{%- elif configured -%}
+{#- Outbound read available → open the full XRAS request detail, even when a
+    project by this name exists. The modal reads XRAS live and degrades
+    gracefully if the number is not found. Same `.btn-link .btn-entity` /
+    inner `.font-monospace` treatment as the project link below (`.btn`
+    uppercases; `.btn .font-monospace` is the carve-out). -#}
+<button type="button" class="btn btn-link btn-entity p-0"
+        title="Full request detail (read-only)"
+        data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+        hx-get="{{ url_for('allocations_dashboard.xras_request_detail', request_number=number) }}"
+        hx-target="#auditDetailsModalBody"
+        hx-swap="innerHTML"><span class="font-monospace">{{ number }}</span></button>
+{%- elif is_project -%}
+{#- Incoming-only fallback. ⚠️ `btn btn-link`, NOT the `text-decoration-none
+    text-reset` anchor used by user_rows.html and contract_bits.html. That
+    treatment makes a link inherit its cell's colour, which is right where
+    EVERY name in the column is a link — the column itself is the affordance.
+    Here most of these numbers have no project, so a link that looked like its
+    neighbours was indistinguishable from them: UWIS0064 opened a modal and
+    UAHV0010 did not, and nothing on screen said which.
+
+    `.btn-link` gives `--text-link` and underlines on hover (dashboard.css).
+    The inner `.font-monospace` is load-bearing, not decoration: `.btn`
+    uppercases its label, and `.btn .font-monospace` is the carve-out that
+    stops it — written for exactly this, the entity quick-view links. -#}
+<button type="button" class="btn btn-link btn-entity p-0"
+        title="View project details"
+        data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
+        hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=number) }}"
+        hx-target="#projectDetailsModalBody"
+        hx-swap="innerHTML"><span class="font-monospace">{{ number }}</span></button>
+{%- else -%}
+<span title="No SAM project by this name yet — the expected state for a request whose handoff has not completed, which is why this account is still on the list">{{ number }}</span>
+{%- endif -%}
+{%- endmacro %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {% from 'dashboards/fragments/xras_person_detail.html' import person_detail %}
 {#
@@ -127,10 +173,10 @@
         <table class="table table-sm table-hover mb-0 align-middle">
             <thead class="table-subtle">
                 <tr>
-                    <th style="width:220px; white-space:nowrap;">Username</th>
+                    <th style="width:190px; white-space:nowrap;">Username</th>
                     <th style="width:170px; white-space:nowrap;">Needs</th>
-                    <th style="width:170px;">Role</th>
-                    <th style="width:180px;">Request</th>
+                    <th style="width:110px;">Role</th>
+                    <th style="width:180px; white-space:nowrap;">Request</th>
                     {% if may_manage %}
                     <th style="width:99%; min-width:12rem;">Person</th>
                     {% endif %}
@@ -149,19 +195,69 @@
                 {% set body_id = 'xras-acct-' ~ loop.index %}
                 {# No buttons on this row, so the toggle can live on the <tr> —
                    see dashboards/fragments/collapse.html for when it cannot. #}
-                <tr class="cursor-pointer" {{ collapse_toggle(body_id) }}>
+                <tr>
                     <td class="font-monospace text-nowrap">
+                        {# ⚠️ The toggle is on the CHEVRON, not on this cell —
+                           unlike its five siblings, which toggle wholesale.
+                           The cell holds a link, and Bootstrap's collapse
+                           data-api runs in the CAPTURE phase: a toggle on the
+                           cell (or on the <tr>, where it used to live) fires
+                           before the link's own handler, so every click would
+                           open the modal AND flip the row open behind it.
+
+                           The chevron stays here rather than moving to a cell
+                           that does toggle, because the affordance belongs at
+                           the START of the row — parked mid-row beside the
+                           next column's badge it reads as that badge's icon.
+                           Wrapping it in its own trigger keeps both: the mark
+                           where it belongs, and a click target that works.
+                           `.collapse-icon` still rotates, since it rotates off
+                           the `aria-expanded` on its ANCESTOR trigger, and the
+                           span is now that ancestor. #}
+                        <span class="cursor-pointer" {{ collapse_toggle(body_id) }}><i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i></span>
+                        {% if row.classification == 'absent' %}
+                        {# No SAM row to open. `classify_accounts` looked: this
+                           username matched no `users` row at all, which is the
+                           whole content of the "New account" badge beside it.
+                           Linking it would guarantee an empty modal. #}
                         {{ row.username }}
+                        {% else %}
+                        {# `inactive` — a `users` row EXISTS and is not active,
+                           which is what "Reactivation" means. Gated on the same
+                           branch as that badge so the two can never disagree.
+
+                           The wire spelling is safe to pass: `users.username`
+                           is utf8mb3_general_ci, so the route's
+                           `filter_by(username=...)` matches whatever case XRAS
+                           sent — the same collation `classify_accounts` relies
+                           on. See its comment on the case-insensitive key. #}
+                        {# `btn btn-link` for the same reason as `request_cell`
+                           above: only the rare Reactivation row links, so a
+                           colour-inheriting link would be invisible among the
+                           New-account rows that do not. `.font-monospace`
+                           inside keeps the username lowercase — `.btn` would
+                           otherwise uppercase it and erase the convention that
+                           tells a username from a projcode at a glance. #}
+                        <button type="button" class="btn btn-link btn-entity p-0"
+                                title="View user details"
+                                data-bs-toggle="modal" data-bs-target="#userDetailsModal"
+                                hx-get="{{ url_for('admin_dashboard.user_card',
+                                                   username=row.username) }}"
+                                hx-target="#userDetailsModalBody"
+                                hx-swap="innerHTML"><span class="font-monospace">{{ row.username }}</span></button>
+                        {% endif %}
                         {% if row.placeholder %}
-                        {# Text, not an icon: the placeholder shape is already
-                           legible in the username itself, and a glyph beside it
-                           was noise repeating what the string says. #}
-                        <span class="badge bg-body-secondary text-body-secondary border ms-1 fw-normal"
-                              title="ARC placeholder username — XRAS mints one for a researcher with no site account">placeholder</span>
+                        {# A footnote marker, not a badge. The badge stole a
+                           column's worth of width to repeat what the username
+                           shape — and the missing link — already say. A `*`
+                           tied to the legend under the table carries the same
+                           fact for a few pixels. #}
+                        <sup class="text-body-secondary fw-bold"
+                             title="ARC placeholder username — XRAS mints one for a researcher with no site account (see note below the table)">*</sup>
                         {% endif %}
                     </td>
 
-                    <td>
+                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
                         {% if row.classification == 'absent' %}
                         <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">New account</span>
                         {% else %}
@@ -170,7 +266,7 @@
 
                     </td>
 
-                    <td>
+                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
                         {# ⚠️ PI carries weight because a missing PI is the only
                            one that HARD-FAILS the handoff — `roster.py` reports
                            `PI %s is not in database` and the action 422s, while
@@ -183,8 +279,10 @@
                         <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle"
                               title="A missing or inactive PI rejects the whole action (422). This row blocks its handoff.">{{ role }}</span>
                         {% else %}
+                        {# "Allocation Manager" is shortened to "Manager" for
+                           width; the full role name stays in the tooltip. #}
                         <span class="badge bg-body-secondary text-body-secondary border fw-normal"
-                              title="Not fatal on its own — only a missing PI rejects the action">{{ role }}</span>
+                              title="{{ role }} — not fatal on its own; only a missing PI rejects the action">{{ 'Manager' if role == 'Allocation Manager' else role }}</span>
                         {% endif %}
                         {% endfor %}
                     </td>
@@ -192,11 +290,22 @@
                     {# Which XRAS request needs this account. Its own column
                        at every permission level: it is the handle an operator
                        working a project's activation actually navigates by. #}
-                    <td class="font-monospace small">
+                    {# ⚠️ No toggle: this cell links its request numbers, and a
+                       toggle on the cell fires in the capture phase before the
+                       link — the modal would open and the row would flip open
+                       behind it. Measured in the browser doing exactly that
+                       before the toggle came off. #}
+                    <td class="font-monospace small text-nowrap">
+                        {# Deduped on the number, so the link state has to come
+                           from the actions rather than the flattened list — any
+                           action carrying this number answers the same question,
+                           since `is_project` is a fact about the number. #}
                         {% set numbers = row.actions | map(attribute='request_number')
                                          | reject('none') | unique | list %}
                         {% for number in numbers[:2] %}
-                        {{ number }}{% if not loop.last %}, {% endif %}
+                        {%- set linked = row.actions | selectattr('request_number', 'equalto', number)
+                                                     | selectattr('is_project') | list | length > 0 -%}
+                        {{ request_cell(number, linked, configured) }}{% if not loop.last %}, {% endif %}
                         {% endfor %}
                         {% if not numbers %}<span class="text-muted">—</span>{% endif %}
                         {% if numbers | length > 2 %}
@@ -205,7 +314,7 @@
                     </td>
 
                     {% if may_manage %}
-                    <td class="text-truncate" style="max-width:0;">
+                    <td class="text-truncate cursor-pointer" style="max-width:0;" {{ collapse_toggle(body_id) }}>
                         {% if row.person %}
                         {{ row.person.firstName }} {{ row.person.lastName }}
                         {% if row.person.organization %}
@@ -217,6 +326,12 @@
                     </td>
                     {% endif %}
 
+                    {# ⚠️ NO collapse toggle on this cell: when `configured` it
+                       holds a modal-opening link, and Bootstrap's collapse
+                       data-api runs in the capture phase — a toggle here would
+                       fire before the link and flip the row open behind the
+                       modal (the same reason col 1 and the Request cell opt
+                       out). The other cells still toggle the row. #}
                     <td class="text-nowrap">
                         {# ⚠️ This is XRAS-side IDENTITY state, not progress on
                            the row. Measured 9 of 9 on the local smoke: every
@@ -226,9 +341,32 @@
                            exists and is active, which is checked every render.
                            `unreconciled` is the HARDER case: XRAS cannot say
                            who they are either, so there is no detail sheet to
-                           create the account from. #}
+                           create the account from.
+
+                           When outgoing XRAS is configured the state links to
+                           the XRAS User modal (this row's XRAS identity), the
+                           mirror of col 1's SAM user link. Degrades to a plain
+                           badge with no outgoing access, like `request_cell`. #}
+                        {% if configured %}
+                        <a href="#" class="text-decoration-none" title="View this XRAS user"
+                           data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                           hx-get="{{ url_for('allocations_dashboard.xras_user_detail',
+                                              username=row.username) }}"
+                           hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+                        {% endif %}
                         {% if row.is_reconciled is none %}
                         <span class="text-muted" title="XRAS was not asked">—</span>
+                        {% elif row.is_reconciled and row.placeholder %}
+                        {# ⚠️ A CONTRADICTION, not a good state. Reconciliation
+                           in XRAS *is* a merge — the placeholder is folded into
+                           the real identity and deleted — so a placeholder that
+                           still exists AND is flagged reconciled was flagged
+                           without one. It never reaches XRAS's own unreconciled
+                           queue, so nobody ever merges it, so XRAS keeps sending
+                           the throwaway username and this handoff stays blocked
+                           forever. The fix is in the expansion panel. #}
+                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+                              title="Identified but never merged — XRAS keeps sending this throwaway username, so the handoff cannot complete. Expand the row to resolve it.">identified, not merged</span>
                         {% elif row.is_reconciled %}
                         <span class="badge bg-body-secondary text-body-secondary border fw-normal"
                               title="XRAS has linked this username to a real identity, so the person detail here is usable for account creation. It does NOT mean the account exists.">identified</span>
@@ -236,9 +374,10 @@
                         <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
                               title="XRAS has not reconciled this identity either — there is no confirmed person behind the username yet">unidentified</span>
                         {% endif %}
+                        {% if configured %}</a>{% endif %}
                     </td>
 
-                    <td class="text-nowrap small text-muted">
+                    <td class="text-nowrap small text-muted cursor-pointer" {{ collapse_toggle(body_id) }}>
                         {% if row.waiting_days is none %}
                         <span class="text-muted" title="No dated provenance on this row">—</span>
                         {% else %}
@@ -251,6 +390,29 @@
 
                 <tr class="collapse" id="{{ body_id }}">
                     <td colspan="7" class="bg-body-tertiary">
+                        {% if may_manage and row.placeholder and row.is_reconciled %}
+                        {# Inside the EXPANSION, above the detail sheet — not on
+                           the <tr>. Bootstrap's collapse data-api runs in the
+                           capture phase, so a button on the row cannot stop the
+                           row's own toggle firing, and the e2e suite pins the
+                           data-bs-target off the row. Same modal as the
+                           Remediations card, keyed on the username. #}
+                        <div class="alert alert-warning d-flex align-items-center gap-2 py-2">
+                            <i class="fas fa-triangle-exclamation"></i>
+                            <div class="small flex-grow-1">
+                                XRAS marks this placeholder as identified but it
+                                was never merged, so XRAS keeps sending the
+                                throwaway username and the handoff stays blocked.
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-danger text-nowrap"
+                                    hx-get="{{ url_for('allocations_dashboard.xras_merge_form',
+                                                       username=row.username) }}"
+                                    hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                                    data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
+                                Resolve identity (merge in XRAS)…
+                            </button>
+                        </div>
+                        {% endif %}
                         {% if may_manage %}{{ person_detail(row.person) }}{% endif %}
 
                         <table class="table table-sm mb-0">
@@ -263,7 +425,7 @@
                             <tbody>
                                 {% for action in row.actions %}
                                 <tr class="small">
-                                    <td class="font-monospace">{{ action.request_number or '—' }}</td>
+                                    <td class="font-monospace">{{ request_cell(action.request_number, action.is_project, configured) }}</td>
                                     <td>{{ action.action_type or '—' }}</td>
                                     <td>{% if action.status %}{{ status_badge(action.status, tooltip=False) }}{% endif %}</td>
                                     <td>{{ action.received_time | fmt_date }}</td>
@@ -294,6 +456,13 @@
             </tbody>
         </table>
     </div>
+    {% if counts.placeholder %}
+    <div class="small text-muted mt-2 px-1">
+        <sup class="text-body-secondary fw-bold">*</sup> ARC placeholder username —
+        XRAS mints one for a researcher with no site account. The missing profile
+        link is the other tell.
+    </div>
+    {% endif %}
     {% else %}
     {# A designed state, not a failure: production is legitimately zero rows
        until ACCESS is repointed and the action log starts filling. #}

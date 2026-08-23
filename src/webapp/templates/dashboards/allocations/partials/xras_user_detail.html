@@ -1,0 +1,141 @@
+{#
+  Read-only detail of one XRAS person, rendered into #auditDetailsModalBody —
+  the analogue of xras_request_detail.html for the *user* side of the roster.
+
+  Context: username, person (a /v1/people dict), role_groups (grouped
+           reports/username rows), in_sam / sam_active, placeholder /
+           is_reconciled / stuck_placeholder, merge_url, back_url /
+           back_request_number, write_enabled, configured.
+
+  ⚠️ No `data-bs-toggle="modal"` on any control here. This body is always
+  swapped INTO the already-open #auditDetailsModal, so every link just
+  hx-gets a new body — a toggle would fire on the open modal and HIDE it (the
+  PR #464 self-closing-modal bug). The Request links below reuse that idiom to
+  swap the request detail in place, and the merge button reuses the merge form.
+
+  Read-only apart from the reused identity merge: XRAS exposes no
+  person-attribute write on our key, so there is nothing else to edit here.
+#}
+{% import 'dashboards/allocations/partials/xras_modal_shell.html' as shell %}
+{% call shell.modal_title() %}XRAS User — <span class="font-monospace">{{ username }}</span>{% endcall %}
+
+{# Back link (if we came from a request roster) — plain body-swap, no toggle. #}
+{{ shell.back_link(back_url, back_request_number) }}
+
+{# ── who XRAS says this is ───────────────────────────────────────────────── #}
+{% from 'dashboards/fragments/xras_person_detail.html' import person_detail %}
+{{ person_detail(person) }}
+
+{# ── identity state + SAM cross-reference ────────────────────────────────── #}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    {# XRAS-side reconciliation state, in the Accounts-Needed vocabulary. #}
+    {% if is_reconciled is none %}
+    <span class="badge bg-body-secondary text-body-secondary border fw-normal"
+          title="XRAS was not asked, or does not say">identity unknown</span>
+    {% elif stuck_placeholder %}
+    <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+          title="Identified but never merged — XRAS keeps sending this throwaway username, so the handoff cannot complete.">identified, not merged</span>
+    {% elif is_reconciled %}
+    <span class="badge bg-body-secondary text-body-secondary border fw-normal"
+          title="XRAS has linked this username to a real identity. It does NOT mean a SAM account exists.">identified</span>
+    {% else %}
+    <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+          title="XRAS has not reconciled this identity — there is no confirmed person behind the username yet">unidentified</span>
+    {% endif %}
+
+    {% if placeholder %}
+    <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle"
+          title="An ARC placeholder username XRAS mints for a researcher with no site account">placeholder</span>
+    {% endif %}
+
+    {# SAM cross-reference — informational, deliberately not a modal opener (a
+       nested #userDetailsModal would stack two modals). #}
+    <span class="ms-auto small">
+        {% if sam_active %}
+        <span class="text-success"><i class="fas fa-circle-check"></i> Active SAM account</span>
+        {% elif in_sam %}
+        <span class="text-warning"><i class="fas fa-circle-exclamation"></i> SAM account exists but is inactive</span>
+        {% else %}
+        <span class="text-muted"><i class="fas fa-circle-xmark"></i> No SAM account</span>
+        {% endif %}
+    </span>
+</div>
+
+{# ── the one write: resolve a stuck placeholder by merge ─────────────────── #}
+{% if stuck_placeholder %}
+<div class="alert alert-warning d-flex align-items-center gap-2 py-2">
+    <i class="fas fa-triangle-exclamation"></i>
+    <div class="small flex-grow-1">
+        XRAS marks this placeholder identified but never merged it, so XRAS
+        keeps sending the throwaway username and any handoff stays blocked.
+    </div>
+    <button type="button" class="btn btn-sm btn-outline-danger text-nowrap"
+            {% if not write_enabled %}disabled
+            title="XRAS writes are switched off for this deployment (XRAS_WRITE_ENABLED)."{% endif %}
+            hx-get="{{ merge_url }}"
+            hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+        Resolve identity (merge)…
+    </button>
+</div>
+{% endif %}
+
+<hr>
+
+{# ── requests this person holds a role on ────────────────────────────────── #}
+<div class="small text-uppercase text-muted mb-1">Requests &amp; roles</div>
+{% if role_groups %}
+{% for group in role_groups %}
+<div class="mb-3">
+    <div class="fw-semibold small mb-1">
+        {{ group.role_name or 'Role' }}
+        <span class="text-muted fw-normal">· {{ group.requests | length }}</span>
+    </div>
+    <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+        <tbody>
+        {% for req in group.requests %}
+            <tr>
+                <td class="font-monospace text-nowrap">
+                    {% if configured %}
+                    {# Swap the request detail in place — no toggle, the modal
+                       is already open. #}
+                    <a href="#" class="text-decoration-none"
+                       hx-get="{{ url_for('allocations_dashboard.xras_request_detail',
+                                          request_number=req.request_number) }}"
+                       hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+                        {{ req.request_number }}
+                    </a>
+                    {% else %}
+                    {{ req.request_number }}
+                    {% endif %}
+                </td>
+                <td>
+                    {{ req.title or '—' }}
+                    {% if req.opportunity %}
+                    <span class="text-muted small d-block">{{ req.opportunity }}</span>
+                    {% endif %}
+                </td>
+                <td class="text-nowrap small">
+                    {% if req.action_type %}
+                    <span class="badge bg-body-secondary text-body-secondary border fw-normal">{{ req.action_type }}</span>
+                    {% endif %}
+                </td>
+                <td class="text-nowrap small text-muted">
+                    {% if req.begin_date %}{{ req.begin_date | fmt_date }}{% endif %}
+                    {%- if req.end_date %} – {{ req.end_date | fmt_date }}{% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="small text-muted">
+    XRAS lists no requests for this user{% if not configured %} (or the outgoing
+    API is not configured){% endif %}.
+</div>
+{% endif %}
+
+{{ shell.done_footer() }}

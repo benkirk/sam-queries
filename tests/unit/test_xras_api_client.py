@@ -19,12 +19,13 @@ import pytest
 import requests
 
 from sam.integration.xras_api import cache as xras_cache
+from sam.integration.xras_api import lookups as xras_lookups
 from sam.integration.xras_api import people as xras_people
 from sam.integration.xras_api.base import (
     XrasApiNotConfigured,
     XrasSourceUnavailable,
 )
-from sam.integration.xras_api.client import XrasApiClient
+from sam.integration.xras_api.client import XrasApiClient, _XrasTransport
 from sam.integration.xras_api.config import XrasApiConfig, xras_api_configured
 
 pytestmark = pytest.mark.unit
@@ -181,10 +182,18 @@ class TestItIsStructurallyReadOnly:
                 f'XrasApiClient.{name} exists — the client must stay GET-only'
 
     def test_the_only_transport_primitive_is_get(self):
-        source = inspect.getsource(XrasApiClient)
+        # The transport primitive lives on the shared base now; the read client
+        # adds only read verbs on top of it. The GET-only invariant belongs on
+        # whichever class actually issues the request, so pin it there — the
+        # write verbs are the admin subclass's ``_write``, not on this base.
+        source = inspect.getsource(_XrasTransport)
         assert "'GET'" in source
         for verb in ("'POST'", "'PUT'", "'PATCH'", "'DELETE'"):
-            assert verb not in source, f'{verb} appears in the client'
+            assert verb not in source, f'{verb} appears in the transport base'
+        # And the read client itself still carries no HTTP-verb literal at all.
+        client_source = inspect.getsource(XrasApiClient)
+        for verb in ("'POST'", "'PUT'", "'PATCH'", "'DELETE'"):
+            assert verb not in client_source, f'{verb} appears in the client'
 
 
 # ── transport ───────────────────────────────────────────────────────────
@@ -297,6 +306,42 @@ class TestEndpoints:
         call = client.session.request.call_args
         assert call.args[1].endswith('/v1/search/people')
         assert call.kwargs['params'] == {'q': 'Invented'}
+
+    def test_person_roles_hits_the_reports_username_route(self, monkeypatch):
+        payload = {'panels': [], 'requestRoles': []}
+        client = _client(monkeypatch, [_response(200, _envelope(payload))])
+        assert client.get_person_roles('Invented') == payload
+        url = client.session.request.call_args.args[1]
+        assert url.endswith('/v1/reports/username/Invented')
+
+    def test_person_roles_url_quotes_the_username(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200, _envelope({}))])
+        client.get_person_roles('a b/c')
+        url = client.session.request.call_args.args[1]
+        assert url.endswith('/v1/reports/username/a%20b%2Fc')
+
+    def test_person_roles_404_reads_as_none(self, monkeypatch):
+        # A merged-away placeholder 404s here exactly as get_person does.
+        client = _client(monkeypatch, [_response(404, {})])
+        assert client.get_person_roles('gone-user-00001') is None
+
+    def test_get_opportunity_hits_the_single_id_route(self, monkeypatch):
+        opp = {'opportunityId': 532220, 'opportunityName': 'Small'}
+        client = _client(monkeypatch, [_response(200, _envelope(opp))])
+        assert client.get_opportunity(532220) == opp
+        url = client.session.request.call_args.args[1]
+        assert url.endswith('/v1/opportunities/532220')
+
+    def test_get_opportunity_404_reads_as_none(self, monkeypatch):
+        client = _client(monkeypatch, [_response(404, {})])
+        assert client.get_opportunity(999999) is None
+
+    def test_get_fos_types_hits_the_types_route(self, monkeypatch):
+        fos = [{'fosTypeId': 500032, 'fosName': 'Regional Climate'}]
+        client = _client(monkeypatch, [_response(200, _envelope(fos))])
+        assert client.get_fos_types() == fos
+        url = client.session.request.call_args.args[1]
+        assert url.endswith('/v1/types/fos')
 
 
 class TestPagination:
@@ -429,6 +474,58 @@ class TestCaching:
     def test_the_bucket_prefixes_are_namespaced(self):
         """Bucket names are global Redis key prefixes."""
         assert all(p.startswith('xras_') for p in xras_cache._CACHE.prefixes)
+
+
+class TestLookups:
+    """The FoS + opportunity cached wrappers — the request/opportunity modals'
+    name resolution."""
+
+    def test_fos_types_is_memoised(self, monkeypatch):
+        xras_cache._adapters.clear()
+        calls = []
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        monkeypatch.setattr(
+            XrasApiClient, 'get_fos_types',
+            lambda self: calls.append(1) or [{'fosTypeId': 1, 'fosName': 'X'}])
+        xras_lookups.get_fos_types()
+        xras_lookups.get_fos_types()
+        assert len(calls) == 1
+
+    def test_fos_name_map_keys_by_int_id_prefers_name(self, monkeypatch):
+        xras_cache._adapters.clear()
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        monkeypatch.setattr(XrasApiClient, 'get_fos_types', lambda self: [
+            {'fosTypeId': 500032, 'fosName': 'Regional Climate', 'fosAbbr': 'RC'},
+            {'fosTypeId': 500003, 'fosName': None, 'fosAbbr': 'ASC'}])
+        m = xras_lookups.fos_name_map()
+        assert m[500032] == 'Regional Climate'
+        assert m[500003] == 'ASC'          # falls back to abbr
+
+    def test_fos_name_map_is_empty_on_outage(self, monkeypatch):
+        """A FoS name is a nicety — an outage must not fail the request view."""
+        xras_cache._adapters.clear()
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+
+        def boom(self):
+            raise XrasSourceUnavailable('down')
+
+        monkeypatch.setattr(XrasApiClient, 'get_fos_types', boom)
+        assert xras_lookups.fos_name_map() == {}
+
+    def test_opportunity_is_memoised_by_id(self, monkeypatch):
+        xras_cache._adapters.clear()
+        calls = []
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        monkeypatch.setattr(
+            XrasApiClient, 'get_opportunity',
+            lambda self, oid: calls.append(oid) or {'opportunityId': oid})
+        xras_lookups.get_opportunity(532220)
+        xras_lookups.get_opportunity(532220)
+        assert len(calls) == 1
 
 
 class TestResourceKeys:

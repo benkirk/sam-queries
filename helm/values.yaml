@@ -357,6 +357,24 @@ webapp:
     # Required header on every call; scopes nothing outside /v1/requests, which
     # this client never reads. The value XRAS provisioned for the ARC scripts.
     XRAS_API_USER: "arcguest"
+    # ⚠️ SEPARATE lever for the WRITE client (sam/integration/xras_api/admin_client.py),
+    # which is a different class from the read client above and lives in the `submit`
+    # XRAS context. OFF, and it stays off until the remediation UI is signed off.
+    #
+    # What it unlocks is not symmetric with reading: the same key can MERGE one person
+    # into another — XRAS deletes the source — withdraw an approved action, and change
+    # a request's roster. Merge has no undo.
+    #
+    # This is webapp-only ON PURPOSE. cronjob-tasks.yaml renders `.Values.tasks.env`
+    # plus a hand-listed set and inherits NOTHING from here, so a scheduled task cannot
+    # write to XRAS even if one imported the admin client. Do not "fix" that by adding
+    # it there. `tests/unit/test_xras_admin_client.py` asserts both halves: this key is
+    # "0", and the tasks env never carries it at all.
+    #
+    # With it off the Remediations card still renders — with its controls DISABLED and
+    # an explanation — rather than vanishing, so the state is visible rather than
+    # mysterious.
+    XRAS_WRITE_ENABLED: "0"
 
   # system_status DB credentials (injected as STATUS_DB_USERNAME / STATUS_DB_PASSWORD).
   # MUST be a non-superuser role — connecting as the postgres SUPERUSER causes

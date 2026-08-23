@@ -133,34 +133,108 @@
                    expansion as the Accounts Needed tab: an operator working a
                    row here needs the same detail to create the account, and
                    the two tabs answer the same question. #}
-                <tr class="cursor-pointer" {{ collapse_toggle(body_id) }}>
+                <tr>
                     <td class="font-monospace text-nowrap">
+                        {# ⚠️ The toggle is on the CHEVRON, not on this cell —
+                           unlike its five siblings, which toggle wholesale.
+                           The cell holds a link, and Bootstrap's collapse
+                           data-api runs in the CAPTURE phase: a toggle on the
+                           cell (or on the <tr>, where it used to live) fires
+                           before the link's own handler, so every click would
+                           open the modal AND flip the row open behind it.
+
+                           The chevron stays here rather than moving to a cell
+                           that does toggle, because the affordance belongs at
+                           the START of the row — parked mid-row beside the
+                           next column's badge it reads as that badge's icon.
+                           Wrapping it in its own trigger keeps both: the mark
+                           where it belongs, and a click target that works.
+                           `.collapse-icon` still rotates, since it rotates off
+                           the `aria-expanded` on its ANCESTOR trigger, and the
+                           span is now that ancestor. #}
+                        <span class="cursor-pointer" {{ collapse_toggle(body_id) }}><i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i></span>
+                        {% if row.classification == 'absent' %}
+                        {# No SAM row to open. `classify_accounts` looked: this
+                           username matched no `users` row at all, which is the
+                           whole content of the "New account" badge beside it.
+                           Linking it would guarantee an empty modal. #}
                         {{ row.username }}
+                        {% else %}
+                        {# `inactive` — a `users` row EXISTS and is not active,
+                           which is what "Reactivation" means. Gated on the same
+                           branch as that badge so the two can never disagree.
+
+                           The wire spelling is safe to pass: `users.username`
+                           is utf8mb3_general_ci, so the route's
+                           `filter_by(username=...)` matches whatever case XRAS
+                           sent — the same collation `classify_accounts` relies
+                           on. See its comment on the case-insensitive key. #}
+                        {# `btn btn-link` for the same reason as `request_cell`
+                           above: only the rare Reactivation row links, so a
+                           colour-inheriting link would be invisible among the
+                           New-account rows that do not. `.font-monospace`
+                           inside keeps the username lowercase — `.btn` would
+                           otherwise uppercase it and erase the convention that
+                           tells a username from a projcode at a glance. #}
+                        <button type="button" class="btn btn-link btn-entity p-0"
+                                title="View user details"
+                                data-bs-toggle="modal" data-bs-target="#userDetailsModal"
+                                hx-get="{{ url_for('admin_dashboard.user_card',
+                                                   username=row.username) }}"
+                                hx-target="#userDetailsModalBody"
+                                hx-swap="innerHTML"><span class="font-monospace">{{ row.username }}</span></button>
+                        {% endif %}
                         {% if row.placeholder %}
                         <span class="badge bg-body-secondary text-body-secondary border ms-1 fw-normal"
                               title="ARC placeholder username — XRAS mints one for a researcher with no site account">placeholder</span>
                         {% endif %}
                     </td>
-                    <td>
+                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
                         {% if row.classification == 'absent' %}
                         <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">New account</span>
                         {% else %}
                         <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Reactivation</span>
                         {% endif %}
                     </td>
-                    <td>
+                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
                         {% for role in row.roles %}
                         <span class="badge bg-body-secondary text-body-secondary border fw-normal">{{ role }}</span>
                         {% endfor %}
                     </td>
+                    {# When an outbound read is available each request number is
+                       a link into the full detail modal, so this cell is NOT a
+                       collapse trigger — the capture-phase toggle would fire
+                       before the link and expand the row behind the modal. The
+                       row's other cells keep the toggle. Incoming-only is a
+                       plain-text toggle cell, exactly as before.
+
+                       Two separate <td>s, not one conditional cell: the
+                       collapse-trigger static guard scans template SOURCE and
+                       cannot see the if/else branch, so a single cell carrying
+                       both the toggle and the link would read as the very bug
+                       that guard forbids (test_collapse_trigger_rows.py). #}
+                    {% set numbers = row.actions | map(attribute='request_number')
+                                     | reject('none') | unique | list %}
+                    {% if configured %}
                     <td class="font-monospace small">
-                        {% set numbers = row.actions | map(attribute='request_number')
-                                         | reject('none') | unique | list %}
+                        {% for number in numbers[:2] %}
+                        <button type="button" class="btn btn-link btn-entity p-0"
+                                title="Full request detail (read-only)"
+                                data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                                hx-get="{{ url_for('allocations_dashboard.xras_request_detail', request_number=number) }}"
+                                hx-target="#auditDetailsModalBody"
+                                hx-swap="innerHTML"><span class="font-monospace">{{ number }}</span></button>{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                        {% if not numbers %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                    {% else %}
+                    <td class="font-monospace small cursor-pointer" {{ collapse_toggle(body_id) }}>
                         {% for number in numbers[:2] %}{{ number }}{% if not loop.last %}, {% endif %}{% endfor %}
                         {% if not numbers %}<span class="text-muted">—</span>{% endif %}
                     </td>
+                    {% endif %}
                     {% if may_manage %}
-                    <td class="text-truncate" style="max-width:0;">
+                    <td class="text-truncate cursor-pointer" style="max-width:0;" {{ collapse_toggle(body_id) }}>
                         {% if row.person %}
                         {{ row.person.firstName }} {{ row.person.lastName }}
                         {% if row.person.organization %}
@@ -169,7 +243,7 @@
                         {% else %}<span class="text-muted">—</span>{% endif %}
                     </td>
                     {% endif %}
-                    <td>
+                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
                         {% if row.is_reconciled is none %}
                         <span class="text-muted">—</span>
                         {% elif row.is_reconciled %}

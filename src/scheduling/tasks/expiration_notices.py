@@ -41,6 +41,12 @@ from zoneinfo import ZoneInfo
 
 from scheduling.registry import TaskResult, task
 from scheduling.schedules import Weekly, to_local_naive
+from scheduling.tasks._notice_common import (
+    drop_already_notified,
+    new_sam_session as _new_sam_session,
+    positive_int_env,
+    raise_if_disabled,
+)
 # Re-exported: these were defined here until a second notice task needed them,
 # and callers (including this module's tests) still import them from here.
 from scheduling.tasks.mail_guards import (   # noqa: F401
@@ -81,19 +87,12 @@ def email_max(env: Optional[dict] = None) -> int:
 
     Read per run rather than at import, so a `values.yaml` change takes effect
     on the next dispatch rather than the next pod restart — the
-    ``cleanup_status.retention_days`` pattern.
+    ``cleanup_status.retention_days`` pattern. Zero or negative is refused
+    rather than obeyed (see :func:`positive_int_env`): it would abort every run,
+    including the ones that should send nothing — indistinguishable from a
+    broken query.
     """
-    raw = (env or os.environ).get('SAM_TASKS_EMAIL_MAX')
-    if raw is None or not str(raw).strip():
-        return DEFAULT_EMAIL_MAX
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return DEFAULT_EMAIL_MAX
-    # Zero or negative would abort every run, including the ones that should
-    # send nothing — indistinguishable from a broken query. Refuse rather than
-    # obey, as `retention_days` does.
-    return value if value > 0 else DEFAULT_EMAIL_MAX
+    return positive_int_env('SAM_TASKS_EMAIL_MAX', DEFAULT_EMAIL_MAX, env)
 
 
 def window_start(occurrence: datetime, *, tz: Optional[str] = None) -> datetime:
@@ -215,13 +214,10 @@ def expiration_notices(ctx) -> TaskResult:
     }
 
     # 2. Guards, before any transport is touched.
-    if not notifier.config.enabled:
-        # No summary either: there is no working mailer to send it with, and
-        # `preview`-ing one into the log would only look like it went.
-        raise NotificationsDisabled(
-            'NOTIFY_ENABLED is false; refusing to run a task whose only '
-            'purpose is to send mail. Check the CronJob env — it does not '
-            'inherit webapp.env.')
+    # No summary on the disabled path either: there is no working mailer to
+    # send it with, and `preview`-ing one into the log would only look like it
+    # went.
+    raise_if_disabled(notifier)
 
     cap = email_max()
     if len(messages) > cap:
@@ -368,49 +364,33 @@ def _drop_already_notified(ledger, messages: List, logger) -> Tuple[List, int]:
     ``audience: 0``. Nothing is lost: the count is still in
     ``TaskResult.detail``.
 
-    The **legacy** half of the key list is the only removable part. Every
+    On a loaded week ~85% of the selection is already-notified and on a quiet
+    week essentially all of it is, so leaving this to the framework would write
+    on the order of **26,000 rows a year** into `notification_log` — the same
+    table the admin Notifications card, its facet chips, and the last-notified
+    badge all read.
+
+    The **legacy** half of the key list is the only extra part here. Every
     manual CLI run before the rung label existed wrote
     ``expiration:{projcode}:{date}:{recipient}``; without checking that form
     too, the first scheduled run re-notifies the overlap cohort. After one
     full cycle every live key is in the new format and
-    :func:`~sam.queries.expiration_notices.legacy_dedup_key` can go.
+    :func:`~sam.queries.expiration_notices.legacy_dedup_key` can go — at which
+    point this wrapper drops the ``legacy_key`` and becomes the bare shared
+    call.
     """
     from sam.queries.expiration_notices import legacy_dedup_key
 
-    if not messages or ledger is None:
-        # `Notifier(ledger=None)` is a documented configuration ("record
-        # nothing"). It cannot answer the suppression question, so nothing is
-        # dropped — and `_pre_transport_guard` will not suppress either, which
-        # keeps the two layers agreeing about what no-ledger means.
-        return messages, 0
-
-    legacy = {}
-    for message in messages:
+    def legacy_key(message):
         # `expiration:{projcode}:{date}:{label}:{recipient}` -> drop the label.
         parts = (message.dedup_key or '').split(':')
         if len(parts) == 5:
-            legacy[message.dedup_key] = legacy_dedup_key(parts[1], parts[2],
-                                                         parts[4])
+            return legacy_dedup_key(parts[1], parts[2], parts[4])
+        return None
 
-    keys = [m.dedup_key for m in messages if m.dedup_key]
-    suppressed = ledger.already_sent_many(keys + list(legacy.values()))
-
-    kept = [m for m in messages
-            if not (m.dedup_key in suppressed
-                    or legacy.get(m.dedup_key) in suppressed)]
-    dropped = len(messages) - len(kept)
-    if dropped:
-        logger.info('%d of %d message(s) already notified; not re-recording',
-                    dropped, len(messages))
-    return kept, dropped
+    return drop_already_notified(ledger, messages, logger,
+                                 legacy_key=legacy_key)
 
 
-def _new_sam_session(existing):
-    """A fresh SAM session on the same engine as the task's own.
-
-    The ledger must commit independently of the task's transaction, so it
-    cannot share `ctx.sam_session`. Deriving the engine from that session
-    rather than calling `create_sam_engine()` again keeps one pool.
-    """
-    from sqlalchemy.orm import Session
-    return Session(existing.get_bind())
+# `_new_sam_session` is `new_sam_session` from `_notice_common` (imported above
+# under that name) — the fresh ledger session shared with `xras_notices`.

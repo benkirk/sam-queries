@@ -462,6 +462,9 @@ UTF8MB4_COLUMNS = {
     ('xras_action_log',       'error_messages'),
     ('xras_activation_event', 'comment'),
     ('xras_activation_event', 'notified_to'),
+    ('xras_remediation_event', 'comment'),
+    ('xras_remediation_event', 'before_state'),
+    ('xras_remediation_event', 'after_state'),
     ('notification_log',      'recipient_name'),
     ('notification_log',      'subject'),
     ('notification_log',      'error'),
@@ -484,13 +487,13 @@ class TestCharsetSplit:
     an audit trail in it, where today it is a property of an empty table.
     """
 
-    def test_the_seven_text_columns_are_utf8mb4(self, session):
+    def test_the_free_text_columns_are_utf8mb4(self, session):
         rows = session.execute(text("""
             SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_SET_NAME
               FROM information_schema.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE()
                AND TABLE_NAME IN ('xras_action_log', 'xras_activation_event',
-                                  'notification_log')
+                                  'xras_remediation_event', 'notification_log')
                AND CHARACTER_SET_NAME IS NOT NULL
         """)).all()
 
@@ -507,12 +510,18 @@ class TestCharsetSplit:
         this guards against — it would silently drop these joins to a full scan."""
         joined = [('xras_action_log', 'request_number'),
                   ('xras_action_log', 'projcode_result'),
-                  ('notification_log', 'projcode')]
+                  ('notification_log', 'projcode'),
+                  # The remediation trail joins the action log on this column,
+                  # and carries XRAS usernames that index lookups key on.
+                  ('xras_remediation_event', 'request_number'),
+                  ('xras_remediation_event', 'username'),
+                  ('xras_remediation_event', 'created_by')]
         rows = dict(((t, c), cs) for t, c, cs in session.execute(text("""
             SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_SET_NAME
               FROM information_schema.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE()
-               AND TABLE_NAME IN ('xras_action_log', 'notification_log')
+               AND TABLE_NAME IN ('xras_action_log', 'notification_log',
+                                  'xras_remediation_event')
         """)).all())
         for key in joined:
             assert rows.get(key) == 'utf8mb3', (

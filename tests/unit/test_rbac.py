@@ -10,6 +10,10 @@ import pytest
 
 from webapp.utils import rbac
 from webapp.utils.rbac import (
+    ALL_CREATE,
+    ALL_DELETE,
+    ALL_EDIT,
+    ALL_VIEW,
     GROUP_PERMISSIONS,
     Permission,
     can_impersonate,
@@ -197,6 +201,10 @@ class TestPermissionEnumSurface:
     def test_new_permission_member_exists(self, perm_name):
         assert hasattr(Permission, perm_name)
 
+    def test_admin_xras_exists_and_is_distinct_from_manage(self):
+        assert hasattr(Permission, 'ADMIN_XRAS')
+        assert Permission.ADMIN_XRAS != Permission.MANAGE_XRAS
+
     def test_admin_testing_only_bundle_is_registered_with_full_permission_set(self):
         # The autouse session-scoped fixture in tests/conftest.py
         # registers 'admin-testing-only' as the synthetic full-access
@@ -208,6 +216,33 @@ class TestPermissionEnumSurface:
 # ---------------------------------------------------------------------------
 # Org-metadata grants per bundle
 # ---------------------------------------------------------------------------
+
+class TestXrasAdminTierRidesWithSystemAdmin:
+    """Part C decision (2026-08-22): the DESTRUCTIVE XRAS verbs are gated on
+    ADMIN_XRAS, which rides with SYSTEM_ADMIN, NOT the allocation-admin bundle.
+    A MANAGE_XRAS operator gets the full non-destructive editor but never these."""
+
+    def test_manage_xras_is_held_by_the_allocation_admin_bundle(self):
+        assert Permission.MANAGE_XRAS in GROUP_PERMISSIONS['nusd']
+
+    @pytest.mark.parametrize('bundle', ['nusd', 'csg', 'ssg'])
+    def test_admin_xras_is_not_in_any_group_bundle(self, bundle):
+        # It is held only where SYSTEM_ADMIN is — today the full-admin override,
+        # which the 'admin-testing-only' bundle stands in for. No POSIX group
+        # bundle confers it.
+        assert Permission.ADMIN_XRAS not in GROUP_PERMISSIONS[bundle]
+
+    def test_admin_xras_fails_closed_against_the_all_aggregates(self):
+        """`admin_` is matched by no ALL_* prefix, so it can never be swept in."""
+        assert Permission.ADMIN_XRAS not in (
+            ALL_VIEW | ALL_EDIT | ALL_CREATE | ALL_DELETE)
+
+    def test_the_full_admin_override_still_holds_it(self):
+        # The 'admin-testing-only' bundle carries set(Permission), the stand-in
+        # for benkirk's [p for p in Permission] override — so an XRAS admin does
+        # get it, just not via an allocation bundle.
+        assert Permission.ADMIN_XRAS in GROUP_PERMISSIONS['admin-testing-only']
+
 
 class TestOrgMetadataGrants:
     """Who may create and retire org metadata (organizations, institutions,

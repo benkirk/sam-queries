@@ -192,15 +192,6 @@
             SamCollapseChevron.attach('#contractsTable', '.contract-collapse-icon');
         }
 
-        // Allocations > XRAS. The toggle lives on the Errors <td> rather than the
-        // <tr>, because the row also carries project-modal, details and replay
-        // buttons — and Bootstrap's collapse data-api fires in the capture phase,
-        // so a row-level toggle would swallow every one of them. See
-        // templates/dashboards/fragments/collapse.html.
-        if (has(root, '#xrasActionsTable')) {
-            SamCollapseChevron.attach('#xrasActionsTable', '.xras-collapse-icon');
-        }
-
         if (has(root, '.inst-type-collapse-icon') || has(root, '.inst-expand-trigger')) {
             initInstitutions(root);
         }

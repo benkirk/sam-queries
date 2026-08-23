@@ -50,13 +50,14 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import (Any, Callable, Dict, Iterable, List, Mapping, Optional,
-                    Sequence, Tuple)
+from typing import (Any, Callable, Dict, Iterable, Iterator, List, Mapping,
+                    Optional, Sequence, Tuple)
 
 from sqlalchemy.orm import Session
 
 from sam.core.users import User
 from sam.integration.xras import XrasActionLog
+from sam.projects.projects import Project
 from sam.queries.xras_actions import XRAS_ACTION_STATUSES
 
 logger = logging.getLogger(__name__)
@@ -320,15 +321,40 @@ def _validate(session: Session, action, action_log_id
 
 # ── Feed B: the outbound enumeration ────────────────────────────────────
 
+def iter_roster_entries(
+        payload: dict) -> Iterator[Tuple[dict, List[dict]]]:
+    """Walk the outbound reports ``roles[]`` once: yield ``(person, roles)``.
+
+    The outgoing wire nests each ``roles[]`` entry as ``{person, roles[]}``,
+    where the inner entries carry ``role`` (not ``roleType``) and the person is
+    inline and complete — every ``/v1/people`` field including ``isReconciled``
+    and ``residenceCountry``, which is why a Feed-B row never needs a person
+    fetch. This is the ``roles[].roles[]`` flatten that the *modal* roster
+    (:func:`sam.queries.xras_requests.roster_from_payload`) and the *accounts*
+    aggregation (:func:`records_from_report_requests` below) both need; sharing
+    the traversal keeps their two shapes from drifting on the same trap.
+
+    ``person`` is always a dict (never ``None``); ``roles`` is filtered to dict
+    entries. Username normalization and empty-username skipping stay with each
+    caller — the modal roster and the accounts view do them differently, and
+    only the traversal is shared.
+    """
+    for entry in payload.get('roles') or ():
+        if not isinstance(entry, dict):
+            continue
+        person = entry.get('person')
+        if not isinstance(person, dict):
+            person = {}
+        roles = [r for r in (entry.get('roles') or ()) if isinstance(r, dict)]
+        yield person, roles
+
+
 def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]:
     """Feed B — rosters from ``GET /v1/reports/requests`` rows.
 
-    The outgoing wire nests differently from the incoming one:
-    ``roles[]`` entries are ``{person, roles[]}``, where the inner entries
-    carry ``role`` (not ``roleType``). Verified live, along with the fact that
-    the person object is **inline and complete** — every ``/v1/people`` field
-    including ``isReconciled`` and ``residenceCountry`` — which is why a
-    Feed-B row never needs a person fetch.
+    Built on the shared :func:`iter_roster_entries` traversal, aggregated to one
+    record per request with a per-username role set (a Feed-B row never needs a
+    person fetch — the person is inline).
     """
     records: List[RosterRecord] = []
     for payload in payloads or ():
@@ -340,19 +366,14 @@ def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]
         flags: Dict[str, bool] = {}
         people: Dict[str, dict] = {}
 
-        for entry in payload.get('roles') or ():
-            if not isinstance(entry, dict):
-                continue
-            person = entry.get('person') if isinstance(entry.get('person'), dict) else {}
+        for person, role_entries in iter_roster_entries(payload):
             username = str(person.get('username') or '').strip()
             if not username:
                 continue
             if username not in usernames:
                 usernames.append(username)
                 people[username] = person
-            for role in entry.get('roles') or ():
-                if not isinstance(role, dict):
-                    continue
+            for role in role_entries:
                 name = str(role.get('role') or '').strip()
                 if name and name not in roles.setdefault(username, []):
                     roles[username].append(name)
@@ -747,6 +768,47 @@ def waiting_days(row: Dict[str, Any], *, today: Optional[date] = None
     # "0d". The cause is fixed where it belongs (compose sets TZ, as the chart
     # already does); this keeps the column honest if it ever recurs.
     return max(0, ((today or date.today()) - since).days)
+
+
+def stamp_project_existence(session: Session,
+                            rows: Sequence[Dict[str, Any]]) -> None:
+    """Stamp ``is_project`` onto every action, in place. **One query.**
+
+    A ``request_number`` is a projcode for Extension/Supplement/Adjustment and
+    a request token for New — and nothing in the row distinguishes them, since
+    the two are the same shape. The only way to know is to ask whether a
+    project by that name exists. Measured on a seeded stack: **30 of 41**
+    distinct numbers resolve, including four ``New`` actions, which is the
+    New-whose-projcode-already-exists case ``dispatch.select_service`` routes
+    to ``update``.
+
+    Applied by the CALLER, like :func:`stamp_waiting_days` and
+    :func:`enrich_worklist`, and for a sharper reason than either: this must
+    **not** go inside :func:`classify_accounts`, which Feed B also runs — from
+    the sweep, into a cache. A flag computed at sweep time and read an hour
+    later is a claim about the database that nothing rechecked. Feed B has no
+    use for it anyway: its cohort is `numbers - known`, so every row there is
+    by construction a number SAM has no project for.
+
+    Two states, not the three ``_annotate_project_existence`` gives the action
+    log. There, a projcode that fails to resolve means an action *already ran*
+    naming a project SAM does not have — worth an operator's attention, hence
+    the warning branch. Here the action has **not** completed; that is why the
+    account is missing. A number with no project yet is the expected case, so
+    there is no third state to draw.
+    """
+    actions = [a for row in rows for a in (row.get('actions') or ())]
+    for action in actions:
+        action['is_project'] = False
+
+    codes = {a['request_number'] for a in actions if a.get('request_number')}
+    if not codes:
+        return
+
+    known = {c for (c,) in session.query(Project.projcode)
+             .filter(Project.projcode.in_(sorted(codes))).all()}
+    for action in actions:
+        action['is_project'] = action.get('request_number') in known
 
 
 def stamp_waiting_days(rows: Sequence[Dict[str, Any]], *,

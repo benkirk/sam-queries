@@ -438,6 +438,14 @@ class TestingConfig(SAMWebappConfig):
     # way round: the default is deterministic and the exception is declared.
     XRAS_ACTIONS_CAPTURE_ONLY = True
 
+    # Same reasoning one direction further out: a developer with
+    # XRAS_WRITE_ENABLED=1 in their `.env` — which is what a local write smoke
+    # needs — must not have the test suite inherit a live write capability
+    # against production XRAS. Pinned False so `write_configured` is False for
+    # every test that does not say otherwise, and tests of the armed path
+    # override `app.config` explicitly.
+    XRAS_WRITE_ENABLED = False
+
 
 _configs = {
     'development': DevelopmentConfig,

@@ -1,0 +1,40 @@
+{#
+  Shared chrome for the three read-only XRAS detail modals (request / user /
+  opportunity), all rendered into #auditDetailsModalBody by _render_xras_modal.
+  Before this the OOB title, the Back link and the Done footer were hand-copied
+  into each of the three templates.
+
+  ⚠️ Every control here is swap-in-place, never `data-bs-toggle="modal"`: this
+  body replaces the open #auditDetailsModal's body, and a toggle would fire on
+  the open modal and HIDE it (the PR #464 self-closing-modal bug). The Back link
+  is a plain hx-get into the body for exactly that reason.
+
+  Usage:
+    {% import 'dashboards/allocations/partials/xras_modal_shell.html' as shell %}
+    {% call shell.modal_title() %}Request — {{ request_number }}{% endcall %}
+    {{ shell.back_link(back_url, back_request_number) }}
+    ... body ...
+    {{ shell.done_footer() }}
+#}
+
+{% macro modal_title() %}
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    {{ caller() }}
+</h5>
+{% endmacro %}
+
+{% macro back_link(back_url, back_request_number) %}
+{% if back_url %}
+<a href="#" class="small d-inline-block mb-3"
+   hx-get="{{ back_url }}"
+   hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+    <i class="fas fa-arrow-left"></i> Back to request {{ back_request_number }}
+</a>
+{% endif %}
+{% endmacro %}
+
+{% macro done_footer() %}
+<div class="d-flex justify-content-end mt-3">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Done</button>
+</div>
+{% endmacro %}

@@ -62,24 +62,27 @@ def dashboard_page_routes():
         '/admin/expirations/export',
         # JSON diagnostic endpoint.
         '/allocations/cache/status',
-        # htmx fragment, despite the rule not saying so — the view is
-        # `expirations_fragment` and it returns bare cards plus an OOB badge,
-        # with no <html> wrapper. The filters below key off the *rule*
-        # (`/htmx/`, `_fragment` suffix) and this one is spelled
-        # `/admin/expirations`, so it has to be named explicitly. Found by the
-        # dark-mode sweep: `assert_theme_applied` reported `data-bs-theme` was
-        # None here, which is exactly right for a fragment and impossible for a
-        # page. It was previously swept as a page and passed only because a
-        # fragment emits no console errors.
-        '/admin/expirations',
     }
     rows = json.loads(ROUTE_MAP.read_text())
     return sorted({
-        rule for _endpoint, rule, methods in rows
+        rule for endpoint, rule, methods in rows
         if 'GET' in methods
         and '<' not in rule                 # no URL converters
         and '/htmx/' not in rule            # htmx fragment, not a page
-        and not rule.endswith('_fragment')
+        # ⚠️ Classify on the ENDPOINT, not the rule. A fragment view is named
+        # `*_fragment` by convention, but its URL need not be: `/admin/expirations`
+        # is `expirations_fragment`, and `/allocations/xras_remediations` is
+        # `xras_remediations_fragment`. Keying off the rule meant each such route
+        # had to be named in `skip` by hand, one incident at a time — the first
+        # was found when `assert_theme_applied` reported `data-bs-theme` was None,
+        # which is exactly right for a fragment and impossible for a page, and the
+        # second the same way when the XRAS Remediations card landed.
+        #
+        # Before that, both were swept as pages and PASSED, because a fragment
+        # emits no console errors — so the sweep was reporting coverage it did
+        # not have. Endpoint-based classification closes the class instead of
+        # chasing names.
+        and not endpoint.endswith('_fragment')
         and rule not in skip
     })
 
@@ -115,6 +118,27 @@ window.__samErrors = window.__samErrors || [];
 """
 
 
+def _is_report_only_csp(text: str) -> bool:
+    """A browser **report-only** CSP violation — advisory, never a page failure.
+
+    Dropped at the source rather than added to ``ALLOWED_CONSOLE`` for two
+    reasons. First, report-only is benign *by construction*: the browser logs
+    the report and takes "no further action", so the page behaves exactly as it
+    would with a clean console — which is all the sweep asks. Second, the
+    concrete case is a **third party**: ``/status/events`` embeds a Google
+    Calendar, and ``calendar.google.com`` serves its own report-only
+    ``frame-ancestors 'self'`` — a header SAM cannot change and a frame that
+    still loads. An allowlist entry would fail the no-dead-entries ratchet
+    anyway, which only visits ``/user/accounts`` and ``/admin/projects``, so the
+    pattern would match nothing and read as dead.
+
+    Scoped tightly to report-only so an *enforced* CSP violation — one where the
+    browser actually blocked something — still fails the sweep loudly.
+    """
+    low = (text or '').lower()
+    return 'report-only' in low and 'content security policy' in low
+
+
 class ErrorCollector:
     """Captures the three channels a broken front end actually speaks through."""
 
@@ -126,7 +150,7 @@ class ErrorCollector:
         page.on('pageerror', lambda exc: self.exceptions.append(str(exc)))
 
     def _on_console(self, message):
-        if message.type == 'error':
+        if message.type == 'error' and not _is_report_only_csp(message.text):
             self.console.append(message.text)
 
     def htmx(self):

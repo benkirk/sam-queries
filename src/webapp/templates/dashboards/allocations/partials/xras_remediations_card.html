@@ -1,0 +1,354 @@
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{#
+  XRAS Remediations — the operator WRITE surface.
+
+  Context:
+    groups          [{name, opportunity_id, rows[]}] grouped by opportunity
+    total           rows after filtering;  swept_total  rows before the window
+    snapshot        the published index payload, or None
+    configured      XRAS_OUTGOING_ENABLED + key;  write_enabled  + XRAS_WRITE_ENABLED
+    has_worklist    a sweep has published the ACCOUNT worklist (see below)
+    *_values / selected_*  facet state
+    form_id, fragment_url, target_id
+
+  ── EVERY BUTTON HERE WRITES TO PRODUCTION XRAS ──────────────────────────
+  This is a scoped subset of the external XRAS admin dashboard, not a
+  replacement for it. Merging deletes an account. Withdrawing de-approves an
+  award and rewrites its history. Neither is undone by closing the tab.
+
+  ── FOUR EMPTY STATES, AND THEY MEAN DIFFERENT THINGS ────────────────────
+  The third is the subtle one: a sweep has published the account worklist but
+  not this index, which is exactly the window between deploying this feature
+  and the first sweep that carries it. Reporting that as "nothing to
+  remediate" would be a lie during the one hour an operator is most likely to
+  be looking at a brand-new card.
+#}
+<div class="card mb-3">
+    <div class="card-header d-flex align-items-center flex-wrap gap-2">
+        <strong>XRAS Remediations</strong>
+        {% if snapshot %}
+        <span class="badge bg-secondary">{{ total | fmt_number }} request(s)</span>
+        {# ⚠️ "N of M" whenever the window hides rows, never a bare N — and on
+           THIS card the hidden ones skew urgent. A 2015 approval nobody ever
+           pushed is the row most worth closing, and it is the first thing any
+           recency filter drops. #}
+        {# `window_total`, NOT `total`: this badge names the date filter, so it
+           must count only what the date filter hid. Against `total` it would
+           grow with every chip and every keystroke in the search box and
+           blame the window for them. #}
+        {% if window_total != swept_total %}
+        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+              title="Older requests are hidden by the date filter above. On this card an older request is usually the MORE urgent one — widen the filter to see them.">
+            {{ (swept_total - window_total) | fmt_number }} outside the date filter
+        </span>
+        {% endif %}
+        <span class="ms-auto small text-muted"
+              title="This card renders what the xras_sweep task last published; it is not fetched live. Rows you have just acted on are refreshed individually and marked.">
+            swept {{ snapshot.generated_at | fmt_date }}
+            {%- if snapshot.statuses %} · {{ snapshot.statuses | join(', ') }}{% endif %}
+            {%- for status, info in (snapshot.extra_statuses or {}).items() %}
+                {%- if info.budget_exhausted %} · <span class="text-warning">{{ status }} page cap reached</span>{% endif %}
+            {%- endfor %}
+        </span>
+        {% endif %}
+    </div>
+
+    <div class="card-body">
+    {% if not configured %}
+        <div class="alert alert-secondary mb-0">
+            <strong>The outgoing XRAS API is not configured.</strong>
+            Remediations read and write through it, so nothing can be shown or
+            done here until <code>XRAS_OUTGOING_ENABLED</code> and an API key
+            are set.
+        </div>
+    {% elif snapshot is none and not has_worklist %}
+        <div class="alert alert-secondary mb-0">
+            <strong>No sweep has published yet.</strong>
+            The <code>xras_sweep</code> task builds this list once an hour; it
+            may be disabled, or this may be the first hour after a deploy.
+        </div>
+    {% elif snapshot is none %}
+        {# A sweep has published the account worklist but not this index. Two
+           causes, and the copy has to cover both: the hour after this feature
+           deploys, and the independent-failure case the two keys exist for —
+           the index write failing or being evicted while the worklist
+           survives. Naming the deploy specifically would be wrong for the
+           second, so the copy states what is true either way.
+
+           Distinguishing this from "nothing to remediate" is the whole reason
+           the route looks for the worklist key at all. #}
+        <div class="alert alert-info mb-0">
+            <strong>The last sweep did not publish this list.</strong>
+            A sweep has run — the account worklist is there — but this list is
+            not. It arrives with the next sweep, within the hour.
+        </div>
+    {% elif not swept_total %}
+        <div class="text-muted mb-0">
+            Nothing to remediate. Every swept request is where it should be.
+        </div>
+    {% else %}
+
+        {# One warning, said once, at the top — not repeated on every button,
+           where it would become wallpaper and stop being read. #}
+        <div class="alert alert-warning d-flex gap-2 py-2 mb-3">
+            <i class="fas fa-triangle-exclamation mt-1"></i>
+            <div class="small">
+                <strong>These actions change production XRAS.</strong>
+                Each one is confirmed, verified by re-reading XRAS afterwards,
+                and recorded against your username in the remediation log.
+                {% if not write_enabled %}
+                <br><strong>Writes are currently switched off</strong>
+                (<code>XRAS_WRITE_ENABLED</code>), so the controls below are
+                disabled.
+                {% endif %}
+            </div>
+        </div>
+
+        {# ⚠️ The controls render whenever anything was swept — NOT only when
+           rows survive. Inside the old `{% if groups %}` they vanished at the
+           moment they emptied the card, leaving copy that said "clear the
+           chips" above a card with no chips on it and no way back. #}
+        <div class="facet-grid mb-3">
+            <div class="facet-grid-label">Search</div>
+            <div class="facet-grid-values">
+                {# `form=`: the input lives here, next to the chips, but belongs
+                   to the hidden filter form two files over, so a chip click
+                   (which submits that form) carries the search term with it.
+                   Form-associated controls are in `form.elements` and in
+                   `new FormData(form)`, which is what htmx serializes.
+
+                   Outside the swap target it would not need this; inside one,
+                   htmx restores focus and caret to the element with the same
+                   id after the swap, which is what makes typing survive a
+                   300 ms round trip. Hence the stable id. #}
+                <input type="search" class="form-control form-control-sm"
+                       id="xras-remediation-search" name="search"
+                       form="{{ form_id }}" value="{{ search or '' }}"
+                       autocomplete="off" style="width: 24rem; max-width: 100%;"
+                       placeholder="Request number, project code, or a name"
+                       title="The request number IS the projcode. Also matches the project lead and every roster member, by name or username — including the ones only visible once a row is expanded."
+                       hx-get="{{ fragment_url }}"
+                       hx-target="#{{ target_id }}"
+                       hx-swap="innerHTML"
+                       hx-trigger="input changed delay:300ms, search"
+                       hx-include="#xras-window-filters, #{{ form_id }}">
+            </div>
+            {{ facet_row('Status', status_values, form_id, 'status',
+                         active=selected_statuses) }}
+            {{ facet_row('Opportunity', opportunity_values, form_id, 'opportunity',
+                         active=selected_opportunities) }}
+            {{ facet_row('SAM project', push_values, form_id, 'push',
+                         active=selected_push) }}
+            {# Built in the route — Jinja has no list comprehension. Present
+               only when a request filter is active, which is how the action
+               log's "Show in action log" round-trip renders a clearable chip. #}
+            {{ facet_row('Request', request_values, form_id, 'request_number',
+                         active=selected_requests) }}
+        </div>
+
+        {% if not groups %}
+        {# ⚠️ "No matches" would be a misleading thing to say here. The shared
+           window defaults to a recent lookback, and on THIS card the rows it
+           hides are the ones most worth acting on — a request approved years
+           ago and never pushed is precisely a remediation. So when the filter
+           is what emptied the card, the card says so and says how many, rather
+           than implying there is no work. #}
+        <div class="alert alert-warning mb-0">
+            <strong>{{ swept_total | fmt_number }} request(s) were swept, and
+            the current filters hide all of them.</strong>
+            On this card an older request is usually the <em>more</em> urgent
+            one — widen the date filter above, or clear the search and chips,
+            to see them.
+        </div>
+        {% else %}
+        <div class="table-responsive">
+        {# Same class string as the three sibling cards. `table-hover` is not
+           decoration here: every row on this table is a click target, and
+           without the hover tint the only cue is the cursor. #}
+        <table class="table table-sm table-hover align-middle mb-0">
+            {# ⚠️ Widths are load-bearing, not tidiness. Auto layout has to
+               find room for the opportunity-name group header, which is a
+               `colspan` cell — so its width demand is distributed across all
+               the columns, and the ones holding short fixed-width strings
+               (an 8-character request number, an ISO date) were absorbing it
+               while `Submitted` wrapped its date onto two lines. Pinning the
+               five predictable columns leaves `Project lead` — the one column
+               whose content really does vary — as the single thing that
+               stretches. #}
+            <thead class="table-subtle">
+                <tr>
+                    <th style="width:9rem;">Request</th>
+                    <th style="width:8rem;">Status</th>
+                    {# The two person-name columns share the slack equally (50%
+                       each), so an Allocation-Manager name doesn't wrap while the
+                       lead column has room to spare. Same idiom as xras_table's
+                       Errors column, just split across both: the group header's
+                       `colspan` overflow lands on these two, not the fixed ones.
+                       "Project Admin" is SAM's language for the XRAS "Allocation
+                       Manager" role (ROLE_TYPES in admin_client.py); blank on the
+                       many requests that name no admin. #}
+                    <th style="width:50%;">Project lead</th>
+                    <th style="width:50%;">Project Admin</th>
+                    <th class="text-nowrap" style="width:7rem;">Submitted</th>
+                    <th class="text-nowrap" style="width:11rem;">Period</th>
+                    <th class="text-end" style="width:11rem;">SAM</th>
+                </tr>
+            </thead>
+            {% for group in groups %}
+            {# The opportunity group is the collapsible layer now (default open).
+               Its header is one tbody carrying the toggle; the member rows live
+               in a sibling `collapse show` tbody keyed on the opportunity id
+               (loop.index when XRAS gives no id). Multiple <tbody> per table is
+               valid HTML and each keeps the thead's column model.
+
+               nav-view-persistence.js persists these `.collapse[id]` groups for
+               free (save on open, restore on load) and only ever calls .show(),
+               so a default-open group can never come back collapsed on reload. #}
+            {% set gid = 'xopp-' ~ (group.opportunity_id or loop.index) %}
+            <tbody>
+                {# ⚠️ `table-subtle`, NEVER Bootstrap's `table-light`. The
+                   stock class hardcodes `--bs-table-color: #000` on a light
+                   tint, so in dark mode it paints a light stripe with black
+                   text across a dark table. `.table-subtle` is SAM's
+                   token-driven replacement — byte-identical in light mode
+                   (`--surface-tertiary` IS #f8f9fa) and correct in dark. See
+                   the comment above `.table-subtle` in dashboard.css. #}
+                {# ⚠️ The opportunity NAME now opens the opportunity modal when
+                   outgoing XRAS is configured, so the toggle can no longer live
+                   on the <tr> (or on this cell): Bootstrap's collapse data-api
+                   runs in the capture phase, so a click on the link would fire
+                   the toggle first and flip the group as well. The chevron and
+                   the count badge each get their OWN trigger span; the name sits
+                   between them as a plain link. Same pattern as the
+                   Accounts-Needed username cell. The bare #id folds into the
+                   modal — the header just carries the name. #}
+                <tr class="table-subtle fw-semibold">
+                    <td colspan="7">
+                        <span class="cursor-pointer" {{ collapse_toggle(gid, expanded=true) }}><i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i></span>
+                        {% if configured and group.opportunity_id %}
+                        <a href="#" class="text-decoration-none fw-semibold" title="View this opportunity"
+                           data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                           hx-get="{{ url_for('allocations_dashboard.xras_opportunity_detail',
+                                              opportunity_id=group.opportunity_id) }}"
+                           hx-target="#auditDetailsModalBody" hx-swap="innerHTML">{{ group.name }}</a>
+                        {% else %}
+                        {{ group.name }}
+                        {% endif %}
+                        <span class="cursor-pointer" {{ collapse_toggle(gid, expanded=true) }}><span class="badge bg-secondary ms-1">{{ group.rows | length }}</span></span>
+                    </td>
+                </tr>
+            </tbody>
+            <tbody id="{{ gid }}" class="collapse show">
+                {% for row in group.rows %}
+                <tr>
+                    {# The request number opens the full read-only detail modal —
+                       the same view the per-request expansion used to hold, now
+                       the single opener. This cell is no longer a collapse
+                       trigger, so the modal link is safe (no capture-phase
+                       conflict; the old five-cell toggle split is gone with the
+                       expansion). A plain <a> with an inner `.font-monospace`,
+                       NOT `.btn` — `.btn` uppercases (dashboard.css). #}
+                    <td class="text-nowrap">
+                        <a href="#" class="text-decoration-none"
+                           title="Full request detail (read-only)"
+                           data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                           hx-get="{{ url_for('allocations_dashboard.xras_request_detail',
+                                              request_number=row.request_number) }}"
+                           hx-target="#auditDetailsModalBody"
+                           hx-swap="innerHTML"><span class="font-monospace">{{ row.request_number }}</span></a>
+                        {% if row.refreshed_at %}
+                        {# The tell that this row was patched after a write
+                           rather than swept — so an operator can see their own
+                           change landed instead of wondering. #}
+                        <i class="fas fa-circle-check text-success ms-1"
+                           title="Updated just now, after your change — newer than the sweep."></i>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="badge bg-body-secondary text-body-secondary border">
+                            {{ row.status or '—' }}
+                        </span>
+                    </td>
+                    <td>{{ row.pi.name or row.pi.username or '—' }}</td>
+                    {# `is defined`, not a bare access: this card renders the
+                       PUBLISHED snapshot, which may be one sweep behind the code
+                       — a row swept before `admin` existed has no such key, and
+                       a bare `row.admin.name` would 500 the whole card for the
+                       hour between a deploy and the next sweep. #}
+                    <td>{% if row.admin is defined and row.admin %}{{ row.admin.name or row.admin.username or '—' }}{% else %}—{% endif %}</td>
+                    <td class="text-nowrap">{{ row.submit_date | fmt_date }}</td>
+                    <td class="small text-muted text-nowrap">
+                        {{ row.begin_date | fmt_date }} – {{ row.end_date | fmt_date }}
+                    </td>
+                    {# One column, not two. The second was a full-width column
+                       spent on "1 action(s)" — true of every row on the card,
+                       so it carried no information and crowded out the ones
+                       that do. The count now appears only when it is NOT one,
+                       which is the case a withdraw has to reason about (the
+                       request stays open) and the only case worth a glance.
+
+                       The flags belong beside the SAM state because they are
+                       read together: what is blocking this handoff.
+
+                       No `text-nowrap` here, unlike the date columns: the
+                       rare row carrying both a flag and the SAM badge would
+                       otherwise set this column's width for all the others,
+                       which mostly hold one short badge. Let that one row be
+                       two lines tall instead. #}
+                    <td class="text-end">
+                        {% if row.actions | length != 1 %}
+                        <span class="text-muted small me-1">{{ row.actions | length }} actions</span>
+                        {% endif %}
+                        {% if row.has_stuck_placeholder %}
+                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle me-1"
+                              title="A roster member is an ARC placeholder that XRAS has already flagged reconciled — a contradiction. XRAS keeps sending the throwaway username and the handoff stays blocked.">
+                            placeholder roster
+                        </span>
+                        {% endif %}
+                        {# ⚠️ The badge IS the link, and only in the `project`
+                           branch — because `pending_push == False` is not a
+                           display choice, it is the sweep's set difference of
+                           `requestNumber` against `Project.projcode`
+                           (xras_sweep.py::_build_requests_index). The badge
+                           already means "a SAM project exists"; linking it is
+                           the same claim, made clickable. This is the "Result"
+                           side — it keeps pointing at the SAM project, while
+                           the Request cell above opens the XRAS request.
+
+                           Two states, not three (unlike xras_table.html's
+                           request-number column): the flag is only as fresh as
+                           the last sweep, and the post-write patch copies the
+                           old value rather than re-deriving it —
+                           `_still_pending` defaults to True
+                           (sam/manage/xras_remediation.py). So a stale row can
+                           withhold a link it could have offered, but can never
+                           offer one to a project that is not there. That
+                           asymmetry is what makes a bare two-state guard safe. #}
+                        {% if row.pending_push %}
+                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">no project</span>
+                        {% else %}
+                        {# ⚠️ An <a>, NOT `btn btn-link`. The Unity button
+                           treatment uppercases (`.btn` in dashboard.css), which
+                           turned the badge into a shouted "PROJECT" — the same
+                           reason `.facet-chip` deliberately opts out of `.btn`.
+                           Seen in the browser, not reasoned about. #}
+                        <a href="#" class="text-decoration-none"
+                           title="View project details"
+                           data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
+                           hx-get="{{ url_for('user_dashboard.project_details_modal',
+                                              projcode=row.request_number) }}"
+                           hx-target="#projectDetailsModalBody"
+                           hx-swap="innerHTML"><span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">project</span></a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            {% endfor %}
+        </table>
+        </div>
+        {% endif %}
+    {% endif %}
+    </div>
+</div>

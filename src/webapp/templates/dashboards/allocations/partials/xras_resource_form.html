@@ -1,0 +1,60 @@
+{#
+  Amount editor for one resource on one action, rendered into
+  #auditDetailsModalBody. On save the handler re-renders the whole detail modal
+  in place, so the operator sees the new figure beside the others.
+
+  Context: request_number, action_id, resource_id, stage, is_award,
+           resource_name, resource_units, current_amount, current_comment,
+           write_enabled, admin_context_available, post_url, back_url.
+
+  ⚠️ On our current XRAS key only the Requested stage is writable (Phase 0.5);
+  the Approved/Recommended editors render locked until an elevated key lands.
+#}
+{% from 'dashboards/fragments/form_fields.html' import number_field, textarea_field, form_errors_panel with context %}
+{% set locked = (not write_enabled) or (is_award and not admin_context_available) %}
+
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    Edit amount — {{ request_number }}
+</h5>
+
+<p class="text-muted small">
+    Editing the <strong>{{ stage }}</strong> amount for
+    <strong>{{ resource_name }}</strong>{% if resource_units %}
+    ({{ resource_units }}){% endif %} on action {{ action_id }}.
+    {%- if stage == 'Requested' %} This changes the <em>requested</em> figure,
+    not the award.{% endif %}
+</p>
+
+{% if is_award and not admin_context_available %}
+<div class="alert alert-warning py-2 small">
+    Editing the <strong>awarded</strong> amount needs an elevated XRAS key
+    (admin/review context), which this deployment does not have yet. This
+    editor is read-only until it lands.
+</div>
+{% elif not write_enabled %}
+<div class="alert alert-warning py-2 small">
+    XRAS writes are switched off for this deployment
+    (<code>XRAS_WRITE_ENABLED</code>).
+</div>
+{% endif %}
+
+<form hx-post="{{ post_url }}" hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+    {# Outside the fieldset so it always submits, even were the fieldset disabled. #}
+    <input type="hidden" name="stage" value="{{ stage }}">
+    <fieldset {% if locked %}disabled{% endif %}>
+        {{ number_field('amount', 'Amount', required=True, min=0, step='any',
+                        default=current_amount,
+                        help='In ' ~ (resource_units or 'the resource units') ~ '.') }}
+        {{ textarea_field('comment', 'Comment', rows=2,
+                          default=current_comment or '',
+                          help='Stored on the resource in XRAS; leave blank to clear it.') }}
+    </fieldset>
+    {{ form_errors_panel() }}
+    <div class="d-flex justify-content-between mt-3">
+        <button type="button" class="btn btn-outline-secondary"
+                hx-get="{{ back_url }}" hx-target="#auditDetailsModalBody"
+                hx-swap="innerHTML">Back</button>
+        <button type="submit" class="btn btn-primary"
+                {% if locked %}disabled{% endif %}>Save</button>
+    </div>
+</form>

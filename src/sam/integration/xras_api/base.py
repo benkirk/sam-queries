@@ -33,3 +33,37 @@ class XrasApiNotConfigured(XrasSourceUnavailable):
     "could not ask" — so it degrades through exactly the same path as a
     timeout instead of needing a second branch everywhere.
     """
+
+
+class XrasWriteNotConfigured(XrasApiNotConfigured):
+    """``XRAS_WRITE_ENABLED`` is off, or the read lever/key is missing.
+
+    A *subclass* of the read-side not-configured error for the same reason
+    that one subclasses :class:`XrasSourceUnavailable`: a route that already
+    degrades on "could not ask" degrades correctly on "may not write" without
+    a second branch. Routes that want to say something more specific — the
+    remediation modals do — catch this first.
+    """
+
+
+class XrasWriteRejected(XrasSourceUnavailable):
+    """XRAS reached us, understood the write, and refused it.
+
+    Distinct from :class:`XrasSourceUnavailable` because the operator can act
+    on it and a retry cannot fix it:
+
+    * **401** — ``XA-USER`` holds no role on that request. Every request-scoped
+      write authorizes this way; the fix is impersonating a role-holder,
+      preferably the PI.
+    * **400** — validation failed. :attr:`errors` carries XRAS's own list,
+      which is what the re-submit modal renders.
+    * **404** — the route accepted us and the *target* did not resolve.
+
+    ``status`` and ``errors`` are attributes rather than message text because
+    the modals branch on them.
+    """
+
+    def __init__(self, message: str, *, status: int = 0, errors=None) -> None:
+        super().__init__(message)
+        self.status = status
+        self.errors = list(errors or ())

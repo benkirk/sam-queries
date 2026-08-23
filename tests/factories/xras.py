@@ -29,6 +29,7 @@ from sam.integration.xras import (
     XrasActionLog,
     XrasActivationEvent,
     XrasOpportunityAllocationType,
+    XrasRemediationEvent,
     XrasResourceRepositoryKeyResource,
 )
 
@@ -121,6 +122,39 @@ def make_xras_activation_event(session, project, event_type, *, when=None,
     event = XrasActivationEvent.create(
         session, project_id=project.project_id, event_type=event_type,
         created_by=by, comment=comment, notified_to=notified_to,
+    )
+    if when is not None:
+        event.creation_time = when
+        session.flush()
+    return event
+
+
+def make_xras_remediation_event(session, *, operation='merge_person',
+                                status='attempted', by='benkirk', when=None,
+                                username=None, target_username=None,
+                                request_number=None, request_id=None,
+                                action_id=None, role_id=None, role_type=None,
+                                xa_user=None, comment=None, before_state=None):
+    """One operator write against XRAS, as SAM recorded it.
+
+    Defaults to the ``attempted`` merge row, because that is the state the
+    service writes *before* dispatch and therefore the one every test about
+    surviving a failure starts from.
+
+    ``when`` back-dates ``creation_time`` after the fact for the same reason
+    :func:`make_xras_activation_event` does: ``create`` always stamps *now*,
+    which is right in production and useless for testing an ordering rule.
+
+    No FK graph to build — deliberately. Every identifier on this table belongs
+    to XRAS, so a remediation row needs no project, no user, and no action log
+    entry to exist.
+    """
+    event = XrasRemediationEvent.create(
+        session, operation=operation, status=status, created_by=by,
+        username=username, target_username=target_username,
+        request_number=request_number, request_id=request_id,
+        action_id=action_id, role_id=role_id, role_type=role_type,
+        xa_user=xa_user, comment=comment, before_state=before_state,
     )
     if when is not None:
         event.creation_time = when

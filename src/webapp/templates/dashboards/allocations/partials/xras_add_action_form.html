@@ -1,0 +1,35 @@
+{#
+  Add-action picker (Part C, ADMIN_XRAS), rendered into #auditDetailsModalBody.
+  On save the handler re-renders the detail modal in place.
+
+  Context: request_number, action_type_options[(value,label)], write_enabled,
+           post_url, back_url.
+#}
+{% from 'dashboards/fragments/form_fields.html' import select_field, form_errors_panel with context %}
+
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    Add action — {{ request_number }}
+</h5>
+
+<div class="alert alert-warning py-2 small">
+    Adds a new action to this request in <strong>XRAS</strong>. This is close to
+    starting a new request and cannot be undone from SAM.
+    {% if not write_enabled %}
+    <br>XRAS writes are switched off (<code>XRAS_WRITE_ENABLED</code>).
+    {% endif %}
+</div>
+
+<form hx-post="{{ post_url }}" hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+    <fieldset {% if not write_enabled %}disabled{% endif %}>
+        {{ select_field('action_type', 'Action type', required=True,
+                        options=action_type_options, placeholder='Choose…') }}
+    </fieldset>
+    {{ form_errors_panel() }}
+    <div class="d-flex justify-content-between mt-3">
+        <button type="button" class="btn btn-outline-secondary"
+                hx-get="{{ back_url }}" hx-target="#auditDetailsModalBody"
+                hx-swap="innerHTML">Back</button>
+        <button type="submit" class="btn btn-danger"
+                {% if not write_enabled %}disabled{% endif %}>Add action</button>
+    </div>
+</form>

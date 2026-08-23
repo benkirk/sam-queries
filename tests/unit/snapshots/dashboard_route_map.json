@@ -1498,6 +1498,20 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_action_fields_edit",
+    "/allocations/xras_action_fields_edit/<path:request_number>/<int:action_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_action_fields_form",
+    "/allocations/xras_action_fields_form/<path:request_number>/<int:action_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_activate",
     "/allocations/xras_activate/<int:project_id>",
     [
@@ -1505,8 +1519,57 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_add_action",
+    "/allocations/xras_add_action/<path:request_number>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_add_action_form",
+    "/allocations/xras_add_action_form/<path:request_number>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_attributes_edit",
+    "/allocations/xras_attributes_edit/<path:request_number>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_attributes_form",
+    "/allocations/xras_attributes_form/<path:request_number>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_comment",
     "/allocations/xras_comment/<int:project_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_dates_edit",
+    "/allocations/xras_dates_edit/<path:request_number>/<int:action_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_dates_form",
+    "/allocations/xras_dates_form/<path:request_number>/<int:action_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_dates_remove",
+    "/allocations/xras_dates_remove/<path:request_number>/<int:action_id>/<int:allocation_date_id>",
     [
       "POST"
     ]
@@ -1540,6 +1603,20 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_merge",
+    "/allocations/xras_merge/<path:username>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_merge_form",
+    "/allocations/xras_merge_form/<path:username>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_notify",
     "/allocations/xras_notify/<int:project_id>",
     [
@@ -1549,6 +1626,13 @@
   [
     "allocations_dashboard.xras_notify_form",
     "/allocations/xras_notify_form/<int:project_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_opportunity_detail",
+    "/allocations/xras_opportunity_detail/<int:opportunity_id>",
     [
       "GET"
     ]
@@ -1575,6 +1659,55 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_remediations_fragment",
+    "/allocations/xras_remediations",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_request_delete",
+    "/allocations/xras_request_delete/<path:request_number>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_request_detail",
+    "/allocations/xras_request_detail/<path:request_number>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_request_renew",
+    "/allocations/xras_request_renew/<path:request_number>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_resource_edit",
+    "/allocations/xras_resource_edit/<path:request_number>/<int:action_id>/<int:resource_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_resource_form",
+    "/allocations/xras_resource_form/<path:request_number>/<int:action_id>/<int:resource_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_resource_remove",
+    "/allocations/xras_resource_remove/<path:request_number>/<int:action_id>/<int:resource_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_restore",
     "/allocations/xras_restore/<int:project_id>",
     [
@@ -1582,8 +1715,57 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_resubmit",
+    "/allocations/xras_resubmit/<path:request_number>/<int:action_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_resubmit_form",
+    "/allocations/xras_resubmit_form/<path:request_number>/<int:action_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_role_add",
+    "/allocations/xras_role_add/<path:request_number>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_role_remove",
+    "/allocations/xras_role_remove/<path:request_number>/<int:role_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_user_detail",
+    "/allocations/xras_user_detail/<path:username>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_window_fragment",
     "/allocations/xras_window_fragment",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_withdraw",
+    "/allocations/xras_withdraw/<path:request_number>/<int:action_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_withdraw_form",
+    "/allocations/xras_withdraw_form/<path:request_number>/<int:action_id>",
     [
       "GET"
     ]

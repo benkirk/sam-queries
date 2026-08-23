@@ -93,6 +93,37 @@ def pytest_configure(config):
     os.environ.setdefault("STATUS_DB_PASSWORD", "test-placeholder-pass")
     os.environ.setdefault("STATUS_DB_SERVER",   "test-placeholder-host")
 
+    # ---- Outbound XRAS credentials: pinned FAIL-CLOSED, before anything
+    # imports `sam` --------------------------------------------------------
+    #
+    # ⚠️ The suite otherwise inherits a **live, write-provisioned production
+    # API key**. `src/sam/session/__init__.py` calls `load_dotenv()` at import,
+    # so a developer's `.env` — which supplies `XRAS_OUTGOING_ENABLED=1` and a
+    # real `XRAS_API_KEY` — lands in `os.environ` during collection. Measured
+    # 2026-08-21: `xras_api_configured()` returned **True** inside the suite,
+    # and `tests/unit/test_xras_accounts_card.py` was previously observed
+    # making real `GET https://api.xras.org/v1/people/<username>` calls
+    # (docs/plans/XRAS_ACCOUNT_QUEUE.md).
+    #
+    # That was already wrong — a unit suite must not depend on a remote host
+    # being up, nor tell that host which usernames it tests. It became
+    # dangerous when the same key gained a **write** client: person merge
+    # DELETES an account and has no undo.
+    #
+    # Set here rather than in a fixture because `load_dotenv` runs at import
+    # time, during collection. Assigned rather than `setdefault`-ed because
+    # the point is to occupy the names **before** dotenv fills them: with
+    # `override=False` (the default) dotenv skips any key already present, and
+    # an empty string counts as present. This is the same asymmetry that makes
+    # `unset VAR` a no-op for the CLI, used deliberately in reverse.
+    #
+    # A test that needs the configured path monkeypatches these to fakes —
+    # which is exactly what every XRAS test already does. Nothing here can
+    # re-supply the real key.
+    os.environ["XRAS_API_KEY"] = ""
+    os.environ["XRAS_OUTGOING_ENABLED"] = "0"
+    os.environ["XRAS_WRITE_ENABLED"] = "0"
+
     url = os.environ.get("SAM_TEST_DB_URL")
     if not url:
         pytest.exit(
@@ -177,6 +208,76 @@ def _no_smtp_sockets(monkeypatch):
 
     monkeypatch.setattr(smtplib, "SMTP", _blocked)
     monkeypatch.setattr(smtplib, "SMTP_SSL", _blocked)
+
+
+# ---- No test may make a real outbound HTTP request ------------------------
+#
+# The sibling of the SMTP block above, for the same structural reason and with
+# a sharper edge. `pytest_configure` pins `XRAS_API_KEY` empty and both XRAS
+# levers off — but config is a value a test can override and a fixture can
+# forget, and several XRAS tests legitimately set fake credentials to exercise
+# the configured path. If one of them ever sets a fake lever and a REAL key
+# (they are separate `monkeypatch.setenv` lines, so this is one careless edit
+# away), the client would build and dial out.
+#
+# What that costs is not symmetric with the notify case. Outbound XRAS reads
+# leak which usernames the suite tests to a third party and make the suite
+# depend on a remote host. Outbound XRAS *writes* are worse: the same key can
+# merge one person into another, which **deletes** the source account in
+# production, and there is no undo. `tests/unit/test_xras_admin_client.py`
+# pins single-attempt-no-retry, which means such a call would not even be
+# retried into visibility — it would simply happen, once, silently.
+#
+# So the socket is closed, not merely discouraged. Every XRAS test drives its
+# transport through a mock (`monkeypatch.setattr(client.session, 'request',
+# ...)`) or replaces `from_environment` wholesale; both set an *instance*
+# attribute or a class method, which shadow this patch on `Session.request`
+# and keep working untouched.
+#
+# Localhost is allowed through: nothing in the suite uses it today (the Flask
+# test client never touches `requests`), but a future fixture driving a local
+# stub server is a legitimate thing to do and blocking it would be surprising.
+#
+# ⚠️ This does NOT apply to `e2e/`, which has its own conftest and drives a
+# real running container over HTTP by design. Nor to
+# `scripts/xras/probe_outgoing.py`, which is opt-in and not a test.
+
+_ALLOWED_HTTP_HOSTS = ('localhost', '127.0.0.1', '::1', 'testserver')
+
+
+class _OutboundHttpBlockedInTests(RuntimeError):
+    """Raised when a test tries to reach a real remote host."""
+
+
+@pytest.fixture(autouse=True)
+def _no_outbound_http(monkeypatch):
+    """Make every real outbound HTTP request fail loudly."""
+    import requests
+
+    real_request = requests.sessions.Session.request
+
+    def _guarded(self, method, url, *args, **kwargs):
+        from urllib.parse import urlsplit
+
+        host = (urlsplit(str(url)).hostname or '').lower()
+        if host and host not in _ALLOWED_HTTP_HOSTS:
+            raise _OutboundHttpBlockedInTests(
+                # Upper-cased: the module helpers (`requests.get`) pass the
+                # verb lowercase, and "a real get request" reads as prose.
+                f"A test tried to make a real {str(method).upper()} request "
+                f"to {host}. "
+                "The unit suite must never reach a remote host: it would "
+                "depend on that host being up, and tell it what the suite "
+                "tests. For XRAS it is worse — the outbound key is "
+                "write-provisioned, and a person merge DELETES an account in "
+                "production with no undo. Mock the transport "
+                "(monkeypatch.setattr(client.session, 'request', ...)) or the "
+                "client factory (XrasApiClient.from_environment), as every "
+                "existing XRAS test does."
+            )
+        return real_request(self, method, url, *args, **kwargs)
+
+    monkeypatch.setattr(requests.sessions.Session, 'request', _guarded)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -818,3 +919,54 @@ def any_machine(session):
 def any_queue(session):
     from sam.resources.machines import Queue
     return _any_or_skip(session, Queue, "queues")
+
+
+# ---------------------------------------------------------------------------
+# Cross-worker file serialization
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def serial_file_lock(tmp_path_factory):
+    """A named cross-worker lock, for test files that write FIXED identifiers.
+
+    Some fixtures commit rows under hardcoded keys — a committed user with a
+    fixed username, an insert under a documented production PK. Two xdist
+    workers running such tests concurrently either collide on the unique key
+    at setup or deadlock, and InnoDB's deadlock rollback destroys the
+    per-test SAVEPOINT ("SAVEPOINT sa_savepoint_1 does not exist").
+    Whole-suite runs rarely hit it (the tests spread out over two minutes); a
+    single-file ``pytest tests/unit/test_x.py`` concentrates them and fails
+    almost every time.
+
+    Usage — an autouse fixture in the affected file::
+
+        @pytest.fixture(autouse=True)
+        def _one_worker_at_a_time(serial_file_lock):
+            with serial_file_lock('my_fixed_identifiers'):
+                yield
+
+    ⚠️ An ``fcntl`` lock rather than ``--dist loadgroup``, measured
+    2026-08-21: switching the suite to loadgroup made OTHER files' latent
+    deadlocks fire (``load``: 7,586 green; ``loadgroup``: failed twice, in
+    disk-admin / award-audit / contract-audit) — LoadGroupScheduling
+    schedules by scope, which reshuffles timing for every test in the suite.
+    The lock changes nothing outside the file that opts in.
+    """
+    import fcntl
+    from contextlib import contextmanager
+
+    @contextmanager
+    def acquire(name):
+        base = tmp_path_factory.getbasetemp()
+        # Under xdist each worker's basetemp is <shared>/popen-gwN; the
+        # parent is the run-wide directory every worker sees. Serial runs
+        # (-n 0) get the shared directory directly.
+        shared = base.parent if base.name.startswith('popen-') else base
+        with open(shared / f'{name}.lock', 'w') as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle, fcntl.LOCK_UN)
+
+    return acquire

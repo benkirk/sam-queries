@@ -252,6 +252,34 @@ Three consequences, each load-bearing:
    connected to nobody SAM knows — is reachable *before* the push**, with
    their person detail already inline.
 
+### 3.2a `reports/username/:username` payload shape — probed 2026-08-22
+
+Wired for the **XRAS User** modal. Probed live against a PI (`janebaldwin`) and
+an Allocation Manager (`Karpus`); a stuck-placeholder (`*-user-*`) **404s** here
+(and at `/v1/people` and `/v1/permissions`) once merged away, so the modal
+degrades on `None`. `/v1/permissions/:username` returned an **empty list** for
+both real users — carries nothing worth rendering, so it is not wired.
+
+```
+{ panels: [...],                      ← reviewer panel memberships (unused; our
+  requestRoles: [                       people are PIs / Managers, not reviewers)
+    { roleName: "Project Lead",       ← XRAS display vocabulary (Project Lead /
+      requests: [                       Allocation Manager / User) — matches
+        { requestNumber: "UCIR0072",    ROLE_TYPES[].display
+          requestId: 1446007,          (also spelled requestID)
+          requestTitle, actionType, allocationType,
+          opportunity, opportunityId,
+          beginDate, endDate, updateDate,
+          pi, piUsername, piInstitution, coPis[],
+          fos, fosTypeId,
+          requestedResources[], resources[] },
+        ... ] },
+    ... ] }
+```
+
+⚠️ **No `requestStatus`** in this feed — the panel keys each request to the
+Request modal by `requestNumber` (the projcode) for the live status instead.
+
 ### 3.3 `/v1/requests` payload shape
 
 (One request from `reports/requests` / `reports/request_numbers` is this same
@@ -609,7 +637,7 @@ def enrich_worklist(rows, *, person_lookup=None, max_lookups=25) -> dict
 ### 7.3 The dashboard card — read-only this PR
 
 A fragment beside the existing XRAS surfaces in
-`src/webapp/dashboards/allocations/blueprint.py` (which already serves
+`src/webapp/dashboards/allocations/xras/card_routes.py` (which already serves
 `/xras`, `/xras_fragment`, `/xras_pending_fragment`), template under
 `templates/dashboards/allocations/partials/`.
 
@@ -617,7 +645,7 @@ A fragment beside the existing XRAS surfaces in
   `@require_permission(Permission.VIEW_XRAS)`, embedded in `xras.html` with a
   lazy `hx-get`.
 - **PII is gated route-level**, following `xras_pending_fragment`
-  (`blueprint.py:1539-1551`) and the Notifications precedent (counts at one
+  (in `xras/card_routes.py`) and the Notifications precedent (counts at one
   level, rows naming people higher): person columns (name, email,
   organization, academicStatus, residenceCountry) are assembled **only** when
   the viewer holds `MANAGE_XRAS`; a `VIEW_XRAS` response carries username,
