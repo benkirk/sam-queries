@@ -168,6 +168,11 @@
                     {{ action.action_status or '—' }}
                 </span>
             </td>
+            {# When the action was entered/submitted — the recency the card windows
+               on. `entry_date` because an action's own submitDate is often null. #}
+            <td class="text-nowrap small text-muted">
+                {% if action.entry_date or action.submit_date %}{{ (action.entry_date or action.submit_date) | fmt_date }}{% endif %}
+            </td>
             <td class="text-end">
                 {% if action.can_withdraw %}
                 <button type="button" class="btn btn-sm btn-outline-warning" {{ disabled }}
