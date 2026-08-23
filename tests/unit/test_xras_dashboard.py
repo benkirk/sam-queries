@@ -389,7 +389,7 @@ class TestDefaultWindowUpperBound:
     def test_default_window_has_no_upper_bound(self):
         from werkzeug.datastructures import MultiDict
 
-        from webapp.dashboards.allocations.blueprint import _parse_xras_filters
+        from webapp.dashboards.allocations.xras._shared import _parse_xras_filters
 
         filters, _, _ = _parse_xras_filters(MultiDict())
         assert filters['start_date'] is not None, 'still a 30-day lower bound'
@@ -408,7 +408,7 @@ class TestDefaultWindowUpperBound:
         still honoured, normalised to the end of that day."""
         from werkzeug.datastructures import MultiDict
 
-        from webapp.dashboards.allocations.blueprint import _parse_xras_filters
+        from webapp.dashboards.allocations.xras._shared import _parse_xras_filters
 
         filters, _, _ = _parse_xras_filters(
             MultiDict([('end_date', '2026-01-15')]))

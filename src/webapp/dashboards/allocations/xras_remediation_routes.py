@@ -69,7 +69,12 @@ from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import htmx_modal_not_found, htmx_success_message
 from webapp.utils.rbac import Permission, has_permission, require_permission
 
-from .blueprint import _XRAS_MODAL_TRIGGERS, _parse_activity_window, bp
+from . import bp
+from .xras._shared import (
+    _XRAS_MODAL_TRIGGERS, _degraded, _entry, _impersonation, _index,
+    _live_request, _parse_activity_window, _read_client, _render_xras_modal,
+    _role_options, _session_factory,
+)
 
 #: Facet form and swap target — mirrors the sibling cards' pair. Both names are
 #: also written into ``xras.html``; a mismatch renders chips that silently do
@@ -82,113 +87,6 @@ _MERGE_FORM = 'dashboards/allocations/partials/xras_merge_form.html'
 _ACTION_FORM = 'dashboards/allocations/partials/xras_action_form.html'
 
 
-# ---------------------------------------------------------------------------
-# shared helpers
-# ---------------------------------------------------------------------------
-
-def _session_factory():
-    """Private sessions for the service's audit writes.
-
-    Deliberately **not** ``db.session``: an audit row that a request rollback
-    could erase would be a record of an irreversible act that can be un-said.
-    """
-    from sqlalchemy.orm import Session
-    return Session(db.engine)
-
-
-def _index():
-    """The published request index, or ``None`` if no sweep has written one."""
-    from sam.integration.xras_api.cache import load_requests_index
-    return load_requests_index()
-
-
-def _entry(request_number):
-    """One request's snapshot entry, or ``None``.
-
-    Snapshot-derived and therefore possibly stale — which is fine for deciding
-    *which buttons to draw*. Every modal re-reads live before offering to act,
-    and the client verifies after acting.
-    """
-    payload = _index() or {}
-    wanted = str(request_number).strip()
-    for row in payload.get('rows') or ():
-        if isinstance(row, dict) and str(row.get('request_number') or '').strip() == wanted:
-            return row
-    return None
-
-
-def _degraded(message, *, title='XRAS unavailable'):
-    """A 200 body explaining why a modal cannot proceed. See the module docstring."""
-    return render_template(
-        'dashboards/allocations/partials/xras_remediation_degraded.html',
-        title=title, message=message)
-
-
-def _render_xras_modal(*, build, template, noun, not_found, log_label):
-    """Shared body for the three read-only detail modals (request/user/opportunity).
-
-    Every one does the same four things and differs only in the four arguments:
-    run ``build()``; degrade with a **200** on an XRAS outage (htmx will not swap
-    a 4xx into an already-open modal — see the module docstring); show
-    ``not_found()`` when XRAS holds no such thing (``build`` returned ``None``);
-    else render ``template`` with the built context. ``noun`` fills the standard
-    outage line and ``log_label`` names the warning.
-    """
-    try:
-        context = build()
-    except XrasSourceUnavailable as exc:
-        current_app.logger.warning('%s: %s', log_label, exc)
-        return _degraded(f'Showing this {noun} needs a live read from XRAS, '
-                         'and XRAS is not answering.')
-    if context is None:
-        return not_found()
-    return render_template(template, **context)
-
-
-def _read_client():
-    from sam.integration.xras_api import XrasApiClient
-    return XrasApiClient.from_environment()
-
-
-def _live_request(request_number):
-    """Live roster + action states for one request, via the reports family.
-
-    ⚠️ Not ``GET /v1/requests/<id>``, which is 401 for our credential in every
-    context — so ``rules{allowedOperations}``, the API's own answer to "what may
-    I do to this action", is unavailable and the offers are derived instead
-    (PRIVILEGE(#1)).
-    """
-    return _read_client().get_request_by_number(request_number)
-
-
-def _impersonation(entry, live=None):
-    """Who SAM should act as: the request's PI.
-
-    Falls back to any role-holder, because a request whose PI record is broken
-    is exactly the sort this card exists to fix and refusing to act on it would
-    be unhelpful. Returns ``(username, is_pi, is_placeholder)`` so the modal can
-    say what it got — probe P2 measured the PI and the Allocation Manager giving *different*
-    validation verdicts on the same action, so the distinction is operational,
-    not cosmetic.
-    """
-    from sam.queries.xras_requests import resolve_pi, roster_from_payload
-
-    roster = (roster_from_payload(live) if live
-              else (entry or {}).get('roster') or [])
-    pi = resolve_pi(roster)
-    username, is_pi = (pi, True) if pi else (
-        next((r.get('username') for r in roster if r.get('username')), None), False)
-
-    # ⚠️ The project lead is sometimes an unmerged placeholder — measured on 2
-    # of 27 live rows the first time this card was pointed at production. That
-    # is legitimate as far as XRAS is concerned (the placeholder really does
-    # hold the role, so the call authorizes), but the operator is then acting
-    # as a throwaway identity that a merge on this very card would delete. It
-    # is surfaced rather than worked around: preferring a different role-holder
-    # would change who the write is attributed to, silently.
-    placeholder = any(r.get('placeholder') and r.get('username') == username
-                      for r in roster)
-    return username, is_pi, placeholder
 
 
 # ---------------------------------------------------------------------------
@@ -925,15 +823,6 @@ def _roles_context(request_number):
     }
 
 
-def _role_options():
-    """(wire name, display label) pairs for the role select.
-
-    Built here rather than in the template because Jinja has no list
-    comprehension — and the pairing matters: the **name** goes on the wire and
-    the **display** is XRAS's own operator vocabulary, so an operator reading
-    SAM and the XRAS admin app sees one word for one thing.
-    """
-    return [(r['name'], r['display']) for r in remediation.role_choices()]
 
 
 class _XrasRoleAddHandler(_XrasRemediationHandler):
