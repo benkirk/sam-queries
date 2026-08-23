@@ -5,8 +5,8 @@ resolve an erroneously-reconciled placeholder by merge, withdraw a stale or
 in-flight submission, re-submit, and fix a roster. `MANAGE_XRAS` only,
 conditional on the outgoing write lever, never automated.
 
-Its own module rather than more of ``blueprint.py`` (already 2,500 lines), on
-that file's existing ``bp``, imported at its foot.
+Its own module in the ``allocations/xras/`` package, on the dashboard's shared
+``bp``, registered for its route side effects by ``xras/__init__.py``.
 
 Three things a reader coming from the sibling cards must know
 ------------------------------------------------------------
@@ -62,13 +62,13 @@ from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import htmx_modal_not_found, htmx_success_message
 from webapp.utils.rbac import Permission, require_permission
 
-from . import bp
-from .xras._shared import (
+from .. import bp
+from ._shared import (
     _XRAS_MODAL_TRIGGERS, _degraded, _entry, _impersonation, _index,
     _live_request, _parse_activity_window, _read_client, _role_options,
     _session_factory,
 )
-from .xras.modals import _render_detail
+from .modals import _render_detail
 
 #: Facet form and swap target — mirrors the sibling cards' pair. Both names are
 #: also written into ``xras.html``; a mismatch renders chips that silently do
