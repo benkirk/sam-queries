@@ -9,20 +9,20 @@ surfaces.
 
 Two directions are needed, and having both here is the point:
 
-* :func:`band_bounds` — a *span* of bands → the two date strings that select it.
+* :func:`band_bounds` — a *span* of bands -> the two date strings that select it.
   ``_atime_band_bounds`` in ``webapp/disk_scans/service.py`` has always done this for
   a single band; a range control needs the same thing for ``lo..hi``.
-* :func:`bands_for` — the two date strings → the span, or ``None`` when they don't
+* :func:`bands_for` — the two date strings -> the span, or ``None`` when they don't
   land on band edges. This is what lets a server-rendered control put its thumbs
   where the current filter actually is, and fall back to a "custom" state when the
   filter was typed rather than picked.
 
-⚠️ **Ages count back from an anchor, not from today.** The disk surfaces anchor on
+WARNING: **Ages count back from an anchor, not from today.** The disk surfaces anchor on
 ``reference_scan_date`` — the newest scan — because a file's age is measured from
 when it was *observed*, and a scan can be days old. Passing ``date.today()`` there
 would silently shift every band. Time-anchored surfaces (jobs) do anchor on today.
 
-⚠️ **The bounds are half-open by construction, and the consumers rely on it.**
+WARNING: **The bounds are half-open by construction, and the consumers rely on it.**
 ``before`` is the newer edge and ``after`` the older one. Dates *decrease* as the band
 index rises — a later band is an older file — so band *i*'s ``after`` is deliberately
 equal to band *i+1*'s ``before``. The fs-scans query builder compares strictly on both
@@ -92,7 +92,7 @@ def band_bounds(ladder: Ladder, anchor: datetime,
 
 def bands_for(ladder: Ladder, anchor: datetime,
               after: Optional[str], before: Optional[str]) -> Optional[Tuple[int, int]]:
-    """The inverse of :func:`band_bounds`: dates → ``(lo, hi)``, or ``None``.
+    """The inverse of :func:`band_bounds`: dates -> ``(lo, hi)``, or ``None``.
 
     ``None`` means the pair does not describe a whole number of bands — a hand-typed
     range, or a half-open one — and the caller should render its "custom" state

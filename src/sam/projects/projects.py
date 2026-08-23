@@ -471,7 +471,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
     @property
     def facility_name(self) -> Optional[str]:
         """The facility this project belongs to, derived via the
-        ``allocation_type → panel → facility`` chain.
+        ``allocation_type -> panel -> facility`` chain.
 
         Returns ``None`` for orphan projects — those with no
         ``allocation_type`` assigned, or whose allocation_type chain
@@ -577,10 +577,10 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
 
         Columns are the resource "denominator":
 
-        - ``active_only=True`` (default) → resources with a currently-active
+        - ``active_only=True`` (default) -> resources with a currently-active
           allocation (via :meth:`get_all_allocations_by_resource`). Used by
           the member list and CLI.
-        - ``active_only=False`` → every non-deleted account's resource, so
+        - ``active_only=False`` -> every non-deleted account's resource, so
           lapsed resources are shown too (the grid's "show all" mode).
 
         A member has *partial* access when they hold an active
@@ -1225,7 +1225,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
                 # ----------------------------------------------------------------
                 resource_ids = list({info['resource_id'] for info in group_infos})
 
-                # Build anchor-coord → list-of-keys map to handle duplicate anchor coords
+                # Build anchor-coord -> list-of-keys map to handle duplicate anchor coords
                 anchor_to_keys: Dict[tuple, List] = defaultdict(list)
                 for info in group_infos:
                     coord = (info['tree_root'], info['tree_left'], info['tree_right'], info['resource_id'])
@@ -1715,7 +1715,7 @@ class ProjcodeExhaustedError(Exception):
 def formulate_projcode(facility_code: str, mnemonic_code: str, number: int) -> str:
     """Assemble a projcode from its parts — legacy ``%s%s%04d`` format.
 
-    e.g. ``('U', 'ALB', 57) → 'UALB0057'``, ``('S', 'CSG', 9) → 'SCSG0009'``.
+    e.g. ``('U', 'ALB', 57) -> 'UALB0057'``, ``('S', 'CSG', 9) -> 'SCSG0009'``.
     """
     return f"{facility_code}{mnemonic_code}{number:04d}"
 

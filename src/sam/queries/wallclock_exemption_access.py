@@ -5,14 +5,14 @@ Provides get_wallclock_exemption_data() which reproduces the output of the
 legacy Java ``GET /api/protected/admin/ssg/wallClockExemption`` endpoint.
 
 The data is organized as a three-level tree:
-  exemptions → resource → queue → user limit
+  exemptions -> resource -> queue -> user limit
 
 and is consumed by the PBS batch scheduler to grant individual users a raised
 wallclock limit on a specific queue for a bounded time window.
 
 Legacy semantics (WallClockExemptionServiceImpl + activeWallclockExemptions SQL)
 --------------------------------------------------------------------------------
-The legacy named query joins ``resources → queue → wallclock_exemption → users``
+The legacy named query joins ``resources -> queue -> wallclock_exemption -> users``
 and keeps only exemptions whose date window contains today
 (``DATE(start_date) <= CURDATE() AND DATE(end_date) >= CURDATE()``). It applies
 NO active filter on the resource, queue, or user — only the exemption's own
@@ -51,7 +51,7 @@ def get_wallclock_exemption_data(
     resource_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Build the active-exemption tree grouped by resource → queue → user.
+    Build the active-exemption tree grouped by resource -> queue -> user.
 
     Reproduces the legacy ``GET /api/protected/admin/ssg/wallClockExemption``
     output.

@@ -105,7 +105,7 @@ class TestAuditAgeBands:
             == (0, hi)
 
     def test_the_default_window_is_a_whole_span(self):
-        """⚠️ The tripwire for a four-way coupling. Band 1's upper bound (30) is
+        """WARNING: The tripwire for a four-way coupling. Band 1's upper bound (30) is
         the same 30 as `timedelta(days=30)` in `_parse_audit_filters`,
         `_parse_xras_filters`, `_audit_page_context` and `xras()`. Move any one
         of them and every first load renders the custom state instead of a

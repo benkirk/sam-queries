@@ -1,6 +1,6 @@
 """TTL cache for the job-history aggregation queries.
 
-Unlike fs-scans (weekly refreshes → content-addressed scan-date keys),
+Unlike fs-scans (weekly refreshes -> content-addressed scan-date keys),
 job data appends continuously — there is no freshness signature to key
 on, so this is a plain TTL cache. Two buckets share the mechanism,
 picked by whether the requested window can still change:
@@ -28,7 +28,7 @@ Backend, lazy init and the get/compute/store dance all come from
 and ``sam.queries.usage_cache``): Redis-backed adapter shared across
 gunicorn workers when ``CACHE_REDIS_URL`` is set, per-worker in-process TTL
 cache otherwise. Registered with the ``webapp.caching`` facade (category
-``jobs``) so it appears in Admin → Configuration and clears via the same
+``jobs``) so it appears in Admin -> Configuration and clears via the same
 surfaces. All that is left here is the cache key.
 
 Config (Flask app.config or env; 0 disables the corresponding bucket):
@@ -95,7 +95,7 @@ def bucket_for_window(end: Optional[date]) -> str:
 
     ``historical`` only when the window is provably closed: an explicit
     ``end`` strictly before today. An open end (None) or a window that
-    touches today keeps collecting jobs → ``recent``.
+    touches today keeps collecting jobs -> ``recent``.
     """
     if end is not None and end < date.today():
         return 'historical'

@@ -7,7 +7,7 @@
            is_reconciled / stuck_placeholder, merge_url, back_url /
            back_request_number, write_enabled, configured.
 
-  ⚠️ No `data-bs-toggle="modal"` on any control here. This body is always
+  WARNING: No `data-bs-toggle="modal"` on any control here. This body is always
   swapped INTO the already-open #auditDetailsModal, so every link just
   hx-gets a new body — a toggle would fire on the open modal and HIDE it (the
   PR #464 self-closing-modal bug). The Request links below reuse that idiom to
@@ -22,11 +22,11 @@
 {# Back link (if we came from a request roster) — plain body-swap, no toggle. #}
 {{ shell.back_link(back_url, back_request_number) }}
 
-{# ── who XRAS says this is ───────────────────────────────────────────────── #}
+{# who XRAS says this is #}
 {% from 'dashboards/fragments/xras_person_detail.html' import person_detail %}
 {{ person_detail(person) }}
 
-{# ── identity state + SAM cross-reference ────────────────────────────────── #}
+{# identity state + SAM cross-reference #}
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
     {# XRAS-side reconciliation state, in the Accounts-Needed vocabulary. #}
     {% if is_reconciled is none %}
@@ -61,7 +61,7 @@
     </span>
 </div>
 
-{# ── the one write: resolve a stuck placeholder by merge ─────────────────── #}
+{# the one write: resolve a stuck placeholder by merge #}
 {% if stuck_placeholder %}
 <div class="alert alert-warning d-flex align-items-center gap-2 py-2">
     <i class="fas fa-triangle-exclamation"></i>
@@ -81,7 +81,7 @@
 
 <hr>
 
-{# ── requests this person holds a role on ────────────────────────────────── #}
+{# requests this person holds a role on #}
 <div class="small text-uppercase text-muted mb-1">Requests &amp; roles</div>
 {% if role_groups %}
 {% for group in role_groups %}

@@ -48,7 +48,7 @@ def _award(**overrides):
     return AwardRecord(**defaults)
 
 
-# ── Schema ────────────────────────────────────────────────────────────────
+# Schema
 
 class TestCreateContractFormSchema:
 
@@ -110,7 +110,7 @@ class TestEditContractFormSchema:
         assert data['nsf_program_id'] == 4
 
 
-# ── Model ─────────────────────────────────────────────────────────────────
+# Model
 
 class TestContractCreate:
 
@@ -187,7 +187,7 @@ class TestContractUpdate:
         assert repr(UNCHANGED) == 'UNCHANGED'
 
 
-# ── HTTP: bespoke create routes ───────────────────────────────────────────
+# HTTP: bespoke create routes
 
 CREATE_FORM_URL = '/admin/htmx/contract-create-form'
 CREATE_URL = '/admin/htmx/contract-create'

@@ -17,7 +17,7 @@ Backend, lazy init and the get/compute/store dance all come from
 ``sam.queries.usage_cache``): a Redis-backed adapter shared across gunicorn
 workers when ``CACHE_REDIS_URL`` is set, falling back to a per-worker
 in-process TTL cache otherwise. Registered with the ``webapp.caching``
-facade so it appears in Admin → Configuration. All that is left here is the
+facade so it appears in Admin -> Configuration. All that is left here is the
 cache key — which is the interesting part, see below.
 
 Two buckets share this mechanism, differing only in name / size / TTL:
@@ -94,7 +94,7 @@ def get_cache_adapter(bucket: str = 'default') -> Optional[CacheBase]:
 def _scan_date_signature(q, collections) -> Optional[Tuple]:
     """Per-collection latest scan date, for the cache key.
 
-    Returns ``None`` (→ skip caching) when no collection has a scan date —
+    Returns ``None`` (-> skip caching) when no collection has a scan date —
     we can't key on freshness we don't have. Otherwise a sorted tuple of
     ``(collection, iso-date-or-None)``: when ANY collection is re-scanned
     the signature changes, busting every entry that depended on it.

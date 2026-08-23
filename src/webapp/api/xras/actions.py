@@ -17,24 +17,21 @@ Order of operations, and the part that is not negotiable
 ::
 
     read raw body
-      │
-      ├─ JSON parse fails ──> write row (status='failed', action_type=NULL) ──> 400
-      ├─ schema rejects   ──> write row (status='failed')                   ──> 422
-      │
-      ├─ write row (status='received')          ← BEFORE dispatch
-      │
-      └─ dispatch
-             ├─ capture-only    → row stays 'received'                      → 200
-             ├─ success         → 'processed' + projcode_result             → 200
-             ├─ validation errs → 'failed' + error_messages                 → 422
-             └─ no serviceable  → 'manual'                                  → 200 †
+ JSON parse fails > write row (status='failed', action_type=NULL) > 400
+ schema rejects > write row (status='failed') > 422
+ write row (status='received')          <- BEFORE dispatch
+ dispatch
+ capture-only    -> row stays 'received'                      -> 200
+ success         -> 'processed' + projcode_result             -> 200
+ validation errs -> 'failed' + error_messages                 -> 422
+ no serviceable  -> 'manual'                                  -> 200 †
 
 Legacy's only record of an action is an email and its only replay mechanism is pasting
 JSON into a form, so a row written *only on success* would be a success log rather than
 an audit trail. Persisting before dispatch is what makes replay possible when a handler
 explodes.
 
-⚠️  **The row is committed on its own connection, outside the handler transaction.**
+WARNING: **The row is committed on its own connection, outside the handler transaction.**
 ``management_transaction`` rolls the entire session back on exception
 (``sam/manage/transaction.py``), so an audit row enrolled in it would vanish in exactly
 the case it exists for. :func:`_record` and :func:`_finish` therefore open short-lived
@@ -118,7 +115,7 @@ _OUTCOME_REASON_WIDTH = 255
 #: ``raw_payload`` and ``error_messages`` are ``TEXT`` — 65,535 **bytes**, not
 #: characters, and the column is utf8mb3.
 #:
-#: ⚠️ Under ``STRICT_TRANS_TABLES`` an oversized value does **not** truncate, it raises
+#: WARNING: Under ``STRICT_TRANS_TABLES`` an oversized value does **not** truncate, it raises
 #: ``1406 Data too long`` — so an unbounded write here loses the audit row entirely.
 #: That is measured, not theoretical: ``tests/stress/test_audit_row_survives.py``
 #: reproduced it against the test container before this guard existed.
@@ -129,7 +126,7 @@ _TRUNCATION_MARGIN = 512
 
 #: The wire message a **parked** action gets, in place of the ``'OK'`` a success gets.
 #:
-#: ⚠️ Deliberately **not** ``DispatchResult.reason``. Three of the four park causes name
+#: WARNING: Deliberately **not** ``DispatchResult.reason``. Three of the four park causes name
 #: internal machinery — ``XRAS_ACTIONS_ENABLED``, an unregistered handler — that an ACCESS
 #: admin can neither act on nor should see. The internal reason keeps going to
 #: ``xras_action_log.outcome_reason``, which is what the operator surfaces read; this
@@ -151,7 +148,7 @@ def _truncate_bytes(text, width):
 def _strip_astral(text):
     """Replace codepoints above the BMP with U+FFFD.
 
-    ⚠️ For the **utf8mb3** columns only. utf8mb3 cannot represent a 4-byte character
+    WARNING: For the **utf8mb3** columns only. utf8mb3 cannot represent a 4-byte character
     at all, and under ``STRICT_TRANS_TABLES`` that is not a truncation — MySQL raises
     ``1366 Incorrect string value`` and the audit row is lost. Same outcome as the
     ``1406`` overflow the widths guard, reached by encoding rather than by length.
@@ -161,7 +158,7 @@ def _strip_astral(text):
     sent is stored as sent. The identifiers cannot follow them, because
     ``sam/queries/xras_activation.py`` joins ``request_number`` and ``projcode_result``
     against ``project.projcode`` and a mixed-charset comparison stops using the index
-    (measured on production: ``type: const, rows: 1`` → ``type: index, rows: 4650``).
+    (measured on production: ``type: const, rows: 1`` -> ``type: index, rows: 4650``).
 
     Lossy, and losing nothing anyone wanted — these columns hold projcodes, usernames
     and a fixed action vocabulary, where a 4-byte glyph carries no meaning. The
@@ -173,7 +170,7 @@ def _strip_astral(text):
 def _fit_payload(raw_payload):
     """Bound ``raw_payload``, announcing the cut. Returns ``(text, was_truncated)``.
 
-    ⚠️ A truncated payload is **not replayable** — the bytes are no longer valid JSON,
+    WARNING: A truncated payload is **not replayable** — the bytes are no longer valid JSON,
     and replay reads them back through the schema. The marker says so in the stored
     value itself, because an operator deciding whether to click Replay sees the payload
     long before they see any documentation.
@@ -377,11 +374,11 @@ def _parse_action(raw_payload):
       identity columns. Callers merge their own kwargs on top and decide what to
       return.
 
-    ⚠️ **The three message strings are on the wire contract.** XRAS administrators
+    WARNING: **The three message strings are on the wire contract.** XRAS administrators
     read them in their "Accounting Service Posts" panel, the same standing as the
     error vocabulary in :mod:`sam.xras.errors`. Reproduce, do not tidy.
 
-    ⚠️ **Identity is read off the *raw* dict on the 422 arm, and off the *validated*
+    WARNING: **Identity is read off the *raw* dict on the 422 arm, and off the *validated*
     action on the success arm.** That asymmetry is deliberate: a rejected body never
     passed the schema, so the only ``actionType`` / ``requestNumber`` / ``actionId``
     available are untrusted — which is exactly why :func:`_fit` and :func:`_fit_int`
@@ -444,17 +441,17 @@ def _dispatch(log_id, action):
 
     The four terminal states, and the reason each is what it is:
 
-    - ``XrasActionRejected`` → ``failed`` + **422** carrying the accumulated, ordered
-      error list. Nothing was written: the handler contract is assemble → check once →
+    - ``XrasActionRejected`` -> ``failed`` + **422** carrying the accumulated, ordered
+      error list. Nothing was written: the handler contract is assemble -> check once ->
       execute, so a rejection happens before any transaction opens.
-    - **any other exception** → ``failed`` + **500**, with ``outcome_reason`` naming
+    - **any other exception** -> ``failed`` + **500**, with ``outcome_reason`` naming
       the exception class, then re-raised. Every exit from this function must leave a
       terminal status behind: the pre-dispatch row says ``received``, and so does the
       capture-only backlog, so a row left at ``received`` by a crash is invisible
       among rows that are merely waiting.
-    - ``processed`` → 200, with ``projcode_result`` recorded. This is the status that
+    - ``processed`` -> 200, with ``projcode_result`` recorded. This is the status that
       has never once existed in this table.
-    - ``manual`` → 200. Legacy's ``catch (BadRequestException)`` arm, except that
+    - ``manual`` -> 200. Legacy's ``catch (BadRequestException)`` arm, except that
       legacy answers a bare 200 and leaves no trace that SAM quietly parked the action.
       The ``reason`` is logged because "nothing matched" and "the type is disabled"
       look identical in the table otherwise.

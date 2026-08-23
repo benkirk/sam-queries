@@ -1,7 +1,7 @@
 """Two-axes time-series charts for the status dashboard.
 
 `nodetype_history` and `queue_history` are the only charts in the app using
-`subplots(2, 1, sharex=True)`. They share a skeleton — empty guard, UTC→local
+`subplots(2, 1, sharex=True)`. They share a skeleton — empty guard, UTC->local
 timestamp conversion, an upper panel, a conditional lower panel, a framed
 legend on each, `autofmt_xdate` — and differ only in what they plot.
 
@@ -23,7 +23,7 @@ from webapp.dashboards.charts.theme import (
 
 
 def _to_display_tz(naive_utc_ts):
-    """Naive-UTC → naive-local for matplotlib axis rendering.  Strips tzinfo
+    """Naive-UTC -> naive-local for matplotlib axis rendering.  Strips tzinfo
     after conversion so the existing naive-datetime plotting path is
     unchanged (matplotlib renders the local-clock values directly)."""
     return fmt.to_local_dt(naive_utc_ts).replace(tzinfo=None)

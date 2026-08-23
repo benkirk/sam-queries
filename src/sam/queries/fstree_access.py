@@ -5,7 +5,7 @@ Provides get_fstree_data() which reproduces the output of the legacy Java
 `GET /api/protected/admin/ssg/fairShareTree/v3/<Resource>` endpoint.
 
 The data is organized as a hierarchical tree:
-  fairShareTree → Facility → AllocationType → Project → Resource
+  fairShareTree -> Facility -> AllocationType -> Project -> Resource
 
 with per-node fairshare percentages and, at the Resource level,
 allocation balances, charge usage (including MPTT subtree rollup),
@@ -38,7 +38,7 @@ accountStatus semantics (matching DefaultAccountStatusCalculator.java):
   5. "Exceed One Threshold" — one N-day window exceeded
   6. "Normal"               — default
 
-Parent → child status propagation (pre-order): if a parent's accountStatus is
+Parent -> child status propagation (pre-order): if a parent's accountStatus is
 non-Normal, that status cascades to all children on the same resource.
 
 Project trees
@@ -85,7 +85,7 @@ from sam.queries.rolling_usage import (
 #
 # Key columns added vs original:
 #   • p.tree_root/tree_left/tree_right — MPTT for subtree charge rollup
-#   • p.parent_id                      — parent → child status propagation
+#   • p.parent_id                      — parent -> child status propagation
 #   • a.first_threshold/second_threshold — N-day threshold percentages
 _SQL_FSTREE_SKELETON = text("""
     SELECT
@@ -287,8 +287,8 @@ def _alloc_type_name(facility_code: str, allocation_type: str) -> str:
 
         name = facilityCode + "_" + allocationTypeDTO.getType().replaceAll("\\W", "")
 
-    Example: code="C", type="CSL"              → "C_CSL"
-             code="N", type="Director Reserve" → "N_DirectorReserve"
+    Example: code="C", type="CSL"              -> "C_CSL"
+             code="N", type="Director Reserve" -> "N_DirectorReserve"
     """
     cleaned = re.sub(r'\W', '', allocation_type)
     return f'{facility_code}_{cleaned}'
@@ -321,8 +321,8 @@ def _compute_status(
     Args:
         adjusted_usage:    Total charges + adjustments (subtree rollup).
         allocation_amount: Current active allocation amount.
-        first_threshold:   30-day threshold % from account.first_threshold (None → skip).
-        second_threshold:  90-day threshold % from account.second_threshold (None → skip).
+        first_threshold:   30-day threshold % from account.first_threshold (None -> skip).
+        second_threshold:  90-day threshold % from account.second_threshold (None -> skip).
         alloc_start:       Allocation start_date.
         alloc_end:         Allocation end_date (None for open-ended).
         window_charges_30: Charges in last 30 days (0.0 when no threshold).
@@ -560,7 +560,7 @@ def get_fstree_data(
         for row in lifecycle_rows:
             pid_to_projcode[row.project_id] = row.projcode
 
-    # Resolve parent_id → parent projcode only once *both* row sets have
+    # Resolve parent_id -> parent projcode only once *both* row sets have
     # populated pid_to_projcode: neither query is ordered by tree depth, so
     # resolving inline would miss any parent that happens to come later.
     # A parent_id absent from the payload (inactive, or no account on this
@@ -573,12 +573,12 @@ def get_fstree_data(
     # ------------------------------------------------------------------
     # Charges — hybrid approach matching allocations.py:
     #
-    # Non-leaf projects (~28) → batch_get_subtree_charges(): MPTT rollup
+    # Non-leaf projects (~28) -> batch_get_subtree_charges(): MPTT rollup
     #   that includes descendant charges.  With only ~28 non-leaf entries,
     #   the (resource_type, start_date, end_date) grouping yields ~28 date
-    #   groups → ~56 SQL queries (fast).
+    #   groups -> ~56 SQL queries (fast).
     #
-    # Leaf projects (~1,455) → batch_get_account_charges(): VALUES CTE that
+    # Leaf projects (~1,455) -> batch_get_account_charges(): VALUES CTE that
     #   embeds all date ranges in ~5 queries (~0.9s).  Correct for leaves
     #   since their subtree == self.
     #
@@ -602,7 +602,7 @@ def get_fstree_data(
             Project.batch_get_account_charges(session, account_infos, include_adjustments=True)
         )
 
-    # charge_map: account_id → adjusted_usage (float)
+    # charge_map: account_id -> adjusted_usage (float)
     charge_map: Dict[int, float] = {}
     for account_id, data in raw_charges.items():
         charge_map[account_id] = sum(data['charges_by_type'].values()) + data['adjustment']
@@ -752,7 +752,7 @@ def get_fstree_data(
             }
 
     # ------------------------------------------------------------------
-    # Parent → child status propagation (pre-order per resource)
+    # Parent -> child status propagation (pre-order per resource)
     # ------------------------------------------------------------------
     _NON_NORMAL = {'Overspent', 'Exceed Two Thresholds', 'Exceed One Threshold'}
 
@@ -826,8 +826,8 @@ def _remap_fstree_by_project(fstree_data: Dict) -> Dict:
     """
     Remap the fstree dict (from get_fstree_data) into a project-keyed structure.
 
-    Input:  fairShareTree → Facility → AllocationType → Project → Resources
-    Output: projectFairShareData → projects[projcode] → Resources
+    Input:  fairShareTree -> Facility -> AllocationType -> Project -> Resources
+    Output: projectFairShareData -> projects[projcode] -> Resources
 
     Each project entry includes its facility and allocation-type context so
     callers don't need to traverse the full tree.  The resources list is
@@ -858,8 +858,8 @@ def _remap_fstree_by_user(fstree_data: Dict) -> Dict:
     """
     Remap the fstree dict (from get_fstree_data) into a user-keyed structure.
 
-    Input:  fairShareTree → Facility → AllocationType → Project → Resources → Users
-    Output: userFairShareData → users[username] → projects[projcode] → Resources
+    Input:  fairShareTree -> Facility -> AllocationType -> Project -> Resources -> Users
+    Output: userFairShareData -> users[username] -> projects[projcode] -> Resources
 
     A user appears under a project/resource only when they are listed in that
     resource's ``users`` roster.  The per-resource dict omits the ``users``
@@ -917,7 +917,7 @@ def get_project_fsdata(
 
     Calls get_fstree_data() internally then remaps the result so callers can
     look up any project directly by projcode without traversing the full
-    Facility → AllocationType → Project hierarchy.
+    Facility -> AllocationType -> Project hierarchy.
 
     Args:
         session:       SQLAlchemy session.

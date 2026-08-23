@@ -6,9 +6,9 @@
 
 {% block title %}Disk Usage Details - {{ resource_name }} - SAM{% endblock %}
 
-{# ── Filesystem-style project-tree macro (mirrors render_tree_node
+{# Filesystem-style project-tree macro (mirrors render_tree_node
    in resource_details.html, but with disk size + fileset paths
-   instead of cumulative compute hours). ─────────────────────────── #}
+   instead of cumulative compute hours). #}
 {% macro render_disk_tree_node(node) %}
 {% set is_selected = (node.projcode == scope) %}
 {% set is_clickable = node.account_id is not none or node.children %}
@@ -105,7 +105,7 @@
     </p>
 </div>
 
-{# ── Capacity summary card ─────────────────────────────────────────── #}
+{# Capacity summary card #}
 <div class="card mb-4">
     <div class="card-header cursor-pointer"
          data-bs-toggle="collapse" data-bs-target="#collapseDiskCapacity"
@@ -162,7 +162,7 @@
     </div>
 </div>
 
-{# ── Per-fileset breakdown ──────────────────────────────────────────── #}
+{# Per-fileset breakdown #}
 {# Aggregated across the entire scoped subtree — shows whenever
    any fileset in the scope has tier-1 data. Rows are clickable to
    scope chart + per-user table by `directory_name` via `?fileset=`.
@@ -238,7 +238,7 @@
 </div>
 {% endif %}
 
-{# ── Filesystem-style project tree ──────────────────────────────────── #}
+{# Filesystem-style project tree #}
 {% if has_children %}
 <div class="card mb-4">
     <div class="card-header cursor-pointer"
@@ -260,10 +260,10 @@
 </div>
 {% endif %}
 
-{# ── Timeframe picker (governs the Usage Over Time chart below; the
+{# Timeframe picker (governs the Usage Over Time chart below; the
    capacity header, tree, and per-user table stay point-in-time at the
-   latest snapshot). Weekly snapshot cadence → 90d/180d/1yr presets; the
-   Epoch button jumps to the earliest snapshot we hold for this scope. ── #}
+   latest snapshot). Weekly snapshot cadence -> 90d/180d/1yr presets; the
+   Epoch button jumps to the earliest snapshot we hold for this scope. #}
 {{ date_range_picker(
     action=url_for('user_dashboard.resource_details', projcode=projcode),
     start_date=start_date,
@@ -274,7 +274,7 @@
     presets=[('90d', 90), ('180d', 180), ('1yr', 365)]
 ) }}
 
-{# ── Stacked-area chart ─────────────────────────────────────────────── #}
+{# Stacked-area chart #}
 <div class="card mb-4">
     <div class="card-header cursor-pointer"
          data-bs-toggle="collapse" data-bs-target="#collapseDiskUsage"
@@ -319,7 +319,7 @@
     </div>
 </div>
 
-{# ── Per-user current-snapshot table ────────────────────────────────── #}
+{# Per-user current-snapshot table #}
 {# Hidden when the Filesystem Scans card is shown — its "User / group counts"
    tab covers the same per-user breakdown (and more) from the scan DB, so
    this snapshot table would be redundant. Falls back to showing here
@@ -373,7 +373,7 @@
 </div>
 {% endif %}
 
-{# ── Filesystem Scans card ──────────────────────────────────────────── #}
+{# Filesystem Scans card #}
 {# Shown only when the fs-scans plugin is loaded AND this resource maps to
    a live scan collection (show_scans, set in the route). Collapsed by
    default; once opened, the expanded state AND active tab persist across

@@ -73,8 +73,8 @@ test = [
     "fakeredis>=2.20",  # in-memory Redis for cache adapter tests
     # Deps deferred until their workstream lands (see
     # docs/plans/implemented/TEST_SUITE_RESIDUALS.md):
-    #   factory-boy, faker            → Gap A / future factories
-    #   pyright                       → Gap B type checking
+    #   factory-boy, faker            -> Gap A / future factories
+    #   pyright                       -> Gap B type checking
     # Re-add to this list when starting the corresponding workstream.
 ]
 e2e = [

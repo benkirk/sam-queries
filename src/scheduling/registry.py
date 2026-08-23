@@ -127,7 +127,7 @@ class TaskContext:
     #: the database — `close_sessions` rolls back instead of committing, and no
     #: ledger row is written.
     #:
-    #: ⚠️ **A task whose side effects are not transactional MUST branch on
+    #: WARNING: **A task whose side effects are not transactional MUST branch on
     #: this.** A rollback undoes rows; it does not unsend mail, un-POST a
     #: webhook, or un-delete an object in S3. `expiration_notices` is the worked
     #: example — it previews each message instead of handing it to a transport.

@@ -209,7 +209,7 @@ class TestDefectThree:
 class TestNoCorpusPayloadHasAnAmbiguousRole:
     """Ambiguous roles **do** occur in production traffic — just never where it counts.
 
-    ⚠️ **Corrected by the 2026-08-11 forward.** At eight payloads no payload named two
+    WARNING: **Corrected by the 2026-08-11 forward.** At eight payloads no payload named two
     current holders of a lead role, and this class asserted that flatly. At 41, two do
     (:data:`AMBIGUOUS`).
 
@@ -225,7 +225,7 @@ class TestNoCorpusPayloadHasAnAmbiguousRole:
     SAM 422s where legacy would have silently chosen.
     """
 
-    #: fixture → (current PIs, current Allocation Managers) where either exceeds one.
+    #: fixture -> (current PIs, current Allocation Managers) where either exceeds one.
     #: Both are on services that never build a roster; see the class docstring.
     AMBIGUOUS = {
         'date_adjustment_ucub0155_manual.json': (2, 2),   # parks: no serviceable

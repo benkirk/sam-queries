@@ -38,7 +38,7 @@ class EditPanelForm(HtmxFormSchema):
 
     @post_load
     def strip_description(self, data, **kwargs):
-        # Parity with the pre-schema handler: whitespace-only → None.
+        # Parity with the pre-schema handler: whitespace-only -> None.
         if data.get('description') is not None:
             data['description'] = data['description'].strip() or None
         return data

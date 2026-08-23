@@ -309,7 +309,7 @@ class TestAccountGetOrCreate:
         assert n == 1
 
     def test_creates_when_absent(self, session):
-        """No account on the slot → a fresh one is created."""
+        """No account on the slot -> a fresh one is created."""
         project = make_project(session)
         resource = make_resource(session)
         got = Account.get_or_create(

@@ -1,6 +1,6 @@
 """Read-only runtime-configuration inspection helpers.
 
-Used by the Admin → Configuration tab to surface webapp state for
+Used by the Admin -> Configuration tab to surface webapp state for
 sysadmins.
 
 Design notes:
@@ -152,7 +152,7 @@ def classify_connection_error(error: Optional[str]) -> Optional[Dict[str, str]]:
 
 
 # ---------------------------------------------------------------------------
-# ORM ↔ database schema drift
+# ORM <-> database schema drift
 # ---------------------------------------------------------------------------
 #
 # Why this exists: on 2026-08-10 a production DDL change dropped 8 columns the
@@ -385,7 +385,7 @@ def _proc_rss_bytes() -> Optional[int]:
         with open('/proc/self/status') as f:
             for line in f:
                 if line.startswith('VmRSS:'):
-                    return int(line.split()[1]) * 1024  # kB → bytes
+                    return int(line.split()[1]) * 1024  # kB -> bytes
     except OSError:
         pass
     return None
@@ -424,7 +424,7 @@ def _cgroup_cpu_limit() -> Optional[float]:
 
 
 def gather_server_info() -> Dict[str, Any]:
-    """Worker-scoped runtime snapshot for the Admin → Server Information card.
+    """Worker-scoped runtime snapshot for the Admin -> Server Information card.
 
     Cheap to call (a handful of file reads). Safe to expose without auth
     headers other than the existing VIEW_SYSTEM_CONFIG gate — there are no
@@ -543,7 +543,7 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         databases.append(_health_row(f'job_history ({machine})', engine))
 
     # fs-scans plugin. Collections are *schemas* within one CNPG database per
-    # disk resource (campaign → Campaign_Store today; desc1 → Destor later),
+    # disk resource (campaign -> Campaign_Store today; desc1 -> Destor later),
     # so we render ONE health row per database — keeping the card compact and
     # naturally extensible — and hang per-collection scan-date freshness off
     # each. Registered on app.extensions by webapp.disk_scans.init_fs_scans;
@@ -552,8 +552,8 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
     fs_databases = fs_state.get('databases') or {}
     if fs_databases:
         fs_mod = fs_state.get('module')
-        # One health row per backing CNPG database (campaign → Campaign_Store,
-        # desc1 → Destor); the warmed state is already grouped by database.
+        # One health row per backing CNPG database (campaign -> Campaign_Store,
+        # desc1 -> Destor); the warmed state is already grouped by database.
         for dbname, db_state in sorted(fs_databases.items()):
             engines = db_state.get('engines') or {}
             if not engines:
@@ -645,7 +645,7 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
     # MAIL_PASSWORD — the masking rule this whole module exists for holds by
     # construction rather than by the template remembering.
     #
-    # ⚠️ NO ADDRESSES. The card is VIEW_SYSTEM_CONFIG; every row of the
+    # WARNING: NO ADDRESSES. The card is VIEW_SYSTEM_CONFIG; every row of the
     # activity log names a real person's email and is SYSTEM_ADMIN. The one
     # deliberate exception is `redirect_to`, which is an operator-configured
     # sink rather than a subject's address, and hiding it would defeat the

@@ -134,7 +134,7 @@ def _project_form_data(form=None) -> dict:
         .order_by(Facility.facility_name)
     )
     # Facility-scoped users only ever see (and can submit) facilities
-    # they have CREATE_PROJECTS on. None → no restriction.
+    # they have CREATE_PROJECTS on. None -> no restriction.
     allowed = user_facility_scope(current_user, Permission.CREATE_PROJECTS)
     if allowed is not None:
         facilities_q = facilities_q.filter(Facility.facility_name.in_(allowed))
@@ -381,10 +381,10 @@ def htmx_projcode_preview():
     """Preview + availability check for the Create Project code, both modes.
 
     auto:   ?projcode_mode=auto&facility_id=N&mnemonic_code_id=N
-            → next collision-free code (side-effect-free preview of
+            -> next collision-free code (side-effect-free preview of
               ``next_projcode``; the counter is only advanced at submit).
     manual: ?projcode_mode=manual&projcode=UCSD0042
-            → availability of the typed code against existing projects
+            -> availability of the typed code against existing projects
               AND adhoc_group names (projcodes become Unix group names).
 
     Returns the ``projcode_preview_htmx`` fragment: a colored badge plus an
@@ -458,7 +458,7 @@ def htmx_project_lead_hint():
     # Suggest a mnemonic via the existing soft-link resolvers (ports of
     # legacy Java UserOrganizationStrategy / UserInstitutionStrategy):
     # org matches on exact name, institution on "Name, City" then "Name".
-    # No match → no suggestion, never a guess.
+    # No match -> no suggestion, never a guess.
     lookup = MnemonicCode.build_lookup(db.session)
     suggested_code = None
     if org:
@@ -903,7 +903,7 @@ def htmx_project_allocation_tree(project):
     }
     exchange_eligible_resources = set()
     if can_exchange:
-        per_resource_counts = {}  # resource_name → count of dedicated allocs among descendants
+        per_resource_counts = {}  # resource_name -> count of dedicated allocs among descendants
         for pc in descendant_projcodes:
             for rname, rdata in resources_by_projcode.get(pc, {}).items():
                 if rdata.get('allocation_id') and not rdata.get('is_inheriting'):
@@ -1000,7 +1000,7 @@ def htmx_add_allocation_form(project):
     active_descendants = [d for d in project.get_descendants() if d.active]
 
     # Default end date = last day of the same month, one year out.
-    # (E.g. today 2026-04-13 → default end 2027-04-30.) User can override.
+    # (E.g. today 2026-04-13 -> default end 2027-04-30.) User can override.
     now = datetime.now()
     target_year = now.year + 1
     last_day = calendar.monthrange(target_year, now.month)[1]
@@ -1105,7 +1105,7 @@ def htmx_add_allocation(project):
 
 
 # ---------------------------------------------------------------------------
-# Exchange allocations (Edit Project → Allocations tab)
+# Exchange allocations (Edit Project -> Allocations tab)
 # ---------------------------------------------------------------------------
 
 def _exchange_candidates(project, resource_id, active_at=None):
@@ -1313,7 +1313,7 @@ def htmx_exchange_allocation(project):
 
 
 # ---------------------------------------------------------------------------
-# Allocate residual down (Edit Project → Allocations tab)
+# Allocate residual down (Edit Project -> Allocations tab)
 # ---------------------------------------------------------------------------
 
 def _allocate_down_context(allocation):
@@ -1464,7 +1464,7 @@ def htmx_allocate_down(allocation):
 
 
 # ---------------------------------------------------------------------------
-# Renew allocations (Edit Project → Allocations tab)
+# Renew allocations (Edit Project -> Allocations tab)
 # ---------------------------------------------------------------------------
 
 def _parse_active_at_arg(arg: str) -> datetime:
@@ -1485,12 +1485,12 @@ def _snap_to_end_of_month(d):
     'Jan 1st'. Computed dates from period arithmetic can land a day or
     two off a month boundary — this normalizes them:
 
-      - day 1  →  last day of the previous month  (May 1 → Apr 30).
-      - any other day → last day of the same month (Apr 15 → Apr 30,
-        Oct 29 → Oct 31, Oct 31 → Oct 31 no-op).
+      - day 1  ->  last day of the previous month  (May 1 -> Apr 30).
+      - any other day -> last day of the same month (Apr 15 -> Apr 30,
+        Oct 29 -> Oct 31, Oct 31 -> Oct 31 no-op).
 
     The day-1 case matters for Renew when an N-year source + an N-year
-    shift lands exactly on the next period's first day (e.g. a Jan 1 →
+    shift lands exactly on the next period's first day (e.g. a Jan 1 ->
     Dec 31 source shifted 2 years gives Jan 1, which should be Dec 31).
     """
     import calendar
@@ -1509,7 +1509,7 @@ def _propose_renew_dates(source_allocs):
     last day of that month. When multiple source allocations are selected,
     we anchor on the one with the latest end date and preserve its period
     length — this naturally handles the common fiscal-year case (e.g.
-    Oct 1 → Sep 30 → Oct 1 → Sep 30 next year).
+    Oct 1 -> Sep 30 -> Oct 1 -> Sep 30 next year).
 
     Falls back to ("today", "today + 1 year, last day of month") if the set
     is empty or lacks end dates (open-ended allocations).
@@ -1745,7 +1745,7 @@ def htmx_renew_allocations(project):
 
 
 # ---------------------------------------------------------------------------
-# Extend allocations (Edit Project → Allocations tab)
+# Extend allocations (Edit Project -> Allocations tab)
 # ---------------------------------------------------------------------------
 
 def _propose_extend_end(source_allocs):

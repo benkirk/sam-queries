@@ -13,7 +13,7 @@ workaround for a layering mistake rather than a real constraint.
 by the same test: this is envelope arithmetic, not rendering.
 """
 
-# UI metric name → the plugin key(s) SUMMED to produce it. 'jobs' is the
+# UI metric name -> the plugin key(s) SUMMED to produce it. 'jobs' is the
 # count metric; the hours metrics come from the LEFT OUTER JOIN against
 # job_charges upstream. 'charges' is a pair because the plugin reports
 # cpu_charges and gpu_charges separately (they are separately meaningful and
@@ -47,7 +47,7 @@ def jobs_metric_value(d, metric, default='jobs'):
 
 
 def jobs_bucket_segments(bucket, metric, default='jobs'):
-    """Per-bucket stacked-bar segments (active-metric units), bottom → top.
+    """Per-bucket stacked-bar segments (active-metric units), bottom -> top.
 
     The plugin envelope carries pre-truncated top-N ``owners`` per bucket
     with authoritative bucket totals, so — unlike the fs_scans
@@ -55,7 +55,7 @@ def jobs_bucket_segments(bucket, metric, default='jobs'):
     base segment here is ``bucket total − Σ owners`` (it also absorbs
     NULL-username jobs). Owner segments follow ascending so the largest
     owner sits at the top of the bar. Empty list when the bucket has no
-    owners (→ drawn as a single flat bar).
+    owners (-> drawn as a single flat bar).
     """
     owners = bucket.get('owners') or {}
     if not owners:
@@ -69,7 +69,7 @@ def jobs_bucket_segments(bucket, metric, default='jobs'):
 
 
 def jobs_timeseries_series(ts, metric):
-    """``(labels, series)`` for the stacked timeline, bottom → top.
+    """``(labels, series)`` for the stacked timeline, bottom -> top.
 
     ``series`` is ``[(label, [value per band]), …]`` with ``'Others'``
     first — the ``get_daily_user_usage_for_project`` convention the

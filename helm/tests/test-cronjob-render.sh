@@ -133,7 +133,7 @@ assert_contains "$prod_out" 'value: "America/Denver"' \
 # is expected to stay non-empty for as long as any registered task is awaiting
 # review.
 #
-# ⚠️ Read the expected value OUT of values.yaml rather than pinning a literal.
+# WARNING: Read the expected value OUT of values.yaml rather than pinning a literal.
 # The literal version had to be edited in lockstep with every change to the
 # list, in two places — and the comment here used to instruct the next reader
 # to DELETE these assertions instead, which would have dropped the
@@ -155,7 +155,7 @@ assert_contains "$prod_out" 'value: "365"' \
 
 # --- Notifications must reach the CronJob, not just the Deployment ----------
 #
-# ⚠️ Asserted PER-MANIFEST, and that is load-bearing. `cronjob-tasks.yaml`
+# WARNING: Asserted PER-MANIFEST, and that is load-bearing. `cronjob-tasks.yaml`
 # renders `.Values.tasks.env` plus a hand-listed set and NOTHING else — it does
 # not inherit `webapp.env`, where NOTIFY_* and MAIL_* live. So a whole-render
 # grep passes on the Deployment's copy alone and proves nothing about the pod
@@ -185,13 +185,13 @@ assert_contains "$cron_out" 'name: SAM_TASKS_XRAS_MAX' \
   "and xras_notices' own runaway guard — it does NOT share SAM_TASKS_EMAIL_MAX, \
 because 2500 is ~50x that task's realistic volume"
 
-# ── XRAS outgoing (xras_sweep) ──────────────────────────────────────────────
+# XRAS outgoing (xras_sweep)
 # Same trap as NOTIFY_*: this manifest renders `.Values.tasks.env` and does NOT
 # inherit `.Values.webapp.env`, so every key the sweep reads is cross-referenced
 # by hand in cronjob-tasks.yaml. Asserted against THIS manifest (-s) because a
 # whole-render grep passes on the Deployment's copy and proves nothing about the
 # pod that actually calls XRAS.
-# ⚠️ The sweep publishes into the SHARED cache the webapp reads. Without this
+# WARNING: The sweep publishes into the SHARED cache the webapp reads. Without this
 # the bucket silently falls back to a per-worker in-process cache, the sweep
 # reports success, the pod exits, and the dashboard tab shows "no sweep has
 # published yet" forever. Caught on the first production run.
@@ -202,7 +202,7 @@ assert_contains "$cron_out" 'name: CACHE_REDIS_URL' \
 # the webapp's label; the task pods carry `app: samuel-tasks`, so without their
 # own ingress peer they are silently denied and the sweep falls back to a
 # per-worker cache that dies with the pod. Both halves, or neither works.
-# ⚠️ Comments are STRIPPED before asserting. helm renders YAML comments into
+# WARNING: Comments are STRIPPED before asserting. helm renders YAML comments into
 # its output, and the first version of this check matched the explanatory
 # comment it had just added to the template rather than the selector — passing
 # with the peer deleted. Same class as grepping the whole render and hitting
@@ -241,7 +241,7 @@ outgoing=$(grep -E '^\s+XRAS_OUTGOING_ENABLED:' "$CHART_DIR/values.yaml" | awk '
 assert_contains "$cron_out" "value: \"${outgoing}\"" \
   "XRAS_OUTGOING_ENABLED must render the value values.yaml declares"
 
-# ⚠️ The sweep and the lever are ONE decision. The task skips while the lever
+# WARNING: The sweep and the lever are ONE decision. The task skips while the lever
 # is off, and the Feed-B dashboard tab renders only what the task publishes —
 # so a chart with the task enabled and the lever off yields a permanently
 # empty tab and a ledger full of `skipped`, with nothing failing to say so.
@@ -261,10 +261,10 @@ assert_contains "$cron_out" "value: \"${notify_enabled}\"" \
 
 # --- BOTH pods must see the kill switch -------------------------------------
 #
-# The CronJob OBEYS the switch; the webapp's Admin → Configuration card
+# The CronJob OBEYS the switch; the webapp's Admin -> Configuration card
 # REPORTS it. They are two consumers of ONE declaration in tasks.env.
 #
-# ⚠️ Asserted per-manifest, and that is the whole point. The assertions above
+# WARNING: Asserted per-manifest, and that is the whole point. The assertions above
 # run against the *full* render, so the CronJob alone satisfies them — which is
 # exactly how this shipped to production with the webapp not carrying the
 # variable at all. The card read its own environment, found nothing, and

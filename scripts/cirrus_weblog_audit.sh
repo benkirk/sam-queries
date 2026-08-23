@@ -11,7 +11,7 @@
 # Everything it inspects already exists on the webapp's stdout (≈45-day cluster
 # retention) and in Redis; this script just harvests and summarizes it:
 #   - gunicorn access logs   (containers/webapp/gunicorn_config.py)
-#   - the app request logger  ("METHOD path → status (ms) rid=…")
+#   - the app request logger  ("METHOD path -> status (ms) rid=…")
 #   - rate-limit 429 events   (log line + Redis set 'ratelimit:events', DB 1)
 #   - auth/CSRF failure logs   (auth/blueprint.py, run.py CSRF handler)
 #
@@ -32,7 +32,7 @@
 #
 # Exit codes:  0 = all PASS · 1 = at least one WARN · 2 = at least one FAIL.
 #
-# ── Hardening recommendations (NOT enforced by this script) ──────────────────
+# Hardening recommendations (NOT enforced by this script)
 # This audit only surfaces signals; the layered defenses below are follow-ups
 # tracked in docs/plans (see the approved plan). Quick reference:
 #   R1  Edge rate limiting — webapp.ingress.rateLimit in helm/values.yaml

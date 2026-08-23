@@ -42,7 +42,7 @@ def _branch_index(data: dict) -> dict:
 
 
 def _build_fstree_index(fstree_data: dict) -> dict:
-    """Nested index: facility → alloc_type → project_code → resource → resource_node."""
+    """Nested index: facility -> alloc_type -> project_code -> resource -> resource_node."""
     idx: dict = {}
     for fac in fstree_data.get('facilities', []):
         fname = fac['name']

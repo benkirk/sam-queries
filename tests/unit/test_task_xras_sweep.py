@@ -31,7 +31,7 @@ from factories import make_xras_opportunity_mapping
 
 pytestmark = pytest.mark.unit
 
-# ⚠️ One worker at a time for this file. The opportunity-mapping tests insert
+# WARNING: One worker at a time for this file. The opportunity-mapping tests insert
 # rows under FIXED `opportunity_id` PKs — 535388 and the 999-series are
 # documented production measurements, not sequence values — and two xdist
 # workers inserting the same PK inside their savepoints deadlock; InnoDB's
@@ -142,7 +142,7 @@ def wire(monkeypatch):
     return configure
 
 
-# ── registration ─────────────────────────────────────────────────────────
+# registration
 
 class TestRegistration:
 
@@ -151,7 +151,7 @@ class TestRegistration:
         assert NAME in TASKS
 
     def test_the_decorator_is_bound_to_the_task_body(self):
-        """⚠️ Registration checks the *name*, which is an argument to the
+        """WARNING: Registration checks the *name*, which is an argument to the
         decorator and therefore right no matter what it decorates.
 
         Adding a module-level helper between `@task(...)` and `def xras_sweep`
@@ -173,7 +173,7 @@ class TestRegistration:
         queue all day, and a business-day one gave the first operator in on a
         Monday a snapshot from Friday afternoon.
 
-        ⚠️ `Hourly`, not `BusinessHourly`: this task only refreshes a cache,
+        WARNING: `Hourly`, not `BusinessHourly`: this task only refreshes a cache,
         unlike its sibling `xras_notices`, which mails people and therefore
         stays inside the business day. `Hourly` is UTC and accepts no `tz` —
         which is the point, since a local-wall hourly schedule drops a slot
@@ -192,7 +192,7 @@ class TestRegistration:
         assert TASKS[NAME].misfire_grace == timedelta(hours=6)
 
     def test_the_lease_outlives_the_cronjob_deadline(self):
-        """⚠️ The invariant that stops a killed run being restarted mid-flight.
+        """WARNING: The invariant that stops a killed run being restarted mid-flight.
 
         The task cannot heartbeat (TaskContext exposes no ledger handle), so
         the lease is fixed at max(3 x expected_runtime, 900s). The two numbers
@@ -210,7 +210,7 @@ class TestRegistration:
             int(match.group(1))
 
     def test_it_is_enabled_and_its_lever_is_on(self):
-        """⚠️ The kill switch and `XRAS_OUTGOING_ENABLED` are ONE decision.
+        """WARNING: The kill switch and `XRAS_OUTGOING_ENABLED` are ONE decision.
 
         The task skips every run while the lever is off, and the Feed-B tab
         renders only what the task publishes — so a chart that enables the task
@@ -232,7 +232,7 @@ class TestRegistration:
             f'{NAME} is enabled but the outgoing lever is off: {lever}')
 
 
-# ── env readers ──────────────────────────────────────────────────────────
+# env readers
 
 class TestBudgets:
     """Read per run, and a nonsense value is refused rather than obeyed."""
@@ -282,7 +282,7 @@ class TestBudgets:
 
 
 class TestTheWindow:
-    """⚠️ Measured on the live process: without a window the sweep reported
+    """WARNING: Measured on the live process: without a window the sweep reported
     **2,180 "accounts needed" over 4,088 requests, 2,149 of them merely
     inactive** — every PI whose account was deactivated when they retired.
     That is not a queue.
@@ -343,7 +343,7 @@ class TestTheWindow:
         assert detail['status'] == 'Approved'
 
 
-# ── behavior ────────────────────────────────────────────────────────────
+# behavior
 
 class TestUnconfigured:
     """The shipped state, and a *skip* rather than a raise."""
@@ -419,7 +419,7 @@ class TestPendingPush:
 
 
 class TestClassification:
-    """⚠️ Only the **not-yet-pushed** rosters, which is the difference between
+    """WARNING: Only the **not-yet-pushed** rosters, which is the difference between
     a queue and a census. Measured against the live process (90-day window):
 
         every Approved request, no window   2,180 accounts "needed"
@@ -478,7 +478,7 @@ class TestIdentityRefresh:
 
     def test_a_reconciled_person_is_counted_but_not_closed(self, ctx, wire,
                                                            session):
-        """⚠️ Reconciliation is NOT a closure — the smoke measured 9 of 9
+        """WARNING: Reconciliation is NOT a closure — the smoke measured 9 of 9
         worklist rows reconciled and still needing a SAM account. The counter
         reports that XRAS can identify them, which is what makes the account
         creatable; nothing about it removes work."""
@@ -543,7 +543,7 @@ class TestItWritesNothing:
 
 
 class TestPublishHonesty:
-    """⚠️ Found on the first production run, and the reason `published` is not
+    """WARNING: Found on the first production run, and the reason `published` is not
     just "did a write return".
 
     `BucketedTTLCache.adapter()` falls back to a per-worker in-process cache
@@ -601,12 +601,12 @@ class TestTheChartCarriesTheSharedCache:
             'dies with its pod')
 
 
-# ── unmapped opportunity ids ─────────────────────────────────────────────
+# unmapped opportunity ids
 
 class TestUnmappedOpportunities:
     """The ``opportunityId`` map's read-side report.
 
-    ⚠️ **This must cost nothing extra.** Every ``reports/requests`` payload already
+    WARNING: **This must cost nothing extra.** Every ``reports/requests`` payload already
     carries ``opportunityId``, so the count comes off data the sweep has in hand —
     which is the entire reason it lives in this task rather than behind a
     ``/v1/opportunities`` fetch. A test that let it grow a round trip would not fail;
@@ -660,7 +660,7 @@ class TestUnmappedOpportunities:
     def test_an_unresolvable_opportunity_writes_nothing(self, ctx, wire, session):
         """The sweep may now write mapping rows, but only ones it can corroborate.
 
-        ⚠️ This replaced a flat "the sweep never writes" assertion, and the
+        WARNING: This replaced a flat "the sweep never writes" assertion, and the
         distinction is the whole design. What must stay true is not that the
         sweep never writes — it is that **ingestion never calls out**: the
         handler path reads one local table, so an inbound action does not depend
@@ -693,7 +693,7 @@ class TestUnmappedOpportunities:
         assert not [k for k in captured if 'opportunit' in k]
 
 
-# ── auto-mapping new opportunities ───────────────────────────────────────
+# auto-mapping new opportunities
 
 def _opportunity(oid, name, alloc_type, type_id, panel_id, *, extra_panels=()):
     """One `/v1/opportunities/list/:ids` entry, shaped like the live payload."""
@@ -724,7 +724,7 @@ _NSC_2026 = _opportunity(
 
 
 class TestOpportunitiesAreMappedOnlyWhenBothDerivationsAgree:
-    """⚠️ The safety rule, and the two production cases that justify it.
+    """WARNING: The safety rule, and the two production cases that justify it.
 
     XRAS's own `allocationTypeId` is **not** authoritative about SAM. Measured
     across all 27 opportunities in the NCAR process, it disagrees with the
@@ -801,7 +801,7 @@ class TestOpportunitiesAreMappedOnlyWhenBothDerivationsAgree:
 
     def test_an_existing_row_is_never_overwritten(self, ctx, wire, session,
                                                   monkeypatch):
-        """⚠️ A `manual` row is a human's answer to a question the API cannot
+        """WARNING: A `manual` row is a human's answer to a question the API cannot
         settle. The sweep inserts only where nothing exists — checked against the
         database, not against `source`."""
         from sam.accounting.allocations import AllocationType
@@ -894,7 +894,7 @@ class TestTheDryRunIsAFullRehearsal:
 
 
 class TestABrandNewOpportunityIsSeenBeforeAnyRequestExists:
-    """⚠️ The lead-time property, and the reason the open list is queried at all.
+    """WARNING: The lead-time property, and the reason the open list is queried at all.
 
     The request enumeration **cannot** mention an opportunity that has no
     requests. So a newly-posted one is invisible there until its first request is
@@ -914,7 +914,7 @@ class TestABrandNewOpportunityIsSeenBeforeAnyRequestExists:
     def _unmapped(self, session):
         """Guarantee 535388 is unmapped, instead of assuming the snapshot is.
 
-        ⚠️ **This class describes a BRAND-NEW opportunity, so every assertion
+        WARNING: **This class describes a BRAND-NEW opportunity, so every assertion
         below depends on that id being absent — and the obfuscated snapshot is
         not a fixed thing.** `xras_sweep` writes mapping rows itself
         (`source='task:xras_sweep'`), so the dev database accumulates them, and
@@ -1027,7 +1027,7 @@ class TestTheCapTakesTheNewestFirst:
         assert session.get(XrasOpportunityAllocationType, 999101) is None
 
 
-# ── the Remediations index (second cache key) ───────────────────────────
+# the Remediations index (second cache key)
 
 def _pending_request(request_id, number, *, status='Approved',
                      actions=(), username='ghost-user-1', reconciled=False):
@@ -1124,7 +1124,7 @@ class TestTheRequestsIndex:
         assert project.projcode in numbers
 
     def test_the_index_ignores_the_period_of_performance_window(self, ctx, wire):
-        """⚠️ The stale ones are the point — a window would hide exactly them."""
+        """WARNING: The stale ones are the point — a window would hide exactly them."""
         from sam.integration.xras_api.cache import (load_pending_worklist,
                                                     load_requests_index)
         ancient = _pending_request(1, 'NCAR0001')
@@ -1194,7 +1194,7 @@ class TestTheRequestsIndex:
 
 
 class TestAFailedIndexBuildDoesNotPublish:
-    """⚠️ ``[]`` is a real answer (nothing to remediate) and publishes; a
+    """WARNING: ``[]`` is a real answer (nothing to remediate) and publishes; a
     *failed* build must publish nothing, because replacing the last good
     snapshot with ``[]`` renders the healthy empty state over a blind hour —
     and the 24h TTL exists precisely to carry the good snapshot across it."""

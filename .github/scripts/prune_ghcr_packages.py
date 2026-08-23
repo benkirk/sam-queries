@@ -4,12 +4,12 @@
 Used by `.github/workflows/clean-ghcr.yaml` to keep the GHCR namespace
 small. Retention policy (per package):
 
-    * Untagged versions               → DELETE
-    * Tag matches PROTECTED_REGEX     → KEEP (never deleted)
+    * Untagged versions               -> DELETE
+    * Tag matches PROTECTED_REGEX     -> KEEP (never deleted)
         (default: ^(latest|main|staging|v[0-9].*)$)
-    * Tag starts with `sha-`          → KEEP the N most-recent, DELETE rest
+    * Tag starts with `sha-`          -> KEEP the N most-recent, DELETE rest
         (default N=10)
-    * Anything else                   → KEEP (defensive — leave unknown
+    * Anything else                   -> KEEP (defensive — leave unknown
                                        conventions alone)
 
 Owner / repo default to the GitHub Actions context env vars

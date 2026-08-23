@@ -98,7 +98,7 @@ class TestProjectCodeModel:
 
 
 # ============================================================================
-# FosAoi — Field of Science ↔ Area of Interest mapping
+# FosAoi — Field of Science <-> Area of Interest mapping
 # ============================================================================
 
 
@@ -228,7 +228,7 @@ class TestResponsiblePartyModel:
 
 
 # ============================================================================
-# Project.facility_name — derives via allocation_type → panel → facility
+# Project.facility_name — derives via allocation_type -> panel -> facility
 # ============================================================================
 
 

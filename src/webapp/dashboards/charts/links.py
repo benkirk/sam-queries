@@ -115,10 +115,10 @@ class ModalRoute:
 # --- The drill targets in use -------------------------------------------
 # Adding a row-drill chart means adding one line here and nothing in the JS.
 
-#: Usage Trend bars → the Historical Usage day row.
+#: Usage Trend bars -> the Historical Usage day row.
 DAY = DayDrill()
 
-#: Stacked Usage Trend legend + By User pie → the Usage by User row.
+#: Stacked Usage Trend legend + By User pie -> the Usage by User row.
 USAGE_USER = UserDrill()
 
 #: fs-scans distribution histogram bands. Index-keyed, so the JS never parses

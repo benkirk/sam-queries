@@ -71,7 +71,7 @@ DRAFT_ACTION_STATUS = 'Incomplete'
 
 
 def _as_date(value: Any):
-    """XRAS date → ``date``, or ``None``.
+    """XRAS date -> ``date``, or ``None``.
 
     Parsed here rather than left as a string because the entry is **pickled
     into a cache and read straight by a Jinja ``fmt_date``**, which needs a
@@ -128,7 +128,7 @@ def roster_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                 'username': username,
                 'name': _display_name(person),
                 'placeholder': is_placeholder(username),
-                # ⚠️ Reconciled means XRAS linked this username to a real
+                # WARNING: Reconciled means XRAS linked this username to a real
                 # identity — NOT that SAM has an account. A placeholder that is
                 # *also* reconciled is the contradiction the merge fixup exists
                 # for: reconciliation in XRAS is a merge, and a merged

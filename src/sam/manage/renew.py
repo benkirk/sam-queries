@@ -176,7 +176,7 @@ def analyze_renew_preconditions(
 ) -> Dict[int, str]:
     """Classify each requested resource for a Renew request WITHOUT mutating.
 
-    Returns a dict mapping resource_id → one of:
+    Returns a dict mapping resource_id -> one of:
       'ok'        — renew will create new allocations for this resource
       'no_source' — root has no non-inheriting allocation active at
                     ``source_active_at`` (renew would silently skip)
@@ -214,7 +214,7 @@ def analyze_renew_preconditions(
 ) -> Dict[int, str]:
     """Classify each requested resource for a Renew request WITHOUT mutating.
 
-    Returns a dict mapping resource_id → one of:
+    Returns a dict mapping resource_id -> one of:
       'ok'        — renew will create new allocations for this resource
       'no_source' — root has no non-inheriting allocation active at
                     ``source_active_at`` (renew would silently skip)
@@ -370,7 +370,7 @@ def renew_project_allocations(
         )
         created_roots.append(new_root)
 
-        # project_id → new allocation_id (for re-wiring inheriting children).
+        # project_id -> new allocation_id (for re-wiring inheriting children).
         alloc_map: Dict[int, int] = {
             root_project.project_id: new_root.allocation_id,
         }

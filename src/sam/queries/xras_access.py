@@ -334,7 +334,7 @@ _SQL_ALLOCATIONS = text("""
 #: has no ELSE, so an unmapped `transaction_type` yields NULL — which the
 #: `Action` DTO then omits, since it is NON_NULL.
 #:
-#: ⚠️  These are **outbound** strings: legacy's response vocabulary, mapped from
+#: WARNING: These are **outbound** strings: legacy's response vocabulary, mapped from
 #: our own `allocation_transaction.transaction_type`. `SUPPLEMENT` becomes
 #: `'Supplemental'` here, while the *inbound* vocabulary in
 #: `queries/xras_actions.py` (`XRAS_ACTION_TYPES`) spells it `'Supplement'`.

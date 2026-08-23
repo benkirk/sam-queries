@@ -30,7 +30,7 @@ class TestAllocationQueries:
     """Test allocations command with various filters and groupings."""
 
     # Rich auto-detects terminal width; under CliRunner the default is narrow
-    # (~80 cols) which truncates long column headers ('Resource' → 'Resou…')
+    # (~80 cols) which truncates long column headers ('Resource' -> 'Resou…')
     # and breaks substring assertions. The legacy subprocess version sets
     # COLUMNS=300 in the env. We do the same via fixture autouse so every
     # invoke in this class sees the wide-terminal env.

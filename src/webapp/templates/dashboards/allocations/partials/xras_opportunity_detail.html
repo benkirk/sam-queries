@@ -6,7 +6,7 @@
   Context: opportunity_id, opportunity (a /v1/opportunities/:id dict),
            back_url / back_request_number, configured.
 
-  ⚠️ No `data-bs-toggle="modal"` on any control — this body is swapped into the
+  WARNING: No `data-bs-toggle="modal"` on any control — this body is swapped into the
   already-open #auditDetailsModal, and a toggle would hide it (#464 rule).
 
   Read-only: an opportunity is an allocation call SAM never writes, so there is
@@ -19,7 +19,7 @@
 
 {{ shell.back_link(back_url, back_request_number) }}
 
-{# ── header badges ──────────────────────────────────────────────────────── #}
+{# header badges #}
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
     {% if opp.opportunityType %}
     <span class="badge bg-body-secondary text-body-secondary border">{{ opp.opportunityType }}</span>
@@ -33,14 +33,14 @@
     <span class="text-muted small ms-auto font-monospace">#{{ opportunity_id }}</span>
 </div>
 
-{# ── the human description of the allocation type ───────────────────────── #}
+{# the human description of the allocation type #}
 {% if info.description %}
 <p class="small mb-3" style="white-space: pre-wrap;">{{ info.description }}</p>
 {% else %}
 <p class="small text-muted fst-italic mb-3">No description on file for this opportunity.</p>
 {% endif %}
 
-{# ── the few structured facts worth surfacing ───────────────────────────── #}
+{# the few structured facts worth surfacing #}
 <dl class="row g-2 small mb-0">
     <div class="col-md-6 mb-0">
         <dt class="text-muted fw-normal d-inline">Award period:</dt>

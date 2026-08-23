@@ -45,7 +45,7 @@
 
     <div class="tab-content" id="organizationsTabsContent">
 
-        <!-- ── Organizations tab ──────────────────────────────────────── -->
+        <!-- Organizations tab -->
         <div class="tab-pane fade show active" id="orgs-pane" role="tabpanel"
              aria-labelledby="orgs-tab">
             <div class="table-responsive">
@@ -120,7 +120,7 @@
             </div>
         </div>
 
-        <!-- ── Institutions tab (lazy-loaded HTMX fragment) ── -->
+        <!-- Institutions tab (lazy-loaded HTMX fragment) -->
         <div class="tab-pane fade" id="institutions-pane" role="tabpanel"
              aria-labelledby="institutions-tab"
              hx-get="{{ url_for('admin_dashboard.htmx_institutions_fragment',
@@ -133,7 +133,7 @@
             </div>
         </div>
 
-        <!-- ── Areas tab (groups collapsed, AOIs expand on click) ───────── -->
+        <!-- Areas tab (groups collapsed, AOIs expand on click) -->
         <div class="tab-pane fade" id="areas-pane" role="tabpanel"
              aria-labelledby="areas-tab">
             <div class="table-responsive">
@@ -147,7 +147,7 @@
                     </thead>
                     {% if aoi_groups %}
                     {% for g in aoi_groups %}
-                    {# ── Group row (name + count are the trigger) ──
+                    {# Group row (name + count are the trigger)
                        Not the <tr>: a row-level toggle also fires when the
                        Edit/Delete buttons are clicked, and the button cannot
                        stop it (Bootstrap's data-api runs in the capture
@@ -176,7 +176,7 @@
                             </td>
                         </tr>
                     </tbody>
-                    {# ── AOI child rows (collapsed by default) ── #}
+                    {# AOI child rows (collapsed by default) #}
                     <tbody class="collapse" id="aoi-group-{{ g.area_of_interest_group_id }}">
                         {% for a in aois | selectattr('area_of_interest_group_id', 'equalto', g.area_of_interest_group_id) | list | sort(attribute='area_of_interest') %}
                         <tr class="table-secondary{% if not a.active %} opacity-50{% endif %}">
@@ -238,7 +238,7 @@
         </div>
 
 
-        <!-- ── NSF Programs tab ───────────────────────────────────────── -->
+        <!-- NSF Programs tab -->
         <div class="tab-pane fade" id="nsf-programs-pane" role="tabpanel"
              aria-labelledby="nsf-programs-tab">
             <div class="table-responsive">

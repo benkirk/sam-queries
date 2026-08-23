@@ -4,7 +4,7 @@ The admin Projects page has had a manual **Deactivate Expired** button for as
 long as anyone remembers, and it only ever ran when somebody remembered to press
 it. This is that button, on a schedule.
 
-⚠️ **A task computes from ``ctx.occurrence``, never the wall clock.** Said again
+WARNING: **A task computes from ``ctx.occurrence``, never the wall clock.** Said again
 here because this task has *two* occurrence-derived values, not one: the
 reference instant for "90 days expired", and the ``inactivate_time`` stamp. Get
 either from ``datetime.now()`` and a run dispatched late stops agreeing with the

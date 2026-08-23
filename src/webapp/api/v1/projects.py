@@ -133,9 +133,9 @@ def list_projects():
     from sam.accounting.allocations import AllocationType
     from sam.resources.facilities import Facility, Panel
 
-    # Facility-scope the caller. None → no restriction (system holder).
-    # Empty set → scoped user with no VIEW_PROJECTS anywhere → 0 rows.
-    # Populated set → restrict to those facilities; reject an explicit
+    # Facility-scope the caller. None -> no restriction (system holder).
+    # Empty set -> scoped user with no VIEW_PROJECTS anywhere -> 0 rows.
+    # Populated set -> restrict to those facilities; reject an explicit
     # ?facility=<other> request outright so the caller sees a 403
     # instead of a silent empty result.
     allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)

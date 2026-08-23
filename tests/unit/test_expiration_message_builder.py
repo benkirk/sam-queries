@@ -59,7 +59,7 @@ def _build(expiring, milestone=None, **kwargs):
         expiring[1], milestone=milestone or MILESTONES[0], **kwargs)
 
 
-# ── The band type ────────────────────────────────────────────────────────────
+# The band type
 
 class TestMilestone:
 
@@ -112,7 +112,7 @@ class TestTheShippedLadder:
         assert len(set(labels)) == len(labels)
 
 
-# ── The key ──────────────────────────────────────────────────────────────────
+# The key
 
 class TestTheDedupKey:
 

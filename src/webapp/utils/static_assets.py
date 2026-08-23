@@ -48,7 +48,7 @@ The rule is deliberately shaped so that the conservative branch is the
 automatically, and only an explicit ``?v=`` opts into immutability. Getting the
 rule wrong therefore costs efficiency, never correctness.
 
-⚠️ One interaction worth knowing. Rendered HTML is itself cached (see
+WARNING: One interaction worth knowing. Rendered HTML is itself cached (see
 ``user_aware_cache_key``), so after a deploy that changes an asset, cached
 fragments keep emitting the *old* ``?v=`` until they expire — and a browser
 holding that URL keeps using its old copy. Bounded by the HTML cache TTL, and

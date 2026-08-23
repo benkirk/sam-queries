@@ -83,7 +83,7 @@ def _notice(**over):
 class TestTheBadgeIsAdminOnly:
 
     def test_it_is_absent_when_the_key_was_never_set(self, app):
-        """⚠️ THE assertion. `render_project_card` is shared, and the user
+        """WARNING: THE assertion. `render_project_card` is shared, and the user
         dashboard never sets `notification` — a PI has no business seeing
         which of their colleagues we emailed, or when."""
         html = _render(app)

@@ -84,11 +84,11 @@ class TestUpdateAllocationFailures:
             json={'amount': 100.0},
         )
         # require_allocation_permission resolves the allocation first;
-        # missing → 404.
+        # missing -> 404.
         assert response.status_code == 404
 
     def test_put_empty_body(self, auth_client, snapshot_allocation_id):
-        """Missing JSON body → 400 ('Request body must be JSON')."""
+        """Missing JSON body -> 400 ('Request body must be JSON')."""
         # Send an empty content-type=application/json body. Flask returns
         # data=None, route returns 400 before hitting the schema.
         response = auth_client.put(
@@ -100,7 +100,7 @@ class TestUpdateAllocationFailures:
         assert 'error' in response.get_json()
 
     def test_put_invalid_amount(self, auth_client, snapshot_allocation_id):
-        """Negative amount fails Range(min=0, min_inclusive=False) → 400."""
+        """Negative amount fails Range(min=0, min_inclusive=False) -> 400."""
         response = auth_client.put(
             f'/api/v1/allocations/{snapshot_allocation_id}',
             json={'amount': -50.0},
@@ -110,7 +110,7 @@ class TestUpdateAllocationFailures:
 
     def test_put_no_recognized_fields(self, auth_client, snapshot_allocation_id):
         """A JSON body whose keys are all unknown to the schema is dropped
-        by HtmxFormSchema (unknown=EXCLUDE), leaving updates empty → 400."""
+        by HtmxFormSchema (unknown=EXCLUDE), leaving updates empty -> 400."""
         response = auth_client.put(
             f'/api/v1/allocations/{snapshot_allocation_id}',
             json={'unrecognized_field': 'whatever'},

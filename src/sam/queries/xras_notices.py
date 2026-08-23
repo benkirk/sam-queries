@@ -1,7 +1,7 @@
 """Turns one XRAS action into ``Message`` objects, and nothing else.
 
 Two consumers build the same XRAS handoff notice: the operator's **Notify**
-button on the Allocations → XRAS card, and the hourly ``xras_notices``
+button on the Allocations -> XRAS card, and the hourly ``xras_notices``
 scheduled task. They must not disagree about the audience, the payload or —
 above all — the dedup key, because a disagreement there is silently a second
 copy in a PI's inbox. The key is the *only* thing that makes the two paths
@@ -17,7 +17,7 @@ caused — exactly as :mod:`sam.queries.expiration_notices` sits beside
 ``sam/notify/``: that package is transport, ledger and rendering machinery and
 stays domain-free.
 
-⚠️ **Not exported from** ``sam/queries/__init__.py``. That file imports its
+WARNING: **Not exported from** ``sam/queries/__init__.py``. That file imports its
 submodules eagerly, so listing this one would put ``sam.notify.base`` into the
 import graph of every ``from sam.queries import ...`` in the tree. Import it by
 full path.
@@ -62,7 +62,7 @@ __all__ = [
 ]
 
 
-#: kind → subject template.
+#: kind -> subject template.
 #: The subject lives here rather than in the Jinja file because it is also the
 #: `notification_log.subject` column an operator reads back in the admin log,
 #: and a subject assembled inside a template cannot be searched from SQL.

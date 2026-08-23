@@ -9,7 +9,7 @@ plus three local factories living inside ``test_xras_action_queries.py``. The lo
 ones were correctly shaped — session-first, flush, return — which is exactly why they
 belonged here instead.
 
-⚠️ **Mapping keys are derived from ``resource_id``, and that is not arbitrary.** Every
+WARNING: **Mapping keys are derived from ``resource_id``, and that is not arbitrary.** Every
 module used to pick its own magic base (``300_000``, ``900_000``, ``910_000``,
 ``930_000``, ``960_000``, ``980_000``, ``990_000``) purely to stay out of the others'
 way, which is convention doing a job the database can do properly.
@@ -17,7 +17,7 @@ way, which is convention doing a job the database can do properly.
 The offset is what makes it safe: ``resource_id`` is a DB-assigned primary key, so it
 is unique across **every xdist worker** without coordination.
 
-⚠️ Do **not** swap this for ``next_int``. That counter is process-local and, unlike
+WARNING: Do **not** swap this for ``next_int``. That counter is process-local and, unlike
 ``next_seq``, bakes in **no** worker tag — so twelve workers would all mint
 ``900_001`` and collide on ``resource_repository_key``, which is itself a primary key.
 Tried; it produced exactly that, intermittently.
@@ -80,7 +80,7 @@ def make_xras_action(session, *, status='received', action_type='Extension',
                      payload='{"actionType":"Extension"}'):
     """One ``xras_action_log`` row, built directly.
 
-    ⚠️ **Not** the route's write path. ``webapp.api.xras.actions._record`` commits on
+    WARNING: **Not** the route's write path. ``webapp.api.xras.actions._record`` commits on
     its own connection so the audit row survives a handler rollback, which means rows
     it writes escape the suite's per-test SAVEPOINT and must be deleted explicitly
     (see the ``action_log`` fixture in ``tests/xras_audit.py``). This builder writes

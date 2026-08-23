@@ -54,7 +54,7 @@ XRAS_ACTION_STATUSES = ('received', 'processed', 'manual', 'failed', 'rechecked'
 #: vocabulary (``action/domain/model/Action.java``: ``// New, Extension, Supplement,
 #: Transfer, Renewal, Adjustment, Advance``), corrected against real payloads.
 #:
-#: ⚠️  There is **no ``actionType`` of "Update"**. "Update" is a *handler*, not a
+#: WARNING: There is **no ``actionType`` of "Update"**. "Update" is a *handler*, not a
 #: type: legacy dispatches on the pair ``(actionType, does the project exist)``, and
 #: ``UpdateProjectActionService`` fires on ``New`` or ``Renewal`` when the projcode
 #: already exists (``AddProjectActionService`` takes ``New`` when it does not). The
@@ -66,7 +66,7 @@ XRAS_ACTION_STATUSES = ('received', 'processed', 'manual', 'failed', 'rechecked'
 #: Advance still have zero samples), so an unrecognised type must still list and
 #: still filter. Callers union this with whatever ``DISTINCT action_type`` holds.
 #:
-#: ⚠️  This is the **inbound** vocabulary and spells ``'Supplement'``. The
+#: WARNING: This is the **inbound** vocabulary and spells ``'Supplement'``. The
 #: *outbound* one in ``queries/xras_access.py`` (``_SQL_ACTIONS``) spells the
 #: same concept ``'Supplemental'``, because that CASE maps our own
 #: ``allocation_transaction.transaction_type`` onto legacy's response bytes.
@@ -77,7 +77,7 @@ XRAS_ACTION_STATUSES = ('received', 'processed', 'manual', 'failed', 'rechecked'
 XRAS_ACTION_TYPES = ('New', 'Renewal', 'Extension', 'Supplement',
                      'Transfer', 'Adjustment', 'Advance', 'Date Adjustment')
 
-#: ⚠️ ``Date Adjustment`` was added 2026-08-11 and is **not serviced**. It reached us
+#: WARNING: ``Date Adjustment`` was added 2026-08-11 and is **not serviced**. It reached us
 #: through the manual-fallback subject line of four forwarded payloads — the mechanism
 #: ``XRAS_REIMPLEMENTATION.md`` § 1.4 identifies as the only record of the action types
 #: SAM does not service — and it is absent from every other document because nothing
@@ -147,7 +147,7 @@ def expand_action_types(value):
 #: look like ``NCAR4253``. A different site re-points these two names and nothing
 #: else; ``startswith`` takes a tuple, so a family of prefixes costs nothing.
 #:
-#: ⚠️  **DISPLAY ONLY. These must never decide whether a request number is a
+#: WARNING: **DISPLAY ONLY. These must never decide whether a request number is a
 #: projcode.** :func:`_annotate_project_existence` asks the *database*, and has
 #: to: a token is projcode-**shaped**. Measured against real data, projcodes are
 #: ``AAAA####`` (``UCUB0166``, ``UBOI0007``, ``NACD0009``) and ``NCAR4232`` is the
@@ -185,7 +185,7 @@ XRAS_ACTION_SORT_COLUMNS = {
 #: nothing in the row distinguishes them — the two are the same shape.
 _PROJCODE_COLUMNS = (XrasActionLog.projcode_result, XrasActionLog.request_number)
 
-#: Newest action first. ⚠️ **The id is not decoration.** ``received_time`` is a MySQL
+#: Newest action first. WARNING: **The id is not decoration.** ``received_time`` is a MySQL
 #: ``DATETIME`` — one-second resolution — and XRAS posts arrive in bursts, so ties
 #: are ordinary. Every consumer of the projcode join orders by this so they cannot
 #: name different rows for the same project.
@@ -196,7 +196,7 @@ _LATEST_ACTION_ORDER = (XrasActionLog.received_time.desc(),
 def action_names_project(projcode):
     """The ``projcode_result`` OR ``request_number`` match, as one clause.
 
-    ⚠️ **This is the subtlest logic in the feature and it is spelled here only.** It
+    WARNING: **This is the subtlest logic in the feature and it is spelled here only.** It
     used to be written three ways in this module, and two of them disagreed on how to
     break a same-second tie: the provenance query ordered by ``(received_time, id)``
     while the pending card merged two per-column queries comparing only
@@ -669,13 +669,13 @@ def audit_resource_mapping(session: Session, *,
     kit (harmless but misleading), and rows whose resource has vanished entirely (a
     broken FK, which should be impossible).
 
-    ⚠️ **An unmapped active resource is not a failure.** Not every internal resource
+    WARNING: **An unmapped active resource is not a failure.** Not every internal resource
     is offered for allocation through XRAS, so most of the unmapped ones are unmapped
     by design — stably 11 of them across snapshot refreshes. Only ``dangling`` is
     unambiguously broken. The caller decides what to do with that; this reports.
 
     Lives here rather than in ``cli/xras/builders.py``, where it was: builders are
-    ORM→dict extractors per ``src/cli/README.md``, and a webapp surface that wants
+    ORM->dict extractors per ``src/cli/README.md``, and a webapp surface that wants
     the same audit should not have to import the CLI to get it.
 
     **The fourth group needs *xras_keys*.** Read from two local tables alone, this
@@ -695,7 +695,7 @@ def audit_resource_mapping(session: Session, *,
 
     rows = session.query(XrasResourceRepositoryKeyResource).all()
 
-    # ⚠️ Keyed by resource_id, so two keys pointing at ONE resource collapse to the
+    # WARNING: Keyed by resource_id, so two keys pointing at ONE resource collapse to the
     # last one seen while ``mapped`` below still counts both. Left as-is because the
     # column is the mapping's primary key and the duplicate is itself the anomaly —
     # but it is why these two numbers can disagree.
@@ -747,7 +747,7 @@ def audit_opportunity_mapping(session: Session, *,
     usable offline. ``opportunity_ids=None`` reports the local half only, with
     ``live_checked`` False to say so.
 
-    ⚠️ **An unmapped opportunity is not a failure.** With an empty table *every*
+    WARNING: **An unmapped opportunity is not a failure.** With an empty table *every*
     opportunity is unmapped and ingestion is completely healthy — the ladder resolves
     it, exactly as it did before the map existed. This is a diagnostic, not a gate.
     The one genuinely broken state is ``dangling``: a mapping row whose
@@ -806,7 +806,7 @@ def propose_opportunity_mapping(session, opportunity_payloads) -> Dict[str, Any]
     It also makes a mistake in the constant self-limiting: a wrong entry
     disagrees with the ladder and is withheld rather than written.
 
-    ⚠️ **The ladder half is an approximation, deliberately on the conservative
+    WARNING: **The ladder half is an approximation, deliberately on the conservative
     side.** At ingest the chain also sees ``requestTitle``, which an opportunity
     payload has no equivalent of, so two strategies (``_csl_strategy`` and part
     of ``_external_strategy``) cannot fire here. That can only turn an agreement

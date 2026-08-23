@@ -2,7 +2,7 @@
   A modal body that explains why nothing can proceed. Rendered with **200**,
   never a 4xx.
 
-  ⚠️ That status is the whole point of this file. htmx will not swap a 4xx
+  WARNING: That status is the whole point of this file. htmx will not swap a 4xx
   response into an already-open modal, so an XRAS outage returned as an error
   status produces an empty modal with no explanation and no way to tell it from
   a broken button. Every remediation GET degrades through here instead.

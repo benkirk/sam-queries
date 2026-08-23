@@ -198,7 +198,7 @@ def profile(figsize, mobile_figsize, tablet_figsize, *, base_fontsize=11,
 
 
 def resolve_layout(layouts, layout) -> Layout:
-    """Accept a `Layout`, a name, or None → the family's desktop profile.
+    """Accept a `Layout`, a name, or None -> the family's desktop profile.
 
     Lenient like `jobs/routes.py:_parse_period`: an unknown name means "no
     override", never an error. These are htmx fragments, and a stale

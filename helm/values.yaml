@@ -32,8 +32,8 @@ topologySpread:
   whenUnsatisfiable: ScheduleAnyway
 
 # Centralized Redis backend used by:
-#   - Flask-Caching chart cache (CACHE_REDIS_URL → DB 0)
-#   - Flask-Limiter rate-limit counters (RATELIMIT_STORAGE_URI → DB 1)
+#   - Flask-Caching chart cache (CACHE_REDIS_URL -> DB 0)
+#   - Flask-Limiter rate-limit counters (RATELIMIT_STORAGE_URI -> DB 1)
 # Single replica, no persistence, no HA. Eviction = allkeys-lru.
 # See docs/plans/implemented/REDIS.md.
 #
@@ -229,17 +229,17 @@ webapp:
     # system_status keeps its own explicit naive-UTC clock
     # (system_status.timeutil.utcnow_naive — there is no such symbol in sam.fmt).
     TZ: "America/Denver"
-    # ── Notifications (sam.notify) ────────────────────────────────────
+    # Notifications (sam.notify)
     # Relay facts MEASURED from a pod on nwc1, 2026-08-09
     # (docs/plans/implemented/NOTIFICATION_FRAMEWORK.md § 9):
     #   ndir.ucar.edu:25 reachable — no NetworkPolicy restricts webapp egress
-    #   EHLO advertises STARTTLS, and NOT AUTH  → no ExternalSecret needed,
+    #   EHLO advertises STARTTLS, and NOT AUTH  -> no ExternalSecret needed,
     #     which is why MAIL_USERNAME/MAIL_PASSWORD are absent here entirely
     #   pod egress is the NODE address (128.117.217.72/.73), inside
-    #     ucar.edu's SPF ip4:128.117.0.0/16 → sam-admin@ucar.edu SPF-passes
-    #   one real message pod → benkirk@ucar.edu landed in the inbox
+    #     ucar.edu's SPF ip4:128.117.0.0/16 -> sam-admin@ucar.edu SPF-passes
+    #   one real message pod -> benkirk@ucar.edu landed in the inbox
     #
-    # ⚠️  A future node OUTSIDE 128.117.0.0/16 falls out of that SPF record.
+    # WARNING: A future node OUTSIDE 128.117.0.0/16 falls out of that SPF record.
     #     `?all` is neutral rather than a hard fail, so mail would still be
     #     accepted — it would just start scoring worse, silently.
     MAIL_SERVER: "ndir.ucar.edu"
@@ -247,7 +247,7 @@ webapp:
     MAIL_USE_TLS: "true"
     MAIL_TIMEOUT: "10"
     MAIL_DEFAULT_FROM: "sam-admin@ucar.edu"
-    # ⚠️  EXPLICIT, not inherited. NOTIFY_ENABLED is fail-closed everywhere
+    # WARNING: EXPLICIT, not inherited. NOTIFY_ENABLED is fail-closed everywhere
     #     (sam.notify.NotifyConfig defaults it false) precisely so a dev
     #     container cannot mail real users. Production is the one place that
     #     must opt in, and it must do so visibly — ProductionConfig.validate()
@@ -295,7 +295,7 @@ webapp:
     # set "0" to disable the integration entirely.
     #
     # FS_SCAN_PG_DB is the default/Campaign_Store database. FS_SCAN_RESOURCE_DATABASES
-    # maps each scan resource to its database: Campaign_Store → campaign, Destor →
+    # maps each scan resource to its database: Campaign_Store -> campaign, Destor ->
     # destor (the CNPG database is named `destor`; `desc1` is only the Lustre MOUNT
     # /lustre/desc1). The plugin reaches the second database via its `database=`
     # selector using these SAME host/credentials; the pg-appuser role already has
@@ -311,7 +311,7 @@ webapp:
     # XRAS action ingestion. CAPTURE_ONLY is the safety interlock: while it is "1" the
     # endpoint authenticates, parses and audits every post but dispatches nothing.
     #
-    # ✅ RELEASED 2026-08-19, deliberately AHEAD of XRAS repointing its base URL to
+    # RELEASED 2026-08-19, deliberately AHEAD of XRAS repointing its base URL to
     # sam.hpc.ucar.edu. The two directions are not symmetric:
     #
     #   - flipping early costs nothing — XRAS still posts to sam.ucar.edu, so the
@@ -321,7 +321,7 @@ webapp:
     #     management_transaction opens). Recovery is asking the XRAS admin to push the
     #     button again, per action.
     #
-    # ⚠️ What this must NOT do is flip early on a stack XRAS is ALREADY posting to —
+    # WARNING: What this must NOT do is flip early on a stack XRAS is ALREADY posting to —
     # that double-applies actions legacy has already applied, against live allocations,
     # with no undo. The precondition is therefore checked, not assumed: no
     # status='received' rows in xras_action_log before this lands.
@@ -334,7 +334,7 @@ webapp:
     # e.g. "Extension,Supplement". Narrow this to park a misbehaving payload class as
     # manual without a revert; an unknown token leaves that type disabled.
     XRAS_ACTIONS_ENABLED: "all"
-    # ── XRAS Allocations API: SAM calling OUT to XRAS (docs/xras/outgoing/) ──
+    # XRAS Allocations API: SAM calling OUT to XRAS (docs/xras/outgoing/)
     # The opposite direction from the two levers above. Read-only and GET-only:
     # the client has no verb method but an internal _get, because the SAME key
     # can create requests, modify roles and merge one person into another.
@@ -343,12 +343,12 @@ webapp:
     # renders its unconfigured state, the xras_sweep task records a skip, and
     # sam-admin degrades — nothing raises for lack of a key.
     #
-    # ⚠️ ON. The `xras_sweep` task SKIPS while this is "0", and the Feed-B tab
+    # WARNING: ON. The `xras_sweep` task SKIPS while this is "0", and the Feed-B tab
     # renders what that task publishes — so turning the task on without this
     # would produce a permanently empty tab and a ledger full of `skipped`.
     # The two switches are one decision.
     #
-    # ⚠️ The KEY is not here. It arrives from OpenBao via the
+    # WARNING: The KEY is not here. It arrives from OpenBao via the
     # webapp.xrasApiCredentials ExternalSecret below, injected as XRAS_API_KEY
     # by secretKeyRef into BOTH deployment.yaml and cronjob-tasks.yaml.
     XRAS_OUTGOING_ENABLED: "1"
@@ -357,7 +357,7 @@ webapp:
     # Required header on every call; scopes nothing outside /v1/requests, which
     # this client never reads. The value XRAS provisioned for the ARC scripts.
     XRAS_API_USER: "arcguest"
-    # ⚠️ SEPARATE lever for the WRITE client (sam/integration/xras_api/admin_client.py),
+    # WARNING: SEPARATE lever for the WRITE client (sam/integration/xras_api/admin_client.py),
     # which is a different class from the read client above and lives in the `submit`
     # XRAS context. OFF, and it stays off until the remediation UI is signed off.
     #
@@ -441,7 +441,7 @@ webapp:
 
   # XRAS Allocations API key — SAM calling OUT to XRAS. Same five-key shape as
   # jupyterhubCredentials above, and the same single-value payload.
-  # ⚠️ Consumed by TWO manifests: the Deployment (the dashboard card) and the
+  # WARNING: Consumed by TWO manifests: the Deployment (the dashboard card) and the
   # CronJob (the xras_sweep task). They share no env anchor, so the secretKeyRef
   # is written out in both — the same cross-referencing trap NOTIFY_* hit.
   xrasApiCredentials:
@@ -465,7 +465,7 @@ webapp:
     issuerKey: issuer                     # OIDC issuer URL (e.g. https://login.microsoftonline.com/{tenant}/v2.0)
     flaskSecretKeyKey: flask_secret_key   # Per-environment Flask session signing key (32-byte hex)
 
-# ── Scheduled tasks ───────────────────────────────────────────────────
+# Scheduled tasks
 # ONE CronJob for all tasks. Each task's schedule lives in
 # src/scheduling/tasks/ as a Python declaration; this block only controls how
 # often the dispatcher wakes up. The `task_run` ledger makes a late or
@@ -507,7 +507,7 @@ tasks:
     # cutoff also means the first production run is not a multi-year DELETE.
     # The default lives in src/system_status/retention.py; this overrides it.
     STATUS_RETENTION_DAYS: "365"
-    # ── expiration_notices ────────────────────────────────────────────
+    # expiration_notices
     # Runaway guard: the task fails BEFORE sending anything if its audience
     # exceeds this. ~4.7x the measured peak of 535 (2026-11-23, catching the
     # Dec 31 cluster) — far enough above normal operation never to fire,
@@ -516,7 +516,7 @@ tasks:
     # visibly, because the number is a policy decision rather than a
     # code one.
     #
-    # ⚠️ NOT 250, which SCHEDULED_TASKS.md § 12 proposed. That is *below*
+    # WARNING: NOT 250, which SCHEDULED_TASKS.md § 12 proposed. That is *below*
     # observed volume and would have failed every loaded run.
     SAM_TASKS_EMAIL_MAX: "2500"
     # One summary email per run, whatever the outcome — including the ~40
@@ -524,7 +524,7 @@ tasks:
     # would otherwise mean both "nothing was due" and "the task never ran".
     # Unset it to turn the summary off; the notices themselves are unaffected.
     SAM_TASKS_SUMMARY_TO: "benkirk@ucar.edu"
-    # ── xras_notices ──────────────────────────────────────────────────
+    # xras_notices
     # Runaway guard for the hourly XRAS handoff notices, sized to THAT task
     # rather than shared with SAM_TASKS_EMAIL_MAX above: a normal hour sends
     # single digits, so 50 is far enough above normal operation never to fire
@@ -539,7 +539,7 @@ tasks:
     # 25 pages x 200 requests is comfortably the whole NCAR process today.
     SAM_TASKS_XRAS_SWEEP_MAX_PAGES: "25"
     SAM_TASKS_XRAS_SWEEP_MAX_PEOPLE: "250"
-    # ⚠️ The window is what makes the sweep's output a QUEUE rather than a
+    # WARNING: The window is what makes the sweep's output a QUEUE rather than a
     # census. Measured against the live process with no window: 4,088 Approved
     # requests -> 2,180 "accounts needed", 2,149 of them merely inactive —
     # every PI whose SAM account was deactivated when they retired or moved
@@ -557,7 +557,7 @@ tasks:
     # when it bites, and the cap selects NEWEST first — a just-posted opportunity
     # is the case the feature exists for; a historical backfill can wait a slot.
     SAM_TASKS_XRAS_MAP_MAX: "20"
-    # ⚠️ Comma-separated task names to skip, WITHOUT a code deploy. This is a
+    # WARNING: Comma-separated task names to skip, WITHOUT a code deploy. This is a
     # staged-enable control: the live set is enumerated below and the rest are
     # named here until each has been reviewed on its own.
     #
@@ -571,14 +571,14 @@ tasks:
     # census (see its module docstring). It calls out to api.xras.org and
     # publishes a cache entry the dashboard reads.
     #
-    # ⚠️ It is NOT read-only, and its own comment here said so until #459. It
+    # WARNING: It is NOT read-only, and its own comment here said so until #459. It
     # inserts xras_opportunity_allocation_type rows — "the only write this task
     # performs", src/scheduling/tasks/xras_sweep.py — and only where two
     # independent derivations agree, never overwriting an existing row. An
     # inbound action still reads that table locally and never calls out, so
     # ingestion does not depend on this task or on api.xras.org being up.
     #
-    # ⚠️ There is NO wildcard. `disabled_tasks()` in src/scheduling/runner.py
+    # WARNING: There is NO wildcard. `disabled_tasks()` in src/scheduling/runner.py
     # is a case-sensitive exact match against registry keys — `all`, `*` and
     # `none` are just names that match nothing, and an unknown name is not
     # validated or warned about. So this list is an ENUMERATION, and it is

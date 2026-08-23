@@ -12,8 +12,8 @@ While five handler modules each held their own ``from ... import
 management_transaction``, every such test had to patch five separate bindings. Missing
 one has **two** failure modes and only the first is safe:
 
-* the name is absent → ``monkeypatch.setattr`` raises ``AttributeError`` at setup. Loud.
-* the name is present but unused → the patch succeeds, the real context manager runs
+* the name is absent -> ``monkeypatch.setattr`` raises ``AttributeError`` at setup. Loud.
+* the name is present but unused -> the patch succeeds, the real context manager runs
   from wherever the code actually reads it, the rows are written and committed, and
   **every assertion still passes**. Silent, and it damages other workers' runs.
 
@@ -199,7 +199,7 @@ class TestTheNewHandlerDoesNotOwnProject:
 
 
 class TestPanelAuthorisationAgreesWithTheResolvedType:
-    """⚠️ **The sharp edge of the ``opportunityId`` map.**
+    """WARNING: **The sharp edge of the ``opportunityId`` map.**
 
     ``auth_at_panel_meeting`` re-derives the ``(panel, type)`` pair *independently*
     of ``resolve_allocation_type`` — the first sets ``auth_at_panel_mtg`` on

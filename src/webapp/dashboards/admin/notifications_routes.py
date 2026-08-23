@@ -5,7 +5,7 @@ Structurally this is the XRAS action-log page, which is the same problem
 already solved well: facet chips with self-exclusion, a sortable paginated
 table, and a detail modal per row.
 
-⚠️ **One permission tier above the tile, deliberately.** The Configuration
+WARNING: **One permission tier above the tile, deliberately.** The Configuration
 card is ``VIEW_SYSTEM_CONFIG`` and renders counts; **every row here names a
 real person's email address**, so it is ``SYSTEM_ADMIN``. The gate is at the
 route rather than in the template, so a view-source cannot reveal what the

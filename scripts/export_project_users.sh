@@ -57,7 +57,7 @@ else
     echo "Extracting active project codes from hierarchy..." >&2
 
     # Extract all project codes from the hierarchy section
-    # - Look for lines in the hierarchy box (starting with │)
+    # - Look for lines in the hierarchy box (starting with )
     # - Extract project codes (pattern: uppercase letters followed by digits)
     # - Exclude lines marked as "(Inactive)"
     # - Remove duplicates

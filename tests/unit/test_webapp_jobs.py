@@ -50,7 +50,7 @@ def _disable_jobs_cache():
     from webapp.jobs import cache as _c
     _c._CACHE.reset_for_tests()
     yield
-    # disabled=False → drop the memo so buckets re-init on next use
+    # disabled=False -> drop the memo so buckets re-init on next use
     _c._CACHE.reset_for_tests(disabled=False)
 
 
@@ -289,7 +289,7 @@ def test_search_jobs_pins_account_to_projcode(app, active_project, monkeypatch):
         )
 
     kw = captured['last_jobs_search_kwargs']
-    # No account_projcodes passed → fall back to single-projcode string
+    # No account_projcodes passed -> fall back to single-projcode string
     # form so existing single-project callers (CLI, isolated tests) keep
     # the cheaper `==` filter on the plugin side.
     assert kw['account'] == active_project.projcode
@@ -370,7 +370,7 @@ def test_count_jobs_sam_summary_keeps_legacy_queue_name(
     _install_mock_plugin(app, monkeypatch)
 
     with app.app_context():
-        # No exit_status / GPU bounds → goes through the SAM summary fast path.
+        # No exit_status / GPU bounds -> goes through the SAM summary fast path.
         total = service.count_jobs(
             'derecho', ProjectJobScope(active_project), queue='cpu-special',
         )
@@ -505,7 +505,7 @@ def test_count_jobs_plugin_fallback_promotes_legacy_queue_suffix_to_qos(
     app, active_project, monkeypatch,
 ):
     """When count_jobs takes the plugin path (e.g. because exit_status
-    is set), it also runs the queue/qos resolver so 'cpu-special' →
+    is set), it also runs the queue/qos resolver so 'cpu-special' ->
     queue='cpu', qos='special' on the plugin call."""
     from webapp.jobs import service
 
@@ -657,7 +657,7 @@ def _make_row(**overrides):
 def test_jobs_fragment_pagination_forwards_offset(
     app, auth_client, active_project, monkeypatch,
 ):
-    """?page=3&per_page=25 ⇒ service receives offset=50, limit=25.
+    """?page=3&per_page=25 => service receives offset=50, limit=25.
 
     The count call goes to SAM's CompChargeSummary now, not the plugin —
     a separate test (``…_exit_status_filter_uses_plugin_count``) covers
@@ -772,7 +772,7 @@ def test_jobs_fragment_sort_whitelist_rejects_unknown(
 def test_jobs_fragment_suppresses_all_zero_gpu_columns(
     app, auth_client, active_project, monkeypatch,
 ):
-    """Rows with numgpus=gpu_hours=gpu_charges=0 ⇒ GPU columns dropped."""
+    """Rows with numgpus=gpu_hours=gpu_charges=0 => GPU columns dropped."""
     rows = [_make_row(numgpus=0, gpu_hours=0, gpu_charges=0)
             for _ in range(2)]
     _install_mock_plugin(app, monkeypatch, jobs_search_return=rows)
@@ -792,7 +792,7 @@ def test_jobs_fragment_suppresses_all_zero_gpu_columns(
 def test_jobs_fragment_keeps_gpu_columns_when_any_row_nonzero(
     app, auth_client, active_project, monkeypatch,
 ):
-    """One nonzero GPU value ⇒ GPU columns stay in the table."""
+    """One nonzero GPU value => GPU columns stay in the table."""
     rows = [
         _make_row(numgpus=0, gpu_hours=0, gpu_charges=0),
         _make_row(numgpus=4, gpu_hours=16.0, gpu_charges=16.0),
@@ -824,7 +824,7 @@ def test_jobs_fragment_renders_verbose_drawer(
     assert 'jobs-detail-row' in body
     # Verbose-column header labels from plugin COLUMNS.
     assert 'Walltime' in body
-    # hpc-usage-queries 7f4fd7b renamed the mpiprocs header "MPI" → "Ranks per Node"
+    # hpc-usage-queries 7f4fd7b renamed the mpiprocs header "MPI" -> "Ranks per Node"
     assert 'Ranks per Node' in body
     assert 'CPU type' in body
     # Drawer renders the values.
@@ -859,7 +859,7 @@ def test_jobs_fragment_qos_column_in_table_and_sortable(
 def test_jobs_fragment_qos_filter_forwarded_to_service(
     app, auth_client, active_project, monkeypatch,
 ):
-    """?qos=economy ⇒ service.search_jobs receives qos='economy' and the
+    """?qos=economy => service.search_jobs receives qos='economy' and the
     request bypasses the SAM-summary fast path on the count side."""
     captured = _install_mock_plugin(
         app, monkeypatch,
@@ -891,7 +891,7 @@ def test_jobs_fragment_qos_dropdown_pre_selects_active_filter(
         '?machine=derecho&qos=premium'
     )
     body = resp.get_data(as_text=True)
-    # Explicit filter ⇒ dropdown visible; pre-selects 'premium'.
+    # Explicit filter => dropdown visible; pre-selects 'premium'.
     import re
     assert 'name="qos"' in body
     assert re.search(r'value="premium"\s+selected', body), \
@@ -957,7 +957,7 @@ def test_jobs_fragment_hides_qos_column_and_dropdown_when_single_value(
     QoS column drops out of the table AND the filter dropdown is hidden.
     Both UI elements key off the same "distinct QoS in rows" signal so
     they compose: the legacy queue-suffix inference path (`cpu-special`
-    → all rows special) naturally yields the same single-value collapse
+    -> all rows special) naturally yields the same single-value collapse
     without the URL ever carrying ?qos=."""
     _install_mock_plugin(
         app, monkeypatch,
@@ -984,7 +984,7 @@ def test_jobs_fragment_hides_qos_column_and_dropdown_when_single_value(
 def test_jobs_fragment_shows_qos_column_when_rows_have_variation(
     app, auth_client, active_project, monkeypatch,
 ):
-    """Mixed-QoS rows ⇒ both column AND dropdown render (no explicit
+    """Mixed-QoS rows => both column AND dropdown render (no explicit
     filter required to surface them)."""
     _install_mock_plugin(
         app, monkeypatch,
@@ -1024,14 +1024,14 @@ def test_jobs_fragment_keeps_dropdown_when_user_filtered_explicitly(
     body = resp.get_data(as_text=True)
     # Column header dropped (all rows the same QoS).
     assert 'sort_by=qos' not in body
-    # Dropdown stays (explicit filter ⇒ user needs a way to reset).
+    # Dropdown stays (explicit filter => user needs a way to reset).
     assert 'All QoS' in body
 
 
 def test_jobs_fragment_single_qos_badge_shows_name_and_factor(
     app, auth_client, active_project, monkeypatch,
 ):
-    """All rows in economy ⇒ the suppressed column collapses into a header
+    """All rows in economy => the suppressed column collapses into a header
     badge that surfaces both the QoS name and its charging multiplier — the
     exact case (uniform economy, charges = 0.7× usage) the bare suppression
     rule made invisible."""
@@ -1069,7 +1069,7 @@ def test_jobs_fragment_drawer_renders_fractional_qos_factor(
         f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
     )
     body = resp.get_data(as_text=True)
-    assert 'QoS: ' not in body          # mixed QoS ⇒ no badge
+    assert 'QoS: ' not in body          # mixed QoS => no badge
     assert '×0.70' in body              # economy factor, with decimals
     assert '×1.50' in body              # premium factor, with decimals
 
@@ -1096,7 +1096,7 @@ def test_jobs_fragment_no_qos_badge_when_rows_have_variation(
 def test_jobs_fragment_no_qos_badge_when_all_null(
     app, auth_client, active_project, monkeypatch,
 ):
-    """All-NULL (uncharacterized) QoS ⇒ no badge — nothing actionable to
+    """All-NULL (uncharacterized) QoS => no badge — nothing actionable to
     show."""
     _install_mock_plugin(
         app, monkeypatch,
@@ -1115,7 +1115,7 @@ def test_jobs_fragment_no_qos_badge_when_all_null(
 def test_jobs_fragment_qos_badge_with_explicit_filter_shows_both(
     app, auth_client, active_project, monkeypatch,
 ):
-    """Explicit ?qos= ⇒ the dropdown stays (to reset) AND the badge renders
+    """Explicit ?qos= => the dropdown stays (to reset) AND the badge renders
     too — a single consistent rule, mild redundancy is fine."""
     _install_mock_plugin(
         app, monkeypatch,
@@ -1138,7 +1138,7 @@ def test_jobs_fragment_qos_badge_with_explicit_filter_shows_both(
 def test_jobs_fragment_qos_badge_name_only_when_factor_varies(
     app, auth_client, active_project, monkeypatch,
 ):
-    """Same QoS name but inconsistent qos_factor across rows ⇒ the badge
+    """Same QoS name but inconsistent qos_factor across rows => the badge
     shows the name but omits the multiplier (no single factor to trust)."""
     _install_mock_plugin(
         app, monkeypatch,
@@ -1222,7 +1222,7 @@ def test_resource_details_user_table_is_sortable(
 
 
 # ---------------------------------------------------------------------------
-# Admin → Configuration DB card surfaces job_history engines
+# Admin -> Configuration DB card surfaces job_history engines
 # ---------------------------------------------------------------------------
 
 def test_gather_runtime_state_no_job_history_rows_when_disabled(app):
@@ -1405,7 +1405,7 @@ def test_job_history_machines_follows_config_order(app, monkeypatch, machines):
 
 
 def test_job_history_machines_empty_when_disabled(app):
-    """TestingConfig keeps the plugin off → no machines offered."""
+    """TestingConfig keeps the plugin off -> no machines offered."""
     from webapp.jobs import service
 
     with app.app_context():
@@ -1657,7 +1657,7 @@ def test_by_user_fragment_renders_rows_and_pie(
     assert 'data-job-user="bob"' in body
     assert '<svg' in body                       # pie rendered
     assert '#sam/row/data-job-user/alice' in body            # clickable wedge sentinel
-    # No remainder beyond the row cap → no Other row.
+    # No remainder beyond the row cap -> no Other row.
     assert 'beyond top' not in body
     # Plugin was asked for the user dimension, scoped to the project tree.
     dim, kwargs = captured['last_jobs_usage_by']
@@ -1668,7 +1668,7 @@ def test_by_user_fragment_renders_rows_and_pie(
 def test_by_user_fragment_other_row_from_pretruncation_totals(
     app, auth_client, active_project, monkeypatch,
 ):
-    """totals bigger than the visible rows → an inert Other summary row."""
+    """totals bigger than the visible rows -> an inert Other summary row."""
     usage = _sample_usage(totals={'job_count': 100, 'cpu_hours': 900.0,
                                   'gpu_hours': 5.0})
     _install_mock_plugin(app, monkeypatch, jobs_usage_by_return=usage)
@@ -1758,7 +1758,7 @@ def test_usage_other_visibility_ignores_charges_alone():
                 'cpu_charges': 150.0, 'gpu_charges': 0.0}))
     assert rem is not None
     assert rem['cpu_charges'] == pytest.approx(0.0)
-    # Rows exactly cover totals → no Other row at all.
+    # Rows exactly cover totals -> no Other row at all.
     assert _usage_other(_sample_usage()) is None
 
 
@@ -1788,7 +1788,7 @@ def test_by_user_fragment_404_on_unknown_projcode(auth_client):
 def test_wait_times_fragment_caption_on_null_count(
     app, auth_client, active_project, monkeypatch,
 ):
-    """null_count > 0 on the wait dimension → the eligible-time caption."""
+    """null_count > 0 on the wait dimension -> the eligible-time caption."""
     _install_mock_plugin(
         app, monkeypatch, jobs_histogram_return=_sample_hist(null_count=7),
     )
@@ -2165,7 +2165,7 @@ def test_machine_routes_403_without_permission(non_admin_client, suffix):
 
 @pytest.mark.parametrize('suffix', _MACHINE_FRAGMENTS + ['/explore'])
 def test_machine_routes_disabled_banner_with_permission(auth_client, suffix):
-    """benkirk holds VIEW_ALL_JOB_DATA → 200 (plugin off → banner)."""
+    """benkirk holds VIEW_ALL_JOB_DATA -> 200 (plugin off -> banner)."""
     resp = auth_client.get(f'/dashboards/user/jobs/machine/derecho{suffix}')
     assert resp.status_code == 200
     assert 'Per-job data is unavailable' in resp.get_data(as_text=True)
@@ -2173,7 +2173,7 @@ def test_machine_routes_disabled_banner_with_permission(auth_client, suffix):
 
 @pytest.mark.parametrize('suffix', _MACHINE_FRAGMENTS + ['/explore'])
 def test_machine_routes_404_unknown_machine(app, auth_client, monkeypatch, suffix):
-    """With the plugin up for derecho only, /machine/gust → 404."""
+    """With the plugin up for derecho only, /machine/gust -> 404."""
     _install_mock_plugin(app, monkeypatch, machines=('derecho',))
     resp = auth_client.get(f'/dashboards/user/jobs/machine/gust{suffix}')
     assert resp.status_code == 404
@@ -2282,7 +2282,7 @@ def test_explore_page_project_mode(app, auth_client, active_project, monkeypatch
 def test_explore_page_carries_filters_into_initial_url(
     app, auth_client, active_project, monkeypatch,
 ):
-    """Deep-link with filters → the lazy-load URL reproduces them."""
+    """Deep-link with filters -> the lazy-load URL reproduces them."""
     _install_mock_plugin(app, monkeypatch)
     resp = auth_client.get(
         f'/dashboards/user/jobs/{active_project.projcode}/explore'
@@ -2319,8 +2319,8 @@ def test_explore_page_elapsed_reqmem_panel_roundtrip(
 def test_fragment_converts_elapsed_hours_and_reqmem_gb(
     app, auth_client, active_project, monkeypatch,
 ):
-    """Panel units convert at the route boundary: hours → seconds for
-    elapsed, GB → bytes (1024³) for requested memory."""
+    """Panel units convert at the route boundary: hours -> seconds for
+    elapsed, GB -> bytes (1024³) for requested memory."""
     captured = _install_mock_plugin(app, monkeypatch)
     auth_client.get(
         f'/dashboards/user/jobs/{active_project.projcode}'
@@ -2786,7 +2786,7 @@ def test_status_job_history_403_without_permission(non_admin_client):
 
 
 def test_status_job_history_empty_state_when_disabled(auth_client):
-    """Plugin off → no machines → the info alert (never a broken card)."""
+    """Plugin off -> no machines -> the info alert (never a broken card)."""
     resp = auth_client.get('/status/job-history')
     assert resp.status_code == 200
     assert 'No job-history data is currently available' in resp.get_data(as_text=True)
@@ -2859,7 +2859,7 @@ def test_status_job_history_machine_pills_when_enabled(
 
 
 def test_status_tab_hidden_without_machines(auth_client):
-    """Plugin off → the Job History tab is absent from the status pages."""
+    """Plugin off -> the Job History tab is absent from the status pages."""
     resp = auth_client.get('/status/derecho')
     assert resp.status_code == 200
     assert '/status/job-history' not in resp.get_data(as_text=True)
@@ -2877,7 +2877,7 @@ def test_status_tab_visible_for_operator_with_machines(
 def test_status_tab_hidden_for_plain_user_with_machines(
     app, non_admin_client, monkeypatch,
 ):
-    """Even with machines up, no VIEW_ALL_JOB_DATA → no tab, anywhere."""
+    """Even with machines up, no VIEW_ALL_JOB_DATA -> no tab, anywhere."""
     _install_mock_plugin(app, monkeypatch, machines=('derecho',))
     resp = non_admin_client.get('/status/derecho')
     assert resp.status_code == 200
@@ -2893,7 +2893,7 @@ _USER_FRAGMENTS = ['', '/wait-times', '/job-sizes', '/durations']
 
 @pytest.mark.parametrize('suffix', _USER_FRAGMENTS + ['/explore'])
 def test_user_routes_disabled_banner(auth_client, suffix):
-    """Plugin off → 200 with the unavailable banner (login only, no perm)."""
+    """Plugin off -> 200 with the unavailable banner (login only, no perm)."""
     resp = auth_client.get(f'/dashboards/user/jobs/user/derecho{suffix}')
     assert resp.status_code == 200
     assert 'Per-job data is unavailable' in resp.get_data(as_text=True)
@@ -3174,7 +3174,7 @@ def test_user_explore_page_omits_user_picker(app, auth_client, monkeypatch):
 
 
 def test_my_jobs_page_404_without_machines(auth_client):
-    """Plugin off → no machines → the page 404s (tab is hidden too)."""
+    """Plugin off -> no machines -> the page 404s (tab is hidden too)."""
     resp = auth_client.get('/user/jobs')
     assert resp.status_code == 404
 
@@ -3210,9 +3210,9 @@ def _sample_hist_owners(dimension='wait'):
     """_sample_hist plus per-bucket owners (plugin owners_limit envelope).
 
     Bucket '<1m' (10 jobs): alice 6 jobs / 30 cpu-h, bob 3 jobs / 70 cpu-h
-    → ranked alice-first on the jobs metric, bob-first on cpu_hours; 1 job
+    -> ranked alice-first on the jobs metric, bob-first on cpu_hours; 1 job
     unattributed (the "Other users" remainder row).
-    Bucket '1-5m' (4 jobs): carol owns everything → single-owner shortcut.
+    Bucket '1-5m' (4 jobs): carol owns everything -> single-owner shortcut.
     """
     h = _sample_hist(dimension)
     h['buckets'][0]['owners'] = {
@@ -3241,7 +3241,7 @@ def test_histogram_bucket_renders_owner_table(
     app, auth_client, active_project, monkeypatch,
 ):
     """Multi-owner band expands to a per-user tier ranked by the active
-    metric (jobs default → alice first; cpu_hours → bob first)."""
+    metric (jobs default -> alice first; cpu_hours -> bob first)."""
     body = _get_hist_body(app, auth_client, active_project, monkeypatch)
     assert 'alice' in body and 'bob' in body
     assert '-b0-u1-row' in body and '-b0-u2-row' in body
@@ -3274,7 +3274,7 @@ def test_histogram_owner_drill_appends_user(
 def test_histogram_owner_remainder_row(
     app, auth_client, active_project, monkeypatch,
 ):
-    """Owners summing below the band totals → a muted, non-drillable
+    """Owners summing below the band totals -> a muted, non-drillable
     "Other users" row."""
     body = _get_hist_body(app, auth_client, active_project, monkeypatch)
     assert 'Other users' in body
@@ -3316,7 +3316,7 @@ def test_histogram_ownerless_fallback_keeps_single_level(
     app, auth_client, active_project, monkeypatch,
 ):
     """Owner-less envelope (older plugin / cached) renders the original
-    band → jobs drill with no per-user tier."""
+    band -> jobs drill with no per-user tier."""
     import re
     _install_mock_plugin(
         app, monkeypatch, jobs_histogram_return=_sample_hist(),
@@ -3562,7 +3562,7 @@ def test_user_column_hidden_in_user_mode(app, auth_client, monkeypatch):
 def test_user_column_hidden_uniform_single_page_shows_badge(
     app, auth_client, monkeypatch,
 ):
-    """No pin, no filter, but the whole (single-page) result is one user →
+    """No pin, no filter, but the whole (single-page) result is one user ->
     column suppressed and the username surfaces as a header badge.
 
     Machine mode: its count path always uses the mocked plugin
@@ -3892,7 +3892,7 @@ def test_card_fragment_400_on_invalid_machine(
 def test_card_fragment_persist_markers_are_opt_in(
     app, auth_client, active_project, monkeypatch,
 ):
-    """No persist id (resource details) → the window can't outlive the visit."""
+    """No persist id (resource details) -> the window can't outlive the visit."""
     _install_mock_plugin(app, monkeypatch)
 
     plain = auth_client.get(
@@ -4154,7 +4154,7 @@ def test_trim_keeps_a_single_populated_band():
 
 
 def test_trim_empties_an_entirely_empty_range():
-    """All-zero → no bands at all, so the caller renders an empty state
+    """All-zero -> no bands at all, so the caller renders an empty state
     instead of a bar-less axis over a table of zeros."""
     from webapp.jobs.routes import _trim_empty_edge_bands
 
@@ -4304,7 +4304,7 @@ def test_histogram_tabs_offer_the_log_switch_off_by_default(
 def test_log_on_renders_and_offers_the_way_back(
     app, auth_client, active_project, monkeypatch,
 ):
-    """?log=1 → a chart still renders (solid bars), the switch reflects the
+    """?log=1 -> a chart still renders (solid bars), the switch reflects the
     state, the band drill anchors survive, and clicking it turns log off."""
     _install_mock_plugin(app, monkeypatch,
                          jobs_histogram_return=_sample_hist())

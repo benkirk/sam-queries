@@ -1,4 +1,4 @@
-{# ── Job History card (shared, mode-parameterized) ──────────────────────
+{# Job History card (shared, mode-parameterized)
    The Jobs / By User / By Project / Wait Times / Job Sizes / Durations tab
    strip, each lazy-loading its jobs.* fragment via hx-get. Shared by the
    compute resource-details page (mode='project'), the Status dashboard's
@@ -138,7 +138,7 @@ tab-pane fade{{ ' show active' if key == active_tab }}
    caller separates them (the explorer adds per_page). #}
 {% set _jp = jobs_params if jobs_params is not none else panel_params %}
 {# `scope` lives in panel_params — that's what routes it into the
-   aggregations, whose _tree_projcodes → _scope_project reads it from
+   aggregations, whose _tree_projcodes -> _scope_project reads it from
    request.args. Before it did, a re-rooted subtree silently widened the
    pies back to the whole tree. The two page-level URLs below need it
    too, hence the lookup. #}

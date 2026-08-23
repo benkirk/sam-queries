@@ -32,7 +32,7 @@ rather than copied: same resource-key resolution, same amount parsing, same unfi
 account lookup, same create branch. The differences are the transaction type and the
 sign.
 
-⚠️ **``auth_at_panel_mtg`` splits by command, not by handler.** The ADJUSTMENT row does
+WARNING: **``auth_at_panel_mtg`` splits by command, not by handler.** The ADJUSTMENT row does
 not carry it — ``buildAdjustAllocationCommand`` never calls ``.authAtPanelMeeting(...)``
 — but the CREATE row this handler can also write does, because
 ``buildAddAllocationCommand`` is the copy taken verbatim from the supplement factory and
@@ -74,7 +74,7 @@ class AdjustmentHandler(ActionHandler):
         """Supplement's assembly with the sign gate replaced and two guards added:
         the create branch's non-positive refusal and the below-zero one.
 
-        ⚠️ This used to be a separate ``_plan`` arguing for its own existence — *"the
+        WARNING: This used to be a separate ``_plan`` arguing for its own existence — *"the
         two differ in three places and a shared function with three flags reads worse
         than two functions that each say what they do"*. The count was wrong (four,
         not three) and so was the conclusion: the duplicated thirty lines are where
@@ -111,7 +111,7 @@ class AdjustmentHandler(ActionHandler):
                     # `Allocation.create`'s `amount > 0` validation; reporting is the
                     # legible version of that.
                     #
-                    # ⚠️ This guard is Adjustment's alone. Supplement has no equivalent
+                    # WARNING: This guard is Adjustment's alone. Supplement has no equivalent
                     # and must not gain one here — that would turn a Supplement crash
                     # into a 422, which is a behavior change nobody asked for.
                     self.errors.report(e.adjustment_would_go_negative(
@@ -146,7 +146,7 @@ class AdjustmentHandler(ActionHandler):
                 comment=resource_comment(wire_resource)))
 
     def execute(self) -> None:
-        # ⚠️ ADJUSTMENT rows get no `auth_at_panel_mtg` while the CREATE rows do.
+        # WARNING: ADJUSTMENT rows get no `auth_at_panel_mtg` while the CREATE rows do.
         # That split is `buildAdjustAllocationCommand`'s, not a slip, and it now
         # lives in the plan types rather than in this loop.
         self.execute_plan(self.planned)

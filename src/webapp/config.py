@@ -19,7 +19,7 @@ class SAMWebappConfig(SAMConfig):
 
     # API key authentication for machine-to-machine routes (status collectors, etc.)
     # Populated from API_KEYS_<USERNAME> environment variables at startup.
-    # e.g., API_KEYS_COLLECTOR=$2b$12$...  →  {'collector': '$2b$12$...'}
+    # e.g., API_KEYS_COLLECTOR=$2b$12$...  ->  {'collector': '$2b$12$...'}
     # Use scripts/gen_api_key.py to generate new key/hash pairs.
     API_KEYS: dict = {
         k[9:].lower(): v          # strip 'API_KEYS_' prefix (9 chars), lowercase username
@@ -221,7 +221,7 @@ class SAMWebappConfig(SAMConfig):
     # Disk resources that have filesystem-scan collections, surfaced as
     # subtabs on the Status dashboard's gated "Filesystem Scans" tab. An
     # explicit list (NOT derived from the Resource table). Resource NAMES, not
-    # IDs (see feedback_no_duplicate_db_ids); the resource→database/collections
+    # IDs (see feedback_no_duplicate_db_ids); the resource->database/collections
     # mapping lives in the disk_scans.session seam. A configured resource with
     # no warmed collections is filtered out at render time
     # (service.scan_capable_resources), so the tab/subtab never shows empty.
@@ -233,7 +233,7 @@ class SAMWebappConfig(SAMConfig):
 
     # Maps each scan resource NAME to the CNPG database that holds its
     # collections. Each disk resource is one database on the shared cluster
-    # (Campaign_Store → campaign, Destor → destor; NB the DB is named `destor`,
+    # (Campaign_Store -> campaign, Destor -> destor; NB the DB is named `destor`,
     # while `desc1` is only the Lustre MOUNT /lustre/desc1). The plugin reaches
     # a second database via its `database=` selector (same host/credentials). Parsed
     # from `FS_SCAN_RESOURCE_DATABASES` as `Name:db,Name2:db2`; the default

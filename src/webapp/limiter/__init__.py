@@ -75,7 +75,7 @@ class Limiting:
         self._redis_client = None
         self._resolved_storage_uri = 'memory://'
 
-    # ── Wire-up ─────────────────────────────────────────────────────────
+    # Wire-up
 
     def init_app(self, app) -> None:
         uri = (app.config.get('RATELIMIT_STORAGE_URI') or '').strip()
@@ -129,7 +129,7 @@ class Limiting:
         init_events(app, self._redis_client)
         _register_429_handler(app)
 
-    # ── Introspection (Configuration tile + admin page) ────────────────
+    # Introspection (Configuration tile + admin page)
 
     @property
     def storage_uri(self) -> str:
@@ -166,7 +166,7 @@ class Limiting:
         }
 
 
-# ── 429 errorhandler ────────────────────────────────────────────────────
+# 429 errorhandler
 
 
 def _register_429_handler(app) -> None:

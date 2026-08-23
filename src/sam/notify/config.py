@@ -126,7 +126,7 @@ class NotifyConfig:
         return bool(self.redirect_to)
 
     def summary(self) -> dict:
-        """Config for the Admin → Configuration card. **Never** secrets."""
+        """Config for the Admin -> Configuration card. **Never** secrets."""
         return {
             'enabled': self.enabled,
             'transport': self.transport,

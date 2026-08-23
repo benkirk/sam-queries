@@ -68,7 +68,7 @@ def scan_reference_date(scope) -> Optional[datetime]:
     *observed*, and a scan can be days old. Anchoring on today would shift every
     band by the scan's staleness and — worse — make the filter panel's bands
     disagree with the access-history chart above it, which anchors here
-    (``scan_distribution`` → ``reference_scan_date``).
+    (``scan_distribution`` -> ``reference_scan_date``).
 
     Uncached on purpose: this is a ``scan_metadata`` lookup, the same one
     ``scan_overview`` runs for its freshness badge, and it does not depend on the
@@ -106,13 +106,13 @@ def _drop_nested(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def _atime_band_bounds(reference_scan_date, bucket_labels) -> Dict[str, Dict[str, Optional[str]]]:
     """Map each access-history band to ``(accessed_after, accessed_before)``
-    ``YYYY-MM-DD`` date strings, so the band → user → directories drill-down can
+    ``YYYY-MM-DD`` date strings, so the band -> user -> directories drill-down can
     filter directories to exactly the clicked band's date window.
 
     The ladder maths lives in ``webapp.utils.age_bands`` because the age-range
     filter control needs the same mapping over a *span* of bands, plus its
     inverse. This function is the single-band case, and stays here because the
-    band → filter-window contract is a disk-scans concept (see ``_BAND_SPECS``).
+    band -> filter-window contract is a disk-scans concept (see ``_BAND_SPECS``).
 
     Bounds come from the plugin's ``ATIME_BUCKETS`` day thresholds (the single
     source of truth) relative to the scan date. A directory is in band ``i``
@@ -137,7 +137,7 @@ def _atime_band_bounds(reference_scan_date, bucket_labels) -> Dict[str, Dict[str
 
 def _size_band_bounds(bucket_labels) -> Dict[str, Dict[str, Optional[int]]]:
     """Map each file-size band to its ``(size_min, size_max)`` average-file-size
-    bounds (bytes), so the band → user → directories drill-down can filter
+    bounds (bytes), so the band -> user -> directories drill-down can filter
     directories by average own-file size.
 
     Bounds come from the plugin's ``SIZE_BUCKETS`` (label, min, max) — the single

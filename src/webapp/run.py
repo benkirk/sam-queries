@@ -7,7 +7,7 @@ import uuid
 import time
 from datetime import datetime
 
-# ── Disarm a module-name shadow, BEFORE any project import ──────────────────
+# Disarm a module-name shadow, BEFORE any project import
 #
 # The dev container runs `python3 ./src/webapp/run.py` (containers/webapp/
 # Dockerfile, development target), which makes src/webapp `sys.path[0]`. The
@@ -225,9 +225,9 @@ def create_app(*, config_overrides: dict | None = None):
         return e
 
     # Initialize caching. Backend selection priority:
-    #   testing             → NullCache (no shared state across tests)
-    #   CACHE_REDIS_URL set → RedisCache (shared across all gunicorn workers + pods)
-    #   default             → SimpleCache (per-worker in-process)
+    #   testing             -> NullCache (no shared state across tests)
+    #   CACHE_REDIS_URL set -> RedisCache (shared across all gunicorn workers + pods)
+    #   default             -> SimpleCache (per-worker in-process)
     app.config.setdefault('CACHE_DEFAULT_TIMEOUT', 300)
     if app.config.get('TESTING') or os.environ.get('FLASK_ENV') == 'testing':
         app.config['CACHE_TYPE'] = 'NullCache'

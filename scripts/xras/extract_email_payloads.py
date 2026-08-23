@@ -29,12 +29,12 @@ subject                                              outcome   meaning
 ``New XRAS post action (<type> request for <code>)`` manual    **no serviceable matched**
 ===================================================  ========  ==================================
 
-⚠️ The manual-fallback subject is the only record of the action types SAM does not
+WARNING: The manual-fallback subject is the only record of the action types SAM does not
 service (``XRAS_REIMPLEMENTATION.md`` § 1.4). It is also the clause the original harvest
 query missed, which is how the Adjustment payload nearly went unnoticed. Never filter it
 out.
 
-⚠️ **Output is raw, unscrubbed PII.** It goes to a staging directory outside the working
+WARNING: **Output is raw, unscrubbed PII.** It goes to a staging directory outside the working
 tree and is written mode 0600. Nothing here is committable — run
 ``scripts/xras/scrub_payload.py`` over the whole staged corpus afterwards, in one
 invocation, and commit *that*.
@@ -151,7 +151,7 @@ def dedupe(records, seen_digests=()):
     A forward split across several emails re-sends pairs — batch 3 of the 2026-08-11
     forward repeats five of batch 2's, byte for byte.
 
-    ⚠️ **``actionId`` is NOT an identity key, and keying on it loses payloads.**
+    WARNING: **``actionId`` is NOT an identity key, and keying on it loses payloads.**
     Measured in that same forward: ``actionId=388865`` arrives twice with *different
     bodies* — once as ``requestNumber=NCAR4236``, which legacy failed, and once as
     ``requestNumber=UCHI0020``, which legacy applied as an update. So one action id

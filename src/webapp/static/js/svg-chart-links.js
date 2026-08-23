@@ -13,16 +13,16 @@
  *      Segments are percent-encoded, so a username containing a slash or a
  *      space cannot break the parse. We split once and dispatch on <action>:
  *
- *        #sam/row/<attr>/<value>  → expand the table row carrying
+ *        #sam/row/<attr>/<value>  -> expand the table row carrying
  *            <attr>="<value>", scoped to the clicked chart's tab pane.
  *            The ATTRIBUTE TRAVELS IN THE HREF: this file no longer keeps a
- *            prefix→attribute table, so adding a drill-down chart is a
+ *            prefix->attribute table, so adding a drill-down chart is a
  *            zero-JavaScript change — the chart declares the attribute and
  *            that is the whole wiring.
- *        #sam/day/<YYYY-MM-DD>    → expand the day row in the Historical
+ *        #sam/day/<YYYY-MM-DD>    -> expand the day row in the Historical
  *            Usage table, auto-opening the parent month row if needed
  *            (3-level mode for >45-day spans).
- *        #sam/user/<username>     → expand that user's row in the Usage by
+ *        #sam/user/<username>     -> expand that user's row in the Usage by
  *            User card.
  *
  *      `day` and `user` are separate actions rather than `row` drills
@@ -63,7 +63,7 @@
     var SCHEME = '#sam/';
 
     /**
-     * '#sam/row/data-owner-uid/1234' → {action: 'row', args: ['data-owner-uid', '1234']}
+     * '#sam/row/data-owner-uid/1234' -> {action: 'row', args: ['data-owner-uid', '1234']}
      * Returns null for anything that isn't one of ours.
      */
     function parseSentinel(href) {
@@ -159,7 +159,7 @@
         }, 60);
     }
 
-    // Username → expand that user's row in the Usage by User table. Two
+    // Username -> expand that user's row in the Usage by User table. Two
     // charts address it: the By User pie (same pane) and the stacked Usage
     // Trend legend (History pane), hence activateOwningTab. The user row's
     // first <td> carries data-sort-value="<username>"
@@ -215,7 +215,7 @@
             }
         }
 
-        // Legend → HTMX-driven modal
+        // Legend -> HTMX-driven modal
         for (var prefix in MODAL_ROUTES) {
             if (href.indexOf(prefix) === -1) continue;
             var cfg = MODAL_ROUTES[prefix];

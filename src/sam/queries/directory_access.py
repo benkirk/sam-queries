@@ -10,7 +10,7 @@ The data is organized by access branch (hpc, hpc-data, hpc-dev) and includes:
 
 Group sources (in order of the legacy pipeline):
   1. Implicit project groups: active projects with allocations within grace period,
-     linked to access branches via account → resource → access_branch_resource.
+     linked to access branches via account -> resource -> access_branch_resource.
      These member rows — and only these — establish the branch's *account set*,
      the usernames that get a unixAccounts entry.
   2. Explicit adhoc groups: AdhocGroup entries whose tags match access branch names.
@@ -257,7 +257,7 @@ def group_populator(
         grp['usernames'].add(username)
         branch_accounts.setdefault(branch_name, set()).add(username)
 
-    # --- 2. Explicit adhoc groups (tags → access branch) ---
+    # --- 2. Explicit adhoc groups (tags -> access branch) ---
     rows = session.execute(_SQL_ADHOC_GROUPS, params).fetchall()
     for branch_name, group_name, gid in rows:
         b = branches.setdefault(branch_name, {'groups': {}})
@@ -292,7 +292,7 @@ def group_populator(
         ncar_grp['gid'] = DEFAULT_COMMON_GROUP_GID
         ncar_grp['usernames'].update(accounts)
 
-    # --- 4. Symmetric username → groups index ---
+    # --- 4. Symmetric username -> groups index ---
     # Invert the groups dict so callers can quickly look up a user's memberships.
     for branch_name, branch_data in branches.items():
         user_groups: Dict[str, List[Dict]] = {}

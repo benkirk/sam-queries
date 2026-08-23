@@ -50,7 +50,7 @@ def mapped_resource(session):
 def _stub_gid_pool(monkeypatch):
     """Hand out a unique GID without touching the pool.
 
-    ⚠️ Not a convenience — a deadlock fix, and the reason is a real property of the
+    WARNING: Not a convenience — a deadlock fix, and the reason is a real property of the
     handler. ``GidAllocation.allocate_next_gid`` takes ``with_for_update()`` on the
     lowest-``startGid`` block with room, and the handler then holds that row lock for
     the rest of the transaction: ``Project.create``, whose ``_ns_place_in_tree`` issues
@@ -85,7 +85,7 @@ def creatable(session):
     from sam.projects.areas import AreaOfInterest
 
     pi = make_user(session)
-    # ⚠️ The org name and the mnemonic description must be EQUAL (that is the soft
+    # WARNING: The org name and the mnemonic description must be EQUAL (that is the soft
     # link the mnemonic extractor resolves) and UNIQUE per test.
     # `mnemonic_code_description_uk` is a unique index, so a fixed string here made
     # twelve xdist workers insert the same value concurrently — a reliable
@@ -168,7 +168,7 @@ class TestItCreatesAProject:
 
     def test_the_allocation_uses_the_actions_own_dates(self, committing, creatable,
                                                        mapped_resource):
-        """⚠️ The contrast with Supplement, which derives its create-branch window from
+        """WARNING: The contrast with Supplement, which derives its create-branch window from
         *today* and the project's history. Same table, two date policies, both
         legacy's."""
         session = committing
@@ -211,7 +211,7 @@ class TestTheOrderCannotBeRearranged:
 
     def test_the_project_ends_up_inactive(self, committing, creatable,
                                           mapped_resource):
-        """⚠️ By design, not a bug. ``InactivateNewProject`` runs last, and the
+        """WARNING: By design, not a bug. ``InactivateNewProject`` runs last, and the
         success email is the human trigger to approve. Production agrees: 21 of 23
         XRAS-created projects have since been activated by hand."""
         session = committing
@@ -366,7 +366,7 @@ class TestTheFailurePaths:
         """The point of assemble-then-check-once: an operator fixes a request in one
         pass rather than five."""
         from factories import make_user
-        pi = make_user(session)                       # no organization → no mnemonic
+        pi = make_user(session)                       # no organization -> no mnemonic
         payload = action_for({'pi': pi}, wire_resource(999_995))
         payload['requestTitle'] = ''
         payload['fos'] = []
@@ -436,7 +436,7 @@ class TestContracts:
 
     def test_an_empty_grants_array_is_not_an_error(self, committing, creatable,
                                                    mapped_resource):
-        """⚠️ ``new_ncar4232_failed.json`` is an Educational allocation with
+        """WARNING: ``new_ncar4232_failed.json`` is an Educational allocation with
         ``grants: []`` — its failure was the mnemonic, not the missing contract. A
         project with no contract is legitimate."""
         session = committing
@@ -457,7 +457,7 @@ class TestContracts:
 class TestPanelAuthorisation:
     """New marks its CREATE rows when the resolved type is panel-authorized.
 
-    ⚠️ **This was untested until the plan records landed**, on the handler with the
+    WARNING: **This was untested until the plan records landed**, on the handler with the
     highest production failure rate. Every other New test uses the default
     ``allocationType='Small'``, which is not panel-authorized, so the flag was
     ``False`` either way and nothing could tell a correct implementation from one

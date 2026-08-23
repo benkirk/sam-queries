@@ -12,7 +12,7 @@ service                                selector
 ``SupplementProjectActionService``     ``Supplement`` and ``exists``
 ``TransferAllocationActionService``    ``Transfer`` and ``exists``
 ``AdjustProjectActionService``         ``Adjust`` and ``exists`` — **never fires**
-*no match*                             ``BadRequestException`` → manual fallback → 200
+*no match*                             ``BadRequestException`` -> manual fallback -> 200
 =====================================  ==================================================
 
 Three traps the corpus proved, each of which produces a wrong dispatch:
@@ -236,7 +236,7 @@ def dispatch_action(session, action, *,
 
     Raises:
         XrasActionRejected: the handler's assembly reported problems. Nothing was
-            written — the contract is assemble → check once → execute, so this is
+            written — the contract is assemble -> check once -> execute, so this is
             raised before any transaction opens. Raised on the *validate_only* path
             for the same reason, which is what makes a re-check informative.
     """

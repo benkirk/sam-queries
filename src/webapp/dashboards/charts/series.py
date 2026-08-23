@@ -73,7 +73,7 @@ def from_pairs(raw) -> list[Series]:
 
 def assign_colors(series: Sequence[Series], palette, others_color,
                   reverse: bool = False) -> list:
-    """One color per band, bottom → top.
+    """One color per band, bottom -> top.
 
     "Others" takes `others_color` and **does not advance the palette cursor**,
     so a named band keeps its color whether or not a remainder exists.

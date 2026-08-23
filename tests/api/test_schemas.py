@@ -317,7 +317,7 @@ class TestSchemaEdgeCases:
         """ProjectSchema.panel is None (not a 500) for an orphan project [PR295 P0-6].
 
         Regression: get_panel dereferenced obj.allocation_type without a None
-        guard, so a project with no allocation_type raised AttributeError → 500
+        guard, so a project with no allocation_type raised AttributeError -> 500
         on the /api/v1/projects/<projcode> detail endpoint. make_project() builds
         exactly such an orphan (no allocation_type assigned).
         """

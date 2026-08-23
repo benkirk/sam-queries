@@ -76,7 +76,7 @@ class TestGidAllocationModel:
 class TestGidAllocationIntrospection:
 
     def test_pristine_block(self, session):
-        """next_gid IS NULL → not initialized but has full capacity."""
+        """next_gid IS NULL -> not initialized but has full capacity."""
         block = make_gid_allocation(session, size=100)
         assert block.is_initialized is False
         assert block.is_exhausted is False
@@ -93,7 +93,7 @@ class TestGidAllocationIntrospection:
         assert block.available_count == 100 - 30
 
     def test_boundary_block_still_has_one_left(self, session):
-        """next_gid == end_gid → exactly one GID still available."""
+        """next_gid == end_gid -> exactly one GID still available."""
         block = make_gid_allocation(session, size=100)
         block.next_gid = block.end_gid
         assert block.is_exhausted is False
@@ -101,7 +101,7 @@ class TestGidAllocationIntrospection:
         assert block.available_count == 1
 
     def test_exhausted_block(self, session):
-        """next_gid == end_gid + 1 → exhausted."""
+        """next_gid == end_gid + 1 -> exhausted."""
         block = make_gid_allocation(session, size=100)
         block.next_gid = block.end_gid + 1
         assert block.is_initialized is True
@@ -208,7 +208,7 @@ class TestAllocateNextGid:
             assert gid == block.start_gid
 
     def test_boundary_allocation_exhausts_block(self, session):
-        """next_gid == end_gid → returns end_gid; block becomes exhausted."""
+        """next_gid == end_gid -> returns end_gid; block becomes exhausted."""
         block = make_gid_allocation(session, size=10)
         block.next_gid = block.end_gid
         session.flush()

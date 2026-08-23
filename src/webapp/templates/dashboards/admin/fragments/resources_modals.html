@@ -5,7 +5,7 @@
   Create modals: loaded lazily when a create button is clicked.
 #}
 
-{# ════════════════════════════════════════════════════════ CREATE MODALS #}
+{# CREATE MODALS #}
 
 {% if has_permission(Permission.CREATE_RESOURCES) %}
 {{ modal_scaffold('createResourceTypeModal', 'New Resource Type',
@@ -31,7 +31,7 @@
                   icon='folder-plus', container_id='addDiskRootFormContainer') }}
 {% endif %}
 
-{# ══════════════════════════════════════════════════════════ EDIT MODALS #}
+{# EDIT MODALS #}
 
 {{ modal_scaffold('editResourceModal', 'Edit Resource',
                   icon='server', container_id='editResourceFormContainer', variant='edit') }}

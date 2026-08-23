@@ -26,7 +26,7 @@ a plan cannot be mutated between the check and the write.
 
 Ordering is still the caller's
 ------------------------------
-⚠️ A handler keeps its plan as **one flat ordered list**, not a bucket per kind.
+WARNING: A handler keeps its plan as **one flat ordered list**, not a bucket per kind.
 ``UpdateHandler`` emits up to three steps for a single resource and applies them *in
 the order the factory emitted them*, which is legacy-faithful; grouping by type here
 would silently reorder writes against one allocation.
@@ -79,7 +79,7 @@ class PlannedSupplement:
 class PlannedAdjust:
     """Apply a signed correction to an existing allocation.
 
-    ⚠️ Carries **no** ``panel_authorized`` field, deliberately.
+    WARNING: Carries **no** ``panel_authorized`` field, deliberately.
     ``buildAdjustAllocationCommand`` never sets ``auth_at_panel_mtg`` where the
     supplement one does, and ``log_integration_transaction`` writes the column only
     when the value is not ``None`` — so the absence of the field here is what keeps

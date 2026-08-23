@@ -318,7 +318,7 @@ class TestExchangeAllocationsAuditTrail:
 
     An exchange must write exactly ONE additive row per dedicated allocation —
     the signed TRANSFER. The earlier implementation ALSO let update_allocation
-    log an EDIT→ADJUSTMENT row; since legacy replay sums both TRANSFER and
+    log an EDIT->ADJUSTMENT row; since legacy replay sums both TRANSFER and
     ADJUSTMENT (addAmount), that double-counted the change (±2×amount) and broke
     the invariant replay(history) == allocation.amount.
     """

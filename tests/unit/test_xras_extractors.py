@@ -84,7 +84,7 @@ def action(**overrides):
 class TestTheCorpusOracle:
     """41 real payloads through the chain, 30 checked against production rows.
 
-    ⚠️ **Only the 30 marked ``verified`` are an oracle.** For those, the pair below is
+    WARNING: **Only the 30 marked ``verified`` are an oracle.** For those, the pair below is
     the ``(panel_name, allocation_type)`` the real project carries in the snapshot
     today — read from ``project.allocation_type_id``, independently of anything this
     code computes — so agreement means the chain reproduces what legacy decided. All
@@ -101,7 +101,7 @@ class TestTheCorpusOracle:
     pair for the token equals the verified pair for the project it became.
     """
 
-    #: fixture → the pair the chain must produce.
+    #: fixture -> the pair the chain must produce.
     EXPECTED = {
         # -- Strategy 1: exact lookup on the SAM type name. -------------------
         'adjustment_uwis0064_manual.json': ('UNIV USS', 'Small'),             # verified
@@ -163,7 +163,7 @@ class TestTheCorpusOracle:
     def test_five_distinct_strategies_are_exercised(self):
         """Coverage claim, asserted rather than asserted-in-prose.
 
-        ⚠️ **Still five of eleven at 41 payloads.** Growing the corpus 5× moved this
+        WARNING: **Still five of eleven at 41 payloads.** Growing the corpus 5× moved this
         number not at all, which converts it from "the sample is small" into a
         measurement: six strategies see no real traffic at this site, and are pinned
         only by the unit tests below. Sprint C's deviations section says so; this
@@ -392,7 +392,7 @@ class TestResolveAllocationType:
 
 
 class TestAreaOfInterest:
-    """⚠️ ``fosNum`` is an ``area_of_interest_id``, not an ``fos_aoi.fos_id``."""
+    """WARNING: ``fosNum`` is an ``area_of_interest_id``, not an ``fos_aoi.fos_id``."""
 
     def test_fos_num_is_the_area_of_interest_primary_key(self, session):
         """Legacy calls ``areaOfInterestRepository.findOne(fosInt)`` — a Spring Data
@@ -427,7 +427,7 @@ class TestAreaOfInterest:
         assert not errs
         assert row.area_of_interest_id == expected_id
 
-    #: ``fosNum`` → (SAM's string, the string XRAS sends). The two differ in **case
+    #: ``fosNum`` -> (SAM's string, the string XRAS sends). The two differ in **case
     #: only**, on one entry out of 92 across the corpus. Pinned rather than smoothed
     #: over so that a divergence which is *not* just case still fails this test.
     KNOWN_FOS_CASE_DIFFERENCES = {
@@ -438,7 +438,7 @@ class TestAreaOfInterest:
         """Corroborates the id reading from the other side: XRAS's FOS vocabulary *is*
         SAM's ``area_of_interest`` table, not a foreign taxonomy needing a mapping.
 
-        ⚠️ **Equal ignoring case, not byte-equal.** At eight payloads every name
+        WARNING: **Equal ignoring case, not byte-equal.** At eight payloads every name
         matched exactly; at 41 there are 90 exact matches and 2 that differ in one
         letter's case (:data:`KNOWN_FOS_CASE_DIFFERENCES`). Zero differ in substance.
 
@@ -718,7 +718,7 @@ class TestResolveMnemonicCode:
         assert row.mnemonic_code_id == lab_mnemo.mnemonic_code_id
 
     def test_a_shallow_tree_uses_the_pis_own_organization(self, session):
-        """``levels <= 3`` → ``parentage[0]``. Three deep is the boundary."""
+        """``levels <= 3`` -> ``parentage[0]``. Three deep is the boundary."""
         from factories import (make_mnemonic_code, make_organization, make_user,
                                make_user_organization)
         root = make_organization(session, name='Extractor Shallow Root')
@@ -835,7 +835,7 @@ class TestTheOpportunityMapIsAdditive:
     payloads that work today — which is what makes it shippable ahead of the
     traffic that would justify it.
 
-    ⚠️ **These clear the table rather than assuming it empty.** The nine seed rows
+    WARNING: **These clear the table rather than assuming it empty.** The nine seed rows
     live in production, so every snapshot regenerated after 2026-08-20 carries
     them: the table is well under ``config.yaml``'s ``size_threshold_mb`` and the
     anonymizer has no reason to purge it. Per-test SAVEPOINT rollback makes the
@@ -909,7 +909,7 @@ class TestTheOpportunityMapAddsFidelity:
     """What the map buys, and the one failure it disarms."""
 
     def test_a_wyoming_small_request_is_the_silent_case(self, session):
-        """⚠️ **The whole reason this table exists**, and it cannot be observed in
+        """WARNING: **The whole reason this table exists**, and it cannot be observed in
         production until it is too late.
 
         ``Small`` names two real rows — ``UNIV USS`` (facility UNIV) and ``UW``
@@ -991,7 +991,7 @@ class TestTheOpportunityMapAddsFidelity:
             session, action(allocationType='Small')) == SelectionParms('UNIV USS', 'Small')
 
     def test_a_mapped_row_whose_type_has_no_panel_falls_through(self, session):
-        """⚠️ ``allocation_type.panel_id`` is **nullable**, so ``.panel.panel_name``
+        """WARNING: ``allocation_type.panel_id`` is **nullable**, so ``.panel.panel_name``
         can raise ``AttributeError`` mid-dispatch — a 500 on an action that would
         otherwise have resolved perfectly well through the ladder."""
         from sam.accounting.allocations import AllocationType
@@ -1006,7 +1006,7 @@ class TestTheOpportunityMapAddsFidelity:
 
 
 class TestTheXrasTypeMapNamesRealRows:
-    """⚠️ The guarantee that justifies a constant over a table.
+    """WARNING: The guarantee that justifies a constant over a table.
 
     ``XRAS_TYPE_MAP`` is reference data keyed on XRAS's ids, and a typo in it is
     invisible: the pair simply never matches, the sweep proposes nothing, and an

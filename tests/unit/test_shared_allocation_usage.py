@@ -1,7 +1,7 @@
 """Tree-aware usage for shared (inheriting) allocations.
 
 When an allocation tree is shared across a project hierarchy
-(parent → child → grandchild), child projects must surface the
+(parent -> child -> grandchild), child projects must surface the
 *root* tree's full usage as `used`/`remaining`/`percent_used`, plus
 their own contribution as `self_used`/`self_percent_used`. The UI
 needs both to render a two-tone progress bar.
@@ -26,8 +26,8 @@ def shared_tree(session, hpc_resource):
     """Three-deep project tree sharing one allocation pool.
 
         root  (allocation root, amount=1000)
-         └── mid (inheriting child)
-              └── leaf (inheriting grandchild)
+ mid (inheriting child)
+ leaf (inheriting grandchild)
 
     Each project has its own Account on the HPC resource. Charges live
     only on the leaf (200) and the mid project (300); root has none —
@@ -116,7 +116,7 @@ class TestSharedAllocationUsage:
         # `used` is the full tree consumption — same number the root sees.
         assert row['used'] == pytest.approx(500.0)
         assert row['remaining'] == pytest.approx(500.0)
-        # `self_used` is just leaf's own subtree (it's a leaf → just itself).
+        # `self_used` is just leaf's own subtree (it's a leaf -> just itself).
         assert row['self_used'] == pytest.approx(200.0)
         assert row['root_projcode'] == shared_tree['root'].projcode
 

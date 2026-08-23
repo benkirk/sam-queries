@@ -78,7 +78,7 @@ class XrasOpportunityAllocationType(Base):
     pair.** That resolves the ambiguity by construction and cannot drift when a
     type is renamed.
 
-    ⚠️ **Never key this on the wire ``allocationType`` string.** Its vocabulary
+    WARNING: **Never key this on the wire ``allocationType`` string.** Its vocabulary
     differs from SAM's and it is not unique — ``sam/schemas/forms/xras.py`` says
     so explicitly. ``opportunityId`` is the stable key, it is on 41/41 observed
     payloads, and across that corpus it is single-valued: nine ids, five
@@ -110,7 +110,7 @@ class XrasOpportunityAllocationType(Base):
                opportunity_name=None, source=SOURCE_MANUAL):
         """Add one mapping row.
 
-        ⚠️ **Callers must check the row does not already exist.** This does not
+        WARNING: **Callers must check the row does not already exist.** This does not
         upsert, deliberately: a ``manual`` row is a human's answer to a question
         the API cannot settle — the two documented cases are in
         ``sam.xras.opportunity_types`` — and the sweep must never overwrite one.
@@ -173,7 +173,7 @@ class XrasActionLog(Base):
        verbatim, before parsing.** MySQL parses to a normalized binary form and
        re-serializes on read: it re-sorts keys by length-then-bytewise, inserts
        whitespace, and *silently collapses duplicate keys*. Round-tripping a real
-       payload reordered all 23 top-level keys and grew it 2,213 → 2,375 bytes.
+       payload reordered all 23 top-level keys and grew it 2,213 -> 2,375 bytes.
        That destroys the audit record's fidelity, its value as a replay source,
        and its value as a harvested fixture — the key order on the wire is what
        reveals Jackson's ``@JsonPropertyOrder``.
@@ -551,7 +551,7 @@ class XrasRemediationEvent(Base, SessionMixin):
 
     #: XRAS's request number — **usually** a projcode, but not always.
     #:
-    #: ⚠️ Wider than ``xras_action_log.request_number`` (30) on purpose, and
+    #: WARNING: Wider than ``xras_action_log.request_number`` (30) on purpose, and
     #: that divergence is the point. The action log only ever sees requests
     #: being *pushed*, which always carry a real projcode. This table sees the
     #: whole remediation cohort, including Submitted requests whose number is
@@ -668,7 +668,7 @@ class XrasRemediationEvent(Base, SessionMixin):
                  role_id=None):
         """Close the row once the outcome is known. Returns it, or ``None``.
 
-        ⚠️ **``before_state`` is written here, not at :meth:`create`.** The
+        WARNING: **``before_state`` is written here, not at :meth:`create`.** The
         capture is made by the client *during* the call — it re-reads the
         subject immediately before dispatching — so it does not exist yet when
         the ``attempted`` row is opened. Recording it only at open time would

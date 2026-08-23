@@ -1,4 +1,4 @@
-"""Shared helpers for ORM ↔ MySQL schema introspection.
+"""Shared helpers for ORM <-> MySQL schema introspection.
 
 Used by:
   - scripts/check_db_drift.py — one-shot audit against any DB (prod, staging, local)
@@ -33,14 +33,14 @@ TYPE_MAPPINGS = {
 
 
 def normalize_type(db_type: str) -> str:
-    """'VARCHAR(255) UNSIGNED' → 'VARCHAR'. Strips size + sign."""
+    """'VARCHAR(255) UNSIGNED' -> 'VARCHAR'. Strips size + sign."""
     base = db_type.split('(')[0].upper()
     base = base.replace(' UNSIGNED', '').replace(' SIGNED', '')
     return base.strip()
 
 
 def is_acceptable_type_mismatch(mismatch_str: str) -> bool:
-    """Known-good MySQL ↔ SQLAlchemy type pairings we don't flag."""
+    """Known-good MySQL <-> SQLAlchemy type pairings we don't flag."""
     acceptable = (
         'ORM=String → DB=CHAR',
         'ORM=Integer → DB=TINYINT',
@@ -131,7 +131,7 @@ def diff_indexes(
     """Compare DB and ORM index sets.
 
     Returns dict with keys:
-      - 'in_db_not_orm': indexes present in DB but missing from ORM (← DiskActivity bug)
+      - 'in_db_not_orm': indexes present in DB but missing from ORM (<- DiskActivity bug)
       - 'in_orm_not_db': indexes declared in ORM but absent from DB
       - 'mismatched':    same name, different columns or uniqueness
     """

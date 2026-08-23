@@ -57,7 +57,7 @@ class TestApiCredentialsModel:
         assert isinstance(disabled, list)
 
     def test_full_permissions_traversal(self, session):
-        """Walk from API credential → role_assignments → role → role name."""
+        """Walk from API credential -> role_assignments -> role -> role name."""
         api = session.query(ApiCredentials).first()
         if not api or not api.role_assignments:
             pytest.skip("No API credentials with role assignments")

@@ -1237,7 +1237,7 @@ class TestRecheck:
 
     def test_recheck_never_dispatches_even_with_capture_off(
             self, app, xras_client, action_log):
-        """⚠️ The guard on the reversal, and the reason it exists.
+        """WARNING: The guard on the reversal, and the reason it exists.
 
         Replay used to be tied to ``XRAS_ACTIONS_CAPTURE_ONLY`` — so the flag that
         turns on production ingestion was also the flag that armed this button. At

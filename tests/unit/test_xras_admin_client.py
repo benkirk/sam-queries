@@ -50,7 +50,7 @@ pytestmark = pytest.mark.unit
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-# ── canned payloads ─────────────────────────────────────────────────────
+# canned payloads
 
 def _person(username, reconciled=True):
     return {
@@ -129,7 +129,7 @@ def _reset_xras_cache(monkeypatch):
     xras_cache._CACHE.reset_for_tests(disabled=False)
 
 
-# ── the lever ───────────────────────────────────────────────────────────
+# the lever
 
 class TestTheWriteLever:
     """Fail-closed, and independent of the read lever."""
@@ -210,7 +210,7 @@ class TestHelmDoesNotArmWrites:
             'the task pod must never carry the XRAS write lever'
 
 
-# ── structure ───────────────────────────────────────────────────────────
+# structure
 
 class TestItIsASiblingNotASubclass:
     """The GET-only pin on the read client must stay true and meaningful."""
@@ -262,7 +262,7 @@ class TestRoleTypes:
             role_type('Reviewer')
 
 
-# ── transport ───────────────────────────────────────────────────────────
+# transport
 
 class TestWritesGetExactlyOneAttempt:
     """A retried merge could delete a second person. Never retry a write."""
@@ -335,7 +335,7 @@ class TestImpersonation:
             == [('pi-user', 1, 13), ('am-user', 2, 14)]
 
 
-# ── verification: the reason this module exists ─────────────────────────
+# verification: the reason this module exists
 
 class TestAOneHundredIsNotSuccess:
 

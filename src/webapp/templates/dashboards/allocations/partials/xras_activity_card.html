@@ -17,7 +17,7 @@
     selected_types  [str]
     form_id, fragment_url, target_id
 
-  ── ONE ROW PER ACTION, NOT PER PROJECT ──────────────────────────────────
+ ONE ROW PER ACTION, NOT PER PROJECT
   This replaced a project-keyed worklist filtered on `~Project.is_active`.
   Three things followed from that key and are gone with it: activating a
   project erased its own Notify button; a Supplement against a live project
@@ -25,7 +25,7 @@
   "stale" because one row cannot represent two things happening. Nothing
   leaves this table because somebody did their job.
 
-  ── WHERE THE COLLAPSE TOGGLE GOES ───────────────────────────────────────
+ WHERE THE COLLAPSE TOGGLE GOES
   On the first four cells, NOT on the <tr>. Bootstrap registers its collapse
   data-api with EventHandler.on(document, …), which runs in the CAPTURE phase
   — so a toggle on the row fires before any nested button's handler and
@@ -33,7 +33,7 @@
   Same structural fix as xras_table.html's Errors cell, and the reason
   dashboards/fragments/collapse.html exists.
 
-  ── THE EXPANSION IS MANAGE_XRAS ONLY ────────────────────────────────────
+ THE EXPANSION IS MANAGE_XRAS ONLY
   It lists per-recipient addresses. The route does not even build
   `recipients` for a VIEW_XRAS viewer, so this is a second gate over an
   already-empty dict rather than the only one — the same route-level
@@ -98,7 +98,7 @@
                        it the inline-block button wraps below the icon as soon as
                        the column is at all tight.
 
-                       ⚠️ The toggle is on the CHEVRON, not on this cell. It was
+                       WARNING: The toggle is on the CHEVRON, not on this cell. It was
                        on the cell, which also holds the project-modal button —
                        so Bootstrap's capture-phase data-api toggled the row on
                        every projcode click, opening the modal with the row

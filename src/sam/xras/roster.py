@@ -104,7 +104,7 @@ class Roster:
     byte-identical seven-line blocks — which doubled the query count for a roster:
     ten members cost twenty ``SELECT``s where ten would do.
 
-    ⚠️ ``members`` is positionally aligned with ``member_usernames`` and **may contain
+    WARNING: ``members`` is positionally aligned with ``member_usernames`` and **may contain
     ``None``** where a username matched no row. That is deliberate: a missing member
     has already been reported, so ``raise_if_any()`` stops the action before anything
     iterates it, and preserving the hole keeps the handlers' existing
@@ -124,7 +124,7 @@ class Roster:
 def _wire_str(value) -> str:
     """A wire string as Jackson would have produced it.
 
-    ⚠️ **The one divergence in this module, and it is systematic rather than local.**
+    WARNING: **The one divergence in this module, and it is systematic rather than local.**
     Every string field on ``XrasRole`` is declared ``= ""``, so Java distinguishes an
     *absent* key (``""``) from an explicit JSON ``null``. marshmallow's
     ``load_default=None`` gives ``None`` for both, and the distinction is not
@@ -153,7 +153,7 @@ def normalize_username(value) -> str:
     that decides *which row* gets looked up: skipping it would turn a resolvable user
     into ``Username %s is missing``.
 
-    ⚠️ Java's ``Character.isWhitespace`` and Python's ``str.isspace`` disagree on a
+    WARNING: Java's ``Character.isWhitespace`` and Python's ``str.isspace`` disagree on a
     handful of code points (U+00A0 most notably, whitespace to Python but not to Java).
     A username containing a non-breaking space is pathological enough that matching
     Java exactly here would cost more than it buys.
@@ -191,7 +191,7 @@ def roster_usernames(action) -> Tuple[str, ...]:
     would double every ``Username %s is missing`` before the accumulator collapsed it,
     and it makes the count meaningless to anyone reading it. Order is preserved.
 
-    ⚠️ ``AddUserToProjectActionCommandsFactory.create()`` fans this list out **per
+    WARNING: ``AddUserToProjectActionCommandsFactory.create()`` fans this list out **per
     ``resources[]`` entry**. With ``resources: []`` — *both* Extensions in the corpus —
     it produces **zero** add-user commands even though the roster is non-empty. The
     roster is computed and validated regardless; whether anything is done with it is
@@ -296,18 +296,18 @@ def _validate_user(lookup, username: str, errs: ActionErrors,
                    missing, inactive) -> Optional[User]:
     """Report *username* against the users table, and **return the row it fetched**.
 
-    ⚠️ ``User.is_active`` is ``active AND NOT locked``; Java's ``isActive()`` returns
+    WARNING: ``User.is_active`` is ``active AND NOT locked``; Java's ``isActive()`` returns
     ``active`` alone. The house rule (CLAUDE.md § 5) is to use the hybrid, and the
     divergence is unobservable: production has **zero** locked users out of 28,371. A
     locked account is one somebody has deliberately stopped; leading a new project with
     it would be wrong even if legacy allowed it.
 
-    ⚠️ **An inactive user is returned, not dropped.** It reported an error, so
+    WARNING: **An inactive user is returned, not dropped.** It reported an error, so
     ``raise_if_any()`` will stop the action before anything reads the row — but the
     handlers used to re-fetch unconditionally and would have got it, so returning it
     keeps this a pure de-duplication of queries rather than a behavior change.
 
-    ⚠️ **Reporting is per occurrence, deliberately.** Called three times for one
+    WARNING: **Reporting is per occurrence, deliberately.** Called three times for one
     person in three roles, this reports three times — the strings differ per role
     (``PI %s is not in database`` vs ``Allocation Manager %s is not in database:␣`` vs
     ``Username %s is missing``) and ``ActionErrors`` deduplicates identical ones
@@ -328,7 +328,7 @@ def resolve_roster(session, action, errs: ActionErrors, *,
     Order matters only because the operator reads the 422 top to bottom;
     ``ProjectActionCommandFactoryBase`` validates the lead, then the admin, and
     ``AddUserToProjectActionCommandsFactory`` walks the roster separately. Reproduced
-    here as PI → Allocation Manager → members.
+    here as PI -> Allocation Manager -> members.
 
     Reports, in the vocabulary legacy uses:
 

@@ -121,7 +121,7 @@ def coalesce_user_proj_queue_spans(
             child.last_seen = T_new
         return {'inserted': len(children), 'extended': 0}
 
-    # 3. Most recent `last_seen` for this system. None ⇒ first ingest.
+    # 3. Most recent `last_seen` for this system. None => first ingest.
     prev_ts = session.execute(
         select(func.max(UserProjQueueStatus.last_seen))
         .where(UserProjQueueStatus.system_id == system_id)
@@ -157,7 +157,7 @@ def coalesce_user_proj_queue_spans(
         )
     ).all()
 
-    # Index by (user_id, project_code_id, queue_id) → (row_id, metric_tuple)
+    # Index by (user_id, project_code_id, queue_id) -> (row_id, metric_tuple)
     active: Dict[Tuple[int, int, int], Tuple[int, Tuple[int, ...]]] = {
         (r[1], r[2], r[3]): (r[0], tuple(int(v or 0) for v in r[4:]))
         for r in active_rows

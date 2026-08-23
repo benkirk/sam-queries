@@ -15,7 +15,7 @@ single-statement compare-and-swap is atomic under every isolation level on all
 three backends, needs no explicit locking syntax, and gives exactly what
 ``SELECT ... FOR UPDATE`` would with none of the portability cost.
 
-⚠️ **No dialect-specific SQL may enter this module** — no ``ON CONFLICT``, no
+WARNING: **No dialect-specific SQL may enter this module** — no ``ON CONFLICT``, no
 ``INSERT IGNORE``, no ``ON DUPLICATE KEY``. CI runs SQLite and production runs
 Postgres; ``tests/unit/test_task_ledger.py`` has an AST guard that is the only
 thing standing between those two facts.
@@ -296,7 +296,7 @@ class TaskLedger:
     def prune(self, *, older_than: datetime) -> int:
         """Delete finished rows older than ``older_than``. Returns the count.
 
-        ⚠️ Guarded on ``finished_at IS NOT NULL``, which is what stops a run
+        WARNING: Guarded on ``finished_at IS NOT NULL``, which is what stops a run
         from deleting its own live row — the pruning task is itself a row in
         this table, still ``running`` at the moment it prunes.
         """

@@ -58,7 +58,7 @@ def test_oversize_error_messages(xras_client, action_log, dispatching, scenario,
                                  committing_route):
     """1,000 resources on a **New**, each with an unmapped key *and* a bad amount.
 
-    ⚠️ The action type matters, and finding out why was the useful part.
+    WARNING: The action type matters, and finding out why was the useful part.
 
     ``resourceRepositoryKey`` is a long field name, so one unmapped key costs about as
     many bytes in the body as the message it produces — measured **1.00x** on the
@@ -108,7 +108,7 @@ def test_oversize_error_messages(xras_client, action_log, dispatching, scenario,
     # send an operator hunting for errors that were never written down.
     assert 'truncated' in stored.lower()
 
-    # ⚠️ The 422 BODY is not truncated. It is the wire contract XRAS administrators
+    # WARNING: The 422 BODY is not truncated. It is the wire contract XRAS administrators
     # read, and the accumulated list is the entire point of it — only the stored copy
     # is bounded.
     returned = json.loads(resp.data)['result']['errors']
@@ -166,7 +166,7 @@ def test_oversize_raw_payload(xras_client, action_log, scenario):
     stored = row['raw_payload']
     assert len(stored.encode()) <= TEXT_LIMIT
 
-    # ⚠️ A truncated payload is **not replayable**, and the stored bytes say so rather
+    # WARNING: A truncated payload is **not replayable**, and the stored bytes say so rather
     # than looking like a normal capture. Replay reads them back through the schema;
     # truncated JSON would fail to parse, which is at least loud — but an operator
     # deciding whether to click Replay deserves to know first.
@@ -225,7 +225,7 @@ ASTRAL = '\U0001F30A'          # 🌊 WATER WAVE
 def _raw_utf8(payload):
     """Serialize the way the broker does: **raw UTF-8, not ``\\uXXXX`` escapes.**
 
-    ⚠️ This is the whole test, and getting it wrong makes the scenario vacuous.
+    WARNING: This is the whole test, and getting it wrong makes the scenario vacuous.
     ``json.dumps`` defaults to ``ensure_ascii=True``, which turns the emoji into the
     ASCII sequence ``\\ud83c\\udf0a`` — a body that is pure ASCII, stores fine in
     utf8mb3, and proves nothing. The first draft of this test did exactly that and
@@ -248,7 +248,7 @@ def test_astral_unicode_payload(xras_client, action_log, scenario):
     under ``STRICT_TRANS_TABLES`` — confirmed on in production — and `_record` has no
     ``try``/``except``, so both lose the row and answer 500.
 
-    ⚠️ Not contrived. ``raw_payload`` is the XRAS body **verbatim**, so it carries
+    WARNING: Not contrived. ``raw_payload`` is the XRAS body **verbatim**, so it carries
     whatever a PI typed into a title or an abstract, and ``error_messages`` interpolates
     those same values back out. An emoji in a project title is an ordinary thing.
 

@@ -143,7 +143,7 @@ class NsfAwardProvider(AwardProvider):
             records.append(self._to_record(award, award_id))
         return records
 
-    # ── mapping ─────────────────────────────────────────────────────────
+    # mapping
 
     @staticmethod
     def _to_record(award: Mapping[str, Any], award_id: str) -> AwardRecord:

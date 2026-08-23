@@ -9,10 +9,10 @@ The shape every operation follows
 ---------------------------------
 ::
 
-    build client  ──►  open an `attempted` audit row  ──►  COMMIT it
-                  ──►  dispatch the write (the client verifies it)
-                  ──►  close the audit row on a FRESH session  ──►  COMMIT
-                  ──►  best-effort: invalidate caches, patch the snapshot
+    build client  ->  open an `attempted` audit row  ->  COMMIT it
+                  ->  dispatch the write (the client verifies it)
+                  ->  close the audit row on a FRESH session  ->  COMMIT
+                  ->  best-effort: invalidate caches, patch the snapshot
 
 **The audit row is committed before the write goes out, on its own session.**
 This is the ``NotificationLedger`` idiom and it is here for the same reason: a
@@ -81,7 +81,7 @@ class RemediationOutcome:
         return self.status == 'verified'
 
 
-# ── audit plumbing ──────────────────────────────────────────────────────
+# audit plumbing
 
 def _open_event(session_factory, **fields) -> Optional[int]:
     """Write the ``attempted`` row and commit it. Returns its id.
@@ -120,7 +120,7 @@ def _close_event(session_factory, event_id, **fields) -> None:
 def _rejection_fields(exc) -> Dict[str, Any]:
     """Closing columns for a write XRAS refused.
 
-    ⚠️ **``errors`` goes into ``after_state``, not into ``outcome_reason``.**
+    WARNING: **``errors`` goes into ``after_state``, not into ``outcome_reason``.**
     A 400 from XRAS carries its own list of what failed validation — six
     entries is ordinary — and that list is the single most useful thing to know
     about a rejection three weeks later. ``outcome_reason`` is VARCHAR(255) and
@@ -143,7 +143,7 @@ def _rejection_fields(exc) -> Dict[str, Any]:
 def _outcome_fields(result) -> Dict[str, Any]:
     """Map an :class:`XrasWriteResult` onto the audit row's closing columns.
 
-    ⚠️ ``before_state`` travels here rather than at ``create()``. The client
+    WARNING: ``before_state`` travels here rather than at ``create()``. The client
     makes its pre-capture *inside* the call, so the ``attempted`` row cannot
     carry it — and for a merge it is the whole point of the column: the source
     person's detail sheet, including ``residenceCountry``, exists nowhere else
@@ -163,7 +163,7 @@ def _client(client=None):
     return client or XrasAdminClient.from_environment()
 
 
-# ── cache coherence ─────────────────────────────────────────────────────
+# cache coherence
 
 def _refresh_index_entry(request_number: str, *, reader=None) -> bool:
     """Re-read one request and patch its snapshot entry. ``True`` if patched.
@@ -173,7 +173,7 @@ def _refresh_index_entry(request_number: str, *, reader=None) -> bool:
     uses, so a patched row is indistinguishable from a swept one apart from its
     ``refreshed_at`` stamp.
 
-    ⚠️ A request patched into a state that puts it *outside* the sweep's cohort
+    WARNING: A request patched into a state that puts it *outside* the sweep's cohort
     — a whole request flipping to ``Incomplete``, say — **stays on the card**
     with its new status until the next sweep drops it naturally. The operator
     must see what their click did; a row that silently vanishes reads as a bug
@@ -229,7 +229,7 @@ def _still_pending(request_number: str) -> bool:
     return True
 
 
-# ── operations ──────────────────────────────────────────────────────────
+# operations
 
 def merge_placeholder(session_factory, *, source_username, target_username,
                       operator, comment=None, client=None) -> RemediationOutcome:
@@ -311,7 +311,7 @@ def withdraw_action(session_factory, *, request_number, request_id, action_id,
                     client=None) -> RemediationOutcome:
     """De-approve one action back to a draft (``Incomplete``) in XRAS.
 
-    ⚠️ Not archival and not deletion — it reverts the award to a draft and
+    WARNING: Not archival and not deletion — it reverts the award to a draft and
     **rewrites the XRAS record** so the history no longer shows an approval.
     A PI can re-submit it. For a single-action request the whole request follows
     to ``Incomplete``, which is what drops it out of the Approved enumeration;
@@ -335,7 +335,7 @@ def resubmit_action(session_factory, *, request_number, request_id, action_id,
     The client validates first as the same impersonated user and refuses on a
     failure, carrying XRAS's own ``errors[]`` for the modal to render.
 
-    ⚠️ That verdict is a function of *who* is impersonated — the same action can
+    WARNING: That verdict is a function of *who* is impersonated — the same action can
     validate as the PI and fail as the Allocation Manager — so the preflight is
     only meaningful alongside the user it ran as.
     """
@@ -419,12 +419,12 @@ def change_role(session_factory, *, add, request_number, request_id, username,
         request_number=request_number, client=client, close_extra=close_extra)
 
 
-# ── the request editor (Part B): resources & allocation dates ────────────
+# the request editor (Part B): resources & allocation dates
 
 def _editor_op(operation, session_factory, dispatch, *, open_fields,
                request_number, client=None, close_extra=None
                ) -> RemediationOutcome:
-    """Shared open→dispatch→close→patch body for **every** remediation verb.
+    """Shared open->dispatch->close->patch body for **every** remediation verb.
 
     The audit row is committed ``attempted`` before the write leaves, closed on
     a fresh session after, and the card entry is patched only on a verified
@@ -582,9 +582,9 @@ def update_action(session_factory, *, request_number, request_id, action_id,
         request_number=request_number, client=client)
 
 
-# ── destructive lifecycle (Part C, ADMIN_XRAS only) ──────────────────────
+# destructive lifecycle (Part C, ADMIN_XRAS only)
 #
-# ⚠️ Irreversible in XRAS and NOT live-probed. Same audit-before-dispatch
+# WARNING: Irreversible in XRAS and NOT live-probed. Same audit-before-dispatch
 # discipline as every op — the record survives whether or not the destructive
 # call is confirmed. On a verified delete the request is patched OUT of the card
 # (`_refresh_index_entry` re-reads, finds nothing, drops the row).

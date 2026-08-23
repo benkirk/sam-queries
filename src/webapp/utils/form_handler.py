@@ -8,9 +8,9 @@ domain-exception mapping, custom success responses, post-commit hooks.
 
 Lifecycle (`handle()`)::
 
-    form_input() → load() → clean()
-        → [management_transaction: perform()]
-        → after_commit() → on_success()
+    form_input() -> load() -> clean()
+        -> [management_transaction: perform()]
+        -> after_commit() -> on_success()
 
 Every error path funnels through `render_errors()`, which re-renders
 `template` with ``errors`` (form-level list), ``field_errors`` (per-field

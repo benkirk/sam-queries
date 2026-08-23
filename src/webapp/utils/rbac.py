@@ -230,7 +230,7 @@ ALL_DELETE = _perms_with_action('delete')
 #
 # Deletes are enumerated positively rather than as ``ALL_DELETE - {...}``.
 # Every delete granted here is a **soft** retire — the generated CRUD
-# deletes set ``active=False`` (crud.py → handle_htmx_soft_delete) and the
+# deletes set ``active=False`` (crud.py -> handle_htmx_soft_delete) and the
 # bespoke contract delete stamps ``end_date``. The withheld ones are where
 # delete means something harsher or machine-shaped:
 #
@@ -502,10 +502,10 @@ def user_facility_scope(user, permission: Permission):
     orphan projects).
 
     Use at listing-filter call sites:
-      - ``None`` → skip the facility filter entirely (system-permission
+      - ``None`` -> skip the facility filter entirely (system-permission
         holder; sees everything).
-      - ``set`` → constrain results to those facilities.
-      - empty ``set`` → user has no way to exercise this permission.
+      - ``set`` -> constrain results to those facilities.
+      - empty ``set`` -> user has no way to exercise this permission.
 
     Args:
         user: AuthUser object.
@@ -705,7 +705,7 @@ def rbac_context_processor():
         {% endif %}
     """
     # Late import to avoid the circular path
-    # rbac → project_permissions → rbac at module import time.
+    # rbac -> project_permissions -> rbac at module import time.
     from webapp.utils.project_permissions import _is_project_steward
 
     def _can_act_on_project(permission, project, include_ancestors=False):

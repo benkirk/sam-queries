@@ -170,7 +170,7 @@ def _visible_cols(default_cols, rows):
 
     Suppression only applies to numeric columns the plugin defines as
     "always present"; string/identity columns are passed through. Empty
-    *rows* → no suppression so headers still render correctly above a
+    *rows* -> no suppression so headers still render correctly above a
     "No jobs match" message.
     """
     if not rows:
@@ -483,14 +483,14 @@ _TIMELINE_OWNERS_LIMIT = 10
 
 # Job Sizes tab dimension pills; Wait Times / Durations pin their dimension.
 # memory = REQUESTED (reqmem); memory_used = consumed (Job.memory);
-# memory_wasted = requested − used (negative ⇒ used more than requested).
+# memory_wasted = requested − used (negative => used more than requested).
 _SIZE_DIMENSIONS = ('nodes', 'cpus', 'gpus',
                     'memory', 'memory_used', 'memory_wasted')
 
 # Rows shown in the By User table (the pie itself keeps at most 9 + Other).
 _BY_USER_LIMIT = 25
 
-# Metric pill → plugin jobs_usage_by sort_by key. Ranking must follow the
+# Metric pill -> plugin jobs_usage_by sort_by key. Ranking must follow the
 # viewed metric or the top-N cut hides e.g. pure-GPU users behind CPU-heavy
 # ones (the Derecho GPU-Hours one-wedge bug).
 _USAGE_SORT_BY = {
@@ -523,7 +523,7 @@ _ROUNDTRIP_KEYS = (
 
 _SECS_PER_HOUR = 3600
 
-# 1 GB = 1024^3 bytes — the plugin's GB↔bytes convention (its CLI's
+# 1 GB = 1024^3 bytes — the plugin's GB<->bytes convention (its CLI's
 # _BYTES_PER_GB); the "GB" panel labels match its bucket-label vocabulary.
 _BYTES_PER_GB = 1024 ** 3
 
@@ -583,11 +583,11 @@ def _parse_signed_int_arg(name: str) -> Optional[int]:
 
 
 def _parse_job_filters(include_user: bool = True) -> dict:
-    """Whitelisted GET parse → service filter kwargs (plugin-native units).
+    """Whitelisted GET parse -> service filter kwargs (plugin-native units).
 
     Human-facing units convert at this boundary and nowhere else:
-    ``min/max_wait_hours`` and ``min/max_elapsed_hours`` (hours →
-    seconds), ``min/max_reqmem_gb`` (GB → bytes, 1024³).
+    ``min/max_wait_hours`` and ``min/max_elapsed_hours`` (hours ->
+    seconds), ``min/max_reqmem_gb`` (GB -> bytes, 1024³).
     Unknown params are ignored; malformed numbers degrade to "no filter".
 
     Plugin-native bound params (the names a histogram envelope's
@@ -1249,7 +1249,7 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
             machine, dimension,
             _agg_scope(mode, username=username,
                        account_projcodes=account_projcodes),
-            # Both axes pinned ⇒ every band has exactly one owner, so
+            # Both axes pinned => every band has exactly one owner, so
             # skip the grouping entirely: flat bars, and a band drills
             # straight to its jobs instead of through a one-row tier.
             owners_limit=_HIST_OWNERS_LIMIT if rel['owners_enabled'] else None,
@@ -1338,7 +1338,7 @@ _PER_PAGE_OPTIONS = (25, 50, 100, 200)
 
 
 def _machine_or_404(machine: str) -> str:
-    """Validate a path ``<machine>`` against the warmed engines → 404 unknown.
+    """Validate a path ``<machine>`` against the warmed engines -> 404 unknown.
 
     Dynamic (not the static _VALID_MACHINES): the machine-wide routes only
     make sense for machines the plugin actually serves right now.

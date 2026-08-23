@@ -5,7 +5,7 @@ response body carries, this asserts the card renders into its host page, that
 adding it did not turn the three-pane worklist into four, and that its chips
 filter without a page reload.
 
-⚠️ **The card is legitimately empty on a fresh stack.** It renders whatever
+WARNING: **The card is legitimately empty on a fresh stack.** It renders whatever
 `xras_sweep` last published to the `requests_index` cache key, and a local
 stack has usually published nothing. So every content assertion is guarded on
 rows being present — an empty stack must not produce a red build for a correct
@@ -13,7 +13,7 @@ card. Populate with::
 
     docker compose exec webdev sam-admin tasks --run xras_sweep --force
 
-⚠️ Nothing here asserts on a username, an email, a request number or a count.
+WARNING: Nothing here asserts on a username, an email, a request number or a count.
 The sweep reads **production XRAS**, so anything this card shows locally is
 real people's data and this file is committed.
 """
@@ -57,7 +57,7 @@ class TestItRenders:
         assert card.locator('.card-header').inner_text().strip()
 
     def test_the_worklist_still_has_exactly_three_tabs(self, page):
-        """⚠️ This is a CARD, not a fourth tab. Adding one would change the
+        """WARNING: This is a CARD, not a fourth tab. Adding one would change the
         meaning of every persisted `tab:xrasWorklistTabs` preference."""
         _load(page)
         assert page.locator(f'{TABS} button[data-bs-toggle="tab"]').count() == 3
@@ -87,7 +87,7 @@ class TestInteraction:
 
     def test_the_request_link_opens_the_detail_modal_with_roster_and_actions(
             self, page):
-        """⚠️ The per-request row expansion is GONE — PR #464 folded the roster
+        """WARNING: The per-request row expansion is GONE — PR #464 folded the roster
         and actions into the read-only detail modal, and the Request number is
         now the single entry point. So the roster/actions live in
         `#auditDetailsModal`, reached by clicking the request link, not by
@@ -127,7 +127,7 @@ class TestInteraction:
         assert icon.evaluate('e => getComputedStyle(e).transform') != expanded
 
     def test_a_chip_click_carries_the_search_term(self, page):
-        """⚠️ The whole point of `form=` on the search input. The chip submits
+        """WARNING: The whole point of `form=` on the search input. The chip submits
         the hidden filter form; the input lives inside the card, two elements
         away. Without the attribute the term is not in that form's data and
         every chip click silently clears the search."""
@@ -160,14 +160,14 @@ class TestInteraction:
 
     def test_the_project_badge_opens_the_modal_without_expanding_the_row(
             self, page):
-        """⚠️ Both halves matter, and the second is the whole reason the
+        """WARNING: Both halves matter, and the second is the whole reason the
         toggle moved off the `<tr>`. Bootstrap's collapse data-api runs in the
         CAPTURE phase, so an ancestor toggle fires before the link's handler —
         the modal would open AND the row would flip open behind it, on every
         click, with no button-side guard able to stop it."""
         card = _load(page)
 
-        # ⚠️ Widen the shared window first. A request SAM already has a project
+        # WARNING: Widen the shared window first. A request SAM already has a project
         # for is by definition one that got as far as a handoff, so it skews
         # OLD — with the default lookback this test skipped on every stack,
         # including the one it was written against, and proved nothing.

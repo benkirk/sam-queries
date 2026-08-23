@@ -206,7 +206,7 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
         session.flush()
         return obj
 
-    # ── queries ─────────────────────────────────────────────────────────
+    # queries
 
     @classmethod
     def get_by_number(cls, session, contract_number: str) -> Optional['Contract']:

@@ -5,7 +5,7 @@ Structurally the notification delivery log, which is the same problem already
 solved: facet chips with self-exclusion, a paginated table, a detail modal per
 row. Both are built on ``querykit``.
 
-⚠️ **The permission split is not the notifications one.** That page puts every
+WARNING: **The permission split is not the notifications one.** That page puts every
 route at ``SYSTEM_ADMIN`` because every row names a real person's email
 address. Task rows name task names, states and pod names — nothing personal —
 so the page and its table are ``VIEW_SYSTEM_CONFIG``, the same tier as the
@@ -61,7 +61,7 @@ _PER_PAGE = 50
 def _ledger_missing():
     """True if `task_run` is absent, after clearing the failed transaction.
 
-    ⚠️ Not hypothetical, and not only a test condition: `task_run` arrives with
+    WARNING: Not hypothetical, and not only a test condition: `task_run` arrives with
     Alembic `0006`, which **staging and production have not applied**. The
     Configuration card already degrades for this (see `config_inspect`);
     without the same treatment here, the card's own `Details »` link leads to a
@@ -88,7 +88,7 @@ def _ledger_missing():
 def _parse_filters(args):
     """Read the query string into ``(filters, page)``.
 
-    ⚠️ ``now=utcnow_naive()`` is not optional. ``task_run`` is naive UTC while
+    WARNING: ``now=utcnow_naive()`` is not optional. ``task_run`` is naive UTC while
     the notifications page this mirrors is naive Mountain; letting
     ``parse_window`` default to the local clock would shift the window by 6–7
     hours.

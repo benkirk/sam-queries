@@ -76,7 +76,7 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
         # variant and the resolver finds it through the default.
         facility_aware=False,
     ),
-    # ── The other three XRAS outcomes ────────────────────────────────────
+    # The other three XRAS outcomes
     #
     # One kind per action type rather than one `xras_update` branching on a
     # context key. The prose genuinely differs — a supplement reports an
@@ -84,7 +84,7 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
     # facet chips and the dedup key are built from, so folding them would
     # make "we notified them about the supplement" unaskable.
     #
-    # ⚠️ `transfer` deliberately has no kind: it parks as manual by design and
+    # WARNING: `transfer` deliberately has no kind: it parks as manual by design and
     # never completes, so there is no outcome to report. It still appears on
     # the activity table as history, with no Notify button — see
     # XRAS_SERVICE_KINDS in sam.queries.xras_activation, which is the map that

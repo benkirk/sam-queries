@@ -25,7 +25,7 @@ Decorating a chart-generating function::
 
 Inspecting all caches (used by the admin Configuration card)::
 
-    caching.stats()            # → dict for the template
+    caching.stats()            # -> dict for the template
     caching.clear('chart')     # category in {'flask','chart','usage','scans','jobs',None}
 """
 
@@ -105,7 +105,7 @@ class Caching:
             app.config['CACHE_TYPE'] = 'SimpleCache'
         self.flask.init_app(app, **flask_config)
 
-    # ── Decorators ──────────────────────────────────────────────────────
+    # Decorators
 
     def chart_cached(self, *, name: str, maxsize: int,
                      key_fn: Optional[Callable] = None):
@@ -126,7 +126,7 @@ class Caching:
         self._chart_caches.append(cache)
         return _chart_decorator(cache, key_fn=key_fn)
 
-    # ── Bucketed TTL caches (registry-driven) ───────────────────────────
+    # Bucketed TTL caches (registry-driven)
 
     @staticmethod
     def bucketed_caches() -> List[BucketedTTLCache]:
@@ -160,7 +160,7 @@ class Caching:
         """Valid ``clear(category)`` values, in admin-card order."""
         return ('flask', 'chart', *(c.category for c in self.bucketed_caches()))
 
-    # ── Introspection ───────────────────────────────────────────────────
+    # Introspection
 
     def adapters(self) -> List[CacheBase]:
         """All adapters known to the facade, including the proxied usage cache.

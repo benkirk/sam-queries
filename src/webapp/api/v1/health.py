@@ -2,7 +2,7 @@
 
 Intended consumers:
   GET /api/v1/health/       — load balancers + monitoring: connectivity AND
-                              ORM ↔ database schema drift
+                              ORM <-> database schema drift
   GET /api/v1/health/live   — Kubernetes liveness probe (no DB call)
   GET /api/v1/health/ready  — Kubernetes readiness probe (connectivity only)
   GET /api/v1/health/db-pool — admin: connection pool statistics
@@ -104,7 +104,7 @@ def health():
     """Health check for load balancers — pings all DB binds, plus schema drift.
 
     Returns 200 when all checks pass, 503 if any fail. This is the endpoint
-    monitoring should watch: it is the *only* one that reports ORM ↔ database
+    monitoring should watch: it is the *only* one that reports ORM <-> database
     schema drift, the failure mode that took the site down on 2026-08-10 while
     every connectivity probe stayed green.
 

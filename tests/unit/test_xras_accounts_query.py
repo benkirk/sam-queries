@@ -13,7 +13,7 @@ three properties matter more than coverage breadth:
    enumeration) reach the same classifier through the same
    :class:`RosterRecord` seam, and must classify identically.
 
-⚠️ The in-tree fixtures are **scrubbed** — every username is rewritten to
+WARNING: The in-tree fixtures are **scrubbed** — every username is rewritten to
 ``user_<hex>`` or ``placeholder<NN>-user-<NNNNN>``. So "no ``users`` row" is
 trivially true for all of them, which proves the plumbing but not the
 predicate. The predicate itself is validated against the unscrubbed corpus
@@ -84,7 +84,7 @@ def _record(*usernames, roles=None, flags=None, people=None, **ref_kwargs):
         person_by_username=people or {})
 
 
-# ── the placeholder shape ───────────────────────────────────────────────
+# the placeholder shape
 
 class TestPlaceholderDetection:
 
@@ -101,7 +101,7 @@ class TestPlaceholderDetection:
         assert is_placeholder(username) is False
 
 
-# ── the classifier ──────────────────────────────────────────────────────
+# the classifier
 
 class TestClassification:
     """Current-state against ``users`` — never the action's status."""
@@ -213,12 +213,12 @@ class TestGrouping:
         assert counts['placeholder'] == 1
 
 
-# ── Feed A ──────────────────────────────────────────────────────────────
+# Feed A
 
 class TestFeedA:
     """Rosters out of ``xras_action_log.raw_payload``."""
 
-    #: ⚠️ Assertions here must be scoped to the rows the test itself created.
+    #: WARNING: Assertions here must be scoped to the rows the test itself created.
     #: `tests/unit/test_xras_accounts_card.py` COMMITS an `xras_action_log`
     #: row (its route reads through Flask-SQLAlchemy's own connection and only
     #: sees committed rows), and xdist workers share one database — so a bare
@@ -297,7 +297,7 @@ class TestFeedA:
         assert all(r['classification'] in ('absent', 'inactive') for r in rows)
 
 
-# ── Feed B ──────────────────────────────────────────────────────────────
+# Feed B
 
 REPORT_REQUEST = {
     'requestId': 1446994,
@@ -360,7 +360,7 @@ class TestFeedB:
         assert sorted(rows[0]['sources']) == ['action_log', 'reports']
 
 
-# ── enrichment ──────────────────────────────────────────────────────────
+# enrichment
 
 class TestEnrichment:
     """Injected, so the query layer stays offline-capable."""
@@ -376,7 +376,7 @@ class TestEnrichment:
         assert report['found'] == 1 and report['reconciled'] == 1
 
     def test_reconciled_is_not_a_closure(self, session):
-        """⚠️ The design document called `isReconciled` the closure signal.
+        """WARNING: The design document called `isReconciled` the closure signal.
         It is not: the local smoke measured **9 of 9** worklist rows reconciled
         in XRAS while every one still needed a SAM account created or
         reactivated. Reconciliation is XRAS linking a placeholder to a real
@@ -549,7 +549,7 @@ class TestItIsRegimeProof:
 
 
 class TestUsernameCaseFolding:
-    """⚠️ Found by the local smoke against real data; unreachable from fixtures.
+    """WARNING: Found by the local smoke against real data; unreachable from fixtures.
 
     `users.username` is `utf8mb3_general_ci` with a UNIQUE index, so MySQL
     treats `Jsmith` and `jsmith` as one account and the batch `IN` matches
@@ -595,7 +595,7 @@ class TestUsernameCaseFolding:
 class TestWaitingSince:
     """How long a row has been blocking something.
 
-    ⚠️ **Neither feed alone answers this**, which is the whole reason it is
+    WARNING: **Neither feed alone answers this**, which is the whole reason it is
     derived rather than read off a column. Feed A knows ``received_time`` —
     when XRAS pushed the action at us — and leaves ``submit_date`` null. Feed B
     is the exact inverse: a request that has not been pushed has no arrival,
@@ -625,7 +625,7 @@ class TestWaitingSince:
         assert rows[0]['waiting_since'] == date(2026, 7, 14)
 
     def test_a_negative_age_is_clamped_not_rendered(self, session):
-        """⚠️ Clock skew, not a fact about the queue.
+        """WARNING: Clock skew, not a fact about the queue.
 
         ``received_time`` is naive-Mountain from the app clock, so a process
         running in another zone stamps rows that read as the future — a
@@ -648,7 +648,7 @@ class TestWaitingSince:
         assert rows[0]['waiting_days'] is None
 
     def test_a_snapshot_written_by_older_code_is_backfilled(self, session):
-        """⚠️ The publisher and the reader can be on different code.
+        """WARNING: The publisher and the reader can be on different code.
 
         Feed B is read back from a snapshot ``xras_sweep`` wrote; mid-deploy the
         task is guaranteed to be older than the reader, and a cached snapshot
@@ -665,7 +665,7 @@ class TestWaitingSince:
 class TestMergeWorklists:
     """The union behind ``sam-admin xras --accounts``.
 
-    ⚠️ **Overlap is normal.** Feed A is precisely the actions that have
+    WARNING: **Overlap is normal.** Feed A is precisely the actions that have
     *posted*; Feed B is what XRAS approved and *may or may not* have posted. The
     same person legitimately appears in both, so this is a union on the
     casefolded username, not a concatenation.

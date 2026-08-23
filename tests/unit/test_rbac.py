@@ -169,7 +169,7 @@ class TestCanImpersonate:
             assert can_impersonate(caller, target)
 
     def test_self_impersonation_trivially_allowed(self):
-        # caller == target → identical permission sets → subset check passes.
+        # caller == target -> identical permission sets -> subset check passes.
         user = _StubUser(roles=['nusd'], username='travis')
         assert can_impersonate(user, user)
 
@@ -407,11 +407,11 @@ class TestFacilityScopedPermissions:
     per-user, per-facility grant layer on top of system permissions.
 
     Coverage matrix:
-    - System-permission holder → passes for any facility, including
+    - System-permission holder -> passes for any facility, including
       orphan projects (``facility_name=None``).
-    - Scoped entry → passes only for named facilities, denies others.
-    - Scoped entry + orphan project → denies (system-only domain).
-    - Unauthenticated user → always denies.
+    - Scoped entry -> passes only for named facilities, denies others.
+    - Scoped entry + orphan project -> denies (system-only domain).
+    - Unauthenticated user -> always denies.
     - ``user_facility_scope`` returns ``None`` for system holders,
       the configured set for scoped users, empty set otherwise.
     """
@@ -443,7 +443,7 @@ class TestFacilityScopedPermissions:
             {'mgr': {'WNA': {Permission.EDIT_PROJECTS}}},
         )
         user = _StubUser(roles=[], username='mgr')
-        # Scoped to WNA → must deny NCAR and UNIV.
+        # Scoped to WNA -> must deny NCAR and UNIV.
         assert not has_permission_for_facility(user, Permission.EDIT_PROJECTS, 'NCAR')
         assert not has_permission_for_facility(user, Permission.EDIT_PROJECTS, 'UNIV')
 
@@ -464,7 +464,7 @@ class TestFacilityScopedPermissions:
         )
         user = _StubUser(roles=[], username='mgr')
         # facility_name=None means the target project has no
-        # allocation_type → panel → facility chain. Only unscoped
+        # allocation_type -> panel -> facility chain. Only unscoped
         # system admins may act there.
         assert not has_permission_for_facility(user, Permission.EDIT_PROJECTS, None)
 
@@ -496,7 +496,7 @@ class TestFacilityScopedPermissions:
         user = _StubUser(roles=[], username='mgr')
         assert user_facility_scope(user, Permission.VIEW_PROJECTS) == {'WNA', 'CISL'}
         assert user_facility_scope(user, Permission.EDIT_PROJECTS) == {'WNA'}
-        # A permission the user does not hold anywhere → empty set.
+        # A permission the user does not hold anywhere -> empty set.
         assert user_facility_scope(user, Permission.DELETE_PROJECTS) == set()
 
     def test_user_facility_scope_empty_for_unauthenticated(self):

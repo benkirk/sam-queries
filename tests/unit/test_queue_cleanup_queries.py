@@ -5,12 +5,12 @@ results are exact counts rather than "at least one" assertions and are immune
 to snapshot refreshes.
 
 The behaviors that matter:
-  * charged inside the window   → not a candidate
-  * charged before the window   → candidate, pre-selected
-  * never charged               → candidate, NOT pre-selected (may be routing)
-  * name contains '*'           → excluded (pattern/template row)
-  * started inside the window   → excluded (grace period)
-  * already expired             → excluded (not active)
+  * charged inside the window   -> not a candidate
+  * charged before the window   -> candidate, pre-selected
+  * never charged               -> candidate, NOT pre-selected (may be routing)
+  * name contains '*'           -> excluded (pattern/template row)
+  * started inside the window   -> excluded (grace period)
+  * already expired             -> excluded (not active)
 """
 from datetime import datetime, timedelta
 
@@ -85,9 +85,9 @@ class TestUsageWindow:
         make_comp_charge_summary(session, queue=q,
                                  activity_date=NOW - timedelta(days=120))
 
-        # 90-day window: last charge is outside it → candidate
+        # 90-day window: last charge is outside it -> candidate
         assert set(_by_name(_candidates(session, resource, days=90))) == {'q120'}
-        # 365-day window: last charge is inside it → not a candidate
+        # 365-day window: last charge is inside it -> not a candidate
         assert _by_name(_candidates(session, resource, days=365)) == {}
 
 

@@ -3,7 +3,7 @@ SetThresholdForm (sam.schemas.forms.user) and Create/EditOutageForm
 (sam.schemas.forms.status).
 
 These schemas are pure input coercion + shape validation. DB-backed checks
-(account lookup, system_name → system_id resolution) stay in the routes per
+(account lookup, system_name -> system_id resolution) stay in the routes per
 CLAUDE.md §9.
 """
 import datetime as dt
@@ -19,7 +19,7 @@ pytestmark = pytest.mark.unit
 
 class TestSetThresholdForm:
     def test_blank_clears_limit(self):
-        """Empty string → load_default None (remove the limit)."""
+        """Empty string -> load_default None (remove the limit)."""
         assert SetThresholdForm().load({'threshold_pct': ''}) == {'threshold_pct': None}
 
     def test_absent_clears_limit(self):
@@ -72,7 +72,7 @@ class TestCreateOutageForm:
         payload['start_time'] = '2026-06-28T10:00'
         payload['tz'] = 'America/Denver'   # MDT = UTC-6 in June
         data = CreateOutageForm().load(payload)
-        # naive-UTC storage: 10:00 MDT → 16:00 UTC
+        # naive-UTC storage: 10:00 MDT -> 16:00 UTC
         assert data['start_time'] == dt.datetime(2026, 6, 28, 16, 0)
         assert 'tz' not in data
 

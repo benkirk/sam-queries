@@ -164,11 +164,13 @@ def _python_prose(text):
     return [(n, line) for n, line in enumerate(lines, 1) if n in keep]
 
 
-def _markup_prose(text):
+def _markup_prose(text, line_comments):
     """Line numbers inside `{# #}`, `<!-- -->`, `/* */`, or after `//`.
 
     Block comments are blanked in place so line numbers survive, then every
-    surviving line that still holds comment text is reported.
+    surviving line that still holds comment text is reported. `//` counts
+    only in JavaScript: in HTML it is far more likely to be the middle of a
+    URL, and treating that as prose would hand a spelling rule a hostname.
     """
     blanked = _BLOCK.sub(lambda m: "\n" * m.group(0).count("\n"), text)
     original = text.splitlines()
@@ -178,7 +180,7 @@ def _markup_prose(text):
         was_block = n > len(stripped) or stripped[n - 1] != line
         if was_block:
             out.append((n, line))
-        else:
+        elif line_comments:
             m = _JS_LINE.search(line)
             if m:
                 out.append((n, m.group(1)))
@@ -204,7 +206,7 @@ def prose_lines(path):
     if suffix == ".py":
         return tuple(_python_prose(text))
     if suffix in (".js", ".html"):
-        return tuple(_markup_prose(text))
+        return tuple(_markup_prose(text, line_comments=suffix == ".js"))
     # YAML, shell, ini, .env: `#` to end of line, and only when the `#`
     # starts the line. A trailing `# comment` on a setting is prose too, but
     # matching it means matching the value beside it, which is code.

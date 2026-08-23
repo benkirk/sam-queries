@@ -510,7 +510,7 @@ class TestRenewScaling:
     def test_standalone_scale_rounds_to_three_sig_figs(
         self, session, standalone_project, derecho, acting_user,
     ):
-        """688M × 0.667 = 458,896,000 → 459,000,000 after sig-fig rounding."""
+        """688M × 0.667 = 458,896,000 -> 459,000,000 after sig-fig rounding."""
         _seed_standalone_source(
             session, standalone_project, derecho, amount=688_000_000.0,
         )
@@ -601,7 +601,7 @@ class TestRenewScaling:
             new_end=NEW_END,
             resource_ids=[derecho.resource_id],
             user_id=acting_user.user_id,
-            scales={},  # empty → default 1.0 per resource
+            scales={},  # empty -> default 1.0 per resource
         )
         assert created[0].amount == source.amount
 
@@ -747,8 +747,8 @@ class TestAnalyzeRenewPreconditions:
     def test_mixed_statuses_across_resources(
         self, session, standalone_project, derecho, casper, acting_user,
     ):
-        # derecho: source exists AND already renewed → 'overlap'
-        # casper:  no source at all → 'no_source'
+        # derecho: source exists AND already renewed -> 'overlap'
+        # casper:  no source at all -> 'no_source'
         _seed_standalone_source(session, standalone_project, derecho)
         renew_project_allocations(
             session,
@@ -761,7 +761,7 @@ class TestAnalyzeRenewPreconditions:
         )
         session.expire_all()
 
-        # Third resource where source exists but no overlap → 'ok'
+        # Third resource where source exists but no overlap -> 'ok'
         other = make_resource(session)
         _seed_standalone_source(session, standalone_project, other)
         session.expire_all()

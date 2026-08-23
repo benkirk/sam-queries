@@ -96,7 +96,7 @@ def summarize_notifications(session: Session, *,
                             since: Optional[datetime] = None,
                             window_hours: int = DEFAULT_WINDOW_HOURS,
                             queued_stale_seconds: int = 300) -> Dict[str, Any]:
-    """Counts for the Admin → Configuration card.
+    """Counts for the Admin -> Configuration card.
 
     **One grouped query for the statuses**, plus one scalar for the stuck
     counter — not one query per row on the card.
@@ -203,7 +203,7 @@ def facet_notifications(session: Session, dimension: str,
                         **filters) -> Dict[str, int]:
     """Counts for one facet dimension, **excluding that dimension's filter**.
 
-    ⚠️ Self-exclusion is the whole point, and the same discipline
+    WARNING: Self-exclusion is the whole point, and the same discipline
     ``xras_fragment`` keeps. Scope a dimension by itself and every unselected
     value drops to zero the moment one is picked — the chips stop being
     switchers and become dead ends. So asking for the ``status`` facet drops

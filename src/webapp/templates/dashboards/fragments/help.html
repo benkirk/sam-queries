@@ -15,8 +15,8 @@
                             underline + tooltip (an <abbr>-style affordance) for
                             spots where a trailing icon would be awkward.
 
-  rich=False (default) → hover/focus TOOLTIP. Keep text to one short line.
-  rich=True            → click POPOVER that can hold multi-line / simple HTML.
+  rich=False (default) -> hover/focus TOOLTIP. Keep text to one short line.
+  rich=True            -> click POPOVER that can hold multi-line / simple HTML.
                          Dismisses on the next outside click (trigger=focus).
 
   Canonical, reused definition strings live in glossary.html so wording stays
@@ -24,10 +24,10 @@
 #}
 
 
-{# ─── help icon (tooltip or popover) ───────────────────────────────────────
+{# help icon (tooltip or popover)
    text       explanation. Plain text for tooltips; may contain simple HTML
               when rich=True (Bootstrap sanitizes by default).
-   rich       True → click popover; False → hover/focus tooltip.
+   rich       True -> click popover; False -> hover/focus tooltip.
    title      optional popover heading (rich only; ignored for tooltips).
    placement  top|right|bottom|left (Bootstrap data-bs-placement).
    icon       Font Awesome name without the "fa-" prefix.
@@ -55,7 +55,7 @@
 {%- endmacro %}
 
 
-{# ─── inline term with a dotted-underline tooltip ──────────────────────────
+{# inline term with a dotted-underline tooltip
    Renders <label> with a help cue. rich=True upgrades it to a click popover.
    extra_class lets a caller merge in additional classes (e.g. badge styling)
    while keeping the help-term cue and tooltip wiring.

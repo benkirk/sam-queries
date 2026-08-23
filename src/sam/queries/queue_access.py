@@ -5,7 +5,7 @@ Provides get_queue_data() which reproduces the output of the legacy Java
 ``GET /api/protected/admin/ssg/queue`` (and ``/queue/{resource}``) endpoints.
 
 The data is organized as a two-level tree:
-  queues → resource → queue
+  queues -> resource -> queue
 
 and is consumed by the PBS batch scheduler / systems-integration tooling to
 configure per-queue wallclock limits and class-of-service ids.

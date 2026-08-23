@@ -6,7 +6,7 @@
 (function () {
     'use strict';
 
-    /* ── Outage modals ──
+    /* Outage modals
      * Time-zone strategy: datetime-local inputs are TZ-blind. The browser
      * TZ is captured into a hidden `tz` field at modal-show time so the
      * server can convert the submitted naive datetime into naive-UTC for
@@ -63,7 +63,7 @@
         bootstrap.Modal.getOrCreateInstance(document.getElementById('editOutageModal')).show();
     });
 
-    /* ── Allocation modals ──
+    /* Allocation modals
      * Refresh the project details modal (if open) after an allocation is
      * updated; the htmx_edit_allocation route sends HX-Trigger:
      * allocationUpdated on success. For the admin inline project card,
@@ -91,7 +91,7 @@
         }
     });
 
-    /* ── Pinch-zoom scrollbar-compensation fix ──
+    /* Pinch-zoom scrollbar-compensation fix
      * Bootstrap sizes its "hidden scrollbar" pad as
      * abs(window.innerWidth - documentElement.clientWidth). Under pinch-zoom
      * innerWidth tracks the *visual* viewport while clientWidth stays at

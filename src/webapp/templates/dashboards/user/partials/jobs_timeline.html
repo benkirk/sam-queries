@@ -278,7 +278,7 @@
           </tr>
           {% else %}
           {# Empty band, or a populated one with no resolvable owners: the
-             single-level period → jobs drill. #}
+             single-level period -> jobs drill. #}
           <tr {% if not b.job_count %}class="text-muted"
               {% else %}data-jt-period="{{ loop.index0 }}"
                         data-bs-target="#{{ _rid }}-row"{% endif %}>

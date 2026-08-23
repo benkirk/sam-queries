@@ -23,7 +23,7 @@ So these call the real builder — `ProjectExpirationCommand._send_notifications
 — against factory-built projects, with the transport swapped for
 `NullTransport`. That code had no test touching it at all.
 
-⚠️ It also now counts toward coverage for the first time: `[tool.coverage.run]
+WARNING: It also now counts toward coverage for the first time: `[tool.coverage.run]
 source` excludes `src/cli`, and the 266 lines this feature moved into
 `src/sam/notify/` are inside a `fail_under = 75.0` gate that never measured
 them.
@@ -49,7 +49,7 @@ from sam.notify import Notifier, NotifyConfig, NullTransport
 from sam.notify.ledger import NotificationLedger
 
 
-# ── Fixtures ────────────────────────────────────────────────────────────────
+# Fixtures
 
 @pytest.fixture
 def transport():
@@ -124,7 +124,7 @@ def expiring(session):
     return project, [(project, allocation, resource.resource_name, 12)]
 
 
-# ── The audience builder ─────────────────────────────────────────────────────
+# The audience builder
 
 class TestAudience:
     """Previously covered only by a MagicMock re-implementation."""
@@ -147,7 +147,7 @@ class TestAudience:
                                                      expiring, transport):
         """The rule the deleted MagicMock test got wrong.
 
-        Production overwrites an **email**-keyed dict in roster → admin →
+        Production overwrites an **email**-keyed dict in roster -> admin ->
         lead order, so the highest role wins per *address*. A `user_id`
         comparison — what the old test asserted — is a different rule.
         """
@@ -190,7 +190,7 @@ class TestALeadWithNoEmailOnFile:
     """The design doc claimed `commands.py:392` AttributeErrors on a
     "lead-less project" and aborts the whole run.
 
-    ⚠️ **Measured, that is not reachable.** `project.project_lead_user_id` is
+    WARNING: **Measured, that is not reachable.** `project.project_lead_user_id` is
     NOT NULL and carries an enforced FK (`project_lead_user_fk`; the snapshot
     has 0 dangling rows), so `project.lead` is never None. What IS reachable —
     one project in the snapshot is in exactly this state — is a lead with no
@@ -238,7 +238,7 @@ class TestALeadWithNoEmailOnFile:
         assert rendered.text.strip()
 
 
-# ── The payload builder ──────────────────────────────────────────────────────
+# The payload builder
 
 class TestPayload:
 
@@ -303,7 +303,7 @@ class TestPayload:
         assert 'core-hours' not in units
 
 
-# ── Facility routing ─────────────────────────────────────────────────────────
+# Facility routing
 
 class TestFacility:
     """The three deleted `test_facility_extraction_*` tests walked
@@ -334,7 +334,7 @@ class TestFacility:
         assert 'A Test Project' in text
 
 
-# ── The ledger, end to end ───────────────────────────────────────────────────
+# The ledger, end to end
 
 class TestLedgerIntegration:
 
@@ -392,7 +392,7 @@ class TestLedgerIntegration:
         assert len(transport.delivered) > sent_first
 
 
-# ── Dry run ──────────────────────────────────────────────────────────────────
+# Dry run
 
 class TestDryRun:
 
@@ -421,7 +421,7 @@ class TestDryRun:
         assert 'DRY-RUN' in out
 
 
-# ── Exit codes ───────────────────────────────────────────────────────────────
+# Exit codes
 
 class TestExitCodes:
 
@@ -456,7 +456,7 @@ class TestExitCodes:
         assert command._send_notifications(expiring[1]) == EXIT_SUCCESS
 
 
-# ── The old mailer is gone ───────────────────────────────────────────────────
+# The old mailer is gone
 
 class TestTheOldMailerIsGone:
 

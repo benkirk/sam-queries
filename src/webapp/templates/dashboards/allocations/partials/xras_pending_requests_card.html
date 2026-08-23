@@ -13,13 +13,13 @@
     counts, classification_values, request_values,
     selected_classifications, selected_requests, form_id, ...
 
-  ── THIS TAB IS READ FROM A CACHE, NOT COMPUTED ──────────────────────────
+ THIS TAB IS READ FROM A CACHE, NOT COMPUTED
   The enumeration behind it is 21 pages and 60-90 seconds against
   api.xras.org. `xras_sweep` publishes; this consumes. So the tab is exactly
   as fresh as the last successful sweep, and it says so rather than implying
   live data.
 
-  ── WHY THESE ROWS AND NOT EVERY APPROVED REQUEST ────────────────────────
+ WHY THESE ROWS AND NOT EVERY APPROVED REQUEST
   Only requests with no SAM project are classified. Measured against the live
   process: every Approved request gave 2,180 "accounts needed" (2,149 merely
   inactive — every PI whose account was deactivated when they retired);
@@ -32,7 +32,7 @@
         <strong>XRAS Requests Awaiting a Handoff</strong>
         {% if snapshot %}
         <span class="badge bg-secondary">{{ snapshot.pending_push | fmt_number }} request(s)</span>
-        {# ⚠️ "N of M" whenever the window hides rows, never a bare N.
+        {# WARNING: "N of M" whenever the window hides rows, never a bare N.
            An OLD unpushed handoff is MORE urgent, not less — a request
            submitted six months ago that still has no SAM project is the worst
            case on this tab — so a recency filter that quietly dropped it would
@@ -89,7 +89,7 @@
             {{ facet_row('Request', request_values, form_id, 'request_number',
                          active=selected_requests) }}
         </div>
-        {# ── What this tab IS, so it is not read as a record ───────────────
+        {# What this tab IS, so it is not read as a record
            A LOOKAHEAD, not a worklist of record: these are requests approved
            on the XRAS side that may or may not have posted to SAM yet. It is
            also the contingent half — it exists only while the outbound API is
@@ -135,7 +135,7 @@
                    the two tabs answer the same question. #}
                 <tr>
                     <td class="font-monospace text-nowrap">
-                        {# ⚠️ The toggle is on the CHEVRON, not on this cell —
+                        {# WARNING: The toggle is on the CHEVRON, not on this cell —
                            unlike its five siblings, which toggle wholesale.
                            The cell holds a link, and Bootstrap's collapse
                            data-api runs in the CAPTURE phase: a toggle on the

@@ -2,7 +2,7 @@
 
 Direction of travel
 -------------------
-Everything under ``src/sam/xras/`` and ``src/webapp/api/xras/`` is XRAS → SAM
+Everything under ``src/sam/xras/`` and ``src/webapp/api/xras/`` is XRAS -> SAM
 (they push actions, they pull our GETs). This module is the **opposite**
 direction: SAM calling out to XRAS. See ``docs/xras/outgoing/`` for the probe
 results this is built on.
@@ -239,7 +239,7 @@ class XrasApiClient(_XrasTransport):
                 '(needs XRAS_OUTGOING_ENABLED=1 and XRAS_API_KEY)')
         return cls(resolved)
 
-    # ── people ──────────────────────────────────────────────────────────
+    # people
 
     def get_person(self, username: str) -> Optional[Dict[str, Any]]:
         """One person from the global XRAS directory, or ``None`` if unknown.
@@ -249,7 +249,7 @@ class XrasApiClient(_XrasTransport):
         ``isReconciled``. Researchers resolve here under their ARC placeholder
         username (``<name>-user-<token>``) whether or not they are reconciled.
 
-        ⚠️ ``isReconciled`` says XRAS has linked this username to a real
+        WARNING: ``isReconciled`` says XRAS has linked this username to a real
         identity — **not** that SAM has an account. Measured 9 of 9 on the
         local smoke: every worklist row was reconciled and every one still
         needed an account created or reactivated. See
@@ -276,7 +276,7 @@ class XrasApiClient(_XrasTransport):
         return _as_dict(
             self._get(f'/v1/reports/username/{quote(str(username), safe="")}'))
 
-    # ── resources ───────────────────────────────────────────────────────
+    # resources
 
     def get_resources(self) -> Optional[List[Dict[str, Any]]]:
         """The process's resource catalog, including ``resourceRepositoryKey``.
@@ -288,12 +288,12 @@ class XrasApiClient(_XrasTransport):
         """
         return _as_list(self._get('/v1/resources'))
 
-    # ── opportunities ───────────────────────────────────────────────────
+    # opportunities
 
     def get_open_opportunities(self) -> List[Dict[str, Any]]:
         """Every **currently open** opportunity, in full.
 
-        ⚠️ **This is the only way to see an opportunity nobody has submitted
+        WARNING: **This is the only way to see an opportunity nobody has submitted
         against yet**, and that is the whole reason it exists. The sweep's other
         source of opportunity ids is ``reports/requests``, which by construction
         cannot mention an opportunity with no requests — so a brand-new one is
@@ -357,7 +357,7 @@ class XrasApiClient(_XrasTransport):
         """
         return _as_dict(self._get(f'/v1/opportunities/{int(opportunity_id)}'))
 
-    # ── vocabularies ────────────────────────────────────────────────────
+    # vocabularies
 
     def get_fos_types(self) -> Optional[List[Dict[str, Any]]]:
         """The field-of-science catalog — ``GET /v1/types/fos``.
@@ -370,7 +370,7 @@ class XrasApiClient(_XrasTransport):
         """
         return _as_list(self._get('/v1/types/fos'))
 
-    # ── requests (the Reports family) ───────────────────────────────────
+    # requests (the Reports family)
 
     def get_request_by_number(self, request_number: str
                               ) -> Optional[Dict[str, Any]]:
@@ -455,7 +455,7 @@ class XrasApiClient(_XrasTransport):
                     yield row
 
 
-# ── envelope helpers ────────────────────────────────────────────────────
+# envelope helpers
 
 def _unwrap(body: Any) -> Any:
     """Strip the ``{"message": ..., "result": ...}`` envelope.

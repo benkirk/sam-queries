@@ -28,7 +28,7 @@ reads reports can merge one person into another irreversibly.
 The write lever is webapp-only by design: ``cronjob-tasks.yaml`` never sets it,
 so no scheduled task can write to XRAS even if one imported the admin client.
 
-⚠️ ``XRAS_API_KEY`` is **not** ``SAM_XRAS_USER`` / ``SAM_XRAS_PASS``. Those are
+WARNING: ``XRAS_API_KEY`` is **not** ``SAM_XRAS_USER`` / ``SAM_XRAS_PASS``. Those are
 XRAS's credential for calling *SAM* (a production write credential in the
 inbound direction). This is SAM's credential for calling *XRAS*, and the same
 key can create requests, merge people and modify roles — which is why
@@ -177,7 +177,7 @@ class XrasApiConfig:
         return bool(self.write_configured and self.admin_context_enabled)
 
     def summary(self) -> Dict[str, Any]:
-        """Config for the Admin → Configuration card. **Never** the key.
+        """Config for the Admin -> Configuration card. **Never** the key.
 
         ``api_key_set`` is a boolean on purpose — an operator needs to know
         whether the ExternalSecret landed, and nothing more.

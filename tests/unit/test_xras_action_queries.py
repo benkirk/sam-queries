@@ -307,7 +307,7 @@ class TestSummary:
     def test_every_status_appears_even_at_zero(self, session):
         """An absent bucket reads as "not measured" rather than "none".
 
-        ⚠️ ``>=``, not ``==``. The five are a **floor**: this function deliberately
+        WARNING: ``>=``, not ``==``. The five are a **floor**: this function deliberately
         keeps any status outside the vocabulary rather than dropping it, so a superset
         is correct behavior, not a leak to assert against.
 
@@ -902,7 +902,7 @@ class TestNotifyRecipients:
         assert people[0]['name'] == 'Benjamin Kirk'
 
     def test_a_middle_name_only_user_is_greeted_by_surname(self, session):
-        """⚠️ The `or full_name` behind `display_name` does NOT rescue this.
+        """WARNING: The `or full_name` behind `display_name` does NOT rescue this.
 
         `display_name` returns 'Kirk' — truthy — so the fallback never fires,
         and a user with a middle name but no first name is greeted by surname
@@ -1002,7 +1002,7 @@ class TestActionTypeAliases:
     def test_a_non_aliased_type_is_unaffected(self, session):
         """The widening must not leak across types.
 
-        ⚠️ Scoped to the two rows this test created, not asserted as equality
+        WARNING: Scoped to the two rows this test created, not asserted as equality
         over every ``New`` row in the table. ``xras_action_log`` is shared:
         `tests/unit/test_xras_accounts_card.py` COMMITS a row (its route reads
         through Flask-SQLAlchemy's own connection and only sees committed

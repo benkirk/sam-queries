@@ -70,7 +70,7 @@ class TemplateRenderer:
     def variants(self, message: Message) -> list[str]:
         """The template *stems* tried, in order, for one message.
 
-        ``{base}-{facility}`` → ``{base}-UNIV`` → ``{base}``. The last step is
+        ``{base}-{facility}`` -> ``{base}-UNIV`` -> ``{base}``. The last step is
         what lets a kind opt out of facility variants entirely (it ships one
         bare file); the middle step is what the symlinks used to do.
         """
@@ -92,7 +92,7 @@ class TemplateRenderer:
     def resolve(self, message: Message) -> Optional[str]:
         """The **stem** whose text template exists, or ``None``.
 
-        ⚠️ Resolution picks a *variant*, not a file per extension. Choosing
+        WARNING: Resolution picks a *variant*, not a file per extension. Choosing
         the two independently lets the fallback split them: a WNA message
         whose facility ships ``expiration-WNA.txt`` but no ``.html`` would
         render WNA text beside **UNIV** HTML — and the HTML part is what

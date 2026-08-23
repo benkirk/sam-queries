@@ -131,7 +131,7 @@ class TestNegativesAreHonoured:
 
 
 class TestTheBelowZeroGuard:
-    """⚠️ A guard legacy does not have. ``verifyValidateState`` checks only the end
+    """WARNING: A guard legacy does not have. ``verifyValidateState`` checks only the end
     date, so nothing in legacy stops an allocation going negative — it has simply never
     applied one."""
 
@@ -152,7 +152,7 @@ class TestTheBelowZeroGuard:
     def test_the_message_does_not_round_the_two_numbers_together(self, committing,
                                                                  allocated,
                                                                  mapped_resource):
-        """⚠️ The reason this string uses ``,.2f`` and not ``g``. Six significant
+        """WARNING: The reason this string uses ``,.2f`` and not ``g``. Six significant
         digits rendered -1,000,001 as ``-1e+06``, so the message claimed a number
         *equal* to the balance would take it below zero. An operator has to be able to
         see which number is which."""
@@ -247,7 +247,7 @@ class TestTheRowShape:
 
     def test_auth_at_panel_mtg_is_null_not_zero(self, committing, allocated,
                                                 mapped_resource):
-        """⚠️ ``is None``, deliberately — ``not row.auth_at_panel_mtg`` above cannot
+        """WARNING: ``is None``, deliberately — ``not row.auth_at_panel_mtg`` above cannot
         tell NULL from 0 and this is the difference that matters.
 
         ``log_integration_transaction`` sets the column only ``if auth_at_panel_mtg
@@ -321,7 +321,7 @@ class TestSharedWithSupplement:
                                                      mapped_resource, session):
         """The create branch is Supplement's, so it must mark the CREATE row too.
 
-        ⚠️ Do not read this against ``test_auth_at_panel_mtg_is_not_set``, which is
+        WARNING: Do not read this against ``test_auth_at_panel_mtg_is_not_set``, which is
         about a *different command*. Legacy's adjust factory is a near-verbatim copy of
         the supplement one: ``buildAdjustAllocationCommand`` never calls
         ``.authAtPanelMeeting(...)`` — hence the ADJUSTMENT row's bare flag — but

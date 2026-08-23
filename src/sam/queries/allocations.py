@@ -277,8 +277,8 @@ def get_recent_allocation_transactions(
     Args:
         projcode: project code(s) to include.
         resource_name: resource name(s) to include.
-        facility_name: facility name(s) to include (joined via Project →
-            AllocationType → Panel → Facility).
+        facility_name: facility name(s) to include (joined via Project ->
+            AllocationType -> Panel -> Facility).
         allocation_type: allocation type name(s) to include.
         transaction_types: one or more legacy DB strings (``"NEW"``,
             ``"ADJUSTMENT"``, ``"SUPPLEMENT"``, ``"EXTENSION"``,
@@ -684,7 +684,7 @@ def get_allocation_summary(
     # Two independent tree structures can cause double-counting:
     #   1. Allocation-level trees: parent_allocation_id links one allocation to another
     #   2. Project-level trees: Project.parent_id links child projects to a parent project
-    #      (e.g., CESM0002 → CESM0002_sub1, CESM0002_sub2 each with their own allocations)
+    #      (e.g., CESM0002 -> CESM0002_sub1, CESM0002_sub2 each with their own allocations)
     if root_only:
         query = query.filter(
             Allocation.parent_allocation_id.is_(None),  # root-level allocation
@@ -719,7 +719,7 @@ def get_allocation_summary(
         if projcode != "TOTAL":
             item['projcode'] = row[idx]
             idx += 1
-            item['is_root'] = row[idx] is None  # parent_id is None → root or standalone project
+            item['is_root'] = row[idx] is None  # parent_id is None -> root or standalone project
             idx += 1
 
         # Add aggregations

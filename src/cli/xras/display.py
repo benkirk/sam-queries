@@ -213,7 +213,7 @@ def display_mapping_report(ctx, payload) -> None:
             f"[bold red]Dangling keys with no resource row:[/bold red] "
             f"{', '.join(str(k) for k in payload['dangling_keys'])}")
 
-    # ── the XRAS half ───────────────────────────────────────────────────
+    # the XRAS half
     if not payload.get('live_checked'):
         ctx.console.print(
             '[dim]Local half only — the XRAS API was not configured or not '
@@ -366,7 +366,7 @@ def display_account_worklist(ctx, payload) -> None:
     table.add_column('Waiting', justify='right')
 
     for row in payload['accounts']:
-        # ⚠️ The artifact, not an action — SAM cannot create or reactivate an
+        # WARNING: The artifact, not an action — SAM cannot create or reactivate an
         # account. Same words the card uses, because the terminal and the
         # dashboard have to teach one vocabulary; the footer says who does.
         needs = ('[red]new account[/red]' if row['classification'] == 'absent'
@@ -403,7 +403,7 @@ def display_account_worklist(ctx, payload) -> None:
         'SAM cannot create or reactivate one. Rows clear on the next '
         'sync.[/dim]')
 
-    # ⚠️ A subset must never be printed as if it were the whole queue. This is
+    # WARNING: A subset must never be printed as if it were the whole queue. This is
     # the CLI half of the gap that had `--accounts` reporting 0 while the
     # dashboard showed a real worklist: the card reads the sweep's published
     # snapshot and this only ever read the action log.

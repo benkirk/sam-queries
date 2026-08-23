@@ -17,7 +17,7 @@ load-bearing:
    on real traffic. Hence ``allow_none=True`` almost everywhere; ``load_default`` is
    the defensive belt.
 
-   ⚠️ At eight payloads this was absolute — ~400 scalar fields, not one empty string —
+   WARNING: At eight payloads this was absolute — ~400 scalar fields, not one empty string —
    and that measurement is what settled this schema on ``allow_none`` rather than
    empty-string handling. At 41 payloads and ~2,000 scalars there is exactly **one**:
    ``grants[].subAwardNumber`` in ``supplement_ucit0011_ok.json``, a field declared
@@ -49,7 +49,7 @@ load-bearing:
    changed institution mid-request). Never null and never a string, so the *coercion*
    is still defensive even though both values now occur. Do not generalize it.
 
-⚠️  ``isReconciled`` and ``isAccountToBeCreated`` are **inert** in legacy: parsed and
+WARNING: ``isReconciled`` and ``isAccountToBeCreated`` are **inert** in legacy: parsed and
 never read by any business logic. Parse them — they are contract — but do not wire
 them to behavior without deciding to. In particular ``isReconciled`` is XRAS's view
 of *its own* reconciliation and arrives ``true`` even for the unreconciled ARC
@@ -94,16 +94,16 @@ class _CoercedStr(fields.String):
 class _ForgivingBool(fields.Field):
     """Legacy's ``BooleanUtil``-style coercion, for ``isAccountToBeCreated`` only.
 
-    ``None`` → ``False``; any integer → ``!= 0``; ``t/true/y/yes`` → ``True``;
-    ``f/false/n/no/''`` → ``False``; anything else is an error.
+    ``None`` -> ``False``; any integer -> ``!= 0``; ``t/true/y/yes`` -> ``True``;
+    ``f/false/n/no/''`` -> ``False``; anything else is an error.
     """
 
     def deserialize(self, value, attr=None, data=None, **kwargs):
         """Intercept ``None`` ahead of marshmallow's short-circuit.
 
         ``Field.deserialize`` returns ``None`` immediately when ``allow_none`` is set,
-        never reaching ``_deserialize`` — which would give ``null → None`` instead of
-        legacy's ``null → False``. ``missing_`` is not ``None``, so an absent key still
+        never reaching ``_deserialize`` — which would give ``null -> None`` instead of
+        legacy's ``null -> False``. ``missing_`` is not ``None``, so an absent key still
         falls through to ``load_default``.
         """
         if value is None:
@@ -205,7 +205,7 @@ class XrasActionRoleSchema(_XrasBase):
     ``AllocationManager`` keys that ``GET /v1/requests/role/{role}/{username}`` maps;
     the two vocabularies are distinct and must not be conflated.
 
-    ✅ **The co-PI question is settled** (2026-08-19, superseding the hedge that
+    **The co-PI question is settled** (2026-08-19, superseding the hedge that
     stood here). ``GET /v1/types/roles`` on the live NCAR process returns exactly
     three role types — 13 ``PI``, 14 ``Allocation Manager``, 19 ``User`` — so
     **no co-PI can ever appear on this wire**, and its "unknown spelling" was
@@ -225,7 +225,7 @@ class XrasActionRoleSchema(_XrasBase):
     who is also a ``User``, with distinct ``requestPeopleRoleId``), so consumers that
     add every role to the accounts must dedupe.
 
-    ⚠️  **``roleType`` is not unique within a payload, and only the date window
+    WARNING: **``roleType`` is not unique within a payload, and only the date window
     separates the duplicates.** ``new_uwis0071_existing_ok.json`` carries *two* ``PI``
     entries for the same human under two usernames — one closed
     (``beginDate`` 2026-07-27, ``endDate`` 2026-08-04) and one open
@@ -331,7 +331,7 @@ class XrasActionSchema(_XrasBase):
     precisely when ``requestNumber.equals(projcode)``. So the action selector resolves
     the project by treating this value as a projcode.
 
-    ⚠️  **``New`` does not imply a request token.** ``new_uwis0071_existing_ok.json``
+    WARNING: **``New`` does not imply a request token.** ``new_uwis0071_existing_ok.json``
     is an ``actionType: 'New'`` whose ``requestNumber`` is the projcode ``UWIS0071``
     of a project that already existed — legacy emitted the "Existing XRAS project
     updated" subject for it. Only the database can tell the two apart.
@@ -344,7 +344,7 @@ class XrasActionSchema(_XrasBase):
     ``date_adjustment_uwas0141_manual`` all carry ``requestType: 'Renewal'`` while
     their ``actionType`` is Extension / Supplement / Date Adjustment respectively.
 
-    ⚠️ Note the third especially: legacy routes ``actionType: 'Renewal'`` to the Update
+    WARNING: Note the third especially: legacy routes ``actionType: 'Renewal'`` to the Update
     handler, but none of these three go there — the selector reads ``actionType``.
     Dispatching on ``requestType`` would send all three somewhere different.
 

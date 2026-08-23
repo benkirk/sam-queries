@@ -27,7 +27,7 @@ pytestmark = pytest.mark.stress
 def test_unmapped_path_oversize_body(xras_client, action_log, scenario):
     """A body far past the column, POSTed to a path we do not implement.
 
-    ⚠️ Unlike ``test_oversize_raw_payload``, nothing here refuses the request first.
+    WARNING: Unlike ``test_oversize_raw_payload``, nothing here refuses the request first.
     ``post_action`` checks the length and answers 422; ``unmapped_path`` records
     unconditionally, so ``_fit_payload`` is the *only* thing between a 16 MB body and a
     lost row. Worth its own test for exactly that reason.

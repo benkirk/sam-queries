@@ -3,7 +3,7 @@ that mints a projcode.
 
 ``AddProjectAssembler`` marks its own order ``// the order below is important!!``:
 
-**AddProject → AddContract → AddAllocation×N → AddUser×N → InactivateNewProject**
+**AddProject -> AddContract -> AddAllocation×N -> AddUser×N -> InactivateNewProject**
 
 and it cannot be rearranged, for two reasons that are both enforced by exceptions:
 
@@ -14,7 +14,7 @@ and it cannot be rearranged, for two reasons that are both enforced by exception
   an account. Allocations must precede users; SAM's ``add_user_to_project`` raises for
   the same reason, so the constraint survives the port unchanged.
 
-⚠️ **The project is created active and then deactivated.** That is not a quirk to tidy:
+WARNING: **The project is created active and then deactivated.** That is not a quirk to tidy:
 ``InactivateNewProject`` running last is the whole reason the middle steps can run at
 all, and the resulting ``active = 0`` is by design — the success email is the human
 trigger to approve it. Production agrees: 21 of 23 XRAS-created projects have since
@@ -78,7 +78,7 @@ class XrasProjectCreationFailed(RuntimeError):
     propagates and the route's error handling records it, which is the honest outcome —
     and both conditions need a human with database access, not a resubmission.
 
-    ⚠️ It lives **here** rather than in :mod:`sam.xras.errors`, where it would read as a
+    WARNING: It lives **here** rather than in :mod:`sam.xras.errors`, where it would read as a
     sibling of :class:`~sam.xras.errors.XrasActionRejected`. That module is the *error
     string vocabulary*, and two tests enumerate its public callables to prove every
     builder is exported and declared — ``tests/unit/test_xras_errors.py`` and
@@ -97,7 +97,7 @@ class NewHandler(ActionHandler):
     def assemble(self) -> None:
         """Resolve everything and report everything, before a projcode is drawn.
 
-        ⚠️ ``self.project`` is always ``None`` here, by dispatch invariant: this
+        WARNING: ``self.project`` is always ``None`` here, by dispatch invariant: this
         handler is selected only when no project of that name exists. The project this
         action creates lives on :attr:`created_project`, deliberately under a different
         name — see ``ActionHandler.project``.
@@ -112,7 +112,7 @@ class NewHandler(ActionHandler):
             pi_username=self.roster.pi_username, pi=self.roster.pi)
         self.contracts = plan_contracts(self.session, self.action, self.errors)
 
-        # ⚠️ Before `_plan_allocations()`, and that ordering is now load-bearing: the
+        # WARNING: Before `_plan_allocations()`, and that ordering is now load-bearing: the
         # plan records capture the flag at construction, where the old execute-time
         # loop read it after assembly had finished. Computing it after planning would
         # stamp every CREATE row with the `False` from `__init__`.
@@ -133,12 +133,12 @@ class NewHandler(ActionHandler):
     def _plan_allocations(self):
         """One allocation per ``resources[]`` entry, using the **action's own** dates.
 
-        ⚠️ The contrast with Supplement matters: that handler derives its create-branch
+        WARNING: The contrast with Supplement matters: that handler derives its create-branch
         window from *today* and the project's history, while New uses ``actionBeginDate``
         and ``actionEndDate``. Same table, two different date policies, both legacy's,
         and both now named — ``create_window_from_action_dates`` is this one.
 
-        ⚠️ Both dates are parsed **above** the loop, so date errors precede resource
+        WARNING: Both dates are parsed **above** the loop, so date errors precede resource
         errors in the 422 body. That order is asserted across ten test modules.
         """
         begin = parse_action_begin_date(self.action, self.errors)
@@ -165,7 +165,7 @@ class NewHandler(ActionHandler):
     def execute(self) -> None:
         """In the order ``AddProjectAssembler`` marks "important!!".
 
-        ⚠️ ``self.lead`` is dereferenced without a guard. That is safe **only** because
+        WARNING: ``self.lead`` is dereferenced without a guard. That is safe **only** because
         assembly reported ``Missing pi role`` / ``PI %s is not in database`` and
         ``raise_if_any()`` has already fired. The invariant now spans two methods; do
         not weaken the roster reporting without revisiting this line.

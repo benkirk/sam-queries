@@ -144,7 +144,7 @@ class TestVerifyPrecedence:
 
 class TestDbKeyCache:
     def test_ttl_zero_refreshes_every_call(self, app, monkeypatch):
-        """TestingConfig sets API_KEYS_DB_TTL=0 → no caching."""
+        """TestingConfig sets API_KEYS_DB_TTL=0 -> no caching."""
         calls = {"n": 0}
 
         def fake_map(cls, session):

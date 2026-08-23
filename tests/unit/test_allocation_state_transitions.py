@@ -4,9 +4,9 @@ These four functions mutate the parent_allocation_id graph that the
 shared-pool / deep-tree allocation model depends on. They were previously
 uncovered:
 
-  - propagate_allocation_to_subprojects: parent → descendant fan-out
-  - detach_allocation: child → standalone (clear parent link)
-  - link_allocation_to_parent: standalone → child (re-link)
+  - propagate_allocation_to_subprojects: parent -> descendant fan-out
+  - detach_allocation: child -> standalone (clear parent link)
+  - link_allocation_to_parent: standalone -> child (re-link)
   - get_partitioned_descendant_sum: sum of non-inheriting descendants
     overlapping a target allocation's date range
 
@@ -47,8 +47,8 @@ def _build_tree(session, *, depth_two=False):
     """Build a project tree + a single resource + per-project accounts.
 
     Returns (resource, root, children, grandchild_or_none, accounts_by_project_id).
-    With depth_two=True the tree is root → c1, c2 with c1 → grandchild.
-    Otherwise the tree is just root → c1, c2 (depth 1).
+    With depth_two=True the tree is root -> c1, c2 with c1 -> grandchild.
+    Otherwise the tree is just root -> c1, c2 (depth 1).
     """
     resource = make_resource(session)
     root = make_project(session)
@@ -113,7 +113,7 @@ class TestPropagateAllocationToSubprojects:
             assert txn.propagated is True
 
     def test_propagate_skips_descendants_with_existing_allocations(self, session):
-        """skip_existing=True (default) → descendants with their own allocation
+        """skip_existing=True (default) -> descendants with their own allocation
         are skipped, registered in alloc_map for grandchild linking."""
         resource, root, accounts = _build_tree(session, depth_two=True)
         user = make_user(session)
@@ -395,7 +395,7 @@ class TestLinkAllocationToParent:
             amount=ROOT_AMOUNT, start_date=FAR_START, end_date=FAR_END,
         )
         # Identify the grandchild by parent_id, not list position — the
-        # NestedSet pre-order traversal is root → c1 → gc → c2, so the
+        # NestedSet pre-order traversal is root -> c1 -> gc -> c2, so the
         # last element is NOT the grandchild.
         grandchild = next(
             d for d in root.get_descendants()

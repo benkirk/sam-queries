@@ -191,7 +191,7 @@ def _reader(monkeypatch, payload=_payload(), person=None, candidates=(),
     return client
 
 
-# ── access control ──────────────────────────────────────────────────────
+# access control
 
 class TestAccessControl:
 
@@ -259,7 +259,7 @@ class TestItIsACardNotATab:
             > body.index('alloc-xras-pending-requests')
 
 
-# ── the collapse affordance ─────────────────────────────────────────────
+# the collapse affordance
 
 class TestEveryExpandableRowShowsAChevron:
     """The page shipped four expandable tables and two chevrons.
@@ -294,7 +294,7 @@ class TestEveryExpandableRowShowsAChevron:
         assert 'xras-collapse-icon' not in (self.PARTIALS / name).read_text()
 
 
-# ── facet / control parity ──────────────────────────────────────────────
+# facet / control parity
 
 class TestFacetParity:
     """A chip whose field has no control in the form filters nothing."""
@@ -322,7 +322,7 @@ class TestFacetParity:
         assert 'form="xras-remediation-filters"' in box
 
 
-# ── the four empty states ───────────────────────────────────────────────
+# the four empty states
 
 class TestTheFourEmptyStates:
     """Collapsing any two of these would mislead an operator."""
@@ -366,7 +366,7 @@ class TestTheFourEmptyStates:
         assert len(seen) == 4
 
 
-# ── rendering ───────────────────────────────────────────────────────────
+# rendering
 
 class TestRendering:
 
@@ -410,7 +410,7 @@ class TestRendering:
         assert 'needs an account' in body
 
     def test_the_window_says_what_it_hid(self, auth_client, armed):
-        """⚠️ On this card the hidden rows skew URGENT — never hide silently."""
+        """WARNING: On this card the hidden rows skew URGENT — never hide silently."""
         _publish(_payload(), _payload('EXAM0002', submit_date='2015-01-01T00:00:00Z'))
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
         assert 'outside the date filter' in body
@@ -486,7 +486,7 @@ class TestRendering:
         assert 'Project Admin' in body
 
 
-# ── the project link ────────────────────────────────────────────────────
+# the project link
 
 class TestTheSamBadgeLinksWhenTheProjectExists:
     """`pending_push` is not a display choice — it is the sweep's set
@@ -508,7 +508,7 @@ class TestTheSamBadgeLinksWhenTheProjectExists:
         assert 'hx-target="#projectDetailsModalBody"' in body
 
     def test_a_pending_request_is_a_plain_badge(self, auth_client, armed):
-        """⚠️ The direction that matters. `pending_push` is exactly "SAM has
+        """WARNING: The direction that matters. `pending_push` is exactly "SAM has
         no project for this number" — the reason most rows are on this card at
         all. A link would 404 the modal on the majority of the table."""
         _publish(_payload('EXAM0001'), pending=True)
@@ -565,7 +565,7 @@ class TestTheOpportunityGroupCollapses:
         assert 'id="xopp-New' not in body
 
 
-# ── the search box ──────────────────────────────────────────────────────
+# the search box
 
 class TestSearch:
     """One box over the fields an operator arrives holding.
@@ -591,7 +591,7 @@ class TestSearch:
 
     def test_it_matches_a_roster_member_the_row_does_not_show(
             self, auth_client, armed):
-        """⚠️ The reason a request is on this card is usually one person on
+        """WARNING: The reason a request is on this card is usually one person on
         its roster, and that person is not rendered until the row is expanded.
         A search that only saw the summary row would miss every one of them."""
         _publish(_payload('EXAM0001'),
@@ -622,7 +622,7 @@ class TestSearch:
 
     def test_the_date_badge_counts_only_what_the_date_hid(self, auth_client,
                                                           armed):
-        """⚠️ Measured against `total` it would grow with every keystroke and
+        """WARNING: Measured against `total` it would grow with every keystroke and
         blame the window for the search."""
         _publish(_payload('EXAM0001'),
                  _payload('EXAM0002', submit_date='2015-01-01T00:00:00Z'))
@@ -634,7 +634,7 @@ class TestSearch:
         assert '1 outside the date filter' in searched
 
 
-# ── modal GETs ──────────────────────────────────────────────────────────
+# modal GETs
 
 class TestModalGets:
 
@@ -654,7 +654,7 @@ class TestModalGets:
 
     def test_two_candidates_leave_nothing_preselected(self, auth_client, armed,
                                                       monkeypatch):
-        """⚠️ Measured: two live identities for one human, differing only by
+        """WARNING: Measured: two live identities for one human, differing only by
         email and organization. A default would pick one, and merge deletes
         the other."""
         _reader(monkeypatch,
@@ -701,7 +701,7 @@ class TestModalGets:
 
     def test_a_placeholder_role_holder_is_flagged(self, auth_client, armed,
                                                   monkeypatch):
-        """⚠️ The project lead is sometimes an unmerged placeholder — 2 of 27
+        """WARNING: The project lead is sometimes an unmerged placeholder — 2 of 27
         live rows the first time this card met production.
 
         XRAS authorizes the call (the placeholder really does hold the role),
@@ -749,7 +749,7 @@ class TestModalGets:
     ])
     def test_an_outage_degrades_with_a_200(self, auth_client, armed,
                                            monkeypatch, path):
-        """⚠️ htmx will not swap a 4xx into an open modal — an error status
+        """WARNING: htmx will not swap a 4xx into an open modal — an error status
         renders as an empty modal indistinguishable from a broken button."""
         client = MagicMock()
         client.get_request_by_number.side_effect = XrasSourceUnavailable('down')
@@ -763,7 +763,7 @@ class TestModalGets:
         assert 'not answering' in response.get_data(as_text=True)
 
 
-# ── the read-only detail modal (Part A) ─────────────────────────────────
+# the read-only detail modal (Part A)
 
 class TestRequestDetailModal:
     """The read-only detail modal, and the surface the editors hang off.
@@ -842,7 +842,7 @@ class TestRequestDetailModal:
         assert 'Details…' not in body
 
 
-# ── the read-only XRAS User detail modal ─────────────────────────────────
+# the read-only XRAS User detail modal
 
 def _person(**over):
     person = {'username': 'janebaldwin', 'firstName': 'Jane',
@@ -950,7 +950,7 @@ class TestUserDetailModal:
         assert 'request_number=EXAM0001' in body
 
 
-# ── the read-only opportunity detail modal + FoS name resolution ──────────
+# the read-only opportunity detail modal + FoS name resolution
 
 _OPPORTUNITY = {
     'opportunityId': 532220, 'opportunityName': 'Small Allocation (University)',
@@ -1051,14 +1051,14 @@ class TestFosNameResolution:
             self, auth_client, armed, monkeypatch):
         payload = _detail_payload()
         payload['fos'] = [{'fosTypeId': 500032, 'fosNum': '30', 'isPrimary': True}]
-        # Default _reader get_fos_types is [] → empty map → id fallback.
+        # Default _reader get_fos_types is [] -> empty map -> id fallback.
         _reader(monkeypatch, payload=payload)
         body = auth_client.get(
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'FoS 30' in body
 
 
-# ── the request editor (Part B) ──────────────────────────────────────────
+# the request editor (Part B)
 
 class TestTheEditors:
     """The amount/date editors: forms render, validation bites, the lever and
@@ -1136,7 +1136,7 @@ class TestTheEditors:
             data={'amount': '20', 'stage': 'Requested'}).get_data(as_text=True)
         assert 'switched off' in body
 
-    # ── the B2a text editors ──────────────────────────────────────────
+    # the B2a text editors
 
     def test_the_attributes_form_renders_prefilled(self, auth_client, armed,
                                                    monkeypatch):
@@ -1181,7 +1181,7 @@ class TestTheEditors:
         assert 'switched off' in body
 
 
-# ── the destructive lifecycle (Part C, ADMIN_XRAS) ───────────────────────
+# the destructive lifecycle (Part C, ADMIN_XRAS)
 
 class TestPartCIsAdminOnly:
     """The destructive verbs ride ABOVE MANAGE_XRAS: a full-editor operator is
@@ -1243,7 +1243,7 @@ class TestPartCIsAdminOnly:
         assert 'switched off' in body
 
 
-# ── POST validation ─────────────────────────────────────────────────────
+# POST validation
 
 class TestPostValidation:
 
@@ -1258,7 +1258,7 @@ class TestPostValidation:
 
     def test_a_merge_into_an_unresolvable_target_is_refused(
             self, auth_client, armed, monkeypatch):
-        """⚠️ The API CREATES an unknown target rather than failing."""
+        """WARNING: The API CREATES an unknown target rather than failing."""
         client = _reader(monkeypatch)
         client.get_person.return_value = None
         body = auth_client.post('/allocations/xras_merge/ghost-user-abcde',
@@ -1326,7 +1326,7 @@ class TestPostValidation:
         assert 'switched off' in body
 
 
-# ── review fixes (PR #460 follow-up) ────────────────────────────────────
+# review fixes (PR #460 follow-up)
 
 class TestThePreflightDegradesHonestly:
     """The resubmit modal's preflight has three non-happy paths, and each
@@ -1354,7 +1354,7 @@ class TestThePreflightDegradesHonestly:
 
     def test_a_preflight_401_renders_the_refusal_not_an_outage(
             self, auth_client, armed, monkeypatch):
-        """⚠️ XrasWriteRejected subclasses XrasSourceUnavailable, so the
+        """WARNING: XrasWriteRejected subclasses XrasSourceUnavailable, so the
         outage catch used to swallow it — telling the operator to 'retry
         later' about a refusal a retry can never fix."""
         from sam.integration.xras_api.base import XrasWriteRejected

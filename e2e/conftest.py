@@ -69,7 +69,7 @@ def dashboard_page_routes():
         if 'GET' in methods
         and '<' not in rule                 # no URL converters
         and '/htmx/' not in rule            # htmx fragment, not a page
-        # ⚠️ Classify on the ENDPOINT, not the rule. A fragment view is named
+        # WARNING: Classify on the ENDPOINT, not the rule. A fragment view is named
         # `*_fragment` by convention, but its URL need not be: `/admin/expirations`
         # is `expirations_fragment`, and `/allocations/xras_remediations` is
         # `xras_remediations_fragment`. Keying off the rule meant each such route

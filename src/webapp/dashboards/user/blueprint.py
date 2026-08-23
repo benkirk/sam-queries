@@ -699,7 +699,7 @@ def _parse_subtree_dates(start_raw, end_raw):
 
 
 def _resolve_jobs_machine(resource_name):
-    """Map a SAM resource name → hpc-usage-queries machine key. None disables drill."""
+    """Map a SAM resource name -> hpc-usage-queries machine key. None disables drill."""
     rn = (resource_name or '').lower()
     if 'derecho' in rn:
         return 'derecho'
@@ -1148,7 +1148,7 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
     # history, which may span allocation boundaries.
     epoch_date = get_earliest_disk_activity_date(db.session, scope_account_ids)
 
-    # Build the {directory_name → projcode} map by walking the scoped
+    # Build the {directory_name -> projcode} map by walking the scoped
     # subtree's in-memory ProjectDirectory data (already loaded by
     # build_disk_subtree). Lets the Filesets-card query hit
     # disk_activity directly via directory_name IN (...) — a range
@@ -1463,7 +1463,7 @@ def htmx_edit_allocation_form(allocation):
     """
     Return the edit allocation form as an HTML fragment, pre-populated from DB.
 
-    Replaces the JS pattern of: fetch JSON → populate form fields client-side.
+    Replaces the JS pattern of: fetch JSON -> populate form fields client-side.
     """
     # Derive resource name and projcode from the allocation's account
     account = allocation.account

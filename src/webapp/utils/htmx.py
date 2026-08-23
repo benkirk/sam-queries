@@ -244,7 +244,7 @@ def modal_triggers(*reload_events):
 
     Example:
         modal_triggers('reloadFacilitiesCard')
-        → {'closeActiveModal': {}, 'reloadFacilitiesCard': {}}
+        -> {'closeActiveModal': {}, 'reloadFacilitiesCard': {}}
     """
     triggers = {'closeActiveModal': {}}
     for event in reload_events:
@@ -365,7 +365,7 @@ def register_typeahead(bp, *, rule, endpoint, permission, search, template,
         template:        result-list fragment.
         ctx_key:         template variable receiving the result list
                          (``q`` is always passed alongside).
-        min_len:         minimum query length (below → empty response).
+        min_len:         minimum query length (below -> empty response).
         active_only_default: default for ``read_active_only`` when the
                          param is absent (see that helper's docstring).
     """

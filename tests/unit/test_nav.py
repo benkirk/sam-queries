@@ -72,7 +72,7 @@ class TestNavbarDropdowns:
     def test_fs_scans_entry_needs_permission_and_data(self, auth_client, monkeypatch):
         """The Filesystem Scans entry uses the same gate as the status tab
         strip: VIEW_ALL_FILESYSTEM_DATA AND a warmed scan collection. The
-        test env has no warmed collections by default → absent even for a
+        test env has no warmed collections by default -> absent even for a
         full admin; present once the data side is satisfied."""
         html = auth_client.get('/user/accounts').get_data(as_text=True)
         assert 'href="/status/filesystem-scans"' not in html

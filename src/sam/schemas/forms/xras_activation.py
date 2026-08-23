@@ -1,6 +1,6 @@
 """HTMX form schemas for the XRAS pending-activation worklist.
 
-⚠️ **Not the same family as :mod:`sam.schemas.forms.xras`.** That module holds the
+WARNING: **Not the same family as :mod:`sam.schemas.forms.xras`.** That module holds the
 plain-``marshmallow`` load schemas for the ``POST /api/xras/v1/actions`` JSON body,
 and its docstring explains at length why they are deliberately *not*
 ``HtmxFormSchema`` subclasses — the base is ``ImmutableMultiDict``-shaped, its

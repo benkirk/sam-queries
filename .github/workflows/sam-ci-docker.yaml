@@ -207,7 +207,7 @@ jobs:
       # have already bitten this suite once (see the `make_mnemonic_code`
       # namespace fix).
       #
-      # ⚠️ Not required, and the distinction matters: the tier IS xdist-safe. The
+      # WARNING: Not required, and the distinction matters: the tier IS xdist-safe. The
       # `action_log` fixture captures the row ids the route mints and reads/deletes
       # by those PKs precisely so parallel workers cannot see or deadlock on each
       # other's rows — see `tests/xras_audit.py`, whose docstring names both

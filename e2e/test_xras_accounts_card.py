@@ -4,7 +4,7 @@ Complements the HTTP-tier tests in `tests/unit/test_xras_accounts_card.py`:
 those assert what the response body carries, this asserts the card actually
 renders, its lazy fragment loads, and its chips filter without a page reload.
 
-⚠️ **Needs a populated `xras_action_log`.** The card is legitimately empty on
+WARNING: **Needs a populated `xras_action_log`.** The card is legitimately empty on
 a fresh stack (see the module docstring in `sam/queries/xras_accounts.py`), so
 every content assertion here is guarded on rows being present rather than
 asserted unconditionally — an empty stack must not produce a red build for a
@@ -30,7 +30,7 @@ PANES = {CARD: '#xras-pane-accounts', PENDING_CARD: '#xras-pane-pending'}
 def _load(page, card=CARD):
     """Open the XRAS page, wait for the fragment, and reveal its tab.
 
-    ⚠️ `state='attached'`, not the default visible: every worklist pane but
+    WARNING: `state='attached'`, not the default visible: every worklist pane but
     the first is inside an inactive `.tab-pane`, so its card resolves while
     hidden. Waiting for visibility here would time out on a card that had
     already loaded perfectly well.
@@ -46,7 +46,7 @@ def _load(page, card=CARD):
 def _rows(card):
     """The worklist's own rows.
 
-    ⚠️ Scoped to the OUTER table on purpose. A loose `tbody > tr:not(.collapse)`
+    WARNING: Scoped to the OUTER table on purpose. A loose `tbody > tr:not(.collapse)`
     also matches the nested per-action table inside each expansion row — it
     reported 19 where the card shows 9 — which would have made the
     before/after comparison in the chip test meaningless.
@@ -95,7 +95,7 @@ def test_the_three_tabs_share_one_window_control(page):
 def test_the_request_is_a_column_and_a_chip(page):
     """The handle an operator working one project's activation navigates by.
 
-    ⚠️ Guarded on rows, like every other content assertion here. An empty card
+    WARNING: Guarded on rows, like every other content assertion here. An empty card
     renders no `<table>` at all, so `thead.inner_text()` does not fail fast —
     it waits out the full 30s timeout and reds the build for a *correct* card.
     That is exactly what it did on the CI stack, whose action log is empty.
@@ -116,13 +116,13 @@ def test_the_row_icons_are_gone(page):
     tell is a text badge for exactly that reason. The two remaining
     `fa-circle-info` marks sit on muted notices, not on rows.
 
-    ⚠️ The chevron is the one deliberate exception, and it is not decoration:
+    WARNING: The chevron is the one deliberate exception, and it is not decoration:
     it is the row's expand affordance, the house one (`.collapse-icon`), and
     the only thing that announces the row can be opened at all. Excluded by
     class rather than loosening the count, so a genuine glyph creeping back
     onto a row still fails.
 
-    ⚠️ Scoped to the SUMMARY rows (`tr:not(.collapse)`): the row EXPANSION
+    WARNING: Scoped to the SUMMARY rows (`tr:not(.collapse)`): the row EXPANSION
     legitimately carries a `fa-triangle-exclamation` on the stuck-placeholder
     merge notice — an actionable alert, not a per-row glyph — which only appears
     when the swept data actually holds such a placeholder (so this passed on an
@@ -185,7 +185,7 @@ def test_a_chip_filters_without_a_page_load(page):
 
 
 def test_a_row_expands_to_its_actions(page):
-    """⚠️ The toggle is on the row's CELLS, not the <tr>.
+    """WARNING: The toggle is on the row's CELLS, not the <tr>.
 
     It used to be on the <tr>, which was safe only while the row carried no
     buttons. The username is now a link when SAM has the account, and
@@ -229,7 +229,7 @@ def test_the_card_logs_no_console_errors(page):
 class TestTheUsernameLink:
     """A username SAM already knows opens the shared user modal.
 
-    ⚠️ Guarded on a link existing. Only `inactive` rows link — a `users` row
+    WARNING: Guarded on a link existing. Only `inactive` rows link — a `users` row
     that exists and is deactivated — and on a fresh snapshot every row is
     `absent` instead, which is the healthy shape. An empty stack must not be a
     red build.
@@ -245,7 +245,7 @@ class TestTheUsernameLink:
         link.first.click()
         page.wait_for_timeout(1200)
         assert page.locator('#userDetailsModal.show').count() == 1
-        # ⚠️ The capture-phase half: an ancestor toggle would have flipped the
+        # WARNING: The capture-phase half: an ancestor toggle would have flipped the
         # row open behind the modal. See fragments/collapse.html.
         assert card.locator('tr.collapse.show').count() == open_before
 

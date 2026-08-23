@@ -9,7 +9,7 @@ unnoticed across four cards.
 It cannot be fixed from the button. Bootstrap registers its data-api handlers
 via ``EventHandler.on(document, ...)``, which passes the delegation flag as
 ``addEventListener``'s ``useCapture`` argument, so they run in the **capture**
-phase on ``document``. Capture descends document → row → button, so Bootstrap
+phase on ``document``. Capture descends document -> row -> button, so Bootstrap
 has already toggled the collapse before any listener on the button executes.
 ``data-stop-propagation`` (``static/js/actions.js``) is powerless here by
 construction; its own docstring scopes it to element-level htmx bindings. The
@@ -54,7 +54,7 @@ _JINJA_SPAN = re.compile(r'{{.*?}}|{%.*?%}', re.S)
 
 _TR_OPEN = re.compile(r'<tr\b[^>]*>', re.S)
 
-# ⚠️ Moving the toggle off the <tr> and onto the cells does NOT make the row
+# WARNING: Moving the toggle off the <tr> and onto the cells does NOT make the row
 # safe — it makes the CELLS the thing that must not contain an action. A cell
 # carrying both a toggle and a link has exactly the original bug, one level
 # down, and the <tr>-only scan walked straight past it: two shipped instances
@@ -65,7 +65,7 @@ _TR_OPEN = re.compile(r'<tr\b[^>]*>', re.S)
 # and a span that grew an action would be the same mistake again.
 _CELL_OPEN = re.compile(r'<(td|th|span|div)\b[^>]*?>', re.S)
 
-# ⚠️ Deliberately broader than `_ACTION`, and the difference is the whole
+# WARNING: Deliberately broader than `_ACTION`, and the difference is the whole
 # reason this scan was worth adding. `_ACTION` matches an anchor only when it
 # carries a `btn` class, because it was written for the admin cards' Edit and
 # Delete controls. The entity-modal idiom — a projcode or username opening
@@ -78,7 +78,7 @@ _CELL_OPEN = re.compile(r'<(td|th|span|div)\b[^>]*?>', re.S)
 # trigger than one that opens a modal — both leave the row toggling behind
 # whatever the click actually did.
 #
-# ⚠️ And, like `_ACTION`, it has to name MACROS as well as literal markup —
+# WARNING: And, like `_ACTION`, it has to name MACROS as well as literal markup —
 # source cannot see what a macro expands to. `request_cell()` renders a
 # projcode as a modal link, and naming it here is not optional bookkeeping: a
 # first draft of this test passed on the very cell that had just been measured
@@ -156,7 +156,7 @@ def test_no_action_button_inside_a_collapse_trigger_cell():
     Relocating a toggle from the <tr> to the cells is the prescribed remedy,
     and it is only a remedy for the cells that do NOT hold an action. Put the
     toggle on the cell holding the link and the click still toggles the row —
-    capture descends document → row → cell → link either way.
+    capture descends document -> row -> cell -> link either way.
     """
     offenders = []
     for template, line, inner in _trigger_cells():

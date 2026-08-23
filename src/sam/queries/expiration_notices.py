@@ -13,7 +13,7 @@ consumes, and :mod:`sam.queries.notifications`, which reads back what it
 caused. The one place it must **not** live is inside ``sam/notify/``: that
 package is transport, ledger and rendering machinery and stays domain-free.
 
-⚠️ **Not exported from** ``sam/queries/__init__.py``. That file imports its
+WARNING: **Not exported from** ``sam/queries/__init__.py``. That file imports its
 submodules eagerly, so listing this one would put ``sam.notify.base`` into
 the import graph of every ``from sam.queries import ...`` in the tree.
 Import it by full path.

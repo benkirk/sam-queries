@@ -70,7 +70,7 @@ def post_action(client, payload):
 def snapshot_project(app):
     """A committed snapshot project.
 
-    ⚠️ Route tests cannot use factories. The route reads Flask-SQLAlchemy's
+    WARNING: Route tests cannot use factories. The route reads Flask-SQLAlchemy's
     ``db.session`` on its own connection, which sees only **committed** rows, so a
     factory-made project is invisible to it and every dispatch would park as "no
     service matches" — silently turning a scenario into a different scenario.
@@ -110,7 +110,7 @@ def dispatching(app):
 def committing_route(monkeypatch):
     """Neutralize the handler commit for scenarios that let a real handler run.
 
-    ⚠️ Route-driven, so this is **not** the same hazard the unit tier's ``committing``
+    WARNING: Route-driven, so this is **not** the same hazard the unit tier's ``committing``
     fixture handles. Here the handler runs on Flask-SQLAlchemy's ``db.session``, a
     different connection from the test's, and a real ``COMMIT`` there writes rows no
     SAVEPOINT will ever roll back. The fixtures that need real writes clean up after

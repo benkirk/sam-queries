@@ -440,7 +440,7 @@ class TestPortabilityBoundary:
         This closes that half by importing for real, in a subprocess so a module
         another test already imported cannot mask the result.
 
-        ⚠️ **`FLASK_ACTIVE` is stripped, and that is the point.** With it set,
+        WARNING: **`FLASK_ACTIVE` is stripped, and that is the point.** With it set,
         `sam` binds to the Flask-SQLAlchemy declarative base at import time and
         legitimately pulls flask, click and webapp — measured. `pytest_configure`
         sets it for the whole suite (`system_status.base.StatusBase` resolves at

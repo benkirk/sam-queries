@@ -44,15 +44,15 @@ class TestSnapToEndOfMonth:
         assert _snap_to_end_of_month(datetime(2026, 12, 31)) == datetime(2026, 12, 31)
 
     def test_day_one_snaps_backward(self):
-        # May 1 → Apr 30 (previous month's last day)
+        # May 1 -> Apr 30 (previous month's last day)
         assert _snap_to_end_of_month(datetime(2026, 5, 1)) == datetime(2026, 4, 30)
 
     def test_jan_one_crosses_year_boundary(self):
-        # Jan 1 2028 → Dec 31 2027
+        # Jan 1 2028 -> Dec 31 2027
         assert _snap_to_end_of_month(datetime(2028, 1, 1)) == datetime(2027, 12, 31)
 
     def test_late_month_snaps_forward(self):
-        # Oct 29 → Oct 31 (the observed CESM0002-style drift)
+        # Oct 29 -> Oct 31 (the observed CESM0002-style drift)
         assert _snap_to_end_of_month(datetime(2027, 10, 29)) == datetime(2027, 10, 31)
 
     def test_leap_february(self):
@@ -74,13 +74,13 @@ class TestSnapToEndOfMonth:
 class TestProposeRenewDates:
 
     def test_fiscal_year_source_is_contiguous_and_aligned(self):
-        # Nov 1 2024 → Oct 31 2025 (1-year fiscal). Renew should propose
-        # Nov 1 2025 → Oct 31 2026.
+        # Nov 1 2024 -> Oct 31 2025 (1-year fiscal). Renew should propose
+        # Nov 1 2025 -> Oct 31 2026.
         src = _Alloc(datetime(2024, 11, 1), datetime(2025, 10, 31))
         assert _propose_renew_dates([src]) == ('2025-11-01', '2026-10-31')
 
     def test_eighteen_month_source_snaps_forward(self):
-        # CESM0002-style source: Nov 1 2024 → Apr 30 2026 (~18 months).
+        # CESM0002-style source: Nov 1 2024 -> Apr 30 2026 (~18 months).
         # new_start = May 1 2026; new_start + period lands on Oct 29-30 2027
         # and snaps to Oct 31. Regression guard for the user-reported drift.
         src = _Alloc(datetime(2024, 11, 1), datetime(2026, 4, 30))
@@ -88,7 +88,7 @@ class TestProposeRenewDates:
         assert end == '2027-10-31'
 
     def test_two_year_jan_dec_source_snaps_backward(self):
-        # 2-year Jan 1 → Dec 31 source. new_start + period lands on Jan 1,
+        # 2-year Jan 1 -> Dec 31 source. new_start + period lands on Jan 1,
         # which must snap BACKWARD to Dec 31 of the prior year (not forward
         # to Jan 31 — that would miss by a month).
         src = _Alloc(datetime(2024, 1, 1), datetime(2025, 12, 31))
@@ -142,7 +142,7 @@ class TestProposeExtendEnd:
         assert _propose_extend_end([src]) == '2026-03-31'
 
     def test_open_ended_source_ignored(self):
-        # Only open-ended source → no proposal.
+        # Only open-ended source -> no proposal.
         src = _Alloc(datetime(2020, 1, 1), None)
         assert _propose_extend_end([src]) == ''
 

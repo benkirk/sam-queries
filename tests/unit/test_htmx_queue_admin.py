@@ -196,7 +196,7 @@ class TestQueueCleanupCommit:
 
     def test_empty_selection_changes_nothing(self, auth_client, session,
                                              snapshot_resource_id):
-        """No checkboxes ticked → re-rendered preview, no queues expired."""
+        """No checkboxes ticked -> re-rendered preview, no queues expired."""
         from sam.resources.machines import Queue
 
         before = session.query(Queue).filter(

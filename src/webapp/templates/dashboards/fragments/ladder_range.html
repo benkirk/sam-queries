@@ -2,7 +2,7 @@
   Ladder range control: pick a contiguous span of named bands instead of typing
   two bounds.
 
-  ── Why this exists ──────────────────────────────────────────────────────
+ Why this exists
   "Files not touched in 3 years", "jobs from the last 90 days", "runs on more
   than 64 nodes" are how people actually think, but a bare pair of inputs makes
   them convert that to an absolute value first. The bands remove the arithmetic,
@@ -10,14 +10,14 @@
   distribution chart's clickable bands use, so a slider position and the
   equivalent chart-band click select the *same* rows by construction.
 
-  ── The named fields are the only real fields ────────────────────────────
+ The named fields are the only real fields
   Everything else here — selects, sliders — carries no `name` and submits
   nothing. It is UI that writes into the `fields` inputs, which is what lets the
   presentation change per layout without ever putting two same-named controls in
   one form. (Two would make `form.elements[name]` a RadioNodeList, and assigning
   `.value` to that silently does nothing — see window_pills.html.)
 
-  ── No arithmetic in JavaScript ──────────────────────────────────────────
+ No arithmetic in JavaScript
   `bands` arrives already resolved to *values* server-side, and is emitted below
   as a <script type="application/json"> block (CSP-legal — the policy is
   nonce-free and forbids executable inline script, not data). The handler in
@@ -25,15 +25,15 @@
   of truth, server-side; for the date ladders that also keeps all timezone and
   DST reasoning off the client.
 
-  ── Direction is declared, not assumed ───────────────────────────────────
+ Direction is declared, not assumed
   Each field names the thumb that feeds it via `thumb`. Most ranges are
-  uncrossed (`min` ← low thumb, `max` ← high thumb), but the age ladders are
+  uncrossed (`min` <- low thumb, `max` <- high thumb), but the age ladders are
   *crossed*: a later band is an OLDER file, so the span's older edge comes from
   the HIGH thumb. Making that a declared per-field value rather than a comment
   is the point — it is exactly the kind of inversion a later tidy-up would
   silently swap.
 
-  ── Layout ───────────────────────────────────────────────────────────────
+ Layout
   `layout` picks the presentation server-side via webapp.utils.htmx.read_layout:
   two selects on mobile, the dual-thumb slider above it. Rendering one or the
   other (never both) is what keeps the "only the fields are named" rule true,
@@ -167,7 +167,7 @@
      that need not land on band edges, which is exactly the "custom" state the
      server renders by passing span=None.
 
-     ⚠️ The visual order of `fields` need not match the slider's axis, and for
+     WARNING: The visual order of `fields` need not match the slider's axis, and for
      the age ladders it deliberately doesn't: the slider's axis is *age* so the
      youngest band is on the left, while the date boxes are *calendar dates* so
      the earliest is on the left. The left box is therefore the OLDER bound even
@@ -182,7 +182,7 @@
      describing a span these fields no longer hold — see actions.js. It only
      repaints; the panel's own Search button is still what submits.
 
-     ⚠️ Hidden until an axis end is clicked — but only where there IS an end to
+     WARNING: Hidden until an axis end is clicked — but only where there IS an end to
      click. The mobile presentation is two selects with no end-labels, so it
      keeps the fields visible rather than hiding them behind no trigger at all.
      And whenever the bounds in force describe no whole span, this renders OPEN:

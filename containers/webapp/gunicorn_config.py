@@ -27,7 +27,7 @@ class _SkipHealthProbes(logging.Filter):
 def post_fork(server, worker):
     logging.getLogger('gunicorn.access').addFilter(_SkipHealthProbes())
 
-# Server socket — match compose.yaml port mapping (host:7050 → container:5050)
+# Server socket — match compose.yaml port mapping (host:7050 -> container:5050)
 bind = '0.0.0.0:5050'
 backlog = 2048
 
@@ -64,7 +64,7 @@ def _effective_cpus():
 # blocked in Postgres, where psycopg2 releases the GIL, so threads overlap
 # those waits and a slow scan ties up a THREAD, not a whole process. This runs
 # far fewer processes than the old sync model for the same (or higher)
-# concurrency → lower memory and a smaller DB-connection fan-out. All knobs are
+# concurrency -> lower memory and a smaller DB-connection fan-out. All knobs are
 # env-overridable; helm sets them explicitly (see deployment.yaml).
 worker_class = os.environ.get('GUNICORN_WORKER_CLASS', 'gthread')
 # Default workers track the cgroup CPU quota, NOT the node's core count, so the
@@ -81,7 +81,7 @@ graceful_timeout = 30     # Wait this long for workers to finish on shutdown
 keepalive = 5
 
 # App loading
-preload_app = True   # Load app before forking → faster startup, shared memory
+preload_app = True   # Load app before forking -> faster startup, shared memory
 daemon = False       # Stay in foreground (required for containers)
 
 # Trust X-Forwarded-* from the ingress. gunicorn is only reachable via the

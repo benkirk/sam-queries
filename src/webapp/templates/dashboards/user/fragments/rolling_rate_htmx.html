@@ -35,18 +35,18 @@
     {% set scale_max = 200 %}
     {% set center_pos = 50 %}
 
-    {# ── Grid wrapper: col1=label(4rem) col2=bar(1fr) col3=annotations(auto)
+    {# Grid wrapper: col1=label(4rem) col2=bar(1fr) col3=annotations(auto)
            col4=limit action(auto).  All rows — both bars + scale — share the
            same column widths so 0%/100%/200% align with the bar edges, and the
            col4 action buttons line up vertically regardless of the variable
-           "running hot/cold" annotation width in col3. ── #}
+           "running hot/cold" annotation width in col3. #}
     <div style="display:grid; grid-template-columns:4rem 1fr auto auto; column-gap:0.5rem; row-gap:3px; align-items:center;">
 
     {% for label, win, win_days in [('30-day', rolling_30, 30), ('90-day', rolling_90, 90)] %}
     {% if win %}
     {%   set pct = win.pct_of_prorated %}
 
-    {#   ── Hot/cold state ── #}
+    {# Hot/cold state #}
     {%   if win.threshold_pct is not none and pct >= win.threshold_pct %}
     {%     set state = 'over_limit' %}
     {%   elif pct < 80 %}
@@ -57,7 +57,7 @@
     {%     set state = 'hot' %}
     {%   endif %}
 
-    {#   ── Bar fill color ── #}
+    {# Bar fill color #}
     {%   if state == 'cold' %}
     {%     set fill_color = '#0dcaf0' %}
     {%   elif state == 'steady' %}
@@ -68,7 +68,7 @@
     {%     set fill_color = '#dc3545' %}
     {%   endif %}
 
-    {#   ── Badge color class ── #}
+    {# Badge color class #}
     {%   if state == 'cold' %}
     {%     set badge_class = 'bg-info text-dark' %}
     {%   elif state == 'steady' %}
@@ -79,7 +79,7 @@
     {%     set badge_class = 'bg-danger' %}
     {%   endif %}
 
-    {#   ── Hot/cold label ── #}
+    {# Hot/cold label #}
     {%   if state == 'cold' %}
     {%     set state_label = 'running cold' %}
     {%   elif state == 'steady' %}
@@ -88,7 +88,7 @@
     {%     set state_label = 'running hot' %}
     {%   endif %}
 
-    {#   ── Fill geometry: cold fills left of center; hot fills right ── #}
+    {# Fill geometry: cold fills left of center; hot fills right #}
     {%   if pct <= 100 %}
     {%     set fill_left_pct  = (pct / scale_max * 100) | round(3) %}
     {%     set fill_width_pct = (center_pos - fill_left_pct) | round(3) %}
@@ -98,7 +98,7 @@
     {%     set fill_width_pct = (([pct, scale_max] | min) / scale_max * 100 - center_pos) | round(3) %}
     {%   endif %}
 
-    {#   ── Threshold marker position for this bar ── #}
+    {# Threshold marker position for this bar #}
     {%   if win.threshold_pct is not none %}
     {%     set thresh_pos = (win.threshold_pct / scale_max * 100) | round(3) %}
     {%   endif %}

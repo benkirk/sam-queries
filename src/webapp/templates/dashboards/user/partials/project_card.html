@@ -154,7 +154,7 @@
             </thead>
             <tbody>
                 {% for key, group_resources in resources | groupby('date_group_key') %}
-                    {# ── Date-bounds group header ──────────────────────────────────── #}
+                    {# Date-bounds group header #}
                     {% set first = group_resources | first %}
                     {% set colspan = 3 if can_edit_allocations else 2 %}
                     <tr class="date-group-header">
@@ -184,7 +184,7 @@
                         </td>
                     </tr>
 
-                    {# ── Resource rows (no date columns) ──────────────────────────── #}
+                    {# Resource rows (no date columns) #}
                     {% for resource in group_resources %}
                         {# Check if resource is expired #}
                         {% set is_expired = resource.days_until_expiration is not none and resource.days_until_expiration < 0 %}

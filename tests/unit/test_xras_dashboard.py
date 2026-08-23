@@ -175,7 +175,7 @@ class TestXrasFragments:
         """The card can only see actions this log knows about. While capture
         mode is on, "empty" must not be presented as "all clear".
 
-        ⚠️ Both literals are copy assertions. If you reword the empty state,
+        WARNING: Both literals are copy assertions. If you reword the empty state,
         reword them — do not delete the second one, which is the honest half."""
         resp = auth_client.get('/allocations/xras_pending_fragment')
         assert b'No XRAS activity in this window' in resp.data
@@ -258,7 +258,7 @@ class TestFacetChips:
         # A superset is legal — an out-of-vocabulary status gets its own chip
         # (see the test below).
         #
-        # ⚠️ This asserted the count EXACTLY, on the reasoning that nothing in
+        # WARNING: This asserted the count EXACTLY, on the reasoning that nothing in
         # the snapshot produces an extra chip. Under xdist that is false: the
         # very next test's `committed_odd_status_action` fixture COMMITS its
         # row (deliberately — the route reads db.session's own connection, so
@@ -567,7 +567,7 @@ class TestActivationModalBodies:
         """`_strip_empty_strings` drops '' but not '   ' — the post_load guard is
         what stops a whitespace-only note passing `Length(min=1)`.
 
-        ⚠️  Asserting on the *rendered* error, not merely on a re-render.
+        WARNING: Asserting on the *rendered* error, not merely on a re-render.
         The field macros read `field_errors` out of the template context, and a
         `{% from ... import %}` without `with context` gives them none — so the
         form comes back looking untouched and the rejection is completely silent.
@@ -855,7 +855,7 @@ class TestActivityRowExpansion:
                 self.TEMPLATE,
                 rows=[self._row(notifications=[], notified=False,
                                 delivered_count=0, tags=['not_notified'])],
-                recipients={},          # ← nobody on file
+                recipients={},          # <- nobody on file
                 may_activate={}, may_manage=True,
                 window={'days': 30, 'since': None, 'until': None,
                         'start_date': '', 'end_date': '', 'custom': False},

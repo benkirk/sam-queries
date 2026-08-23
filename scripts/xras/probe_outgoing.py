@@ -23,7 +23,7 @@ Usage
 Exit codes: 0 success (or skipped), 2 the API could not be reached or
 answered something we did not expect.
 
-⚠️ Output names real people. Do not paste it into a commit, a fixture, a
+WARNING: Output names real people. Do not paste it into a commit, a fixture, a
 docstring, or a PR description. The counts and the reconciliation verdict are
 safe to report; the identities are not — which is why ``--roster`` is off by
 default and why nothing here prints an email address.

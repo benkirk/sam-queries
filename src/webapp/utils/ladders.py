@@ -7,13 +7,13 @@ the filter controls draw on — fs-scans' ``SIZE_BUCKETS`` and job-history's
 
 Two directions are needed, and having both here is the point:
 
-* :func:`span_bounds` — a *span* of bands → the two values that select it.
-* :func:`span_for` — the two values → the span, or ``None`` when they don't land
+* :func:`span_bounds` — a *span* of bands -> the two values that select it.
+* :func:`span_for` — the two values -> the span, or ``None`` when they don't land
   on band edges. This is what lets a server-rendered control put its thumbs where
   the current filter actually is, and fall back to a "custom" state when the
   filter was typed rather than picked.
 
-⚠️ **Inclusivity is the source's business, not this module's.** fs-scans'
+WARNING: **Inclusivity is the source's business, not this module's.** fs-scans'
 ``SIZE_BUCKETS`` are half-open — ``1024`` is both band 0's ``hi`` and band 1's
 ``lo`` — while job-history's histogram tables are inclusive, with band 0 ending
 at ``1023``. Nothing here adds, subtracts or compares against the *interior* of a
@@ -23,7 +23,7 @@ pass-through the existing band drill-downs already rely on
 (``_size_band_bounds``, ``_bucket_drill_url``), so a slider position and the
 equivalent chart-bar click produce byte-identical filters.
 
-⚠️ **A ladder floor of 0 is a real bound, not a missing one.** ``span_for(l, 0,
+WARNING: **A ladder floor of 0 is a real bound, not a missing one.** ``span_for(l, 0,
 …)`` must return band 0, and the control must submit ``0`` rather than an empty
 string — see the ``|| ''`` note in ``static/js/actions.js``. Unlike the age
 ladders, whose values are date strings, every falsy check here is a bug waiting
@@ -67,7 +67,7 @@ def span_bounds(ladder: Ladder, lo: int = 0,
 
 def span_for(ladder: Ladder, lo_value: Optional[int],
              hi_value: Optional[int]) -> Optional[Tuple[int, int]]:
-    """The inverse of :func:`span_bounds`: values → ``(lo, hi)``, or ``None``.
+    """The inverse of :func:`span_bounds`: values -> ``(lo, hi)``, or ``None``.
 
     ``None`` means the pair does not describe a whole number of bands — a
     hand-typed range — and the caller should render its "custom" state rather
@@ -109,7 +109,7 @@ def band_map(ladder: Ladder, lo_key: str, hi_key: str) -> list[dict]:
     whole ladder pre-resolved, the client only has to *index* it. The keys are
     the caller's form-field names, because the handler in ``actions.js`` looks up
     each band value by the field's own ``name`` — which is what lets one handler
-    serve every vocabulary with no dimension→field table in the JavaScript.
+    serve every vocabulary with no dimension->field table in the JavaScript.
     """
     return [{'label': label, lo_key: lo, hi_key: hi}
             for label, lo, hi in ladder]
@@ -129,7 +129,7 @@ def to_display(native: Optional[int], factor: int) -> Optional[float]:
     ``1 GiB - 1`` byte — yields ``0.999999999`` rather than a tidy ``1.0`` that
     would name a different byte.
 
-    ⚠️ Tidying that last one is the trap. Rounding it to ``1.0`` makes the
+    WARNING: Tidying that last one is the trap. Rounding it to ``1.0`` makes the
     control emit a bound one byte off the chart's, which :func:`span_for` then
     fails to match — so picking a band would render the *custom* state instead.
     An ugly number in a collapsed escape hatch is the cheaper of the two.

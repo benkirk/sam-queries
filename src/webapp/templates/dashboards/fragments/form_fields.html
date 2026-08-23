@@ -22,7 +22,7 @@
 #}
 
 
-{# ─── shared label helper ──────────────────────────────────────────────── #}
+{# shared label helper #}
 {% macro _label(name, label, required=False, optional_text='(optional)', id=None, label_class='form-label') %}
     <label for="{{ id or name }}" class="{{ label_class }}">
         {{ label }}
@@ -33,7 +33,7 @@
 {%- endmacro %}
 
 
-{# ─── per-field validation helpers ──────────────────────────────────────── #}
+{# per-field validation helpers #}
 {#
   Driven by a `field_errors` dict ({field_name: [msg, ...]}) placed in the
   render context by handle_htmx_form_post (utils/htmx.py). Guarded with
@@ -60,7 +60,7 @@
 {%- endmacro -%}
 
 
-{# ─── text input ───────────────────────────────────────────────────────── #}
+{# text input #}
 {% macro text_field(name, label, required=False, optional_text='(optional)',
                     maxlength=None, placeholder=None, help=None,
                     default='', id=None, type='text', label_class='form-label',
@@ -83,7 +83,7 @@
 {% endmacro %}
 
 
-{# ─── number input ─────────────────────────────────────────────────────── #}
+{# number input #}
 {#
   `data_attrs` is a dict of {name: value} pairs emitted as data-<name>="<value>"
   attributes on the <input>. Used e.g. to attach `data-number-preview` for the
@@ -132,7 +132,7 @@
 {% endmacro %}
 
 
-{# ─── date input ───────────────────────────────────────────────────────── #}
+{# date input #}
 {#
   `default` may be a date/datetime object or a 'YYYY-MM-DD' string.
   Date objects are formatted automatically.
@@ -163,7 +163,7 @@
 {% endmacro %}
 
 
-{# ─── datetime-local input ─────────────────────────────────────────────── #}
+{# datetime-local input #}
 {#
   `<input type="datetime-local">` — TZ-blind wall-clock picker.
   `default` may be a datetime object or a 'YYYY-MM-DDTHH:MM' string.
@@ -198,7 +198,7 @@
 {% endmacro %}
 
 
-{# ─── textarea ─────────────────────────────────────────────────────────── #}
+{# textarea #}
 {% macro textarea_field(name, label, required=False, optional_text='(optional)',
                         rows=3, maxlength=None, placeholder=None, help=None,
                         default='', id=None, label_class='form-label') %}
@@ -217,7 +217,7 @@
 {% endmacro %}
 
 
-{# ─── select ────────────────────────────────────────────────────────────── #}
+{# select #}
 {#
   Two styles:
 
@@ -287,7 +287,7 @@
 {% endmacro %}
 
 
-{# ─── multi-select filter control ──────────────────────────────────────── #}
+{# multi-select filter control #}
 {#
   The `<select multiple>` that filter panels use — NOT a validated form field,
   and deliberately not a mode of `select_field`. This one is standalone (no
@@ -331,7 +331,7 @@
 {% endmacro %}
 
 
-{# ─── checkbox ─────────────────────────────────────────────────────────── #}
+{# checkbox #}
 {#
   Bootstrap form-check pattern. `default` is the initial checked state (bool).
   On error re-render, uses presence of name in form.
@@ -354,7 +354,7 @@
 {% endmacro %}
 
 
-{# ─── read-only display row ────────────────────────────────────────────── #}
+{# read-only display row #}
 {#
   For non-editable fields shown for context (IDs, parent names, etc.).
   Use inside row/col layouts as needed.
@@ -373,7 +373,7 @@
 {% endmacro %}
 
 
-{# ─── FK-picker (search-as-you-type) ───────────────────────────────────── #}
+{# FK-picker (search-as-you-type) #}
 {#
   Emits the markup wired up by /static/js/fk-picker.js. The picker stores the
   selected ID in a hidden input named `name`. On submit, the form receives
@@ -446,7 +446,7 @@
 {% endmacro %}
 
 
-{# ─── error panel (use inside htmx_form body when errors var is in scope) ─ #}
+{# error panel (use inside htmx_form body when errors var is in scope) #}
 {#
   The htmx_form wrapper macro displays errors automatically when imported
   with context. Use this macro only if you need a panel in a non-wrapped form.

@@ -20,7 +20,7 @@ from factories._seq import next_date, next_seq
 
 
 def _build_disk_graph(session):
-    """Tiny disk graph: User → Project (lead=User) → Account → DISK Resource."""
+    """Tiny disk graph: User -> Project (lead=User) -> Account -> DISK Resource."""
     user = make_user(session)
     project = make_project(session, lead=user)
     # Reuse the 'DISK' ResourceType (canonical name) — production code
@@ -35,7 +35,7 @@ def _build_disk_graph(session):
 
 
 def _ensure_status(session, activity_date):
-    """FK: disk_charge_summary.activity_date → disk_charge_summary_status."""
+    """FK: disk_charge_summary.activity_date -> disk_charge_summary_status."""
     if session.get(DiskChargeSummaryStatus, activity_date) is None:
         session.add(DiskChargeSummaryStatus(activity_date=activity_date, current=False))
         session.flush()

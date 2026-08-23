@@ -67,7 +67,7 @@ logger = logging.getLogger(__name__)
 _ORG_TRIGGERS = modal_triggers('reloadOrganizationsCard')
 
 
-# ─── shared dropdown loaders ────────────────────────────────────────────────
+# shared dropdown loaders
 
 
 def _active_parent_orgs():
@@ -96,7 +96,7 @@ def _all_aoi_groups():
     return db.session.query(AreaOfInterestGroup).order_by(AreaOfInterestGroup.name).all()
 
 
-# ── Organization Card ──────────────────────────────────────────────────────
+# Organization Card
 
 
 @bp.route('/htmx/organizations-card')
@@ -177,7 +177,7 @@ def htmx_institutions_fragment():
     """HTMX fragment: filterable, nested table of institutions by institution type.
 
     Query params:
-      - ``country_id``, ``state_prov_id``: geography filters (blank → None;
+      - ``country_id``, ``state_prov_id``: geography filters (blank -> None;
         ``state_prov_id`` is ignored unless ``country_id`` is set).
       - ``active_only``: institution-level filter (from the outer
         Organizations card). Keep only institutions with ≥1 currently-active
@@ -293,7 +293,7 @@ def htmx_institutions_fragment():
     )
 
 
-# ── Mnemonic Code Create (bespoke: DB-uniqueness checks) ───────────────────
+# Mnemonic Code Create (bespoke: DB-uniqueness checks)
 
 
 @bp.route('/htmx/mnemonic-code-create-form')
@@ -379,7 +379,7 @@ def htmx_mnemonic_code_create():
     return htmx_success_message(_ORG_TRIGGERS, 'Saved successfully.')
 
 
-# ── CRUD quintets — generated from specs ───────────────────────────────────
+# CRUD quintets — generated from specs
 #
 # Endpoints, URL rules, templates, permissions, and not-found messages are
 # identical to the hand-written routes these replace (pinned by
@@ -443,6 +443,6 @@ for _spec in _ORG_CRUD_SPECS:
     register_crud(bp, _spec)
 
 
-# ── User search for FK fields ──────────────────────────────────────────────
+# User search for FK fields
 # Note: user search is handled by the unified admin_dashboard.htmx_search_users
 # endpoint (admin/blueprint.py) with context='fk'.

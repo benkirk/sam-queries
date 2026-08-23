@@ -69,7 +69,7 @@ def test_multiple_rows_share_new_lookup_rows_in_one_flush(status_session):
 
     assert status_session.query(UserDef).count() == 1
     assert status_session.query(ProjectCodeDef).count() == 1
-    # 'main' and 'preempt' are distinct queues, both on 'derecho' → 2 QueueDef rows
+    # 'main' and 'preempt' are distinct queues, both on 'derecho' -> 2 QueueDef rows
     assert status_session.query(QueueDef).count() == 2
     assert status_session.query(System).count() == 1
     assert rows[0].user is rows[1].user
@@ -145,7 +145,7 @@ def test_second_flush_with_same_counts_extends_last_seen(status_session):
     assert counts0 == {'inserted': 1, 'extended': 0}
     assert status_session.query(UserProjQueueStatus).count() == 1
 
-    # Second tick, identical counts → should extend, not insert.
+    # Second tick, identical counts -> should extend, not insert.
     parent1 = _FakeParent([
         _make_child(t1, running_jobs=3, cores_allocated=64),
     ])

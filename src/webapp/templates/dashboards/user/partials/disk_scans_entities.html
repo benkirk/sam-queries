@@ -27,7 +27,7 @@
   </form>
 
   <div class="d-flex align-items-center mb-2">
-    {# Owner ↔ group sub-toggle — re-fetches this same pane with ?kind=. #}
+    {# Owner <-> group sub-toggle — re-fetches this same pane with ?kind=. #}
     <div class="btn-group btn-group-sm me-3" role="group" aria-label="Owner or group">
       <button type="button"
               class="btn btn-outline-secondary {% if _is_owner %}active{% endif %}"
@@ -56,7 +56,7 @@
     {{ scans_empty('No ' ~ ('user' if _is_owner else 'group') ~ ' usage recorded for this scope.') }}
   {% else %}
     {# Distribution pie of scanned bytes (top ~90% + one "Other"). Wedges and
-       legend entries are clickable (set_url sentinels → svg-chart-links.js)
+       legend entries are clickable (set_url sentinels -> svg-chart-links.js)
        and expand the matching entity's row below. Swaps with the kind toggle
        since the whole fragment re-renders. #}
     {% if pie_chart %}

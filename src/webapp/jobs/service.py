@@ -163,7 +163,7 @@ def _plugin_filter_kwargs(
 
     The single seam every query mode routes through: mirrors the
     plugin's keyword surface 1:1 (minus ``account``, which each mode
-    pins itself), runs the legacy queue→QoS resolver, and — being
+    pins itself), runs the legacy queue->QoS resolver, and — being
     keyword-only — rejects unknown filter names with a TypeError instead
     of silently dropping them. Range bounds are plugin-native units
     (seconds / bytes / counts), inclusive, NULL-strict. The
@@ -235,7 +235,7 @@ def search_jobs(
     scope.check_filters(filters)
 
     # TODO(legacy-queue-names): the normalizer runs _resolve_queue_and_qos,
-    # promoting 'cpu-special' → queue='cpu', qos='special' when the caller
+    # promoting 'cpu-special' -> queue='cpu', qos='special' when the caller
     # left qos unset and the suffix matches a known QoS name.
     kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
     scope.apply(kwargs)
@@ -418,7 +418,7 @@ def jobs_histogram(
     — which also naturally busts pre-upgrade cache entries.
 
     The envelope is self-describing (``min_param`` / ``max_param``) — use
-    those for bar drill-downs, never a hardcoded dimension→kwarg map.
+    those for bar drill-downs, never a hardcoded dimension->kwarg map.
     """
     scope.check_filters(filters)
     kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)

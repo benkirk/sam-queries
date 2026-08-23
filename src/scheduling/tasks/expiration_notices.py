@@ -3,7 +3,7 @@
 Monday 09:00 America/Denver. The first real consumer of both `sam/notify/`
 and this package, and the first task at all that declares ``needs=('sam',)``.
 
-⚠️ **A task computes from ``ctx.occurrence``, never from the wall clock.**
+WARNING: **A task computes from ``ctx.occurrence``, never from the wall clock.**
 Here that is doubly load-bearing, because `ctx.occurrence` is naive **UTC**
 while ``Allocation.end_date`` is naive **Mountain**: comparing them raw is a
 6-7 hour skew, and a run dispatched 20 hours late would select a different
@@ -114,7 +114,7 @@ def window_start(occurrence: datetime, *, tz: Optional[str] = None) -> datetime:
 def band_bounds(start: datetime, milestone) -> Tuple[datetime, datetime]:
     """``[start + lo_days, start + hi_days)`` as query-ready bounds.
 
-    ⚠️ **The half-open upper bound is built here, not assumed.**
+    WARNING: **The half-open upper bound is built here, not assumed.**
     ``get_all_expiring_allocations`` filters ``end_date <= end_date`` —
     *inclusive* — so passing ``start + hi_days`` directly would make adjacent
     bands overlap on their shared boundary. With today's single rung that is
@@ -223,7 +223,7 @@ def expiration_notices(ctx) -> TaskResult:
     if len(messages) > cap:
         reason = (f'audience of {len(messages)} exceeds '
                   f'SAM_TASKS_EMAIL_MAX={cap}; nothing was sent')
-        # ⚠️ The summary goes out BEFORE the raise. Otherwise the one run Ben
+        # WARNING: The summary goes out BEFORE the raise. Otherwise the one run Ben
         # most needs to hear about is the only one that emails him nothing —
         # he would learn of it as a red Job with no explanation attached.
         _send_summary(notifier, ctx, detail=detail, messages=messages,
@@ -290,7 +290,7 @@ def _send_summary(notifier, ctx, *, detail: dict, messages: List,
                   abort_reason: Optional[str] = None) -> None:
     """Mail one operator a report of this run. Never raises.
 
-    ⚠️ **A failure here must not fail the run.** By the time this is called
+    WARNING: **A failure here must not fail the run.** By the time this is called
     the real mail has already gone out, and turning "the summary bounced"
     into a `failed` task would misreport several hundred successful
     deliveries — and, on the next dispatch, invite a re-run of them.
@@ -352,7 +352,7 @@ def _send_summary(notifier, ctx, *, detail: dict, messages: List,
 def _drop_already_notified(ledger, messages: List, logger) -> Tuple[List, int]:
     """Remove messages a previous run already delivered. Returns (kept, dropped).
 
-    ⚠️ **This is permanent, and NOT redundant with ``Notifier``'s own dedup.**
+    WARNING: **This is permanent, and NOT redundant with ``Notifier``'s own dedup.**
     The framework would also suppress these — but it would suppress them by
     *recording a ``suppressed`` row for each one*. On a loaded week ~85% of
     the selection is already-notified and on a quiet week essentially all of

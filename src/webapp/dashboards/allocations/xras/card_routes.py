@@ -1,6 +1,6 @@
 """XRAS action-log page and its worklist card fragments.
 
-The read surface of the Allocations → XRAS tab: the ``/xras`` page shell plus
+The read surface of the Allocations -> XRAS tab: the ``/xras`` page shell plus
 the five HTMX fragment routes it loads (action log, activity/pending, accounts,
 the shared window control, and pending requests). Moved verbatim out of
 ``blueprint.py``; the constants and filter/facet helpers live in ``_shared``.
@@ -155,7 +155,7 @@ def xras_fragment():
     # "not measured" rather than "none". `summarize_xras_actions` already seeds
     # the five, so iterating its dict gives that for free, in vocabulary order.
     #
-    # ⚠️ Iterated, not re-derived from XRAS_ACTION_STATUSES. That spelling dropped
+    # WARNING: Iterated, not re-derived from XRAS_ACTION_STATUSES. That spelling dropped
     # any status outside the vocabulary — which the query layer goes out of its way
     # to keep, because it is a bug worth surfacing — while the headline total above
     # still counted it, so the strip disagreed with its own total.
@@ -182,7 +182,7 @@ def xras_fragment():
         key=lambda r: (-r['count'], r['value']),
     )
 
-    # `configured` gates the Request # → detail-modal link: the modal needs a
+    # `configured` gates the Request # -> detail-modal link: the modal needs a
     # live outbound read, so a site with XRAS incoming-only degrades to the
     # plain/project cell (see xras_table.html). The Result column is unaffected.
     from sam.integration.xras_api import xras_api_configured
@@ -331,7 +331,7 @@ def xras_accounts_fragment():
     rows = get_account_worklist(db.session,
                                 since=window['since'], until=window['until'])
 
-    # ⚠️ Feed A ONLY, on purpose — this tab is precisely the accounts blocking
+    # WARNING: Feed A ONLY, on purpose — this tab is precisely the accounts blocking
     # actions that have already POSTED, which is a claim we can always make
     # from our own audit table. The lookahead at what XRAS has approved but not
     # yet sent is the sibling tab, and it is contingent on the outbound API
@@ -403,7 +403,7 @@ def xras_accounts_fragment():
         form_id=_ACCOUNTS_FORM_ID,
         fragment_url=url_for('allocations_dashboard.xras_accounts_fragment'),
         target_id=_ACCOUNTS_TARGET,
-        # Gates the Request → detail-modal link (needs a live outbound read);
+        # Gates the Request -> detail-modal link (needs a live outbound read);
         # incoming-only degrades to today's project/plain cell. See request_cell.
         configured=xras_api_configured(),
     )
@@ -415,7 +415,7 @@ def xras_accounts_fragment():
 def xras_window_fragment():
     """HTMX fragment: just the shared window pills.
 
-    ⚠️ **The control has to re-render itself, and this is why the route
+    WARNING: **The control has to re-render itself, and this is why the route
     exists.** `window_pills` marks the active pill server-side from the
     window it is handed. While the pills lived inside each worklist fragment
     that came free — a submit re-rendered the fragment and the pill state
@@ -474,7 +474,7 @@ def xras_pending_requests_fragment():
     selected_requests = [r for r in request.args.getlist('request_number') if r]
     selected_classes = [c for c in request.args.getlist('classification') if c]
 
-    # ⚠️ A shared control that silently does nothing on one tab is worse than
+    # WARNING: A shared control that silently does nothing on one tab is worse than
     # no control, so the pills mean the same thing here as on the other two:
     # "what showed up in the last N days". For Feed B that is `submitDate`.
     #

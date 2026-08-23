@@ -77,10 +77,10 @@ def _add_summary_row(
 def comp_fixture(session):
     """A small fixture project on a fresh HPC resource with three users:
 
-      - alice: single queue 'main', single date 2099-01-15  → single_triple
-      - bob:   two queues 'main' / 'gpu', single date 2099-01-15  → multi-queue
+      - alice: single queue 'main', single date 2099-01-15  -> single_triple
+      - bob:   two queues 'main' / 'gpu', single date 2099-01-15  -> multi-queue
       - carol: single queue 'main', two dates 2099-01-15 / 2099-02-10
-                → single-queue / multi-date; spans two months
+                -> single-queue / multi-date; spans two months
     """
     user_a = make_user(session, username='alice_' + next_seq('x'))
     user_b = make_user(session, username='bob_' + next_seq('x'))
@@ -139,7 +139,7 @@ class TestUserSummary:
             comp_fixture['resource'].resource_name,
             comp_fixture['start'], comp_fixture['end'],
         )
-        # alice 50 + bob 25 + carol 50 ⇒ alice 50, carol 50, bob 25.
+        # alice 50 + bob 25 + carol 50 => alice 50, carol 50, bob 25.
         usernames = [r['username'] for r in rows]
         assert set(usernames) == {
             comp_fixture['users']['alice'].username,
@@ -216,7 +216,7 @@ class TestUserSubtreeFilter:
         )
         assert len(rows) == 1
         assert rows[0]['username'] == comp_fixture['users']['bob'].username
-        # Two queues for bob → two queue entries in the nested breakdown.
+        # Two queues for bob -> two queue entries in the nested breakdown.
         assert len(rows[0]['queues']) == 2
 
     def test_unknown_username_returns_empty(self, session, comp_fixture):

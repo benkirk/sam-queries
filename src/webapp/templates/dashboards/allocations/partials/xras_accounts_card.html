@@ -12,7 +12,7 @@
 {% macro request_cell(number, is_project, configured=false) -%}
 {%- if not number -%}<span class="text-muted">—</span>
 {%- elif configured -%}
-{#- Outbound read available → open the full XRAS request detail, even when a
+{#- Outbound read available -> open the full XRAS request detail, even when a
     project by this name exists. The modal reads XRAS live and degrades
     gracefully if the number is not found. Same `.btn-link .btn-entity` /
     inner `.font-monospace` treatment as the project link below (`.btn`
@@ -24,7 +24,7 @@
         hx-target="#auditDetailsModalBody"
         hx-swap="innerHTML"><span class="font-monospace">{{ number }}</span></button>
 {%- elif is_project -%}
-{#- Incoming-only fallback. ⚠️ `btn btn-link`, NOT the `text-decoration-none
+{#- Incoming-only fallback. WARNING: `btn btn-link`, NOT the `text-decoration-none
     text-reset` anchor used by user_rows.html and contract_bits.html. That
     treatment makes a link inherit its cell's color, which is right where
     EVERY name in the column is a link — the column itself is the affordance.
@@ -65,18 +65,18 @@
     selected_classifications, selected_roles, selected_origins  [str]
     form_id, fragment_url, target_id
 
-  ── ONE ROW PER USERNAME, NOT PER ACTION ─────────────────────────────────
+ ONE ROW PER USERNAME, NOT PER ACTION
   The unit of work is an account, and one person can be named by several
   actions. Keying on the action would put the same operator task on the list
   three times and give it three places to be marked done.
 
-  ── PERSON DETAIL IS ROUTE-GATED ─────────────────────────────────────────
+ PERSON DETAIL IS ROUTE-GATED
   `row.person` is None for a VIEW_XRAS viewer because the ROUTE dropped it,
   not because this template declined to draw it. The `may_manage` checks here
   are a second gate over an already-empty value. `is_reconciled` is on the
   VIEW_XRAS side deliberately: it is account state, not a personal detail.
 
-  ── WHERE THE COLLAPSE TOGGLE GOES ───────────────────────────────────────
+ WHERE THE COLLAPSE TOGGLE GOES
   On the cells, never the <tr> — Bootstrap's collapse data-api runs in the
   capture phase, so a row-level toggle fires before any nested control and
   data-stop-propagation cannot save it. Same fix as xras_activity_card.html.
@@ -94,7 +94,7 @@
         </span>
         {% endif %}
         {% if counts.placeholder %}
-        {# ⚠️ "placeholder", NOT "unreconciled". These are two different facts
+        {# WARNING: "placeholder", NOT "unreconciled". These are two different facts
            and the smoke caught the badge conflating them: all three
            placeholders on the local corpus were reconciled in XRAS, so a
            badge reading "3 unreconciled" contradicted every row's own
@@ -126,7 +126,7 @@
             {{ facet_row('Request', request_values, form_id, 'request_number',
                          active=selected_requests) }}
         </div>
-        {# ── The invariant, said once ──────────────────────────────────
+        {# The invariant, said once
            Every other worklist in SAM ends in a button that does the thing.
            This one cannot: `users` is mirrored from the enterprise directory
            by a process outside SAM, so neither remedy on this card is an
@@ -181,7 +181,7 @@
                     <th style="width:99%; min-width:12rem;">Person</th>
                     {% endif %}
                     <th style="width:120px; white-space:nowrap;">XRAS identity</th>
-                    {# ⚠️ Waiting, NOT "last seen". `last_seen` is when we most
+                    {# WARNING: Waiting, NOT "last seen". `last_seen` is when we most
                        recently HEARD about the person, which on a freshly
                        seeded log is today for every row — an order that tells
                        an operator nothing. This is how long they have been
@@ -197,7 +197,7 @@
                    see dashboards/fragments/collapse.html for when it cannot. #}
                 <tr>
                     <td class="font-monospace text-nowrap">
-                        {# ⚠️ The toggle is on the CHEVRON, not on this cell —
+                        {# WARNING: The toggle is on the CHEVRON, not on this cell —
                            unlike its five siblings, which toggle wholesale.
                            The cell holds a link, and Bootstrap's collapse
                            data-api runs in the CAPTURE phase: a toggle on the
@@ -267,7 +267,7 @@
                     </td>
 
                     <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
-                        {# ⚠️ PI carries weight because a missing PI is the only
+                        {# WARNING: PI carries weight because a missing PI is the only
                            one that HARD-FAILS the handoff — `roster.py` reports
                            `PI %s is not in database` and the action 422s, while
                            a missing Allocation Manager is explicitly not an
@@ -290,7 +290,7 @@
                     {# Which XRAS request needs this account. Its own column
                        at every permission level: it is the handle an operator
                        working a project's activation actually navigates by. #}
-                    {# ⚠️ No toggle: this cell links its request numbers, and a
+                    {# WARNING: No toggle: this cell links its request numbers, and a
                        toggle on the cell fires in the capture phase before the
                        link — the modal would open and the row would flip open
                        behind it. Measured in the browser doing exactly that
@@ -326,14 +326,14 @@
                     </td>
                     {% endif %}
 
-                    {# ⚠️ NO collapse toggle on this cell: when `configured` it
+                    {# WARNING: NO collapse toggle on this cell: when `configured` it
                        holds a modal-opening link, and Bootstrap's collapse
                        data-api runs in the capture phase — a toggle here would
                        fire before the link and flip the row open behind the
                        modal (the same reason col 1 and the Request cell opt
                        out). The other cells still toggle the row. #}
                     <td class="text-nowrap">
-                        {# ⚠️ This is XRAS-side IDENTITY state, not progress on
+                        {# WARNING: This is XRAS-side IDENTITY state, not progress on
                            the row. Measured 9 of 9 on the local smoke: every
                            worklist row was reconciled in XRAS and every one
                            still needed a SAM account. So neither value is
@@ -357,7 +357,7 @@
                         {% if row.is_reconciled is none %}
                         <span class="text-muted" title="XRAS was not asked">—</span>
                         {% elif row.is_reconciled and row.placeholder %}
-                        {# ⚠️ A CONTRADICTION, not a good state. Reconciliation
+                        {# WARNING: A CONTRADICTION, not a good state. Reconciliation
                            in XRAS *is* a merge — the placeholder is folded into
                            the real identity and deleted — so a placeholder that
                            still exists AND is flagged reconciled was flagged

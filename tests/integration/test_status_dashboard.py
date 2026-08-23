@@ -201,7 +201,7 @@ class TestStatusDashboard:
     # ------------------------------------------------------------------
 
     def test_fs_scans_tab_shown_with_perm(self, auth_client, status_session, monkeypatch):
-        """benkirk holds the perm → tab-strip link on the status pages."""
+        """benkirk holds the perm -> tab-strip link on the status pages."""
         seed_data(status_session)
         monkeypatch.setattr('webapp.disk_scans.service.scan_capable_resources',
                             lambda app=None: ['Campaign_Store'])
@@ -221,7 +221,7 @@ class TestStatusDashboard:
         assert 'Campaign_Store' in response.get_data(as_text=True)   # subtab rendered
 
     def test_fs_scans_tab_hidden_when_no_resources(self, auth_client, status_session, monkeypatch):
-        """No scan-capable resource (plugin off / unwarmed) → no tab even with perm."""
+        """No scan-capable resource (plugin off / unwarmed) -> no tab even with perm."""
         seed_data(status_session)
         monkeypatch.setattr('webapp.disk_scans.service.scan_capable_resources',
                             lambda app=None: [])
@@ -245,7 +245,7 @@ class TestStatusDashboard:
         assert '/auth/login' in response.headers.get('Location', '')
 
     def test_fs_scans_page_403_without_perm(self, non_admin_client):
-        """Logged-in but lacking VIEW_ALL_FILESYSTEM_DATA → 403."""
+        """Logged-in but lacking VIEW_ALL_FILESYSTEM_DATA -> 403."""
         response = non_admin_client.get('/status/filesystem-scans')
         assert response.status_code == 403
 
@@ -304,7 +304,7 @@ class TestStatusDashboard:
         assert b'/status/queue-history/derecho/main?hours=720' in response.data
 
     def test_dashboard_no_hours_means_no_hours_in_links(self, auth_client, status_session):
-        """No `hours` param → drill-down URLs are clean (no `hours=` query string).
+        """No `hours` param -> drill-down URLs are clean (no `hours=` query string).
 
         Regression guard: ensures the param-absent path matches today's URLs
         bit-for-bit so users without the param see the original behavior.
@@ -399,7 +399,7 @@ class TestEventsTab:
 
     def test_tab_hidden_without_reservations_or_calendar(self, auth_client, status_session,
                                                          app, monkeypatch):
-        """No upcoming reservations and no calendar → no tab in the strip.
+        """No upcoming reservations and no calendar -> no tab in the strip.
 
         The embed URL is cleared explicitly: it comes from the
         environment, so a developer with GOOGLE_CALENDAR_EMBED_URL set in
@@ -486,7 +486,7 @@ class TestStaleBanner:
         assert self.BANNER not in response.data
 
     def test_just_inside_threshold_no_banner(self, auth_client, status_session):
-        """14 minutes old with the default 15-minute threshold → fresh."""
+        """14 minutes old with the default 15-minute threshold -> fresh."""
         seed_data(status_session)
         status_session.query(DerechoStatus).update(
             {'timestamp': utcnow_naive() - timedelta(minutes=14)}

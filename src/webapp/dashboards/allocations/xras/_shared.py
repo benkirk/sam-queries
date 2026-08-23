@@ -91,7 +91,7 @@ def _read_client():
 def _live_request(request_number):
     """Live roster + action states for one request, via the reports family.
 
-    ⚠️ Not ``GET /v1/requests/<id>``, which is 401 for our credential in every
+    WARNING: Not ``GET /v1/requests/<id>``, which is 401 for our credential in every
     context — so ``rules{allowedOperations}``, the API's own answer to "what may
     I do to this action", is unavailable and the offers are derived instead
     (PRIVILEGE(#1)).
@@ -117,7 +117,7 @@ def _impersonation(entry, live=None):
     username, is_pi = (pi, True) if pi else (
         next((r.get('username') for r in roster if r.get('username')), None), False)
 
-    # ⚠️ The project lead is sometimes an unmerged placeholder — measured on 2
+    # WARNING: The project lead is sometimes an unmerged placeholder — measured on 2
     # of 27 live rows the first time this card was pointed at production. That
     # is legitimate as far as XRAS is concerned (the placeholder really does
     # hold the role, so the call authorizes), but the operator is then acting
@@ -222,7 +222,7 @@ def _parse_xras_filters(request_args):
 
 
 #: Window pills for the activity card, and the default. `days` is free on this
-#: blueprint — it means lookback days in the jobs family and legacy days→hours
+#: blueprint — it means lookback days in the jobs family and legacy days->hours
 #: on the status-history routes, and neither is reachable from here.
 _ACTIVITY_WINDOW_PILLS = ((7, '7D'), (30, '30D'), (90, '90D'))
 _ACTIVITY_DEFAULT_DAYS = 30
@@ -325,7 +325,7 @@ def _activity_facets(rows, dimension, *, tags=None, types=None) -> dict:
 
 #: Display labels for the classification facet. The slug is what round-trips
 #: through the form; an operator should never see it.
-#: ⚠️ These name the ARTIFACT, not an action SAM performs — and that is the
+#: WARNING: These name the ARTIFACT, not an action SAM performs — and that is the
 #: whole point of the wording. `users` is mirrored into SAM from the enterprise
 #: directory by a process outside this codebase: there is no INSERT into
 #: `users` anywhere in the tree, `User` alone among the models has no
@@ -372,7 +372,7 @@ def _filter_accounts(rows, *, classifications=None, roles=None, origins=None):
     people, and until now the only way to tell them apart was to read the shape
     of the username.
 
-    ⚠️ Deliberately **not** defaulted. The rule on this card is *no selection =
+    WARNING: Deliberately **not** defaulted. The rule on this card is *no selection =
     no filter*, and defaulting one dimension on would make an empty facet row
     mean something different here than on every other card.
     """
@@ -472,7 +472,7 @@ def _account_facets(rows, dimension, *, classifications=None, roles=None):
 def _pending_account_total():
     """How many accounts the *other* tab is holding, or ``None``.
 
-    ⚠️ Counts only. Reading the sibling feed's rows into this card would undo
+    WARNING: Counts only. Reading the sibling feed's rows into this card would undo
     the split the two tabs exist to draw — one is what has posted, the other is
     a lookahead at what XRAS may send. But a card that reports "8" while 18
     more sit one click away is a queue that reads as smaller than it is, and

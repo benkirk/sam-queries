@@ -81,7 +81,7 @@ class GladeCsvReader(DiskUsageReader):
     fewer than 6 columns are skipped.
     """
 
-    # KiB → bytes
+    # KiB -> bytes
     _KIB = 1024
 
     # First 6 columns are mandatory; columns 7-8 (reporting_interval, cos)

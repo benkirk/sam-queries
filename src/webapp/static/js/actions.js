@@ -43,7 +43,7 @@
     document.addEventListener('input',  dispatch('data-action-input'));
     document.addEventListener('submit', dispatch('data-action-submit'));
 
-    /* ── Reveal a freshly-loaded card without scrolling past its header ──
+    /* Reveal a freshly-loaded card without scrolling past its header
      *
      * Two things made the old `scrollIntoView({block: 'start'})` land in
      * the middle of the card:
@@ -74,7 +74,7 @@
         });
     };
 
-    /* ── Generic built-ins ── */
+    /* Generic built-ins */
 
     /* Clickable rows/elements that just navigate
      * (replaces onclick="window.location='...'"). */

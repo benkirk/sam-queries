@@ -429,7 +429,7 @@ class ProjectCode(Base):
     ``digits`` records the LAST sequence number issued for the pair — it is
     NOT a zero-pad width. Rendered codes are always
     ``<facility.code><mnemonic.code><NNNN>`` with 4-digit padding, e.g.
-    UNIV + ALB + digits=57 → newest project ``UALB0057``, next ``UALB0058``.
+    UNIV + ALB + digits=57 -> newest project ``UALB0057``, next ``UALB0058``.
     Rows are created on demand (starting at 1) and advanced by
     ``sam.projects.projects.next_projcode(..., allocate=True)``.
     """

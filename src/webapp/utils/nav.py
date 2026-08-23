@@ -25,7 +25,7 @@ from webapp.utils.rbac import (
 )
 
 
-# ── Visibility predicates (evaluated per request) ─────────────────────────
+# Visibility predicates (evaluated per request)
 
 def _authenticated():
     return current_user.is_authenticated
@@ -103,7 +103,7 @@ def _my_jobs_available():
     return bool(jobs_service.job_history_machines())
 
 
-# ── The registry ──────────────────────────────────────────────────────────
+# The registry
 #
 # Section keys: 'blueprint' drives section-level active state; 'endpoint' is
 # the section's default page (what the navbar label links to). Item keys:

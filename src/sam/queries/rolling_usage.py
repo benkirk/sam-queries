@@ -110,11 +110,11 @@ def _query_window_subtree_charges(
     pattern used by batch_get_subtree_charges().
 
     Args:
-        subtree_accts: Dict mapping account_id → alloc_info dict (must contain
+        subtree_accts: Dict mapping account_id -> alloc_info dict (must contain
                        tree_root, tree_left, tree_right, resource_id keys).
         window_days:   Trailing window length (30 or 90).
         now:           Current datetime.
-        alloc_windows: Dict mapping account_id → (alloc_start, alloc_end) for clamping.
+        alloc_windows: Dict mapping account_id -> (alloc_start, alloc_end) for clamping.
     """
     if not subtree_accts:
         return {}
@@ -238,8 +238,8 @@ def get_project_rolling_usage(
                                    — pool burn vs prorated when inheriting,
                                    so this is the runway-meaningful number.
                 threshold_pct    – configured threshold % from account (int | None)
-                                   30d window → account.first_threshold
-                                   90d window → account.second_threshold
+                                   30d window -> account.first_threshold
+                                   90d window -> account.second_threshold
                 use_limit        – AU ceiling at threshold (int | None)
                 pct_of_limit     – charges / use_limit × 100 (float | None)
 
@@ -258,7 +258,7 @@ def get_project_rolling_usage(
     now = datetime.now()
 
     # ------------------------------------------------------------------
-    # Load project with accounts → allocations + resource → resource_type
+    # Load project with accounts -> allocations + resource -> resource_type
     # ------------------------------------------------------------------
     project = (
         session.query(Project)
@@ -278,15 +278,15 @@ def get_project_rolling_usage(
     # ------------------------------------------------------------------
     # Collect eligible accounts (non-deleted, HPC or DAV, active alloc)
     # ------------------------------------------------------------------
-    # account_id → metadata for result assembly
+    # account_id -> metadata for result assembly
     account_meta: Dict[int, Dict] = {}
-    # account_id → (alloc_start, alloc_end) for window clamping
+    # account_id -> (alloc_start, alloc_end) for window clamping
     alloc_windows: Dict[int, tuple] = {}
     # leaf account_ids (direct charge lookup) — yields *self* charges
     leaf_ids: List[int] = []
-    # non-leaf account_id → MPTT info (subtree rollup) — yields *self* charges
+    # non-leaf account_id -> MPTT info (subtree rollup) — yields *self* charges
     subtree_map: Dict[int, Dict] = {}
-    # Inheriting accounts: account_id → MPTT info for the *root* allocation's
+    # Inheriting accounts: account_id -> MPTT info for the *root* allocation's
     # project subtree.  Used to compute pool charges in parallel with the
     # self-charge query above.  The pool MPTT info uses a different anchor
     # (the master parent's tree coordinates) and the same window clamp.
@@ -347,7 +347,7 @@ def get_project_rolling_usage(
             'is_inheriting':    is_inheriting,
             'root_projcode':    root_projcode,
             # Threshold percentages from account — may be None for most accounts.
-            # first_threshold → 30d window, second_threshold → 90d window
+            # first_threshold -> 30d window, second_threshold -> 90d window
             # (matching DefaultAccountStatusCalculator.java convention)
             'threshold_30': acct.first_threshold,
             'threshold_90': acct.second_threshold,

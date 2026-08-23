@@ -79,8 +79,8 @@
   {% endif %}
 {% endmacro %}
 
-{# PBS exit code badge: '0' → success, anything else → failure with the
-   raw code. None/empty → unmeasured em-dash. The raw code stays in
+{# PBS exit code badge: '0' -> success, anything else -> failure with the
+   raw code. None/empty -> unmeasured em-dash. The raw code stays in
    title= either way for copy/paste. #}
 {% macro exit_status_badge(val) %}
   {%- if val is none or val == '' -%}

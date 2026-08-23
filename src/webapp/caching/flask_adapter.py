@@ -64,7 +64,7 @@ class FlaskCacheAdapter(CacheBase):
         # shared cache by SCANning the Flask-Caching key prefix.
         self._redis_client = redis_client
 
-    # ── Try to reach the SimpleCache backing dict ───────────────────────
+    # Try to reach the SimpleCache backing dict
 
     def _backing_dict(self) -> Optional[dict]:
         """Return the SimpleCache backing dict, or None for other backends."""
@@ -87,7 +87,7 @@ class FlaskCacheAdapter(CacheBase):
                 return prefix
         return 'other'
 
-    # ── Redis introspection (used when Flask-Caching backend is Redis) ──
+    # Redis introspection (used when Flask-Caching backend is Redis)
 
     def _redis_introspect(self) -> Optional[dict]:
         """Aggregate per-group counts/bytes by SCANning the Redis keyspace.
@@ -156,7 +156,7 @@ class FlaskCacheAdapter(CacheBase):
         except Exception:
             return None
 
-    # ── CacheBase ───────────────────────────────────────────────────────
+    # CacheBase
 
     def info(self) -> dict:
         backing = self._backing_dict()

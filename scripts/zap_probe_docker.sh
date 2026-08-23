@@ -46,7 +46,7 @@
 
 set -euo pipefail
 
-# ── Shared helpers ──────────────────────────────────────────────────────────
+# Shared helpers
 _LIBDIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib"
 # shellcheck source=lib/common.sh
 source "${_LIBDIR}/common.sh"
@@ -58,12 +58,12 @@ info()  { echo -e "${BLUE}==>${NC} $*"; }
 ok()    { echo -e "${GREEN}OK:${NC} $*"; }
 warn()  { echo -e "${YELLOW}WARN:${NC} $*" >&2; }
 
-# ── Paths ─────────────────────────────────────────────────────────────────
+# Paths
 repo_paths   # sets SCRIPT_DIR + REPO_ROOT
 COMPOSE_FILE="${REPO_ROOT}/compose.yaml"
 WRKDIR="${REPO_ROOT}/docs/nrit-review-2026-05"   # holds gen.conf + the saved baseline
 
-# ── Defaults / config ─────────────────────────────────────────────────────
+# Defaults / config
 ZAP_IMAGE="ghcr.io/zaproxy/zaproxy:stable"
 CONTAINER_NAME="samuel-zap-webdev"
 APP_PORT=5051
@@ -80,7 +80,7 @@ STAMP="$(date +%Y%m%d-%H%M%S)"
 # it. Wrapped so callers can pass an explicit exit code.
 usage() { usage_from_header "${BASH_SOURCE[0]}"; exit "${1:-0}"; }
 
-# ── Arg parsing ───────────────────────────────────────────────────────────
+# Arg parsing
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -t|--target)   EXTERNAL_TARGET="${2:?-t needs a URL}"; shift 2 ;;
@@ -101,7 +101,7 @@ command -v docker >/dev/null 2>&1 || die "docker not found in PATH."
 docker info >/dev/null 2>&1 || die "Docker daemon not reachable — is Docker running?"
 [[ -f "${WRKDIR}/gen.conf" ]] || die "Missing ruleset: ${WRKDIR}/gen.conf"
 
-# ── Pick scan mode + report names ─────────────────────────────────────────
+# Pick scan mode + report names
 # Modes are mutually exclusive; --scoped wins if combined with --full.
 if [[ -n "$SCOPED" ]]; then
     MODE="scoped"; SCANNER_LABEL="zap.sh -autorun (Automation Framework)"; PREFIX="zap-scoped"
@@ -120,7 +120,7 @@ REPORT_HTML="${PREFIX}-rescan-${STAMP}.html"
 REPORT_JSON="${PREFIX}-rescan-${STAMP}.json"
 PLAN_FILE="${WRKDIR}/zap-autorun-${STAMP}.yaml"   # only used by --scoped
 
-# ── Resolve target + safety guards ────────────────────────────────────────
+# Resolve target + safety guards
 MANAGED=1
 if [[ -n "$EXTERNAL_TARGET" ]]; then
     MANAGED=""
@@ -139,7 +139,7 @@ else
     TARGET="http://host.docker.internal:${APP_PORT}"
 fi
 
-# ── Cleanup ───────────────────────────────────────────────────────────────
+# Cleanup
 cleanup() {
     rm -f "$PLAN_FILE" 2>/dev/null || true
     if [[ -n "$MANAGED" && -z "$KEEP_APP" ]]; then
@@ -154,7 +154,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# ── Banner ────────────────────────────────────────────────────────────────
+# Banner
 echo ""
 info "Dockerized ZAP probe"
 echo "  Mode    : ${MODE} — ${SCAN_DESC}"
@@ -164,7 +164,7 @@ echo "  Report  : ${WRKDIR}/${REPORT_HTML}"
 echo "  Image   : ${ZAP_IMAGE}"
 echo ""
 
-# ── Managed mode: stand up a throwaway auto-login webdev ───────────────────
+# Managed mode: stand up a throwaway auto-login webdev
 if [[ -n "$MANAGED" ]]; then
     info "Starting throwaway webdev (auto-login as '${ZAP_USER}') on host port ${APP_PORT}..."
     # Idempotent: clear any stale container from a previous run first.
@@ -210,7 +210,7 @@ if [[ -n "$MANAGED" ]]; then
     ok "Dev auto-login confirmed (GET /admin/ -> 200 as '${ZAP_USER}', no login bounce)."
 fi
 
-# ── Run the scan ──────────────────────────────────────────────────────────
+# Run the scan
 echo ""
 set +e
 if [[ "$MODE" == "scoped" ]]; then

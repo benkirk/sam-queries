@@ -43,7 +43,7 @@ class AwardHttpClient:
         self.session.headers.update({'User-Agent': user_agent,
                                      'Accept': 'application/json'})
 
-    # ── internals ───────────────────────────────────────────────────────
+    # internals
 
     def _request(self, method: str, url: str, *,
                  json_body: Optional[Mapping[str, Any]] = None,
@@ -95,7 +95,7 @@ class AwardHttpClient:
         raise AwardSourceUnavailable(
             f'{url} unreachable after {self.max_retries} attempts: {last_error}')
 
-    # ── public ──────────────────────────────────────────────────────────
+    # public
 
     def get_json(self, url: str, *,
                  params: Optional[Mapping[str, Any]] = None) -> Optional[Any]:

@@ -48,7 +48,7 @@
     }
 
     document.body.addEventListener('click', function (e) {
-        // ── Selection ──────────────────────────────────────────────────
+        // Selection
         var item = e.target.closest('.fk-search-result');
         if (item) {
             var picker = item.closest('.fk-picker');
@@ -81,7 +81,7 @@
             return;
         }
 
-        // ── Clear ──────────────────────────────────────────────────────
+        // Clear
         var clearBtn = e.target.closest('.fk-picker-clear');
         if (clearBtn) {
             var picker2 = clearBtn.closest('.fk-picker');
@@ -91,7 +91,7 @@
         }
     });
 
-    // ── Native form reset ───────────────────────────────────────────────
+    // Native form reset
     // A "Clear filters" control (form-reset-submit in actions.js) calls
     // form.reset(). The browser clears the picker's hidden input but never
     // restores the badge / selected UI, so clear it explicitly. The reset

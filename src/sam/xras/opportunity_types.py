@@ -1,4 +1,4 @@
-"""XRAS allocation-type/panel ids → the SAM ``(panel, allocation_type)`` pair.
+"""XRAS allocation-type/panel ids -> the SAM ``(panel, allocation_type)`` pair.
 
 The **reference half** of the ``opportunityId`` map. ``xras_opportunity_allocation_type``
 answers "which allocation type is *this opportunity*"; this answers "which
@@ -21,7 +21,7 @@ also buys a guarantee a table could not: a unit test asserts every value here
 resolves to a real ``(panel, allocation_type)`` row, so a typo fails the suite
 rather than sitting in production waiting for a handoff.
 
-⚠️ Where XRAS is wrong about SAM
+WARNING: Where XRAS is wrong about SAM
 --------------------------------
 This mapping is **not injective**, and the design's premise that "XRAS already
 knows the answer the ladder is guessing at" does not survive contact:
@@ -98,7 +98,7 @@ XRAS_TYPE_MAP: Dict[Tuple[int, int], Tuple[str, str]] = {
 def primary_panel_id(payload) -> Optional[int]:
     """The ``panelId`` XRAS marks ``isPrimary``, or ``None``.
 
-    ⚠️ **Not ``panels[0]``.** Large opportunities carry two — ``500022``
+    WARNING: **Not ``panels[0]``.** Large opportunities carry two — ``500022``
     (CISL HPC Allocation Panel) and ``500032`` (External reviewers for CHAP) —
     and only the first is the one SAM means by "panel". Order is not guaranteed,
     and the schema comment on the *inbound* ``panels[]`` says the same thing:

@@ -42,7 +42,7 @@ from sam.summaries.comp_summaries import COMP_CHARGING_EPOCH
 
 
 # Reconcile tolerance: allocations within this fraction of quota truth are
-# treated as matched (ignores rounding noise from prior TiB⇄byte conversions).
+# treated as matched (ignores rounding noise from prior TiB<->byte conversions).
 QUOTA_TOLERANCE = 0.01  # 1%
 
 # Threshold: GPU hours must be at least this fraction of total compute hours
@@ -185,10 +185,10 @@ def classify_comp_resource(
 
     if machine == "derecho":
         if is_gpu:
-            # Meaningful GPU usage → Derecho GPU resource
+            # Meaningful GPU usage -> Derecho GPU resource
             # comp_hours = GPU hours (the Derecho GPU billing metric)
             return "Derecho GPU", "derecho-gpu", gpu_h, gpu_c
-        # Pure CPU job (or anomalous GPU ratio → treat as CPU)
+        # Pure CPU job (or anomalous GPU ratio -> treat as CPU)
         # comp_hours = CPU core-hours (numnodes * 128 * wall_hours)
         return "Derecho", "derecho", cpu_h, cpu_c
 
@@ -648,8 +648,8 @@ class AccountingAdminCommand(BaseCommand):
         # ---- 6b. Resolve projcode for normal rows ----------------------
         # The acct.glade column 3 is a fileset label (e.g. 'cesm', 'cgd')
         # not a SAM projcode (e.g. 'CESM0001', 'NCGD0009'). The legacy
-        # Java ingest resolved this via directory_path → ProjectDirectory
-        # → Project. Mirror that here: prefer the path-based lookup, fall
+        # Java ingest resolved this via directory_path -> ProjectDirectory
+        # -> Project. Mirror that here: prefer the path-based lookup, fall
         # back to projcode-as-label, give up if neither works (the row is
         # then skipped if --skip-errors, else aborts the chunk).
         from sam.projects.projects import ProjectDirectory, Project
@@ -1101,9 +1101,9 @@ class AccountingAdminCommand(BaseCommand):
 
         FILESET key resolution precedence:
           a. fileset name uppercased matches a SAM projcode directly
-          b. fileset path matches a path observed in user_entries → that
+          b. fileset path matches a path observed in user_entries -> that
              row's projcode
-          c. fileset path matches a ProjectDirectory.path → that project's projcode
+          c. fileset path matches a ProjectDirectory.path -> that project's projcode
           d. otherwise unmappable; logged & skipped (does NOT create gap)
         """
         from sam.projects.projects import Project, ProjectDirectory
@@ -1133,7 +1133,7 @@ class AccountingAdminCommand(BaseCommand):
             if e.directory_path:
                 path_to_projcode.setdefault(e.directory_path, e.projcode)
 
-        # Build path → projcode fallback from ProjectDirectory.
+        # Build path -> projcode fallback from ProjectDirectory.
         dir_rows = (
             self.session.query(ProjectDirectory, Project)
             .join(Project, Project.project_id == ProjectDirectory.project_id)
@@ -1244,10 +1244,10 @@ class AccountingAdminCommand(BaseCommand):
         unmapped tables, snapshot banner, narrative captions). Writes
         are gated behind explicit opt-in flags:
 
-          * ``update_accounting_system``  → apply mismatched-amount updates
-          * ``deactivate_orphaned``       → also deactivate orphan allocations
+          * ``update_accounting_system``  -> apply mismatched-amount updates
+          * ``deactivate_orphaned``       -> also deactivate orphan allocations
             (requires ``update_accounting_system``)
-          * ``force``                     → override the live-path safety
+          * ``force``                     -> override the live-path safety
             gate (requires ``deactivate_orphaned``)
 
         Without any of these the tool is read-only — same code path,
@@ -1316,7 +1316,7 @@ class AccountingAdminCommand(BaseCommand):
         # cascade flows from the master automatically. So skip them at
         # the SQL level, and surface the count for admin awareness.
         # On Campaign_Store this currently affects exactly one pair
-        # (NCGD0009 ↔ P03010039 sharing /gpfs/csfs1/cgd/amp); the
+        # (NCGD0009 <-> P03010039 sharing /gpfs/csfs1/cgd/amp); the
         # pattern is more common on HPC resources.
         alloc_rows = (
             self.session.query(Project, Allocation)
@@ -1354,7 +1354,7 @@ class AccountingAdminCommand(BaseCommand):
         all_projects = self.session.query(Project).all()
         projects_by_code = {p.projcode: p for p in all_projects}
 
-        # ---- 4. Map quota entries ↔ projects (over ALL projects) --------------
+        # ---- 4. Map quota entries <-> projects (over ALL projects) --------------
         dir_to_projcode: dict[str, str] = {}
         dir_rows = (
             self.session.query(ProjectDirectory, Project)
@@ -1422,7 +1422,7 @@ class AccountingAdminCommand(BaseCommand):
             Uses NestedSetMixin.is_ancestor_of (src/sam/base.py:305-311)
             which encodes the MPPT containment check. Each tree node
             may carry multiple filesets (multiple ProjectDirectory rows
-            → multiple QuotaEntry contributions), so we flatten the
+            -> multiple QuotaEntry contributions), so we flatten the
             per-node fileset lists into a single contributor sequence.
             """
             candidates = by_root.get(proj.tree_root, ()) if proj.tree_root else ()
@@ -1486,11 +1486,11 @@ class AccountingAdminCommand(BaseCommand):
         # ---- 8. Apply (only when explicitly opted in) -------------------------
         # The two write flags are independent — use either, both, or
         # neither:
-        #   - no flags                       → report-only (here we return).
-        #   - --update-accounting-system     → apply mismatched amount updates.
-        #   - --deactivate-orphaned          → deactivate orphan allocations.
-        #   - both                           → both.
-        #   - +--force (with --deactivate-orphaned) → override live-path gate.
+        #   - no flags                       -> report-only (here we return).
+        #   - --update-accounting-system     -> apply mismatched amount updates.
+        #   - --deactivate-orphaned          -> deactivate orphan allocations.
+        #   - both                           -> both.
+        #   - +--force (with --deactivate-orphaned) -> override live-path gate.
         if not update_accounting_system and not deactivate_orphaned:
             display_quota_reconcile_summary(
                 self.ctx,
@@ -1880,7 +1880,7 @@ class AccountingJobsCommand(BaseCommand):
         JobQueries = mod.JobQueries
         jh_get_session = mod.get_session
 
-        # --- Account filter (comma-separated → list of exact codes) ---
+        # --- Account filter (comma-separated -> list of exact codes) ---
         if projcode and ',' in projcode:
             account = [p.strip() for p in projcode.split(',') if p.strip()]
         else:

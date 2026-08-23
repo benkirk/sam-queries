@@ -90,7 +90,7 @@ def _rows(session, **kw):
     return list_remediation_events(session, **kw)
 
 
-# ── the audit row outlives the write ────────────────────────────────────
+# the audit row outlives the write
 
 class TestTheAuditRowSurvives:
 
@@ -125,7 +125,7 @@ class TestTheAuditRowSurvives:
 
     def test_a_rejection_records_xras_own_validation_errors(
             self, factory, session):
-        """⚠️ The list is what an operator revisits, and it does not fit in
+        """WARNING: The list is what an operator revisits, and it does not fit in
         `outcome_reason` (VARCHAR(255)) — so it goes to `after_state`, which is
         TEXT and utf8mb4. Previously `exc.errors` was dropped entirely and the
         row said only "validation failed"."""
@@ -213,7 +213,7 @@ class TestTheAuditRowSurvives:
         assert outcome.succeeded is True
 
 
-# ── merge ───────────────────────────────────────────────────────────────
+# merge
 
 class TestMerge:
 
@@ -245,7 +245,7 @@ class TestMerge:
 
     def test_the_pre_merge_person_sheet_is_recorded(self, factory, session,
                                                     monkeypatch):
-        """⚠️ The reason `before_state` exists at all.
+        """WARNING: The reason `before_state` exists at all.
 
         Merge does not copy person detail, so `residenceCountry` — which the
         inbound wire never carries either — exists nowhere SAM can reach once
@@ -300,7 +300,7 @@ class TestMerge:
         assert refreshed == ['EXAM0001']
 
 
-# ── the coherence patch ─────────────────────────────────────────────────
+# the coherence patch
 
 class TestTheSnapshotPatch:
 
@@ -401,7 +401,7 @@ class TestTheSnapshotPatch:
         assert called == []
 
 
-# ── roles ───────────────────────────────────────────────────────────────
+# roles
 
 class TestRoleChanges:
 
@@ -630,7 +630,7 @@ class TestTheEditorOps:
         assert client.add_action.call_args.args[1] == 'Supplement'
 
 
-# ── the read side ───────────────────────────────────────────────────────
+# the read side
 
 class TestListing:
 

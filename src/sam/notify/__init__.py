@@ -23,7 +23,7 @@ Typical use::
         requested_by='benkirk',
     ))
 
-⚠️ **It is fail-closed.** ``NOTIFY_ENABLED`` defaults to ``false`` everywhere,
+WARNING: **It is fail-closed.** ``NOTIFY_ENABLED`` defaults to ``false`` everywhere,
 because every dev container and CI worker runs against an obfuscated copy of
 production, obfuscation does not remove the mail relay, and the relay accepts
 arbitrary external recipients from the whole UCAR ``/16``. A ``Notifier`` you
@@ -61,7 +61,7 @@ from sam.notify.base import (
     TransportError,
 )
 
-#: Public name → the submodule that defines it. Everything reachable from
+#: Public name -> the submodule that defines it. Everything reachable from
 #: ``sam.notify`` that is not already imported above lives here; ``__getattr__``
 #: imports the module on first access and caches the attribute in globals, so
 #: the cost is paid once and only by code that actually asks.

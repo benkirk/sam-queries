@@ -134,7 +134,7 @@ class TestDiskUsageTimeseries:
         )
         assert out['dates'] == [snap]
         # Stack-friendly order: Others first (bottom of stack, gray),
-        # then named users smallest → largest.
+        # then named users smallest -> largest.
         names = [s['username'] for s in out['series']]
         assert names[0] == 'Others'
         assert len(names) == 11
@@ -142,7 +142,7 @@ class TestDiskUsageTimeseries:
         assert out['series'][0]['values'] == [3 * BYTES_PER_TIB]
         # Largest named user (12 TiB) sits on top of the stack.
         assert out['series'][-1]['values'] == [12 * BYTES_PER_TIB]
-        # Smallest named user (3 TiB total: rank 10 → 3) sits just above Others.
+        # Smallest named user (3 TiB total: rank 10 -> 3) sits just above Others.
         assert out['series'][1]['values'] == [3 * BYTES_PER_TIB]
 
     def test_dense_fill_zero_for_missing_user_dates(self, session):
@@ -176,7 +176,7 @@ class TestDiskUsageTimeseries:
         project = make_project(session, lead=lead)
         account = make_account(session, project=project, resource=resource)
         snap = _date(2026, 4, 11)
-        # 3 users, top_n=10 → no Others row
+        # 3 users, top_n=10 -> no Others row
         for _ in range(3):
             u = make_user(session)
             _seed_row(session, account=account, user=u, snap=snap, bytes_=BYTES_PER_TIB)
@@ -413,7 +413,7 @@ class TestBuildDiskSubtree:
 
         result = build_disk_subtree(session, parent, resource.resource_name)
         tree = result['tree']
-        # Parent has no account on this resource → present, but inert.
+        # Parent has no account on this resource -> present, but inert.
         assert tree['account_id'] is None
         assert tree['current_bytes'] == 0
         assert tree['activity_date'] is None
@@ -715,7 +715,7 @@ class TestBuildDiskSubtreeMultifileset:
 
         result = build_disk_subtree(session, project, resource.resource_name)
         node = result['tree']
-        # Multi-fileset → directories attached, sorted desc by bytes.
+        # Multi-fileset -> directories attached, sorted desc by bytes.
         assert 'directories' in node
         assert [d['name'] for d in node['directories']] == [
             '/gpfs/csfs1/test/work',

@@ -76,7 +76,7 @@ class StackedSeriesChart(BaseChart):
     # --- subclass contract -------------------------------------------------
 
     def build_bands(self) -> list:
-        """Return `[Series, ...]` bottom → top."""
+        """Return `[Series, ...]` bottom -> top."""
         raise NotImplementedError
 
     def x_values(self):

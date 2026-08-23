@@ -64,7 +64,7 @@ class TestExemptionDeactivateEndpoint:
         assert resp.status_code == 403
 
     def test_admin_nonexistent_returns_404(self, auth_client):
-        """Missing exemption_id → htmx_not_found 404 with alert fragment."""
+        """Missing exemption_id -> htmx_not_found 404 with alert fragment."""
         resp = auth_client.post('/admin/htmx/exemption-deactivate/99999999')
         assert resp.status_code == 404
         assert b'Exemption not found' in resp.data

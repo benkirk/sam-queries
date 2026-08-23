@@ -518,7 +518,7 @@ def display_tree_audit(ctx: Context, violations: list, bad_dates: list):
 
 
 
-# ── Expiration notices ───────────────────────────────────────────────────────
+# Expiration notices
 #
 # These consume `sam.notify` types (DeliveryResult / Message / RenderedMessage)
 # rather than the old notification dicts. `rich` lives here and nowhere in

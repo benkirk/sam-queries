@@ -5,7 +5,7 @@ wire. Same reason for existing as :mod:`._fields`: these lived in whichever hand
 needed them first, so Adjustment imported six names from Supplement and Update imported
 from all three of its predecessors.
 
-⚠️ **Two account lookups live here and they are deliberately asymmetric.** Read them
+WARNING: **Two account lookups live here and they are deliberately asymmetric.** Read them
 together before using either:
 
 - :func:`account_is_active` filters hard — inactive project or decommissioned resource
@@ -18,7 +18,7 @@ would skip it. That is legacy's behavior on both sides. Until this module existe
 separation-by-file was doing part of the work of keeping them apart; now the warning has
 to.
 
-⚠️ **``auth_at_panel_mtg`` reaches a row two different ways**, and the difference is why
+WARNING: **``auth_at_panel_mtg`` reaches a row two different ways**, and the difference is why
 an Adjustment silently lost the flag for a whole sprint. A CREATE row is marked *after
 the fact* by :func:`mark_panel_authorized`; a SUPPLEMENT row carries it as a parameter
 into ``supplement_allocation``. One concept, two mechanisms, and no compiler to tell you
@@ -85,14 +85,14 @@ def account_is_active(account, now: datetime) -> bool:
     """``Account.isActive(date)`` — ``project.isActive() && resource.isCommissioned(date)
     && !creationTime.after(date)``, minus the third conjunct. See below.
 
-    ⚠️ **Not ``Account.is_active``.** SAM's hybrid on this model comes from
+    WARNING: **Not ``Account.is_active``.** SAM's hybrid on this model comes from
     ``SoftDeleteMixin`` and means "not deleted", which is a different question
     entirely — using it here would extend allocations on decommissioned resources and
     on inactive projects. The house rule (CLAUDE.md § 5) is to prefer the hybrid, and
     this is the case where doing so would be wrong; the composite is built from the
     other models' documented predicates rather than from raw columns.
 
-    ⚠️ **``!creationTime.after(now)`` is deliberately not ported.** It compares two
+    WARNING: **``!creationTime.after(now)`` is deliberately not ported.** It compares two
     clocks that are not the same clock: ``account.creation_time`` carries
     ``server_default=CURRENT_TIMESTAMP`` and resolves in the **MySQL server's**
     timezone, which is UTC in the dev and CI containers, while ``now`` is
@@ -124,7 +124,7 @@ def account_is_active(account, now: datetime) -> bool:
 def latest_allocation(account) -> Optional[Allocation]:
     """``Account.getLatestAllocation()`` — max end date, with one short-circuit.
 
-    ⚠️ An allocation whose **effective** end date is null is returned *immediately*,
+    WARNING: An allocation whose **effective** end date is null is returned *immediately*,
     regardless of position or of what else the account holds. Legacy returns from
     inside the loop, so this is iteration-order dependent when an account has two
     open-ended allocations — a shape that should not exist and, if it did, would make
@@ -145,7 +145,7 @@ def latest_allocation(account) -> Optional[Allocation]:
 def account_for_resource(project: Project, resource: Resource):
     """``Project.getAccount(resourceName)`` — a scan over **all** accounts.
 
-    ⚠️ Deliberately unfiltered. Extension's ``account.isActive()`` gate does not apply
+    WARNING: Deliberately unfiltered. Extension's ``account.isActive()`` gate does not apply
     here, so a supplement lands on an account whose project is inactive or whose
     resource is decommissioned. Matching on the resource *name*, case-insensitively
     (``Account.isForResource`` uses ``equalsIgnoreCase``), rather than on the id —
@@ -169,7 +169,7 @@ def new_allocation_end_date(project: Project,
     **allocation** end date under the same test; else ``None``, which the caller turns
     into ``All contract and allocation end dates are null or past for project [%s]``.
 
-    ⚠️ Kept bug-for-bug: the create branch derives its window from *today* and the
+    WARNING: Kept bug-for-bug: the create branch derives its window from *today* and the
     project's own history, and **never looks at the action's ``actionBeginDate`` or
     ``actionEndDate``**. A Supplement that creates an allocation therefore gets dates
     XRAS did not ask for. Reproduced because the alternative is inventing a policy, and
@@ -198,7 +198,7 @@ def new_allocation_end_date(project: Project,
 def clamp_start_to_commission(resource, start: datetime) -> datetime:
     """Push an allocation start forward to the resource's commission date.
 
-    ⚠️ **Silent, and deliberately so.** ``DefaultAddAllocationToProjectCommand`` clamps
+    WARNING: **Silent, and deliberately so.** ``DefaultAddAllocationToProjectCommand`` clamps
     an early start with no report — the allocation simply begins later than XRAS asked.
     The *end* side is the opposite: an end at or before the commission date raises
     ``End date of allocation (%s) must be after commission date of resource(%s).``
@@ -222,21 +222,21 @@ def clamp_start_to_commission(resource, start: datetime) -> datetime:
 def auth_at_panel_meeting(session, action) -> bool:
     """``getAuthAtPanelMeeting()`` — true iff the allocation type is CSL or CHAP.
 
-    ⚠️ The branch is **inverted** from what you would expect
+    WARNING: The branch is **inverted** from what you would expect
     (``ProjectAllocationActionCommandsFactoryBase:96-114``): when the payload *carries*
     an ``allocationType`` it runs the eleven-strategy chain; when it does **not**, it
     reads the *existing project's* stored type and looks that up by name. Both arms are
     reproduced. Set on 1,264 of the 3,203 integration-written SUPPLEMENT rows in
     production, so it is not vestigial.
 
-    ⚠️ **Call this during assembly, before any transaction opens.** The second arm
+    WARNING: **Call this during assembly, before any transaction opens.** The second arm
     reads ``project.allocation_type``, and Update *writes* that column — through
     ``project.update()``, which flushes. Evaluating it lazily from inside the execute
     phase would read back the type the action just installed rather than the one the
     project had when it arrived. Nothing catches that today: no test changes
     ``allocationType`` on an Update whose resources take the add branch.
 
-    ⚠️ **Only the first arm consults the ``opportunityId`` map, and that is not an
+    WARNING: **Only the first arm consults the ``opportunityId`` map, and that is not an
     oversight.** This function re-derives the pair independently of
     ``resolve_allocation_type``, so if it kept calling the *pure* chain a project's
     allocation type could come from the map while its transactions'
@@ -263,7 +263,7 @@ def mark_panel_authorised(session, allocation) -> None:
     reaching for the row it just added is cheaper and less invasive than widening its
     signature for one caller.
 
-    ⚠️ This is the *create* mechanism only. A SUPPLEMENT row gets the same flag by
+    WARNING: This is the *create* mechanism only. A SUPPLEMENT row gets the same flag by
     passing ``auth_at_panel_mtg=`` into ``supplement_allocation``, and an ADJUSTMENT row
     does not get it at all — ``buildAdjustAllocationCommand`` never sets it. See this
     module's header.
@@ -285,7 +285,7 @@ def create_window_from_project_history(
     having reported ``All contract and allocation end dates are null or past for
     project [%s]``.
 
-    ⚠️ One of **two** create policies, and they must not converge — see
+    WARNING: One of **two** create policies, and they must not converge — see
     :func:`create_window_from_action_dates` for the other. This one never reads the
     action's own ``actionBeginDate``/``actionEndDate``, which is legacy's behavior and
     is kept bug-for-bug (100% of Supplement traffic succeeds under it).
@@ -314,7 +314,7 @@ def create_window_from_action_dates(
     and becomes a 500 with no diagnostic. Reported instead — the same refusal, in a form
     an operator can act on.
 
-    ⚠️ Takes the dates **already parsed**. That is not a convenience: ``new.py`` parses
+    WARNING: Takes the dates **already parsed**. That is not a convenience: ``new.py`` parses
     both above its resource loop so date errors precede resource errors in the 422 body,
     and the body's order is asserted in ten test modules. A version of this function
     that parsed the action itself would silently reorder every multi-resource rejection.

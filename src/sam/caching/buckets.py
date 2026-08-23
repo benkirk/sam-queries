@@ -24,7 +24,7 @@ disabled by config when either its TTL or its size is 0.
 Registry
 --------
 Instances self-register at construction so the webapp's ``Caching`` facade can
-enumerate every bucketed cache (for the Admin → Configuration card, for
+enumerate every bucketed cache (for the Admin -> Configuration card, for
 ``caching.clear(category)``, and for deriving the flask adapter's
 foreign-keyspace skip list) without hand-maintaining parallel lists.
 """
@@ -98,7 +98,7 @@ class BucketedTTLCache:
         self._lock = threading.RLock()
         _register(self)
 
-    # ── Adapters ────────────────────────────────────────────────────────
+    # Adapters
 
     def adapter(self, bucket: str) -> Optional[CacheBase]:
         """Return the shared adapter for *bucket*, initializing on first call.
@@ -151,7 +151,7 @@ class BucketedTTLCache:
                 out.append(adapter)
         return out
 
-    # ── The memoisation dance ───────────────────────────────────────────
+    # The memoisation dance
 
     def get_or_compute(self, bucket: str, key: Hashable,
                        compute: Callable[[], Any], *,
@@ -189,7 +189,7 @@ class BucketedTTLCache:
                 pass
         return result
 
-    # ── Admin / facade hooks ────────────────────────────────────────────
+    # Admin / facade hooks
 
     def purge(self) -> int:
         """Clear every bucket. Returns the total entries cleared."""
@@ -229,7 +229,7 @@ class BucketedTTLCache:
         """
         return tuple(f'{spec.name}:' for spec in self.buckets.values())
 
-    # ── Test hook ───────────────────────────────────────────────────────
+    # Test hook
 
     def reset_for_tests(self, *, disabled: bool = True) -> None:
         """Force every bucket to a known adapter state.

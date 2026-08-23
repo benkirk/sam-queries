@@ -1,4 +1,4 @@
-"""The Scheduled tasks tile on Admin → Configuration.
+"""The Scheduled tasks tile on Admin -> Configuration.
 
 Two things here matter more than "the tile renders":
 

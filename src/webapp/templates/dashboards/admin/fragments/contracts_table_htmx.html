@@ -43,7 +43,7 @@
                 {% if contract_sources %}
                 {% for cs in contract_sources %}
                 {% set cs_contracts = contracts | selectattr('contract_source_id', 'equalto', cs.contract_source_id) | list %}
-                {# ── Source row ──
+                {# Source row
                    Only a collapse trigger when it has something to reveal.
                    Most sources are empty under the active-only default (18 of
                    24 on dev), and giving those a chevron and a pointer made
@@ -102,7 +102,7 @@
                         </td>
                     </tr>
                 </tbody>
-                {# ── Contract child rows (collapsed by default) ──
+                {# Contract child rows (collapsed by default)
                    Skipped entirely for an empty source: with no trigger above
                    it, the tbody could never be revealed, so rendering it was
                    pure DOM weight (and a dead "No contracts" row). #}

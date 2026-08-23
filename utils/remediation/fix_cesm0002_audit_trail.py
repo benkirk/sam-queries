@@ -23,7 +23,7 @@ then reproduces ``allocation.amount`` to within float-precision noise.
 The fingerprint we look for:
 
     transaction_type = 'ADJUSTMENT'
-    transaction_comment LIKE 'Amount: % → %'
+    transaction_comment LIKE 'Amount: % -> %'
     |transaction_amount - allocation.amount| < tolerance
 
 Phases
@@ -129,8 +129,8 @@ class BogusEditRow:
     projcode: str
     resource_name: str
     bogus_amount: float
-    intended_old: float        # the X in "Amount: X → Y"
-    intended_new: float        # the Y in "Amount: X → Y"
+    intended_old: float        # the X in "Amount: X -> Y"
+    intended_new: float        # the Y in "Amount: X -> Y"
     intended_delta: float      # Y - X (what should have been written)
     correction_amount: float   # signed delta to append (= -X)
     alloc_start_date: datetime

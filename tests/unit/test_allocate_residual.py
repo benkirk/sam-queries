@@ -239,7 +239,7 @@ class TestCreatePath:
         )
         rows = _txns(session, child.allocation_id)
         assert len(rows) == 1
-        assert rows[0].transaction_type == 'NEW'        # CREATE → legacy NEW
+        assert rows[0].transaction_type == 'NEW'        # CREATE -> legacy NEW
         assert rows[0].transaction_amount == 200_000.0
         assert 'Sub-allocated' in rows[0].transaction_comment
         assert replay_amount(rows) == pytest.approx(child.amount)
@@ -279,7 +279,7 @@ class TestValidation:
             session, account=make_account(session, project=c2, resource=resource),
             amount=200_000.0,
         )
-        # residual = 1M − 500k = 500k; bump target to 800k ≠ 1M → allowed.
+        # residual = 1M − 500k = 500k; bump target to 800k ≠ 1M -> allowed.
         allocate_residual_to_child(
             session, parent.allocation_id, acting_user.user_id,
             amount=500_000.0, target_allocation_id=target.allocation_id,
@@ -291,7 +291,7 @@ class TestValidation:
         """Landing on exactly the parent's amount would flip the carve-out
         into a pool member (equal-amount fallback) — refused as ambiguous."""
         parent, target = carve_tree['parent_alloc'], carve_tree['carve_alloc']
-        # target 300k + 700k == parent 1M → ambiguous end state.
+        # target 300k + 700k == parent 1M -> ambiguous end state.
         with pytest.raises(ValueError, match='shared-pool member'):
             allocate_residual_to_child(
                 session, parent.allocation_id, acting_user.user_id,

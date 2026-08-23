@@ -2,7 +2,7 @@
 Allocations dashboard blueprint for admin/staff.
 
 Provides drill-down allocation dashboard showing allocation summaries
-grouped hierarchically by Resource → Facility → Allocation Type → Projects.
+grouped hierarchically by Resource -> Facility -> Allocation Type -> Projects.
 """
 
 
@@ -238,7 +238,7 @@ def get_resource_types(session) -> Dict[str, str]:
     Get mapping of resource name to resource type.
 
     Returns:
-        Dict mapping resource_name → resource_type string (e.g., 'Derecho' → 'HPC')
+        Dict mapping resource_name -> resource_type string (e.g., 'Derecho' -> 'HPC')
     """
     from sam.resources.resources import ResourceType
 
@@ -268,7 +268,7 @@ def index():
 #: plugin-adjacent module. The vocabulary matches so a viewer reads one ladder
 #: across the app; the ownership does not.
 #:
-#: ⚠️ Band 1's upper bound (30) is the same 30 as the ``timedelta(days=30)``
+#: WARNING: Band 1's upper bound (30) is the same 30 as the ``timedelta(days=30)``
 #: default in ``_parse_audit_filters`` / ``_parse_xras_filters`` and in the two
 #: page contexts below. That coupling is what makes the resting control land on
 #: a whole span instead of rendering "Custom range" on every first load. Change
@@ -372,7 +372,7 @@ def projects():
     """
     Main allocations dashboard page.
 
-    Shows allocation summaries grouped by Resource → Facility → Type.
+    Shows allocation summaries grouped by Resource -> Facility -> Type.
     Active allocations only, with optional date filter and resource selector.
 
     Query parameters:
@@ -525,7 +525,7 @@ def projects():
     # Derive TOTAL grouping (resource+facility+type, no projcode) Python-side
     usage_type_data = _aggregate_usage_to_total(per_project_usage)
 
-    # Index by resource → facility for allocation-type chart generation
+    # Index by resource -> facility for allocation-type chart generation
     usage_by_resource_facility: Dict[str, Dict[str, List]] = {}
     for row in usage_type_data:
         usage_by_resource_facility\
@@ -632,7 +632,7 @@ def htmx_pace_chart(resource_name):
 
     # Facility-scope clamp — identical shape to index() so a WNA-scoped
     # user gets WNA-only rows on the chart even though the URL omits
-    # ?facilities=. Unscoped users get None → no filter.
+    # ?facilities=. Unscoped users get None -> no filter.
     allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
     requested_facilities = request.args.getlist('facilities')
     selected_facilities = apply_facility_scope(
@@ -839,7 +839,7 @@ def transactions_fragment():
         request.args, ALLOCATION_TRANSACTION_SORT_COLUMNS,
     )
     # Intersect the user-chosen facility filter (shared with the index
-    # route) against their scope. ``None`` → unrestricted (unscoped
+    # route) against their scope. ``None`` -> unrestricted (unscoped
     # user, no ``?facilities=`` param); a list is passed through to
     # the query's ``facility_name`` kwarg for SQL-time filtering.
     filters['facility_name'] = apply_facility_scope(
@@ -1020,11 +1020,11 @@ def cache_status():
     return jsonify(usage_cache_info())
 
 
-# ── Create Charge Adjustment ──────────────────────────────────────────────
+# Create Charge Adjustment
 #
 # Staff-facing write path for the Adjustments tab. The user enters a
 # positive amount; ChargeAdjustment.create() applies the sign by type
-# (Credits/Refunds → negative, Debits/Reservations → positive). The set of
+# (Credits/Refunds -> negative, Debits/Reservations -> positive). The set of
 # exposed types lives in sam.accounting.adjustments._SIGN_BY_TYPE; the
 # route resolves it to ChargeAdjustmentType rows via
 # ChargeAdjustment.supported_types(session).

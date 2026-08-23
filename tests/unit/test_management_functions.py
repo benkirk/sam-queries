@@ -7,10 +7,10 @@ those couplings was a fragility — snapshot refreshes change membership,
 which silently broke "find a user not on this project" lookups.
 
 The port builds a fresh isolated graph for every test:
-  - `make_project()` → fresh Project with a fresh lead User
-  - `make_account(project=...)` → fresh Account; Account.create() auto-
+  - `make_project()` -> fresh Project with a fresh lead User
+  - `make_account(project=...)` -> fresh Account; Account.create() auto-
     propagates the project lead as the first AccountUser
-  - `make_user()` → fresh User who is unambiguously NOT on the project
+  - `make_user()` -> fresh User who is unambiguously NOT on the project
 """
 import pytest
 from datetime import datetime, timedelta
@@ -129,7 +129,7 @@ class TestAddUserToProject:
         project, account = _project_with_account(session)
         new_user = make_user(session)
 
-        # First add → one open membership.
+        # First add -> one open membership.
         add_user_to_project(session, project.project_id, new_user.user_id)
         rows = session.query(AccountUser).filter_by(
             account_id=account.account_id, user_id=new_user.user_id
@@ -141,7 +141,7 @@ class TestAddUserToProject:
         rows[0].end_date = expired_at
         session.flush()
 
-        # Re-add → a NEW open row; the expired row is preserved as history.
+        # Re-add -> a NEW open row; the expired row is preserved as history.
         add_user_to_project(session, project.project_id, new_user.user_id)
 
         rows = session.query(AccountUser).filter_by(

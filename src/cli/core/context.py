@@ -99,7 +99,7 @@ class Context:
         ``SAMConfig.validate()`` stays in the callbacks — it is cheap, needs no
         socket, and catching a misconfiguration early is still worth it.
 
-        ⚠️ **This is the CLI-facing accessor and it calls ``sys.exit``. Never
+        WARNING: **This is the CLI-facing accessor and it calls ``sys.exit``. Never
         hand it to the task runner.** ``scheduling.runner._execute`` catches
         ``Exception``, not ``BaseException`` — deliberately, so a pod's
         ``activeDeadlineSeconds`` kill leaves the ledger row ``running`` for the

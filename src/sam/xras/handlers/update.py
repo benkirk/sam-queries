@@ -5,7 +5,7 @@ Not an ``actionType``. "Update" is a *handler*, selected by the pair
 dispatch decision resolved against the database, and ``new_uwis0071_existing_ok.json``
 is the production proof.
 
-Assembler order: **UpdateProject → AddContract → UpdateAllocation×N → AddUser×N.**
+Assembler order: **UpdateProject -> AddContract -> UpdateAllocation×N -> AddUser×N.**
 No mnemonic (the projcode already exists) and, critically, **no inactivation step** —
 which is the source of the first bug below.
 
@@ -26,12 +26,12 @@ otherwise                                           **SUPPLEMENT** (``> 0``) or
                                                     **ADJUST** (``< 0``)
 ==================================================  ==========================================
 
-⚠️ The error string here is **not** Extension's. ``Action end date before existing
+WARNING: The error string here is **not** Extension's. ``Action end date before existing
 allocation end date for %s`` interpolates a *resource name* and omits the word "is";
 Extension's interpolates a *date* and includes it. Which one an operator sees is how
 they tell which path rejected them, so the two builders are separate.
 
-⚠️ Update-driven extends carry the **resource comment**, not
+WARNING: Update-driven extends carry the **resource comment**, not
 ``XrasAction Extension Request``.
 
 Three legacy bugs, and what this port does with each
@@ -115,7 +115,7 @@ def is_allocation_overlapping(allocation: Allocation, start: Optional[datetime],
                               end: Optional[datetime]) -> bool:
     """``isAllocationOverlapping`` — standard interval overlap, both dates required.
 
-    ⚠️ It returns ``False`` when **either** action date is null, which routes the
+    WARNING: It returns ``False`` when **either** action date is null, which routes the
     resource to the ADD branch — and legacy then dereferences the same null date on the
     commission clamp and throws. Unreachable here because the handler reports a missing
     or unparseable date during assembly and never reaches this, but the guard stays
@@ -161,7 +161,7 @@ class UpdateHandler(ActionHandler):
         self.start = parse_action_begin_date(self.action, self.errors)
         self.end = parse_action_end_date(self.action, self.errors)
 
-        # ⚠️ Here, and not one line later. `execute()` writes `allocation_type_id`
+        # WARNING: Here, and not one line later. `execute()` writes `allocation_type_id`
         # through `project.update()`, which flushes — so a lazily-evaluated version of
         # this would read back the type this very action installed rather than the one
         # the project had when it arrived. Nothing in the suite would catch that.
@@ -258,7 +258,7 @@ class UpdateHandler(ActionHandler):
     def get_resource_comment_raw(wire_resource):
         """The **unnormalised** ``comments`` field.
 
-        ⚠️ Not :func:`resource_comment`. The contingent-resource sentinel is compared
+        WARNING: Not :func:`resource_comment`. The contingent-resource sentinel is compared
         byte-for-byte against ``ActionTag.AUTO_DEFAULT_ALLOCATION_TRANSACTION.name()``,
         so it must not pass through ``StringUtil.normalize`` first.
         """

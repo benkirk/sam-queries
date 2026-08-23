@@ -210,7 +210,7 @@ def audit_columns(session, mapper) -> list:
         acceptable = TYPE_MAPPINGS.get(orm_type, [])
         if not acceptable or db_norm in acceptable:
             continue
-        # String → TEXT widening is benign
+        # String -> TEXT widening is benign
         if orm_type == 'String' and db_norm in ('TEXT', 'MEDIUMTEXT', 'LONGTEXT'):
             continue
         msg = f"{col.name}: ORM={orm_type} → DB={db_raw}"

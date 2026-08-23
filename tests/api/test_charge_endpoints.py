@@ -168,7 +168,7 @@ class TestProjectChargesDetail:
 # It does NOT write anything — the tests below mutate the payload to trigger
 # specific failure paths in `_handle_charge_summary_post`:
 #   - 400: schema validation error (fails before management_transaction)
-#   - 422: ValueError inside management_transaction → rollback → response
+#   - 422: ValueError inside management_transaction -> rollback -> response
 # Either path leaves the DB unchanged, so SAVEPOINT bridging is unnecessary.
 
 @pytest.fixture

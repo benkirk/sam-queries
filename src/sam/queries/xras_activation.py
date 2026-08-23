@@ -17,7 +17,7 @@ docstring for the three operator-visible bugs that key caused.
 **The one thing shared across the seam** is the ``projcode_result`` OR
 ``request_number`` join, imported from :mod:`~sam.queries.xras_actions` as
 :func:`~sam.queries.xras_actions.action_names_project` together with the
-``_LATEST_ACTION_ORDER`` tie-break. ⚠️ Both must stay imported rather than re-spelled
+``_LATEST_ACTION_ORDER`` tie-break. WARNING: Both must stay imported rather than re-spelled
 here — that duplication is precisely what let the pending card and the provenance
 stamp name different actions for one project.
 
@@ -50,7 +50,7 @@ __all__ = [
 ]
 
 
-#: ``xras_action_log.service`` → the notification kind that reports it.
+#: ``xras_action_log.service`` -> the notification kind that reports it.
 #:
 #: The dispatcher's vocabulary is :data:`sam.xras.dispatch.SERVICES`; this maps
 #: the subset that produces something a PI should be told about. One is
@@ -385,7 +385,7 @@ def get_xras_activation_events(
 ) -> List[Dict[str, Any]]:
     """The append-only operator timeline for one project, newest first.
 
-    ⚠️ Rows carry ``notified_to`` — project lead and admin contact details. The
+    WARNING: Rows carry ``notified_to`` — project lead and admin contact details. The
     caller must gate this on ``Permission.MANAGE_XRAS``, the same authority that
     gates the raw payload, not on ``VIEW_XRAS``.
     """
@@ -416,7 +416,7 @@ def get_xras_pending_recipients(
 ) -> Dict[int, List[Dict[str, str]]]:
     """Lead and admin contact details for the notify handoff, per project.
 
-    ⚠️ **Deliberately not folded into** :func:`get_xras_activity`.
+    WARNING: **Deliberately not folded into** :func:`get_xras_activity`.
     Doing so would push contact PII into every caller of that function, including
     the ``VIEW_XRAS`` render of the card. Keeping it separate lets the route ask
     for addresses only when the viewer holds ``MANAGE_XRAS``, so a view-source

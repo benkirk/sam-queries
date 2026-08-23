@@ -11,12 +11,12 @@
   CSP-clean, no inline handlers. The active chip is marked and clicking it
   CLEARS the filter (empty data-value), so it doubles as its own clear button.
 
-  ⚠️  The caller must compute counts with SELF-EXCLUSION — a dimension's rollup
+  WARNING: The caller must compute counts with SELF-EXCLUSION — a dimension's rollup
   must omit its own filter. Scope a dimension by itself and every unselected
   value reads 0 the moment one is picked, which turns the strip from a switcher
   into a dead end. See blueprint.py::xras_fragment.
 
-  ⚠️  Values that cannot round-trip through the form must not become chips. A
+  WARNING: Values that cannot round-trip through the form must not become chips. A
   NULL is a real count but not a filterable value (there is no way to say
   "IS NULL" in a text input or a select), so callers pass only expressible
   values — the jobs macro does the same via rejectattr('value','none').

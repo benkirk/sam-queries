@@ -37,10 +37,10 @@ class LogSpec:
             (``Model.created.desc()``). ``id_column.desc()`` is appended
             automatically as the tiebreaker, so two rows sharing a timestamp
             cannot swap places between pages.
-        dimensions: facet name → column, e.g. ``{'status': Log.status}``.
+        dimensions: facet name -> column, e.g. ``{'status': Log.status}``.
             **Insertion order is the error-message order**, so declare it the
             way an operator reads the chips.
-        owned_filter: facet name → the ``build_filters`` keyword that scopes
+        owned_filter: facet name -> the ``build_filters`` keyword that scopes
             it, e.g. ``{'status': 'statuses'}``. This is what
             :func:`facet_counts` drops to achieve self-exclusion.
         build_filters: the table's own ``_filters()`` — keyword-only, returns
@@ -90,7 +90,7 @@ def facet_counts(session: Session, spec: LogSpec, dimension: str,
                  **filters) -> Dict[str, int]:
     """Counts for one facet dimension, **excluding that dimension's filter**.
 
-    ⚠️ Self-exclusion is the whole point, and the reason this function exists
+    WARNING: Self-exclusion is the whole point, and the reason this function exists
     once instead of three times. Scope a dimension by itself and every
     unselected value drops to zero the moment one is picked — the chips stop
     being switchers and become dead ends. So asking for the ``status`` facet

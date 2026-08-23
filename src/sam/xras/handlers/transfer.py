@@ -8,12 +8,12 @@ deserves to find out why from the audit trail rather than by reading the Java.
 Why not build it
 ----------------
 **Zero production traffic.** No Transfer appears in the 175 posts measured
-2026-07-07 → 2026-08-05, and none is in the sampled corpus — so there is no payload to
+2026-07-07 -> 2026-08-05, and none is in the sampled corpus — so there is no payload to
 port against, no outcome to diff against, and no way to tell a correct implementation
 from a plausible one before it runs against live allocations.
 
 **The one primitive that looks like a fit is not one.** ``exchange_allocations``
-(``sam/manage/allocations.py``) is 1→1, same-resource, and raises rather than clamping.
+(``sam/manage/allocations.py``) is 1->1, same-resource, and raises rather than clamping.
 Legacy's transfer is **one negative source to N positive destinations summing to zero**,
 with the source clamped to what is actually available
 (``TransferProjectAllocationActionCommandsFactory``). Those are different operations
@@ -38,7 +38,7 @@ records *why*. That is the same outcome an unserviceable action gets from legacy
 human applies it — except that legacy leaves no trace, and this leaves a row saying the
 action was recognized, deliberately not applied, and by whose decision.
 
-⚠️ **If Transfer traffic ever appears, this is the thing to notice.** The
+WARNING: **If Transfer traffic ever appears, this is the thing to notice.** The
 ``xras_action_log`` query for it is ``status='manual' AND action_type='Transfer'``.
 See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Write primitives* item 5.
 """

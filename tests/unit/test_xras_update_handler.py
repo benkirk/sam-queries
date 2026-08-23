@@ -6,10 +6,10 @@ table in the handler's docstring is what these tests walk.
 
 Three legacy bugs live here, and this port treats them differently:
 
-* it silently **re-activates** an inactive project → not ported, warned
+* it silently **re-activates** an inactive project -> not ported, warned
 * it **never updates** the lead or admin (a guard that always passes, plus missing
-  braces) → fixed
-* the ``UNDO AUTO/DEFAULT`` compensating adjustment → not ported, warned (defect 5)
+  braces) -> fixed
+* the ``UNDO AUTO/DEFAULT`` compensating adjustment -> not ported, warned (defect 5)
 
 See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Update*.
 """
@@ -54,7 +54,7 @@ def mapped_resource(session):
 
 @pytest.fixture
 def existing(session, mapped_resource):
-    """An existing project with a PI and one allocation running 2026 → 2027."""
+    """An existing project with a PI and one allocation running 2026 -> 2027."""
     from factories import (make_account, make_allocation, make_project, make_user,
                            make_user_organization)
     pi = make_user(session)
@@ -117,7 +117,7 @@ class TestOverlap:
     @pytest.mark.parametrize('start,end', [
         (None, datetime(2027, 12, 31)), (datetime(2026, 1, 1), None), (None, None)])
     def test_a_null_action_date_means_no_overlap(self, session, start, end):
-        """⚠️ Which routes the resource to ADD — and legacy then dereferences the same
+        """WARNING: Which routes the resource to ADD — and legacy then dereferences the same
         null on the commission clamp and throws. Unreachable here because assembly
         reports the missing date first, but the guard stays explicit."""
         from factories import make_allocation
@@ -172,7 +172,7 @@ class TestTheShrinkError:
     def test_the_update_string_is_not_the_extension_string(self, committing,
                                                            existing,
                                                            mapped_resource):
-        """⚠️ Update interpolates a **resource name** and omits "is"; Extension
+        """WARNING: Update interpolates a **resource name** and omits "is"; Extension
         interpolates a **date** and includes it. Which one an operator sees is how they
         tell which path rejected them."""
         with pytest.raises(XrasActionRejected) as exc:
@@ -244,7 +244,7 @@ class TestTheThreeCommandPath:
 
     def test_the_extend_carries_the_resource_comment_not_the_extension_one(
             self, committing, existing, mapped_resource, session):
-        """⚠️ Update-driven extends do **not** say ``XrasAction Extension Request``."""
+        """WARNING: Update-driven extends do **not** say ``XrasAction Extension Request``."""
         handle_update(committing, action_for(
             existing,
             wire_resource(mapped_resource.xras_key, '250000',
@@ -257,7 +257,7 @@ class TestTheThreeCommandPath:
 
 
 class TestTheContingentResourceShortCircuit:
-    """⚠️ Ported, unlike the undo — this comparison uses ``.name()`` on both sides."""
+    """WARNING: Ported, unlike the undo — this comparison uses ``.name()`` on both sides."""
 
     def test_the_date_moves_but_the_amount_does_not(self, committing, existing,
                                                     mapped_resource, session):
@@ -314,7 +314,7 @@ class TestTheProjectBugsWeFix:
 
     def test_an_inactive_project_is_not_re_activated(self, committing, existing,
                                                      mapped_resource, caplog):
-        """⚠️ Legacy hardcodes ``getActive()`` to true and, unlike the Add path, runs
+        """WARNING: Legacy hardcodes ``getActive()`` to true and, unlike the Add path, runs
         no ``InactivateNewProject`` afterwards. An XRAS project is inactive because a
         human has not approved it; approving it as a side effect of a Supplement is
         wrong."""
@@ -413,7 +413,7 @@ class TestTheRegistration:
 
     def test_a_new_action_against_an_existing_project_reaches_update(
             self, committing, existing, mapped_resource):
-        """⚠️ ``actionType: 'New'`` — the UWIS0071 shape. Only the database
+        """WARNING: ``actionType: 'New'`` — the UWIS0071 shape. Only the database
         distinguishes this from an Add."""
         from sam.xras.dispatch import dispatch_action
         import sam.xras.handlers  # noqa: F401

@@ -12,7 +12,7 @@ patched ``Project.update`` rather than by inspecting the database — a route-le
 commits on ``db.session``'s own connection, outside the suite's per-test SAVEPOINT, and
 would leak a changed ``project_lead_user_id`` into the shared xdist database.
 
-⚠️ **Every test that reaches a route here takes ``action_log``, including the ones that
+WARNING: **Every test that reaches a route here takes ``action_log``, including the ones that
 assert nothing about audit rows.** The fixture is not only a reader — it is the cleanup,
 and the route commits its row on a private connection that the SAVEPOINT cannot reach.
 Omitting it leaks a row per run into the shared database; this file did exactly that once

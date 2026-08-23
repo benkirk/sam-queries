@@ -21,7 +21,7 @@ NS=sam-queries
 DEPLOY=samuel
 
 
-# ── 1. Sanity: am I connected? what's in the namespace? ─────────────────────
+# 1. Sanity: am I connected? what's in the namespace?
 # 'get ns' lists every namespace you can see — confirms cluster access.
 kubectl --context "$CTX" get ns
 # 'get all -n …' shows pods, services, deployments, replicasets in one view.
@@ -31,7 +31,7 @@ kubectl --context "$CTX" -n "$NS" get all
 kubectl --context "$CTX" -n "$NS" get pods -o wide
 
 
-# ── 2. Snapshot resource usage (CPU / memory) ───────────────────────────────
+# 2. Snapshot resource usage (CPU / memory)
 # Requires metrics-server in the cluster. Updates ~every 15 s, so two reads
 # 30 s apart give a useful before/after.
 kubectl --context "$CTX" -n "$NS" top pods
@@ -42,7 +42,7 @@ kubectl --context "$CTX" -n "$NS" top pods --containers
 kubectl --context "$CTX" top nodes
 
 
-# ── 3. What image / env / limits is the deployment actually using? ─────────
+# 3. What image / env / limits is the deployment actually using?
 # The deployment is the source of truth; the pod just inherits.
 kubectl --context "$CTX" -n "$NS" get deploy "$DEPLOY" \
   -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
@@ -58,7 +58,7 @@ kubectl --context "$CTX" -n "$NS" get deploy "$DEPLOY" \
 kubectl --context "$CTX" -n "$NS" get deploy "$DEPLOY" -o yaml > /tmp/deploy.yaml
 
 
-# ── 4. Pod state, restart history, and OOMKill detection ───────────────────
+# 4. Pod state, restart history, and OOMKill detection
 # 'get pods' shows RESTARTS column at a glance.
 kubectl --context "$CTX" -n "$NS" get pods
 # Drill into one pod: lastState.terminated tells you WHY it died.
@@ -77,7 +77,7 @@ kubectl --context "$CTX" -n "$NS" describe pod "$POD"
 kubectl --context "$CTX" -n "$NS" get events --sort-by=.lastTimestamp | tail -25
 
 
-# ── 5. Inspect what's running INSIDE the pod ───────────────────────────────
+# 5. Inspect what's running INSIDE the pod
 # Process list sorted by RSS — finds memory hogs and confirms gunicorn worker
 # count. The number of `gunicorn -c` lines = master + workers.
 kubectl --context "$CTX" -n "$NS" exec "$POD" -- \
@@ -107,7 +107,7 @@ print("cgroup_cpu.max:", open("/sys/fs/cgroup/cpu.max").read().strip())
 kubectl --context "$CTX" -n "$NS" exec -it "$POD" -- bash
 
 
-# ── 6. Logs (current + previous container) ─────────────────────────────────
+# 6. Logs (current + previous container)
 # Live tail of stdout/stderr.
 kubectl --context "$CTX" -n "$NS" logs -f "$POD"
 # After a pod restart, --previous shows the dead container's logs (often where
@@ -120,7 +120,7 @@ kubectl --context "$CTX" -n "$NS" logs --tail=200 "$POD" | grep -i error
 kubectl --context "$CTX" -n "$NS" logs -l app="$DEPLOY" --tail=100 --prefix
 
 
-# ── 7. Rollout history and rollback ────────────────────────────────────────
+# 7. Rollout history and rollback
 # Every prior image / spec change is preserved as a ReplicaSet. Useful when
 # you suspect a recent deploy regressed something.
 kubectl --context "$CTX" -n "$NS" rollout history deploy "$DEPLOY"
@@ -137,14 +137,14 @@ kubectl --context "$CTX" -n "$NS" get rs -l app="$DEPLOY" \
 # kubectl --context "$CTX" -n "$NS" rollout undo deploy "$DEPLOY" --to-revision=5
 
 
-# ── 8. Watch a deploy roll out in real time ────────────────────────────────
+# 8. Watch a deploy roll out in real time
 # After pushing a new image / Helm upgrade.
 kubectl --context "$CTX" -n "$NS" rollout status deploy "$DEPLOY" --timeout=5m
 # Live watch on pod state changes (handy in a second terminal during deploys).
 kubectl --context "$CTX" -n "$NS" get pods -w
 
 
-# ── 9. Helm-specific (since this app is deployed via Helm) ─────────────────
+# 9. Helm-specific (since this app is deployed via Helm)
 # What releases exist?
 helm --kube-context "$CTX" -n "$NS" list
 # Show the values currently in effect for a release.
@@ -161,21 +161,21 @@ helm --kube-context "$CTX" -n "$NS" upgrade "$DEPLOY" helm \
   -f helm/values.yaml --dry-run --debug | less
 
 
-# ── 10. The investigation pattern, in summary ───────────────────────────────
+# 10. The investigation pattern, in summary
 # When a pod is misbehaving and you don't know why, run these in order:
-#   1.  kubectl get pods                  → restart count > 0?
+#   1.  kubectl get pods                  -> restart count > 0?
 #   2.  kubectl get pod $POD -o json | jq .status.containerStatuses[0].lastState
-#                                         → exitCode 137 / OOMKilled?
+#                                         -> exitCode 137 / OOMKilled?
 #   3.  kubectl get events --sort-by=.lastTimestamp
-#                                         → recent OOM / Pull / FailedSchedule?
-#   4.  kubectl top pods                  → memory pressure right now?
+#                                         -> recent OOM / Pull / FailedSchedule?
+#   4.  kubectl top pods                  -> memory pressure right now?
 #   5.  kubectl exec $POD -- ps -eo rss,cmd --sort=-rss | head
-#                                         → which process is hogging?
+#                                         -> which process is hogging?
 #   6.  kubectl exec $POD -- cat /sys/fs/cgroup/cpu.max
-#                                         → does the app think it has more
+#                                         -> does the app think it has more
 #                                           CPUs than the cgroup actually grants?
-#   7.  kubectl logs --previous $POD      → what did it say before dying?
-#   8.  kubectl rollout history deploy    → did this only start after a recent
+#   7.  kubectl logs --previous $POD      -> what did it say before dying?
+#   8.  kubectl rollout history deploy    -> did this only start after a recent
 #                                           deploy? roll back to confirm.
 #
 # References:

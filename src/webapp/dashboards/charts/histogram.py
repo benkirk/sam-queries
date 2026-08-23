@@ -38,13 +38,13 @@ _AH_TOP_SEGMENTS = 10
 
 
 def bucket_segments(owners, metric='data'):
-    """Per-bucket stacked-bar segments, bottom → top.
+    """Per-bucket stacked-bar segments, bottom -> top.
 
     Returns a list of segment values (in *metric* units — ``'data'`` bytes or
     ``'files'`` counts) ordered as the long-tail "other" aggregate (if any)
     followed by the top-``_AH_TOP_SEGMENTS`` owners ascending — so the largest
     owner sits at the top of the bar. Empty list when the bucket has no owners
-    (→ drawn as a single flat bar).
+    (-> drawn as a single flat bar).
     """
     if not owners:
         return []
@@ -82,7 +82,7 @@ class CategoricalStackChart(BaseChart):
         raise NotImplementedError
 
     def bucket_segments(self, bucket) -> list:
-        """Stack segments bottom → top, or [] for a flat bar."""
+        """Stack segments bottom -> top, or [] for a flat bar."""
         raise NotImplementedError
 
     def bucket_is_clickable(self, bucket) -> bool:

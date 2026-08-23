@@ -39,7 +39,7 @@ NAME = 'expiration_notices'
 
 #: Monday 2033-11-21 09:00 America/Denver == 16:00 UTC.
 #:
-#: ⚠️ **2033 on purpose.** These tests assert absolute counts, and the
+#: WARNING: **2033 on purpose.** These tests assert absolute counts, and the
 #: obfuscated snapshot every test container runs holds ~22,000 real
 #: allocations — the latest ending 2030-12-31. An occurrence in 2026 selects
 #: ~800 of them, which drowns the fixtures and makes the module take two
@@ -49,7 +49,7 @@ OCC = datetime(2033, 11, 21, 16, 0)
 START = datetime(2033, 11, 21, 0, 0)
 
 
-# ── harness ──────────────────────────────────────────────────────────────────
+# harness
 
 @pytest.fixture
 def transport():
@@ -120,7 +120,7 @@ def _expiring(session, *, days, facility='UNIV', email='pi@example.edu'):
     return project
 
 
-# ── registration ─────────────────────────────────────────────────────────────
+# registration
 
 class TestRegistration:
 
@@ -144,7 +144,7 @@ class TestRegistration:
         assert TASKS[NAME].misfire_grace == timedelta(hours=24)
 
     def test_the_lease_outlives_the_cronjob_deadline(self):
-        """⚠️ THE invariant that stops every PI getting a second copy.
+        """WARNING: THE invariant that stops every PI getting a second copy.
 
         This task cannot heartbeat (TaskContext exposes no ledger handle), so
         its lease is fixed at max(3 x expected_runtime, 900s). If that is
@@ -173,7 +173,7 @@ class TestRegistration:
             f'or a killed send is reclaimed while it is still sending')
 
 
-# ── the window ───────────────────────────────────────────────────────────────
+# the window
 
 class TestTheWindowComesFromTheOccurrence:
 
@@ -210,7 +210,7 @@ class TestTheWindowComesFromTheOccurrence:
 
 
 class TestBandsAreHalfOpen:
-    """⚠️ `get_all_expiring_allocations` filters `end_date <= end_date`.
+    """WARNING: `get_all_expiring_allocations` filters `end_date <= end_date`.
 
     Passing `start + hi_days` straight through would make adjacent bands
     overlap on their shared boundary — invisible with one rung, a double-send
@@ -239,7 +239,7 @@ class TestBandsAreHalfOpen:
         assert high[0] - low[1] == timedelta(microseconds=1)
 
 
-# ── the cap ──────────────────────────────────────────────────────────────────
+# the cap
 
 class TestTheSendCap:
 
@@ -292,7 +292,7 @@ class TestTheSendCap:
                            'partial_failures')
 
 
-# ── the mail-disabled guard ──────────────────────────────────────────────────
+# the mail-disabled guard
 
 class TestItRefusesToRunMailDisabled:
 
@@ -319,7 +319,7 @@ class TestItRefusesToRunMailDisabled:
         assert session.query(NotificationLog).count() == before
 
 
-# ── selection ────────────────────────────────────────────────────────────────
+# selection
 
 class TestSelection:
 
@@ -353,7 +353,7 @@ class TestSelection:
 
     def test_the_detail_always_carries_the_window_and_the_counts(self, session,
                                                                  wire, ctx):
-        """⚠️ ~40 runs a year legitimately send nothing, so "0 sent,
+        """WARNING: ~40 runs a year legitimately send nothing, so "0 sent,
         succeeded" is the NORMAL result and cannot be distinguished from a
         query that silently stopped matching — unless the run says how many
         it selected and how many it suppressed."""
@@ -385,7 +385,7 @@ class TestSelection:
         assert message.context['resources'][0]['days_remaining'] == 34
 
 
-# ── the cadence properties ───────────────────────────────────────────────────
+# the cadence properties
 
 class TestTheQuietWeek:
     """THE regression gate on the pre-filter.
@@ -509,7 +509,7 @@ class TestTheLegacyKeyBridge:
         assert mod.expiration_notices(ctx()).detail['sent'] == 1
 
 
-# ── dry run and output discipline ────────────────────────────────────────────
+# dry run and output discipline
 
 class TestDryRun:
 
@@ -575,7 +575,7 @@ class TestTheRunSummary:
     def test_the_cap_trip_is_summarised_before_the_raise(self, monkeypatch,
                                                          session, wire, ctx,
                                                          transport):
-        """⚠️ Otherwise the one run Ben most needs to hear about is the only
+        """WARNING: Otherwise the one run Ben most needs to hear about is the only
         one that emails him nothing — he learns of it as a red Job with no
         explanation attached."""
         monkeypatch.setenv('SAM_TASKS_EMAIL_MAX', '1')

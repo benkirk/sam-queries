@@ -6,8 +6,8 @@ retry** — the resend comes from their side — so the only thing we control is
 that resend will land. Without this, we find out by asking them to re-send and
 watching. With it, we know first:
 
-    post fails 422  →  fix the data here  →  re-check  →  green?  →  ask XRAS to resend
-                                                      ↘  red? → the error list says what is still missing
+    post fails 422  ->  fix the data here  ->  re-check  ->  green?  ->  ask XRAS to resend
+                                                      ↘  red? -> the error list says what is still missing
 
 The result is a **new row** pointing at the original via ``source_action_id``, never an
 edit of the original. Legacy's equivalent is ``XRASPostBean`` — paste the JSON back into
@@ -34,7 +34,7 @@ is ever opened (``sam/xras/handlers/base.py``). No config can change that, which
 property worth having: at cutover ``XRAS_ACTIONS_CAPTURE_ONLY`` flips off, and nothing
 about this surface changes.
 
-⚠️ **This reverses a Sprint B decision, and the premise is what changed.** That version
+WARNING: **This reverses a Sprint B decision, and the premise is what changed.** That version
 tied re-checking to ``XRAS_ACTIONS_CAPTURE_ONLY`` and argued: *"The kill switch stays the
 single safety interlock. A second override would mean two things to reason about and one
 of them would eventually be wrong."* Correct while nothing dispatched at all. With
@@ -65,7 +65,7 @@ would have been:
 ``manual``       nothing would run (no service, disabled type, or Transfer)
 ===============  =========================================================
 
-⚠️ **Re-checking a ``processed`` row is meaningless**, which is why the UI does not
+WARNING: **Re-checking a ``processed`` row is meaningless**, which is why the UI does not
 offer it there: that action already changed the data it would run against, so a
 successful New now routes to Update and the answer describes a different action.
 
@@ -173,7 +173,7 @@ def recheck_action(log_id, *, actor) -> 'Recheck':
     # able to *fail*, and fail the same way. A payload harvested months ago against
     # an older schema is precisely the case worth catching.
     #
-    # ⚠️ This used to be a hand-copied duplicate of that ladder, and the copy had
+    # WARNING: This used to be a hand-copied duplicate of that ladder, and the copy had
     # already drifted: it never passed `action_id`, so every replayed row stored NULL
     # in the duplicate-detection column. Call the shared one; do not re-inline it.
     action, audit = actions._parse_action(raw_payload)
@@ -219,7 +219,7 @@ def recheck_action(log_id, *, actor) -> 'Recheck':
         db.session.rollback()
 
     if result.status == 'rechecked':
-        # ⚠️ `projcode_result` stays NULL, deliberately. It means "the project this
+        # WARNING: `projcode_result` stays NULL, deliberately. It means "the project this
         # action produced", and a re-check produces nothing. Worse, on the New path
         # the handler's `projcode` is the *request token* (`NCAR4253`), not a
         # projcode — writing it here would put a non-projcode into the column that

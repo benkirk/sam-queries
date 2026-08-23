@@ -9,7 +9,7 @@ Where Extension ignores ``resources[]`` and walks accounts, this walks
     else if (getTransactionAmount(resource) > 0)  return buildSupplementAllocationCommand(...);
     return null;                                   // <= 0 silently dropped
 
-⚠️ **``awardedAmount`` is the INCREMENT, not the new total.** ``SUPPLEMENT`` replays
+WARNING: **``awardedAmount`` is the INCREMENT, not the new total.** ``SUPPLEMENT`` replays
 as ``addAmount(transaction_amount)``. This is the single most consequential porting
 semantic in the sprint: reading it as an absolute would overwrite a multi-million-hour
 allocation with a quarter-million-hour supplement, silently, and the resulting number
@@ -61,7 +61,7 @@ class SupplementHandler(ActionHandler):
         if self.project is None:                     # pragma: no cover - dispatcher checked
             return
 
-        # ⚠️ During assembly, deliberately — see ActionHandler's docstring.
+        # WARNING: During assembly, deliberately — see ActionHandler's docstring.
         self.panel_authorised = auth_at_panel_meeting(self.session, self.action)
 
         for wire_resource in self.get('resources') or ():

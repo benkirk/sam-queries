@@ -328,7 +328,7 @@ def _build_user_projects_resources_batched(
     """
     Batched, multi-project equivalent of _build_project_resources_data().
 
-    Returns a dict mapping ``project_id`` → list of resource dicts in
+    Returns a dict mapping ``project_id`` -> list of resource dicts in
     EXACTLY the same shape that _build_project_resources_data() produces
     per-project. The caller can plug each list straight into its existing
     project_data structure with no template changes.
@@ -345,7 +345,7 @@ def _build_user_projects_resources_batched(
     This helper collapses that into a fixed number of batched queries:
 
       * ONE consolidated Project ``selectinload`` chain for template metadata
-        (lead, admin, allocation_type → panel → facility, area_of_interest,
+        (lead, admin, allocation_type -> panel -> facility, area_of_interest,
         contracts, organizations, directories), with cascade suppression
         on User to keep ``Project.lead/admin`` from dragging in every loaded
         User's selectin relationships.
@@ -442,7 +442,7 @@ def _build_user_projects_resources_batched(
     # ------------------------------------------------------------------
     subtree_infos: List[Dict] = []
     account_infos: List[Dict] = []
-    # (project_id, account_id) → (project, account, query_alloc, resource_type, end_date)
+    # (project_id, account_id) -> (project, account, query_alloc, resource_type, end_date)
     chosen: Dict[tuple, tuple] = {}
 
     for project in projects:

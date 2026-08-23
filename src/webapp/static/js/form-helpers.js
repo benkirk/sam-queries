@@ -14,7 +14,7 @@
         return (root.matches && root.matches(selector)) || root.querySelector(selector);
     }
 
-    /* ── Search-select result buttons (user/group/project searches) ──
+    /* Search-select result buttons (user/group/project searches)
      * Replaces hx-on::after-request attributes (htmx evaluates those via
      * Function(), which needs 'unsafe-eval'). After the button's request,
      * clear the result list and the search input, then scroll the card the
@@ -31,7 +31,7 @@
         if (target) { revealCard(document.querySelector(target)); }
     });
 
-    /* ── Single-option auto-select after cascading dropdown loads ──
+    /* Single-option auto-select after cascading dropdown loads
      * (create-project and create-allocation-type forms). htmx:afterSwap
      * bubbles; e.target is the swapped select. */
     function autoSelectSingleOption(select) {
@@ -51,9 +51,9 @@
                 break;
             case 'createProjectPanel':
                 if (autoSelectSingleOption(e.target)) {
-                    htmx.trigger(e.target, 'change');   /* cascade → alloc types */
+                    htmx.trigger(e.target, 'change');   /* cascade -> alloc types */
                 }
-                /* Facility changed → the auto-preview's prefix/counter did
+                /* Facility changed -> the auto-preview's prefix/counter did
                  * too. Refresh it if a mnemonic is already chosen. */
                 var mnemonicSel = document.getElementById('projcodeMnemonic');
                 if (mnemonicSel && mnemonicSel.value) {
@@ -83,7 +83,7 @@
         }
     });
 
-    /* ── Create Project form: projcode mode toggle ── */
+    /* Create Project form: projcode mode toggle */
 
     function applyProjcodeMode(mode) {
         var autoSection   = document.getElementById('projcodeAutoSection');
@@ -113,7 +113,7 @@
         applyProjcodeMode(radio.value);
     });
 
-    /* ── Create Contract form: entry-mode toggle ──
+    /* Create Contract form: entry-mode toggle
      * Unlike projcode_mode, the two contract modes share every real input;
      * the only difference is whether the award-lookup affordance is shown.
      * Nothing to sync, so this just toggles visibility. */
@@ -133,7 +133,7 @@
         if (current) { applyContractMode(current.value); }
     }
 
-    /* ── Create Contract form: "Find an award" ──
+    /* Create Contract form: "Find an award"
      *
      * The Search button and the input's Enter key are two ways into one
      * request. The input owns the hx-get (it carries the `q` the server
@@ -213,7 +213,7 @@
         htmx.trigger(input, 'input');
     });
 
-    /* ── Create Project form: lead-hint apply buttons ── */
+    /* Create Project form: lead-hint apply buttons */
 
     /* "use <CODE>" — select the suggested mnemonic and refresh the
      * auto-generate preview. Accepting a mnemonic suggestion implies the
@@ -238,7 +238,7 @@
 
     /* "use as Organization" — pre-fill the Organization fk-picker the same
      * way a search-result click would (hidden id + badge + selected row),
-     * including the fk:selected event so dependent hints (org → mnemonic
+     * including the fk:selected event so dependent hints (org -> mnemonic
      * suggestion) fire exactly as for a manual pick. */
     registerAction('apply-org', function (btn) {
         var idEl    = document.getElementById('createProjectOrg_id');
@@ -264,7 +264,7 @@
         document.getElementById('projcodeHidden').value = input.value;
     });
 
-    /* ── Create Mnemonic Code form ──
+    /* Create Mnemonic Code form
      * Populate description from the selected dropdown option's
      * data-description; reset the other dropdown so only one source is
      * active at a time. */
@@ -279,7 +279,7 @@
         }
     });
 
-    /* ── Edit Allocation form: break-inheritance unlock checkbox ── */
+    /* Edit Allocation form: break-inheritance unlock checkbox */
     registerAction('alloc-break-inheritance', function (checkbox) {
         var unlock = checkbox.checked;
         document.getElementById('break_inheritance').value = unlock ? 'true' : 'false';
@@ -289,13 +289,13 @@
         });
     });
 
-    /* ── Project linked-elements card: Add-form collapse panels ── */
+    /* Project linked-elements card: Add-form collapse panels */
     registerAction('le-toggle', function (el) {
         var panel = document.getElementById(el.dataset.targetId);
         if (panel) { panel.style.display = panel.style.display === 'none' ? '' : 'none'; }
     });
 
-    /* ── Add Member form: user search select/clear ── */
+    /* Add Member form: user search select/clear */
     registerAction('member-select-user', function (el) {
         var d = el.dataset;
         document.getElementById('htmxSelectedUsername').value = d.username;
@@ -315,7 +315,7 @@
         document.getElementById('htmxUserSearch').focus();
     });
 
-    /* ── Project tree: open the project-details modal ──
+    /* Project tree: open the project-details modal
      * The button also carries data-stop-propagation (actions.js fires the
      * action from the element-level listener in that case). */
     registerAction('project-details-modal', function (el) {
@@ -325,7 +325,7 @@
             document.getElementById('projectDetailsModal')).show();
     });
 
-    /* ── Project card: project-tree active-only toggle ── */
+    /* Project card: project-tree active-only toggle */
     registerAction('tree-toggle-active-only', function (checkbox) {
         var container = document.getElementById('tree-container-' + checkbox.dataset.cardId);
         var url = checkbox.checked
@@ -337,7 +337,7 @@
         }
     });
 
-    /* ── edit_project page: HX-Trigger reload hooks ── */
+    /* edit_project page: HX-Trigger reload hooks */
 
     /* After a successful project details save, the success fragment is
      * shown in #editDetailsContainer. Reload the page so the form, header
@@ -365,7 +365,7 @@
         });
     });
 
-    /* ── Per-swap initialization ── */
+    /* Per-swap initialization */
 
     function initCreateProjectForm() {
         /* re-apply mode on form re-render with validation errors */

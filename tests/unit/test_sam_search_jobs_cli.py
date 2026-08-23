@@ -110,7 +110,7 @@ class TestClassifierParity:
             'derecho', 'vis', cpu_hours=10.0, gpu_hours=3.0,
             cpu_charges=10.0, gpu_charges=99.0,
         )
-        assert res == 'Derecho'        # vis → CPU classification
+        assert res == 'Derecho'        # vis -> CPU classification
         assert charges == 10.0          # GPU charge dropped
 
 
@@ -159,7 +159,7 @@ class TestRecentMode:
         assert result.exit_code == 0
         kw = captured['calls'][0]
         assert kw['user'] == 'benkirk'
-        assert kw['account'] == ['SCSG0001', 'SCSG0002']  # comma list → list
+        assert kw['account'] == ['SCSG0001', 'SCSG0002']  # comma list -> list
         assert kw['queue'] == 'main'
         assert kw['qos'] == 'regular'
         assert kw['sort_by'] == 'end'
@@ -235,7 +235,7 @@ class TestJobIdMode:
             '--machine', 'derecho',
         ])
         assert result.exit_code == 0, result.output
-        # One call per machine (one machine here → one call total).
+        # One call per machine (one machine here -> one call total).
         assert len(captured['calls']) == 1
         call = captured['calls'][0]
         assert call['job_id'] == '6049117[28]'
@@ -340,7 +340,7 @@ class TestMultiMachine:
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data['machines'] == ['derecho', 'casper']
-        assert data['count'] == 3                      # 4 merged → truncated to 3
+        assert data['count'] == 3                      # 4 merged -> truncated to 3
         # sorted by end desc: newest first
         assert data['rows'][0]['end'] >= data['rows'][1]['end']
 

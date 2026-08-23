@@ -1,6 +1,7 @@
 # Doc slimming — comment density in source and configs
 
-**Status: Phase 0 landed 2026-08-22 on `deslop_opus5`. Phases 1-9 open.**
+**Status: Phases 0 and 1 landed 2026-08-22 on `deslop_opus5` (PR #471).
+Phases 1b-9 open.**
 
 This file is the handoff record. Each phase updates the table in section 5
 in the same commit as its work, so a new session resumes from this document
@@ -152,7 +153,7 @@ the recorded starting number still holds. Nothing else from prior sessions is ne
 | # | Phase | Files | Judgment | Gate | Status |
 |---|---|---|---|---|---|
 | 0 | Tooling and rules | ~8 | none | suite green | **DONE 2026-08-22** |
-| 1 | Mechanical sweep | repo-wide | none | script-verified | open |
+| 1 | Mechanical sweep | 433 | none | script-verified | **DONE 2026-08-22** |
 | 1b | Changelog phrasing (44 files) | ~44 | medium | `PHRASING_EXEMPT` emptied | open |
 | 2 | Configs and JS headers | ~8 | low | `helm template` byte-identical | open |
 | 3 | Module docstrings >= 30 lines | 64 | medium | suite green | open |
@@ -169,10 +170,18 @@ the recorded starting number still holds. Nothing else from prior sessions is ne
 |---|---|---|---|---|---|
 | baseline | 37.0% | 34.6% | 21.8% | 41.9% | **34.3%** |
 | 0 | 37.0% | 34.6% | 21.8% | 41.9% | **34.3%** |
+| 1 | 37.0% | 34.6% | 21.8% | 41.9% | **34.3%** |
 
-Phase 0 changes no comment volume by design -- it only lands the gate, so
-the ratio is expected to be flat. `src/cli` at 21.8% is the target other
-trees are being steered toward; it is the same repo, written earlier.
+Phases 0 and 1 move the ratio by design: neither removes prose. Phase 0 lands
+the gate, and Phase 1 rewrites decorative characters in place rather than
+deleting lines -- 20,078 rich characters in code and config comments down to
+8, but the same number of comment lines. **The ratio starts moving at
+Phase 2.** Reporting a flat number here rather than omitting the row is the
+point of the table: a phase whose value is readability should be visible as
+one that did not change the volume.
+
+`src/cli` at 21.8% is the target the other trees are being steered toward;
+it is the same repo, written earlier.
 
 ### Phase 0 — tooling and rules
 Land the gate before the cleanup, so every later phase is measurable.

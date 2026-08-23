@@ -182,7 +182,7 @@ def extend_account_allocation(
     Legacy's ``doExtend`` returns early on an equal end date, so a re-posted
     Extension writes nothing rather than a run of no-op rows.
 
-    ⚠️ **Detaching writes an audit row here; in legacy it does not.**
+    WARNING: **Detaching writes an audit row here; in legacy it does not.**
     ``Allocation.disinherit()`` severs ``parentAllocation`` in memory and leaves
     no trace — production has **zero** DETACH rows, against 2,390 currently
     inheriting allocations. SAM's audit trail is the product, so an inheriting
@@ -210,7 +210,7 @@ def extend_account_allocation(
         ValueError: if any node in the subtree has a null ``end_date`` or an
             ``end_date`` after ``new_end``. Checked over the **whole subtree
             before anything is written**, matching legacy's
-            ``validateNewEndDate`` → ``extend`` ordering: one bad descendant
+            ``validateNewEndDate`` -> ``extend`` ordering: one bad descendant
             aborts the extension rather than half-applying it.
     """
     subtree: List[Allocation] = []

@@ -66,7 +66,7 @@ def _seed_cesm0002_bug(session, user, *, intended_old=461.0, intended_new=465.0)
         start_date=datetime.now() - timedelta(days=30),
         end_date=datetime.now() + timedelta(days=365),
     )
-    # make_allocation → Allocation.create() does NOT auto-log transactions,
+    # make_allocation -> Allocation.create() does NOT auto-log transactions,
     # so the audit trail is empty here and we own all the rows.
 
     # Two NEW rows (mirrors B2-pre duplicate-NEW pattern from renew.py)
@@ -94,7 +94,7 @@ def _seed_cesm0002_bug(session, user, *, intended_old=461.0, intended_new=465.0)
         allocation_id=alloc.allocation_id,
         user_id=user.user_id,
         transaction_type="ADJUSTMENT",
-        transaction_amount=intended_new,            # ← BUG: should be delta
+        transaction_amount=intended_new,            # <- BUG: should be delta
         requested_amount=intended_new,
         alloc_start_date=alloc.start_date,
         alloc_end_date=alloc.end_date,
@@ -128,7 +128,7 @@ class TestRegex:
         assert m.group(2) == new
 
     @pytest.mark.parametrize("comment", [
-        "End date: 2026-01-01 → 2027-01-01",   # different field
+        "End date: 2026-01-01 -> 2027-01-01",   # different field
         "[DELETE] Allocation created",          # B3-tagged comment
         "Renewed from allocation #21664",       # RENEW comment
         None,
@@ -311,7 +311,7 @@ class TestRenderInsertSQL:
 class TestApplyCorrections:
 
     def test_apply_end_to_end_restores_replay_invariant(self, session):
-        """End-to-end: discover → apply_corrections → replay matches amount.
+        """End-to-end: discover -> apply_corrections -> replay matches amount.
         apply_corrections does NOT commit, so this runs cleanly inside the
         per-test SAVEPOINT."""
         user = make_user(session)

@@ -526,7 +526,7 @@ class TestLogout:
             app.extensions.pop('oauth', None)
 
     def test_oidc_logout_without_stored_token_omits_hint(self, app, session):
-        """No stored id_token (e.g. session predates this feature) → no hint param."""
+        """No stored id_token (e.g. session predates this feature) -> no hint param."""
         mock_oauth = MagicMock()
         mock_oauth.entra.load_server_metadata.return_value = {
             'end_session_endpoint': 'https://login.microsoftonline.com/logout'

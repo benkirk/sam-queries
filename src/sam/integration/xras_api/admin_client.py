@@ -88,7 +88,7 @@ from sam.integration.xras_api.vocabulary import (  # noqa: E402
 )
 
 
-#: XA-CONTEXT → the resource/allocation-date **stage** that context writes.
+#: XA-CONTEXT -> the resource/allocation-date **stage** that context writes.
 #: Phase 0 (2026-08-22) measured that ``submit`` touches ONLY the ``Requested``
 #: stage; an ``admin``/``review`` key would reach ``Approved``/``Recommended``.
 #: The verify-by-reread compares back against the stage the write targeted.
@@ -219,7 +219,7 @@ class XrasAdminClient(_XrasTransport):
                 'XRAS_OUTGOING_ENABLED=1 and XRAS_API_KEY)')
         return cls(resolved, reader=reader)
 
-    # ── internals ───────────────────────────────────────────────────────
+    # internals
     #
     # The session, ``_url``, ``_headers`` and the idempotent retrying ``_get``
     # are inherited unchanged from ``_XrasTransport``. ``_get`` here is the
@@ -293,7 +293,7 @@ class XrasAdminClient(_XrasTransport):
         logger.info('xras admin %s %s -> %s', method, url, status)
         return status, result, message, None
 
-    # ── verification helpers ────────────────────────────────────────────
+    # verification helpers
 
     def _actions(self, request_number: str) -> List[Dict[str, Any]]:
         """Actions for a request, via the **reports** family (report context)."""
@@ -310,7 +310,7 @@ class XrasAdminClient(_XrasTransport):
     def roster(self, request_number: str) -> List[Dict[str, Any]]:
         """The request's roster, flattened to one row per *role*.
 
-        PRIVILEGE(#4). ⚠️ The reports payload **nests**: each ``roles[]`` entry carries a
+        PRIVILEGE(#4). WARNING: The reports payload **nests**: each ``roles[]`` entry carries a
         ``person`` plus its own ``roles[]`` list of
         ``{roleId, role, roleTypeId, …}``. Reading ``roleType`` off the outer
         object returns ``None``, which is a trap worth flattening once here.
@@ -340,7 +340,7 @@ class XrasAdminClient(_XrasTransport):
                 return row.get('username')
         return None
 
-    # ── people ──────────────────────────────────────────────────────────
+    # people
 
     def get_person(self, username: str) -> Optional[Dict[str, Any]]:
         """One person, read under ``submit``. Probe P0 — this route answers here."""
@@ -406,13 +406,13 @@ class XrasAdminClient(_XrasTransport):
             verified=verified, verify_detail=detail, write_error=error,
             extra={'source': source, 'target': target})
 
-    # ── actions ─────────────────────────────────────────────────────────
+    # actions
 
     def validate_action(self, request_id: int, action_id: int, *,
                         xa_user: str) -> Dict[str, Any]:
         """Preflight one action. ``{'validation': ..., 'errors': [...]}``.
 
-        PRIVILEGE(#6). ⚠️ **The verdict is a function of *xa_user*, not only of
+        PRIVILEGE(#6). WARNING: **The verdict is a function of *xa_user*, not only of
         the action.**
         Probe P2 measured the same action validating successfully as the PI and
         failing as the Allocation Manager (*"The Project Lead specified for
@@ -481,7 +481,7 @@ class XrasAdminClient(_XrasTransport):
              expect, expectation: str) -> XrasWriteResult:
         """Shared body for the two action verbs: capture, write once, re-read.
 
-        ⚠️ The 200 from ``.../submit`` carries a ``null`` result where the API
+        WARNING: The 200 from ``.../submit`` carries a ``null`` result where the API
         docs promise the request object, so the state after a write is read
         back rather than parsed out of the response. That is the same rule the
         ``isReconciled`` finding forced, arrived at independently.
@@ -515,13 +515,13 @@ class XrasAdminClient(_XrasTransport):
             verified=verified, verify_detail=detail, write_error=error,
             extra={'request_number': request_number, 'action_id': action_id})
 
-    # ── roles ───────────────────────────────────────────────────────────
+    # roles
 
     def add_role(self, request_id: int, role, username: str, *,
                  request_number: str, xa_user: str) -> XrasWriteResult:
         """Put *username* on the request in *role*. Returns the new ``roleId``.
 
-        ⚠️ **No person parameters are sent, ever.** This route accepts an
+        WARNING: **No person parameters are sent, ever.** This route accepts an
         optional ``firstName … isReconciled`` set that XRAS uses *to create the
         person* when the username is unknown — and ``isReconciled`` there
         defaults to **true**, which is precisely the bug that mints
@@ -586,14 +586,14 @@ class XrasAdminClient(_XrasTransport):
             verify_detail=detail, write_error=error,
             extra={'request_number': request_number, 'role_id': int(role_id)})
 
-    # ── resources & allocation dates (the request editor) ────────────────
+    # resources & allocation dates (the request editor)
     #
     # All keyed on the resource **type** id and the **stage** (Phase 0: there is
     # no per-line id in the reports feed, and at most one line per resource per
     # stage, so ``(action, resourceId, stage)`` is unambiguous). Every write is
     # query-params + verify-by-reread, exactly like the verbs above. The stage a
-    # write lands in is a function of the XA-CONTEXT: ``submit`` → Requested
-    # (default), ``admin`` → Approved. On our current key only ``submit`` is
+    # write lands in is a function of the XA-CONTEXT: ``submit`` -> Requested
+    # (default), ``admin`` -> Approved. On our current key only ``submit`` is
     # authorized; the ``context=`` argument is what an elevated key flips.
 
     @staticmethod
@@ -812,11 +812,11 @@ class XrasAdminClient(_XrasTransport):
                    'allocation_date_id': int(allocation_date_id),
                    'context': context or XA_ADMIN_CONTEXT})
 
-    # ── request attributes & action fields (the metadata editors) ────────
+    # request attributes & action fields (the metadata editors)
     #
     # Both are `PUT` + query params + verify-by-reread, like everything above,
     # and both take **wire** field names (`shortTitle`, `userComments`) — the
-    # caller maps snake_case→wire, so a field misspelling is a 400 the modal
+    # caller maps snake_case->wire, so a field misspelling is a 400 the modal
     # renders, not a silent no-op. Only fields the reports feed echoes back are
     # editable here, because a field it does not return could not be verified.
 
@@ -831,7 +831,7 @@ class XrasAdminClient(_XrasTransport):
                          params: Dict[str, str]) -> bool:
         """Every sent field reads back equal (``None``/'' both mean empty).
 
-        ⚠️ Compared **whitespace-stripped**: XRAS normalizes leading/trailing
+        WARNING: Compared **whitespace-stripped**: XRAS normalizes leading/trailing
         whitespace on stored text (measured 2026-08-22 — a 1020-char abstract
         ending in a space read back at 1019). An exact match would then report
         an otherwise-successful write as *unverified*. A middle truncation still
@@ -909,9 +909,9 @@ class XrasAdminClient(_XrasTransport):
             extra={'request_number': request_number, 'action_id': action_id,
                    'fields': list(fields), 'context': context or XA_ADMIN_CONTEXT})
 
-    # ── destructive lifecycle (Tier A — ADMIN_XRAS only) ─────────────────
+    # destructive lifecycle (Tier A — ADMIN_XRAS only)
     #
-    # ⚠️ These are **irreversible in XRAS** and were **NOT live-probed** — a
+    # WARNING: These are **irreversible in XRAS** and were **NOT live-probed** — a
     # delete cannot be tested without deleting something, and a renew/add-action
     # pollutes the request. They are shipped fail-visible: a single attempt, a
     # verifying read, and the same three-valued verdict as every verb above. If

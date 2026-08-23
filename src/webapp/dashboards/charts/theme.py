@@ -113,7 +113,7 @@ plt.rcParams.update({
 
 
 # Unity NCAR palette ordered for chart use. Indices 0-2 are the brand spine
-# (blue → navy → vermilion); 3-4 the warm accents (gold, orange); 5-7 the
+# (blue -> navy -> vermilion); 3-4 the warm accents (gold, orange); 5-7 the
 # teal family (teal, sky, light-blue); 8-9 are tertiary fillers. Sequential
 # visual distinction at small sizes (pie wedges).
 UNITY_PALETTE_10 = (
@@ -143,9 +143,9 @@ UNITY_NCAR_GRAY       = '#97999b'
 
 
 # Stacked-area categorical palette. Family-grouped: each color family's
-# shades sit adjacent (gold→yellow-33→yellow-66, orange→orange-33→…),
-# then we move to the next family. Within a family, ordered saturated →
-# pale. Ordered warm → cool so the highest-rank bands (which stackplot
+# shades sit adjacent (gold->yellow-33->yellow-66, orange->orange-33->…),
+# then we move to the next family. Within a family, ordered saturated ->
+# pale. Ordered warm -> cool so the highest-rank bands (which stackplot
 # puts at the bottom, visually most prominent) get the loudest warm
 # anchors (gold, orange, vermilion), then transition through teal /
 # sky / blue / navy as rank decreases.
@@ -362,7 +362,7 @@ THEMES = {'light': Theme.LIGHT, 'dark': Theme.DARK}
 
 
 def resolve_theme(theme) -> Theme:
-    """Accept a `Theme`, a name, or None → `Theme.LIGHT`.
+    """Accept a `Theme`, a name, or None -> `Theme.LIGHT`.
 
     Lenient like the route-level selector parsers (`jobs/routes.py`
     `_parse_period`): an unknown name means "no override", never an error. A

@@ -11,7 +11,7 @@ payloads name a projcode that does not exist until the ``New`` before them has
 been processed. A generator can be told "supplement UHSS0007" the moment SAM
 mints it; a static file cannot.
 
-⚠️ Every one of these actions WRITES to the database it is posted at — a New
+WARNING: Every one of these actions WRITES to the database it is posted at — a New
 mints a projcode, allocates a Unix GID and creates real allocations. Point it
 only at a local stack.
 
@@ -28,7 +28,7 @@ Typical run (see docs/xras/incoming/implemented/XRAS_PRE_DEPLOY_SMOKE.md for the
 Without ``--post`` the payload is written to stdout, which is the way to check
 what you are about to send.
 
-⚠️ **The lead's mnemonic decides whether a New can succeed at all.**
+WARNING: **The lead's mnemonic decides whether a New can succeed at all.**
 ``resolve_mnemonic_code`` takes the *lab* route whenever ``opportunityName``
 starts with ``'NCAR '``, and most NCAR labs have no mnemonic soft link — so the
 default opportunity here is a University one, which routes through the lead's
@@ -108,7 +108,7 @@ def _roles(lead, first, last, email):
 def _grants(contract_number):
     """A grant block naming an EXISTING contract, or none.
 
-    ⚠️ The ``New`` handler **links** a contract; it does not create one. A
+    WARNING: The ``New`` handler **links** a contract; it does not create one. A
     grant number SAM has never seen is rejected 422 with
     ``Cannot find contract for grant number ...`` — which is a real cutover
     expectation, not a quirk of this script. Pick a number that is already in
@@ -148,7 +148,7 @@ def build(args):
                                 (CASPER, 10_000.0), (DATA_ACCESS, 1.0)])
         grants = _grants(args.contract)
     elif args.supplement:
-        # ⚠️ On a Supplement the amount is the INCREMENT, not the new total.
+        # WARNING: On a Supplement the amount is the INCREMENT, not the new total.
         action_type, request_number = 'Supplement', args.supplement
         title = f'Smoke Test - Supplement to {args.supplement}'
         resources = _resources([(DERECHO, 250_000.0), (CASPER, 2_500.0)])
@@ -168,7 +168,7 @@ def build(args):
         resources = _resources([(DERECHO, 750_000.0), (CASPER, 7_500.0)])
         grants = []
     elif args.adjustment:
-        # ⚠️ The ONLY action type whose amounts may be negative, and the only
+        # WARNING: The ONLY action type whose amounts may be negative, and the only
         # reason `xras_adjustment` needs its own wording — see
         # `sam/xras/handlers/adjustment.py`, which exists to honor the sign
         # that legacy's copy-pasted `> 0` gate silently dropped.

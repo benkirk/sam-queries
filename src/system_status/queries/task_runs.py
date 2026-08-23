@@ -1,13 +1,13 @@
 """Read-side queries over ``task_run``.
 
-The webapp's view of the scheduled-task ledger: the Admin → Configuration
+The webapp's view of the scheduled-task ledger: the Admin -> Configuration
 card's counts, and the run-history page's table plus its facet chips.
 
 Built on :mod:`querykit` — the count / page / facet skeleton and the
 self-exclusion rule live there; the ``_filters`` body below is this table's
 own.
 
-⚠️ **The clock.** ``task_run`` timestamps are naive **UTC**, like everything
+WARNING: **The clock.** ``task_run`` timestamps are naive **UTC**, like everything
 else on this bind. ``sam/queries/notifications.py`` — the module this one is
 modeled on — computes its windows with ``datetime.now()`` because
 ``notification_log`` lives in SAM MySQL and is naive-**Mountain**. Copying
@@ -81,7 +81,7 @@ def summarize_task_runs(session: Session, *,
                         window_hours: int = DEFAULT_WINDOW_HOURS,
                         stale_lease_seconds: Optional[int] = None
                         ) -> Dict[str, Any]:
-    """Counts for the Admin → Configuration card.
+    """Counts for the Admin -> Configuration card.
 
     One grouped query for the states, plus one scalar for the stale counter —
     not one query per row on the card.

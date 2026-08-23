@@ -1,6 +1,6 @@
 """The contract every XRAS handler follows, as a template method rather than as prose.
 
-Assemble → check once → execute
+Assemble -> check once -> execute
 -------------------------------
 Legacy assembles the entire command list first, reporting every problem it finds into a
 ``LinkedHashSet``, then raises **once** with the whole list
@@ -12,7 +12,7 @@ Sprint C stated that contract in three docstrings and then re-implemented it six
 :meth:`ActionHandler.run` is the same contract expressed once, so handler seven cannot
 get it subtly wrong — the ordering is no longer something each author has to remember.
 
-⚠️ **``run()`` deliberately does not catch anything.** Two exception types cross it and
+WARNING: **``run()`` deliberately does not catch anything.** Two exception types cross it and
 both must propagate untouched:
 
 - :class:`~sam.xras.errors.XrasActionRejected` from ``raise_if_any()`` — the 422, raised
@@ -23,7 +23,7 @@ both must propagate untouched:
 
 The one transaction seam
 ------------------------
-⚠️ ``management_transaction`` is imported **here and nowhere else** under ``sam.xras``,
+WARNING: ``management_transaction`` is imported **here and nowhere else** under ``sam.xras``,
 and ``tests/unit/test_xras_transaction_seam.py`` enforces that by scanning module
 globals at runtime.
 
@@ -40,7 +40,7 @@ State that used to be threaded through tuples and re-derived per call site: the
 projcode, the project it names, the panel-authorization flag, the error accumulator.
 ``Project.get_by_projcode`` was resolved three times per Supplement action; now once.
 
-⚠️ **``panel_authorized`` is a plain attribute, not a lazy property, and that is
+WARNING: **``panel_authorized`` is a plain attribute, not a lazy property, and that is
 load-bearing.** It must be assigned during :meth:`assemble`, because
 :func:`~sam.xras.handlers._allocations.auth_at_panel_meeting`'s second arm reads
 ``project.allocation_type`` — a column Update *writes*, through ``project.update()``,
@@ -94,7 +94,7 @@ class ActionHandler(ABC):
         self.warnings: Tuple[str, ...] = ()
 
         #: Whether the resolved allocation type is panel-authorized (CSL or CHAP).
-        #: ⚠️ Assign this in :meth:`assemble`, never later — see the module docstring.
+        #: WARNING: Assign this in :meth:`assemble`, never later — see the module docstring.
         self.panel_authorised: bool = False
 
         #: Set only by a handler that *mints* a projcode rather than receiving one, so
@@ -117,7 +117,7 @@ class ActionHandler(ABC):
         carrying the same ordered error list — which is the whole point: the caller
         wants the real reasons, not a boolean.
 
-        ⚠️ **This must not call :meth:`result`.** Subclasses override it to report
+        WARNING: **This must not call :meth:`result`.** Subclasses override it to report
         what execution produced and read state that only ``execute`` creates —
         ``ExtensionHandler.result`` dereferences ``self.extended``, which does not
         exist on this path and raises ``AttributeError``. The four common fields are
@@ -168,7 +168,7 @@ class ActionHandler(ABC):
     def projcode(self) -> str:
         """``requestNumber``, stripped.
 
-        ⚠️ This is the token XRAS *sent*, which is projcode-shaped but is not
+        WARNING: This is the token XRAS *sent*, which is projcode-shaped but is not
         necessarily a projcode: on the New path no such project exists, and the real
         code is minted during execution. See :attr:`projcode_result`.
         """
@@ -178,12 +178,12 @@ class ActionHandler(ABC):
     def project(self) -> Optional[Project]:
         """The **existing** project named by :attr:`projcode`, or ``None``.
 
-        ⚠️ Always ``None`` for the New handler, by dispatch invariant — ``select_service``
+        WARNING: Always ``None`` for the New handler, by dispatch invariant — ``select_service``
         routes to ``add`` only when no such project exists. A handler that creates a
         project must keep it under a different name; repointing this one would silently
         change what :func:`auth_at_panel_meeting`'s second arm reads.
 
-        ⚠️ Returns ``None`` rather than raising when the row is absent. Supplement and
+        WARNING: Returns ``None`` rather than raising when the row is absent. Supplement and
         Adjustment both rely on that: their planners report nothing for a missing
         project, so the action completes as a ``processed`` no-op. Legacy does the same,
         and the dispatcher has already checked existence, so the arm is unreachable in
@@ -232,7 +232,7 @@ class ActionHandler(ABC):
     def execute_plan(self, steps, *, project=None) -> None:
         """Apply an ordered list of :mod:`~sam.xras.handlers._plans` records.
 
-        ⚠️ **Order is preserved and is part of the contract.** Update emits up to
+        WARNING: **Order is preserved and is part of the contract.** Update emits up to
         three steps for one resource and legacy applies them in emission order; this
         iterates rather than grouping by kind for that reason.
 

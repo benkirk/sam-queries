@@ -6,18 +6,18 @@
 
 {% block alloc_content %}
 
-{# ── The operator worklists, tabbed ───────────────────────────────────────
+{# The operator worklists, tabbed
    Three panes over the same time window, above the action log: the log is
    the reference, these are the actionable things.
 
-   ⚠️ THE WINDOW CONTROL IS RENDERED ONCE, HERE, and shared by all three.
+   WARNING: THE WINDOW CONTROL IS RENDERED ONCE, HERE, and shared by all three.
    `window_pills` emits the start_date/end_date pair bound to its form with
    `form=`, so rendering it inside each fragment would put three same-named
    pairs in one form — and `form.elements['start_date']` then returns a
    RadioNodeList that `set-filter-submit` cannot assign to. The control would
    render, respond to clicks, and filter nothing.
 
-   ⚠️ THE FILTER FORMS LIVE OUT HERE, outside the panes, for two reasons and
+   WARNING: THE FILTER FORMS LIVE OUT HERE, outside the panes, for two reasons and
    the second is the one that bites:
      1. A pane renders a table OR an empty state. Controls living inside it
         vanish with the table, so an over-narrow filter would hide the very
@@ -39,7 +39,7 @@
    three panes, a chip moves only its own. Wiring just the window is the easy
    mistake, and it makes every chip on every tab silently inert. #}
 
-{# ── Section 1: Work Queue ─────────────────────────────────────────────────
+{# Section 1: Work Queue
    The two logical halves of this page are wrapped in collapsible cards, each
    default open. This one holds the tabbed worklists and the conditional
    Remediations write surface; the header is the collapse toggle (title +
@@ -104,7 +104,7 @@
 <form id="xras-accounts-filters" class="d-none">
     <select name="classification" multiple hidden></select>
     <select name="role" multiple hidden></select>
-    {# ⚠️ A facet_row whose `field` has no control here renders as chips that
+    {# WARNING: A facet_row whose `field` has no control here renders as chips that
        silently do nothing — the click writes into a form field that does not
        exist and the re-submit carries no value. Caught by the smoke, and the
        macro says so in as many words. Every dimension the card offers needs a
@@ -157,7 +157,7 @@
 </div>
 
 {% if has_permission(Permission.MANAGE_XRAS) %}
-{# ── The operator WRITE surface ────────────────────────────────────────────
+{# The operator WRITE surface
    A CARD, not a fourth tab: `#xrasWorklistTabs` stays at three, which the e2e
    suite pins. The three tabs are read-only views of the same window; this is
    a different kind of thing — every control on it changes production XRAS —
@@ -181,7 +181,7 @@
     </div>{# #xras-section-workqueue #}
 </div>{# Work Queue card #}
 
-{# ── Section 2: XRAS Logs ──────────────────────────────────────────────────
+{# Section 2: XRAS Logs
    The API action log and its filter sidebar. Own collapse toggle; runs off its
    own #xras-filters form (not the shared window above), so collapsing either
    card touches no wiring. #}

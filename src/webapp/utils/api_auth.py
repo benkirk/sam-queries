@@ -202,13 +202,13 @@ def login_or_token_required(
                     ``api_credentials`` via ``role_api_credentials`` (e.g. ``ROLE_XRAS``).
                     The token caller must hold at least one, else 403.
 
-                    ⚠️ When ``roles`` is given the **session path is closed** and an
+                    WARNING: When ``roles`` is given the **session path is closed** and an
                     unauthenticated request is a 401: a browser session has no API-key
                     roles at all, so "holds an API-key role" and "is logged in via
                     Flask-Login" are mutually exclusive conditions. Routes needing both
                     want two decorated views, not this parameter.
 
-                    ⚠️ Config-sourced keys (``API_KEYS_<USER>``) always resolve with an
+                    WARNING: Config-sourced keys (``API_KEYS_<USER>``) always resolve with an
                     empty role list, because config carries no role assignments. Defining
                     a key in config that a ``roles``-gated route expects therefore fails
                     **closed**, silently, while other routes keep working.
@@ -252,7 +252,7 @@ def login_or_token_required(
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            # ── Token path ────────────────────────────────────────────────────
+            # Token path
             # Presence of request.authorization means "Authorization: Basic ..."
             # was sent. Honor this path only; do not fall back to session auth.
             if request.authorization:
@@ -273,7 +273,7 @@ def login_or_token_required(
 
                 return f(*args, **kwargs)
 
-            # ── Session path ──────────────────────────────────────────────────
+            # Session path
             # A ``roles`` gate is API-key-only by construction: session users carry
             # no API-key roles, so there is nothing here that could satisfy it.
             if required_roles is not None:

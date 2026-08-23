@@ -79,13 +79,13 @@
 <!-- Tab content -->
 <div class="tab-content border border-top-0 rounded-bottom p-3 bg-body" id="editProjectTabsContent">
 
-  <!-- ── Tab 1: Details ─────────────────────────────────────────────── -->
+  <!-- Tab 1: Details -->
   <div class="tab-pane fade show active" id="tab-details" role="tabpanel">
     <div id="editDetailsContainer">
       {% include 'dashboards/admin/fragments/edit_project_details_htmx.html' %}
     </div>
 
-    <!-- ── Linked Elements ──────────────────────────────────────────── -->
+    <!-- Linked Elements -->
     <div id="linkedElementsContainer" class="mt-4"
          hx-get="{{ url_for('admin_dashboard.htmx_project_linked_elements', projcode=project.projcode) }}"
          hx-trigger="load"
@@ -96,11 +96,11 @@
     </div>
   </div>
 
-  <!-- ── Tab 2: Allocations ─────────────────────────────────────────── -->
+  <!-- Tab 2: Allocations -->
   <div class="tab-pane fade" id="tab-allocations" role="tabpanel">
     {% if can_modify_allocations %}
     <div class="d-flex justify-content-between align-items-center mb-3">
-      {# ── Active at date picker (operators only — gated with the buttons) ──── #}
+      {# Active at date picker (operators only — gated with the buttons) #}
       <div class="d-flex align-items-center gap-2">
         <label for="alloc-active-at" class="fw-semibold text-nowrap mb-0 small">Active at:</label>
         <input type="date" id="alloc-active-at" name="active_at"
@@ -156,7 +156,7 @@
     </div>
   </div>
 
-  <!-- ── Tab 3: Members ─────────────────────────────────────────────── -->
+  <!-- Tab 3: Members -->
   <div class="tab-pane fade" id="tab-members" role="tabpanel">
     {# Container ID must match #htmx-members-{projcode} — the action buttons
        in members_table.html and the add_member_success_htmx OOB swap both
@@ -202,7 +202,7 @@
 </div>
 {% endif %}
 
-<!-- ═══════════════════════════════════════════════════════ MODALS -->
+<!-- MODALS -->
 
 <!-- Add Allocation Modal (lazy-loaded) -->
 <div class="modal fade" id="addAllocationModal" tabindex="-1" aria-hidden="true">
@@ -309,7 +309,7 @@
      each row of the Directories panel inside #linkedElementsContainer). -->
 {% include 'dashboards/admin/fragments/project_directory_modals.html' %}
 
-<!-- ═══════════════════════════════════════════════ HTMX event handlers -->
+<!-- HTMX event handlers -->
 {# reloadEditProjectDetails / reloadAllocationTree HX-Trigger hooks live in
    static/js/form-helpers.js; the tree fragment URL rides data-tree-url on
    #allocationTreeContainer. #}
