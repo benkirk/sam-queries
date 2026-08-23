@@ -210,9 +210,9 @@
         restoreCollapses(event.target);
     });
 
-    // (The referrer-based `.back-link` machinery that used to live here was
-    // removed when detail pages moved to server-derived breadcrumbs —
-    // see dashboards/fragments/breadcrumbs.html and webapp/utils/nav.py.)
+    // Detail-page breadcrumbs are server-derived, so there is deliberately no
+    // referrer-based `.back-link` machinery here — see
+    // dashboards/fragments/breadcrumbs.html and webapp/utils/nav.py.
 
     // Chart selector persistence
     //

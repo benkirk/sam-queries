@@ -10,7 +10,7 @@ mega-CDNs (jsdelivr/unpkg serve every npm package) lets an injected
 removed the shared-CDN caching benefit years ago.
 
 Each entry pins the sha384 of the served entry-point file. The hashes for
-the five formerly-CDN assets are the original published SRI values — the
+the five assets vendored from a CDN are the original published SRI values — the
 downloads were verified against them at vendoring time — and
 tests/unit/test_vendor_assets.py re-hashes the committed files so any
 tampering or accidental edit fails CI. Poppins (previously Google Fonts,

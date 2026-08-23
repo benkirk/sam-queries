@@ -52,8 +52,8 @@ class TestRegistryInvariants:
 
     def test_committed_files_match_pinned_hashes(self):
         """The tamper-evidence check: every entry-point file must hash to
-        its registry sha384 (original publisher SRI for the formerly-CDN
-        assets). An asset upgrade updates path+sha384 together."""
+        its registry sha384 (original publisher SRI for the assets vendored
+        from a CDN). An asset upgrade updates path+sha384 together."""
         for name, asset in VENDOR_ASSETS.items():
             assert _sha384(STATIC_DIR / asset['path']) == asset['sha384'], \
                 f"{name}: static/{asset['path']} does not match pinned sha384"

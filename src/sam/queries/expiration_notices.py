@@ -230,14 +230,12 @@ def build_expiration_messages(
 
         # Lead details for the templates.
         #
-        # `.primary_email` used to be read unguarded, two lines below a
-        # guarded `project_lead_name`. Measured, that asymmetry is NOT the
-        # crash it looks like: `project.project_lead_user_id` is NOT NULL
-        # with an enforced FK (`project_lead_user_fk`, 0 dangling rows), so
-        # `project.lead` cannot be None, and `primary_email` returns None
-        # rather than raising when a lead has no address on file. The guard
-        # is kept for consistency with the line above it, not because it
-        # fixes a reachable AttributeError. What IS reachable — and what
+        # The `.primary_email` guard is for consistency with the line above
+        # it, not because it fixes a reachable AttributeError:
+        # `project.project_lead_user_id` is NOT NULL with an enforced FK
+        # (`project_lead_user_fk`, 0 dangling rows), so `project.lead` cannot
+        # be None, and `primary_email` returns None rather than raising when
+        # a lead has no address on file. What IS reachable — and what
         # the templates must cope with — is `project_lead_email is None`.
         project_lead_name = project.lead.display_name if project.lead else 'Project Lead'
         project_lead_email = project.lead.primary_email if project.lead else None

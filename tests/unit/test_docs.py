@@ -467,61 +467,11 @@ CHANGELOG_PHRASES = re.compile(
     r"|this (?:comment|docstring) (?:originally|previously)",
     re.IGNORECASE)
 
-# Seeded with every site that predates this check. Emptied in Phase 1b of
-# docs/plans/DOC_SLIMMING.md; the two test files stay permanently, because
-# each documents a deliberately INVERTED assertion and the prior state is
-# the whole point of the comment.
 PHRASING_EXEMPT = {
-    # Permanent. Each documents a deliberately INVERTED assertion, where the
-    # prior state is the entire point of the comment.
+    # Each documents a deliberately INVERTED assertion, where the state it is
+    # inverted from is the entire point of the comment.
     "tests/stress/test_parking_is_explained.py",
     "tests/unit/test_task_runner.py",
-    # Seeded, and temporary: every file carrying a hit when this check landed.
-    # Phase 1b of docs/plans/DOC_SLIMMING.md empties the list below.
-    "docs/xras/outgoing/XRAS_OPPORTUNITY_ALLOCATION_TYPE.md",
-    "e2e/test_xras_accounts_card.py",
-    "helm/values.yaml",
-    "pyproject.toml",
-    "scripts/repair/RUNBOOK-missing-projects.md",
-    "sql/queries/nsf_awards.py",
-    "src/cli/xras/builders.py",
-    "src/sam/notify/render.py",
-    "src/sam/queries/expiration_notices.py",
-    "src/sam/queries/xras_accounts.py",
-    "src/sam/queries/xras_actions.py",
-    "src/sam/xras/handlers/_plans.py",
-    "src/sam/xras/handlers/adjustment.py",
-    "src/sam/xras/handlers/base.py",
-    "src/system_status/models/user_proj_queues.py",
-    "src/system_status/queries/task_runs.py",
-    "src/system_status/retention.py",
-    "src/webapp/api/xras/recheck.py",
-    "src/webapp/dashboards/admin/orgs_routes.py",
-    "src/webapp/dashboards/allocations/xras/lifecycle_routes.py",
-    "src/webapp/dashboards/charts/base.py",
-    "src/webapp/static/js/nav-view-persistence.js",
-    "src/webapp/static/vendor/README.md",
-    "src/webapp/templates/dashboards/allocations/partials/xras_accounts_card.html",
-    "src/webapp/templates/dashboards/allocations/partials/xras_pending_requests_card.html",
-    "src/webapp/templates/dashboards/allocations/partials/xras_remediations_card.html",
-    "src/webapp/templates/dashboards/user/partials/_jobs_facet_chips.html",
-    "src/webapp/vendor_assets.py",
-    "tests/api/test_route_authz_hardening.py",
-    "tests/api/test_xras_access.py",
-    "tests/integration/test_schema_validation.py",
-    "tests/integration/test_status_dashboard.py",
-    "tests/unit/test_admin_tasks_cli.py",
-    "tests/unit/test_expiration_notices.py",
-    "tests/unit/test_htmx_queue_admin.py",
-    "tests/unit/test_modal_shell_contract.py",
-    "tests/unit/test_notify_render.py",
-    "tests/unit/test_project_models.py",
-    "tests/unit/test_theme_transport.py",
-    "tests/unit/test_vendor_assets.py",
-    "tests/unit/test_xras_action_queries.py",
-    "tests/unit/test_xras_new_handler.py",
-    "tests/unit/test_xras_notices_builder.py",
-    "tests/xras_audit.py",
 }
 
 

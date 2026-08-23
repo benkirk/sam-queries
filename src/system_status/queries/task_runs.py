@@ -11,8 +11,8 @@ WARNING: **The clock.** ``task_run`` timestamps are naive **UTC**, like everythi
 else on this bind. ``sam/queries/notifications.py`` — the module this one is
 modeled on — computes its windows with ``datetime.now()`` because
 ``notification_log`` lives in SAM MySQL and is naive-**Mountain**. Copying
-that import verbatim would shift every count here by 6–7 hours: exactly the
-bug ``SCHEDULED_TASKS.md`` § 3.1 found in the old cleanup script, in exactly
+that import verbatim would shift every count here by 6-7 hours: exactly the
+bug ``SCHEDULED_TASKS.md`` § 3.1 records against the cleanup script, in exactly
 the same way. Every window in this module goes through
 :func:`system_status.timeutil.utcnow_naive`.
 

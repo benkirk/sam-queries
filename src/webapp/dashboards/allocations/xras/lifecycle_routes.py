@@ -128,8 +128,7 @@ def xras_notify_form(project_id: int):
     ``?action_id=`` names *which* outcome to report, which is what lets a
     Supplement be notified separately from the New before it. It is a query
     param rather than a second path segment deliberately: absent means "the
-    newest action", which is exactly the old behavior, so no URL changed and
-    no route-map entry moved.
+    newest action", so the bare URL keeps working and no route-map entry moved.
     """
     project = _load_pending_project(project_id)
     if project is None:

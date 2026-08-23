@@ -466,8 +466,8 @@ class TestPanelAuthorisation:
 
     It caught a real ordering hazard immediately: ``PlannedCreate`` captures the flag
     at construction, so computing ``panel_authorized`` *after* ``_plan_allocations()``
-    — which is where it used to sit, harmlessly, because the old loop read it at
-    execute time — would have stamped every row with the ``False`` from ``__init__``.
+    stamps every row with the ``False`` from ``__init__``. It is harmless only for a
+    loop that reads the flag at execute time.
     """
 
     def _created_new_row(self, session, project_id):

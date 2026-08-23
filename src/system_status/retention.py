@@ -5,10 +5,10 @@ Every consumer reads :data:`DEFAULT_RETENTION_DAYS` from here: the
 own signature, and the ``cleanup_status_snapshots`` scheduled task. There is
 deliberately no second constant anywhere else.
 
-This module replaces the policy that used to live inline in
-``scripts/cleanup_status_data.py``. That script was a hastily written, rarely
-run utility — three commits, no tests, and nothing in the tree ever scheduled
-it — so it was read as *evidence about the tables* rather than as a
+This module is the single home of the policy; it is deliberately not inlined
+in ``scripts/cleanup_status_data.py``. That script is a hastily written, rarely
+run utility — three commits, no tests, and nothing in the tree schedules
+it — so it must be read as *evidence about the tables* rather than as a
 specification. ``docs/plans/implemented/SCHEDULED_TASKS.md`` § 3.1 records the five
 decisions that produced what is here; the four that changed behavior are:
 

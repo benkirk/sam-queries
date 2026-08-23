@@ -71,8 +71,8 @@ class TemplateRenderer:
         """The template *stems* tried, in order, for one message.
 
         ``{base}-{facility}`` -> ``{base}-UNIV`` -> ``{base}``. The last step is
-        what lets a kind opt out of facility variants entirely (it ships one
-        bare file); the middle step is what the symlinks used to do.
+        what lets a kind opt out of facility variants entirely: it ships one
+        bare file.
         """
         kind = get_kind(message.kind)
         base = kind.template_base

@@ -583,8 +583,7 @@ class TestActivityTags:
         something they cannot action.
 
         The example is `transfer`, which is now the ONLY service left out of
-        XRAS_SERVICE_KINDS. It used to be `adjust` as well — the rule has not
-        changed, only the sole surviving instance of it. (A real Transfer
+        XRAS_SERVICE_KINDS, and the only one. (A real Transfer
         parks as `manual` and so never reaches this table at all; what is
         under test is the mapping, not the status.)
         """

@@ -2,8 +2,8 @@
 
 Why this module exists
 ----------------------
-Assembly plans; execution applies. Between the two the plan has to be carried, and
-it used to be carried as bare tuples — seven construction sites, seven unpack sites,
+Assembly plans; execution applies. Between the two the plan has to be carried.
+Carried as bare tuples that means seven construction sites, seven unpack sites,
 and **three different field orders for the same five values**:
 
 ===========================  ==================================================

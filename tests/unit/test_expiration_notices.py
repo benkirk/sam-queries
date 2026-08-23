@@ -294,9 +294,8 @@ class TestPayload:
 
     def test_units_come_from_the_resource_type_not_a_hardcoded_string(
             self, command, expiring, transport):
-        """`'units': 'core-hours'` used to be hardcoded for every resource
-        type, which was wrong for DISK/ARCHIVE the moment anything rendered
-        it."""
+        """Hardcoding `'units': 'core-hours'` for every resource type is wrong
+        for DISK/ARCHIVE the moment anything renders it."""
         command._send_notifications(expiring[1])
         message, _ = transport.delivered[0]
         units = {r['units'] for r in message.context['resources']}

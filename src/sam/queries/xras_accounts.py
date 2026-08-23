@@ -83,7 +83,7 @@ logger = logging.getLogger(__name__)
 WORKLIST_STATUSES: Tuple[str, ...] = XRAS_ACTION_STATUSES
 
 #: Which actions are worth running the dispatch pre-flight over. **This** is
-#: the bounded-work knob the status list used to be conflated with: validating
+#: the bounded-work knob, distinct from the status list: validating
 #: a ``processed`` action re-runs a handler's whole assembly to learn something
 #: already known, and ``rechecked``/``unmapped`` are not an action's own
 #: outcome. Narrowing this costs provenance on those rows, never a

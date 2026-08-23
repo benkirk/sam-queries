@@ -476,8 +476,8 @@ class TestCharsetSplit:
 
     WARNING: **This is the only automated record of the split that runs by default.**
     SQLAlchemy does not encode collation on these models, so the ORM cannot carry
-    it; the `initdb.d/zz-9*.sql` files that used to be its written source were
-    retired once production and the committed snapshot both had the tables. The
+    it, and there is no longer a written source for it in `initdb.d/zz-9*.sql` —
+    those were retired once production and the committed snapshot both had the tables. The
     stress tier proves the *behavior* (an emoji survives a POST) but is gated off
     the default run, so without this the split could silently vanish from a
     regenerated snapshot and nothing would notice until an audit row went missing

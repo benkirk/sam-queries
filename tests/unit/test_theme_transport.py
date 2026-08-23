@@ -271,8 +271,8 @@ class TestThemeToggleJs:
 
     def test_writes_the_cookie_before_reloading(self, js):
         """Order is the whole behavior: reload first and the server has not
-        been told yet, so the page comes back in the OLD theme and the toggle
-        looks broken."""
+        been told yet, so the page comes back in the previous theme and the
+        toggle looks broken."""
         assert js.index('writeCookie(next)') < js.index('location.reload()')
 
     def test_sets_the_attribute_before_reloading(self, js):

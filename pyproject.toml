@@ -179,7 +179,7 @@ fail_under = 75.0
 directory = "htmlcov"
 
 # Note: pytest configuration lives in /pytest.ini at the repo root, not here.
-# A duplicate [tool.pytest.ini_options] section used to live in this file
-# but was dead code (pytest.ini takes precedence) and drifted from reality.
+# Do NOT add a [tool.pytest.ini_options] section here: pytest.ini takes
+# precedence, so it would be dead code and would drift from reality.
 # The root pytest.ini has the authoritative config: testpaths, addopts,
 # markers, xdist parallelism, and the --no-cov default for inner-loop speed.

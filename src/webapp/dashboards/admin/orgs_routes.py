@@ -109,10 +109,10 @@ def htmx_organizations_card():
     Organizations, Institutions, Areas of Interest, NSF Programs.
     Lazy-loaded when the Organization collapsible section is first expanded.
 
-    Contracts and contract sources used to be a fifth tab here; they now live
-    on /admin/contracts (:func:`htmx_contracts_table`), which is where an
-    operator looks for them. That also takes ~2,200 eagerly-loaded contract
-    rows out of this one cached call.
+    Contracts and contract sources deliberately live on /admin/contracts
+    (:func:`htmx_contracts_table`) rather than as a fifth tab here: that is
+    where an operator looks for them, and it keeps ~2,200 eagerly-loaded
+    contract rows out of this one cached call.
     """
     from sam.core.organizations import MnemonicCode
 

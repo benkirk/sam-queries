@@ -371,7 +371,7 @@ def tab_strip_hrefs(body):
 
 
 class TestEventsTab:
-    """The Events tab (formerly "Reservations", /status/reservations).
+    """The Events tab (/status/reservations).
 
     It is data-gated like the others — hidden with no upcoming
     reservations and no calendar embed — but when it does render it must

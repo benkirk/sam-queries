@@ -74,10 +74,10 @@ class AdjustmentHandler(ActionHandler):
         """Supplement's assembly with the sign gate replaced and two guards added:
         the create branch's non-positive refusal and the below-zero one.
 
-        WARNING: This used to be a separate ``_plan`` arguing for its own existence — *"the
-        two differ in three places and a shared function with three flags reads worse
-        than two functions that each say what they do"*. The count was wrong (four,
-        not three) and so was the conclusion: the duplicated thirty lines are where
+        WARNING: do not split this back into a separate ``_plan``. The argument
+        for one — *"the two differ in three places and a shared function with three
+        flags reads worse than two functions that each say what they do"* — has the
+        count wrong (four, not three) and the conclusion with it: the thirty lines are where
         the panel-authorization flag went missing for an entire sprint. What actually
         needed naming was the shared **create policy**, not the whole planner.
         """

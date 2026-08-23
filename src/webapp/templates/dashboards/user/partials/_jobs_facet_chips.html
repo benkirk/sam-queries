@@ -12,9 +12,9 @@
 
   Rendered by jobs_card.html inside the card wrapper, so the strip is
   re-rendered by the same request that re-renders the panels — which is
-  exactly when a facet count can change. (It used to be an hx-swap-oob
-  block emitted by the table; once the table became one tab of six, a
-  viewer filtering while looking at a chart would have been left with the
+  exactly when a facet count can change. It is deliberately not an
+  hx-swap-oob block emitted by the table: the table is one tab of six, so a
+  viewer filtering while looking at a chart would be left with the
   previous filter set's counts. Sorting and paging no longer recompute
   it, either — neither can change a count.)
 

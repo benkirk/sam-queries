@@ -84,10 +84,10 @@ def build_summary(session, *, filters: Dict[str, Any]) -> Dict[str, Any]:
         # than "none" — AND deliberately keeps any status outside the vocabulary,
         # because that is a bug worth surfacing rather than a filter miss.
         #
-        # WARNING: This used to be `{s: ... for s in XRAS_ACTION_STATUSES}`, which
-        # re-applied the zero-fill (already done) and silently dropped the stray.
-        # `total` counted it either way, so the envelope reported a total that did
-        # not reconcile with the sum of its own buckets.
+        # WARNING: do NOT rewrite this as `{s: ... for s in XRAS_ACTION_STATUSES}`.
+        # That re-applies the zero-fill (already done) and silently drops the stray,
+        # while `total` counts it either way — so the envelope reports a total that
+        # does not reconcile with the sum of its own buckets.
         'by_status':  summary['by_status'],
         'by_type':    summary['by_type'],
     }

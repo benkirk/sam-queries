@@ -758,8 +758,8 @@ class TestDispatchArms:
         """The manual arm gets ``projcode_result`` too — Transfer is the live case.
 
         ``handlers/transfer.py`` parks deliberately and sets ``DispatchResult.projcode``
-        so an operator can see *which project*. The route used to call
-        ``_finish(log_id, status='manual')`` with nothing else, so the projcode reached
+        so an operator can see *which project*. Calling
+        ``_finish(log_id, status='manual')`` with nothing else leaves the projcode in
         the ephemeral app log and nowhere else — which defeats the module docstring's
         own promise that the triage query is ``status='manual' AND action_type=...``.
         """
@@ -1239,9 +1239,9 @@ class TestRecheck:
             self, app, xras_client, action_log):
         """WARNING: The guard on the reversal, and the reason it exists.
 
-        Replay used to be tied to ``XRAS_ACTIONS_CAPTURE_ONLY`` — so the flag that
-        turns on production ingestion was also the flag that armed this button. At
-        cutover it flips off, and a replay would silently become a live re-apply.
+        Replay must NOT be tied to ``XRAS_ACTIONS_CAPTURE_ONLY``. That would make the
+        flag turning on production ingestion also the flag arming this button: at
+        cutover it flips off, and a replay silently becomes a live re-apply.
 
         That is not a theoretical risk: a replay of a *successful* action is a
         double-apply on four of the six handlers. Supplement and Adjustment are

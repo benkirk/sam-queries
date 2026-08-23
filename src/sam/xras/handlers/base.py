@@ -36,9 +36,9 @@ assertions pass, and the damage shows up in someone else's test run.
 
 What subclasses get
 -------------------
-State that used to be threaded through tuples and re-derived per call site: the
-projcode, the project it names, the panel-authorization flag, the error accumulator.
-``Project.get_by_projcode`` was resolved three times per Supplement action; now once.
+State that would otherwise be threaded through tuples and re-derived per call
+site: the projcode, the project it names, the panel-authorization flag, the error
+accumulator. ``Project.get_by_projcode`` resolves once per action, not three times.
 
 WARNING: **``panel_authorized`` is a plain attribute, not a lazy property, and that is
 load-bearing.** It must be assigned during :meth:`assemble`, because

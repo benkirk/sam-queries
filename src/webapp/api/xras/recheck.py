@@ -173,9 +173,9 @@ def recheck_action(log_id, *, actor) -> 'Recheck':
     # able to *fail*, and fail the same way. A payload harvested months ago against
     # an older schema is precisely the case worth catching.
     #
-    # WARNING: This used to be a hand-copied duplicate of that ladder, and the copy had
-    # already drifted: it never passed `action_id`, so every replayed row stored NULL
-    # in the duplicate-detection column. Call the shared one; do not re-inline it.
+    # WARNING: call the shared ladder; do NOT re-inline it. A hand-copied duplicate
+    # here drifts — one silently stopped passing `action_id`, so every replayed row
+    # stored NULL in the duplicate-detection column.
     action, audit = actions._parse_action(raw_payload)
     if action is None:
         # Never reached a handler: the stored bytes no longer parse, or no longer

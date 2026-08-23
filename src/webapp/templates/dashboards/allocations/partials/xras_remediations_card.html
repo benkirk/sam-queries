@@ -243,10 +243,9 @@
                 {% for row in group.rows %}
                 <tr>
                     {# The request number opens the full read-only detail modal —
-                       the same view the per-request expansion used to hold, now
-                       the single opener. This cell is no longer a collapse
+                       the single opener for it. This cell is not a collapse
                        trigger, so the modal link is safe (no capture-phase
-                       conflict; the old five-cell toggle split is gone with the
+                       conflict, and no five-cell toggle split, which went with the
                        expansion). A plain <a> with an inner `.font-monospace`,
                        NOT `.btn` — `.btn` uppercases (dashboard.css). #}
                     <td class="text-nowrap">

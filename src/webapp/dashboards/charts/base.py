@@ -228,10 +228,9 @@ class BaseChart:
         the same as omitting it.
 
         The layout wins where it states a size, and defers where it does not —
-        the rule `legend_fontsize` already used. This used to read
-        `layout.is_mobile`, which was a boolean asked of a vocabulary that now
-        has three values; expressing it as None-means-defer means a new
-        profile needs no new branch here.
+        the rule `legend_fontsize` uses. Express it as None-means-defer rather
+        than a boolean like `layout.is_mobile`: the vocabulary has three values,
+        and None-means-defer lets a new profile need no new branch here.
         """
         size = layout.axis_label_fontsize or self.axis_label_fontsize
         return {'fontsize': size} if size is not None else {}

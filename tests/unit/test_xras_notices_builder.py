@@ -2,10 +2,9 @@
 
 `sam.queries.xras_notices` is what the operator's Notify button and the hourly
 `xras_notices` task both call, so it is where the dedup key, the subject and
-the per-kind payload are decided *once*. Everything here used to live inside
-`webapp/dashboards/allocations/blueprint.py` and could only be reached through
-a request context; the tests below take a plain session, which is the visible
-half of what the extraction bought.
+the per-kind payload are decided *once*. Keeping it out of
+`webapp/dashboards/allocations/blueprint.py` is what lets the tests below take a
+plain session rather than a request context.
 
 Route-level behavior (the preview modal, the send, the activation event) stays
 in `test_xras_notify.py` — it did not move and passes unedited.

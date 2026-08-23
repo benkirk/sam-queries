@@ -493,7 +493,7 @@ def test_project_details_fragment_targets_resolve(auth_client, active_project):
     The static check above works on template source; this walks the real
     runtime chain — GET the page, GET the htmx fragment that fills the modal
     body, and confirm every shell the fragment reaches for is actually there.
-    This is precisely what silently failed before PR #378.
+    That runtime chain is precisely what PR #378 found silently broken.
     """
     page = auth_client.get('/status/derecho')
     assert page.status_code == 200

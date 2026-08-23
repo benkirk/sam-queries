@@ -52,7 +52,7 @@ topologySpread:
 #
 # maxmemory is DELIBERATELY NOT reduced to match. The freed headroom is
 # earmarked for the layout and theme render axes, and both layout passes came
-# in cheaper than the "up to 4x" this comment originally budgeted: a smaller
+# in cheaper than a 4x budget: a smaller
 # figure carries fewer path points and less text, so it costs less than its
 # desktop twin rather than the same. Measured across the same 32 sample cases:
 #

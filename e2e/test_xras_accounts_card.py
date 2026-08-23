@@ -187,8 +187,8 @@ def test_a_chip_filters_without_a_page_load(page):
 def test_a_row_expands_to_its_actions(page):
     """WARNING: The toggle is on the row's CELLS, not the <tr>.
 
-    It used to be on the <tr>, which was safe only while the row carried no
-    buttons. The username is now a link when SAM has the account, and
+    On the <tr> it would be safe only while the row carries no buttons. The
+    username is a link when SAM has the account, and
     Bootstrap's collapse data-api runs in the capture phase — an ancestor
     toggle would fire before the link's own handler and flip the row open
     behind the modal. See dashboards/fragments/collapse.html.

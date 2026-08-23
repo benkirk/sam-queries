@@ -2,7 +2,7 @@
 Route-authorization hardening tests (PRODUCTION_IMPROVEMENTS item 2;
 PR295 P0-4, P1-4/5/6/7).
 
-Three access tiers exercised against the formerly-open routes:
+Three access tiers exercised against the routes this hardening closed:
   - outsider: active snapshot user, no permissions, unaffiliated with the
     target project -> 403 everywhere
   - lead: lead of the target project (steward override, no system perms)

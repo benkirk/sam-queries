@@ -1,7 +1,7 @@
 # Doc slimming — comment density in source and configs
 
-**Status: Phases 0 and 1 landed 2026-08-22 on `deslop_opus5` (PR #471).
-Phases 1b-9 open.**
+**Status: Phases 0, 1 and 1b landed 2026-08-22 on `deslop_opus5` (PR #471).
+Phases 2-9 open.**
 
 This file is the handoff record. Each phase updates the table in section 5
 in the same commit as its work, so a new session resumes from this document
@@ -154,7 +154,7 @@ the recorded starting number still holds. Nothing else from prior sessions is ne
 |---|---|---|---|---|---|
 | 0 | Tooling and rules | ~8 | none | suite green | **DONE 2026-08-22** |
 | 1 | Mechanical sweep | 433 | none | script-verified | **DONE 2026-08-22** |
-| 1b | Changelog phrasing (44 files) | ~44 | medium | `PHRASING_EXEMPT` emptied | open |
+| 1b | Changelog phrasing (45 lines) | 45 | medium | `PHRASING_EXEMPT` emptied | **DONE 2026-08-22** |
 | 2 | Configs and JS headers | ~8 | low | `helm template` byte-identical | open |
 | 3 | Module docstrings >= 30 lines | 64 | medium | suite green | open |
 | 4 | `Args:`/`Returns:` restatement | ~40 | low | suite green | open |
@@ -171,6 +171,7 @@ the recorded starting number still holds. Nothing else from prior sessions is ne
 | baseline | 37.0% | 34.6% | 21.8% | 41.9% | **34.3%** |
 | 0 | 37.0% | 34.6% | 21.8% | 41.9% | **34.3%** |
 | 1 | 37.0% | 34.6% | 21.8% | 41.9% | **34.3%** |
+| 1b | 37.0% | 34.6% | 21.8% | 41.9% | **34.3%** |
 
 Phases 0 and 1 move the ratio by design: neither removes prose. Phase 0 lands
 the gate, and Phase 1 rewrites decorative characters in place rather than
@@ -257,7 +258,10 @@ Roughly 35 of the 49 are the `used to be` / `used to live` family. Concentration
 `webapp/api/xras/recheck.py:176`, `sam/queries/xras_actions.py:200`,
 `webapp/dashboards/charts/base.py:231`, `helm/values.yaml:55`.
 
-**Two sites genuinely need the history and should stay in the allowlist permanently**
+**DONE 2026-08-22.** 45 lines across 44 files, each rewritten rather than
+deleted. `PHRASING_EXEMPT` now holds only the two permanent entries.
+
+**Two sites genuinely need the history and stay in the allowlist permanently**
 — they document a deliberately inverted assertion, and the inversion is the point:
 `tests/stress/test_parking_is_explained.py:125` and `tests/unit/test_task_runner.py:417`
 ("This assertion is INVERTED from what it used to be"). This is the analog of the

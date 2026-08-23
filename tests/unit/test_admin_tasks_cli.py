@@ -47,10 +47,10 @@ def wired(status_engine, monkeypatch):
     Which is why every task declaring ``needs=('sam', ...)`` is switched off
     here. `--run-due` dispatches the whole registry, so any SAM-needing task
     that happens to be due would try to open the connection this file exists to
-    prove is unnecessary. That used to be nobody: the two SAM tasks are monthly
-    and weekly with graces well short of their periods, so both misfire on
-    almost every run and record `skipped` without executing. `xras_notices` is
-    hourly, and is due for most of the day.
+    prove is unnecessary. `xras_notices` is hourly and due for most of the day, so
+    it is the one that reaches the connection. The monthly and weekly SAM tasks have
+    graces well short of their periods, so both misfire on almost every run and
+    record `skipped` without executing.
 
     Derived from `needs` rather than named, so registering another SAM task
     does not silently turn this file red — and so what is asserted stays "the

@@ -307,9 +307,8 @@ def resolve_awards(award_numbers, cache_path, sleep_between=0.3):
     Ensure every award number in `award_numbers` has a cache entry, fetching
     (and persisting) any that are missing. Returns the merged cache dict.
 
-    Amount-aware successor to the old division-only resolver: it resolves ALL
-    requested awards (old-style included), not just numeric ones absent from
-    the directorate map.
+    Amount-aware, and resolves ALL requested awards (old-style included), not
+    just numeric ones absent from the directorate map.
     """
     cache = load_cache(cache_path)
     todo = sorted({str(a).strip() for a in award_numbers

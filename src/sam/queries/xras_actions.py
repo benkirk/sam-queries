@@ -196,11 +196,11 @@ _LATEST_ACTION_ORDER = (XrasActionLog.received_time.desc(),
 def action_names_project(projcode):
     """The ``projcode_result`` OR ``request_number`` match, as one clause.
 
-    WARNING: **This is the subtlest logic in the feature and it is spelled here only.** It
-    used to be written three ways in this module, and two of them disagreed on how to
-    break a same-second tie: the provenance query ordered by ``(received_time, id)``
-    while the pending card merged two per-column queries comparing only
-    ``received_time``, so whichever column happened to be iterated first won. The
+    WARNING: **This is the subtlest logic in the feature and it is spelled here
+    only.** Do not re-derive it per call site. Three separate spellings disagree
+    on how to break a same-second tie: ordering by ``(received_time, id)`` is
+    deterministic, while merging two per-column queries that compare only
+    ``received_time`` lets whichever column is iterated first win. The
     card could then show one action as the reason a project was pending while
     ``xras_activation_event`` stamped a different one as the provenance of what the
     operator did about it.

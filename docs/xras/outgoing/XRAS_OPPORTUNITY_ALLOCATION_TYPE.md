@@ -407,8 +407,8 @@ doing. They are separable on purpose.
 ## 8.5 Auto-detection — BUILT 2026-08-20
 
 The operator posts roughly **four opportunities a year** (University Large x2,
-NSC x2). Each used to be a hand-written `INSERT`. It no longer is: `xras_sweep`
-maps a new opportunity by itself, and writes nothing it cannot corroborate.
+NSC x2), and `xras_sweep` maps each one by itself without a hand-written
+`INSERT`, writing nothing it cannot corroborate.
 
 ### What the full enumeration showed
 
