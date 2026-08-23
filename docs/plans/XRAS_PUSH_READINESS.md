@@ -16,14 +16,14 @@ re-check button reuses).
 ## 1 · What it is
 
 A SAM-side, **never-writes** verdict per XRAS **action** the sweep can see — New, Renewal,
-Extension, Supplement, Adjustment, on requests of any status: *"if ACCESS pushed this
+Extension, Supplement, Adjustment, on requests of any status: *"if XRAS pushed this
 today, would `POST /api/xras/v1/actions` land?"* Computed by synthesizing the inbound action
 from the `reports/requests` payload and running
 `dispatch_action(session, synthetic, validate_only=True)` — the same call `--recheck` and
 the Accounts Needed card make, which returns before `management_transaction` is ever opened
 (`sam/xras/handlers/base.py::run`). The verdict carries the same ordered 422 list a real
 push would get, so the playbook's catalog applies *before* the 422 exists, while the fix
-window is open and nobody at ACCESS has burned a push.
+window is open and nobody at XRAS has burned a push.
 
 **Tier B input, tier A compute** (the brainstorm's tiers): the payloads come from the sweep
 or a live GET and degrade to "unchecked"; the verdict itself is the ingest code path.
@@ -58,7 +58,7 @@ action the sweep enumerates**, any request status.
 | **Lever** | the sweep passes `enabled=None`. The tasks env does not carry `XRAS_ACTIONS_ENABLED`, and the question is "would the data land", not "is the type parked this week". Surfaces render the lever state separately |
 
 **Cannot check**, and says so: projcode-pool / GID exhaustion (execute-time only), and
-anything ACCESS will put on the wire that differs from the reports view — hence § 7.
+anything XRAS will put on the wire that differs from the reports view — hence § 7.
 
 **Probed 2026-08-23 — the reports payload does NOT expose push state.** Read-only, report
 context, the newest 400 Approved requests (455 actions) plus one `request_numbers/<n>`
@@ -259,7 +259,7 @@ When a real POST for a preflighted `action_id` lands, compare predicted vs actua
 `preflight_calibration = {compared, agree, sample[]}`; the request modal shows *"Predicted:
 would fail (3) · Actual: failed 422 (3)"* and, for `MANAGE_XRAS`, the synthesized payload
 beside `raw_payload`. After a week of real pushes this says whether the field map above
-needs correcting — the synthesizer is a guess about what ACCESS puts on the wire, and this
+needs correcting — the synthesizer is a guess about what XRAS puts on the wire, and this
 is the only way to grade it.
 
 ---
