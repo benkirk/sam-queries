@@ -138,32 +138,25 @@ class Permission(Enum):
     MANAGE_SYSTEM_STATUS = "manage_system_status"  # Update system status data (collector/API)
     EDIT_SYSTEM_STATUS = "edit_system_status"  # GUI create/edit/delete outages
     VIEW_SYSTEM_CONFIG = "view_system_config"  # Read-only Configuration tab on Admin dashboard
-    # XRAS integration triage. Split in two on purpose, because reading the audit
-    # trail, reading the payloads, and re-submitting one are three different
-    # authorities:
+    # XRAS triage, split three ways because reading the audit trail, reading the
+    # payloads, and destroying a request are three different authorities:
     #
-    #   VIEW_XRAS    the Allocations > XRAS page — the action log, its filters and
-    #                its error lists. Named ``view_*`` so ALL_VIEW auto-grants it to
-    #                the operator bundles: this is an audit surface and the people
-    #                who already read every other audit table should read this one.
+    #   VIEW_XRAS   the action log, its filters and error lists. Named ``view_*``
+    #               so ALL_VIEW auto-grants it to the operator bundles -- an audit
+    #               surface, for the people who read every other audit table.
+    #   MANAGE_XRAS the raw payload panel and the replay button. The payload is
+    #               the request body verbatim and carries real PII, so it is gated
+    #               above the audit view. Replay is a write.
+    #   ADMIN_XRAS  the DESTRUCTIVE lifecycle verbs -- delete a request, renew it,
+    #               add an action. Irreversible in XRAS, so it rides with
+    #               SYSTEM_ADMIN, NOT _ALLOCATION_ADMIN: a MANAGE_XRAS operator
+    #               gets the full non-destructive editor and never these
+    #               (docs/xras/outgoing/REQUEST_EDITOR.md section 1).
     #
-    #   MANAGE_XRAS  the raw payload panel AND the replay button. The payload is the
-    #                request body verbatim and carries real PII — participant names,
-    #                emails, phone numbers, grant-officer contacts — so it is gated
-    #                above the audit view rather than with it. Replay is a write.
-    #
-    # MANAGE_XRAS is picked up by NO ``ALL_*`` aggregate (they match ``view_``/
-    # ``edit_``/``create_``/``delete_`` prefixes on the *value*, and there is no
-    # ALL_MANAGE), so it must be granted explicitly — see _ALLOCATION_ADMIN below.
-    #   ADMIN_XRAS   the DESTRUCTIVE lifecycle verbs — delete a whole request,
-    #                renew it, add an action. Irreversible in XRAS, so it rides
-    #                with SYSTEM_ADMIN, NOT ``_ALLOCATION_ADMIN``: a MANAGE_XRAS
-    #                operator gets the full non-destructive editor but never
-    #                these (operator decision 2026-08-22,
-    #                docs/xras/outgoing/REQUEST_EDITOR.md §1). Like MANAGE_XRAS the
-    #                ``admin_`` prefix is matched by no ALL_* aggregate, so it
-    #                fails closed and is held only where SYSTEM_ADMIN is — today
-    #                the full-admin override, and any future system-admin bundle.
+    # WARNING: neither ``manage_`` nor ``admin_`` is matched by any ALL_*
+    # aggregate -- those match ``view_``/``edit_``/``create_``/``delete_`` on the
+    # VALUE, and there is no ALL_MANAGE. Both therefore fail closed and must be
+    # granted explicitly.
     VIEW_XRAS = "view_xras"
     MANAGE_XRAS = "manage_xras"
     ADMIN_XRAS = "admin_xras"
@@ -215,20 +208,14 @@ ALL_DELETE = _perms_with_action('delete')
 # Reads everything (ALL_VIEW), edits everything except that definition
 # layer, and creates the entities its job requires.
 #
-# Deletes are enumerated positively rather than as ``ALL_DELETE - {...}``.
-# Every delete granted here is a **soft** retire — the generated CRUD
-# deletes set ``active=False`` (crud.py -> handle_htmx_soft_delete) and the
-# bespoke contract delete stamps ``end_date``. The withheld ones are where
-# delete means something harsher or machine-shaped:
-#
-#   DELETE_RESOURCES   hard-deletes disk-root rows and fair-share override
-#                      rows, and decommissions machines/queues
-#   DELETE_FACILITIES  facility definitions
-#   DELETE_USERS       hard row delete via the Flask-Admin layer
-#   DELETE_GROUPS      ditto
-#
-# Failing closed matters more than the ALL_* auto-pickup here: a future
-# ``delete_*`` domain must be added deliberately, not inherited.
+# WARNING: deletes are enumerated positively, never as ``ALL_DELETE - {...}``,
+# so a future ``delete_*`` domain must be added deliberately rather than
+# inherited. Every delete granted here is a SOFT retire (the generated CRUD
+# sets ``active=False``; the contract delete stamps ``end_date``). The withheld
+# ones are where delete is harsher or machine-shaped: DELETE_RESOURCES
+# (hard-deletes disk-root and fair-share override rows, decommissions
+# machines/queues), DELETE_FACILITIES, and DELETE_USERS / DELETE_GROUPS (hard
+# row deletes via Flask-Admin).
 #
 # Known limitation (accepted): AllocationType and Panel are
 # allocation-shaped concepts that live under the *_FACILITIES family, so

@@ -499,7 +499,7 @@ def test_prose_avoids_changelog_phrasing():
 
 DEFAULT_LINE_BUDGET = 250
 LINE_BUDGETS = {
-    "CLAUDE.md": 1110,
+    "CLAUDE.md": 1060,
     "CONTRIBUTING.md": 740,
     "README.md": 1070,
     "collectors/README.md": 370,

@@ -226,34 +226,26 @@ def get_person(session: Session, username: str) -> Optional[Dict[str, Any]]:
 # legacy runs against the `xras_*` views. We go to base tables instead, for two
 # reasons:
 #
-#   - `xras_request` fails under `ONLY_FULL_GROUP_BY` (error 1055), which the
-#     dev and CI databases enable and production does not. Its `SELECT` list is
-#     safe; the sole offender is `ORDER BY al.end_date`, which names a different
-#     expression from the `GROUP BY`'s `cast(al.end_date as date)`. Ordering by
-#     the grouping expression itself is both legal and equivalent.
-#   - `xras_allocation` costs 6-8 s *regardless of filter*, because
+#   - `xras_request` fails under `ONLY_FULL_GROUP_BY` (error 1055), which dev
+#     and CI enable and production does not. The sole offender is
+#     `ORDER BY al.end_date`, naming a different expression from the GROUP BY's
+#     `cast(al.end_date as date)`.
+#   - `xras_allocation` costs 6-8 s REGARDLESS of filter, because
 #     `xras_hpc_allocation_amount` aggregates `hpc_charge_summary` across ALL
 #     allocations before joining. Scoping that aggregate to the requested
-#     projects is the single biggest win available here, and it does not change
-#     a byte of output.
+#     projects changes no output byte and is the biggest win available here.
 #
-# The ORDER BYs below are not cosmetic — they are the array order of the
-# response, and `ORDER BY end_date` additionally decides which request is
-# labeled "New". See `docs/xras/incoming/XRAS_REIMPLEMENTATION.md` section 2.3.
+# WARNING: the ORDER BYs are not cosmetic. They are the array order of the
+# response, and `ORDER BY end_date` decides which request is labeled "New".
 #
-# Each carries a primary-key tiebreaker that legacy does not have. Legacy's
-# `ORDER BY al.start_date DESC` is not a total order — one production project
-# has 11 allocations sharing a start_date — so MySQL is free to return tied
-# rows in any order, and *did*: two identical requests in CI produced different
-# bytes, which is what caught this. A tiebreaker makes our own output
-# reproducible, which an API contract requires regardless of parity.
-#
-# It does not make us match legacy on tied rows, because legacy's order there
-# is not derived from the data at all. Measured against production for
-# SCSG0001: of 15 request groups, the 6 with no tie match our order exactly,
-# and the 9 with a tie are arbitrary on legacy's side (neither ascending nor
-# descending allocation_id reproduces them). Same category as the `masters[]`
-# HashMap ordering, one level down — recorded as a divergence in section 7.
+# Each carries a primary-key tiebreaker legacy does not have. Legacy's
+# `ORDER BY al.start_date DESC` is not a total order -- one production project
+# has 11 allocations sharing a start_date -- so MySQL may return tied rows in
+# any order, and did: two identical CI requests produced different bytes. The
+# tiebreaker buys reproducibility, which an API contract requires; it does not
+# make us match legacy on ties, because legacy's order there is not derived
+# from the data at all. Recorded as a divergence in
+# `docs/xras/incoming/XRAS_REIMPLEMENTATION.md` sections 2.3 and 7.
 # ---------------------------------------------------------------------------
 
 #: `xras_role` is a UNION ALL over the two role columns on `project`. Note it

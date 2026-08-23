@@ -677,13 +677,13 @@ makes `smtplib.SMTP` raise so no test can open a socket whatever its config.
 | **Templates** | `src/sam/notify/templates/`, resolved `{base}-{facility}` → `{base}-UNIV` → `{base}`. Text selects the variant and HTML follows it — never resolved independently, or a WNA recipient gets UNIV HTML. |
 | **Visibility** | Admin → Configuration → Notifications (`VIEW_SYSTEM_CONFIG`, counts only) → `Details »` (`SYSTEM_ADMIN`, rows name real addresses). |
 
-**Batch knobs** (both default to today's behavior; `send()`-of-one pays for
-neither):
-
-| | |
-|---|---|
-| `send_many(chunk_size=N)` | one transport connection per N *delivered* messages. `None` = one chunk for the whole batch, byte-identical to before. A 500-message run otherwise holds one SMTP connection throughout, and a relay that drops it takes every remaining message with it. Price of a hard-down relay: `ceil(N/chunk)` connect attempts. |
-| `ledger.already_sent_many(keys)` | the batch suppression check, one `IN (...)` per chunk. Shares `_suppression_conditions` with `already_sent` so the two cannot drift — `TestTheSingleAndBatchFormsAgree` is the gate. |
+**Batch knobs**: `send_many(chunk_size=N)` opens one transport connection per N
+*delivered* messages (`None` = one chunk, byte-identical to a plain batch) —
+without it a 500-message run holds one SMTP connection throughout, and a relay
+that drops it takes every remaining message. `ledger.already_sent_many(keys)` is
+the batch suppression check; it shares `_suppression_conditions` with
+`already_sent` so the two cannot drift, gated by
+`TestTheSingleAndBatchFormsAgree`.
 
 ### The `expiration_notices` task
 
@@ -766,7 +766,7 @@ anywhere). Each is a `BaseChart` subclass bound to its cache by `chart_view`.
 
 ```
 charts/
-  __init__.py     facade: the 15 chart_view bindings, re-exports, __all__
+  __init__.py     facade: the chart_view bindings, re-exports, __all__
   base.py         BaseChart lifecycle + chart_view (the cache binder)
   theme.py        fonts, rcParams, Unity palettes, Theme, scale_bytes
   layout.py       Layout — the geometry axis
@@ -776,111 +776,29 @@ charts/
   pie.py stacked.py histogram.py dualpanel.py pace.py    the five families
 ```
 
-**Families**: `PieChart` (5 charts) · `StackedSeriesChart` (5; bar vs area is a
-`stack_mode` attribute) · `CategoricalStackChart` (2) ·
-`DualPanelTimeSeriesChart` (2) · `PaceChart` (direct `BaseChart` subclass, ~60 %
-bespoke).
+**Two render axes**, both composed into the cache key by `chart_view` *and* into
+cached HTML by `user_aware_cache_key` — forget the latter and one layout is
+served to everyone:
 
-**Lifecycle** — override only what differs; all hooks default to no-ops:
-`prepare()` → `is_empty()`/`empty_state` → `make_figure()` →
-`apply_tick_fontsize()` → `draw()` → `decorate()` → `add_legend()` →
-`finish()` → SVG.
+- **`layout`** — mobile ≤767.98px / tablet 768–1199.98px / desktop ≥1200px.
+  Desktop is the identity. Tablet is desktop with a smaller figure; mobile is a
+  redesign. Declared per family via `LAYOUTS = profile(...)`. Transported by
+  **both** a `sam_layout` cookie and an htmx `?layout=` param, because 9 of 18
+  call sites render in a full-page GET.
+- **`theme`** — light / dark. Cookie only: a viewport is discovered, a theme is
+  declared. Colors are baked into SVG bytes, which is why this needs a
+  server-side carrier at all.
 
-### The `layout` axis (mobile / tablet / desktop)
+Routes read them with `read_layout()` / `read_theme()` from `utils/htmx.py`.
+Date axes go through `self.apply_date_axis(ax, layout)`, never
+`fig.autofmt_xdate()`. Drill-downs use one scheme, `#sam/<action>/<segments>`,
+built by `links.py` — a row drill is one attribute declared at the chart, with
+no JavaScript change.
 
-Every chart renders at three figure sizes, banded on Bootstrap breakpoints:
-**mobile ≤767.98px · tablet 768–1199.98px · desktop ≥1200px**. Desktop is the
-identity — it reproduces pre-axis output byte for byte. The other two exist
-because an 18in figure scaled into a small card puts 9-11pt labels on screen
-at ~2px (phone) or ~6px (iPad portrait), which no CSS can fix.
-
-Mobile is a redesign — legend below, one 9pt size for every text role, capped
-entries. **Tablet is desktop with a smaller figure**: `TABLET_DEFAULTS` names
-only `max_legend_entries` and `max_ticks`, so placement, rotation and all four
-font sizes inherit desktop's per-family values.
-
-| | |
-|---|---|
-| **Declare** | `LAYOUTS = profile(desktop_figsize, mobile_figsize, tablet_figsize, **desktop_kwargs, mobile={...}, tablet={...})`. Keyword args configure **desktop**; overrides go in the `mobile`/`tablet` dicts — a bare keyword that collides with a desktop parameter silently configures desktop. |
-| **Consume** | `layout.figsize` / `base_fontsize` / `legend_placement` / `max_legend_entries` / `max_ticks` / `label_rotation`, plus `legend_fontsize` / `axis_label_fontsize` / `tick_fontsize`, each `int | None` where **None means defer to the chart's own attribute**. Helpers on `BaseChart`: `legend_kwargs()`, `legend_entry_cap()`, `label_kw()`. |
-| **Transport** | `static/js/layout-axis.js` sets a `sam_layout` cookie **and** injects `?layout=` into every htmx request; routes read `webapp.utils.htmx.read_layout()`. Both are needed — 9 of 18 call sites render in a full-page GET that htmx never touches. Two media queries, **narrowest asked first**. |
-| **Cache** | `chart_view` composes `layout` into the chart key; `user_aware_cache_key` composes it into cached *HTML*. Forget the latter and a cached page serves one layout to everyone. |
-
-`render()` sets `self.layout` before `prepare()`, so data-shaping hooks can
-consult it — pies cap **slices** on mobile rather than legend rows, because an
-unlabelled wedge is also an unlabelled drill target.
-
-Sizing rule: aim the tight-bbox intrinsic width at the **narrowest card the
-family actually renders into** (viewport − 144px on the status pages, − 82px
-on the jobs cards), and measure it — the bbox is a function of the legend
-contents, so it cannot be derived from figsize.
-
-### Date axes
-
-`self.apply_date_axis(ax, layout)` in `finish()` — never `fig.autofmt_xdate()`,
-whose rotation exists to fit labels the smart axis removes. The tick carries
-what changes and a second line carries the context, drawn only where it
-changes: `00:00 / Jul 26`, `01:00`, `02:00`. Vocabulary lives in
-`fmt.mpl_date_ticks()`; `fmt.date_str` stays ISO for tables.
-
-A **categorical** axis of pre-formatted period strings (the jobs timeline
-plots band indices) calls `fmt.compact_date_labels()` on the labels instead —
-same vocabulary, and unparsable grains come back unchanged.
-
-Design + measurements: `docs/plans/implemented/MOBILE_CHARTS.md`,
-`docs/plans/implemented/TABLET_CHARTS.md`.
-
-### The `theme` axis (light / dark)
-
-The second render axis, and the reason dark mode needs a *server-side* carrier
-at all: charts are matplotlib SVGs with colors baked into the bytes, so no
-stylesheet can retheme them. Transport mirrors `layout` — `read_theme()` in
-`utils/htmx.py`, composed into both `chart_view`'s key and
-`user_aware_cache_key` — but uses **one channel, the cookie**: a viewport is
-discovered client-side after the server answers, a theme is declared by a click
-that reloads, so cookie and browser can never disagree.
-
-| | |
-|---|---|
-| **Chrome** | `Theme` carries text/spine/grid/edges/legend-face/accent. `BaseChart.apply_chrome()` applies them after `finish()`. It must **not** touch `ax.texts` — those artists set their own color for a reason (pie autopct reads the *wedge*, the pace marker reads `theme.accent`). |
-| **Data** | The `UNITY_*` palettes are invariant in **hue** only. `Theme.data_color()` tints a fill toward white until it clears `min_data_contrast` (3:1) against `Theme.surface`; `Theme.LIGHT` sets it `None` and returns the identical object, which is what makes light byte-identical. |
-| **Roles** | `Theme.muted_data` is the inert "Others" band and must **bypass** the lift — its job is to recede, and lifting it undoes that. `Theme.area_alpha` is 0.85 light / 1.0 dark because figures are transparent and composite against the card. |
-| **Surface** | `Theme.DARK.surface` == `--surface-card` == `#1b2733`, pinned by `test_dark_card_matches_chart_blend_target`. |
-
-Design + rationale: `docs/plans/implemented/DARK_MODE.md` § *PR 4 as built*.
-
-### Adding a chart
-
-1. Subclass the closest family; set `cache_name`, `cache_maxsize`,
-   `empty_message`, `LAYOUTS = profile((w, h), (mobile_w, mobile_h),
-   (tablet_w, tablet_h))`.
-2. `cache_key` is a **staticmethod over the raw constructor arguments** — a
-   cache hit must never construct the chart or run `prepare()`.
-3. Bind with `chart_view(...)` in `__init__.py`, add to `__all__`.
-4. Add a case to `tests/unit/chart_samples.py` (a gate requires one). It is
-   fingerprinted at **every** layout × theme automatically.
-5. Pass `layout=read_layout(), theme=read_theme()` at the call site. Fragments
-   registered through `utils/fragments.py` get both for free — but a renderer
-   that *relays* them to a delegate must forward them by hand
-   (`test_renderers_forward_the_axis_they_are_given` is the gate).
-
-### Drill-downs
-
-One scheme, `#sam/<action>/<segments>`, percent-encoded, built by `links.py`:
-
-| Form | Behavior |
-|---|---|
-| `#sam/row/<attr>/<value>` | expand the row carrying `<attr>="<value>"`, scoped to the clicked chart's tab pane |
-| `#sam/day/<iso>` | Historical Usage day row (handles month-then-day nesting) |
-| `#sam/user/<name>` | Usage-by-User row (looks up `data-sort-value`) |
-
-**A row drill is one attribute name declared at the chart — no JavaScript
-change.** `svg-chart-links.js` parses the href and dispatches; it holds no
-prefix→attribute table. Legend entries that open a modal keep **real URLs**
-(`ModalRoute`), which are inspectable and degrade gracefully.
-
-A chart whose target rows live in a *different* tab pane must use a modal, not
-a row drill — row drills resolve within the clicked chart's pane.
+Lifecycle, the family hierarchy, how to add a chart, the layout/theme design
+and all the measurements: `docs/plans/implemented/CHART_ARCHITECTURE.md`,
+`DARK_MODE.md`, `MOBILE_CHARTS.md`, `TABLET_CHARTS.md`, and the
+`webapp/dashboards/charts/__init__.py` and `base.py` docstrings.
 
 ### Gotchas
 

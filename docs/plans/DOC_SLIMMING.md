@@ -1,7 +1,7 @@
 # Doc slimming — comment density in source and configs
 
-**Status: Phases 0, 1, 1b and 2 landed 2026-08-22 on `deslop_opus5` (PR #471).
-Phases 3-9 open.**
+**Status: Phases 0, 1, 1b, 2, 3 and 9 landed 2026-08-22 on `deslop_opus5`
+(PR #471). Phase 4 cancelled. Phases 5-8 open and are the remaining bulk.**
 
 This file is the handoff record. Each phase updates the table in section 5
 in the same commit as its work, so a new session resumes from this document
@@ -158,8 +158,8 @@ the recorded starting number still holds. Nothing else from prior sessions is ne
 | 2 | Configs and JS headers | 6 | low | `helm template` byte-identical | **DONE 2026-08-22** |
 | 3 | Module docstrings >= 30 lines | 64 | medium | suite green | **DONE 2026-08-22** |
 | 4 | `Args:`/`Returns:` restatement | -- | -- | -- | **CANCELLED, measured away** |
-| 5-8 | Narrative prose, ~12 files each | ~48 | **high** | suite green, per-file review | open |
-| 9 | `CLAUDE.md` + `README.md` | 2 | medium | links resolve | open |
+| 5-8 | Narrative prose, ~12 files each | ~48 | **high** | suite green, per-file review | **started** |
+| 9 | `CLAUDE.md` | 1 | medium | links resolve | **DONE 2026-08-22** |
 
 ### Measured progress
 
@@ -175,6 +175,7 @@ the recorded starting number still holds. Nothing else from prior sessions is ne
 | 2 | 37.0% | 34.6% | 21.8% | 41.9% | **34.3%** |
 | 3 (29/64) | 36.5% | 33.9% | 21.8% | 41.9% | **33.9%** |
 | 3 | 36.3% | 33.6% | 21.7% | 41.7% | **33.6%** |
+| 9 + 5 (start) | 36.3% | 33.5% | 21.7% | 41.7% | **33.6%** |
 
 Phases 0 and 1 move the ratio by design: neither removes prose. Phase 0 lands
 the gate, and Phase 1 rewrites decorative characters in place rather than
@@ -361,10 +362,23 @@ What emerged doing them:
 in-body comments, which is Phases 4-8. Phase 3 was the cheapest third of the
 work, not the biggest.
 
-### Phases 5-8 — narrative prose
-Where the volume is (~2,300 lines across `blueprint.py`, `jobs/routes.py`, `htmx.py`,
-`theme.py`) and where load-bearing content is interleaved. **No mechanical pass here.**
-~12 files per session, ordered by absolute doc lines, one commit per file or tight group.
+### Phases 5-8 — narrative prose (THE REMAINING BULK)
+
+**Measured: 417 in-body comment blocks of >= 5 consecutive lines, 3,443 lines.**
+Concentrated in `utils/rbac.py` (174), `tasks/xras_sweep.py` (163),
+`cli/accounting/commands.py` (148), `jobs/routes.py` (136), `webapp/config.py`
+(131), `queries/dashboard.py` (116), `charts/theme.py` (100).
+
+Three blocks were done as a pilot to calibrate the rate:
+`xras_access.py:221` (28 -> 20), `rbac.py:141` (26 -> 19), `rbac.py:312`
+(14 -> 8). **That is ~30% per block, not the wholesale cuts the earlier phases
+gave**, because these blocks are policy and spec sitting inside data literals
+where the dict is self-describing and the comment is the only record of the
+reasoning. Realistic yield for the whole of 5-8 is therefore ~1,000 lines, at
+roughly one careful session per 100 blocks.
+
+**No mechanical pass here.** Order by the file list above, one commit per file
+or tight group, and re-run `doc_ratio.py` per commit.
 
 **Worked example** — `webapp/utils/rbac.py`, currently 70%:
 - 30-line module header → ~8 lines. The "no dependency on the SAM `role_user`/`role`
@@ -377,7 +391,7 @@ Where the volume is (~2,300 lines across `blueprint.py`, `jobs/routes.py`, `htmx
 - `has_permission_any_facility`: **keep** its "Contrast with `has_permission`"
   paragraph — two near-identical names, that is disambiguation, not narration.
 
-### Phase 9 — `CLAUDE.md` and `README.md`
+### Phase 9 — `CLAUDE.md`  (DONE 2026-08-22)
 Last, so the rules are already proven by the work. Three sections are over half of
 `CLAUDE.md`'s 1,008 lines, and **their destinations already exist**:
 - § *Charts* (164) → `docs/plans/implemented/{CHART_ARCHITECTURE,DARK_MODE,MOBILE_CHARTS,TABLET_CHARTS}.md`
@@ -389,10 +403,19 @@ Last, so the rules are already proven by the work. Three sections are over half 
   actually changes behavior. § 11 (static assets, ~40 lines of measurement) compresses
   to its rule table.
 
-Also: reconcile the known duplicate structure tree (`README.md` ~:555 and `CLAUDE.md`
-§ *Code Organization*) — one canonical, one pointer. Consider adding
-`src/webapp/dashboards/charts/README.md` as the charts destination; `src/cli`,
-`src/webapp`, and `src/querykit` each already have one.
+**Not done, deliberately: the duplicate structure tree.** `README.md`'s is 122
+lines and `CLAUDE.md`'s is 52, and they serve different readers at different
+granularity — the README lists every top-level file, CLAUDE.md annotates the
+modules the conventions refer to. Collapsing either into a pointer costs its
+reader more than the drift costs. It stays a known duplication rather than a
+forced merge. `README.md` is also a doc, and docs stay as records.
+
+**Notifications was left nearly whole**, and that is the finding: of its 115
+lines, every table row is a "why this is not the obvious thing" — the
+pre-redirect dedup key, the ledger committing on its own session, the
+fail-OPEN `SAM_TASKS_DISABLED`, the lease-versus-timeout distinction. Only the
+batch-knobs table was ordinary API surface. Trimming the rest would cost more
+than it saves.
 
 ---
 
