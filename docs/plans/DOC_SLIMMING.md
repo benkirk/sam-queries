@@ -157,7 +157,7 @@ the recorded starting number still holds. Nothing else from prior sessions is ne
 | 1b | Changelog phrasing (45 lines) | 45 | medium | `PHRASING_EXEMPT` emptied | **DONE 2026-08-22** |
 | 2 | Configs and JS headers | 6 | low | `helm template` byte-identical | **DONE 2026-08-22** |
 | 3 | Module docstrings >= 30 lines | 64 | medium | suite green | **DONE 2026-08-22** |
-| 4 | `Args:`/`Returns:` restatement | ~40 | low | suite green | open |
+| 4 | `Args:`/`Returns:` restatement | -- | -- | -- | **CANCELLED, measured away** |
 | 5-8 | Narrative prose, ~12 files each | ~48 | **high** | suite green, per-file review | open |
 | 9 | `CLAUDE.md` + `README.md` | 2 | medium | links resolve | open |
 
@@ -297,8 +297,33 @@ third candidate — judge it when you get there.
    operator-facing file, since that warning guards an irreversible production action.
 
 ### Phases 3-4 — module docstrings, then signature restatement
-Phase 3 relocates the 64 headers >= 30 lines; Phase 4 removes `Args:`/`Returns:`
-blocks that restate annotated signatures.
+Phase 3 relocates the 64 headers >= 30 lines.
+
+### Phase 4 is cancelled — the premise was wrong
+
+The plan assumed `Args:`/`Returns:` blocks largely restate an annotated
+signature and could be dropped mechanically. Measured, they do not:
+
+| | |
+|---|---|
+| `Args:`/`Returns:` block lines in `src/` | 3,517 |
+| entries that restate the parameter name | **33 of 766, or 4%** |
+| block volume that is description prose, not the block's existence | **60%** |
+
+A sample makes the shape clear. Of six entries drawn at random, one was a
+clean drop (`start_date: Allocation start date`) and five carried real
+semantics — `permission: ... Token users bypass RBAC entirely`,
+`_usage: ... skips the internal DB call`, `max_ticks: ... a phone gets fewer
+ticks`. Dropping annotated blocks wholesale would have destroyed far more
+than it saved, and even several of the 33 flagged entries are not
+restatement: `fair_share_percentage: Percentage 0-100` gives the range,
+`grace_period_days: ... (>= 0)` gives a constraint.
+
+This is the same result as the redundant-comment finding one level down: the
+docstrings are long, but they are not redundant. **The verbosity is the
+length of the descriptions, not the existence of the blocks**, which makes it
+the same work as Phases 5-8 rather than a separate mechanical pass. The 33
+genuine restatements are not worth a commit of their own and are folded in.
 
 **DONE 2026-08-22: 59 of 64 files.** Module docstrings at or over 30 lines went
 from 64 files / 2,810 lines to 18 files / 744, removing 1,090 lines of `src/`
