@@ -72,12 +72,10 @@ _DEFAULT_COLS = (
     'cpu_charges', 'gpu_charges',
 )
 
-# Every column rendered as a table header is sortable. The plugin maps
-# `job.*` / `charge.*` keys to their SQLAlchemy columns, lookup-backed
-# keys (`user`) to a joined name column, and the computed `*_charges`
-# keys to `hours × COALESCE(qos_factor, 1)`, so every key in
-# _DEFAULT_COLS resolves to a valid ORDER BY at the SQL level. Built
-# from _DEFAULT_COLS to stay in lockstep automatically.
+# Every rendered column is sortable: the plugin maps `job.*` / `charge.*` keys
+# to columns, `user` to a joined name column, and `*_charges` to
+# `hours × COALESCE(qos_factor, 1)`, so every _DEFAULT_COLS key is a valid
+# ORDER BY. Built from _DEFAULT_COLS to stay in lockstep.
 _SORT_WHITELIST = set(_DEFAULT_COLS)
 
 # Extra columns revealed in the per-row "expand" drawer. Order is the
@@ -265,13 +263,10 @@ def _jobs_table_response(*, mode, machine, fragment_url,
     # renders without a second fetch. Plugin still validates each key.
     requested_cols = tuple(_DEFAULT_COLS) + tuple(_VERBOSE_EXTRAS)
 
-    # QoS options for the filter dropdown — sourced from the plugin's
-    # job_qos lookup table so a future seed addition flows through
-    # without a SAM-side change. Fetched BEFORE search/count so the
-    # same list can also be threaded into the service as
-    # ``valid_qos_names``: this lets the legacy queue normalizer promote
-    # a 'cpu-special' drill-down's suffix to a real QoS filter. Degrades
-    # to [] if the plugin call fails or the table is empty.
+    # QoS options from the plugin's job_qos lookup, so a seed addition needs no
+    # SAM-side change. Fetched BEFORE search/count so the same list threads in
+    # as ``valid_qos_names``, letting the legacy queue normalizer promote a
+    # 'cpu-special' drill-down's suffix to a real QoS filter. Degrades to [].
     try:
         qos_options = service.list_qos_names(machine)
     except Exception:
@@ -309,13 +304,10 @@ def _jobs_table_response(*, mode, machine, fragment_url,
 
     visible_cols = _visible_cols(_DEFAULT_COLS, rows)
 
-    # Suppress the QoS column when every visible row has the same QoS
-    # value — a single-valued column is just noise. None counts as a
-    # distinct value so a mix of (premium / legacy-NULL) still renders
-    # the column. The dropdown follows the same rule, with one
-    # exception: when the user explicitly picked a QoS via ``?qos=``
-    # the dropdown stays visible so they can change or reset their
-    # selection (the column still goes away because all rows match).
+    # Suppress the QoS column when every visible row shares one value. None
+    # counts as distinct, so a premium/legacy-NULL mix still renders it. The
+    # dropdown follows the same rule except under an explicit ``?qos=``, where
+    # it stays visible so the viewer can change or reset the selection.
     qos_in_rows = {r.get('qos') for r in rows}
     qos_has_variation = len(qos_in_rows) >= 2
     if not qos_has_variation and 'qos' in visible_cols:
@@ -326,11 +318,9 @@ def _jobs_table_response(*, mode, machine, fragment_url,
         else []
     )
 
-    # When the column is suppressed because all rows share one QoS value,
-    # surface that value (and its charging factor) as a header badge so the
-    # single-value case isn't silent — this is exactly the case (uniform
-    # economy / premium) where the multiplier matters most. None
-    # (uncharacterized) gets no badge.
+    # A suppressed column still surfaces its shared value and charging factor as
+    # a header badge: uniform economy/premium is exactly where the multiplier
+    # matters most. None (uncharacterized) gets no badge.
     qos_badge = None
     if rows and not qos_has_variation:
         (shared_qos,) = qos_in_rows         # exactly one element when rows non-empty
@@ -426,25 +416,20 @@ def _load_column_specs():
 # Aggregation fragments (By User / Wait Times / Job Sizes / Durations)
 # ---------------------------------------------------------------------------
 
-# Chart metric pills shared by the aggregation tabs. 'charges' is the
-# QoS-weighted counterpart of the hour metrics (hours x qos_factor, summed
-# by the plugin) — one vocabulary across every panel, so the shared
-# `metric:jobs` persist family stays valid. NOTE for consumers: charges are
-# NOT proportional to hours. `qos_factor` is a genuine 0.0 for the
-# 'uncharged' QoS, so a charges view legitimately shows an empty bar where
-# an hours view shows work; templates carry a caption saying so.
+# Chart metric pills shared by the aggregation tabs, one vocabulary across
+# every panel so the shared `metric:jobs` persist family stays valid.
+# WARNING: charges are NOT proportional to hours. `qos_factor` is a genuine 0.0
+# for the 'uncharged' QoS, so a charges view legitimately shows an empty bar
+# where an hours view shows work; templates carry a caption saying so.
 _METRICS = ('jobs', 'cpu_hours', 'gpu_hours', 'charges')
 _DEFAULT_METRIC_HIST = 'jobs'
 _DEFAULT_METRIC_PIE = 'cpu_hours'
 
-# Timeline (Jobs tab) granularity. We coarsen because 180 bars is already
-# past what an 18in axis can show — a legibility limit, NOT a cost one. An
-# earlier revision of this comment justified the cap with "+54% at 180 bands";
-# that measurement timed the periods sequentially, so cache warming rode along
-# with band count. Re-measured interleaved (plugin PR #102), 180 bands costs
-# ~10% and 730 costs ~65%: real, but it does not bite at anything we render.
-# The plugin's own cap is path-dependent — 400 bands on the jobs-scan path,
-# 1200 on the daily_summary fast path, which has no CASE ladder at all.
+# Timeline (Jobs tab) granularity. The cap is a LEGIBILITY limit, not a cost
+# one: 180 bars is already past what an 18in axis can show. Measured
+# interleaved (plugin PR #102), 180 bands costs ~10% and 730 costs ~65% -- real,
+# but it does not bite at anything we render. The plugin's own cap is
+# path-dependent: 400 bands scanning jobs, 1200 on the daily_summary fast path.
 _TIMELINE_PERIODS = ('day', 'week', 'month')
 _MAX_TIMELINE_BARS = 120
 # Days-per-band, used both to auto-select and to disable over-budget pills.
@@ -506,12 +491,12 @@ _BYTES_PER_GB = 1024 ** 3
 #: ``job_history.histogram_buckets``, so a band picked here and the equivalent
 #: bar clicked there produce the same bounds.
 #:
-#: Each bound has TWO spellings — the panel's display-unit field (``lo``/``hi``)
-#: and the plugin-native param a bar drill writes (``native_lo``/``native_hi``),
-#: differing by ``factor``. One row carries both because the span must always be
-#: resolved from the native pair: the ladder's edges are native ints, and
-#: matching them against converted floats would make band selection depend on
-#: rounding.
+#: Each bound has TWO spellings, differing by ``factor``: the panel's
+#: display-unit field (``lo``/``hi``) and the plugin-native param a bar drill
+#: writes (``native_lo``/``native_hi``). One row carries both because a span
+#: must always resolve from the native pair -- the ladder's edges are native
+#: ints, and matching them against converted floats would make band selection
+#: depend on rounding.
 _NUMERIC_LADDERS = (
     # dimension, label,             lo,                  hi,                  native_lo,           native_hi,           factor
     ('nodes',    'Nodes',           'min_nodes',         'max_nodes',         'min_nodes',         'max_nodes',         1),
@@ -598,12 +583,11 @@ def _parse_job_filters(include_user: bool = True) -> dict:
         v = _parse_int_arg(key)
         if v is not None:
             f[key] = v
-    # round(), not int(). Truncation loses a unit whenever the display value is
-    # a rounded form of an exact native bound, which is exactly what the range
-    # sliders emit: the "5-15m" wait band's floor is 300 s, shown as 0.0833 h,
-    # and int(0.0833 * 3600) is 299 — a bound one second below the band the
-    # viewer picked, so the control would come back in its "custom" state.
-    # Hand-typed values are unaffected (1.5 h is 5400 s either way).
+    # round(), not int(). Truncation loses a unit whenever a display value is a
+    # rounded form of an exact native bound, which is what the range sliders
+    # emit: the "5-15m" wait band's 300 s floor shows as 0.0833 h, and
+    # int(0.0833 * 3600) is 299 -- one second below the band the viewer picked,
+    # so the control returns in its "custom" state.
     min_wait = _parse_float_arg('min_wait_hours')
     max_wait = _parse_float_arg('max_wait_hours')
     if min_wait is not None:
@@ -1127,12 +1111,11 @@ def _render_timeline(*, mode, machine, fragment_url, target_id,
         except ValueError:
             pass
 
-    # Legend entries open the entity's quick-view MODAL, not a row sentinel:
-    # this chart lives in the Jobs pane while the By User / By Project rows
-    # live in their own lazily-loaded panes, and openEntityRow scopes its
-    # lookup to the clicked chart's pane — so a row sentinel here is a
-    # silent no-op. Gate on the same affordance permission the By User /
-    # By Project tables use, so we never render a link that would 403.
+    # Legend entries open the quick-view MODAL, not a row sentinel: this chart
+    # is in the Jobs pane while the By User / By Project rows are in their own
+    # lazy panes, and openEntityRow scopes to the clicked chart's pane, so a row
+    # sentinel here is a silent no-op. Gate on the same permission those tables
+    # use, so no rendered link can 403.
     from flask_login import current_user
     if group_by == 'user':
         link_entities = has_permission_any_facility(
@@ -1195,12 +1178,11 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
     metric = _parse_metric(_DEFAULT_METRIC_HIST)
     log_on = _parse_log()
 
-    # Who owns the stacked segments and the per-band tier — the same
-    # relevance rule that decides the tab strip, so a pane can never
-    # stack by an axis its scope has pinned to a single value. The pill
-    # is offered only where BOTH axes can vary; elsewhere the param is
-    # ignored, so a crafted URL can't flip a single-project pane into a
-    # redundant per-project breakdown.
+    # Who owns the stacked segments and the per-band tier, on the same relevance
+    # rule that decides the tab strip: a pane can never stack by an axis its
+    # scope has pinned. The pill appears only where BOTH axes vary, and
+    # elsewhere the param is ignored, so a crafted URL cannot flip a
+    # single-project pane into a redundant per-project breakdown.
     rel = panel_relevance(
         mode=mode,
         user_filter=username or filters.get('user'),
@@ -1240,11 +1222,10 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
         )
         error = str(exc)
 
-    # Trim BEFORE the chart and the drill list: the bar sentinels
-    # (#sam/row/data-jh-bucket/<i>) and the table's data-jh-bucket indices are both
-    # positions in this bucket vector, so all three have to see the
-    # same one. An all-zero distribution trims to no bands at all, which
-    # is how the template knows to render one empty state instead of a
+    # Trim BEFORE the chart and the drill list: the bar sentinels and the table's
+    # data-jh-bucket indices are both positions in this bucket vector, so all
+    # three must see the same one. An all-zero distribution trims to no bands,
+    # which is how the template knows to render one empty state rather than a
     # bar-less axis over a table of zeros.
     hist = _trim_empty_edge_bands(hist)
     has_bands = bool((hist or {}).get('buckets'))
@@ -1254,10 +1235,9 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
                  if has_bands else None)
     params = _roundtrip_params(machine, target_id)
 
-    # One drill URL per band (None for empty bands) — computed here, not
-    # in the template, so the envelope's min_param/max_param replay stays
-    # in one place. A parallel list rather than mutating hist: the
-    # envelope is a shared cache entry.
+    # One drill URL per band, computed here rather than in the template so the
+    # envelope's min_param/max_param replay stays in one place. A parallel list,
+    # not a mutation -- the envelope is a shared cache entry.
     bucket_drills = None
     if has_bands and jobs_fragment_url:
         bucket_drills = [
@@ -1265,11 +1245,11 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
             for b in hist.get('buckets') or []
         ]
 
-    # Round-trip the non-default owner dimension and y-scale through the
-    # metric / dimension pills' hx-include form (AFTER the drill URLs — the
-    # jobs fragments take neither). The switch itself spells ?log= out in
-    # its own URL, which wins over this stale copy: Werkzeug reads the
-    # first value and htmx appends included params after the hx-get query.
+    # Round-trip the non-default owner dimension and y-scale through the pills'
+    # hx-include form, AFTER the drill URLs (the jobs fragments take neither).
+    # The switch spells ?log= out in its own URL, which wins over this stale
+    # copy: Werkzeug reads the first value and htmx appends included params
+    # after the hx-get query.
     if group_by != 'user':
         params = dict(params, group_by=group_by)
     if log_on:
@@ -1440,11 +1420,9 @@ def _panel_filters(machine: str) -> dict:
     start = (request.args.get('start') or '').strip()
     end = (request.args.get('end') or '').strip()
     if not start and not end:
-        # Unbounded windows are the expensive path (~200 s machine-wide
-        # vs ~0.6 s per month) — default the explorer to the same window
-        # the cards use. The card's "Open full view" link hands its
-        # current pill over as ?days=, so the explorer opens on the window
-        # the user was already looking at. The field is visible in the
+        # Unbounded windows are the expensive path (~200 s machine-wide vs ~0.6 s
+        # per month), so default to the window the cards use. "Open full view"
+        # hands its current pill over as ?days=. The field is visible in the
         # panel; clearing it opts into the full history explicitly.
         start = _days_start(
             _parse_days() or service.DEFAULT_JOBS_WINDOW_DAYS
@@ -1466,11 +1444,10 @@ def _panel_filters(machine: str) -> dict:
         'max_cpus':  _parse_int_arg('max_cpus'),
         'min_gpus':  _parse_int_arg('min_gpus'),
         'max_gpus':  _parse_int_arg('max_gpus'),
-        # Fall back to the plugin-native spelling. A histogram bar drill writes
+        # Fall back to the plugin-native spelling: a bar drill writes
         # min_eligible_secs / min_elapsed / min_reqmem, which _parse_job_filters
-        # honors — but until this fallback the panel's own box rendered EMPTY,
-        # so the viewer saw a filtered table with no visible filter and no way
-        # to widen or clear it without going back to the chart.
+        # honors but the panel's own box does not, so without this the viewer
+        # sees a filtered table with no visible filter and no way to clear it.
         'min_wait_hours': _shown('min_wait_hours', 'min_eligible_secs', _SECS_PER_HOUR),
         'max_wait_hours': _shown('max_wait_hours', 'max_eligible_secs', _SECS_PER_HOUR),
         'min_elapsed_hours': _shown('min_elapsed_hours', 'min_elapsed', _SECS_PER_HOUR),
@@ -1506,12 +1483,12 @@ def _parse_active_tab() -> str:
     tab = (request.args.get('active_tab') or '').strip()
     return tab if tab in _CARD_TABS else 'jobs'
 
-# Panel-shaping filters the explorer bakes into every panel URL, in the
-# display units _parse_job_filters reads. `ignore_case` rides along only
-# with a name glob; `machine`, `target_id` and `projcode` are the macro's
-# to supply. `account` is deliberately absent: it narrows the per-job
-# table but not the aggregations, so baking it in would hide the By
-# Project tab while its neighbors still counted every project.
+# Panel-shaping filters baked into every panel URL, in the display units
+# _parse_job_filters reads. `ignore_case` rides along only with a name glob;
+# `machine`, `target_id` and `projcode` are the macro's to supply. `account` is
+# deliberately absent -- it narrows the per-job table but not the aggregations,
+# so baking it in would hide the By Project tab while its neighbors still
+# counted every project.
 _EXPLORER_PANEL_KEYS = (
     'start', 'end', 'user', 'queue', 'qos', 'exit_status', 'name',
     'min_nodes', 'max_nodes', 'min_cpus', 'max_cpus', 'min_gpus', 'max_gpus',
@@ -1750,10 +1727,9 @@ def explore_user_page(machine):
 # ---------------------------------------------------------------------------
 #
 # Each panel bakes its window into its own hx-get URL at render time, so
-# changing the period means re-rendering the shell that owns those URLs.
-# These routes do that and nothing else — no plugin queries — so a pill
-# click costs one cheap render and the panels re-fetch lazily as they are
-# shown. Gating mirrors each mode's panel family.
+# changing the period re-renders the shell that owns those URLs. These routes do
+# that and nothing else -- no plugin queries -- so a pill click costs one cheap
+# render and panels re-fetch lazily. Gating mirrors each mode's panel family.
 
 # Shell params echoed straight into element ids and hx-target selectors.
 _ID_ARG_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
@@ -1915,10 +1891,9 @@ def _panel_dimension(default: str, toggle: bool) -> str:
 # Panel adapters — registrar calling convention over the shared renderers
 # ---------------------------------------------------------------------------
 #
-# The registrar hands every panel the same five arguments; these translate
-# that into what each renderer already wanted. They are also where the
-# "plugin disabled" degradation lives: machine is None, and each renderer
-# already knows to draw its unavailable banner rather than query.
+# The registrar hands every panel the same five arguments; these translate them
+# into what each renderer wants. Also where "plugin disabled" degrades: machine
+# is None, and each renderer already draws its unavailable banner.
 
 def _panel_jobs_table(ctx, fragment_url, *, mode, scope_for, log_label, **_kw):
     """HTMX fragment: the per-job table."""
@@ -2013,14 +1988,12 @@ def _panel_card(ctx, fragment_url, *, mode, scope_for, log_label, **_kw):
 # Route registration — 20 fragment routes from two tables
 # ---------------------------------------------------------------------------
 #
-# Each was the same shape: resolve the machine, build the fragment URL and a
-# default target_id, call the shared renderer with this mode's scoping
-# arguments. `register_panels` generates them; the endpoint names it derives
-# are pinned by tests/unit/test_route_map_parity.py.
-#
-# The three `explore` PAGES stay hand-written above — they build a
-# page-level context (filter panel, facet chips, scope panel) the fragments
-# don't have, which is more than the spec expresses.
+# All the same shape: resolve the machine, build the fragment URL and a default
+# target_id, call the shared renderer with this mode's scoping arguments.
+# `register_panels` generates them, and the endpoint names it derives are pinned
+# by tests/unit/test_route_map_parity.py. The three `explore` PAGES stay
+# hand-written above -- they build a page-level context the fragments do not
+# have, which is more than the spec expresses.
 
 _MODES = (
     ModeSpec(

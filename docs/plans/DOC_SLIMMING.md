@@ -177,6 +177,7 @@ the recorded starting number still holds. Nothing else from prior sessions is ne
 | 3 | 36.3% | 33.6% | 21.7% | 41.7% | **33.6%** |
 | 9 + 5 (start) | 36.3% | 33.5% | 21.7% | 41.7% | **33.6%** |
 | 5 (3 files) | 36.3% | 33.0% | 21.7% | 41.7% | **33.4%** |
+| 5 (6 files) | 36.2% | 32.9% | 21.2% | 41.7% | **33.3%** |
 
 Phases 0 and 1 move the ratio by design: neither removes prose. Phase 0 lands
 the gate, and Phase 1 rewrites decorative characters in place rather than
@@ -382,13 +383,16 @@ roughly one careful session per 100 blocks.
 or tight group, and re-run `doc_ratio.py` per commit.
 
 **Done so far (2026-08-23):** `utils/rbac.py` 704 -> 541, `webapp/config.py`
-462 -> 418, `charts/theme.py` 508 -> 429. That is -286 lines over three files,
-about 22% of their combined volume, and matches the pilot rate. Every commit is
+462 -> 418, `charts/theme.py` 508 -> 429, `cli/accounting/commands.py`
+2009 -> 1947, `webapp/jobs/routes.py` 2089 -> 2062, `sam/queries/dashboard.py`
+1100 -> 1047. That is -428 lines over six files. The rate is uneven and the
+reason is legible: files whose comments are *headers and policy* give ~20%,
+files whose comments are already one tight block per code step give ~2%.
+`jobs/routes.py` is the second kind -- 19 blocks rewritten for 27 lines. Every commit is
 verified prose-only by comparing docstring-stripped ASTs against `HEAD`
 (`ast.unparse` round-trip), not by eyeballing the diff.
 
-**Remaining, in order:** `cli/accounting/commands.py` (148), `jobs/routes.py`
-(136), `queries/dashboard.py` (116), `queries/xras_actions.py` (88),
+**Remaining, in order:** `queries/xras_actions.py` (88),
 `webapp/run.py` (83), `allocations/xras/card_routes.py` (82),
 `queries/xras_accounts.py` (75), `integration/xras.py` (72),
 `allocations/blueprint.py` (69). `tasks/xras_sweep.py` (163) and
