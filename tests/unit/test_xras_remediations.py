@@ -612,8 +612,8 @@ class TestSearch:
 
     def test_the_chips_survive_emptying_the_card(self, auth_client, armed):
         """The copy says "clear the search and chips"; both must be there to
-        clear. They used to render only alongside rows, so they vanished at
-        the moment they were needed."""
+        clear. Rendering them only alongside rows makes them vanish at exactly
+        the moment they are needed."""
         _publish(_payload('EXAM0001'), _payload('EXAM0002', status='Submitted'))
         body = auth_client.get(
             FRAGMENT + '?status=Submitted&search=EXAM0001').get_data(as_text=True)

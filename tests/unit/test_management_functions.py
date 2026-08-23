@@ -121,10 +121,10 @@ class TestAddUserToProject:
     def test_readds_member_whose_prior_rows_all_expired(self, session):
         """A returning member with only end-dated rows gets a fresh open row.
 
-        Regression: the existence check used to match on (account_id,
-        user_id) alone, so a stale end-dated row made the account look
-        "already a member" and the re-add was a silent no-op — leaving the
-        user with no live access on that account.
+        Regression: matching the existence check on (account_id, user_id)
+        alone lets a stale end-dated row make the account look "already a
+        member", so the re-add is a silent no-op and the user is left with no
+        live access on that account.
         """
         project, account = _project_with_account(session)
         new_user = make_user(session)

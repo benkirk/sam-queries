@@ -475,7 +475,8 @@ changelog phrasing, doc length). Measured by `scripts/doc_ratio.py`. Full
 rules and the cleanup sprint: `docs/plans/DOC_SLIMMING.md`.
 
 ❌ **DON'T** write changelog phrasing in a comment — `this used to be X`,
-   `we previously`. Say what is true now; history is in git.
+   `we previously`, `an earlier version of this comment`. Say what is true
+   now; history is in git.
 ❌ **DON'T** put emoji or box-drawing separators in code or config comments.
    Write `WARNING:`, `NOTE:`, `DO NOT`. Markdown is exempt — including this
    file, whose ⚠️/❌/✅ markers are navigation.

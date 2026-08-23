@@ -311,7 +311,7 @@ class TestCreateForm:
         nothing in the DOM posts — `_contract_create_context` synthesises it.
         `HtmxFormHandler.render_errors` therefore has to let `context()`'s
         `form` win over the raw `request.form`, which carries no `_display`
-        keys. Pins the behavior that used to require a local override.
+        keys. Pins the behavior, so no caller needs a local override.
         """
         resp = auth_client.post(CREATE_URL, data={
             'contract_number': any_contract.contract_number,   # duplicate

@@ -121,8 +121,8 @@ class TestTheDedupKey:
             'expiration:SCSG0001:2026-09-30:expiring:pi@x.edu'
 
     def test_the_legacy_format_is_the_same_key_without_the_label(self):
-        """What every manual CLI run wrote before this change. The task
-        checks both, so the overlap cohort is not notified twice."""
+        """The pre-rung-label form still sitting in `notification_log`. The
+        task checks both, so the overlap cohort is not notified twice."""
         assert legacy_dedup_key('SCSG0001', '2026-09-30', 'pi@x.edu') == \
             'expiration:SCSG0001:2026-09-30:pi@x.edu'
 

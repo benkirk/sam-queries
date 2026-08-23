@@ -476,8 +476,8 @@ def test_project_modal_pages_ship_the_allocation_modal(auth_client, url):
 
 def test_edit_project_page_ships_one_of_each(auth_client, active_project):
     """/admin/project/<projcode>/edit assembles its own modal set (it extends
-    dashboards/base, not base_admin) — it used to carry an inline copy of the
-    edit-allocation modal alongside the shared include."""
+    dashboards/base, not base_admin), so it is the page most likely to grow an
+    inline copy of the edit-allocation modal beside the shared include."""
     resp = auth_client.get(f'/admin/project/{active_project.projcode}/edit')
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)

@@ -4,10 +4,10 @@ Inputs are the plugin envelopes verbatim (see ``webapp.jobs.service``) — the
 histogram envelope is self-describing (dimension, unit, full zero-filled bucket
 vector, null_count), so the renderers never hardcode bucket tables.
 
-Lives in its own module because three chart modules need it. It was previously
-in the package facade, which meant `histogram.py`, `stacked.py` and `pie.py`
-each imported it *lazily inside a method* to dodge the circular import — a
-workaround for a layering mistake rather than a real constraint.
+Lives in its own module because three chart modules need it. Keeping it in the
+package facade instead forces `histogram.py`, `stacked.py` and `pie.py` to
+import it *lazily inside a method* to dodge a circular import — a workaround
+for a layering mistake rather than a real constraint.
 
 **No matplotlib import here**, same as `links.py` and `series.py`, and enforced
 by the same test: this is envelope arithmetic, not rendering.

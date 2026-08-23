@@ -84,8 +84,8 @@ _REQUEST_NUMBER_WIDTH = 30
 #: ``requestNumber`` — and an audit write that 500s is what ``_fit`` exists to prevent.
 _PROJCODE_RESULT_WIDTH = 30
 #: ``xras_action_log.processed_by`` is ``varchar(35)`` — ``users.username`` width. The
-#: slice lives here rather than at the four ``recheck.py`` call sites that used to carry
-#: it: a width guard belongs next to the column it guards, or the fifth caller misses it.
+#: slice lives here rather than at the four ``recheck.py`` call sites: a width guard
+#: belongs next to the column it guards, or the fifth caller misses it.
 _PROCESSED_BY_WIDTH = 35
 #: ``service`` holds one of ``sam.xras.dispatch.SERVICES``; ``outcome_reason`` holds a
 #: sentence written for whoever reads the row at 3am. Both bounded rather than ``TEXT``,

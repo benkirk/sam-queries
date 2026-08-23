@@ -530,12 +530,12 @@ def test_opportunity_qa_is_populated_only_on_new_actions():
 def test_allocation_type_vocabulary_does_not_match_sams_table():
     """Observed spellings are XRAS's own, and only one of the five names a SAM row.
 
-    WARNING: **Corrected in Sprint C.** This test used to say the field was "inert on the
-    action-post path" and read only on the GET side. It is not: it is the first input
-    to the eleven-strategy allocation-type chain, and the strategies read it three
-    different ways — as an exact key (``ACCESSStrategy``), as an equality test
-    (``LargeStrategy``), and as free text (``ExternalStrategy``). Sprint A wrote that
-    claim from the POJOs, before anyone read ``AllocationTypeIdExtractor``.
+    WARNING: the field is **not** inert on the action-post path, whatever a reading of
+    the POJOs alone suggests. It is the first input to the eleven-strategy
+    allocation-type chain, and the strategies read it three different ways — as an
+    exact key (``ACCESSStrategy``), as an equality test (``LargeStrategy``), and as
+    free text (``ExternalStrategy``). ``AllocationTypeIdExtractor`` is the file that
+    settles it.
 
     What survives is the assertion, and the trap underneath it. Of the five observed
     spellings only ``Small`` names a SAM ``allocation_type`` row — where it is **not

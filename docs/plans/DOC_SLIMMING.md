@@ -180,6 +180,7 @@ the recorded starting number still holds. Nothing else from prior sessions is ne
 | 5 (6 files) | 36.2% | 32.9% | 21.2% | 41.7% | **33.3%** |
 | 5 (10 files) | 36.2% | 32.8% | 21.2% | 41.7% | **33.2%** |
 | 5 (16 files) | 36.1% | 32.8% | 21.2% | 41.5% | **33.2%** |
+| 1b (round 2) | 36.1% | 32.8% | 21.2% | 41.5% | **33.2%** |
 
 Phases 0 and 1 move the ratio by design: neither removes prose. Phase 0 lands
 the gate, and Phase 1 rewrites decorative characters in place rather than
@@ -254,6 +255,39 @@ Script-driven, repo-wide, including `tests/`. All of it verifiable by re-running
 - **British spellings**: 550 hits across 225 files, **174 lines in `src/*.py`, all in
   comments/docstrings, zero in code**.
 - **Dead code**: `sql/driver.sh`'s commented-out shell block.
+
+### Phase 1b, round 2 — the gap the sprint measured (DONE 2026-08-23)
+
+Phase 5 turned up four comments arguing with their own earlier revisions --
+*"An earlier version of this tuple listed 'Update' and 'Adjust'"*, *"An earlier
+revision of this comment justified the cap with +54% at 180 bands"*, *"An
+earlier version read only received/failed/manual"*, *"It was ``Integer``, which
+is harmless in MySQL"*. `CHANGELOG_PHRASES` matched **none** of them. That is
+the same defect one level up: not "the code used to be X" but "this comment
+used to say X".
+
+Four patterns added, chosen by probing the whole corpus and keeping only what
+scored **zero false positives**:
+
+| pattern | what it catches |
+|---|---|
+| `(a\|the) (earlier\|previous\|prior) (version\|revision\|iteration\|spelling\|implementation)` | a comment citing its own past |
+| `(it\|this\|that) was (originally\|previously\|formerly\|once\|` `` `)` | subject-anchored, so runtime state (*"an account that was previously removed"*) does not trip it |
+| `we (now\|once)` | 3 sites, all genuine |
+| `before (this\|that) (change\|commit\|PR\|fix\|refactor)` | 2 sites, all genuine |
+
+Rejected after measuring: `no longer` (55 hits, nearly all correct present
+tense -- the plan predicted this), `has since` (3, all runtime state),
+`replaced by/with` (17, mostly present-tense behavior), bare `was previously`
+(6, of which 3 describe runtime rather than code history).
+
+**The bigger find was the `used to` verb list**, which was 9 verbs and missed
+13 real sites. It stays enumerated rather than `\w+`, and the comment in
+`test_docs.py` now says why: the open form matches 77 lines here and nearly all
+are the *purpose* sense (*"a helper used to build the query"*). 21 verbs now,
+each added only after measuring zero false positives.
+
+Net: 25 sites rewritten, allowlist still the same two permanent entries.
 
 ### Phase 1b — changelog phrasing (49 sites)
 Empty the `PHRASING_EXEMPT` allowlist seeded in Phase 0. Bounded and enumerable, but

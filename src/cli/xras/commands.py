@@ -48,12 +48,11 @@ class XrasCommand(BaseCommand):
     def _validate_mapping(self) -> int:
         """Report the state of ``xras_resource_repository_key_resource``.
 
-        WARNING: **An unmapped active resource is NOT a failure**, and this used to say
-        otherwise. Not every internal resource is offered for allocation through
-        XRAS, so most of the unmapped ones have no mapping *by design* — 11 of them,
-        stably, across snapshot refreshes. Exiting non-zero on that made the command
-        unusable as the deploy gate its own docstring claimed it could be: it would
-        have failed every time, forever.
+        WARNING: **An unmapped active resource is NOT a failure.** Not every
+        internal resource is offered for allocation through XRAS, so most unmapped
+        ones have no mapping *by design* — 11 of them, stably, across snapshot
+        refreshes. Exiting non-zero on that would make the command unusable as a
+        deploy gate: it would fail every time, forever.
 
         What it is instead: a **diagnostic**. If a resource that *should* be
         allocatable through XRAS appears in the unmapped list, that is the data fix

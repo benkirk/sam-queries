@@ -455,7 +455,9 @@ budget is about relocating rationale, not discarding it.
 - American spelling. The check reads comments, docstrings and markdown only —
   never identifiers or string literals — so it can never demand a rename.
 - No changelog phrasing. A comment says what is true now; repository history
-  belongs in git and `docs/plans/`.
+  belongs in git and `docs/plans/`. This includes a comment arguing with its
+  own earlier revision (`an earlier version of this docstring said...`), which
+  is the same defect one level up.
   ✗ `This used to be a hand-copied duplicate, and the copy had drifted...`
   ✓ `Call the shared ladder; do not re-inline it -- a copy silently stopped
   passing action_id.`

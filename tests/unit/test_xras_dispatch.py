@@ -415,11 +415,10 @@ class TestOneActionIdSpansAFailureAndItsRetry:
        is one admin pushing the button, seeing it fail, and pushing it again once the
        project existed — not a broker retry loop.
 
-       WARNING: An earlier version of this docstring called it *"the only direct evidence we
-       hold on broker retry behavior"*. That was written before Steve's reply and is
-       wrong in the direction that mattered: it implied an automatic retry, which is
-       the loop the runbook feared. There is no such loop. The observation itself
-       stands — same id, two bodies, two services.
+       WARNING: this pair is **not** evidence about broker retry behavior, and must
+       not be described as such. That reading implies an automatic retry — the loop
+       the runbook feared — and the reply above rules it out. The observation itself
+       stands: same id, two bodies, two services.
     """
 
     PAIR = ('new_ncar4236_failed.json', 'new_uchi0020_ok.json')

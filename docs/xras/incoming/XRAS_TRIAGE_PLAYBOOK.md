@@ -122,8 +122,7 @@ groups, and the fourth is the live one:
 | `dangling_keys` | A mapping row whose resource does not exist. **Broken** |
 | `xras_only_keys` | A key XRAS offers that SAM cannot resolve. **This is the one that breaks an award** |
 
-⚠️ **It exits non-zero on TWO of those now, not one** — `dangling_keys` *or*
-`xras_only_keys`. An earlier revision of this page said dangling was the only one.
+⚠️ **It exits non-zero on TWO of those** — `dangling_keys` *or* `xras_only_keys`.
 
 ⚠️ **A one-sided report is not a clean report.** The XRAS half is auto-detected: with no
 `XRAS_OUTGOING_ENABLED=1` + `XRAS_API_KEY` it silently reports the local half, and with an
@@ -167,9 +166,9 @@ own failure is silent and is in § 3.9.
 Unreconciled ARC placeholder identities — the username on the award has never been
 reconciled to a SAM user.
 
-**Fix: work the *Accounts Needed* tab, or `sam-admin xras --accounts`.** This used to say
-"identity reconciliation", which is a category rather than a loop. #458 turned it into a
-worklist, and it is the highest-value surface on this page:
+**Fix: work the *Accounts Needed* tab, or `sam-admin xras --accounts`.** Not "identity
+reconciliation" — that is a category, not a loop. #458 made it a worklist, and it is the
+highest-value surface on this page:
 
 - **Two classifications, each with its remedy:** `absent` → **Create**, `inactive` →
   **Reactivate**. Account creation is manual; the worklist tells you *who*, *why*, and —

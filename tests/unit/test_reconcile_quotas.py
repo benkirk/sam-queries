@@ -1132,9 +1132,9 @@ class TestPathVerifierSSH:
                 v.check(['/a', '/b'])
 
     def test_stdin_has_trailing_newline_for_last_path(self):
-        """Regression: the final path was being dropped because
-        `read` returned non-zero on EOF-mid-line. We now append a
-        trailing newline AND use `|| [ -n "$p" ]` in the loop.
+        """Regression: `read` returns non-zero on EOF-mid-line, which drops
+        the final path. Guarded by appending a trailing newline AND using
+        `|| [ -n "$p" ]` in the loop.
         """
         captured = {}
         def _run(cmd, *, input, **kw):

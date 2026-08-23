@@ -106,11 +106,11 @@ def legacy_dedup_key(projcode: str, latest_expiration_date: Optional[str],
                      recipient: str) -> str:
     """The pre-rung-label key format, for the migration bridge.
 
-    Every manual CLI run before this change wrote
-    ``expiration:{projcode}:{date}:{recipient}``. The first scheduled run
-    would not match those, so the overlap cohort — projects already notified
-    whose end dates still fall in the window — would get a second notice. The
-    task checks both forms and treats a hit on either as suppressing.
+    ``notification_log`` holds keys in the pre-rung-label form
+    ``expiration:{projcode}:{date}:{recipient}``, written by manual CLI runs. A
+    scheduled run's key does not match those, so the overlap cohort — projects
+    already notified whose end dates still fall in the window — would get a
+    second notice. The task checks both forms and suppresses on either.
 
     **Removable after one full cycle**, by which point every live key is in
     the new format. Nothing else should grow a dependency on it.

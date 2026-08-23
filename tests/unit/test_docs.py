@@ -459,12 +459,25 @@ def test_prose_uses_american_spelling():
 # per line. `no longer`, `previously` and `historically` are absent for the
 # same reason.
 
+# The verbs after "used to" are ENUMERATED, never `\\w+`. "used to <verb>" is
+# also the purpose sense ("a helper used to build the query"), and the open form
+# matches 77 lines here of which nearly all are that. Every verb below was added
+# only after measuring zero false positives across the corpus.
 CHANGELOG_PHRASES = re.compile(
     r"successor to|the old behavio(?:u)?r|\bformerly\b"
-    r"|\bused to (?:be|live|call|read|pass|sit|hold|do|get)\b"
+    r"|\bused to (?:be|live|call|read|pass|sit|hold|do|get"
+    r"|default|return|come|point|carry|take|say|fire|match|include|mean"
+    r"|import|store|accept|emit|render|raise|require|treat|walk|write|set)\b"
     r"|\bwe used to\b|\brenamed from\b|\bin the old\b"
     r"|\bbefore PR ?#?\d+|\bas of PR\b"
-    r"|this (?:comment|docstring) (?:originally|previously)",
+    r"|this (?:comment|docstring) (?:originally|previously)"
+    # A comment arguing with its own earlier revision. Four sites in the
+    # doc-slimming sprint carried this and none matched the rules above.
+    r"|\b(?:an?|the) (?:earlier|previous|prior) "
+    r"(?:version|revision|iteration|spelling|implementation)\b"
+    r"|\b(?:it|this|that) was (?:originally|previously|formerly|once|``)"
+    r"|\bwe (?:now|once)\b"
+    r"|\bbefore (?:this|that) (?:change|commit|PR|fix|refactor)\b",
     re.IGNORECASE)
 
 PHRASING_EXEMPT = {
@@ -515,7 +528,7 @@ LINE_BUDGETS = {
     "docs/apis/HPC_DATA_COLLECTORS_GUIDE.md": 950,
     "docs/apis/SYSTEMS_INTEGRATION_APIs.md": 960,
     "docs/xras/incoming/XRAS_CUTOVER_RUNBOOK.md": 710,
-    "docs/xras/incoming/XRAS_TRIAGE_PLAYBOOK.md": 500,
+    "docs/xras/incoming/XRAS_TRIAGE_PLAYBOOK.md": 490,
     "docs/xras/outgoing/XRAS_OPPORTUNITY_ALLOCATION_TYPE.md": 630,
     "docs/xras/outgoing/XRAS_OUTGOING_QUERIES.md": 1100,
     "docs/xras/outgoing/XRAS_WRITE_FIXUPS.md": 460,

@@ -125,16 +125,15 @@ def profile(figsize, mobile_figsize, tablet_figsize, *, base_fontsize=11,
     rendering exactly — they are read straight off the existing
     `plt.subplots(figsize=...)` call and the tick/rotation constants around
     it. Non-desktop overrides go in the `mobile` / `tablet` dicts, never as
-    bare keywords: an earlier version collected them with `**kwargs`, which
-    meant a name that happened to match a desktop parameter was silently
-    applied to desktop instead. `legend_placement='right'` on the pies read as
-    a mobile override and configured desktop, where it was already the
-    default, so it did nothing at all and looked like it worked.
+    bare keywords. Collecting them with `**kwargs` instead applies any name
+    matching a desktop parameter to desktop, silently: `legend_placement='right'`
+    on the pies reads as a mobile override, configures desktop where it is
+    already the default, and so does nothing at all while looking like it worked.
 
-    Both non-desktop figsizes are **required and positional**. `mobile_figsize`
-    used to default to the desktop aspect ratio at 4.5in wide, which sounds
-    reasonable and is not: 18:5 becomes a 4.5 x 1.25in strip, and a strip with
-    its legend moved underneath has well under an inch of plot left.
+    Both non-desktop figsizes are **required and positional**. Defaulting
+    `mobile_figsize` to the desktop aspect ratio at 4.5in wide sounds reasonable
+    and is not: 18:5 becomes a 4.5 x 1.25in strip, and a strip with its legend
+    moved underneath has well under an inch of plot left.
     `tablet_figsize` is positional for the same reason — the tight bbox is a
     function of the legend contents, so it can only be measured, never derived
     — and because a family that genuinely wants desktop's figure (the pies do)

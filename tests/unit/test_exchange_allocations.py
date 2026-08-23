@@ -317,10 +317,10 @@ class TestExchangeAllocationsAuditTrail:
     """Regression guards for the audit-trail double-count bug.
 
     An exchange must write exactly ONE additive row per dedicated allocation —
-    the signed TRANSFER. The earlier implementation ALSO let update_allocation
-    log an EDIT->ADJUSTMENT row; since legacy replay sums both TRANSFER and
-    ADJUSTMENT (addAmount), that double-counted the change (±2×amount) and broke
-    the invariant replay(history) == allocation.amount.
+    the signed TRANSFER. Letting update_allocation ALSO log an EDIT->ADJUSTMENT
+    row double-counts: legacy replay sums both TRANSFER and ADJUSTMENT
+    (addAmount), so the change lands twice (±2×amount) and breaks the invariant
+    replay(history) == allocation.amount.
     """
 
     def _seed_new_baseline(self, session, alloc, user):

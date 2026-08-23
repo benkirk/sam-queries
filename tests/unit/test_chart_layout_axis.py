@@ -49,11 +49,11 @@ def _chart_classes():
 class TestProfile:
 
     def test_non_desktop_figsizes_are_required(self):
-        """`mobile_figsize` used to default to the desktop aspect ratio at
-        4.5in wide, which turns 18:5 into a strip with no room for a plot once
-        the legend moves underneath. Making both positional means a new family
-        cannot inherit that mistake by omission — and a family that genuinely
-        wants desktop's figure at tablet size has to say so."""
+        """Defaulting `mobile_figsize` to the desktop aspect ratio at 4.5in wide
+        turns 18:5 into a strip with no room for a plot once the legend moves
+        underneath. Positional means a new family cannot inherit that mistake by
+        omission — and one that genuinely wants desktop's figure at tablet size
+        has to say so."""
         with pytest.raises(TypeError):
             profile((18, 5))
         with pytest.raises(TypeError):
@@ -261,8 +261,7 @@ class TestFieldsAreConsumed:
 
         Counted from the tick groups matplotlib emits, not from label text:
         the smart date axis strips the repeated year, so counting `2026-`
-        occurrences (as an earlier version did) now measures the vocabulary
-        rather than the tick density.
+        occurrences would measure the vocabulary rather than the tick density.
         """
         import re
         desktop, mobile = self._svgs(app, self._case('usage_stacked.core_hours'))

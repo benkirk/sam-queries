@@ -1,10 +1,10 @@
 """Job-history scopes — which jobs a fragment is allowed to aggregate.
 
-The job service used to carry three near-identical families
-(``search_jobs`` / ``_machine`` / ``_user``, and the matching ``count_*``)
-that differed *only* in how they pinned the plugin's ``account`` / ``user``
-kwargs, with the security rule for each restated in prose across six
-docstrings. Those rules are these three classes now:
+One class per mode, so the security rule lives in code rather than restated in
+prose across six docstrings. Without them the job service needs three
+near-identical families (``search_jobs`` / ``_machine`` / ``_user``, and the
+matching ``count_*``) differing *only* in how they pin the plugin's ``account``
+/ ``user`` kwargs:
 
 ============  =================================================================
 mode          pin
