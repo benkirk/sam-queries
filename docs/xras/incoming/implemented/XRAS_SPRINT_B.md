@@ -153,6 +153,10 @@ is a write.
 The Allocations dashboard's top-level navigation is **one route per page**, not Bootstrap
 tabs. Verified layout:
 
+> **Structure note (post-PR #469):** the XRAS routes shown below now live in the
+> `allocations/xras/` sub-package; `blueprint.py` is the non-XRAS dashboard. This
+> as-built layout is preserved as written.
+
 ```
 src/webapp/dashboards/allocations/blueprint.py
     @bp.route('/')             index()        → redirects to the default (Projects)
