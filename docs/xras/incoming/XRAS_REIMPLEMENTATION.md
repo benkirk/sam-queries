@@ -984,9 +984,11 @@ Two of these do not mean what an XRAS handler needs:
 `ProjectContract.create` → `ProjectOrganization.create`. **Port against that, not from scratch.**
 
 **Allocations dashboard** — blueprint `allocations_dashboard`, `url_prefix='/allocations'`
-(`src/webapp/dashboards/allocations/blueprint.py:46`). Unlike the admin dashboard it has **no
-sub-route modules** — all 1,132 lines are in one `blueprint.py`. Three tabs today: Projects,
-Transactions, Adjustments. The tab strip is the shared `page_tabs` macro driven by a literal list in
+(the `Blueprint` now lives in `src/webapp/dashboards/allocations/__init__.py`). Originally one
+`blueprint.py`; since the XRAS package split (PR #469) the XRAS routes live in the
+`allocations/xras/` sub-package (`card_routes` / `lifecycle_routes` / `modals` / `remediation`)
+and `blueprint.py` is the non-XRAS dashboard. Four tabs today: Projects, Transactions,
+Adjustments, XRAS. The tab strip is the shared `page_tabs` macro driven by a literal list in
 `templates/dashboards/allocations/base_allocations.html:21-25`; tabs are real routed `<a href>`s. A
 **parallel** nav registry lives at `src/webapp/utils/nav.py:145-159`, maintained separately.
 
@@ -1294,7 +1296,8 @@ paginated table, click-row-for-detail modal), and it will be the direct neighbou
 2. **Nav registry** — the `'allocations'` entry's `items` tuple in `src/webapp/utils/nav.py:145-159`.
    ⚠️ This list is maintained separately from the tab strip, so **both files need the entry** — the
    easy one to miss. `tests/unit/test_nav.py:44-50` fails if the endpoint isn't a real route.
-3. **Routes** — page + `*_fragment` + `*_details` in `allocations/blueprint.py`. Page and read
+3. **Routes** — page + `*_fragment` + `*_details` in `allocations/xras/` (the `card_routes` /
+   `lifecycle_routes` modules; as built — see PR #469). Page and read
    fragments gated `@login_required` + `@require_permission_any_facility(Permission.VIEW_PROJECTS)`,
    matching the sibling tabs; **replay** and **activate-project** gated
    `@require_permission(Permission.MANAGE_XRAS)`. Facility-scope queries with

@@ -637,7 +637,7 @@ def enrich_worklist(rows, *, person_lookup=None, max_lookups=25) -> dict
 ### 7.3 The dashboard card — read-only this PR
 
 A fragment beside the existing XRAS surfaces in
-`src/webapp/dashboards/allocations/blueprint.py` (which already serves
+`src/webapp/dashboards/allocations/xras/card_routes.py` (which already serves
 `/xras`, `/xras_fragment`, `/xras_pending_fragment`), template under
 `templates/dashboards/allocations/partials/`.
 
@@ -645,7 +645,7 @@ A fragment beside the existing XRAS surfaces in
   `@require_permission(Permission.VIEW_XRAS)`, embedded in `xras.html` with a
   lazy `hx-get`.
 - **PII is gated route-level**, following `xras_pending_fragment`
-  (`blueprint.py:1539-1551`) and the Notifications precedent (counts at one
+  (in `xras/card_routes.py`) and the Notifications precedent (counts at one
   level, rows naming people higher): person columns (name, email,
   organization, academicStatus, residenceCountry) are assembled **only** when
   the viewer holds `MANAGE_XRAS`; a `VIEW_XRAS` response carries username,

@@ -98,6 +98,10 @@ suppress a repeat. The operator UI has no `--force`. To iterate on wording:
 DELETE FROM notification_log WHERE dedup_key LIKE 'xras_activation:UHSS%';
 ```
 
+> **Structure note (post-PR #469):** the notify/lifecycle code referenced above
+> (the `dedup_key` builder) now lives in `allocations/xras/lifecycle_routes.py`;
+> `blueprint.py` is non-XRAS. This as-built record is preserved as written.
+
 **3 · `benkirk` as PI resolves a mnemonic only via the *organization* strategy.**
 `resolve_mnemonic_code()` (`src/sam/xras/extractors.py:466`) takes the **lab** route
 whenever `opportunityName` starts with `'NCAR '` — and benkirk's lab (org 32,

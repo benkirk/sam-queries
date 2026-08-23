@@ -130,7 +130,7 @@ lever, and `hx-confirm`.
 | Audit model + vocab | `sam/integration/xras.py` — `XrasRemediationEvent`, `XRAS_REMEDIATION_OPERATIONS` (`operation` is `VARCHAR(24)` — keep op names ≤ 24) |
 | Forms | `sam/schemas/forms/xras_remediation.py` |
 | RBAC | `webapp/utils/rbac.py` — `MANAGE_XRAS` / `ADMIN_XRAS` (§1) |
-| Routes + handlers | `webapp/dashboards/allocations/xras_remediation_routes.py` |
+| Routes + handlers | `webapp/dashboards/allocations/xras/remediation.py` (editors + handlers) · `webapp/dashboards/allocations/xras/modals.py` (the read-detail modal they hang off) |
 | Templates | `.../partials/xras_request_detail.html`, `_xras_remediation_actions.html`, and the per-editor `xras_*_form.html` |
 
 ## 8. Follow-ons

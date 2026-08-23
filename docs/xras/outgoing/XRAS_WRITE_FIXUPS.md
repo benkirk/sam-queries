@@ -58,7 +58,7 @@ account and an active real XRAS identity. Nobody can act on it from SAM today.
 > A row qualifies for the fixup when **`placeholder` is true AND
 > `is_reconciled` is true**. Both are already computed and already on the
 > `VIEW_XRAS` side of the PII line (`is_reconciled` is "account state, not a
-> personal detail" — `blueprint.py:1832`). The control itself is gated higher,
+> personal detail" — `xras_accounts_fragment` in `xras/card_routes.py`). The control itself is gated higher,
 > on **`MANAGE_XRAS`** (§ 5).
 
 Note the three-way split the card already half-recognizes (see the badge comment
@@ -288,7 +288,7 @@ row is (placeholder AND is_reconciled)
 | [`XRAS_OUTGOING_QUERIES.md`](XRAS_OUTGOING_QUERIES.md) | The read-side worklist and the full readable/closed API surface. § 4.7 first recorded the write surface this document exercises |
 | [`PROJECT_AND_ACCOUNT_LIFECYCLE.md`](PROJECT_AND_ACCOUNT_LIFECYCLE.md) | § 2 *SAM never creates users*; § 4 the write-direction ground rule and the two follow-ons (this is the first) |
 | `src/sam/queries/xras_accounts.py` | `classify_accounts`, `enrich_worklist`, the trigger fields (`placeholder`, `is_reconciled`) |
-| `src/webapp/dashboards/allocations/blueprint.py:1810` | `xras_accounts_fragment` — the PII gate and `may_manage` pattern the control extends |
+| `src/webapp/dashboards/allocations/xras/card_routes.py` | `xras_accounts_fragment` — the PII gate and `may_manage` pattern the control extends |
 | `src/webapp/templates/dashboards/allocations/partials/xras_accounts_card.html` | The card; the "placeholder ≠ unreconciled" badge nuance to build on |
 | `src/sam/integration/xras_api/client.py` | The GET-only read client; the structural pin the write client must not weaken |
 | Memory: `xras-write-capability` | The live-probe results, condensed |
