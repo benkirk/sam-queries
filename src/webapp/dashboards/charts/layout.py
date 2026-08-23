@@ -1,52 +1,21 @@
-"""`Layout` — the geometry axis.
+"""`Layout` -- the geometry axis.
 
-Charts are rendered server-side at a fixed figure size and then scaled by CSS.
-That works on a desktop and fails badly on a phone: measured on the running
-app at 390px, the status dashboard's (18,10) chart renders at **0.224 scale**,
-putting its 9-11pt labels at roughly **2px on screen**. No stylesheet can fix
-that — the only fix is to re-render at a different figure size and font size,
-which means the server has to know the layout. That is what this axis is for.
+Charts render server-side at a fixed figure size and are then scaled by CSS,
+so a phone gets 9-11pt labels at ~2px. No stylesheet fixes that; the server
+has to know the layout and re-render.
 
-## What the mobile pass changed here
+Mobile figures are declared explicitly per family, NOT derived by preserving
+the desktop aspect ratio -- an 18:5 ratio at phone width leaves the plot under
+an inch tall once the legend moves underneath. Size them so the tight-bbox
+intrinsic width lands near 350pt (phones) or 730pt (tablets).
 
-PR 1 shipped this module with `mobile` defined but unrequested, and said of
-`MOBILE_DEFAULTS`: *"a starting point chosen to be legible, not a tuned design
-— treat them as the thing that pass revises."* This is that revision.
+A tablet layout is **desktop with a smaller figure**, not a large phone -- see
+`TABLET_DEFAULTS`. The band is 768px to 1199.98px. The lower edge is forced
+(where `mobile` ends); the upper was measured, not chosen: desktop's smallest
+label lands at 8.1px at 1024 and 9.7px at 1200. Extending to `xxl` would hand
+every 1280 laptop a figure sized for a 640px card.
 
-Two of the six fields — `legend_placement` and `max_legend_entries` — were
-declared and read by nothing; `base_fontsize` reached two charts of fifteen,
-`max_ticks` one, `label_rotation` two. All six are now consumed by every
-family that has the concept.
-
-The aspect-preserving `mobile_figsize` default is gone. Preserving an 18:5
-ratio at phone width gives a 4.5in x 1.25in strip, and once the legend moves
-underneath, the plot itself is under an inch tall. **Mobile figures are
-declared explicitly per family**, sized so the tight-bbox intrinsic width
-lands near 350pt — roughly 1:1 with a phone viewport once card padding is off,
-which is what puts a 9pt label on screen at ~9px instead of ~2px.
-
-## The tablet profile
-
-The mobile pass gave phones a figure and left tablets in the desktop band,
-where an 18in figure is squeezed into ~640px. Measured on the running app,
-that put the status dashboard's smallest label at **6.0px at a 768 viewport**
-— worse than the same chart on a phone, which is the defect this profile
-exists to close.
-
-The band is Bootstrap `md` to just under `xl`: **768px to 1199.98px**. The
-lower edge is forced (it is where `mobile` ends). The upper edge was measured
-rather than chosen: on these pages the chart's container is the viewport less
-144px, so desktop's smallest label lands at 8.1px at 1024, 9.7px at 1200 and
-10.4px at 1280. Desktop stops being the problem somewhere around 1110-1200,
-and 1200 is the breakpoint there. Extending the band to `xxl` instead would
-hand every 1280 laptop a figure sized for a 640px card.
-
-A tablet layout is **desktop with a smaller figure**, not a large phone —
-see `TABLET_DEFAULTS`. The figures are sized so the tight bbox lands near
-730pt, which is what keeps a 9-11pt label at ~9px on the narrow edge of the
-band. It grows to ~15px at the wide edge, because the band spans a 1.7x range
-of container widths and the chart fills whatever it is given; the phone band
-spans 2.2x and ships with the same property.
+Measurements: docs/plans/implemented/{MOBILE_CHARTS,TABLET_CHARTS}.md.
 """
 
 from dataclasses import dataclass, fields, replace

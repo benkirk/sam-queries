@@ -1,55 +1,40 @@
-"""``roles[]``, read twice, with different rules — and the defect that produces.
+"""``roles[]``, read twice with different rules -- and the defect that produces.
 
-One array, two readings, and conflating them is the easiest way to get project
+One array, two readings; conflating them is the easiest way to get project
 membership wrong:
 
-============================  ============================================  =====================
-reading                       filter                                        result
-============================  ============================================  =====================
-**role assignment**           ``roleType`` must equal ``PI`` or             project **lead** /
-(``getUsernameByRoleType``)   ``Allocation Manager``, plus a date window     **admin**
-**roster**                    ``roleType`` is **never examined** — date      **every** entry
-(``getUsernames``)            window only                                    becomes a member
-============================  ============================================  =====================
+* **role assignment** (``getUsernameByRoleType``) -- ``roleType`` must equal
+  ``PI`` or ``Allocation Manager``, plus a date window. Yields lead / admin.
+* **roster** (``getUsernames``) -- ``roleType`` is NEVER examined, date window
+  only. Every entry becomes a member.
 
-``ActionRoleName`` has exactly two constants, ``PI("PI")`` and
-``ALLOCATION_MANAGER("Allocation Manager")`` — space-separated, case-sensitive, and a
-*different vocabulary* from the ``Pi`` / ``CoPi`` / ``AllocationManager`` keys of
-``GET /v1/requests/role/…``. So a ``Co-PI`` or a ``User`` is invisible to role
-assignment but **is still added to the project**. ``new_ncar4232_failed.json`` carries
-a ``User`` entry and is the corpus proof.
+``ActionRoleName`` has exactly two constants, space-separated and
+case-sensitive, and they are a *different vocabulary* from the ``Pi`` /
+``CoPi`` / ``AllocationManager`` keys of ``GET /v1/requests/role/...``. So a
+Co-PI or a User is invisible to role assignment but IS still added to the
+project.
 
-The end-date rule is **identical** on both readings. Only the begin-date rule differs,
-and it differs asymmetrically:
+The end-date rule is identical on both. Only the begin-date rule differs, and
+asymmetrically: the roster excludes a future-dated role strictly, while role
+assignment excludes it only while the action is ALSO still in the future (a
+triple conjunct). Once the action's begin date has passed, a future-dated role
+is accepted by role assignment and still excluded by the roster.
 
-.. code-block:: java
+That is **legacy defect 3**: such a person becomes project lead of a project
+they have no account on. Role assignment's exclusion is a strict subset of the
+roster's, so the disagreement can only run one way --
+:func:`role_assignment_disagreements` relies on that and a test asserts it.
+Both readings are ported separately and the disagreement is surfaced as a
+warning rather than silently repaired: it is a real data problem, and hiding it
+would remove the only evidence of it.
 
-    // roster
-    if (roleBeginDate.compareTo(actionDate) > 0) continue;        // strictly excluded
+WARNING: dates are compared AS STRINGS, never parsed. Java uses lexicographic
+``String.compareTo``, correct only because the wire is zero-padded
+``yyyy-MM-dd``; Python's comparison is identical over that alphabet. Parsing
+would add a failure mode (an unparseable date) that legacy does not have.
 
-    // role assignment
-    if (roleBeginDate > actionDate && currDate <= roleBeginDate && currDate <= actionDate)
-        continue;                                                 // excluded only if ALSO future
-
-The role-assignment rule is a triple conjunct, so a future-dated role is ignored *only
-while the action itself is also still in the future*. Once the action's begin date has
-passed, a future-dated role is **accepted** — while the roster still excludes it. That
-is **legacy defect 3**: such a person becomes project lead of a project they have no
-account on. Because role assignment's exclusion is a strict subset of the roster's, the
-disagreement can only ever run one way, which :func:`role_assignment_disagreements`
-relies on and a test asserts.
-
-Both are ported separately and the disagreement is surfaced as a warning rather than
-silently repaired — it is a real data problem, and hiding it would remove the only
-evidence anyone has of it.
-
-Dates are compared **as strings**, never parsed. Java uses lexicographic
-``String.compareTo``, which is correct only because the wire is zero-padded
-``yyyy-MM-dd``; Python's string comparison is identical over that alphabet. Parsing
-would introduce a second failure mode (an unparseable date) that legacy does not have.
-
-Verified against ``~/codes/sam`` at tag 2.0.3. See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``
-§ *The roster*.
+Verified against ``~/codes/sam`` at tag 2.0.3. See
+``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``, *The roster*.
 """
 
 import logging

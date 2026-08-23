@@ -1,46 +1,19 @@
-"""
-Queue query functions for SAM.
+"""Queue query functions.
 
-Provides get_queue_data() which reproduces the output of the legacy Java
-``GET /api/protected/admin/ssg/queue`` (and ``/queue/{resource}``) endpoints.
+``get_queue_data()`` reproduces the legacy Java
+``GET /api/protected/admin/ssg/queue`` (and ``/queue/{resource}``). The tree is
+resource -> queue, consumed by the PBS scheduler for per-queue wallclock limits
+and class-of-service ids.
 
-The data is organized as a two-level tree:
-  queues -> resource -> queue
+Legacy keeps queues whose ``end_date`` is future or NULL and whose parent
+resource is active today; it does NOT check the queue's own ``start_date``.
+This filters with the ``Queue.is_active`` hybrid (which also requires
+``start_date <= now``) intersected with ``Resource.is_active``. That extra bound
+is a deliberate, negligible tightening -- future-dated queues are vanishingly
+rare and the parity harness absorbs one with a count tolerance. See CLAUDE.md
+section 5.
 
-and is consumed by the PBS batch scheduler / systems-integration tooling to
-configure per-queue wallclock limits and class-of-service ids.
-
-Legacy semantics (QueueServiceImpl.getQueues / DefaultQueueQuery.findAllActive)
-------------------------------------------------------------------------------
-The legacy query returns queues whose ``end_date`` is in the future (or NULL)
-AND whose parent resource is active on the current date. It does NOT check the
-queue's own ``start_date``.
-
-Here we filter with the idiomatic ``Queue.is_active`` hybrid (which additionally
-requires ``start_date <= now``) intersected with ``Resource.is_active``. The
-extra start_date bound is a deliberate, negligible tightening — future-dated
-queues are vanishingly rare and the parity harness absorbs any such row with a
-count tolerance. See CLAUDE.md §5 (universal ``is_active`` interface).
-
-Response format::
-
-    {
-        "name": "queues",
-        "resources": [
-            {
-                "resourceName": "Derecho",
-                "queues": [
-                    {
-                        "queueName": "main",
-                        "wallClockHoursLimit": 12.0,
-                        "startDate": "2023-01-01T00:00:00",
-                        "endDate": null,
-                        "cosId": 5
-                    }
-                ]
-            }
-        ]
-    }
+Response shape: ``docs/apis/SYSTEMS_INTEGRATION_APIs.md``.
 """
 
 from datetime import datetime, timedelta

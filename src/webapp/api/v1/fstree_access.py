@@ -1,66 +1,14 @@
-"""
-FairShare Tree API endpoints (v1).
+"""FairShare Tree API endpoints (v1).
 
-Provides the PBS fairshare tree data consumed by batch schedulers and LDAP
-tooling.  Reproduces the output of the legacy SAM Java endpoint:
-  GET /api/protected/admin/ssg/fairShareTree/v3/<Resource>
+PBS fairshare tree data for batch schedulers and LDAP tooling. Reproduces the
+legacy ``GET /api/protected/admin/ssg/fairShareTree/v3/<Resource>``.
 
-Example usage:
-    GET /api/v1/fstree_access/              — all HPC+DAV resources
-    GET /api/v1/fstree_access/Derecho       — single resource
-    GET /api/v1/fstree_access/Derecho%20GPU — resource with space (URL-encoded)
-    POST /api/v1/fstree_access/refresh      — invalidate cache
+Three keyings of the same tree: by resource (``/``, ``/<resource>``), by
+project (``/projects/``), and by user (``/users/``); the latter two accept
+``?resource=``. ``POST /refresh`` invalidates the cache.
 
-    GET /api/v1/fstree_access/projects/                      — all projects (project-keyed view)
-    GET /api/v1/fstree_access/projects/SCSG0001              — single project
-    GET /api/v1/fstree_access/projects/?resource=Derecho     — filtered by resource
-    GET /api/v1/fstree_access/projects/SCSG0001?resource=Derecho
-
-    GET /api/v1/fstree_access/users/                         — all users (user-keyed view)
-    GET /api/v1/fstree_access/users/benkirk                  — single user
-    GET /api/v1/fstree_access/users/?resource=Derecho        — filtered by resource
-    GET /api/v1/fstree_access/users/benkirk?resource=Derecho
-
-Response format (partial):
-    {
-        "name": "fairShareTree",
-        "facilities": [
-            {
-                "name": "CSL",
-                "description": "Climate Simulation Laboratory",
-                "fairSharePercentage": 31.0,
-                "allocationTypes": [
-                    {
-                        "name": "C_CSL",
-                        "description": "CSL",
-                        "fairSharePercentage": 0.0,
-                        "projects": [
-                            {
-                                "projectCode": "P93300041",
-                                "parentProject": null,
-                                "active": true,
-                                "resources": [
-                                    {
-                                        "name": "Derecho",
-                                        "accountStatus": "Normal",
-                                        "cutoffThreshold": 100,
-                                        "adjustedUsage": 48883597,
-                                        "balance": 2616402,
-                                        "allocationAmount": 51500000,
-                                        "startDate": "2025-01-01T00:00:00",
-                                        "endDate": "2025-12-31T23:59:59",
-                                        "users": [
-                                            {"username": "travisa", "uid": 29642}
-                                        ]
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            }
-        ]
-    }
+Endpoint reference and the full response shape:
+``docs/apis/SYSTEMS_INTEGRATION_APIs.md``.
 """
 
 from flask import Blueprint, jsonify, abort, request

@@ -1,57 +1,26 @@
-"""
-Dashboard data aggregation queries for SAM.
+"""Dashboard data aggregation queries.
 
-This module is the data layer for three distinct dashboard surfaces. Each
-entry point corresponds to one route shape and has different optimization
-constraints, so the file is intentionally laid out by entry point with
-shared helpers above them.
+Three surfaces, laid out by entry point with shared helpers above them:
 
-Public entry points
--------------------
-    get_user_dashboard_data(session, user_id)
-        Drives the /user/ route. Loads ALL of a user's active projects and
-        their per-resource allocation usage in a fixed-size set of batched
-        SQL queries (independent of project count). Uses the multi-project
-        batched helper below.
+* ``get_user_dashboard_data`` -- /user/. All of a user's active projects in a
+  fixed-size set of batched queries, independent of project count.
+* ``get_project_dashboard_data`` -- admin single-project search. No batching
+  benefit at N=1, and it must coexist with the admin tree views that loop
+  per-node for unrelated reasons.
+* ``get_resource_detail_data`` -- the per-resource drilldown. Self-contained.
 
-    get_project_dashboard_data(session, projcode)
-        Drives admin single-project search. Loads ONE project plus its
-        per-resource usage. Uses the per-project helper below — there is
-        no batching benefit when N=1, and the single-project path needs
-        to coexist with admin tree views (projects_routes.py) that loop
-        per-node for unrelated reasons.
+Two resource-dict builders coexist deliberately: ``_build_project_resources_data``
+(per project) and ``_build_user_projects_resources_batched`` (many at once,
+replacing an N+1 fanout). Merging them would either pessimize N=1 or complicate
+N=many.
 
-    get_resource_detail_data(...)
-        Drives the per-resource drilldown route. Self-contained — does its
-        own MPTT-vs-leaf branching for daily charge aggregation. Independent
-        of the user/project dashboard helpers above.
+WARNING: both must produce identical fields.
+``test_query_functions.py::TestDashboardQueries::test_user_dashboard_batched_matches_per_project``
+compares them field-by-field on every CI run -- change one, keep it green or
+change the other in lockstep.
 
-Resource-dict builders (two coexisting versions)
-------------------------------------------------
-    _build_project_resources_data(project)
-        Per-project helper. Calls Project.get_detailed_allocation_usage()
-        and shapes the result into the dict format the dashboard templates
-        expect. Used by both get_project_dashboard_data() and the admin
-        project tree view in webapp/dashboards/admin/projects_routes.py.
-
-    _build_user_projects_resources_batched(session, projects)
-        Batched equivalent for many projects at once. Replaces the
-        per-project N+1 fanout with calls to the existing
-        Project.batch_get_subtree_charges / batch_get_account_charges
-        primitives (which fstree also uses — but this module does NOT
-        import from sam.queries.fstree_access; both consumers depend only
-        on the durable Project class methods).
-
-Both builders produce dicts with identical fields. The equivalence is
-locked in by tests/unit/test_query_functions.py::TestDashboardQueries
-::test_user_dashboard_batched_matches_per_project, which compares them
-field-by-field across a real user's projects on every CI run. Any change
-to one MUST keep that test green or update the other side in lockstep.
-
-Why two? The single-project path is faster and simpler when N=1; the
-batched path scales to large project lists without firing per-project
-charge-aggregation queries. Merging them would either pessimize the N=1
-case or complicate the N=many case — both are net losses for readers.
+This module does NOT import from ``sam.queries.fstree_access``; both depend
+only on the durable ``Project`` class methods.
 """
 
 from datetime import datetime, date, timedelta

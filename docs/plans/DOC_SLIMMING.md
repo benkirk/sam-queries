@@ -156,7 +156,7 @@ the recorded starting number still holds. Nothing else from prior sessions is ne
 | 1 | Mechanical sweep | 433 | none | script-verified | **DONE 2026-08-22** |
 | 1b | Changelog phrasing (45 lines) | 45 | medium | `PHRASING_EXEMPT` emptied | **DONE 2026-08-22** |
 | 2 | Configs and JS headers | 6 | low | `helm template` byte-identical | **DONE 2026-08-22** |
-| 3 | Module docstrings >= 30 lines | 64 | medium | suite green | open |
+| 3 | Module docstrings >= 30 lines | 64 | medium | suite green | **29 of 64 done** |
 | 4 | `Args:`/`Returns:` restatement | ~40 | low | suite green | open |
 | 5-8 | Narrative prose, ~12 files each | ~48 | **high** | suite green, per-file review | open |
 | 9 | `CLAUDE.md` + `README.md` | 2 | medium | links resolve | open |
@@ -173,6 +173,7 @@ the recorded starting number still holds. Nothing else from prior sessions is ne
 | 1 | 37.0% | 34.6% | 21.8% | 41.9% | **34.3%** |
 | 1b | 37.0% | 34.6% | 21.8% | 41.9% | **34.3%** |
 | 2 | 37.0% | 34.6% | 21.8% | 41.9% | **34.3%** |
+| 3 (29/64) | 36.5% | 33.9% | 21.8% | 41.9% | **33.9%** |
 
 Phases 0 and 1 move the ratio by design: neither removes prose. Phase 0 lands
 the gate, and Phase 1 rewrites decorative characters in place rather than
@@ -295,8 +296,23 @@ third candidate — judge it when you get there.
    operator-facing file, since that warning guards an irreversible production action.
 
 ### Phases 3-4 — module docstrings, then signature restatement
-Mechanical enough to review quickly. Phase 3 relocates the 64 headers >= 30 lines;
-Phase 4 removes `Args:`/`Returns:` blocks that restate annotated signatures.
+Phase 3 relocates the 64 headers >= 30 lines; Phase 4 removes `Args:`/`Returns:`
+blocks that restate annotated signatures.
+
+**Phase 3 is partly done: 29 of 64 files, 1,381 docstring lines -> 686.** The
+remaining 35 are all in the 30-48 line band. What has emerged doing them:
+
+- Roughly a third is genuinely relocatable, and the destination usually already
+  exists and already says it — `static_assets.py`'s 87 lines were covered by
+  CLAUDE.md § 11, `roles.py`'s 71 by `XRAS_REIMPLEMENTATION.md`, the
+  `fstree_access.py` response blob by `docs/apis/SYSTEMS_INTEGRATION_APIs.md`.
+  Those are pure duplication and delete cleanly.
+- A second third is reverse-engineered wire and legacy-defect spec that exists
+  nowhere else — `dispatch.py`'s three dispatch traps, `roster.py`'s legacy
+  defect 3, `serialize.py`'s byte contract. These compress by removing framing,
+  not facts, and land at 25-40 lines rather than the 10-line budget. **That is
+  the right outcome**; the budget is for modules, not for specifications.
+- The rest is navigation prose and worked examples, which compress hard.
 
 ### Phases 5-8 — narrative prose
 Where the volume is (~2,300 lines across `blueprint.py`, `jobs/routes.py`, `htmx.py`,

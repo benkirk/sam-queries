@@ -1,65 +1,29 @@
-"""
-FairShare Tree query functions for SAM.
+"""FairShare Tree query functions.
 
-Provides get_fstree_data() which reproduces the output of the legacy Java
-`GET /api/protected/admin/ssg/fairShareTree/v3/<Resource>` endpoint.
+``get_fstree_data()`` reproduces the legacy Java
+``/api/protected/admin/ssg/fairShareTree/v3/<Resource>``. The tree is
+Facility -> AllocationType -> Project -> Resource, consumed by the PBS
+scheduler to build fairshare vertices and by LDAP tooling.
 
-The data is organized as a hierarchical tree:
-  fairShareTree -> Facility -> AllocationType -> Project -> Resource
+Built from three queries: a JOIN-based skeleton (projects with a current
+active allocation), a targeted lifecycle query for the minority with none
+("Expired", "No Account" -- these carry zeroes and omit the date keys), and a
+bulk user roster. Charges roll up via ``Project.batch_get_subtree_charges()``.
 
-with per-node fairshare percentages and, at the Resource level,
-allocation balances, charge usage (including MPTT subtree rollup),
-accountStatus, and active user rosters.
+``accountStatus`` matches ``DefaultAccountStatusCalculator.java``: No Account,
+Expired, Overspent, Exceed Two Thresholds, Exceed One Threshold, Normal. A
+non-Normal parent status cascades pre-order to children on the same resource.
 
-This data is consumed by the PBS batch scheduler to build job
-fairshare trees and by LDAP tooling for account provisioning.
+WARNING: amounts are reported RAW, never deduplicated, and this module
+deliberately does NOT classify trees. NCAR runs two tree conventions and in
+both the root's ``allocationAmount`` is the subtree total -- a shared pool is
+carried at full value by every member, a subdivided award has children carving
+out of the root's total. PBS compares shares only among siblings, so raw
+amounts plus ``parentProject`` are sufficient and correct in both. That rests
+on one invariant -- a parent's amount covers any child not sharing its pool --
+which ``sam-admin project --audit-trees`` enforces.
 
-Design notes
-------------
-Query 1 (skeleton): fast JOIN-based query returning only projects with a current
-  active allocation on an HPC/DAV resource.  Covers the Normal/Overspent/Threshold
-  status cases.
-
-Query 2 (lifecycle): targeted query for projects in the AllocationType tree that
-  have no current active allocation — produces "Expired" (account exists, past
-  allocation) and "No Account" (no account on this resource type) rows.  These are
-  the minority; they carry allocationAmount=0, adjustedUsage=0, no users, and
-  omit the startDate/endDate keys (no current allocation window to report).
-
-Query 3 (users): bulk active-user roster per account.
-
-Charges via Project.batch_get_subtree_charges() (VALUES CTE, MPTT rollup).
-
-accountStatus semantics (matching DefaultAccountStatusCalculator.java):
-  1. "No Account"           — project in tree but no account on this resource
-  2. "Expired"              — account exists, no current active allocation (has prior)
-  3. "Overspent"            — adjustedUsage > allocationAmount
-  4. "Exceed Two Thresholds"— both N-day windows exceeded
-  5. "Exceed One Threshold" — one N-day window exceeded
-  6. "Normal"               — default
-
-Parent -> child status propagation (pre-order): if a parent's accountStatus is
-non-Normal, that status cascades to all children on the same resource.
-
-Project trees
--------------
-Each project entry carries ``parentProject`` — its direct parent's projcode
-(``None`` for roots and standalone projects), from SAM's project hierarchy
-(``project.parent_id``).  This lets a consumer reconstruct the tree; the PBS
-fairshare tool mirrors it into nested scheduler vertices.
-
-Amounts are reported **raw**, never deduplicated: NCAR runs two tree
-conventions and in both the root's ``allocationAmount`` is the subtree total
-(a shared pool is carried at full value by every member; a subdivided award
-has children carving out of the root's total).  Since PBS compares shares only
-among siblings, raw amounts + the hierarchy are sufficient and correct — a
-pool's members compare equal to each other, a subdivided award's children
-compare proportionally, and the root's own amount sets the subtree's weight
-against its peers.  So this module deliberately does **not** classify trees.
-
-That correctness rests on one data invariant — a parent's amount covers any
-child that isn't sharing its pool — which ``sam-admin project --audit-trees``
-enforces.
+Response shape: ``docs/apis/SYSTEMS_INTEGRATION_APIs.md``.
 """
 
 import re

@@ -1,65 +1,37 @@
 """Choosing a handler, and the two flags that can stop one running.
 
-Legacy dispatches on the **pair** ``(actionType, does the project exist)``, first match
-wins, in the registration order of ``ActionConfig:505-511``:
+Dispatch is on the PAIR ``(actionType, does the project exist)``, first match
+wins: New-and-not-exists -> Add; (New or Renewal)-and-exists -> Update;
+Extension/Supplement/Transfer -> their own; no match -> manual fallback, 200.
 
-=====================================  ==================================================
-service                                selector
-=====================================  ==================================================
-``AddProjectActionService``            ``New`` **and not** ``exists(projcode)``
-``UpdateProjectActionService``         (``New`` **or** ``Renewal``) **and** ``exists``
-``ExtendProjectActionService``         ``Extension`` and ``exists``
-``SupplementProjectActionService``     ``Supplement`` and ``exists``
-``TransferAllocationActionService``    ``Transfer`` and ``exists``
-``AdjustProjectActionService``         ``Adjust`` and ``exists`` — **never fires**
-*no match*                             ``BadRequestException`` -> manual fallback -> 200
-=====================================  ==================================================
+Three traps the payload corpus proved, each producing a wrong dispatch:
 
-Three traps the corpus proved, each of which produces a wrong dispatch:
+1. **"Update" is not an ``actionType``.** It is a handler. The wire vocabulary
+   is ``New, Renewal, Extension, Supplement, Transfer, Adjustment, Advance``.
+2. **``New`` does not imply a new project.** A ``New`` whose ``requestNumber``
+   is an existing projcode routes to Update. ONLY the database can tell them
+   apart -- a request token is projcode-*shaped*, so no prefix or shape rule
+   separates them.
+3. **``requestType`` is useless for dispatch.** Every sampled payload carries
+   ``requestType: 'New'``, including the Extensions, Supplements and the
+   Adjustment. Only ``actionType`` selects, and not alone.
 
-1. **"Update" is not an ``actionType``.** It is a handler. The wire vocabulary is
-   ``New, Renewal, Extension, Supplement, Transfer, Adjustment, Advance``.
-2. **``New`` does not imply a new project.** ``new_uwis0071_existing_ok.json`` is an
-   ``actionType: 'New'`` whose ``requestNumber`` is the projcode of a project that
-   already existed; legacy routed it to *Update* and said so in its success email.
-   **Only the database can tell the two apart** — a request token is projcode-*shaped*
-   (``NCAR4232`` vs ``UCUB0166``), so no prefix or shape rule can separate them.
-3. **``requestType`` is useless for dispatch.** All eight sampled payloads carry
-   ``requestType: 'New'``, including both Extensions, both Supplements and the
-   Adjustment. Only ``actionType`` selects, and even that is not enough alone.
+Both spellings of Adjust are accepted via
+``sam.queries.xras_actions.canonical_action_type`` rather than a second map --
+legacy compares ``"Adjust"`` against a wire sending ``"Adjustment"``, so its
+handler has never fired.
 
-Both spellings of Adjust are accepted, via the existing
-``sam.queries.xras_actions.canonical_action_type`` rather than a second map — legacy
-compares ``"Adjust"`` against a wire that sends ``"Adjustment"``, so its handler has
-never once fired (defect 4).
+``XRAS_ACTIONS_CAPTURE_ONLY`` is the INTERLOCK -- nothing dispatches while it
+is on -- and is checked by the route, before this module.
+``XRAS_ACTIONS_ENABLED`` is the TRIAGE lever, not a rollout mechanism: all six
+handlers ship enabled, so a misbehaving payload class can be parked by config
+instead of by revert. It keys on action type rather than handler because that
+is the column an operator is looking at, which means disabling ``New``
+disables both Add and Update -- the honest granularity.
 
-The two flags, and why they are not the same flag
--------------------------------------------------
-``XRAS_ACTIONS_CAPTURE_ONLY`` is the **interlock**: while it is on, nothing is
-dispatched at all, because legacy is still the system of record and applying an action
-it has already applied is a double-write against live allocations. It is checked by the
-route, before this module is reached.
-
-``XRAS_ACTIONS_ENABLED`` is the **triage lever**, and it is not a rollout mechanism.
-All six handlers ship enabled in one deploy; this exists so that at 3am a misbehaving
-payload class can be parked by config instead of by revert. A disabled type takes the
-manual-fallback arm — audited, visible, and applied by a human — rather than being
-dropped.
-
-It keys on **action type**, not handler, because that is what the operator has in hand:
-``xras_action_log.action_type`` is the column they are looking at when they decide to
-pull the lever. The consequence is that disabling ``New`` disables both the Add and the
-Update handler, which is the honest granularity — "stop processing New actions" is the
-thing being asked for.
-
-Registration
-------------
-Handlers register themselves by importing this module and calling :func:`register`.
-Until one does, its service selects and then falls through to ``manual`` — exactly the
-behavior the route had hardcoded before this module existed. That is what lets each
-handler land as its own commit without touching the route again.
-
-See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *The dispatcher*.
+Handlers register by importing this module and calling :func:`register`; until
+one does, its service selects and falls through to ``manual``.
+See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``, *The dispatcher*.
 """
 
 import logging

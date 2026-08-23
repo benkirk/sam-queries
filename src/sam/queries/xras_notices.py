@@ -1,37 +1,23 @@
 """Turns one XRAS action into ``Message`` objects, and nothing else.
 
-Two consumers build the same XRAS handoff notice: the operator's **Notify**
-button on the Allocations -> XRAS card, and the hourly ``xras_notices``
-scheduled task. They must not disagree about the audience, the payload or —
-above all — the dedup key, because a disagreement there is silently a second
-copy in a PI's inbox. The key is the *only* thing that makes the two paths
-safe to run side by side: whichever fires second is suppressed by the ledger,
-so no locking or claiming is needed around the card.
+Two consumers build the same XRAS handoff notice -- the operator's Notify
+button and the hourly ``xras_notices`` task -- and they must not disagree about
+the audience, the payload or, above all, the dedup key. The key is the only
+thing making the two paths safe to run side by side: whichever fires second is
+suppressed by the ledger, so no locking is needed around the card. Hence one
+builder, called by both.
 
-So the builder lives here, once, and both call it. It **builds** rather than
-queries, which makes the module name a slight misnomer; it is here anyway
-because it sits beside :mod:`sam.queries.xras_activation`, whose row shape it
-consumes, and :mod:`sam.queries.notifications`, which reads back what it
-caused — exactly as :mod:`sam.queries.expiration_notices` sits beside
-:mod:`sam.queries.expirations`. The one place it must **not** live is inside
-``sam/notify/``: that package is transport, ledger and rendering machinery and
-stays domain-free.
+It builds rather than queries, which makes the module name a slight misnomer.
+It lives here beside :mod:`sam.queries.xras_activation`, whose row shape it
+consumes. The one place it must NOT live is ``sam/notify/`` -- that package is
+transport, ledger and rendering, and stays domain-free.
 
-WARNING: **Not exported from** ``sam/queries/__init__.py``. That file imports its
+WARNING: NOT exported from ``sam/queries/__init__.py``. That file imports its
 submodules eagerly, so listing this one would put ``sam.notify.base`` into the
 import graph of every ``from sam.queries import ...`` in the tree. Import it by
-full path.
-
-The trap is that :mod:`sam.queries.xras_activation` **is** exported, and safely
-— it does not import ``sam.notify``. The two modules look alike and must be
+full path. The trap is that :mod:`sam.queries.xras_activation` IS exported, and
+safely, because it imports no ``sam.notify``. The two look alike and must be
 treated differently; ``tests/unit/test_notify_import_graph.py`` is the gate.
-
-Before this module existed the code was four private helpers inside
-``webapp/dashboards/allocations/blueprint.py``, reachable only through Flask.
-``src/scheduling/`` is AST-gated against importing Flask, so the move is what
-makes an unattended sender possible at all. Only two kinds of coupling had to
-go: ``db.session`` became the ``session`` parameter, and
-``current_user.username`` became ``requested_by``.
 
 See ``docs/plans/XRAS_AUTO_NOTICES.md`` commit 2.
 """

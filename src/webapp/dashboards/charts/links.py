@@ -2,37 +2,23 @@
 
 Charts mark clickable artists with ``Artist.set_url()``, which makes
 matplotlib's SVG backend wrap them in ``<a xlink:href="...">``. The href is a
-**sentinel**, never a route the browser should follow: ``svg-chart-links.js``
-intercepts the click and dispatches the matching in-page behavior.
+SENTINEL, never a route the browser should follow -- ``svg-chart-links.js``
+intercepts the click and dispatches the in-page behavior.
 
-**No matplotlib import here, by design.** This module and ``series.py`` are the
-two the chart layer could reuse under a different rendering backend, and a test
-(``test_chart_module_boundaries.py``) enforces that they stay import-clean. A
-root-ward abstract/concrete split would not have bought that — the SVG anchors
-this file produces are exactly what the JS parses, so a backend swap rewrites
-the JS regardless.
+The scheme is ``#sam/<action>/<segment>/<segment>...``, percent-encoded, so a
+username with a slash or a space cannot break the parse. **The attribute name
+travels in the href**, so adding a row drill is one attribute declared at the
+chart and needs no JavaScript change -- there is no prefix-to-attribute table
+that could drift across the two languages.
 
-## The URL scheme
-
-    #sam/<action>/<segment>/<segment>...
-
-Segments are percent-encoded, so a username with a slash or a space cannot
-break the parse. The JS splits once, dispatches on ``action``, and decodes the
-rest.
-
-This replaced nine ad-hoc prefixes (``#ah-bar-``, ``#disk-ent-owner-``,
-``#jt-bar-``, …) split between here and a hardcoded ``ROW_SENTINELS``
-prefix-to-attribute table in the JavaScript. Seven of the nine already funnelled
-through one generic handler; the only thing the table added was *where the
-attribute name lived*, which meant adding a drill-down chart required editing
-JavaScript. The attribute now travels in the href, so a row drill is just an
-attribute name declared at the chart, and the cross-language table that could
-drift is gone.
-
-``<a xlink:href>`` is kept rather than ``set_gid()``: ids must be unique but one
-drill target spans three artists (bar + legend patch + legend text), an ``<a>``
-is keyboard-focusable where a ``<g id>`` is not, and a ``#``-fragment degrades
+``<a xlink:href>`` rather than ``set_gid()``: ids must be unique but one drill
+target spans three artists (bar + legend patch + legend text), an ``<a>`` is
+keyboard-focusable where a ``<g id>`` is not, and a ``#``-fragment degrades
 safely when JS fails.
+
+WARNING: no matplotlib import here, by design. This module and ``series.py``
+are the two the chart layer could reuse under a different rendering backend;
+``test_chart_module_boundaries.py`` enforces that they stay import-clean.
 """
 
 from dataclasses import dataclass

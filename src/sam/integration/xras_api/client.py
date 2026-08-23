@@ -1,41 +1,27 @@
-"""GET-only HTTP client for the XRAS Allocations API (``https://api.xras.org/v1/…``).
+"""GET-only HTTP client for the XRAS Allocations API (``https://api.xras.org/v1/...``).
 
-Direction of travel
--------------------
-Everything under ``src/sam/xras/`` and ``src/webapp/api/xras/`` is XRAS -> SAM
-(they push actions, they pull our GETs). This module is the **opposite**
-direction: SAM calling out to XRAS. See ``docs/xras/outgoing/`` for the probe
-results this is built on.
+The opposite direction from everything under ``src/sam/xras/`` and
+``src/webapp/api/xras/``: this is SAM calling OUT. See ``docs/xras/outgoing/``.
 
-Transport semantics are copied from ``sam.integration.awards.client``: one
-persistent ``requests.Session``, an explicit timeout on every call, three
-attempts with ``2 ** attempt`` backoff, and **no retry on 4xx** — a 404 is an
-answer, not a failure to answer.
+Transport semantics copy ``sam.integration.awards.client``: one persistent
+``requests.Session``, explicit timeout, three attempts with ``2 ** attempt``
+backoff, and no retry on 4xx -- a 404 is an answer, not a failure to answer.
 
-Why there is no ``post``
-------------------------
-The documented XRAS API is far more write-capable than this client is, and
-our key holds at least some of it: creating and deleting requests, submitting
-and withdrawing actions, adding and removing roles, **merging one person into
-another**, updating resources. None of that may ever be reachable from SAM
-code. So GET-only is **structural, not conventional**: the sole transport
+WARNING: GET-only is STRUCTURAL, not conventional. The documented API is far
+more write-capable than this client, and our key holds at least some of it:
+creating and deleting requests, submitting and withdrawing actions, adding and
+removing roles, **merging one person into another**. The sole transport
 primitive is :meth:`_get`, there is no generic verb method, and
 ``tests/unit/test_xras_api_client.py`` pins that no post/put/patch/delete
 callable exists on the class.
 
-Two headers worth knowing
--------------------------
-``XA-CONTEXT`` is **hardcoded** to ``report``. It is not a knob: the Reports
-family (``/v1/reports/*``), which is the entire reason this client is useful,
-answers *only* under ``report`` and 401s under ``submit`` — while everything
-else we read answers under ``report`` too. One context, read-only semantics.
+``XA-CONTEXT`` is hardcoded to ``report`` and is not a knob: the Reports family,
+the entire reason this client is useful, answers only under ``report`` and 401s
+under ``submit``. ``XA-USER`` is required on every call but scopes nothing
+outside ``/v1/requests``; reports return process-wide data whatever it says.
 
-``XA-USER`` is required on every call but scopes nothing outside
-``/v1/requests``; the reports endpoints return process-wide data whatever it
-says. Per-user impersonation is not needed anywhere in this design.
-
-Every JSON response wraps its payload in a ``{"message": ..., "result": ...}``
-envelope, unwrapped centrally in :meth:`_get`.
+Every JSON response wraps its payload in ``{"message":..., "result":...}``,
+unwrapped centrally in :meth:`_get`.
 """
 
 from __future__ import annotations

@@ -1,42 +1,15 @@
-"""
-Wallclock-exemption query functions for SAM.
+"""Wallclock-exemption query functions.
 
-Provides get_wallclock_exemption_data() which reproduces the output of the
-legacy Java ``GET /api/protected/admin/ssg/wallClockExemption`` endpoint.
+``get_wallclock_exemption_data()`` reproduces the legacy Java
+``GET /api/protected/admin/ssg/wallClockExemption``. The tree is
+resource -> queue -> user limit, consumed by the PBS scheduler to grant a user
+a raised wallclock limit on one queue for a bounded window.
 
-The data is organized as a three-level tree:
-  exemptions -> resource -> queue -> user limit
+Legacy keeps only exemptions whose own date window contains today and applies
+NO active filter on the resource, queue, or user. Reproduced exactly with the
+``WallclockExemption.is_active`` hybrid. See CLAUDE.md section 5.
 
-and is consumed by the PBS batch scheduler to grant individual users a raised
-wallclock limit on a specific queue for a bounded time window.
-
-Legacy semantics (WallClockExemptionServiceImpl + activeWallclockExemptions SQL)
---------------------------------------------------------------------------------
-The legacy named query joins ``resources -> queue -> wallclock_exemption -> users``
-and keeps only exemptions whose date window contains today
-(``DATE(start_date) <= CURDATE() AND DATE(end_date) >= CURDATE()``). It applies
-NO active filter on the resource, queue, or user — only the exemption's own
-window. We reproduce that exactly using the idiomatic ``WallclockExemption.is_active``
-hybrid (``start_date <= now <= end_date``). See CLAUDE.md §5.
-
-Response format::
-
-    {
-        "name": "exemptions",
-        "resources": [
-            {
-                "resourceName": "Derecho",
-                "queues": [
-                    {
-                        "queueName": "main",
-                        "limits": [
-                            {"username": "benkirk", "wallClockLimit": 48.0}
-                        ]
-                    }
-                ]
-            }
-        ]
-    }
+Response shape: ``docs/apis/SYSTEMS_INTEGRATION_APIs.md``.
 """
 
 from typing import Any, Dict, List, Optional

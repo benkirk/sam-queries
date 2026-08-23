@@ -1,73 +1,20 @@
-"""``POST /v1/roles/{requestNumber}/{role}/{username}`` — reassign the project lead.
+"""``POST /v1/roles/{requestNumber}/{role}/{username}`` -- reassign the project lead.
 
-Legacy endpoint #7, and the only one XRAS maps that this port originally missed. It is a
-**write**, it saw zero traffic in the 58 days of access logs that were audited, and after
-the cutover repoints XRAS's single base URL it would have 404'd where legacy 200s — with
-nothing recording the attempt. Hence :mod:`webapp.api.xras.unmapped`, which is the general
-form of that problem, and hence this module, which is the specific one.
+Legacy endpoint #7. POST only. ``requestNumber`` IS the projcode. Success is
+200 with an empty body and no ``Content-Type`` (see
+:func:`webapp.api.xras.serialize.empty_ok`). The write is exactly two things:
+set the project lead, stamp ``modified_time`` -- no roster insert, no
+allocation touch.
 
-What legacy actually does
--------------------------
+The role check runs BEFORE the project or user is looked up, so a bad role
+against a nonexistent project is 404-role. That ordering is deliberate.
 
-Read from source (``~/codes/sam``), not from the decompiled WAR, and the two disagree in
-ways that matter:
-
-``RoleServiceController.java:20`` is ``@PostMapping`` — **POST only**. A ``javap`` of the
-deployed class shows ``value=[...]`` with no ``method=``, which reads like "all verbs",
-but ``@PostMapping`` is a Spring meta-annotation carrying ``method = RequestMethod.POST``
-on *itself*; every ``@GetMapping`` on the other five controllers decompiles identically.
-
-``BaseController.createOkResponse()`` is ``new ResponseEntity(HttpStatus.OK)`` — 200 with
-no body and, because no message converter runs, **no** ``Content-Type``. See
-:func:`webapp.api.xras.serialize.empty_ok`.
-
-``DefaultUpdateProjectLeadCommand.transact()`` does exactly two things:
-``project.setProjectLead(user)`` and ``project.setModifiedTime(now)``. No roster insert,
-no allocation touch. Reproduced here — ``TimestampMixin`` covers the second. Note
-``requestNumber`` **is** the projcode: it goes straight into ``projectRepository.get()``,
-consistent with all 130 success lines in the production action log.
-
-The role check runs **before** the project or the user is looked at, so a bad role against
-a nonexistent project is 404-*role*. That ordering is preserved.
-
-Why the status codes diverge
-----------------------------
-
-Legacy's error ladder does not work. ``RoleServiceImpl`` matches the validation message
-against four regexes (``"Project  *[^ ]* * does not exist."`` and friends), but the message
-it receives is built by ``ValidationException.errorsToString()`` and always looks like::
-
-    ValidationException:
-     projcode: Project ABC123 does not exist.(ABC123)
-
-``String.matches`` is a full-string match, so the ``ValidationException:`` prefix and the
-``(invalidValue)`` suffix defeat every pattern — **every** validation failure falls to the
-``else`` and answers **400** carrying that raw string. ``RoleServiceImplTest`` is green
-only because it ``@Mock``s ``getMessage()`` to return the bare sentence, bypassing the real
-assembly; it documents intent, not behavior.
-
-So there is no deployed contract worth reproducing, and no client to break — which leaves
-picking codes that are actually right:
-
-===========================  ======  =========================================
-condition                     code    reasoning
-===========================  ======  =========================================
-role is not ``pi``             404    all three segments are resource identity,
-project not found              404    so a missing one is Not Found
-user not found                 404
-project inactive               409    the resource exists; its *state* refuses
-user inactive                  409    the write — that is Conflict
-success                        200    empty body, no ``Content-Type``
-===========================  ======  =========================================
-
-Legacy's *intended* ladder (per its unit test) used 403 for the last three. That is wrong
-twice over: 403 is an authorization verdict about the caller, and on an endpoint sitting
-behind Basic auth it is indistinguishable from a bad API key — the wrong first instinct
-during triage week. It is not a design decision in legacy either, but an artifact of
-``XrasController`` mapping ``BadStateException`` to ``FORBIDDEN``, that being the only
-non-404 exception class ``RoleServiceImpl`` had available.
-
-Recorded as a deliberate divergence in ``XRAS_REIMPLEMENTATION.md`` § 7.
+Status codes diverge from legacy deliberately: 404 for a missing role,
+project, or user (all three segments are resource identity), 409 for an
+inactive project or user (the resource exists; its state refuses the write).
+Legacy answers 400 for every validation failure because its four-branch error
+ladder is dead code. That analysis, and why 403 was the wrong instinct, are
+recorded in ``XRAS_REIMPLEMENTATION.md`` sections 3 and 7.
 """
 
 from flask import abort, current_app, request

@@ -1,56 +1,24 @@
 """Scan-date-keyed cache for the slow fs-scans service queries.
 
-Filesystem scans refresh ~weekly, so a query's result is valid until the
-collection is re-scanned. We exploit that: every cache key embeds the
-per-collection scan dates, so when a new scan lands the key changes and
-the stale entry is simply never read again (and TTL-evicted later). No
-manual flush, no stale-data window — invalidation is content-addressed.
+Filesystem scans refresh ~weekly, so a result is valid until the collection is
+re-scanned. Every cache key embeds the per-collection scan dates, so a new scan
+changes the key and the stale entry is never read again. Invalidation is
+content-addressed: no manual flush, no stale-data window. The TTL is only a
+memory backstop.
 
-Why this matters: a project whose directories include a *sub-path* of a
-collection (e.g. ``/ncar/USGS_Water``) takes the on-the-fly path, which is
-30-120s for the large collections (see the per-collection fast-path notes
-in ``facade.py``). Whole-collection-root projects hit the pre-computed
-tables and are sub-second — caching them is cheap insurance, not the win.
+Worth caching because a project including a *sub-path* of a collection takes
+the on-the-fly path -- 30-120 s for the large collections. Whole-collection-root
+projects hit pre-computed tables and are sub-second.
 
-Backend, lazy init and the get/compute/store dance all come from
-:class:`sam.caching.BucketedTTLCache` (shared with ``jobs/cache.py`` and
-``sam.queries.usage_cache``): a Redis-backed adapter shared across gunicorn
-workers when ``CACHE_REDIS_URL`` is set, falling back to a per-worker
-in-process TTL cache otherwise. Registered with the ``webapp.caching``
-facade so it appears in Admin -> Configuration. All that is left here is the
-cache key — which is the interesting part, see below.
+Two buckets: ``default`` for the passive/landing and tab-pill queries, and
+``filtered`` for the explorer's owner/date/leaves-only permutations, on a short
+TTL so volatile keys self-expire rather than crowding the long-lived ones.
+That is SOFT protection -- ``allkeys-lru`` is instance-global, so a filtered
+write can still evict a default entry under real memory pressure.
 
-Two buckets share this mechanism, differing only in name / size / TTL:
-
-  * ``default`` (``fs_scans``) — passive/landing + tab-pill queries
-    (no-filter + sort_by + limit). High reuse, long-lived.
-  * ``filtered`` (``fs_scans_filtered``) — the explorer's owner / date /
-    leaves-only permutations. Short TTL so the volatile permutations stay a
-    small, transient footprint and self-expire rather than crowding the
-    long-lived default entries. (A *soft* protection: ``allkeys-lru`` is
-    instance-global, so under genuine Redis memory pressure a filtered write
-    could still evict a default entry — the short TTL just keeps that window
-    small. Chosen over an off-Redis bucket to keep cross-worker sharing.)
-
-The service picks ``bucket='filtered'`` whenever any of owner_uid /
-accessed_before / accessed_after / leaves_only is set, else ``'default'``.
-
-Config (Flask app.config or env; 0 disables the corresponding bucket):
-  FS_SCANS_CACHE_TTL            — default TTL seconds (default 691200 = 8 days,
-                                  a memory backstop slightly longer than the
-                                  weekly refresh; correctness comes from the
-                                  scan-date key, not TTL)
-  FS_SCANS_CACHE_SIZE           — default max LRU entries (default 256)
-  FS_SCANS_FILTERED_CACHE_TTL   — filtered TTL seconds (default 1800 = 30 min)
-  FS_SCANS_FILTERED_CACHE_SIZE  — filtered max LRU entries (default 128)
-
-Key shape (hashable tuple):
-  (query_type, database, collections, path_prefixes, opts, scan_date_signature)
-``opts`` carries every query parameter NOT already captured by the resolved
-scope — sort_by/limit/owner_uid today, and any Phase-3 filter kwargs
-(owner, leaves-only, accessed-before, …) automatically as they're added to
-the call. The default (no-filter) path is just ``opts`` at its defaults, so
-one mechanism caches both the default and any filter selection.
+Mechanism, backend and facade registration come from
+:class:`sam.caching.BucketedTTLCache`, shared with ``jobs/cache.py``. Config
+constants and the key shape are below.
 """
 
 from __future__ import annotations
