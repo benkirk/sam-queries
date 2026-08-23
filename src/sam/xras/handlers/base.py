@@ -120,10 +120,37 @@ class ActionHandler(ABC):
         if validate_only:
             return DispatchResult(status='rechecked', service=self.service,
                                   projcode=self.projcode or None,
-                                  warnings=tuple(self.warnings))
+                                  warnings=tuple(self.warnings),
+                                  resolved=self._resolved_summary())
         with management_transaction(self.session):
             self.execute()
         return self.result()
+
+    def _resolved_summary(self) -> Optional[dict]:
+        """What assembly resolved, for the preflight board — read defensively.
+
+        Attributes are set by :meth:`assemble` on some handlers (allocation type,
+        mnemonic) and absent on others; anything missing is simply omitted. Never
+        raises — a resolved summary is a display convenience, not a verdict.
+        """
+        alloc = getattr(self, 'allocation_type', None)
+        mnem = getattr(self, 'mnemonic', None)
+        out: dict = {}
+        panel = getattr(alloc, 'panel', None) if alloc is not None else None
+        facility = getattr(panel, 'facility', None) if panel is not None else None
+        if alloc is not None:
+            out['allocation_type'] = getattr(alloc, 'allocation_type', None)
+        if panel is not None:
+            out['panel'] = getattr(panel, 'panel_name', None)
+        if facility is not None:
+            out['facility_code'] = getattr(facility, 'code', None)
+        if mnem is not None:
+            out['mnemonic_code'] = getattr(mnem, 'code', None)
+        # The New path mints a projcode in this series; show it before it burns one.
+        if out.get('facility_code') and out.get('mnemonic_code'):
+            out['series'] = f"{out['facility_code']}{out['mnemonic_code']}"
+        out['panel_authorised'] = bool(getattr(self, 'panel_authorised', False))
+        return out or None
 
     @abstractmethod
     def assemble(self) -> None:

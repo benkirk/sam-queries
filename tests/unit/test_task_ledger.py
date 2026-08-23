@@ -430,7 +430,11 @@ class TestPortabilityBoundary:
                                          # not drag the API client in at module
                                          # scope — hence the deferred import in
                                          # `enrich_worklist`.
-                                         'sam.queries.xras_accounts'])
+                                         'sam.queries.xras_accounts',
+                                         # The preflight the sweep runs. Handlers,
+                                         # schemas and dispatch are deferred inside
+                                         # its functions so the import stays clean.
+                                         'sam.xras.preflight'])
     def test_what_the_tasks_import_stays_presentation_free_too(self, package):
         """The AST gate above is **per-file and not transitive**.
 

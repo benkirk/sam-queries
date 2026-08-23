@@ -297,9 +297,9 @@ def _validate(session: Session, action, action_log_id
     """Run the dispatch pre-flight; return its ``(status, messages)`` verdict.
 
     Registers the handlers first (import side effect) — the CLI/sweep path
-    imports none, so without this every dispatch parks as ``manual``, which a
-    prior version then reported as success. ``manual`` is a real not-success
-    answer here, its reason carried in ``messages``.
+    imports none, so without this every dispatch parks as ``manual``. ``manual``
+    is a real not-success answer here, its reason carried in ``messages``; only
+    ``rechecked`` is success.
     """
     from sam.xras.dispatch import dispatch_action
     from sam.xras.errors import XrasActionRejected

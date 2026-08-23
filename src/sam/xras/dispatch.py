@@ -90,6 +90,12 @@ class DispatchResult:
     projcode: Optional[str] = None
     reason: Optional[str] = None
     warnings: Tuple[str, ...] = field(default=())
+    #: What assembly resolved, filled on the ``validate_only`` path only —
+    #: allocation-type name, panel, facility code, mnemonic, and (New) the
+    #: projcode series it would mint. Lets the preflight board show "would mint
+    #: in series <fac><mnem>…" before a code is burned. ``None`` on the live
+    #: execute path and whenever a handler resolved nothing to report.
+    resolved: Optional[dict] = None
 
 
 #: ``service name -> handler``. Populated by :func:`register` at import time of each

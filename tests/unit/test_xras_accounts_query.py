@@ -318,8 +318,8 @@ class TestFeedA:
 
     def test_a_parked_action_is_not_reported_as_success(self, session):
         """Phase 0's trap: a Date Adjustment has no service, so dispatch parks
-        it ``manual`` — which a prior version reported as ``would_succeed``.
-        It must read as not-success, with the parking reason carried."""
+        it ``manual``. That must read as not-success, with the parking reason
+        carried — never as ``would_succeed``."""
         self._log_row(session, 'date_adjustment_uwas0141_manual.json')
         records = records_from_action_log(session, validate=True)
         ref = records[0].ref
