@@ -320,9 +320,12 @@ class TestFeedA:
         """Phase 0's trap: a Date Adjustment has no service, so dispatch parks
         it ``manual``. That must read as not-success, with the parking reason
         carried — never as ``would_succeed``."""
-        self._log_row(session, 'date_adjustment_uwas0141_manual.json')
+        self._log_row(session, 'date_adjustment_uwas0141_manual.json',
+                      request_number='UWAS0141')
         records = records_from_action_log(session, validate=True)
-        ref = records[0].ref
+        # Not records[0]: a sibling test may COMMIT its own action-log row into
+        # the shared xdist DB, so scope to the row this test created.
+        ref = next(r.ref for r in records if r.ref.request_number == 'UWAS0141')
         assert ref.preflight_status == 'manual'
         assert ref.would_succeed is False
         assert ref.reject_messages and 'service' in ref.reject_messages[0]
