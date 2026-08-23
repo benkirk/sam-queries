@@ -238,7 +238,7 @@ def merge_placeholder(session_factory, *, source_username, target_username,
     XRAS deletes *source* and folds its roles into *target*, after which XRAS
     sends the real username and the blocked handoff can proceed. This does not
     create a SAM account — SAM never creates users — so a person with no SAM
-    row correctly stays on *Accounts Needed*, re-classified from "erroneously
+    row correctly stays on *Pending Users*, re-classified from "erroneously
     reconciled placeholder" to an ordinary "create".
 
     The client refuses if *target* does not already resolve in XRAS: the API
@@ -275,10 +275,18 @@ def merge_placeholder(session_factory, *, source_username, target_username,
 
     patched = True
     if result.succeeded:
-        from sam.integration.xras_api.cache import invalidate_person
+        from sam.integration.xras_api.cache import (drop_pending_worklist_row,
+                                                    invalidate_person)
         invalidate_person(source_username)
         invalidate_person(target_username)
         patched = _patch_requests_naming(source_username)
+        # Best-effort: the Pending Users card renders the cached pending half,
+        # so a just-merged placeholder would keep its row until the next sweep.
+        try:
+            drop_pending_worklist_row(source_username)
+        except Exception:                            # noqa: BLE001
+            logger.warning('merge_placeholder: could not drop the pending '
+                           'worklist row for %s', source_username, exc_info=True)
 
     return RemediationOutcome(event_id, result=result, status=result.status,
                               patched=patched)

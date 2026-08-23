@@ -56,11 +56,11 @@ class TestItRenders:
         card = _load(page)
         assert card.locator('.card-header').inner_text().strip()
 
-    def test_the_worklist_still_has_exactly_three_tabs(self, page):
-        """WARNING: This is a CARD, not a fourth tab. Adding one would change the
+    def test_the_worklist_still_has_exactly_two_tabs(self, page):
+        """WARNING: This is a CARD, not a third tab. Adding one would change the
         meaning of every persisted `tab:xrasWorklistTabs` preference."""
         _load(page)
-        assert page.locator(f'{TABS} button[data-bs-toggle="tab"]').count() == 3
+        assert page.locator(f'{TABS} button[data-bs-toggle="tab"]').count() == 2
 
     def test_it_sits_below_the_tab_content_not_inside_it(self, page):
         _load(page)

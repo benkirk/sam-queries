@@ -248,24 +248,24 @@ class TestAccessControl:
 
 class TestItIsACardNotATab:
 
-    def test_the_worklist_still_has_exactly_three_tabs(self, auth_client):
+    def test_the_worklist_still_has_exactly_two_tabs(self, auth_client):
         body = auth_client.get('/allocations/xras').get_data(as_text=True)
         pane = body.split('id="xrasWorklistTabs"')[1].split('</ul>')[0]
-        assert pane.count('data-bs-toggle="tab"') == 3
+        assert pane.count('data-bs-toggle="tab"') == 2
 
     def test_the_card_sits_outside_the_tab_content(self, auth_client):
         body = auth_client.get('/allocations/xras').get_data(as_text=True)
-        assert body.index('</div>\n\n{% if' if False else 'alloc-xras-remediations') \
-            > body.index('alloc-xras-pending-requests')
+        assert body.index('alloc-xras-remediations') \
+            > body.index('alloc-xras-accounts')
 
 
 # the collapse affordance
 
 class TestEveryExpandableRowShowsAChevron:
-    """The page shipped four expandable tables and two chevrons.
+    """Every expandable table needs a visible chevron.
 
     A `cursor-pointer` row announces itself only to someone already hovering
-    it, so three of the four tables had no visible affordance at all. The
+    it, so a table without the chevron has no visible affordance at all. The
     chevron is `.collapse-icon` and nothing else: components.css rotates it
     off the `aria-expanded` Bootstrap writes onto the trigger, which works for
     a toggle on the `<tr>` and for one on a `<td>`, and survives an htmx swap
@@ -278,7 +278,6 @@ class TestEveryExpandableRowShowsAChevron:
     @pytest.mark.parametrize('name', [
         'xras_activity_card.html',
         'xras_accounts_card.html',
-        'xras_pending_requests_card.html',
         'xras_remediations_card.html',
         'xras_table.html',
     ])

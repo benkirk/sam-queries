@@ -49,11 +49,13 @@
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {% from 'dashboards/fragments/xras_person_detail.html' import person_detail %}
 {#
-  XRAS account-creation worklist — who must exist in SAM before a handoff works.
+  Pending Users — everyone who needs a SAM account before an XRAS handoff can
+  land, from BOTH feeds unioned on the username (received pushes + the sweep's
+  pending-request lookahead), with a per-row source badge.
 
   Context:
-    rows            classify_accounts(...) rows, already filtered
-    counts          worklist_counts(rows)
+    rows            merged worklist rows, already filtered
+    counts          worklist_counts(rows) — incl. received_push / pending_request
     may_manage      bool — MANAGE_XRAS
     enrichment      {'looked_up','found','reconciled','unavailable','budget_exhausted','error'}
     window          {'days','since','until','start_date','end_date','custom'}
@@ -61,8 +63,10 @@
     classification_values  [{'value','label','count'}]  self-excluding
     role_values            [{'value','count'}]          self-excluding
     origin_values          [{'value','label','count'}]  self-excluding
-    pending_total          int|None — what the sibling tab holds, or None
-    selected_classifications, selected_roles, selected_origins  [str]
+    source_values          [{'value','label','count'}]  self-excluding
+    feed_checked, feed_reason, feed_generated_at, feed_window_days  Feed-B state
+    pending_hidden         int — Feed-B rows outside the date filter
+    selected_classifications, selected_roles, selected_origins, selected_sources  [str]
     form_id, fragment_url, target_id
 
  ONE ROW PER USERNAME, NOT PER ACTION
@@ -83,8 +87,25 @@
 #}
 <div class="card mb-3">
     <div class="card-header d-flex align-items-center flex-wrap gap-2">
-        <strong>Accounts Needed for XRAS Handoffs</strong>
+        <strong>Pending Users</strong>
+        <span class="text-muted small">accounts needed before an XRAS handoff can land</span>
         <span class="badge bg-secondary">{{ counts.total | fmt_number }}</span>
+        {% if counts.received_push %}
+        {# A received-push row is the more urgent flavor: a push already arrived
+           naming this person and is blocked. Also the health metric for the
+           proactive side — it trends to zero once the pending-request work
+           lands ahead of the push. #}
+        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle"
+              title="A push already arrived naming these people and is blocked, waiting on their SAM accounts.">
+            {{ counts.received_push | fmt_number }} from received pushes
+        </span>
+        {% endif %}
+        {% if counts.pending_request %}
+        <span class="badge bg-body-secondary text-body-secondary border fw-normal"
+              title="XRAS has approved requests naming these people; they will block the push when it comes.">
+            {{ counts.pending_request | fmt_number }} from pending requests
+        </span>
+        {% endif %}
         {% if counts.oldest_days %}
         {# The number that says whether the queue is being WORKED. A count
            alone reads identically on a healthy day and a neglected one. #}
@@ -106,6 +127,26 @@
             {{ counts.placeholder | fmt_number }} placeholder
         </span>
         {% endif %}
+        {% if pending_hidden and pending_hidden > 0 %}
+        {# WARNING: "N outside the date filter", never silent. An OLD unpushed
+           pending request is MORE urgent, not less — a recency filter that
+           quietly dropped it would invert the priority it exists to surface.
+           Feed-B-scoped: the denominator is the sweep's rows, not the merged
+           total. Feed A is windowed in SQL and never lands here. #}
+        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+              title="Older pending requests are hidden by the date filter above. On this list an older unpushed request is usually the more urgent one — widen the filter to see them.">
+            {{ pending_hidden | fmt_number }} pending-request row(s) outside the date filter
+        </span>
+        {% endif %}
+        {% if feed_checked %}
+        {# The pending half is as fresh as the last sweep, and says so — the
+           lookback is how far back the sweep asked XRAS, a separate knob from
+           the date filter above. #}
+        <span class="ms-auto small text-muted"
+              title="The pending-request half renders what the xras_sweep task last published; it is not fetched live.">
+            swept {{ feed_generated_at | fmt_date }} · {{ feed_window_days }}d lookback
+        </span>
+        {% endif %}
     </div>
 
     <div class="card-body border-bottom py-2">
@@ -120,6 +161,10 @@
                defaulted — on this card no selection means no filter. #}
             {{ facet_row('Identity', origin_values, form_id, 'origin',
                          active=selected_origins) }}
+            {# Which feed put the row here: a received push (already blocked) or
+               the pending-request lookahead. A both-feeds row counts in both. #}
+            {{ facet_row('Source', source_values, form_id, 'source',
+                         active=selected_sources) }}
             {# The operator working one project's activation filters to it
                here; the same value is a column below so it is visible before
                it is selectable. #}
@@ -138,16 +183,24 @@
             SAM cannot create or reactivate one. These rows are handed to the
             team that does, and clear on their own once the next sync lands.
         </div>
-        {% if pending_total %}
-        {# So "8" never reads as the whole queue when 18 more sit one click
-           away. Counts only — the rows stay on their own tab, because what
-           has POSTED and what XRAS MAY SEND are different claims. #}
+        {% if feed_reason %}
+        {# One note for the contingent half. The received-push rows always
+           render (our own audit table); the pending-request lookahead is
+           contingent on the outbound API and a published sweep, so when it is
+           unavailable the card says which state it is in rather than pretending
+           it saw everything. #}
         <div class="small text-muted mt-1">
-            <i class="fas fa-arrow-right-long"></i>
-            These are accounts blocking actions that have already posted.
-            <strong>Pending Requests</strong> holds
-            {{ pending_total | fmt_number }} more that XRAS has approved and
-            may send soon.
+            <i class="fas fa-circle-info"></i>
+            {% if feed_reason == 'unconfigured' %}
+            The pending-request look-ahead is off
+            (<code>XRAS_OUTGOING_ENABLED</code>); showing received pushes only.
+            {% elif feed_reason == 'no_snapshot' %}
+            The look-ahead is configured, but no sweep has published yet;
+            showing received pushes only.
+            {% else %}
+            The pending-request snapshot could not be read; showing received
+            pushes only.
+            {% endif %}
         </div>
         {% endif %}
         {% if enrichment.unavailable %}
@@ -176,6 +229,7 @@
                     <th style="width:190px; white-space:nowrap;">Username</th>
                     <th style="width:170px; white-space:nowrap;">Needs</th>
                     <th style="width:110px;">Role</th>
+                    <th style="width:140px; white-space:nowrap;">Source</th>
                     <th style="width:180px; white-space:nowrap;">Request</th>
                     {% if may_manage %}
                     <th style="width:99%; min-width:12rem;">Person</th>
@@ -287,6 +341,20 @@
                         {% endfor %}
                     </td>
 
+                    {# WARNING: text badges only, never an <i class="fas">. A summary
+                       row must carry no icon that reads as an action; the source
+                       is a fact about the row, so it is spelled out. #}
+                    <td class="cursor-pointer text-nowrap" {{ collapse_toggle(body_id) }}>
+                        {% if 'action_log' in row.sources %}
+                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle"
+                              title="A push already arrived naming this person and is blocked, waiting on the account.">Received push</span>
+                        {% endif %}
+                        {% if 'reports' in row.sources %}
+                        <span class="badge bg-body-secondary text-body-secondary border fw-normal"
+                              title="XRAS has approved a request naming this person; it will block the push when it comes.">Pending request</span>
+                        {% endif %}
+                    </td>
+
                     {# Which XRAS request needs this account. Its own column
                        at every permission level: it is the handle an operator
                        working a project's activation actually navigates by. #}
@@ -389,7 +457,7 @@
                 </tr>
 
                 <tr class="collapse" id="{{ body_id }}">
-                    <td colspan="7" class="bg-body-tertiary">
+                    <td colspan="{{ 8 if may_manage else 7 }}" class="bg-body-tertiary">
                         {% if may_manage and row.placeholder and row.is_reconciled %}
                         {# Inside the EXPANSION, above the detail sheet — not on
                            the <tr>. Bootstrap's collapse data-api runs in the
@@ -419,7 +487,7 @@
                             <thead>
                                 <tr class="small text-muted">
                                     <th>Request</th><th>Action</th><th>Status</th>
-                                    <th>Received</th><th>Pre-flight</th>
+                                    <th>Source</th><th>When</th><th>Pre-flight</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -428,7 +496,17 @@
                                     <td class="font-monospace">{{ request_cell(action.request_number, action.is_project, configured) }}</td>
                                     <td>{{ action.action_type or '—' }}</td>
                                     <td>{% if action.status %}{{ status_badge(action.status, tooltip=False) }}{% endif %}</td>
-                                    <td>{{ action.received_time | fmt_date }}</td>
+                                    <td class="text-nowrap">{{ 'Received push' if action.source == 'action_log' else 'Pending request' }}</td>
+                                    {# received_time for a posted action; submit_date
+                                       (already a YYYY-MM-DD string, so NOT through
+                                       fmt_date) for a pending request. #}
+                                    <td class="text-nowrap">
+                                        {%- if action.source == 'action_log' -%}
+                                        {{ action.received_time | fmt_date }}
+                                        {%- else -%}
+                                        {{ action.submit_date or '—' }}
+                                        {%- endif -%}
+                                    </td>
                                     <td>
                                         {% if action.would_succeed is none %}
                                         <span class="text-muted">not checked</span>
@@ -465,10 +543,11 @@
     {% endif %}
     {% else %}
     {# A designed state, not a failure: production is legitimately zero rows
-       until ACCESS is repointed and the action log starts filling. #}
+       until ACCESS is repointed and the action log starts filling. The
+       degraded-half note above still renders beside this. #}
     <div class="card-body text-center text-muted py-4">
-        No accounts are waiting on creation or reactivation
-        {%- if selected_classifications or selected_roles or selected_origins or selected_requests %} for these filters{% endif %}.
+        No users are waiting on an account
+        {%- if selected_classifications or selected_roles or selected_origins or selected_sources or selected_requests %} for these filters{% endif %}.
     </div>
     {% endif %}
 </div>

@@ -87,6 +87,13 @@ PERSON_FIELDS = ('firstName', 'middleName', 'lastName', 'email', 'phone',
                  'organization', 'academicStatus', 'residenceCountry',
                  'isReconciled', 'orcid')
 
+#: Provenance tags carried on a row's ``sources`` and each action's ``source``:
+#: Feed A (a posted ``xras_action_log`` row) vs Feed B (the sweep's enumeration
+#: of approved, not-yet-pushed requests). Rendered as badges on the Pending
+#: Users card; a row may carry both.
+SOURCE_ACTION_LOG = 'action_log'
+SOURCE_REPORTS = 'reports'
+
 
 CLASSIFICATION_ABSENT = 'absent'
 CLASSIFICATION_INACTIVE = 'inactive'
@@ -118,7 +125,7 @@ class ActionRef:
     #: out, so a one-sided window on it keeps every row at every width and the
     #: control looks dead. That bounds what the sweep collects instead.
     submit_date: Optional[str] = None
-    source: str = 'action_log'
+    source: str = SOURCE_ACTION_LOG
     #: ``dispatch_action(validate_only=True)``'s verdict. ``None`` = not run.
     would_succeed: Optional[bool] = None
     #: Verbatim, **display-only**. These are a byte-pinned wire contract
@@ -262,7 +269,7 @@ def records_from_action_log(session: Session, *,
                           action_type=row.action_type,
                           status=row.status,
                           received_time=row.received_time,
-                          source='action_log',
+                          source=SOURCE_ACTION_LOG,
                           would_succeed=would_succeed,
                           reject_messages=messages),
             usernames=usernames,
@@ -364,7 +371,7 @@ def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]
                           received_time=None,
                           submit_date=(str(payload.get('submitDate'))[:10]
                                        if payload.get('submitDate') else None),
-                          source='reports'),
+                          source=SOURCE_REPORTS),
             usernames=tuple(usernames),
             roles_by_username={k: tuple(v) for k, v in roles.items()},
             account_flag=flags,
@@ -600,11 +607,16 @@ def merge_worklists(primary: Sequence[Dict[str, Any]],
         if seen is None:
             merged[key] = dict(row)
             merged[key]['roles'] = tuple(row.get('roles') or ())
-            merged[key]['actions'] = list(row.get('actions') or [])
+            # Copy each action dict, not just the list: the primary rows are the
+            # cached snapshot's own objects, and `stamp_project_existence` writes
+            # `action['is_project']` in place -- without the copy the in-process
+            # cache adapter would carry that mutation into the next render.
+            merged[key]['actions'] = [dict(a) for a in (row.get('actions') or [])]
             merged[key]['sources'] = list(row.get('sources') or [])
             continue
         seen['roles'] = _sorted_roles((*seen['roles'], *(row.get('roles') or ())))
-        seen['actions'] = list(seen['actions']) + list(row.get('actions') or [])
+        seen['actions'] = list(seen['actions']) + [
+            dict(a) for a in (row.get('actions') or [])]
         seen['sources'] = sorted(set(seen['sources']) | set(row.get('sources') or []))
         for field_name in ('first_seen', 'waiting_since'):
             other = row.get(field_name)
@@ -621,9 +633,57 @@ def merge_worklists(primary: Sequence[Dict[str, Any]],
             if seen.get(field_name) is None and row.get(field_name) is not None:
                 seen[field_name] = row[field_name]
 
+    # Received-push rows lead: a Feed-A row is the more urgent flavor -- a push
+    # already arrived and is blocked -- so it sorts ahead of the absent-before-
+    # inactive-then-username order the CLI and card both inherit.
     return sorted(merged.values(),
-                  key=lambda r: (r['classification'] != CLASSIFICATION_ABSENT,
+                  key=lambda r: (SOURCE_ACTION_LOG not in (r.get('sources') or ()),
+                                 r['classification'] != CLASSIFICATION_ABSENT,
                                  r['username']))
+
+
+@dataclass(frozen=True)
+class PendingFeed:
+    """The sweep's Feed B as last published, plus WHY it may be empty.
+
+    ``checked`` is whether we could look at all; ``reason`` names the degraded
+    state so the one consumer with a place to show it can. ``rows`` is always a
+    list -- empty on any degraded path -- so a caller can inject it unguarded.
+    """
+
+    rows: List[Dict[str, Any]] = field(default_factory=list)
+    checked: bool = False
+    #: ``unconfigured`` / ``no_snapshot`` / ``unreadable`` / ``None`` (read OK).
+    reason: Optional[str] = None
+    snapshot: Optional[Dict[str, Any]] = None
+
+
+def load_pending_worklist_rows() -> PendingFeed:
+    """Read Feed B from the cache, degrading rather than raising.
+
+    The three failure modes are distinct facts, kept apart the way
+    ``live_checked`` is on the mapping audit: an unconfigured deployment, a
+    configured one with no sweep yet, and an unreadable backend must render
+    different notes -- an empty ``rows`` alone cannot tell them apart. Cache and
+    API imports are DEFERRED (this module's rule -- see the module docstring).
+    """
+    from sam.integration.xras_api import xras_api_configured
+
+    if not xras_api_configured():
+        return PendingFeed(reason='unconfigured')
+    try:
+        from sam.integration.xras_api.cache import load_pending_worklist
+        snapshot = load_pending_worklist()
+    except Exception as exc:                     # noqa: BLE001
+        # The cache backend is infrastructure, not a contract -- a laptop with
+        # no CACHE_REDIS_URL raises from the adapter stack rather than returning
+        # empty, and that must not take the report down.
+        logger.warning('xras worklist: pending feed unreadable (%s)', exc)
+        return PendingFeed(reason='unreadable')
+    if snapshot is None:
+        return PendingFeed(reason='no_snapshot')
+    return PendingFeed(rows=list(snapshot.get('rows') or []), checked=True,
+                       snapshot=snapshot)
 
 
 # enrichment
@@ -705,6 +765,10 @@ def worklist_counts(rows: Sequence[Dict[str, Any]]) -> Dict[str, int]:
             1 for r in rows if r['classification'] == CLASSIFICATION_INACTIVE),
         'placeholder': sum(1 for r in rows if r['placeholder']),
         'reconciled': sum(1 for r in rows if r.get('is_reconciled') is True),
+        'received_push': sum(
+            1 for r in rows if SOURCE_ACTION_LOG in (r.get('sources') or ())),
+        'pending_request': sum(
+            1 for r in rows if SOURCE_REPORTS in (r.get('sources') or ())),
         # How long the oldest row has been blocking something, in days. The
         # single number that says whether this queue is being worked — a count
         # alone reads the same on a healthy day and a neglected one.

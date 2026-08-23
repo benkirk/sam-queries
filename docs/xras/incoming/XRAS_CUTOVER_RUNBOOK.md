@@ -484,18 +484,17 @@ The watch surface, in the order you will reach for it:
 | Surface | What it answers |
 |---|---|
 | XRAS → **Pending Activations & Notifications** | Everything received, filterable, raw payload behind `MANAGE_XRAS` |
-| XRAS → **Accounts Needed** | The usernames on received actions with no usable SAM account — the 55% failure class, as a worklist |
-| XRAS → **Pending Requests** | Approved XRAS requests *not yet pushed*: the same problem before the action arrives |
+| XRAS → **Pending Users** | Who needs a SAM account before a handoff can land, both feeds unioned with a **Source** badge: *Received push* (usernames on received actions — the 55% failure class) and *Pending request* (approved XRAS requests *not yet pushed*, before the action arrives). Received pushes sort first |
 | `sam-admin xras --summary` | Status counts at a glance |
 | `sam-admin xras --status failed` | The 422s, with their error lists |
 | `sam-admin xras --status manual` | What was parked, and now **why** |
 | `sam-admin xras --accounts [--enrich]` | The account worklist on the CLI |
 | `sam-admin xras --validate-mapping` / `--validate-opportunities` | The two mapping tables, both sides |
 
-⚠️ **A populated Pending Requests tab beside an empty Accounts Needed tab is the correct
-state before the repoint**, not a bug. Accounts Needed reads `xras_action_log`, which is
-at 0 rows until XRAS repoints; Pending Requests reaches `api.xras.org` directly and was
-answering in production on 2026-08-20 (22 requests, 18 accounts needed).
+⚠️ **Before the repoint, every Pending Users row is a *Pending request*; the first
+*Received push* row is the first sign XRAS has repointed**, not a bug. Received pushes read
+`xras_action_log`, at 0 rows until XRAS repoints; pending requests reach `api.xras.org`
+directly and were answering in production on 2026-08-20 (22 requests, 18 accounts needed).
 
 **The three columns C.1b added are what make a row triageable**, so use them:
 

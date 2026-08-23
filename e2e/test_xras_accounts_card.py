@@ -21,10 +21,9 @@ from __future__ import annotations
 import pytest
 
 CARD = '#alloc-xras-accounts'
-PENDING_CARD = '#alloc-xras-pending-requests'
 
 #: Panes, and the tab button that reveals each.
-PANES = {CARD: '#xras-pane-accounts', PENDING_CARD: '#xras-pane-pending'}
+PANES = {CARD: '#xras-pane-accounts'}
 
 
 def _load(page, card=CARD):
@@ -64,7 +63,7 @@ def test_the_card_renders_its_own_fragment(page):
     """The container is empty in the shell and filled by htmx on load."""
     card = _load(page)
     assert card.locator('.card-header').inner_text().strip()
-    assert 'Accounts Needed' in card.locator('.card-header').inner_text()
+    assert 'Pending Users' in card.locator('.card-header').inner_text()
 
 
 def test_the_filter_form_is_outside_the_fragment(page):
@@ -77,17 +76,17 @@ def test_the_filter_form_is_outside_the_fragment(page):
         assert page.locator(f'{CARD} {form_id}').count() == 0
 
 
-def test_the_three_tabs_share_one_window_control(page):
-    """One control, one date pair, three panes. Rendering the pills per tab
-    would put three same-named pairs in one form and `form.elements[name]`
+def test_the_two_tabs_share_one_window_control(page):
+    """One control, one date pair, two panes. Rendering the pills per tab
+    would put same-named pairs in one form and `form.elements[name]`
     would become a RadioNodeList that set-filter-submit cannot assign to."""
     _load(page)
-    assert page.locator('#xrasWorklistTabs button[role="tab"]').count() == 3
+    assert page.locator('#xrasWorklistTabs button[role="tab"]').count() == 2
     assert page.locator('#xras-window-filters input[name="days"]').count() == 1
     assert page.locator('input[name="start_date"][form="xras-window-filters"]'
                         ).count() == 1
     # Each pane listens for the shared form's submit, so one control moves all.
-    for pane_target in ('#alloc-xras-pending', CARD, PENDING_CARD):
+    for pane_target in ('#alloc-xras-pending', CARD):
         trigger = page.locator(pane_target).get_attribute('hx-trigger')
         assert 'submit from:#xras-window-filters' in trigger
 
@@ -135,20 +134,18 @@ def test_the_row_icons_are_gone(page):
         'tbody tr:not(.collapse) i.fas:not(.collapse-icon)').count() == 0
 
 
-def test_the_pending_requests_tab_states_are_distinct(page):
-    """Feed B has three empty states and conflating them would mislead:
-    unconfigured, no snapshot published, and published-but-empty."""
-    card = _load(page, PENDING_CARD)
+def test_the_pending_half_state_is_reported(page):
+    """The pending-request half is contingent: when a sweep has published, the
+    card says when it was swept; otherwise a degraded-half note says which of
+    the three states it is in (unconfigured, unpublished, unreadable)."""
+    card = _load(page)
     body = card.inner_text().lower()
-    rows = card.locator(
-        '> .card > .table-responsive > table > tbody > tr').count()
-    if rows:
-        # A published snapshot must say when it was swept — the tab is only
-        # ever as fresh as the last sweep and must not imply live data.
-        assert 'swept' in body
+    if 'swept' in body:
+        # A published snapshot must say when — the half is only ever as fresh
+        # as the last sweep and must not imply live data.
+        assert 'lookback' in body
     else:
-        assert ('not configured' in body or 'no sweep has published' in body
-                or 'has a sam project' in body)
+        assert 'showing received pushes only' in body
 
 
 def test_the_header_count_matches_the_rows_drawn(page):
