@@ -16,19 +16,11 @@
   Read-only apart from the reused identity merge: XRAS exposes no
   person-attribute write on our key, so there is nothing else to edit here.
 #}
-<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
-    XRAS User — <span class="font-monospace">{{ username }}</span>
-</h5>
+{% import 'dashboards/allocations/partials/xras_modal_shell.html' as shell %}
+{% call shell.modal_title() %}XRAS User — <span class="font-monospace">{{ username }}</span>{% endcall %}
 
-{% if back_url %}
-{# Came from a request roster — offer the way back. Same body-swap idiom, no
-   toggle. #}
-<a href="#" class="small d-inline-block mb-3"
-   hx-get="{{ back_url }}"
-   hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
-    <i class="fas fa-arrow-left"></i> Back to request {{ back_request_number }}
-</a>
-{% endif %}
+{# Back link (if we came from a request roster) — plain body-swap, no toggle. #}
+{{ shell.back_link(back_url, back_request_number) }}
 
 {# ── who XRAS says this is ───────────────────────────────────────────────── #}
 {% from 'dashboards/fragments/xras_person_detail.html' import person_detail %}
@@ -146,6 +138,4 @@
 </div>
 {% endif %}
 
-<div class="d-flex justify-content-end mt-3">
-    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Done</button>
-</div>
+{{ shell.done_footer() }}

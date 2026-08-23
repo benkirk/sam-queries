@@ -12,19 +12,12 @@
   Read-only: an opportunity is an allocation call SAM never writes, so there is
   nothing to edit here.
 #}
+{% import 'dashboards/allocations/partials/xras_modal_shell.html' as shell %}
 {% set opp = opportunity %}
 {% set info = opp.allocationTypeInfo or {} %}
-<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
-    Opportunity — {{ opp.displayOpportunityName or opp.opportunityName or ('#' ~ opportunity_id) }}
-</h5>
+{% call shell.modal_title() %}Opportunity — {{ opp.displayOpportunityName or opp.opportunityName or ('#' ~ opportunity_id) }}{% endcall %}
 
-{% if back_url %}
-<a href="#" class="small d-inline-block mb-3"
-   hx-get="{{ back_url }}"
-   hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
-    <i class="fas fa-arrow-left"></i> Back to request {{ back_request_number }}
-</a>
-{% endif %}
+{{ shell.back_link(back_url, back_request_number) }}
 
 {# ── header badges ──────────────────────────────────────────────────────── #}
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
@@ -67,6 +60,4 @@
     {% endif %}
 </dl>
 
-<div class="d-flex justify-content-end mt-3">
-    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Done</button>
-</div>
+{{ shell.done_footer() }}
