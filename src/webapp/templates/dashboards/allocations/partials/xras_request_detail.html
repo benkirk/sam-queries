@@ -53,8 +53,13 @@
         {% endif %}
     </span>
     {% endif %}
-    {% if row and row.submit_date %}
-    <span class="small text-muted">· submitted {{ row.submit_date | fmt_date }}</span>
+    {# The current handoff's date (activity_date), consistent with the card's
+       Submitted column; the original request date follows when it differs. #}
+    {% if row and (row.activity_date or row.submit_date) %}
+    <span class="small text-muted">· submitted {{ (row.activity_date or row.submit_date) | fmt_date }}</span>
+    {% endif %}
+    {% if row and row.activity_date and row.submit_date and row.activity_date != row.submit_date %}
+    <span class="small text-muted">· created {{ row.submit_date | fmt_date }}</span>
     {% endif %}
     {% if payload.publicURL %}
     <a class="small ms-auto" href="{{ payload.publicURL }}" target="_blank" rel="noopener">

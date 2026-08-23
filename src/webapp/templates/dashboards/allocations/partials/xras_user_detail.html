@@ -124,6 +124,12 @@
                     {% if req.begin_date %}{{ req.begin_date | fmt_date }}{% endif %}
                     {%- if req.end_date %} – {{ req.end_date | fmt_date }}{% endif %}
                 </td>
+                {# Last-activity date (updateDate) — the list is sorted by it,
+                   newest first, so recent handoffs are easy to spot. #}
+                <td class="text-nowrap small text-muted"
+                    title="Last updated in XRAS">
+                    {% if req.activity_date %}{{ req.activity_date | fmt_date }}{% endif %}
+                </td>
             </tr>
         {% endfor %}
         </tbody>

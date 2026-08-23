@@ -340,12 +340,17 @@ def person_roles_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                 'action_type': _text(req.get('actionType')),
                 'allocation_type': _text(req.get('allocationType')),
                 'opportunity': _text(req.get('opportunity')),
+                # When the request was last touched — this feed's recency signal
+                # (it carries no submit/entry date), so the modal's request list
+                # can be read newest-activity-first like the card.
+                'activity_date': _as_date(req.get('updateDate')),
                 'begin_date': _as_date(req.get('beginDate')),
                 'end_date': _as_date(req.get('endDate')),
                 'pi': _text(req.get('pi')),
                 'pi_username': _text(req.get('piUsername')),
             })
         if rows:
+            rows.sort(key=lambda r: r.get('activity_date') or date.min, reverse=True)
             groups.append({'role_name': _text(group.get('roleName')),
                            'requests': rows})
     return groups
