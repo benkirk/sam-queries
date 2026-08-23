@@ -351,6 +351,31 @@ class TestReadinessBadgeWiring:
         assert 'xras_readiness_detail/EXAM0001' not in body
 
 
+class TestActionsColumnAndFacet:
+    """The action-type column (#2, between Request and Status) and its facet chip."""
+
+    def _publish_types(self, *types):
+        payloads = []
+        for i, kind in enumerate(types):
+            p = _payload('EXAM%04d' % i)
+            p['actions'][0]['actionType'] = kind
+            payloads.append(p)
+        _publish(*payloads)
+
+    def test_the_column_renders_the_type(self, auth_client, configured):
+        self._publish_types('New')
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert '>Actions<' in body            # the header
+        assert 'New' in body                  # the row badge
+
+    def test_the_facet_narrows_to_the_chosen_type(self, auth_client, configured):
+        self._publish_types('New', 'Supplement')
+        body = auth_client.get(
+            FRAGMENT + '?action_type=New').get_data(as_text=True)
+        assert 'EXAM0000' in body             # the New request survives
+        assert 'EXAM0001' not in body         # the Supplement request is filtered
+
+
 class TestMnemonicUnblockStrip:
     """The § 2.2 ranking strip on the Remediations card — points at Admin to fix."""
 
@@ -439,7 +464,8 @@ class TestFacetParity:
     def test_every_facet_field_has_a_hidden_control(self, auth_client):
         body = auth_client.get('/allocations/xras').get_data(as_text=True)
         form = body.split('id="xras-remediation-filters"')[1].split('</form>')[0]
-        for field in ('status', 'opportunity', 'push', 'request_number'):
+        for field in ('status', 'action_type', 'opportunity', 'push',
+                      'readiness', 'request_number'):
             assert f'name="{field}"' in form, \
                 f'{field} chips would be silently inert'
 

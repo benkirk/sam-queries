@@ -168,6 +168,8 @@
             </div>
             {{ facet_row('Status', status_values, form_id, 'status',
                          active=selected_statuses) }}
+            {{ facet_row('Actions', action_values, form_id, 'action_type',
+                         active=selected_actions) }}
             {{ facet_row('Opportunity', opportunity_values, form_id, 'opportunity',
                          active=selected_opportunities) }}
             {{ facet_row('SAM project', push_values, form_id, 'push',
@@ -213,6 +215,11 @@
             <thead class="table-subtle">
                 <tr>
                     <th style="width:9rem;">Request</th>
+                    {# The XRAS action type(s) this request carries (New /
+                       Supplement / Renewal / …) — the "what kind of handoff"
+                       dimension, with its own facet chip. A request with more
+                       than one action shows a badge per distinct type. #}
+                    <th style="width:8rem;">Actions</th>
                     <th style="width:8rem;">Status</th>
                     {# The two person-name columns share the slack equally (50%
                        each), so an Allocation-Manager name doesn't wrap while the
@@ -226,7 +233,10 @@
                     <th style="width:50%;">Project Admin</th>
                     <th class="text-nowrap" style="width:7rem;">Submitted</th>
                     <th class="text-nowrap" style="width:11rem;">Period</th>
-                    <th class="text-end" style="width:11rem;">SAM</th>
+                    {# Wide enough for the two badges side by side (readiness +
+                       project), which is now the rule rather than the exception —
+                       a swept request almost always has both. #}
+                    <th class="text-end" style="width:13rem;">SAM</th>
                 </tr>
             </thead>
             {% for group in groups %}
@@ -258,7 +268,7 @@
                    Accounts-Needed username cell. The bare #id folds into the
                    modal — the header just carries the name. #}
                 <tr class="table-subtle fw-semibold">
-                    <td colspan="7">
+                    <td colspan="8">
                         <span class="cursor-pointer" {{ collapse_toggle(gid, expanded=true) }}><i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i></span>
                         {% if configured and group.opportunity_id %}
                         <a href="#" class="text-decoration-none fw-semibold" title="View this opportunity"
@@ -298,6 +308,17 @@
                            title="Updated just now, after your change — newer than the sweep."></i>
                         {% endif %}
                     </td>
+                    {# Action type(s). One badge per distinct type — the number of
+                       badges is the multiplicity the SAM cell used to spell out
+                       as "N actions". #}
+                    <td>
+                        {% for kind in row.actions | map(attribute='action_type')
+                                       | select | unique | list %}
+                        <span class="badge bg-body-secondary text-body-secondary border">{{ kind }}</span>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endfor %}
+                    </td>
                     <td>
                         <span class="badge bg-body-secondary text-body-secondary border">
                             {{ row.status or '—' }}
@@ -314,31 +335,27 @@
                     <td class="small text-muted text-nowrap">
                         {{ row.begin_date | fmt_date }} – {{ row.end_date | fmt_date }}
                     </td>
-                    {# One column, not two. The second was a full-width column
-                       spent on "1 action(s)" — true of every row on the card,
-                       so it carried no information and crowded out the ones
-                       that do. The count now appears only when it is NOT one,
-                       which is the case a withdraw has to reason about (the
-                       request stays open) and the only case worth a glance.
-
-                       The flags belong beside the SAM state because they are
-                       read together: what is blocking this handoff.
-
-                       No `text-nowrap` here, unlike the date columns: the
-                       rare row carrying both a flag and the SAM badge would
-                       otherwise set this column's width for all the others,
-                       which mostly hold one short badge. Let that one row be
-                       two lines tall instead. #}
+                    {# The request's SAM state, read together as "what is blocking
+                       this handoff": the push-readiness verdict and whether a SAM
+                       project exists. Now that a swept request almost always
+                       carries both, they sit side by side by default (the wider
+                       column above buys the room); a stuck-placeholder flag joins
+                       them and may wrap to a second line — the rare case. #}
                     <td class="text-end">
-                        {% if row.actions | length != 1 %}
-                        <span class="text-muted small me-1">{{ row.actions | length }} actions</span>
-                        {% endif %}
+                        <div class="d-flex justify-content-end align-items-center gap-1 flex-wrap">
                         {% if row.has_stuck_placeholder %}
-                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle me-1"
+                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle"
                               title="A roster member is an ARC placeholder that XRAS has already flagged reconciled — a contradiction. XRAS keeps sending the throwaway username and the handoff stays blocked.">
                             placeholder roster
                         </span>
                         {% endif %}
+                        {# The two state badges are kept together and un-wrappable
+                           (`text-nowrap`), so the column is forced wide enough to
+                           hold them on one line — a `<th>` width hint alone loses
+                           to table auto-layout. The placeholder flag stays outside
+                           this span, free to wrap to its own line on the rare row
+                           that carries one. #}
+                        <span class="d-inline-flex align-items-center gap-1 text-nowrap">
                         {# Push-readiness roll-up — the worst verdict across this
                            request's candidate actions. A never-writes SAM-side
                            preflight: "if XRAS pushed this today, would it land?"
@@ -353,14 +370,14 @@
                            (reloads this card with the fresh verdict) + a toast,
                            both via HX-Trigger — so the response body is unused. #}
                         <button type="button"
-                                class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle me-1"
+                                class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle"
                                 style="cursor:pointer;"
                                 title="Not checked in the last sweep. Click to re-check now — otherwise this waits for the next hourly sweep."
                                 hx-post="{{ url_for('allocations_dashboard.xras_recheck_request',
                                                     request_number=row.request_number) }}"
                                 hx-swap="none"><i class="fas fa-rotate small me-1"></i>unchecked</button>
                         {% elif row.preflight_rollup %}
-                        <a href="#" class="text-decoration-none me-1"
+                        <a href="#" class="text-decoration-none"
                            title="Why this verdict — the reasons a push would return"
                            data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
                            hx-get="{{ url_for('allocations_dashboard.xras_readiness_detail',
@@ -403,6 +420,8 @@
                            hx-target="#projectDetailsModalBody"
                            hx-swap="innerHTML"><span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">project</span></a>
                         {% endif %}
+                        </span>
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}

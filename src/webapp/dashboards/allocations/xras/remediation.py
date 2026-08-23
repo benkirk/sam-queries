@@ -143,6 +143,7 @@ def xras_remediations_fragment():
     selected_push = [p for p in request.args.getlist('push') if p]
     selected_requests = [n for n in request.args.getlist('request_number') if n]
     selected_readiness = [r for r in request.args.getlist('readiness') if r]
+    selected_actions = [a for a in request.args.getlist('action_type') if a]
 
     # Self-excluding facets: each dimension counts over the set filtered by the
     # *other* dimensions, so a chip never shows a zero that its own selection
@@ -150,24 +151,32 @@ def xras_remediations_fragment():
     status_values = _facet(rows, 'status',
                            _apply(rows, opportunities=selected_opportunities,
                                   push=selected_push, requests=selected_requests,
-                                  readiness=selected_readiness))
+                                  readiness=selected_readiness,
+                                  actions=selected_actions))
+    action_values = _action_facet(rows, _apply(
+        rows, statuses=selected_statuses, opportunities=selected_opportunities,
+        push=selected_push, requests=selected_requests,
+        readiness=selected_readiness))
     opportunity_values = _facet(rows, 'opportunity_name',
                                 _apply(rows, statuses=selected_statuses,
                                        push=selected_push,
                                        requests=selected_requests,
-                                       readiness=selected_readiness))
+                                       readiness=selected_readiness,
+                                       actions=selected_actions))
     push_values = _push_facet(_apply(rows, statuses=selected_statuses,
                                      opportunities=selected_opportunities,
                                      requests=selected_requests,
-                                     readiness=selected_readiness))
+                                     readiness=selected_readiness,
+                                     actions=selected_actions))
     readiness_values = _readiness_facet(_apply(
         rows, statuses=selected_statuses, opportunities=selected_opportunities,
-        push=selected_push, requests=selected_requests))
+        push=selected_push, requests=selected_requests,
+        actions=selected_actions))
 
     rows = _apply(rows, statuses=selected_statuses,
                   opportunities=selected_opportunities,
                   push=selected_push, requests=selected_requests,
-                  readiness=selected_readiness)
+                  readiness=selected_readiness, actions=selected_actions)
 
     return render_template(
         _CARD,
@@ -184,10 +193,12 @@ def xras_remediations_fragment():
         # feature" — see the docstring.
         has_worklist=_has_worklist(),
         status_values=status_values,
+        action_values=action_values,
         opportunity_values=opportunity_values,
         push_values=push_values,
         readiness_values=readiness_values,
         selected_statuses=selected_statuses,
+        selected_actions=selected_actions,
         selected_opportunities=selected_opportunities,
         selected_push=selected_push,
         selected_requests=selected_requests,
@@ -282,8 +293,15 @@ def _search(rows, needle):
             if any(wanted in str(v).casefold() for v in haystack(r) if v)]
 
 
+def _row_action_types(row):
+    """The distinct XRAS action types a request carries (New / Supplement / …)."""
+    return sorted({(a.get('action_type') or '').strip()
+                   for a in (row.get('actions') or [])
+                   if (a.get('action_type') or '').strip()})
+
+
 def _apply(rows, *, statuses=(), opportunities=(), push=(), requests=(),
-           readiness=()):
+           readiness=(), actions=()):
     out = list(rows)
     if statuses:
         out = [r for r in out if r.get('status') in statuses]
@@ -296,6 +314,9 @@ def _apply(rows, *, statuses=(), opportunities=(), push=(), requests=(),
         out = [r for r in out if r.get('request_number') in requests]
     if readiness:
         out = [r for r in out if (r.get('preflight_rollup') or 'none') in readiness]
+    if actions:
+        # A request matches if ANY of its actions is one of the selected types.
+        out = [r for r in out if any(t in actions for t in _row_action_types(r))]
     return out
 
 
@@ -306,6 +327,18 @@ def _facet(all_rows, key, scoped_rows):
         if value:
             counts[value] = counts.get(value, 0) + 1
     values = {row.get(key) for row in all_rows if row.get(key)}
+    return [{'value': v, 'label': v, 'count': counts.get(v, 0)}
+            for v in sorted(values)]
+
+
+def _action_facet(all_rows, scoped_rows):
+    """Action-type chips. A request counts once per distinct type it carries, so
+    the sum can exceed the row count — a multi-action request is in several."""
+    counts = {}
+    for row in scoped_rows:
+        for kind in _row_action_types(row):
+            counts[kind] = counts.get(kind, 0) + 1
+    values = {kind for row in all_rows for kind in _row_action_types(row)}
     return [{'value': v, 'label': v, 'count': counts.get(v, 0)}
             for v in sorted(values)]
 
