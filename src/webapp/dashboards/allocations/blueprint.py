@@ -7,7 +7,7 @@ grouped hierarchically by Resource → Facility → Allocation Type → Projects
 
 
 from flask import (
-    Blueprint, render_template, request, flash, redirect, url_for, jsonify,
+    render_template, request, flash, redirect, url_for, jsonify,
     current_app,
 )
 from flask_login import login_required, current_user
@@ -87,7 +87,7 @@ from ..charts import (
     generate_pace_chart_matplotlib,
 )
 
-bp = Blueprint('allocations_dashboard', __name__, url_prefix='/allocations')
+from . import bp
 
 # Resources to hide by default from the dashboard
 HIDDEN_RESOURCES = ["CMIP Analysis Platform", "Data_Access", "HPC_Futures_Lab"]
