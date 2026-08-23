@@ -261,19 +261,18 @@ def index():
 #: (Transactions, Adjustments, XRAS action log). Cumulative upper bound in days,
 #: ``None`` closing the last band — the shape ``webapp.utils.age_bands`` consumes.
 #:
-#: Byte-identical to ``webapp.jobs.service.JOBS_AGE_BANDS`` on purpose, and
-#: deliberately NOT imported from it. Ladders are domain-owned here (cf. the
-#: fs-scans ``ATIME_BUCKETS`` / ``JOBS_AGE_BANDS`` split): importing
-#: ``webapp.jobs.service`` would couple three ungated allocations pages to a
-#: plugin-adjacent module. The vocabulary matches so a viewer reads one ladder
-#: across the app; the ownership does not.
+#: Byte-identical to ``webapp.jobs.service.JOBS_AGE_BANDS`` on purpose and
+#: deliberately NOT imported from it: ladders are domain-owned, and importing
+#: that module would couple three ungated allocations pages to a plugin-adjacent
+#: one. The vocabulary matches so a viewer reads one ladder across the app; the
+#: ownership does not.
 #:
-#: WARNING: Band 1's upper bound (30) is the same 30 as the ``timedelta(days=30)``
-#: default in ``_parse_audit_filters`` / ``_parse_xras_filters`` and in the two
-#: page contexts below. That coupling is what makes the resting control land on
-#: a whole span instead of rendering "Custom range" on every first load. Change
-#: one and you must change all four — ``test_the_default_audit_window_is_a_whole_span``
-#: is the tripwire.
+#: WARNING: band 1's upper bound (30) is the same 30 as the
+#: ``timedelta(days=30)`` default in ``_parse_audit_filters`` /
+#: ``_parse_xras_filters`` and in the two page contexts below. That coupling is
+#: what makes the resting control land on a whole span rather than "Custom
+#: range" on every first load. Change one, change all four --
+#: ``test_the_default_audit_window_is_a_whole_span`` is the tripwire.
 AUDIT_AGE_BANDS = (
     ('< 1 Week', 7),
     ('1-4 Weeks', 30),
@@ -393,23 +392,19 @@ def projects():
     # Allow cache bypass for debugging / stale data
     force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
 
-    # This route renders four pies inline, so it is one of the nine chart call
-    # sites with no htmx request behind them — the layout arrives on the
-    # cookie. `user_aware_cache_key` partitions the cached HTML by it; without
-    # that, the first visitor to warm this page would decide whether everyone
-    # else got phone-sized or desktop-sized pies. The theme rides the same
-    # cookie mechanism and the same cache-key partition, and its failure is the
-    # louder one — a light pie on a dark page.
+    # Four pies rendered inline, so this is one of the nine chart call sites with
+    # no htmx request behind them and the layout arrives on the cookie.
+    # `user_aware_cache_key` partitions the cached HTML by it, or the first
+    # visitor to warm the page would decide whether everyone else got
+    # phone-sized pies. The theme rides the same mechanism and the same
+    # partition, and fails louder -- a light pie on a dark page.
     layout, theme = read_layout(), read_theme()
 
-    # Facility scope resolution.
-    # ``allowed_facility_names`` is the user's universe — every facility
-    # they may *ever* see on this dashboard. For unscoped users that's
-    # every active facility; for scoped users it's their grant.
-    # ``selected_facilities`` is the currently-displayed subset, built
-    # from ``?facilities=...`` clamped against allowed — so a forged
-    # out-of-scope value falls back to the full allowed set rather than
-    # widening or erroring.
+    # ``allowed_facility_names`` is the user's universe -- every active facility
+    # if unscoped, their grant if scoped. ``selected_facilities`` is the
+    # displayed subset from ``?facilities=...``, clamped against it, so a forged
+    # out-of-scope value falls back to the full allowed set rather than widening
+    # or erroring.
     allowed_facility_names = _allowed_facility_names(
         current_user, Permission.VIEW_PROJECTS)
     requested_facilities = request.args.getlist('facilities')
@@ -574,12 +569,10 @@ def projects():
                      if chartable else '<div class="text-center text-muted small py-3">No usage data yet</div>',
         }
 
-    # Pace charts render via HTMX (one loader per resource in the template
-    # below — see `dashboards/allocations/partials/pace_chart.html` and
-    # the `htmx_pace_chart` route). Deferring the SVG render here lets the
-    # selector buttons live inside the swap target, and lets
-    # `nav-view-persistence.js` replay the persisted `sort_by` on initial
-    # load without us having to know it up front.
+    # Pace charts render via HTMX, one loader per resource. Deferring the SVG
+    # render here lets the selector buttons live inside the swap target, and
+    # lets `nav-view-persistence.js` replay the persisted `sort_by` on first
+    # load without this route having to know it.
 
     return render_template(
         'dashboards/allocations/projects.html',
@@ -657,23 +650,18 @@ def htmx_pace_chart(resource_name):
         sort_by=sort_by, layout=read_layout(), theme=read_theme(),
     )
 
-    # Sanitize resource_name into a stable HTML id — matches the
-    # `data-resource="{{ resource_name|replace(' ', '_') }}"` convention
-    # used in dashboard.html for the panel toggle. When the request
-    # narrows to a single facility (the per-facility Pace card in the
-    # allocation-type tab), include the facility in the id so its
-    # persisted sort_by doesn't collide with the resource-wide chart.
+    # A stable HTML id, matching dashboard.html's
+    # `data-resource="{{ resource_name|replace(' ', '_') }}"` convention. A
+    # single-facility request includes the facility, so a per-facility card's
+    # persisted sort_by does not collide with the resource-wide chart's.
     chart_dom_id = 'pace-chart-' + resource_name.replace(' ', '_')
     if len(requested_facilities) == 1:
         chart_dom_id += '-' + requested_facilities[0].replace(' ', '_')
 
-    # Selector-button URLs MUST carry the original facility scope
-    # forward — otherwise clicking Sort-by on a per-facility card would
-    # drop ?facilities= and the next request would un-narrow back to
-    # the whole resource (leaking cross-facility projects into a
-    # facility-scoped chart). Pass the verbatim requested list so a
-    # facility-scoped reload follows the same path as the initial
-    # loader in dashboard.html.
+    # Selector-button URLs MUST carry the original facility scope forward, or
+    # clicking Sort-by on a per-facility card drops ?facilities= and the next
+    # request un-narrows to the whole resource, leaking cross-facility projects
+    # into a facility-scoped chart. Pass the requested list verbatim.
     selector_kwargs = {
         'sort_by': sort_by,
         'active_at': active_at.strftime('%Y-%m-%d'),
@@ -719,11 +707,8 @@ def projects_fragment():
     if not resource or not facility or not allocation_type:
         return '<p class="text-danger mb-0">Missing required parameters</p>'
 
-    # Enforce facility scope: a scoped user must not be able to drill
-    # into a facility outside their grant by hand-crafting the URL.
-    # Unlike the index route (where we clamp to the allowed set), here
-    # the user asked for *exactly one* facility — if it's out of scope
-    # that's a forged request, not a narrowing choice.
+    # 403, not clamp: unlike the index route the caller asked for exactly one
+    # facility, so out-of-scope is a forged URL rather than a narrowing choice.
     allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
     if allowed is not None and facility not in allowed:
         abort(403)
@@ -1020,14 +1005,11 @@ def cache_status():
     return jsonify(usage_cache_info())
 
 
-# Create Charge Adjustment
-#
-# Staff-facing write path for the Adjustments tab. The user enters a
-# positive amount; ChargeAdjustment.create() applies the sign by type
-# (Credits/Refunds -> negative, Debits/Reservations -> positive). The set of
-# exposed types lives in sam.accounting.adjustments._SIGN_BY_TYPE; the
-# route resolves it to ChargeAdjustmentType rows via
-# ChargeAdjustment.supported_types(session).
+# Create Charge Adjustment -- the staff-facing write path for the Adjustments
+# tab. The user enters a positive amount and ChargeAdjustment.create() applies
+# the sign by type (Credits/Refunds negative, Debits/Reservations positive).
+# Exposed types come from sam.accounting.adjustments._SIGN_BY_TYPE, resolved to
+# rows via ChargeAdjustment.supported_types(session).
 
 
 _CREATE_ADJUSTMENT_FORM_TEMPLATE = (
@@ -1062,11 +1044,10 @@ def _search_projects_for_adjustment(q, active_only):
     return search_projects_by_code_or_title(db.session, q, active=True)[:10]
 
 
-# Search-as-you-type backend for the Create Adjustment project picker.
-# Mirrors admin_dashboard.htmx_project_search_for_parent but guarded by
-# EDIT_ALLOCATIONS (the permission that also gates the Create Adjustment
-# button); shares the results template so fk-picker.js populates the
-# hidden project_id input on selection.
+# Search-as-you-type for the Create Adjustment project picker: mirrors
+# admin_dashboard.htmx_project_search_for_parent but guarded by
+# EDIT_ALLOCATIONS, the permission that also gates the button. Shares the
+# results template so fk-picker.js populates the hidden project_id input.
 register_typeahead(
     bp, rule='/htmx/project_search_for_adjustment',
     endpoint='htmx_project_search_for_adjustment',

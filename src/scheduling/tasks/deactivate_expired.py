@@ -32,12 +32,11 @@ from scheduling.schedules import MonthlyDay, to_local_naive
 #: it (so 31 means "end of month"); day 3 never clamps, but a future edit might.
 SCHEDULE = MonthlyDay(3, 4, 30, tz='America/Denver')
 
-#: Every facility, deliberately — and note this is the one place this task
-#: differs in audience from `expiration_notices`, which pins ('UNIV', 'WNA')
-#: because it mails external PIs. Deactivation sends nothing, so there is no
-#: reason to exempt internal projects. `None` means "no facility filter"; it is
-#: stated here rather than defaulted at the call site so the audience is
-#: greppable next to the schedule.
+#: Every facility, deliberately -- the one place this task's audience differs
+#: from `expiration_notices`, which pins ('UNIV', 'WNA') because it mails
+#: external PIs. Deactivation sends nothing, so internal projects need no
+#: exemption. `None` means no facility filter, stated here rather than defaulted
+#: at the call site so the audience is greppable next to the schedule.
 FACILITIES: Optional[Tuple[str, ...]] = None
 
 #: Cap on projcodes echoed into the ledger row. `detail` is TEXT and the runner
@@ -50,27 +49,21 @@ _MAX_REPORTED = 200
 @task(name='deactivate_expired_projects',
       schedule=SCHEDULE,
       needs=('sam',),
-      # Drives the LEASE, not a timeout. The resulting 900s floor is SHORTER
-      # than the CronJob's activeDeadlineSeconds (3000s) — the inverse of
-      # `expiration_notices`, which has to inflate this to 20 min so a killed
-      # send is never reclaimed mid-flight. Harmless here: a reclaimed
-      # deactivation is transactional, and the second run's query already
-      # excludes whatever the first one deactivated. Copying that task's
-      # 20-minute value would be ceremony with no hazard behind it.
+      # Drives the LEASE, not a timeout. The 900s floor is SHORTER than the
+      # CronJob's activeDeadlineSeconds (3000s) -- the inverse of
+      # `expiration_notices`, which inflates this to 20 min so a killed send is
+      # never reclaimed mid-flight. Harmless here: a reclaimed deactivation is
+      # transactional, and the second run's query already excludes what the
+      # first deactivated.
       expected_runtime=timedelta(minutes=2),
       # 7 days, not the 6h default. Past the grace the runner records a
-      # `skipped`/misfire row INSTEAD of running, and that row settles the slot
-      # — so for a monthly task one misfire forfeits the whole month, and 6h
-      # would forfeit it to a weekend outage.
-      #
-      # Not unbounded either, and that is the policy: `CatchUp.SKIP` means
-      # `last_occurrence` is always the most recent slot, so lateness is bounded
-      # at ~31 days for this schedule; a grace above that would make the misfire
-      # branch unreachable. A week covers realistic outages, and past a week
-      # rolling into next month is the right answer — the work is cumulative
-      # (next month's run does everything this one would have, plus more) and
-      # the `skipped` row makes a multi-week outage visible rather than letting
-      # it discharge silently.
+      # `skipped` row INSTEAD of running, and that row settles the slot -- so
+      # for a monthly task one misfire forfeits the whole month, and 6h would
+      # forfeit it to a weekend outage. Not unbounded either: `CatchUp.SKIP`
+      # bounds lateness at ~31 days here, so a larger grace makes the misfire
+      # branch unreachable. Past a week, rolling into next month is right --
+      # the work is cumulative, and the `skipped` row makes a multi-week outage
+      # visible rather than letting it discharge silently.
       misfire_grace=timedelta(days=7),
       description='Deactivate projects whose allocations expired 90+ days ago')
 def deactivate_expired_projects(ctx) -> TaskResult:
@@ -84,16 +77,14 @@ def deactivate_expired_projects(ctx) -> TaskResult:
         unique_projects,
     )
 
-    # ONE conversion, and the zone is read off SCHEDULE rather than repeated as
-    # a literal. `ctx.occurrence` is naive UTC; `Allocation.end_date` and
-    # `Project.inactivate_time` are both naive Mountain, so the raw value would
-    # shift the window by 6-7 hours and stamp projects as inactive since a time
-    # that has not happened yet — rendered as "since <future date>" on the user
-    # project card.
-    #
-    # No truncation to local midnight, unlike `expiration_notices.window_start`:
-    # there the occurrence defines selection *bands* that must tile identically
-    # across a re-run. Here it is a stamp, and nothing selects on it.
+    # ONE conversion, with the zone read off SCHEDULE rather than repeated.
+    # `ctx.occurrence` is naive UTC while `Allocation.end_date` and
+    # `Project.inactivate_time` are naive Mountain, so the raw value shifts the
+    # window 6-7 hours and stamps projects inactive since a time that has not
+    # happened yet -- "since <future date>" on the user project card. No
+    # truncation to local midnight, unlike `expiration_notices.window_start`:
+    # there the occurrence defines selection bands that must tile across a
+    # re-run, here it is only a stamp.
     slot = to_local_naive(ctx.occurrence, ZoneInfo(SCHEDULE.tz))
 
     session = ctx.sam_session
@@ -105,11 +96,11 @@ def deactivate_expired_projects(ctx) -> TaskResult:
         facility_names=list(FACILITIES) if FACILITIES else None,
         now=slot,
     )
-    # The result's shape is one row per (project, allocation). Today this query
-    # pins one allocation per project so the collapse is a no-op — but count
-    # PROJECTS explicitly anyway, or a later swap to `get_all_expiring_allocations`
-    # would make `selected` report allocations while `deactivated` reports
-    # projects, and the two would look like a bug rather than a units mismatch.
+    # One row per (project, allocation), and this query pins one allocation per
+    # project, so the collapse is a no-op today. Count PROJECTS explicitly
+    # anyway: a later swap to `get_all_expiring_allocations` would have
+    # `selected` reporting allocations while `deactivated` reports projects, and
+    # the mismatch would read as a bug.
     projects = unique_projects(selected)
 
     ctx.logger.info('as of %s: %d allocation row(s) -> %d project(s) '
@@ -118,14 +109,11 @@ def deactivate_expired_projects(ctx) -> TaskResult:
                     DEACTIVATION_MIN_DAYS_EXPIRED)
 
     # No commit and no `management_transaction`: the runner owns the
-    # transaction, committing via `close_sessions(commit=True)` and rolling
-    # back under `ctx.dry_run`.
-    #
-    # That rollback is also why this task needs no `ctx.dry_run` branch of its
-    # own. Everything it does is transactional — unlike `expiration_notices`,
-    # whose mail a rollback cannot recall — so `--dry-run` deactivates the
-    # projects, reports `deactivated: 6`, and undoes it. The count is honest
-    # and is the point.
+    # transaction, committing via `close_sessions(commit=True)` and rolling back
+    # under `ctx.dry_run`. That rollback is why this task needs no `ctx.dry_run`
+    # branch -- everything here is transactional, unlike `expiration_notices`
+    # whose mail a rollback cannot recall, so `--dry-run` deactivates, reports
+    # `deactivated: 6`, and undoes it. The honest count is the point.
     outcome = deactivate_projects(session, projects, when=slot)
 
     detail = {

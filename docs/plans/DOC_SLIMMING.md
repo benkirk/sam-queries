@@ -179,6 +179,7 @@ the recorded starting number still holds. Nothing else from prior sessions is ne
 | 5 (3 files) | 36.3% | 33.0% | 21.7% | 41.7% | **33.4%** |
 | 5 (6 files) | 36.2% | 32.9% | 21.2% | 41.7% | **33.3%** |
 | 5 (10 files) | 36.2% | 32.8% | 21.2% | 41.7% | **33.2%** |
+| 5 (16 files) | 36.1% | 32.8% | 21.2% | 41.5% | **33.2%** |
 
 Phases 0 and 1 move the ratio by design: neither removes prose. Phase 0 lands
 the gate, and Phase 1 rewrites decorative characters in place rather than
@@ -397,16 +398,27 @@ Then `queries/xras_actions.py` 903 -> 874, `webapp/run.py` 519 -> 484,
 was built to remove, in a form its regex does not match -- a comment arguing
 with its own earlier revision ("An earlier version of this tuple listed...",
 "An earlier version read only received/failed/manual"). All three now state the
-rule in the present tense and keep the measurement that justifies it. Every commit is
+rule in the present tense and keep the measurement that justifies it.
+
+Then `integration/xras.py` 747 -> 731, `allocations/blueprint.py` 1188 -> 1162,
+`utils/config_inspect.py` 771 -> 745, `queries/xras_access.py` 414 -> 400,
+`tasks/deactivate_expired.py` 149 -> 135. -97 more, and the yield per file is
+now visibly tailing off: these are field-level `#:` comments and per-step
+warnings that were already close to budget. Every commit is
 verified prose-only by comparing docstring-stripped ASTs against `HEAD`
 (`ast.unparse` round-trip), not by eyeballing the diff.
 
-**Remaining, in order:** `integration/xras.py` (72),
-`allocations/blueprint.py` (69), `utils/config_inspect.py` (65),
-`dashboards/user/blueprint.py` (64), `queries/xras_access.py` (57),
-`tasks/deactivate_expired.py` (56), `admin/projects_routes.py` (51),
-`api/xras/actions.py` (49), then the long tail of ~40 files at 20-45 lines
-each. `tasks/xras_sweep.py` (163) and
+**Remaining, in order:** `dashboards/user/blueprint.py` (64),
+`admin/projects_routes.py` (51), `api/xras/actions.py` (49), then a long tail
+of ~40 files at 20-45 lines each.
+
+**Read the yield curve before spending another session here.** The first three
+files gave 22%; the next four gave 5%; the last five gave 2%. What is left is
+the tail, and the tail is where the ratio of load-bearing content to narration
+is highest -- these are `#:` field comments and single-warning blocks that were
+written close to budget already. The remaining ~1,000-line estimate in this
+section was extrapolated from the pilot and is now too optimistic; ~400 is the
+honest number, and it is not obviously worth the review risk. `tasks/xras_sweep.py` (163) and
 `tasks/xras_notices.py` (50) are on the do-not-cut list in section 4 and are
 skipped.
 
