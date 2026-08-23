@@ -39,7 +39,7 @@ def notifier(monkeypatch, transport):
     `ledger=None` keeps the route off the database entirely: the ledger
     commits by design, which would escape the per-test SAVEPOINT.
     """
-    from webapp.dashboards.allocations import blueprint
+    from webapp.dashboards.allocations.xras import lifecycle_routes as blueprint
 
     built = Notifier(config=NotifyConfig(enabled=True), transport=transport,
                      ledger=None)
@@ -50,7 +50,7 @@ def notifier(monkeypatch, transport):
 @pytest.fixture
 def events(monkeypatch):
     """Spy on the activation-event write, without performing it."""
-    from webapp.dashboards.allocations import blueprint
+    from webapp.dashboards.allocations.xras import lifecycle_routes as blueprint
 
     recorded = []
 
@@ -128,7 +128,7 @@ class TestPreviewForm:
 
     def test_a_disabled_deployment_says_so_before_the_operator_clicks_send(
             self, auth_client, monkeypatch, transport):
-        from webapp.dashboards.allocations import blueprint
+        from webapp.dashboards.allocations.xras import lifecycle_routes as blueprint
         built = Notifier(config=NotifyConfig(enabled=False),
                          transport=transport, ledger=None)
         monkeypatch.setattr(blueprint, 'get_notifier', lambda **kw: built)
@@ -140,7 +140,7 @@ class TestPreviewForm:
             self, auth_client, monkeypatch, transport):
         """A staging box quietly swallowing mail is the failure mode this
         line exists to prevent."""
-        from webapp.dashboards.allocations import blueprint
+        from webapp.dashboards.allocations.xras import lifecycle_routes as blueprint
         built = Notifier(config=NotifyConfig(enabled=True,
                                              redirect_to='staging@example.edu'),
                          transport=transport, ledger=None)
@@ -347,7 +347,7 @@ class TestNothingDeliveredWritesNoEvent:
 
     def test_notify_disabled_writes_no_event(self, auth_client, monkeypatch,
                                              events, transport):
-        from webapp.dashboards.allocations import blueprint
+        from webapp.dashboards.allocations.xras import lifecycle_routes as blueprint
         built = Notifier(config=NotifyConfig(enabled=False),
                          transport=transport, ledger=None)
         monkeypatch.setattr(blueprint, 'get_notifier', lambda **kw: built)
@@ -378,7 +378,7 @@ class TestNoPathMay500:
 
     def test_a_transport_failure_is_a_dialog_not_an_exception(
             self, auth_client, monkeypatch, events, transport):
-        from webapp.dashboards.allocations import blueprint
+        from webapp.dashboards.allocations.xras import lifecycle_routes as blueprint
 
         class Unreachable(NullTransport):
             def open(self):
