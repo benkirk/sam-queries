@@ -57,7 +57,13 @@ from zoneinfo import ZoneInfo
 
 from scheduling.registry import TaskResult, task
 from scheduling.schedules import BusinessHourly, to_local_naive
-from scheduling.tasks.mail_guards import EmailCapExceeded, NotificationsDisabled
+from scheduling.tasks._notice_common import (
+    drop_already_notified,
+    new_sam_session as _new_sam_session,
+    positive_int_env,
+    raise_if_disabled,
+)
+from scheduling.tasks.mail_guards import EmailCapExceeded
 
 #: Ten slots a day, on the hour. `minute=0` rather than an offset because the
 #: CronJob wakes at :07 — a :00 slot is dispatched about seven minutes later,
@@ -155,14 +161,7 @@ def xras_email_max(env: Optional[dict] = None) -> int:
     is refused rather than obeyed — it would abort every run including the ones
     that should send nothing, which is indistinguishable from a broken query.
     """
-    raw = (env or os.environ).get('SAM_TASKS_XRAS_MAX')
-    if raw is None or not str(raw).strip():
-        return DEFAULT_XRAS_MAX
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return DEFAULT_XRAS_MAX
-    return value if value > 0 else DEFAULT_XRAS_MAX
+    return positive_int_env('SAM_TASKS_XRAS_MAX', DEFAULT_XRAS_MAX, env)
 
 
 def policy(env: Optional[dict] = None) -> Dict[str, timedelta]:
@@ -323,11 +322,7 @@ def xras_notices(ctx) -> TaskResult:
     }
 
     # Guards, before any transport is touched.
-    if not notifier.config.enabled:
-        raise NotificationsDisabled(
-            'NOTIFY_ENABLED is false; refusing to run a task whose only '
-            'purpose is to send mail. Check the CronJob env — it does not '
-            'inherit webapp.env.')
+    raise_if_disabled(notifier)
 
     cap = xras_email_max()
     if len(messages) > cap:
@@ -392,21 +387,12 @@ def _drop_already_notified(ledger, messages: List, logger) -> Tuple[List, int]:
     The row-level ``notified`` filter in :func:`select` catches most of these
     already; this is the per-**address** check, and it is what closes the race
     with an operator pressing Notify between the query and the send.
-    """
-    if not messages or ledger is None:
-        # `Notifier(ledger=None)` is a documented configuration ("record
-        # nothing"). It cannot answer the suppression question, so nothing is
-        # dropped — matching `_pre_transport_guard`.
-        return messages, 0
 
-    keys = [m.dedup_key for m in messages if m.dedup_key]
-    suppressed = ledger.already_sent_many(keys)
-    kept = [m for m in messages if m.dedup_key not in suppressed]
-    dropped = len(messages) - len(kept)
-    if dropped:
-        logger.info('%d of %d message(s) already notified; not re-recording',
-                    dropped, len(messages))
-    return kept, dropped
+    This task wakes ~fifty times a week and most runs have nothing new, so the
+    rows this pre-drop avoids are the dominant write into `notification_log`.
+    Single key form, so no ``legacy_key`` — the shared core does the rest.
+    """
+    return drop_already_notified(ledger, messages, logger)
 
 
 def _record_notified(session, XrasActivationEvent, sent, by_key,
@@ -464,12 +450,5 @@ def _oldest_age_hours(slot: datetime, sent, by_key) -> Optional[float]:
     return round(max(ages) / 3600, 1) if ages else None
 
 
-def _new_sam_session(existing):
-    """A fresh SAM session on the same engine as the task's own.
-
-    The ledger must commit independently of the task's transaction, so it
-    cannot share `ctx.sam_session`. Deriving the engine from that session
-    rather than calling `create_sam_engine()` again keeps one pool.
-    """
-    from sqlalchemy.orm import Session
-    return Session(existing.get_bind())
+# `_new_sam_session` is `new_sam_session` from `_notice_common` (imported above
+# under that name) — the fresh ledger session shared with `expiration_notices`.
