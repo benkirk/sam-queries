@@ -105,6 +105,38 @@
             </div>
         </div>
 
+        {# Mnemonic-unblock strip — the highest-leverage XRAS data fix, ranked.
+           A pivot over the same snapshot: N failing pushes cite M orgs with no
+           mnemonic. The FIX lives in Admin -> Organizations (this page stays
+           read-only about org metadata), so each org links there. Lists every
+           blocking org inline when few; truncates to the CLI past a small cap. #}
+        {% if mnemonic_summary and (mnemonic_summary.targets or mnemonic_summary.unresolved) %}
+        {% set _mtargets = mnemonic_summary.targets %}
+        <div class="alert alert-info d-flex gap-2 py-2 mb-3">
+            <i class="fas fa-link-slash mt-1"></i>
+            <div class="small">
+                {% if _mtargets %}
+                <strong>{{ mnemonic_summary.actions_seen | fmt_number }} failing push(es) cite
+                {{ _mtargets | length | fmt_number }} missing organization mnemonic(s).</strong>
+                Create the code in
+                <a href="{{ url_for('admin_dashboard.organizations') }}">Admin&nbsp;→&nbsp;Organizations</a>:
+                {% for t in _mtargets[:6] %}
+                <a href="{{ url_for('admin_dashboard.organizations') }}"
+                   title="{{ t.family }} · would unblock {{ t.unblock_count }} — {{ t.sample | join(', ') }}">{{ t.name }}</a>&nbsp;({{ t.unblock_count }}){% if not loop.last %} ·{% endif %}
+                {% endfor %}
+                {% if _mtargets | length > 6 %}
+                … (+{{ (_mtargets | length) - 6 }} more — <code>sam-admin xras --mnemonic-report</code>)
+                {% endif %}
+                {% endif %}
+                {% if mnemonic_summary.unresolved %}
+                <br>{{ mnemonic_summary.unresolved | length | fmt_number }} more action(s)
+                blocked by PIs with <strong>no current affiliation</strong> — those need a
+                membership fix, not a mnemonic.
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
         {# WARNING: The controls render whenever anything was swept — NOT only when
            rows survive. Inside the old `{% if groups %}` they vanished at the
            moment they emptied the card, leaving copy that said "clear the
