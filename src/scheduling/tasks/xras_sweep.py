@@ -311,7 +311,7 @@ def _run_preflights(ctx, client, session, all_payloads, *, since, detail):
     candidates = [(p, a) for p in all_payloads if isinstance(p, dict)
                   for a in iter_candidate_actions(p, since=since)]
     summary = {'window_days': preflight_days(), 'candidates': len(candidates),
-               'rechecked': 0, 'failed': 0, 'manual': 0, 'unchecked': 0,
+               'rechecked': 0, 'failed': 0, 'manual': 0, 'incomplete': 0,
                'by_push_state': {}, 'by_stage': {}}
     detail['preflight'] = summary
     # Calibration: when a candidate has ALSO been pushed for real, compare the
@@ -351,7 +351,7 @@ def _run_preflights(ctx, client, session, all_payloads, *, since, detail):
                                        opportunities=opportunities,
                                        enabled=None, log_seen=log_seen)
         except Exception as exc:                        # noqa: BLE001
-            summary['unchecked'] += 1
+            summary['incomplete'] += 1
             ctx.logger.warning('xras_sweep: preflight raised for %s (%s)',
                                action.get('actionId'), exc)
             continue
@@ -368,7 +368,7 @@ def _run_preflights(ctx, client, session, all_payloads, *, since, detail):
 
 
 #: Predicted preflight status -> the ``xras_action_log.status`` it should match
-#: if the field map is right. ``unchecked`` makes no prediction to grade.
+#: if the field map is right. ``incomplete`` makes no prediction to grade.
 _CALIBRATION_EXPECTED = {'rechecked': 'processed', 'failed': 'failed',
                          'manual': 'manual'}
 

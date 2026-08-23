@@ -513,7 +513,7 @@
                                            problems — say "would fail", not "needs an
                                            account", or the card implies this worklist
                                            would fix them. `manual` is parked, not
-                                           failed; `unchecked` could not be synthesized. #}
+                                           failed; `incomplete` could not be synthesized. #}
                                         {% if action.preflight_status == 'rechecked' or (action.preflight_status is none and action.would_succeed) %}
                                         <span class="text-success">would succeed</span>
                                         {% elif action.preflight_status == 'failed' or (action.preflight_status is none and action.would_succeed is false) %}
@@ -524,8 +524,8 @@
                                         {% elif action.preflight_status == 'manual' %}
                                         <span class="text-warning"
                                               title="{{ action.reject_messages | join(' · ') }}">would park</span>
-                                        {% elif action.preflight_status == 'unchecked' %}
-                                        <span class="text-muted">unchecked</span>
+                                        {% elif action.preflight_status == 'incomplete' %}
+                                        <span class="text-muted">incomplete</span>
                                         {% else %}
                                         <span class="text-muted">not checked</span>
                                         {% endif %}

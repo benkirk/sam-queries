@@ -20,7 +20,7 @@
         {% elif pf.status == 'manual' %}
         <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">would park</span>
         {% else %}
-        <span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">unchecked</span>
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">incomplete</span>
         {% endif %}
         {% if pf.service %}
         <span class="text-muted">· checked as <span class="font-monospace">{{ pf.service }}</span></span>
@@ -54,7 +54,7 @@
     {% if action.actual %}
     <div class="mt-1 pt-1 border-top">
         <span class="text-muted">Predicted</span>
-        {% if pf.status == 'rechecked' %}would land{% elif pf.status == 'failed' %}would fail ({{ pf.messages | length }}){% elif pf.status == 'manual' %}would park{% else %}unchecked{% endif %}
+        {% if pf.status == 'rechecked' %}would land{% elif pf.status == 'failed' %}would fail ({{ pf.messages | length }}){% elif pf.status == 'manual' %}would park{% else %}incomplete{% endif %}
         <span class="text-muted">· Actual</span>
         <span class="font-monospace">{{ action.actual.status }}{% if action.actual.http_status %} {{ action.actual.http_status }}{% endif %}</span>
         {% if action.actual.raw_payload %}

@@ -111,6 +111,36 @@ class TestSynthesis:
         assert 'no_allocation_dates' in syn.gaps
         assert syn.action is None
 
+    def test_extension_needs_only_end(self):
+        # An Extension carries only the new end (begin inherited by the handler);
+        # the New-only both-dates gate wrongly stranded these as incomplete.
+        action = _new_action(
+            actionType='Extension', resources=[],
+            allocationDates=[{'allocationDateType': 'Requested',
+                              'beginDate': None, 'endDate': '2028-08-31'}])
+        syn = synthesize_action(_report(actions=[action]), action,
+                                resource_keys=KEYS, opportunities=OPPS)
+        assert syn.action is not None
+        assert 'no_allocation_dates' not in syn.gaps
+        assert syn.action['actionBeginDate'] is None
+        assert syn.action['actionEndDate'] == '2028-08-31'
+
+    def test_extension_missing_end_is_still_fatal(self):
+        action = _new_action(actionType='Extension', resources=[],
+                             allocationDates=[])
+        syn = synthesize_action(_report(actions=[action]), action,
+                                resource_keys=KEYS, opportunities=OPPS)
+        assert 'no_allocation_dates' in syn.gaps
+        assert syn.action is None
+
+    def test_supplement_needs_no_dates(self):
+        # A Supplement inherits both dates from the existing allocation.
+        action = _new_action(actionType='Supplement', allocationDates=[])
+        syn = synthesize_action(_report(actions=[action]), action,
+                                resource_keys=KEYS, opportunities=OPPS)
+        assert syn.action is not None
+        assert 'no_allocation_dates' not in syn.gaps
+
     def test_an_unmapped_resource_id_is_a_fatal_gap(self):
         syn = synthesize_action(_report(), _new_action(),
                                 resource_keys={}, opportunities=OPPS)
@@ -139,7 +169,7 @@ class TestVerdictMapping:
         action = _new_action()
         v = preflight_action(session, _report(number='NCAR9099', actions=[action]),
                              action, resource_keys=KEYS, opportunities=OPPS)
-        assert v.status in ('failed', 'unchecked')
+        assert v.status in ('failed', 'incomplete')
         if v.status == 'failed':
             assert v.messages
             assert v.push_state == 'pending'          # New, no project
@@ -151,11 +181,50 @@ class TestVerdictMapping:
                          resource_keys=KEYS, opportunities=OPPS)
         assert d.registered_services(), 'preflight must register handlers'
 
-    def test_an_unsynthesizable_action_is_unchecked_not_green(self, session):
+    def _extension(self, projcode, end, status='Submitted'):
+        return _new_action(actionType='Extension', actionStatus=status, resources=[],
+                           allocationDates=[{'allocationDateType': 'Requested',
+                                             'beginDate': None, 'endDate': end}])
+
+    def test_an_extension_would_land(self, session):
+        # The exact live shape (UMSU0016): only a new end date, begin inherited.
+        # Before the fix this stranded as incomplete; now it dispatches to extend.
+        from factories import make_account, make_allocation, make_project
+        project = make_project(session)
+        make_allocation(session, account=make_account(session, project=project),
+                        end_date=datetime(2027, 8, 31))
+        action = self._extension(project.projcode, '2028-08-31')
+        v = preflight_action(session, _report(number=project.projcode, actions=[action]),
+                             action, resource_keys=KEYS, opportunities=OPPS)
+        assert v.status == 'rechecked'
+        assert v.status != 'incomplete'
+        assert v.service == 'extend'
+
+    def test_an_extension_that_shrinks_fails_not_incomplete(self, session):
+        from factories import make_account, make_allocation, make_project
+        project = make_project(session)
+        make_allocation(session, account=make_account(session, project=project),
+                        end_date=datetime(2027, 8, 31))
+        action = self._extension(project.projcode, '2026-01-01')
+        v = preflight_action(session, _report(number=project.projcode, actions=[action]),
+                             action, resource_keys=KEYS, opportunities=OPPS)
+        assert v.status == 'failed'
+        assert v.messages
+
+    def test_a_transfer_parks_manual_not_incomplete(self, session):
+        from factories import make_project
+        project = make_project(session)
+        action = _new_action(actionType='Transfer', resources=[], allocationDates=[])
+        v = preflight_action(session, _report(number=project.projcode, actions=[action]),
+                             action, resource_keys=KEYS, opportunities=OPPS)
+        assert v.status == 'manual'
+        assert v.status != 'incomplete'
+
+    def test_an_unsynthesizable_action_is_incomplete_not_green(self, session):
         action = _new_action(allocationDates=[])
         v = preflight_action(session, _report(actions=[action]), action,
                              resource_keys=KEYS, opportunities=OPPS)
-        assert v.status == 'unchecked'
+        assert v.status == 'incomplete'
         assert v.would_succeed is False
         assert 'no_allocation_dates' in v.gaps
 

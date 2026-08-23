@@ -138,12 +138,13 @@ def xras_remediations_fragment():
     search = (request.args.get('search') or '').strip()
     rows = _search(rows, search)
 
-    selected_statuses = [s for s in request.args.getlist('status') if s]
-    selected_opportunities = [o for o in request.args.getlist('opportunity') if o]
-    selected_push = [p for p in request.args.getlist('push') if p]
-    selected_requests = [n for n in request.args.getlist('request_number') if n]
-    selected_readiness = [r for r in request.args.getlist('readiness') if r]
-    selected_actions = [a for a in request.args.getlist('action_type') if a]
+    _sel = _selected_facets(request.args)
+    selected_statuses = _sel['statuses']
+    selected_opportunities = _sel['opportunities']
+    selected_push = _sel['push']
+    selected_requests = _sel['requests']
+    selected_readiness = _sel['readiness']
+    selected_actions = _sel['actions']
 
     # Self-excluding facets: each dimension counts over the set filtered by the
     # *other* dimensions, so a chip never shows a zero that its own selection
@@ -173,13 +174,15 @@ def xras_remediations_fragment():
         push=selected_push, requests=selected_requests,
         actions=selected_actions))
 
-    rows = _apply(rows, statuses=selected_statuses,
-                  opportunities=selected_opportunities,
-                  push=selected_push, requests=selected_requests,
-                  readiness=selected_readiness, actions=selected_actions)
+    # The final in-view set — identical to what the batch re-check acts on.
+    rows = _filtered_rows(payload, request.args)
+    # The "Check all" target: rows with no pending verdict yet (a re-check resolves
+    # these; `incomplete` rows it cannot, so they are not counted).
+    not_checked_count = sum(1 for r in rows if not r.get('preflight_rollup'))
 
     return render_template(
         _CARD,
+        not_checked_count=not_checked_count,
         groups=_group_by_opportunity(rows),
         total=len(rows),
         swept_total=swept_total,
@@ -231,8 +234,58 @@ def xras_recheck_request(request_number: str):
     return htmx_success_message(
         {'refreshXrasTab': {}},
         f'Re-checked {request_number}: {checked} action(s) — '
-        f'{counts.get("rechecked", 0)} would land, {counts.get("failed", 0)} would fail.',
+        f'{counts.get("rechecked", 0)} would land, {counts.get("failed", 0)} would fail, '
+        f'{counts.get("manual", 0)} would park, {counts.get("incomplete", 0)} incomplete.',
         detail='Nothing was applied. The card shows the fresh verdicts.')
+
+
+#: Batch re-check fan-out bound: one live XRAS read per row, so cap it.
+_RECHECK_ALL_CAP = 25
+
+
+@bp.route('/xras_recheck_visible', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_recheck_visible():
+    """"Check all": re-check every not-yet-checked request currently in view.
+
+    Targets only rows whose roll-up is ``none`` (out of the sweep window, or all
+    applied) — the checkable population; ``incomplete`` rows a re-check cannot
+    resolve are left alone. One live XRAS read per row, bounded by
+    ``_RECHECK_ALL_CAP``. Honors the exact window+facet+search state in view via
+    the shared ``_filtered_rows``. Degrades with a **200** on outage.
+    """
+    eligible = [r for r in _filtered_rows(_index(), request.args)
+                if not r.get('preflight_rollup')]
+    if not eligible:
+        return htmx_success_message(
+            {}, 'Nothing to check — no "not checked" requests are in view.')
+    capped = eligible[:_RECHECK_ALL_CAP]
+    totals = {'rechecked': 0, 'failed': 0, 'manual': 0, 'incomplete': 0}
+    available = False
+    for row in capped:
+        result = remediation.recheck_readiness(row['request_number'],
+                                               session=db.session)
+        if not result['available']:
+            continue
+        available = True
+        for key in totals:
+            totals[key] += result['counts'].get(key, 0)
+    if not available:
+        return htmx_success_message(
+            {}, 'XRAS could not be reached — nothing was re-checked.',
+            detail='The card keeps its last swept verdicts. Try again shortly.')
+    detail = 'Nothing was applied. The card shows the fresh verdicts.'
+    skipped = len(eligible) - len(capped)
+    if skipped:
+        detail = (f'{skipped} more were over the {_RECHECK_ALL_CAP}-row cap — '
+                  f'run it again to continue. ') + detail
+    return htmx_success_message(
+        {'refreshXrasTab': {}},
+        f'Checked {len(capped)} request(s): {totals["rechecked"]} would land, '
+        f'{totals["failed"]} would fail, {totals["manual"]} would park, '
+        f'{totals["incomplete"]} incomplete.',
+        detail=detail)
 
 
 def _has_worklist():
@@ -293,11 +346,23 @@ def _search(rows, needle):
             if any(wanted in str(v).casefold() for v in haystack(r) if v)]
 
 
-def _row_action_types(row):
-    """The distinct XRAS action types a request carries (New / Supplement / …)."""
-    return sorted({(a.get('action_type') or '').strip()
-                   for a in (row.get('actions') or [])
-                   if (a.get('action_type') or '').strip()})
+def _selected_facets(args):
+    """The active facet selections, read from the request args once."""
+    return {'statuses': [s for s in args.getlist('status') if s],
+            'opportunities': [o for o in args.getlist('opportunity') if o],
+            'push': [p for p in args.getlist('push') if p],
+            'requests': [n for n in args.getlist('request_number') if n],
+            'readiness': [r for r in args.getlist('readiness') if r],
+            'actions': [a for a in args.getlist('action_type') if a]}
+
+
+def _filtered_rows(payload, args):
+    """The rows currently in view: window -> search -> facets. Shared by the card
+    fragment and the batch re-check so they can never act on different sets."""
+    rows = list(payload.get('rows') or []) if payload else []
+    rows = [r for r in rows if _in_window(r, _parse_activity_window(args)['since'])]
+    rows = _search(rows, (args.get('search') or '').strip())
+    return _apply(rows, **_selected_facets(args))
 
 
 def _apply(rows, *, statuses=(), opportunities=(), push=(), requests=(),
@@ -315,8 +380,7 @@ def _apply(rows, *, statuses=(), opportunities=(), push=(), requests=(),
     if readiness:
         out = [r for r in out if (r.get('preflight_rollup') or 'none') in readiness]
     if actions:
-        # A request matches if ANY of its actions is one of the selected types.
-        out = [r for r in out if any(t in actions for t in _row_action_types(r))]
+        out = [r for r in out if r.get('latest_action_type') in actions]
     return out
 
 
@@ -332,13 +396,14 @@ def _facet(all_rows, key, scoped_rows):
 
 
 def _action_facet(all_rows, scoped_rows):
-    """Action-type chips. A request counts once per distinct type it carries, so
-    the sum can exceed the row count — a multi-action request is in several."""
+    """Type chips, keyed on each request's single in-flight action type."""
     counts = {}
     for row in scoped_rows:
-        for kind in _row_action_types(row):
+        kind = row.get('latest_action_type')
+        if kind:
             counts[kind] = counts.get(kind, 0) + 1
-    values = {kind for row in all_rows for kind in _row_action_types(row)}
+    values = {row.get('latest_action_type') for row in all_rows
+              if row.get('latest_action_type')}
     return [{'value': v, 'label': v, 'count': counts.get(v, 0)}
             for v in sorted(values)]
 
@@ -352,9 +417,9 @@ def _push_facet(scoped_rows):
 
 
 #: Readiness facet vocabulary and labels, worst first. ``none`` is a real bucket:
-#: a swept request with no candidate action in the preflight window.
+#: a swept request with no pending action checked (out of window, or all applied).
 _READINESS_LABELS = (('failed', 'Would fail'), ('manual', 'Would park'),
-                     ('unchecked', 'Unchecked'), ('rechecked', 'Would land'),
+                     ('incomplete', 'Incomplete'), ('rechecked', 'Would land'),
                      ('none', 'Not checked'))
 
 

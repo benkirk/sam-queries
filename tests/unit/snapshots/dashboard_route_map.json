@@ -1666,6 +1666,13 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_recheck_visible",
+    "/allocations/xras_recheck_visible",
+    [
+      "POST"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_remediations_fragment",
     "/allocations/xras_remediations",
     [

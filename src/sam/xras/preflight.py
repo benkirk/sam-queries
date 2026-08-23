@@ -8,7 +8,7 @@ Pure but for the one dispatch call and the ``infer_applied`` reads; Flask-free;
 importing this module registers nothing and drags in no webapp/cli graph.
 
 The verdict is advisory. A field it cannot synthesize is a ``gap`` and the row
-reads ``unchecked`` — never a guessed green. See
+reads ``incomplete`` — never a guessed green. See
 ``docs/plans/XRAS_PUSH_READINESS.md``.
 """
 
@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import (Any, Dict, Iterator, Mapping, Optional, Tuple)
 
+from sam.queries.xras_actions import canonical_action_type
+
 logger = logging.getLogger(__name__)
 
 __all__ = ['Synthesis', 'Verdict', 'iter_candidate_actions',
@@ -28,6 +30,17 @@ __all__ = ['Synthesis', 'Verdict', 'iter_candidate_actions',
 #: Award trail, best first — the stage whose amounts/dates the push would carry.
 _STAGE_ORDER: Tuple[str, ...] = ('Approved', 'Recommended', 'Requested')
 _DATE_STAGE_ORDER: Tuple[str, ...] = ('Approved', 'Requested')
+
+#: Dates a given action type must carry on the wire to be synthesizable. Only New
+#: and Renewal mint/replace a full window; an Extension supplies the new end alone
+#: (the handler inherits the begin from the existing allocation); every other type
+#: inherits both. Keyed on the canonical action type. See the handler audit in
+#: docs/plans/XRAS_PUSH_READINESS.md.
+_REQUIRED_DATES: Dict[str, frozenset] = {
+    'New': frozenset({'begin', 'end'}),
+    'Renewal': frozenset({'begin', 'end'}),
+    'Extension': frozenset({'end'}),
+}
 
 
 @dataclass(frozen=True)
@@ -41,7 +54,7 @@ class Synthesis:
 
 @dataclass(frozen=True)
 class Verdict:
-    status: str                     # rechecked | failed | manual | unchecked
+    status: str                     # rechecked | failed | manual | incomplete
     would_succeed: bool
     messages: Tuple[str, ...]       # the ordered 422 list, verbatim — display-only
     gaps: Tuple[str, ...]
@@ -155,7 +168,11 @@ def synthesize_action(report_payload: dict, action: dict, *,
     action_type = action.get('actionType')
 
     begin, end, date_stage = _best_dates(action)
-    if begin is None or end is None:
+    # Only the dates the handler for this type actually reads off the wire are
+    # required; the rest are inherited from the existing allocation, so demanding
+    # them (the New-only assumption) is what wrongly stranded every non-New action.
+    required = _REQUIRED_DATES.get(canonical_action_type(action_type), frozenset())
+    if ('begin' in required and begin is None) or ('end' in required and end is None):
         gaps.append('no_allocation_dates')
 
     resource_lines, amount_stage = _best_resource_lines(action)
@@ -176,7 +193,7 @@ def synthesize_action(report_payload: dict, action: dict, *,
     stage = amount_stage or date_stage or 'Requested'
 
     # A fatal gap means the synthetic dict cannot faithfully stand in for the wire;
-    # report unchecked rather than a fabricated failure.
+    # report incomplete rather than a fabricated failure.
     fatal = [g for g in gaps
              if g == 'no_allocation_dates' or g.startswith('resource_id_unmapped:')]
     if fatal:
@@ -313,7 +330,7 @@ def preflight_action(session, report_payload: dict, action: dict, *,
                        resolved=resolved)
 
     if synthesis.action is None:
-        return _verdict('unchecked')
+        return _verdict('incomplete')
 
     from sam.xras.dispatch import dispatch_action, select_service
     from sam.xras.errors import XrasActionRejected
@@ -323,7 +340,7 @@ def preflight_action(session, report_payload: dict, action: dict, *,
         service = select_service(session, synthesis.action)
     except Exception as exc:                     # noqa: BLE001
         logger.warning('preflight: select_service failed for %s (%s)', action_id, exc)
-        return _verdict('unchecked')
+        return _verdict('incomplete')
 
     # A SAVEPOINT, NOT session.rollback(): the sweep runs this on its own
     # session while an uncommitted opportunity-mapping write is pending, and a
@@ -337,7 +354,7 @@ def preflight_action(session, report_payload: dict, action: dict, *,
         return _verdict('failed', messages=tuple(exc.messages), service=service)
     except Exception as exc:                     # noqa: BLE001
         logger.warning('preflight: dispatch raised for action %s (%s)', action_id, exc)
-        return _verdict('unchecked', service=service)
+        return _verdict('incomplete', service=service)
     finally:
         if savepoint.is_active:
             savepoint.rollback()

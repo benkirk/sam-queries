@@ -130,7 +130,7 @@ class ActionRef:
     would_succeed: Optional[bool] = None
     #: The richer verdict behind ``would_succeed``: ``rechecked`` (would land) /
     #: ``failed`` (would 422) / ``manual`` (nothing would run — parked) /
-    #: ``unchecked`` (preflight raised) / ``None`` (not run). ``would_succeed``
+    #: ``incomplete`` (preflight raised) / ``None`` (not run). ``would_succeed``
     #: is ``status == 'rechecked'``; ``manual`` is NOT success (its reason rides
     #: ``reject_messages``) — the trap Phase 0 fixed.
     preflight_status: Optional[str] = None
@@ -287,7 +287,7 @@ def records_from_action_log(session: Session, *,
 
 def _would_succeed(status: Optional[str]) -> Optional[bool]:
     """``rechecked`` is the only success; ``manual`` is not (Phase 0 trap)."""
-    if status is None or status == 'unchecked':
+    if status is None or status == 'incomplete':
         return None
     return status == 'rechecked'
 
@@ -314,7 +314,7 @@ def _validate(session: Session, action, action_log_id
         # not take the whole card down — record "we could not tell".
         logger.warning('xras worklist: validate failed for action %s (%s)',
                        action_log_id, exc)
-        return 'unchecked', ()
+        return 'incomplete', ()
     if result.status == 'manual':
         return 'manual', (result.reason,) if result.reason else ()
     return 'rechecked', ()
