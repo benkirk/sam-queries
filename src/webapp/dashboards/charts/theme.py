@@ -1,21 +1,15 @@
 """Chart styling: fonts, structural rcParams, the Unity palettes, and `Theme`.
 
-Imported first by ``charts/__init__.py`` because two of its effects are
-import-time and global: registering the server-side Poppins TTFs with
-matplotlib's font manager, and applying the rcParams that give every chart the
-editorial flat look. Nothing else in the package may rely on import order.
+Imported first by ``charts/__init__.py`` because two effects are import-time
+and global: registering the server-side Poppins TTFs, and applying the rcParams
+behind the editorial flat look. Nothing else may rely on import order.
 
-**Data colors vs chrome colors.** The ``UNITY_*`` palettes below encode data
-— a wedge, a stack band, a bar — and are theme-invariant in *hue*: a project
-keeps its color whether the page is light or dark. Everything a `Theme`
-carries is *chrome*: text, spines, grid, edges, the shading blend target. That
-split is what lets a dark theme be a mechanical swap rather than a redesign.
-
-The one place the split leaks is `Theme.data_color`, and it is a leak the
-chart-architecture plan predicted (Appendix B, "needs a design decision, not a
-mechanical swap"): three of the ten pie colors are brand *darks*, and a dark
-fill on a dark card is not a color choice, it is an invisible wedge. See
-`lift_for_contrast` for what is done about it and why hue survives.
+Data colors vs chrome colors: the ``UNITY_*`` palettes encode data and are
+theme-invariant in hue, so a project keeps its color on either page.
+Everything a `Theme` carries is chrome. That split is what lets a dark theme
+be a mechanical swap. It leaks in exactly one place, `Theme.data_color` —
+three of the ten pie colors are brand darks, and a dark fill on a dark card
+is an invisible wedge. See `lift_for_contrast`.
 """
 
 from dataclasses import dataclass
@@ -27,31 +21,16 @@ import matplotlib.font_manager
 import matplotlib.pyplot as plt
 import numpy as np
 
-# ---------------------------------------------------------------------------
-# Unity NCAR chart styling — runs once at module import.
+# Register Poppins TTFs with matplotlib's font manager, then apply the rcParams
+# mirroring the HTML side's editorial flat look. Both run once at import.
 #
-# Two pieces:
-#   1. Register Poppins TTFs with matplotlib's font manager. Skipped silently
-#      if the directory is empty / missing, so the import still works in
-#      environments where the static assets haven't been deployed yet.
-#
-#      NOTE: these .ttf files are a deliberate SERVER-SIDE copy for matplotlib
-#      and are NOT the same assets the browser uses. The browser loads the
-#      vendored .woff2 set under static/vendor/poppins/ (see vendor_assets.py);
-#      matplotlib's font_manager cannot read woff2 (only ttf/otf/afm), so it
-#      needs its own ttf set here. Do NOT delete static/fonts/poppins/*.ttf as
-#      "unreferenced" — they are referenced here, and a regression test
-#      (test_chart_fonts.py) asserts findfont('Poppins') still resolves.
-#   2. Apply rcParams that mirror the editorial flat look on the HTML side:
-#      Poppins text, space-blue chrome, hairline gray grid, no top/right
-#      spines, transparent figure/axes (we already savefig with
-#      transparent=True so legend/grid colors carry against any backdrop).
-# ---------------------------------------------------------------------------
-
-# parents[2] is src/webapp/ — this module is webapp/dashboards/charts/theme.py.
-# Counting up from __file__ is fragile under exactly the kind of move that
-# created this package, so test_chart_fonts asserts the registered font
-# actually resolves inside this directory rather than to a system font.
+# WARNING: these .ttf files are a deliberate SERVER-SIDE copy. The browser loads
+# the vendored .woff2 set under static/vendor/poppins/, which matplotlib's
+# font_manager cannot read (ttf/otf/afm only). Do NOT delete
+# static/fonts/poppins/*.ttf as "unreferenced" — they are referenced here, and
+# test_chart_fonts.py asserts findfont('Poppins') still resolves inside this
+# directory rather than to a system font. Registration is skipped silently when
+# the directory is missing, so the import still works before assets deploy.
 _FONT_DIR = Path(__file__).resolve().parents[2] / 'static' / 'fonts' / 'poppins'
 if _FONT_DIR.exists():
     for _ttf in _FONT_DIR.glob('*.ttf'):
@@ -74,11 +53,9 @@ plt.rcParams.update({
     'axes.spines.right':  False,
     'xtick.color':        '#011837',
     'ytick.color':        '#011837',
-    # Legend labels and any bare ax.text(). NEVER SET until C12, so every
-    # legend in every chart rendered in matplotlib's default pure black while
-    # the rest of the chrome was space-blue — subtle enough that nobody
-    # noticed for a year, and invisible in a diff until the palette had one
-    # home.
+    # Legend labels and any bare ax.text(). Leave this unset and they render in
+    # matplotlib's default pure black against space-blue chrome — subtle enough
+    # that it went unnoticed for a year.
     'text.color':         '#011837',
     'grid.color':         '#bbbcbc',   # ncar-gray-light
     'grid.alpha':         0.4,
@@ -87,27 +64,15 @@ plt.rcParams.update({
     'legend.frameon':     False,
     'figure.facecolor':   'none',
     'axes.facecolor':     'none',
-    # Emit real <text> elements instead of converting every glyph to a path
-    # outline. matplotlib's default is 'path', which is what you want for a
-    # standalone file that must render without the font installed — but our
-    # SVGs are always inlined into a page that already loads Poppins as woff2
-    # (static/vendor/poppins/, see vendor_assets.py).
+    # Emit real <text> elements rather than matplotlib's default glyph outlines,
+    # which we can do because every SVG is inlined into a page already loading
+    # Poppins as woff2. Buys 40-77% smaller SVGs (Redis memory and page weight),
+    # selectable and screen-readable text, CSS-addressable label color, and a
+    # font-weight request that reaches the browser.
     #
-    # Buys, in order of how much we care:
-    #   - 40-77% smaller SVGs, which is Redis memory (chart entries are the
-    #     bulk of it) and page weight on every dashboard.
-    #   - chart text becomes selectable, searchable and screen-readable.
-    #   - label color becomes a real CSS-addressable property, which is what
-    #     dark mode will need.
-    #   - the font-weight request reaches the browser, so `axes.labelweight:
-    #     600` picks vendored Poppins SemiBold rather than matplotlib's
-    #     "Failed to find font weight 600, now using 700" fallback.
-    #
-    # The tradeoff: matplotlib still computes the bbox_inches='tight' box from
-    # its own TTF metrics while the browser lays the glyphs out from the
-    # woff2, so long labels can differ by a pixel or two. Verified in the
-    # browser at 1280px across every chart surface. Reverting is this one
-    # line.
+    # Tradeoff: matplotlib computes the bbox_inches='tight' box from TTF metrics
+    # while the browser lays glyphs out from the woff2, so long labels can
+    # differ by a pixel or two. Verified at 1280px across every chart surface.
     'svg.fonttype':       'none',
 })
 
@@ -142,13 +107,9 @@ UNITY_NCAR_GRAY_LIGHT = '#bbbcbc'
 UNITY_NCAR_GRAY       = '#97999b'
 
 
-# Stacked-area categorical palette. Family-grouped: each color family's
-# shades sit adjacent (gold->yellow-33->yellow-66, orange->orange-33->…),
-# then we move to the next family. Within a family, ordered saturated ->
-# pale. Ordered warm -> cool so the highest-rank bands (which stackplot
-# puts at the bottom, visually most prominent) get the loudest warm
-# anchors (gold, orange, vermilion), then transition through teal /
-# sky / blue / navy as rank decreases.
+# Stacked-area categorical palette, grouped by color family and ordered
+# saturated -> pale within a family, warm -> cool across them. Stackplot puts
+# the highest-rank bands at the bottom, so they get the loudest warm anchors.
 UNITY_STACK_20 = (
     # Gold family — bright warm anchor, highest visual prominence
     '#fdd509',   # 1.  gold
@@ -210,28 +171,17 @@ UNITY_STACK_10 = (
 
 @dataclass(frozen=True)
 class Theme:
-    """Chrome colors for one rendering of a chart.
+    """Chrome colors for one rendering of a chart, threaded explicitly through
+    `draw`/`decorate`/`add_legend` and applied per-artist.
 
-    Threaded explicitly through `draw`/`decorate`/`add_legend` and applied
-    per-artist. It deliberately does NOT go through rcParams:
+    WARNING: this must NOT go through rcParams. `plt.rc_context` mutates the
+    global dict with no thread isolation, and gunicorn runs `gthread` with 4
+    threads, so two concurrent light/dark renders cross-contaminate. The
+    alternatives are worse: a lock kills concurrency on a pool tuned for I/O
+    overlap, and rendering both themes doubles render cost and cache size.
 
-    - **`plt.rc_context` is thread-unsafe here.** It mutates the global
-      `rcParams` dict and restores on exit with no thread isolation. Gunicorn
-      runs `gthread` with 4 threads (containers/webapp/gunicorn_config.py),
-      so two concurrent requests rendering light and dark would interleave and
-      cross-contaminate.
-    - **Serializing renders behind a lock** would kill concurrency on a pool
-      explicitly tuned for I/O overlap.
-    - **Rendering both themes and letting CSS choose** doubles render cost and
-      cache size for a feature most users will use one of.
-
-    Per-artist application is mechanical, thread-safe and testable, which is
-    worth more here than brevity.
-
-    `LIGHT` reproduces today's rcParams values exactly, so this is inert until
-    a caller asks for something else. Nothing requests `DARK` yet — chart dark
-    mode is blocked on app dark mode (charts sit inside cards whose background
-    is hardcoded white), and lands in a later PR.
+    `LIGHT` reproduces the rcParams values above exactly, so per-artist
+    application is inert until a caller asks for something else.
     """
 
     name: str
@@ -257,25 +207,18 @@ class Theme:
     #: `lift_for_contrast`.
     min_data_contrast: float | None
 
-    #: Fill for the inert aggregate band — the "Others" / "Other (N projects)"
-    #: remainder every family collapses its tail into.
-    #:
-    #: A *role*, not a color, and the reason it needs one is that its job is
-    #: to **recede**. `--ncar-gray-light` recedes against a white card (1.90:1)
-    #: and shouts against a dark one (7.97:1), where it is routinely the
-    #: largest band on the chart — so on dark it became the loudest thing in
-    #: the picture while meaning the least. The dark value is picked to sit at
-    #: 1.77:1, i.e. to be as recessive as the light one is, and it must NOT go
-    #: through `data_color`: `min_data_contrast` would lift it straight back
-    #: up to 3:1 and undo exactly what it is for. Lift the palette, then place
-    #: this beside it.
+    #: Fill for the inert aggregate band — the "Others" remainder every family
+    #: collapses its tail into. A *role*, not a color, because its job is to
+    #: recede: `--ncar-gray-light` recedes on white (1.90:1) and shouts on dark
+    #: (7.97:1), where it is routinely the largest band. Each theme's value is
+    #: picked to be equally recessive, and it must NOT go through `data_color`
+    #: — `min_data_contrast` would lift it back to 3:1 and undo the point.
     muted_data: str
 
-    #: Alpha for stacked *areas*. A property of the theme rather than the
-    #: chart, because the figure is transparent and the alpha therefore
-    #: composites against `surface`: 0.85 over white is the light page's
-    #: deliberate softening, and the same 0.85 over `#1b2733` drags every band
-    #: back down toward the card and undoes `min_data_contrast`.
+    #: Alpha for stacked *areas*. A theme property, not a chart one: the figure
+    #: is transparent, so alpha composites against `surface`. 0.85 over white
+    #: softens; the same 0.85 over `#1b2733` drags every band back toward the
+    #: card and undoes `min_data_contrast`.
     area_alpha: float
 
     @property
@@ -302,8 +245,7 @@ class Theme:
         return [self.data_color(c) for c in colors]
 
 
-#: Today's rendering, exactly. Every value here is the literal the charts
-#: used before the theme axis existed.
+#: The light rendering — the literal values the rcParams above set.
 Theme.LIGHT = Theme(
     name='light',
     text=UNITY_NCAR_SPACE_BLUE,
@@ -326,14 +268,10 @@ Theme.LIGHT = Theme(
     muted_data=UNITY_NCAR_GRAY_LIGHT,
 )
 
-# The dark rendering. Chrome values were chosen in PR 1; the two data-color
-# decisions PR 1 deferred are answered by `min_data_contrast` and
-# `area_alpha` above.
-#:
-# `surface` is `--surface-card` from `static/css/variables.css`, and
-# `test_dark_card_matches_chart_blend_target` fails if the two drift — a
-# chart blending toward a card color the card no longer has produces a halo
-# that no test other than that one would see.
+# The dark rendering. `surface` is `--surface-card` from
+# `static/css/variables.css`, and `test_dark_card_matches_chart_blend_target`
+# fails if the two drift — a chart blending toward a card color the card no
+# longer has produces a halo no other test would see.
 Theme.DARK = Theme(
     name='dark',
     text='#e9ecef',
@@ -399,32 +337,25 @@ def contrast_ratio(a, b) -> float:
 def lift_for_contrast(color, surface, min_ratio: float):
     """*color*, tinted toward white just far enough to clear *min_ratio*.
 
-    Returned unchanged (identity) when it already clears, which is the common
-    case: on the dark card this touches 3 of the 10 pie colors, 1 of the 10
-    stack colors and 3 of the 20 — the brand *darks*, `#011837` at 1.17:1 and
-    `#00357a` at 1.29:1, which are text colors pressed into service as fills.
+    Identity when it already clears, the common case: on the dark card this
+    touches 3 of the 10 pie colors, 1 of the 10 stack colors and 3 of the 20 —
+    the brand darks pressed into service as fills.
 
-    **Why tint toward white rather than raise HSL lightness.** Both restore
-    contrast; only one keeps the palette usable. The three failing pie colors
-    are all blues, and lifting each to exactly 3:1 by lightness converges them
+    Tint rather than raise HSL lightness. Both restore contrast, but the three
+    failing pie colors are all blues, and lifting by lightness converges them
     on `#0469f0` / `#0068ef` / `#0069eb` — three names for one blue, in a
-    palette whose entire job is telling ten things apart. Tinting lands them
-    on `#627083` / `#4c72a2` / `#246fcb`, which desaturates as it lightens and
-    therefore keeps them separable. Measured: this leaves every palette's
-    minimum pairwise channel distance at or above what it already was, so
-    nothing becomes harder to tell apart than it is today.
+    palette whose job is telling ten things apart. Tinting desaturates as it
+    lightens, landing on `#627083` / `#4c72a2` / `#246fcb`, and measurably
+    leaves every palette's minimum pairwise channel distance where it was.
 
-    Alpha is carried through untouched — the ratio is a property of the fill,
-    and the one translucent constant in the package (the pace chart's
-    "Other" band) clears the floor anyway.
+    Alpha carries through untouched.
     """
     if contrast_ratio(color, surface) >= min_ratio:
         return color
 
     r, g, b, a = matplotlib.colors.to_rgba(color)
-    # Walk in 8-bit steps: the SVG is 8-bit per channel regardless, so a finer
-    # search would return values that render identically, and integer steps
-    # make the result reproducible across platforms and matplotlib versions.
+    # Walk in 8-bit steps: the SVG is 8-bit per channel regardless, and integer
+    # steps make the result reproducible across platforms and matplotlib versions.
     for step in range(1, 256):
         f = step / 255
         lifted = tuple(round(255 * (c + (1 - c) * f)) / 255 for c in (r, g, b))
@@ -434,19 +365,12 @@ def lift_for_contrast(color, surface, min_ratio: float):
 
 
 def autopct_color_for(color) -> str:
-    """Pick a readable text color for percent labels on a colored pie wedge.
+    """Space-blue on light wedges, white on dark ones; luminance threshold ~0.6,
+    tuned empirically against UNITY_PALETTE_10.
 
-    Returns space-blue on light wedges (gold, sky) and white on dark wedges
-    (blue, navy, vermilion). Luminance threshold ~0.6 — empirically tuned
-    against UNITY_PALETTE_10.
-
-    Theme-invariant on purpose: the choice is driven by the *wedge* luminance,
-    not the page, so it is already correct in both themes — and it stays
-    correct for free once `Theme.data_color` lifts a wedge, because a lifted
-    wedge is a lighter wedge and this flips to space-blue on its own.
-
-    Accepts any matplotlib color rather than only a hex string, because a
-    lifted wedge arrives as an RGBA tuple.
+    Theme-invariant on purpose — driven by wedge luminance, not page — so it
+    stays correct for free once `Theme.data_color` lifts a wedge. Accepts any
+    matplotlib color, since a lifted wedge arrives as an RGBA tuple.
     """
     r, g, b = matplotlib.colors.to_rgb(color)
     lum = 0.299 * r + 0.587 * g + 0.114 * b
@@ -492,13 +416,10 @@ _LADDER = (
 def scale_bytes(peak, floor='GiB'):
     """``(divisor, unit_label)`` for a byte axis whose maximum is *peak*.
 
-    The two call sites had subtly different ladders and this preserves both
-    rather than unifying them, because the difference is real:
-
-    - ``floor='TiB'`` (disk-usage timeseries) — PiB or TiB only. A sub-TiB
-      series renders as a fractional TiB axis (0.004 TiB), which is the
-      current behavior and is deliberate: that chart's readers think in TiB.
-    - ``floor='GiB'`` (distribution histogram) — PiB / TiB / GiB.
+    The two call sites want different ladders, deliberately: ``floor='TiB'``
+    (disk-usage timeseries) is PiB or TiB only, so a sub-TiB series renders as
+    a fractional TiB axis because that chart's readers think in TiB.
+    ``floor='GiB'`` (distribution histogram) is PiB / TiB / GiB.
     """
     floor_idx = [unit for _div, unit in _LADDER].index(floor)
     rungs = _LADDER[:floor_idx + 1]

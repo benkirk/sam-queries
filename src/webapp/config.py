@@ -28,10 +28,8 @@ class SAMWebappConfig(SAMConfig):
     }
 
     # Fall back to the legacy `api_credentials` SQL table for Basic-Auth keys
-    # not defined in API_KEYS above (config always wins). Lets existing legacy
-    # SAM API clients authenticate against their DB credentials on the new API
-    # paths. Enabled rows are read live behind an in-process TTL cache; TTL=0
-    # refreshes on every lookup (see TestingConfig). See webapp.utils.api_auth.
+    # absent from API_KEYS above; config always wins. Enabled rows are read live
+    # behind an in-process TTL cache, TTL=0 refreshing on every lookup.
     API_KEYS_DB_ENABLED = os.getenv('API_KEYS_DB_ENABLED', '1').lower() in ('1', 'true', 'yes')
     API_KEYS_DB_TTL     = int(os.getenv('API_KEYS_DB_TTL', 60))
 
@@ -61,14 +59,13 @@ class SAMWebappConfig(SAMConfig):
     # payloads in the meantime. Flip OFF per handler as each one lands.
     XRAS_ACTIONS_CAPTURE_ONLY = os.getenv('XRAS_ACTIONS_CAPTURE_ONLY', '1').lower() in ('1', 'true', 'yes')
 
-    # Per-type triage lever for POST /api/xras/v1/actions. NOT a rollout mechanism —
-    # all six handlers ship enabled in one deploy, because XRAS repoints its base URL
-    # once and every action type arrives at the same moment. This exists so a
-    # misbehaving payload class can be parked by config instead of by revert: a
-    # disabled type takes the manual-fallback path, audited and visible, and a human
-    # applies it. 'all' (the default), 'none', or a comma-separated list of action
-    # types — 'Extension,Supplement'. An unknown token is logged and dropped, which
-    # leaves that type DISABLED rather than enabling something nobody meant to.
+    # Per-type triage lever for POST /api/xras/v1/actions: 'all' (the default),
+    # 'none', or a comma-separated list of action types ('Extension,Supplement').
+    # NOT a rollout mechanism — XRAS repoints its base URL once, so all six
+    # handlers arrive at the same moment. This parks a misbehaving payload class
+    # by config instead of by revert; a disabled type takes the audited
+    # manual-fallback path. An unknown token is logged and dropped, leaving that
+    # type DISABLED rather than enabling something nobody meant to.
     XRAS_ACTIONS_ENABLED = os.getenv('XRAS_ACTIONS_ENABLED', 'all')
 
     # OIDC configuration (active when AUTH_PROVIDER='oidc')
@@ -99,14 +96,11 @@ class SAMWebappConfig(SAMConfig):
     # on the status dashboard.
     STATUS_STALE_MINUTES = int(os.getenv('STATUS_STALE_MINUTES', 15))
 
-    # Content-Security-Policy mode: 'enforce' | 'report-only' | 'off'.
-    # The policy itself is generated from webapp.vendor_assets (see
-    # webapp/utils/csp.py); with every asset vendored it is essentially
-    # all-'self'. 'report-only' sends Content-Security-Policy-Report-Only
-    # — violations show in the browser console, nothing is blocked — and
-    # is the no-rebuild rollback/diagnostic knob (helm values change, no
-    # image build). Templates are kept inline-script-free by
-    # tests/unit/test_template_csp_lint.py.
+    # Content-Security-Policy mode: 'enforce' | 'report-only' | 'off'. The policy
+    # is generated from webapp.vendor_assets (webapp/utils/csp.py) and, with
+    # every asset vendored, is essentially all-'self'. 'report-only' is the
+    # no-rebuild rollback knob: violations log to the console, nothing is
+    # blocked. tests/unit/test_template_csp_lint.py keeps templates inline-free.
     CSP_MODE = os.getenv('CSP_MODE', 'enforce')
 
     # Flask-Cache default TTL (seconds) — used by @cache.cached / @cache.memoize
@@ -161,22 +155,13 @@ class SAMWebappConfig(SAMConfig):
     XRAS_PENDING_CACHE_SIZE   = int(os.getenv('XRAS_PENDING_CACHE_SIZE', 4))      # max entries
 
     # hpc-usage-queries plugin (per-job rows on resource-usage detail pages).
-    # The plugin owns its own database — typically a per-machine PostgreSQL
-    # database (derecho_jobs, casper_jobs) on the shared `csg-postgres` cluster.
+    # The plugin owns its own per-machine PostgreSQL database (derecho_jobs,
+    # casper_jobs) on the shared `csg-postgres` cluster.
     #
-    # Sizing rationale: per-job query traffic is bursty — a single
-    # resource-detail page load fans out into ~5 queries against one
-    # machine's database. Server-side `idle_session_timeout` on
-    # `csg-postgres` (configured in the peer repo's helm chart) reaps
-    # truly-idle connections at 10 minutes, so pool_size is sized for the
-    # *warm working set under typical burst* rather than as a safety cap.
-    # 5 base + 10 burst keeps a page's worth of queries from paying the
-    # TLS handshake cost mid-render, while the server's reaper prevents
-    # the per-worker pool from accumulating idle across the gunicorn
-    # worker pool. `pool_recycle=600` is belt-and-suspenders: same window
-    # as the server-side timeout, gives client-side cleanup symmetry.
-    # All knobs remain env-overridable for deployments backed by a
-    # different postgres or without server-side idle eviction.
+    # The pool is sized for the warm working set under burst (one page load fans
+    # out into ~5 queries), not as a safety cap: server-side
+    # `idle_session_timeout` on `csg-postgres` reaps idle connections at 10
+    # minutes, and `pool_recycle=600` mirrors that window client-side.
     JOB_HISTORY_MACHINES = [
         m.strip() for m in os.getenv('JOB_HISTORY_MACHINES', 'derecho,casper').split(',')
         if m.strip()
@@ -188,13 +173,11 @@ class SAMWebappConfig(SAMConfig):
         'pool_recycle':   int(os.getenv('JOB_HISTORY_POOL_RECYCLE',  600)),
     }
 
-    # Server-side Postgres statement_timeout (ms) applied to every
-    # job-history connection. Mirrors FS_SCAN_STATEMENT_TIMEOUT_MS: a
-    # runaway machine-wide aggregation can otherwise hold a PG connection
-    # (and a gthread thread) until the gunicorn worker timeout kills it;
-    # this caps the query server-side so it fails cleanly first. Measured
-    # warm month-window aggregations are ~0.6 s; an unbounded window is
-    # ~200 s — cap comfortably below gunicorn `timeout` (120 s). 0 disables.
+    # Server-side Postgres statement_timeout (ms) on every job-history
+    # connection, so a runaway aggregation fails cleanly instead of holding a PG
+    # connection and a gthread thread until gunicorn's worker timeout kills it.
+    # Warm month-window aggregations measure ~0.6 s, unbounded ~200 s; keep this
+    # comfortably below gunicorn `timeout` (120 s). 0 disables.
     JOB_HISTORY_STATEMENT_TIMEOUT_MS = int(
         os.getenv('JOB_HISTORY_STATEMENT_TIMEOUT_MS', '60000')
     )
@@ -218,29 +201,23 @@ class SAMWebappConfig(SAMConfig):
         os.getenv('FS_SCAN_STATEMENT_TIMEOUT_MS', '100000')
     )
 
-    # Disk resources that have filesystem-scan collections, surfaced as
-    # subtabs on the Status dashboard's gated "Filesystem Scans" tab. An
-    # explicit list (NOT derived from the Resource table). Resource NAMES, not
-    # IDs (see feedback_no_duplicate_db_ids); the resource->database/collections
-    # mapping lives in the disk_scans.session seam. A configured resource with
-    # no warmed collections is filtered out at render time
-    # (service.scan_capable_resources), so the tab/subtab never shows empty.
+    # Disk resources with filesystem-scan collections, surfaced as subtabs on the
+    # Status dashboard. An explicit list of resource NAMES (not IDs, and not
+    # derived from the Resource table). A configured resource with no warmed
+    # collections is filtered out at render time, so a subtab is never empty.
     FS_SCAN_RESOURCES = [
         s.strip()
         for s in os.getenv('FS_SCAN_RESOURCES', 'Campaign_Store,Destor').split(',')
         if s.strip()
     ]
 
-    # Maps each scan resource NAME to the CNPG database that holds its
-    # collections. Each disk resource is one database on the shared cluster
-    # (Campaign_Store -> campaign, Destor -> destor; NB the DB is named `destor`,
-    # while `desc1` is only the Lustre MOUNT /lustre/desc1). The plugin reaches
-    # a second database via its `database=` selector (same host/credentials). Parsed
-    # from `FS_SCAN_RESOURCE_DATABASES` as `Name:db,Name2:db2`; the default
-    # tracks the plugin's own `FS_SCAN_PG_DB` for Campaign_Store so a
-    # single-database deployment keeps working unchanged. `init_fs_scans` warms
-    # one engine set per DISTINCT database here; a resource whose database is
-    # unreachable simply warms nothing and drops out of the UI.
+    # Scan resource NAME -> the CNPG database holding its collections, parsed as
+    # `Name:db,Name2:db2`. One database per disk resource on the shared cluster.
+    # NOTE the Destor database is named `destor`; `desc1` is only the Lustre
+    # MOUNT /lustre/desc1. `init_fs_scans` warms one engine set per DISTINCT
+    # database; a resource whose database is unreachable warms nothing and drops
+    # out of the UI. The default tracks the plugin's own `FS_SCAN_PG_DB` so a
+    # single-database deployment keeps working unchanged.
     FS_SCAN_RESOURCE_DATABASES = {
         name.strip(): db.strip()
         for name, _, db in (
@@ -276,16 +253,10 @@ class DevelopmentConfig(SAMWebappConfig):
         'collector': '$2b$12$X8NQvOUvyrj80Ud3N6Y.0uZs70ZC6lJYy/zfka/v7uQQFKJhds0b2',
     }
 
-    # Usernames rendered as "Quick Login" buttons on the dev login page.
-    # Format: 'username[:LABEL]'. The optional ':LABEL' suffix is shown
-    # as a badge on the button so reviewers can see at a glance what
-    # permission tier a given test account is expected to land in.
-    # Bare usernames (no colon) are rendered without a badge.
-    #
-    # The label is purely cosmetic — actual permissions still resolve
-    # through POSIX groups + USER_PERMISSION_OVERRIDES (see
-    # webapp.utils.rbac), so an out-of-date label here cannot grant or
-    # revoke access; keep it in sync by hand.
+    # "Quick Login" buttons on the dev login page, as 'username[:LABEL]'. The
+    # optional label badges the permission tier the account is expected to land
+    # in; it is cosmetic, since permissions resolve through POSIX groups +
+    # USER_PERMISSION_OVERRIDES, so a stale label grants nothing. Sync by hand.
     DEV_QUICK_LOGIN_USERS = [
         'benkirk:ADMIN',
         'mtrahan:CSG',
@@ -325,11 +296,10 @@ class ProductionConfig(SAMWebappConfig):
                 "Generate keys with: python scripts/gen_api_key.py",
                 stacklevel=2,
             )
-        # Notifications are fail-closed (NOTIFY_ENABLED defaults false), so a
-        # dropped env var means "no mail" rather than "mail the wrong people".
-        # That is the right way round, but it is silent — warn so the disabled
-        # state is noticed within a day rather than at the next expiration
-        # round. docs/plans/implemented/NOTIFICATION_FRAMEWORK.md § 3.
+        # Notifications are fail-closed, so a dropped env var means "no mail"
+        # rather than "mail the wrong people" — right, but silent. Warn so the
+        # disabled state surfaces within a day rather than at the next
+        # expiration round (docs/plans/implemented/NOTIFICATION_FRAMEWORK.md § 3).
         if os.getenv('NOTIFY_ENABLED', '0').lower() not in ('1', 'true', 'yes'):
             import warnings
             warnings.warn(
@@ -382,25 +352,20 @@ class TestingConfig(SAMWebappConfig):
     ALLOCATION_USAGE_CACHE_TTL  = 0
     ALLOCATION_USAGE_CACHE_SIZE = 0
 
-    # Award lookups and searches are stubbed in tests; a live cache would let
-    # one test's stub answer leak into the next.  Both buckets must be listed:
-    # a bucket whose keys are absent here falls through to its hardcoded
-    # default and stays LIVE under test, which is exactly how the award-search
-    # cache leaked between cases in CI (docs/plans/implemented/AWARD_SEARCH.md
-    # §13.1).
+    # Award lookups and searches are stubbed; a live cache leaks one test's stub
+    # answer into the next. BOTH buckets must be listed — a bucket absent here
+    # falls through to its hardcoded default and stays LIVE under test, which is
+    # how the award-search cache leaked in CI (AWARD_SEARCH.md § 13.1).
     AWARD_LOOKUP_CACHE_TTL  = 0
     AWARD_LOOKUP_CACHE_SIZE = 0
     AWARD_SEARCH_CACHE_TTL  = 0
     AWARD_SEARCH_CACHE_SIZE = 0
 
-    # Rate limiting off in tests — xdist parallelism would otherwise trip
-    # global limits across worker processes. The one test module that
-    # *does* exercise rate limiting (tests/integration/test_rate_limit_flow.py)
-    # flips the singleton facade on per-test and clears storage between
-    # tests; pinning to memory:// here keeps that clear behaving as a
-    # per-worker dict wipe instead of trying to wipe a shared CI Redis
-    # (compose.yaml sets RATELIMIT_STORAGE_URI=redis://cache:6379/1 on
-    # the webapp container, which pytest inherits in CI runs).
+    # Off in tests — xdist parallelism trips global limits across workers. The
+    # one module that does exercise it (tests/integration/test_rate_limit_flow.py)
+    # flips the facade on per-test and clears storage; pinning memory:// keeps
+    # that clear a per-worker dict wipe rather than an attempt to wipe the shared
+    # CI Redis that compose.yaml points the webapp container at.
     RATELIMIT_ENABLED     = False
     RATELIMIT_STORAGE_URI = 'memory://'
 
@@ -415,35 +380,26 @@ class TestingConfig(SAMWebappConfig):
     # route-level tests stub the service layer instead.
     FS_SCANS_ENABLED = False
 
-    # Notifications OFF and pinned to the recording transport, on the same
-    # reasoning as the zeroed cache TTLs above: a test tier that CAN reach
-    # shared state is a test tier that eventually does. Here "shared state"
-    # is the internet — ndir.ucar.edu relays for the whole UCAR /16 and
-    # accepts arbitrary external recipients
-    # (docs/plans/implemented/NOTIFICATION_FRAMEWORK.md § 9). Belt and braces with the
-    # autouse no-socket fixture in tests/conftest.py, which is the gate that
-    # holds even when a test builds its own config.
+    # OFF and pinned to the recording transport: here the shared state a test
+    # tier can reach is the internet — ndir.ucar.edu relays for the whole UCAR
+    # /16 and accepts arbitrary external recipients (NOTIFICATION_FRAMEWORK.md
+    # § 9). Belt and braces with the autouse no-socket fixture in
+    # tests/conftest.py, which holds even when a test builds its own config.
     NOTIFY_ENABLED   = False
     NOTIFY_TRANSPORT = 'null'
 
-    # Pinned for the same reason, and because it was measurably NOT pinned:
-    # `SAMWebappConfig.XRAS_ACTIONS_CAPTURE_ONLY` reads os.getenv at class-body
-    # time, so a developer with XRAS_ACTIONS_CAPTURE_ONLY=0 in their `.env` —
-    # which is exactly what a local dispatch smoke test needs — silently ran
-    # the whole API tier against the dispatching arm and watched ten capture
-    # tests fail for reasons that had nothing to do with their change.
-    #
-    # Tests that want the other arm override `app.config` explicitly
-    # (tests/api/test_xras_access.py::TestDispatchArms), which is the right
-    # way round: the default is deterministic and the exception is declared.
+    # Pinned because `SAMWebappConfig.XRAS_ACTIONS_CAPTURE_ONLY` reads os.getenv
+    # at class-body time: a developer with XRAS_ACTIONS_CAPTURE_ONLY=0 in `.env`
+    # — what a local dispatch smoke needs — otherwise runs the whole API tier
+    # against the dispatching arm and watches ten capture tests fail for reasons
+    # unrelated to their change. Tests wanting the other arm override
+    # `app.config` explicitly (tests/api/test_xras_access.py::TestDispatchArms).
     XRAS_ACTIONS_CAPTURE_ONLY = True
 
-    # Same reasoning one direction further out: a developer with
-    # XRAS_WRITE_ENABLED=1 in their `.env` — which is what a local write smoke
-    # needs — must not have the test suite inherit a live write capability
-    # against production XRAS. Pinned False so `write_configured` is False for
-    # every test that does not say otherwise, and tests of the armed path
-    # override `app.config` explicitly.
+    # Same reasoning, one step further out: a developer with XRAS_WRITE_ENABLED=1
+    # in `.env` must not have the suite inherit a live write capability against
+    # production XRAS. Pinned False so `write_configured` is False unless a test
+    # says otherwise.
     XRAS_WRITE_ENABLED = False
 
 

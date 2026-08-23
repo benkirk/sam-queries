@@ -24,14 +24,8 @@ from flask_login import current_user
 
 
 class Permission(Enum):
-    """
-    System-wide permissions for SAM Web UI.
-
-    These permissions can be assigned to POSIX-group bundles (see
-    ``GROUP_PERMISSIONS``) or granted to individual users (see
-    ``USER_PERMISSION_OVERRIDES``), and checked in views, templates,
-    and API endpoints.
-    """
+    """System-wide permissions, granted via ``GROUP_PERMISSIONS`` bundles or
+    ``USER_PERMISSION_OVERRIDES``."""
 
     # User management
     VIEW_USERS = "view_users"
@@ -127,55 +121,38 @@ class Permission(Enum):
     ACCESS_ADMIN_DASHBOARD = "access_admin_dashboard"  # Land on /admin/ and see the navbar tab
     MANAGE_ROLES = "manage_roles"
     IMPERSONATE_USERS = "impersonate_users"  # Actually log in as another user
-    # The user/project queue-load chart itself is visible to any logged-in
-    # user on the status dashboard. This permission narrows to two
-    # operator-only enrichments on top of that:
-    #   1. The per-user / per-project rollup table on the queue-history
-    #      drill-down page (richer than the chart legend).
-    #   2. Click-through from the chart legend into the per-user and
-    #      per-project detail modals (link_kind in _render_user_proj_chart).
+    # The queue-load chart is visible to any logged-in user; this narrows two
+    # operator-only enrichments on top: the per-user/per-project rollup table on
+    # the drill-down page, and click-through from the legend into detail modals.
     VIEW_SYSTEM_STATUS_USER_INFO = "view_system_status_user_info"
     MANAGE_SYSTEM_STATUS = "manage_system_status"  # Update system status data (collector/API)
     EDIT_SYSTEM_STATUS = "edit_system_status"  # GUI create/edit/delete outages
     VIEW_SYSTEM_CONFIG = "view_system_config"  # Read-only Configuration tab on Admin dashboard
-    # XRAS triage, split three ways because reading the audit trail, reading the
-    # payloads, and destroying a request are three different authorities:
-    #
-    #   VIEW_XRAS   the action log, its filters and error lists. Named ``view_*``
-    #               so ALL_VIEW auto-grants it to the operator bundles -- an audit
-    #               surface, for the people who read every other audit table.
-    #   MANAGE_XRAS the raw payload panel and the replay button. The payload is
-    #               the request body verbatim and carries real PII, so it is gated
-    #               above the audit view. Replay is a write.
-    #   ADMIN_XRAS  the DESTRUCTIVE lifecycle verbs -- delete a request, renew it,
-    #               add an action. Irreversible in XRAS, so it rides with
-    #               SYSTEM_ADMIN, NOT _ALLOCATION_ADMIN: a MANAGE_XRAS operator
-    #               gets the full non-destructive editor and never these
-    #               (docs/xras/outgoing/REQUEST_EDITOR.md section 1).
-    #
-    # WARNING: neither ``manage_`` nor ``admin_`` is matched by any ALL_*
-    # aggregate -- those match ``view_``/``edit_``/``create_``/``delete_`` on the
-    # VALUE, and there is no ALL_MANAGE. Both therefore fail closed and must be
-    # granted explicitly.
+    # XRAS triage, split three ways: the audit trail, the payloads, and
+    # destroying a request are three different authorities.
+    #   VIEW_XRAS    action log, filters, error lists. Named ``view_*`` so
+    #                ALL_VIEW auto-grants it to the operator bundles.
+    #   MANAGE_XRAS  the raw payload panel -- the request body verbatim, real
+    #                PII -- and the replay button, which is a write.
+    #   ADMIN_XRAS   DESTRUCTIVE lifecycle verbs: delete, renew, add action.
+    #                Irreversible in XRAS, so it rides with SYSTEM_ADMIN, NOT
+    #                _ALLOCATION_ADMIN -- a MANAGE_XRAS operator gets the full
+    #                non-destructive editor and never these
+    #                (docs/xras/outgoing/REQUEST_EDITOR.md section 1).
+    # WARNING: no ALL_* aggregate matches ``manage_`` or ``admin_`` -- they match
+    # ``view_``/``edit_``/``create_``/``delete_`` on the VALUE. Both fail closed
+    # and must be granted explicitly.
     VIEW_XRAS = "view_xras"
     MANAGE_XRAS = "manage_xras"
     ADMIN_XRAS = "admin_xras"
     SYSTEM_ADMIN = "system_admin"  # Full access to everything
 
 
-# Building blocks for group bundles
-# ----------------------------------
-# ``_perms_with_action`` returns every Permission whose value starts
-# with one of the given action prefixes — e.g. all ``VIEW_*`` or all
-# ``EDIT_*``. The four ``ALL_*`` constants below pre-compute the common
-# slices so bundles can use plain set arithmetic:
-#
-#     'foo': ALL_VIEW | ALL_EDIT | {Permission.EXPORT_DATA}
-#     'bar': ALL_VIEW - {Permission.VIEW_GROUPS}
-#
-# When a new entity domain (e.g. CONTRACTS) gets a full CRUD set in the
-# Permission enum, every bundle expressed via these constants picks up
-# the new permissions automatically — no need to edit each bundle.
+# Building blocks for group bundles. ``_perms_with_action`` returns every
+# Permission whose value starts with one of the given action prefixes; the four
+# ``ALL_*`` slices let bundles use set arithmetic (``ALL_VIEW | ALL_EDIT |
+# {Permission.EXPORT_DATA}``, ``ALL_VIEW - {Permission.VIEW_GROUPS}``). A new
+# CRUD domain in the enum is therefore picked up by every bundle automatically.
 def _perms_with_action(*action_prefixes: str) -> Set[Permission]:
     """All Permission members whose value starts with one of the given
     action prefixes (``'view'``, ``'edit'``, ``'create'``, ``'delete'``)."""
@@ -191,22 +168,15 @@ ALL_CREATE = _perms_with_action('create')
 ALL_DELETE = _perms_with_action('delete')
 
 
-# POSIX-group-to-Permission mapping
-#
-# Keys are POSIX group names (e.g. real groups like 'csg', 'nusd', 'hsg'.
-# A user receives the union of permissions across all groups they belong
-# to that appear here.
-#
-# Groups that don't appear in this dict simply confer no permissions.
+# POSIX-group-to-Permission mapping. A user receives the union over every group
+# they belong to that appears in ``GROUP_PERMISSIONS``; groups absent from it
+# confer nothing.
+
 # ---- The allocation-administrator tier ----
 #
-# Provisions and manages projects, allocations and contracts end to end.
-# The defining exclusion is the **definition layer**: an allocation
-# administrator has no authority over resources, machines, queues or
-# facilities — those describe the plant, not who may use it.
-#
-# Reads everything (ALL_VIEW), edits everything except that definition
-# layer, and creates the entities its job requires.
+# Provisions and manages projects, allocations and contracts end to end. The
+# defining exclusion is the **definition layer** — resources, machines, queues
+# and facilities describe the plant, not who may use it.
 #
 # WARNING: deletes are enumerated positively, never as ``ALL_DELETE - {...}``,
 # so a future ``delete_*`` domain must be added deliberately rather than
@@ -217,10 +187,9 @@ ALL_DELETE = _perms_with_action('delete')
 # machines/queues), DELETE_FACILITIES, and DELETE_USERS / DELETE_GROUPS (hard
 # row deletes via Flask-Admin).
 #
-# Known limitation (accepted): AllocationType and Panel are
-# allocation-shaped concepts that live under the *_FACILITIES family, so
-# default allocation amounts and fair-share percentages are NOT editable
-# at this tier — see facilities_routes.py.
+# Known limitation (accepted): AllocationType and Panel live under the
+# *_FACILITIES family, so default allocation amounts and fair-share
+# percentages are NOT editable at this tier — see facilities_routes.py.
 _ALLOCATION_ADMIN: Set[Permission] = (
     ALL_VIEW
     | (ALL_EDIT - {Permission.EDIT_RESOURCES, Permission.EDIT_FACILITIES})
@@ -237,11 +206,10 @@ _ALLOCATION_ADMIN: Set[Permission] = (
         Permission.DELETE_CONTRACTS,
         Permission.IMPERSONATE_USERS,
         # XRAS payloads + replay. Explicit because no ALL_* aggregate matches a
-        # ``manage_`` prefix — which is the behavior we want: an integration-admin
-        # capability should not be swept in by a naming coincidence. This tier is
-        # where it belongs: NUSD fields the XRAS failure mail from hdt@ucar.edu
-        # today, and XRAS actions are allocation provisioning by another name.
-        # (VIEW_XRAS needs no entry — ALL_VIEW above already carries it.)
+        # ``manage_`` prefix, which is the behavior we want. This tier is where
+        # it belongs: NUSD fields the XRAS failure mail from hdt@ucar.edu, and
+        # XRAS actions are allocation provisioning by another name. (VIEW_XRAS
+        # needs no entry — ALL_VIEW above already carries it.)
         Permission.MANAGE_XRAS,
     }
 )
@@ -250,20 +218,15 @@ _ALLOCATION_ADMIN: Set[Permission] = (
 GROUP_PERMISSIONS: Dict[str, Set[Permission]] = {
     # ---- Real POSIX group bundles (provisional) ----
 
-    # nusd: the allocation-administrator tier, unmodified. Deliberately
-    # holds nothing over the resource/facility definition layer — NUSD's
-    # job is allocations and contracts, and they should not have to think
-    # about machines or queues.
-    #
-    # May impersonate any user whose permission set is a subset of nusd's
-    # (the can_impersonate rule blocks escalation). Note nusd is now a
-    # strict subset of csg, so nusd cannot impersonate a csg user.
+    # nusd: the allocation-administrator tier, unmodified — NUSD's job is
+    # allocations and contracts, not machines or queues. A strict subset of
+    # csg, so the can_impersonate no-escalation rule blocks nusd from
+    # impersonating a csg user.
     'nusd': _ALLOCATION_ADMIN,
 
-    # csg: the allocation-administrator tier PLUS edit on resources —
-    # CSG runs the plant, so machines, queues, disk roots and per-facility
-    # fair-share overrides stay editable. Create/delete of resources is
-    # still withheld (ssg holds CREATE_RESOURCES for that).
+    # csg: the allocation-administrator tier PLUS edit on resources — CSG runs
+    # the plant. Create/delete of resources stays withheld (ssg holds
+    # CREATE_RESOURCES).
     'csg': _ALLOCATION_ADMIN | {Permission.EDIT_RESOURCES},
 
     # ssg: read-only across the board, plus resource create/edit and
@@ -275,14 +238,9 @@ GROUP_PERMISSIONS: Dict[str, Set[Permission]] = {
     },
 }
 
-# Per-user permission overrides
-#
-# Grants additional permissions to a specific username on top of
-# whatever their group memberships confer. Useful for one-off privilege
-# grants (e.g. a non-`hsg` user who needs EXPORT_DATA temporarily)
-# without modifying group bundles or POSIX group membership.
-#
-# Keys: usernames. Values: set of Permission enum members to grant.
+# Per-user permission overrides: {username: {Permission, ...}}, additive to
+# whatever the user's group memberships confer. For one-off grants that do not
+# justify touching a bundle or POSIX group membership.
 USER_PERMISSION_OVERRIDES: Dict[str, Set[Permission]] = {
     # 'someuser': {Permission.EXPORT_DATA, Permission.VIEW_REPORTS},
     'benkirk' : [p for p in Permission],  # admin-equivalent: full access
@@ -296,26 +254,9 @@ USER_PERMISSION_OVERRIDES['kyledavis'] = USER_PERMISSION_OVERRIDES['benkirk']
 #USER_PERMISSION_OVERRIDES['mtrahan'] = USER_PERMISSION_OVERRIDES['benkirk']
 
 
-# Per-user, per-facility permission grants — the third RBAC tier.
-#
-# A user is granted ``permission`` here only when the target project's
-# facility is in the configured set. Permissions held here are ADDITIVE
-# to whatever ``USER_PERMISSION_OVERRIDES`` / ``GROUP_PERMISSIONS``
-# confer (which apply unconditionally).
-#
-# Example — a WNA-scoped manager who may CRUD WNA projects/allocations
-# but has no authority anywhere else:
-#
-#     'sureshm': {
-#         'WNA': {
-#             Permission.CREATE_PROJECTS, Permission.EDIT_PROJECTS,
-#             Permission.CREATE_ALLOCATIONS, Permission.EDIT_ALLOCATIONS,
-#             ...
-#         },
-#     }
-#
-# Multi-facility entries are supported — the outer dict's value may
-# name any number of facilities, each mapping to its own permission set.
+# Per-user, per-facility grants — the third RBAC tier, additive to the two
+# unconditional ones above. ``permission`` applies only when the target
+# project's facility is in the set. Any number of facilities per user.
 #
 # Format: {username: {facility_name: {Permission, ...}}}
 USER_FACILITY_PERMISSIONS: Dict[str, Dict[str, Set[Permission]]] = {
@@ -332,55 +273,34 @@ USER_FACILITY_PERMISSIONS: Dict[str, Dict[str, Set[Permission]]] = {
             Permission.VIEW_ALLOCATIONS,
             Permission.EDIT_ALLOCATIONS,
             Permission.CREATE_ALLOCATIONS,
-            # Reference-data + directory viewers: the admin dashboard's
-            # Resources, Organizations, Facilities, and Users & Groups
-            # tabs all pull read-only card fragments gated on these
-            # VIEW_* permissions. Granting them here lets a scoped
-            # manager see the cards globally (directory lookup is
-            # inherently cross-facility — project membership spans
-            # users outside WNA). Write buttons remain hidden — they
-            # gate on CREATE_/EDIT_/DELETE_ which this tier does not
-            # confer.
+            # Reference-data + directory viewers, granted globally: directory
+            # lookup is inherently cross-facility, since project membership
+            # spans users outside WNA. Write buttons stay hidden — they gate on
+            # CREATE_/EDIT_/DELETE_, which this tier does not confer.
             Permission.VIEW_RESOURCES,
             Permission.VIEW_ORG_METADATA,
-            # Enumerated tiers do NOT get the ALL_VIEW auto-pickup that
-            # group bundles do, so a new *_CONTRACTS family had to be
-            # added here by hand or this tier would silently lose the
-            # contracts card. Any future VIEW_* domain needs the same.
+            # Enumerated tiers get no ALL_VIEW auto-pickup, so every new VIEW_*
+            # domain must be added here by hand or this tier silently loses its
+            # card — as *_CONTRACTS nearly did.
             Permission.VIEW_CONTRACTS,
             Permission.VIEW_FACILITIES,
             Permission.VIEW_USERS,
             Permission.VIEW_GROUPS,
-            # NOTE — VIEW_XRAS / MANAGE_XRAS are deliberately absent, and this is
-            # the one VIEW_* domain the "add every new one here" rule above does
-            # NOT apply to. An XRAS action is not facility-scopable: it arrives
-            # before we know its facility (a New action has no project yet, only a
-            # requestNumber), and a malformed body has no facility at all — there
-            # is nothing to intersect a scope against. Rather than invent a
-            # fallback rule for the unscopable rows, the XRAS routes gate on plain
-            # require_permission(), so a facility-scoped manager gets a clean 403
-            # instead of a partial, misleading view of an integration log.
+            # NOTE — VIEW_XRAS / MANAGE_XRAS are deliberately absent: the one
+            # VIEW_* domain the rule above does NOT cover. An XRAS action is not
+            # facility-scopable — a New action has no project yet, only a
+            # requestNumber, and a malformed body has no facility at all. The
+            # XRAS routes therefore gate on plain require_permission(), so a
+            # scoped manager gets a clean 403 rather than a partial, misleading
+            # view of an integration log.
         },
     },
 }
 
 
 def get_user_permissions(user) -> Set[Permission]:
-    """
-    Get all permissions for a user.
-
-    Composes the union of:
-    - Permissions from each POSIX group the user belongs to that has a
-      bundle in ``GROUP_PERMISSIONS`` (read from ``user.roles``, which
-      is the set of bundle-matching group names the AuthUser exposed)
-    - Per-user overrides from ``USER_PERMISSION_OVERRIDES``
-
-    Args:
-        user: AuthUser object (Flask-Login current_user)
-
-    Returns:
-        Set of Permission enum values the user has
-    """
+    """Union of the user's ``GROUP_PERMISSIONS`` bundles (keyed by
+    ``user.roles``) and their ``USER_PERMISSION_OVERRIDES``."""
     permissions: Set[Permission] = set()
 
     for group_name in user.roles:
@@ -395,40 +315,17 @@ def get_user_permissions(user) -> Set[Permission]:
 
 
 def has_permission(user, permission: Permission) -> bool:
-    """
-    Check if user has a specific permission.
-
-    Args:
-        user: AuthUser object
-        permission: Permission to check
-
-    Returns:
-        True if user has the permission, False otherwise
-    """
+    """True if ``user`` holds ``permission`` unconditionally."""
     return permission in get_user_permissions(user)
 
 
 def has_permission_for_facility(user, permission: Permission,
                                 facility_name) -> bool:
-    """
-    Check if ``user`` holds ``permission`` for the given facility.
+    """True if ``user`` holds ``permission`` unconditionally, or holds it for
+    ``facility_name`` via ``USER_FACILITY_PERMISSIONS``.
 
-    True iff either:
-    - The user has ``permission`` unconditionally (system grant via
-      groups or ``USER_PERMISSION_OVERRIDES``) — applies to any facility.
-    - ``USER_FACILITY_PERMISSIONS[user.username][facility_name]``
-      contains ``permission``.
-
-    Args:
-        user: AuthUser object (Flask-Login current_user). Unauthenticated
-            users always fail.
-        permission: Permission enum member to check.
-        facility_name: ``Facility.facility_name`` string, or ``None``
-            for orphan projects (no allocation_type chain). Orphans can
-            only be acted on by unscoped system-permission holders.
-
-    Returns:
-        True if the permission applies to this facility, else False.
+    ``facility_name`` is ``None`` for orphan projects (no allocation_type
+    chain), which only unscoped system-permission holders can act on.
     """
     # System grant — applies to every facility, including unknown ones.
     if has_permission(user, permission):
@@ -446,18 +343,14 @@ def has_permission_for_facility(user, permission: Permission,
 
 
 def has_permission_any_facility(user, permission: Permission) -> bool:
-    """True if ``user`` can exercise ``permission`` **somewhere** —
-    either unconditionally (system grant) or in at least one facility
-    via ``USER_FACILITY_PERMISSIONS``.
+    """True if ``user`` can exercise ``permission`` **somewhere** — either
+    unconditionally or in at least one facility.
 
-    Use this for route-level gates that admit scoped users: they reach
-    the route, and the body intersects their scope against whatever
-    the request targeted (listing filter, create-target facility, …).
-
-    Contrast with ``has_permission``: that one answers "does the user
-    hold this unconditionally?" — the right question for routes that
-    must remain pure system-admin domain (impersonation, system
-    status, etc.)."""
+    For route-level gates that admit scoped users; the body then intersects
+    their scope against whatever the request targeted. Contrast with
+    ``has_permission``, which asks "unconditionally?" — the right question for
+    routes that must stay pure system-admin domain.
+    """
     if has_permission(user, permission):
         return True
     if not getattr(user, 'is_authenticated', False):
@@ -470,21 +363,9 @@ def has_permission_any_facility(user, permission: Permission) -> bool:
 
 
 def user_facility_scope(user, permission: Permission):
-    """
-    Return the set of facility names where ``user`` may exercise
-    ``permission``, or ``None`` for "unscoped" (any facility, including
-    orphan projects).
-
-    Use at listing-filter call sites:
-      - ``None`` -> skip the facility filter entirely (system-permission
-        holder; sees everything).
-      - ``set`` -> constrain results to those facilities.
-      - empty ``set`` -> user has no way to exercise this permission.
-
-    Args:
-        user: AuthUser object.
-        permission: Permission enum member.
-    """
+    """Facility names where ``user`` may exercise ``permission``: ``None`` for
+    unscoped (skip the filter), a set to constrain to, or an empty set for no
+    way to exercise it at all."""
     if has_permission(user, permission):
         return None
     if not getattr(user, 'is_authenticated', False):
@@ -497,16 +378,11 @@ def user_facility_scope(user, permission: Permission):
 
 
 def allowed_facility_names(user, permission: Permission, *, active_only=True):
-    """
-    The user's facility-name universe for ``permission``, as a sorted list.
+    """Sorted facility-name universe for ``permission``: the user's grant if
+    scoped, else every facility in the DB (active only unless overridden).
 
-    For facility-scoped users this is their grant (sorted); for unscoped
-    users (system-permission holders) it is every facility name in the DB,
-    filtered to active facilities unless ``active_only=False``.
-
-    Use for building facility selector vocabularies (multi-selects,
-    filter pills) — enforcement still belongs to ``apply_facility_scope``
-    / ``filter_rows_by_facility`` at query time.
+    For building selector vocabularies. Enforcement belongs to
+    ``apply_facility_scope`` / ``filter_rows_by_facility`` at query time.
     """
     allowed = user_facility_scope(user, permission)
     if allowed is not None:
@@ -522,25 +398,14 @@ def allowed_facility_names(user, permission: Permission, *, active_only=True):
 
 
 def apply_facility_scope(requested, permission: Permission, default=None):
-    """
-    Combine a user-submitted ``facilities`` list with the caller's
-    facility-scoped RBAC grants for ``permission``, returning the
-    effective facility-name list to pass to downstream queries.
+    """The effective facility-name list for a request: the submitted
+    ``facilities`` combined with the caller's scoped grants for ``permission``.
 
-    Semantics:
-    - **Unscoped users** (system-permission holders): ``requested``
-      wins; if empty, ``default`` applies; ``None`` means
-      "no restriction".
-    - **Scoped users**: returns the intersection of ``requested`` with
-      their allowed set. Falls back to the full allowed set when the
-      request is empty or the intersection is empty (clamp, don't
-      error — the user just asked for nothing they can see).
-    - **Users with an empty scope** (no entry at all): returns ``[]``.
-      Caller should treat as "no rows".
-
-    Used as the single source of truth for "what facility names do I
-    actually filter on, given this user + this request?" at both the
-    admin expirations/search routes and the allocations dashboard.
+    Unscoped users: ``requested`` wins, else ``default``, else ``None`` for no
+    restriction. Scoped users: the intersection, clamped back to their full
+    allowed set when the request is empty or disjoint (they asked for nothing
+    they can see; that is not an error). Empty scope returns ``[]``, meaning no
+    rows.
     """
     allowed = user_facility_scope(current_user, permission)
     if allowed is None:
@@ -569,39 +434,19 @@ def filter_rows_by_facility(rows, allowed):
 
 
 def can_impersonate(caller, target) -> bool:
-    """
-    Decide whether ``caller`` is permitted to impersonate ``target``.
+    """The no-escalation rule: ``target``'s permissions must be a subset of
+    ``caller``'s (equal sets, i.e. peer impersonation, are allowed).
 
-    No-escalation rule: ``target``'s permission set must be a subset of
-    ``caller``'s. Equal sets (peer impersonation) are allowed; strictly
-    smaller sets ("lessor" users — regular users, project leads with no
-    system permissions, etc.) are allowed; any permission ``target``
-    holds that ``caller`` does not blocks the impersonation.
-
-    Note: this does NOT check whether ``caller`` has
-    ``Permission.IMPERSONATE_USERS`` — the route decorator should still
-    gate that. ``can_impersonate`` only enforces the no-escalation
-    invariant once impersonation is otherwise allowed.
-
-    Args:
-        caller: AuthUser doing the impersonation.
-        target: AuthUser being impersonated.
-
-    Returns:
-        True if ``target``'s permissions are a (non-strict) subset of
-        ``caller``'s permissions; False otherwise.
+    This does NOT check ``Permission.IMPERSONATE_USERS`` — the route decorator
+    gates that. This enforces only the no-escalation invariant.
     """
     return get_user_permissions(target) <= get_user_permissions(caller)
 
 
 def has_role(user, role_name: str) -> bool:
-    """
-    Check if user belongs to a specific group bundle (display label).
+    """True if ``user`` belongs to the named ``GROUP_PERMISSIONS`` bundle.
 
-    Note: 'role' here is the name of a ``GROUP_PERMISSIONS`` bundle
-    (POSIX group name). For authorization decisions prefer
-    ``has_permission``; use this only for display logic or coarse
-    role-name checks.
+    Display logic only — authorization decisions use ``has_permission``.
     """
     return user.has_role(role_name)
 
@@ -631,20 +476,12 @@ def require_permission(permission: Permission):
 
 
 def require_permission_any_facility(permission: Permission):
-    """
-    Decorator that admits callers who hold ``permission`` either
-    unconditionally (system grant) **or** in at least one facility via
-    ``USER_FACILITY_PERMISSIONS``.
+    """Admit callers holding ``permission`` unconditionally **or** in at least
+    one facility; the route body then intersects their scope against the
+    request.
 
-    The route body is then responsible for intersecting the user's
-    facility scope against whatever the request targets. Use for admin
-    routes that a facility-scoped manager must be able to reach (e.g.
-    the admin dashboard, project search, expirations fragment,
-    project-create form) even though they don't hold the permission
-    globally.
-
-    For routes that must remain pure system-admin domain (impersonation,
-    global system administration), use ``require_permission`` instead.
+    For admin routes a facility-scoped manager must reach. Routes that must
+    stay pure system-admin domain use ``require_permission`` instead.
     """
     def decorator(f):
         @wraps(f)
