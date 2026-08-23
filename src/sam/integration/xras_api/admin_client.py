@@ -54,7 +54,6 @@ short-circuits it, because nothing happened to verify.
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 from urllib.parse import quote
@@ -66,7 +65,7 @@ from sam.integration.xras_api.base import (
     XrasWriteNotConfigured,
     XrasWriteRejected,
 )
-from sam.integration.xras_api.client import XrasApiClient, _unwrap
+from sam.integration.xras_api.client import XrasApiClient, _XrasTransport, _unwrap
 from sam.integration.xras_api.config import XrasApiConfig
 
 logger = logging.getLogger(__name__)
@@ -223,26 +222,29 @@ class XrasWriteResult:
         return 'unverified'
 
 
-class XrasAdminClient:
-    """Single-attempt, self-verifying writes against the XRAS admin surface."""
+class XrasAdminClient(_XrasTransport):
+    """Single-attempt, self-verifying writes against the XRAS admin surface.
+
+    Inherits the shared transport (:class:`~sam.integration.xras_api.client._XrasTransport`):
+    the session, the URL builder, the per-call :meth:`_headers`, and the
+    idempotent retrying :meth:`_get` used for the ``submit``-context
+    verification reads. It adds the single-attempt :meth:`_write` and the write
+    verbs. Its ``XA-CONTEXT`` is ``submit`` and a 4xx on any call raises
+    :class:`XrasWriteRejected` (the :meth:`_client_error` override below).
+    """
+
+    #: Mirror of the read client's context knob — see the module docstring for
+    #: why one class cannot serve both contexts. Not a knob.
+    _CONTEXT = XA_ADMIN_CONTEXT
 
     def __init__(self, config: Optional[XrasApiConfig] = None,
                  reader: Optional[XrasApiClient] = None) -> None:
-        self.config = config or XrasApiConfig.from_environment()
+        super().__init__(config)
         #: Report-context reads used for verification. A separate object
         #: because the Reports family 401s under ``submit`` — see the module
         #: docstring. PRIVILEGE(#2): a key that could read
         #: ``GET /v1/requests/<rid>`` would delete this whole delegate.
         self.reader = reader or XrasApiClient(self.config)
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'SAM/1.0 (+https://sam.hpc.ucar.edu)',
-            'Accept': 'application/json',
-            'XA-API-KEY': self.config.api_key,
-            'XA-ALLOCATIONS-PROCESS': self.config.allocations_process,
-            'XA-CONTEXT': XA_ADMIN_CONTEXT,
-            'XA-USER': self.config.api_user,
-        })
 
     @classmethod
     def from_environment(cls, config: Optional[XrasApiConfig] = None,
@@ -264,76 +266,26 @@ class XrasAdminClient:
         return cls(resolved, reader=reader)
 
     # ── internals ───────────────────────────────────────────────────────
+    #
+    # The session, ``_url``, ``_headers`` and the idempotent retrying ``_get``
+    # are inherited unchanged from ``_XrasTransport``. ``_get`` here is the
+    # submit-context verification read (the Reports family answers under
+    # ``report``, so those go via ``self.reader`` instead); the single-attempt
+    # rule below in ``_write`` is what distinguishes this client's *writes*.
 
-    def _url(self, path: str) -> str:
-        return f"{self.config.base_url}/{path.lstrip('/')}"
+    def _client_error(self, url: str, status: int,
+                      response: 'requests.Response') -> None:
+        """A 4xx on any call here is a deterministic write refusal.
 
-    @staticmethod
-    def _headers(xa_user: Optional[str],
-                 context: Optional[str] = None) -> Optional[Dict[str, str]]:
-        """Per-request impersonation and (optionally) context override.
-
-        Passed to the individual call rather than mutated onto the session:
-        one client instance serves several requests with different PIs, and a
-        session-level ``XA-USER`` would leak whichever one was set last. The
-        same is true of ``XA-CONTEXT`` — the session default is ``submit``
-        (Requested stage), and the Approved-stage editors override it per call
-        with ``admin`` rather than mutating the shared session.
+        Overrides the base (which raises :class:`XrasSourceUnavailable`) so a
+        ``submit``-context GET refusal carries the status the way ``_write``'s
+        does — ``401`` (no role on the request), ``404`` (target did not
+        resolve). ``errors[]`` parsing stays in :meth:`_write`, the only place
+        a 4xx body carries a validation list.
         """
-        headers: Dict[str, str] = {}
-        if xa_user:
-            headers['XA-USER'] = xa_user
-        if context:
-            headers['XA-CONTEXT'] = context
-        return headers or None
-
-    def _get(self, path: str, *, params: Optional[Mapping[str, Any]] = None,
-             xa_user: Optional[str] = None,
-             context: Optional[str] = None) -> Optional[Any]:
-        """Submit-context GET. Retries 5xx like the read client; 404 → ``None``.
-
-        Reads are idempotent, so this keeps the read client's retry policy —
-        the single-attempt rule in this module applies to :meth:`_write`.
-        """
-        url = self._url(path)
-        last_error: Optional[Exception] = None
-
-        for attempt in range(self.config.max_retries):
-            try:
-                response = self.session.request(
-                    'GET', url, params=params,
-                    headers=self._headers(xa_user, context),
-                    timeout=self.config.timeout)
-            except requests.RequestException as exc:
-                last_error = exc
-                if attempt == self.config.max_retries - 1:
-                    break
-                time.sleep(2 ** attempt)
-                continue
-
-            status = response.status_code
-            if status == 404:
-                return None
-            if 400 <= status < 500:
-                raise XrasWriteRejected(
-                    f'{url} returned HTTP {status}: {response.text[:200]}',
-                    status=status)
-            if status >= 500:
-                last_error = requests.HTTPError(f'HTTP {status}')
-                if attempt == self.config.max_retries - 1:
-                    break
-                time.sleep(2 ** attempt)
-                continue
-
-            try:
-                return _unwrap(response.json())
-            except ValueError as exc:
-                raise XrasSourceUnavailable(
-                    f'{url} returned non-JSON body: {exc}') from exc
-
-        raise XrasSourceUnavailable(
-            f'{url} unreachable after {self.config.max_retries} attempts: '
-            f'{last_error}')
+        raise XrasWriteRejected(
+            f'{url} returned HTTP {status}: {response.text[:200]}',
+            status=status)
 
     def _write(self, method: str, path: str, *,
                params: Optional[Mapping[str, Any]] = None,

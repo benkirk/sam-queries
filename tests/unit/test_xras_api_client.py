@@ -25,7 +25,7 @@ from sam.integration.xras_api.base import (
     XrasApiNotConfigured,
     XrasSourceUnavailable,
 )
-from sam.integration.xras_api.client import XrasApiClient
+from sam.integration.xras_api.client import XrasApiClient, _XrasTransport
 from sam.integration.xras_api.config import XrasApiConfig, xras_api_configured
 
 pytestmark = pytest.mark.unit
@@ -182,10 +182,18 @@ class TestItIsStructurallyReadOnly:
                 f'XrasApiClient.{name} exists — the client must stay GET-only'
 
     def test_the_only_transport_primitive_is_get(self):
-        source = inspect.getsource(XrasApiClient)
+        # The transport primitive lives on the shared base now; the read client
+        # adds only read verbs on top of it. The GET-only invariant belongs on
+        # whichever class actually issues the request, so pin it there — the
+        # write verbs are the admin subclass's ``_write``, not on this base.
+        source = inspect.getsource(_XrasTransport)
         assert "'GET'" in source
         for verb in ("'POST'", "'PUT'", "'PATCH'", "'DELETE'"):
-            assert verb not in source, f'{verb} appears in the client'
+            assert verb not in source, f'{verb} appears in the transport base'
+        # And the read client itself still carries no HTTP-verb literal at all.
+        client_source = inspect.getsource(XrasApiClient)
+        for verb in ("'POST'", "'PUT'", "'PATCH'", "'DELETE'"):
+            assert verb not in client_source, f'{verb} appears in the client'
 
 
 # ── transport ───────────────────────────────────────────────────────────
