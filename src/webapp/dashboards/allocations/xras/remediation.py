@@ -254,8 +254,13 @@ def xras_recheck_visible():
     resolve are left alone. One live XRAS read per row, bounded by
     ``_RECHECK_ALL_CAP``. Honors the exact window+facet+search state in view via
     the shared ``_filtered_rows``. Degrades with a **200** on outage.
+
+    WARNING: ``request.values``, not ``request.args``. This is a POST and the
+    card's ``hx-include`` sends the window+facet forms in the BODY — reading only
+    the query string would silently fall back to the default window and report
+    "nothing to check" over a wide-filter view full of not-checked rows.
     """
-    eligible = [r for r in _filtered_rows(_index(), request.args)
+    eligible = [r for r in _filtered_rows(_index(), request.values)
                 if not r.get('preflight_rollup')]
     if not eligible:
         return htmx_success_message(

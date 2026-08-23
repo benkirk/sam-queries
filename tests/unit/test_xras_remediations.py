@@ -427,6 +427,23 @@ class TestCheckAll:
         assert resp.status_code == 200
         assert 'could not be reached' in resp.get_data(as_text=True)
 
+    def test_it_honors_a_wide_window_passed_in_the_post_body(
+            self, auth_client, configured, monkeypatch):
+        # The row is out of the DEFAULT window but in a wide one. The card sends
+        # the window in the POST BODY (hx-include), so the route must read
+        # request.values, not request.args — else it silently reports "nothing to
+        # check" over a wide-filter view full of not-checked rows.
+        _publish(_payload('EXAM0001', submit_date='2015-01-01T00:00:00Z'))
+        _reader(monkeypatch, payload=_detail_payload('EXAM0001'))
+        # default window sees nothing
+        assert 'Nothing to check' in auth_client.post(
+            '/allocations/xras_recheck_visible').get_data(as_text=True)
+        # a wide window in the body picks it up
+        resp = auth_client.post(
+            '/allocations/xras_recheck_visible',
+            data={'start_date': '2000-01-01', 'end_date': '2030-01-01'})
+        assert 'Checked 1 request' in resp.get_data(as_text=True)
+
 
 class TestMnemonicUnblockStrip:
     """The § 2.2 ranking strip on the Remediations card — points at Admin to fix."""

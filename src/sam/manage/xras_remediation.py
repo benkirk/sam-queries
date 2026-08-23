@@ -231,7 +231,9 @@ def recheck_readiness(request_number: str, *, session, reader=None) -> dict:
         logger.warning('xras recheck: could not read %s (%s)', request_number, exc)
         return {'available': False, 'patched': False, 'counts': counts}
 
-    if payload is None:
+    if payload is None or payload.get('isDeleted'):
+        # Gone, or deleted since the sweep — drop the row rather than leave a
+        # "not checked" a re-check can never resolve.
         patch_requests_index(request_number, None)
         return {'available': True, 'patched': True, 'counts': counts}
 

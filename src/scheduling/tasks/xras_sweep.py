@@ -514,7 +514,7 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
               if str(p.get('requestNumber') or '').strip() in keep]
     cohort.extend(p for p in extra_payloads if isinstance(p, dict))
 
-    entries, indexed = [], set()
+    entries, indexed, deleted = [], set(), 0
     for payload in cohort:
         number = str(payload.get('requestNumber') or '').strip()
         if number in indexed:
@@ -523,6 +523,13 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
             # would carry a second Withdraw button — while the post-write
             # patch rewrites only the first match. First copy wins; the
             # primary copy comes first and carries the same classification.
+            continue
+        if payload.get('isDeleted'):
+            # A deleted request has no handoff to remediate and no pushable
+            # action — iter_candidate_actions skips its deleted actions, so it
+            # would sit on the card as a "not checked" row a re-check can never
+            # resolve. Excluded from the cohort entirely.
+            deleted += 1
             continue
         entry = request_index_entry(payload, pending_push=number in pending,
                                     preflights=preflights_by_number.get(number))
@@ -533,6 +540,7 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
     entries.sort(key=lambda e: (str(e.get('opportunity_name') or ''),
                                 str(e.get('request_number') or '')))
     detail['index_requests'] = len(entries)
+    detail['index_deleted_excluded'] = deleted
     return entries
 
 
