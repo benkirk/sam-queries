@@ -118,6 +118,27 @@ window.__samErrors = window.__samErrors || [];
 """
 
 
+def _is_report_only_csp(text: str) -> bool:
+    """A browser **report-only** CSP violation — advisory, never a page failure.
+
+    Dropped at the source rather than added to ``ALLOWED_CONSOLE`` for two
+    reasons. First, report-only is benign *by construction*: the browser logs
+    the report and takes "no further action", so the page behaves exactly as it
+    would with a clean console — which is all the sweep asks. Second, the
+    concrete case is a **third party**: ``/status/events`` embeds a Google
+    Calendar, and ``calendar.google.com`` serves its own report-only
+    ``frame-ancestors 'self'`` — a header SAM cannot change and a frame that
+    still loads. An allowlist entry would fail the no-dead-entries ratchet
+    anyway, which only visits ``/user/accounts`` and ``/admin/projects``, so the
+    pattern would match nothing and read as dead.
+
+    Scoped tightly to report-only so an *enforced* CSP violation — one where the
+    browser actually blocked something — still fails the sweep loudly.
+    """
+    low = (text or '').lower()
+    return 'report-only' in low and 'content security policy' in low
+
+
 class ErrorCollector:
     """Captures the three channels a broken front end actually speaks through."""
 
@@ -129,7 +150,7 @@ class ErrorCollector:
         page.on('pageerror', lambda exc: self.exceptions.append(str(exc)))
 
     def _on_console(self, message):
-        if message.type == 'error':
+        if message.type == 'error' and not _is_report_only_csp(message.text):
             self.console.append(message.text)
 
     def htmx(self):

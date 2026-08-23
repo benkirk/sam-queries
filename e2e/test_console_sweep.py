@@ -15,6 +15,7 @@ import pytest
 from conftest import (ALLOWED_CONSOLE, THEMES, assert_theme_applied,
                       dashboard_page_routes, expand_first_project_card,
                       set_theme, visit)
+from conftest import _is_report_only_csp
 
 PAGE_ROUTES = dashboard_page_routes()
 
@@ -153,6 +154,29 @@ def test_admin_resources_card_modals(page, errors):
     found = errors.drain()
     assert not found, '/admin/resources modal flow produced browser errors:\n' + '\n'.join(
         f'  {entry}' for entry in found)
+
+
+def test_report_only_csp_is_filtered_but_enforced_is_not():
+    """The `/status/events` Google Calendar embed logs a third-party report-only
+    CSP violation (`frame-ancestors`) the sweep must ignore — but an *enforced*
+    CSP violation, where the browser actually blocked something, must still
+    fail. Pure-function ratchet on the filter itself, so it does not depend on
+    the flaky external header ever firing during a run."""
+    calendar = (
+        "Framing 'https://calendar.google.com/' violates the following "
+        'report-only Content Security Policy directive: "frame-ancestors '
+        "'self'\". The violation has been logged, but no further action has "
+        'been taken.')
+    assert _is_report_only_csp(calendar)
+
+    # An enforced violation reads differently — no "report-only" — and must be
+    # left to fail the sweep.
+    enforced = ("Refused to load the script 'https://evil.example/x.js' because "
+                "it violates the following Content Security Policy directive: "
+                "\"script-src 'self'\".")
+    assert not _is_report_only_csp(enforced)
+    assert not _is_report_only_csp('htmx:targetError')
+    assert not _is_report_only_csp('')
 
 
 def test_console_allowlist_has_no_dead_entries(page, errors):
