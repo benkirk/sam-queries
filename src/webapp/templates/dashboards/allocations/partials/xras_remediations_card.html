@@ -342,19 +342,31 @@
                         {# Push-readiness roll-up — the worst verdict across this
                            request's candidate actions. A never-writes SAM-side
                            preflight: "if XRAS pushed this today, would it land?"
-                           Open the request modal for the per-action detail. #}
-                        {% if row.preflight_rollup == 'failed' %}
-                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle me-1"
-                              title="At least one action would be rejected (422) if XRAS pushed it today. Open the request for the reasons.">would fail</span>
-                        {% elif row.preflight_rollup == 'manual' %}
-                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle me-1"
-                              title="An action would park for a human (no service handles it).">would park</span>
-                        {% elif row.preflight_rollup == 'unchecked' %}
-                        <span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle me-1"
-                              title="The preflight could not synthesize this action; it is not a pass.">unchecked</span>
-                        {% elif row.preflight_rollup == 'rechecked' %}
-                        <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle me-1"
-                              title="Every checked action would land if pushed today.">would land</span>
+                           A checked verdict opens the focused readiness modal
+                           (the reasons); `unchecked` is not a verdict, so it is
+                           instead a one-click re-check — otherwise it waits for
+                           the next hourly sweep. Both are safe inside this cell:
+                           it carries no collapse toggle (the `project` link below
+                           already opens a modal from here). #}
+                        {% if row.preflight_rollup == 'unchecked' %}
+                        {# hx-swap="none": the recheck route fires refreshXrasTab
+                           (reloads this card with the fresh verdict) + a toast,
+                           both via HX-Trigger — so the response body is unused. #}
+                        <button type="button"
+                                class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle me-1"
+                                style="cursor:pointer;"
+                                title="Not checked in the last sweep. Click to re-check now — otherwise this waits for the next hourly sweep."
+                                hx-post="{{ url_for('allocations_dashboard.xras_recheck_request',
+                                                    request_number=row.request_number) }}"
+                                hx-swap="none"><i class="fas fa-rotate small me-1"></i>unchecked</button>
+                        {% elif row.preflight_rollup %}
+                        <a href="#" class="text-decoration-none me-1"
+                           title="Why this verdict — the reasons a push would return"
+                           data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                           hx-get="{{ url_for('allocations_dashboard.xras_readiness_detail',
+                                              request_number=row.request_number) }}"
+                           hx-target="#auditDetailsModalBody"
+                           hx-swap="innerHTML">{% if row.preflight_rollup == 'failed' %}<span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">would fail</span>{% elif row.preflight_rollup == 'manual' %}<span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">would park</span>{% elif row.preflight_rollup == 'rechecked' %}<span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">would land</span>{% endif %}</a>
                         {% endif %}
                         {# WARNING: The badge IS the link, and only in the `project`
                            branch — because `pending_push == False` is not a

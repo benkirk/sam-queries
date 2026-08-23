@@ -1,0 +1,43 @@
+{#
+  Focused push-readiness modal, rendered into #auditDetailsModalBody. Reached
+  from a verdict badge on the Remediations card — the badge's evidence view,
+  without the full request modal around it. Read-only; the verdicts come straight
+  from the sweep snapshot (no live XRAS read), so it renders even during an outage.
+
+  Context: request_number, actions (each with action_type/action_id/preflight and
+           an optional actual), rollup (worst verdict across them).
+#}
+{% import 'dashboards/allocations/partials/xras_modal_shell.html' as shell %}
+{% call shell.modal_title() %}Push-readiness — {{ request_number }}{% endcall %}
+
+<p class="small text-muted">
+    A never-writes check: <strong>if XRAS pushed this today, would SAM's ingest
+    accept it?</strong> The reasons below are the exact 422 a real push would
+    return. Nothing here is applied.
+</p>
+
+{% for action in actions %}
+<div class="mb-2">
+    <div class="small">
+        <span class="font-monospace">{{ action.action_type or 'action' }}</span>
+        {% if action.action_id %}<span class="text-muted">· #{{ action.action_id }}</span>{% endif %}
+        {% if action.action_status %}<span class="text-muted">· {{ action.action_status }}</span>{% endif %}
+    </div>
+    {% include 'dashboards/allocations/partials/_xras_readiness_why.html' %}
+</div>
+{% else %}
+<div class="alert alert-secondary py-2 small mb-0">
+    No action on this request was checked in the last sweep window.
+</div>
+{% endfor %}
+
+{# Plain hx-get into the open body (no data-bs-toggle — the #464 self-close
+   rule): steps up to the full request without stacking a second modal. #}
+<a href="#" class="small d-inline-block mt-2"
+   hx-get="{{ url_for('allocations_dashboard.xras_request_detail',
+                      request_number=request_number) }}"
+   hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+    Open the full request <i class="fas fa-arrow-right"></i>
+</a>
+
+{{ shell.done_footer() }}

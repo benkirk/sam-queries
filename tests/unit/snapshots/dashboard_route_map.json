@@ -1645,6 +1645,13 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_readiness_detail",
+    "/allocations/xras_readiness_detail/<path:request_number>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_recheck",
     "/allocations/xras_recheck/<int:action_id>",
     [

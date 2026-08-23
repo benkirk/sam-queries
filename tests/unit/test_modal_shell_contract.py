@@ -292,6 +292,11 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # forms' Back/Save all target that body.
     'dashboards/allocations/partials/xras_request_detail.html': [
         'auditDetailsModalBody'],
+    # The focused push-readiness modal a verdict badge opens — same body, reached
+    # only from xras.html. Snapshot-only, its "Open the full request" link and the
+    # shared shell's footer target the body in place, no toggle.
+    'dashboards/allocations/partials/xras_readiness_modal.html': [
+        'auditDetailsModalBody'],
     # The XRAS User detail modal — the person-side analogue of the request
     # detail. Swapped into the same body from a roster username (plain hx-get)
     # or the Accounts-Needed card (data-bs-toggle from the closed modal); its

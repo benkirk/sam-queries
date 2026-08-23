@@ -207,6 +207,7 @@ class TestAccessControl:
         '/allocations/xras_withdraw_form/EXAM0001/7',
         '/allocations/xras_resubmit_form/EXAM0001/7',
         '/allocations/xras_request_detail/EXAM0001',
+        '/allocations/xras_readiness_detail/EXAM0001',
         '/allocations/xras_user_detail/janebaldwin',
         '/allocations/xras_opportunity_detail/532220',
         '/allocations/xras_resource_form/EXAM0001/7/530201',
@@ -290,6 +291,64 @@ class TestRecheckNow:
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'SAM pre-flight' in body
         assert 'PI ghost is not in database' in body
+
+
+def _publish_one_verdict(status, *, messages=(), service='supplement'):
+    """Publish EXAM0001 carrying a single-action verdict of the given status."""
+    payload = _detail_payload('EXAM0001')
+    verdict = {'status': status, 'would_succeed': status == 'rechecked',
+               'messages': list(messages), 'gaps': [], 'service': service,
+               'stage': 'Approved', 'action_status': 'Approved',
+               'request_status': 'Approved', 'push_state': 'pending',
+               'push_detail': None, 'resolved': None,
+               'checked_at': '2026-08-23T09:00:00'}
+    xras_cache.store_requests_index({
+        'generated_at': datetime.now(), 'statuses': ['Approved'],
+        'extra_statuses': {},
+        'rows': [request_index_entry(payload, pending_push=True,
+                                     preflights={7: verdict})]})
+
+
+class TestReadinessModal:
+    """The focused push-readiness modal a verdict badge opens — snapshot-only."""
+
+    def test_it_renders_the_reasons_without_a_live_read(self, auth_client):
+        # No _reader() is scripted: the modal reads the swept verdict straight
+        # from the snapshot, so it needs no live XRAS call to explain a badge.
+        _publish_one_verdict('failed', messages=['PI ghost is not in database'])
+        body = auth_client.get(
+            '/allocations/xras_readiness_detail/EXAM0001').get_data(as_text=True)
+        assert 'SAM pre-flight' in body
+        assert 'PI ghost is not in database' in body
+        assert 'checked as' in body and 'supplement' in body
+
+    def test_an_unswept_request_is_not_found(self, auth_client):
+        xras_cache.store_requests_index({
+            'generated_at': datetime.now(), 'statuses': [], 'extra_statuses': {},
+            'rows': []})
+        resp = auth_client.get('/allocations/xras_readiness_detail/NOPE0001')
+        # 200, not 4xx: htmx will not swap a 4xx into an already-open modal.
+        assert resp.status_code == 200
+        assert 'SAM pre-flight' not in resp.get_data(as_text=True)
+
+
+class TestReadinessBadgeWiring:
+    """The card badges: a verdict opens the reasons modal, unchecked posts a recheck."""
+
+    def test_a_verdict_badge_links_to_the_readiness_modal(self, auth_client,
+                                                          configured):
+        _publish_one_verdict('failed', messages=['x'])
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'xras_readiness_detail/EXAM0001' in body
+        assert 'would fail' in body
+
+    def test_an_unchecked_badge_posts_the_inline_recheck(self, auth_client,
+                                                         configured):
+        _publish_one_verdict('unchecked')
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        # The one useful action on an unchecked row is a re-check, not a modal.
+        assert 'xras_recheck_request/EXAM0001' in body
+        assert 'xras_readiness_detail/EXAM0001' not in body
 
 
 class TestMnemonicUnblockStrip:
