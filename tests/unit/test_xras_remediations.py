@@ -51,7 +51,7 @@ def view_only_client(auth_client, monkeypatch):
                    __import__('webapp.dashboards.allocations.blueprint',
                               fromlist=['x']),
                    __import__('webapp.dashboards.allocations'
-                              '.xras_remediation_routes', fromlist=['x'])):
+                              '.xras.remediation', fromlist=['x'])):
         if hasattr(module, 'get_user_permissions'):
             monkeypatch.setattr(module, 'get_user_permissions', limited)
     monkeypatch.setattr(rbac, 'get_user_permissions', limited)
@@ -78,7 +78,7 @@ def manage_not_admin_client(auth_client, monkeypatch):
                    __import__('webapp.dashboards.allocations.blueprint',
                               fromlist=['x']),
                    __import__('webapp.dashboards.allocations'
-                              '.xras_remediation_routes', fromlist=['x'])):
+                              '.xras.remediation', fromlist=['x'])):
         if hasattr(module, 'get_user_permissions'):
             monkeypatch.setattr(module, 'get_user_permissions', limited)
     monkeypatch.setattr(rbac, 'get_user_permissions', limited)

@@ -400,7 +400,7 @@ class TestFacets:
     def test_facets_are_self_excluding(self):
         """Scope a dimension by itself and every unselected value reads 0 the
         moment one is picked, which turns the chips into a dead end."""
-        from webapp.dashboards.allocations.blueprint import _account_facets
+        from webapp.dashboards.allocations.xras._shared import _account_facets
 
         rows = [{'classification': 'absent', 'roles': ('PI',)},
                 {'classification': 'inactive', 'roles': ('User',)}]
@@ -413,13 +413,13 @@ class TestFacets:
         assert _account_facets(rows, 'role', classifications=['absent']) == {'PI': 1}
 
     def test_an_unknown_dimension_raises(self):
-        from webapp.dashboards.allocations.blueprint import _account_facets
+        from webapp.dashboards.allocations.xras._shared import _account_facets
 
         with pytest.raises(ValueError):
             _account_facets([], 'nonsense')
 
     def test_filters_are_anded_across_dimensions(self):
-        from webapp.dashboards.allocations.blueprint import _filter_accounts
+        from webapp.dashboards.allocations.xras._shared import _filter_accounts
 
         rows = [{'classification': 'absent', 'roles': ('PI',)},
                 {'classification': 'absent', 'roles': ('User',)}]
