@@ -1,0 +1,311 @@
+{% extends 'dashboards/base.html' %}
+{#
+  Dev-only component gallery. Every shared fragment macro is rendered via
+  {% import %} (which the modal-shell contract walker does not follow), so a
+  modal-opener macro renders inert here without a host shell — that is expected
+  and labelled. Keep this template CSP-clean: no inline <script>/<style>/on*=.
+#}
+{% block title %}Component Gallery — SAM{% endblock %}
+
+{% import 'dashboards/fragments/badges.html' as badges %}
+{% import 'dashboards/fragments/collapse.html' as collapse %}
+{% import 'dashboards/fragments/help.html' as help with context %}
+{% import 'dashboards/fragments/modals.html' as modals %}
+{% import 'dashboards/fragments/modal_form.html' as modal_form %}
+{% import 'dashboards/fragments/plugin_state.html' as plugin_state %}
+{% import 'dashboards/fragments/theme_toggle.html' as theme_frag %}
+{% import 'dashboards/fragments/search_box.html' as search_box %}
+{% import 'dashboards/fragments/form_fields.html' as ff with context %}
+{% import 'dashboards/fragments/pagination.html' as pagination %}
+{% import 'dashboards/fragments/facet_chips.html' as facet_chips %}
+{% import 'dashboards/fragments/window_pills.html' as window_pills %}
+{% import 'dashboards/fragments/date_range_picker.html' as drp %}
+{% import 'dashboards/fragments/time_range_picker.html' as trp %}
+{% import 'dashboards/fragments/filter_panel.html' as filter_panel %}
+{% import 'dashboards/fragments/_breadcrumb.html' as bc %}
+{% import 'dashboards/fragments/sort_link.html' as sortlink with context %}
+{% import 'dashboards/fragments/ladder_range.html' as ladder %}
+{% import 'dashboards/fragments/age_band_range.html' as ageband %}
+{% import 'dashboards/fragments/audit_filters.html' as audit %}
+{% import 'dashboards/fragments/xras_filters.html' as xrasf %}
+{% import 'dashboards/fragments/xras_person_detail.html' as xperson %}
+{% import 'dashboards/fragments/user_rows.html' as user_rows with context %}
+{% import 'dashboards/fragments/contract_bits.html' as contract_bits with context %}
+{% import 'dashboards/fragments/action_buttons.html' as action_buttons with context %}
+
+{# Card chrome shared by every specimen. #}
+{% macro specimen(title, note='') %}
+<div class="card mb-3">
+  <div class="card-header py-2"><code>{{ title }}</code>{% if note %} <small class="text-muted ms-2">{{ note }}</small>{% endif %}</div>
+  <div class="card-body">{{ caller() }}</div>
+</div>
+{% endmacro %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb" class="sam-breadcrumbs">
+  <ol class="breadcrumb mb-0"><li class="breadcrumb-item active" aria-current="page">Component gallery</li></ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap align-items-baseline gap-2 mb-2">
+  <h1 class="h3 mb-0">Component gallery</h1>
+  <span class="text-muted">shared <code>dashboards/fragments/</code> macros across theme &times; layout</span>
+</div>
+
+{# Axis switcher (no JS): each link flips one axis and carries the other, so the
+   six states compose. The navbar theme toggle (cookie-backed) also works. #}
+<div class="card mb-4">
+  <div class="card-body d-flex flex-wrap align-items-center gap-3 py-2">
+    <div>
+      <span class="text-muted me-2">Layout <span class="badge bg-secondary">{{ layout }}</span></span>
+      <div class="btn-group btn-group-sm" role="group" aria-label="Layout">
+        {% for opt in ['desktop', 'tablet', 'mobile'] %}
+        <a class="btn btn-outline-secondary{{ ' active' if layout == opt else '' }}"
+           href="{{ url_for('component_gallery.index', layout=opt, theme=theme) }}">{{ opt }}</a>
+        {% endfor %}
+      </div>
+    </div>
+    <div>
+      <span class="text-muted me-2">Theme <span class="badge bg-secondary">{{ theme }}</span></span>
+      <div class="btn-group btn-group-sm" role="group" aria-label="Theme">
+        {% for opt in ['light', 'dark'] %}
+        <a class="btn btn-outline-secondary{{ ' active' if theme == opt else '' }}"
+           href="{{ url_for('component_gallery.index', layout=layout, theme=opt) }}">{{ opt }}</a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<nav class="mb-4" aria-label="Sections">
+  {% for s in sections %}<a class="btn btn-sm btn-outline-primary mb-1" href="#{{ s.id }}">{{ s.title }}</a> {% endfor %}
+</nav>
+
+{# ── Badges & status ─────────────────────────────────────────────────── #}
+<section id="badges" class="mb-5">
+  <h2 class="h4 border-bottom pb-1 mb-3">Badges &amp; status</h2>
+  {% call specimen('badges.status_badge', 'full state vocabulary + an unknown fallback (hover for tooltips)') %}
+    <div class="d-flex flex-wrap gap-2">
+      {% for state in status_states %}{{ badges.status_badge(state) }}{% endfor %}
+    </div>
+  {% endcall %}
+</section>
+
+{# ── Help & disclosure ───────────────────────────────────────────────── #}
+<section id="help" class="mb-5">
+  <h2 class="h4 border-bottom pb-1 mb-3">Help &amp; disclosure</h2>
+  {% call specimen('help.help_icon / help.term', 'tooltip and click-popover variants') %}
+    <p class="mb-2">A metric label {{ help.help_icon('Core-hours charged over the selected window.') }}
+       and a rich one {{ help.help_icon('Click for details. Supports <em>simple</em> HTML.', rich=True, title='Charge factor') }}.</p>
+    <p class="mb-0">An inline {{ help.term('core-hour', 'One core running for one hour.') }} term with a dotted underline.</p>
+  {% endcall %}
+  {% call specimen('collapse.collapse_toggle', 'attributes-only toggle; the chevron rotates via CSS') %}
+    <button type="button" class="btn btn-outline-secondary btn-sm" {{ collapse.collapse_toggle('galleryCollapseDemo') }}>
+      <i class="fas fa-chevron-right small collapse-icon me-1"></i> Toggle details
+    </button>
+    <div id="galleryCollapseDemo" class="collapse mt-2">
+      <div class="card card-body">Revealed content.</div>
+    </div>
+  {% endcall %}
+</section>
+
+{# ── Modals & forms ──────────────────────────────────────────────────── #}
+<section id="modals" class="mb-5">
+  <h2 class="h4 border-bottom pb-1 mb-3">Modals &amp; forms</h2>
+  {% call specimen('modals.modal_scaffold', 'create + edit variants (hidden until opened; confirm_modal is the base singleton)') %}
+    {{ modals.modal_scaffold('galleryDemoModal', 'Demo modal', 'cube', 'galleryDemoBody', variant='create') }}
+    {{ modals.modal_scaffold('galleryDemoEditModal', 'Edit demo', 'edit', 'galleryDemoEditBody', variant='edit', size='lg') }}
+    <p class="text-muted mb-0">Two scaffolds rendered above (hidden). Openers appear in the
+       <a href="#openers">inert openers</a> section.</p>
+  {% endcall %}
+  {% call specimen('modal_form.htmx_form', 'the {% call %} wrapper around modal form fields') %}
+    {% call modal_form.htmx_form('#', '#galleryFormTarget', 'Save') %}
+      {{ ff.text_field('demo_name', 'Name', required=True) }}
+    {% endcall %}
+  {% endcall %}
+</section>
+
+{# ── Plugin states ───────────────────────────────────────────────────── #}
+<section id="plugin" class="mb-5">
+  <h2 class="h4 border-bottom pb-1 mb-3">Plugin states</h2>
+  {% call specimen('plugin_state.plugin_disabled / plugin_error / plugin_empty', 'degraded-state banners') %}
+    {{ plugin_state.plugin_disabled('Job history', 'hpc-usage-queries') }}
+    <div class="mt-2">{{ plugin_state.plugin_error('disk scans', 'connection refused') }}</div>
+    <div class="mt-2">{{ plugin_state.plugin_empty('No scans match the current filter.') }}</div>
+  {% endcall %}
+</section>
+
+{# ── Form fields ─────────────────────────────────────────────────────── #}
+<section id="form-fields" class="mb-5">
+  <h2 class="h4 border-bottom pb-1 mb-3">Form fields</h2>
+  {% call specimen('form_fields.*', 'the full field set; demo_bad shows the invalid state, plus form_errors_panel') %}
+    <div class="row">
+      <div class="col-md-6">
+        {{ ff.text_field('demo_text', 'Text', help='A short help line.') }}
+        {{ ff.text_field('demo_bad', 'Text (invalid)', required=True) }}
+        {{ ff.number_field('demo_number', 'Number', min=0, step=1, default='42') }}
+        {{ ff.date_field('demo_date', 'Date') }}
+        {{ ff.datetime_field('demo_datetime', 'Date &amp; time') }}
+        {{ ff.textarea_field('demo_textarea', 'Notes', rows=2) }}
+      </div>
+      <div class="col-md-6">
+        {{ ff.select_field('demo_type', 'Resource type', options=[('hpc', 'HPC'), ('dav', 'DAV')], placeholder='Choose…', default='dav') }}
+        {{ ff.multiselect_filter('Facilities', 'demo_facilities', facilities, selected=['WNA']) }}
+        {{ ff.checkbox_field('demo_check', 'Enable something', default=True) }}
+        {{ ff.readonly_display('Unix GID', '48123', strong=True) }}
+        {{ ff.fk_search_field('demo_user_id', 'Owner', '#', selected_label='Ada Lovelace', selected_id='1') }}
+      </div>
+    </div>
+    {{ ff.form_errors_panel() }}
+  {% endcall %}
+</section>
+
+{# ── Search & toggles ────────────────────────────────────────────────── #}
+<section id="search" class="mb-5">
+  <h2 class="h4 border-bottom pb-1 mb-3">Search &amp; toggles</h2>
+  {% call specimen('search_box.active_toggle_search', 'search-as-you-type + active-only switch') %}
+    {{ search_box.active_toggle_search('#', 'galSearchInput', 'galSearchResults', 'Find a user', 'galActiveOnly', 'Active only') }}
+  {% endcall %}
+  {% call specimen('theme_toggle.theme_toggle', 'icon-only and labelled') %}
+    <div class="d-flex align-items-center gap-3">
+      {{ theme_frag.theme_toggle(theme) }}
+      {{ theme_frag.theme_toggle(theme, labelled=True) }}
+    </div>
+  {% endcall %}
+</section>
+
+{# ── Tables & pagination ─────────────────────────────────────────────── #}
+<section id="tables" class="mb-5">
+  <h2 class="h4 border-bottom pb-1 mb-3">Tables &amp; pagination</h2>
+  {% call specimen('sort_link.sort_link / sort_header', 'sortable column headers (read sort context)') %}
+    <table class="table table-sm mb-0">
+      <thead><tr>
+        <th>{{ sortlink.sort_link('name', 'Name') }}</th>
+        <th>{{ sortlink.sort_link('created', 'Created') }}</th>
+        <th>{{ sortlink.sort_header('size', 'Size (form-state)') }}</th>
+      </tr></thead>
+    </table>
+  {% endcall %}
+  {% call specimen('user_rows.render_user_rows', 'non-linking mode (can_view_users=False)') %}
+    <table class="table table-sm mb-0">
+      <thead>{{ user_rows.user_table_head() }}</thead>
+      <tbody>{{ user_rows.render_user_rows(sample_users, can_view_users=False) }}</tbody>
+    </table>
+  {% endcall %}
+  {% call specimen('pagination.pagination', 'windowed page nav') %}
+    {{ pagination.pagination(pagination_page, pagination_total, fragment_url, target_id, form_id, sort) }}
+  {% endcall %}
+</section>
+
+{# ── Facets & pills ──────────────────────────────────────────────────── #}
+<section id="facets" class="mb-5">
+  <h2 class="h4 border-bottom pb-1 mb-3">Facets &amp; pills</h2>
+  {% call specimen('facet_chips.facet_row', 'plain and badge=True variants') %}
+    <div class="facet-grid">{{ facet_chips.facet_row('Status', facet_values, form_id, 'status', active=['received']) }}</div>
+    <div class="facet-grid mt-2">{{ facet_chips.facet_row('Status', facet_values, form_id, 'status', active=['received'], badge=True) }}</div>
+  {% endcall %}
+  {% call specimen('window_pills.window_pills', 'lookback pills + custom range') %}
+    {{ window_pills.window_pills(form_id, pill_windows, 30) }}
+  {% endcall %}
+</section>
+
+{# ── Range & date pickers ────────────────────────────────────────────── #}
+<section id="ranges" class="mb-5">
+  <h2 class="h4 border-bottom pb-1 mb-3">Range &amp; date pickers</h2>
+  {% call specimen('date_range_picker.date_range_picker', 'standalone card (drp_pills + drp_custom)') %}
+    {{ drp.date_range_picker('#', '2026-08-01', '2026-08-24') }}
+  {% endcall %}
+  {% call specimen('time_range_picker.time_range_picker', 'sub-day to multi-day presets') %}
+    {{ trp.time_range_picker('#', 24, trp_start, trp_end) }}
+  {% endcall %}
+  {% call specimen('ladder_range.ladder_range', 'layout-aware: slider (desktop/tablet) vs two selects (mobile)') %}
+    {{ ladder.ladder_range('galleryLadderForm', node_bands, node_fields, label='Node count', span=(1, 2), layout=layout) }}
+  {% endcall %}
+  {% call specimen('age_band_range.age_band_range', 'layout-aware crossed-thumb date ladder') %}
+    {{ ageband.age_band_range('galleryAgeForm', age_bands, 'start_date', 'end_date', span=(0, 1), layout=layout) }}
+  {% endcall %}
+</section>
+
+{# ── Filter panels (layout-aware) ────────────────────────────────────── #}
+<section id="filters" class="mb-5">
+  <h2 class="h4 border-bottom pb-1 mb-3">Filter panels (layout-aware)</h2>
+  {% call specimen('filter_panel.filter_panel_shell', 'the {% call %} panel chrome') %}
+    <div class="filter-sidebar">
+    {% call filter_panel.filter_panel_shell('galleryFilterForm', '#', 'galleryFilterTarget') %}
+      <div class="d-flex flex-wrap align-items-end gap-3">
+        {{ ff.text_field('demo_q', 'Query') }}
+        <button type="submit" class="btn btn-outline-white align-self-end">Search</button>
+      </div>
+    {% endcall %}
+    </div>
+  {% endcall %}
+  {% call specimen('audit_filters.audit_filters', 'audit-table filter bar') %}
+    <div class="filter-sidebar">
+    {{ audit.audit_filters('galleryAuditForm', '#', 'galleryAuditTarget',
+                           age_bands=age_bands, age_band_span=(0, 1), layout=layout,
+                           all_resources=audit_resources, allowed_facilities=facilities) }}
+    </div>
+  {% endcall %}
+  {% call specimen('xras_filters.xras_filters', 'XRAS action-log filter bar') %}
+    <div class="filter-sidebar">
+    {{ xrasf.xras_filters('galleryXrasForm', '#', 'galleryXrasTarget',
+                          age_bands=age_bands, age_band_span=(0, 1), layout=layout,
+                          all_statuses=xras_statuses, all_action_types=xras_action_types,
+                          request_example='NCAR0001') }}
+    </div>
+  {% endcall %}
+</section>
+
+{# ── People & contracts ──────────────────────────────────────────────── #}
+<section id="people" class="mb-5">
+  <h2 class="h4 border-bottom pb-1 mb-3">People &amp; contracts</h2>
+  {% call specimen('xras_person_detail.person_detail', 'every declared PERSON_FIELDS value') %}
+    {{ xperson.person_detail(person) }}
+  {% endcall %}
+  {% call specimen('contract_bits.contract_status_badge', 'active / not-started / expired') %}
+    <div class="d-flex flex-wrap gap-3">
+      {% for c in contracts %}<span>{{ c.label }}: {{ contract_bits.contract_status_badge(c, show_active=True) }}</span>{% endfor %}
+    </div>
+  {% endcall %}
+</section>
+
+{# ── Inert modal openers ─────────────────────────────────────────────── #}
+<section id="openers" class="mb-5">
+  <h2 class="h4 border-bottom pb-1 mb-3">Inert modal openers</h2>
+  <p class="text-muted">These macros emit modal/detail openers wired to a host-page shell.
+     Imported (not included) here, so they render but their targets resolve to nothing —
+     the openers are visual-only in the gallery.</p>
+  {% call specimen('action_buttons.edit_modal_button / delete_row_button', 'row action buttons') %}
+    <div class="d-flex gap-2">
+      {{ action_buttons.edit_modal_button('#', 'galleryDemoEditModal', 'galleryDemoEditBody', title='Edit') }}
+      {{ action_buttons.delete_row_button('#', 'Deactivate this demo row?', title='Delete') }}
+    </div>
+  {% endcall %}
+  {% call specimen('contract_bits.contract_user_link / nsf_program_link', 'entity links (open the shared detail modals)') %}
+    <p class="mb-1">User (card): {{ contract_bits.contract_user_link(link_user, True) }}</p>
+    <p class="mb-1">User (compact): {{ contract_bits.contract_user_link(link_user, True, compact=True) }}</p>
+    <p class="mb-0">NSF program: {{ contract_bits.nsf_program_link(nsf_program) }}</p>
+  {% endcall %}
+  {% call specimen('user_rows.render_user_rows', 'linking mode (can_view_users=True)') %}
+    <table class="table table-sm mb-0">
+      <thead>{{ user_rows.user_table_head() }}</thead>
+      <tbody>{{ user_rows.render_user_rows(sample_users, can_view_users=True) }}</tbody>
+    </table>
+  {% endcall %}
+</section>
+
+{# ── Note-and-skip ───────────────────────────────────────────────────── #}
+<section id="skipped" class="mb-5">
+  <h2 class="h4 border-bottom pb-1 mb-3">Needs live context (note-and-skip)</h2>
+  <div class="card"><div class="card-body">
+    <p class="mb-1 text-muted">These need live nav-registry, tab, or DB context that a static
+       gallery cannot supply, so they are documented rather than rendered:</p>
+    <ul class="mb-0">
+      <li><code>breadcrumbs.breadcrumbs</code> — needs <code>request.endpoint</code> + <code>nav_locate()</code> (rendered in the page header).</li>
+      <li><code>page_tabs.page_tabs</code> — needs a tab registry with <code>url_for(tab.endpoint)</code>.</li>
+      <li><code>mobile_nav</code> / <code>group_members_fragment</code> — include-only partials with their own live context.</li>
+    </ul>
+  </div></div>
+</section>
+{% endblock %}
