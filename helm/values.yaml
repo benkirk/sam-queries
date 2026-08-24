@@ -206,10 +206,10 @@ webapp:
     # XRAS handoff mails ONLY (sam.queries.xras_notices). Comma lists for
     # CC/BCC; empty means off. A From override must stay a ucar.edu address
     # for the SPF note above to hold.
-    NOTIFY_XRAS_CC: ""
+    NOTIFY_XRAS_CC: "alloc@ucar.edu"
     NOTIFY_XRAS_BCC: ""
     NOTIFY_XRAS_FROM: ""
-    NOTIFY_XRAS_REPLY_TO: ""
+    NOTIFY_XRAS_REPLY_TO: "alloc@ucar.edu"
     # WARNING: EXPLICIT, not inherited. NOTIFY_ENABLED is fail-closed everywhere
     #     (sam.notify.NotifyConfig defaults it false) precisely so a dev
     #     container cannot mail real users. Production is the one place that
