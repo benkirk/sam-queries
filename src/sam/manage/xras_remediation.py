@@ -216,8 +216,6 @@ def recheck_readiness(request_number: str, *, session, reader=None) -> dict:
     ``available`` is False when the read client is unavailable, so the route can
     degrade with a 200. Never raises.
     """
-    from datetime import datetime
-
     from sam.integration.xras import XrasActionLog
     from sam.integration.xras_api.cache import patch_requests_index
     from sam.integration.xras_api.client import XrasApiClient
@@ -225,7 +223,7 @@ def recheck_readiness(request_number: str, *, session, reader=None) -> dict:
     from sam.xras.preflight import (iter_candidate_actions, preflight_action,
                                     verdict_to_dict)
 
-    counts = {'rechecked': 0, 'failed': 0, 'manual': 0, 'unchecked': 0}
+    counts = {'rechecked': 0, 'failed': 0, 'manual': 0, 'incomplete': 0}
     try:
         reader = reader or XrasApiClient.from_environment()
         payload = reader.get_request_by_number(request_number)
@@ -233,7 +231,9 @@ def recheck_readiness(request_number: str, *, session, reader=None) -> dict:
         logger.warning('xras recheck: could not read %s (%s)', request_number, exc)
         return {'available': False, 'patched': False, 'counts': counts}
 
-    if payload is None:
+    if payload is None or payload.get('isDeleted'):
+        # Gone, or deleted since the sweep — drop the row rather than leave a
+        # "not checked" a re-check can never resolve.
         patch_requests_index(request_number, None)
         return {'available': True, 'patched': True, 'counts': counts}
 
@@ -263,15 +263,18 @@ def recheck_readiness(request_number: str, *, session, reader=None) -> dict:
                                        opportunities=opportunities, enabled=None,
                                        log_seen=log_seen)
         except Exception as exc:                        # noqa: BLE001
-            counts['unchecked'] += 1
+            counts['incomplete'] += 1
             logger.warning('xras recheck: preflight raised (%s)', exc)
             continue
         counts[verdict.status] = counts.get(verdict.status, 0) + 1
         if verdict.action_id is not None:
             verdicts[verdict.action_id] = verdict_to_dict(verdict)
 
+    # No `refreshed_at`: a re-check writes nothing to XRAS or SAM, so the "updated
+    # since the sweep" marker (which reads "after your change") would lie. The
+    # freshly flipped verdict badge and the toast already report the outcome.
     entry = request_index_entry(payload, pending_push=_still_pending(request_number),
-                                refreshed_at=datetime.now(), preflights=verdicts)
+                                preflights=verdicts)
     patched = bool(entry) and patch_requests_index(request_number, entry)
     return {'available': True, 'patched': patched, 'counts': counts}
 

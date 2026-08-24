@@ -283,6 +283,43 @@ def _render_detail(request_number, *, flash=None, flash_error=None):
 
 
 # ---------------------------------------------------------------------------
+# focused push-readiness modal — the verdict badge's own evidence view
+# ---------------------------------------------------------------------------
+
+_READINESS_FORM = 'dashboards/allocations/partials/xras_readiness_modal.html'
+
+
+def _readiness_context(request_number):
+    """The focused readiness modal's context, or ``None`` if the sweep holds no
+    such entry. Snapshot-only — the verdicts are already swept, so no live XRAS
+    read; a committed-rows lookup adds the calibration outcome where one exists."""
+    entry = _entry(request_number)
+    if entry is None:
+        return None
+    actions = [a for a in (entry.get('actions') or []) if a.get('preflight')]
+    actuals = _actual_log_outcomes(a.get('action_id') for a in actions)
+    for action in actions:
+        action['actual'] = actuals.get(action.get('action_id'))
+    return {'request_number': request_number, 'actions': actions,
+            'rollup': entry.get('preflight_rollup')}
+
+
+@bp.route('/xras_readiness_detail/<path:request_number>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_readiness_detail(request_number: str):
+    """Modal body: the push-readiness evidence behind a request's verdict badge.
+
+    Snapshot-only, so unlike the sibling detail modals it never needs a live XRAS
+    read — it degrades to not-found only when the sweep has no such entry.
+    """
+    context = _readiness_context(request_number)
+    if context is None:
+        return htmx_modal_not_found('Request')
+    return render_template(_READINESS_FORM, **context)
+
+
+# ---------------------------------------------------------------------------
 # read-only XRAS user detail — the analogue of the request detail modal
 # ---------------------------------------------------------------------------
 

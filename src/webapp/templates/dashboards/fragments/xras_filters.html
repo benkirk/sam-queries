@@ -56,6 +56,10 @@
                       all_action_types=[], selected_action_types=[],
                       request_example='') %}
 {% call filter_panel_shell(form_id, fragment_url, target_id) %}
+    {# Sort is form state (set-sort-submit writes these), so a column sort survives
+       every facet/window change instead of resetting on the next chip click. #}
+    <input type="hidden" name="sort_by" value="">
+    <input type="hidden" name="sort_dir" value="">
     {# align-items-end — see audit_filters.html. #}
     <div class="d-flex flex-wrap align-items-end gap-3">
 

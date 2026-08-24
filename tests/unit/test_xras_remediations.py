@@ -207,6 +207,7 @@ class TestAccessControl:
         '/allocations/xras_withdraw_form/EXAM0001/7',
         '/allocations/xras_resubmit_form/EXAM0001/7',
         '/allocations/xras_request_detail/EXAM0001',
+        '/allocations/xras_readiness_detail/EXAM0001',
         '/allocations/xras_user_detail/janebaldwin',
         '/allocations/xras_opportunity_detail/532220',
         '/allocations/xras_resource_form/EXAM0001/7/530201',
@@ -230,6 +231,7 @@ class TestAccessControl:
         '/allocations/xras_attributes_edit/EXAM0001',
         '/allocations/xras_action_fields_edit/EXAM0001/7',
         '/allocations/xras_recheck_request/EXAM0001',
+        '/allocations/xras_recheck_visible',
     ])
     def test_every_write_is_gated(self, view_only_client, path):
         assert view_only_client.post(path).status_code == 403
@@ -259,7 +261,9 @@ class TestRecheckNow:
         assert 'refreshXrasTab' in resp.headers.get('HX-Trigger', '')
         entry = next(r for r in xras_cache.load_requests_index()['rows']
                      if r['request_number'] == 'EXAM0001')
-        assert entry['refreshed_at'] is not None
+        # A re-check writes nothing, so it must NOT stamp the "updated since the
+        # sweep" marker — the flipped verdict is the only tell.
+        assert entry['refreshed_at'] is None
         assert entry['actions'][0]['preflight'] is not None
 
     def test_it_degrades_200_when_xras_is_unreachable(self, auth_client,
@@ -290,6 +294,182 @@ class TestRecheckNow:
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'SAM pre-flight' in body
         assert 'PI ghost is not in database' in body
+
+
+def _publish_one_verdict(status, *, messages=(), service='supplement'):
+    """Publish EXAM0001 carrying a single-action verdict of the given status."""
+    payload = _detail_payload('EXAM0001')
+    verdict = {'status': status, 'would_succeed': status == 'rechecked',
+               'messages': list(messages), 'gaps': [], 'service': service,
+               'stage': 'Approved', 'action_status': 'Approved',
+               'request_status': 'Approved', 'push_state': 'pending',
+               'push_detail': None, 'resolved': None,
+               'checked_at': '2026-08-23T09:00:00'}
+    xras_cache.store_requests_index({
+        'generated_at': datetime.now(), 'statuses': ['Approved'],
+        'extra_statuses': {},
+        'rows': [request_index_entry(payload, pending_push=True,
+                                     preflights={7: verdict})]})
+
+
+class TestReadinessModal:
+    """The focused push-readiness modal a verdict badge opens — snapshot-only."""
+
+    def test_it_renders_the_reasons_without_a_live_read(self, auth_client):
+        # No _reader() is scripted: the modal reads the swept verdict straight
+        # from the snapshot, so it needs no live XRAS call to explain a badge.
+        _publish_one_verdict('failed', messages=['PI ghost is not in database'])
+        body = auth_client.get(
+            '/allocations/xras_readiness_detail/EXAM0001').get_data(as_text=True)
+        assert 'SAM pre-flight' in body
+        assert 'PI ghost is not in database' in body
+        assert 'checked as' in body and 'supplement' in body
+
+    def test_an_unswept_request_is_not_found(self, auth_client):
+        xras_cache.store_requests_index({
+            'generated_at': datetime.now(), 'statuses': [], 'extra_statuses': {},
+            'rows': []})
+        resp = auth_client.get('/allocations/xras_readiness_detail/NOPE0001')
+        # 200, not 4xx: htmx will not swap a 4xx into an already-open modal.
+        assert resp.status_code == 200
+        assert 'SAM pre-flight' not in resp.get_data(as_text=True)
+
+
+class TestReadinessBadgeWiring:
+    """Card badges: a verdict opens the modal, incomplete is passive, a not-checked
+    row posts a recheck."""
+
+    def test_a_verdict_badge_links_to_the_readiness_modal(self, auth_client,
+                                                          configured):
+        _publish_one_verdict('failed', messages=['x'])
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'xras_readiness_detail/EXAM0001' in body
+        assert 'would fail' in body
+
+    def test_an_incomplete_badge_is_passive(self, auth_client, configured):
+        _publish_one_verdict('incomplete')
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert '>incomplete</span>' in body
+        # No re-check (it can't resolve it) and no modal link.
+        assert 'xras_recheck_request/EXAM0001' not in body
+        assert 'xras_readiness_detail/EXAM0001' not in body
+
+    def test_a_not_checked_row_posts_the_inline_recheck(self, auth_client,
+                                                        configured):
+        # No preflight at all -> rollup None -> the checkable "not checked" state.
+        _publish(_payload('EXAM0001'))
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'not checked' in body
+        assert 'xras_recheck_request/EXAM0001' in body
+
+
+class TestActionsColumnAndFacet:
+    """The Type column (#2, between Request and Status) and its facet chip."""
+
+    def _publish_types(self, *types):
+        payloads = []
+        for i, kind in enumerate(types):
+            p = _payload('EXAM%04d' % i)
+            p['actions'][0]['actionType'] = kind
+            payloads.append(p)
+        _publish(*payloads)
+
+    def test_the_column_renders_the_type(self, auth_client, configured):
+        self._publish_types('New')
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert '>Type<' in body                # the header
+        assert 'New' in body                   # the row badge
+
+    def test_the_facet_narrows_to_the_chosen_type(self, auth_client, configured):
+        self._publish_types('New', 'Supplement')
+        body = auth_client.get(
+            FRAGMENT + '?action_type=New').get_data(as_text=True)
+        assert 'EXAM0000' in body             # the New request survives
+        assert 'EXAM0001' not in body         # the Supplement request is filtered
+
+    def test_it_shows_only_the_latest_action_type(self, auth_client, configured):
+        # A request with an old New and an in-flight Extension shows Extension —
+        # what admin names it — not the whole history.
+        p = _payload('EXAM0009')
+        p['actions'] = [
+            {'actionId': 1, 'actionType': 'Supplement', 'actionStatus': 'Approved'},
+            {'actionId': 2, 'actionType': 'Extension', 'actionStatus': 'Submitted'}]
+        _publish(p)
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'Extension' in body
+        assert 'Supplement' not in body       # neither the cell nor the facet
+
+
+class TestSortableColumns:
+    """Non-facet headers sort rows within each opportunity group, as form state."""
+
+    def test_a_header_sorts_within_the_group_both_ways(self, auth_client, configured):
+        # All three share the default opportunity -> one group.
+        _publish(_payload('EXAM0003'), _payload('EXAM0001'), _payload('EXAM0002'))
+        asc = auth_client.get(
+            FRAGMENT + '?sort_by=request&sort_dir=asc').get_data(as_text=True)
+        desc = auth_client.get(
+            FRAGMENT + '?sort_by=request&sort_dir=desc').get_data(as_text=True)
+        assert asc.index('EXAM0001') < asc.index('EXAM0003')
+        assert desc.index('EXAM0003') < desc.index('EXAM0001')
+
+    def test_headers_are_form_based_so_sort_survives_facet_clicks(self, auth_client,
+                                                                  configured):
+        _publish(_payload())
+        body = auth_client.get(
+            FRAGMENT + '?sort_by=request&sort_dir=asc').get_data(as_text=True)
+        assert 'set-sort-submit' in body            # writes the form, not a URL
+        assert 'data-sort-by="request"' in body
+
+    def test_an_unknown_sort_column_is_ignored(self, auth_client, configured):
+        _publish(_payload('EXAM0001'))
+        assert auth_client.get(
+            FRAGMENT + '?sort_by=bogus&sort_dir=asc').status_code == 200
+
+
+class TestCheckAll:
+    """The header 'Check all' batch re-check over the not-checked rows in view."""
+
+    def test_it_rechecks_the_not_checked_rows(self, auth_client, configured,
+                                              monkeypatch):
+        _publish(_payload('EXAM0001'))        # no preflight -> rollup None
+        _reader(monkeypatch, payload=_detail_payload('EXAM0001'))
+        resp = auth_client.post('/allocations/xras_recheck_visible')
+        assert resp.status_code == 200
+        assert 'refreshXrasTab' in resp.headers.get('HX-Trigger', '')
+        assert 'Checked 1 request' in resp.get_data(as_text=True)
+
+    def test_nothing_to_check_when_all_are_verdicts(self, auth_client, configured):
+        _publish_one_verdict('failed', messages=['x'])   # a real verdict, not None
+        resp = auth_client.post('/allocations/xras_recheck_visible')
+        assert resp.status_code == 200
+        assert 'Nothing to check' in resp.get_data(as_text=True)
+
+    def test_it_degrades_200_when_xras_is_unreachable(self, auth_client, configured,
+                                                      monkeypatch):
+        _publish(_payload('EXAM0001'))
+        client = _reader(monkeypatch)
+        client.get_request_by_number.side_effect = XrasSourceUnavailable('down')
+        resp = auth_client.post('/allocations/xras_recheck_visible')
+        assert resp.status_code == 200
+        assert 'could not be reached' in resp.get_data(as_text=True)
+
+    def test_it_honors_a_wide_window_passed_in_the_post_body(
+            self, auth_client, configured, monkeypatch):
+        # The row is out of the DEFAULT window but in a wide one. The card sends
+        # the window in the POST BODY (hx-include), so the route must read
+        # request.values, not request.args — else it silently reports "nothing to
+        # check" over a wide-filter view full of not-checked rows.
+        _publish(_payload('EXAM0001', submit_date='2015-01-01T00:00:00Z'))
+        _reader(monkeypatch, payload=_detail_payload('EXAM0001'))
+        # default window sees nothing
+        assert 'Nothing to check' in auth_client.post(
+            '/allocations/xras_recheck_visible').get_data(as_text=True)
+        # a wide window in the body picks it up
+        resp = auth_client.post(
+            '/allocations/xras_recheck_visible',
+            data={'start_date': '2000-01-01', 'end_date': '2030-01-01'})
+        assert 'Checked 1 request' in resp.get_data(as_text=True)
 
 
 class TestMnemonicUnblockStrip:
@@ -380,7 +560,8 @@ class TestFacetParity:
     def test_every_facet_field_has_a_hidden_control(self, auth_client):
         body = auth_client.get('/allocations/xras').get_data(as_text=True)
         form = body.split('id="xras-remediation-filters"')[1].split('</form>')[0]
-        for field in ('status', 'opportunity', 'push', 'request_number'):
+        for field in ('status', 'action_type', 'opportunity', 'push',
+                      'readiness', 'request_number'):
             assert f'name="{field}"' in form, \
                 f'{field} chips would be silently inert'
 
@@ -525,20 +706,17 @@ class TestRendering:
             FRAGMENT + '?status=Submitted').get_data(as_text=True)
         assert 'EXAM0002' in body and 'EXAM0001' not in body
 
-    def test_the_action_count_is_shown_only_when_it_is_not_one(
+    def test_the_type_column_shows_the_in_flight_action_not_a_count(
             self, auth_client, armed):
-        """Every row on this card says "1 action". A column of that is noise;
-        the case a withdraw has to reason about is the one that is not 1."""
-        _publish(_payload())
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
-        assert '1 action' not in body
-
+        """The card shows the request's current action type, not how many actions
+        it has — multiplicity now lives in the request modal."""
         payload = _payload()
         payload['actions'].append({'actionId': 8, 'actionType': 'Extension',
                                    'actionStatus': 'Approved'})
         _publish(payload)
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
-        assert '2 actions' in body
+        assert 'Extension' in body          # the latest (highest-id) action type
+        assert '2 actions' not in body      # the old count note is gone
 
     def test_the_project_admin_column_shows_the_allocation_manager(
             self, auth_client, armed):

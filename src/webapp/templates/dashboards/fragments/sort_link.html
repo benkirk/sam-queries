@@ -10,6 +10,32 @@
   jobs and disk-scans tables have their own variants with different
   parameter semantics — do not fold those in here.
 #}
+{#
+  Form-state variant: sort lives in the filter form's hidden `sort_by`/`sort_dir`
+  inputs (set via the set-sort-submit action), so it survives every facet/window
+  change — not just a sort click. Same context as sort_link plus a `form_id` that
+  carries those two hidden inputs. Use this where the table also has facet chips.
+#}
+{% macro sort_header(col, label, align='') %}
+{% if col in sortable_columns %}
+    {% set is_active = (sort['sort_by'] == col) %}
+    {% set next_dir = 'asc' if (is_active and sort['sort_dir'] == 'desc') else 'desc' %}
+    <a class="text-decoration-none {{ align }}" href="#"
+       data-action="set-sort-submit" data-form-id="{{ form_id }}"
+       data-sort-by="{{ col }}" data-sort-dir="{{ next_dir }}">
+        {{ label }}
+        {% if is_active %}
+            <i class="fas fa-caret-{{ 'up' if sort['sort_dir'] == 'asc' else 'down' }} ms-1"></i>
+        {% else %}
+            <i class="fas fa-sort text-muted small ms-1"></i>
+        {% endif %}
+    </a>
+{% else %}
+    {{ label }}
+{% endif %}
+{% endmacro %}
+
+
 {% macro sort_link(col, label, align='') %}
 {% if col in sortable_columns %}
     {% set is_active = (sort['sort_by'] == col) %}

@@ -11,7 +11,9 @@ import pytest
 
 from sam.queries.xras_requests import (
     DRAFT_ACTION_STATUS,
+    _preflight_rollup,
     actions_from_payload,
+    latest_action_type,
     person_roles_from_payload,
     request_index_entry,
     resolve_pi,
@@ -234,6 +236,70 @@ class TestTheEntry:
 
     def test_refreshed_at_defaults_absent_so_the_tell_means_something(self):
         assert request_index_entry(_payload())['refreshed_at'] is None
+
+    def test_activity_date_uses_the_latest_action_not_the_request(self):
+        from datetime import date
+        p = _payload(submitDate='2022-06-16T00:00:00Z')
+        p['actions'] = [
+            {'actionId': 1, 'actionType': 'New', 'actionStatus': 'Approved',
+             'entryDate': '2022-06-16'},
+            {'actionId': 2, 'actionType': 'Extension', 'actionStatus': 'Submitted',
+             'entryDate': '2026-08-21'}]      # submitDate null, entryDate recent
+        e = request_index_entry(p)
+        assert e['activity_date'] == date(2026, 8, 21)   # the recent Extension
+        assert e['submit_date'] == date(2022, 6, 16)     # request date unchanged
+
+
+def _verdict(status, *, push_state='pending'):
+    return {'status': status, 'push_state': push_state}
+
+
+class TestPreflightRollup:
+    """The worst PENDING verdict — applied actions must not poison the badge."""
+
+    def test_it_is_none_when_nothing_is_checked(self):
+        assert _preflight_rollup(None) is None
+        assert _preflight_rollup({}) is None
+
+    def test_worst_wins_among_pending(self):
+        assert _preflight_rollup({1: _verdict('rechecked'),
+                                  2: _verdict('failed')}) == 'failed'
+
+    def test_it_ignores_already_applied_actions(self):
+        # An old applied action that no longer validates must not poison a
+        # request whose next push is fine.
+        rollup = _preflight_rollup({1: _verdict('failed', push_state='applied_inferred'),
+                                    2: _verdict('rechecked', push_state='unknown')})
+        assert rollup == 'rechecked'
+
+    def test_all_applied_falls_back_to_their_verdict_not_none(self):
+        # Nothing pending, but the request has a known state — show it, not a
+        # false "not checked" that invites a no-op re-check.
+        assert _preflight_rollup({1: _verdict('rechecked',
+                                              push_state='seen_in_log')}) == 'rechecked'
+
+    def test_it_is_none_when_nothing_was_checked_at_all(self):
+        assert _preflight_rollup({1: None}) is None
+
+
+class TestLatestActionType:
+    """The Type column's in-flight pick — what admin.xras.org names it."""
+
+    def test_the_in_flight_action_wins_over_an_older_applied_one(self):
+        actions = [{'action_id': 1, 'action_type': 'New', 'action_status': 'Approved'},
+                   {'action_id': 2, 'action_type': 'Extension',
+                    'action_status': 'Submitted'}]
+        assert latest_action_type(actions) == 'Extension'
+
+    def test_it_falls_back_to_the_newest_when_none_are_in_flight(self):
+        actions = [{'action_id': 1, 'action_type': 'New', 'action_status': 'Approved'},
+                   {'action_id': 5, 'action_type': 'Supplement',
+                    'action_status': 'Approved'}]
+        assert latest_action_type(actions) == 'Supplement'
+
+    def test_it_is_none_when_no_action_carries_a_type(self):
+        assert latest_action_type([]) is None
+        assert latest_action_type([{'action_id': 1, 'action_status': 'Approved'}]) is None
 
 
 class TestAMalformedActionCostsItsRowNotTheCard:

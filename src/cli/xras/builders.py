@@ -239,7 +239,7 @@ def _account_row(row) -> dict:
 
 
 #: Verdict order for the readiness board — most urgent first.
-_READINESS_RANK = {'failed': 0, 'manual': 1, 'unchecked': 2, 'rechecked': 3,
+_READINESS_RANK = {'failed': 0, 'manual': 1, 'incomplete': 2, 'rechecked': 3,
                    None: 4}
 
 

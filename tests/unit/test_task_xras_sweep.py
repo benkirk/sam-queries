@@ -86,7 +86,7 @@ class _StubClient:
         self.open_opportunities = list(open_opportunities)
         #: The `/v1/resources` catalog the preflight joins resourceId ->
         #: resourceRepositoryKey against. Empty by default: an action's resource
-        #: then reads as unmapped and its verdict is `unchecked`, which is the
+        #: then reads as unmapped and its verdict is `incomplete`, which is the
         #: honest answer for a test that scripts no catalog.
         self.resources = list(resources)
         #: Per-status pages for the Remediations index passes. Empty by
@@ -1230,7 +1230,7 @@ class TestPreflightInTheSweep:
         detail = mod.xras_sweep(ctx()).detail
         assert detail['preflight']['candidates'] == 0
         assert set(detail['preflight']) >= {'candidates', 'rechecked', 'failed',
-                                            'manual', 'unchecked', 'by_stage',
+                                            'manual', 'incomplete', 'by_stage',
                                             'by_push_state', 'window_days'}
 
     def test_an_already_pushed_request_with_a_candidate_action_is_kept(
@@ -1267,7 +1267,7 @@ class TestPreflightInTheSweep:
         monkeypatch.setattr('sam.xras.preflight.preflight_action', boom)
         wire([[_pending_request(1, 'NCAR0001', actions=((7, 'Approved'),))]])
         detail = mod.xras_sweep(ctx()).detail                 # does not raise
-        assert detail['preflight']['unchecked'] == 1
+        assert detail['preflight']['incomplete'] == 1
         # The row still publishes, just without a verdict.
         assert load_requests_index()['rows'][0]['actions'][0]['preflight'] is None
 
@@ -1298,7 +1298,7 @@ class TestCalibration:
 
     def test_unchecked_and_non_terminal_make_no_comparison(self):
         cal = {'compared': 0, 'agree': 0, 'sample': []}
-        mod._calibrate(cal, self._verdict('unchecked'), {'status': 'failed'})
+        mod._calibrate(cal, self._verdict('incomplete'), {'status': 'failed'})
         mod._calibrate(cal, self._verdict('failed'), {'status': 'received'})
         mod._calibrate(cal, self._verdict('failed'), None)
         assert cal['compared'] == 0

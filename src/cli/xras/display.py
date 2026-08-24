@@ -45,7 +45,7 @@ def _timestamp(value) -> str:
 
 _READINESS_STYLE = {'failed': '[red]would fail[/red]',
                     'manual': '[yellow]would park[/yellow]',
-                    'unchecked': '[dim]unchecked[/dim]',
+                    'incomplete': '[dim]incomplete[/dim]',
                     'rechecked': '[green]would land[/green]',
                     None: '[dim]—[/dim]'}
 

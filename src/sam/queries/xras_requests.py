@@ -161,6 +161,11 @@ def actions_from_payload(payload: Dict[str, Any],
             'action_type': _text(action.get('actionType')),
             'action_status': status,
             'submit_date': _as_date(action.get('submitDate')),
+            # The recency signal: an Extension's own submitDate is often null, so
+            # the entry stamps when it arrived. This is what a date filter must
+            # window on — a 2022 request with an Extension entered 2 days ago is
+            # recent activity, like admin's "Recent Submissions" shows it.
+            'entry_date': _as_date(action.get('entryDate')),
             # Snapshot-derived *offers*, not permissions. The modal's live read
             # is the authority on legality; these only decide which button to
             # draw, and drawing one that XRAS then refuses is a 4xx the modal
@@ -175,18 +180,44 @@ def actions_from_payload(payload: Dict[str, Any],
 
 #: Roll-up precedence, worst first — the badge shows the most urgent verdict on
 #: any of a request's candidate actions.
-_ROLLUP_ORDER = ('failed', 'manual', 'unchecked', 'rechecked')
+_ROLLUP_ORDER = ('failed', 'manual', 'incomplete', 'rechecked')
 
 
 def _preflight_rollup(preflights: Optional[Mapping[Any, dict]]) -> Optional[str]:
-    """The worst verdict across a request's actions, or ``None`` if none checked."""
-    if not preflights:
+    """The worst verdict across a request's actions, preferring the PENDING ones.
+
+    The badge answers "what would the NEXT push do", so an old applied action
+    (``seen_in_log`` / ``applied_inferred``) that no longer validates must not
+    poison a request whose pending push is fine. But when EVERY action is already
+    applied there is no pending push to describe — fall back to those verdicts so
+    the row shows its known state, not a false "not checked". ``None`` only when
+    nothing was checked at all (out of the sweep window).
+    """
+    verdicts = [v for v in (preflights or {}).values() if v]
+    if not verdicts:
         return None
-    statuses = {v.get('status') for v in preflights.values() if v}
+    pending = [v for v in verdicts
+               if v.get('push_state') not in ('seen_in_log', 'applied_inferred')]
+    statuses = {v.get('status') for v in (pending or verdicts)}
     for status in _ROLLUP_ORDER:
         if status in statuses:
             return status
     return None
+
+
+def latest_action_type(actions) -> Optional[str]:
+    """The request's in-flight action type — what admin.xras.org names it.
+
+    The action still in flight (Submitted / Under Review) if any, else the newest
+    by ``action_id``. ``None`` only when no action carries a type.
+    """
+    typed = [a for a in (actions or []) if a.get('action_type')]
+    if not typed:
+        return None
+    in_flight = [a for a in typed
+                 if a.get('action_status') in ('Submitted', 'Under Review')]
+    latest = max(in_flight or typed, key=lambda a: a.get('action_id') or 0)
+    return latest.get('action_type')
 
 
 def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
@@ -225,12 +256,22 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
         return None
 
     roster = roster_from_payload(payload)
+    actions = actions_from_payload(payload, preflights)
+    # Most-recent activity across the request's actions — what a date filter must
+    # window on. Falls back to the request's own submitDate for a request whose
+    # actions carry no date.
+    _adates = [d for a in actions
+               for d in (a.get('entry_date') or a.get('submit_date'),) if d]
+    activity_date = max(_adates) if _adates else _as_date(payload.get('submitDate'))
     return {
         'request_number': number,
         'request_id': request_id,
         'status': _text(payload.get('requestStatus')),
         'request_type': _text(payload.get('requestType')),
         'submit_date': _as_date(payload.get('submitDate')),
+        # The date the operator cares about: when the current handoff was
+        # submitted, not when the request was first created years ago.
+        'activity_date': activity_date,
         'begin_date': _as_date(payload.get('beginDate')),
         'end_date': _as_date(payload.get('endDate')),
         'pending_push': bool(pending_push),
@@ -249,9 +290,12 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
                                 if r.get('role_type_id') == ADMIN_ROLE_TYPE_ID),
                                None)},
         'roster': roster,
-        'actions': actions_from_payload(payload, preflights),
-        # Worst candidate verdict, precomputed for the card's roll-up badge:
-        # would fail > would park (manual) > unchecked > would land.
+        'actions': actions,
+        # The in-flight action type, precomputed for the card's Type column and
+        # its facet — the single "what kind of handoff is this" admin shows.
+        'latest_action_type': latest_action_type(actions),
+        # Worst pending verdict, precomputed for the card's roll-up badge:
+        # would fail > would park (manual) > incomplete > would land.
         'preflight_rollup': _preflight_rollup(preflights),
         # The conjunction the merge fixup keys on, precomputed so the template
         # does not have to express it — see the roster comment.
@@ -296,12 +340,17 @@ def person_roles_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                 'action_type': _text(req.get('actionType')),
                 'allocation_type': _text(req.get('allocationType')),
                 'opportunity': _text(req.get('opportunity')),
+                # When the request was last touched — this feed's recency signal
+                # (it carries no submit/entry date), so the modal's request list
+                # can be read newest-activity-first like the card.
+                'activity_date': _as_date(req.get('updateDate')),
                 'begin_date': _as_date(req.get('beginDate')),
                 'end_date': _as_date(req.get('endDate')),
                 'pi': _text(req.get('pi')),
                 'pi_username': _text(req.get('piUsername')),
             })
         if rows:
+            rows.sort(key=lambda r: r.get('activity_date') or date.min, reverse=True)
             groups.append({'role_name': _text(group.get('roleName')),
                            'requests': rows})
     return groups

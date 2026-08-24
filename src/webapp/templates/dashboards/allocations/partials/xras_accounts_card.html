@@ -1,5 +1,6 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {#
   One request number, linked when SAM has a project by that name.
 
@@ -95,7 +96,7 @@
            naming this person and is blocked. Also the health metric for the
            proactive side — it trends to zero once the pending-request work
            lands ahead of the push. #}
-        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle"
+        <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle"
               title="A push already arrived naming these people and is blocked, waiting on their SAM accounts.">
             {{ counts.received_push | fmt_number }} from received pushes
         </span>
@@ -226,13 +227,15 @@
         <table class="table table-sm table-hover mb-0 align-middle">
             <thead class="table-subtle">
                 <tr>
-                    <th style="width:190px; white-space:nowrap;">Username</th>
+                    {# Sortable non-facet columns; Needs / Role / Source / Request /
+                       XRAS identity are the chips' job, not the header's. #}
+                    <th style="width:190px; white-space:nowrap;">{{ sort_header('username', 'Username') }}</th>
                     <th style="width:170px; white-space:nowrap;">Needs</th>
                     <th style="width:110px;">Role</th>
                     <th style="width:140px; white-space:nowrap;">Source</th>
                     <th style="width:180px; white-space:nowrap;">Request</th>
                     {% if may_manage %}
-                    <th style="width:99%; min-width:12rem;">Person</th>
+                    <th style="width:99%; min-width:12rem;">{{ sort_header('person', 'Person') }}</th>
                     {% endif %}
                     <th style="width:120px; white-space:nowrap;">XRAS identity</th>
                     {# WARNING: Waiting, NOT "last seen". `last_seen` is when we most
@@ -241,7 +244,7 @@
                        an operator nothing. This is how long they have been
                        blocking something, which is the only field on the card
                        that says whether the queue is being worked. #}
-                    <th style="width:120px; white-space:nowrap;">Waiting</th>
+                    <th style="width:120px; white-space:nowrap;">{{ sort_header('waiting', 'Waiting') }}</th>
                 </tr>
             </thead>
             <tbody>
@@ -321,16 +324,12 @@
                     </td>
 
                     <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
-                        {# WARNING: PI carries weight because a missing PI is the only
-                           one that HARD-FAILS the handoff — `roster.py` reports
-                           `PI %s is not in database` and the action 422s, while
-                           a missing Allocation Manager is explicitly not an
-                           error and a missing User just drops from the roster.
-                           Same list, three very different consequences, and the
-                           row read identically for all of them. #}
+                        {# Role is informational here. PI's harder consequence — a
+                           missing/inactive PI 422s the whole action, unlike a
+                           missing Manager/User — stays in the tooltip, not the color. #}
                         {% for role in row.roles %}
                         {% if role == 'PI' %}
-                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle"
+                        <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle"
                               title="A missing or inactive PI rejects the whole action (422). This row blocks its handoff.">{{ role }}</span>
                         {% else %}
                         {# "Allocation Manager" is shortened to "Manager" for
@@ -346,7 +345,7 @@
                        is a fact about the row, so it is spelled out. #}
                     <td class="cursor-pointer text-nowrap" {{ collapse_toggle(body_id) }}>
                         {% if 'action_log' in row.sources %}
-                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle"
+                        <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle"
                               title="A push already arrived naming this person and is blocked, waiting on the account.">Received push</span>
                         {% endif %}
                         {% if 'reports' in row.sources %}
@@ -433,8 +432,8 @@
                            queue, so nobody ever merges it, so XRAS keeps sending
                            the throwaway username and this handoff stays blocked
                            forever. The fix is in the expansion panel. #}
-                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
-                              title="Identified but never merged — XRAS keeps sending this throwaway username, so the handoff cannot complete. Expand the row to resolve it.">identified, not merged</span>
+                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle"
+                              title="Misidentified — XRAS flagged this placeholder as reconciled without merging it, so it keeps sending the throwaway username and the handoff cannot complete. Expand the row to resolve it.">misidentified</span>
                         {% elif row.is_reconciled %}
                         <span class="badge bg-body-secondary text-body-secondary border fw-normal"
                               title="XRAS has linked this username to a real identity, so the person detail here is usable for account creation. It does NOT mean the account exists.">identified</span>
@@ -513,7 +512,7 @@
                                            problems — say "would fail", not "needs an
                                            account", or the card implies this worklist
                                            would fix them. `manual` is parked, not
-                                           failed; `unchecked` could not be synthesized. #}
+                                           failed; `incomplete` could not be synthesized. #}
                                         {% if action.preflight_status == 'rechecked' or (action.preflight_status is none and action.would_succeed) %}
                                         <span class="text-success">would succeed</span>
                                         {% elif action.preflight_status == 'failed' or (action.preflight_status is none and action.would_succeed is false) %}
@@ -524,8 +523,8 @@
                                         {% elif action.preflight_status == 'manual' %}
                                         <span class="text-warning"
                                               title="{{ action.reject_messages | join(' · ') }}">would park</span>
-                                        {% elif action.preflight_status == 'unchecked' %}
-                                        <span class="text-muted">unchecked</span>
+                                        {% elif action.preflight_status == 'incomplete' %}
+                                        <span class="text-muted">incomplete</span>
                                         {% else %}
                                         <span class="text-muted">not checked</span>
                                         {% endif %}

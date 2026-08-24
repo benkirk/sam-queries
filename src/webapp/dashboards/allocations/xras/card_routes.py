@@ -53,8 +53,25 @@ from ._shared import (
     _XRAS_ACTIVITY_TARGET, _XRAS_FORM_ID, _XRAS_FRAGMENT_TARGET,
     _account_facets, _activity_facets, _filter_accounts, _filter_activity,
     _parse_activity_window, _parse_xras_filters,
-    _request_facets, _submitted_since,
+    _request_facets, _submitted_since, sort_rows,
 )
+from webapp.utils.htmx import read_sort
+
+
+#: Pending Users' sortable non-facet columns -> row key. Needs / Role / Source /
+#: Request / Identity are the chips' job.
+def _person_sort_key(row):
+    person = row.get('person') or {}
+    name = ((person.get('firstName') or '') + ' '
+            + (person.get('lastName') or '')).strip()
+    return (name or row.get('username') or '').casefold()
+
+
+_ACCOUNTS_SORT = {
+    'username': lambda r: (r.get('username') or '').casefold(),
+    'person': _person_sort_key,
+    'waiting': lambda r: r.get('waiting_days'),
+}
 
 
 # XRAS action log -- the operator surface for POST /api/xras/v1/actions.
@@ -358,11 +375,18 @@ def xras_accounts_fragment():
         rows = [r for r in rows
                 if {a['request_number'] for a in r['actions']} & set(selected_requests)]
 
+    # No forced default: with no header clicked the source order stands
+    # (received-push rows pinned first), and sort_rows is a no-op.
+    sort = read_sort(request.args, set(_ACCOUNTS_SORT), default_dir='desc')
+    rows = sort_rows(rows, sort, _ACCOUNTS_SORT)
+
     snapshot = feed.snapshot or {}
     return render_template(
         'dashboards/allocations/partials/xras_accounts_card.html',
         rows=rows,
         counts=worklist_counts(rows),
+        sort=sort,
+        sortable_columns=set(_ACCOUNTS_SORT),
         may_manage=may_manage,
         enrichment=enrichment,
         window=window,
