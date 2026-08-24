@@ -33,7 +33,8 @@ from sam.integration.xras_api.vocabulary import (
     ADMIN_ROLE_TYPE_ID,
     PI_ROLE_TYPE_ID,
 )
-from sam.queries.xras_accounts import is_placeholder, iter_roster_entries
+from sam.queries.xras_accounts import (is_placeholder, iter_roster_entries,
+                                       role_in_window)
 
 #: Action fields carried into the entry. The states are what the card's
 #: withdraw/re-submit offers key on, since the authoritative legal-moves read
@@ -112,6 +113,9 @@ def roster_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                 'role_type': _text(role.get('role')),
                 'username': username,
                 'name': _display_name(person),
+                # Display metadata, not a filter: an ended role stays listed
+                # (removal keys on role_id) but must read as over.
+                'active': role_in_window(role),
                 'placeholder': is_placeholder(username),
                 # WARNING: Reconciled means XRAS linked this username to a real
                 # identity — NOT that SAM has an account. A placeholder that is
@@ -131,10 +135,16 @@ def resolve_pi(roster: List[Dict[str, Any]]) -> Optional[str]:
     measured, because the same action validated as the PI and failed as the
     Allocation Manager (PRIVILEGE(#5)).
     """
+    fallback = None
     for row in roster:
         if row.get('role_type_id') == PI_ROLE_TYPE_ID:
-            return row.get('username')
-    return None
+            # Prefer a PI whose role window is current; an ended PI is the
+            # fail-open fallback so a request with only historical leads
+            # still gets an impersonation identity rather than none.
+            if row.get('active', True):
+                return row.get('username')
+            fallback = fallback or row.get('username')
+    return fallback
 
 
 def actions_from_payload(payload: Dict[str, Any],

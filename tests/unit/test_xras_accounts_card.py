@@ -344,20 +344,25 @@ class TestPiiGating:
 
     def test_manage_xras_sees_person_detail(self, auth_client, monkeypatch,
                                             committed_worklist_action):
-        self._stub_person(monkeypatch)
+        """The person is the PAYLOAD's inline ``roles[].person`` — a Feed-A row
+        pays no ``GET /v1/people`` round trip, so a lookup that raises proves
+        the detail arrived without one."""
+        monkeypatch.setattr(
+            'sam.integration.xras_api.people.get_person',
+            lambda username: (_ for _ in ()).throw(
+                AssertionError('lookup attempted despite the inline person')))
         body = auth_client.get(URL).get_data(as_text=True)
-        assert 'ada@example.invalid' in body
-        assert 'Kiribati' in body
+        assert 'user38@example.invalid' in body
+        assert 'TEXAS A &amp; M UNIVERSITY' in body
 
     def test_view_only_never_receives_the_person_bytes(
             self, view_only_client, monkeypatch, committed_worklist_action):
         """Not merely undrawn — absent from the response."""
         self._stub_person(monkeypatch)
         body = view_only_client.get(URL).get_data(as_text=True)
-        assert 'ada@example.invalid' not in body
-        assert 'Kiribati' not in body
-        assert 'Example University' not in body
-        assert 'Invented' not in body
+        assert 'user38@example.invalid' not in body
+        assert 'TEXAS A' not in body
+        assert 'Surname38' not in body
         # ...while the row itself is still there to work from.
         assert 'placeholder38-user-00038' in body
 
@@ -367,10 +372,14 @@ class TestPiiGating:
         so it survives the VIEW_XRAS gate that strips the person dict.
 
         (It is emphatically *not* a closure signal — see
-        `TestTheHeaderDoesNotConflateTwoFacts` and `enrich_worklist`.)"""
-        self._stub_person(monkeypatch)     # isReconciled: False
+        `TestTheHeaderDoesNotConflateTwoFacts` and `enrich_worklist`.)
+        The payload person carries ``isReconciled: true`` on a placeholder
+        username — the merge-fixup contradiction — so the state shown is
+        ``misidentified``, and it must survive the PII strip."""
+        self._stub_person(monkeypatch)
         body = view_only_client.get(URL).get_data(as_text=True)
-        assert 'unidentified' in body
+        assert 'unidentified' not in body
+        assert '>misidentified<' in body
 
 
 class TestFacets:
@@ -538,11 +547,15 @@ class TestBothFeedsShowTheSameDetail:
 
     def test_every_declared_field_reaches_the_accounts_tab(
             self, auth_client, monkeypatch, committed_worklist_action):
+        """Feed A renders the payload's inline person — every field the
+        inbound wire carries. ``residenceCountry`` and ``orcid`` are absent
+        from that wire and render as em dashes; the live person modal is
+        where those two come from."""
         monkeypatch.setattr('sam.integration.xras_api.people.get_person',
                             lambda u: self._person())
         body = auth_client.get(URL).get_data(as_text=True)
-        for value in ('ada@example.invalid', '555-0100', 'Kiribati',
-                      'Graduate Student', 'Example University', '0000-0001'):
+        for value in ('user38@example.invalid', '555-0123', 'Postdoctorate',
+                      'TEXAS A &amp; M UNIVERSITY', 'Given38'):
             assert value in body, f'{value} is missing from the accounts tab'
 
     def test_every_declared_field_reaches_the_pending_tab(self, auth_client,

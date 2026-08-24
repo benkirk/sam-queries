@@ -194,6 +194,16 @@ def display_action_detail(ctx, payload) -> None:
         ctx.console.print(Panel(err, title=f"Errors ({len(a['errors'])})",
                                 border_style='red'))
 
+    if a.get('warnings'):
+        warn = Table(show_header=False, box=None, padding=(0, 1, 0, 0))
+        warn.add_column('n', justify='right', style='dim')
+        warn.add_column('message', style='yellow', overflow='fold')
+        for i, message in enumerate(a['warnings'], start=1):
+            warn.add_row(str(i), message)
+        ctx.console.print(Panel(
+            warn, title=f"Warnings ({len(a['warnings'])}) — non-fatal",
+            border_style='yellow'))
+
     if payload['payload_included']:
         ctx.console.print(Panel(a.get('raw_payload', ''),
                                 title='Raw payload (verbatim, contains PII)',
@@ -573,3 +583,64 @@ def display_family(ctx, payload) -> None:
                 row += f"  [dim]{action['action_status']}[/dim]"
             node.add(row)
     ctx.console.print(tree)
+
+
+def display_vocabulary_report(ctx, payload) -> None:
+    """Render the three vocabulary checks — drift first, then the inventories."""
+    ctx.console.rule('[bold]XRAS vocabulary')
+
+    for problem in payload['drift']:
+        ctx.console.print(f'[bold red]DRIFT[/bold red] {problem}')
+    for name in payload['unresolved']:
+        ctx.console.print(
+            f'[bold red]UNRESOLVED[/bold red] panel-authorized type {name!r} '
+            f'has no allocation_type row')
+    if not payload['drift'] and not payload['unresolved']:
+        ctx.console.print('[green]Every declared value checks out.[/green]')
+
+    roles = payload['role_types']
+    table = Table(title='Role types (vocabulary.ROLE_TYPES)', title_style='bold')
+    table.add_column('Id', justify='right', style='cyan')
+    table.add_column('Name')
+    table.add_column('Display', style='dim')
+    for row in roles['declared']:
+        table.add_row(str(row['type_id']), row['name'], row['display'])
+    ctx.console.print(table)
+    if roles['extra_live']:
+        ctx.console.print(
+            f"[yellow]Live but undeclared role type(s):[/yellow] "
+            f"{', '.join(roles['extra_live'])}")
+
+    panels = payload['panels']
+    table = Table(title='XRAS panels (opportunity_types.XRAS_PANEL_NAMES)',
+                  title_style='bold')
+    table.add_column('Id', justify='right', style='cyan')
+    table.add_column('Name')
+    for panel_id, name in sorted(panels['declared'].items()):
+        table.add_row(str(panel_id), name)
+    ctx.console.print(table)
+    if panels['extra_live']:
+        ctx.console.print(
+            f"[yellow]Live but undeclared panel(s):[/yellow] "
+            f"{', '.join(panels['extra_live'])}")
+
+    authorized = payload['panel_authorized']
+    table = Table(title='Panel-authorized allocation types '
+                        '(PANEL_AUTHORISED_TYPES)', title_style='bold')
+    table.add_column('Type')
+    table.add_column('allocation_type_id', justify='right', style='cyan')
+    table.add_column('SAM panel', style='dim')
+    for row in authorized['types']:
+        table.add_row(row['name'], str(row['allocation_type_id']),
+                      text(row['panel']))
+    ctx.console.print(table)
+    ctx.console.print(
+        f"[dim]Wire panels[] abbr(s) treated as panel-authorized: "
+        f"{', '.join(authorized['abbrs'])}[/dim]")
+
+    if not (roles['live_checked'] and panels['live_checked']):
+        ctx.console.print(
+            '[dim]Local half only — the XRAS API was not configured or not '
+            'reachable, so the role-type and panel constants were NOT compared '
+            'against the live process. Set XRAS_OUTGOING_ENABLED=1 and '
+            'XRAS_API_KEY for the two-sided report.[/dim]')

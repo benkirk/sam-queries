@@ -400,23 +400,33 @@ def resolve_allocation_type(session, action, errs: ActionErrors) -> Optional[All
 # ---------------------------------------------------------------------------
 
 
-def primary_fos_num(action) -> Optional[str]:
+def primary_fos_num(action, *, warnings: Optional[list] = None) -> Optional[str]:
     """``XrasAction.getPfosNumber()`` — the primary ``fos[]`` entry's ``fosNum``.
 
     Falls back to the **first** entry when no entry is flagged primary, which is
     legacy's second loop verbatim (`XrasAction:302-311`); ``isPrimary`` is not reliably
     at index 0. Returns ``None`` for an empty array — the caller owns the message.
+
+    When several entries exist and none is flagged, array order is deciding the
+    project's research area — recorded into *warnings* rather than silently.
     """
     entries = get_field(action, 'fos') or []
     for entry in entries:
         if get_field(entry, 'isPrimary'):
             return get_field(entry, 'fosNum')
     for entry in entries:
-        return get_field(entry, 'fosNum')
+        fos = get_field(entry, 'fosNum')
+        if warnings is not None and len(entries) > 1:
+            warnings.append(
+                f'No fos[] entry is flagged primary; research area taken from '
+                f'the first of {len(entries)} (fosNum {fos})')
+        return fos
     return None
 
 
-def resolve_area_of_interest(session, action, errs: ActionErrors) -> Optional[AreaOfInterest]:
+def resolve_area_of_interest(session, action, errs: ActionErrors,
+                             *, warnings: Optional[list] = None
+                             ) -> Optional[AreaOfInterest]:
     """The ``area_of_interest`` row named by the primary field of science.
 
     WARNING: **``fosNum`` is an ``area_of_interest_id``, not an ``fos_aoi.fos_id``.** Legacy
@@ -443,7 +453,7 @@ def resolve_area_of_interest(session, action, errs: ActionErrors) -> Optional[Ar
     differs only in case finds nothing. Pinned by
     ``tests/unit/test_xras_extractors.py::KNOWN_FOS_CASE_DIFFERENCES``.
     """
-    fos = primary_fos_num(action)
+    fos = primary_fos_num(action, warnings=warnings)
     if fos is None:
         errs.report(e.no_fos_objects())
         return None

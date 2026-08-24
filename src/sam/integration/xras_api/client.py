@@ -356,6 +356,26 @@ class XrasApiClient(_XrasTransport):
         """
         return _as_list(self._get('/v1/types/fos'))
 
+    def get_role_types(self) -> Optional[List[Dict[str, Any]]]:
+        """The process role-type vocabulary — ``GET /v1/types/roles``.
+
+        Three rows of ``{roleTypeId, roleType, displayRoleType, isActive}`` for
+        the NCAR process. The hardcoded mirror is
+        ``sam.integration.xras_api.vocabulary.ROLE_TYPES``; this read exists so
+        ``sam-admin xras --validate-vocabulary`` can re-verify it live instead
+        of by hand.
+        """
+        return _as_list(self._get('/v1/types/roles'))
+
+    def get_panels(self) -> Optional[List[Dict[str, Any]]]:
+        """The review-panel catalog — ``GET /v1/panels``.
+
+        Rows of ``{panelId, panelName, panelAbbr, isActive, members[], ...}``.
+        The hardcoded mirror is ``sam.xras.opportunity_types.XRAS_PANEL_NAMES``;
+        same live re-verification purpose as :meth:`get_role_types`.
+        """
+        return _as_list(self._get('/v1/panels'))
+
     # requests (the Reports family)
 
     def get_request_family_by_number(self, request_number: str

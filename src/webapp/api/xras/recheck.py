@@ -181,7 +181,8 @@ def recheck_action(log_id, *, actor) -> 'Recheck':
         # joins against `project.projcode`. `request_number` already says what the
         # action is about. The `manual` arm below does record it, matching ingest:
         # there the value came from a handler that parked a real project.
-        actions._finish(new_id, status='rechecked', service=result.service)
+        actions._finish(new_id, status='rechecked', service=result.service,
+                        warnings=result.warnings)
         current_app.logger.info(
             'XRAS re-check says this WOULD SUCCEED now: id=%s source=%s by=%s type=%s',
             new_id, log_id, actor, action.get('actionType'))
@@ -191,7 +192,8 @@ def recheck_action(log_id, *, actor) -> 'Recheck':
     # parks by design (Transfer). `manual` is the same answer a live post gets, and
     # `reason` is what distinguishes the four causes.
     actions._finish(new_id, status='manual', projcode_result=result.projcode,
-                    service=result.service, outcome_reason=result.reason)
+                    service=result.service, outcome_reason=result.reason,
+                    warnings=result.warnings)
     current_app.logger.info(
         'XRAS re-check: nothing would run for id=%s source=%s (%s)',
         new_id, log_id, result.reason)

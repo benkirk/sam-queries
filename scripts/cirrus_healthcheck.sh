@@ -793,6 +793,22 @@ else
 fi
 
 echo
+echo "  webapp XRAS lines (last 500 — WARNING/INFO level, so the error scan above never sees them):"
+# Informational only: the durable record is the xras_action_log row; this is
+# live color for triage. The hourly sweep logs under app=samuel-tasks, NOT here.
+XRAS_LINES=$("${KCTL_NS[@]}" logs -l "app=$WEBAPP_NAME" --tail=500 --prefix --all-containers=true 2>/dev/null \
+              | grep -F 'XRAS ' || true)
+if [[ -z "$XRAS_LINES" ]]; then
+    info "no XRAS lines in last 500 webapp log lines"
+else
+    n_hits=$(echo "$XRAS_LINES" | grep -c .)
+    info "$n_hits XRAS line(s) in last 500 webapp log lines (informational)"
+    if [[ $VERBOSE -eq 1 ]]; then
+        echo "$XRAS_LINES" | tail -10 | sed 's/^/    /'
+    fi
+fi
+
+echo
 echo "  redis (last 200 lines, scanning for WARNING/MISCONF/LOADING):"
 REDIS_LOGS=$("${KCTL_NS[@]}" logs -l "app=$REDIS_NAME" --tail=200 2>/dev/null \
               | grep -E -i 'WARNING|MISCONF|LOADING|Failed' || true)
@@ -969,6 +985,8 @@ fi
 echo
 echo "  Re-run later (cpu/mem are one-shot samples). For continuous logs:"
 echo "    kubectl logs -n $NAMESPACE -l app=$WEBAPP_NAME -f --all-containers=true"
+echo "  Scheduled-task pods (xras_sweep etc.) log under a different selector:"
+echo "    kubectl logs -n $NAMESPACE -l app=${WEBAPP_NAME}-tasks --tail=200"
 
 if   [[ $FAIL_COUNT -gt 0 ]]; then exit 2
 elif [[ $WARN_COUNT -gt 0 ]]; then exit 1

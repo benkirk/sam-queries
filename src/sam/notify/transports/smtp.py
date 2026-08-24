@@ -119,16 +119,37 @@ class SmtpTransport(Transport):
             msg = MIMEText(rendered.text, 'plain')
 
         msg['Subject'] = rendered.subject
-        msg['From'] = self.config.mail_from
+        msg['From'] = self.sender_address(message)
         msg['To'] = message.recipient.address
+        cc, _ = self.copies(message)
+        if cc:
+            msg['Cc'] = ', '.join(cc)
+        if message.reply_to:
+            msg['Reply-To'] = message.reply_to
         if message.intended_recipient:
             msg[ORIGINAL_TO_HEADER] = message.intended_recipient
         return msg
 
+    def sender_address(self, message: Message) -> str:
+        """Header From and envelope MAIL FROM agree, so an override owns its bounces."""
+        return message.sender or self.config.mail_from
+
+    @staticmethod
+    def copies(message: Message) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
+        """``(cc, bcc)`` for this message -- empty on a redirect.
+
+        A redirected message is a staging run: the copies name real mailboxes
+        and must not leave with it.
+        """
+        if message.intended_recipient:
+            return ((), ())
+        return (tuple(message.cc), tuple(message.bcc))
+
     def envelope_recipients(self, message: Message) -> List[str]:
-        """Who the relay is told to deliver to: the addressee, plus the Bcc."""
+        """The addressee, the message's cc and bcc, then the configured Bcc."""
+        cc, bcc = self.copies(message)
         recipients = [message.recipient.address]
-        for address in self.config.bcc_addresses:
+        for address in (*cc, *bcc, *self.config.bcc_addresses):
             if address not in recipients:
                 recipients.append(address)
         return recipients
@@ -149,12 +170,14 @@ class SmtpTransport(Transport):
         to_addrs = self.envelope_recipients(message)
 
         try:
-            self._smtp.sendmail(self.config.mail_from, to_addrs,
+            self._smtp.sendmail(self.sender_address(message), to_addrs,
                                 msg.as_string())
         except Exception as exc:
             raise TransportError(
                 f'failed to send to {message.recipient.address}: '
                 f'{exc}') from exc
 
-        logger.info('notify: sent kind=%s to=%s subject=%r',
-                    message.kind, message.recipient.address, rendered.subject)
+        cc, bcc = self.copies(message)
+        logger.info('notify: sent kind=%s to=%s cc=%d bcc=%d subject=%r',
+                    message.kind, message.recipient.address, len(cc), len(bcc),
+                    rendered.subject)

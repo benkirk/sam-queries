@@ -215,6 +215,14 @@
                         {{ stat('Transport', state.notifications.transport or '—') }}
                         {{ stat('Relay', state.notifications.relay ~ (' (STARTTLS)' if state.notifications.use_tls else '') if state.notifications.relay else '—') }}
                         {{ stat('From', state.notifications.mail_from or '—') }}
+                        {{ stat('Bcc', state.notifications.bcc or '—') }}
+                        {# One row per NOTIFY_<FAMILY>_* value that is set. #}
+                        {% for family, addr in (state.notifications.addressing or {}) | dictsort %}
+                            {% if addr.cc %}{{ stat(family | upper ~ ' CC', addr.cc) }}{% endif %}
+                            {% if addr.bcc %}{{ stat(family | upper ~ ' BCC', addr.bcc) }}{% endif %}
+                            {% if addr['from'] %}{{ stat(family | upper ~ ' From', addr['from']) }}{% endif %}
+                            {% if addr.reply_to %}{{ stat(family | upper ~ ' Reply-To', addr.reply_to) }}{% endif %}
+                        {% endfor %}
                     </dl>
 
                     {% if state.notifications.redirect_to %}

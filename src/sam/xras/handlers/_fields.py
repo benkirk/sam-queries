@@ -21,7 +21,7 @@ inside the loop would reorder the body without changing a line here.
 
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from sam.base import normalize_end_date
 from sam.integration.xras import XrasResourceRepositoryKeyResource
@@ -182,16 +182,37 @@ def resolve_resource(session, wire_resource, errs: ActionErrors) -> Optional[Res
     return row.resource
 
 
-def plan_contracts(session, action, errs: ActionErrors) -> List:
-    """Resolve every ``grants[]`` entry to a contract.
+def _grant_without_number(number: str, grant) -> str:
+    """The warning for a ``grants[]`` entry that cannot name an award."""
+    agency = str(get_field(grant, 'fundingAgency') or '').strip()
+    claimed = number or str(get_field(grant, 'title') or '').strip()
+    what = f'"{claimed}"' if claimed else 'entry'
+    where = f' [{agency}]' if agency else ''
+    return f'Supporting grant {what}{where} has no award number; no contract linked'
+
+
+def plan_contracts(session, action, errs: ActionErrors) -> Tuple[List, Tuple[str, ...]]:
+    """Resolve ``grants[]`` to ``(contracts, warnings)``, deduped by contract id.
 
     WARNING: ``grants: []`` is **not** an error — ``new_ncar4232_failed.json`` is an
     Educational allocation with no grant at all, and its failure was the mnemonic, not
     the missing contract. A project with no contract is legitimate.
+
+    Two declared divergences from legacy (docs/plans/XRAS_DATA_MODEL_UPLIFT.md):
+    a number that is empty or digit-free ("NSF Graduate Fellowship") cannot name an
+    award, so it warns instead of hard-failing the action; and two entries resolving
+    to one row (``2146709`` / ``AGS-2146709``) link it once —
+    ``project_contract`` is UNIQUE per ``(project, contract)``, so legacy's second
+    insert was an unhandled ``IntegrityError``.
     """
-    contracts = []
+    contracts, warnings, seen = [], [], set()
     for grant in get_field(action, 'grants') or ():
-        contract = resolve_contract(session, get_field(grant, 'grantNumber'), errs)
-        if contract is not None:
+        number = str(get_field(grant, 'grantNumber') or '').strip()
+        if not any(ch.isdigit() for ch in number):
+            warnings.append(_grant_without_number(number, grant))
+            continue
+        contract = resolve_contract(session, number, errs)
+        if contract is not None and contract.contract_id not in seen:
+            seen.add(contract.contract_id)
             contracts.append(contract)
-    return contracts
+    return contracts, tuple(warnings)

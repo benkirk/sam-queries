@@ -218,6 +218,7 @@ unused. New alongside it:
 | `NOTIFY_TRANSPORT` | `smtp` | `smtp` / `console` / `null` |
 | `NOTIFY_REDIRECT_TO` | *(empty)* | when set, **every** message is re-addressed here |
 | `NOTIFY_BCC` | *(empty)* | an **envelope** Bcc; replaces the hardcoded address |
+| `NOTIFY_<FAMILY>_{CC,BCC,FROM,REPLY_TO}` | *(empty)* | per-family addressing (`NotificationKind.family`: `xras`, `expiration`, `task`), filled onto the `Message` by the `Notifier`; a builder-set value wins; cc/bcc are dropped on a redirect |
 | `MAIL_TIMEOUT` | `10` | socket timeout, seconds |
 | `NOTIFY_QUEUED_STALE_SECONDS` | `300` | how long a `queued` row blocks its own retry — see § 5 |
 

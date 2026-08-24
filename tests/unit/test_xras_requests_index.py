@@ -69,6 +69,38 @@ class TestTheNestingTrap:
         assert resolve_pi(rows) is None
 
 
+class TestRoleWindows:
+    """Role begin/end dates reach the modal roster and the PI resolution."""
+
+    def test_undated_roles_are_active(self):
+        assert [r['active'] for r in roster_from_payload(_payload())] == [
+            True, True]
+
+    def test_an_ended_role_stays_listed_but_reads_as_over(self):
+        """Not a filter: removal keys on role_id, so the row must survive."""
+        entry = _payload()['roles'][0]
+        entry['roles'][1]['endDate'] = '2026-07-28'
+        rows = roster_from_payload(_payload(roles=[entry]))
+        assert [(r['role_id'], r['active']) for r in rows] == [
+            (1, True), (9, False)]
+
+    def test_resolve_pi_prefers_a_current_pi_over_an_ended_one(self):
+        entry = _payload()['roles'][0]
+        entry['roles'] = [dict(entry['roles'][0], endDate='2026-07-28')]
+        successor = {'person': {'username': 'new-pi', 'firstName': 'Grace',
+                                'lastName': 'Current'},
+                     'roles': [{'roleId': 3, 'role': 'PI', 'roleTypeId': 13}]}
+        rows = roster_from_payload(_payload(roles=[entry, successor]))
+        assert resolve_pi(rows) == 'new-pi'
+
+    def test_an_ended_pi_is_the_fail_open_fallback(self):
+        """A request with only a historical lead still needs an XA-USER."""
+        entry = _payload()['roles'][0]
+        entry['roles'] = [dict(entry['roles'][0], endDate='2026-07-28')]
+        rows = roster_from_payload(_payload(roles=[entry]))
+        assert resolve_pi(rows) == 'pi-user'
+
+
 class TestTheProjectAdmin:
     """The Allocation Manager (SAM: "Project Admin") — resolved by id like the
     PI, and often simply absent."""
@@ -186,7 +218,7 @@ class TestNoPiiInTheSnapshot:
     def test_the_roster_carries_flags_not_contact_details(self):
         row = roster_from_payload(_payload())[0]
         assert set(row) == {'role_id', 'role_type_id', 'role_type', 'username',
-                            'name', 'placeholder', 'is_reconciled'}
+                            'name', 'active', 'placeholder', 'is_reconciled'}
 
     def test_no_email_or_country_reaches_the_entry(self):
         blob = repr(request_index_entry(_payload()))

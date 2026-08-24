@@ -453,6 +453,61 @@ class TestContracts:
         assert ('Cannot find contract for grant number "NSF-9990102" ("9990102")'
                 in exc.value.messages)
 
+    def test_a_numberless_grant_warns_instead_of_failing(self, committing, session,
+                                                         creatable, mapped_resource):
+        """UCLR0015/NCAR4261 live shape: agency and title, ``grantNumber: null``.
+        For contract-linking that is ``grants: []`` plus a note for the operator."""
+        payload = action_for(creatable, wire_resource(mapped_resource.xras_key))
+        payload['grants'] = [{'grantNumber': None, 'fundingAgency': 'NSF',
+                              'title': 'Graduate Research Fellowship'}]
+        result = handle_new(committing, payload)
+        assert not Project.get_by_projcode(session, result.projcode).contracts
+        assert result.warnings == (
+            'Supporting grant "Graduate Research Fellowship" [NSF] has no award '
+            'number; no contract linked',)
+
+    def test_digit_free_text_in_the_number_field_warns(self, committing, session,
+                                                       creatable, mapped_resource):
+        payload = action_for(creatable, wire_resource(mapped_resource.xras_key))
+        payload['grants'] = [{'grantNumber': 'NSF Graduate Fellowship'}]
+        result = handle_new(committing, payload)
+        assert not Project.get_by_projcode(session, result.projcode).contracts
+        assert result.warnings == (
+            'Supporting grant "NSF Graduate Fellowship" has no award number; '
+            'no contract linked',)
+
+    def test_any_digit_still_takes_the_resolution_path(self, committing, creatable,
+                                                       mapped_resource):
+        """A ≤4-digit carve-out ("… 2026" as a non-number) was considered and
+        REJECTED as unwarranted complexity — docs/plans/XRAS_DATA_MODEL_UPLIFT.md."""
+        payload = action_for(creatable, wire_resource(mapped_resource.xras_key))
+        payload['grants'] = [{'grantNumber': 'NSF Graduate Fellowship 2026'}]
+        with pytest.raises(XrasActionRejected) as exc:
+            handle_new(committing, payload)
+        assert any(m.startswith('Cannot find contract') for m in exc.value.messages)
+
+    def test_two_spellings_of_one_contract_link_it_once(self, committing, session,
+                                                        creatable, mapped_resource):
+        """``2146709`` / ``AGS-2146709`` both resolve to one row; a second link
+        would violate ``project_contract``'s UNIQUE pair and 500 mid-transaction."""
+        from factories import make_contract
+        contract = make_contract(session, contract_number='9990104')
+        payload = action_for(creatable, wire_resource(mapped_resource.xras_key))
+        payload['grants'] = [{'grantNumber': '9990104'},
+                             {'grantNumber': 'AGS-9990104'}]
+        result = handle_new(committing, payload)
+        project = Project.get_by_projcode(session, result.projcode)
+        assert [pc.contract_id for pc in project.contracts] == [contract.contract_id]
+        assert result.warnings == ()
+
+    def test_an_unflagged_fos_fallback_reaches_the_result(
+            self, committing, creatable, mapped_resource):
+        payload = action_for(creatable, wire_resource(mapped_resource.xras_key),
+                             fos=[{'fosNum': '1'}, {'fosNum': '2'}])
+        result = handle_new(committing, payload)
+        assert ('No fos[] entry is flagged primary; research area taken from '
+                'the first of 2 (fosNum 1)') in result.warnings
+
 
 class TestPanelAuthorisation:
     """New marks its CREATE rows when the resolved type is panel-authorized.

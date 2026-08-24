@@ -239,6 +239,28 @@ class TestLatestAllocation:
         from factories import make_account
         assert latest_allocation(make_account(session)) is None
 
+    def test_a_soft_deleted_row_is_invisible_whatever_its_end_date(self, session):
+        """Renew-with-replace leaves ``deleted=1`` rows behind; one that ends later
+        than the live allocation must not become "latest" (UFSU0023, 2026-08-24)."""
+        from factories import make_account, make_allocation
+        account = make_account(session)
+        live = make_allocation(session, account=account, end_date=datetime(2027, 8, 31))
+        superseded = make_allocation(session, account=account,
+                                     end_date=datetime(2033, 7, 31))
+        superseded.deleted = True
+        session.flush()
+        session.refresh(account)
+        assert latest_allocation(account) is live
+
+    def test_an_account_holding_only_deleted_rows_yields_none(self, session):
+        from factories import make_account, make_allocation
+        account = make_account(session)
+        gone = make_allocation(session, account=account, end_date=datetime(2030, 1, 31))
+        gone.deleted = True
+        session.flush()
+        session.refresh(account)
+        assert latest_allocation(account) is None
+
 
 # ---------------------------------------------------------------------------
 # The handler.
@@ -264,6 +286,26 @@ class TestHandleExtension:
         assert result.projcode == project.projcode
         assert first.end_date == datetime(2030, 6, 30, 23, 59, 59)
         assert second.end_date == datetime(2030, 6, 30, 23, 59, 59)
+
+    def test_a_deleted_row_ending_later_does_not_block_the_extension(self, committing):
+        """The cutover-day shape: live rows end 2027-08-31, their superseded
+        originals (deleted) end 2033-07-31, XRAS asks for 2027-09-30."""
+        session = committing
+        from factories import make_account, make_allocation, make_project
+        project = make_project(session)
+        account = make_account(session, project=project)
+        superseded = make_allocation(session, account=account,
+                                     end_date=datetime(2033, 7, 31))
+        superseded.deleted = True
+        live = make_allocation(session, account=account,
+                               end_date=datetime(2027, 8, 31))
+        session.flush()
+
+        result = handle_extension(session, action_for(project.projcode, '2027-09-30'))
+
+        assert result.status == 'processed'
+        assert live.end_date == datetime(2027, 9, 30, 23, 59, 59)
+        assert superseded.end_date == datetime(2033, 7, 31, 23, 59, 59)
 
     def test_the_resources_array_is_ignored_entirely(self, committing):
         """The corpus proves it: both Extensions send ``resources: []`` and both

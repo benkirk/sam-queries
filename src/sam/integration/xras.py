@@ -200,6 +200,7 @@ class XrasActionLog(Base):
         Index('xras_action_log_triage', 'status', 'action_type'),
         Index('xras_action_log_request', 'request_number'),
         Index('xras_action_log_action', 'action_id'),
+        Index('xras_action_log_request_id', 'request_id'),
         Index('xras_action_log_replay_fk', 'source_action_id'),
     )
 
@@ -222,14 +223,21 @@ class XrasActionLog(Base):
     request_number = Column(String(30))
 
     #: The wire's ``actionId`` -- the only identifier for the *action*, and so
-    #: the idempotency key. ``requestId`` is deliberately not stored;
-    #: ``request_number`` addresses the request in the form operators use.
+    #: the idempotency key.
     #:
     #: XRAS owns the retry, so this is **detection**, not prevention. Three
     #: identical posts otherwise produce three rows identical in every
     #: filterable column, and the cost of not noticing is asymmetric: Extension
     #: writes nothing on a repeat, Supplement adds a full increment.
     action_id = Column(Integer)
+
+    #: The wire's ``requestId`` -- the identity of one request *line*, where
+    #: ``request_number`` names the whole family (a New plus each Renewal is its
+    #: own line). This is the only column that can join two rows across a mint:
+    #: the corpus holds a pair byte-identical but for ``requestNumber`` (request
+    #: token vs minted projcode), same ``actionId``, same ``requestId``. NULL on
+    #: the RoleChange and unmapped ingresses, whose wire carries no requestId.
+    request_id = Column(Integer)
 
     #: Which legacy service handled it — one of :data:`sam.xras.dispatch.SERVICES`.
     #: Recorded on the ``manual`` arm too, which is the whole point: four parking
@@ -259,6 +267,14 @@ class XrasActionLog(Base):
 
     #: The ordered error list, one message per line — the same list the 422 carries.
     error_messages = Column(Text)
+
+    #: Non-fatal facts the action survived, newline-joined like
+    #: ``error_messages`` (which stays the 422 wire contract and must not be
+    #: overloaded): a grant with no award number, an unflagged-primary fos
+    #: fallback, a roster/role disagreement. utf8mb4 in the DDL — grant titles
+    #: are user free text. The 2026-08-24 reversal of the decline in
+    #: ``docs/xras/incoming/implemented/XRAS_STRESS_AND_SCHEMA.md``.
+    warnings = Column(Text)
 
     projcode_result = Column(String(30))
     processed_time = Column(DateTime)

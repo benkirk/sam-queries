@@ -418,11 +418,13 @@ def get_recent_xras_actions(
             'action_type': row.action_type,
             'request_number': row.request_number,
             'action_id': row.action_id,
+            'request_id': row.request_id,
             'status': row.status,
             'service': row.service,
             'outcome_reason': row.outcome_reason,
             'http_status': row.http_status,
             'errors': _split_errors(row.error_messages),
+            'warnings': _split_errors(row.warnings),
             'projcode_result': row.projcode_result,
             'processed_time': row.processed_time,
             'processed_by': row.processed_by,
@@ -872,3 +874,91 @@ def propose_opportunity_mapping(session, opportunity_payloads) -> Dict[str, Any]
         'review': sorted(review, key=key),
         'unknown_pair': sorted(unknown, key=key),
     }
+
+
+def audit_vocabulary(session: Session, *,
+                     live_role_types: Optional[Iterable[dict]] = None,
+                     live_panels: Optional[Iterable[dict]] = None
+                     ) -> Dict[str, Any]:
+    """The hardcoded XRAS vocabularies, re-checked against their sources.
+
+    Three constants carry XRAS vocabulary at code cadence, each verified by
+    hand when written: ``vocabulary.ROLE_TYPES`` (vs ``GET /v1/types/roles``),
+    ``opportunity_types.XRAS_PANEL_NAMES`` plus the wire abbr set (vs
+    ``GET /v1/panels``), and the panel-authorized type set in
+    ``handlers/_allocations.py`` (vs the ``allocation_type`` table).
+    ``drift``/``unresolved`` are the failing
+    buckets — a declared value its source no longer carries. ``extra_live`` is
+    informational: XRAS growing a new panel or role type is worth reading, not
+    a broken deploy.
+    """
+    from sam.accounting.allocations import AllocationType
+    from sam.integration.xras_api.vocabulary import ROLE_TYPES
+    from sam.xras.handlers._allocations import (PANEL_AUTHORISED_PANEL_ABBRS,
+                                                PANEL_AUTHORISED_TYPES)
+    from sam.xras.opportunity_types import XRAS_PANEL_NAMES
+
+    roles: Dict[str, Any] = {
+        'declared': [{'type_id': r.type_id, 'name': r.name, 'display': r.display}
+                     for r in ROLE_TYPES],
+        'live_checked': live_role_types is not None,
+        'drift': [], 'extra_live': []}
+    if live_role_types is not None:
+        by_id = {r.get('roleTypeId'): r for r in live_role_types
+                 if isinstance(r, dict)}
+        for r in ROLE_TYPES:
+            live = by_id.get(r.type_id)
+            if live is None:
+                roles['drift'].append(
+                    f'roleTypeId {r.type_id} ({r.name}) is not in the live vocabulary')
+            elif (live.get('roleType') != r.name
+                  or live.get('displayRoleType') != r.display):
+                roles['drift'].append(
+                    f'roleTypeId {r.type_id}: declared {r.name!r}/{r.display!r}, '
+                    f'live {live.get("roleType")!r}/{live.get("displayRoleType")!r}')
+        declared_ids = {r.type_id for r in ROLE_TYPES}
+        roles['extra_live'] = sorted(
+            f'{type_id} ({row.get("roleType")})' for type_id, row in by_id.items()
+            if type_id not in declared_ids and row.get('isActive', True))
+
+    panels: Dict[str, Any] = {
+        'declared': dict(XRAS_PANEL_NAMES),
+        'live_checked': live_panels is not None,
+        'drift': [], 'extra_live': []}
+    if live_panels is not None:
+        by_id = {p.get('panelId'): p for p in live_panels if isinstance(p, dict)}
+        for panel_id, name in XRAS_PANEL_NAMES.items():
+            live = by_id.get(panel_id)
+            if live is None:
+                panels['drift'].append(
+                    f'panelId {panel_id} ({name}) is not in the live catalog')
+            elif live.get('panelName') != name:
+                panels['drift'].append(
+                    f'panelId {panel_id}: declared {name!r}, '
+                    f'live {live.get("panelName")!r}')
+        panels['extra_live'] = sorted(
+            f'{panel_id} ({row.get("panelName")})' for panel_id, row in by_id.items()
+            if panel_id not in XRAS_PANEL_NAMES and row.get('isActive', True))
+        live_abbrs = {str(p.get('panelAbbr') or '').strip() for p in by_id.values()}
+        for abbr in sorted(PANEL_AUTHORISED_PANEL_ABBRS):
+            if abbr not in live_abbrs:
+                panels['drift'].append(
+                    f'wire panel abbr {abbr!r} is not in the live catalog')
+
+    authorized: Dict[str, Any] = {'types': [], 'unresolved': [],
+                                  'abbrs': sorted(PANEL_AUTHORISED_PANEL_ABBRS)}
+    for name in sorted(PANEL_AUTHORISED_TYPES):
+        rows = (session.query(AllocationType)
+                .filter(AllocationType.allocation_type == name)
+                .order_by(AllocationType.allocation_type_id).all())
+        if not rows:
+            authorized['unresolved'].append(name)
+        for row in rows:
+            authorized['types'].append({
+                'name': name, 'allocation_type_id': row.allocation_type_id,
+                'panel': getattr(row.panel, 'panel_name', None)})
+
+    return {'role_types': roles, 'panels': panels,
+            'panel_authorized': authorized,
+            'drift': roles['drift'] + panels['drift'],
+            'unresolved': authorized['unresolved']}

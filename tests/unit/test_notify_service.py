@@ -42,6 +42,57 @@ def _notifier(renderer, transport=None, **config_kwargs):
                     renderer=renderer)
 
 
+class TestFamilyAddressing:
+    """`NOTIFY_<FAMILY>_*` fills a Message's empty addressing at send time."""
+
+    @pytest.fixture
+    def xras_renderer(self, tmp_path):
+        (tmp_path / 'xras_extension.txt').write_text('Extended.')
+        (tmp_path / 'expiration-UNIV.txt').write_text('Expiring.')
+        return TemplateRenderer(template_dir=tmp_path)
+
+    def _sent(self, renderer, message, **config_kwargs):
+        transport = NullTransport()
+        _notifier(renderer, transport, **config_kwargs).send(message)
+        sent, _ = transport.delivered[0]
+        return sent
+
+    def test_the_family_config_fills_empty_fields(self, xras_renderer, monkeypatch):
+        monkeypatch.setenv('NOTIFY_XRAS_CC', 'alloc@x.edu')
+        monkeypatch.setenv('NOTIFY_XRAS_REPLY_TO', 'alloc@x.edu')
+        sent = self._sent(xras_renderer, _message(kind='xras_extension',
+                                                  facility=None))
+        assert sent.cc == ('alloc@x.edu',)
+        assert sent.reply_to == 'alloc@x.edu'
+        assert (sent.bcc, sent.sender) == ((), None)
+
+    def test_a_builder_set_value_wins(self, xras_renderer, monkeypatch):
+        monkeypatch.setenv('NOTIFY_XRAS_CC', 'alloc@x.edu')
+        sent = self._sent(xras_renderer, _message(kind='xras_extension',
+                                                  facility=None,
+                                                  cc=('other@x.edu',)))
+        assert sent.cc == ('other@x.edu',)
+
+    def test_another_family_is_untouched(self, xras_renderer, monkeypatch):
+        monkeypatch.setenv('NOTIFY_XRAS_CC', 'alloc@x.edu')
+        monkeypatch.setenv('NOTIFY_XRAS_FROM', 'alloc@x.edu')
+        for suffix in ('CC', 'BCC', 'FROM', 'REPLY_TO'):
+            monkeypatch.delenv(f'NOTIFY_EXPIRATION_{suffix}', raising=False)
+        sent = self._sent(xras_renderer, _message())
+        assert (sent.cc, sent.bcc, sent.sender, sent.reply_to) == ((), (), None, None)
+
+    def test_a_redirect_still_leaves_with_no_copies(self, xras_renderer, monkeypatch):
+        """The family copy rides on the message; the SMTP transport is what
+        drops it, so pin the pair end to end."""
+        from sam.notify import SmtpTransport
+        monkeypatch.setenv('NOTIFY_XRAS_CC', 'alloc@x.edu')
+        sent = self._sent(xras_renderer, _message(kind='xras_extension',
+                                                  facility=None),
+                          redirect_to='me@x.edu')
+        assert sent.intended_recipient == 'pi@x.edu'
+        assert SmtpTransport.copies(sent) == ((), ())
+
+
 class TestDisabledIsTheDefault:
 
     def test_disabled_suppresses_without_delivering(self, renderer):
