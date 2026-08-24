@@ -248,12 +248,43 @@ def auth_at_panel_meeting(session, action) -> bool:
     """
     if get_field(action, 'allocationType'):
         parms = select_allocation_type_mapped(session, action)
-        return parms is not None and parms.allocation_type in _PANEL_AUTHORISED
+        derived = parms is not None and parms.allocation_type in _PANEL_AUTHORISED
+    else:
+        projcode = (get_field(action, 'requestNumber') or '').strip()
+        project = Project.get_by_projcode(session, projcode) if projcode else None
+        stored = (getattr(project.allocation_type, 'allocation_type', None)
+                  if project else None)
+        derived = stored in _PANEL_AUTHORISED
 
-    projcode = (get_field(action, 'requestNumber') or '').strip()
-    project = Project.get_by_projcode(session, projcode) if projcode else None
-    stored = getattr(project.allocation_type, 'allocation_type', None) if project else None
-    return stored in _PANEL_AUTHORISED
+    # The wire names the reviewing panel outright in panels[] — CHAP in exactly
+    # the payloads where this flag matters. It can only ADD authorization (it
+    # reaches the pairs the ladder cannot, e.g. an opportunityName variant the
+    # strategies miss); a wire/derivation disagreement is logged, and the
+    # derived True is never withdrawn — the stored-type arm's CSL answer has no
+    # wire counterpart, so trusting a non-CHAP panel to revoke it would rewrite
+    # legacy's accounting convention on real Supplement rows.
+    wire = _panel_authorised_on_the_wire(action)
+    if wire is not None and wire != bool(derived):
+        logger.warning(
+            'XRAS panels[] disagreement for %s: primary panel says %s, the '
+            'type derivation says %s; authorizing if either does',
+            get_field(action, 'requestNumber'), wire, bool(derived))
+    return bool(derived) or bool(wire)
+
+
+def _panel_authorised_on_the_wire(action):
+    """``panels[]``'s own answer: the primary panel's abbr, against the set.
+
+    ``True``/``False`` when a primary panel is named; ``None`` when ``panels[]``
+    is empty or flags none primary (NOT ``panels[0]`` — Large opportunities
+    carry two). CHAP is the only panel-authorized abbr observed on the wire;
+    CSL exists solely as a stored legacy type.
+    """
+    for panel in get_field(action, 'panels') or ():
+        if get_field(panel, 'isPrimary'):
+            abbr = str(get_field(panel, 'abbr') or '').strip()
+            return abbr in _PANEL_AUTHORISED
+    return None
 
 
 def mark_panel_authorised(session, allocation) -> None:

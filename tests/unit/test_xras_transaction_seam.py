@@ -268,3 +268,38 @@ class TestPanelAuthorisationAgreesWithTheResolvedType:
             assert auth_at_panel_meeting(session, payload) == (
                 parms.allocation_type in _PANEL_AUTHORISED)
         assert checked, 'no payload carried allocationType — the loop proved nothing'
+
+
+class TestPanelsOnTheWire:
+    """``panels[]`` names the reviewing panel outright — CHAP in exactly the
+    payloads where the flag matters. It may ADD authorization the ladder
+    missed; it never withdraws a derived True (the stored-type CSL arm has no
+    wire counterpart)."""
+
+    def test_a_chap_primary_panel_authorises_when_the_ladder_misses(
+            self, session):
+        from sam.xras.handlers._allocations import auth_at_panel_meeting
+
+        wire = {'allocationType': 'Small', 'opportunityId': None,
+                'panels': [{'type': 'Technical',
+                            'name': 'CISL HPC Allocation Panel',
+                            'abbr': 'CHAP', 'isPrimary': True},
+                           {'type': 'Technical',
+                            'name': 'External reviewers for CHAP',
+                            'abbr': 'CHAP External', 'isPrimary': False}]}
+        assert auth_at_panel_meeting(session, wire) is True
+
+    def test_a_non_chap_panel_cannot_withdraw_a_derived_true(self, session):
+        from sam.xras.handlers._allocations import auth_at_panel_meeting
+
+        wire = {'allocationType': 'University Large', 'opportunityId': None,
+                'panels': [{'abbr': 'CISL RSD', 'isPrimary': True}]}
+        derived_alone = auth_at_panel_meeting(session, dict(wire, panels=[]))
+        assert auth_at_panel_meeting(session, wire) is derived_alone
+
+    def test_no_primary_panel_defers_entirely_to_the_derivation(self, session):
+        from sam.xras.handlers._allocations import auth_at_panel_meeting
+
+        wire = {'allocationType': 'Small', 'opportunityId': None,
+                'panels': [{'abbr': 'CHAP', 'isPrimary': False}]}
+        assert auth_at_panel_meeting(session, wire) is False
