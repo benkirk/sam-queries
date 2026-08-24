@@ -1,24 +1,31 @@
 # Design-System Tooling — handoff (component gallery)
 
-> **Status.** Two deliverables. **Deliverable A (the `wire-dashboard-feature`
-> skill + a CLAUDE.md §9 modal rule) is DONE** and lives on branch
-> **`ux_gallery`**, opened as **PR #478** vs `staging`
-> (https://github.com/benkirk/sam-queries/pull/478). **Deliverable B (the
-> `/dev/gallery` component gallery) is the remaining work** — add it as further
-> commits on the **same branch `ux_gallery`** and push to the **same PR**.
+> **Status.** Two deliverables, **both DONE** on branch **`ux_gallery`**,
+> **PR #478** vs `staging` (https://github.com/benkirk/sam-queries/pull/478).
+> - **Deliverable A (the `wire-dashboard-feature` skill + a CLAUDE.md §9 modal
+>   rule) — DONE (2026-08-23).**
+> - **Deliverable B (the `/dev/gallery` component gallery) — DONE (2026-08-24),**
+>   three commits (B1 flag+blueprint, B2 template+axes, B3 tests). Flag
+>   `COMPONENT_GALLERY_ENABLED` mirrors `FLASK_ADMIN_ENABLED` (ON dev, OFF prod).
+>   13 tests pass incl. a six-state render smoke; browser-verified light+desktop
+>   and dark+mobile with zero console errors.
 >
-> This doc is written to be read cold: a fresh session needs nothing but this
-> file to finish Deliverable B. It is grounded in the current tree (line numbers
-> verified 2026-08-23), not the original brief.
+> Only the two deferred follow-ups remain (directions 3 + 4 below). This doc is
+> written to be read cold; it is grounded in the tree (line numbers verified
+> 2026-08-23), not the original brief. The build sections are kept as the record
+> of how B was built.
 
-## Where to pick up (fresh session)
+## Where it landed
 
-1. You are on branch `ux_gallery` (off `staging`). Deliverable A already landed
-   here: `.claude/skills/wire-dashboard-feature/SKILL.md` and a modal-fragment
-   paragraph in `CLAUDE.md` §9. Do not redo those.
-2. Build **Deliverable B** below as three commits: (2) config flag + blueprint,
-   (3) specimens + template + axes, (4) tests. Push to the same PR.
-3. Verify per *End-to-end verification*. Then hand back.
+Deliverable B shipped as three commits on `ux_gallery`:
+`src/webapp/config.py` (flag), `src/webapp/run.py` (gated register),
+`src/webapp/dashboards/gallery/{__init__,blueprint,specimens}.py`,
+`src/webapp/templates/dashboards/gallery/index.html`,
+`tests/unit/test_component_gallery.py`. The build spec that produced them is
+preserved below (*Deliverable B — the build*). One trap worth recording:
+`{% import 'theme_toggle.html' as theme_toggle %}` collides with base.html's
+`{% from … import theme_toggle %}` — alias the namespace to a name other than
+the macro's (the gallery uses `theme_frag`).
 
 ---
 
