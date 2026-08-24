@@ -495,6 +495,30 @@ class TestAreaOfInterest:
         ])) == '7'
 
 
+class TestFosFallbackVisibility:
+    """`fos[0]` deciding the research area is recorded, not silent."""
+
+    def test_a_flagged_primary_is_silent(self):
+        warnings = []
+        assert primary_fos_num({'fos': [{'fosNum': '2'},
+                                        {'fosNum': '5', 'isPrimary': True}]},
+                               warnings=warnings) == '5'
+        assert warnings == []
+
+    def test_array_order_deciding_is_recorded(self):
+        warnings = []
+        assert primary_fos_num({'fos': [{'fosNum': '2'}, {'fosNum': '5'}]},
+                               warnings=warnings) == '2'
+        assert warnings == ['No fos[] entry is flagged primary; research area '
+                            'taken from the first of 2 (fosNum 2)']
+
+    def test_a_single_unflagged_entry_is_unambiguous(self):
+        warnings = []
+        assert primary_fos_num({'fos': [{'fosNum': '2'}]},
+                               warnings=warnings) == '2'
+        assert warnings == []
+
+
 # ---------------------------------------------------------------------------
 # Contract.
 # ---------------------------------------------------------------------------

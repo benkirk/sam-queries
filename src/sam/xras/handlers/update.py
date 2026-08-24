@@ -137,7 +137,9 @@ class UpdateHandler(ActionHandler):
     def assemble(self) -> None:
         self.title = title(self.action, self.errors)
         self.roster = resolve_roster(self.session, self.action, self.errors)
-        self.aoi = resolve_area_of_interest(self.session, self.action, self.errors)
+        fos_warnings: list = []
+        self.aoi = resolve_area_of_interest(self.session, self.action,
+                                            self.errors, warnings=fos_warnings)
         self.allocation_type = resolve_allocation_type(
             self.session, self.action, self.errors)
         self.start = parse_action_begin_date(self.action, self.errors)
@@ -161,7 +163,8 @@ class UpdateHandler(ActionHandler):
         self.lead = self.roster.pi
         self.admin = self.roster.admin
         self.members = list(self.roster.members)
-        self.warnings = self.roster.warnings + contract_warnings
+        self.warnings = (self.roster.warnings + contract_warnings
+                         + tuple(fos_warnings))
 
     def _plan_resource(self, wire_resource):
         """The per-resource decision. Returns a list of ``(kind, …)`` tuples, in order.

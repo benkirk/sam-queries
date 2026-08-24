@@ -500,6 +500,14 @@ class TestContracts:
         assert [pc.contract_id for pc in project.contracts] == [contract.contract_id]
         assert result.warnings == ()
 
+    def test_an_unflagged_fos_fallback_reaches_the_result(
+            self, committing, creatable, mapped_resource):
+        payload = action_for(creatable, wire_resource(mapped_resource.xras_key),
+                             fos=[{'fosNum': '1'}, {'fosNum': '2'}])
+        result = handle_new(committing, payload)
+        assert ('No fos[] entry is flagged primary; research area taken from '
+                'the first of 2 (fosNum 1)') in result.warnings
+
 
 class TestPanelAuthorisation:
     """New marks its CREATE rows when the resolved type is panel-authorized.

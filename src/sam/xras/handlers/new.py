@@ -94,7 +94,9 @@ class NewHandler(ActionHandler):
         """
         self.title = title(self.action, self.errors)
         self.roster = resolve_roster(self.session, self.action, self.errors)
-        self.aoi = resolve_area_of_interest(self.session, self.action, self.errors)
+        fos_warnings: list = []
+        self.aoi = resolve_area_of_interest(self.session, self.action,
+                                            self.errors, warnings=fos_warnings)
         self.allocation_type = resolve_allocation_type(
             self.session, self.action, self.errors)
         self.mnemonic = resolve_mnemonic_code(
@@ -119,7 +121,8 @@ class NewHandler(ActionHandler):
         self.lead = self.roster.pi
         self.admin = self.roster.admin
         self.members = list(self.roster.members)
-        self.warnings = self.roster.warnings + contract_warnings
+        self.warnings = (self.roster.warnings + contract_warnings
+                         + tuple(fos_warnings))
 
     def _plan_allocations(self):
         """One allocation per ``resources[]`` entry, using the **action's own** dates.

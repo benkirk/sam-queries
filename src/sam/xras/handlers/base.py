@@ -146,6 +146,9 @@ class ActionHandler(ABC):
             out['facility_code'] = getattr(facility, 'code', None)
         if mnem is not None:
             out['mnemonic_code'] = getattr(mnem, 'code', None)
+        aoi = getattr(self, 'aoi', None)
+        if aoi is not None:
+            out['area_of_interest'] = getattr(aoi, 'area_of_interest', None)
         # The New path mints a projcode in this series; show it before it burns one.
         if out.get('facility_code') and out.get('mnemonic_code'):
             out['series'] = f"{out['facility_code']}{out['mnemonic_code']}"
