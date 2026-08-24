@@ -182,6 +182,7 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
 | 16:58 | Fix `bf4e37f1` (truncate to 72 bytes; log every API-key refusal with username and reason) dispatched. Meanwhile four XRAS person lookups (`qiangsun`, `mlevy`, `kkeene`) 401'd on the old image — real admins working. |
 | 17:07 | `sha-bf4e37f` rolled out; healthcheck unchanged. |
 | 17:09:41 | **First live action landed.** UFSU0023 Extension re-posted: 200 in 504 ms, `xras_action_log` #1 `processed`/`extend`, allocations 24992–24994 moved 2027-08-31 → 2027-09-30, three `EXTENSION` transactions with NULL amounts — the same shape as all 1,675 legacy XRAS extension rows. |
+| 17:12:37 | **First New landed.** NCAR4277 → `UPSU0087` (GID 99058): 200 in 1.0 s, `xras_action_log` #2 `processed`/`add`, no warnings. Project row (lead/admin `dkpeng`, Small (No NSF award), UNIV USS), three `NEW` allocations (Derecho 500,000 · Casper 5,000 · Casper GPU 3,000, 2026-08-19 → 2027-08-31), roster `dkpeng` + `yingpan`. `active=0` by design — awaiting activate + notify on the XRAS card. |
 
 ### Questions for Steve (batched, not piecemeal)
 
