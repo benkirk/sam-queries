@@ -662,6 +662,8 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
             'transport':    None,
             'relay':        None,
             'redirect_to':  None,
+            'bcc':          None,
+            'addressing':   {},
             'unavailable':  True,
             'sent': 0, 'redirected': 0, 'failed': 0, 'suppressed': 0,
             'queued_stuck': 0, 'total': 0, 'by_status': {},

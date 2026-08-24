@@ -59,6 +59,29 @@ def _config_int(key: str, default: int) -> int:
 
 
 @dataclass(frozen=True)
+class Addressing:
+    """Per-family extra addressing, from ``NOTIFY_<FAMILY>_{CC,BCC,FROM,REPLY_TO}``."""
+
+    cc: tuple[str, ...] = ()
+    bcc: tuple[str, ...] = ()
+    sender: Optional[str] = None
+    reply_to: Optional[str] = None
+
+    @property
+    def is_empty(self) -> bool:
+        return not (self.cc or self.bcc or self.sender or self.reply_to)
+
+    def as_dict(self) -> dict:
+        return {'cc': ', '.join(self.cc) or None,
+                'bcc': ', '.join(self.bcc) or None,
+                'from': self.sender, 'reply_to': self.reply_to}
+
+
+def _split(value: str) -> tuple[str, ...]:
+    return tuple(a.strip() for a in value.split(',') if a.strip())
+
+
+@dataclass(frozen=True)
 class NotifyConfig:
     """A snapshot of notification config, resolved at construction.
 
@@ -84,12 +107,6 @@ class NotifyConfig:
     #: above ``mail_timeout``: fresh means "in flight, leave it", stale means
     #: "we never learned the outcome, try again". See § 5.
     queued_stale_seconds: int = 300
-    #: XRAS handoff mails only (``build_xras_messages`` copies these onto each
-    #: ``Message``); the expiration and summary kinds never read them.
-    xras_cc: str = ''
-    xras_bcc: str = ''
-    xras_from: str = ''
-    xras_reply_to: str = ''
 
     # ------------------------------------------------------------------ mail
     mail_server: str = 'ndir.ucar.edu'
@@ -109,10 +126,6 @@ class NotifyConfig:
             redirect_to=_config_str('NOTIFY_REDIRECT_TO', ''),
             bcc=_config_str('NOTIFY_BCC', ''),
             queued_stale_seconds=_config_int('NOTIFY_QUEUED_STALE_SECONDS', 300),
-            xras_cc=_config_str('NOTIFY_XRAS_CC', ''),
-            xras_bcc=_config_str('NOTIFY_XRAS_BCC', ''),
-            xras_from=_config_str('NOTIFY_XRAS_FROM', ''),
-            xras_reply_to=_config_str('NOTIFY_XRAS_REPLY_TO', ''),
             mail_server=_config_str('MAIL_SERVER', 'ndir.ucar.edu'),
             mail_port=_config_int('MAIL_PORT', 25),
             # Defaults true: § 9 measured STARTTLS working on ndir.ucar.edu,
@@ -131,13 +144,33 @@ class NotifyConfig:
         """``NOTIFY_BCC`` as a list — it accepts a comma-separated string."""
         return [a.strip() for a in self.bcc.split(',') if a.strip()]
 
-    @property
-    def xras_cc_addresses(self) -> list[str]:
-        return [a.strip() for a in self.xras_cc.split(',') if a.strip()]
+    @staticmethod
+    def addressing(family: str) -> Addressing:
+        """The family's extra addressing, read live so the CLI and webapp agree.
 
-    @property
-    def xras_bcc_addresses(self) -> list[str]:
-        return [a.strip() for a in self.xras_bcc.split(',') if a.strip()]
+        The ``Notifier`` fills a ``Message``'s empty ``cc``/``bcc``/``sender``/
+        ``reply_to`` from this; a builder-set value wins. ``family`` comes from
+        ``NotificationKind.family``; an empty one has no addressing.
+        """
+        if not family:
+            return Addressing()
+        prefix = f'NOTIFY_{family.upper()}_'
+        return Addressing(
+            cc=_split(_config_str(prefix + 'CC', '')),
+            bcc=_split(_config_str(prefix + 'BCC', '')),
+            sender=_config_str(prefix + 'FROM', '') or None,
+            reply_to=_config_str(prefix + 'REPLY_TO', '') or None,
+        )
+
+    def addressing_summary(self) -> dict:
+        """``{family: Addressing.as_dict()}`` for every family with anything set."""
+        from sam.notify.kinds import families     # kinds imports base only; no cycle
+        out = {}
+        for family in families():
+            addressing = self.addressing(family)
+            if not addressing.is_empty:
+                out[family] = addressing.as_dict()
+        return out
 
     @property
     def is_redirecting(self) -> bool:
@@ -153,10 +186,7 @@ class NotifyConfig:
             'mail_from': self.mail_from,
             'redirect_to': self.redirect_to or None,
             'bcc': ', '.join(self.bcc_addresses) or None,
-            'xras_cc': ', '.join(self.xras_cc_addresses) or None,
-            'xras_bcc': ', '.join(self.xras_bcc_addresses) or None,
-            'xras_from': self.xras_from or None,
-            'xras_reply_to': self.xras_reply_to or None,
+            'addressing': self.addressing_summary(),
             'timeout': self.mail_timeout,
         }
 

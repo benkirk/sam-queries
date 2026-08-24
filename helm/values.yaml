@@ -203,9 +203,10 @@ webapp:
     MAIL_USE_TLS: "true"
     MAIL_TIMEOUT: "10"
     MAIL_DEFAULT_FROM: "sam-admin@ucar.edu"
-    # XRAS handoff mails ONLY (sam.queries.xras_notices). Comma lists for
-    # CC/BCC; empty means off. A From override must stay a ucar.edu address
-    # for the SPF note above to hold.
+    # Per-family addressing, NOTIFY_<FAMILY>_{CC,BCC,FROM,REPLY_TO}; the
+    # family is NotificationKind.family (sam/notify/kinds.py: xras,
+    # expiration, task). Comma lists for CC/BCC; empty means off. A FROM
+    # override must stay a ucar.edu address for the SPF note above to hold.
     NOTIFY_XRAS_CC: "alloc@ucar.edu"
     NOTIFY_XRAS_BCC: ""
     NOTIFY_XRAS_FROM: ""

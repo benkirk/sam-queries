@@ -141,34 +141,17 @@ spec:
                 value: {{ .Values.webapp.env.MAIL_TIMEOUT | quote }}
               - name: MAIL_DEFAULT_FROM
                 value: {{ .Values.webapp.env.MAIL_DEFAULT_FROM | quote }}
-              {{- with .Values.webapp.env.NOTIFY_REDIRECT_TO }}
-              # Only rendered when set. It is the staging safety valve, and a
-              # bare "" here would read as deliberately-empty rather than
-              # absent.
-              - name: NOTIFY_REDIRECT_TO
-                value: {{ . | quote }}
+              # Every other NON-EMPTY NOTIFY_* in webapp.env is forwarded by
+              # prefix: NOTIFY_REDIRECT_TO (the staging valve), NOTIFY_BCC, and
+              # the NOTIFY_<FAMILY>_* addressing from sam/notify/kinds.py. A
+              # hand list here is what let the Notify button and the task
+              # address mail differently. Empty values are skipped so "" reads
+              # as absent, not as deliberately blank.
+              {{- range $key, $value := .Values.webapp.env }}
+              {{- if and (hasPrefix "NOTIFY_" $key) $value (ne $key "NOTIFY_ENABLED") (ne $key "NOTIFY_TRANSPORT") }}
+              - name: {{ $key }}
+                value: {{ $value | quote }}
               {{- end }}
-              {{- with .Values.webapp.env.NOTIFY_BCC }}
-              - name: NOTIFY_BCC
-                value: {{ . | quote }}
-              {{- end }}
-              # The xras_notices task builds the same messages as the Notify
-              # button, so it must see the same XRAS-only addressing.
-              {{- with .Values.webapp.env.NOTIFY_XRAS_CC }}
-              - name: NOTIFY_XRAS_CC
-                value: {{ . | quote }}
-              {{- end }}
-              {{- with .Values.webapp.env.NOTIFY_XRAS_BCC }}
-              - name: NOTIFY_XRAS_BCC
-                value: {{ . | quote }}
-              {{- end }}
-              {{- with .Values.webapp.env.NOTIFY_XRAS_FROM }}
-              - name: NOTIFY_XRAS_FROM
-                value: {{ . | quote }}
-              {{- end }}
-              {{- with .Values.webapp.env.NOTIFY_XRAS_REPLY_TO }}
-              - name: NOTIFY_XRAS_REPLY_TO
-                value: {{ . | quote }}
               {{- end }}
               # The dispatcher reads SAM's config validator on startup even
               # though its only task touches Postgres, so both DB blocks are

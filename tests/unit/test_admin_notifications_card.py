@@ -71,8 +71,7 @@ class TestSecrets:
         with app.app_context():
             block = gather_runtime_state(app, db)['notifications']
 
-        address_bearing = {'mail_from', 'redirect_to', 'bcc',
-                           'xras_cc', 'xras_bcc', 'xras_from', 'xras_reply_to'}
+        address_bearing = {'mail_from', 'redirect_to', 'bcc', 'addressing'}
         for key, value in block.items():
             if key in address_bearing:
                 continue

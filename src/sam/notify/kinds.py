@@ -38,6 +38,9 @@ class NotificationKind:
         default_subscribed: what an absent preference means. See above.
         facility_aware: whether the facility variants are meaningful. A kind
             that is not facility-aware always renders the default variant.
+        family: the addressing class. ``NotifyConfig.addressing(family)``
+            reads ``NOTIFY_<FAMILY>_{CC,BCC,FROM,REPLY_TO}``, so keep it
+            ``[a-z_]`` -- it is an env-name fragment.
     """
 
     key: str
@@ -46,6 +49,7 @@ class NotificationKind:
     channel: Channel = Channel.EMAIL
     default_subscribed: bool = True
     facility_aware: bool = True
+    family: str = ''
 
 
 def _by_key(*kinds: NotificationKind) -> Dict[str, NotificationKind]:
@@ -64,6 +68,7 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
         # Transactional. A PI whose allocation lapses must be told, and an
         # absent preference row must never be the reason they were not.
         default_subscribed=True,
+        family='expiration',
     ),
     NotificationKind(
         key='xras_activation',
@@ -75,6 +80,7 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
         # The handoff text is the same whoever the facility is; there is one
         # variant and the resolver finds it through the default.
         facility_aware=False,
+        family='xras',
     ),
     # The other three XRAS outcomes
     #
@@ -97,6 +103,7 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
     # direction the payload does not support.
     NotificationKind(
         key='xras_supplement',
+        family='xras',
         label='XRAS allocation supplement',
         template_base='xras_supplement',
         default_subscribed=True,
@@ -104,6 +111,7 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
     ),
     NotificationKind(
         key='xras_extension',
+        family='xras',
         label='XRAS allocation extension',
         template_base='xras_extension',
         default_subscribed=True,
@@ -111,6 +119,7 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
     ),
     NotificationKind(
         key='xras_update',
+        family='xras',
         label='XRAS allocation renewal',
         template_base='xras_update',
         default_subscribed=True,
@@ -122,6 +131,7 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
     # that can subtract.
     NotificationKind(
         key='xras_adjustment',
+        family='xras',
         label='XRAS allocation adjustment',
         template_base='xras_adjustment',
         default_subscribed=True,
@@ -143,8 +153,14 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
         default_subscribed=True,
         # Not about a project, so it has no facility to vary on.
         facility_aware=False,
+        family='task',
     ),
 )
+
+
+def families() -> tuple[str, ...]:
+    """Every addressing family a kind declares, sorted."""
+    return tuple(sorted({k.family for k in NOTIFICATION_KINDS.values() if k.family}))
 
 
 def get_kind(key: str) -> NotificationKind:

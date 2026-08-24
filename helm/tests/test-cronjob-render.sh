@@ -178,15 +178,22 @@ assert_contains "$cron_out" 'name: MAIL_SERVER' \
 assert_contains "$cron_out" 'name: MAIL_DEFAULT_FROM' \
   "and the envelope sender, which must SPF-pass as sam-admin@ucar.edu"
 
-# The XRAS-only addressing is forwarded when set: render with each key
-# populated and require it, so a value the button honors reaches the task too.
-for xras_key in NOTIFY_XRAS_CC NOTIFY_XRAS_BCC NOTIFY_XRAS_FROM NOTIFY_XRAS_REPLY_TO; do
-  xras_out=$(helm template "$RELEASE_NAME" "$CHART_DIR" \
+# Every NON-EMPTY NOTIFY_* in webapp.env reaches the CronJob by prefix, and
+# an empty one does not: the button and the task must address mail alike.
+while read -r notify_key; do
+  assert_contains "$cron_out" "name: ${notify_key}" \
+    "${notify_key} is set in webapp.env and must reach the CronJob"
+done < <(grep -E '^[[:space:]]+NOTIFY_[A-Z_]+: "[^"]+"' "$CHART_DIR/values.yaml" | sed -E 's/^[[:space:]]+(NOTIFY_[A-Z_]+):.*/\1/')
+while read -r notify_key; do
+  assert_not_contains "$cron_out" "name: ${notify_key}" \
+    "${notify_key} is empty in webapp.env and must not render as a blank value"
+done < <(grep -E '^[[:space:]]+NOTIFY_[A-Z_]+: ""' "$CHART_DIR/values.yaml" | sed -E 's/^[[:space:]]+(NOTIFY_[A-Z_]+):.*/\1/')
+# A family that does not exist yet needs no template edit.
+future_out=$(helm template "$RELEASE_NAME" "$CHART_DIR" \
              -f "$CHART_DIR/values.yaml" -s templates/cronjob-tasks.yaml \
-             --set "webapp.env.${xras_key}=probe@example.edu")
-  assert_contains "$xras_out" "name: ${xras_key}" \
-    "${xras_key} set in webapp.env must reach the CronJob, or the button and the task address mail differently"
-done
+             --set "webapp.env.NOTIFY_FUTURE_CC=probe@example.edu")
+assert_contains "$future_out" 'name: NOTIFY_FUTURE_CC' \
+  "a new NOTIFY_<FAMILY>_* key must be forwarded without touching this template"
 assert_contains "$cron_out" 'name: SAM_TASKS_EMAIL_MAX' \
   "and the runaway guard"
 assert_contains "$cron_out" 'name: SAM_TASKS_SUMMARY_TO' \

@@ -130,27 +130,12 @@ def _built(session, project, *, service, action_type, payload=None,
 
 
 class TestSharedMailboxCopies:
-    """The XRAS-only addressing rides on the Message, from NOTIFY_XRAS_*."""
+    """Addressing is the Notifier's job (NOTIFY_<FAMILY>_*), not the builder's."""
 
-    def test_the_copies_and_sender_come_from_config(self, session, project,
-                                                    monkeypatch):
+    def test_the_builder_sets_no_addressing_even_when_configured(
+            self, session, project, monkeypatch):
         monkeypatch.setenv('NOTIFY_XRAS_CC', 'alloc@example.edu')
-        monkeypatch.setenv('NOTIFY_XRAS_BCC', 'a@example.edu, b@example.edu')
         monkeypatch.setenv('NOTIFY_XRAS_FROM', 'alloc@example.edu')
-        monkeypatch.setenv('NOTIFY_XRAS_REPLY_TO', 'alloc@example.edu')
-        _, messages = _built(session, project, service='extend',
-                             action_type='Extension')
-        msg = messages[0]
-        assert msg.cc == ('alloc@example.edu',)
-        assert msg.bcc == ('a@example.edu', 'b@example.edu')
-        assert (msg.sender, msg.reply_to) == ('alloc@example.edu',
-                                              'alloc@example.edu')
-
-    def test_unset_means_no_copies_and_the_site_sender(self, session, project,
-                                                       monkeypatch):
-        for name in ('NOTIFY_XRAS_CC', 'NOTIFY_XRAS_BCC', 'NOTIFY_XRAS_FROM',
-                     'NOTIFY_XRAS_REPLY_TO'):
-            monkeypatch.delenv(name, raising=False)
         _, messages = _built(session, project, service='extend',
                              action_type='Extension')
         msg = messages[0]

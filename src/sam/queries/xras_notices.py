@@ -32,7 +32,7 @@ from sqlalchemy.orm import Session
 from sam import fmt
 from sam.enums import ResourceTypeName
 from sam.integration.xras import XrasActionLog, XrasResourceRepositoryKeyResource
-from sam.notify import Message, NotifyConfig, to_recipients
+from sam.notify import Message, to_recipients
 
 from .xras_activation import (
     XRAS_SERVICE_KINDS,
@@ -199,9 +199,6 @@ def build_xras_messages(session: Session, project,
         kind, XRAS_KIND_SUBJECTS['xras_activation']
     ).format(projcode=project.projcode)
 
-    # The shared-mailbox copy and sender override are XRAS-only by being set
-    # here and nowhere else; the dedup key ignores them on purpose.
-    config = NotifyConfig.from_environment()
     return [
         Message(
             kind=kind,
@@ -213,10 +210,6 @@ def build_xras_messages(session: Session, project,
             dedup_key=xras_dedup_key(kind, project.projcode, action_id,
                                      recipient.address),
             requested_by=requested_by,
-            cc=tuple(config.xras_cc_addresses),
-            bcc=tuple(config.xras_bcc_addresses),
-            sender=config.xras_from or None,
-            reply_to=config.xras_reply_to or None,
         )
         for recipient in to_recipients(people)
     ]
