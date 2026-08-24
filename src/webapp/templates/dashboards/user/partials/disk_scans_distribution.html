@@ -7,11 +7,11 @@
     hist (dict|None), chart_svg (str|None), enabled, error,
     resource_name, scope, fileset, target_id,
     bucket_header (x-axis column label), metric ('data'|'files'),
-    metric_toggle (bool — show the Data↔Files pill), fragment_url.
+    metric_toggle (bool — show the Data<->Files pill), fragment_url.
   hist: bucket_labels, buckets{label:{data,files,owners}},
         total_data, total_files, directory, fast_path, reference_scan_date,
         username_map.
-  The bar→row drill-down (#sam/row/data-ah-bucket/<i> / data-ah-bucket=<i>) is pane-scoped in
+  The bar->row drill-down (#sam/row/data-ah-bucket/<i> / data-ah-bucket=<i>) is pane-scoped in
   svg-chart-links.js, so both tabs can use the same anchor scheme.
 #}
 
@@ -46,7 +46,7 @@
 {% else %}
   {% if metric_toggle or log_toggle %}
     {# Carry scope/resource/fileset on the pill / switch re-fetch — same
-       hidden-form + hx-include pattern as the owner↔group toggle. #}
+       hidden-form + hx-include pattern as the owner<->group toggle. #}
     <form id="disk-scans-metric-params-{{ target_id }}" class="d-none">
       <input type="hidden" name="resource" value="{{ resource_name }}">
       <input type="hidden" name="scope" value="{{ scope }}">
@@ -58,7 +58,7 @@
   {% set _log_q = '&log=1' if log_on else '' %}
   <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
     {% if metric_toggle %}
-      {# Data ↔ Files metric pill — re-fetches this same pane with ?metric=,
+      {# Data <-> Files metric pill — re-fetches this same pane with ?metric=,
          preserving the current log-scale state. #}
       <div class="btn-group btn-group-sm me-1" role="group" aria-label="Chart metric">
         <button type="button"
@@ -139,7 +139,7 @@
   </div>
 
   {# Per-user breakdown lives inside each bucket's collapse detail row —
-     the owners dict (uid → {data, files}) is already on the histogram, so
+     the owners dict (uid -> {data, files}) is already on the histogram, so
      this is a pure client-side expand, mirroring the jobs table pattern. #}
   {% set umap = hist.username_map or {} %}
   {# Fold the Owners column when no band has more than one owner (uniformly 1 —
@@ -200,7 +200,7 @@
             {% if _show_owners %}<td class="text-end">{{ owners | length | fmt_number }}</td>{% endif %}
           </tr>
           {% if _direct %}
-            {# Exactly one owner → drill straight to their directories. #}
+            {# Exactly one owner -> drill straight to their directories. #}
             {% set _uid = owners | list | first %}
             {% set _uname = umap.get(_uid) or umap.get(_uid | string) or ('uid ' ~ _uid) %}
             <tr class="collapse" id="{{ rowid }}">

@@ -21,7 +21,9 @@ from sam.integration.xras_api import XrasSourceUnavailable
 from sam.manage import xras_remediation as remediation
 from sam.queries.xras_actions import XRAS_ACTION_SORT_COLUMNS
 from sam.queries.xras_activation import ACTIVITY_TAGS
-from sam.queries.xras_accounts import CLASSIFICATION_ABSENT, CLASSIFICATION_INACTIVE
+from sam.queries.xras_accounts import (CLASSIFICATION_ABSENT,
+                                       CLASSIFICATION_INACTIVE,
+                                       SOURCE_ACTION_LOG, SOURCE_REPORTS)
 
 
 def _session_factory():
@@ -88,15 +90,40 @@ def _read_client():
     return XrasApiClient.from_environment()
 
 
-def _live_request(request_number):
-    """Live roster + action states for one request, via the reports family.
+def _primary_line(lines):
+    """The request line holding the project's globally most-recent action.
 
-    ⚠️ Not ``GET /v1/requests/<id>``, which is 401 for our credential in every
-    context — so ``rules{allowedOperations}``, the API's own answer to "what may
-    I do to this action", is unavailable and the offers are derived instead
-    (PRIVILEGE(#1)).
+    A projcode can have several request lines (a New plus Renewals, each its own
+    ``requestId``); this picks the one with the highest ``actionId`` — the current
+    request. The modal anchors its header/roster and every write on it, so the
+    target is deterministic rather than XRAS's arbitrary ``lines[0]`` order.
     """
-    return _read_client().get_request_by_number(request_number)
+    def _max_action(line):
+        ids = [a.get('actionId') for a in (line.get('actions') or ())
+               if isinstance(a.get('actionId'), int)]
+        return max(ids) if ids else -1
+    return max(lines, key=_max_action) if lines else None
+
+
+def _live_request(request_number):
+    """The project's **primary** request line, via the reports family.
+
+    WARNING: Not ``lines[0]`` (XRAS's arbitrary order) and not
+    ``GET /v1/requests/<id>`` (401 for our credential — so
+    ``rules{allowedOperations}`` is unavailable and offers are derived,
+    PRIVILEGE(#1)). Returning the primary line here is what makes every write
+    handler that resolves ``request_id`` from it target the current request.
+    """
+    return _primary_line(_read_client().get_request_family_by_number(request_number))
+
+
+def _live_family(request_number):
+    """Every request line for a projcode — the whole allocation lifecycle, one call.
+
+    All lines (a New plus any Renewals, each with its own ``requestId`` and
+    ``actions[]``); :func:`_live_request` returns the primary one of these.
+    """
+    return _read_client().get_request_family_by_number(request_number)
 
 
 def _impersonation(entry, live=None):
@@ -117,7 +144,7 @@ def _impersonation(entry, live=None):
     username, is_pi = (pi, True) if pi else (
         next((r.get('username') for r in roster if r.get('username')), None), False)
 
-    # ⚠️ The project lead is sometimes an unmerged placeholder — measured on 2
+    # WARNING: The project lead is sometimes an unmerged placeholder — measured on 2
     # of 27 live rows the first time this card was pointed at production. That
     # is legitimate as far as XRAS is concerned (the placeholder really does
     # hold the role, so the call authorizes), but the operator is then acting
@@ -160,7 +187,7 @@ def _parse_xras_filters(request_args):
     """Parse filter + sort + pagination params for the XRAS fragment.
 
     Deliberately a sibling of ``_parse_audit_filters`` rather than a
-    generalisation of it. The sort/page halves are identical by convention (that
+    generalization of it. The sort/page halves are identical by convention (that
     is what makes the shared ``sort_link`` / ``pagination`` macros work) and now
     come from the shared ``read_sort`` / ``read_page``; the filter halves have
     nothing in common — projcode/resource/username/facility versus
@@ -222,7 +249,7 @@ def _parse_xras_filters(request_args):
 
 
 #: Window pills for the activity card, and the default. `days` is free on this
-#: blueprint — it means lookback days in the jobs family and legacy days→hours
+#: blueprint — it means lookback days in the jobs family and legacy days->hours
 #: on the status-history routes, and neither is reachable from here.
 _ACTIVITY_WINDOW_PILLS = ((7, '7D'), (30, '30D'), (90, '90D'))
 _ACTIVITY_DEFAULT_DAYS = 30
@@ -271,6 +298,20 @@ def _parse_activity_window(args) -> dict:
     days = max(1, min(days, _ACTIVITY_MAX_DAYS))
     return {'days': days, 'since': datetime.now() - timedelta(days=days),
             'until': None, 'start_date': '', 'end_date': '', 'custom': False}
+
+
+def sort_rows(rows, sort, keymap):
+    """In-Python sort of snapshot rows by a whitelisted column, None-last in both
+    directions. ``keymap`` maps a ``sort_by`` value to a row-key function; an
+    unknown/absent column leaves the order untouched."""
+    keyfn = keymap.get((sort or {}).get('sort_by'))
+    if not keyfn:
+        return list(rows)
+    reverse = (sort or {}).get('sort_dir') == 'desc'
+    present = [r for r in rows if keyfn(r) is not None]
+    absent = [r for r in rows if keyfn(r) is None]
+    present.sort(key=keyfn, reverse=reverse)
+    return present + absent
 
 
 def _row_activity_type(row) -> str:
@@ -325,7 +366,7 @@ def _activity_facets(rows, dimension, *, tags=None, types=None) -> dict:
 
 #: Display labels for the classification facet. The slug is what round-trips
 #: through the form; an operator should never see it.
-#: ⚠️ These name the ARTIFACT, not an action SAM performs — and that is the
+#: WARNING: These name the ARTIFACT, not an action SAM performs — and that is the
 #: whole point of the wording. `users` is mirrored into SAM from the enterprise
 #: directory by a process outside this codebase: there is no INSERT into
 #: `users` anywhere in the tree, `User` alone among the models has no
@@ -360,8 +401,17 @@ _ORIGIN_LABELS = {
     ORIGIN_KNOWN: 'Known identity',
 }
 
+#: The ``source`` facet, keyed on the provenance tags a worklist row carries.
+#: A received-push row is the more urgent flavor (a push already arrived and is
+#: blocked); a pending-request row is the lookahead. A row may carry both.
+_SOURCE_LABELS = {
+    SOURCE_ACTION_LOG: 'Received push',
+    SOURCE_REPORTS: 'Pending request',
+}
 
-def _filter_accounts(rows, *, classifications=None, roles=None, origins=None):
+
+def _filter_accounts(rows, *, classifications=None, roles=None, origins=None,
+                     sources=None):
     """Facet filters: ANDed across dimensions, ORed within one.
 
     *origins* is the ``placeholder`` dimension, expressed as the two values a
@@ -372,7 +422,11 @@ def _filter_accounts(rows, *, classifications=None, roles=None, origins=None):
     people, and until now the only way to tell them apart was to read the shape
     of the username.
 
-    ⚠️ Deliberately **not** defaulted. The rule on this card is *no selection =
+    *sources* is the provenance dimension — which feed put the row here. A row
+    is kept when ANY selected source is one it carries, so a both-feeds row
+    survives either filter.
+
+    WARNING: Deliberately **not** defaulted. The rule on this card is *no selection =
     no filter*, and defaulting one dimension on would make an empty facet row
     mean something different here than on every other card.
     """
@@ -384,10 +438,11 @@ def _filter_accounts(rows, *, classifications=None, roles=None, origins=None):
     if origins:
         wanted = {o == ORIGIN_PLACEHOLDER for o in origins}
         out = [r for r in out if bool(r['placeholder']) in wanted]
+    if sources:
+        out = [r for r in out
+               if any(s in (r.get('sources') or ()) for s in sources)]
     return out
 
-
-_PENDING_FORM_ID = 'xras-pending-filters'
 
 #: Requests to offer as chips. A worklist spanning dozens of projects would
 #: otherwise render a chip wall; the cap is on the CHIPS, not the rows, and
@@ -438,7 +493,8 @@ def _request_facets(rows, *, classifications=None):
     return [{'value': k, 'count': v} for k, v in ordered[:_MAX_REQUEST_CHIPS]]
 
 
-def _account_facets(rows, dimension, *, classifications=None, roles=None):
+def _account_facets(rows, dimension, *, classifications=None, roles=None,
+                    sources=None):
     """Self-excluding counts for one dimension.
 
     A dimension's rollup omits its own filter — scope it by itself and every
@@ -446,12 +502,13 @@ def _account_facets(rows, dimension, *, classifications=None, roles=None):
     from switchers into a dead end. Same rule as :func:`_activity_facets`.
     """
     if dimension == 'classification':
-        scoped = _filter_accounts(rows, roles=roles)
+        scoped = _filter_accounts(rows, roles=roles, sources=sources)
         return {key: sum(1 for r in scoped if r['classification'] == key)
                 for key in (CLASSIFICATION_ABSENT, CLASSIFICATION_INACTIVE)}
 
     if dimension == 'role':
-        scoped = _filter_accounts(rows, classifications=classifications)
+        scoped = _filter_accounts(rows, classifications=classifications,
+                                  sources=sources)
         counts = {}
         for row in scoped:
             for role in row['roles']:
@@ -460,47 +517,21 @@ def _account_facets(rows, dimension, *, classifications=None, roles=None):
 
     if dimension == 'origin':
         scoped = _filter_accounts(rows, classifications=classifications,
-                                  roles=roles)
+                                  roles=roles, sources=sources)
         return {
             ORIGIN_PLACEHOLDER: sum(1 for r in scoped if r['placeholder']),
             ORIGIN_KNOWN: sum(1 for r in scoped if not r['placeholder']),
         }
 
+    if dimension == 'source':
+        scoped = _filter_accounts(rows, classifications=classifications,
+                                  roles=roles)
+        # A both-feeds row counts in both, so this is not a partition.
+        return {key: sum(1 for r in scoped if key in (r.get('sources') or ()))
+                for key in (SOURCE_ACTION_LOG, SOURCE_REPORTS)}
+
     raise ValueError(f'unknown account facet dimension {dimension!r}')
 
 
-def _pending_account_total():
-    """How many accounts the *other* tab is holding, or ``None``.
-
-    ⚠️ Counts only. Reading the sibling feed's rows into this card would undo
-    the split the two tabs exist to draw — one is what has posted, the other is
-    a lookahead at what XRAS may send. But a card that reports "8" while 18
-    more sit one click away is a queue that reads as smaller than it is, and
-    that is the failure this whole change is about.
-
-    ``None`` means "could not look", which is the honest answer when the
-    outbound API is off or no sweep has published — distinct from zero.
-    """
-    from sam.integration.xras_api import xras_api_configured
-
-    if not xras_api_configured():
-        return None
-    try:
-        from sam.integration.xras_api.cache import load_pending_worklist
-
-        snapshot = load_pending_worklist()
-    except Exception:                                # noqa: BLE001
-        # Cache backends are infrastructure. A cross-reference is a courtesy;
-        # it must never be the reason the worklist 500s.
-        current_app.logger.warning(
-            'xras accounts: could not read the pending worklist for the '
-            'cross-reference', exc_info=True)
-        return None
-    if not snapshot:
-        return None
-    return (snapshot.get('counts') or {}).get('total')
-
-
-_PENDING_TARGET = 'alloc-xras-pending-requests'
 _WINDOW_TARGET = 'alloc-xras-window'
 

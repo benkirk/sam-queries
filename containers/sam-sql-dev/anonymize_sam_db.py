@@ -1037,7 +1037,7 @@ class SAMAnonymizer:
         reference data. Nothing in dev or CI reads historical rows — the tests
         that exercise the table create their own.
 
-        ⚠️ Must run BEFORE ``purge_xras_action_log``: ``xras_action_log_id`` is an
+        WARNING: Must run BEFORE ``purge_xras_action_log``: ``xras_action_log_id`` is an
         FK to that table, so emptying the parent first fails with `1451`.
         """
         print("\n[*] Purging xras_activation_event table...")
@@ -1074,7 +1074,7 @@ class SAMAnonymizer:
         No FK either way (every identifier belongs to XRAS), so unlike the two
         above, ordering does not matter here.
 
-        ⚠️ **Verify this by hand after every regeneration.** ``make bootstrap``
+        WARNING: **Verify this by hand after every regeneration.** ``make bootstrap``
         swallows anonymization failures with ``|| true`` and dumps the blob
         anyway, so a silent skip here ships the PII rather than failing loudly.
         """
@@ -1112,7 +1112,7 @@ class SAMAnonymizer:
         tests that exercise the table create their own
         (``tests/factories/notify.py``).
 
-        ⚠️ It is also the table whose rows would make a dev container *skip*
+        WARNING: It is also the table whose rows would make a dev container *skip*
         sending: suppression matches on ``dedup_key``, so importing production
         rows into dev would silently suppress mail an operator was testing.
 
@@ -1192,7 +1192,7 @@ class SAMAnonymizer:
                 # grant), and a bootstrap against a source without them must not
                 # fail here.
                 #
-                # ⚠️ ORDER IS LOAD-BEARING. xras_activation_event.xras_action_log_id
+                # WARNING: ORDER IS LOAD-BEARING. xras_activation_event.xras_action_log_id
                 # is an FK to xras_action_log, so the child must be emptied FIRST
                 # or purge_xras_action_log fails with `1451 Cannot delete or update
                 # a parent row`.

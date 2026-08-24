@@ -378,7 +378,7 @@ class TestAdjustmentsFragmentRoute:
             '/allocations/adjustments_fragment?projcode=FAKE999'
         )
         assert response.status_code == 200
-        # Unknown project → no rows
+        # Unknown project -> no rows
         assert b'No adjustments match' in response.data
 
     def test_unauthenticated_redirects(self, client):
@@ -767,7 +767,7 @@ class TestUsageCacheModule:
     Tests for sam.queries.usage_cache module.
 
     These tests operate outside a Flask request context so the config read
-    falls back to env vars (default TTL=3600, SIZE=200 → cache *enabled*).
+    falls back to env vars (default TTL=3600, SIZE=200 -> cache *enabled*).
     The module-level _reset_usage_cache_globals autouse fixture ensures a
     clean (None, False) state before each test.
     """
@@ -801,7 +801,7 @@ class TestUsageCacheModule:
         with patch.object(buckets, '_config_int', side_effect=lambda k, d: 0):
             cache = uc.get_cache_adapter()
         assert cache is None
-        # A stored None means "initialised but disabled" — so the zero-config
+        # A stored None means "initialized but disabled" — so the zero-config
         # read happens once, not on every call.
         assert uc._CACHE._adapters['default'] is None
 
@@ -1212,7 +1212,7 @@ class TestAllocationsDashboardFacilityScope:
         self._scope_benkirk(monkeypatch, [])  # entry exists but grants nothing
         response = auth_client.get('/allocations/projects')
         # The decorator admits any user with at least one facility grant
-        # of VIEW_PROJECTS; empty-dict entry leaves them unadmitted → 403.
+        # of VIEW_PROJECTS; empty-dict entry leaves them unadmitted -> 403.
         assert response.status_code == 403
 
 

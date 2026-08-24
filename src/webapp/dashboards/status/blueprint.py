@@ -77,13 +77,13 @@ def _page_context(session):
         selected_hours=selected_hours,
         chart_hours=chart_hours,
         # Scan-capable disk resources for the gated "Filesystem Scans" tab.
-        # Empty (→ tab hidden) when the fs-scans plugin is off or no configured
+        # Empty (-> tab hidden) when the fs-scans plugin is off or no configured
         # resource has warmed collections. Tab visibility is additionally gated
         # in-template on VIEW_ALL_FILESYSTEM_DATA. has_permission/Permission are
         # template globals (rbac_context_processor).
         fs_scan_resources=disk_scans_service.scan_capable_resources(),
         # Plugin machines for the gated "Job History" tab — same pattern:
-        # empty (→ tab hidden) when the hpc-usage-queries plugin is off;
+        # empty (-> tab hidden) when the hpc-usage-queries plugin is off;
         # visibility additionally gated in-template on VIEW_ALL_JOB_DATA.
         job_history_machines=jobs_service.job_history_machines(),
     )
@@ -509,7 +509,7 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
         rank_by=rank_by,
     )
 
-    # Clamp metric=gpus → cores when this scope+window has no GPU
+    # Clamp metric=gpus -> cores when this scope+window has no GPU
     # activity. Mirrors the (state, metric) clamp above; protects
     # against direct URL access or stale selector state when the time
     # window scrolls past a previously-GPU-active period. Re-fetch so
@@ -529,8 +529,8 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
             rank_by=rank_by,
         )
 
-    # group_by=user → username legend → user modal; group_by=project →
-    # projcode legend → project modal. svg-chart-links.js dispatches.
+    # group_by=user -> username legend -> user modal; group_by=project ->
+    # projcode legend -> project modal. svg-chart-links.js dispatches.
     # Only operators (VIEW_SYSTEM_STATUS_USER_INFO) get clickable legend
     # entries — the user/project detail modal endpoints have their own
     # RBAC and would 403 a non-operator's click. Plain-text labels for
@@ -602,7 +602,7 @@ def htmx_user_proj_chart_system(system):
     """Render the user/project chart summed across all queues for ``system``.
 
     Used by the chart card on the system landing page (Derecho /
-    Casper tabs of the status dashboard). Same selector behaviour as
+    Casper tabs of the status dashboard). Same selector behavior as
     the per-queue endpoint, but the aggregator filters on system_id
     rather than queue_id. Visible to any logged-in user; legend
     click-through is gated separately in ``_render_user_proj_chart``
@@ -643,7 +643,7 @@ def htmx_create_outage():
         )
 
     # Schema's @post_load already converted the datetime-local values to
-    # naive-UTC via the submitted `tz`. system_name → system_id resolution
+    # naive-UTC via the submitted `tz`. system_name -> system_id resolution
     # happens in the model setter (a DB hit) and stays here per CLAUDE.md §9.
     outage = SystemOutage(
         system_name=data['system_name'],

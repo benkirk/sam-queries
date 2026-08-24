@@ -1,4 +1,4 @@
-"""The Scheduled tasks card on Admin → Configuration.
+"""The Scheduled tasks card on Admin -> Configuration.
 
 Two scenarios, both chosen because they are about what the operator actually
 *sees* when the chart ships:
@@ -47,7 +47,7 @@ CARD = ".card.inner-card:has(h5:has-text('Scheduled tasks'))"
 
 @pytest.fixture
 def config_page(page):
-    """Admin → Configuration with the lazy card fragment already swapped in."""
+    """Admin -> Configuration with the lazy card fragment already swapped in."""
     visit(page, CONFIG)
     # The whole tab is one htmx fragment loaded on `load`; nothing below is
     # meaningful until it lands.
@@ -60,7 +60,7 @@ def _ledger_present(config_page):
 
     **Not a convenience.** CI's status database genuinely has no `task_run`,
     and so do staging and production until the migration is applied. The
-    degraded state is a real shipping state, not a test artefact, so both
+    degraded state is a real shipping state, not a test artifact, so both
     branches below are assertions rather than one being a skip.
     """
     return 'unavailable' not in config_page.locator(CARD).inner_text().lower()

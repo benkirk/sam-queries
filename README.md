@@ -666,7 +666,7 @@ sam-queries/
 - **REST API endpoints** - See [src/webapp/README.md](src/webapp/README.md#rest-api)
 - **[docs/apis/SYSTEMS_INTEGRATION_APIs.md](docs/apis/SYSTEMS_INTEGRATION_APIs.md)** - Directory access, project access & fairshare tree APIs (legacy SAM replacement for LDAP/PBS)
 - **[docs/apis/CHARGING_INTEGRATION.md](docs/apis/CHARGING_INTEGRATION.md)** - HPC charge ingest integration
-- **Marshmallow schemas** - See [CLAUDE.md](CLAUDE.md#marshmallow-sqlalchemy-schemas)
+- **Marshmallow schemas** - See [CLAUDE.md](CLAUDE.md#serialization-schemas-samschemas)
 - **ORM models** - See [CLAUDE.md](CLAUDE.md#key-orm-models)
 
 ---

@@ -121,7 +121,7 @@ CREATE TABLE IF NOT EXISTS xras_opportunity_allocation_type (
 ```
 
 Then the nine known opportunities, seeded with **the pair the ladder already
-produces** — which is what makes the map a drop-in rather than a behaviour change.
+produces** — which is what makes the map a drop-in rather than a behavior change.
 
 ⚠️ Connect with a **utf8mb4 client charset**: 530902's name carries an em-dash.
 ⚠️ Ids are resolved by name at runtime, never pinned — and the row count is the
@@ -431,7 +431,7 @@ Nothing here depends on a test instance, and nobody should arrive on the day won
 whether one was set up.
 
 **Noted for future us.** If a later XRAS-facing change wants a rehearsal — the GET
-serialiser work in the paragraph above is the obvious candidate, since it deliberately
+serializer work in the paragraph above is the obvious candidate, since it deliberately
 moves response bytes — this offer is the way to get one, and it costs a
 conversation rather than a code change.
 
@@ -484,18 +484,17 @@ The watch surface, in the order you will reach for it:
 | Surface | What it answers |
 |---|---|
 | XRAS → **Pending Activations & Notifications** | Everything received, filterable, raw payload behind `MANAGE_XRAS` |
-| XRAS → **Accounts Needed** | The usernames on received actions with no usable SAM account — the 55% failure class, as a worklist |
-| XRAS → **Pending Requests** | Approved XRAS requests *not yet pushed*: the same problem before the action arrives |
+| XRAS → **Pending Users** | Who needs a SAM account before a handoff can land, both feeds unioned with a **Source** badge: *Received push* (usernames on received actions — the 55% failure class) and *Pending request* (approved XRAS requests *not yet pushed*, before the action arrives). Received pushes sort first |
 | `sam-admin xras --summary` | Status counts at a glance |
 | `sam-admin xras --status failed` | The 422s, with their error lists |
 | `sam-admin xras --status manual` | What was parked, and now **why** |
 | `sam-admin xras --accounts [--enrich]` | The account worklist on the CLI |
 | `sam-admin xras --validate-mapping` / `--validate-opportunities` | The two mapping tables, both sides |
 
-⚠️ **A populated Pending Requests tab beside an empty Accounts Needed tab is the correct
-state before the repoint**, not a bug. Accounts Needed reads `xras_action_log`, which is
-at 0 rows until XRAS repoints; Pending Requests reaches `api.xras.org` directly and was
-answering in production on 2026-08-20 (22 requests, 18 accounts needed).
+⚠️ **Before the repoint, every Pending Users row is a *Pending request*; the first
+*Received push* row is the first sign XRAS has repointed**, not a bug. Received pushes read
+`xras_action_log`, at 0 rows until XRAS repoints; pending requests reach `api.xras.org`
+directly and were answering in production on 2026-08-20 (22 requests, 18 accounts needed).
 
 **The three columns C.1b added are what make a row triageable**, so use them:
 

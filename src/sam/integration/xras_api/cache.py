@@ -22,7 +22,7 @@ Registered with the webapp caching facade via ``_BUCKETED_CACHE_MODULES`` in
 row, ``stats()``, ``clear()`` and
 ``sam-admin cache --refresh --category xras_api``.
 
-⚠️ ``BucketSpec.name`` is a **global Redis key prefix**, hence the ``xras_``
+WARNING: ``BucketSpec.name`` is a **global Redis key prefix**, hence the ``xras_``
 prefix on both.
 """
 
@@ -57,7 +57,7 @@ _CACHE = BucketedTTLCache('xras_api', 'xras_api', {
     # reads it. The enumeration behind it is 21 pages and 60-90s, which no
     # htmx round-trip can afford, so the tab cannot compute this itself.
     #
-    # ⚠️ **TTL is 24x the sweep cadence, on purpose.** The sweep runs hourly,
+    # WARNING: **TTL is 24x the sweep cadence, on purpose.** The sweep runs hourly,
     # but a TTL tuned to that cadence would blank the tab after a couple of
     # failed or skipped runs (an XRAS outage, the task disabled mid-incident)
     # — and a failed index build deliberately publishes nothing, counting on
@@ -88,7 +88,7 @@ _PENDING_KEY = 'worklist'
 #: hours — which is why the card distinguishes "no index published" from
 #: "an index with nothing in it".
 #:
-#: ⚠️ This is **not** a compatibility boundary. The sweep and the webapp ship
+#: WARNING: This is **not** a compatibility boundary. The sweep and the webapp ship
 #: in the same image and the same Helm release, so nothing external consumes
 #: either key and neither shape is frozen. Change them freely; if a payload
 #: shape and its reader ever disagree, ``sam-admin cache --refresh`` is the
@@ -96,7 +96,7 @@ _PENDING_KEY = 'worklist'
 _REQUESTS_KEY = 'requests_index'
 
 #: Test seam, matching the awards / fs-scans / jobs idiom: ``_adapters`` IS
-#: the cache's memo dict, so clearing it re-initialises the cache.
+#: the cache's memo dict, so clearing it re-initializes the cache.
 _adapters = _CACHE._adapters
 
 
@@ -118,7 +118,7 @@ def cached_person(username: str, compute: Callable[[], Any]) -> Optional[Any]:
 def invalidate_person(username: str) -> None:
     """Forget one cached person lookup.
 
-    ⚠️ **Load-bearing after a merge.** A merge deletes the source username in
+    WARNING: **Load-bearing after a merge.** A merge deletes the source username in
     XRAS, but this bucket holds it for four hours — so without this the very
     card the operator just fixed keeps rendering the placeholder it merged
     away, and re-merging it 404s. The service calls this for **both** the
@@ -159,7 +159,7 @@ def store_pending_worklist(payload: Any) -> str:
     ``'redis'`` (shared, the dashboard will see it), ``'local'`` (a per-worker
     in-process cache), or ``'disabled'`` / ``'full'``.
 
-    ⚠️ **Why this is not a bool.** `BucketedTTLCache.adapter()` falls back to a
+    WARNING: **Why this is not a bool.** `BucketedTTLCache.adapter()` falls back to a
     per-worker `TTLCacheAdapter` when `CACHE_REDIS_URL` is unset or Redis is
     unreachable, and that fallback is load-bearing — an unreachable Redis must
     never take the webapp down. But `xras_sweep` runs in a **one-shot CronJob
@@ -209,13 +209,13 @@ def load_requests_index() -> Optional[Any]:
 def patch_requests_index(request_number: str, entry: Optional[Any]) -> bool:
     """Replace one entry in the published index, in place. ``True`` if it stuck.
 
-    ⚠️ **This is what makes a write visible in the same interaction.** The card
+    WARNING: **This is what makes a write visible in the same interaction.** The card
     renders from an hourly snapshot, but an operator who withdraws an action
     must not keep reading "Approved" for another fifty minutes, and re-running
     the 60-90s enumeration per click is not on the table. So the service
     re-fetches the one request it just changed and patches its entry here.
 
-    ⚠️ **Best-effort, last-write-wins — the read-modify-write is NOT atomic.**
+    WARNING: **Best-effort, last-write-wins — the read-modify-write is NOT atomic.**
     The adapter's lock is honored, but on the Redis backend it is a documented
     process-local no-op (``redis_ttl.py``), so two workers patching in the
     same moment — or a patch racing the hourly sweep's publish — write back
@@ -301,3 +301,46 @@ def load_pending_worklist() -> Optional[Any]:
     sweep that found nothing), which comes back as a payload with zero rows.
     """
     return _load('pending', _PENDING_KEY)
+
+
+def drop_pending_worklist_row(username: str) -> bool:
+    """Drop a username's row from the published Feed-B worklist. ``True`` if it
+    stuck.
+
+    WARNING: **Makes a merge visible in the same interaction.** The Pending Users
+    card renders the cached pending half, so a just-merged placeholder would
+    keep its "Pending request" row until the next hourly sweep — a row that
+    should have cleared on click. Matched on the casefolded username, the same
+    collation ``classify_accounts`` groups on.
+
+    Best-effort, last-write-wins, same as :func:`patch_requests_index`: the
+    adapter lock is a documented no-op on Redis, so a patch racing the sweep's
+    publish loses. Accepted — a lost drop only makes one row lag until the next
+    sweep. ``False`` means nothing to drop (no snapshot, or the username is not
+    in it), which is not an error.
+    """
+    adapter = _CACHE.adapter('pending')
+    if adapter is None:
+        return False
+    with adapter.lock:
+        if _PENDING_KEY not in adapter:
+            return False
+        payload = adapter[_PENDING_KEY]
+        if not isinstance(payload, dict) or not isinstance(payload.get('rows'), list):
+            return False
+
+        wanted = str(username).strip().casefold()
+        rows = payload['rows']
+        kept = [r for r in rows
+                if str((r or {}).get('username') or '').strip().casefold() != wanted]
+        if len(kept) == len(rows):
+            return False
+        payload['rows'] = kept
+
+        # Re-store rather than mutate in place — see patch_requests_index.
+        adapter.pop(_PENDING_KEY, None)
+        try:
+            adapter[_PENDING_KEY] = payload
+        except ValueError:
+            return False
+    return True

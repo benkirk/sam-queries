@@ -69,7 +69,7 @@ def cached_allocation_usage(
     """
     Cached wrapper for get_allocation_summary_with_usage().
 
-    Cache key is built from all parameters at day granularity (active_at → date).
+    Cache key is built from all parameters at day granularity (active_at -> date).
     Identical calls within the TTL window return cached results without hitting DB.
 
     Args:

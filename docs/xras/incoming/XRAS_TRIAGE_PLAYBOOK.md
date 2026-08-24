@@ -28,8 +28,7 @@ In the order you will reach for them:
 | Surface | What it answers |
 |---|---|
 | XRAS → **Pending Activations & Notifications** | Everything received, filterable, raw payload behind `MANAGE_XRAS` |
-| XRAS → **Accounts Needed** | *Feed A.* The usernames on actions already received that have no usable SAM account. This is § 3.3's fix, as a worklist |
-| XRAS → **Pending Requests** | *Feed B.* Approved XRAS requests **not yet pushed** — the same problem *before* the action arrives. Renders the `xras_sweep` snapshot, not a live call |
+| XRAS → **Pending Users** | Who needs a SAM account before a handoff can land, both feeds unioned with a per-row **Source** badge: *Received push* (usernames on actions already received, § 3.3's fix as a worklist) and *Pending request* (approved XRAS requests **not yet pushed** — the same problem before the action arrives, from the `xras_sweep` snapshot). Received pushes sort first |
 | `sam-admin xras --summary --last 24h` | Status counts at a glance |
 | `sam-admin xras --status failed --last 24h` | The 400s and 422s, with their error lists |
 | `sam-admin xras --status manual --last 24h` | What parked, and **why** (`outcome_reason`) |
@@ -39,7 +38,7 @@ In the order you will reach for them:
 | `sam-admin xras --person <username>` | One identity from XRAS. Three outcomes on purpose: found `0`, no such username `1`, could-not-ask `2` |
 | `sam-admin xras --validate-mapping` | The resource-key map, **both sides** — § 3.1 |
 | `sam-admin xras --validate-opportunities` | The `opportunityId` map, both sides — § 3.9, the silent one |
-| `sam-admin tasks --history --task xras_sweep --format json` | Whether the sweep is actually feeding the Pending Requests tab — § 3.9 |
+| `sam-admin tasks --history --task xras_sweep --format json` | Whether the sweep is actually feeding the pending-request half of Pending Users — § 3.9 |
 
 Add `--format json` for anything you want to pipe.
 
@@ -59,11 +58,12 @@ the dashboard — use one of those. Left unfixed on purpose (see § 6).
   this port did not introduce and cannot fix from code (§ 3, rows 2 and 3).
 - **`Date Adjustment` and `Transfer` park.** By design, parity-correct, and now visible.
   A parked row is an outcome, not an incident.
-- **A populated *Pending Requests* tab beside an empty *Accounts Needed* tab is correct
-  before the repoint.** The two feeds fail empty for opposite reasons, which is why both
-  exist. Feed A reads `xras_action_log` — 0 rows until XRAS repoints, a *designed* empty
-  state. Feed B reaches `api.xras.org` directly and worked in production on 2026-08-20:
-  22 requests, 18 accounts needed. Do not spend day one debugging the empty half.
+- **Before the repoint, every Pending Users row is a *Pending request*; the first
+  *Received push* row is the first sign XRAS has repointed.** The two feeds fail empty for
+  opposite reasons. Received pushes read `xras_action_log` — 0 rows until XRAS repoints, a
+  *designed* empty state. Pending requests reach `api.xras.org` directly and worked in
+  production on 2026-08-20: 22 requests, 18 accounts needed. Do not spend day one debugging
+  the empty received-push half.
 
 ---
 
@@ -122,8 +122,7 @@ groups, and the fourth is the live one:
 | `dangling_keys` | A mapping row whose resource does not exist. **Broken** |
 | `xras_only_keys` | A key XRAS offers that SAM cannot resolve. **This is the one that breaks an award** |
 
-⚠️ **It exits non-zero on TWO of those now, not one** — `dangling_keys` *or*
-`xras_only_keys`. An earlier revision of this page said dangling was the only one.
+⚠️ **It exits non-zero on TWO of those** — `dangling_keys` *or* `xras_only_keys`.
 
 ⚠️ **A one-sided report is not a clean report.** The XRAS half is auto-detected: with no
 `XRAS_OUTGOING_ENABLED=1` + `XRAS_API_KEY` it silently reports the local half, and with an
@@ -140,16 +139,24 @@ SAM corresponding to name {resource_name}`. Both can appear for one action.
 
 ### 2. `Could not determine Mnemonic code for internal PI via organization`
 
-**24% of legacy's XRAS failures.** The lead's organization has no mnemonic soft link: the
-match is `code LIKE '%name%'` against a `varchar(3)` column, and **153 of 171 active
-organizations (89%)** cannot satisfy it. 80% of institutions are in the same state, which
-gives the external twin, `Could not determine Mnemonic code for external PI via
-institution`.
+**24% of legacy's XRAS failures.** The lead's organization has no mnemonic soft link.
+SAM matches `mnemonic_code.description` against `organization.name` — or `"Name, City"`
+then `"Name"` for institutions — by **exact, casefolded equality**
+(`MnemonicCode.build_lookup` / `resolve_for_*` in `sam/core/organizations.py`, reused by
+`resolve_mnemonic_code`). **153 of 171 active organizations (89%)** have no such row; 80%
+of institutions are in the same state, which gives the external twin, `Could not determine
+Mnemonic code for external PI via institution`. (Legacy's match was `code LIKE '%name%'`,
+and `errors.py` quotes that census — 150/171; same failure class, different remedy.)
 
-**Fix:** a data fix on the organization or institution. This would move `New`'s success
-rate more than any code change available to us.
+**Fix:** a data fix — a `mnemonic_code` row whose `description` equals the organization
+or institution name. Two constraints: `code` and `description` are both unique, so every
+new link needs its own unused 3-letter code; and an internal PI's organization comes from
+`user_organization`, which is frozen (4,563 active users have no current row) — those PIs
+have nothing to link. The admin Institutions card already offers the create modal on a
+miss (the warning badge, pre-filled); the Organizations card does not yet. This would move
+`New`'s success rate more than any code change available to us.
 
-Two neighbours from the same resolution path:
+Two neighbors from the same resolution path:
 `Could not produce affiliation data for PI {username}`, and
 `Unable to determine allocation type from action data` / `No AllocationType for
 SelectionParms{panel='…', type='…'}` (the odd rendering is Java's `toString()`,
@@ -167,9 +174,9 @@ own failure is silent and is in § 3.9.
 Unreconciled ARC placeholder identities — the username on the award has never been
 reconciled to a SAM user.
 
-**Fix: work the *Accounts Needed* tab, or `sam-admin xras --accounts`.** This used to say
-"identity reconciliation", which is a category rather than a loop. #458 turned it into a
-worklist, and it is the highest-value surface on this page:
+**Fix: work the *Pending Users* tab, or `sam-admin xras --accounts`.** Not "identity
+reconciliation" — that is a category, not a loop. #458 made it a worklist, and it is the
+highest-value surface on this page:
 
 - **Two classifications, each with its remedy:** `absent` → **Create**, `inactive` →
   **Reactivate**. Account creation is manual; the worklist tells you *who*, *why*, and —
@@ -192,8 +199,8 @@ worklist, and it is the highest-value surface on this page:
   so the card also surfaces **mnemonic and resource-key** rejections on the same rows —
   it is not only about accounts. That overlaps § 3.2 deliberately.
 
-Feed B — the *Pending Requests* tab — is the same question asked **before** the action
-arrives, which is the only pre-emptive surface in this document.
+The pending-request half of *Pending Users* is the same question asked **before** the
+action arrives, which is the only pre-emptive surface in this document.
 
 Note a blank username renders as `Username  is missing` with a double space; that is the
 payload, not a formatting bug.
@@ -313,12 +320,12 @@ most likely the first Wyoming opportunity, which is exactly the case the rule ex
 put in front of a person.
 
 **9b · `published: true` is not `publish_backend: 'redis'` by luck.**
-The *Pending Requests* tab renders what `xras_sweep` published, not a live call. The task
-can succeed while publishing into a per-pod cache that dies with the pod — this happened
-in production on 2026-08-20, and the ledger said `published: true` while the tab stayed
-empty. `published` is now true **only** for `redis`.
+The pending-request half of *Pending Users* renders what `xras_sweep` published, not a live
+call. The task can succeed while publishing into a per-pod cache that dies with the pod —
+this happened in production on 2026-08-20, and the ledger said `published: true` while the
+half stayed empty. `published` is now true **only** for `redis`.
 
-**Empty Pending Requests tab + a `succeeded` ledger row → read `publish_backend` first:**
+**No pending-request rows + a `succeeded` ledger row → read `publish_backend` first:**
 
 ```bash
 sam-admin tasks --history --task xras_sweep --format json | jq '.runs[0].detail'
@@ -410,7 +417,7 @@ Two rows were overtaken by #458/#459 and are marked so; the rest stand unchanged
 | Resource-key 422s recur across **different** keys | A mapping *writer* on `sam-admin xras` (today it is a hand INSERT). Must print the parity warning — closing a mapping moves GET bytes. ⚠️ **Narrowed:** the *detection* half shipped with #458's two-sided `--validate-mapping`, which exits non-zero when XRAS offers a key SAM cannot resolve. You now learn about this before an award does |
 | Mnemonic failures dominate the `New` failure bucket | A bulk organization-mnemonic linker, plus a report of which orgs would unblock the most awards. This is the highest-leverage data fix available |
 | Operators repeatedly fix a row, re-check it green, and wait on ACCESS | **A re-apply path.** Explicitly deferred in `recheck.py`; it needs an idempotency key enforced on `action_id` *first*, because 4 of the 6 handlers double-apply — Supplement and Adjustment are additive, and a re-applied successful `New` routes to `update` and supplements the allocation it just created. Do not build the second half before the first |
-| You reach for `--status unmapped` and cannot | Derive the CLI `click.Choice` from `XRAS_ACTION_STATUSES` rather than restating it, and give `unmapped` a style in `src/cli/xras/display.py`. One line each; both are restatements of a vocabulary that already exists in one place. ⚠️ Still both unbuilt — and #458 edited a *neighbouring* `click.Choice` on the same command without noticing this one |
+| You reach for `--status unmapped` and cannot | Derive the CLI `click.Choice` from `XRAS_ACTION_STATUSES` rather than restating it, and give `unmapped` a style in `src/cli/xras/display.py`. One line each; both are restatements of a vocabulary that already exists in one place. ⚠️ Still both unbuilt — and #458 edited a *neighboring* `click.Choice` on the same command without noticing this one |
 | Polling the dashboard stops being enough | A digest of `failed` / `manual` / `unmapped` rows. ⚠️ A new entry in `src/scheduling/tasks/` goes live on the next hourly wake unless `SAM_TASKS_DISABLED` names it in the **same** change — the registry is code-side, the list is chart-side, and nothing couples them but the reviewer. `xras_sweep` is **not** this: it digests the *outbound* enumeration and mails nobody. Its arrival did make that warning load-bearing, though — three tasks are live now, not one |
 
 **Removed from this table:** *"a withheld opportunity mapping needs a decision"* — built,

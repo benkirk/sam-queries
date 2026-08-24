@@ -206,7 +206,7 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
         session.flush()
         return obj
 
-    # ── queries ─────────────────────────────────────────────────────────
+    # queries
 
     @classmethod
     def get_by_number(cls, session, contract_number: str) -> Optional['Contract']:
@@ -247,7 +247,7 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
 
     @classmethod
     def existing_by_number(cls, session, numbers) -> Dict[str, 'Contract']:
-        """Which of *numbers* SAM already has, keyed by normalised number.
+        """Which of *numbers* SAM already has, keyed by normalized number.
 
         One query for the whole set rather than one per number — this
         annotates award-search results, where the alternative is a query per
@@ -284,7 +284,7 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
         contains ``%`` or ``_``; otherwise it is substring-matched. So
         ``'climate'`` and ``'%climate%'`` agree, while ``'AGS-%'`` anchors.
 
-        This is a deliberate divergence from two neighbours, and neither is a
+        This is a deliberate divergence from two neighbors, and neither is a
         mis-port:
 
         * ``_apply_filter`` in ``sam/queries/charges.py`` is the same shape but

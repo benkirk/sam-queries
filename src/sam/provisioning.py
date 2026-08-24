@@ -164,7 +164,7 @@ def check_project_provisioning(project) -> dict:
     """
     group = _getgrgid(project.unix_gid)
     # Fall back to name lookup if the gid is unset/unresolvable. Host group
-    # names are the lowercased projcode (scsg0001 ↔ SCSG0001), and getgrnam is
+    # names are the lowercased projcode (scsg0001 <-> SCSG0001), and getgrnam is
     # case-sensitive, so look up the lowercased form.
     if group is None:
         group = _getgrnam(project.projcode.lower())
@@ -195,7 +195,7 @@ def check_project_provisioning(project) -> dict:
         'group_exists': True,
         'gid': group.gr_gid,
         'group_name': group.gr_name,
-        # Host group names are the lowercased projcode (scsg0001 ↔ SCSG0001).
+        # Host group names are the lowercased projcode (scsg0001 <-> SCSG0001).
         'name_matches': group.gr_name.lower() == project.projcode.lower(),
         'os_member_count': len(os_members),
         'sam_member_count': len(sam_users),

@@ -18,8 +18,8 @@ class XrasCommand(BaseCommand):
 
     def execute(self, *, action_id=None, recheck=None, summary=False,
                 validate_mapping=False, validate_opportunities=False,
-                accounts=False, person=None,
-                enrich=False,
+                accounts=False, readiness=False, mnemonic_report=False, person=None,
+                family=None, enrich=False,
                 status=(), action_type=(), request_number=None, last=None,
                 show_payload=False, limit=50, **_) -> int:
         try:
@@ -31,6 +31,12 @@ class XrasCommand(BaseCommand):
                 return self._validate_opportunities()
             if person is not None:
                 return self._person(person)
+            if family is not None:
+                return self._family(family)
+            if readiness:
+                return self._readiness()
+            if mnemonic_report:
+                return self._mnemonic_report()
             if accounts:
                 return self._accounts(filters, enrich)
             if recheck is not None:
@@ -48,12 +54,11 @@ class XrasCommand(BaseCommand):
     def _validate_mapping(self) -> int:
         """Report the state of ``xras_resource_repository_key_resource``.
 
-        ⚠️ **An unmapped active resource is NOT a failure**, and this used to say
-        otherwise. Not every internal resource is offered for allocation through
-        XRAS, so most of the unmapped ones have no mapping *by design* — 11 of them,
-        stably, across snapshot refreshes. Exiting non-zero on that made the command
-        unusable as the deploy gate its own docstring claimed it could be: it would
-        have failed every time, forever.
+        WARNING: **An unmapped active resource is NOT a failure.** Not every
+        internal resource is offered for allocation through XRAS, so most unmapped
+        ones have no mapping *by design* — 11 of them, stably, across snapshot
+        refreshes. Exiting non-zero on that would make the command unusable as a
+        deploy gate: it would fail every time, forever.
 
         What it is instead: a **diagnostic**. If a resource that *should* be
         allocatable through XRAS appears in the unmapped list, that is the data fix
@@ -94,7 +99,7 @@ class XrasCommand(BaseCommand):
         try:
             return resource_repository_keys()
         except XrasSourceUnavailable as exc:
-            # ⚠️ stderr, not stdout. This is a diagnostic about the run, not
+            # WARNING: stderr, not stdout. This is a diagnostic about the run, not
             # part of the report — printed to stdout it lands *inside* the
             # `--format json` envelope and breaks every consumer piping to jq.
             self.ctx.stderr_console.print(
@@ -146,7 +151,7 @@ class XrasCommand(BaseCommand):
         :meth:`_live_keys`: the operator wants the strongest check available and
         the unconfigured case must degrade rather than fail.
 
-        ⚠️ **Open ones only** (``GET /v1/opportunities``), which is the right
+        WARNING: **Open ones only** (``GET /v1/opportunities``), which is the right
         scope rather than a limitation. ``reports/requests`` cannot mention an
         opportunity nobody has submitted against — and that is precisely the one
         this check exists for, because it is the one an imminent action would
@@ -193,46 +198,62 @@ class XrasCommand(BaseCommand):
             display.display_account_worklist(self.ctx, payload)
         return EXIT_SUCCESS
 
-    def _pending_worklist(self):
-        """Feed B, as ``xras_sweep`` last published it — or ``(None, False)``.
+    def _readiness(self) -> int:
+        """The push-readiness board, from the sweep's published snapshot (no network).
 
-        ⚠️ **This is why the CLI and the dashboard used to disagree.** The card
+        An empty board exits 0 — a successful, empty report, not a miss (the sweep
+        may simply have found no candidate action in its lookback).
+        """
+        from sam.integration.xras_api.cache import load_requests_index
+
+        payload = builders.build_readiness(load_requests_index())
+        if self.ctx.output_format == 'json':
+            output_json(payload)
+        else:
+            display.display_readiness(self.ctx, payload)
+        return EXIT_SUCCESS
+
+    def _mnemonic_report(self) -> int:
+        """Orgs to link, ranked by the failing pushes each would unblock (snapshot; no network).
+
+        A pivot over the push-readiness verdicts. An empty board exits 0 — nothing
+        blocked on a missing mnemonic is a successful report, not a miss.
+        """
+        from sam.integration.xras_api.cache import load_requests_index
+
+        payload = builders.build_mnemonic_report(self.session, load_requests_index())
+        if self.ctx.output_format == 'json':
+            output_json(payload)
+        else:
+            display.display_mnemonic_report(self.ctx, payload)
+        return EXIT_SUCCESS
+
+    def _pending_worklist(self):
+        """Feed B, as ``xras_sweep`` last published it — via the query layer.
+
+        WARNING: **This is why the CLI and the dashboard used to disagree.** The card
         reads the sweep's snapshot; ``--accounts`` only ever read the action
         log, so on a stack where XRAS had not yet repointed the card showed a
-        real queue and the CLI reported zero. Same question, two answers, and
-        nothing said which was partial.
+        real queue and the CLI reported zero. Both now read one helper,
+        :func:`~sam.queries.xras_accounts.load_pending_worklist_rows`.
 
-        Returns the rows and *whether we were able to look*, kept separate for
-        the reason ``live_checked`` exists on the mapping audit: an empty Feed B
+        Returns ``(rows_or_None, checked)`` for the builder — an empty Feed B
         and an unreadable one are different facts, and only the second means the
-        printed count is a subset.
-
-        Degrades rather than fails. A laptop with no ``CACHE_REDIS_URL`` gets
-        the Feed-A half and is told so — the same posture as an unconfigured
-        ``--validate-mapping``.
+        printed count is a subset — and prints the CLI's own stderr note when
+        that count is partial. ``unconfigured`` is silent, as before.
         """
-        from sam.integration.xras_api import xras_api_configured
+        from sam.queries.xras_accounts import load_pending_worklist_rows
 
-        if not xras_api_configured():
-            return None, False
-        try:
-            from sam.integration.xras_api.cache import load_pending_worklist
-
-            snapshot = load_pending_worklist()
-        except Exception as exc:                     # noqa: BLE001
-            # The cache backend is infrastructure, not a contract — a laptop
-            # without Redis raises from somewhere in the adapter stack rather
-            # than returning empty, and that must not take the report down.
+        feed = load_pending_worklist_rows()
+        if feed.reason == 'unreadable':
             self.ctx.stderr_console.print(
-                f'[yellow]Could not read the published worklist ({exc}); '
-                f'reporting posted actions only.[/yellow]')
-            return None, False
-        if snapshot is None:
+                '[yellow]Could not read the published worklist; '
+                'reporting posted actions only.[/yellow]')
+        elif feed.reason == 'no_snapshot':
             self.ctx.stderr_console.print(
                 '[yellow]No sweep has published a pending worklist yet; '
                 'reporting posted actions only.[/yellow]')
-            return None, False
-        return list(snapshot.get('rows') or []), True
+        return (feed.rows if feed.checked else None), feed.checked
 
     def _person(self, username) -> int:
         """Probe one username through ``GET /v1/people``.
@@ -262,6 +283,35 @@ class XrasCommand(BaseCommand):
         else:
             display.display_person(self.ctx, payload)
         return EXIT_SUCCESS if person else EXIT_NOT_FOUND
+
+    def _family(self, projcode) -> int:
+        """The whole allocation lifecycle for a projcode — a request tree.
+
+        Same three-outcome model as :meth:`_person`: found 0, no such projcode 1,
+        could-not-ask 2. A projcode XRAS has never seen is not-found, not an error.
+        """
+        from sam.integration.xras_api import (XrasApiClient,
+                                              XrasSourceUnavailable,
+                                              xras_api_configured)
+
+        if not xras_api_configured():
+            self.ctx.console.print(
+                '[red]--family needs the XRAS API: set XRAS_OUTGOING_ENABLED=1 '
+                'and XRAS_API_KEY.[/red]')
+            return EXIT_ERROR
+        try:
+            lines = XrasApiClient.from_environment().get_request_family_by_number(
+                projcode)
+        except XrasSourceUnavailable as exc:
+            self.ctx.console.print(f'[red]XRAS unavailable: {exc}[/red]')
+            return EXIT_ERROR
+
+        payload = builders.build_family_report(projcode, lines)
+        if self.ctx.output_format == 'json':
+            output_json(payload)
+        else:
+            display.display_family(self.ctx, payload)
+        return EXIT_SUCCESS if payload.get('family') else EXIT_NOT_FOUND
 
     def _list(self, filters, limit) -> int:
         payload = builders.build_action_list(self.session, filters=filters,
@@ -347,7 +397,7 @@ class XrasCommand(BaseCommand):
     # -- helpers ----------------------------------------------------------
 
     def _filters(self, status, action_type, request_number, last):
-        """Normalise CLI options into query kwargs.
+        """Normalize CLI options into query kwargs.
 
         ``--last`` wins over nothing: with no window given the command shows all
         time rather than a silent default. The dashboard defaults to 30 days

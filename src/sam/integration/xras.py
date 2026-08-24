@@ -78,7 +78,7 @@ class XrasOpportunityAllocationType(Base):
     pair.** That resolves the ambiguity by construction and cannot drift when a
     type is renamed.
 
-    ⚠️ **Never key this on the wire ``allocationType`` string.** Its vocabulary
+    WARNING: **Never key this on the wire ``allocationType`` string.** Its vocabulary
     differs from SAM's and it is not unique — ``sam/schemas/forms/xras.py`` says
     so explicitly. ``opportunityId`` is the stable key, it is on 41/41 observed
     payloads, and across that corpus it is single-valued: nine ids, five
@@ -110,7 +110,7 @@ class XrasOpportunityAllocationType(Base):
                opportunity_name=None, source=SOURCE_MANUAL):
         """Add one mapping row.
 
-        ⚠️ **Callers must check the row does not already exist.** This does not
+        WARNING: **Callers must check the row does not already exist.** This does not
         upsert, deliberately: a ``manual`` row is a human's answer to a question
         the API cannot settle — the two documented cases are in
         ``sam.xras.opportunity_types`` — and the sweep must never overwrite one.
@@ -170,10 +170,10 @@ class XrasActionLog(Base):
        record of what arrived — so the one row we most need to write is the one
        ``JSON`` refuses.
     2. **``JSON`` is not byte-preserving, and this column is defined as the body
-       verbatim, before parsing.** MySQL parses to a normalised binary form and
-       re-serialises on read: it re-sorts keys by length-then-bytewise, inserts
+       verbatim, before parsing.** MySQL parses to a normalized binary form and
+       re-serializes on read: it re-sorts keys by length-then-bytewise, inserts
        whitespace, and *silently collapses duplicate keys*. Round-tripping a real
-       payload reordered all 23 top-level keys and grew it 2,213 → 2,375 bytes.
+       payload reordered all 23 top-level keys and grew it 2,213 -> 2,375 bytes.
        That destroys the audit record's fidelity, its value as a replay source,
        and its value as a harvested fixture — the key order on the wire is what
        reveals Jackson's ``@JsonPropertyOrder``.
@@ -221,14 +221,14 @@ class XrasActionLog(Base):
     action_type = Column(String(32))
     request_number = Column(String(30))
 
-    #: The wire's ``actionId`` — the only identifier for the *action*, and therefore
-    #: the idempotency key. ``requestId`` is deliberately not stored:
-    #: ``request_number`` already addresses the request in the form operators use.
+    #: The wire's ``actionId`` -- the only identifier for the *action*, and so
+    #: the idempotency key. ``requestId`` is deliberately not stored;
+    #: ``request_number`` addresses the request in the form operators use.
     #:
-    #: XRAS owns the retry, so this is about **detection**, not prevention. Three
-    #: identical posts otherwise produce three rows identical in every filterable
-    #: column, and the cost of not noticing is asymmetric — Extension writes nothing
-    #: on a repeat, Supplement adds a full increment.
+    #: XRAS owns the retry, so this is **detection**, not prevention. Three
+    #: identical posts otherwise produce three rows identical in every
+    #: filterable column, and the cost of not noticing is asymmetric: Extension
+    #: writes nothing on a repeat, Supplement adds a full increment.
     action_id = Column(Integer)
 
     #: Which legacy service handled it — one of :data:`sam.xras.dispatch.SERVICES`.
@@ -247,13 +247,14 @@ class XrasActionLog(Base):
     status = Column(String(16), nullable=False)
 
     #: The HTTP code we answered: 200, 400 or 422. ``status='failed'`` covers a
-    #: malformed body (400), a schema rejection (422), a handler rejection (422) and
-    #: an oversized body (422) — an operator triaging the log needs to tell those
-    #: apart, and it stops being derivable from ``status``.
+    #: malformed body (400), a schema rejection, a handler rejection and an
+    #: oversized body (all 422), which an operator triaging the log must tell
+    #: apart and cannot derive from ``status``.
     #:
-    #: ``SmallInteger`` to match the DDL's ``SMALLINT UNSIGNED``. It was ``Integer``,
-    #: which is harmless in MySQL but is the kind of drift that makes a guard computed
-    #: from the ORM quietly wrong — pinned by ``tests/stress/test_audit_row_survives.py``.
+    #: ``SmallInteger`` to match the DDL's ``SMALLINT UNSIGNED``. ``Integer`` is
+    #: harmless in MySQL but is the kind of drift that makes a guard computed
+    #: from the ORM quietly wrong -- pinned by
+    #: ``tests/stress/test_audit_row_survives.py``.
     http_status = Column(SmallInteger)
 
     #: The ordered error list, one message per line — the same list the 422 carries.
@@ -282,14 +283,12 @@ class XrasActionLog(Base):
 
 
 #: The write vocabulary for ``xras_activation_event.event_type``, and the ONLY
-#: enforcement point in the system — the DDL declares a bare ``VARCHAR(16)`` with
-#: no ENUM and no CHECK, deliberately (an ENUM change is a DBA ticket; a string is
-#: not). Validated in :meth:`XrasActivationEvent.create`.
-#:
-#: Kept here on the model module rather than beside ``XRAS_ACTION_STATUSES`` in
-#: ``sam.queries.xras_actions``: that one is a UI *filter* vocabulary, this one is
-#: the *write* vocabulary. A typo'd event type would otherwise never match the
-#: derive rule and simply vanish, which is the failure mode worth making loud.
+#: enforcement point: the DDL declares a bare ``VARCHAR(16)`` on purpose, since
+#: an ENUM change is a DBA ticket and a string is not. Validated in
+#: :meth:`XrasActivationEvent.create`, because a typo'd event type would
+#: otherwise never match the derive rule and simply vanish. Kept on the model
+#: module rather than beside the UI *filter* vocabulary in
+#: ``sam.queries.xras_actions``.
 XRAS_ACTIVATION_EVENT_TYPES = (
     'notified',    # an operator asserted they handed the project off
     'dismissed',   # should not be activated via XRAS; hides the row
@@ -373,10 +372,10 @@ class XrasActivationEvent(Base, SessionMixin):
     created_by = Column(String(35), nullable=False)
 
     #: Stamped from the *app* clock, never a DB default. ``TimestampMixin`` is
-    #: deliberately not used: its ``server_default=CURRENT_TIMESTAMP`` resolves in
-    #: the MySQL server's timezone (UTC in the containers) while SAM's convention
-    #: is naive-Mountain, and MySQL rounds fractional seconds rather than
-    #: truncating. ``XrasActionLog`` makes the same choice for the same reason.
+    #: deliberately unused: its ``server_default=CURRENT_TIMESTAMP`` resolves in
+    #: the MySQL server's timezone (UTC in the containers) against SAM's
+    #: naive-Mountain convention, and MySQL rounds fractional seconds rather
+    #: than truncating. ``XrasActionLog`` makes the same choice.
     creation_time = Column(DateTime, nullable=False)
 
     project = relationship('Project')
@@ -551,17 +550,15 @@ class XrasRemediationEvent(Base, SessionMixin):
 
     #: XRAS's request number — **usually** a projcode, but not always.
     #:
-    #: ⚠️ Wider than ``xras_action_log.request_number`` (30) on purpose, and
-    #: that divergence is the point. The action log only ever sees requests
-    #: being *pushed*, which always carry a real projcode. This table sees the
-    #: whole remediation cohort, including Submitted requests whose number is
-    #: still free text a PI typed — measured live: ``'New University Large
-    #: Request - Fall 2017 UCUD0005 Zhong'`` is 55 characters, and it renders
-    #: on the card with a Withdraw button, so it is reachable. At 30 the insert
-    #: would truncate, or error outright under strict mode.
-    #:
-    #: Stays utf8mb3 like the other identifiers, so an equality lookup against
-    #: the action log is not a mixed-charset comparison.
+    #: WARNING: wider than ``xras_action_log.request_number`` (30) on purpose.
+    #: The action log only sees requests being *pushed*, which always carry a
+    #: real projcode; this table sees the whole remediation cohort, including
+    #: Submitted requests whose number is still free text a PI typed. Measured
+    #: live, ``'New University Large Request - Fall 2017 UCUD0005 Zhong'`` is 55
+    #: characters and renders with a Withdraw button, so it is reachable. At 30
+    #: the insert truncates, or errors under strict mode. Stays utf8mb3 like the
+    #: other identifiers, so an equality lookup against the action log is not a
+    #: mixed-charset comparison.
     request_number = Column(String(128))
 
     #: XRAS-side ids. ``request_id`` is what the write routes key on while
@@ -668,7 +665,7 @@ class XrasRemediationEvent(Base, SessionMixin):
                  role_id=None):
         """Close the row once the outcome is known. Returns it, or ``None``.
 
-        ⚠️ **``before_state`` is written here, not at :meth:`create`.** The
+        WARNING: **``before_state`` is written here, not at :meth:`create`.** The
         capture is made by the client *during* the call — it re-reads the
         subject immediately before dispatching — so it does not exist yet when
         the ``attempted`` row is opened. Recording it only at open time would

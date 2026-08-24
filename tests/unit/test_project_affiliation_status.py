@@ -85,7 +85,7 @@ class TestContractsCurrentFirst:
 
     def test_mistyped_start_after_end_reads_as_future(self, session):
         """Two production rows have a start_date typo later than their end_date
-        (e.g. start 3012). Labelling those 'not started' surfaces the data error
+        (e.g. start 3012). Labeling those 'not started' surfaces the data error
         rather than claiming a bogus expiry date."""
         project = make_project(session)
         pc = make_project_contract(

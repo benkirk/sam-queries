@@ -347,7 +347,7 @@ def main():
         print("NOTE: Each scenario runs fetch + render in the same request context")
         print("      so SQLAlchemy session-scoped selectinload data is visible to templates.\n")
 
-        # ── Scenario 1: BASELINE ─────────────────────────────────────────
+        # Scenario 1: BASELINE
         with _cprofiled() as pr1:
             phases_base, fetch_sql_base, render_sql_base, \
                 render_sql_time_base, render_slowest_base = run_scenario_baseline(app)
@@ -356,7 +356,7 @@ def main():
                       render_sql_time_base, render_slowest_base)
         _print_cprofile(pr1, "BASELINE")
 
-        # ── Scenario 2: FIXED ─────────────────────────────────────────────
+        # Scenario 2: FIXED
         with _cprofiled() as pr2:
             phases_fix, fetch_sql_fix, render_sql_fix, \
                 render_sql_time_fix, render_slowest_fix = run_scenario_fixed(app)
@@ -367,7 +367,7 @@ def main():
 
         _detach(engine)
 
-        # ── Summary comparison ────────────────────────────────────────────
+        # Summary comparison
         total_base = phases_base['TOTAL_FETCH'] + phases_base['TOTAL_RENDER']
         total_fix  = phases_fix['TOTAL_FETCH'] + phases_fix['TOTAL_RENDER']
         print(f"\n{'='*72}")

@@ -39,7 +39,7 @@
 
     <div class="tab-content" id="resourcesTabsContent">
 
-        <!-- ── Resources tab (types collapsed, resources expand on click) ── -->
+        <!-- Resources tab (types collapsed, resources expand on click) -->
         <div class="tab-pane fade show active" id="resources-pane" role="tabpanel"
              aria-labelledby="resources-tab">
             <div class="table-responsive">
@@ -59,7 +59,7 @@
                     {# Per-resource facility fair-share overrides only apply to HPC/DAV
                        resources (the only types the fstree query consults). #}
                     {% set is_hpc_dav = rt.resource_type in ['HPC', 'DAV'] %}
-                    {# ── Resource Type row (cells are the collapse trigger) ── #}
+                    {# Resource Type row (cells are the collapse trigger) #}
                     {% set rt_toggle = 'res-type-' ~ rt.resource_type_id %}
                     <tbody>
                         <tr class="table-subtle fw-semibold">
@@ -88,7 +88,7 @@
                             </td>
                         </tr>
                     </tbody>
-                    {# ── Resource child rows (collapsed by default) ── #}
+                    {# Resource child rows (collapsed by default) #}
                     <tbody class="collapse" id="res-type-{{ rt.resource_type_id }}">
                         {% for r in type_resources %}
                         {# Fair-share expander (HPC/DAV only) hangs off the cells,
@@ -121,7 +121,7 @@
                                     permission=Permission.DELETE_RESOURCES) }}
                             </td>
                         </tr>
-                        {# ── Per-facility fair-share overrides (collapsed by default) ── #}
+                        {# Per-facility fair-share overrides (collapsed by default) #}
                         {% if is_hpc_dav %}
                         <tr class="table-secondary">
                             <td colspan="5" class="p-0 border-0">
@@ -242,7 +242,7 @@
             {% include 'dashboards/admin/fragments/disk_root_directories_section.html' %}
         </div>
 
-        <!-- ── Machines tab ────────────────────────────────────────────── -->
+        <!-- Machines tab -->
         <div class="tab-pane fade" id="machines-pane" role="tabpanel"
              aria-labelledby="machines-tab">
             <div class="table-responsive">
@@ -318,7 +318,7 @@
             </div>
         </div>
 
-        <!-- ── Queues tab (resources collapsed, queues expand on click) ──── -->
+        <!-- Queues tab (resources collapsed, queues expand on click) -->
         <div class="tab-pane fade" id="queues-pane" role="tabpanel"
              aria-labelledby="queues-tab">
             <div class="table-responsive">
@@ -337,7 +337,7 @@
                     {% for r in resources | sort(attribute='resource_name') %}
                     {% set r_queues = queues | selectattr('resource_id', 'equalto', r.resource_id) | list | sort(attribute='queue_name') %}
                     {% if r_queues %}
-                    {# ── Resource row (cells are the collapse trigger) ── #}
+                    {# Resource row (cells are the collapse trigger) #}
                     {% set q_toggle = 'queue-res-' ~ r.resource_id %}
                     <tbody>
                         <tr class="table-subtle fw-semibold">
@@ -367,7 +367,7 @@
                             </td>
                         </tr>
                     </tbody>
-                    {# ── Queue child rows (collapsed by default) ── #}
+                    {# Queue child rows (collapsed by default) #}
                     <tbody class="collapse" id="queue-res-{{ r.resource_id }}">
                         {% for q in r_queues %}
                         {% set q_active = (q.end_date is none) or (q.end_date > now) %}
@@ -422,7 +422,7 @@
                 {% endif %}
             </div>
 
-            {# ── Wallclock Exemptions ────────────────────────────────────── #}
+            {# Wallclock Exemptions #}
             <div class="border-top mt-2 pt-2 px-3 pb-1 d-flex align-items-center justify-content-between">
                 <div class="d-flex align-items-center">
                     <i class="fas fa-clock me-2 text-muted"></i>
@@ -465,7 +465,7 @@
                       {% endif %}
                     {% endfor %}
                     {% for rid, group in ex_by_resource.items() %}
-                    {# ── Resource row (clickable trigger) ── #}
+                    {# Resource row (clickable trigger) #}
                     <tbody>
                         <tr class="cursor-pointer table-subtle fw-semibold"
                             data-bs-toggle="collapse"
@@ -481,7 +481,7 @@
                             </td>
                         </tr>
                     </tbody>
-                    {# ── Exemption child rows (collapsed by default) ── #}
+                    {# Exemption child rows (collapsed by default) #}
                     <tbody class="collapse" id="exemption-res-{{ rid }}">
                         {% for e in group['rows'] %}
                         <tr class="table-secondary{% if not e.is_active %} opacity-50{% endif %}">

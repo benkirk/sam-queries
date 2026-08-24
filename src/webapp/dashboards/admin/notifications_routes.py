@@ -5,7 +5,7 @@ Structurally this is the XRAS action-log page, which is the same problem
 already solved well: facet chips with self-exclusion, a sortable paginated
 table, and a detail modal per row.
 
-⚠️ **One permission tier above the tile, deliberately.** The Configuration
+WARNING: **One permission tier above the tile, deliberately.** The Configuration
 card is ``VIEW_SYSTEM_CONFIG`` and renders counts; **every row here names a
 real person's email address**, so it is ``SYSTEM_ADMIN``. The gate is at the
 route rather than in the template, so a view-source cannot reveal what the
@@ -102,7 +102,7 @@ def notifications_log():
     total = count_recent_notifications(db.session, **filters)
 
     # Self-excluding rollups: each dimension's chips ignore its OWN filter
-    # while honouring every other one. See facet_notifications.
+    # while honoring every other one. See facet_notifications.
     status_counts = facet_notifications(db.session, 'status', **filters)
     kind_counts = facet_notifications(db.session, 'kind', **filters)
     channel_counts = facet_notifications(db.session, 'channel', **filters)

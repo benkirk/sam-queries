@@ -383,7 +383,7 @@ class TestEditTransactionAmountIsDelta:
     def test_edit_without_amount_change_writes_zero_delta(
         self, session, flat_root_allocation, acting_user
     ):
-        # Edit only the description; amount unchanged → delta == 0.
+        # Edit only the description; amount unchanged -> delta == 0.
         update_allocation(
             session,
             allocation_id=flat_root_allocation.allocation_id,

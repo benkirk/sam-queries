@@ -93,7 +93,7 @@ class TestNsfProvider:
         record = provider.fetch('AGS-1852977')
 
         assert record.provenance == 'NSF Awards API'
-        # divAbbr + id, so a sloppily typed number comes back normalised.
+        # divAbbr + id, so a sloppily typed number comes back normalized.
         assert record.contract_number == 'AGS-1852977'
         assert record.title.endswith('Atmoshperic Research (NCAR)')
         assert record.start_date == date(2018, 10, 1)

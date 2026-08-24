@@ -3,7 +3,7 @@
 Scope follows the house convention: the HTTP tier covers **auth, 404 and render
 smoke**. Route handlers use Flask-SQLAlchemy's ``db.session`` on its own
 connection and only see committed snapshot rows, so happy-path writes are
-covered a layer down — replay's behaviour lives in
+covered a layer down — replay's behavior lives in
 ``tests/api/test_xras_access.py::TestReplay``.
 
 What is genuinely worth pinning here is the **two-permission split**, because it
@@ -175,7 +175,7 @@ class TestXrasFragments:
         """The card can only see actions this log knows about. While capture
         mode is on, "empty" must not be presented as "all clear".
 
-        ⚠️ Both literals are copy assertions. If you reword the empty state,
+        WARNING: Both literals are copy assertions. If you reword the empty state,
         reword them — do not delete the second one, which is the honest half."""
         resp = auth_client.get('/allocations/xras_pending_fragment')
         assert b'No XRAS activity in this window' in resp.data
@@ -258,7 +258,7 @@ class TestFacetChips:
         # A superset is legal — an out-of-vocabulary status gets its own chip
         # (see the test below).
         #
-        # ⚠️ This asserted the count EXACTLY, on the reasoning that nothing in
+        # WARNING: This asserted the count EXACTLY, on the reasoning that nothing in
         # the snapshot produces an extra chip. Under xdist that is false: the
         # very next test's `committed_odd_status_action` fixture COMMITS its
         # row (deliberately — the route reads db.session's own connection, so
@@ -404,8 +404,8 @@ class TestDefaultWindowUpperBound:
         assert 'UCUB0166' in html
 
     def test_an_explicit_end_date_still_bounds(self):
-        """Unbounded is the DEFAULT, not the behaviour — an explicit To date is
-        still honoured, normalised to the end of that day."""
+        """Unbounded is the DEFAULT, not the behavior — an explicit To date is
+        still honored, normalized to the end of that day."""
         from werkzeug.datastructures import MultiDict
 
         from webapp.dashboards.allocations.xras._shared import _parse_xras_filters
@@ -552,7 +552,7 @@ class TestActivationModalBodies:
 
     def test_dismiss_form_does_not_promise_to_hide_the_row(
             self, auth_client, active_project):
-        """The copy outlived the behaviour once already. Dismissing stopped
+        """The copy outlived the behavior once already. Dismissing stopped
         removing anything when the card became a ledger keyed on actions —
         a modal still promising to hide the project describes the old card."""
         resp = auth_client.get(
@@ -567,7 +567,7 @@ class TestActivationModalBodies:
         """`_strip_empty_strings` drops '' but not '   ' — the post_load guard is
         what stops a whitespace-only note passing `Length(min=1)`.
 
-        ⚠️  Asserting on the *rendered* error, not merely on a re-render.
+        WARNING: Asserting on the *rendered* error, not merely on a re-render.
         The field macros read `field_errors` out of the template context, and a
         `{% from ... import %}` without `with context` gives them none — so the
         form comes back looking untouched and the rejection is completely silent.
@@ -616,14 +616,14 @@ class TestStatusVocabularyIsRenderable:
 
     The vocabulary tuples and ``badges.html`` are files that have to agree, and
     nothing else makes them. The macro falls back to ``bg-secondary`` with the raw string
-    for an unknown state, so a missing entry does not raise — it renders a grey chip
-    labelled ``unmapped`` with no explanation, on the page an operator reaches for when
+    for an unknown state, so a missing entry does not raise — it renders a gray chip
+    labeled ``unmapped`` with no explanation, on the page an operator reaches for when
     something has gone wrong. Silent, and exactly when it matters most.
 
     ``badges.html`` is a **shared** namespace: three domains' vocabularies live in one
     flat set of dicts. Only XRAS was gated here originally; notification statuses and
     scheduled-task run states are covered now too, so the next domain to join cannot
-    quietly render grey. (The collision that namespace already carries is ``manual``,
+    quietly render gray. (The collision that namespace already carries is ``manual``,
     which is XRAS's — scheduled-task *triggers* are deliberately NOT rendered through
     this macro for that reason. See the note in badges.html.)
 
@@ -855,7 +855,7 @@ class TestActivityRowExpansion:
                 self.TEMPLATE,
                 rows=[self._row(notifications=[], notified=False,
                                 delivered_count=0, tags=['not_notified'])],
-                recipients={},          # ← nobody on file
+                recipients={},          # <- nobody on file
                 may_activate={}, may_manage=True,
                 window={'days': 30, 'since': None, 'until': None,
                         'start_date': '', 'end_date': '', 'custom': False},

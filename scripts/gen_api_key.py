@@ -13,10 +13,10 @@ Usage:
     python scripts/gen_api_key.py --username samuel --prefix 2a --sql
 
 Output:
-    API Key  → set as STATUS_API_KEY in the collector's .env
-    Hash     → set as API_KEYS_<USERNAME> env var in the webapp environment
+    API Key  -> set as STATUS_API_KEY in the collector's .env
+    Hash     -> set as API_KEYS_<USERNAME> env var in the webapp environment
                (compose.yaml, Helm values.yaml, or SSM Parameter Store)
-    --sql    → also emit the api_credentials / role_api_credentials INSERTs,
+    --sql    -> also emit the api_credentials / role_api_credentials INSERTs,
                for credentials stored in the database rather than the env
 
 Env-var credentials (API_KEYS_<USERNAME>) take precedence over database rows;

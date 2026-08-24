@@ -322,7 +322,7 @@ def get_earliest_disk_activity_date(session, account_ids):
 def _disk_metric_col(model, metric):
     """Pick the summed column for a disk timeseries by metric.
 
-    ``'files'`` → ``number_of_files``; anything else → ``bytes``. Works for
+    ``'files'`` -> ``number_of_files``; anything else -> ``bytes``. Works for
     both ``DiskChargeSummary`` (project path) and ``DiskActivity`` (fileset
     path), which carry both columns.
     """
@@ -349,7 +349,7 @@ def get_disk_usage_timeseries_by_user(
     series has the same length as ``dates``.
 
     Series order is **stack-friendly**: ``Others`` first (so it renders
-    at the bottom of the stacked area in a neutral colour), then named
+    at the bottom of the stacked area in a neutral color), then named
     users smallest-to-largest by latest-snapshot bytes (so the largest
     user sits on top of the stack — easiest to scan against the
     capacity bar). The chart layer reverses the legend so the visual
@@ -421,7 +421,7 @@ def get_disk_usage_timeseries_by_user(
     rest_users = ranked[top_n:]
 
     series: List[Dict[str, Any]] = []
-    # `Others` first → bottom of the stack, neutral colour at the chart
+    # `Others` first -> bottom of the stack, neutral color at the chart
     # layer.
     if rest_users:
         others_values = [0] * len(dates)
@@ -429,7 +429,7 @@ def get_disk_usage_timeseries_by_user(
             for i, d in enumerate(dates):
                 others_values[i] += info['by_date'].get(d, 0)
         series.append({'username': 'Others', 'values': others_values})
-    # Named users smallest → largest. `top_users` is sorted descending
+    # Named users smallest -> largest. `top_users` is sorted descending
     # by latest-snapshot bytes; reverse to put the largest on top of
     # the stack.
     for _uid, info in reversed(top_users):
@@ -768,7 +768,7 @@ def build_disk_subtree(
         session, [a.account_id for a in accounts],
     )
 
-    # Build a flat node map, then thread parents → children using the
+    # Build a flat node map, then thread parents -> children using the
     # parent_id FK (works alongside the NestedSet coords).
     node_by_pid: Dict[int, Dict[str, Any]] = {}
     account_ids: List[int] = []

@@ -41,24 +41,21 @@ PERSON_FIELDS = (
     'organization', 'academicStatus', 'phone', 'email',
 )
 
-#: Verbatim port of `identityServicePersons` (namedQuery.xml:7-60).
+#: Verbatim port of `identityServicePersons` (namedQuery.xml:7-60). Two
+#: faithfulness notes worth not "fixing":
 #:
-#: Two faithfulness notes worth not "fixing":
+#: - The `phone` expression looks like a priority ranking and is not one. The
+#:   `MIN(CASE ...)` is only a null test; `ANY_VALUE(p.phone_number)` then
+#:   returns an arbitrary phone row. Legacy behavior, reproduced.
+#: - `login_type_id = 1` is the only filter -- no active/deleted predicate, so
+#:   `/people` publishes every user who ever existed (22k of 28k inactive).
 #:
-#: - The `phone` expression looks like a priority ranking but is not one. The
-#:   `MIN(CASE ...)` is used only as a null test — `ANY_VALUE(p.phone_number)`
-#:   then returns an arbitrary phone row. Legacy behaviour, reproduced.
-#: - `login_type_id = 1` is the only filter. There is deliberately no
-#:   active/deleted predicate, so `/people` publishes every user who ever
-#:   existed (22k of 28k are inactive). See section 7 of the plan doc.
-#:
-#: `ORDER BY MIN(u.user_id)` is ours, not legacy's. The named query has no
-#: `ORDER BY` at all, so legacy's row order is a MySQL `GROUP BY` artifact that
-#: happens to be user_id-ascending; stating it reproduces the observed 3.8 MB
-#: roster byte-for-byte while making the order deterministic rather than
-#: incidental. `MIN()` (not a bare column) keeps it legal under
-#: `ONLY_FULL_GROUP_BY`, which the dev and CI databases enable and production
-#: does not.
+#: `ORDER BY MIN(u.user_id)` is ours: the named query has no `ORDER BY` at all,
+#: so legacy's row order is a `GROUP BY` artifact that happens to be
+#: user_id-ascending. Stating it reproduces the observed 3.8 MB roster
+#: byte-for-byte while making the order deterministic. `MIN()` rather than a
+#: bare column keeps it legal under `ONLY_FULL_GROUP_BY`, which dev and CI
+#: enable and production does not.
 _SQL_PEOPLE = text("""
     SELECT u.username AS username,
            IF(u.nickname IS NOT NULL, u.nickname, u.first_name) AS firstName,
@@ -130,7 +127,7 @@ class _OrgNameFixup:
 
     An **unknown acronym maps to `None`**, which drops the `organization` key
     from the response entirely (`PersonDTO` is `NON_NULL`). That is legacy
-    behaviour, and it is why this returns `Optional[str]` rather than falling
+    behavior, and it is why this returns `Optional[str]` rather than falling
     back to the input.
     """
 
@@ -218,43 +215,29 @@ def get_person(session: Session, username: str) -> Optional[Dict[str, Any]]:
     return people[0] if people else None
 
 
-# ---------------------------------------------------------------------------
-# The requests/* family
+# The requests/* family. Ports `projectsByRole`, `requestsByProjectCode`,
+# `allocationsByProjectCode`, `allocationTransactionsByProjectCode` and
+# `requestDateRange`, which legacy runs against the `xras_*` views. These go to
+# base tables instead, for two reasons:
 #
-# Ports `projectsByRole`, `requestsByProjectCode`, `allocationsByProjectCode`,
-# `allocationTransactionsByProjectCode` and `requestDateRange`, all of which
-# legacy runs against the `xras_*` views. We go to base tables instead, for two
-# reasons:
-#
-#   - `xras_request` fails under `ONLY_FULL_GROUP_BY` (error 1055), which the
-#     dev and CI databases enable and production does not. Its `SELECT` list is
-#     safe; the sole offender is `ORDER BY al.end_date`, which names a different
-#     expression from the `GROUP BY`'s `cast(al.end_date as date)`. Ordering by
-#     the grouping expression itself is both legal and equivalent.
-#   - `xras_allocation` costs 6-8 s *regardless of filter*, because
+#   - `xras_request` fails under `ONLY_FULL_GROUP_BY` (1055), which dev and CI
+#     enable and production does not. The offender is `ORDER BY al.end_date`,
+#     naming a different expression from the GROUP BY's `cast(... as date)`.
+#   - `xras_allocation` costs 6-8 s REGARDLESS of filter, because
 #     `xras_hpc_allocation_amount` aggregates `hpc_charge_summary` across ALL
-#     allocations before joining. Scoping that aggregate to the requested
-#     projects is the single biggest win available here, and it does not change
-#     a byte of output.
+#     allocations before joining. Scoping that aggregate changes no output byte.
 #
-# The ORDER BYs below are not cosmetic — they are the array order of the
-# response, and `ORDER BY end_date` additionally decides which request is
-# labelled "New". See `docs/xras/incoming/XRAS_REIMPLEMENTATION.md` section 2.3.
+# WARNING: the ORDER BYs are not cosmetic -- they are the array order of the
+# response, and `ORDER BY end_date` decides which request is labeled "New".
 #
-# Each carries a primary-key tiebreaker that legacy does not have. Legacy's
-# `ORDER BY al.start_date DESC` is not a total order — one production project
-# has 11 allocations sharing a start_date — so MySQL is free to return tied
-# rows in any order, and *did*: two identical requests in CI produced different
-# bytes, which is what caught this. A tiebreaker makes our own output
-# reproducible, which an API contract requires regardless of parity.
-#
-# It does not make us match legacy on tied rows, because legacy's order there
-# is not derived from the data at all. Measured against production for
-# SCSG0001: of 15 request groups, the 6 with no tie match our order exactly,
-# and the 9 with a tie are arbitrary on legacy's side (neither ascending nor
-# descending allocation_id reproduces them). Same category as the `masters[]`
-# HashMap ordering, one level down — recorded as a divergence in section 7.
-# ---------------------------------------------------------------------------
+# Each carries a primary-key tiebreaker legacy does not have, because legacy's
+# `ORDER BY al.start_date DESC` is not a total order: one production project has
+# 11 allocations sharing a start_date, so MySQL may return tied rows in any
+# order, and did -- two identical CI requests produced different bytes. The
+# tiebreaker buys the reproducibility an API contract requires. It does not
+# match legacy on ties, because legacy's order there is not derived from the
+# data at all. Recorded as a divergence in
+# `docs/xras/incoming/XRAS_REIMPLEMENTATION.md` sections 2.3 and 7.
 
 #: `xras_role` is a UNION ALL over the two role columns on `project`. Note it
 #: emits only 'AllocationManager' and 'Pi' — there is no 'CoPi' branch, which is
@@ -331,15 +314,15 @@ _SQL_ALLOCATIONS = text("""
 """).bindparams(bindparam('projcodes', expanding=True))
 
 #: `dateApplied` order is what makes `orderApplied` (1..n) meaningful. The CASE
-#: has no ELSE, so an unmapped `transaction_type` yields NULL — which the
-#: `Action` DTO then omits, since it is NON_NULL.
+#: has no ELSE, so an unmapped `transaction_type` yields NULL, which the
+#: NON_NULL `Action` DTO omits.
 #:
-#: ⚠️  These are **outbound** strings: legacy's response vocabulary, mapped from
-#: our own `allocation_transaction.transaction_type`. `SUPPLEMENT` becomes
-#: `'Supplemental'` here, while the *inbound* vocabulary in
-#: `queries/xras_actions.py` (`XRAS_ACTION_TYPES`) spells it `'Supplement'`.
-#: The one-character difference is deliberate on both sides: these bytes are the
-#: contract a parity run checks, so this spelling cannot be changed to match.
+#: WARNING: these are **outbound** strings -- legacy's response vocabulary,
+#: mapped from our `allocation_transaction.transaction_type`. `SUPPLEMENT`
+#: becomes `'Supplemental'` here while the inbound vocabulary in
+#: `queries/xras_actions.py` spells it `'Supplement'`. The one-character
+#: difference is deliberate on both sides: these bytes are the contract a parity
+#: run checks, so this spelling cannot be changed to match.
 _SQL_ACTIONS = text("""
     SELECT al.allocation_id AS allocationId,
            p.projcode       AS projectId,

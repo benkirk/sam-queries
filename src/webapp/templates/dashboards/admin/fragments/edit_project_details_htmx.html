@@ -46,7 +46,7 @@
   </div>
   {% endif %}
 
-  <!-- ── Read-only: Project Code ───────────────────────────────────── -->
+  <!-- Read-only: Project Code -->
   <div class="row mb-3">
     <div class="col-md-4">
       <label class="form-label fw-semibold">Project Code</label>
@@ -69,7 +69,7 @@
   </div>
 
   {% if can_edit_governance %}
-  <!-- ── Facility / Panel / Allocation Type ──────────────────────── -->
+  <!-- Facility / Panel / Allocation Type -->
   <div class="row g-2 mb-3">
     <div class="col-md-4">
       <label for="editProjectFacility" class="form-label fw-semibold">
@@ -139,7 +139,7 @@
     </div>
   </div>
   {% else %}
-  <!-- ── Governance display (non-admin steward) ────────────────── -->
+  <!-- Governance display (non-admin steward) -->
   <div class="row g-2 mb-3">
     <div class="col-md-4">
       <label class="form-label">Allocation Type</label>
@@ -160,7 +160,7 @@
                     id='editProjectAbstract') }}
 
   <div class="row">
-    <!-- ── Project Lead ──────────────────────────────────────────── -->
+    <!-- Project Lead -->
     <div class="col-md-6">
       {% if can_edit_governance %}
       {{ fk_search_field('project_lead_user_id', 'Project Lead',
@@ -183,7 +183,7 @@
       {% endif %}
     </div>
 
-    <!-- ── Project Admin ─────────────────────────────────────────── -->
+    <!-- Project Admin -->
     <div class="col-md-6">
       {% if can_edit_governance %}
       {{ fk_search_field('project_admin_user_id', 'Project Admin',
@@ -206,7 +206,7 @@
     </div>
   </div>
 
-  <!-- ── Area of Interest / Unix GID / Ext Alias ──────────────────── -->
+  <!-- Area of Interest / Unix GID / Ext Alias -->
   <div class="row">
     <div class="col-md-6">
       {{ select_field('area_of_interest_id', 'Area of Interest',
@@ -221,7 +221,7 @@
                       id='editProjectAoi') }}
     </div>
     <div class="col-md-3">
-      <!-- ── Unix GID (read-only — changing an established GID would break filesystem permissions) ── -->
+      <!-- Unix GID (read-only — changing an established GID would break filesystem permissions) -->
       <div class="mb-3">
         <label class="form-label">Unix GID</label>
         <div class="form-control-plaintext text-muted">
@@ -230,7 +230,7 @@
       </div>
     </div>
     <div class="col-md-3">
-      <!-- ── Ext Alias ── -->
+      <!-- Ext Alias -->
       <div class="mb-3">
         <label for="editProjectExtAlias" class="form-label">
           Ext. Alias <span class="text-muted">(optional)</span>
@@ -248,7 +248,7 @@
     </div>
   </div>
 
-  <!-- ── Flags ─────────────────────────────────────────────────────── -->
+  <!-- Flags -->
   <div class="row mb-3">
     {% if can_edit_governance %}
     <div class="col-auto">
@@ -288,7 +288,7 @@
     {% endif %}
   </div>
 
-  <!-- ── Submit ────────────────────────────────────────────────────── -->
+  <!-- Submit -->
   <div class="d-flex gap-2">
     <button type="submit" class="btn btn-primary">
       <i class="fas fa-save"></i> Save Changes

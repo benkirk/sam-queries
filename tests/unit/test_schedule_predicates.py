@@ -424,7 +424,7 @@ class TestMonthlyDay:
         assert occ.date() == datetime(2028, 2, 29).date()
 
     def test_day_31_clamps_in_a_30_day_month(self):
-        """Documented behaviour: clamp, never skip."""
+        """Documented behavior: clamp, never skip."""
         occ = MonthlyDay(31, 4, 0).last_occurrence(datetime(2026, 7, 5, 12, 0))
         assert occ.date() == datetime(2026, 6, 30).date()
 

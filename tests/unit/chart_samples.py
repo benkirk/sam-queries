@@ -197,7 +197,7 @@ def _jobs_usage(with_unknown=True):
 
 def _pace_allocations(n=25):
     """25 projects so the top_n cut, the Other group and the >10 palette
-    switch (UNITY_STACK_10 → UNITY_STACK_20) are all exercised."""
+    switch (UNITY_STACK_10 -> UNITY_STACK_20) are all exercised."""
     out = []
     for i in range(n):
         out.append({

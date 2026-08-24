@@ -6,18 +6,18 @@
 
 {% block alloc_content %}
 
-{# ── The operator worklists, tabbed ───────────────────────────────────────
+{# The operator worklists, tabbed
    Three panes over the same time window, above the action log: the log is
    the reference, these are the actionable things.
 
-   ⚠️ THE WINDOW CONTROL IS RENDERED ONCE, HERE, and shared by all three.
+   WARNING: THE WINDOW CONTROL IS RENDERED ONCE, HERE, and shared by all three.
    `window_pills` emits the start_date/end_date pair bound to its form with
    `form=`, so rendering it inside each fragment would put three same-named
    pairs in one form — and `form.elements['start_date']` then returns a
    RadioNodeList that `set-filter-submit` cannot assign to. The control would
    render, respond to clicks, and filter nothing.
 
-   ⚠️ THE FILTER FORMS LIVE OUT HERE, outside the panes, for two reasons and
+   WARNING: THE FILTER FORMS LIVE OUT HERE, outside the panes, for two reasons and
    the second is the one that bites:
      1. A pane renders a table OR an empty state. Controls living inside it
         vanish with the table, so an over-narrow filter would hide the very
@@ -39,7 +39,7 @@
    three panes, a chip moves only its own. Wiring just the window is the easy
    mistake, and it makes every chip on every tab silently inert. #}
 
-{# ── Section 1: Work Queue ─────────────────────────────────────────────────
+{# Section 1: Work Queue
    The two logical halves of this page are wrapped in collapsible cards, each
    default open. This one holds the tabbed worklists and the conditional
    Remediations write surface; the header is the collapse toggle (title +
@@ -70,12 +70,7 @@
         <li class="nav-item" role="presentation">
             <button class="nav-link" data-bs-toggle="tab"
                     data-bs-target="#xras-pane-accounts" type="button"
-                    role="tab">Accounts Needed</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" data-bs-toggle="tab"
-                    data-bs-target="#xras-pane-pending" type="button"
-                    role="tab">Pending Requests</button>
+                    role="tab">Pending Users</button>
         </li>
     </ul>
     {# Its own swap target: the pills must re-render to restyle the active
@@ -104,17 +99,18 @@
 <form id="xras-accounts-filters" class="d-none">
     <select name="classification" multiple hidden></select>
     <select name="role" multiple hidden></select>
-    {# ⚠️ A facet_row whose `field` has no control here renders as chips that
+    {# WARNING: A facet_row whose `field` has no control here renders as chips that
        silently do nothing — the click writes into a form field that does not
        exist and the re-submit carries no value. Caught by the smoke, and the
        macro says so in as many words. Every dimension the card offers needs a
        line in this form. #}
     <select name="origin" multiple hidden></select>
+    <select name="source" multiple hidden></select>
     <select name="request_number" multiple hidden></select>
-</form>
-<form id="xras-pending-filters" class="d-none">
-    <select name="classification" multiple hidden></select>
-    <select name="request_number" multiple hidden></select>
+    {# Sort is form state (set-sort-submit writes these), so it survives every
+       facet/window change, not just a header click. #}
+    <input type="hidden" name="sort_by" value="">
+    <input type="hidden" name="sort_dir" value="">
 </form>
 {% if has_permission(Permission.MANAGE_XRAS) %}
 {# The Remediations card's facet state. Same rule as the forms above: every
@@ -122,9 +118,15 @@
    writes into a field that does not exist and filters nothing. #}
 <form id="xras-remediation-filters" class="d-none">
     <select name="status" multiple hidden></select>
+    <select name="action_type" multiple hidden></select>
     <select name="opportunity" multiple hidden></select>
     <select name="push" multiple hidden></select>
+    <select name="readiness" multiple hidden></select>
     <select name="request_number" multiple hidden></select>
+    {# Sort is form state (set-sort-submit writes these), so it survives every
+       facet/window change, not just a header click. #}
+    <input type="hidden" name="sort_by" value="">
+    <input type="hidden" name="sort_dir" value="">
 </form>
 {% endif %}
 
@@ -137,6 +139,8 @@
              hx-swap="innerHTML"></div>
     </div>
 
+    {# Pending Users: both feeds unioned. The fragment owns the degraded-half
+       note for when Feed B is unconfigured, unpublished, or unreadable. #}
     <div class="tab-pane fade" id="xras-pane-accounts" role="tabpanel">
         <div id="alloc-xras-accounts"
              hx-get="{{ url_for('allocations_dashboard.xras_accounts_fragment') }}"
@@ -144,24 +148,14 @@
              hx-include="#xras-window-filters, #xras-accounts-filters"
              hx-swap="innerHTML"></div>
     </div>
-
-    {# Feed B. Gated on the outgoing API and on a sweep having published; the
-       fragment owns all three of those empty states. #}
-    <div class="tab-pane fade" id="xras-pane-pending" role="tabpanel">
-        <div id="alloc-xras-pending-requests"
-             hx-get="{{ url_for('allocations_dashboard.xras_pending_requests_fragment') }}"
-             hx-trigger="load, refreshXrasTab from:body, submit from:#xras-window-filters, submit from:#xras-pending-filters"
-             hx-include="#xras-window-filters, #xras-pending-filters"
-             hx-swap="innerHTML"></div>
-    </div>
 </div>
 
 {% if has_permission(Permission.MANAGE_XRAS) %}
-{# ── The operator WRITE surface ────────────────────────────────────────────
-   A CARD, not a fourth tab: `#xrasWorklistTabs` stays at three, which the e2e
-   suite pins. The three tabs are read-only views of the same window; this is
+{# The operator WRITE surface
+   A CARD, not a third tab: `#xrasWorklistTabs` stays at two, which the e2e
+   suite pins. The two tabs are read-only views of the same window; this is
    a different kind of thing — every control on it changes production XRAS —
-   and burying it as a peer of "Accounts Needed" would understate that.
+   and burying it as a peer of "Pending Users" would understate that.
 
    Double-gated: this block and every route behind it check MANAGE_XRAS. The
    template gate keeps a view-only operator from seeing controls they cannot
@@ -181,7 +175,7 @@
     </div>{# #xras-section-workqueue #}
 </div>{# Work Queue card #}
 
-{# ── Section 2: XRAS Logs ──────────────────────────────────────────────────
+{# Section 2: XRAS Logs
    The API action log and its filter sidebar. Own collapse toggle; runs off its
    own #xras-filters form (not the shared window above), so collapsing either
    card touches no wiring. #}

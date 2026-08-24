@@ -1,8 +1,8 @@
 """
-Raw-colour lint for the app's own CSS (src/webapp/static/css/).
+Raw-color lint for the app's own CSS (src/webapp/static/css/).
 
-A colour literal in component CSS is a colour that cannot follow the theme.
-`variables.css` is where colour is *defined* — everywhere else it should be
+A color literal in component CSS is a color that cannot follow the theme.
+`variables.css` is where color is *defined* — everywhere else it should be
 referenced through a token, so that one edit in one file moves both themes.
 
 ALLOWED is the ratchet, seeded at the state of `staging@bee0f4d` (the commit
@@ -14,7 +14,7 @@ stale, and a commit that silently trades one literal for another is caught.
 This mirrors `test_template_csp_lint.py` deliberately, including the equality
 ratchet and the "fixed files must be removed" half. Same idea one layer out:
 that test stops inline script from coming back, this one stops hardcoded
-colour from coming back. Its real value is *after* the dark-mode PR — it is
+color from coming back. Its real value is *after* the dark-mode PR — it is
 what prevents the next 119 literals.
 
 What counts as a violation, in a declaration value, after `var(...)`
@@ -22,17 +22,17 @@ references are removed:
 
   - a hex literal            `#fff`, `#00357a`
   - `rgb()/rgba()/hsl()/hsla()` with a **literal** first argument
-  - a bare CSS named colour  `white`, `navy`, ...
+  - a bare CSS named color  `white`, `navy`, ...
 
 What does NOT count, and why:
 
   - `var(--anything)`               — the whole point; stripped before scanning
   - `rgba(var(--ncar-blue-rgb), .1)` — the house idiom for alpha on a brand
-                                       colour. `--ncar-blue-rgb` and
+                                       color. `--ncar-blue-rgb` and
                                        `--ncar-teal-rgb` exist precisely so
                                        this stays token-driven; the first
                                        argument is not a literal, so it passes.
-  - `transparent` / `currentColor` / `inherit` / `none` — not colour values in
+  - `transparent` / `currentColor` / `inherit` / `none` — not color values in
                                        the sense that matters here; they
                                        already follow whatever they sit on.
   - anything in `variables.css`     — the token file. Literals belong there,
@@ -52,7 +52,7 @@ from pathlib import Path
 
 CSS_DIR = Path(__file__).resolve().parents[2] / 'src' / 'webapp' / 'static' / 'css'
 
-#: The token file. Colour literals are its job.
+#: The token file. Color literals are its job.
 TOKEN_FILE = 'variables.css'
 
 COMMENT_RE = re.compile(r'/\*.*?\*/', re.S)
@@ -70,7 +70,7 @@ HEX_RE = re.compile(r'#[0-9a-fA-F]{3,8}\b')
 #: rgb()/hsl() whose first argument is a literal number. `rgba(var(--x), .1)`
 #: is token-driven and deliberately excluded.
 FUNC_RE = re.compile(r'\b(?:rgba?|hsla?)\(\s*[\d.]')
-#: Bare named colours. `transparent`/`currentColor` are intentionally absent.
+#: Bare named colors. `transparent`/`currentColor` are intentionally absent.
 NAMED_RE = re.compile(
     r'(?<![-\w])(?:white|black|red|green|blue|gray|grey|orange|gold|yellow|'
     r'silver|navy|teal|purple|pink|brown|cyan|magenta)(?![-\w])', re.I)
@@ -105,7 +105,7 @@ INVARIANT_TOKENS = {'--text-on-brand', '--surface-on-brand',
 ALLOWED = {
     # D2: -2 (--bs-card-bg, --bs-card-cap-bg)
     # D4: -49 (10 surfaces + 39 foregrounds -> --text-on-brand)
-    # D6: -3  (greys and borders -> role tokens)
+    # D6: -3  (grays and borders -> role tokens)
     # D8: -3  (the white pill fills in the .btn-group selector rows, found by
     #          the browser contrast assertions)
     # stragglers: -1 (.date-group-header's #f1f3f5 -> --surface-tertiary; the
@@ -115,7 +115,7 @@ ALLOWED = {
 
 
 def _violations(text):
-    """Every `prop: value` in `text` whose value carries a colour literal."""
+    """Every `prop: value` in `text` whose value carries a color literal."""
     found = []
     for prop, value in DECL_RE.findall(COMMENT_RE.sub('', text)):
         bare = VAR_RE.sub('', value)
@@ -217,7 +217,7 @@ def test_tier1_matches_chart_palette():
     """The brand palette is triplicated; keep at least two copies honest.
 
     `variables.css` and `charts/theme.py` both spell out the NCAR brand
-    colours — the CSS for the app chrome, the Python for matplotlib, which
+    colors — the CSS for the app chrome, the Python for matplotlib, which
     cannot read CSS. Consolidating them properly is a build-step question and
     is explicitly out of scope (docs/plans/implemented/DARK_MODE.md § *Keep the palette
     single-sourced*), so assert agreement instead.
@@ -287,7 +287,7 @@ def test_dark_block_redeclares_the_bootstrap_bridge():
     variables. Our selector is `:root[data-bs-theme="dark"]` (specificity
     0,2,0) precisely so it outranks Bootstrap's bare attribute selector
     (0,1,0). Drop any of them and cards, modals and tables silently revert to
-    Bootstrap's grey #212529 ramp while the rest of the app uses the blue one —
+    Bootstrap's gray #212529 ramp while the rest of the app uses the blue one —
     a mismatch that reads as "dark mode is buggy" rather than "a variable is
     missing".
     """

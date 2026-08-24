@@ -23,7 +23,7 @@ class TestAllocationUnit:
     @pytest.mark.parametrize('rtype', ['HPC', 'DAV', 'DISK', 'ARCHIVE'])
     def test_access_boolean_amount_one_is_unitless(self, rtype):
         # allocated == 1 is an access-boolean grant (Gust, HPC_Futures_Lab,
-        # Quasar, ...) — never labelled, regardless of type.
+        # Quasar, ...) — never labeled, regardless of type.
         assert ResourceTypeName.allocation_unit(rtype, 1) is None
 
     def test_real_amount_keeps_unit(self):

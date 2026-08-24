@@ -43,7 +43,7 @@ class TestKillSwitchOff:
 
 
 class TestKillSwitchOn:
-    """The session app fixture inherits TestingConfig → flag defaults ON."""
+    """The session app fixture inherits TestingConfig -> flag defaults ON."""
 
     def test_flag_defaults_on_outside_production(self, app):
         assert app.config['FLASK_ADMIN_ENABLED'] is True
@@ -60,7 +60,7 @@ class TestKillSwitchOn:
 class TestConfigDefaults:
 
     def test_production_defaults_off(self):
-        """ProductionConfig default is OFF (env unset ⇒ '0' path)."""
+        """ProductionConfig default is OFF (env unset => '0' path)."""
         import os
         from unittest.mock import patch
         with patch.dict(os.environ, {}, clear=False):

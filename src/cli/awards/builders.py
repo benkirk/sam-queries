@@ -113,7 +113,7 @@ def build_award_search(records, errors, *, query, limit,
         query:   the search term, echoed back.
         limit:   the per-provider cap that was applied.
         sources: the ``--source`` scoping, if any.
-        known:   ``{normalised contract_number: Contract}`` for hits SAM
+        known:   ``{normalized contract_number: Contract}`` for hits SAM
             already has, as returned by ``Contract.existing_by_number``.
     """
     from sam.projects.contracts import normalize_contract_number

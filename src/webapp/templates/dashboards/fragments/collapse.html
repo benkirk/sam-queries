@@ -1,7 +1,7 @@
 {#
   Collapse-trigger helpers.
 
-  ── Why this exists ──────────────────────────────────────────────────────
+ Why this exists
   A group row that expands on click is normally written as
   `<tr data-bs-toggle="collapse" ...>`. That is fine until the row also
   carries an action button (Edit, Delete, Cleanup…): clicking the button
@@ -10,7 +10,7 @@
   It cannot be fixed from the button. Bootstrap registers its data-api
   handlers with `EventHandler.on(document, ...)`, which passes the
   delegation flag as `addEventListener`'s `useCapture` argument — so they
-  run in the CAPTURE phase on `document`. Capture descends document → row →
+  run in the CAPTURE phase on `document`. Capture descends document -> row ->
   button, so Bootstrap has already toggled the collapse before any listener
   on the button executes. `data-stop-propagation` (static/js/actions.js) is
   powerless here by construction; its own docstring scopes it to
@@ -19,7 +19,7 @@
   The fix is structural: put the toggle on the individual cells that should
   react, and leave the actions cell out of it.
 
-  ── Usage ────────────────────────────────────────────────────────────────
+ Usage
   Emits only the data-attributes, so the caller keeps full control of the
   `class` attribute (emitting a second one would be invalid HTML, and the
   trigger is often conditional):

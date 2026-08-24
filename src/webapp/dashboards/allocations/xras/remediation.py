@@ -1,33 +1,28 @@
-"""XRAS Remediations — the operator write surface on Allocations → XRAS.
+"""XRAS Remediations -- the operator write surface on Allocations -> XRAS.
 
-A scoped **subset** of the external XRAS admin dashboard, never a replacement:
+A scoped SUBSET of the external XRAS admin dashboard, never a replacement:
 resolve an erroneously-reconciled placeholder by merge, withdraw a stale or
 in-flight submission, re-submit, and fix a roster. `MANAGE_XRAS` only,
 conditional on the outgoing write lever, never automated.
 
-Its own module in the ``allocations/xras/`` package, on the dashboard's shared
-``bp``, registered for its route side effects by ``xras/__init__.py``.
+Three things a reader coming from the sibling cards must know:
 
-Three things a reader coming from the sibling cards must know
-------------------------------------------------------------
 **1. These routes write to a system SAM does not own, and the write is done
-before the response is.** Nothing here is undone by an exception, a rollback,
-or a browser closing. The service layer (``sam.manage.xras_remediation``)
-commits its audit row on a private session *before* dispatching, precisely so
-the record survives everything the request does not.
+before the response is.** Nothing here is undone by an exception, a rollback, or
+a browser closing. ``sam.manage.xras_remediation`` commits its audit row on a
+private session BEFORE dispatching, precisely so the record survives everything
+the request does not.
 
 **2. ``perform()`` opens ``management_transaction`` and writes nothing to it.**
-The handler base wraps every ``perform()`` that way, and these handlers do
-their persistence on the service's own connections. So each POST holds an idle
-SAM transaction across an HTTP call to ``api.xras.org``. That is accepted
-rather than engineered around: the alternative is a second handler base whose
-only difference is the missing wrapper, and the calls are single-attempt with a
-10 s timeout.
+The handler base wraps every ``perform()`` that way; these handlers persist on
+the service's own connections. So each POST holds an idle SAM transaction across
+an HTTP call to ``api.xras.org``. Accepted rather than engineered around -- the
+alternative is a second handler base differing only in the missing wrapper, and
+the calls are single-attempt with a 10 s timeout.
 
-**3. Every modal GET degrades with a 200, not a 4xx.** Remediation needs live
-reads — a roster, a person, a preflight — and htmx will not swap a 4xx body
-into an already-open modal, so an XRAS outage rendered as an error status is an
-empty modal with no explanation. The degraded body says what happened instead.
+**3. Every modal GET degrades with a 200, not a 4xx.** htmx will not swap a 4xx
+body into an already-open modal, so an XRAS outage rendered as an error status
+is an empty modal with no explanation. The degraded body says what happened.
 """
 
 from __future__ import annotations
@@ -59,14 +54,14 @@ from sam.schemas.forms import (
 from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
 from webapp.extensions import db
 from webapp.utils.form_handler import FormError, HtmxFormHandler
-from webapp.utils.htmx import htmx_modal_not_found, htmx_success_message
+from webapp.utils.htmx import htmx_modal_not_found, htmx_success_message, read_sort
 from webapp.utils.rbac import Permission, require_permission
 
 from .. import bp
 from ._shared import (
     _XRAS_MODAL_TRIGGERS, _degraded, _entry, _impersonation, _index,
-    _live_request, _parse_activity_window, _read_client, _role_options,
-    _session_factory,
+    _live_family, _live_request, _parse_activity_window, _read_client,
+    _role_options, _session_factory, sort_rows,
 )
 from .modals import _render_detail
 
@@ -121,6 +116,13 @@ def xras_remediations_fragment():
     configured = xras_api_configured()
     write_enabled = xras_write_configured()
 
+    # The mnemonic-unblock ranking rides the same snapshot the card already loaded —
+    # no extra fetch. It resolves each failing PI's org against the DB (why it needs
+    # db.session). The strip points at Admin -> Organizations to fix; the write action
+    # lives there, so this page stays read-only about org metadata.
+    from sam.queries.xras_mnemonic_report import mnemonic_unblock_report
+    mnemonic_summary = mnemonic_unblock_report(db.session, payload)
+
     rows = list(payload.get('rows') or []) if payload else []
     swept_total = len(rows)
 
@@ -136,49 +138,80 @@ def xras_remediations_fragment():
     search = (request.args.get('search') or '').strip()
     rows = _search(rows, search)
 
-    selected_statuses = [s for s in request.args.getlist('status') if s]
-    selected_opportunities = [o for o in request.args.getlist('opportunity') if o]
-    selected_push = [p for p in request.args.getlist('push') if p]
-    selected_requests = [n for n in request.args.getlist('request_number') if n]
+    _sel = _selected_facets(request.args)
+    selected_statuses = _sel['statuses']
+    selected_opportunities = _sel['opportunities']
+    selected_push = _sel['push']
+    selected_requests = _sel['requests']
+    selected_readiness = _sel['readiness']
+    selected_actions = _sel['actions']
 
     # Self-excluding facets: each dimension counts over the set filtered by the
     # *other* dimensions, so a chip never shows a zero that its own selection
     # caused and clicking one never empties the row it lives in.
     status_values = _facet(rows, 'status',
                            _apply(rows, opportunities=selected_opportunities,
-                                  push=selected_push, requests=selected_requests))
+                                  push=selected_push, requests=selected_requests,
+                                  readiness=selected_readiness,
+                                  actions=selected_actions))
+    action_values = _action_facet(rows, _apply(
+        rows, statuses=selected_statuses, opportunities=selected_opportunities,
+        push=selected_push, requests=selected_requests,
+        readiness=selected_readiness))
     opportunity_values = _facet(rows, 'opportunity_name',
                                 _apply(rows, statuses=selected_statuses,
                                        push=selected_push,
-                                       requests=selected_requests))
+                                       requests=selected_requests,
+                                       readiness=selected_readiness,
+                                       actions=selected_actions))
     push_values = _push_facet(_apply(rows, statuses=selected_statuses,
                                      opportunities=selected_opportunities,
-                                     requests=selected_requests))
+                                     requests=selected_requests,
+                                     readiness=selected_readiness,
+                                     actions=selected_actions))
+    readiness_values = _readiness_facet(_apply(
+        rows, statuses=selected_statuses, opportunities=selected_opportunities,
+        push=selected_push, requests=selected_requests,
+        actions=selected_actions))
 
-    rows = _apply(rows, statuses=selected_statuses,
-                  opportunities=selected_opportunities,
-                  push=selected_push, requests=selected_requests)
+    # The final in-view set — identical to what the batch re-check acts on.
+    rows = _filtered_rows(payload, request.args)
+    # The "Check all" target: rows with no pending verdict yet (a re-check resolves
+    # these; `incomplete` rows it cannot, so they are not counted).
+    not_checked_count = sum(1 for r in rows if not r.get('preflight_rollup'))
+
+    # No forced default: with no header clicked the sweep's order stands within
+    # each group, and sort_rows is a no-op.
+    sort = read_sort(request.args, set(_REMEDIATION_SORT), default_dir='desc')
 
     return render_template(
         _CARD,
-        groups=_group_by_opportunity(rows),
+        not_checked_count=not_checked_count,
+        groups=_group_by_opportunity(rows, sort=sort),
+        sort=sort,
+        sortable_columns=set(_REMEDIATION_SORT),
         total=len(rows),
         swept_total=swept_total,
         window_total=window_total,
         search=search,
         snapshot=payload,
+        mnemonic_summary=mnemonic_summary,
         configured=configured,
         write_enabled=write_enabled,
         # Distinguishes "no sweep at all" from "a sweep that predates this
         # feature" — see the docstring.
         has_worklist=_has_worklist(),
         status_values=status_values,
+        action_values=action_values,
         opportunity_values=opportunity_values,
         push_values=push_values,
+        readiness_values=readiness_values,
         selected_statuses=selected_statuses,
+        selected_actions=selected_actions,
         selected_opportunities=selected_opportunities,
         selected_push=selected_push,
         selected_requests=selected_requests,
+        selected_readiness=selected_readiness,
         request_values=[{'value': n, 'label': n, 'count': 1}
                         for n in selected_requests],
         form_id=_REMEDIATION_FORM_ID,
@@ -187,26 +220,110 @@ def xras_remediations_fragment():
     )
 
 
+@bp.route('/xras_recheck_request/<path:request_number>', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_recheck_request(request_number: str):
+    """Re-run the never-writes preflight for one request and patch the snapshot.
+
+    Read-only against XRAS and never-writes against SAM. Degrades with a **200**
+    when the read client is unavailable — htmx will not swap a 4xx into an open
+    modal, and this fires from one.
+    """
+    result = remediation.recheck_readiness(request_number, session=db.session)
+    if not result['available']:
+        return htmx_success_message(
+            {}, 'XRAS could not be reached — the pre-flight was not re-run.',
+            detail='The card keeps its last swept verdicts. Try again shortly.')
+    counts = result['counts']
+    checked = sum(counts.values())
+    return htmx_success_message(
+        {'refreshXrasTab': {}},
+        f'Re-checked {request_number}: {checked} action(s) — '
+        f'{counts.get("rechecked", 0)} would land, {counts.get("failed", 0)} would fail, '
+        f'{counts.get("manual", 0)} would park, {counts.get("incomplete", 0)} incomplete.',
+        detail='Nothing was applied. The card shows the fresh verdicts.')
+
+
+#: Batch re-check fan-out bound: one live XRAS read per row, so cap it.
+_RECHECK_ALL_CAP = 25
+
+
+@bp.route('/xras_recheck_visible', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_recheck_visible():
+    """"Check all": re-check every not-yet-checked request currently in view.
+
+    Targets only rows whose roll-up is ``none`` (out of the sweep window, or all
+    applied) — the checkable population; ``incomplete`` rows a re-check cannot
+    resolve are left alone. One live XRAS read per row, bounded by
+    ``_RECHECK_ALL_CAP``. Honors the exact window+facet+search state in view via
+    the shared ``_filtered_rows``. Degrades with a **200** on outage.
+
+    WARNING: ``request.values``, not ``request.args``. This is a POST and the
+    card's ``hx-include`` sends the window+facet forms in the BODY — reading only
+    the query string would silently fall back to the default window and report
+    "nothing to check" over a wide-filter view full of not-checked rows.
+    """
+    eligible = [r for r in _filtered_rows(_index(), request.values)
+                if not r.get('preflight_rollup')]
+    if not eligible:
+        return htmx_success_message(
+            {}, 'Nothing to check — no "not checked" requests are in view.')
+    capped = eligible[:_RECHECK_ALL_CAP]
+    totals = {'rechecked': 0, 'failed': 0, 'manual': 0, 'incomplete': 0}
+    available = False
+    for row in capped:
+        result = remediation.recheck_readiness(row['request_number'],
+                                               session=db.session)
+        if not result['available']:
+            continue
+        available = True
+        for key in totals:
+            totals[key] += result['counts'].get(key, 0)
+    if not available:
+        return htmx_success_message(
+            {}, 'XRAS could not be reached — nothing was re-checked.',
+            detail='The card keeps its last swept verdicts. Try again shortly.')
+    detail = 'Nothing was applied. The card shows the fresh verdicts.'
+    skipped = len(eligible) - len(capped)
+    if skipped:
+        detail = (f'{skipped} more were over the {_RECHECK_ALL_CAP}-row cap — '
+                  f'run it again to continue. ') + detail
+    return htmx_success_message(
+        {'refreshXrasTab': {}},
+        f'Checked {len(capped)} request(s): {totals["rechecked"]} would land, '
+        f'{totals["failed"]} would fail, {totals["manual"]} would park, '
+        f'{totals["incomplete"]} incomplete.',
+        detail=detail)
+
+
 def _has_worklist():
     from sam.integration.xras_api.cache import load_pending_worklist
     return load_pending_worklist() is not None
 
 
 def _in_window(row, since):
-    """Keep a row with no submit date.
+    """Keep a row with no date.
 
-    Missing information is not evidence of age, and on **this** card an older
-    row is the more urgent one — a 2015 approval nobody pushed is the whole
-    point — so a date filter may narrow the view but must never silently drop
-    the rows the card exists to surface. The header says how many it hid.
+    Windows on ``activity_date`` — when the current handoff was submitted — NOT
+    the request's original creation: a 2022 request with an Extension entered two
+    days ago is recent activity and must show in a 7-day filter (admin's "Recent
+    Submissions" keys on the same signal). ``submit_date`` is the fallback for a
+    snapshot swept before ``activity_date`` existed.
+
+    Missing information is not evidence of age, and on this card an older row is
+    the more urgent one — a 2015 approval nobody pushed is the whole point — so a
+    filter narrows the view but never silently drops a dateless row.
     """
     if since is None:
         return True
-    submitted = row.get('submit_date')
-    if submitted is None:
+    when = row.get('activity_date') or row.get('submit_date')
+    if when is None:
         return True
     start = since.date() if hasattr(since, 'date') else since
-    return submitted >= start
+    return when >= start
 
 
 def _search(rows, needle):
@@ -245,7 +362,27 @@ def _search(rows, needle):
             if any(wanted in str(v).casefold() for v in haystack(r) if v)]
 
 
-def _apply(rows, *, statuses=(), opportunities=(), push=(), requests=()):
+def _selected_facets(args):
+    """The active facet selections, read from the request args once."""
+    return {'statuses': [s for s in args.getlist('status') if s],
+            'opportunities': [o for o in args.getlist('opportunity') if o],
+            'push': [p for p in args.getlist('push') if p],
+            'requests': [n for n in args.getlist('request_number') if n],
+            'readiness': [r for r in args.getlist('readiness') if r],
+            'actions': [a for a in args.getlist('action_type') if a]}
+
+
+def _filtered_rows(payload, args):
+    """The rows currently in view: window -> search -> facets. Shared by the card
+    fragment and the batch re-check so they can never act on different sets."""
+    rows = list(payload.get('rows') or []) if payload else []
+    rows = [r for r in rows if _in_window(r, _parse_activity_window(args)['since'])]
+    rows = _search(rows, (args.get('search') or '').strip())
+    return _apply(rows, **_selected_facets(args))
+
+
+def _apply(rows, *, statuses=(), opportunities=(), push=(), requests=(),
+           readiness=(), actions=()):
     out = list(rows)
     if statuses:
         out = [r for r in out if r.get('status') in statuses]
@@ -256,6 +393,10 @@ def _apply(rows, *, statuses=(), opportunities=(), push=(), requests=()):
                if ('pending' if r.get('pending_push') else 'pushed') in push]
     if requests:
         out = [r for r in out if r.get('request_number') in requests]
+    if readiness:
+        out = [r for r in out if (r.get('preflight_rollup') or 'none') in readiness]
+    if actions:
+        out = [r for r in out if r.get('latest_action_type') in actions]
     return out
 
 
@@ -270,6 +411,19 @@ def _facet(all_rows, key, scoped_rows):
             for v in sorted(values)]
 
 
+def _action_facet(all_rows, scoped_rows):
+    """Type chips, keyed on each request's single in-flight action type."""
+    counts = {}
+    for row in scoped_rows:
+        kind = row.get('latest_action_type')
+        if kind:
+            counts[kind] = counts.get(kind, 0) + 1
+    values = {row.get('latest_action_type') for row in all_rows
+              if row.get('latest_action_type')}
+    return [{'value': v, 'label': v, 'count': counts.get(v, 0)}
+            for v in sorted(values)]
+
+
 def _push_facet(scoped_rows):
     counts = {'pending': 0, 'pushed': 0}
     for row in scoped_rows:
@@ -278,8 +432,38 @@ def _push_facet(scoped_rows):
             {'value': 'pushed', 'label': 'Project exists', 'count': counts['pushed']}]
 
 
-def _group_by_opportunity(rows):
-    """Group for the nested table, preserving the sweep's ordering."""
+#: Readiness facet vocabulary and labels, worst first. ``none`` is a real bucket:
+#: a swept request with no pending action checked (out of window, or all applied).
+_READINESS_LABELS = (('failed', 'Would fail'), ('manual', 'Would park'),
+                     ('incomplete', 'Incomplete'), ('rechecked', 'Would land'),
+                     ('none', 'Not checked'))
+
+
+def _readiness_facet(scoped_rows):
+    counts = {}
+    for row in scoped_rows:
+        key = row.get('preflight_rollup') or 'none'
+        counts[key] = counts.get(key, 0) + 1
+    return [{'value': v, 'label': label, 'count': counts.get(v, 0)}
+            for v, label in _READINESS_LABELS if counts.get(v, 0)]
+
+
+#: Sortable non-facet columns -> row sort key. The facet columns (status / type /
+#: opportunity / SAM project / readiness) are the chips' job, not the header's.
+_REMEDIATION_SORT = {
+    'request': lambda r: (r.get('request_number') or '').casefold(),
+    'lead': lambda r: ((r.get('pi') or {}).get('name')
+                       or (r.get('pi') or {}).get('username') or '').casefold(),
+    'admin': lambda r: ((r.get('admin') or {}).get('name')
+                        or (r.get('admin') or {}).get('username') or '').casefold(),
+    'submitted': lambda r: r.get('activity_date') or r.get('submit_date'),
+    'period': lambda r: r.get('end_date') or r.get('begin_date'),
+}
+
+
+def _group_by_opportunity(rows, sort=None):
+    """Group for the nested table, preserving the sweep's ordering. When `sort` is
+    given, rows are ordered by it WITHIN each group (the groups keep their order)."""
     groups = []
     seen = {}
     for row in rows:
@@ -289,6 +473,9 @@ def _group_by_opportunity(rows):
                           'rows': []}
             groups.append(seen[name])
         seen[name]['rows'].append(row)
+    if sort:
+        for group in groups:
+            group['rows'] = sort_rows(group['rows'], sort, _REMEDIATION_SORT)
     return groups
 
 
@@ -352,7 +539,7 @@ class _XrasRemediationHandler(HtmxFormHandler):
         if outcome.status == 'error':
             raise XrasSourceUnavailable(outcome.error or 'unavailable')
         if outcome.status == 'unverified':
-            # ⚠️ Not an error and not a success. XRAS answered, the re-read did
+            # WARNING: Not an error and not a success. XRAS answered, the re-read did
             # not confirm it, and an operator has to go and look — so this must
             # not render as a green tick.
             raise FormError(
@@ -369,7 +556,7 @@ class _XrasRemediationHandler(HtmxFormHandler):
 def _merge_candidates(person, *, source_username):
     """Real XRAS identities this placeholder might be, best first.
 
-    Searched by **email first, then surname**, and ranked email → organization →
+    Searched by **email first, then surname**, and ranked email -> organization ->
     name. That order is the whole safety property, measured on real data: one
     human had two live identities differing only in email and organization (a
     university address and an NCAR-staff one), and a name match picks between
@@ -464,7 +651,7 @@ class _XrasMergeHandler(_XrasRemediationHandler):
         if target.strip().casefold() == self.username.strip().casefold():
             raise FormError('The target must be a different account.')
 
-        # ⚠️ **Fail closed.** The API documents merge as "merge a username into
+        # WARNING: **Fail closed.** The API documents merge as "merge a username into
         # an existing/new username" — a typo does not fail, it CREATES an
         # identity and hands it the placeholder's roles. So the target is
         # resolved server-side before anything is sent, whichever field named
@@ -686,7 +873,7 @@ def _safe_action_context(request_number, action_id, *, mode):
 def xras_resubmit_form(request_number: str, action_id: int):
     """Modal body: the inverse of withdraw, with its preflight rendered first.
 
-    ⚠️ The preflight verdict is a function of **who** we impersonate, not only
+    WARNING: The preflight verdict is a function of **who** we impersonate, not only
     of the action — measured: the same action validated as the PI and failed as
     the Allocation Manager. So the verdict is always rendered next to the user
     it was evaluated as, and a failure disables the button rather than hiding
@@ -707,7 +894,7 @@ def xras_resubmit_form(request_number: str, action_id: int):
                 # vanishes teaches nobody that a switch exists.
                 context['validation'] = None
             except XrasWriteRejected as exc:
-                # ⚠️ Caught HERE, before the outer XrasSourceUnavailable (its
+                # WARNING: Caught HERE, before the outer XrasSourceUnavailable (its
                 # parent class) swallows it as an outage. A 4xx is XRAS
                 # refusing deterministically — a 401 means the impersonated
                 # user holds no role — and telling the operator "XRAS is not
@@ -849,7 +1036,7 @@ class _XrasRoleAddHandler(_XrasRemediationHandler):
             raise FormError('This request has no role-holder for SAM to act '
                             'as, so XRAS would refuse the change.')
 
-        # ⚠️ **Resolve the username first.** The add route accepts optional
+        # WARNING: **Resolve the username first.** The add route accepts optional
         # person parameters that XRAS uses to CREATE an unknown user, with
         # `isReconciled` defaulting true — the exact mechanism that mints the
         # stuck placeholders this card exists to clean up. SAM never sends
@@ -978,13 +1165,13 @@ def xras_role_remove(request_number: str, role_id: int):
 _RESOURCE_FORM = 'dashboards/allocations/partials/xras_resource_form.html'
 _DATES_FORM = 'dashboards/allocations/partials/xras_dates_form.html'
 _ATTRIBUTES_FORM = 'dashboards/allocations/partials/xras_attributes_form.html'
-# ⚠️ NOT xras_action_form.html — that is the withdraw/re-submit form.
+# WARNING: NOT xras_action_form.html — that is the withdraw/re-submit form.
 _ACTION_FIELDS_FORM = 'dashboards/allocations/partials/xras_action_fields_form.html'
 _ADD_ACTION_FORM = 'dashboards/allocations/partials/xras_add_action_form.html'
 
 
 
-# ── the request editor (Part B): resource amounts & allocation dates ─────
+# the request editor (Part B): resource amounts & allocation dates
 
 def _editor_target(request_number):
     """``(request_id, xa_user)`` for a write, or raise :class:`FormError`.
@@ -1316,7 +1503,7 @@ def xras_dates_remove(request_number: str, action_id: int,
         'The attempt is recorded in the remediation log.'))
 
 
-# ── the request editor (Part B2a): request attributes & action fields ────
+# the request editor (Part B2a): request attributes & action fields
 
 def _attributes_form_context(request_number):
     """Context for the request-attributes editor, or ``None`` if the request is gone."""
@@ -1380,7 +1567,7 @@ class _XrasAttributesHandler(_XrasRemediationHandler):
         return data
 
     def perform(self, data):
-        # snake_case → wire; blanked short_title/abstract clear the field.
+        # snake_case -> wire; blanked short_title/abstract clear the field.
         fields = {
             'title': data['title'],
             'shortTitle': data.get('short_title') or '',
@@ -1505,9 +1692,9 @@ def xras_action_fields_edit(request_number: str, action_id: int):
         request_number=request_number, action_id=action_id).handle()
 
 
-# ── the destructive lifecycle (Part C — ADMIN_XRAS only) ─────────────────
+# the destructive lifecycle (Part C — ADMIN_XRAS only)
 #
-# ⚠️ Every route here is gated on ADMIN_XRAS (effectively SYSTEM_ADMIN), NOT
+# WARNING: Every route here is gated on ADMIN_XRAS (effectively SYSTEM_ADMIN), NOT
 # MANAGE_XRAS — a full-editor operator cannot reach them. The verbs are
 # irreversible in XRAS and were not live-probed; they are fail-visible.
 
@@ -1521,37 +1708,60 @@ def _inline_alert(message, *, variant='warning'):
 @login_required
 @require_permission(Permission.ADMIN_XRAS)
 def xras_request_delete(request_number: str):
-    """Delete a whole request in XRAS. **Irreversible.** Bodiless; hx-confirm.
+    """Delete a project's **whole request tree** in XRAS. **Irreversible.**
 
-    On success the request is gone, so the modal cannot re-render it — it closes
-    and the card refreshes (the sweep patch drops the now-missing row).
+    A projcode can carry several request lines (a New plus Renewals, each its own
+    requestId); this loops over every one so the delete is projcode-scoped and
+    independent of which line the modal opened on. Each line is impersonated as
+    its own PI. Reports partial failure rather than claiming success — the
+    surviving lines still exist. Bodiless; hx-confirm.
     """
-    try:
-        request_id, xa_user = _editor_target(request_number)
-    except FormError as exc:
-        return _inline_alert(str(exc))
+    from sam.queries.xras_requests import resolve_pi, roster_from_payload
 
     try:
-        outcome = remediation.delete_request(
-            _session_factory(), request_number=request_number,
-            request_id=request_id, pi_username=xa_user,
-            operator=current_user.username)
-    except XrasWriteNotConfigured:
-        return _inline_alert('XRAS writes are switched off for this '
-                             'deployment. Nothing was sent.')
+        lines = _live_family(request_number)
+    except XrasSourceUnavailable:
+        return _inline_alert('XRAS could not be reached, so nothing was changed. '
+                             'Try again shortly.')
+    if not lines:
+        return _inline_alert('XRAS no longer lists this request.')
 
-    if outcome.status == 'verified':
+    deleted, failures = [], []
+    for line in lines:
+        request_id = line.get('requestId')
+        xa_user = resolve_pi(roster_from_payload(line))
+        if request_id is None or not xa_user:
+            failures.append(f'requestId {request_id} (no role-holder to act as)')
+            continue
+        try:
+            outcome = remediation.delete_request(
+                _session_factory(), request_number=request_number,
+                request_id=request_id, pi_username=xa_user,
+                operator=current_user.username)
+        except XrasWriteNotConfigured:
+            return _inline_alert('XRAS writes are switched off for this '
+                                 'deployment. Nothing was sent.')
+        if outcome.status == 'verified':
+            deleted.append(request_id)
+        else:
+            reason = outcome.error or 'XRAS did not confirm it'
+            extra = getattr(outcome.result, 'errors', None)
+            if extra:
+                reason += ' — ' + '; '.join(str(m) for m in extra)
+            failures.append(f'requestId {request_id} ({reason})')
+
+    if not failures:
+        n = len(deleted)
         return htmx_success_message(
-            _XRAS_MODAL_TRIGGERS, f'Deleted request {request_number} in XRAS.',
+            _XRAS_MODAL_TRIGGERS,
+            f'Deleted the whole project {request_number} in XRAS '
+            f'({n} request{"" if n == 1 else "s"}).',
             detail='It no longer exists in XRAS and drops off the card.')
 
-    reason = outcome.error or 'XRAS did not confirm it'
-    extra = getattr(outcome.result, 'errors', None)
-    if extra:
-        reason += ' — ' + '; '.join(str(m) for m in extra)
     return _inline_alert(
-        f'Deletion did not complete: {reason}. The attempt is recorded in the '
-        'remediation log.', variant='danger')
+        f'Deleted {len(deleted)} of {len(lines)} request(s) for {request_number}; '
+        f'these did not complete: {"; ".join(failures)}. The attempts are recorded '
+        'in the remediation log.', variant='danger')
 
 
 @bp.route('/xras_request_renew/<path:request_number>', methods=['POST'])

@@ -157,7 +157,7 @@ class DerechoStatusSchema(BaseSchema):
     Nested objects (login_nodes, queues, filesystems) are automatically
     loaded and linked via ORM relationships. The post_load hook just sets
     timestamp and system_name on the children for consistency. Lookup
-    resolution (system_name → system_id, queue_name → queue_id, etc.) is
+    resolution (system_name -> system_id, queue_name -> queue_id, etc.) is
     handled by the ``before_flush`` listener at session.commit() time.
     """
     class Meta(BaseSchema.Meta):

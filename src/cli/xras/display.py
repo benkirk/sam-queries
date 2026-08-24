@@ -7,6 +7,7 @@ plain dict a builder produced — never an ORM object. All formatting goes throu
 
 from rich.panel import Panel
 from rich.table import Table
+from rich.tree import Tree
 
 from cli.core.display_utils import BLANK, text, truncate
 
@@ -21,6 +22,16 @@ _STATUS_STYLE = {
     'rechecked':  'dim',
 }
 
+#: Short Source labels, same vocabulary as the Pending Users card badges.
+_SOURCE_LABELS = {'action_log': 'push', 'reports': 'pending'}
+
+
+def _sources(values) -> str:
+    """A row's provenance, received-push first."""
+    labels = [_SOURCE_LABELS.get(v, v) for v in values or ()]
+    labels.sort(key=lambda s: s != 'push')
+    return ', '.join(labels) or BLANK
+
 
 def _status(value) -> str:
     style = _STATUS_STYLE.get(value, 'white')
@@ -31,6 +42,70 @@ def _timestamp(value) -> str:
     """Actions arrive in bursts, so the time of day is what separates rows."""
     from sam import fmt
     return BLANK if value is None else fmt.date_str(value, fmt='%Y-%m-%d %H:%M:%S')
+
+
+_READINESS_STYLE = {'failed': '[red]would fail[/red]',
+                    'manual': '[yellow]would park[/yellow]',
+                    'incomplete': '[dim]incomplete[/dim]',
+                    'rechecked': '[green]would land[/green]',
+                    None: '[dim]—[/dim]'}
+
+
+def display_readiness(ctx, payload) -> None:
+    """Push-readiness board: the sweep's per-request preflight, worst first."""
+    rows = payload['requests']
+    if not rows:
+        ctx.console.print('No swept requests carry a pre-flight verdict yet.',
+                          style='yellow')
+        return
+    table = Table(title=f"XRAS push-readiness ({payload['total']} request(s))",
+                  show_lines=False, header_style='bold')
+    table.add_column('Request #', no_wrap=True)
+    table.add_column('Readiness', no_wrap=True)
+    table.add_column('Status', no_wrap=True)
+    table.add_column('PI', no_wrap=True)
+    table.add_column('Opportunity', overflow='fold')
+    table.add_column('First reason', overflow='fold')
+    for r in rows:
+        table.add_row(
+            text(r['request_number']),
+            _READINESS_STYLE.get(r['rollup'], text(r['rollup'])),
+            text(r['status']),
+            text(r['pi']),
+            text(r['opportunity_name']),
+            f"[red]{truncate(r['messages'][0], 60)}[/red]" if r['messages'] else BLANK,
+        )
+    ctx.console.print(table)
+
+
+def display_mnemonic_report(ctx, payload) -> None:
+    """The orgs/institutions to link, ranked by how many failing pushes each unblocks."""
+    targets = payload['targets']
+    if not targets and not payload['unresolved']:
+        ctx.console.print('No failing push cites a missing organization mnemonic.',
+                          style='yellow')
+        return
+    if targets:
+        table = Table(
+            title=f"Mnemonic links to create ({len(targets)}), "
+                  f"ranked by pushes unblocked",
+            show_lines=False, header_style='bold')
+        table.add_column('Organization / Institution', overflow='fold')
+        table.add_column('Type', no_wrap=True)
+        table.add_column('Unblocks', justify='right', no_wrap=True)
+        table.add_column('Sample requests', overflow='fold')
+        for t in targets:
+            table.add_row(text(t['name']), t['family'], str(t['unblock_count']),
+                          ', '.join(t['sample']))
+        ctx.console.print(table)
+    if payload['unresolved']:
+        # Not fixable by minting a code — these PIs have no current affiliation.
+        pis = sorted({u['pi'] for u in payload['unresolved'] if u['pi']})
+        ctx.console.print(
+            f"[yellow]{len(payload['unresolved'])} action(s) blocked by "
+            f"{len(pis)} PI(s) with no current affiliation[/yellow] "
+            f"(need a user_organization row, not a mnemonic): "
+            f"{', '.join(pis) or '—'}")
 
 
 def display_action_list(ctx, payload) -> None:
@@ -213,7 +288,7 @@ def display_mapping_report(ctx, payload) -> None:
             f"[bold red]Dangling keys with no resource row:[/bold red] "
             f"{', '.join(str(k) for k in payload['dangling_keys'])}")
 
-    # ── the XRAS half ───────────────────────────────────────────────────
+    # the XRAS half
     if not payload.get('live_checked'):
         ctx.console.print(
             '[dim]Local half only — the XRAS API was not configured or not '
@@ -361,12 +436,13 @@ def display_account_worklist(ctx, payload) -> None:
     table.add_column('Username', style='cyan')
     table.add_column('Needs')
     table.add_column('Role', style='dim')
+    table.add_column('Source', style='dim')
     table.add_column('Requests', style='dim')
     table.add_column('XRAS identity')
     table.add_column('Waiting', justify='right')
 
     for row in payload['accounts']:
-        # ⚠️ The artifact, not an action — SAM cannot create or reactivate an
+        # WARNING: The artifact, not an action — SAM cannot create or reactivate an
         # account. Same words the card uses, because the terminal and the
         # dashboard have to teach one vocabulary; the footer says who does.
         needs = ('[red]new account[/red]' if row['classification'] == 'absent'
@@ -382,6 +458,7 @@ def display_account_worklist(ctx, payload) -> None:
                       False: '[yellow]unidentified[/yellow]'}[row['is_reconciled']]
         waited = row.get('waiting_days')
         table.add_row(row['username'], needs, ', '.join(row['roles']),
+                      _sources(row.get('sources')),
                       truncate(', '.join(dict.fromkeys(numbers)), 40), reconciled,
                       BLANK if waited is None else f'{waited}d')
 
@@ -403,7 +480,7 @@ def display_account_worklist(ctx, payload) -> None:
         'SAM cannot create or reactivate one. Rows clear on the next '
         'sync.[/dim]')
 
-    # ⚠️ A subset must never be printed as if it were the whole queue. This is
+    # WARNING: A subset must never be printed as if it were the whole queue. This is
     # the CLI half of the gap that had `--accounts` reporting 0 while the
     # dashboard showed a real worklist: the card reads the sweep's published
     # snapshot and this only ever read the action log.
@@ -458,3 +535,41 @@ def display_person(ctx, payload) -> None:
         ctx.console.print(
             '[dim]XRAS has not linked this username to a confirmed identity, so '
             'the detail above may be self-reported and incomplete.[/dim]')
+
+
+def display_family(ctx, payload) -> None:
+    """Render a projcode's request lifecycle as a tree: lines, then their actions."""
+    from sam import fmt
+
+    projcode = payload['projcode']
+    ctx.console.rule(f"[bold]XRAS request family: {projcode}")
+    family = payload.get('family')
+    if not family:
+        ctx.console.print(f"[yellow]XRAS has no request under {projcode}.[/yellow]")
+        return
+
+    def _d(value):
+        return fmt.date_str(value, fmt='%Y-%m-%d') if value else BLANK
+
+    pi = family.get('pi') or {}
+    ctx.console.print(Panel(
+        f"PI: {text(pi.get('name') or pi.get('username'))}   "
+        f"span {_d(family['begin_date'])} → {_d(family['end_date'])}   "
+        f"last activity {_d(family['activity_date'])}   "
+        f"{len(family['requests'])} request line(s)", expand=False))
+
+    tree = Tree(f"[bold]{projcode}")
+    for line in family['requests']:
+        label = (f"[bold]{line.get('request_type') or '?'}[/bold] "
+                 f"· request {line['request_id']} "
+                 f"· begin {_d(line.get('begin_date'))}")
+        if line.get('status'):
+            label += f"  [dim]{line['status']}[/dim]"
+        node = tree.add(label)
+        for action in line['actions']:
+            when = action.get('entry_date') or action.get('submit_date')
+            row = f"{action.get('action_type') or '?'} · {_d(when)}"
+            if action.get('action_status'):
+                row += f"  [dim]{action['action_status']}[/dim]"
+            node.add(row)
+    ctx.console.print(tree)

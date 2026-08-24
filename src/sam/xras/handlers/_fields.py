@@ -11,7 +11,7 @@ Extension, four more in Supplement, two in New — so ``update.py`` ended up imp
 fifteen symbols from three sibling handlers and the import graph encoded build order
 rather than domain structure. Nothing about the domain says Update depends on New.
 
-⚠️ **Report order is part of the contract.** ``exc.messages`` is asserted as an *ordered*
+WARNING: **Report order is part of the contract.** ``exc.messages`` is asserted as an *ordered*
 list in ten test modules, because an XRAS administrator reads the 422 body top to bottom
 and the order tracks the order of assembly. Callers control it; these functions only
 decide *whether* to report. In particular ``new.py`` parses both dates **above** its
@@ -87,7 +87,7 @@ def parse_action_begin_date(action, errs: ActionErrors) -> Optional[datetime]:
 def parse_action_end_date(action, errs: ActionErrors) -> Optional[datetime]:
     """``ProjectAllocationActionCommandsFactoryBase.getEndDate()``.
 
-    Blank → ``Missing end date for allocation(s)``; unparseable → ``Could not convert
+    Blank -> ``Missing end date for allocation(s)``; unparseable -> ``Could not convert
     end date for allocation(s)``. Two separate strings — § 3.4 of the reference doc
     collapses them into one slashed line, which is one of its seven errors.
 
@@ -110,7 +110,7 @@ def parse_action_end_date(action, errs: ActionErrors) -> Optional[datetime]:
 def transaction_amount(wire_resource, errs: ActionErrors) -> Optional[float]:
     """``getTransactionAmount`` — blank reports, unparseable reports, else a float.
 
-    ⚠️ **A declared divergence lives here.** Legacy's caller then does
+    WARNING: **A declared divergence lives here.** Legacy's caller then does
     ``getTransactionAmount(resource) > 0``, which **unboxes a null ``Float``** when the
     amount was blank or unparseable — throwing a ``NullPointerException`` *inside*
     assembly, so ``throwExceptionIfErrors`` never runs and the operator receives a bare
@@ -142,14 +142,14 @@ def resource_comment(wire_resource) -> Optional[str]:
 
 
 def resolve_resource(session, wire_resource, errs: ActionErrors) -> Optional[Resource]:
-    """``resources[].resourceRepositoryKey`` → a SAM resource, via
+    """``resources[].resourceRepositoryKey`` -> a SAM resource, via
     ``xras_resource_repository_key_resource``.
 
     Reports ``No resource found in SAM corresponding to key %s`` — the *key* variant.
     The roster path has its own string naming the resource **name** instead; both can
     fire for one action, which is why they are separate builders.
 
-    ⚠️ **The field is ``resourceRepositoryKey``, not ``key``.** This read said ``key``
+    WARNING: **The field is ``resourceRepositoryKey``, not ``key``.** This read said ``key``
     for an entire sprint. No XRAS payload has ever carried that field — all six
     resource-bearing corpus fixtures send ``resourceRepositoryKey``, the schema declares
     it under that name, and unknown keys are dropped on load — so through the real
@@ -162,11 +162,11 @@ def resolve_resource(session, wire_resource, errs: ActionErrors) -> Optional[Res
     pinned by ``tests/unit/test_xras_wire_vocabulary.py``, which checks the whole
     read-vocabulary against the schema rather than this one field.
 
-    ⚠️ Only **13** mapping rows exist and 11 active SAM resources have none, so this is
+    WARNING: Only **13** mapping rows exist and 11 active SAM resources have none, so this is
     a live failure mode rather than a defensive branch. An award citing Derecho's GPU
     partition or Gust fails here, and the fix is a data fix.
 
-    ⚠️ Legacy calls ``getResourceName`` **twice** per resource on some paths, so an
+    WARNING: Legacy calls ``getResourceName`` **twice** per resource on some paths, so an
     unmapped key reports twice and collapses to one line in the accumulator. That is
     the dedup working as designed, and it is why the container is a set.
     """
@@ -185,7 +185,7 @@ def resolve_resource(session, wire_resource, errs: ActionErrors) -> Optional[Res
 def plan_contracts(session, action, errs: ActionErrors) -> List:
     """Resolve every ``grants[]`` entry to a contract.
 
-    ⚠️ ``grants: []`` is **not** an error — ``new_ncar4232_failed.json`` is an
+    WARNING: ``grants: []`` is **not** an error — ``new_ncar4232_failed.json`` is an
     Educational allocation with no grant at all, and its failure was the mnemonic, not
     the missing contract. A project with no contract is legitimate.
     """

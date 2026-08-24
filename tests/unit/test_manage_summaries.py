@@ -4,8 +4,8 @@ Ported from tests/unit/test_manage_summaries.py. The legacy file relied on
 SCSG0001 + Derecho being present in the snapshot for every upsert test.
 The port builds a self-contained graph per test via factories:
 
-  fresh_user → fresh_project → fresh_resource (HPC/DISK/ARCHIVE)
-  → fresh_account → fresh_machine → fresh_queue
+  fresh_user -> fresh_project -> fresh_resource (HPC/DISK/ARCHIVE)
+  -> fresh_account -> fresh_machine -> fresh_queue
 
 This isolates each test from the snapshot — the resolver helpers
 (`_resolve_user`, `_resolve_project`, etc.) just query the session so
@@ -113,7 +113,7 @@ def _build_storage_graph(session, *, resource_type_name: str):
     )
     resource = make_resource(session, resource_type=rt)
     make_account(session, project=project, resource=resource)
-    # FK: *_charge_summary.activity_date → *_charge_summary_status.activity_date.
+    # FK: *_charge_summary.activity_date -> *_charge_summary_status.activity_date.
     # Materialize the parent status rows so upsert_*_charge_summary can insert
     # the child summary without violating the constraint. Use next_date() to
     # get a worker-unique date so parallel xdist workers don't collide on the
@@ -201,7 +201,7 @@ class TestResolverHelpers:
 
 
 class TestResolveFacilityName:
-    """Project.allocation_type → panel → facility chain.
+    """Project.allocation_type -> panel -> facility chain.
 
     Building the full chain via factories would require Panel + AllocationType
     factories that we don't have yet. The legacy "happy path" test was

@@ -156,7 +156,7 @@ class TestCreateAdjustmentPost:
     def test_missing_required_field_rerenders_form_with_error(
         self, auth_client, scsg0001_project_id,
     ):
-        """Marshmallow validation error → handle_htmx_form_post re-renders
+        """Marshmallow validation error -> handle_htmx_form_post re-renders
         the form fragment with the field-level error marked inline on the
         offending input (is-invalid + invalid-feedback). No DB commit."""
         bad = _valid_form_data(scsg0001_project_id)
@@ -194,7 +194,7 @@ class TestCreateAdjustmentPost:
         assert 'invalid-feedback' in html
 
     def test_unknown_project_id_rerenders_form_with_error(self, auth_client):
-        """ValueError raised inside do_action (FK existence check) →
+        """ValueError raised inside do_action (FK existence check) ->
         management_transaction auto-rolls back, handle_htmx_form_post
         catches the exception and re-renders with the prefixed message."""
         bad = _valid_form_data(project_id=999_999_999)
@@ -213,7 +213,7 @@ class TestCreateAdjustmentPost:
         ChargeAdjustment.create() rejects it because 'Storage-Credit' is
         not in _SIGN_BY_TYPE. The route surfaces that ValueError as a
         form error. The error could also surface as an FK lookup failure
-        if the (project, resource) → Account join fails first — either
+        if the (project, resource) -> Account join fails first — either
         way the response carries the "Error creating adjustment" prefix."""
         bad = _valid_form_data(scsg0001_project_id)
         bad['charge_adjustment_type_id'] = '5'

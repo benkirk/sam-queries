@@ -150,10 +150,10 @@ def display_allocation_summary(ctx: Context, results: List[Dict], show_usage: bo
     ctx.console.print(table)
 
     # Grand Total: sum only root/standalone projects to avoid double-counting shared trees.
-    # 'is_root' is present when results are grouped by projcode (parent_id IS NULL → root).
+    # 'is_root' is present when results are grouped by projcode (parent_id IS NULL -> root).
     # When absent (e.g., projcode="TOTAL" aggregations), treat every row as a root.
     root_rows = [r for r in results if r.get('is_root', True)]
-    # Edge case: user filtered to a specific child project — no root rows → fall back to all
+    # Edge case: user filtered to a specific child project — no root rows -> fall back to all
     totals_rows = root_rows if root_rows else results
 
     total_count = sum(r['count'] for r in totals_rows)

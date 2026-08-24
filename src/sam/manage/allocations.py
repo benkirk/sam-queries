@@ -160,7 +160,7 @@ def log_allocation_transaction(
     if comment:
         final_comment = f"{final_comment}; {comment}" if final_comment else comment
 
-    # B3: translate Python-side intent → legacy DB string (legacy SAM's
+    # B3: translate Python-side intent -> legacy DB string (legacy SAM's
     # Java enum throws on anything outside {NEW, ADJUSTMENT, SUPPLEMENT,
     # EXTENSION, TRANSFER}). Tagged intents prepend "[TAG] " to the
     # comment so parse_intent() can recover the original meaning.
@@ -230,7 +230,7 @@ def create_allocation(
 ) -> 'Allocation':
     """Create a new allocation for a project + resource pair.
 
-    Gets or creates the Account linking project ↔ resource, instantiates
+    Gets or creates the Account linking project <-> resource, instantiates
     the Allocation record, and logs an AllocationTransaction(CREATE) for
     audit purposes.
 
@@ -313,12 +313,12 @@ def update_allocation(
         allocation_id: ID of allocation to update
         user_id: User making the change (for audit trail)
         comment: Optional context for the audit trail (appended after
-                 the auto-generated "Amount: X → Y" diff). Use this for
+                 the auto-generated "Amount: X -> Y" diff). Use this for
                  the *reason* for the edit; do NOT smuggle it into
                  ``description=`` — that field describes what the
                  allocation is for, not why it was last edited.
         log_audit_row: When True (default), log this allocation's own
-                 EDIT→ADJUSTMENT audit row. Set False when the *caller*
+                 EDIT->ADJUSTMENT audit row. Set False when the *caller*
                  records this allocation's change itself with a more
                  specific row (e.g. ``exchange_allocations`` writes a
                  paired TRANSFER) — this avoids a double-counted, additive
@@ -525,7 +525,7 @@ def exchange_allocations(
     new_to = to_alloc.amount + amount
 
     # log_audit_row=False: the paired TRANSFER rows below are the audit record
-    # for these two allocations. Letting update_allocation also log an EDIT→
+    # for these two allocations. Letting update_allocation also log an EDIT->
     # ADJUSTMENT would double-count under legacy replay (both are additive).
     # The inheriting-child cascade rows are still written.
     update_allocation(session, from_allocation_id, user_id, amount=new_from,
@@ -608,7 +608,7 @@ def propagate_allocation_to_subprojects(
     resource_id = parent_allocation.account.resource_id
     root_project_id = parent_allocation.account.project_id
 
-    # Seed map: root project → root allocation_id
+    # Seed map: root project -> root allocation_id
     alloc_map = {root_project_id: parent_allocation.allocation_id}
 
     created, skipped = [], []
@@ -794,7 +794,7 @@ def get_carveout_frontier(session: Session, allocation: Allocation) -> 'Carveout
     and open (uncovered) branches, and compute its unallocated residual.
 
     Classification uses :func:`sam.queries.tree_audit.is_pool_member` — the
-    single pool-vs-carve judgement site.  A frontier allocation linked to some
+    single pool-vs-carve judgment site.  A frontier allocation linked to some
     *other* parent allocation (dirty data) is treated as a pool member: it
     mirrors another pool, counting it here would double-count, and it can
     never be a bump target (``update_allocation`` rejects inheriting rows).
@@ -879,10 +879,10 @@ def allocate_residual_to_child(
     Exactly one target must be given:
 
       * ``target_allocation_id`` — bump an existing frontier carve-out
-        allocation (one EDIT→ADJUSTMENT audit row, signed delta);
+        allocation (one EDIT->ADJUSTMENT audit row, signed delta);
       * ``target_project_id`` — create a new standalone allocation on a
         fully-uncovered direct child branch, mirroring the parent's dates
-        (one CREATE→NEW audit row).
+        (one CREATE->NEW audit row).
 
     No transaction row is written for the parent (its amount does not
     change; an additive row would corrupt legacy replay).  The child row's
@@ -1137,7 +1137,7 @@ def _add_to_subtree(
     then ``TreeWalker.walk`` so every inheriting child receives the same increment
     and its own row, with ``propagated`` false on all of them.
 
-    ⚠️ **``auth_at_panel_mtg`` defaults to ``None`` and callers must leave it that
+    WARNING: **``auth_at_panel_mtg`` defaults to ``None`` and callers must leave it that
     way when the column should be NULL.** :func:`log_integration_transaction` sets
     it only ``if auth_at_panel_mtg is not None``, so passing ``False`` "to be
     explicit" writes 0 where legacy writes NULL — different bytes on an audit row.
@@ -1177,7 +1177,7 @@ def supplement_allocation(
 ) -> List[Allocation]:
     """Add ``amount`` to an allocation and its child subtree. Additive, not absolute.
 
-    ⚠️ **The single most important porting semantic in the XRAS integration.**
+    WARNING: **The single most important porting semantic in the XRAS integration.**
     ``awardedAmount`` on a Supplement action is the **increment**, not the new total —
     legacy's ``AllocationTransactionType.SUPPLEMENT`` replays as
     ``addAmount(transaction_amount)``. :func:`update_allocation` *sets* ``amount``, so
@@ -1231,7 +1231,7 @@ def adjust_allocation(
     * **No ``auth_at_panel_mtg``.** ``buildAdjustAllocationCommand`` never sets it,
       where the supplement one does.
 
-    ⚠️ **``amount`` may be negative, and that is the point.** Legacy gates its adjust
+    WARNING: **``amount`` may be negative, and that is the point.** Legacy gates its adjust
     factory on ``> 0`` — the same copy-pasted guard as supplement — which silently drops
     the one thing an adjustment exists to do. Combined with legacy defect 4 (it tests
     ``"Adjust"`` while the wire says ``"Adjustment"``) that handler has never serviced a

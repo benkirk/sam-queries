@@ -8,13 +8,13 @@ rows — happens behind this class.
 **The guard order is the design.** Each guard is cheaper and more final than
 the one after it:
 
-1. an unknown ``kind`` **raises** — that is a programmer error, not an
+1. an unknown ``kind`` **raises** — that is a programr error, not an
    outcome, and it must not be recordable;
-2. ``NOTIFY_ENABLED`` off → ``suppressed``, without rendering;
-3. already sent under this ``dedup_key`` → ``suppressed``;
-4. ``NOTIFY_REDIRECT_TO`` set → the address is rewritten and the outcome is
+2. ``NOTIFY_ENABLED`` off -> ``suppressed``, without rendering;
+3. already sent under this ``dedup_key`` -> ``suppressed``;
+4. ``NOTIFY_REDIRECT_TO`` set -> the address is rewritten and the outcome is
    ``redirected``, never ``sent``;
-5. the transport runs → ``sent`` or ``failed``.
+5. the transport runs -> ``sent`` or ``failed``.
 
 See ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 1, § 3 and § 5.
 """
@@ -168,7 +168,7 @@ class Notifier:
                     results: List[Optional[DeliveryResult]]) -> None:
         """Deliver one chunk on its own connection, writing into ``results``.
 
-        ⚠️ ``open()``/``close()`` and their ``try/finally`` live **inside**
+        WARNING: ``open()``/``close()`` and their ``try/finally`` live **inside**
         this method rather than around the chunk loop in :meth:`send_many`.
         A ``finally`` wrapped around the loop would leave the previous
         chunk's connection open while the next one connected — which is the
@@ -252,7 +252,7 @@ class Notifier:
     def _redirected(self, message: Message) -> Message:
         """Apply ``NOTIFY_REDIRECT_TO``, returning the message to actually send.
 
-        ⚠️ ``dedup_key`` is **not** rebuilt. It was built by the caller from
+        WARNING: ``dedup_key`` is **not** rebuilt. It was built by the caller from
         the intended recipient, and must stay that way: a key rebuilt after
         the rewrite collapses a whole staging run onto one key, so the second
         project suppresses against the first and suppression behaves
@@ -301,7 +301,7 @@ class Notifier:
         # horizon in the ledger is what keeps that row from suppressing its
         # own retry forever.
         #
-        # ⚠️ And if it cannot be written, we do NOT send. The ledger is what
+        # WARNING: And if it cannot be written, we do NOT send. The ledger is what
         # makes a re-run safe; an unrecorded send is one the next run sends
         # again, which is the re-email bug this whole design exists to fix.
         # Fail-closed here matches NOTIFY_ENABLED's default one layer up.

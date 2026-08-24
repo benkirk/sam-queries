@@ -74,7 +74,7 @@ def test_corpus_is_present():
 def test_every_real_payload_loads(name):
     """The headline assertion: the schema accepts real production bytes.
 
-    ⚠️ ``'Date Adjustment'`` is on this list because the wire sends it, not because
+    WARNING: ``'Date Adjustment'`` is on this list because the wire sends it, not because
     SAM services it — it has no serviceable and parks as ``manual``, exactly as it
     does in legacy. It was unknown until the 2026-08-11 forward; see
     ``XRAS_REIMPLEMENTATION.md`` § 1.4 on why the manual-fallback subject is the only
@@ -99,7 +99,7 @@ KNOWN_EMPTY_STRINGS = {
 def test_no_empty_strings_in_the_corpus(name):
     """Absent scalars arrive as ``null``, essentially never ``""``.
 
-    ⚠️ **Corrected by the 2026-08-11 forward.** At eight payloads this was absolute —
+    WARNING: **Corrected by the 2026-08-11 forward.** At eight payloads this was absolute —
     ~400 scalar fields, not one empty string — and that measurement is what settled
     the schema on ``allow_none`` rather than empty-string handling. At 41 payloads and
     ~2,000 scalars there is exactly **one**, in a field nothing reads
@@ -107,7 +107,7 @@ def test_no_empty_strings_in_the_corpus(name):
 
     The design conclusion is unchanged and the emphasis is still right: ``null`` is
     the wire's way of saying absent, and no field SAM *reads* has ever arrived ``""``.
-    But "never" was too strong, and the Java ``= ""`` initialisers evidently can fire.
+    But "never" was too strong, and the Java ``= ""`` initializers evidently can fire.
     Pinning the exception rather than deleting the test keeps the guard: a new empty
     string in a field that matters still turns this red.
     """
@@ -189,7 +189,7 @@ def test_request_type_is_not_action_type(name):
     Renewal     Date Adjustment  ``date_adjustment_uwas0141_manual.json``
     ==========  ===============  =====================================
 
-    ⚠️ Note the third row especially: a ``requestType: 'Renewal'`` exists whose
+    WARNING: Note the third row especially: a ``requestType: 'Renewal'`` exists whose
     ``actionType`` is **not** ``Renewal``. Legacy's selector routes ``Renewal`` to the
     Update handler — but it reads ``actionType``, so none of these three go there.
     Dispatching on ``requestType`` would send all three somewhere different.
@@ -530,12 +530,12 @@ def test_opportunity_qa_is_populated_only_on_new_actions():
 def test_allocation_type_vocabulary_does_not_match_sams_table():
     """Observed spellings are XRAS's own, and only one of the five names a SAM row.
 
-    ⚠️ **Corrected in Sprint C.** This test used to say the field was "inert on the
-    action-post path" and read only on the GET side. It is not: it is the first input
-    to the eleven-strategy allocation-type chain, and the strategies read it three
-    different ways — as an exact key (``ACCESSStrategy``), as an equality test
-    (``LargeStrategy``), and as free text (``ExternalStrategy``). Sprint A wrote that
-    claim from the POJOs, before anyone read ``AllocationTypeIdExtractor``.
+    WARNING: the field is **not** inert on the action-post path, whatever a reading of
+    the POJOs alone suggests. It is the first input to the eleven-strategy
+    allocation-type chain, and the strategies read it three different ways — as an
+    exact key (``ACCESSStrategy``), as an equality test (``LargeStrategy``), and as
+    free text (``ExternalStrategy``). ``AllocationTypeIdExtractor`` is the file that
+    settles it.
 
     What survives is the assertion, and the trap underneath it. Of the five observed
     spellings only ``Small`` names a SAM ``allocation_type`` row — where it is **not

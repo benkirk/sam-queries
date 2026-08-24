@@ -119,7 +119,7 @@ def _payload(number='EXAM0001', *, status='Approved', action_status='Approved',
             'requestStatus': status, 'requestType': 'New',
             'opportunityId': 5, 'opportunity_name': 'Small Allocation',
             # Inside the shared window's default lookback unless a test says
-            # otherwise — the window's behaviour is its own set of tests below.
+            # otherwise — the window's behavior is its own set of tests below.
             'submitDate': submit_date or datetime.now().strftime('%Y-%m-%dT00:00:00Z'),
             'roles': roles,
             'actions': [{'actionId': 7, 'actionType': 'Supplement',
@@ -174,6 +174,10 @@ def _reader(monkeypatch, payload=_payload(), person=None, candidates=(),
     """Swap in a scripted read client for every live lookup."""
     client = MagicMock()
     client.get_request_by_number.return_value = payload
+    # The detail modal fetches the whole family; derive it from the single-line
+    # mock so a test's return_value/side_effect (not-found, outage) still applies.
+    client.get_request_family_by_number.side_effect = (
+        lambda n: [row] if (row := client.get_request_by_number(n)) else [])
     client.get_person.return_value = person
     client.search_people.return_value = list(candidates)
     # Default to an empty dict, not MagicMock's auto-child — the parser tests
@@ -191,7 +195,7 @@ def _reader(monkeypatch, payload=_payload(), person=None, candidates=(),
     return client
 
 
-# ── access control ──────────────────────────────────────────────────────
+# access control
 
 class TestAccessControl:
 
@@ -207,6 +211,7 @@ class TestAccessControl:
         '/allocations/xras_withdraw_form/EXAM0001/7',
         '/allocations/xras_resubmit_form/EXAM0001/7',
         '/allocations/xras_request_detail/EXAM0001',
+        '/allocations/xras_readiness_detail/EXAM0001',
         '/allocations/xras_user_detail/janebaldwin',
         '/allocations/xras_opportunity_detail/532220',
         '/allocations/xras_resource_form/EXAM0001/7/530201',
@@ -229,6 +234,8 @@ class TestAccessControl:
         '/allocations/xras_dates_remove/EXAM0001/7/9',
         '/allocations/xras_attributes_edit/EXAM0001',
         '/allocations/xras_action_fields_edit/EXAM0001/7',
+        '/allocations/xras_recheck_request/EXAM0001',
+        '/allocations/xras_recheck_visible',
     ])
     def test_every_write_is_gated(self, view_only_client, path):
         assert view_only_client.post(path).status_code == 403
@@ -246,26 +253,282 @@ class TestAccessControl:
         assert 'xras-remediation-filters' in body
 
 
+class TestRecheckNow:
+    """The request-scoped, never-writes re-check that patches the snapshot."""
+
+    def test_it_patches_the_snapshot_with_fresh_verdicts(self, auth_client,
+                                                          configured, monkeypatch):
+        _publish(_payload('EXAM0001'))
+        _reader(monkeypatch, payload=_detail_payload('EXAM0001'))
+        resp = auth_client.post('/allocations/xras_recheck_request/EXAM0001')
+        assert resp.status_code == 200
+        assert 'refreshXrasTab' in resp.headers.get('HX-Trigger', '')
+        entry = next(r for r in xras_cache.load_requests_index()['rows']
+                     if r['request_number'] == 'EXAM0001')
+        # A re-check writes nothing, so it must NOT stamp the "updated since the
+        # sweep" marker — the flipped verdict is the only tell.
+        assert entry['refreshed_at'] is None
+        assert entry['actions'][0]['preflight'] is not None
+
+    def test_it_degrades_200_when_xras_is_unreachable(self, auth_client,
+                                                      configured, monkeypatch):
+        client = _reader(monkeypatch)
+        client.get_request_by_number.side_effect = XrasSourceUnavailable('down')
+        resp = auth_client.post('/allocations/xras_recheck_request/EXAM0001')
+        # 200, not 4xx: htmx will not swap a 4xx into the open modal.
+        assert resp.status_code == 200
+        assert 'could not be reached' in resp.get_data(as_text=True)
+
+    def test_the_modal_renders_the_preflight_section_from_the_snapshot(
+            self, auth_client, configured, monkeypatch):
+        payload = _detail_payload('EXAM0001')
+        verdict = {'status': 'failed', 'would_succeed': False,
+                   'messages': ['PI ghost is not in database'], 'gaps': [],
+                   'service': 'supplement', 'stage': 'Approved',
+                   'action_status': 'Approved', 'request_status': 'Approved',
+                   'push_state': 'pending', 'push_detail': None, 'resolved': None,
+                   'checked_at': '2026-08-23T09:00:00'}
+        xras_cache.store_requests_index({
+            'generated_at': datetime.now(),
+            'statuses': ['Approved'], 'extra_statuses': {},
+            'rows': [request_index_entry(payload, pending_push=True,
+                                         preflights={7: verdict})]})
+        _reader(monkeypatch, payload=payload)
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'SAM pre-flight' in body
+        assert 'PI ghost is not in database' in body
+
+
+def _publish_one_verdict(status, *, messages=(), service='supplement'):
+    """Publish EXAM0001 carrying a single-action verdict of the given status."""
+    payload = _detail_payload('EXAM0001')
+    verdict = {'status': status, 'would_succeed': status == 'rechecked',
+               'messages': list(messages), 'gaps': [], 'service': service,
+               'stage': 'Approved', 'action_status': 'Approved',
+               'request_status': 'Approved', 'push_state': 'pending',
+               'push_detail': None, 'resolved': None,
+               'checked_at': '2026-08-23T09:00:00'}
+    xras_cache.store_requests_index({
+        'generated_at': datetime.now(), 'statuses': ['Approved'],
+        'extra_statuses': {},
+        'rows': [request_index_entry(payload, pending_push=True,
+                                     preflights={7: verdict})]})
+
+
+class TestReadinessModal:
+    """The focused push-readiness modal a verdict badge opens — snapshot-only."""
+
+    def test_it_renders_the_reasons_without_a_live_read(self, auth_client):
+        # No _reader() is scripted: the modal reads the swept verdict straight
+        # from the snapshot, so it needs no live XRAS call to explain a badge.
+        _publish_one_verdict('failed', messages=['PI ghost is not in database'])
+        body = auth_client.get(
+            '/allocations/xras_readiness_detail/EXAM0001').get_data(as_text=True)
+        assert 'SAM pre-flight' in body
+        assert 'PI ghost is not in database' in body
+        assert 'checked as' in body and 'supplement' in body
+
+    def test_an_unswept_request_is_not_found(self, auth_client):
+        xras_cache.store_requests_index({
+            'generated_at': datetime.now(), 'statuses': [], 'extra_statuses': {},
+            'rows': []})
+        resp = auth_client.get('/allocations/xras_readiness_detail/NOPE0001')
+        # 200, not 4xx: htmx will not swap a 4xx into an already-open modal.
+        assert resp.status_code == 200
+        assert 'SAM pre-flight' not in resp.get_data(as_text=True)
+
+
+class TestReadinessBadgeWiring:
+    """Card badges: a verdict opens the modal, incomplete is passive, a not-checked
+    row posts a recheck."""
+
+    def test_a_verdict_badge_links_to_the_readiness_modal(self, auth_client,
+                                                          configured):
+        _publish_one_verdict('failed', messages=['x'])
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'xras_readiness_detail/EXAM0001' in body
+        assert 'would fail' in body
+
+    def test_an_incomplete_badge_is_passive(self, auth_client, configured):
+        _publish_one_verdict('incomplete')
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert '>incomplete</span>' in body
+        # No re-check (it can't resolve it) and no modal link.
+        assert 'xras_recheck_request/EXAM0001' not in body
+        assert 'xras_readiness_detail/EXAM0001' not in body
+
+    def test_a_not_checked_row_posts_the_inline_recheck(self, auth_client,
+                                                        configured):
+        # No preflight at all -> rollup None -> the checkable "not checked" state.
+        _publish(_payload('EXAM0001'))
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'not checked' in body
+        assert 'xras_recheck_request/EXAM0001' in body
+
+
+class TestActionsColumnAndFacet:
+    """The Type column (#2, between Request and Status) and its facet chip."""
+
+    def _publish_types(self, *types):
+        payloads = []
+        for i, kind in enumerate(types):
+            p = _payload('EXAM%04d' % i)
+            p['actions'][0]['actionType'] = kind
+            payloads.append(p)
+        _publish(*payloads)
+
+    def test_the_column_renders_the_type(self, auth_client, configured):
+        self._publish_types('New')
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert '>Type<' in body                # the header
+        assert 'New' in body                   # the row badge
+
+    def test_the_facet_narrows_to_the_chosen_type(self, auth_client, configured):
+        self._publish_types('New', 'Supplement')
+        body = auth_client.get(
+            FRAGMENT + '?action_type=New').get_data(as_text=True)
+        assert 'EXAM0000' in body             # the New request survives
+        assert 'EXAM0001' not in body         # the Supplement request is filtered
+
+    def test_it_shows_only_the_latest_action_type(self, auth_client, configured):
+        # A request with an old New and an in-flight Extension shows Extension —
+        # what admin names it — not the whole history.
+        p = _payload('EXAM0009')
+        p['actions'] = [
+            {'actionId': 1, 'actionType': 'Supplement', 'actionStatus': 'Approved'},
+            {'actionId': 2, 'actionType': 'Extension', 'actionStatus': 'Submitted'}]
+        _publish(p)
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'Extension' in body
+        assert 'Supplement' not in body       # neither the cell nor the facet
+
+
+class TestSortableColumns:
+    """Non-facet headers sort rows within each opportunity group, as form state."""
+
+    def test_a_header_sorts_within_the_group_both_ways(self, auth_client, configured):
+        # All three share the default opportunity -> one group.
+        _publish(_payload('EXAM0003'), _payload('EXAM0001'), _payload('EXAM0002'))
+        asc = auth_client.get(
+            FRAGMENT + '?sort_by=request&sort_dir=asc').get_data(as_text=True)
+        desc = auth_client.get(
+            FRAGMENT + '?sort_by=request&sort_dir=desc').get_data(as_text=True)
+        assert asc.index('EXAM0001') < asc.index('EXAM0003')
+        assert desc.index('EXAM0003') < desc.index('EXAM0001')
+
+    def test_headers_are_form_based_so_sort_survives_facet_clicks(self, auth_client,
+                                                                  configured):
+        _publish(_payload())
+        body = auth_client.get(
+            FRAGMENT + '?sort_by=request&sort_dir=asc').get_data(as_text=True)
+        assert 'set-sort-submit' in body            # writes the form, not a URL
+        assert 'data-sort-by="request"' in body
+
+    def test_an_unknown_sort_column_is_ignored(self, auth_client, configured):
+        _publish(_payload('EXAM0001'))
+        assert auth_client.get(
+            FRAGMENT + '?sort_by=bogus&sort_dir=asc').status_code == 200
+
+
+class TestCheckAll:
+    """The header 'Check all' batch re-check over the not-checked rows in view."""
+
+    def test_it_rechecks_the_not_checked_rows(self, auth_client, configured,
+                                              monkeypatch):
+        _publish(_payload('EXAM0001'))        # no preflight -> rollup None
+        _reader(monkeypatch, payload=_detail_payload('EXAM0001'))
+        resp = auth_client.post('/allocations/xras_recheck_visible')
+        assert resp.status_code == 200
+        assert 'refreshXrasTab' in resp.headers.get('HX-Trigger', '')
+        assert 'Checked 1 request' in resp.get_data(as_text=True)
+
+    def test_nothing_to_check_when_all_are_verdicts(self, auth_client, configured):
+        _publish_one_verdict('failed', messages=['x'])   # a real verdict, not None
+        resp = auth_client.post('/allocations/xras_recheck_visible')
+        assert resp.status_code == 200
+        assert 'Nothing to check' in resp.get_data(as_text=True)
+
+    def test_it_degrades_200_when_xras_is_unreachable(self, auth_client, configured,
+                                                      monkeypatch):
+        _publish(_payload('EXAM0001'))
+        client = _reader(monkeypatch)
+        client.get_request_by_number.side_effect = XrasSourceUnavailable('down')
+        resp = auth_client.post('/allocations/xras_recheck_visible')
+        assert resp.status_code == 200
+        assert 'could not be reached' in resp.get_data(as_text=True)
+
+    def test_it_honors_a_wide_window_passed_in_the_post_body(
+            self, auth_client, configured, monkeypatch):
+        # The row is out of the DEFAULT window but in a wide one. The card sends
+        # the window in the POST BODY (hx-include), so the route must read
+        # request.values, not request.args — else it silently reports "nothing to
+        # check" over a wide-filter view full of not-checked rows.
+        _publish(_payload('EXAM0001', submit_date='2015-01-01T00:00:00Z'))
+        _reader(monkeypatch, payload=_detail_payload('EXAM0001'))
+        # default window sees nothing
+        assert 'Nothing to check' in auth_client.post(
+            '/allocations/xras_recheck_visible').get_data(as_text=True)
+        # a wide window in the body picks it up
+        resp = auth_client.post(
+            '/allocations/xras_recheck_visible',
+            data={'start_date': '2000-01-01', 'end_date': '2030-01-01'})
+        assert 'Checked 1 request' in resp.get_data(as_text=True)
+
+
+class TestMnemonicUnblockStrip:
+    """The § 2.2 ranking strip on the Remediations card — points at Admin to fix."""
+
+    def _publish_mnemonic_failure(self, pi_username):
+        from sam.xras.errors import mnemonic_internal_failed
+        payload = _payload('EXAM0001')
+        payload['roles'][0]['person']['username'] = pi_username
+        verdict = {'status': 'failed', 'would_succeed': False,
+                   'messages': [mnemonic_internal_failed()], 'gaps': [],
+                   'service': 'add', 'stage': 'Approved', 'action_status': 'Approved',
+                   'request_status': 'Approved', 'push_state': 'pending',
+                   'push_detail': None, 'resolved': None,
+                   'checked_at': '2026-08-23T09:00:00'}
+        xras_cache.store_requests_index({
+            'generated_at': datetime.now(), 'statuses': ['Approved'],
+            'extra_statuses': {},
+            'rows': [request_index_entry(payload, pending_push=True,
+                                         preflights={7: verdict})]})
+
+    def test_an_unknown_pi_renders_the_no_affiliation_line(self, auth_client,
+                                                           configured):
+        # A PI SAM does not know can't resolve an org -> the 'unresolved' bucket,
+        # which the strip surfaces as the no-affiliation line. Deterministic
+        # without committing users.
+        self._publish_mnemonic_failure('ghost-user-strip-xyz')
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'no current affiliation' in body
+
+    def test_view_only_is_still_forbidden(self, view_only_client, configured):
+        self._publish_mnemonic_failure('ghost-user-strip-xyz')
+        assert view_only_client.get(FRAGMENT).status_code == 403
+
+
 class TestItIsACardNotATab:
 
-    def test_the_worklist_still_has_exactly_three_tabs(self, auth_client):
+    def test_the_worklist_still_has_exactly_two_tabs(self, auth_client):
         body = auth_client.get('/allocations/xras').get_data(as_text=True)
         pane = body.split('id="xrasWorklistTabs"')[1].split('</ul>')[0]
-        assert pane.count('data-bs-toggle="tab"') == 3
+        assert pane.count('data-bs-toggle="tab"') == 2
 
     def test_the_card_sits_outside_the_tab_content(self, auth_client):
         body = auth_client.get('/allocations/xras').get_data(as_text=True)
-        assert body.index('</div>\n\n{% if' if False else 'alloc-xras-remediations') \
-            > body.index('alloc-xras-pending-requests')
+        assert body.index('alloc-xras-remediations') \
+            > body.index('alloc-xras-accounts')
 
 
-# ── the collapse affordance ─────────────────────────────────────────────
+# the collapse affordance
 
 class TestEveryExpandableRowShowsAChevron:
-    """The page shipped four expandable tables and two chevrons.
+    """Every expandable table needs a visible chevron.
 
     A `cursor-pointer` row announces itself only to someone already hovering
-    it, so three of the four tables had no visible affordance at all. The
+    it, so a table without the chevron has no visible affordance at all. The
     chevron is `.collapse-icon` and nothing else: components.css rotates it
     off the `aria-expanded` Bootstrap writes onto the trigger, which works for
     a toggle on the `<tr>` and for one on a `<td>`, and survives an htmx swap
@@ -278,7 +541,6 @@ class TestEveryExpandableRowShowsAChevron:
     @pytest.mark.parametrize('name', [
         'xras_activity_card.html',
         'xras_accounts_card.html',
-        'xras_pending_requests_card.html',
         'xras_remediations_card.html',
         'xras_table.html',
     ])
@@ -294,7 +556,7 @@ class TestEveryExpandableRowShowsAChevron:
         assert 'xras-collapse-icon' not in (self.PARTIALS / name).read_text()
 
 
-# ── facet / control parity ──────────────────────────────────────────────
+# facet / control parity
 
 class TestFacetParity:
     """A chip whose field has no control in the form filters nothing."""
@@ -302,7 +564,8 @@ class TestFacetParity:
     def test_every_facet_field_has_a_hidden_control(self, auth_client):
         body = auth_client.get('/allocations/xras').get_data(as_text=True)
         form = body.split('id="xras-remediation-filters"')[1].split('</form>')[0]
-        for field in ('status', 'opportunity', 'push', 'request_number'):
+        for field in ('status', 'action_type', 'opportunity', 'push',
+                      'readiness', 'request_number'):
             assert f'name="{field}"' in form, \
                 f'{field} chips would be silently inert'
 
@@ -322,7 +585,7 @@ class TestFacetParity:
         assert 'form="xras-remediation-filters"' in box
 
 
-# ── the four empty states ───────────────────────────────────────────────
+# the four empty states
 
 class TestTheFourEmptyStates:
     """Collapsing any two of these would mislead an operator."""
@@ -366,12 +629,12 @@ class TestTheFourEmptyStates:
         assert len(seen) == 4
 
 
-# ── rendering ───────────────────────────────────────────────────────────
+# rendering
 
 class TestRendering:
 
     # The roster/action offers moved from the card's per-request expansion into
-    # the detail modal (the card row now just links to it), so these behaviours
+    # the detail modal (the card row now just links to it), so these behaviors
     # are asserted against the modal body — fed by a live read (`_reader`).
     def test_the_modal_renders_the_offers(self, auth_client, armed, monkeypatch):
         _reader(monkeypatch, payload=_payload())
@@ -410,7 +673,7 @@ class TestRendering:
         assert 'needs an account' in body
 
     def test_the_window_says_what_it_hid(self, auth_client, armed):
-        """⚠️ On this card the hidden rows skew URGENT — never hide silently."""
+        """WARNING: On this card the hidden rows skew URGENT — never hide silently."""
         _publish(_payload(), _payload('EXAM0002', submit_date='2015-01-01T00:00:00Z'))
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
         assert 'outside the date filter' in body
@@ -447,20 +710,17 @@ class TestRendering:
             FRAGMENT + '?status=Submitted').get_data(as_text=True)
         assert 'EXAM0002' in body and 'EXAM0001' not in body
 
-    def test_the_action_count_is_shown_only_when_it_is_not_one(
+    def test_the_type_column_shows_the_in_flight_action_not_a_count(
             self, auth_client, armed):
-        """Every row on this card says "1 action". A column of that is noise;
-        the case a withdraw has to reason about is the one that is not 1."""
-        _publish(_payload())
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
-        assert '1 action' not in body
-
+        """The card shows the request's current action type, not how many actions
+        it has — multiplicity now lives in the request modal."""
         payload = _payload()
         payload['actions'].append({'actionId': 8, 'actionType': 'Extension',
                                    'actionStatus': 'Approved'})
         _publish(payload)
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
-        assert '2 actions' in body
+        assert 'Extension' in body          # the latest (highest-id) action type
+        assert '2 actions' not in body      # the old count note is gone
 
     def test_the_project_admin_column_shows_the_allocation_manager(
             self, auth_client, armed):
@@ -486,7 +746,7 @@ class TestRendering:
         assert 'Project Admin' in body
 
 
-# ── the project link ────────────────────────────────────────────────────
+# the project link
 
 class TestTheSamBadgeLinksWhenTheProjectExists:
     """`pending_push` is not a display choice — it is the sweep's set
@@ -508,7 +768,7 @@ class TestTheSamBadgeLinksWhenTheProjectExists:
         assert 'hx-target="#projectDetailsModalBody"' in body
 
     def test_a_pending_request_is_a_plain_badge(self, auth_client, armed):
-        """⚠️ The direction that matters. `pending_push` is exactly "SAM has
+        """WARNING: The direction that matters. `pending_push` is exactly "SAM has
         no project for this number" — the reason most rows are on this card at
         all. A link would 404 the modal on the majority of the table."""
         _publish(_payload('EXAM0001'), pending=True)
@@ -565,7 +825,7 @@ class TestTheOpportunityGroupCollapses:
         assert 'id="xopp-New' not in body
 
 
-# ── the search box ──────────────────────────────────────────────────────
+# the search box
 
 class TestSearch:
     """One box over the fields an operator arrives holding.
@@ -591,7 +851,7 @@ class TestSearch:
 
     def test_it_matches_a_roster_member_the_row_does_not_show(
             self, auth_client, armed):
-        """⚠️ The reason a request is on this card is usually one person on
+        """WARNING: The reason a request is on this card is usually one person on
         its roster, and that person is not rendered until the row is expanded.
         A search that only saw the summary row would miss every one of them."""
         _publish(_payload('EXAM0001'),
@@ -612,8 +872,8 @@ class TestSearch:
 
     def test_the_chips_survive_emptying_the_card(self, auth_client, armed):
         """The copy says "clear the search and chips"; both must be there to
-        clear. They used to render only alongside rows, so they vanished at
-        the moment they were needed."""
+        clear. Rendering them only alongside rows makes them vanish at exactly
+        the moment they are needed."""
         _publish(_payload('EXAM0001'), _payload('EXAM0002', status='Submitted'))
         body = auth_client.get(
             FRAGMENT + '?status=Submitted&search=EXAM0001').get_data(as_text=True)
@@ -622,7 +882,7 @@ class TestSearch:
 
     def test_the_date_badge_counts_only_what_the_date_hid(self, auth_client,
                                                           armed):
-        """⚠️ Measured against `total` it would grow with every keystroke and
+        """WARNING: Measured against `total` it would grow with every keystroke and
         blame the window for the search."""
         _publish(_payload('EXAM0001'),
                  _payload('EXAM0002', submit_date='2015-01-01T00:00:00Z'))
@@ -634,7 +894,7 @@ class TestSearch:
         assert '1 outside the date filter' in searched
 
 
-# ── modal GETs ──────────────────────────────────────────────────────────
+# modal GETs
 
 class TestModalGets:
 
@@ -654,7 +914,7 @@ class TestModalGets:
 
     def test_two_candidates_leave_nothing_preselected(self, auth_client, armed,
                                                       monkeypatch):
-        """⚠️ Measured: two live identities for one human, differing only by
+        """WARNING: Measured: two live identities for one human, differing only by
         email and organization. A default would pick one, and merge deletes
         the other."""
         _reader(monkeypatch,
@@ -701,7 +961,7 @@ class TestModalGets:
 
     def test_a_placeholder_role_holder_is_flagged(self, auth_client, armed,
                                                   monkeypatch):
-        """⚠️ The project lead is sometimes an unmerged placeholder — 2 of 27
+        """WARNING: The project lead is sometimes an unmerged placeholder — 2 of 27
         live rows the first time this card met production.
 
         XRAS authorizes the call (the placeholder really does hold the role),
@@ -749,10 +1009,11 @@ class TestModalGets:
     ])
     def test_an_outage_degrades_with_a_200(self, auth_client, armed,
                                            monkeypatch, path):
-        """⚠️ htmx will not swap a 4xx into an open modal — an error status
+        """WARNING: htmx will not swap a 4xx into an open modal — an error status
         renders as an empty modal indistinguishable from a broken button."""
         client = MagicMock()
         client.get_request_by_number.side_effect = XrasSourceUnavailable('down')
+        client.get_request_family_by_number.side_effect = XrasSourceUnavailable('down')
         client.get_person.side_effect = XrasSourceUnavailable('down')
         client.get_opportunity.side_effect = XrasSourceUnavailable('down')
         monkeypatch.setattr(
@@ -763,7 +1024,7 @@ class TestModalGets:
         assert 'not answering' in response.get_data(as_text=True)
 
 
-# ── the read-only detail modal (Part A) ─────────────────────────────────
+# the read-only detail modal (Part A)
 
 class TestRequestDetailModal:
     """The read-only detail modal, and the surface the editors hang off.
@@ -832,6 +1093,38 @@ class TestRequestDetailModal:
         assert 'Roles…' not in body
         assert 'Details…' not in body
 
+    def test_the_actions_list_spans_all_request_lines(self, auth_client, armed,
+                                                      monkeypatch):
+        """A multi-line project shows ONE actions list across every request line;
+        only the globally-most-recent action (in the primary line) is withdrawable."""
+        client = _reader(monkeypatch, payload=_detail_payload())
+        new_line = _detail_payload()
+        new_line['requestId'] = 111
+        new_line['requestType'] = 'New'          # its action is id 7 (Supplement)
+        renewal = _detail_payload()
+        renewal.update({'requestId': 222, 'requestType': 'Renewal',
+                        'beginDate': '2027-01-01'})
+        renewal['actions'] = [{'actionId': 88, 'actionType': 'Renewal',
+                               'actionStatus': 'Approved', 'entryDate': '2027-01-02'}]
+        client.get_request_family_by_number.side_effect = None
+        client.get_request_family_by_number.return_value = [new_line, renewal]
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        # both lines' actions are in one collapsible list
+        assert 'xras-action-7' in body and 'xras-action-88' in body
+        assert '2 requests in this project' in body
+        # only the latest (88, the renewal) is withdrawable
+        assert body.count('Withdraw…') == 1
+
+    def test_a_single_line_request_still_renders_its_actions(self, auth_client,
+                                                             armed, monkeypatch):
+        """One request line -> the same one-list rendering, its action editable."""
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'xras-action-7' in body       # the lone action
+        assert body.count('Withdraw…') == 1  # it is the latest → editable
+
     def test_the_card_row_links_the_request_to_the_detail_modal(
             self, auth_client, armed):
         """The Request number is the single entry point into the detail modal
@@ -842,7 +1135,7 @@ class TestRequestDetailModal:
         assert 'Details…' not in body
 
 
-# ── the read-only XRAS User detail modal ─────────────────────────────────
+# the read-only XRAS User detail modal
 
 def _person(**over):
     person = {'username': 'janebaldwin', 'firstName': 'Jane',
@@ -950,7 +1243,7 @@ class TestUserDetailModal:
         assert 'request_number=EXAM0001' in body
 
 
-# ── the read-only opportunity detail modal + FoS name resolution ──────────
+# the read-only opportunity detail modal + FoS name resolution
 
 _OPPORTUNITY = {
     'opportunityId': 532220, 'opportunityName': 'Small Allocation (University)',
@@ -1051,14 +1344,14 @@ class TestFosNameResolution:
             self, auth_client, armed, monkeypatch):
         payload = _detail_payload()
         payload['fos'] = [{'fosTypeId': 500032, 'fosNum': '30', 'isPrimary': True}]
-        # Default _reader get_fos_types is [] → empty map → id fallback.
+        # Default _reader get_fos_types is [] -> empty map -> id fallback.
         _reader(monkeypatch, payload=payload)
         body = auth_client.get(
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'FoS 30' in body
 
 
-# ── the request editor (Part B) ──────────────────────────────────────────
+# the request editor (Part B)
 
 class TestTheEditors:
     """The amount/date editors: forms render, validation bites, the lever and
@@ -1136,7 +1429,7 @@ class TestTheEditors:
             data={'amount': '20', 'stage': 'Requested'}).get_data(as_text=True)
         assert 'switched off' in body
 
-    # ── the B2a text editors ──────────────────────────────────────────
+    # the B2a text editors
 
     def test_the_attributes_form_renders_prefilled(self, auth_client, armed,
                                                    monkeypatch):
@@ -1181,7 +1474,7 @@ class TestTheEditors:
         assert 'switched off' in body
 
 
-# ── the destructive lifecycle (Part C, ADMIN_XRAS) ───────────────────────
+# the destructive lifecycle (Part C, ADMIN_XRAS)
 
 class TestPartCIsAdminOnly:
     """The destructive verbs ride ABOVE MANAGE_XRAS: a full-editor operator is
@@ -1242,8 +1535,35 @@ class TestPartCIsAdminOnly:
             '/allocations/xras_request_delete/EXAM0001').get_data(as_text=True)
         assert 'switched off' in body
 
+    def test_delete_loops_the_whole_tree(self, auth_client, armed, monkeypatch):
+        """A multi-line project deletes EVERY request line, not just lines[0]."""
+        from types import SimpleNamespace
 
-# ── POST validation ─────────────────────────────────────────────────────
+        client = _reader(monkeypatch, payload=_detail_payload())
+        new_line = _detail_payload(); new_line['requestId'] = 111
+        renewal = _detail_payload(); renewal['requestId'] = 222
+        renewal['actions'] = [{'actionId': 88, 'actionType': 'Renewal',
+                               'actionStatus': 'Approved', 'entryDate': '2027-01-02'}]
+        client.get_request_family_by_number.side_effect = None
+        client.get_request_family_by_number.return_value = [new_line, renewal]
+
+        calls = []
+
+        def fake_delete(session, *, request_number, request_id, pi_username, operator):
+            calls.append(request_id)
+            return SimpleNamespace(status='verified',
+                                   result=SimpleNamespace(errors=None))
+
+        monkeypatch.setattr(
+            'webapp.dashboards.allocations.xras.remediation.remediation.delete_request',
+            fake_delete)
+        body = auth_client.post(
+            '/allocations/xras_request_delete/EXAM0001').get_data(as_text=True)
+        assert sorted(calls) == [111, 222]     # both lines deleted
+        assert '2 request' in body             # the confirm/result names the scope
+
+
+# POST validation
 
 class TestPostValidation:
 
@@ -1258,7 +1578,7 @@ class TestPostValidation:
 
     def test_a_merge_into_an_unresolvable_target_is_refused(
             self, auth_client, armed, monkeypatch):
-        """⚠️ The API CREATES an unknown target rather than failing."""
+        """WARNING: The API CREATES an unknown target rather than failing."""
         client = _reader(monkeypatch)
         client.get_person.return_value = None
         body = auth_client.post('/allocations/xras_merge/ghost-user-abcde',
@@ -1326,7 +1646,7 @@ class TestPostValidation:
         assert 'switched off' in body
 
 
-# ── review fixes (PR #460 follow-up) ────────────────────────────────────
+# review fixes (PR #460 follow-up)
 
 class TestThePreflightDegradesHonestly:
     """The resubmit modal's preflight has three non-happy paths, and each
@@ -1354,7 +1674,7 @@ class TestThePreflightDegradesHonestly:
 
     def test_a_preflight_401_renders_the_refusal_not_an_outage(
             self, auth_client, armed, monkeypatch):
-        """⚠️ XrasWriteRejected subclasses XrasSourceUnavailable, so the
+        """WARNING: XrasWriteRejected subclasses XrasSourceUnavailable, so the
         outage catch used to swallow it — telling the operator to 'retry
         later' about a refusal a retry can never fix."""
         from sam.integration.xras_api.base import XrasWriteRejected

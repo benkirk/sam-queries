@@ -113,7 +113,7 @@ explain "Each call authenticates with HTTP Basic Auth; curl's -u sends the
   printed. An unscoped POST clears everything; ?category=X scopes the clear."
 
 # --------------------------------------------------------------------------
-# http_post URL   → prints "<body> <code>" (JSON body, then space, then the
+# http_post URL   -> prints "<body> <code>" (JSON body, then space, then the
 # HTTP status). Credentials go via curl -u; the password never appears in argv
 # echoes. Trailing `|| true` keeps a hard curl failure (timeout, DNS) from
 # aborting under `set -e` — it yields a "000" status the caller treats as FAIL.
@@ -128,7 +128,7 @@ http_post() {
 }
 
 # --------------------------------------------------------------------------
-# clear_one TARGET — issue one clear ('all' → unscoped; else ?category=TARGET),
+# clear_one TARGET — issue one clear ('all' -> unscoped; else ?category=TARGET),
 # validate {"status":"ok"} + that .cleared holds exactly the expected keys, and
 # print a per-category count summary. Never aborts the whole run.
 # --------------------------------------------------------------------------

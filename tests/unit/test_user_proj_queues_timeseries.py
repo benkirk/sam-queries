@@ -58,8 +58,8 @@ def test_rank_by_peak_vs_current_diverge(status_session):
     by t2 (0). User 'steady' rises to 500 at t2 (its latest value, also
     its peak). Selecting top_n=1:
 
-    - rank_by='peak'    → 'spiker' wins (1000 > 500)
-    - rank_by='current' → 'steady' wins (500 > 0 at t2)
+    - rank_by='peak'    -> 'spiker' wins (1000 > 500)
+    - rank_by='current' -> 'steady' wins (500 > 0 at t2)
     """
     t0 = datetime(2026, 5, 4, 12, 0, 0)
     t1 = t0 + timedelta(minutes=5)
@@ -93,7 +93,7 @@ def test_rank_by_peak_vs_current_diverge(status_session):
     peak = get_user_proj_timeseries(**common, rank_by='peak')
     current = get_user_proj_timeseries(**common, rank_by='current')
 
-    # Series order: 'Others' first, then named series small→large by rank.
+    # Series order: 'Others' first, then named series small->large by rank.
     # With top_n=1 we expect exactly two entries: ['Others', winner].
     peak_named = [s['label'] for s in peak['series'] if s['label'] != 'Others']
     current_named = [s['label'] for s in current['series'] if s['label'] != 'Others']

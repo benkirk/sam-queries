@@ -1,7 +1,7 @@
 {#
   Generic facet-chip row: live value counts that double as filter controls.
 
-  Generalised from dashboards/user/partials/_jobs_facet_chips.html, which is
+  Generalized from dashboards/user/partials/_jobs_facet_chips.html, which is
   still the jobs explorer's own (its dimension list and NULL-handling are
   jobs-shaped). This carries the parts that are not: the chip markup, the
   active/clear semantics, and the two-column grid.
@@ -11,12 +11,12 @@
   CSP-clean, no inline handlers. The active chip is marked and clicking it
   CLEARS the filter (empty data-value), so it doubles as its own clear button.
 
-  ⚠️  The caller must compute counts with SELF-EXCLUSION — a dimension's rollup
+  WARNING: The caller must compute counts with SELF-EXCLUSION — a dimension's rollup
   must omit its own filter. Scope a dimension by itself and every unselected
   value reads 0 the moment one is picked, which turns the strip from a switcher
   into a dead end. See blueprint.py::xras_fragment.
 
-  ⚠️  Values that cannot round-trip through the form must not become chips. A
+  WARNING: Values that cannot round-trip through the form must not become chips. A
   NULL is a real count but not a filterable value (there is no way to say
   "IS NULL" in a text input or a select), so callers pass only expressible
   values — the jobs macro does the same via rejectattr('value','none').
@@ -33,9 +33,9 @@
     field    — the form control's name; must match a control in that form
     active   — list/set of currently-selected values for this dimension
     badge    — when true, render each value through status_badge() instead of
-               a plain text span, preserving a colour vocabulary the rows below
+               a plain text span, preserving a color vocabulary the rows below
                already use. Chips get .has-badge so the CSS can mark selection
-               with a ring rather than a fill that would overwrite the colour.
+               with a ring rather than a fill that would overwrite the color.
 #}
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 

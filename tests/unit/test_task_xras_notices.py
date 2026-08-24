@@ -42,7 +42,7 @@ NAME = 'xras_notices'
 #: Wednesday 2033-11-16 10:00 America/Denver == 17:00 UTC (MST, UTC-7 — the
 #: fall-back is the first Sunday in November, ten days earlier).
 #:
-#: ⚠️ **2033 on purpose**, the same reason `test_task_expiration_notices.py`
+#: WARNING: **2033 on purpose**, the same reason `test_task_expiration_notices.py`
 #: gives: the obfuscated snapshot every test container runs holds real
 #: `xras_action_log` rows, and a present-day occurrence would put them inside
 #: the 14-day lookback and drown assertions about absolute counts. Beyond 2030
@@ -59,7 +59,7 @@ MONDAY_OPEN_SLOT = datetime(2033, 11, 21, 8, 0)
 DAY = timedelta(days=1)
 
 
-# ── harness ──────────────────────────────────────────────────────────────────
+# harness
 
 @pytest.fixture
 def transport():
@@ -162,7 +162,7 @@ def _select(*rows, slot=SLOT, env=None):
     return mod.select(rows, slot=slot, delays=mod.policy(env))
 
 
-# ── registration ─────────────────────────────────────────────────────────────
+# registration
 
 class TestRegistration:
 
@@ -189,7 +189,7 @@ class TestRegistration:
         assert TASKS[NAME].misfire_grace == timedelta(hours=6)
 
     def test_the_lease_outlives_the_cronjob_deadline(self):
-        """⚠️ The invariant that stops a killed send being restarted mid-flight.
+        """WARNING: The invariant that stops a killed send being restarted mid-flight.
 
         This task cannot heartbeat (TaskContext exposes no ledger handle), so
         its lease is fixed at max(3 x expected_runtime, 900s). Shorter than the
@@ -215,7 +215,7 @@ class TestRegistration:
         assert lease > int(match.group(1))
 
     def test_it_ships_switched_off(self):
-        """⚠️ `SAM_TASKS_DISABLED` is fail-OPEN: a registered task dispatches on
+        """WARNING: `SAM_TASKS_DISABLED` is fail-OPEN: a registered task dispatches on
         the next hourly wake unless the chart names it. This one is meant to
         soak first, so the name must be in `values.yaml` from the commit that
         registers it — nothing else couples the registry to the chart.
@@ -230,7 +230,7 @@ class TestRegistration:
         assert NAME in line, line
 
 
-# ── the policy ───────────────────────────────────────────────────────────────
+# the policy
 
 class TestThePolicy:
     """`select()` is pure over `get_xras_activity` rows, so these need no DB."""
@@ -258,7 +258,7 @@ class TestThePolicy:
         assert _select(_row(service=None)) == []
 
     def test_a_row_badged_New_CAN_auto_send(self):
-        """⚠️ The surprising rule, named so nobody "fixes" it.
+        """WARNING: The surprising rule, named so nobody "fixes" it.
 
         The card's badge shows `action_type`. `dispatch.select_service` routes
         a **New** whose projcode already exists to the `update` service — it is
@@ -286,7 +286,7 @@ class TestThePolicy:
         assert _select(_row(notifiable=False)) == []
 
     def test_an_already_notified_row_is_skipped(self):
-        """⚠️ `notified` is true when ANY recipient was reached, so a
+        """WARNING: `notified` is true when ANY recipient was reached, so a
         half-delivered action stays manual. Conservative on purpose — never
         double-mail — and it matches what the card shows the operator."""
         assert _select(_row(notified=True)) == []
@@ -347,7 +347,7 @@ class TestTheSendCap:
         assert mod.xras_email_max() == 50
 
 
-# ── the weekend ──────────────────────────────────────────────────────────────
+# the weekend
 
 class TestTheFridayCase:
     """A Friday-afternoon arrival must not mail on Saturday, and must not be
@@ -396,7 +396,7 @@ class TestTheFridayCase:
             'and `detail` reports it so this never reads as a backlog')
 
 
-# ── end to end ───────────────────────────────────────────────────────────────
+# end to end
 
 class TestASendableAction:
 
@@ -493,7 +493,7 @@ class TestTheQuietHour:
 
     def test_an_already_notified_recipient_writes_no_suppressed_row(
             self, session, ctx, wire, ledger, transport):
-        """⚠️ The pre-filter is permanent, not an optimization.
+        """WARNING: The pre-filter is permanent, not an optimization.
 
         Left to `Notifier` this would be suppressed by *recording a
         `suppressed` row*. At fifty wakes a week that is a steady drip into
@@ -557,7 +557,7 @@ class TestTheGuards:
 class TestDryRun:
 
     def test_it_previews_and_sends_nothing(self, session, ctx, wire, transport):
-        """⚠️ A rollback undoes rows; it does not unsend mail. This is the case
+        """WARNING: A rollback undoes rows; it does not unsend mail. This is the case
         `TaskContext.dry_run`'s note warns about."""
         from sam.notify.models import NotificationLog
 

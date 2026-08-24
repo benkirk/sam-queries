@@ -23,7 +23,10 @@ from sam.integration.xras_api import (
 from sam.queries.xras_accounts import is_placeholder
 from sam.queries.xras_requests import (
     _as_date,
+    _text,
+    actions_from_payload,
     person_roles_from_payload,
+    request_family,
     request_index_entry,
 )
 from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
@@ -33,8 +36,8 @@ from webapp.utils.rbac import Permission, has_permission, require_permission
 
 from .. import bp
 from ._shared import (
-    _degraded, _entry, _impersonation, _live_request, _read_client,
-    _render_xras_modal, _role_options,
+    _degraded, _entry, _impersonation, _live_family,
+    _primary_line, _read_client, _render_xras_modal, _role_options,
 )
 
 
@@ -143,6 +146,30 @@ def _detail_grants(payload):
     return grants
 
 
+def _actual_log_outcomes(action_ids):
+    """Latest ``xras_action_log`` outcome per action_id, for the calibration view.
+
+    Read straight from ``db.session`` (committed rows), keyed by ``action_id``:
+    the modal shows the prediction beside what actually happened when XRAS pushed.
+    """
+    from sam.integration.xras import XrasActionLog
+
+    ids = [i for i in action_ids if i is not None]
+    if not ids:
+        return {}
+    outcomes = {}
+    for row in (db.session.query(XrasActionLog)
+                .filter(XrasActionLog.action_id.in_(set(ids)))
+                .order_by(XrasActionLog.xras_action_log_id.asc()).all()):
+        # Ascending id, so the last write for an action_id wins.
+        outcomes[row.action_id] = {'status': row.status,
+                                   'http_status': row.http_status,
+                                   'error_messages': row.error_messages,
+                                   'received_time': row.received_time,
+                                   'raw_payload': row.raw_payload}
+    return outcomes
+
+
 def _detail_context(request_number, *, flash=None, flash_error=None):
     """Everything the detail modal renders, or ``None`` if the request is gone.
 
@@ -150,24 +177,72 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
     modal looks identical however it was reached. Raises
     :class:`XrasSourceUnavailable` on an outage — the caller degrades.
     """
-    payload = _live_request(request_number)
-    if payload is None:
+    # The whole family in one fetch. A projcode can have several request lines
+    # (a New plus Renewals, each its own requestId); the modal anchors on the
+    # PRIMARY line (the one holding the globally most-recent action) so header,
+    # roster and every write target the current request deterministically —
+    # never lines[0], which is XRAS's arbitrary order.
+    lines = _live_family(request_number)
+    if not lines:
         return None
+    payload = _primary_line(lines)
+    family = request_family(lines)
 
     entry = _entry(request_number)
-    # Reproduces the exact `row` shape the shared include expects (roster +
-    # actions with can_withdraw/can_resubmit), so the modal's buttons are
-    # identical to the card's by construction. `pending_push` only feeds the
-    # card's SAM badge, which the include does not render — default it safely.
+    # The preflight verdicts live in the sweep snapshot (keyed by actionId); the
+    # modal reads a live payload, so carry them across rather than re-running the
+    # never-writes preflight per modal open.
+    preflights = {a['action_id']: a['preflight']
+                  for a in (entry or {}).get('actions', ())
+                  if a.get('preflight')}
+    # Reproduces the exact `row` shape the roster editor expects (roster + PI),
+    # from the primary line. `pending_push` only feeds the card's SAM badge,
+    # which the include does not render — default it safely.
     row = request_index_entry(
-        payload, pending_push=bool((entry or {}).get('pending_push', True)))
+        payload, pending_push=bool((entry or {}).get('pending_push', True)),
+        preflights=preflights)
+
+    # One action list spanning EVERY request line, chronological by action_id.
+    # Only the single globally-most-recent action is editable/withdrawable; the
+    # rest are applied history. `offers` (status-derived withdraw/resubmit) comes
+    # from the line-scoped entry builder; the modal re-gates it on `is_latest`.
+    offers = {a['action_id']: a
+              for line in lines for a in actions_from_payload(line)}
+    detail_actions = []
+    for line in lines:
+        for action in _detail_actions(line):
+            o = offers.get(action['action_id'], {})
+            action['request_id'] = line.get('requestId')
+            action['request_type'] = _text(line.get('requestType'))
+            action['entry_date'] = o.get('entry_date')
+            action['submit_date'] = o.get('submit_date')
+            action['can_withdraw'] = bool(o.get('can_withdraw'))
+            action['can_resubmit'] = bool(o.get('can_resubmit'))
+            detail_actions.append(action)
+    detail_actions.sort(key=lambda a: a['action_id'])
+    latest_id = detail_actions[-1]['action_id'] if detail_actions else None
+    for action in detail_actions:
+        action['is_latest'] = action['action_id'] == latest_id
+        # Only the most-recent action may be edited; older ones are history.
+        action['can_withdraw'] = action['can_withdraw'] and action['is_latest']
+        action['can_resubmit'] = action['can_resubmit'] and action['is_latest']
+
+    actuals = _actual_log_outcomes(a['action_id'] for a in detail_actions)
+    for action in detail_actions:
+        action['preflight'] = preflights.get(action['action_id'])
+        # The real push outcome, if this action has since been posted — the
+        # calibration comparison the request modal renders against the prediction.
+        action['actual'] = actuals.get(action['action_id'])
     xa_user, is_pi, placeholder = _impersonation(entry, live=payload)
 
     return {
         'request_number': request_number,
         'payload': payload,
         'row': row,
-        'detail_actions': _detail_actions(payload),
+        # The whole project lifecycle (all request lines + counts), for the
+        # danger-zone delete confirm and any family-level display.
+        'family': family,
+        'detail_actions': detail_actions,
         'grants': _detail_grants(payload),
         'xa_user': xa_user,
         'xa_user_is_pi': is_pi,
@@ -242,6 +317,43 @@ def _render_detail(request_number, *, flash=None, flash_error=None):
     response = current_app.make_response(render_template(_DETAIL_FORM, **context))
     response.headers['HX-Trigger'] = 'refreshXrasTab'
     return response
+
+
+# ---------------------------------------------------------------------------
+# focused push-readiness modal — the verdict badge's own evidence view
+# ---------------------------------------------------------------------------
+
+_READINESS_FORM = 'dashboards/allocations/partials/xras_readiness_modal.html'
+
+
+def _readiness_context(request_number):
+    """The focused readiness modal's context, or ``None`` if the sweep holds no
+    such entry. Snapshot-only — the verdicts are already swept, so no live XRAS
+    read; a committed-rows lookup adds the calibration outcome where one exists."""
+    entry = _entry(request_number)
+    if entry is None:
+        return None
+    actions = [a for a in (entry.get('actions') or []) if a.get('preflight')]
+    actuals = _actual_log_outcomes(a.get('action_id') for a in actions)
+    for action in actions:
+        action['actual'] = actuals.get(action.get('action_id'))
+    return {'request_number': request_number, 'actions': actions,
+            'rollup': entry.get('preflight_rollup')}
+
+
+@bp.route('/xras_readiness_detail/<path:request_number>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_readiness_detail(request_number: str):
+    """Modal body: the push-readiness evidence behind a request's verdict badge.
+
+    Snapshot-only, so unlike the sibling detail modals it never needs a live XRAS
+    read — it degrades to not-found only when the sweep has no such entry.
+    """
+    context = _readiness_context(request_number)
+    if context is None:
+        return htmx_modal_not_found('Request')
+    return render_template(_READINESS_FORM, **context)
 
 
 # ---------------------------------------------------------------------------

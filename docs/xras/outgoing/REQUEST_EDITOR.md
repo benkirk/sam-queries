@@ -1,12 +1,21 @@
 # Editing XRAS requests from SAM — the request editor
 
-The **XRAS Remediations** card on *Allocations → XRAS* opens a per-request modal
-that is a **scoped editor for an existing XRAS request**: read-only detail, plus
-in-place editors for resource amounts, allocation dates, and request/action text,
-plus a destructive admin tier. It is a subset of the external XRAS admin app, never
-a replacement — SAM does not own XRAS but must keep it consistent with the systems
-it does own, and an operator needs to fix a request in place rather than bouncing
-between two consoles.
+The **XRAS Remediations** card on *Allocations → XRAS* opens a **project** modal:
+read-only detail, plus in-place editors for resource amounts, allocation dates, and
+request/action text, plus a destructive admin tier. It is a subset of the external
+XRAS admin app, never a replacement — SAM does not own XRAS but must keep it
+consistent with the systems it does own, and an operator needs to fix a request in
+place rather than bouncing between two consoles.
+
+**The modal is project-scoped, not request-scoped.** A projcode (`requestNumber`)
+can carry several request lines — a New plus Renewals, each its own `requestId` with
+an `actions[]` trail (`reports/request_numbers/<n>` returns them as a list). The
+modal shows one chronological action list across the whole family, anchored on the
+**primary line** — the one holding the globally most-recent `action_id`: its
+roster/title are the project's current state and every write resolves through it
+(`_live_request` returns the primary line, never `lines[0]`, which is XRAS's
+arbitrary order). Only the **most-recent action** is editable/withdrawable; older
+ones are applied history, rendered collapsed and read-only.
 
 Read this alongside `XRAS_OUTGOING_QUERIES.md` (the read side and the sweep) and
 `XRAS_WRITE_PROBES.md` / `XRAS_WRITE_FIXUPS.md` (the original merge / withdraw /
@@ -20,7 +29,7 @@ re-submit / roster surface this editor extends).
 |---|---|---|
 | `VIEW_XRAS` | the action log — an audit surface | every operator bundle (via `ALL_VIEW`) |
 | `MANAGE_XRAS` | the Remediations card and the **full non-destructive editor** (merge, withdraw / re-submit, roster, amounts, dates, request attributes, action fields) | `_ALLOCATION_ADMIN` (`nusd`, `csg`) |
-| `ADMIN_XRAS` | the **destructive lifecycle** — delete a request, renew it, add an action | rides with `SYSTEM_ADMIN`, **not** `_ALLOCATION_ADMIN` (today only the full-admin override) |
+| `ADMIN_XRAS` | the **destructive lifecycle** — delete the whole project (every request line), renew it, add an action | rides with `SYSTEM_ADMIN`, **not** `_ALLOCATION_ADMIN` (today only the full-admin override) |
 
 `MANAGE_XRAS` and `ADMIN_XRAS` both use the `manage_`/`admin_` prefix, which is
 matched by **no** `ALL_*` aggregate (those match `view_`/`edit_`/`create_`/
@@ -51,8 +60,8 @@ PI (`resolve_pi`). Transport is **query params** except where noted.
 | Allocation dates | `POST .../allocation_dates`; `PUT|DELETE .../allocation_dates/<id>` | MANAGE | `POST` returns `allocationDateId` |
 | Request attributes | `PUT .../attributes` | MANAGE | `title` / `shortTitle` / `abstract` |
 | Action fields | `PUT .../actions/<aid>` | MANAGE | `userComments` |
-| Delete request | `DELETE /v1/requests/<rid>` | **ADMIN** | irreversible in XRAS |
-| Renew request | `POST /v1/requests/<rid>/renew` | **ADMIN** | spawns a renewal |
+| Delete project | `DELETE /v1/requests/<rid>` | **ADMIN** | loops **every** request line in the family (each as its own PI); reports partial failure; irreversible |
+| Renew request | `POST /v1/requests/<rid>/renew` | **ADMIN** | spawns a renewal off the primary line |
 | Add action | `POST /v1/requests/<rid>/actions` | **ADMIN** | closed action-type picker |
 
 **Deferred** (probed and authorized under our key, not yet built — a *Part B2b*):
@@ -96,7 +105,7 @@ permission grant is not enough — it must be the key.
   one line per resource per stage, so `(action, resourceId, stage)` is unambiguous.
 - **Sub-resource creates return their id** in `result` (`allocationDateId`,
   `grantId`, `publicationId`) — captured for the audit row and the delete path.
-- **XRAS normalises trailing whitespace** on stored text (a 1020-char abstract read
+- **XRAS normalizes trailing whitespace** on stored text (a 1020-char abstract read
   back at 1019, identically via params and a body). Verify-by-reread therefore
   compares **whitespace-stripped**, or a good long-text write reports `unverified`.
 - **FoS** needs `isPrimary` on the `PUT`; it is a set-membership toggle on
@@ -123,7 +132,8 @@ lever, and `hx-confirm`.
 
 | Layer | Path |
 |---|---|
-| Read client (GET) | `sam/integration/xras_api/client.py` — `get_request_by_number` → `reports/request_numbers/<n>` |
+| Read client (GET) | `sam/integration/xras_api/client.py` — `get_request_family_by_number` → `reports/request_numbers/<n>` (all lines); `get_request_by_number` is the first-line convenience |
+| Family model | `sam/queries/xras_requests.py` — `request_family`; the modal's primary-line pick + one-list merge live in `webapp/dashboards/allocations/xras/modals.py` (`_detail_context`) and `webapp/dashboards/allocations/xras/_shared.py` (`_live_request` / `_primary_line`) |
 | Write client | `sam/integration/xras_api/admin_client.py` — per-call `context`, single-attempt `_write`, verify-by-reread |
 | Config / levers | `sam/integration/xras_api/config.py` — `write_configured`, `admin_context_available` |
 | Service (audit + cache) | `sam/manage/xras_remediation.py` — `_editor_op`, audit-before-dispatch |

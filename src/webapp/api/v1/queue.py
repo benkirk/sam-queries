@@ -1,37 +1,11 @@
-"""
-Queue API endpoints (v1).
+"""Queue API endpoints (v1).
 
-Provides the active job-queue configuration consumed by batch schedulers and
-systems-integration tooling.  Reproduces the output of the legacy SAM Java
-endpoints:
-  GET /api/protected/admin/ssg/queue
-  GET /api/protected/admin/ssg/queue/<Resource>
+Active job-queue configuration for batch schedulers and systems-integration
+tooling. Reproduces legacy ``GET /api/protected/admin/ssg/queue[/<Resource>]``.
 
-Example usage:
-    GET  /api/v1/queue/                — all active queues on all active resources
-    GET  /api/v1/queue/Derecho          — queues for a single resource
-    GET  /api/v1/queue/Derecho%20GPU    — resource with space (URL-encoded)
-    POST /api/v1/queue/refresh          — invalidate cache
-
-Response format::
-
-    {
-        "name": "queues",
-        "resources": [
-            {
-                "resourceName": "Derecho",
-                "queues": [
-                    {
-                        "queueName": "main",
-                        "wallClockHoursLimit": 12.0,
-                        "startDate": "2023-01-01T00:00:00",
-                        "endDate": null,
-                        "cosId": 5
-                    }
-                ]
-            }
-        ]
-    }
+``GET /`` all active queues, ``GET /<resource>`` one resource (URL-encode a
+space), ``POST /refresh`` invalidates the cache. Response shape:
+``docs/apis/SYSTEMS_INTEGRATION_APIs.md``.
 """
 
 from flask import Blueprint, jsonify, abort, request

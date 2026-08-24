@@ -94,7 +94,7 @@ def test_histogram_charges_is_not_a_copy_of_cpu_hours():
 
 
 def test_histogram_uncharged_buckets_render_the_placeholder():
-    """Real hours with a 0.0 QoS factor everywhere → nothing to plot in the
+    """Real hours with a 0.0 QoS factor everywhere -> nothing to plot in the
     charges view, while the hours view still renders. Not a bug: the
     'uncharged' QoS carries a genuine 0.0 factor."""
     h = _hist(cpu_charges=(0.0, 0.0, 0.0), gpu_charges=(0.0, 0.0, 0.0))
@@ -103,7 +103,7 @@ def test_histogram_uncharged_buckets_render_the_placeholder():
 
 
 def test_histogram_metrics_render_differently():
-    """Same envelope, different metric → different SVG (and distinct cache
+    """Same envelope, different metric -> different SVG (and distinct cache
     keys, so variants never collide in the LRU)."""
     svg_jobs = generate_jobs_histogram(_hist(), metric='jobs')
     svg_cpu  = generate_jobs_histogram(_hist(), metric='cpu_hours')
@@ -125,7 +125,7 @@ def test_histogram_all_zero_returns_placeholder():
 
 
 def test_histogram_zero_metric_nonzero_other_metric():
-    """A CPU-only window has zero gpu_hours everywhere → GPU view shows the
+    """A CPU-only window has zero gpu_hours everywhere -> GPU view shows the
     placeholder while the jobs view still renders."""
     h = _hist(counts=(5, 3, 1), cpu_hours=(50.0, 30.0, 10.0),
               gpu_hours=(0.0, 0.0, 0.0))
@@ -192,7 +192,7 @@ def test_histogram_log_scale_keeps_bucket_sentinels():
 
 
 def test_histogram_log_scale_in_cache_key():
-    """Same envelope, different y-scale → distinct cache entries."""
+    """Same envelope, different y-scale -> distinct cache entries."""
     from webapp.dashboards.charts import _jobs_histogram_cache_key
     a = _jobs_histogram_cache_key(_hist())
     b = _jobs_histogram_cache_key(_hist(), log_y=True)
@@ -254,7 +254,7 @@ def test_histogram_owner_remainder_segment():
     from webapp.dashboards.charts import _jobs_histogram_cache_key, \
         _jobs_bucket_segments
     truncated = _with_owners(_hist(), {
-        0: {'alice': _owner(6, 60.0)}})     # bucket holds 10 jobs → 4 unattributed
+        0: {'alice': _owner(6, 60.0)}})     # bucket holds 10 jobs -> 4 unattributed
     assert _jobs_bucket_segments(truncated['buckets'][0], 'job_count') == \
         [4.0, 6.0]
     even = _with_owners(_hist(), {
@@ -391,7 +391,7 @@ def test_pie_charges_resorts_and_keeps_its_remainder_in_charge_units():
 
 
 def test_pie_all_uncharged_returns_placeholder():
-    """Every row real but uncharged → no charge total to slice."""
+    """Every row real but uncharged -> no charge total to slice."""
     usage = _usage(totals={'job_count': 60, 'cpu_hours': 600.0,
                            'gpu_hours': 5.0, 'cpu_charges': 0.0,
                            'gpu_charges': 0.0})
@@ -534,7 +534,7 @@ def test_timeline_uncharged_band_keeps_jobs_but_loses_its_bar_link():
 
 def test_timeline_legend_identical_across_bands():
     """The plugin ranks owners once over the window; the series builder must
-    preserve that, or colours would shift bar to bar."""
+    preserve that, or colors would shift bar to bar."""
     # A tail beyond the top-N, so an 'Others' band exists to sit at the base.
     owners = {'alice': [6, 0, 3], 'bob': [2, 0, 1]}
     labels, series = _jobs_timeseries_series(_ts(owners=owners), 'jobs')

@@ -31,7 +31,7 @@ pytestmark = pytest.mark.unit
 URL = '/allocations/xras_accounts_fragment'
 
 
-# ⚠️ One worker at a time for this file. The committed fixtures below use
+# WARNING: One worker at a time for this file. The committed fixtures below use
 # FIXED identifiers ('placeholder38-user-00038', NCAR4227) and real COMMITs —
 # required, because the routes read committed rows through `db.session` — so
 # two xdist workers running these tests concurrently either collide on the
@@ -147,7 +147,7 @@ class TestTheUsernameLinksWhenSamHasTheAccount:
 
     def test_an_absent_username_is_not_a_link(self, auth_client,
                                               committed_worklist_action):
-        """⚠️ The important direction. `absent` means `classify_accounts`
+        """WARNING: The important direction. `absent` means `classify_accounts`
         found no `users` row at all, so a link would open a modal about
         nobody — an operator would read the empty body as a broken page
         rather than as 'this account does not exist', which is the very
@@ -169,16 +169,16 @@ class TestTheUsernameLinksWhenSamHasTheAccount:
     def test_the_links_are_visibly_links(self, auth_client,
                                          committed_worklist_action,
                                          deactivated_worklist_user):
-        """⚠️ Not `text-decoration-none text-reset`, the compact-table idiom
+        """WARNING: Not `text-decoration-none text-reset`, the compact-table idiom
         from user_rows.html / contract_bits.html. That makes a link inherit
-        its cell's colour, which is right where every name in the column is
-        one. Here most rows do NOT link, so a colour-inheriting link was
+        its cell's color, which is right where every name in the column is
+        one. Here most rows do NOT link, so a color-inheriting link was
         indistinguishable from the plain text beside it — measured in a
         browser, where UWIS0064 opened a modal and UAHV0010 did not and
         nothing on screen said which.
 
         `btn-entity` is the other half: `.btn` sets 1.25rem, so without it the
-        identifier rendered 20px among 14px neighbours.
+        identifier rendered 20px among 14px neighbors.
         """
         body = auth_client.get(URL).get_data(as_text=True)
         assert 'btn btn-link btn-entity p-0' in body
@@ -186,7 +186,7 @@ class TestTheUsernameLinksWhenSamHasTheAccount:
 
 
 class TestTheRowStillExpands:
-    """⚠️ The link forced the collapse toggle off the `<tr>`.
+    """WARNING: The link forced the collapse toggle off the `<tr>`.
 
     Bootstrap registers its data-api with `useCapture`, so a toggle on an
     ancestor of the link fires FIRST — every click would open the modal and
@@ -248,8 +248,8 @@ class TestRenderStates:
     def test_the_empty_state_is_designed_not_broken(self, auth_client):
         """Production is legitimately zero rows until ACCESS repoints."""
         body = auth_client.get(URL).get_data(as_text=True)
-        assert 'Accounts Needed for XRAS Handoffs' in body
-        assert 'No accounts are waiting' in body or 'xras-acct-' in body
+        assert 'Pending Users' in body
+        assert 'No users are waiting' in body or 'xras-acct-' in body
 
     def test_it_renders_with_the_api_unconfigured(self, auth_client, monkeypatch):
         """The shipped state, and what staging shows. The worklist is complete
@@ -382,7 +382,7 @@ class TestFacets:
 
     def test_the_labels_do_not_tell_an_operator_to_do_what_SAM_cannot(
             self, auth_client):
-        """⚠️ The remedies are somebody else's work, and the card must not
+        """WARNING: The remedies are somebody else's work, and the card must not
         imply otherwise.
 
         There is no INSERT into ``users`` anywhere in this repo, ``User`` alone
@@ -433,7 +433,7 @@ class TestFacets:
 
 
 class TestTheHeaderDoesNotConflateTwoFacts:
-    """⚠️ Caught by the local smoke, and only visible in a browser.
+    """WARNING: Caught by the local smoke, and only visible in a browser.
 
     A *placeholder* is a username shape (`<name>-user-<token>`) XRAS mints for
     someone with no site account. *Reconciliation* is whether XRAS has since
@@ -451,18 +451,17 @@ class TestTheHeaderDoesNotConflateTwoFacts:
 
 
 class TestTheWindowNeverHidesSilently:
-    """⚠️ On the Feed-B tab an OLDER unpushed request is usually the MORE
-    urgent one — a request submitted six months ago that still has no SAM
-    project is the worst case there. A recency filter that quietly dropped it
-    would invert the priority the tab exists to surface.
+    """WARNING: An OLDER unpushed pending request is usually the MORE urgent one
+    — a request submitted six months ago that still has no SAM project is a
+    worst case. A recency filter that quietly dropped it would invert the
+    priority the card exists to surface.
 
-    Measured on the live snapshot: the sweep found 21 accounts needed and the
-    90-day pill showed 12. The nine hidden rows were the oldest, i.e. the ones
-    most worth acting on. The filter stays — one window across three tabs is
-    the point — but the header must say what it hid.
+    On the merged card the count is Feed-B-scoped (the pending half is the only
+    one the Python window narrows; Feed A is windowed in SQL and never lands
+    here), so the header reports `pending_hidden` rows outside the filter.
     """
 
-    URL = '/allocations/xras_pending_requests_fragment'
+    URL = '/allocations/xras_accounts_fragment'
 
     def _publish(self, rows_total, shown_total):
         from sam.integration.xras_api.cache import store_pending_worklist
@@ -496,31 +495,37 @@ class TestTheWindowNeverHidesSilently:
     def test_it_reports_how_many_the_window_hid(self, auth_client, monkeypatch):
         monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
         monkeypatch.setenv('XRAS_API_KEY', 'k')
+        # The merged card enriches; real Feed-B rows carry an inline person, so
+        # no lookup fires. Belt-and-suspenders for any Feed-A snapshot rows.
+        monkeypatch.setattr('sam.integration.xras_api.people.get_person',
+                            lambda u: None)
         self._publish(rows_total=5, shown_total=2)
         body = auth_client.get(f'{self.URL}?days=30').get_data(as_text=True)
-        assert '2 of 5' in body
-        assert 'outside the date filter' in body
+        # 5 published, 2 within 30 days => 3 hidden, Feed-B-scoped.
+        assert '3 pending-request row(s) outside the date filter' in body
 
     def test_it_says_nothing_when_the_window_hides_nothing(self, auth_client,
                                                            monkeypatch):
         monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
         monkeypatch.setenv('XRAS_API_KEY', 'k')
+        monkeypatch.setattr('sam.integration.xras_api.people.get_person',
+                            lambda u: None)
         self._publish(rows_total=3, shown_total=3)
         body = auth_client.get(f'{self.URL}?days=30').get_data(as_text=True)
         assert 'outside the date filter' not in body
 
 
-class TestBothTabsShowTheSameDetail:
-    """⚠️ Feed B had already diverged: it rendered name and organization only,
+class TestBothFeedsShowTheSameDetail:
+    """WARNING: Feed B had already diverged: it rendered name and organization only,
     so an operator who found a row there still had to go elsewhere for the
     email and country needed to actually create the account.
 
-    Both tabs now render `fragments/xras_person_detail.html`, whose field list
-    IS `PERSON_FIELDS` — the same filter both feeds pass their person dicts
-    through. There is no second list to keep in step.
+    One card now renders both feeds through `fragments/xras_person_detail.html`,
+    whose field list IS `PERSON_FIELDS` — the same filter both feeds pass their
+    person dicts through. There is no second list to keep in step.
     """
 
-    PENDING_URL = '/allocations/xras_pending_requests_fragment'
+    PENDING_URL = URL
 
     @staticmethod
     def _person():
@@ -608,3 +613,80 @@ class TestBothTabsShowTheSameDetail:
         for value in ('ada@example.invalid', 'Kiribati', '555-0100'):
             assert value not in body
         assert 'ghost-user-1' in body
+
+
+class TestTheMergedCardUnionsBothFeeds:
+    """One "Pending Users" card, both feeds, a per-row source badge."""
+
+    @staticmethod
+    def _publish_reports_row(username='ghostpendingonly'):
+        from sam.integration.xras_api.cache import store_pending_worklist
+        store_pending_worklist({
+            'generated_at': datetime(2026, 8, 20), 'window_days': 90,
+            'status': 'Approved', 'requests_seen': 1, 'requests_in_window': 1,
+            'budget_exhausted': False, 'pending_push': 1,
+            'pending_push_sample': [],
+            'counts': {'total': 1, 'absent': 1, 'inactive': 0,
+                       'placeholder': 0, 'reconciled': 0},
+            'rows': [{'username': username, 'classification': 'absent',
+                      'remedy': 'create', 'placeholder': False,
+                      'roles': ('PI',), 'is_account_to_be_created': False,
+                      'is_reconciled': None, 'person': None,
+                      'sources': ['reports'],
+                      'actions': [{'action_log_id': None,
+                                   'request_number': 'NCAR9001',
+                                   'action_type': 'New', 'status': 'Approved',
+                                   'received_time': None,
+                                   'submit_date': '2026-08-19',
+                                   'source': 'reports', 'would_succeed': None,
+                                   'reject_messages': []}]}],
+        })
+
+    @pytest.fixture
+    def _configured(self, monkeypatch):
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        # No live person lookups: Feed-A rows carry no inline person.
+        monkeypatch.setattr('sam.integration.xras_api.people.get_person',
+                            lambda u: None)
+
+    def test_the_source_facet_and_badge_render(self, auth_client, _configured):
+        self._publish_reports_row()
+        body = auth_client.get(URL).get_data(as_text=True)
+        assert 'ghostpendingonly' in body
+        # Text badge on the summary row and a facet chip, both from the label.
+        assert 'Pending request' in body
+        assert 'name="source"' not in body  # the select lives in xras.html
+        assert body.count('Pending request') >= 2
+
+    def test_the_source_filter_narrows_to_received_pushes(
+            self, auth_client, _configured, committed_worklist_action):
+        self._publish_reports_row()
+        body = auth_client.get(f'{URL}?source=action_log').get_data(as_text=True)
+        assert 'placeholder38-user-00038' in body     # received push, kept
+        assert 'ghostpendingonly' not in body         # pending-only, filtered out
+
+    def test_received_push_rows_sort_first(
+            self, auth_client, _configured, committed_worklist_action):
+        self._publish_reports_row()
+        body = auth_client.get(URL).get_data(as_text=True)
+        assert (body.index('placeholder38-user-00038')
+                < body.index('ghostpendingonly'))
+
+    def test_an_unconfigured_feed_lists_received_pushes_and_shows_the_note(
+            self, auth_client, committed_worklist_action):
+        # XRAS levers are pinned off by default in pytest_configure.
+        body = auth_client.get(URL).get_data(as_text=True)
+        assert 'placeholder38-user-00038' in body
+        assert 'showing received pushes only' in body
+
+    def test_the_route_does_not_mutate_the_cached_snapshot(
+            self, auth_client, _configured):
+        from sam.integration.xras_api.cache import load_pending_worklist
+        self._publish_reports_row()
+        auth_client.get(URL)
+        # stamp_project_existence writes is_project onto the MERGED copies; the
+        # cached snapshot's own action dicts must stay clean or the next render
+        # reads a stale in-place flag.
+        snapshot = load_pending_worklist()
+        assert 'is_project' not in snapshot['rows'][0]['actions'][0]

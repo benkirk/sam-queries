@@ -3,7 +3,7 @@
 # Systems Integration APIs (directory_access, project_access, fstree_access,
 # queue, wallclock_exemption).
 #
-# For each endpoint it runs the real consumer workflow — download → refresh →
+# For each endpoint it runs the real consumer workflow — download -> refresh ->
 # re-download — authenticating with an API key over HTTP Basic Auth. Read it
 # top-to-bottom to see exactly how a scheduler / LDAP / provisioning client is
 # expected to call these APIs. It doubles as a post-deploy smoke test: every
@@ -54,7 +54,7 @@ die2() { echo -e "${RED}ERROR:${NC} $*" >&2; exit 2; }
 ALL_APIS=(directory_access project_access fstree_access queue wallclock_exemption)
 
 # jq expression per API: prints a one-line human summary of a valid response,
-# or exits non-zero (→ FAIL) if the top-level shape is wrong. Keeps the sanity
+# or exits non-zero (-> FAIL) if the top-level shape is wrong. Keeps the sanity
 # check and the summary in one place.
 api_summary_expr() {
     case "$1" in
@@ -144,8 +144,8 @@ explain "Every call authenticates with HTTP Basic Auth; curl's -u sends the
   printed. POST .../refresh clears the server's 5-minute response cache."
 
 # --------------------------------------------------------------------------
-# http_get URL OUTFILE   → prints the HTTP status code; body written to OUTFILE.
-# http_post URL          → prints "<code> <body>" for a refresh POST.
+# http_get URL OUTFILE   -> prints the HTTP status code; body written to OUTFILE.
+# http_post URL          -> prints "<code> <body>" for a refresh POST.
 # Credentials are passed via curl -u; the password never appears in argv echoes.
 # --------------------------------------------------------------------------
 # Verbose command echoes and curl's own error text go to stderr so command
@@ -171,7 +171,7 @@ http_post() {
 }
 
 # --------------------------------------------------------------------------
-# smoke_one API — run download → refresh → re-download for a single endpoint.
+# smoke_one API — run download -> refresh -> re-download for a single endpoint.
 # Increments PASS/WARN/FAIL via the lib primitives; never aborts the whole run.
 # --------------------------------------------------------------------------
 smoke_one() {

@@ -802,16 +802,16 @@ def htmx_search_users():
 
     The ``context`` query parameter selects the response template AND
     the permission gate:
-      fk          → FK-picker badge list (create_resource, create_contract,
+      fk          -> FK-picker badge list (create_resource, create_contract,
                     create_project); requires VIEW_USERS (any-facility —
                     scoped managers need to pick users for their
                     in-scope projects).
-      impersonate → admin user list with active_only filter (shown in the
+      impersonate -> admin user list with active_only filter (shown in the
                     Users & Groups tab). Requires VIEW_USERS (any-facility);
                     the impersonate button inside each result row is
                     itself gated on IMPERSONATE_USERS in the template,
                     so non-impersonators see a plain directory listing.
-      member      → project member add list; requires can_manage_project_members
+      member      -> project member add list; requires can_manage_project_members
                     on the target project (projcode required), so project
                     leads/admins can search when building the add-member form.
 
@@ -918,10 +918,10 @@ def htmx_search_projects():
     if len(query) < 1:
         return ''
 
-    # Facility-scoped users see only their allowed set. None → no filter.
+    # Facility-scoped users see only their allowed set. None -> no filter.
     allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
     if allowed == set():
-        # Scoped user with no VIEW_PROJECTS entry anywhere → no results.
+        # Scoped user with no VIEW_PROJECTS entry anywhere -> no results.
         return ''
     facility_filter = None if allowed is None else sorted(allowed)
 
@@ -1000,7 +1000,7 @@ class _AddExemptionHandler(HtmxFormHandler):
         }
 
     def render_errors(self, errors, field_errors=None):
-        # queue_id is the cascading Resource→Queue inline <select>, not a
+        # queue_id is the cascading Resource->Queue inline <select>, not a
         # form_fields macro — its errors have no inline slot, so surface
         # them in the panel (the schema messages are full sentences).
         field_errors = dict(field_errors or {})

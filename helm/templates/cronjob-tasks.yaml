@@ -108,9 +108,9 @@ spec:
                 valueFrom:
                   fieldRef:
                     fieldPath: metadata.name
-              # ── Notifications ────────────────────────────────────────
+              # Notifications
               #
-              # ⚠️ These are CROSS-REFERENCED from webapp.env, not inherited.
+              # WARNING: These are CROSS-REFERENCED from webapp.env, not inherited.
               # This container renders `.Values.tasks.env` plus the names
               # listed here and NOTHING else, so a NOTIFY_*/MAIL_* key that
               # exists only on the Deployment never reaches the CronJob.
@@ -164,7 +164,7 @@ spec:
                 value: {{ .Values.webapp.env.SAM_DB_SERVER | quote }}
               - name: SAM_DB_REQUIRE_SSL
                 value: {{ .Values.webapp.env.SAM_DB_REQUIRE_SSL | quote }}
-              # ⚠️ The sweep PUBLISHES its worklist into the shared cache for
+              # WARNING: The sweep PUBLISHES its worklist into the shared cache for
               # the dashboard to read, so it needs the same Redis the webapp
               # uses. Without this the bucket falls back to a per-worker
               # in-process TTLCacheAdapter (by design — an unreachable Redis
@@ -176,8 +176,8 @@ spec:
               - name: CACHE_REDIS_URL
                 value: "redis://{{ .Values.cache.name }}.{{ .Release.Namespace }}.svc:{{ .Values.cache.port }}/0"
               {{- end }}
-              # ── XRAS outgoing (xras_sweep) ──────────────────────────────
-              # ⚠️ This manifest renders `.Values.tasks.env` and does NOT
+              # XRAS outgoing (xras_sweep)
+              # WARNING: This manifest renders `.Values.tasks.env` and does NOT
               # inherit `.Values.webapp.env`, so every key the sweep reads is
               # cross-referenced by hand here. Omitting one is fail-CLOSED for
               # this task — an unconfigured sweep records a visible `skipped`

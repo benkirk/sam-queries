@@ -4,13 +4,13 @@ Hourly, 08:00-17:00 Mon-Fri Mountain. The second consumer of `sam/notify/`
 on a schedule, and the second task declaring ``needs=('sam',)``.
 
 Every processed XRAS action that changes an allocation already has a notice
-written for it and a **Notify** button on the Allocations → XRAS card. If
+written for it and a **Notify** button on the Allocations -> XRAS card. If
 nobody presses it, the PI is never told: the extension happened, the
 supplement landed, and the only missing step is that anyone said so. This is
 that button, on a schedule, for the four services where the outcome speaks
 for itself.
 
-⚠️ **A task computes from ``ctx.occurrence``, never from the wall clock.**
+WARNING: **A task computes from ``ctx.occurrence``, never from the wall clock.**
 Here ``ctx.occurrence`` is naive **UTC** and ``XrasActionLog.received_time``
 is naive **Mountain** — stamped from the app clock precisely because MySQL's
 `CURRENT_TIMESTAMP` resolves in UTC in the containers (see
@@ -26,7 +26,7 @@ waiting on us.
 any reply lands while nobody is watching. `BusinessHourly` removes the
 overnight case structurally rather than by a quiet-hours check here.
 
-⚠️ **The effective delay is longer than the nominal one**, and `detail`
+WARNING: **The effective delay is longer than the nominal one**, and `detail`
 reports the real age of what went out so this never reads as a stuck queue::
 
     received Tue 09:15, after=1d  ->  eligible Wed 09:15  ->  sends Wed 10:00
@@ -174,7 +174,7 @@ def policy(env: Optional[dict] = None) -> Dict[str, timedelta]:
 def select(rows, *, slot: datetime, delays: Dict[str, timedelta]) -> List[dict]:
     """The rows this slot may notify, from ``get_xras_activity`` output.
 
-    ⚠️ **Keyed on ``service``, never on ``action_type``.** The card's badge
+    WARNING: **Keyed on ``service``, never on ``action_type``.** The card's badge
     shows `action_type`, and the two disagree: `sam.xras.dispatch` routes a
     **New** whose projcode already exists to the ``update`` service, and
     ``update`` is in the auto set — so a row badged `New` can auto-send. That
@@ -374,7 +374,7 @@ def xras_notices(ctx) -> TaskResult:
 def _drop_already_notified(ledger, messages: List, logger) -> Tuple[List, int]:
     """Remove messages a previous run or an operator already delivered.
 
-    ⚠️ **This is permanent, and NOT redundant with ``Notifier``'s own dedup.**
+    WARNING: **This is permanent, and NOT redundant with ``Notifier``'s own dedup.**
     The framework would also suppress these — by *recording a ``suppressed``
     row for each one*. This task wakes fifty times a week and most of those
     runs have nothing new, so leaving it to the framework would write a steady

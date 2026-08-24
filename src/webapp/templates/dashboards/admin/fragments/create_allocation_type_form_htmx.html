@@ -1,7 +1,7 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
 {% from 'dashboards/fragments/form_fields.html' import text_field, number_field with context %}
 {# htmx: Create Allocation Type Form
-   Facility → Panel cascade (reuses htmx_panels_for_facility endpoint).
+   Facility -> Panel cascade (reuses htmx_panels_for_facility endpoint).
    Auto-selects panel if only one option for the chosen facility.
 #}
 {% call htmx_form(

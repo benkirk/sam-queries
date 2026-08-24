@@ -55,7 +55,7 @@ class TestTheAdjustmentNoticeNeverPresumesADirection:
     """`xras_adjustment` is the one kind whose message may be bad news.
 
     An Adjustment is the only action type whose amounts can be negative —
-    `sam.xras.handlers.adjustment` exists precisely to honour the sign that
+    `sam.xras.handlers.adjustment` exists precisely to honor the sign that
     legacy's copy-pasted `> 0` gate dropped. `adjust` therefore had no
     notification kind at all until the wording was written, on the grounds
     that "your allocation was cut" should not be sent by accident.

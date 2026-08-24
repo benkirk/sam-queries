@@ -293,13 +293,13 @@ class TestDerechoPost:
 
         assert status_session.query(UserDef).count() == 1
         assert status_session.query(ProjectCodeDef).count() == 1
-        # Counts changed between posts → new span inserted, not extended.
+        # Counts changed between posts -> new span inserted, not extended.
         assert status_session.query(UserProjQueueStatus).count() == 2
 
     def test_post_derecho_coalesces_identical_counts(
             self, api_key_client, status_session):
         """Two posts with identical (user, project, queue, counts) at
-        consecutive ticks → one span with last_seen bumped, not two rows."""
+        consecutive ticks -> one span with last_seen bumped, not two rows."""
         base = {
             'cpu_nodes_total': 100, 'cpu_nodes_available': 80,
             'cpu_nodes_down': 5, 'cpu_nodes_reserved': 15,
@@ -643,7 +643,7 @@ class TestTimestampParsing:
     """Cover the _validate_timestamp branches that were previously untested."""
 
     def test_post_invalid_timestamp_format_returns_400(self, api_key_client, status_session):
-        """Garbage timestamp → ValueError raised by _validate_timestamp → 400."""
+        """Garbage timestamp -> ValueError raised by _validate_timestamp -> 400."""
         data = dict(_DERECHO_MINIMAL, timestamp='not-a-real-timestamp')
         response = api_key_client.post('/api/v1/status/derecho', json=data)
         assert response.status_code == 400
@@ -652,7 +652,7 @@ class TestTimestampParsing:
         assert 'timestamp' in body['error'].lower()
 
     def test_post_iso_timestamp_with_z_suffix_accepted(self, api_key_client, status_session):
-        """ISO format with trailing 'Z' → normalized to '+00:00' and accepted."""
+        """ISO format with trailing 'Z' -> normalized to '+00:00' and accepted."""
         data = dict(_DERECHO_MINIMAL, timestamp='2099-01-15T10:30:00Z')
         response = api_key_client.post('/api/v1/status/derecho', json=data)
         assert response.status_code == 201
@@ -709,7 +709,7 @@ class TestIngestErrorHandling:
     """Cover the generic exception arm in _ingest_system_status."""
 
     def test_post_empty_json_body_returns_400(self, api_key_client, status_session):
-        """An explicit JSON null body → request.get_json() returns None →
+        """An explicit JSON null body -> request.get_json() returns None ->
         route returns 400 ('JSON body required')."""
         response = api_key_client.post(
             '/api/v1/status/derecho',

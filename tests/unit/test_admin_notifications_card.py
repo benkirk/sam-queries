@@ -1,4 +1,4 @@
-"""The Notifications tile on Admin → Configuration.
+"""The Notifications tile on Admin -> Configuration.
 
 Two things it must get right, and one it must never do.
 

@@ -1,6 +1,6 @@
 """End-to-end test for `sam-admin accounting --disk`.
 
-Builds a minimal SAM graph (User → Project → Account → DISK Resource),
+Builds a minimal SAM graph (User -> Project -> Account -> DISK Resource),
 feeds a small acct.glade-shaped CSV + cs_usage.json-shaped JSON, runs
 the CLI via CliRunner, and asserts the resulting disk_charge_summary
 rows include both real per-user rows AND the synthetic gap row
@@ -177,12 +177,12 @@ class TestDiskAdminCli:
     def test_gap_reconciliation_creates_unidentified_row(
         self, runner, mock_db_session, tmp_path, session, monkeypatch,
     ):
-        """FILESET total > Σuser_bytes → emit synthetic '<unidentified>' row
+        """FILESET total > Σuser_bytes -> emit synthetic '<unidentified>' row
         attributed to project lead."""
         lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
         snap = DISK_CHARGING_TIB_EPOCH
 
-        # User row: 1 GiB. FILESET total: 3 GiB → 2 GiB gap.
+        # User row: 1 GiB. FILESET total: 3 GiB -> 2 GiB gap.
         # The fileset_name keys on uppercased projcode, so use that here.
         kib_user = 1 * 1024 * 1024
         kib_fileset = 3 * 1024 * 1024
@@ -245,7 +245,7 @@ class TestDiskAdminCli:
             start_date=backdate,
         )
         snap = DISK_CHARGING_TIB_EPOCH
-        # 2 GiB on /data + 3 GiB on /work, same user → expect ONE row
+        # 2 GiB on /data + 3 GiB on /work, same user -> expect ONE row
         # with SUM = 5 GiB.
         kib_data = 2 * 1024 * 1024
         kib_work = 3 * 1024 * 1024
@@ -389,7 +389,7 @@ class TestDiskAdminCli:
         assert all(c.account_id == project.accounts[0].account_id
                    for c in charges)
         # tib_years computed per-row at the input's bytes (no rollup).
-        # 2 GiB × 7 / 365 / 1024⁴ ≈ 3.745e-5 ; 3 GiB → 5.617e-5.
+        # 2 GiB × 7 / 365 / 1024⁴ ≈ 3.745e-5 ; 3 GiB -> 5.617e-5.
         ty_data = (2 * 1024 ** 3) * 7 / 365 / (1024 ** 4)
         ty_work = (3 * 1024 ** 3) * 7 / 365 / (1024 ** 4)
         ch_by_dir = {

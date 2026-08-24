@@ -383,7 +383,7 @@ def main():
         print(f"Resources      : {selected_resources}")
         print(f"line_profiler  : {'available' if HAS_LINE_PROFILER else 'not installed (pip install line_profiler)'}")
 
-        # ── Scenario 1: show_usage=False ─────────────────────────────────
+        # Scenario 1: show_usage=False
         _sql.reset()
         _clear_chart_caches()
         with _cprofiled() as pr1:
@@ -393,7 +393,7 @@ def main():
         _print_report("show_usage=False  (cold lru_cache, no TTL cache)", phases_no)
         _print_cprofile(pr1, "show_usage=False")
 
-        # ── Scenario 2: show_usage=True ──────────────────────────────────
+        # Scenario 2: show_usage=True
         _sql.reset()
         _clear_chart_caches()
 
@@ -417,7 +417,7 @@ def main():
 
         _detach(engine)
 
-        # ── Summary comparison ───────────────────────────────────────────
+        # Summary comparison
         print(f"\n{'='*72}")
         print("SUMMARY COMPARISON")
         print(f"{'='*72}")

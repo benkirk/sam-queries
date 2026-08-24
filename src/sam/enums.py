@@ -39,7 +39,7 @@ class ResourceTypeName(StrEnum):
     def allocation_unit(cls, name, amount=None):
         """Unit label shown next to an allocation figure, or None.
 
-        HPC/DAV are core-hours; DISK/ARCHIVE are labelled 'TiB' (the stored
+        HPC/DAV are core-hours; DISK/ARCHIVE are labeled 'TiB' (the stored
         amount is technically TiB-years, but 'TiB' reads cleaner on the
         dashboard). DATA ACCESS has no natural unit.
 

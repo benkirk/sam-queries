@@ -198,18 +198,19 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # The delivery log's per-row detail button opens the shared audit modal.
     # Loaded only into dashboards/admin/notifications.html, which includes
     # partials/audit_details_modal.html itself — same arrangement as the XRAS
-    # action log, which is the page this one is modelled on.
+    # action log, which is the page this one is modeled on.
     'dashboards/admin/fragments/notifications_log.html': [
         'auditDetailsModal', 'auditDetailsModalBody'],
     'dashboards/admin/fragments/organization_card.html': [
         'createAoiFormContainer', 'createAoiGroupFormContainer', 'createAoiGroupModal',
-        'createAoiModal', 'createNsfProgramFormContainer', 'createNsfProgramModal',
+        'createAoiModal', 'createMnemonicCodeFormContainer', 'createMnemonicCodeModal',
+        'createNsfProgramFormContainer', 'createNsfProgramModal',
         'createOrganizationFormContainer', 'createOrganizationModal'],
     'dashboards/admin/fragments/project_allocation_tree_htmx.html': [
         'editAllocationModal'],
     # Only ever loaded by dashboards/admin/scheduled_tasks.html, which includes
     # partials/audit_details_modal.html itself — same arrangement as the
-    # notification delivery log above, the page this one is modelled on.
+    # notification delivery log above, the page this one is modeled on.
     'dashboards/admin/fragments/scheduled_tasks_log.html': [
         'auditDetailsModal', 'auditDetailsModalBody'],
     'dashboards/admin/fragments/project_directories_card.html': [
@@ -262,25 +263,16 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # routes in `xras_remediation_routes.py`, all of which render into that
     # page's fragments and nowhere else.
     #
-    # `xras_accounts_card.html` joins the list because the Accounts Needed tab
-    # now offers the same merge modal on a stuck placeholder — deliberately the
-    # same shell, so an operator meets one merge dialogue however they arrive.
-    #
-    # The three cards below also reach #userDetailsModal / #projectDetailsModal:
-    # a username or projcode the row has ALREADY resolved against SAM opens the
-    # shared entity modal, same as everywhere else in the app. Both shells come
-    # from base_allocations.html (:31 project, :33 user), which xras.html
-    # extends — so the single host page carries them.
+    # `xras_accounts_card.html` (the Pending Users card) offers the same merge
+    # modal on a stuck placeholder — deliberately the same shell, so an operator
+    # meets one merge dialogue however they arrive. It also reaches
+    # #userDetailsModal / #projectDetailsModal: a username or projcode the row
+    # has ALREADY resolved against SAM opens the shared entity modal, same as
+    # everywhere else. Both shells come from base_allocations.html (:31 project,
+    # :33 user), which xras.html extends — so the single host page carries them.
     'dashboards/allocations/partials/xras_accounts_card.html': [
         'auditDetailsModal', 'auditDetailsModalBody',
         'projectDetailsModal', 'projectDetailsModalBody',
-        'userDetailsModal', 'userDetailsModalBody'],
-    # The Pending Requests tab's Request column now links each request number to
-    # the read-only detail modal when an outbound read is configured (else it
-    # degrades to plain text) — so it reaches #auditDetailsModal like its sibling
-    # cards, on top of the #userDetailsModal it already used.
-    'dashboards/allocations/partials/xras_pending_requests_card.html': [
-        'auditDetailsModal', 'auditDetailsModalBody',
         'userDetailsModal', 'userDetailsModalBody'],
     # The card's Request cell links each request number to #auditDetailsModal
     # (the single detail-modal opener) and the SAM cell keeps the
@@ -299,6 +291,11 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # #auditDetailsModalBody. The detail modal's Requested-stage editors and the
     # forms' Back/Save all target that body.
     'dashboards/allocations/partials/xras_request_detail.html': [
+        'auditDetailsModalBody'],
+    # The focused push-readiness modal a verdict badge opens — same body, reached
+    # only from xras.html. Snapshot-only, its "Open the full request" link and the
+    # shared shell's footer target the body in place, no toggle.
+    'dashboards/allocations/partials/xras_readiness_modal.html': [
         'auditDetailsModalBody'],
     # The XRAS User detail modal — the person-side analogue of the request
     # detail. Swapped into the same body from a roster username (plain hx-get)
@@ -476,8 +473,8 @@ def test_project_modal_pages_ship_the_allocation_modal(auth_client, url):
 
 def test_edit_project_page_ships_one_of_each(auth_client, active_project):
     """/admin/project/<projcode>/edit assembles its own modal set (it extends
-    dashboards/base, not base_admin) — it used to carry an inline copy of the
-    edit-allocation modal alongside the shared include."""
+    dashboards/base, not base_admin), so it is the page most likely to grow an
+    inline copy of the edit-allocation modal beside the shared include."""
     resp = auth_client.get(f'/admin/project/{active_project.projcode}/edit')
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
@@ -493,7 +490,7 @@ def test_project_details_fragment_targets_resolve(auth_client, active_project):
     The static check above works on template source; this walks the real
     runtime chain — GET the page, GET the htmx fragment that fills the modal
     body, and confirm every shell the fragment reaches for is actually there.
-    This is precisely what silently failed before PR #378.
+    That runtime chain is precisely what PR #378 found silently broken.
     """
     page = auth_client.get('/status/derecho')
     assert page.status_code == 200

@@ -2,7 +2,7 @@
 """
 Standalone NSF grant-funding rollup.
 
-Answers: "From START to END we supported N NSF funding grants totalling $M in
+Answers: "From START to END we supported N NSF funding grants totaling $M in
 research" — overall and per compute resource (Derecho / Casper / ...).
 
 SAM's DB has no award dollar amount, so the amounts are pulled from the public

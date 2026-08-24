@@ -2,11 +2,11 @@
 Tests for the api_key_required decorator.
 
 Covers:
-  - No Authorization header → 401
-  - Malformed / non-Basic Authorization header → 401
-  - Unknown username → 401
-  - Wrong password (correct username) → 401
-  - Correct credentials → request proceeds (payload validation error, not auth error)
+  - No Authorization header -> 401
+  - Malformed / non-Basic Authorization header -> 401
+  - Unknown username -> 401
+  - Wrong password (correct username) -> 401
+  - Correct credentials -> request proceeds (payload validation error, not auth error)
   - WWW-Authenticate header present on 401 responses
   - g.api_key_user is set on successful auth
 """
@@ -106,7 +106,7 @@ class TestApiKeyRequired:
     def test_correct_credentials_pass_auth(self, api_test_client):
         """
         Valid credentials let the request reach the view.
-        Empty payload → 400 (bad data), not 401 (auth failure).
+        Empty payload -> 400 (bad data), not 401 (auth failure).
         """
         resp = api_test_client.post(
             self.TARGET,

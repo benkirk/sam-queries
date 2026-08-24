@@ -14,7 +14,7 @@
         return (root.matches && root.matches(selector)) || root.querySelector(selector);
     }
 
-    /* ── Organization tree expand/collapse (organization_card.html) ── */
+    /* Organization tree expand/collapse (organization_card.html) */
 
     function collapseOrgDescendants(parentOrgId) {
         document.querySelectorAll('#orgs-tbody tr[data-parent-id="' + parentOrgId + '"]')
@@ -47,7 +47,7 @@
             });
     });
 
-    /* ── Sortable card tables (organization + resources cards) ──
+    /* Sortable card tables (organization + resources cards)
      * Distinct from sortable_table.js: these sort on data-sort-value
      * cell attributes within multi-tbody card tables. Bound per swap —
      * the <th> nodes are fresh each time, so no double-binding. */
@@ -80,7 +80,7 @@
         });
     }
 
-    /* ── Institutions table (institutions_table.html) ──
+    /* Institutions table (institutions_table.html)
      * Institution expand rows use a plain JS display toggle (not Bootstrap
      * collapse, since they're <tr>s nested inside the type tbody so they
      * hide/show naturally with the type). Persist their state under the same
@@ -142,9 +142,9 @@
         }
     }
 
-    /* ── Per-swap initialization, gated on fragment markers ── */
+    /* Per-swap initialization, gated on fragment markers */
 
-    /* ── Queue cleanup preview (queue_cleanup_preview_htmx.html) ──
+    /* Queue cleanup preview (queue_cleanup_preview_htmx.html)
      *
      * Keeps the submit button's count in sync with the ticked checkboxes and
      * disables it at zero, plus the select all/none shortcuts. Bound per swap:

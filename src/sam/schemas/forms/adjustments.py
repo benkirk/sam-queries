@@ -1,7 +1,7 @@
 """
 Marshmallow form validation schemas for charge-adjustment routes.
 
-Covers: Create Charge Adjustment (Allocations dashboard → Adjustments tab).
+Covers: Create Charge Adjustment (Allocations dashboard -> Adjustments tab).
 """
 
 import marshmallow.fields as f
@@ -16,7 +16,7 @@ class CreateChargeAdjustmentForm(HtmxFormSchema):
     ``project_id`` comes from the fk_search_field picker's hidden input
     (populated by /static/js/fk-picker.js when a search result is clicked).
     The schema only coerces to int; FK existence (does the Project row
-    exist? does the (project, resource) → Account row exist?) is a DB-backed
+    exist? does the (project, resource) -> Account row exist?) is a DB-backed
     check and stays in the route per CLAUDE.md §9.
 
     ``charge_adjustment_type_id`` membership (the set of types exposed by

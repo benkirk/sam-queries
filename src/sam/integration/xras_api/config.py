@@ -1,39 +1,26 @@
-"""``XrasApiConfig`` — outbound XRAS credentials, from Flask config *or* the environment.
+"""``XrasApiConfig`` -- outbound XRAS credentials, from Flask config or the environment.
 
-Follows ``sam/notify/config.py`` exactly, which in turn follows the
-framework-agnostic seam at ``sam/caching/buckets.py:65-71``: try
-``flask.current_app.config``, fall back to ``os.environ``. That is what lets
-one client serve both the webapp and ``sam-admin`` without either importing
-the other.
+Follows ``sam/notify/config.py``, which follows the framework-agnostic seam in
+``sam/caching/buckets.py``: try ``flask.current_app.config``, fall back to
+``os.environ``. That is what lets one client serve both the webapp and
+``sam-admin`` without either importing the other. Read PER CALL, never memoised
+at import -- the webapp's config is not readable at import time.
 
-Read **per call**, never memoised at import: the webapp's config is not
-readable at import time, and the scheduled task reads its environment once
-per run by design.
+Fail-closed: ``XRAS_OUTGOING_ENABLED`` defaults off everywhere. With the lever
+off the card renders its unconfigured state, the sweep records a skip, and the
+CLI degrades; nothing raises for lack of a key.
 
-Fail-closed
------------
-``XRAS_OUTGOING_ENABLED`` defaults **off** everywhere and ``helm/values.yaml``
-pins it ``"0"`` visibly. With the lever off the card renders its unconfigured
-state, the sweep records a skip, and the CLI degrades — nothing raises for
-lack of a key. This mirrors ``XRAS_ACTIONS_CAPTURE_ONLY`` on the inbound side.
+TWO levers, not one. ``XRAS_OUTGOING_ENABLED`` governs *reading*.
+``XRAS_WRITE_ENABLED`` governs the admin client's *writes* and is an
+independent switch, also defaulting off. Reading is on in production today;
+writing must stay a separate deliberate act, because the same key that reads
+reports can merge one person into another irreversibly. The write lever is
+webapp-only by design -- ``cronjob-tasks.yaml`` never sets it, so no scheduled
+task can write to XRAS even if one imported the admin client.
 
-Two levers, not one
--------------------
-``XRAS_OUTGOING_ENABLED`` governs *reading*. ``XRAS_WRITE_ENABLED`` governs the
-admin client's *writes* and is a **second, independent** switch that defaults
-off and is pinned ``"0"`` in ``helm/values.yaml``. Reading is on in production
-today; writing must stay a separate, deliberate act, because the same key that
-reads reports can merge one person into another irreversibly.
-
-The write lever is webapp-only by design: ``cronjob-tasks.yaml`` never sets it,
-so no scheduled task can write to XRAS even if one imported the admin client.
-
-⚠️ ``XRAS_API_KEY`` is **not** ``SAM_XRAS_USER`` / ``SAM_XRAS_PASS``. Those are
-XRAS's credential for calling *SAM* (a production write credential in the
-inbound direction). This is SAM's credential for calling *XRAS*, and the same
-key can create requests, merge people and modify roles — which is why
-:class:`~sam.integration.xras_api.client.XrasApiClient` has no verb method
-other than an internal ``_get``.
+WARNING: ``XRAS_API_KEY`` is NOT ``SAM_XRAS_USER`` / ``SAM_XRAS_PASS``. Those
+are XRAS's credential for calling SAM. This is SAM's credential for calling
+XRAS.
 """
 
 from __future__ import annotations
@@ -177,7 +164,7 @@ class XrasApiConfig:
         return bool(self.write_configured and self.admin_context_enabled)
 
     def summary(self) -> Dict[str, Any]:
-        """Config for the Admin → Configuration card. **Never** the key.
+        """Config for the Admin -> Configuration card. **Never** the key.
 
         ``api_key_set`` is a boolean on purpose — an operator needs to know
         whether the ExternalSecret landed, and nothing more.

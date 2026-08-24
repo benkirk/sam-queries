@@ -1,54 +1,39 @@
-"""Write client for the XRAS Allocations API — the deliberate sibling of ``client.py``.
+"""Write client for the XRAS Allocations API -- the deliberate sibling of ``client.py``.
 
-Why a second class
-------------------
-:class:`~sam.integration.xras_api.client.XrasApiClient` is GET-only *by
-construction*: its only transport primitive is ``_get`` and
-``tests/unit/test_xras_api_client.py`` pins that no write verb exists on it.
-That pin is worth keeping, so this is a **sibling, never a subclass and never a
-relaxation** — the two classes share a config object and nothing else.
+:class:`~sam.integration.xras_api.client.XrasApiClient` is GET-only by
+construction and a test pins that no write verb exists on it. That pin is worth
+keeping, so this is a SIBLING -- never a subclass, never a relaxation. They
+share a config object and nothing else.
 
 They also cannot be merged, because they live in different XRAS contexts. The
-read client hardcodes ``XA-CONTEXT: report``; every write here needs
-``submit``. The two are not interchangeable in either direction:
+read client hardcodes ``XA-CONTEXT: report``; every write here needs ``submit``,
+and the Reports family 401s under ``submit``. So verification reads that need a
+roster or an action state are delegated to a read client
+(:attr:`XrasAdminClient.reader`). ``GET /v1/people/<u>`` is the one route
+answering under both, which is what lets merge verify itself on this connection.
 
-* the Reports family (``/v1/reports/*``) answers under ``report`` and **401s
-  under ``submit``** — which is why verification reads that need a roster or an
-  action state are delegated to a read client (:attr:`XrasAdminClient.reader`)
-  rather than issued here;
-* the write routes answer under ``submit``.
-
-``GET /v1/people/<u>`` is the one route that answers under both (probe P0),
-which is what lets merge verify itself on this client's own connection.
-
-What this client may do, measured
----------------------------------
-Every verb below was proven against production on 2026-08-21 and is recorded in
-``docs/xras/outgoing/XRAS_WRITE_PROBES.md``. Three facts from that probe shape
-this module and are not obvious from the published API docs:
+Three facts from the 2026-08-21 production probe shape this module and are not
+obvious from the published docs (``docs/xras/outgoing/XRAS_WRITE_PROBES.md``):
 
 1. **One authorization rule covers every request-scoped write**: ``XA-USER``
-   must hold a role on *that* request, else 401. ``arcguest`` — the config
-   default — is never sufficient. So request ops take an explicit *xa_user* and
-   refuse to guess it, while person ops (merge) take none at all.
+   must hold a role on THAT request, else 401. ``arcguest`` is never
+   sufficient, so request ops take an explicit *xa_user* and refuse to guess;
+   person ops (merge) take none.
 2. **``roleType`` is encoded differently by the two role families.** The route
-   used here, ``/v1/requests/<rid>/roles/<roleType>/<username>``, takes the
-   **string** (``User``) and 400s on the numeric id. :data:`ROLE_TYPES` carries
-   all three representations so a caller cannot pick the wrong one silently.
+   used here takes the STRING (``User``) and 400s on the numeric id.
+   :data:`ROLE_TYPES` carries all three representations so a caller cannot pick
+   the wrong one silently.
 3. **A 200 proves only that the call was allowed.** ``POST .../submit`` returns
    a ``null`` body where the docs promise the request object, and
    ``POST /v1/people`` returns 200 while ignoring the parameter it was given.
-   So **every write here verifies by re-reading**, and the verdict travels in
-   :class:`XrasWriteResult` rather than being collapsed into an exception.
+   So every write here VERIFIES BY RE-READING, and the verdict travels in
+   :class:`XrasWriteResult` rather than collapsing into an exception.
 
-Retry policy — the inverse of the read client
----------------------------------------------
-Reads retry; **writes get exactly one attempt**. A retried merge could delete a
-second person, and a retried submit could double-fire XRAS's review workflow.
-When a write's outcome is ambiguous (a 5xx, or a socket that died mid-flight)
-the answer is not another attempt — it is the verifying read, which runs
-regardless and settles what actually happened. Only a definite refusal (4xx)
-short-circuits it, because nothing happened to verify.
+WARNING: reads retry; **writes get exactly one attempt**. A retried merge could
+delete a second person and a retried submit could double-fire XRAS's review
+workflow. When an outcome is ambiguous the answer is the verifying read, which
+runs regardless. Only a definite 4xx short-circuits it, because nothing
+happened to verify.
 """
 
 from __future__ import annotations
@@ -88,7 +73,7 @@ from sam.integration.xras_api.vocabulary import (  # noqa: E402
 )
 
 
-#: XA-CONTEXT → the resource/allocation-date **stage** that context writes.
+#: XA-CONTEXT -> the resource/allocation-date **stage** that context writes.
 #: Phase 0 (2026-08-22) measured that ``submit`` touches ONLY the ``Requested``
 #: stage; an ``admin``/``review`` key would reach ``Approved``/``Recommended``.
 #: The verify-by-reread compares back against the stage the write targeted.
@@ -219,7 +204,7 @@ class XrasAdminClient(_XrasTransport):
                 'XRAS_OUTGOING_ENABLED=1 and XRAS_API_KEY)')
         return cls(resolved, reader=reader)
 
-    # ── internals ───────────────────────────────────────────────────────
+    # internals
     #
     # The session, ``_url``, ``_headers`` and the idempotent retrying ``_get``
     # are inherited unchanged from ``_XrasTransport``. ``_get`` here is the
@@ -293,7 +278,7 @@ class XrasAdminClient(_XrasTransport):
         logger.info('xras admin %s %s -> %s', method, url, status)
         return status, result, message, None
 
-    # ── verification helpers ────────────────────────────────────────────
+    # verification helpers
 
     def _actions(self, request_number: str) -> List[Dict[str, Any]]:
         """Actions for a request, via the **reports** family (report context)."""
@@ -310,7 +295,7 @@ class XrasAdminClient(_XrasTransport):
     def roster(self, request_number: str) -> List[Dict[str, Any]]:
         """The request's roster, flattened to one row per *role*.
 
-        PRIVILEGE(#4). ⚠️ The reports payload **nests**: each ``roles[]`` entry carries a
+        PRIVILEGE(#4). WARNING: The reports payload **nests**: each ``roles[]`` entry carries a
         ``person`` plus its own ``roles[]`` list of
         ``{roleId, role, roleTypeId, …}``. Reading ``roleType`` off the outer
         object returns ``None``, which is a trap worth flattening once here.
@@ -340,7 +325,7 @@ class XrasAdminClient(_XrasTransport):
                 return row.get('username')
         return None
 
-    # ── people ──────────────────────────────────────────────────────────
+    # people
 
     def get_person(self, username: str) -> Optional[Dict[str, Any]]:
         """One person, read under ``submit``. Probe P0 — this route answers here."""
@@ -406,13 +391,13 @@ class XrasAdminClient(_XrasTransport):
             verified=verified, verify_detail=detail, write_error=error,
             extra={'source': source, 'target': target})
 
-    # ── actions ─────────────────────────────────────────────────────────
+    # actions
 
     def validate_action(self, request_id: int, action_id: int, *,
                         xa_user: str) -> Dict[str, Any]:
         """Preflight one action. ``{'validation': ..., 'errors': [...]}``.
 
-        PRIVILEGE(#6). ⚠️ **The verdict is a function of *xa_user*, not only of
+        PRIVILEGE(#6). WARNING: **The verdict is a function of *xa_user*, not only of
         the action.**
         Probe P2 measured the same action validating successfully as the PI and
         failing as the Allocation Manager (*"The Project Lead specified for
@@ -481,7 +466,7 @@ class XrasAdminClient(_XrasTransport):
              expect, expectation: str) -> XrasWriteResult:
         """Shared body for the two action verbs: capture, write once, re-read.
 
-        ⚠️ The 200 from ``.../submit`` carries a ``null`` result where the API
+        WARNING: The 200 from ``.../submit`` carries a ``null`` result where the API
         docs promise the request object, so the state after a write is read
         back rather than parsed out of the response. That is the same rule the
         ``isReconciled`` finding forced, arrived at independently.
@@ -515,13 +500,13 @@ class XrasAdminClient(_XrasTransport):
             verified=verified, verify_detail=detail, write_error=error,
             extra={'request_number': request_number, 'action_id': action_id})
 
-    # ── roles ───────────────────────────────────────────────────────────
+    # roles
 
     def add_role(self, request_id: int, role, username: str, *,
                  request_number: str, xa_user: str) -> XrasWriteResult:
         """Put *username* on the request in *role*. Returns the new ``roleId``.
 
-        ⚠️ **No person parameters are sent, ever.** This route accepts an
+        WARNING: **No person parameters are sent, ever.** This route accepts an
         optional ``firstName … isReconciled`` set that XRAS uses *to create the
         person* when the username is unknown — and ``isReconciled`` there
         defaults to **true**, which is precisely the bug that mints
@@ -586,14 +571,14 @@ class XrasAdminClient(_XrasTransport):
             verify_detail=detail, write_error=error,
             extra={'request_number': request_number, 'role_id': int(role_id)})
 
-    # ── resources & allocation dates (the request editor) ────────────────
+    # resources & allocation dates (the request editor)
     #
     # All keyed on the resource **type** id and the **stage** (Phase 0: there is
     # no per-line id in the reports feed, and at most one line per resource per
     # stage, so ``(action, resourceId, stage)`` is unambiguous). Every write is
     # query-params + verify-by-reread, exactly like the verbs above. The stage a
-    # write lands in is a function of the XA-CONTEXT: ``submit`` → Requested
-    # (default), ``admin`` → Approved. On our current key only ``submit`` is
+    # write lands in is a function of the XA-CONTEXT: ``submit`` -> Requested
+    # (default), ``admin`` -> Approved. On our current key only ``submit`` is
     # authorized; the ``context=`` argument is what an elevated key flips.
 
     @staticmethod
@@ -812,11 +797,11 @@ class XrasAdminClient(_XrasTransport):
                    'allocation_date_id': int(allocation_date_id),
                    'context': context or XA_ADMIN_CONTEXT})
 
-    # ── request attributes & action fields (the metadata editors) ────────
+    # request attributes & action fields (the metadata editors)
     #
     # Both are `PUT` + query params + verify-by-reread, like everything above,
     # and both take **wire** field names (`shortTitle`, `userComments`) — the
-    # caller maps snake_case→wire, so a field misspelling is a 400 the modal
+    # caller maps snake_case->wire, so a field misspelling is a 400 the modal
     # renders, not a silent no-op. Only fields the reports feed echoes back are
     # editable here, because a field it does not return could not be verified.
 
@@ -831,7 +816,7 @@ class XrasAdminClient(_XrasTransport):
                          params: Dict[str, str]) -> bool:
         """Every sent field reads back equal (``None``/'' both mean empty).
 
-        ⚠️ Compared **whitespace-stripped**: XRAS normalizes leading/trailing
+        WARNING: Compared **whitespace-stripped**: XRAS normalizes leading/trailing
         whitespace on stored text (measured 2026-08-22 — a 1020-char abstract
         ending in a space read back at 1019). An exact match would then report
         an otherwise-successful write as *unverified*. A middle truncation still
@@ -909,9 +894,9 @@ class XrasAdminClient(_XrasTransport):
             extra={'request_number': request_number, 'action_id': action_id,
                    'fields': list(fields), 'context': context or XA_ADMIN_CONTEXT})
 
-    # ── destructive lifecycle (Tier A — ADMIN_XRAS only) ─────────────────
+    # destructive lifecycle (Tier A — ADMIN_XRAS only)
     #
-    # ⚠️ These are **irreversible in XRAS** and were **NOT live-probed** — a
+    # WARNING: These are **irreversible in XRAS** and were **NOT live-probed** — a
     # delete cannot be tested without deleting something, and a renew/add-action
     # pollutes the request. They are shipped fail-visible: a single attempt, a
     # verifying read, and the same three-valued verdict as every verb above. If

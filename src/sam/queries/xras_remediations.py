@@ -1,6 +1,6 @@
 """Read side of the XRAS remediation audit trail.
 
-⚠️ **Not exported from ``sam/queries/__init__.py``**, and that is not an
+WARNING: **Not exported from ``sam/queries/__init__.py``**, and that is not an
 oversight. That module imports its submodules eagerly, so listing this one
 would pull ``sam.integration.xras`` — and through it the whole ORM — into every
 ``from sam.queries import ...``. The near-identical sibling

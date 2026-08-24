@@ -1,5 +1,6 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {#
   One request number, linked when SAM has a project by that name.
 
@@ -12,7 +13,7 @@
 {% macro request_cell(number, is_project, configured=false) -%}
 {%- if not number -%}<span class="text-muted">—</span>
 {%- elif configured -%}
-{#- Outbound read available → open the full XRAS request detail, even when a
+{#- Outbound read available -> open the full XRAS request detail, even when a
     project by this name exists. The modal reads XRAS live and degrades
     gracefully if the number is not found. Same `.btn-link .btn-entity` /
     inner `.font-monospace` treatment as the project link below (`.btn`
@@ -24,12 +25,12 @@
         hx-target="#auditDetailsModalBody"
         hx-swap="innerHTML"><span class="font-monospace">{{ number }}</span></button>
 {%- elif is_project -%}
-{#- Incoming-only fallback. ⚠️ `btn btn-link`, NOT the `text-decoration-none
+{#- Incoming-only fallback. WARNING: `btn btn-link`, NOT the `text-decoration-none
     text-reset` anchor used by user_rows.html and contract_bits.html. That
-    treatment makes a link inherit its cell's colour, which is right where
+    treatment makes a link inherit its cell's color, which is right where
     EVERY name in the column is a link — the column itself is the affordance.
     Here most of these numbers have no project, so a link that looked like its
-    neighbours was indistinguishable from them: UWIS0064 opened a modal and
+    neighbors was indistinguishable from them: UWIS0064 opened a modal and
     UAHV0010 did not, and nothing on screen said which.
 
     `.btn-link` gives `--text-link` and underlines on hover (dashboard.css).
@@ -49,11 +50,13 @@
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {% from 'dashboards/fragments/xras_person_detail.html' import person_detail %}
 {#
-  XRAS account-creation worklist — who must exist in SAM before a handoff works.
+  Pending Users — everyone who needs a SAM account before an XRAS handoff can
+  land, from BOTH feeds unioned on the username (received pushes + the sweep's
+  pending-request lookahead), with a per-row source badge.
 
   Context:
-    rows            classify_accounts(...) rows, already filtered
-    counts          worklist_counts(rows)
+    rows            merged worklist rows, already filtered
+    counts          worklist_counts(rows) — incl. received_push / pending_request
     may_manage      bool — MANAGE_XRAS
     enrichment      {'looked_up','found','reconciled','unavailable','budget_exhausted','error'}
     window          {'days','since','until','start_date','end_date','custom'}
@@ -61,30 +64,49 @@
     classification_values  [{'value','label','count'}]  self-excluding
     role_values            [{'value','count'}]          self-excluding
     origin_values          [{'value','label','count'}]  self-excluding
-    pending_total          int|None — what the sibling tab holds, or None
-    selected_classifications, selected_roles, selected_origins  [str]
+    source_values          [{'value','label','count'}]  self-excluding
+    feed_checked, feed_reason, feed_generated_at, feed_window_days  Feed-B state
+    pending_hidden         int — Feed-B rows outside the date filter
+    selected_classifications, selected_roles, selected_origins, selected_sources  [str]
     form_id, fragment_url, target_id
 
-  ── ONE ROW PER USERNAME, NOT PER ACTION ─────────────────────────────────
+ ONE ROW PER USERNAME, NOT PER ACTION
   The unit of work is an account, and one person can be named by several
   actions. Keying on the action would put the same operator task on the list
   three times and give it three places to be marked done.
 
-  ── PERSON DETAIL IS ROUTE-GATED ─────────────────────────────────────────
+ PERSON DETAIL IS ROUTE-GATED
   `row.person` is None for a VIEW_XRAS viewer because the ROUTE dropped it,
   not because this template declined to draw it. The `may_manage` checks here
   are a second gate over an already-empty value. `is_reconciled` is on the
   VIEW_XRAS side deliberately: it is account state, not a personal detail.
 
-  ── WHERE THE COLLAPSE TOGGLE GOES ───────────────────────────────────────
+ WHERE THE COLLAPSE TOGGLE GOES
   On the cells, never the <tr> — Bootstrap's collapse data-api runs in the
   capture phase, so a row-level toggle fires before any nested control and
   data-stop-propagation cannot save it. Same fix as xras_activity_card.html.
 #}
 <div class="card mb-3">
     <div class="card-header d-flex align-items-center flex-wrap gap-2">
-        <strong>Accounts Needed for XRAS Handoffs</strong>
+        <strong>Pending Users</strong>
+        <span class="text-muted small">accounts needed before an XRAS handoff can land</span>
         <span class="badge bg-secondary">{{ counts.total | fmt_number }}</span>
+        {% if counts.received_push %}
+        {# A received-push row is the more urgent flavor: a push already arrived
+           naming this person and is blocked. Also the health metric for the
+           proactive side — it trends to zero once the pending-request work
+           lands ahead of the push. #}
+        <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle"
+              title="A push already arrived naming these people and is blocked, waiting on their SAM accounts.">
+            {{ counts.received_push | fmt_number }} from received pushes
+        </span>
+        {% endif %}
+        {% if counts.pending_request %}
+        <span class="badge bg-body-secondary text-body-secondary border fw-normal"
+              title="XRAS has approved requests naming these people; they will block the push when it comes.">
+            {{ counts.pending_request | fmt_number }} from pending requests
+        </span>
+        {% endif %}
         {% if counts.oldest_days %}
         {# The number that says whether the queue is being WORKED. A count
            alone reads identically on a healthy day and a neglected one. #}
@@ -94,7 +116,7 @@
         </span>
         {% endif %}
         {% if counts.placeholder %}
-        {# ⚠️ "placeholder", NOT "unreconciled". These are two different facts
+        {# WARNING: "placeholder", NOT "unreconciled". These are two different facts
            and the smoke caught the badge conflating them: all three
            placeholders on the local corpus were reconciled in XRAS, so a
            badge reading "3 unreconciled" contradicted every row's own
@@ -104,6 +126,26 @@
         <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
               title="ARC placeholder usernames (&lt;name&gt;-user-&lt;token&gt;) — XRAS mints one for a researcher with no site account">
             {{ counts.placeholder | fmt_number }} placeholder
+        </span>
+        {% endif %}
+        {% if pending_hidden and pending_hidden > 0 %}
+        {# WARNING: "N outside the date filter", never silent. An OLD unpushed
+           pending request is MORE urgent, not less — a recency filter that
+           quietly dropped it would invert the priority it exists to surface.
+           Feed-B-scoped: the denominator is the sweep's rows, not the merged
+           total. Feed A is windowed in SQL and never lands here. #}
+        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+              title="Older pending requests are hidden by the date filter above. On this list an older unpushed request is usually the more urgent one — widen the filter to see them.">
+            {{ pending_hidden | fmt_number }} pending-request row(s) outside the date filter
+        </span>
+        {% endif %}
+        {% if feed_checked %}
+        {# The pending half is as fresh as the last sweep, and says so — the
+           lookback is how far back the sweep asked XRAS, a separate knob from
+           the date filter above. #}
+        <span class="ms-auto small text-muted"
+              title="The pending-request half renders what the xras_sweep task last published; it is not fetched live.">
+            swept {{ feed_generated_at | fmt_date }} · {{ feed_window_days }}d lookback
         </span>
         {% endif %}
     </div>
@@ -120,13 +162,17 @@
                defaulted — on this card no selection means no filter. #}
             {{ facet_row('Identity', origin_values, form_id, 'origin',
                          active=selected_origins) }}
+            {# Which feed put the row here: a received push (already blocked) or
+               the pending-request lookahead. A both-feeds row counts in both. #}
+            {{ facet_row('Source', source_values, form_id, 'source',
+                         active=selected_sources) }}
             {# The operator working one project's activation filters to it
                here; the same value is a column below so it is visible before
                it is selectable. #}
             {{ facet_row('Request', request_values, form_id, 'request_number',
                          active=selected_requests) }}
         </div>
-        {# ── The invariant, said once ──────────────────────────────────
+        {# The invariant, said once
            Every other worklist in SAM ends in a button that does the thing.
            This one cannot: `users` is mirrored from the enterprise directory
            by a process outside SAM, so neither remedy on this card is an
@@ -138,16 +184,24 @@
             SAM cannot create or reactivate one. These rows are handed to the
             team that does, and clear on their own once the next sync lands.
         </div>
-        {% if pending_total %}
-        {# So "8" never reads as the whole queue when 18 more sit one click
-           away. Counts only — the rows stay on their own tab, because what
-           has POSTED and what XRAS MAY SEND are different claims. #}
+        {% if feed_reason %}
+        {# One note for the contingent half. The received-push rows always
+           render (our own audit table); the pending-request lookahead is
+           contingent on the outbound API and a published sweep, so when it is
+           unavailable the card says which state it is in rather than pretending
+           it saw everything. #}
         <div class="small text-muted mt-1">
-            <i class="fas fa-arrow-right-long"></i>
-            These are accounts blocking actions that have already posted.
-            <strong>Pending Requests</strong> holds
-            {{ pending_total | fmt_number }} more that XRAS has approved and
-            may send soon.
+            <i class="fas fa-circle-info"></i>
+            {% if feed_reason == 'unconfigured' %}
+            The pending-request look-ahead is off
+            (<code>XRAS_OUTGOING_ENABLED</code>); showing received pushes only.
+            {% elif feed_reason == 'no_snapshot' %}
+            The look-ahead is configured, but no sweep has published yet;
+            showing received pushes only.
+            {% else %}
+            The pending-request snapshot could not be read; showing received
+            pushes only.
+            {% endif %}
         </div>
         {% endif %}
         {% if enrichment.unavailable %}
@@ -173,21 +227,24 @@
         <table class="table table-sm table-hover mb-0 align-middle">
             <thead class="table-subtle">
                 <tr>
-                    <th style="width:190px; white-space:nowrap;">Username</th>
+                    {# Sortable non-facet columns; Needs / Role / Source / Request /
+                       XRAS identity are the chips' job, not the header's. #}
+                    <th style="width:190px; white-space:nowrap;">{{ sort_header('username', 'Username') }}</th>
                     <th style="width:170px; white-space:nowrap;">Needs</th>
                     <th style="width:110px;">Role</th>
+                    <th style="width:140px; white-space:nowrap;">Source</th>
                     <th style="width:180px; white-space:nowrap;">Request</th>
                     {% if may_manage %}
-                    <th style="width:99%; min-width:12rem;">Person</th>
+                    <th style="width:99%; min-width:12rem;">{{ sort_header('person', 'Person') }}</th>
                     {% endif %}
                     <th style="width:120px; white-space:nowrap;">XRAS identity</th>
-                    {# ⚠️ Waiting, NOT "last seen". `last_seen` is when we most
+                    {# WARNING: Waiting, NOT "last seen". `last_seen` is when we most
                        recently HEARD about the person, which on a freshly
                        seeded log is today for every row — an order that tells
                        an operator nothing. This is how long they have been
                        blocking something, which is the only field on the card
                        that says whether the queue is being worked. #}
-                    <th style="width:120px; white-space:nowrap;">Waiting</th>
+                    <th style="width:120px; white-space:nowrap;">{{ sort_header('waiting', 'Waiting') }}</th>
                 </tr>
             </thead>
             <tbody>
@@ -197,13 +254,13 @@
                    see dashboards/fragments/collapse.html for when it cannot. #}
                 <tr>
                     <td class="font-monospace text-nowrap">
-                        {# ⚠️ The toggle is on the CHEVRON, not on this cell —
+                        {# WARNING: The toggle is on the CHEVRON, not on this cell —
                            unlike its five siblings, which toggle wholesale.
                            The cell holds a link, and Bootstrap's collapse
                            data-api runs in the CAPTURE phase: a toggle on the
-                           cell (or on the <tr>, where it used to live) fires
-                           before the link's own handler, so every click would
-                           open the modal AND flip the row open behind it.
+                           cell — or on the <tr> — fires before the link's
+                           own handler, so every click would open the modal
+                           AND flip the row open behind it.
 
                            The chevron stays here rather than moving to a cell
                            that does toggle, because the affordance belongs at
@@ -233,7 +290,7 @@
                            on. See its comment on the case-insensitive key. #}
                         {# `btn btn-link` for the same reason as `request_cell`
                            above: only the rare Reactivation row links, so a
-                           colour-inheriting link would be invisible among the
+                           color-inheriting link would be invisible among the
                            New-account rows that do not. `.font-monospace`
                            inside keeps the username lowercase — `.btn` would
                            otherwise uppercase it and erase the convention that
@@ -267,16 +324,12 @@
                     </td>
 
                     <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
-                        {# ⚠️ PI carries weight because a missing PI is the only
-                           one that HARD-FAILS the handoff — `roster.py` reports
-                           `PI %s is not in database` and the action 422s, while
-                           a missing Allocation Manager is explicitly not an
-                           error and a missing User just drops from the roster.
-                           Same list, three very different consequences, and the
-                           row read identically for all of them. #}
+                        {# Role is informational here. PI's harder consequence — a
+                           missing/inactive PI 422s the whole action, unlike a
+                           missing Manager/User — stays in the tooltip, not the color. #}
                         {% for role in row.roles %}
                         {% if role == 'PI' %}
-                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle"
+                        <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle"
                               title="A missing or inactive PI rejects the whole action (422). This row blocks its handoff.">{{ role }}</span>
                         {% else %}
                         {# "Allocation Manager" is shortened to "Manager" for
@@ -287,10 +340,24 @@
                         {% endfor %}
                     </td>
 
+                    {# WARNING: text badges only, never an <i class="fas">. A summary
+                       row must carry no icon that reads as an action; the source
+                       is a fact about the row, so it is spelled out. #}
+                    <td class="cursor-pointer text-nowrap" {{ collapse_toggle(body_id) }}>
+                        {% if 'action_log' in row.sources %}
+                        <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle"
+                              title="A push already arrived naming this person and is blocked, waiting on the account.">Received push</span>
+                        {% endif %}
+                        {% if 'reports' in row.sources %}
+                        <span class="badge bg-body-secondary text-body-secondary border fw-normal"
+                              title="XRAS has approved a request naming this person; it will block the push when it comes.">Pending request</span>
+                        {% endif %}
+                    </td>
+
                     {# Which XRAS request needs this account. Its own column
                        at every permission level: it is the handle an operator
                        working a project's activation actually navigates by. #}
-                    {# ⚠️ No toggle: this cell links its request numbers, and a
+                    {# WARNING: No toggle: this cell links its request numbers, and a
                        toggle on the cell fires in the capture phase before the
                        link — the modal would open and the row would flip open
                        behind it. Measured in the browser doing exactly that
@@ -326,14 +393,14 @@
                     </td>
                     {% endif %}
 
-                    {# ⚠️ NO collapse toggle on this cell: when `configured` it
+                    {# WARNING: NO collapse toggle on this cell: when `configured` it
                        holds a modal-opening link, and Bootstrap's collapse
                        data-api runs in the capture phase — a toggle here would
                        fire before the link and flip the row open behind the
                        modal (the same reason col 1 and the Request cell opt
                        out). The other cells still toggle the row. #}
                     <td class="text-nowrap">
-                        {# ⚠️ This is XRAS-side IDENTITY state, not progress on
+                        {# WARNING: This is XRAS-side IDENTITY state, not progress on
                            the row. Measured 9 of 9 on the local smoke: every
                            worklist row was reconciled in XRAS and every one
                            still needed a SAM account. So neither value is
@@ -357,7 +424,7 @@
                         {% if row.is_reconciled is none %}
                         <span class="text-muted" title="XRAS was not asked">—</span>
                         {% elif row.is_reconciled and row.placeholder %}
-                        {# ⚠️ A CONTRADICTION, not a good state. Reconciliation
+                        {# WARNING: A CONTRADICTION, not a good state. Reconciliation
                            in XRAS *is* a merge — the placeholder is folded into
                            the real identity and deleted — so a placeholder that
                            still exists AND is flagged reconciled was flagged
@@ -365,8 +432,8 @@
                            queue, so nobody ever merges it, so XRAS keeps sending
                            the throwaway username and this handoff stays blocked
                            forever. The fix is in the expansion panel. #}
-                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
-                              title="Identified but never merged — XRAS keeps sending this throwaway username, so the handoff cannot complete. Expand the row to resolve it.">identified, not merged</span>
+                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle"
+                              title="Misidentified — XRAS flagged this placeholder as reconciled without merging it, so it keeps sending the throwaway username and the handoff cannot complete. Expand the row to resolve it.">misidentified</span>
                         {% elif row.is_reconciled %}
                         <span class="badge bg-body-secondary text-body-secondary border fw-normal"
                               title="XRAS has linked this username to a real identity, so the person detail here is usable for account creation. It does NOT mean the account exists.">identified</span>
@@ -389,7 +456,7 @@
                 </tr>
 
                 <tr class="collapse" id="{{ body_id }}">
-                    <td colspan="7" class="bg-body-tertiary">
+                    <td colspan="{{ 8 if may_manage else 7 }}" class="bg-body-tertiary">
                         {% if may_manage and row.placeholder and row.is_reconciled %}
                         {# Inside the EXPANSION, above the detail sheet — not on
                            the <tr>. Bootstrap's collapse data-api runs in the
@@ -419,7 +486,7 @@
                             <thead>
                                 <tr class="small text-muted">
                                     <th>Request</th><th>Action</th><th>Status</th>
-                                    <th>Received</th><th>Pre-flight</th>
+                                    <th>Source</th><th>When</th><th>Pre-flight</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -428,22 +495,38 @@
                                     <td class="font-monospace">{{ request_cell(action.request_number, action.is_project, configured) }}</td>
                                     <td>{{ action.action_type or '—' }}</td>
                                     <td>{% if action.status %}{{ status_badge(action.status, tooltip=False) }}{% endif %}</td>
-                                    <td>{{ action.received_time | fmt_date }}</td>
+                                    <td class="text-nowrap">{{ 'Received push' if action.source == 'action_log' else 'Pending request' }}</td>
+                                    {# received_time for a posted action; submit_date
+                                       (already a YYYY-MM-DD string, so NOT through
+                                       fmt_date) for a pending request. #}
+                                    <td class="text-nowrap">
+                                        {%- if action.source == 'action_log' -%}
+                                        {{ action.received_time | fmt_date }}
+                                        {%- else -%}
+                                        {{ action.submit_date or '—' }}
+                                        {%- endif -%}
+                                    </td>
                                     <td>
-                                        {% if action.would_succeed is none %}
-                                        <span class="text-muted">not checked</span>
-                                        {% elif action.would_succeed %}
-                                        <span class="text-success">would succeed</span>
-                                        {% else %}
                                         {# The pre-flight also catches mnemonic and
                                            resource-key failures, which are not account
                                            problems — say "would fail", not "needs an
                                            account", or the card implies this worklist
-                                           would fix them. #}
+                                           would fix them. `manual` is parked, not
+                                           failed; `incomplete` could not be synthesized. #}
+                                        {% if action.preflight_status == 'rechecked' or (action.preflight_status is none and action.would_succeed) %}
+                                        <span class="text-success">would succeed</span>
+                                        {% elif action.preflight_status == 'failed' or (action.preflight_status is none and action.would_succeed is false) %}
                                         <span class="text-danger"
                                               title="{{ action.reject_messages | join(' · ') }}">
                                             would fail ({{ action.reject_messages | length }})
                                         </span>
+                                        {% elif action.preflight_status == 'manual' %}
+                                        <span class="text-warning"
+                                              title="{{ action.reject_messages | join(' · ') }}">would park</span>
+                                        {% elif action.preflight_status == 'incomplete' %}
+                                        <span class="text-muted">incomplete</span>
+                                        {% else %}
+                                        <span class="text-muted">not checked</span>
                                         {% endif %}
                                     </td>
                                 </tr>
@@ -465,10 +548,11 @@
     {% endif %}
     {% else %}
     {# A designed state, not a failure: production is legitimately zero rows
-       until ACCESS is repointed and the action log starts filling. #}
+       until ACCESS is repointed and the action log starts filling. The
+       degraded-half note above still renders beside this. #}
     <div class="card-body text-center text-muted py-4">
-        No accounts are waiting on creation or reactivation
-        {%- if selected_classifications or selected_roles or selected_origins or selected_requests %} for these filters{% endif %}.
+        No users are waiting on an account
+        {%- if selected_classifications or selected_roles or selected_origins or selected_sources or selected_requests %} for these filters{% endif %}.
     </div>
     {% endif %}
 </div>

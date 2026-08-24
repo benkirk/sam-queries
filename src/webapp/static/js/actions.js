@@ -43,7 +43,7 @@
     document.addEventListener('input',  dispatch('data-action-input'));
     document.addEventListener('submit', dispatch('data-action-submit'));
 
-    /* ── Reveal a freshly-loaded card without scrolling past its header ──
+    /* Reveal a freshly-loaded card without scrolling past its header
      *
      * Two things made the old `scrollIntoView({block: 'start'})` land in
      * the middle of the card:
@@ -74,7 +74,7 @@
         });
     };
 
-    /* ── Generic built-ins ── */
+    /* Generic built-ins */
 
     /* Clickable rows/elements that just navigate
      * (replaces onclick="window.location='...'"). */
@@ -104,7 +104,7 @@
         }
     });
 
-    /* Generalisation of the above for every other detail modal: the target
+    /* Generalization of the above for every other detail modal: the target
      * shell is named by data-modal-id, content still comes from the
      * element's own hx-get. Needed for the same reason — a link inside an
      * already-open modal (a contract on a project card shown in
@@ -179,6 +179,21 @@
             var other = form.elements[name.trim()];
             if (other) { other.value = ''; }
         });
+        htmx.trigger(form, 'submit');
+    });
+
+    /* Sortable column header: write sort_by + sort_dir into the filter form's
+     * hidden fields, then submit it — so sort is form state and survives every
+     * facet/window change, exactly like a chip. The form must carry hidden
+     * `sort_by` / `sort_dir` inputs. Pairs with sort_header() in sort_link.html. */
+    window.registerAction('set-sort-submit', function (el) {
+        var form = document.getElementById(el.dataset.formId);
+        if (!form) { return; }
+        var by = form.elements['sort_by'];
+        var dir = form.elements['sort_dir'];
+        if (!by || !dir) { return; }
+        by.value = el.dataset.sortBy || '';
+        dir.value = el.dataset.sortDir || 'desc';
         htmx.trigger(form, 'submit');
     });
 

@@ -9,7 +9,7 @@ both cases.
 
 The `--recheck` path is deliberately NOT exercised end-to-end here: it builds a
 full Flask app to get an application context (see `XrasCommand._replay` for why
-that is the right call rather than a second write path). Its behaviour is covered
+that is the right call rather than a second write path). Its behavior is covered
 at `tests/api/test_xras_access.py::TestReplay`; what is tested here is the
 option plumbing around it.
 """
@@ -85,6 +85,77 @@ class TestListMode:
         make --summary quietly wrong."""
         result = runner.invoke(cli, ['--format', 'json', 'xras'])
         assert json.loads(result.output)['filters']['start_date'] is None
+
+
+class TestReadinessMode:
+    def test_empty_board_exits_zero(self, runner, cli_session, monkeypatch):
+        monkeypatch.setattr('sam.integration.xras_api.cache.load_requests_index',
+                            lambda: None)
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--readiness'])
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert payload['kind'] == 'xras_readiness'
+        assert payload['total'] == 0
+
+    def test_the_board_sorts_red_before_green(self, runner, cli_session,
+                                              monkeypatch):
+        snapshot = {'generated_at': '2026-08-23', 'rows': [
+            {'request_number': 'GREEN0001', 'preflight_rollup': 'rechecked',
+             'status': 'Approved', 'opportunity_name': 'Large',
+             'pi': {'username': 'q'}, 'pending_push': False,
+             'actions': [{'action_id': 2, 'preflight': {'status': 'rechecked',
+                                                        'messages': []}}]},
+            {'request_number': 'RED0001', 'preflight_rollup': 'failed',
+             'status': 'Approved', 'opportunity_name': 'Small',
+             'pi': {'username': 'p'}, 'pending_push': True,
+             'actions': [{'action_id': 1, 'preflight': {
+                 'status': 'failed', 'messages': ['PI x is not in database']}}]},
+        ]}
+        monkeypatch.setattr('sam.integration.xras_api.cache.load_requests_index',
+                            lambda: snapshot)
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--readiness'])
+        assert result.exit_code == 0
+        rows = json.loads(result.output)['requests']
+        assert [r['request_number'] for r in rows] == ['RED0001', 'GREEN0001']
+        assert rows[0]['messages'] == ['PI x is not in database']
+
+
+class TestMnemonicReportMode:
+    def test_empty_board_exits_zero(self, runner, cli_session, monkeypatch):
+        monkeypatch.setattr('sam.integration.xras_api.cache.load_requests_index',
+                            lambda: None)
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--mnemonic-report'])
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert payload['kind'] == 'xras_mnemonic_report'
+        assert payload['targets'] == []
+
+    def test_it_ranks_orgs_from_the_snapshot(self, runner, cli_session,
+                                             monkeypatch):
+        from factories import make_organization, make_user, make_user_organization
+        from sam.xras.errors import mnemonic_internal_failed
+
+        for name, username in [('Top Org', 'pi-top'), ('Lesser Org', 'pi-less')]:
+            user = make_user(cli_session, username=username)
+            org = make_organization(cli_session, name=name)
+            make_user_organization(cli_session, user=user, organization=org)
+        cli_session.flush()
+
+        def _entry(num, pi):
+            return {'request_number': num, 'preflight_rollup': 'failed',
+                    'pi': {'username': pi}, 'opportunity_name': 'O',
+                    'actions': [{'action_id': 1, 'preflight': {
+                        'status': 'failed', 'messages': [mnemonic_internal_failed()]}}]}
+        snapshot = {'generated_at': '2026-08-23', 'rows': [
+            _entry('NCAR0001', 'pi-top'), _entry('NCAR0002', 'pi-top'),
+            _entry('NCAR0003', 'pi-less')]}
+        monkeypatch.setattr('sam.integration.xras_api.cache.load_requests_index',
+                            lambda: snapshot)
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--mnemonic-report'])
+        assert result.exit_code == 0
+        targets = json.loads(result.output)['targets']
+        assert [t['name'] for t in targets] == ['Top Org', 'Lesser Org']
+        assert targets[0]['unblock_count'] == 2
 
 
 class TestSummaryMode:
@@ -204,7 +275,7 @@ class TestWindowParsing:
         assert XrasCommand._parse_days(value) == expected_days
 
 
-# ── the account worklist, person lookup, and the two-sided mapping audit ──
+# the account worklist, person lookup, and the two-sided mapping audit
 
 class TestAccountsMode:
     """``--accounts``: who must exist in SAM before a handoff works."""
@@ -216,7 +287,7 @@ class TestAccountsMode:
         assert result.exit_code == EXIT_SUCCESS
 
     def test_the_json_envelope_carries_the_expected_kind(self, runner, cli_session):
-        # ⚠️ `result.stdout`, not `result.output` — the latter merges stderr,
+        # WARNING: `result.stdout`, not `result.output` — the latter merges stderr,
         # and the whole point of the split below is that a degradation notice
         # must not land inside the envelope.
         result = runner.invoke(cli, ['--format', 'json', 'xras', '--accounts'])
@@ -233,7 +304,7 @@ class TestAccountsMode:
 
     def test_a_degradation_notice_never_lands_inside_the_json(
             self, runner, cli_session, monkeypatch):
-        """⚠️ Regression: `ctx.console` is **stdout**.
+        """WARNING: Regression: `ctx.console` is **stdout**.
 
         Every "could not reach X, reporting the local half" notice on this
         command used to print there, which put prose ahead of the envelope and
@@ -259,7 +330,7 @@ class TestAccountsMode:
         dashboard showed a real queue, because it only ever read the action log
         and the card reads the sweep's published snapshot.
 
-        ⚠️ Overlap between the feeds is normal — Feed A is precisely what has
+        WARNING: Overlap between the feeds is normal — Feed A is precisely what has
         POSTED, Feed B what XRAS approved and may or may not have sent — so
         this is a union on the casefolded username, not a concatenation.
         """
@@ -351,6 +422,75 @@ class TestPersonMode:
         payload = json.loads(result.output)
         assert payload == {'kind': 'xras_person', 'username': 'nobody',
                            'found': False, 'person': None}
+
+
+class TestFamilyMode:
+    """The request-family tree probe — same three-outcome model as --person."""
+
+    def _configure(self, monkeypatch, lines):
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        client = MagicMock()
+        client.get_request_family_by_number.return_value = lines
+        monkeypatch.setattr(
+            'sam.integration.xras_api.XrasApiClient.from_environment',
+            classmethod(lambda cls, *a, **k: client))
+
+    def _lines(self):
+        return [
+            {'requestId': 111, 'requestNumber': 'UCUB0089', 'requestType': 'New',
+             'beginDate': '2020-01-01', 'endDate': '2024-12-31',
+             'actions': [{'actionId': 1, 'actionType': 'New',
+                          'actionStatus': 'Approved', 'entryDate': '2020-01-01'}]},
+            {'requestId': 222, 'requestNumber': 'UCUB0089', 'requestType': 'Renewal',
+             'beginDate': '2022-05-01', 'endDate': '2024-12-31',
+             'actions': [{'actionId': 4, 'actionType': 'Extension',
+                          'actionStatus': 'Submitted', 'entryDate': '2024-12-23'}]},
+        ]
+
+    def test_a_found_family_exits_zero(self, runner, cli_session, monkeypatch):
+        self._configure(monkeypatch, self._lines())
+        result = runner.invoke(cli, ['xras', '--family', 'UCUB0089'])
+        assert result.exit_code == EXIT_SUCCESS
+
+    def test_an_unknown_projcode_exits_not_found(self, runner, cli_session,
+                                                 monkeypatch):
+        self._configure(monkeypatch, [])
+        result = runner.invoke(cli, ['xras', '--family', 'NOSUCH0001'])
+        assert result.exit_code == EXIT_NOT_FOUND
+
+    def test_an_outage_exits_error_not_not_found(self, runner, cli_session,
+                                                 monkeypatch):
+        from sam.integration.xras_api.base import XrasSourceUnavailable
+
+        self._configure(monkeypatch, [])
+        client = MagicMock()
+        client.get_request_family_by_number.side_effect = \
+            XrasSourceUnavailable('down')
+        monkeypatch.setattr(
+            'sam.integration.xras_api.XrasApiClient.from_environment',
+            classmethod(lambda cls, *a, **k: client))
+        result = runner.invoke(cli, ['xras', '--family', 'UCUB0089'])
+        assert result.exit_code == EXIT_ERROR
+
+    def test_unconfigured_exits_error(self, runner, cli_session, monkeypatch):
+        monkeypatch.delenv('XRAS_OUTGOING_ENABLED', raising=False)
+        monkeypatch.delenv('XRAS_API_KEY', raising=False)
+        result = runner.invoke(cli, ['xras', '--family', 'UCUB0089'])
+        assert result.exit_code == EXIT_ERROR
+
+    def test_the_json_envelope_carries_the_tree(self, runner, cli_session,
+                                                monkeypatch):
+        self._configure(monkeypatch, self._lines())
+        result = runner.invoke(cli, ['--format', 'json', 'xras',
+                                     '--family', 'UCUB0089'])
+        payload = json.loads(result.output)
+        assert payload['kind'] == 'xras_request_family'
+        assert payload['found'] is True
+        assert payload['family']['new_request_id'] == 111
+        # timeline flattens both lines' actions, date-ordered, ISO strings
+        assert [a['action_id'] for a in payload['family']['timeline']] == [1, 4]
+        assert payload['family']['activity_date'] == '2024-12-23'
 
 
 class TestTwoSidedMappingAudit:
@@ -553,7 +693,7 @@ class TestOpportunityAudit:
         ``Educational`` — the same type id as Classroom — while SAM means
         ``Small (No NSF award)``. It changes the answer, so a human decides.
 
-        ⚠️ Reported with **both** derivations, so the row explains itself
+        WARNING: Reported with **both** derivations, so the row explains itself
         without a second query. That is what makes it actionable rather than
         merely alarming.
         """
@@ -589,7 +729,7 @@ class TestOpportunityAudit:
 
     def test_the_proposal_covers_only_unmapped_opportunities(
             self, runner, cli_session, monkeypatch, session):
-        """⚠️ The rule that keeps the ``review`` bucket meaningful.
+        """WARNING: The rule that keeps the ``review`` bucket meaningful.
 
         Two rows in production are ``source='manual'`` *because* the two
         derivations disagree and a human settled it. Run the proposal over

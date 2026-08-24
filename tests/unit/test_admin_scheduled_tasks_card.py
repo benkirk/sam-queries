@@ -1,4 +1,4 @@
-"""The Scheduled tasks tile on Admin → Configuration.
+"""The Scheduled tasks tile on Admin -> Configuration.
 
 Two things here matter more than "the tile renders":
 
@@ -95,7 +95,7 @@ class TestTheTileRenders:
         """`max(claimed_at)` is the last *recorded* run, not the last wake-up.
 
         A dispatch that finds nothing due writes no row, so a kill-switched
-        daily task records once a day while the CronJob fires hourly. Labelled
+        daily task records once a day while the CronJob fires hourly. Labeled
         "Last dispatch" that reads as a dead scheduler during a perfectly
         healthy soak — the inverse of the failure this card exists to prevent.
         """

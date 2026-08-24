@@ -42,7 +42,7 @@ from sam.summaries.comp_summaries import COMP_CHARGING_EPOCH
 
 
 # Reconcile tolerance: allocations within this fraction of quota truth are
-# treated as matched (ignores rounding noise from prior TiB⇄byte conversions).
+# treated as matched (ignores rounding noise from prior TiB<->byte conversions).
 QUOTA_TOLERANCE = 0.01  # 1%
 
 # Threshold: GPU hours must be at least this fraction of total compute hours
@@ -55,12 +55,10 @@ GPU_FRACTION_THRESHOLD = 0.01  # 1%
 # canonical 'reservation' queue per resource that covers all of them.
 _RESERVATION_QUEUE_RE = re.compile(r'^[RMS]\d')
 
-# Per-user-disk-usage feeds for some resources (e.g. Quasar) only ship a
-# single rollup row per project — username is the literal sentinel
-# `'total'`. Treat these as project-wide aggregates: keep `act_username`
-# as the audit label, attribute the row to the project lead (matching
-# the `<unidentified>` gap-row convention) so user resolution and
-# downstream charging math succeed.
+# Some feeds (e.g. Quasar) ship one rollup row per project, with the literal
+# sentinel `'total'` for a username. Keep it as the `act_username` audit label
+# and attribute the row to the project lead, matching the `<unidentified>`
+# gap-row convention, so user resolution and charging math succeed.
 _DISK_ROLLUP_USERNAMES = frozenset({'total'})
 
 
@@ -185,10 +183,10 @@ def classify_comp_resource(
 
     if machine == "derecho":
         if is_gpu:
-            # Meaningful GPU usage → Derecho GPU resource
+            # Meaningful GPU usage -> Derecho GPU resource
             # comp_hours = GPU hours (the Derecho GPU billing metric)
             return "Derecho GPU", "derecho-gpu", gpu_h, gpu_c
-        # Pure CPU job (or anomalous GPU ratio → treat as CPU)
+        # Pure CPU job (or anomalous GPU ratio -> treat as CPU)
         # comp_hours = CPU core-hours (numnodes * 128 * wall_hours)
         return "Derecho", "derecho", cpu_h, cpu_c
 
@@ -338,22 +336,14 @@ class AccountingAdminCommand(BaseCommand):
             )
             return 2
 
-        # NOTE: unlike _run_disk, we intentionally do NOT write to
-        # `comp_charge_summary_status`. The asymmetry is deliberate:
-        # legacy migration V13 reshaped that table from a (activity_date,
-        # current) per-date marker into an in-flight aggregation lock
-        # keyed by (command_id, charge_summary_id). It's not a
-        # "this date is posted" checkpoint — it's a transient lock that
-        # legacy's Quartz watchdog cleaned up on command completion.
-        # Prod state (queried 2026-05-13) shows that lock pipeline is
-        # dormant since 2024-11 (438 stale rows from one abandoned
-        # command_id, no new activity since), and no legacy report
-        # joins the status table to filter comp_charge_summary. Our
-        # writes are therefore visible to legacy reports as-is, and
-        # populating the lock table would only add coordination cost
-        # for the deprecated Java path. See
-        # `~/.claude/plans/consider-git-grep-epoch-vivid-hartmanis.md`
-        # for the full investigation.
+        # NOTE: unlike _run_disk, this deliberately does NOT write to
+        # `comp_charge_summary_status`. Legacy migration V13 reshaped that table
+        # into an in-flight aggregation lock keyed by (command_id,
+        # charge_summary_id) -- a transient lock legacy's Quartz watchdog
+        # cleaned up, not a "this date is posted" checkpoint. The lock pipeline
+        # has been dormant since 2024-11 (438 stale rows, one abandoned
+        # command_id) and no legacy report joins it to filter
+        # comp_charge_summary, so our writes are visible as-is.
 
         # --- 1. Load job_history plugin (graceful error if not installed) ---
         mod = self.require_plugin(HPC_USAGE_QUERIES)
@@ -580,10 +570,9 @@ class AccountingAdminCommand(BaseCommand):
             return 2
 
         # ---- 3. Date assertion (--date safety check) -------------------
-        # The CLI collapses --date to start_date == end_date == expected.
-        # If the operator supplied --date, the file's snapshot date must
-        # equal it exactly. This catches "wrong file fed to wrong date"
-        # mistakes early, before any DB writes.
+        # --date collapses to start_date == end_date, and the file's snapshot
+        # date must then match it exactly -- catching "wrong file fed to wrong
+        # date" before any DB write.
         if start_date is not None and end_date is not None:
             if not (start_date <= snap_date <= end_date):
                 if start_date == end_date:
@@ -601,10 +590,8 @@ class AccountingAdminCommand(BaseCommand):
                 return 2
 
         # ---- 4. Cutover-epoch enforcement ------------------------------
-        # `epoch` (from --epoch) overrides the hard-coded constant for
-        # known-safe backfills; the error message still names
-        # DISK_CHARGING_TIB_EPOCH so operators know which constant the
-        # override is replacing.
+        # --epoch overrides the constant for known-safe backfills; the error
+        # still names DISK_CHARGING_TIB_EPOCH so operators know what it replaces.
         effective_epoch = epoch or DISK_CHARGING_TIB_EPOCH
         if snap_date < effective_epoch:
             self.console.print(
@@ -646,12 +633,10 @@ class AccountingAdminCommand(BaseCommand):
             e.charges = e.terabyte_years
 
         # ---- 6b. Resolve projcode for normal rows ----------------------
-        # The acct.glade column 3 is a fileset label (e.g. 'cesm', 'cgd')
-        # not a SAM projcode (e.g. 'CESM0001', 'NCGD0009'). The legacy
-        # Java ingest resolved this via directory_path → ProjectDirectory
-        # → Project. Mirror that here: prefer the path-based lookup, fall
-        # back to projcode-as-label, give up if neither works (the row is
-        # then skipped if --skip-errors, else aborts the chunk).
+        # acct.glade column 3 is a fileset label ('cesm', 'cgd'), not a SAM
+        # projcode. Resolve as legacy did, directory_path -> ProjectDirectory ->
+        # Project: path lookup first, then projcode-as-label, then give up (the
+        # row is skipped under --skip-errors, else the chunk aborts).
         from sam.projects.projects import ProjectDirectory, Project
         from sam.accounting.accounts import Account
         pd_path_to_project: dict[str, "Project"] = {
@@ -696,16 +681,13 @@ class AccountingAdminCommand(BaseCommand):
         if dry_run:
             return 0
 
-        # ---- 7·. Register the snapshot date BEFORE any tier-3 insert.
-        # disk_charge_summary.activity_date FKs disk_charge_summary_status;
-        # the parent status row must exist before the per-(user, project)
-        # summary rows are inserted (InnoDB checks FKs at statement time).
-        # Previously this was only marked AFTER the inserts, which relied on
-        # a prior same-date import having seeded the row — true for the
-        # co-dated GPFS feeds, but NOT for an off-cadence date introduced by
-        # another feed (e.g. Destor's first Monday tick on a Saturday-cadence
-        # status table). Creating it up-front makes the importer
-        # self-sufficient for any brand-new date.
+        # ---- 7. Register the snapshot date BEFORE any tier-3 insert.
+        # disk_charge_summary.activity_date FKs disk_charge_summary_status, and
+        # InnoDB checks FKs at statement time, so the parent status row must
+        # exist first. Marking it after the inserts instead would rely on a
+        # prior same-date import having seeded the row -- true for the co-dated
+        # GPFS feeds, but not for an off-cadence date from another feed (Destor's
+        # Monday tick against a Saturday-cadence status table).
         try:
             with management_transaction(self.session):
                 mark_disk_snapshot_current(self.session, snap_date)
@@ -741,12 +723,10 @@ class AccountingAdminCommand(BaseCommand):
             )
 
         # ---- 7b. Idempotency: delete pre-existing rows for this
-        # (resource, snapshot_date) so a re-run replaces rather than
-        # duplicates. Necessary because the legacy ingest left
-        # `act_username` / `act_projcode` as NULL, which means our
-        # natural-key UPDATE wouldn't match those rows — they'd accumulate
-        # alongside the new ones, double-counting on roll-up. Same delete
-        # also cleans up the prior post-epoch run on this date.
+        # (resource, snapshot_date) so a re-run replaces rather than duplicates.
+        # The legacy ingest left `act_username` / `act_projcode` NULL, so the
+        # natural-key UPDATE cannot match those rows -- they would accumulate
+        # alongside the new ones and double-count on roll-up.
         from sam.summaries.disk_summaries import DiskChargeSummary
         n_deleted_legacy = 0
         try:
@@ -776,13 +756,10 @@ class AccountingAdminCommand(BaseCommand):
                 f"{resource_name} on {snap_date} before re-import.[/dim]"
             )
 
-        # ---- 7c. Aggregate per-(user, fileset) rows into per-(user,
-        # project) totals before upsert. The acct.glade input ships one
-        # row per (user, directory); the upsert natural key omits
-        # directory_path, so multi-fileset projects would silently
-        # UPDATE-overwrite if we fed raw entries through. Mirrors legacy
-        # SAM's `calculateDiskChargeSummaries` SUM-by-(date, user,
-        # account) — see `_group_disk_entries`.
+        # ---- 7c. Aggregate per-(user, fileset) rows into per-(user, project)
+        # totals before upsert: the input ships one row per (user, directory)
+        # and the upsert natural key omits directory_path, so multi-fileset
+        # projects would silently UPDATE-overwrite. See `_group_disk_entries`.
         entries_to_upsert = _group_disk_entries(entries)
         if self.ctx.verbose and len(entries_to_upsert) != len(entries):
             self.console.print(
@@ -819,17 +796,11 @@ class AccountingAdminCommand(BaseCommand):
                         for row in chunk:
                             progress.advance(task)
                             try:
-                                # For normal rows: act_username = parsed
-                                # username, act_projcode = parsed projcode
-                                # (the resolver needs these). The legacy
-                                # Java pipeline stored these as NULL, but
-                                # the current upsert tests already write
-                                # them — we follow the test convention.
-                                #
-                                # For gap rows (`<unidentified>`):
-                                # row.act_username carries the audit
-                                # label and row.user_override is set, so
-                                # the resolver is skipped entirely.
+                                # Normal rows carry the parsed username and
+                                # projcode, which the resolver needs. Gap rows
+                                # (`<unidentified>`) carry the audit label in
+                                # row.act_username and set row.user_override,
+                                # so the resolver is skipped entirely.
                                 user_for_upsert = row.user_override
                                 if row.user_override is not None:
                                     act_uname = row.act_username
@@ -850,21 +821,15 @@ class AccountingAdminCommand(BaseCommand):
                                             f"path={row.directory_path!r} on "
                                             f"resource {resource_name!r}"
                                         )
-                                    # Stash the resolved projcode in the
-                                    # audit column so the row carries the
-                                    # SAM-canonical name, not the umbrella
-                                    # label from the input file.
+                                    # The audit column carries the SAM-canonical
+                                    # projcode, not the input's umbrella label.
                                     act_pcode = project_for_upsert.projcode
 
-                                    # Project-rollup feeds (Quasar's
-                                    # `'total'` rows): no per-user
-                                    # breakdown is shipped, so attribute
-                                    # the row to the project lead and
-                                    # keep the rollup sentinel as the
-                                    # audit username. Mirrors the
-                                    # `<unidentified>` gap-row
-                                    # convention (see
-                                    # `_build_unidentified_disk_rows`).
+                                    # Project-rollup feeds ship no per-user
+                                    # breakdown, so attribute to the project
+                                    # lead and keep the sentinel as the audit
+                                    # username -- the `<unidentified>` gap-row
+                                    # convention.
                                     if act_uname in _DISK_ROLLUP_USERNAMES:
                                         user_for_upsert = project_for_upsert.lead
                                         if user_for_upsert is None:
@@ -1101,9 +1066,9 @@ class AccountingAdminCommand(BaseCommand):
 
         FILESET key resolution precedence:
           a. fileset name uppercased matches a SAM projcode directly
-          b. fileset path matches a path observed in user_entries → that
+          b. fileset path matches a path observed in user_entries -> that
              row's projcode
-          c. fileset path matches a ProjectDirectory.path → that project's projcode
+          c. fileset path matches a ProjectDirectory.path -> that project's projcode
           d. otherwise unmappable; logged & skipped (does NOT create gap)
         """
         from sam.projects.projects import Project, ProjectDirectory
@@ -1133,7 +1098,7 @@ class AccountingAdminCommand(BaseCommand):
             if e.directory_path:
                 path_to_projcode.setdefault(e.directory_path, e.projcode)
 
-        # Build path → projcode fallback from ProjectDirectory.
+        # Build path -> projcode fallback from ProjectDirectory.
         dir_rows = (
             self.session.query(ProjectDirectory, Project)
             .join(Project, Project.project_id == ProjectDirectory.project_id)
@@ -1244,10 +1209,10 @@ class AccountingAdminCommand(BaseCommand):
         unmapped tables, snapshot banner, narrative captions). Writes
         are gated behind explicit opt-in flags:
 
-          * ``update_accounting_system``  → apply mismatched-amount updates
-          * ``deactivate_orphaned``       → also deactivate orphan allocations
+          * ``update_accounting_system``  -> apply mismatched-amount updates
+          * ``deactivate_orphaned``       -> also deactivate orphan allocations
             (requires ``update_accounting_system``)
-          * ``force``                     → override the live-path safety
+          * ``force``                     -> override the live-path safety
             gate (requires ``deactivate_orphaned``)
 
         Without any of these the tool is read-only — same code path,
@@ -1310,14 +1275,9 @@ class AccountingAdminCommand(BaseCommand):
             )
 
         # ---- 2. Load active allocations to reconcile ---------------------------
-        # Inheriting (child) allocations — those with a non-NULL
-        # parent_allocation_id — are shadows of their master. Direct
-        # mutation is forbidden by update_allocation; any reconcile
-        # cascade flows from the master automatically. So skip them at
-        # the SQL level, and surface the count for admin awareness.
-        # On Campaign_Store this currently affects exactly one pair
-        # (NCGD0009 ↔ P03010039 sharing /gpfs/csfs1/cgd/amp); the
-        # pattern is more common on HPC resources.
+        # Inheriting allocations (non-NULL parent_allocation_id) are shadows of
+        # their master: update_allocation forbids mutating them directly and any
+        # cascade flows from the master. Skip them in SQL, but surface the count.
         alloc_rows = (
             self.session.query(Project, Allocation)
             .join(Account, Account.project_id == Project.project_id)
@@ -1346,15 +1306,14 @@ class AccountingAdminCommand(BaseCommand):
         by_projcode = {proj.projcode: (proj, alloc) for proj, alloc in alloc_rows}
 
         # ---- 3. Load ALL projects for tree traversal ---------------------------
-        # Need every project that might own a fileset — not just those with
-        # Campaign_Store allocations — so child quotas can roll up into a
-        # parent's expected value (e.g. NMMM0003's /mmm subtree, NCIS0001's
-        # /cisl subtree). No active filter: a deactivated project can still
-        # own a GPFS fileset the reconcile needs to account for.
+        # Every project that might own a fileset, not just those with an
+        # allocation here, so child quotas roll up into a parent's expected
+        # value. No active filter -- a deactivated project can still own a
+        # fileset the reconcile must account for.
         all_projects = self.session.query(Project).all()
         projects_by_code = {p.projcode: p for p in all_projects}
 
-        # ---- 4. Map quota entries ↔ projects (over ALL projects) --------------
+        # ---- 4. Map quota entries <-> projects (over ALL projects) --------------
         dir_to_projcode: dict[str, str] = {}
         dir_rows = (
             self.session.query(ProjectDirectory, Project)
@@ -1372,11 +1331,9 @@ class AccountingAdminCommand(BaseCommand):
         for pd, proj in dir_rows:
             dirs_by_projcode.setdefault(proj.projcode, []).append(pd.directory_name)
 
-        # A project can own multiple filesets (e.g. P43713000 / rda has
-        # several ProjectDirectory rows mapping to distinct GPFS filesets);
-        # store quotas as a list per projcode and sum at roll-up time.
-        # Dedupe by fileset_name so a quota that matches via both projcode
-        # AND ProjectDirectory path isn't counted twice.
+        # A project can own multiple filesets, so quotas are a list per projcode,
+        # summed at roll-up. Dedupe by fileset_name or a quota matching via both
+        # projcode AND ProjectDirectory path is counted twice.
         own_quota: dict[str, list[QuotaEntry]] = {}
         seen_filesets: dict[str, set[str]] = {}
         unmapped: list[QuotaEntry] = []
@@ -1399,11 +1356,10 @@ class AccountingAdminCommand(BaseCommand):
             unmapped.append(qe)
 
         # ---- 5. Subtree roll-up via MPPT containment --------------------------
-        # Project tree uses NestedSetMixin: a project P's subtree is every
-        # project Q with P.tree_root == Q.tree_root, P.tree_left <= Q.tree_left,
-        # P.tree_right >= Q.tree_right. Mirrors Project.get_subtree_charges()
-        # (projects.py:720-747), just computed in Python over the preloaded
-        # set (no per-project DB round-trip).
+        # NestedSetMixin: P's subtree is every Q sharing P.tree_root with
+        # P.tree_left <= Q.tree_left and P.tree_right >= Q.tree_right. Same rule
+        # as Project.get_subtree_charges(), computed in Python over the
+        # preloaded set to avoid a per-project round-trip.
         quota_projects = [
             projects_by_code[pc] for pc in own_quota
             if pc in projects_by_code
@@ -1422,7 +1378,7 @@ class AccountingAdminCommand(BaseCommand):
             Uses NestedSetMixin.is_ancestor_of (src/sam/base.py:305-311)
             which encodes the MPPT containment check. Each tree node
             may carry multiple filesets (multiple ProjectDirectory rows
-            → multiple QuotaEntry contributions), so we flatten the
+            -> multiple QuotaEntry contributions), so we flatten the
             per-node fileset lists into a single contributor sequence.
             """
             candidates = by_root.get(proj.tree_root, ()) if proj.tree_root else ()
@@ -1484,13 +1440,10 @@ class AccountingAdminCommand(BaseCommand):
         )
 
         # ---- 8. Apply (only when explicitly opted in) -------------------------
-        # The two write flags are independent — use either, both, or
-        # neither:
-        #   - no flags                       → report-only (here we return).
-        #   - --update-accounting-system     → apply mismatched amount updates.
-        #   - --deactivate-orphaned          → deactivate orphan allocations.
-        #   - both                           → both.
-        #   - +--force (with --deactivate-orphaned) → override live-path gate.
+        # The two write flags are independent: --update-accounting-system
+        # applies mismatched amounts, --deactivate-orphaned deactivates orphan
+        # allocations, neither means report-only, and --force (with the latter)
+        # overrides the live-path gate.
         if not update_accounting_system and not deactivate_orphaned:
             display_quota_reconcile_summary(
                 self.ctx,
@@ -1535,26 +1488,14 @@ class AccountingAdminCommand(BaseCommand):
         n_updated = 0
         n_deactivated = 0
         n_errors = 0
-        # Set end_date to YESTERDAY-23:59:59 so the deactivated
-        # allocation drops out of `is_active` immediately. Two things
-        # going on here:
-        #
-        # 1. SAM's normalize_end_date validator promotes a midnight
-        #    end_date to 23:59:59 of the SAME day. Passing `today` at
-        #    midnight would normalize to today 23:59:59 — leaving the
-        #    allocation active until end-of-day. A same-day re-run of
-        #    the tool would then still show those rows as orphans.
-        #
-        # 2. update_allocation's validate_allocation_dates runs on the
-        #    INPUT value before normalize_end_date kicks in (the
-        #    validator normalizes only when the column is assigned).
-        #    So we must pre-supply yesterday at 23:59:59 directly,
-        #    not yesterday at midnight (which would fail validation
-        #    against any start_date later in yesterday).
-        #
-        # Audit-trail transaction timestamps capture the precise moment
-        # of the change, so a 1-day backdate of end_date doesn't lose
-        # information.
+        # End_date must be YESTERDAY at 23:59:59, precisely, for two reasons.
+        # normalize_end_date promotes a midnight end_date to 23:59:59 of the
+        # SAME day, so `today` at midnight leaves the allocation active until
+        # end-of-day and a same-day re-run still reports it as an orphan. And
+        # validate_allocation_dates runs on the INPUT value, before
+        # normalize_end_date is reached, so yesterday-at-midnight fails
+        # validation against any start_date later in yesterday. The audit trail
+        # timestamps the real moment, so the 1-day backdate loses nothing.
         effective_end = (
             datetime.combine(date.today(), datetime.min.time())
             - timedelta(seconds=1)
@@ -1834,11 +1775,9 @@ class AccountingJobsCommand(BaseCommand):
         json_mode = self.ctx.output_format == 'json'
 
         # --- Selection mode + limit ---
-        # `--job-id` is its own single-result selector — combining it with
-        # `--recent N` or `--largest N` makes no sense (you either know the
-        # job or you're listing). When `--job-id` is given we skip the
-        # list-mode validation entirely and run one no-sort/no-limit query
-        # per machine.
+        # `--job-id` is its own single-result selector and cannot combine with
+        # `--recent N` / `--largest N`: it skips list-mode validation and runs
+        # one no-sort, no-limit query per machine.
         if job_id is not None:
             if recent is not None or largest is not None:
                 self.console.print(
@@ -1880,7 +1819,7 @@ class AccountingJobsCommand(BaseCommand):
         JobQueries = mod.JobQueries
         jh_get_session = mod.get_session
 
-        # --- Account filter (comma-separated → list of exact codes) ---
+        # --- Account filter (comma-separated -> list of exact codes) ---
         if projcode and ',' in projcode:
             account = [p.strip() for p in projcode.split(',') if p.strip()]
         else:
@@ -1908,11 +1847,10 @@ class AccountingJobsCommand(BaseCommand):
             try:
                 jq = JobQueries(jh_session, machine=mach)
                 if mode == 'job_id':
-                    # Single-job lookup: one query per machine, plugin-side
-                    # input-shape classifier (exact vs prefix LIKE) handles
-                    # scalar / array / array-element forms uniformly. No
-                    # sort/limit — expected result is typically 1 row, at
-                    # most a small handful (parent + elements).
+                    # One query per machine; the plugin-side input-shape
+                    # classifier (exact vs prefix LIKE) handles scalar, array
+                    # and array-element forms uniformly. No sort or limit --
+                    # typically 1 row, at most a parent plus its elements.
                     rows = list(jq.jobs_search(
                         **base_filters, job_id=job_id,
                     ))

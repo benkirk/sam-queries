@@ -31,11 +31,11 @@ class SAMModelView(ModelView):
     can_view_details = True
 
     # ===== Phase 1: Feature Flags =====
-    auto_hide_deleted = True           # 🔴 Critical - hide soft-deleted records
+    auto_hide_deleted = True           # Critical - hide soft-deleted records
     auto_hide_inactive = False         # Explicitly opt-in only
-    auto_exclude_system_columns = True # 🔴 Critical - prevent editing system fields
-    auto_filter_mixins = True          # 🟡 High - add mixin-based filters
-    auto_searchable_strings = False    # 🟢 Medium - Phase 2 feature
+    auto_exclude_system_columns = True # Critical - prevent editing system fields
+    auto_filter_mixins = True          # High - add mixin-based filters
+    auto_searchable_strings = False    # Medium - Phase 2 feature
 
     # Standard exclusions for system-managed columns
     form_excluded_columns = ['creation_time', 'modified_time', 'deletion_time']

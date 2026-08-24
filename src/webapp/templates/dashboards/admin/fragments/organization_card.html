@@ -45,7 +45,7 @@
 
     <div class="tab-content" id="organizationsTabsContent">
 
-        <!-- ── Organizations tab ──────────────────────────────────────── -->
+        <!-- Organizations tab -->
         <div class="tab-pane fade show active" id="orgs-pane" role="tabpanel"
              aria-labelledby="orgs-tab">
             <div class="table-responsive">
@@ -79,8 +79,26 @@
                             <td class="text-muted small">{{ org.description or '—' }}</td>
                             <td>
                                 {% set mc = org_to_mnemonic.get(org.organization_id) %}
-                                {% if mc %}<span class="badge bg-secondary font-monospace">{{ mc }}</span>
-                                {% else %}<span class="text-muted">—</span>{% endif %}
+                                {% if mc %}
+                                <span class="badge bg-secondary font-monospace">{{ mc }}</span>
+                                {% elif has_permission(Permission.CREATE_ORG_METADATA) %}
+                                {# Same linker the Institutions card has. Org resolution is
+                                   name-only (no "Name, City" fallback), so the prefill is
+                                   org.name. The modal/route/form all already exist. #}
+                                <button class="btn btn-link p-0 border-0"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#createMnemonicCodeModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_code_create_form', description=org.name) }}"
+                                        hx-target="#createMnemonicCodeFormContainer"
+                                        hx-trigger="click"
+                                        title="No mnemonic match — click to create one">
+                                    <span class="badge bg-warning text-dark font-monospace">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                    </span>
+                                </button>
+                                {% else %}
+                                <span class="badge bg-secondary font-monospace text-white-50" title="No mnemonic match — project routing may fail"><i class="fas fa-exclamation-triangle"></i></span>
+                                {% endif %}
                             </td>
                             <td>{{ org.users|length }}</td>
                             <td class="text-end">
@@ -120,7 +138,7 @@
             </div>
         </div>
 
-        <!-- ── Institutions tab (lazy-loaded HTMX fragment) ── -->
+        <!-- Institutions tab (lazy-loaded HTMX fragment) -->
         <div class="tab-pane fade" id="institutions-pane" role="tabpanel"
              aria-labelledby="institutions-tab"
              hx-get="{{ url_for('admin_dashboard.htmx_institutions_fragment',
@@ -133,7 +151,7 @@
             </div>
         </div>
 
-        <!-- ── Areas tab (groups collapsed, AOIs expand on click) ───────── -->
+        <!-- Areas tab (groups collapsed, AOIs expand on click) -->
         <div class="tab-pane fade" id="areas-pane" role="tabpanel"
              aria-labelledby="areas-tab">
             <div class="table-responsive">
@@ -147,7 +165,7 @@
                     </thead>
                     {% if aoi_groups %}
                     {% for g in aoi_groups %}
-                    {# ── Group row (name + count are the trigger) ──
+                    {# Group row (name + count are the trigger)
                        Not the <tr>: a row-level toggle also fires when the
                        Edit/Delete buttons are clicked, and the button cannot
                        stop it (Bootstrap's data-api runs in the capture
@@ -176,7 +194,7 @@
                             </td>
                         </tr>
                     </tbody>
-                    {# ── AOI child rows (collapsed by default) ── #}
+                    {# AOI child rows (collapsed by default) #}
                     <tbody class="collapse" id="aoi-group-{{ g.area_of_interest_group_id }}">
                         {% for a in aois | selectattr('area_of_interest_group_id', 'equalto', g.area_of_interest_group_id) | list | sort(attribute='area_of_interest') %}
                         <tr class="table-secondary{% if not a.active %} opacity-50{% endif %}">
@@ -238,7 +256,7 @@
         </div>
 
 
-        <!-- ── NSF Programs tab ───────────────────────────────────────── -->
+        <!-- NSF Programs tab -->
         <div class="tab-pane fade" id="nsf-programs-pane" role="tabpanel"
              aria-labelledby="nsf-programs-tab">
             <div class="table-responsive">

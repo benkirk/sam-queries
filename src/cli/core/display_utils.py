@@ -36,7 +36,7 @@ def truncate(value, width: int = 48) -> str:
 def date_cell(value) -> str:
     """Format a date that may have arrived as an ISO string.
 
-    `build_award` keeps real `date` objects (`_SAMEncoder` serialises them),
+    `build_award` keeps real `date` objects (`_SAMEncoder` serializes them),
     but anything embedding `ContractSummarySchema` output gets ISO text
     instead — correct for the JSON payload, wrong for `fmt.date_str`, which
     wants an object. Parse, then hand off.

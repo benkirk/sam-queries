@@ -76,7 +76,7 @@
             {% if ordered_groups %}
             {% for rid, resource, rows in ordered_groups %}
             {% set group_id = 'pd-res-' ~ (rid if rid is not none else 'none') %}
-            {# ── Resource row (clickable trigger) ── #}
+            {# Resource row (clickable trigger) #}
             <tbody>
                 <tr class="cursor-pointer table-subtle fw-semibold"
                     data-bs-toggle="collapse"
@@ -108,7 +108,7 @@
                     </td>
                 </tr>
             </tbody>
-            {# ── Directory child rows (collapsed by default) ── #}
+            {# Directory child rows (collapsed by default) #}
             <tbody class="collapse" id="{{ group_id }}">
                 {% for pd in rows %}
                 {% set _orphan = pd.is_active and not pd.project.is_active %}

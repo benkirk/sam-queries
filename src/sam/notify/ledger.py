@@ -123,7 +123,7 @@ class NotificationLedger:
                 detail: Optional[str] = None) -> None:
         """Close out a ``queued`` row with its outcome, and commit.
 
-        ⚠️ **Swallows its own failures, deliberately.** By the time this runs
+        WARNING: **Swallows its own failures, deliberately.** By the time this runs
         the message is already with the relay and cannot be recalled; raising
         would turn a bookkeeping problem into a caller-visible send failure
         and, worse, invite a retry of a message that did go out. A row left
@@ -171,7 +171,7 @@ class NotificationLedger:
         top would silently re-enable the re-email bug for anything older than
         it — which is the bug this whole table exists to fix.
 
-        ⚠️ **A stale ``queued`` row must not suppress its own retry.**
+        WARNING: **A stale ``queued`` row must not suppress its own retry.**
         ``queued`` counts, because a process that died *after* handing the
         message to the relay must not re-send. But that is the same row a
         process that died *before* the relay leaves behind, and the two are

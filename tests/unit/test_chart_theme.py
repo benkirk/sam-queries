@@ -65,7 +65,7 @@ class TestScaleBytes:
         (900 * T.BYTES_PER_TIB, (T.BYTES_PER_TIB, 'TiB')),
         (T.BYTES_PER_TIB, (T.BYTES_PER_TIB, 'TiB')),
         # Below a TiB this ladder does NOT drop to GiB — it reports a
-        # fractional TiB. Preserved behaviour, not an oversight.
+        # fractional TiB. Preserved behavior, not an oversight.
         (5 * T.BYTES_PER_GIB, (T.BYTES_PER_TIB, 'TiB')),
         (0, (T.BYTES_PER_TIB, 'TiB')),
     ])
@@ -100,7 +100,7 @@ class TestShadeFamily:
         assert sum(pale) > sum(base)
 
     def test_blend_target_is_configurable(self):
-        """The dark theme blends toward the page colour, not white — a
+        """The dark theme blends toward the page color, not white — a
         white-blended 'palest' segment would be the loudest thing on a dark
         chart."""
         dark = T.shade_family('#0057c2', 3, toward='#1b2733')[0]
@@ -125,7 +125,7 @@ class TestAutopctColor:
 
         Asserts the *property* (one argument, and it is not a theme) rather
         than that argument's spelling: it was renamed `bg_hex` -> `color` when
-        wedge colours started arriving as lifted RGBA tuples, and a test that
+        wedge colors started arriving as lifted RGBA tuples, and a test that
         fails on a rename while a real theme argument would slip past it is
         pinning the wrong thing.
         """
@@ -134,7 +134,7 @@ class TestAutopctColor:
         assert len(params) == 1 and 'theme' not in params
 
     def test_accepts_a_lifted_rgba_wedge(self):
-        """`Theme.data_color` hands back RGBA tuples for the colours it lifts,
+        """`Theme.data_color` hands back RGBA tuples for the colors it lifts,
         and every one of them is a pie wedge that still needs a label."""
         lifted = T.Theme.DARK.data_color(T.UNITY_NCAR_SPACE_BLUE)
         assert not isinstance(lifted, str)          # guard the premise

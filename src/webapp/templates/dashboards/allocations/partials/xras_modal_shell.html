@@ -4,7 +4,7 @@
   Before this the OOB title, the Back link and the Done footer were hand-copied
   into each of the three templates.
 
-  ⚠️ Every control here is swap-in-place, never `data-bs-toggle="modal"`: this
+  WARNING: Every control here is swap-in-place, never `data-bs-toggle="modal"`: this
   body replaces the open #auditDetailsModal's body, and a toggle would fire on
   the open modal and HIDE it (the PR #464 self-closing-modal bug). The Back link
   is a plain hx-get into the body for exactly that reason.

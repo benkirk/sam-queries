@@ -1,7 +1,7 @@
 """Contract detail card, Search Contracts page, and the cross-entity links.
 
 Scope follows the house convention (docs/TESTING.md): auth, permission,
-not-found behaviour, and render smoke at the HTTP layer. These routes are
+not-found behavior, and render smoke at the HTTP layer. These routes are
 all read-only, so there is no write path to cover at the model layer.
 
 The linking assertions are deliberately here rather than left to the browser
@@ -366,7 +366,7 @@ class TestContractsTableToggle:
     Absent means OFF (CLAUDE.md § 10): htmx omits an unchecked checkbox
     entirely, so the route must NOT pass `default=True` — doing so made the
     toggle a silent no-op, which Playwright caught and no unit test did.
-    The default-on behaviour lives in the template instead: the checkbox
+    The default-on behavior lives in the template instead: the checkbox
     ships `checked` and the section's initial hx-get carries active_only=1.
     """
 

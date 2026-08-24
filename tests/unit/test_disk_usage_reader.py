@@ -19,7 +19,7 @@ def _write(tmp_path: Path, name: str, body: str) -> Path:
 
 
 def test_basic_row_kib_to_bytes(tmp_path):
-    # col6 = 100 KiB → bytes = 100 * 1024 = 102400
+    # col6 = 100 KiB -> bytes = 100 * 1024 = 102400
     csv = '"2026-04-18","/gpfs/csfs1/cesm","cesm","gdicker","4986","100","7","0"\n'
     f = _write(tmp_path, "acct.glade.2026-04-18", csv)
     entries = GladeCsvReader(str(f)).read()
@@ -29,7 +29,7 @@ def test_basic_row_kib_to_bytes(tmp_path):
     assert e.projcode == "CESM"               # uppercased
     assert e.username == "gdicker"
     assert e.number_of_files == 4986
-    assert e.bytes == 100 * 1024              # KiB → bytes
+    assert e.bytes == 100 * 1024              # KiB -> bytes
     assert e.directory_path == "/gpfs/csfs1/cesm"
     assert e.reporting_interval == 7
     assert e.cos == 0
@@ -118,7 +118,7 @@ def test_six_column_row_defaults_interval_and_cos(tmp_path):
     assert e.projcode == "NRAL0032"               # uppercased
     assert e.username == "total"                  # rollup sentinel passes filters
     assert e.number_of_files == 123843
-    assert e.bytes == 100 * 1024                  # KiB → bytes
+    assert e.bytes == 100 * 1024                  # KiB -> bytes
     assert e.directory_path == "/lustre/desc1/p/nral0032"
     assert e.reporting_interval == 7              # defaulted when column absent
     assert e.cos == 0                             # defaulted when column absent

@@ -50,14 +50,14 @@ class PluginExtension:
     def __init__(self) -> None:
         self.logger = logging.getLogger(f'{__name__}.{self.log_label}')
 
-    # ── Startup ─────────────────────────────────────────────────────────
+    # Startup
 
     def init_app(self, app: Flask) -> None:
         """Load the plugin and warm its engines. Called once from ``create_app``.
 
         Always leaves a state dict on ``app.extensions`` — even on failure, so
-        the accessors below never have to distinguish "not initialised" from
-        "initialised but disabled". ``enabled`` is set by :meth:`_warm`.
+        the accessors below never have to distinguish "not initialized" from
+        "initialized but disabled". ``enabled`` is set by :meth:`_warm`.
         """
         state: Dict[str, Any] = {'module': None, 'enabled': False}
         self._init_state(state)
@@ -102,7 +102,7 @@ class PluginExtension:
         """
         raise NotImplementedError
 
-    # ── Accessors over app.extensions ───────────────────────────────────
+    # Accessors over app.extensions
 
     def _state(self, app: Optional[Flask] = None) -> Dict[str, Any]:
         return (app or current_app).extensions.get(self.ext_key) or {}
@@ -119,7 +119,7 @@ class PluginExtension:
         """Return this plugin's engines keyed by whatever it keys them by."""
         return self._state(app).get('engines') or {}
 
-    # ── Connection tagging ──────────────────────────────────────────────
+    # Connection tagging
 
     def connection_tag(self, *parts: str) -> str:
         """Build the ``application_name`` for a connection.

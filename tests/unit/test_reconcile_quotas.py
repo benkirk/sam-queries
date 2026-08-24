@@ -32,9 +32,7 @@ from factories import (
 pytestmark = pytest.mark.unit
 
 
-# ─────────────────────────────────────────────────────────────────────────
 # GpfsQuotaReader (no DB)
-# ─────────────────────────────────────────────────────────────────────────
 
 class TestGpfsQuotaReader:
 
@@ -66,7 +64,7 @@ class TestGpfsQuotaReader:
         assert names == {'ucnn0022', 'csg'}   # USR excluded
         csg = next(e for e in entries if e.fileset_name == 'csg')
         assert csg.path == '/gpfs/csfs1/cisl/csg'
-        # KiB → bytes (x1024), then bytes → TiB should land at exactly 23.0
+        # KiB -> bytes (x1024), then bytes -> TiB should land at exactly 23.0
         assert csg.limit_bytes == CSG_LIMIT_KIB * 1024
         assert csg.limit_tib == pytest.approx(23.0, rel=1e-9)
 
@@ -106,9 +104,7 @@ class TestQuotaReaderFactory:
             get_quota_reader('Destor', str(p))
 
 
-# ─────────────────────────────────────────────────────────────────────────
 # End-to-end reconcile (DB-backed; uses SAVEPOINT'd `session` fixture)
-# ─────────────────────────────────────────────────────────────────────────
 
 def _disk_resource(session, name='Campaign_Store'):
     """Get-or-create a DISK Resource with the given name."""
@@ -150,7 +146,7 @@ def _ctx_with_session(session):
 
 
 def _kib_for(tib: float) -> int:
-    """Convert TiB → KiB — the unit cs_usage.json stores quota values in."""
+    """Convert TiB -> KiB — the unit cs_usage.json stores quota values in."""
     return int(tib * (1024 ** 3))
 
 
@@ -238,7 +234,7 @@ class TestReconcileClassification:
         project = make_project(session)
         account = make_account(session, project=project, resource=resource)
         alloc = make_allocation(session, account=account, amount=100.0)
-        # 0.5 % under threshold → matched (no write)
+        # 0.5 % under threshold -> matched (no write)
         quota_tib = 100.5
         fileset = project.projcode.lower()
         quota_path = _write_quota_file(tmp_path, {
@@ -288,7 +284,7 @@ class TestReconcileClassification:
         project = make_project(session)
         account = make_account(session, project=project, resource=resource)
         alloc = make_allocation(session, account=account, amount=5.0)
-        # Quota file does NOT mention this project → orphan
+        # Quota file does NOT mention this project -> orphan
         quota_path = _write_quota_file(tmp_path, {})
 
         admin = make_user(session)
@@ -388,7 +384,7 @@ class TestReconcileClassification:
         resource = _isolated_disk_resource(session, monkeypatch)
         master_proj = make_project(session)
         master_acct = make_account(session, project=master_proj, resource=resource)
-        # Master matches its own fileset → no action expected.
+        # Master matches its own fileset -> no action expected.
         master_alloc = make_allocation(session, account=master_acct, amount=100.0)
 
         # Inheriting child on a sibling project. No fileset of its own.
@@ -506,9 +502,7 @@ def test_quota_tolerance_constant():
     assert QUOTA_TOLERANCE == 0.01
 
 
-# ─────────────────────────────────────────────────────────────────────────
 # Tree-aware roll-up tests (NestedSetMixin subtree sums)
-# ─────────────────────────────────────────────────────────────────────────
 
 def _reconcile_dry_run(session, resource, quota_path, *, verbose=False):
     """Run a dry-run reconcile and return (rc, ctx) so the caller can inspect
@@ -543,7 +537,7 @@ class TestTreeRollup:
         self, session, tmp_path, monkeypatch,
     ):
         """Parent has own fileset (5 TiB) + child with fileset (10 TiB).
-        Parent SAM amount = 15 TiB → matched (expected = 15 TiB).
+        Parent SAM amount = 15 TiB -> matched (expected = 15 TiB).
         """
         resource = _isolated_disk_resource(session, monkeypatch)
         parent = make_project(session)
@@ -555,7 +549,7 @@ class TestTreeRollup:
         # Child has an account but no SAM allocation — just a fileset quota
         make_account(session, project=child, resource=resource)
 
-        # Wire filesets: parent → own projcode, child → own projcode
+        # Wire filesets: parent -> own projcode, child -> own projcode
         quota_path = _write_quota_file(tmp_path, {
             parent.projcode.lower(): {
                 'limit': str(_kib_for(5.0)), 'usage': '0', 'files': '0',
@@ -590,7 +584,7 @@ class TestTreeRollup:
 
         p_account = make_account(session, project=parent, resource=resource)
         # Parent SAM amount = 10 TiB; parent has no fileset of its own;
-        # child supplies 10 TiB → expected = 10 TiB → matched.
+        # child supplies 10 TiB -> expected = 10 TiB -> matched.
         parent_alloc = make_allocation(session, account=p_account, amount=10.0)
         make_account(session, project=child, resource=resource)
 
@@ -723,7 +717,7 @@ class TestTreeRollup:
         )
         assert rc == 0
         session.refresh(parent_alloc)
-        # Expected = 5 TiB (child) == SAM 5 TiB → matched, alloc unchanged,
+        # Expected = 5 TiB (child) == SAM 5 TiB -> matched, alloc unchanged,
         # allocation still active (NOT orphaned).
         assert parent_alloc.amount == 5.0
         assert parent_alloc.is_active
@@ -731,7 +725,7 @@ class TestTreeRollup:
     def test_true_orphan_is_still_orphan(
         self, session, tmp_path, monkeypatch,
     ):
-        """Control: parent + descendants all without filesets → orphan."""
+        """Control: parent + descendants all without filesets -> orphan."""
         resource = _isolated_disk_resource(session, monkeypatch)
         parent = make_project(session)
         make_project(session, parent=parent)  # quiet child, no fileset
@@ -808,7 +802,7 @@ class TestTreeRollup:
             directory_name='/gpfs/csfs1/archived/old',
         )
 
-        quota_path = _write_quota_file(tmp_path, {})  # no quota → orphan
+        quota_path = _write_quota_file(tmp_path, {})  # no quota -> orphan
 
         captured = {}
         import cli.accounting.commands as cmd_mod
@@ -848,7 +842,7 @@ class TestTreeRollup:
 
         p_acct = make_account(session, project=parent, resource=resource)
         c_acct = make_account(session, project=child, resource=resource)
-        # Parent owns 5 TiB directly + rolls up child's 10 TiB → expected 15
+        # Parent owns 5 TiB directly + rolls up child's 10 TiB -> expected 15
         parent_alloc = make_allocation(session, account=p_acct, amount=15.0)
         # Child expected = its own 10 TiB (no descendants of its own)
         child_alloc = make_allocation(session, account=c_acct, amount=10.0)
@@ -894,7 +888,7 @@ class TestTreeRollup:
         # paths so we don't collide with snapshot ProjectDirectory rows
         # (e.g. P43713000 owns /gpfs/csfs1/collections/gdex/{data,work}
         # in the obfuscated snapshot, and `dir_to_projcode.setdefault`
-        # keeps the snapshot's mapping → our quotas would attach to the
+        # keeps the snapshot's mapping -> our quotas would attach to the
         # snapshot project instead of this test's project).
         fs_a = next_seq('fsmulti_a').lower()
         fs_b = next_seq('fsmulti_b').lower()
@@ -926,9 +920,9 @@ class TestTreeRollup:
         )
         assert rc == 0
         session.refresh(alloc)
-        # Pre-fix: only one fileset (10 or 20 TiB) won → SAM 30 forced
+        # Pre-fix: only one fileset (10 or 20 TiB) won -> SAM 30 forced
         # down to that single value. Post-fix: 30 TiB matches the
-        # 10+20 sum → no update.
+        # 10+20 sum -> no update.
         assert alloc.amount == 30.0
         assert alloc.is_active
 
@@ -967,13 +961,11 @@ class TestTreeRollup:
         )
         assert rc == 0
         session.refresh(alloc)
-        # 7 TiB SAM vs 7 TiB truth (NOT 14) → matched, untouched.
+        # 7 TiB SAM vs 7 TiB truth (NOT 14) -> matched, untouched.
         assert alloc.amount == 7.0
 
 
-# ─────────────────────────────────────────────────────────────────────────
 # Next-slice: snapshot metadata + high-util + --verify-paths
-# ─────────────────────────────────────────────────────────────────────────
 
 class TestGpfsSnapshotDate:
 
@@ -1045,14 +1037,14 @@ class TestUtilSuffix:
         assert _util_suffix(qe) == ''
 
     def test_empty_fileset_with_limit_is_flagged_low(self):
-        # 0% usage with a non-zero limit → under-used; flag it.
+        # 0% usage with a non-zero limit -> under-used; flag it.
         from cli.accounting.display import _util_suffix
         qe = QuotaEntry('fs', None, limit_bytes=1000, usage_bytes=0, file_count=0)
         out = _util_suffix(qe)
         assert '↓' in out and '0%' in out
 
     def test_zero_limit_skips_low_util(self):
-        # limit==0 → utilization clamps to 0.0, but we MUST NOT treat that
+        # limit==0 -> utilization clamps to 0.0, but we MUST NOT treat that
         # as "under-used" (an umbrella with no quota carries no meaning).
         from cli.accounting.display import _util_suffix
         qe = QuotaEntry('fs', None, limit_bytes=0, usage_bytes=0, file_count=0)
@@ -1140,9 +1132,9 @@ class TestPathVerifierSSH:
                 v.check(['/a', '/b'])
 
     def test_stdin_has_trailing_newline_for_last_path(self):
-        """Regression: the final path was being dropped because
-        `read` returned non-zero on EOF-mid-line. We now append a
-        trailing newline AND use `|| [ -n "$p" ]` in the loop.
+        """Regression: `read` returns non-zero on EOF-mid-line, which drops
+        the final path. Guarded by appending a trailing newline AND using
+        `|| [ -n "$p" ]` in the loop.
         """
         captured = {}
         def _run(cmd, *, input, **kw):
@@ -1258,7 +1250,7 @@ class TestVerifyPathsIntegration:
         )
         assert rc == 0
         session.refresh(alloc)
-        # Live path + no --force → NOT deactivated
+        # Live path + no --force -> NOT deactivated
         assert alloc.end_date is None or alloc.is_active
 
     def test_orphan_with_live_path_deactivates_with_force(
@@ -1322,5 +1314,5 @@ class TestVerifyPathsIntegration:
         )
         assert rc == 0
         session.refresh(alloc)
-        # Path missing → safe to deactivate even without --force
+        # Path missing -> safe to deactivate even without --force
         assert alloc.end_date is not None

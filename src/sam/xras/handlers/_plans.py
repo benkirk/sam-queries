@@ -1,35 +1,20 @@
 """What a handler decided to do, as records rather than positional tuples.
 
-Why this module exists
-----------------------
-Assembly plans; execution applies. Between the two the plan has to be carried, and
-it used to be carried as bare tuples — seven construction sites, seven unpack sites,
-and **three different field orders for the same five values**:
+Assembly plans; execution applies. Carried as bare tuples that meant seven
+construction sites, seven unpack sites, and three different field orders for
+the same five values -- two of which describe the identical operation and
+disagree on where the comment goes. A mis-ordered five-tuple type-checks,
+unpacks, and writes the comment into the start-date slot; nothing but
+positional luck kept them apart.
 
-===========================  ==================================================
-site                         tuple
-===========================  ==================================================
-``supplement`` / ``adjust``  ``(resource, amount, comment, start, end)``
-``new``                      ``(resource, amount, start, alloc_end, comment)``
-``update``                   ``('add', resource, amount, start, end, comment, panel)``
-===========================  ==================================================
+Same failure mode as the ``auth_at_panel_mtg`` bug, caught one step earlier.
+Named fields cannot be reordered by accident, and ``frozen=True`` means a plan
+cannot be mutated between the check and the write.
 
-Two of those describe the identical operation and disagree on where the comment
-goes. A mis-ordered five-tuple type-checks, unpacks, and writes the comment into the
-start-date slot; nothing but positional luck kept them apart. Update's four shapes
-were then unpacked through a string-tag ``elif`` chain with four different arities.
-
-This is the same failure mode that produced the ``auth_at_panel_mtg`` bug the last
-refactor fixed — a flag threaded through a tuple, unpacked, and dropped — caught one
-step earlier. Named fields cannot be reordered by accident, and ``frozen=True`` means
-a plan cannot be mutated between the check and the write.
-
-Ordering is still the caller's
-------------------------------
-⚠️ A handler keeps its plan as **one flat ordered list**, not a bucket per kind.
-``UpdateHandler`` emits up to three steps for a single resource and applies them *in
-the order the factory emitted them*, which is legacy-faithful; grouping by type here
-would silently reorder writes against one allocation.
+WARNING: a handler keeps its plan as ONE flat ordered list, not a bucket per
+kind. ``UpdateHandler`` emits up to three steps for a single resource and
+applies them in the order the factory emitted them, which is legacy-faithful.
+Grouping by type here would silently reorder writes against one allocation.
 """
 
 from dataclasses import dataclass
@@ -52,7 +37,7 @@ __all__ = [
 class PlannedCreate:
     """Create a new allocation for *resource*.
 
-    ``panel_authorised`` rides on the record rather than being read off the handler,
+    ``panel_authorized`` rides on the record rather than being read off the handler,
     and that is load-bearing: Update decides it **per resource** (only its ADD branch
     marks), so a handler-level read would mark rows the plan said not to.
     """
@@ -79,7 +64,7 @@ class PlannedSupplement:
 class PlannedAdjust:
     """Apply a signed correction to an existing allocation.
 
-    ⚠️ Carries **no** ``panel_authorised`` field, deliberately.
+    WARNING: Carries **no** ``panel_authorized`` field, deliberately.
     ``buildAdjustAllocationCommand`` never sets ``auth_at_panel_mtg`` where the
     supplement one does, and ``log_integration_transaction`` writes the column only
     when the value is not ``None`` — so the absence of the field here is what keeps

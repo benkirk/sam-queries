@@ -1,7 +1,7 @@
 {#
   Lookback-window pills for an HTMX-filtered fragment.
 
-  ── Why this exists next to date_range_picker.html ───────────────────────
+ Why this exists next to date_range_picker.html
   `date_range_picker` is a plain `method="GET"` form that navigates the whole
   page, driven by static/js/pickers.js. That is right for a page whose entire
   content is the range. It is wrong for a card that lives inside a page and
@@ -13,7 +13,7 @@
   handler the facet chips use (static/js/actions.js). No new JavaScript, and
   the window round-trips with the chips because they are fields of one form.
 
-  ── Contract ─────────────────────────────────────────────────────────────
+ Contract
       window_pills(form_id, pills, days, custom=False,
                    start_date='', end_date='')
 
@@ -32,16 +32,16 @@
   the window controls live inside a re-rendering fragment while their state
   belongs to a form outside it: `form.elements` includes form-associated
   controls, so both htmx's `hx-include` and `data-clear-fields` see them.
-  ⚠️ Do NOT also put `start_date`/`end_date` in the form — two controls of one
+  WARNING: Do NOT also put `start_date`/`end_date` in the form — two controls of one
   name make `form.elements[name]` a RadioNodeList, and assigning `.value` to
   that silently does nothing.
 
-  ⚠️ Class convention: `btn-outline-secondary` + `active` for the selected
+  WARNING: Class convention: `btn-outline-secondary` + `active` for the selected
   pill, never `btn-primary`. The jobs pills shipped with primary/outline-primary
   once and it read backwards — blue looked like the *unselected* state next to
   every other selector on the dashboards.
 
-  ⚠️ An explicit range must OUTRANK `days`, and the route is where that is
+  WARNING: An explicit range must OUTRANK `days`, and the route is where that is
   enforced (`_parse_activity_window`). Clicking a day pill therefore has to
   clear the custom inputs, or the range would win and the pill would appear to
   do nothing — which is what `data-clear-fields` below is for.

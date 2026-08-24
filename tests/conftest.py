@@ -96,7 +96,7 @@ def pytest_configure(config):
     # ---- Outbound XRAS credentials: pinned FAIL-CLOSED, before anything
     # imports `sam` --------------------------------------------------------
     #
-    # ⚠️ The suite otherwise inherits a **live, write-provisioned production
+    # WARNING: The suite otherwise inherits a **live, write-provisioned production
     # API key**. `src/sam/session/__init__.py` calls `load_dotenv()` at import,
     # so a developer's `.env` — which supplies `XRAS_OUTGOING_ENABLED=1` and a
     # real `XRAS_API_KEY` — lands in `os.environ` during collection. Measured
@@ -238,7 +238,7 @@ def _no_smtp_sockets(monkeypatch):
 # test client never touches `requests`), but a future fixture driving a local
 # stub server is a legitimate thing to do and blocking it would be surprising.
 #
-# ⚠️ This does NOT apply to `e2e/`, which has its own conftest and drives a
+# WARNING: This does NOT apply to `e2e/`, which has its own conftest and drives a
 # real running container over HTTP by design. Nor to
 # `scripts/xras/probe_outgoing.py`, which is opt-in and not a test.
 
@@ -460,7 +460,7 @@ def auth_client(client, session):
     `USER_PERMISSION_OVERRIDES['benkirk']` in `webapp.utils.rbac`.
 
     Uses Flask-Login's session-cookie mechanism (`client.session_transaction()`
-    → `sess['_user_id']`). This triggers the `load_user()` callback in the
+    -> `sess['_user_id']`). This triggers the `load_user()` callback in the
     login_manager. `benkirk` resolves to the full Permission set via the
     user-override layer — no POSIX-group membership required, no
     `role_user` rows required.
@@ -819,7 +819,7 @@ def inheriting_project(session, _inheriting_project_lookup):
 # ID lookups would be marginally faster but are not worth the complexity
 # at this call volume.
 #
-# Naming: `any_X` → "pick any row of type X, don't care which". Contrast
+# Naming: `any_X` -> "pick any row of type X, don't care which". Contrast
 # with the shape-constrained fixtures above (`active_project` requires
 # allocations, `hpc_resource` requires active HPC, etc.).
 
@@ -945,7 +945,7 @@ def serial_file_lock(tmp_path_factory):
             with serial_file_lock('my_fixed_identifiers'):
                 yield
 
-    ⚠️ An ``fcntl`` lock rather than ``--dist loadgroup``, measured
+    WARNING: An ``fcntl`` lock rather than ``--dist loadgroup``, measured
     2026-08-21: switching the suite to loadgroup made OTHER files' latent
     deadlocks fire (``load``: 7,586 green; ``loadgroup``: failed twice, in
     disk-admin / award-audit / contract-audit) — LoadGroupScheduling

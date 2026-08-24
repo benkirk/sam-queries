@@ -4,16 +4,16 @@ Inputs are the plugin envelopes verbatim (see ``webapp.jobs.service``) — the
 histogram envelope is self-describing (dimension, unit, full zero-filled bucket
 vector, null_count), so the renderers never hardcode bucket tables.
 
-Lives in its own module because three chart modules need it. It was previously
-in the package facade, which meant `histogram.py`, `stacked.py` and `pie.py`
-each imported it *lazily inside a method* to dodge the circular import — a
-workaround for a layering mistake rather than a real constraint.
+Lives in its own module because three chart modules need it. Keeping it in the
+package facade instead forces `histogram.py`, `stacked.py` and `pie.py` to
+import it *lazily inside a method* to dodge a circular import — a workaround
+for a layering mistake rather than a real constraint.
 
 **No matplotlib import here**, same as `links.py` and `series.py`, and enforced
 by the same test: this is envelope arithmetic, not rendering.
 """
 
-# UI metric name → the plugin key(s) SUMMED to produce it. 'jobs' is the
+# UI metric name -> the plugin key(s) SUMMED to produce it. 'jobs' is the
 # count metric; the hours metrics come from the LEFT OUTER JOIN against
 # job_charges upstream. 'charges' is a pair because the plugin reports
 # cpu_charges and gpu_charges separately (they are separately meaningful and
@@ -47,7 +47,7 @@ def jobs_metric_value(d, metric, default='jobs'):
 
 
 def jobs_bucket_segments(bucket, metric, default='jobs'):
-    """Per-bucket stacked-bar segments (active-metric units), bottom → top.
+    """Per-bucket stacked-bar segments (active-metric units), bottom -> top.
 
     The plugin envelope carries pre-truncated top-N ``owners`` per bucket
     with authoritative bucket totals, so — unlike the fs_scans
@@ -55,7 +55,7 @@ def jobs_bucket_segments(bucket, metric, default='jobs'):
     base segment here is ``bucket total − Σ owners`` (it also absorbs
     NULL-username jobs). Owner segments follow ascending so the largest
     owner sits at the top of the bar. Empty list when the bucket has no
-    owners (→ drawn as a single flat bar).
+    owners (-> drawn as a single flat bar).
     """
     owners = bucket.get('owners') or {}
     if not owners:
@@ -69,7 +69,7 @@ def jobs_bucket_segments(bucket, metric, default='jobs'):
 
 
 def jobs_timeseries_series(ts, metric):
-    """``(labels, series)`` for the stacked timeline, bottom → top.
+    """``(labels, series)`` for the stacked timeline, bottom -> top.
 
     ``series`` is ``[(label, [value per band]), …]`` with ``'Others'``
     first — the ``get_daily_user_usage_for_project`` convention the
@@ -77,7 +77,7 @@ def jobs_timeseries_series(ts, metric):
     read the same way.
 
     The plugin hands owners back in **global rank order, identical in every
-    band**, so a name keeps its colour and its position across the whole
+    band**, so a name keeps its color and its position across the whole
     axis. That is the property a stacked time series needs and the reason
     ``jobs_timeseries`` ranks once over the window rather than per band.
     Owners are reversed here so the largest lands on top of the stack, and

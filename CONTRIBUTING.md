@@ -430,6 +430,43 @@ pytest-xdist against the isolated `mysql-test` container.
 - **Add tests** for new features
 - **Run schema validation** after ORM changes
 
+### Comment budget
+
+"Why, not what" is necessary but not sufficient — a 54-line essay explaining
+a config value is all "why". Length is the other half of the rule:
+
+| | budget |
+|---|---|
+| Module docstring | 10 lines |
+| Function/method docstring | 1 line, unless the signature is genuinely ambiguous |
+| `Args:` / `Returns:` block | omit when annotated parameter names already say it; keep `Raises:` when the exception is non-obvious |
+| In-body comment | 3 lines |
+| Config comment (`helm/`, `.env.example`, Dockerfiles) | state the constraint and the legal values |
+
+Anything longer is a design document. Put it in `docs/`, and leave the
+constraint plus the path.
+
+**Always keep** a comment recording a real trap, a past production bug, or a
+non-obvious invariant. Compress it to the constraint; never delete it. The
+budget is about relocating rationale, not discarding it.
+
+**Prose style**, enforced by `tests/unit/test_docs.py`:
+
+- American spelling. The check reads comments, docstrings and markdown only —
+  never identifiers or string literals — so it can never demand a rename.
+- No changelog phrasing. A comment says what is true now; repository history
+  belongs in git and `docs/plans/`. This includes a comment arguing with its
+  own earlier revision (`an earlier version of this docstring said...`), which
+  is the same defect one level up.
+  ✗ `This used to be a hand-copied duplicate, and the copy had drifted...`
+  ✓ `Call the shared ladder; do not re-inline it -- a copy silently stopped
+  passing action_id.`
+- No emoji or decorative Unicode in code or config comments. Write `WARNING:`,
+  `NOTE:`, `DO NOT`. Markdown is exempt; there the markers are navigation.
+
+Measure with `scripts/doc_ratio.py`. `src/cli` at ~22% is the house baseline.
+Background and the cleanup sprint: `docs/plans/DOC_SLIMMING.md`.
+
 ### SQLAlchemy Patterns
 
 **DateTime handling:**

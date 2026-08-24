@@ -69,7 +69,7 @@ def dashboard_page_routes():
         if 'GET' in methods
         and '<' not in rule                 # no URL converters
         and '/htmx/' not in rule            # htmx fragment, not a page
-        # ⚠️ Classify on the ENDPOINT, not the rule. A fragment view is named
+        # WARNING: Classify on the ENDPOINT, not the rule. A fragment view is named
         # `*_fragment` by convention, but its URL need not be: `/admin/expirations`
         # is `expirations_fragment`, and `/allocations/xras_remediations` is
         # `xras_remediations_fragment`. Keying off the rule meant each such route
@@ -283,7 +283,7 @@ def set_theme(page, base_url, theme):
     """Pin the server-rendered theme for this page's browsing context.
 
     Set on the context rather than by clicking the toggle: the toggle's own
-    behaviour is unit-tested (tests/unit/test_theme_transport.py), and driving
+    behavior is unit-tested (tests/unit/test_theme_transport.py), and driving
     it here would add a reload to every parameterized case for no extra
     coverage.
     """

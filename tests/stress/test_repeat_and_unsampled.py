@@ -42,7 +42,7 @@ def test_repeat_post_supplement(xras_client, action_log, dispatching, scenario,
     assert len(rows) == 3
     assert {r['status'] for r in rows} == {scenario['expect']}
 
-    # ⚠️ **This assertion is inverted from what it was.** It used to prove `actionId`
+    # WARNING: **This assertion is inverted from what it was.** It used to prove `actionId`
     # survived only as bytes inside `raw_payload`, so telling a duplicate from a
     # legitimate second award meant parsing JSON out of a TEXT column. That was the
     # evidence behind the `action_id` verdict; the column landed, so this now proves
@@ -74,7 +74,7 @@ def test_repeat_post_extension(xras_client, action_log, dispatching, scenario,
 class TestWhatADoublePostCosts:
     """The blast radius, at the handler level where it is observable.
 
-    ⚠️ These write through ``dispatch_action`` on the **test's** session, so the
+    WARNING: These write through ``dispatch_action`` on the **test's** session, so the
     per-test SAVEPOINT rolls them back — unlike the route, whose commits escape it.
     """
 
@@ -98,7 +98,7 @@ class TestWhatADoublePostCosts:
     def test_a_repeated_supplement_is_additive(self, session, mapped, monkeypatch):
         """250,000 posted three times leaves 750,000 added.
 
-        Correct per-post behaviour and the wrong total — `awardedAmount` is the
+        Correct per-post behavior and the wrong total — `awardedAmount` is the
         INCREMENT, not the new total, which is the most consequential porting semantic
         in the sprint. This is the number behind the `action_id` verdict.
         """
@@ -214,7 +214,7 @@ def test_unsampled_advance(xras_client, action_log, dispatching, scenario,
 def test_copi_role_spelling(session, spelling):
     """The spelling is still unknown, and it turns out not to matter.
 
-    ⚠️ Asked at the roster level rather than through the route, because the answer is
+    WARNING: Asked at the roster level rather than through the route, because the answer is
     about ``resolve_roster``'s two readings and nothing about HTTP changes it.
 
     Membership takes **every** username in ``roles[]`` regardless of ``roleType``, so

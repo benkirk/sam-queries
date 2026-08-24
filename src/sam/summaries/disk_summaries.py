@@ -84,8 +84,8 @@ class DiskChargeSummaryStatus(Base):
     2026-05-13: 883 imported dates, all ``current=TRUE``):
 
     - One row per successfully imported ``activity_date``.
-    - ``current = TRUE`` → that date's summary is valid / posted.
-    - ``current = FALSE`` → that date has been invalidated and needs
+    - ``current = TRUE`` -> that date's summary is valid / posted.
+    - ``current = FALSE`` -> that date has been invalidated and needs
       recalculation (legacy named query
       ``findInvalidDiskChargeSummaryDates``).
     - Multiple ``current = TRUE`` rows are normal — readers pick

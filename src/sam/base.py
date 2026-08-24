@@ -56,10 +56,10 @@ def normalize_end_date(value):
     columns use the end-of-day convention.
 
     Converts:
-      - pure ``datetime.date`` object  →  datetime at 23:59:59
-      - ``datetime`` at exactly midnight  →  same date at 23:59:59
-      - ``datetime`` with non-zero time  →  unchanged (trust the caller)
-      - None  →  None (open-ended / no expiry)
+      - pure ``datetime.date`` object  ->  datetime at 23:59:59
+      - ``datetime`` at exactly midnight  ->  same date at 23:59:59
+      - ``datetime`` with non-zero time  ->  unchanged (trust the caller)
+      - None  ->  None (open-ended / no expiry)
     """
     if value is None:
         return None
@@ -233,7 +233,7 @@ class NestedSetMixin:
     """
     _ns_pk_col = 'id'
     _ns_parent_col = 'parent_id'
-    _ns_root_col = None       # None → no tree_root scoping
+    _ns_root_col = None       # None -> no tree_root scoping
     _ns_path_attr = 'name'
 
     def _ns_apply_root_scope(self, query):
@@ -247,7 +247,7 @@ class NestedSetMixin:
         return query
 
     def get_ancestors(self, include_self: bool = False) -> list:
-        """Get ancestor nodes ordered root → immediate parent."""
+        """Get ancestor nodes ordered root -> immediate parent."""
         cls = type(self)
         if not self.tree_left or not self.tree_right:
             return []

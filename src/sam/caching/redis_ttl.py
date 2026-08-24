@@ -65,20 +65,20 @@ class RedisTTLAdapter(CacheBase):
         # consistency is provided by Redis itself.
         self._py_lock = threading.RLock()
 
-    # ── helpers ──────────────────────────────────────────────────────────
+    # helpers
 
     def _encode_key(self, key: Hashable) -> bytes:
         # protocol=4 is universally available on Python ≥ 3.4 and yields
         # a stable byte representation across processes.
         return self._prefix.encode() + pickle.dumps(key, protocol=4)
 
-    # ── lock surface (no-op; see module docstring) ───────────────────────
+    # lock surface (no-op; see module docstring)
 
     @property
     def lock(self):
         return _noop_lock()
 
-    # ── dict-like API used by usage_cache.py:138-163 ─────────────────────
+    # dict-like API used by usage_cache.py:138-163
 
     def __contains__(self, key: Hashable) -> bool:
         return bool(self._client.exists(self._encode_key(key)))
@@ -112,10 +112,10 @@ class RedisTTLAdapter(CacheBase):
     def maxsize(self) -> Optional[int]:
         return self._maxsize
 
-    # ── CacheBase ───────────────────────────────────────────────────────
+    # CacheBase
 
     def _scan_keys(self):
-        # SCAN avoids the O(N) blocking behaviour of KEYS.
+        # SCAN avoids the O(N) blocking behavior of KEYS.
         return self._client.scan_iter(match=f'{self._prefix}*', count=200)
 
     def info(self) -> dict:

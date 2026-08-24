@@ -1,7 +1,7 @@
 """One shape for the stacked charts' band data.
 
 Four producers hand the stacked charts the same concept under three different
-key names, which is why their colour and legend loops could never be shared:
+key names, which is why their color and legend loops could never be shared:
 
     series[i]['label']      sam/queries/charges.py, system_status user_proj_queues
     series[i]['username']   sam/queries/disk_usage.py
@@ -73,16 +73,16 @@ def from_pairs(raw) -> list[Series]:
 
 def assign_colors(series: Sequence[Series], palette, others_color,
                   reverse: bool = False) -> list:
-    """One colour per band, bottom → top.
+    """One color per band, bottom -> top.
 
     "Others" takes `others_color` and **does not advance the palette cursor**,
-    so a named band keeps its colour whether or not a remainder exists.
+    so a named band keeps its color whether or not a remainder exists.
 
     `reverse` walks the palette backwards over the named bands. The
     user/proj stacked area needs it and the others must not have it: that
     chart's series arrive as ``[Others, lowest-rank, …, highest-rank]`` so the
     stack reads bottom-to-top by rank. Walking forward would hand the
-    *lowest*-rank band the warmest colour — backwards from the pace chart's
+    *lowest*-rank band the warmest color — backwards from the pace chart's
     convention, where the biggest band is gold. This is a real semantic
     difference between two charts, not a flag someone added for symmetry.
     """

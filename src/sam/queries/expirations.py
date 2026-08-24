@@ -47,7 +47,7 @@ def unique_projects(
 ) -> List['Project']:
     """Collapse an expirations query result down to distinct projects.
 
-    ⚠️ **A guard, not a repair.** `get_projects_by_allocation_end_date` and
+    WARNING: **A guard, not a repair.** `get_projects_by_allocation_end_date` and
     `get_projects_with_expired_allocations` pin one allocation per project
     (`_get_latest_allocation_subquery` ends in `LIMIT 1`), so today they emit no
     duplicates at all — verified against a production snapshot at three windows,

@@ -5,7 +5,7 @@
   Create modals: loaded lazily when a create button is clicked.
 #}
 
-{# ════════════════════════════════════════════════════════ CREATE MODALS #}
+{# CREATE MODALS #}
 
 {# Gate matches the buttons that open these shells and the routes behind
    them (orgs_routes.py). Gating on CREATE_RESOURCES here — a copy of
@@ -48,7 +48,7 @@
                   icon='plus', container_id='createNsfProgramFormContainer') }}
 {% endif %}
 
-{# ══════════════════════════════════════════════════════════ EDIT MODALS #}
+{# EDIT MODALS #}
 
 {{ modal_scaffold('editInstitutionTypeModal', 'Edit Institution Type',
                   icon='tag', container_id='editInstitutionTypeFormContainer', variant='edit') }}

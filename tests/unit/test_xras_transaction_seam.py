@@ -2,7 +2,7 @@
 
 Why this file exists
 --------------------
-Handler tests neutralise the commit by monkeypatching ``management_transaction`` in a
+Handler tests neutralize the commit by monkeypatching ``management_transaction`` in a
 module's globals. The suite's per-test isolation is a SAVEPOINT on the session's
 connection, so a real ``COMMIT`` releases it and the rows escape into the shared xdist
 database — which has already happened once, during Sprint C, leaking three
@@ -12,8 +12,8 @@ While five handler modules each held their own ``from ... import
 management_transaction``, every such test had to patch five separate bindings. Missing
 one has **two** failure modes and only the first is safe:
 
-* the name is absent → ``monkeypatch.setattr`` raises ``AttributeError`` at setup. Loud.
-* the name is present but unused → the patch succeeds, the real context manager runs
+* the name is absent -> ``monkeypatch.setattr`` raises ``AttributeError`` at setup. Loud.
+* the name is present but unused -> the patch succeeds, the real context manager runs
   from wherever the code actually reads it, the rows are written and committed, and
   **every assertion still passes**. Silent, and it damages other workers' runs.
 
@@ -79,7 +79,7 @@ class TestTheSeamIsSingular:
 
 
 class TestPatchingTheSeamIsSufficient:
-    """The behavioural half — the scan proves *where*, this proves *enough*."""
+    """The behavioral half — the scan proves *where*, this proves *enough*."""
 
     @pytest.fixture
     def recording(self, session, monkeypatch):
@@ -175,7 +175,7 @@ class TestPatchingTheSeamIsSufficient:
 
 
 class TestTheNewHandlerDoesNotOwnProject:
-    """A tripwire, not a behaviour test.
+    """A tripwire, not a behavior test.
 
     ``ActionHandler.project`` means "the **existing** project named by
     ``requestNumber``". For the New handler that is always ``None`` — ``select_service``
@@ -199,13 +199,13 @@ class TestTheNewHandlerDoesNotOwnProject:
 
 
 class TestPanelAuthorisationAgreesWithTheResolvedType:
-    """⚠️ **The sharp edge of the ``opportunityId`` map.**
+    """WARNING: **The sharp edge of the ``opportunityId`` map.**
 
     ``auth_at_panel_meeting`` re-derives the ``(panel, type)`` pair *independently*
     of ``resolve_allocation_type`` — the first sets ``auth_at_panel_mtg`` on
     ``allocation_transaction`` rows, the second sets ``project.allocation_type_id``.
     Wiring only the second to the map would let a project's type come from the map
-    while its transactions' panel-authorisation flag came from the ladder:
+    while its transactions' panel-authorization flag came from the ladder:
     inconsistent rows, written, with nothing raised and nothing logged.
 
     Called from ``new.py``, ``update.py``, ``supplement.py`` and ``adjustment.py``,
@@ -221,7 +221,7 @@ class TestPanelAuthorisationAgreesWithTheResolvedType:
                 .filter(AllocationType.allocation_type == 'CHAP').one())
 
     def test_a_mapped_action_is_panel_authorised_through_the_map(self, session):
-        """``Small`` is not panel-authorised; ``CHAP`` is. Mapping the id to CHAP must
+        """``Small`` is not panel-authorized; ``CHAP`` is. Mapping the id to CHAP must
         flip the flag — if this reads the ladder it stays False and the transaction is
         written unauthorised while the project sits on a CHAP type."""
         from sam.xras.extractors import resolve_allocation_type

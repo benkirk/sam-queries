@@ -244,7 +244,7 @@ class BusinessHourly(_LocalWallSchedule):
 
     ``end_hour`` is **inclusive**: the default window fires at 17:00.
 
-    ⚠️ **The DST immunity is a property of the WINDOW, not of this class.**
+    WARNING: **The DST immunity is a property of the WINDOW, not of this class.**
     :class:`Hourly`'s docstring explains that it computes in UTC precisely
     because a local-wall hourly schedule "loses one slot each fall (the
     repeated hour folds onto one instant) and risks merging one each spring".

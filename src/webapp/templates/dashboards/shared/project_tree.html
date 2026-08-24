@@ -3,7 +3,7 @@
   ===================================
   Renders a recursive project hierarchy tree using Jinja2's recursive for-loop.
 
-  Usage (simple name-only tree — original tree_fragment behaviour):
+  Usage (simple name-only tree — original tree_fragment behavior):
     {% from 'dashboards/shared/project_tree.html' import render_project_tree with context %}
     <ul class="tree-list">
       {{ render_project_tree([root], current_projcode=projcode, can_view=can_view,
@@ -24,7 +24,7 @@
   current_projcode        Projcode of the currently viewed project (highlighted in yellow).
   alloc_by_projcode       Optional dict {projcode: resource_dict|None} for ONE resource.
                           When provided, a compact allocation bar + edit button are shown
-                          for each node that has data.  None → simple name-only tree.
+                          for each node that has data.  None -> simple name-only tree.
   can_view                If True, projcodes are rendered as clickable buttons that open
                           the project-details modal.
   active_only             If True, inactive child nodes are omitted from the tree.
@@ -68,7 +68,7 @@
   #}
   <div class="d-flex align-items-center gap-2">
 
-    {# ── Left: identity ───────────────────────────────────────────── #}
+    {# Left: identity #}
     <span class="flex-grow-1 text-truncate" style="min-width:0;">
       {%- if is_current %}<i class="fas fa-arrow-right text-warning me-1"></i>{% endif -%}
       {%- if can_view -%}
@@ -85,7 +85,7 @@
       {%- if not is_active %}{{ status_badge('inactive', extra='ms-1 small') }}{% endif -%}
     </span>
 
-    {# ── Right: allocation data (fixed-width column) ──────────────── #}
+    {# Right: allocation data (fixed-width column) #}
     {%- if alloc_by_projcode is not none -%}
       {%- set res = alloc_by_projcode.get(node.projcode) -%}
       {%- if res -%}
@@ -198,7 +198,7 @@
   {%- if is_current %}tree-node-current {% endif %}
   {%- if not is_active %}tree-node-inactive{% endif %}
 ">
-  {# ── Col 1: identity (carries all indentation) ────────────────────── #}
+  {# Col 1: identity (carries all indentation) #}
   <td style="
       padding-left: calc({{ depth }} * 1.25rem + 0.5rem);
       {%- if depth > 0 %} border-left: 2px solid var(--border-default);{% endif %}
@@ -219,7 +219,7 @@
     {%- if not is_active %}{{ status_badge('inactive', extra='ms-1 small') }}{% endif -%}
   </td>
 
-  {# ── Col 2: progress bar — anchored by table column, always aligned ── #}
+  {# Col 2: progress bar — anchored by table column, always aligned #}
   <td style="padding: 0.25rem 0.4rem; vertical-align:middle;">
     {%- if res %}
     {{ render_usage_bar(res.percent_used,
@@ -230,12 +230,12 @@
     {%- endif %}
   </td>
 
-  {# ── Col 3: % used ─────────────────────────────────────────────────── #}
+  {# Col 3: % used #}
   <td class="text-end text-muted small" style="vertical-align:middle; white-space:nowrap;">
     {%- if res %}{{ res.percent_used | fmt_pct }}{%- endif %}
   </td>
 
-  {# ── Col 4: allocated amount (+ unallocated residual on carve-out parents) #}
+  {# Col 4: allocated amount (+ unallocated residual on carve-out parents) #}
   <td class="text-end text-muted small" style="vertical-align:middle; white-space:nowrap;">
     {%- if res %}{{ res.allocated | fmt_number }}
       {%- if res.carve_residual %}
@@ -249,21 +249,21 @@
     {%- endif %}
   </td>
 
-  {# ── Col 5: used amount ────────────────────────────────────────────── #}
+  {# Col 5: used amount #}
   <td class="text-end text-muted small" style="vertical-align:middle; white-space:nowrap;">
     {%- if res %}{{ res.used | fmt_number }}
     {%- elif alloc_by_projcode is not none %}<em>—</em>
     {%- endif %}
   </td>
 
-  {# ── Col 6: remaining amount ───────────────────────────────────────── #}
+  {# Col 6: remaining amount #}
   <td class="text-end text-muted small" style="vertical-align:middle; white-space:nowrap;">
     {%- if res %}{{ res.remaining | fmt_number }}
     {%- elif alloc_by_projcode is not none %}<em>—</em>
     {%- endif %}
   </td>
 
-  {# ── Col 7: shared badge + edit / allocate-down / exchange buttons ── #}
+  {# Col 7: shared badge + edit / allocate-down / exchange buttons #}
   <td style="vertical-align:middle; white-space:nowrap;">
     {%- if res and res.is_inheriting -%}
     {{ shared_badge() }}

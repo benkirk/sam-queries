@@ -20,7 +20,7 @@ Nothing enforces the invariant at write time (allocations are entered per
 project), so it drifts as awards are made.  ``audit_allocation_trees()`` is the
 check; ``sam-admin project --audit-trees`` is the operator-facing front end.
 
-Note this module *does* classify pool-vs-carve children — that judgement lives
+Note this module *does* classify pool-vs-carve children — that judgment lives
 here, in :func:`is_pool_member`, the single classification site.  It is shared
 with :func:`sam.manage.allocations.get_carveout_frontier` (the per-node
 residual/frontier decomposition behind the admin "allocate down" workflow);

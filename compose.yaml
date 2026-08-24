@@ -45,11 +45,11 @@ services:
       # happens INSIDE these strings — do NOT wrap the default in quotes
       # (those would become literal characters in the value).
       #
-      # ── DB routing — substituted from .env if user set a value, else
+      # DB routing — substituted from .env if user set a value, else
       #    fall back to compose service-name defaults. If the user
       #    uncomments PROD in .env, that flows through to in-stack
       #    containers (intentional pass-through).
-      # ⚠️ Match the chart (helm/values.yaml sets TZ: America/Denver). SAM's
+      # WARNING: Match the chart (helm/values.yaml sets TZ: America/Denver). SAM's
       # MySQL columns are naive-MOUNTAIN, stamped from the app clock — so a
       # container left on UTC writes `received_time` six hours in the future
       # relative to the data around it, and any column that renders an age
@@ -63,7 +63,7 @@ services:
       - "STATUS_DB_SERVER=${STATUS_DB_SERVER:-mysql}"
       - "STATUS_DB_USERNAME=${STATUS_DB_USERNAME:-root}"
       - "STATUS_DB_PASSWORD=${STATUS_DB_PASSWORD:-root}"
-      # ── FORCED in-stack — host `.env` localhost variants would point
+      # FORCED in-stack — host `.env` localhost variants would point
       #    out of the docker network. No interpolation here on purpose.
       - "CACHE_REDIS_URL=redis://cache:6379/0"
       - "RATELIMIT_STORAGE_URI=redis://cache:6379/1"
@@ -77,13 +77,13 @@ services:
       # job_history). Its settings (FS_SCAN_DB_BACKEND, FS_SCAN_PG_HOST,
       # FS_SCAN_PG_*, FS_SCAN_RESOURCE_DATABASES) flow through from the host
       # `.env` via env_file; no override here on purpose.
-      # ── Per-service application policy
+      # Per-service application policy
       - "DISABLE_AUTH=0"         # Explicitly disabled — must remain 0 in production
       - "FLASK_DEBUG=0"
       - "AUDIT_ENABLED=1"
       - "AUDIT_LOG_PATH=/var/log/sam/model_audit.log"
       - "AUDIT_LOG_STDOUT=1"        # Mirror audit log to STDOUT (durable 45d capture in CIRRUS/k8s)
-      # ── Sensible defaults — overridable via .env
+      # Sensible defaults — overridable via .env
       - "FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-dev-only-insecure-key-change-for-production}"
       - "GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}"   # Pin small default; gunicorn_config.py would otherwise spawn 2·host_cpus+1
       - "JUPYTERHUB_API_URL=${JUPYTERHUB_API_URL:-https://jupyterhub.hpc.ucar.edu}"
@@ -92,7 +92,7 @@ services:
       - "JUPYTERHUB_CACHE_TTL=${JUPYTERHUB_CACHE_TTL:-300}"
       - "GOOGLE_CALENDAR_EMBED_URL=${GOOGLE_CALENDAR_EMBED_URL:-https://calendar.google.com/calendar/embed?src=ucar.edu_o09r1n89tid1b8jkrvurc8qio4%40group.calendar.google.com&ctz=America%2FDenver}"
       # Empty by default, which is also the code default: nothing disabled.
-      # Present only so the kill-switch warning on Admin → Configuration can be
+      # Present only so the kill-switch warning on Admin -> Configuration can be
       # exercised locally the way e2e/test_scheduled_tasks_card.py documents.
       # Without this line a shell-exported value never reaches the container,
       # and that test skips instead of running. Nothing here DISPATCHES tasks —
@@ -139,8 +139,8 @@ services:
     # Development: Disable Python bytecode caching to avoid stale .pyc issues
     # when adding new files/functions. Remove for production deployment.
     environment:
-      # ── DB routing (see `webapp` for the pass-through reasoning)
-      # ⚠️ Match the chart (helm/values.yaml sets TZ: America/Denver). SAM's
+      # DB routing (see `webapp` for the pass-through reasoning)
+      # WARNING: Match the chart (helm/values.yaml sets TZ: America/Denver). SAM's
       # MySQL columns are naive-MOUNTAIN, stamped from the app clock — so a
       # container left on UTC writes `received_time` six hours in the future
       # relative to the data around it, and any column that renders an age
@@ -154,7 +154,7 @@ services:
       - "STATUS_DB_SERVER=${STATUS_DB_SERVER:-mysql}"
       - "STATUS_DB_USERNAME=${STATUS_DB_USERNAME:-root}"
       - "STATUS_DB_PASSWORD=${STATUS_DB_PASSWORD:-root}"
-      # ── FORCED in-stack
+      # FORCED in-stack
       - "CACHE_REDIS_URL=redis://cache:6379/0"
       - "RATELIMIT_STORAGE_URI=redis://cache:6379/1"
       # job_history postgres lives in a separate compose stack
@@ -170,7 +170,7 @@ services:
       # (FS_SCAN_DB_BACKEND, FS_SCAN_PG_HOST, FS_SCAN_PG_*,
       # FS_SCAN_RESOURCE_DATABASES) flow through from the host `.env` via
       # env_file; no override here on purpose.
-      # ── Webdev-specific application policy (no DISABLE_AUTH — keep
+      # Webdev-specific application policy (no DISABLE_AUTH — keep
       #    click-login stub default; user picks RBAC tier via UI)
       - "PYTHONDONTWRITEBYTECODE=1"
       - "PYTHONUNBUFFERED=1"
@@ -178,7 +178,7 @@ services:
       - "AUDIT_ENABLED=1"
       - "AUDIT_LOG_PATH=/var/log/sam/model_audit.log"
       - "AUDIT_LOG_STDOUT=1"        # Mirror audit log to STDOUT (durable 45d capture in CIRRUS/k8s)
-      # ── Sensible defaults — overridable via .env
+      # Sensible defaults — overridable via .env
       - "FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-dev-only-insecure-key-change-for-production}"
       - "JUPYTERHUB_API_URL=${JUPYTERHUB_API_URL:-https://jupyterhub.hpc.ucar.edu}"
       - "JUPYTERHUB_INSTANCE=${JUPYTERHUB_INSTANCE:-stable}"
@@ -186,7 +186,7 @@ services:
       - "JUPYTERHUB_CACHE_TTL=${JUPYTERHUB_CACHE_TTL:-300}"
       - "GOOGLE_CALENDAR_EMBED_URL=${GOOGLE_CALENDAR_EMBED_URL:-https://calendar.google.com/calendar/embed?src=ucar.edu_o09r1n89tid1b8jkrvurc8qio4%40group.calendar.google.com&ctz=America%2FDenver}"
       # Empty by default, which is also the code default: nothing disabled.
-      # Present only so the kill-switch warning on Admin → Configuration can be
+      # Present only so the kill-switch warning on Admin -> Configuration can be
       # exercised locally the way e2e/test_scheduled_tasks_card.py documents.
       # Without this line a shell-exported value never reaches the container,
       # and that test skips instead of running. Nothing here DISPATCHES tasks —

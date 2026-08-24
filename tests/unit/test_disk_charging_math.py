@@ -72,7 +72,7 @@ def test_tib_year_definition_constant_storage_for_one_year():
 
 def test_units_match_allocation_amount_pattern():
     # Allocation.amount for disk is in TiB. 100 TiB constant for 1 year
-    # → 100 TiB-years should match a hand calculation.
+    # -> 100 TiB-years should match a hand calculation.
     bytes_ = 100 * BYTES_PER_TIB
     # 365 daily snapshots of interval=1 each (the "if cadence changes"
     # case from the legacy doc):

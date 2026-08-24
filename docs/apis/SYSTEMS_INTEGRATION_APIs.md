@@ -210,7 +210,7 @@ branch_data['user_groups']['benkirk']
 
 **hpc-data kludge**: home directory and login shell for the `hpc-data` branch
 are resolved using the `GLADE*` resource attributes rather than the `hpc-data`
-access branch resource.  This reproduces legacy behaviour.
+access branch resource.  This reproduces legacy behavior.
 
 ---
 

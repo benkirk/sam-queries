@@ -207,3 +207,64 @@ source etc/config_env.sh && pytest
 - Refactoring `usage_cache.py:138-163` away from the dict-like API — keeps both adapters interchangeable; cleaner refactor can come later.
 - Admin "Clear cache by category" UI button — `caching.clear()` already supports it; route + button is a small follow-up.
 - The unaddressed `redis-py` retry/timeout tuning — defaults are fine for pod-local network.
+
+---
+
+## Sizing history — `cache.maxmemoryMB`
+
+Relocated here from `helm/values.yaml`, where it had grown to 54 comment
+lines above a single integer. The value in the chart is **192 MB**; this
+section is why, and what to re-measure before changing it.
+
+### What the instance holds
+
+All 15 chart SVG caches, both jobs aggregation buckets, both fs-scans
+buckets, the allocation-usage cache, and the whole Flask-Caching layer. The
+jobs explorer multiplies the distinct chart keys in flight — one per filter
+set viewed inside the 10-minute chart TTL.
+
+### Per-SVG size dropped ~58% at `svg.fonttype: none`
+
+Real `<text>` instead of per-glyph path outlines (see `charts/theme.py`).
+Measured across all 32 chart sample cases: 1.34 MB -> 0.57 MB total. Pies
+save most (~70%, they are mostly legend text), bar histograms least (~40%,
+they are mostly real paths). A cached jobs pie went from ~49 KB to ~15 KB;
+the live jobs timeline measures ~35 KB and its histogram ~10 KB.
+
+### `maxmemory` was deliberately not reduced to match
+
+The freed headroom is earmarked for the layout and theme render axes. Both
+layout passes came in cheaper than a 4x budget: a smaller figure carries
+fewer path points and less text, so it costs less than its desktop twin
+rather than the same. Across the same 32 sample cases:
+
+| profile | total | vs desktop |
+|---|---|---|
+| desktop | 562 KB | 1.00x |
+| tablet | 483 KB | 0.86x |
+| mobile | 417 KB | 0.74x |
+| **all three** | | **2.60x** |
+
+So the layout axis is complete at 2.6x, not the 3x a third profile suggests.
+With the theme axis doubling that, six combinations land near **5.2x**.
+Against a base that dropped 58%, 5.2x of the post-drop base is ~2.2x of the
+pre-drop one — which is what 192 MB was already sized for.
+
+The multiplier applies only to charts actually *requested* in more than one
+combination inside the 600 s TTL. Desktop-light remains the overwhelming
+majority of traffic, so the real working set grows well under 2.6x.
+
+One caveat specific to the tablet profile: `PieChart` declares tablet *as*
+its desktop figure (a pie's bbox is already narrower than any card that
+renders one), so the five pies pay for a duplicate cache entry holding
+byte-identical SVG. That is ~5% of the chart working set, and the
+alternative — a layout that renders identically but keys differently — would
+be a special case in `chart_view._key` for no measured gain.
+
+### Before changing it
+
+Headroom is the safe direction, because `allkeys-lru` is instance-GLOBAL:
+under pressure it is free to evict the rate limiter's DB 1 counters. The
+container limit keeps ~1.7x `maxmemory` for redis overhead and
+fragmentation. Watch `INFO stats: evicted_keys` and
+`INFO memory: used_memory_peak_human`.

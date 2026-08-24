@@ -9,10 +9,10 @@ The shape every operation follows
 ---------------------------------
 ::
 
-    build client  ──►  open an `attempted` audit row  ──►  COMMIT it
-                  ──►  dispatch the write (the client verifies it)
-                  ──►  close the audit row on a FRESH session  ──►  COMMIT
-                  ──►  best-effort: invalidate caches, patch the snapshot
+    build client  ->  open an `attempted` audit row  ->  COMMIT it
+                  ->  dispatch the write (the client verifies it)
+                  ->  close the audit row on a FRESH session  ->  COMMIT
+                  ->  best-effort: invalidate caches, patch the snapshot
 
 **The audit row is committed before the write goes out, on its own session.**
 This is the ``NotificationLedger`` idiom and it is here for the same reason: a
@@ -81,7 +81,7 @@ class RemediationOutcome:
         return self.status == 'verified'
 
 
-# ── audit plumbing ──────────────────────────────────────────────────────
+# audit plumbing
 
 def _open_event(session_factory, **fields) -> Optional[int]:
     """Write the ``attempted`` row and commit it. Returns its id.
@@ -120,7 +120,7 @@ def _close_event(session_factory, event_id, **fields) -> None:
 def _rejection_fields(exc) -> Dict[str, Any]:
     """Closing columns for a write XRAS refused.
 
-    ⚠️ **``errors`` goes into ``after_state``, not into ``outcome_reason``.**
+    WARNING: **``errors`` goes into ``after_state``, not into ``outcome_reason``.**
     A 400 from XRAS carries its own list of what failed validation — six
     entries is ordinary — and that list is the single most useful thing to know
     about a rejection three weeks later. ``outcome_reason`` is VARCHAR(255) and
@@ -143,7 +143,7 @@ def _rejection_fields(exc) -> Dict[str, Any]:
 def _outcome_fields(result) -> Dict[str, Any]:
     """Map an :class:`XrasWriteResult` onto the audit row's closing columns.
 
-    ⚠️ ``before_state`` travels here rather than at ``create()``. The client
+    WARNING: ``before_state`` travels here rather than at ``create()``. The client
     makes its pre-capture *inside* the call, so the ``attempted`` row cannot
     carry it — and for a merge it is the whole point of the column: the source
     person's detail sheet, including ``residenceCountry``, exists nowhere else
@@ -163,7 +163,7 @@ def _client(client=None):
     return client or XrasAdminClient.from_environment()
 
 
-# ── cache coherence ─────────────────────────────────────────────────────
+# cache coherence
 
 def _refresh_index_entry(request_number: str, *, reader=None) -> bool:
     """Re-read one request and patch its snapshot entry. ``True`` if patched.
@@ -173,7 +173,7 @@ def _refresh_index_entry(request_number: str, *, reader=None) -> bool:
     uses, so a patched row is indistinguishable from a swept one apart from its
     ``refreshed_at`` stamp.
 
-    ⚠️ A request patched into a state that puts it *outside* the sweep's cohort
+    WARNING: A request patched into a state that puts it *outside* the sweep's cohort
     — a whole request flipping to ``Incomplete``, say — **stays on the card**
     with its new status until the next sweep drops it naturally. The operator
     must see what their click did; a row that silently vanishes reads as a bug
@@ -208,13 +208,108 @@ def _refresh_index_entry(request_number: str, *, reader=None) -> bool:
         return False
 
 
+def recheck_readiness(request_number: str, *, session, reader=None) -> dict:
+    """Re-run the never-writes preflight for one request and patch its snapshot.
+
+    Read-only against XRAS (report context) and never-writes against SAM — no
+    audit row, unlike the write ops. Returns ``{available, patched, counts}``;
+    ``available`` is False when the read client is unavailable, so the route can
+    degrade with a 200. Never raises.
+    """
+    from sam.integration.xras import XrasActionLog
+    from sam.integration.xras_api.cache import patch_requests_index
+    from sam.integration.xras_api.client import XrasApiClient
+    from sam.queries.xras_requests import request_index_entry
+    from sam.xras.preflight import (iter_candidate_actions, preflight_action,
+                                    verdict_to_dict)
+
+    counts = {'rechecked': 0, 'failed': 0, 'manual': 0, 'incomplete': 0}
+    try:
+        reader = reader or XrasApiClient.from_environment()
+        payload = reader.get_request_by_number(request_number)
+    except Exception as exc:                            # noqa: BLE001
+        logger.warning('xras recheck: could not read %s (%s)', request_number, exc)
+        return {'available': False, 'patched': False, 'counts': counts}
+
+    if payload is None or payload.get('isDeleted'):
+        # Gone, or deleted since the sweep — drop the row rather than leave a
+        # "not checked" a re-check can never resolve.
+        patch_requests_index(request_number, None)
+        return {'available': True, 'patched': True, 'counts': counts}
+
+    # No lookback: the operator asked about this one request, so check every
+    # candidate action it carries.
+    candidates = list(iter_candidate_actions(payload, since=None))
+    action_ids = {a.get('actionId') for a in candidates if a.get('actionId') is not None}
+    log_seen = {}
+    try:
+        for row in (session.query(XrasActionLog)
+                    .filter(XrasActionLog.action_id.in_(action_ids)).all()):
+            log_seen[row.action_id] = {
+                'status': row.status,
+                'received_time': (row.received_time.isoformat()
+                                  if row.received_time else None),
+                'log_id': row.xras_action_log_id}
+    except Exception as exc:                            # noqa: BLE001
+        logger.warning('xras recheck: log_seen lookup failed (%s)', exc)
+
+    resource_keys, opportunities = _preflight_maps(reader, payload)
+
+    verdicts = {}
+    for action in candidates:
+        try:
+            verdict = preflight_action(session, payload, action,
+                                       resource_keys=resource_keys,
+                                       opportunities=opportunities, enabled=None,
+                                       log_seen=log_seen)
+        except Exception as exc:                        # noqa: BLE001
+            counts['incomplete'] += 1
+            logger.warning('xras recheck: preflight raised (%s)', exc)
+            continue
+        counts[verdict.status] = counts.get(verdict.status, 0) + 1
+        if verdict.action_id is not None:
+            verdicts[verdict.action_id] = verdict_to_dict(verdict)
+
+    # No `refreshed_at`: a re-check writes nothing to XRAS or SAM, so the "updated
+    # since the sweep" marker (which reads "after your change") would lie. The
+    # freshly flipped verdict badge and the toast already report the outcome.
+    entry = request_index_entry(payload, pending_push=_still_pending(request_number),
+                                preflights=verdicts)
+    patched = bool(entry) and patch_requests_index(request_number, entry)
+    return {'available': True, 'patched': patched, 'counts': counts}
+
+
+def _preflight_maps(reader, payload):
+    """``(resource_keys, opportunities)`` for one request's preflight. Guarded."""
+    resource_keys = None
+    try:
+        catalog = reader.get_resources()
+        resource_keys = {}
+        for r in catalog or ():
+            if isinstance(r, dict) and r.get('resourceId') is not None \
+                    and r.get('resourceRepositoryKey') is not None:
+                resource_keys[int(r['resourceId'])] = int(r['resourceRepositoryKey'])
+    except Exception:                                   # noqa: BLE001
+        resource_keys = None
+
+    opportunities = None
+    opp_id = payload.get('opportunityId')
+    try:
+        found = reader.get_opportunities([opp_id]) if opp_id is not None else []
+        opportunities = {o['opportunityId']: o for o in (found or ())
+                         if isinstance(o, dict) and o.get('opportunityId') is not None}
+    except Exception:                                   # noqa: BLE001
+        opportunities = None
+    return resource_keys, opportunities
+
+
 def _still_pending(request_number: str) -> bool:
     """Does SAM still lack a project for this request number?
 
     Read straight from the published snapshot rather than the database: the
     entry being patched is replacing one the sweep produced, and this flag is
     the sweep's own set-difference. Re-deriving it from a fresh DB query would
-    make a patched row disagree with its neighbours the moment a project is
+    make a patched row disagree with its neighbors the moment a project is
     created between two sweeps — which is exactly the drift the shared builder
     exists to prevent. Defaults to ``True``: a row on this card is there
     because its handoff has not happened.
@@ -229,7 +324,7 @@ def _still_pending(request_number: str) -> bool:
     return True
 
 
-# ── operations ──────────────────────────────────────────────────────────
+# operations
 
 def merge_placeholder(session_factory, *, source_username, target_username,
                       operator, comment=None, client=None) -> RemediationOutcome:
@@ -238,7 +333,7 @@ def merge_placeholder(session_factory, *, source_username, target_username,
     XRAS deletes *source* and folds its roles into *target*, after which XRAS
     sends the real username and the blocked handoff can proceed. This does not
     create a SAM account — SAM never creates users — so a person with no SAM
-    row correctly stays on *Accounts Needed*, re-classified from "erroneously
+    row correctly stays on *Pending Users*, re-classified from "erroneously
     reconciled placeholder" to an ordinary "create".
 
     The client refuses if *target* does not already resolve in XRAS: the API
@@ -275,10 +370,18 @@ def merge_placeholder(session_factory, *, source_username, target_username,
 
     patched = True
     if result.succeeded:
-        from sam.integration.xras_api.cache import invalidate_person
+        from sam.integration.xras_api.cache import (drop_pending_worklist_row,
+                                                    invalidate_person)
         invalidate_person(source_username)
         invalidate_person(target_username)
         patched = _patch_requests_naming(source_username)
+        # Best-effort: the Pending Users card renders the cached pending half,
+        # so a just-merged placeholder would keep its row until the next sweep.
+        try:
+            drop_pending_worklist_row(source_username)
+        except Exception:                            # noqa: BLE001
+            logger.warning('merge_placeholder: could not drop the pending '
+                           'worklist row for %s', source_username, exc_info=True)
 
     return RemediationOutcome(event_id, result=result, status=result.status,
                               patched=patched)
@@ -311,7 +414,7 @@ def withdraw_action(session_factory, *, request_number, request_id, action_id,
                     client=None) -> RemediationOutcome:
     """De-approve one action back to a draft (``Incomplete``) in XRAS.
 
-    ⚠️ Not archival and not deletion — it reverts the award to a draft and
+    WARNING: Not archival and not deletion — it reverts the award to a draft and
     **rewrites the XRAS record** so the history no longer shows an approval.
     A PI can re-submit it. For a single-action request the whole request follows
     to ``Incomplete``, which is what drops it out of the Approved enumeration;
@@ -335,7 +438,7 @@ def resubmit_action(session_factory, *, request_number, request_id, action_id,
     The client validates first as the same impersonated user and refuses on a
     failure, carrying XRAS's own ``errors[]`` for the modal to render.
 
-    ⚠️ That verdict is a function of *who* is impersonated — the same action can
+    WARNING: That verdict is a function of *who* is impersonated — the same action can
     validate as the PI and fail as the Allocation Manager — so the preflight is
     only meaningful alongside the user it ran as.
     """
@@ -419,12 +522,12 @@ def change_role(session_factory, *, add, request_number, request_id, username,
         request_number=request_number, client=client, close_extra=close_extra)
 
 
-# ── the request editor (Part B): resources & allocation dates ────────────
+# the request editor (Part B): resources & allocation dates
 
 def _editor_op(operation, session_factory, dispatch, *, open_fields,
                request_number, client=None, close_extra=None
                ) -> RemediationOutcome:
-    """Shared open→dispatch→close→patch body for **every** remediation verb.
+    """Shared open->dispatch->close->patch body for **every** remediation verb.
 
     The audit row is committed ``attempted`` before the write leaves, closed on
     a fresh session after, and the card entry is patched only on a verified
@@ -582,9 +685,9 @@ def update_action(session_factory, *, request_number, request_id, action_id,
         request_number=request_number, client=client)
 
 
-# ── destructive lifecycle (Part C, ADMIN_XRAS only) ──────────────────────
+# destructive lifecycle (Part C, ADMIN_XRAS only)
 #
-# ⚠️ Irreversible in XRAS and NOT live-probed. Same audit-before-dispatch
+# WARNING: Irreversible in XRAS and NOT live-probed. Same audit-before-dispatch
 # discipline as every op — the record survives whether or not the destructive
 # call is confirmed. On a verified delete the request is patched OUT of the card
 # (`_refresh_index_entry` re-reads, finds nothing, drops the row).

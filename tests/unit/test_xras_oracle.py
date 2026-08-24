@@ -11,7 +11,7 @@ The handler suites call handlers directly with dicts I wrote. This one starts fr
 **bytes on disk**, loads them through ``XrasActionSchema``, and lets the *dispatcher*
 choose — so it covers the three seams nothing else does:
 
-1. **bytes → schema → dispatcher → handler → rows**, in one pass. A handler test cannot
+1. **bytes -> schema -> dispatcher -> handler -> rows**, in one pass. A handler test cannot
    catch a payload whose real shape routes somewhere unexpected.
 2. **The § 1.2 action-mix correlation**, which is a claim about *how many rows of which
    type* a post produces. That is a cross-handler property; no single handler test can
@@ -26,7 +26,7 @@ a payload we chose validates a reading we already hold. Real payloads did the
 falsifying, in Sprint A and again on 2026-08-11. The synthetic error-path fixtures
 cover the branches this cannot reach.
 
-⚠️ **Growing the corpus 5× did not widen the strategy coverage at all.** At eight
+WARNING: **Growing the corpus 5× did not widen the strategy coverage at all.** At eight
 payloads this section read "5 of the 11 allocation-type strategies" with the implied
 excuse that the sample was small. At 41 it is still exactly 5 (asserted in
 ``test_xras_extractors.py::test_five_distinct_strategies_are_exercised``), which turns
@@ -96,7 +96,7 @@ def mapped_resources(session):
 def _project_with_allocations(session, resources, *, amount=1_000_000.0,
                               start=datetime(2020, 1, 1),
                               end=datetime(2025, 12, 31)):
-    # ⚠️ The default end deliberately precedes every corpus `actionEndDate`.
+    # WARNING: The default end deliberately precedes every corpus `actionEndDate`.
     # UCUB0166's is 2026-12-31 exactly, so seeding that date made the extension a
     # legitimate **no-op** — the equal-end-date skip firing correctly, and a test
     # asserting three rows failing for the right reason. Kept as a note because the
@@ -118,7 +118,7 @@ def _project_with_allocations(session, resources, *, amount=1_000_000.0,
 def _retarget(action, *, projcode=None, pi=None, resources=None, amount='250000'):
     """Point a real payload at referents that exist. Shape untouched.
 
-    ⚠️ "Shape untouched" was not true of ``resources``: this rebuilt each entry as
+    WARNING: "Shape untouched" was not true of ``resources``: this rebuilt each entry as
     ``{'key': ...}`` while the wire — and every corpus fixture — sends
     ``resourceRepositoryKey``. So the one helper whose job was to preserve the real
     shape was replacing the field that mattered, which is a large part of why the
@@ -148,7 +148,7 @@ def rows_for(session, allocations, kind):
 def assert_replay_invariant(session, allocations, *, deltas=None):
     """The house invariant, swept over every allocation an action touched.
 
-    ``deltas`` maps allocation id → the amount change the action should have caused;
+    ``deltas`` maps allocation id -> the amount change the action should have caused;
     absent means zero. Asserting the *delta* rather than equality with ``amount`` is
     deliberate: the factories seed no ``NEW`` row, so absolute equality would be testing
     the fixtures rather than the handler.
@@ -275,7 +275,7 @@ class TestTheActionMixCorrelation:
                                                               name=soft_link))
         make_mnemonic_code(session, description=soft_link)
 
-        # ⚠️ The real payload carries `grants: ['EAR-2425607']`, so the New path's
+        # WARNING: The real payload carries `grants: ['EAR-2425607']`, so the New path's
         # contract resolution is exercised end to end here — and the action **fails**
         # without it. That is not a fixture detail: a New action whose grant SAM does
         # not hold is one of the measured production failure classes.
@@ -340,7 +340,7 @@ class TestTheFailureOracles:
 
     def test_a_rejected_action_writes_absolutely_nothing(self, committing,
                                                         mapped_resources):
-        """Assemble → check once → execute. The whole contract in one assertion."""
+        """Assemble -> check once -> execute. The whole contract in one assertion."""
         session = committing
         project, allocations = _project_with_allocations(
             session, mapped_resources, end=datetime(2033, 7, 31))
@@ -440,7 +440,7 @@ class TestTheWholeCorpusInOnePass:
 class TestTheResourceMappingGate:
     """``sam-admin xras --validate-mapping``.
 
-    ⚠️ **This is a pre-cutover check specifically, not a post-cutover one.**
+    WARNING: **This is a pre-cutover check specifically, not a post-cutover one.**
     ``xras_resource_repository_key_resource`` is the join behind two different things:
     on the write side an unmapped key fails the action, and on the **read** side
     ``resourceRepositoryKey`` is simply *omitted* from the GET payloads when a resource

@@ -117,7 +117,7 @@ class EditAllocationForm(HtmxFormSchema):
 
 
 class RenewAllocationsForm(HtmxFormSchema):
-    """Validate the admin 'Renew Allocations' form (Edit Project → Allocations tab).
+    """Validate the admin 'Renew Allocations' form (Edit Project -> Allocations tab).
 
     Renewal clones existing allocations (identified server-side by the
     ``source_active_at`` context) into a new time period. The client submits
@@ -149,7 +149,7 @@ class RenewAllocationsForm(HtmxFormSchema):
 
 
 class ExtendAllocationsForm(HtmxFormSchema):
-    """Validate the admin 'Extend Allocations' form (Edit Project → Allocations tab).
+    """Validate the admin 'Extend Allocations' form (Edit Project -> Allocations tab).
 
     Extend pushes ``end_date`` forward on existing allocations identified
     server-side by the ``source_active_at`` context. The client submits only
@@ -216,7 +216,7 @@ class AllocateResidualForm(HtmxFormSchema):
 
 
 class AddAllocationForm(HtmxFormSchema):
-    """Validate the admin 'Add Allocation' form (Edit Project → Allocations tab).
+    """Validate the admin 'Add Allocation' form (Edit Project -> Allocations tab).
 
     All core fields are required. ``apply_to_subprojects`` is an admin checkbox
     that triggers a DFS propagation of the new allocation to the full descendant

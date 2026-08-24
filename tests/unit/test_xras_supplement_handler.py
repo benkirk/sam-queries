@@ -94,7 +94,7 @@ class TestTransactionAmount:
 
     @pytest.mark.parametrize('raw', [None, '', '  '])
     def test_a_blank_amount_reports_rather_than_raising(self, raw):
-        """⚠️ The declared divergence. Legacy's ``> 0`` test unboxes the null ``Float``
+        """WARNING: The declared divergence. Legacy's ``> 0`` test unboxes the null ``Float``
         and throws an NPE *inside* assembly, so ``throwExceptionIfErrors`` never runs
         and the operator gets a bare stack-trace class name instead of this string."""
         errs = ActionErrors()
@@ -107,7 +107,7 @@ class TestTransactionAmount:
         assert list(errs) == ['Could not convert awarded amount "1e9x"  to float']
 
     def test_three_resources_missing_an_amount_report_once(self):
-        """The accumulator behaviour most likely to be got wrong, in the place it
+        """The accumulator behavior most likely to be got wrong, in the place it
         actually fires."""
         errs = ActionErrors()
         for _ in range(3):
@@ -135,11 +135,11 @@ class TestResourceComment:
 
 
 class TestAuthAtPanelMeeting:
-    """⚠️ The branch is inverted: a payload *with* an ``allocationType`` runs the
+    """WARNING: The branch is inverted: a payload *with* an ``allocationType`` runs the
     strategy chain; one *without* reads the existing project's stored type."""
 
     @pytest.mark.parametrize('allocation_type,expected', [
-        ('Large', True),        # → CHAP
+        ('Large', True),        # -> CHAP
         ('CSL', True),
         ('Small', False),
         ('Data Analysis', False),
@@ -169,7 +169,7 @@ class TestAuthAtPanelMeeting:
 
 
 class TestAccountLookupIsUnfiltered:
-    """⚠️ The asymmetry with Extension. ``Project.getAccount(name)`` scans **all**
+    """WARNING: The asymmetry with Extension. ``Project.getAccount(name)`` scans **all**
     accounts, so a supplement lands where an extension would skip."""
 
     def test_a_decommissioned_resources_account_is_still_found(self, session):
@@ -281,7 +281,7 @@ class TestNewAllocationEndDate:
 class TestItIsAdditive:
 
     def test_the_amount_is_added_not_assigned(self, committing, mapped_resource):
-        """⚠️ **The test this file exists for.** ``update_allocation`` sets ``amount``;
+        """WARNING: **The test this file exists for.** ``update_allocation`` sets ``amount``;
         a supplement must add to it. Getting this wrong would silently shrink a
         4,000,000-hour allocation to 250,000 and look entirely plausible."""
         session = committing
@@ -427,7 +427,7 @@ class TestTheCreateBranch:
 
     def test_it_uses_today_and_the_contract_end_not_the_actions_dates(
             self, committing, mapped_resource):
-        """⚠️ Kept bug-for-bug: the create branch never reads ``actionBeginDate`` or
+        """WARNING: Kept bug-for-bug: the create branch never reads ``actionBeginDate`` or
         ``actionEndDate``. A Supplement that creates an allocation gets dates XRAS did
         not ask for."""
         session = committing

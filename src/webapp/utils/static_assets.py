@@ -1,89 +1,16 @@
 """Long-lived caching for /static, with content-hash cache busting.
 
-Flask leaves ``SEND_FILE_MAX_AGE_DEFAULT`` at None, which sends
-``Cache-Control: no-cache`` on every static file. Browsers cache correctly under
-that — but they must *revalidate* on every page load, so each asset costs a
-conditional round trip for ever.
+``url_for('static', ...)`` grows a ``?v=<content hash>``; a response carrying
+that parameter is declared immutable for a year, and one without it gets an
+hour. The rule, the measurements behind it and the gates: CLAUDE.md section 11.
 
-Measured on nwc1 2026-08-17, one webapp pod, a 4h37m window (07:28-12:05 MDT):
-
-    4,336 of 4,953 logged requests (87.5%) were /static
-    4,152 of those 4,336 (96%)        answered 304 Not Modified
-    ~145 revalidations in 4.5h        of vendored bootstrap-5.3.3, an
-                                      immutable third-party file
-
-Those 304s carry no body, but each is a full request through gunicorn and
-Flask. They were also the dominant consumer of ``max_requests`` in
-``containers/webapp/gunicorn_config.py``, whose whole purpose is to bound
-*application* heap growth — so the worker-recycle clock was being driven almost
-entirely by requests that touch nothing.
-
-The mechanism is two halves that are only correct together:
-
-  * ``url_for('static', filename=...)`` grows a ``?v=<content hash>``
-    parameter, so a changed file gets a new URL; and
-  * a response carrying that parameter is declared immutable for a year.
-
-**ONE rule decides the header** — is ``?v=`` present — rather than a table of
-path prefixes:
-
-  =========== ==============================================
-  ``?v=``     ``Cache-Control``
-  =========== ==============================================
-  present     ``public, max-age=31536000, immutable``
-  absent      ``public, max-age=3600``
-  =========== ==============================================
-
-Every reference in the templates goes through ``url_for`` (38 of them, and zero
-hardcoded ``/static/`` paths — ``test_static_assets.py`` keeps it that way), so
-the first branch covers all of the measured traffic. The second exists for the
-assets no ``url_for`` can reach: relative ``url()`` targets inside a stylesheet,
-i.e. FontAwesome's ``../webfonts/fa-solid-900.woff2`` and the one ``../img/``
-reference in the app's own CSS. Those keep a modest TTL rather than an unbounded
-one, so replacing such a file *in place* cannot pin a stale copy in somebody's
-browser for a year.
-
-The rule is deliberately shaped so that the conservative branch is the
-**default**: an asset referenced some novel way gets the short TTL
-automatically, and only an explicit ``?v=`` opts into immutability. Getting the
-rule wrong therefore costs efficiency, never correctness.
-
-⚠️ One interaction worth knowing. Rendered HTML is itself cached (see
-``user_aware_cache_key``), so after a deploy that changes an asset, cached
-fragments keep emitting the *old* ``?v=`` until they expire — and a browser
-holding that URL keeps using its old copy. Bounded by the HTML cache TTL, and
-already covered by the documented post-deploy step,
-``sam-admin cache --refresh``. The asset itself is never unreachable: ``v`` is a
-cache key, not a lookup key, so any value serves the current file.
-
-Why none of this lives in ``webapp.caching``
---------------------------------------------
-That facade calls itself "the single entry point for every cache layer in the
-webapp", and this module holds two things that look like they belong to it.
-Neither does, for *different* reasons — and the distinction is the point:
-
-* **The response header is not a cache this app owns.** Nothing is stored
-  here, there is no entry to count, and ``caching.clear()`` could not reach it
-  — a browser cache cannot be purged from the server. The dependency runs the
-  other way, and is real: the remedy for cached HTML holding a stale ``?v=`` is
-  ``caching.clear('flask')``, i.e. ``sam-admin cache --refresh``. This file is
-  an ``after_request`` header shaper, which is why it sits beside
-  ``security_headers.py`` rather than under ``caching/``.
-
-* **The digest memo in** :func:`init_static_assets` **is** a server-side store,
-  and it is outside the facade deliberately rather than by oversight.
-  ``BucketedTTLCache`` is shaped for derived data whose inputs change: a TTL, a
-  category, a row on the admin card, a working ``clear()``. This memo wants the
-  inverse of all four. File bytes cannot change inside a running container
-  image, so its correct TTL is infinite; a ``clear()`` could only force
-  pointless re-hashing of identical files; its size is bounded by the number of
-  static files rather than by traffic or key cardinality, so there is no
-  eviction question; and it has no failure mode an operator would act on.
-
-Read the second bullet as a narrow exception with stated reasons, **not** as
-precedent. Anything that memoises data which can change while the process runs
-belongs in ``webapp.caching`` — that is the whole reason the facade exists, and
-this is currently the only bespoke memo in the webapp outside it.
+An ``after_request`` header shaper, not a cache this app owns -- hence its
+place beside ``security_headers.py`` rather than under ``caching/``. The digest
+memo in :func:`init_static_assets` is a stated exception to the
+``webapp.caching`` facade: file bytes cannot change inside a running container,
+so its correct TTL is infinite and a ``clear()`` would only re-hash identical
+files. Not precedent; anything memoising data that can change while the process
+runs belongs in the facade.
 """
 
 import hashlib

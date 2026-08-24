@@ -35,7 +35,7 @@ class TestHeadersOnApp:
         assert resp.headers['X-Content-Type-Options'] == 'nosniff'
 
     def test_hsts_absent_when_not_secure(self, client):
-        """TestingConfig has SESSION_COOKIE_SECURE=False → no HSTS."""
+        """TestingConfig has SESSION_COOKIE_SECURE=False -> no HSTS."""
         resp = client.get('/auth/login')
         assert 'Strict-Transport-Security' not in resp.headers
 
@@ -79,7 +79,7 @@ class TestCSPModes:
         assert 'Content-Security-Policy' not in resp.headers
         policy = resp.headers['Content-Security-Policy-Report-Only']
         assert "default-src 'self'" in policy
-        # frame-ancestors is ignored in Report-Only → XFO must survive
+        # frame-ancestors is ignored in Report-Only -> XFO must survive
         assert resp.headers['X-Frame-Options'] == 'SAMEORIGIN'
 
     def test_enforce(self):

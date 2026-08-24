@@ -9,8 +9,8 @@ Compares all SQLAlchemy ORM models against a database schema and reports:
 
 Type-mismatch detection delegates to `scripts/lib/schema_introspection.py`
 so this script and `tests/integration/test_schema_validation.py` use the
-SAME acceptable-pairing rules (e.g. SQLAlchemy `Boolean` ↔ MySQL BIT/TINYINT,
-`Float` ↔ FLOAT/DOUBLE, `String` ↔ VARCHAR/CHAR, `DateTime` ↔ DATETIME/TIMESTAMP).
+SAME acceptable-pairing rules (e.g. SQLAlchemy `Boolean` <-> MySQL BIT/TINYINT,
+`Float` <-> FLOAT/DOUBLE, `String` <-> VARCHAR/CHAR, `DateTime` <-> DATETIME/TIMESTAMP).
 
 Two modes:
   * Called from `scripts/check_db_drift.py` via `generate_report(engine)` —
@@ -138,7 +138,7 @@ def compare_columns(db_cols: Dict, orm_cols: Dict) -> List[str]:
         if db_norm in acceptable:
             continue
 
-        # SQLAlchemy String → MySQL TEXT widening is a routine no-op.
+        # SQLAlchemy String -> MySQL TEXT widening is a routine no-op.
         if orm_short == 'String' and db_norm in ('TEXT', 'MEDIUMTEXT', 'LONGTEXT', 'TINYTEXT'):
             continue
 

@@ -1,7 +1,7 @@
 """Tests for Facility / Panel / PanelSession / AllocationType .update() methods.
 
 Ported from tests/unit/test_manage_facilities.py. The legacy file uses
-fetch-from-snapshot → mutate-in-place → rollback semantics. Under the
+fetch-from-snapshot -> mutate-in-place -> rollback semantics. Under the
 SAVEPOINT-isolated session fixture in new_tests/conftest.py, any
 mid-test session.rollback() becomes a SAVEPOINT release and the outer
 transaction is still intact for the teardown rollback — so these tests

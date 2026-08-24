@@ -116,6 +116,36 @@ class TestOrgsCrudQuintet:
         assert resp.status_code in (302, 401)
 
 
+class TestOrganizationMnemonicLinker:
+    """The Organizations card gains the create-mnemonic linker Institutions has.
+
+    Scoped to the Organizations tab pane (`orgs-pane`) because the card fragment
+    also carries the Institutions tab, whose cell renders the same linker.
+    """
+
+    URL = '/admin/htmx/organizations-card'
+
+    def _orgs_pane(self, client):
+        body = client.get(self.URL).get_data(as_text=True)
+        assert 'id="orgs-pane"' in body, 'the organizations card did not render'
+        return body.split('id="orgs-pane"')[1].split('id="institutions-pane"')[0]
+
+    def test_an_unmapped_org_offers_the_prefilled_create_linker(self, auth_client,
+                                                                session):
+        from sam.core.organizations import MnemonicCode, Organization
+        # Confirm the premise: the snapshot has an org with no mnemonic match.
+        lookup = MnemonicCode.build_lookup(session)
+        unmapped = next((o for o in session.query(Organization).limit(400)
+                         if MnemonicCode.resolve_for_organization(o, lookup) is None),
+                        None)
+        if unmapped is None:
+            pytest.skip('snapshot has every organization mapped')
+        pane = self._orgs_pane(auth_client)
+        assert 'createMnemonicCodeModal' in pane
+        # Prefilled from the org name (name-only, no "Name, City").
+        assert 'mnemonic-code-create-form?description=' in pane
+
+
 class TestMnemonicCodeStaysBespoke:
     """The mnemonic-code create route has DB-uniqueness checks and stays a
     hand-written handler — smoke it to make sure the migration around it

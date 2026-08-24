@@ -25,7 +25,7 @@ import pytest
 def _reset_jobs_cache(monkeypatch):
     """Start each test with the cache disabled; reset the singleton after.
 
-    A stored ``None`` per bucket means "initialised but disabled"; the
+    A stored ``None`` per bucket means "initialized but disabled"; the
     cache-behavior tests below re-enable by clearing ``_adapters``.
 
     CACHE_REDIS_URL is dropped so re-init always builds the in-process
@@ -38,7 +38,7 @@ def _reset_jobs_cache(monkeypatch):
     from webapp.jobs import cache as _c
     _c._CACHE.reset_for_tests()
     yield
-    # disabled=False → drop the memo so buckets re-init on next use
+    # disabled=False -> drop the memo so buckets re-init on next use
     _c._CACHE.reset_for_tests(disabled=False)
 
 
@@ -52,7 +52,7 @@ def test_bucket_for_window_closed_is_historical():
 
 
 def test_bucket_for_window_today_is_recent():
-    """A window ending today is still collecting jobs → recent bucket."""
+    """A window ending today is still collecting jobs -> recent bucket."""
     from webapp.jobs.cache import bucket_for_window
     assert bucket_for_window(date.today()) == 'recent'
 
@@ -87,16 +87,16 @@ def test_cached_aggregation_hit_and_miss():
     assert calls['n'] == 1          # second call was a hit
     assert r1 == r2 == {'buckets': []}
 
-    # Different machine → different key.
+    # Different machine -> different key.
     c.cached_jobs_aggregation('histogram', 'casper', opts, compute, 'historical')
     assert calls['n'] == 2
 
-    # Different opts (dimension) → different key.
+    # Different opts (dimension) -> different key.
     opts2 = dict(opts, dimension='nodes')
     c.cached_jobs_aggregation('histogram', 'derecho', opts2, compute, 'historical')
     assert calls['n'] == 3
 
-    # Different query_type → different key.
+    # Different query_type -> different key.
     c.cached_jobs_aggregation('usage_by_user', 'derecho', opts, compute, 'historical')
     assert calls['n'] == 4
 
@@ -116,7 +116,7 @@ def test_cached_aggregation_normalizes_dates_and_lists():
 
 
 def test_cached_aggregation_buckets_are_independent():
-    """Same key in different buckets → separate entries (recent vs historical)."""
+    """Same key in different buckets -> separate entries (recent vs historical)."""
     from webapp.jobs import cache as c
     c._adapters.clear()
 
@@ -128,7 +128,7 @@ def test_cached_aggregation_buckets_are_independent():
 
 
 def test_cached_aggregation_disabled_bucket_computes_every_time():
-    """Autouse fixture leaves every bucket disabled → no caching at all."""
+    """Autouse fixture leaves every bucket disabled -> no caching at all."""
     from webapp.jobs import cache as c
 
     calls, compute = _counting_compute()
@@ -152,7 +152,7 @@ def test_purge_jobs_cache_clears_all_buckets():
 
     assert c.purge_jobs_cache() == 2
 
-    # Entries gone → both recompute.
+    # Entries gone -> both recompute.
     c.cached_jobs_aggregation('histogram', 'derecho', {'d': 1}, compute, 'historical')
     c.cached_jobs_aggregation('histogram', 'derecho', {'d': 2}, compute, 'recent')
     assert calls['n'] == 4
@@ -253,7 +253,7 @@ def _install_agg_plugin(app, monkeypatch):
 
 
 def test_service_jobs_histogram_caches_closed_window(app, monkeypatch):
-    """Two identical closed-window calls → one plugin query."""
+    """Two identical closed-window calls -> one plugin query."""
     from webapp.jobs import cache as c, service
     c._adapters.clear()
 
@@ -291,7 +291,7 @@ def test_service_jobs_histogram_rejects_user_filter_beside_pin(app, monkeypatch)
 
 
 def test_service_jobs_histogram_machine_wide_has_no_account(app, monkeypatch):
-    """No account_projcodes → no account key (machine-wide, caller gated)."""
+    """No account_projcodes -> no account key (machine-wide, caller gated)."""
     from webapp.jobs import service
 
     captured = _install_agg_plugin(app, monkeypatch)
@@ -337,7 +337,7 @@ def test_service_jobs_histogram_owners_limit_in_key_and_forwarded(app, monkeypat
     assert len(captured['histogram']) == 2      # 3rd call served from cache
     _, plain_kwargs = captured['histogram'][0]
     _, rich_kwargs = captured['histogram'][1]
-    assert 'owners_limit' not in plain_kwargs   # None → omitted entirely
+    assert 'owners_limit' not in plain_kwargs   # None -> omitted entirely
     assert rich_kwargs['owners_limit'] == 10
 
 
@@ -406,7 +406,7 @@ def test_service_jobs_usage_by_sort_in_key_and_forwarded(app, monkeypatch):
     assert len(captured['usage_by']) == 2
     _, default_kwargs = captured['usage_by'][0]
     _, gpu_kwargs = captured['usage_by'][1]
-    assert 'sort_by' not in default_kwargs      # None → plugin default
+    assert 'sort_by' not in default_kwargs      # None -> plugin default
     assert gpu_kwargs['sort_by'] == 'gpu_hours'
 
 
@@ -452,7 +452,7 @@ def test_service_jobs_usage_by_project_scopes_in_key_and_forwarded(
 
 
 def test_service_jobs_facets_caches_closed_window(app, monkeypatch):
-    """Two identical closed-window facet calls → one plugin query; a
+    """Two identical closed-window facet calls -> one plugin query; a
     different facet tuple or limit is a different key."""
     from webapp.jobs import cache as c, service
     c._adapters.clear()
@@ -495,7 +495,7 @@ def test_service_jobs_usage_by_user_caches(app, monkeypatch):
     with app.app_context():
         service.jobs_usage_by_user('derecho', ProjectJobScope(account_projcodes=['SCSG0001']), **win)
         service.jobs_usage_by_user('derecho', ProjectJobScope(account_projcodes=['SCSG0001']), **win)
-        # A different limit is a different result → recompute.
+        # A different limit is a different result -> recompute.
         service.jobs_usage_by_user('derecho', ProjectJobScope(account_projcodes=['SCSG0001']), limit=3, **win)
 
     assert len(captured['usage_by']) == 2
@@ -515,7 +515,7 @@ def test_service_jobs_usage_by_project_caches_under_own_query_type(
     with app.app_context():
         service.jobs_usage_by_project('derecho', UserJobScope('benkirk'), **win)
         service.jobs_usage_by_project('derecho', UserJobScope('benkirk'), **win)
-        # Same window as a by-user call → still a fresh plugin query.
+        # Same window as a by-user call -> still a fresh plugin query.
         service.jobs_usage_by_user('derecho', MachineJobScope(), user='benkirk', limit=25, **win)
 
     assert len(captured['usage_by']) == 2

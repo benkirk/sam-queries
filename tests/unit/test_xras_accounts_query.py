@@ -13,7 +13,7 @@ three properties matter more than coverage breadth:
    enumeration) reach the same classifier through the same
    :class:`RosterRecord` seam, and must classify identically.
 
-⚠️ The in-tree fixtures are **scrubbed** — every username is rewritten to
+WARNING: The in-tree fixtures are **scrubbed** — every username is rewritten to
 ``user_<hex>`` or ``placeholder<NN>-user-<NNNNN>``. So "no ``users`` row" is
 trivially true for all of them, which proves the plumbing but not the
 predicate. The predicate itself is validated against the unscrubbed corpus
@@ -33,10 +33,12 @@ from factories import make_user
 
 from sam.queries.xras_accounts import (
     ActionRef,
+    PendingFeed,
     RosterRecord,
     classify_accounts,
     enrich_worklist,
     is_placeholder,
+    load_pending_worklist_rows,
     merge_worklists,
     records_from_action_log,
     records_from_report_requests,
@@ -57,6 +59,21 @@ PLACEHOLDER_USERNAME = 'placeholder38-user-00038'
 
 def _payload(name: str) -> dict:
     return json.loads((FIXTURES / name).read_text())
+
+
+@pytest.fixture
+def no_committed_placeholder(serial_file_lock):
+    """Hold off `test_xras_accounts_card.py`'s committed fixture rows.
+
+    WARNING: that file COMMITs a real `users` row for PLACEHOLDER_USERNAME with
+    `active=False`, under this same lock name. Any assertion here that pins a
+    CLASSIFICATION for a username the JSON fixtures carry is a race against it:
+    while the row exists the classifier correctly answers `inactive`, and the
+    expected `absent` never appears. Asserting mere presence is safe and needs
+    no lock. Reproduce by inserting that row by hand and running these two.
+    """
+    with serial_file_lock('xras_accounts_committed_fixtures'):
+        yield
 
 
 def _pending_record(*usernames, submit_date='2026-07-14', **kwargs):
@@ -84,7 +101,7 @@ def _record(*usernames, roles=None, flags=None, people=None, **ref_kwargs):
         person_by_username=people or {})
 
 
-# ── the placeholder shape ───────────────────────────────────────────────
+# the placeholder shape
 
 class TestPlaceholderDetection:
 
@@ -101,7 +118,7 @@ class TestPlaceholderDetection:
         assert is_placeholder(username) is False
 
 
-# ── the classifier ──────────────────────────────────────────────────────
+# the classifier
 
 class TestClassification:
     """Current-state against ``users`` — never the action's status."""
@@ -213,17 +230,19 @@ class TestGrouping:
         assert counts['placeholder'] == 1
 
 
-# ── Feed A ──────────────────────────────────────────────────────────────
+# Feed A
 
 class TestFeedA:
     """Rosters out of ``xras_action_log.raw_payload``."""
 
-    #: ⚠️ Assertions here must be scoped to the rows the test itself created.
-    #: `tests/unit/test_xras_accounts_card.py` COMMITS an `xras_action_log`
-    #: row (its route reads through Flask-SQLAlchemy's own connection and only
-    #: sees committed rows), and xdist workers share one database — so a bare
-    #: `records_from_action_log(...) == []` is a race against that fixture,
-    #: not an assertion about this test's data.
+    #: WARNING: Assertions here must be scoped to the rows the test itself created.
+    #: `tests/unit/test_xras_accounts_card.py` COMMITS an `xras_action_log` row
+    #: AND a `users` row (its route reads through Flask-SQLAlchemy's own
+    #: connection and only sees committed rows), and xdist workers share one
+    #: database — so a bare `records_from_action_log(...) == []` is a race
+    #: against that fixture, not an assertion about this test's data. A test
+    #: pinning a classification for a fixture username needs
+    #: `no_committed_placeholder`.
 
     def _log_row(self, session, payload_name, **kwargs):
         from sam.integration.xras import XrasActionLog
@@ -237,7 +256,8 @@ class TestFeedA:
         session.flush()
         return row
 
-    def test_it_extracts_the_roster_and_classifies_it(self, session):
+    def test_it_extracts_the_roster_and_classifies_it(
+            self, session, no_committed_placeholder):
         self._log_row(session, PLACEHOLDER_FIXTURE, action_type='New',
                       request_number='NCAR4227')
         records = records_from_action_log(session, validate=False)
@@ -296,8 +316,40 @@ class TestFeedA:
         # The classification stands on the users table alone.
         assert all(r['classification'] in ('absent', 'inactive') for r in rows)
 
+    def test_a_parked_action_is_not_reported_as_success(self, session):
+        """Phase 0's trap: a Date Adjustment has no service, so dispatch parks
+        it ``manual``. That must read as not-success, with the parking reason
+        carried — never as ``would_succeed``."""
+        self._log_row(session, 'date_adjustment_uwas0141_manual.json',
+                      request_number='UWAS0141')
+        records = records_from_action_log(session, validate=True)
+        # Not records[0]: a sibling test may COMMIT its own action-log row into
+        # the shared xdist DB, so scope to the row this test created.
+        ref = next(r.ref for r in records if r.ref.request_number == 'UWAS0141')
+        assert ref.preflight_status == 'manual'
+        assert ref.would_succeed is False
+        assert ref.reject_messages and 'service' in ref.reject_messages[0]
 
-# ── Feed B ──────────────────────────────────────────────────────────────
+    def test_the_verdict_registers_the_handlers(self, session):
+        """Handlers register only by import side effect; the CLI/sweep path
+        imports none, so ``_validate`` must pull them in itself — otherwise
+        every dispatch parks ``manual`` for the wrong reason."""
+        import subprocess
+        import sys
+        # A fresh interpreter: dispatch starts with no handlers; importing what
+        # _validate imports must populate the registry.
+        code = (
+            'import sam.xras.dispatch as d\n'
+            'assert d.registered_services() == frozenset()\n'
+            'import sam.xras.handlers  # what _validate imports\n'
+            'assert d.registered_services(), "handlers did not register"\n'
+        )
+        proc = subprocess.run([sys.executable, '-c', code],
+                              capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stderr
+
+
+# Feed B
 
 REPORT_REQUEST = {
     'requestId': 1446994,
@@ -337,6 +389,17 @@ class TestFeedB:
         assert rows[0]['is_reconciled'] is False
         assert rows[0]['person']['residenceCountry'] == 'United States'
 
+    def test_action_type_reads_the_action_not_request_type(self, session):
+        """``requestType`` is ``New``/``Renewal`` on every row and selects no
+        handler; the dispatching type lives on the action."""
+        payload = dict(REPORT_REQUEST, requestType='Renewal',
+                       actions=[{'actionId': 1, 'actionType': 'Extension'}])
+        records = records_from_report_requests([payload])
+        assert records[0].ref.action_type == 'Extension'
+        # With no actions, it falls back rather than inventing one.
+        assert records_from_report_requests(
+            [REPORT_REQUEST])[0].ref.action_type == 'New'
+
     def test_both_feeds_reach_the_same_classifier_identically(self, session):
         """The feed-agnostic proof."""
         feed_b = classify_accounts(session, records_from_report_requests(
@@ -360,7 +423,7 @@ class TestFeedB:
         assert sorted(rows[0]['sources']) == ['action_log', 'reports']
 
 
-# ── enrichment ──────────────────────────────────────────────────────────
+# enrichment
 
 class TestEnrichment:
     """Injected, so the query layer stays offline-capable."""
@@ -376,7 +439,7 @@ class TestEnrichment:
         assert report['found'] == 1 and report['reconciled'] == 1
 
     def test_reconciled_is_not_a_closure(self, session):
-        """⚠️ The design document called `isReconciled` the closure signal.
+        """WARNING: The design document called `isReconciled` the closure signal.
         It is not: the local smoke measured **9 of 9** worklist rows reconciled
         in XRAS while every one still needed a SAM account created or
         reactivated. Reconciliation is XRAS linking a placeholder to a real
@@ -500,7 +563,8 @@ class TestItIsRegimeProof:
         rows = classify_accounts(session, records)
         assert PLACEHOLDER_USERNAME in {r['username'] for r in rows}
 
-    def test_the_same_roster_classifies_alike_in_every_regime(self, session):
+    def test_the_same_roster_classifies_alike_in_every_regime(
+            self, session, no_committed_placeholder):
         """Flip only the status; the answer must not move."""
         import json
         from datetime import datetime as dt
@@ -549,7 +613,7 @@ class TestItIsRegimeProof:
 
 
 class TestUsernameCaseFolding:
-    """⚠️ Found by the local smoke against real data; unreachable from fixtures.
+    """WARNING: Found by the local smoke against real data; unreachable from fixtures.
 
     `users.username` is `utf8mb3_general_ci` with a UNIQUE index, so MySQL
     treats `Jsmith` and `jsmith` as one account and the batch `IN` matches
@@ -595,7 +659,7 @@ class TestUsernameCaseFolding:
 class TestWaitingSince:
     """How long a row has been blocking something.
 
-    ⚠️ **Neither feed alone answers this**, which is the whole reason it is
+    WARNING: **Neither feed alone answers this**, which is the whole reason it is
     derived rather than read off a column. Feed A knows ``received_time`` —
     when XRAS pushed the action at us — and leaves ``submit_date`` null. Feed B
     is the exact inverse: a request that has not been pushed has no arrival,
@@ -625,7 +689,7 @@ class TestWaitingSince:
         assert rows[0]['waiting_since'] == date(2026, 7, 14)
 
     def test_a_negative_age_is_clamped_not_rendered(self, session):
-        """⚠️ Clock skew, not a fact about the queue.
+        """WARNING: Clock skew, not a fact about the queue.
 
         ``received_time`` is naive-Mountain from the app clock, so a process
         running in another zone stamps rows that read as the future — a
@@ -648,7 +712,7 @@ class TestWaitingSince:
         assert rows[0]['waiting_days'] is None
 
     def test_a_snapshot_written_by_older_code_is_backfilled(self, session):
-        """⚠️ The publisher and the reader can be on different code.
+        """WARNING: The publisher and the reader can be on different code.
 
         Feed B is read back from a snapshot ``xras_sweep`` wrote; mid-deploy the
         task is guaranteed to be older than the reader, and a cached snapshot
@@ -665,7 +729,7 @@ class TestWaitingSince:
 class TestMergeWorklists:
     """The union behind ``sam-admin xras --accounts``.
 
-    ⚠️ **Overlap is normal.** Feed A is precisely the actions that have
+    WARNING: **Overlap is normal.** Feed A is precisely the actions that have
     *posted*; Feed B is what XRAS approved and *may or may not* have posted. The
     same person legitimately appears in both, so this is a union on the
     casefolded username, not a concatenation.
@@ -711,3 +775,76 @@ class TestMergeWorklists:
         b = [{'username': 'aaa', 'classification': 'inactive', 'roles': (),
               'actions': [], 'sources': [], 'waiting_since': None}]
         assert [r['username'] for r in merge_worklists(a, b)] == ['zzz', 'aaa']
+
+    def test_received_push_rows_lead(self):
+        # A Feed-A row is the more urgent flavor -- a push already arrived and is
+        # blocked -- so it leads even a lexically earlier pending-only row.
+        a = [{'username': 'zzz_push', 'classification': 'absent', 'roles': (),
+              'actions': [], 'sources': ['action_log'], 'waiting_since': None}]
+        b = [{'username': 'aaa_pending', 'classification': 'absent', 'roles': (),
+              'actions': [], 'sources': ['reports'], 'waiting_since': None}]
+        assert [r['username'] for r in merge_worklists(a, b)] == [
+            'zzz_push', 'aaa_pending']
+
+    def test_the_merge_copies_action_dicts_it_does_not_alias(self):
+        # stamp_project_existence writes action['is_project'] in place; the
+        # primary rows are the cached snapshot's own objects, so the merge must
+        # copy each action or the mutation leaks into the next render.
+        pending_action = {'request_number': 'NCAR0002'}
+        b = [{'username': 'ghost', 'classification': 'absent', 'roles': (),
+              'actions': [pending_action], 'sources': ['reports'],
+              'waiting_since': None}]
+        merged = merge_worklists([], b)
+        merged[0]['actions'][0]['is_project'] = True
+        assert 'is_project' not in pending_action
+
+    def test_counts_split_by_source(self):
+        rows = merge_worklists(
+            [{'username': 'a', 'classification': 'absent', 'roles': (),
+              'actions': [], 'sources': ['action_log'], 'waiting_since': None,
+              'placeholder': False, 'is_reconciled': None}],
+            [{'username': 'a', 'classification': 'absent', 'roles': (),
+              'actions': [], 'sources': ['reports'], 'waiting_since': None,
+              'placeholder': False, 'is_reconciled': None},
+             {'username': 'b', 'classification': 'absent', 'roles': (),
+              'actions': [], 'sources': ['reports'], 'waiting_since': None,
+              'placeholder': False, 'is_reconciled': None}])
+        counts = worklist_counts(rows)
+        # A row on both feeds counts in both.
+        assert counts['received_push'] == 1
+        assert counts['pending_request'] == 2
+
+
+class TestLoadPendingWorklistRows:
+    """The three degraded states are distinct facts, not one empty list."""
+
+    def _patch(self, monkeypatch, *, configured=True, loader=None):
+        monkeypatch.setattr('sam.integration.xras_api.xras_api_configured',
+                            lambda: configured)
+        if loader is not None:
+            monkeypatch.setattr(
+                'sam.integration.xras_api.cache.load_pending_worklist', loader)
+
+    def test_unconfigured(self, monkeypatch):
+        self._patch(monkeypatch, configured=False)
+        feed = load_pending_worklist_rows()
+        assert feed == PendingFeed(reason='unconfigured')
+        assert feed.checked is False and feed.rows == []
+
+    def test_no_snapshot(self, monkeypatch):
+        self._patch(monkeypatch, loader=lambda: None)
+        feed = load_pending_worklist_rows()
+        assert feed.reason == 'no_snapshot' and feed.checked is False
+
+    def test_unreadable_never_raises(self, monkeypatch):
+        self._patch(monkeypatch,
+                    loader=lambda: (_ for _ in ()).throw(RuntimeError('no redis')))
+        feed = load_pending_worklist_rows()
+        assert feed.reason == 'unreadable' and feed.checked is False
+
+    def test_success_carries_rows_and_snapshot(self, monkeypatch):
+        snap = {'rows': [{'username': 'x'}], 'generated_at': None}
+        self._patch(monkeypatch, loader=lambda: snap)
+        feed = load_pending_worklist_rows()
+        assert feed.checked is True and feed.reason is None
+        assert feed.rows == [{'username': 'x'}] and feed.snapshot is snap

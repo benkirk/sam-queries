@@ -7,10 +7,10 @@ those couplings was a fragility — snapshot refreshes change membership,
 which silently broke "find a user not on this project" lookups.
 
 The port builds a fresh isolated graph for every test:
-  - `make_project()` → fresh Project with a fresh lead User
-  - `make_account(project=...)` → fresh Account; Account.create() auto-
+  - `make_project()` -> fresh Project with a fresh lead User
+  - `make_account(project=...)` -> fresh Account; Account.create() auto-
     propagates the project lead as the first AccountUser
-  - `make_user()` → fresh User who is unambiguously NOT on the project
+  - `make_user()` -> fresh User who is unambiguously NOT on the project
 """
 import pytest
 from datetime import datetime, timedelta
@@ -121,15 +121,15 @@ class TestAddUserToProject:
     def test_readds_member_whose_prior_rows_all_expired(self, session):
         """A returning member with only end-dated rows gets a fresh open row.
 
-        Regression: the existence check used to match on (account_id,
-        user_id) alone, so a stale end-dated row made the account look
-        "already a member" and the re-add was a silent no-op — leaving the
-        user with no live access on that account.
+        Regression: matching the existence check on (account_id, user_id)
+        alone lets a stale end-dated row make the account look "already a
+        member", so the re-add is a silent no-op and the user is left with no
+        live access on that account.
         """
         project, account = _project_with_account(session)
         new_user = make_user(session)
 
-        # First add → one open membership.
+        # First add -> one open membership.
         add_user_to_project(session, project.project_id, new_user.user_id)
         rows = session.query(AccountUser).filter_by(
             account_id=account.account_id, user_id=new_user.user_id
@@ -141,7 +141,7 @@ class TestAddUserToProject:
         rows[0].end_date = expired_at
         session.flush()
 
-        # Re-add → a NEW open row; the expired row is preserved as history.
+        # Re-add -> a NEW open row; the expired row is preserved as history.
         add_user_to_project(session, project.project_id, new_user.user_id)
 
         rows = session.query(AccountUser).filter_by(

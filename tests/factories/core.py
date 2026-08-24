@@ -235,7 +235,7 @@ def make_mnemonic_code(
     running**. The ``Q`` prefix keeps them disjoint from real snapshot mnemonics,
     which are meaningful abbreviations — verified: zero ``Q``-prefixed rows exist.
 
-    ⚠️ **The old scheme was ``Q<worker><counter>``: one char each, so 36 codes per
+    WARNING: **The old scheme was ``Q<worker><counter>``: one char each, so 36 codes per
     worker — and that made capacity depend on how many cores the machine has.** With
     12 workers locally each worker ran few enough tests to stay under 36; CI's
     4-worker runner gave each worker ~3x the tests and blew the limit with

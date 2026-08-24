@@ -1,5 +1,5 @@
 {% from 'dashboards/fragments/pagination.html' import pagination %}
-{% from 'dashboards/fragments/sort_link.html' import sort_link with context %}
+{% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
@@ -10,7 +10,7 @@
     rows, total, summary, page, sort, filters
     fragment_url, target_id, form_id, sortable_columns
 
-  ⚠️  WHERE THE COLLAPSE TOGGLE GOES, AND WHY IT IS NOT ON THE <tr>
+  WARNING: WHERE THE COLLAPSE TOGGLE GOES, AND WHY IT IS NOT ON THE <tr>
 
   Bootstrap registers its collapse data-api with EventHandler.on(document, ...),
   which runs in the CAPTURE phase. Capture descends document -> row -> button, so
@@ -62,11 +62,11 @@
     <table class="table table-sm table-striped table-hover mb-0 audit-table">
         <thead class="table-subtle">
             <tr>
-                <th style="white-space:nowrap;">{{ sort_link('received_time', 'Received') }}</th>
-                <th style="width:120px;">{{ sort_link('action_type', 'Type') }}</th>
-                <th style="width:130px;">{{ sort_link('request_number', 'Request #') }}</th>
-                <th style="width:150px;">{{ sort_link('status', 'Status') }}</th>
-                <th style="width:130px;">{{ sort_link('projcode_result', 'Result') }}</th>
+                <th style="white-space:nowrap;">{{ sort_header('received_time', 'Received') }}</th>
+                <th style="width:120px;">{{ sort_header('action_type', 'Type') }}</th>
+                <th style="width:130px;">{{ sort_header('request_number', 'Request #') }}</th>
+                <th style="width:150px;">{{ sort_header('status', 'Status') }}</th>
+                <th style="width:130px;">{{ sort_header('projcode_result', 'Result') }}</th>
                 <th style="width:99%;">Errors</th>
                 <th class="text-end" style="white-space:nowrap;">Actions</th>
             </tr>
@@ -113,7 +113,7 @@
                         {% if r.request_is_project or r.request_is_token %}
                         <strong>{{ r.request_number }}</strong>
                         {% else %}
-                        {# Not a project and not a recognised token: still let the
+                        {# Not a project and not a recognized token: still let the
                            operator look — the modal degrades gracefully if XRAS
                            has no such request — but keep the warning cue. #}
                         <span class="text-warning-emphasis"

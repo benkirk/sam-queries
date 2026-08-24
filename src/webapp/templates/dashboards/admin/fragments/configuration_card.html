@@ -31,7 +31,7 @@
 
     <div class="row g-3">
 
-        {# ── Application (config-shaped facts only) ───────────────────── #}
+        {# Application (config-shaped facts only) #}
         <div class="col-12 col-xl-6">
             <div class="card inner-card h-100">
                 <div class="card-header mb-4">
@@ -54,7 +54,7 @@
             </div>
         </div>
 
-        {# ── Server Information (worker-scoped runtime facts) ─────────── #}
+        {# Server Information (worker-scoped runtime facts) #}
         {#  Pod hostname, worker pid/uptime/RSS, cgroup memory + CPU limits,
             build SHA. The refresh button re-fetches just this card body —
             the LB will likely route the refresh to a different worker, which
@@ -85,7 +85,7 @@
             </div>
         </div>
 
-        {# ── Authentication ───────────────────────────────────────────── #}
+        {# Authentication #}
         <div class="col-12 col-xl-6">
             <div class="card inner-card h-100">
                 <div class="card-header mb-4">
@@ -130,7 +130,7 @@
             </div>
         </div>
 
-        {# ── Rate limiting (Flask-Limiter facade; webapp.limiter) ──────── #}
+        {# Rate limiting (Flask-Limiter facade; webapp.limiter) #}
         <div class="col-12 col-xl-6">
             <div class="card inner-card h-100">
                 <div class="card-header mb-4 d-flex justify-content-between align-items-center">
@@ -181,8 +181,8 @@
             </div>
         </div>
 
-        {# ── Notifications (sam.notify config + notification_log counts) ──
-             ⚠️ NO RECIPIENT ADDRESSES on this tile. It is VIEW_SYSTEM_CONFIG;
+        {# Notifications (sam.notify config + notification_log counts)
+             WARNING: NO RECIPIENT ADDRESSES on this tile. It is VIEW_SYSTEM_CONFIG;
              the activity log behind "Details »" names real people and is
              SYSTEM_ADMIN. `Redirecting to` is the one deliberate exception —
              an operator-configured sink, not a subject's address. #}
@@ -258,7 +258,7 @@
             </div>
         </div>
 
-        {# ── Scheduled tasks (scheduling registry + task_run counts) ──────
+        {# Scheduled tasks (scheduling registry + task_run counts)
              No PII on this tile or the table behind it — task names, states,
              pod names. The per-row detail modal IS SYSTEM_ADMIN, because
              `detail` can hold a traceback naming hosts and paths. #}
@@ -356,7 +356,7 @@
             </div>
         </div>
 
-        {# ── Database ─────────────────────────────────────────────────── #}
+        {# Database #}
         <div class="col-12 col-xl-6">
             <div class="card inner-card h-100">
                 <div class="card-header mb-4">
@@ -421,7 +421,7 @@
             </div>
         </div>
 
-        {# ── Caching ──────────────────────────────────────────────────── #}
+        {# Caching #}
         {#  Card body lives in a standalone fragment so the "Clear…" dropdown
             can re-render just it via HTMX (admin_dashboard.htmx_clear_cache),
             mirroring the Server Information card's refresh pattern above.
@@ -489,7 +489,7 @@
             </div>
         </div>
 
-        {# ── Audit & Logging (full width; recent entries inline) ──────── #}
+        {# Audit & Logging (full width; recent entries inline) #}
         <div class="col-12">
             <div class="card inner-card h-100">
                 <div class="card-header mb-4">

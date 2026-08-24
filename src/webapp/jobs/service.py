@@ -163,7 +163,7 @@ def _plugin_filter_kwargs(
 
     The single seam every query mode routes through: mirrors the
     plugin's keyword surface 1:1 (minus ``account``, which each mode
-    pins itself), runs the legacy queue→QoS resolver, and — being
+    pins itself), runs the legacy queue->QoS resolver, and — being
     keyword-only — rejects unknown filter names with a TypeError instead
     of silently dropping them. Range bounds are plugin-native units
     (seconds / bytes / counts), inclusive, NULL-strict. The
@@ -235,7 +235,7 @@ def search_jobs(
     scope.check_filters(filters)
 
     # TODO(legacy-queue-names): the normalizer runs _resolve_queue_and_qos,
-    # promoting 'cpu-special' → queue='cpu', qos='special' when the caller
+    # promoting 'cpu-special' -> queue='cpu', qos='special' when the caller
     # left qos unset and the suffix matches a known QoS name.
     kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
     scope.apply(kwargs)
@@ -418,7 +418,7 @@ def jobs_histogram(
     — which also naturally busts pre-upgrade cache entries.
 
     The envelope is self-describing (``min_param`` / ``max_param``) — use
-    those for bar drill-downs, never a hardcoded dimension→kwarg map.
+    those for bar drill-downs, never a hardcoded dimension->kwarg map.
     """
     scope.check_filters(filters)
     kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
@@ -451,7 +451,7 @@ def jobs_timeseries(
     """Cached per-period activity series (plugin envelope, verbatim).
 
     The time axis none of the distribution panels offer, and the only
-    per-period plugin query that honours the filter set — ``usage_history``
+    per-period plugin query that honors the filter set — ``usage_history``
     / ``jobs_by_entity_period`` / ``daily_summary_report`` all take dates
     only, so a chart on those would ignore queue / size / exit-status
     filters while sitting above a table that respects them.
@@ -460,7 +460,7 @@ def jobs_timeseries(
     ``opts`` so granularities never alias. Unlike ``jobs_histogram``, the
     owner top-N is ranked **once over the whole window** and every band
     carries the same keys in the same order — a stacked chart assigns
-    colours once and trusts a series never to move or vanish mid-axis.
+    colors once and trusts a series never to move or vanish mid-axis.
 
     Bands replay through ``start``/``end`` rather than
     ``min_param``/``max_param``: the window filters *are* this dimension.

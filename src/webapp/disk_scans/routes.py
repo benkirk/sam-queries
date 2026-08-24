@@ -260,7 +260,7 @@ def _resolve_group() -> Tuple[Optional[int], str]:
 
     The 'By group' drill-down passes a unix ``?owner_gid=`` (the canonical wire
     param echoed across re-fetches) plus an optional ``?group_label=`` carrying
-    the group name the entities row already resolved — SAM has no gid→name table
+    the group name the entities row already resolved — SAM has no gid->name table
     of its own (names come from the scan plugin's ``resolve_groupnames``), so the
     row hands the label down rather than re-resolving it here. Falls back to a
     numeric ``gid N`` label.
@@ -566,7 +566,7 @@ def _render_entities(ctx, fragment_url, *, mode, scope_for, log_label,
     """Shared body for the project + resource entity (owner|group) fragments.
 
     Both render the *same* ``disk_scans_entities.html`` partial; they differ
-    only in scope context and in which fragment URL the owner↔group toggle
+    only in scope context and in which fragment URL the owner<->group toggle
     re-fetches. The
     per-entity row drill-down re-targets ``dir_fragment_url`` — the directories
     fragment for *this mode* (project ``directories_fragment`` or resource
@@ -596,7 +596,7 @@ def _render_entities(ctx, fragment_url, *, mode, scope_for, log_label,
         )
         error = str(exc)
 
-    # Distribution pie of scanned bytes by entity (clickable wedges → row drill).
+    # Distribution pie of scanned bytes by entity (clickable wedges -> row drill).
     # id/name keys differ by kind; value is bytes (matches the table's Size sort).
     pie_chart = None
     if rows:
@@ -634,13 +634,13 @@ def _render_distribution(ctx, fragment_url, *, mode, scope_for, kind,
     The Access-history and File-size tabs are identical end to end — same
     ``{bucket_labels, buckets{...}, owners, username_map}`` shape, same
     template, same chart — differing only in the service query, the bucket
-    column header, and (file-sizes only) a Data ↔ Files metric pill plus a
+    column header, and (file-sizes only) a Data <-> Files metric pill plus a
     Log-scale switch, both of which re-fetch the pane via ``?metric=`` /
     ``?log=``. ``kind`` is used only for logging.
 
     Project vs resource mode differ only in the prebuilt ``ctx`` /
     ``fragment_url`` and the scope. In resource mode ``ctx['project']`` is
-    ``None`` so the band → user → directories drill degrades to non-clickable
+    ``None`` so the band -> user -> directories drill degrades to non-clickable
     (it needs a projcode).
 
     A log y-axis can't represent a stack, so ``log_y`` renders solid bars

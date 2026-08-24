@@ -63,7 +63,7 @@ spec:
           # and consumed by BOTH pods: the CronJob obeys it, and the webapp's
           # Admin -> Configuration card reports it.
           #
-          # ⚠️ Without this the card reads the *webapp's* own environment,
+          # WARNING: Without this the card reads the *webapp's* own environment,
           # finds nothing, and renders a kill-switched dispatcher as perfectly
           # healthy — the exact failure that card exists to prevent. Found by
           # smoking production, where the card sat there quietly claiming all
@@ -165,7 +165,7 @@ spec:
                 key: token
           {{- end }}
           {{- if .Values.webapp.xrasApiCredentials.enabled }}
-          # SAM calling OUT to XRAS. ⚠️ Also needed by the CronJob (xras_sweep),
+          # SAM calling OUT to XRAS. WARNING: Also needed by the CronJob (xras_sweep),
           # which shares no env anchor with this file — see cronjob-tasks.yaml.
           - name: XRAS_API_KEY
             valueFrom:

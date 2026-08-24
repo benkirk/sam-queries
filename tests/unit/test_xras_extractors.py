@@ -84,7 +84,7 @@ def action(**overrides):
 class TestTheCorpusOracle:
     """41 real payloads through the chain, 30 checked against production rows.
 
-    ⚠️ **Only the 30 marked ``verified`` are an oracle.** For those, the pair below is
+    WARNING: **Only the 30 marked ``verified`` are an oracle.** For those, the pair below is
     the ``(panel_name, allocation_type)`` the real project carries in the snapshot
     today — read from ``project.allocation_type_id``, independently of anything this
     code computes — so agreement means the chain reproduces what legacy decided. All
@@ -93,7 +93,7 @@ class TestTheCorpusOracle:
     The 11 marked ``derived`` are the ``NCAR####`` request tokens. No project exists
     under a token (the New that carried it minted a projcode instead), so there is
     nothing to check against and these entries pin *our own* output. They are
-    regression protection, not evidence — and they are labelled so nobody reads the
+    regression protection, not evidence — and they are labeled so nobody reads the
     count as 41 verified.
 
     One derived entry does get corroborated, by accident of the retry pair: NCAR4236
@@ -101,7 +101,7 @@ class TestTheCorpusOracle:
     pair for the token equals the verified pair for the project it became.
     """
 
-    #: fixture → the pair the chain must produce.
+    #: fixture -> the pair the chain must produce.
     EXPECTED = {
         # -- Strategy 1: exact lookup on the SAM type name. -------------------
         'adjustment_uwis0064_manual.json': ('UNIV USS', 'Small'),             # verified
@@ -163,7 +163,7 @@ class TestTheCorpusOracle:
     def test_five_distinct_strategies_are_exercised(self):
         """Coverage claim, asserted rather than asserted-in-prose.
 
-        ⚠️ **Still five of eleven at 41 payloads.** Growing the corpus 5× moved this
+        WARNING: **Still five of eleven at 41 payloads.** Growing the corpus 5× moved this
         number not at all, which converts it from "the sample is small" into a
         measurement: six strategies see no real traffic at this site, and are pinned
         only by the unit tests below. Sprint C's deviations section says so; this
@@ -215,7 +215,7 @@ class TestStrategyOneShortCircuit:
                 == SelectionParms(*expected))
 
     def test_staff_allocations_must_match_the_whole_string_not_a_substring(self):
-        """``lcon.equals("staff allocations")`` — equality, unlike its two neighbours
+        """``lcon.equals("staff allocations")`` — equality, unlike its two neighbors
         which are ``contains``."""
         assert select_allocation_type_parms(
             action(opportunityName='NCAR Staff Allocations 2026')) is None
@@ -223,7 +223,7 @@ class TestStrategyOneShortCircuit:
     def test_an_empty_allocation_type_is_treated_as_absent(self):
         """Declared divergence: Java's POJO default of ``""`` takes the exact-lookup
         branch (which can only miss), while JSON ``null`` takes the opportunity branch.
-        marshmallow gives ``None`` for both, so we take the null behaviour — which
+        marshmallow gives ``None`` for both, so we take the null behavior — which
         resolves here where Java would have declined."""
         assert (select_allocation_type_parms(
             action(allocationType='  ', opportunityName='Discover Allocations'))
@@ -292,7 +292,7 @@ class TestStrategyOrder:
 
     def test_non_nsf_wins_when_an_opportunity_carries_both_markers(self):
         """``SmallNonNSFStrategy`` is registered before ``SmallNSFStrategy``, so an
-        opportunity naming both resolves non-NSF. Order *is* the behaviour."""
+        opportunity naming both resolves non-NSF. Order *is* the behavior."""
         assert (select_allocation_type_parms(
             action(opportunityName='Small Allocation, unsponsored'))
             == SelectionParms('UNIV USS', 'Small (No NSF award)'))
@@ -392,7 +392,7 @@ class TestResolveAllocationType:
 
 
 class TestAreaOfInterest:
-    """⚠️ ``fosNum`` is an ``area_of_interest_id``, not an ``fos_aoi.fos_id``."""
+    """WARNING: ``fosNum`` is an ``area_of_interest_id``, not an ``fos_aoi.fos_id``."""
 
     def test_fos_num_is_the_area_of_interest_primary_key(self, session):
         """Legacy calls ``areaOfInterestRepository.findOne(fosInt)`` — a Spring Data
@@ -427,7 +427,7 @@ class TestAreaOfInterest:
         assert not errs
         assert row.area_of_interest_id == expected_id
 
-    #: ``fosNum`` → (SAM's string, the string XRAS sends). The two differ in **case
+    #: ``fosNum`` -> (SAM's string, the string XRAS sends). The two differ in **case
     #: only**, on one entry out of 92 across the corpus. Pinned rather than smoothed
     #: over so that a divergence which is *not* just case still fails this test.
     KNOWN_FOS_CASE_DIFFERENCES = {
@@ -438,7 +438,7 @@ class TestAreaOfInterest:
         """Corroborates the id reading from the other side: XRAS's FOS vocabulary *is*
         SAM's ``area_of_interest`` table, not a foreign taxonomy needing a mapping.
 
-        ⚠️ **Equal ignoring case, not byte-equal.** At eight payloads every name
+        WARNING: **Equal ignoring case, not byte-equal.** At eight payloads every name
         matched exactly; at 41 there are 90 exact matches and 2 that differ in one
         letter's case (:data:`KNOWN_FOS_CASE_DIFFERENCES`). Zero differ in substance.
 
@@ -548,7 +548,7 @@ class TestResolveContract:
         assert not errs
 
     def test_a_unique_suffix_match_resolves_it(self, session):
-        """Step 2 — legacy's own behaviour, unchanged."""
+        """Step 2 — legacy's own behavior, unchanged."""
         from factories import make_contract
         contract = make_contract(session, contract_number='AGS-9990002')
         errs = ActionErrors()
@@ -718,7 +718,7 @@ class TestResolveMnemonicCode:
         assert row.mnemonic_code_id == lab_mnemo.mnemonic_code_id
 
     def test_a_shallow_tree_uses_the_pis_own_organization(self, session):
-        """``levels <= 3`` → ``parentage[0]``. Three deep is the boundary."""
+        """``levels <= 3`` -> ``parentage[0]``. Three deep is the boundary."""
         from factories import (make_mnemonic_code, make_organization, make_user,
                                make_user_organization)
         root = make_organization(session, name='Extractor Shallow Root')
@@ -835,7 +835,7 @@ class TestTheOpportunityMapIsAdditive:
     payloads that work today — which is what makes it shippable ahead of the
     traffic that would justify it.
 
-    ⚠️ **These clear the table rather than assuming it empty.** The nine seed rows
+    WARNING: **These clear the table rather than assuming it empty.** The nine seed rows
     live in production, so every snapshot regenerated after 2026-08-20 carries
     them: the table is well under ``config.yaml``'s ``size_threshold_mb`` and the
     anonymizer has no reason to purge it. Per-test SAVEPOINT rollback makes the
@@ -865,7 +865,7 @@ class TestTheOpportunityMapIsAdditive:
         assert len(pairs) == 5
 
     def test_the_seeded_map_is_equivalent_to_the_ladder(self, session, empty_map):
-        """The nine production rows are a **drop-in**, not a behaviour change.
+        """The nine production rows are a **drop-in**, not a behavior change.
 
         Seeding the pair the ladder already produces is what makes any future
         divergence a deliberate, visible data edit rather than a silent one.
@@ -909,7 +909,7 @@ class TestTheOpportunityMapAddsFidelity:
     """What the map buys, and the one failure it disarms."""
 
     def test_a_wyoming_small_request_is_the_silent_case(self, session):
-        """⚠️ **The whole reason this table exists**, and it cannot be observed in
+        """WARNING: **The whole reason this table exists**, and it cannot be observed in
         production until it is too late.
 
         ``Small`` names two real rows — ``UNIV USS`` (facility UNIV) and ``UW``
@@ -991,7 +991,7 @@ class TestTheOpportunityMapAddsFidelity:
             session, action(allocationType='Small')) == SelectionParms('UNIV USS', 'Small')
 
     def test_a_mapped_row_whose_type_has_no_panel_falls_through(self, session):
-        """⚠️ ``allocation_type.panel_id`` is **nullable**, so ``.panel.panel_name``
+        """WARNING: ``allocation_type.panel_id`` is **nullable**, so ``.panel.panel_name``
         can raise ``AttributeError`` mid-dispatch — a 500 on an action that would
         otherwise have resolved perfectly well through the ladder."""
         from sam.accounting.allocations import AllocationType
@@ -1006,7 +1006,7 @@ class TestTheOpportunityMapAddsFidelity:
 
 
 class TestTheXrasTypeMapNamesRealRows:
-    """⚠️ The guarantee that justifies a constant over a table.
+    """WARNING: The guarantee that justifies a constant over a table.
 
     ``XRAS_TYPE_MAP`` is reference data keyed on XRAS's ids, and a typo in it is
     invisible: the pair simply never matches, the sweep proposes nothing, and an

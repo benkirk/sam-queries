@@ -51,7 +51,7 @@ def ledger(status_engine):
     `claim()` resolves a race by letting the loser's INSERT raise
     `IntegrityError` and rolling back — if both callers shared one session
     that rollback would discard the *winner's* row too, and the tests would
-    assert the opposite of production behaviour. On Postgres it is worse
+    assert the opposite of production behavior. On Postgres it is worse
     still: the aborted transaction poisons the connection for everything
     after it, which is exactly why the real ledger takes a `session_factory`.
 
@@ -430,7 +430,11 @@ class TestPortabilityBoundary:
                                          # not drag the API client in at module
                                          # scope — hence the deferred import in
                                          # `enrich_worklist`.
-                                         'sam.queries.xras_accounts'])
+                                         'sam.queries.xras_accounts',
+                                         # The preflight the sweep runs. Handlers,
+                                         # schemas and dispatch are deferred inside
+                                         # its functions so the import stays clean.
+                                         'sam.xras.preflight'])
     def test_what_the_tasks_import_stays_presentation_free_too(self, package):
         """The AST gate above is **per-file and not transitive**.
 
@@ -440,7 +444,7 @@ class TestPortabilityBoundary:
         This closes that half by importing for real, in a subprocess so a module
         another test already imported cannot mask the result.
 
-        ⚠️ **`FLASK_ACTIVE` is stripped, and that is the point.** With it set,
+        WARNING: **`FLASK_ACTIVE` is stripped, and that is the point.** With it set,
         `sam` binds to the Flask-SQLAlchemy declarative base at import time and
         legitimately pulls flask, click and webapp — measured. `pytest_configure`
         sets it for the whole suite (`system_status.base.StatusBase` resolves at

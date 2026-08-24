@@ -1,5 +1,6 @@
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {#
   XRAS Remediations — the operator WRITE surface.
 
@@ -12,12 +13,12 @@
     *_values / selected_*  facet state
     form_id, fragment_url, target_id
 
-  ── EVERY BUTTON HERE WRITES TO PRODUCTION XRAS ──────────────────────────
+ EVERY BUTTON HERE WRITES TO PRODUCTION XRAS
   This is a scoped subset of the external XRAS admin dashboard, not a
   replacement for it. Merging deletes an account. Withdrawing de-approves an
   award and rewrites its history. Neither is undone by closing the tab.
 
-  ── FOUR EMPTY STATES, AND THEY MEAN DIFFERENT THINGS ────────────────────
+ FOUR EMPTY STATES, AND THEY MEAN DIFFERENT THINGS
   The third is the subtle one: a sweep has published the account worklist but
   not this index, which is exactly the window between deploying this feature
   and the first sweep that carries it. Reporting that as "nothing to
@@ -29,7 +30,7 @@
         <strong>XRAS Remediations</strong>
         {% if snapshot %}
         <span class="badge bg-secondary">{{ total | fmt_number }} request(s)</span>
-        {# ⚠️ "N of M" whenever the window hides rows, never a bare N — and on
+        {# WARNING: "N of M" whenever the window hides rows, never a bare N — and on
            THIS card the hidden ones skew urgent. A 2015 approval nobody ever
            pushed is the row most worth closing, and it is the first thing any
            recency filter drops. #}
@@ -43,7 +44,17 @@
             {{ (swept_total - window_total) | fmt_number }} outside the date filter
         </span>
         {% endif %}
-        <span class="ms-auto small text-muted"
+        {# "Check all": one server-side batch re-check of every "not checked" row
+           in view (honors the window + facets + search via hx-include). Absent
+           when nothing is checkable. Never-writes; the route caps the fan-out. #}
+        {% if not_checked_count %}
+        <button type="button" class="btn btn-sm btn-outline-secondary ms-auto"
+                title="Re-check every 'not checked' request currently in view. Nothing is applied."
+                hx-post="{{ url_for('allocations_dashboard.xras_recheck_visible') }}"
+                hx-include="#xras-window-filters, #{{ form_id }}"
+                hx-swap="none"><i class="fas fa-rotate me-1"></i>Check {{ not_checked_count | fmt_number }}</button>
+        {% endif %}
+        <span class="{{ 'ms-auto' if not not_checked_count }} small text-muted"
               title="This card renders what the xras_sweep task last published; it is not fetched live. Rows you have just acted on are refreshed individually and marked.">
             swept {{ snapshot.generated_at | fmt_date }}
             {%- if snapshot.statuses %} · {{ snapshot.statuses | join(', ') }}{% endif %}
@@ -105,7 +116,39 @@
             </div>
         </div>
 
-        {# ⚠️ The controls render whenever anything was swept — NOT only when
+        {# Mnemonic-unblock strip — the highest-leverage XRAS data fix, ranked.
+           A pivot over the same snapshot: N failing pushes cite M orgs with no
+           mnemonic. The FIX lives in Admin -> Organizations (this page stays
+           read-only about org metadata), so each org links there. Lists every
+           blocking org inline when few; truncates to the CLI past a small cap. #}
+        {% if mnemonic_summary and (mnemonic_summary.targets or mnemonic_summary.unresolved) %}
+        {% set _mtargets = mnemonic_summary.targets %}
+        <div class="alert alert-info d-flex gap-2 py-2 mb-3">
+            <i class="fas fa-link-slash mt-1"></i>
+            <div class="small">
+                {% if _mtargets %}
+                <strong>{{ mnemonic_summary.actions_seen | fmt_number }} failing push(es) cite
+                {{ _mtargets | length | fmt_number }} missing organization mnemonic(s).</strong>
+                Create the code in
+                <a href="{{ url_for('admin_dashboard.organizations') }}">Admin&nbsp;→&nbsp;Organizations</a>:
+                {% for t in _mtargets[:6] %}
+                <a href="{{ url_for('admin_dashboard.organizations') }}"
+                   title="{{ t.family }} · would unblock {{ t.unblock_count }} — {{ t.sample | join(', ') }}">{{ t.name }}</a>&nbsp;({{ t.unblock_count }}){% if not loop.last %} ·{% endif %}
+                {% endfor %}
+                {% if _mtargets | length > 6 %}
+                … (+{{ (_mtargets | length) - 6 }} more — <code>sam-admin xras --mnemonic-report</code>)
+                {% endif %}
+                {% endif %}
+                {% if mnemonic_summary.unresolved %}
+                <br>{{ mnemonic_summary.unresolved | length | fmt_number }} more action(s)
+                blocked by PIs with <strong>no current affiliation</strong> — those need a
+                membership fix, not a mnemonic.
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {# WARNING: The controls render whenever anything was swept — NOT only when
            rows survive. Inside the old `{% if groups %}` they vanished at the
            moment they emptied the card, leaving copy that said "clear the
            chips" above a card with no chips on it and no way back. #}
@@ -136,10 +179,14 @@
             </div>
             {{ facet_row('Status', status_values, form_id, 'status',
                          active=selected_statuses) }}
+            {{ facet_row('Type', action_values, form_id, 'action_type',
+                         active=selected_actions) }}
             {{ facet_row('Opportunity', opportunity_values, form_id, 'opportunity',
                          active=selected_opportunities) }}
             {{ facet_row('SAM project', push_values, form_id, 'push',
                          active=selected_push) }}
+            {{ facet_row('Readiness', readiness_values, form_id, 'readiness',
+                         active=selected_readiness) }}
             {# Built in the route — Jinja has no list comprehension. Present
                only when a request filter is active, which is how the action
                log's "Show in action log" round-trip renders a clearable chip. #}
@@ -148,7 +195,7 @@
         </div>
 
         {% if not groups %}
-        {# ⚠️ "No matches" would be a misleading thing to say here. The shared
+        {# WARNING: "No matches" would be a misleading thing to say here. The shared
            window defaults to a recent lookback, and on THIS card the rows it
            hides are the ones most worth acting on — a request approved years
            ago and never pushed is precisely a remediation. So when the filter
@@ -167,7 +214,7 @@
            decoration here: every row on this table is a click target, and
            without the hover tint the only cue is the cursor. #}
         <table class="table table-sm table-hover align-middle mb-0">
-            {# ⚠️ Widths are load-bearing, not tidiness. Auto layout has to
+            {# WARNING: Widths are load-bearing, not tidiness. Auto layout has to
                find room for the opportunity-name group header, which is a
                `colspan` cell — so its width demand is distributed across all
                the columns, and the ones holding short fixed-width strings
@@ -178,7 +225,13 @@
                stretches. #}
             <thead class="table-subtle">
                 <tr>
-                    <th style="width:9rem;">Request</th>
+                    {# Sortable within each opportunity group; the facet columns
+                       (Type / Status / SAM) are the chips' job, not the header's. #}
+                    <th style="width:9rem;">{{ sort_header('request', 'Request') }}</th>
+                    {# The request's in-flight action type (New / Supplement /
+                       Renewal / …) — what admin.xras.org names it, and the "what
+                       kind of handoff" facet dimension. #}
+                    <th style="width:8rem;">Type</th>
                     <th style="width:8rem;">Status</th>
                     {# The two person-name columns share the slack equally (50%
                        each), so an Allocation-Manager name doesn't wrap while the
@@ -188,11 +241,14 @@
                        "Project Admin" is SAM's language for the XRAS "Allocation
                        Manager" role (ROLE_TYPES in admin_client.py); blank on the
                        many requests that name no admin. #}
-                    <th style="width:50%;">Project lead</th>
-                    <th style="width:50%;">Project Admin</th>
-                    <th class="text-nowrap" style="width:7rem;">Submitted</th>
-                    <th class="text-nowrap" style="width:11rem;">Period</th>
-                    <th class="text-end" style="width:11rem;">SAM</th>
+                    <th style="width:50%;">{{ sort_header('lead', 'Project lead') }}</th>
+                    <th style="width:50%;">{{ sort_header('admin', 'Project Admin') }}</th>
+                    <th class="text-nowrap" style="width:7rem;">{{ sort_header('submitted', 'Submitted') }}</th>
+                    <th class="text-nowrap" style="width:11rem;">{{ sort_header('period', 'Period') }}</th>
+                    {# Wide enough for the two badges side by side (readiness +
+                       project), which is now the rule rather than the exception —
+                       a swept request almost always has both. #}
+                    <th class="text-end" style="width:13rem;">SAM</th>
                 </tr>
             </thead>
             {% for group in groups %}
@@ -207,14 +263,14 @@
                so a default-open group can never come back collapsed on reload. #}
             {% set gid = 'xopp-' ~ (group.opportunity_id or loop.index) %}
             <tbody>
-                {# ⚠️ `table-subtle`, NEVER Bootstrap's `table-light`. The
+                {# WARNING: `table-subtle`, NEVER Bootstrap's `table-light`. The
                    stock class hardcodes `--bs-table-color: #000` on a light
                    tint, so in dark mode it paints a light stripe with black
                    text across a dark table. `.table-subtle` is SAM's
                    token-driven replacement — byte-identical in light mode
                    (`--surface-tertiary` IS #f8f9fa) and correct in dark. See
                    the comment above `.table-subtle` in dashboard.css. #}
-                {# ⚠️ The opportunity NAME now opens the opportunity modal when
+                {# WARNING: The opportunity NAME now opens the opportunity modal when
                    outgoing XRAS is configured, so the toggle can no longer live
                    on the <tr> (or on this cell): Bootstrap's collapse data-api
                    runs in the capture phase, so a click on the link would fire
@@ -224,7 +280,7 @@
                    Accounts-Needed username cell. The bare #id folds into the
                    modal — the header just carries the name. #}
                 <tr class="table-subtle fw-semibold">
-                    <td colspan="7">
+                    <td colspan="8">
                         <span class="cursor-pointer" {{ collapse_toggle(gid, expanded=true) }}><i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i></span>
                         {% if configured and group.opportunity_id %}
                         <a href="#" class="text-decoration-none fw-semibold" title="View this opportunity"
@@ -243,12 +299,14 @@
                 {% for row in group.rows %}
                 <tr>
                     {# The request number opens the full read-only detail modal —
-                       the same view the per-request expansion used to hold, now
-                       the single opener. This cell is no longer a collapse
+                       the single opener for it. This cell is not a collapse
                        trigger, so the modal link is safe (no capture-phase
-                       conflict; the old five-cell toggle split is gone with the
+                       conflict, and no five-cell toggle split, which went with the
                        expansion). A plain <a> with an inner `.font-monospace`,
-                       NOT `.btn` — `.btn` uppercases (dashboard.css). #}
+                       NOT `.btn` — `.btn` uppercases (dashboard.css). The number
+                       is capped and truncated: usually 8 chars, but a wide date
+                       filter drags in a pathological long projcode that would
+                       otherwise blow the whole column wide (full value on hover). #}
                     <td class="text-nowrap">
                         <a href="#" class="text-decoration-none"
                            title="Full request detail (read-only)"
@@ -256,13 +314,25 @@
                            hx-get="{{ url_for('allocations_dashboard.xras_request_detail',
                                               request_number=row.request_number) }}"
                            hx-target="#auditDetailsModalBody"
-                           hx-swap="innerHTML"><span class="font-monospace">{{ row.request_number }}</span></a>
+                           hx-swap="innerHTML"><span class="font-monospace d-inline-block text-truncate align-bottom"
+                                 style="max-width:8rem;" title="{{ row.request_number }}">{{ row.request_number }}</span></a>
                         {% if row.refreshed_at %}
                         {# The tell that this row was patched after a write
                            rather than swept — so an operator can see their own
                            change landed instead of wondering. #}
                         <i class="fas fa-circle-check text-success ms-1"
                            title="Updated just now, after your change — newer than the sweep."></i>
+                        {% endif %}
+                    </td>
+                    {# The in-flight action type — the single one admin shows, not
+                       the request's whole action history. `latest_action_type` is
+                       absent on a snapshot swept before this field existed (one
+                       sweep of lag), so tolerate it being undefined -> —. #}
+                    <td>
+                        {% if row.latest_action_type %}
+                        <span class="badge bg-body-secondary text-body-secondary border">{{ row.latest_action_type }}</span>
+                        {% else %}
+                        <span class="text-muted">—</span>
                         {% endif %}
                     </td>
                     <td>
@@ -277,36 +347,73 @@
                        a bare `row.admin.name` would 500 the whole card for the
                        hour between a deploy and the next sweep. #}
                     <td>{% if row.admin is defined and row.admin %}{{ row.admin.name or row.admin.username or '—' }}{% else %}—{% endif %}</td>
-                    <td class="text-nowrap">{{ row.submit_date | fmt_date }}</td>
+                    {# The current handoff's date (activity_date), so the column
+                       agrees with the date filter — a 2022 request with a recent
+                       Extension reads its Extension date, matching admin. Falls
+                       back to the request date on a pre-activity_date snapshot. #}
+                    <td class="text-nowrap">{{ (row.activity_date or row.submit_date) | fmt_date }}</td>
                     <td class="small text-muted text-nowrap">
                         {{ row.begin_date | fmt_date }} – {{ row.end_date | fmt_date }}
                     </td>
-                    {# One column, not two. The second was a full-width column
-                       spent on "1 action(s)" — true of every row on the card,
-                       so it carried no information and crowded out the ones
-                       that do. The count now appears only when it is NOT one,
-                       which is the case a withdraw has to reason about (the
-                       request stays open) and the only case worth a glance.
-
-                       The flags belong beside the SAM state because they are
-                       read together: what is blocking this handoff.
-
-                       No `text-nowrap` here, unlike the date columns: the
-                       rare row carrying both a flag and the SAM badge would
-                       otherwise set this column's width for all the others,
-                       which mostly hold one short badge. Let that one row be
-                       two lines tall instead. #}
+                    {# The request's SAM state, read together as "what is blocking
+                       this handoff": the push-readiness verdict and whether a SAM
+                       project exists. Now that a swept request almost always
+                       carries both, they sit side by side by default (the wider
+                       column above buys the room); a stuck-placeholder flag joins
+                       them and may wrap to a second line — the rare case. #}
                     <td class="text-end">
-                        {% if row.actions | length != 1 %}
-                        <span class="text-muted small me-1">{{ row.actions | length }} actions</span>
-                        {% endif %}
+                        <div class="d-flex justify-content-end align-items-center gap-1 flex-wrap">
                         {% if row.has_stuck_placeholder %}
-                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle me-1"
+                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle"
                               title="A roster member is an ARC placeholder that XRAS has already flagged reconciled — a contradiction. XRAS keeps sending the throwaway username and the handoff stays blocked.">
                             placeholder roster
                         </span>
                         {% endif %}
-                        {# ⚠️ The badge IS the link, and only in the `project`
+                        {# The two state badges are kept together and un-wrappable
+                           (`text-nowrap`), so the column is forced wide enough to
+                           hold them on one line — a `<th>` width hint alone loses
+                           to table auto-layout. The placeholder flag stays outside
+                           this span, free to wrap to its own line on the rare row
+                           that carries one. #}
+                        <span class="d-inline-flex align-items-center gap-1 text-nowrap">
+                        {# Push-readiness roll-up — the worst PENDING verdict. A
+                           never-writes SAM-side preflight: "if XRAS pushed this
+                           today, would it land?" Three shapes:
+                             - a checked verdict (would land/fail/park) opens the
+                               focused readiness modal for the reasons;
+                             - `incomplete` = SAM can't synthesize this action to
+                               check it — a passive badge, not a click target (a
+                               re-check can't resolve it; the request modal shows
+                               the gap);
+                             - `none` = nothing pending was checked (out of the
+                               sweep window, or all applied) — the one worth a
+                               one-click re-check, which resolves it.
+                           All safe inside this cell: it carries no collapse
+                           toggle (the `project` link below opens a modal too). #}
+                        {% if row.preflight_rollup == 'incomplete' %}
+                        <span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle"
+                              title="SAM can't preflight this action type yet, so its readiness is unknown. Open the request for the gap.">incomplete</span>
+                        {% elif row.preflight_rollup %}
+                        <a href="#" class="text-decoration-none"
+                           title="Why this verdict — the reasons a push would return"
+                           data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                           hx-get="{{ url_for('allocations_dashboard.xras_readiness_detail',
+                                              request_number=row.request_number) }}"
+                           hx-target="#auditDetailsModalBody"
+                           hx-swap="innerHTML">{% if row.preflight_rollup == 'failed' %}<span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">would fail</span>{% elif row.preflight_rollup == 'manual' %}<span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">would park</span>{% elif row.preflight_rollup == 'rechecked' %}<span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">would land</span>{% endif %}</a>
+                        {% else %}
+                        {# hx-swap="none": the recheck route fires refreshXrasTab
+                           (reloads this card with the fresh verdict) + a toast,
+                           both via HX-Trigger — so the response body is unused. #}
+                        <button type="button"
+                                class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle"
+                                style="cursor:pointer;"
+                                title="Not checked in the last sweep window. Click to check now."
+                                hx-post="{{ url_for('allocations_dashboard.xras_recheck_request',
+                                                    request_number=row.request_number) }}"
+                                hx-swap="none"><i class="fas fa-rotate small me-1"></i>not checked</button>
+                        {% endif %}
+                        {# WARNING: The badge IS the link, and only in the `project`
                            branch — because `pending_push == False` is not a
                            display choice, it is the sweep's set difference of
                            `requestNumber` against `Project.projcode`
@@ -328,7 +435,7 @@
                         {% if row.pending_push %}
                         <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">no project</span>
                         {% else %}
-                        {# ⚠️ An <a>, NOT `btn btn-link`. The Unity button
+                        {# WARNING: An <a>, NOT `btn btn-link`. The Unity button
                            treatment uppercases (`.btn` in dashboard.css), which
                            turned the badge into a shouted "PROJECT" — the same
                            reason `.facet-chip` deliberately opts out of `.btn`.
@@ -341,6 +448,8 @@
                            hx-target="#projectDetailsModalBody"
                            hx-swap="innerHTML"><span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">project</span></a>
                         {% endif %}
+                        </span>
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}

@@ -119,11 +119,10 @@ def load_projects(q5_path, q6_path, q7_path,
                         if info.get("section") in UNIVERSITY_SECTIONS}
 
     # First pass: collect the numeric NSF award id for EVERY NSF contract so we
-    # can batch-resolve division + funding amounts once. Unlike the old code
-    # (which only resolved bare-numeric award numbers absent from the
-    # directorate map), we now resolve old-style awards too — their amounts are
-    # only available from the API, and the amount lookup needs the numeric id
-    # (digits after the last hyphen of e.g. "AGS-0830068").
+    # can batch-resolve division + funding amounts once. Old-style awards are
+    # included, not just the bare-numeric ones absent from the directorate map:
+    # their amounts are available only from the API, and the lookup needs the
+    # numeric id (the digits after the last hyphen of e.g. "AGS-0830068").
     award_ids_to_resolve = set()
     with open(q5_path, newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)

@@ -91,7 +91,7 @@ def send_result(monkeypatch, notifier):
     return _set
 
 
-# ── The preview modal ────────────────────────────────────────────────────────
+# The preview modal
 
 class TestPreviewForm:
 
@@ -260,7 +260,7 @@ class TestThePreviewShowsBothParts:
         assert 'allow-same-origin' not in iframe
 
     def test_the_emails_css_never_reaches_the_host_document(self, app):
-        """⚠️ The regression this whole design exists to prevent.
+        """WARNING: The regression this whole design exists to prevent.
 
         The email templates are whole pages whose <style> blocks use bare
         selectors (`body`, `h3`) plus `.footer`, which the dashboard also uses.
@@ -290,7 +290,7 @@ class TestThePreviewShowsBothParts:
         assert 'xras_activation.html' in body
 
 
-# ── The send ─────────────────────────────────────────────────────────────────
+# The send
 
 class TestSendRecordsOnlyWhatWasDelivered:
 
@@ -400,7 +400,7 @@ class TestNoPathMay500:
         assert b'not found' in resp.data.lower()
 
 
-# ── The card ─────────────────────────────────────────────────────────────────
+# The card
 
 class TestTheButtonIsNowTwoSteps:
 

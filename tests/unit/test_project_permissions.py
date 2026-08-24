@@ -243,8 +243,8 @@ class TestIsProjectSteward:
         assert _is_project_steward(user, project, Permission.EDIT_PROJECTS)
 
     def test_facility_scoped_user_blocked_for_other_facility(self, monkeypatch):
-        # Scoped to WNA but project is NCAR → no system perm, no role,
-        # no scope match → denied.
+        # Scoped to WNA but project is NCAR -> no system perm, no role,
+        # no scope match -> denied.
         from webapp.utils import rbac
         monkeypatch.setattr(
             rbac, 'USER_FACILITY_PERMISSIONS',
@@ -259,7 +259,7 @@ class TestIsProjectSteward:
 
     def test_facility_scoped_user_still_wins_via_lead_role(self, monkeypatch):
         # Scope doesn't cover the facility, but user is the project lead
-        # → lead short-circuit still applies. Important: facility scope
+        # -> lead short-circuit still applies. Important: facility scope
         # is additive, not replacement.
         from webapp.utils import rbac
         monkeypatch.setattr(

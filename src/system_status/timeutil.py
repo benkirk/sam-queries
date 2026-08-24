@@ -8,7 +8,7 @@ process timezone (the app pod runs in the DB's local TZ; see
 
 Kept deliberately dependency-free (stdlib only) so the low-level model modules
 (``base.py``, ``models/*.py``) can import it at definition time without pulling
-in ``sam.fmt`` → ``config`` — which collides with ``webapp/config.py`` during
+in ``sam.fmt`` -> ``config`` — which collides with ``webapp/config.py`` during
 the webapp's early boot import order.
 """
 from datetime import datetime, timezone

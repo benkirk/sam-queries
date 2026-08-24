@@ -13,7 +13,7 @@ consumes, and :mod:`sam.queries.notifications`, which reads back what it
 caused. The one place it must **not** live is inside ``sam/notify/``: that
 package is transport, ledger and rendering machinery and stays domain-free.
 
-⚠️ **Not exported from** ``sam/queries/__init__.py``. That file imports its
+WARNING: **Not exported from** ``sam/queries/__init__.py``. That file imports its
 submodules eagerly, so listing this one would put ``sam.notify.base`` into
 the import graph of every ``from sam.queries import ...`` in the tree.
 Import it by full path.
@@ -106,11 +106,11 @@ def legacy_dedup_key(projcode: str, latest_expiration_date: Optional[str],
                      recipient: str) -> str:
     """The pre-rung-label key format, for the migration bridge.
 
-    Every manual CLI run before this change wrote
-    ``expiration:{projcode}:{date}:{recipient}``. The first scheduled run
-    would not match those, so the overlap cohort — projects already notified
-    whose end dates still fall in the window — would get a second notice. The
-    task checks both forms and treats a hit on either as suppressing.
+    ``notification_log`` holds keys in the pre-rung-label form
+    ``expiration:{projcode}:{date}:{recipient}``, written by manual CLI runs. A
+    scheduled run's key does not match those, so the overlap cohort — projects
+    already notified whose end dates still fall in the window — would get a
+    second notice. The task checks both forms and suppresses on either.
 
     **Removable after one full cycle**, by which point every live key is in
     the new format. Nothing else should grow a dependency on it.
@@ -230,14 +230,12 @@ def build_expiration_messages(
 
         # Lead details for the templates.
         #
-        # `.primary_email` used to be read unguarded, two lines below a
-        # guarded `project_lead_name`. Measured, that asymmetry is NOT the
-        # crash it looks like: `project.project_lead_user_id` is NOT NULL
-        # with an enforced FK (`project_lead_user_fk`, 0 dangling rows), so
-        # `project.lead` cannot be None, and `primary_email` returns None
-        # rather than raising when a lead has no address on file. The guard
-        # is kept for consistency with the line above it, not because it
-        # fixes a reachable AttributeError. What IS reachable — and what
+        # The `.primary_email` guard is for consistency with the line above
+        # it, not because it fixes a reachable AttributeError:
+        # `project.project_lead_user_id` is NOT NULL with an enforced FK
+        # (`project_lead_user_fk`, 0 dangling rows), so `project.lead` cannot
+        # be None, and `primary_email` returns None rather than raising when
+        # a lead has no address on file. What IS reachable — and what
         # the templates must cope with — is `project_lead_email is None`.
         project_lead_name = project.lead.display_name if project.lead else 'Project Lead'
         project_lead_email = project.lead.primary_email if project.lead else None

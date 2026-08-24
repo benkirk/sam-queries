@@ -98,7 +98,7 @@ class TestProjectCodeModel:
 
 
 # ============================================================================
-# FosAoi — Field of Science ↔ Area of Interest mapping
+# FosAoi — Field of Science <-> Area of Interest mapping
 # ============================================================================
 
 
@@ -228,7 +228,7 @@ class TestResponsiblePartyModel:
 
 
 # ============================================================================
-# Project.facility_name — derives via allocation_type → panel → facility
+# Project.facility_name — derives via allocation_type -> panel -> facility
 # ============================================================================
 
 
@@ -309,8 +309,8 @@ class TestProjectReactivate:
 
 class TestProjectDeactivate:
     """``deactivate()`` is the other half of ``reactivate()`` — the stamping
-    half, which used to live open-coded in ``sam-admin project --deactivate``
-    while the admin button dropped the stamp entirely."""
+    half. It lives on the model so the CLI and the admin button cannot disagree
+    about whether the stamp is written."""
 
     def test_deactivate_clears_active_and_stamps(self, session):
         project = make_project(session, active=True)

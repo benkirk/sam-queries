@@ -80,7 +80,7 @@ The worklist has real content waiting.
    absent from the roster — and a missing PI still fails the handoff.
 3. **Config follows `sam/notify/config.py`**, i.e. `XrasApiConfig` with
    `from_environment()` reading Flask-config-then-environment, rather than the
-   `from_env(env=None)` sketched in § 7.1. Same behaviour, the repo's idiom,
+   `from_env(env=None)` sketched in § 7.1. Same behavior, the repo's idiom,
    and it brings a secret-free `summary()` along for the configuration card.
 
 ### Still open
@@ -316,7 +316,7 @@ conflicts[{conflictId, conflictType, conflictPerson}], publications[]
 | `requestStatus` | Submitted, Approved, Rejected, Incomplete, Under Review (the filter's full enum; Approved/Rejected/Incomplete observed) |
 | `requestType` | New, Renewal |
 | `actionType` | New, Renewal, Supplement, Extension, Transfer, Adjustment, Date Adjustment |
-| `actionStatus` | Approved, Declined, Incomplete |
+| `actionStatus` | Approved, Declined, Incomplete — and, at the action level, **Submitted** and **Under Review** (probed 2026-08-23: 4 each among the newest 455 actions; an action awaiting review on an Approved request carries its own status) |
 | action `states[]` | "Conflicts Verified", "Reviewers Assigned" |
 | resource `type` | Requested / Recommended / Approved — the full award trail |
 | `allocationDateType` | Requested, Approved |

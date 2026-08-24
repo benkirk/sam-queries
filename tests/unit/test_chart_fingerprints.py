@@ -26,7 +26,7 @@ Keeping desktop+light bare is what preserves the existing snapshot keys, and
 with them every diff anyone has already reviewed.
 
 The non-identity halves exist because these passes are *tuning* work: figure
-sizes, legend placement, font sizes and now chrome colours get moved until they
+sizes, legend placement, font sizes and now chrome colors get moved until they
 look right, and without a pinned baseline "I nudged the pace chart" and "I broke
 the pace chart" produce the same diff — none. It also makes the desktop+light
 invariant enforceable in the same run: a mobile-tuning or dark-tuning commit
@@ -204,7 +204,7 @@ def test_empty_state_is_axis_invariant(app):
 
     Cheap to assert, and it fails loudly if anyone ever moves the empty check
     below the figure creation to give the placeholder an axis-aware size or a
-    themed colour.
+    themed color.
     """
     empties = [c for c in CASES if c[0].endswith('.empty')]
     assert empties, 'no empty cases — the invariant below would be vacuous'
@@ -225,12 +225,12 @@ def test_theme_changes_colour_but_never_geometry(rendered):
     Two claims, and each catches a different real mistake:
 
     **Geometry must not move.** ``bbox_inches='tight'`` sizes the figure from
-    text extents, which a colour cannot change. If a dark fingerprint's size
+    text extents, which a color cannot change. If a dark fingerprint's size
     ever differs, something structural leaked into the theme branch — a legend
     that only renders in one theme, an extra artist — and the two themes have
     silently stopped being the same chart.
 
-    **Colour must move.** The failure this guards is the whole reason PR 4
+    **Color must move.** The failure this guards is the whole reason PR 4
     exists: ``Theme.DARK`` was defined, live and reachable for a full release
     while *nothing applied it*, so a chart asked for in dark rendered exactly
     the light bytes. A theme that changes nothing is indistinguishable from a

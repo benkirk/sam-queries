@@ -21,7 +21,7 @@ An investigation into the legacy Java SAM codebase revealed that **SAM does not 
 ## Implications for `@project_samuel`
 
 - **Fragility of Manual Input:** Allowing admins to manually enter a `unix_gid` in the new HTMX form risks collisions with existing system groups or other projects in the broader infrastructure.
-- **No Local Sequence:** Unlike project codes (`next_projcode` in `sam/samuel/projects/projects.py`), there is no existing logic in the database schema (e.g., `MAX(unix_gid) + 1`) or the SAM application to reliably determine the next GID.
+- **No Local Sequence:** Unlike project codes (`next_projcode` in `sam/projects/projects.py`), there is no existing logic in the database schema (e.g., `MAX(unix_gid) + 1`) or the SAM application to reliably determine the next GID.
 - **Recommendation:** `@project_samuel` should replicate the legacy automated behavior. It should either:
   1. Leave the GID blank upon creation and retrieve it asynchronously via an API integration with the identity service (PDB).
   2. Prompt the identity service synchronously for a new GID during the project creation flow.

@@ -1,32 +1,26 @@
-"""BucketedTTLCache — one lazily-initialised TTL cache with named buckets.
+"""BucketedTTLCache -- one lazily-initialized TTL cache with named buckets.
 
 Three call sites grew the same ~120-line skeleton independently
 (``sam.queries.usage_cache``, ``webapp.disk_scans.cache``,
-``webapp.jobs.cache``): read TTL/size from Flask config or env, lazily build
-a ``RedisTTLAdapter`` when ``CACHE_REDIS_URL`` is reachable and a per-worker
+``webapp.jobs.cache``): read TTL/size from Flask config or env, lazily build a
+``RedisTTLAdapter`` when ``CACHE_REDIS_URL`` is reachable and a per-worker
 ``TTLCacheAdapter`` otherwise, then get-under-lock / compute-outside-lock /
 store-under-lock. This is that skeleton, once.
 
-What each call site still owns — because it is what genuinely differs — is
-the **cache key**:
+Each call site still owns its **cache key**, because that is what genuinely
+differs: fs-scans keys embed scan dates so invalidation is content-addressed
+and the TTL is only a backstop; jobs have no freshness signature, so the TTL IS
+the staleness bound; allocation usage keys on query parameters at day
+granularity.
 
-* fs-scans keys embed the per-collection scan dates, so invalidation is
-  content-addressed and the TTL is only a memory backstop.
-* jobs have no freshness signature (records append continuously), so the TTL
-  *is* the staleness bound.
-* allocation usage keys on the query parameters at day granularity.
+Buckets let one mechanism serve two populations with different staleness
+tolerance under a single Redis instance. A bucket is disabled by config when
+either its TTL or its size is 0.
 
-Buckets exist so one mechanism can serve two populations with different
-staleness tolerance under a single Redis instance — e.g. fs-scans' long-lived
-passive queries vs the explorer's volatile filter permutations. A bucket is
-disabled by config when either its TTL or its size is 0.
-
-Registry
---------
-Instances self-register at construction so the webapp's ``Caching`` facade can
-enumerate every bucketed cache (for the Admin → Configuration card, for
-``caching.clear(category)``, and for deriving the flask adapter's
-foreign-keyspace skip list) without hand-maintaining parallel lists.
+Instances self-register at construction, so the webapp's ``Caching`` facade can
+enumerate every bucketed cache -- for the admin card, for
+``caching.clear(category)``, and for the flask adapter's foreign-keyspace skip
+list -- without hand-maintained parallel lists.
 """
 
 from __future__ import annotations
@@ -75,7 +69,7 @@ class BucketedTTLCache:
     """A named family of TTL cache buckets sharing one backend policy.
 
     Adapters are built on first use and memoised; a stored ``None`` means
-    "initialised but disabled by config", so a disabled bucket costs one
+    "initialized but disabled by config", so a disabled bucket costs one
     config read for the process lifetime rather than one per call.
     """
 
@@ -98,10 +92,10 @@ class BucketedTTLCache:
         self._lock = threading.RLock()
         _register(self)
 
-    # ── Adapters ────────────────────────────────────────────────────────
+    # Adapters
 
     def adapter(self, bucket: str) -> Optional[CacheBase]:
-        """Return the shared adapter for *bucket*, initialising on first call.
+        """Return the shared adapter for *bucket*, initializing on first call.
 
         ``None`` when the bucket is disabled by config (TTL or size == 0).
         Prefers a ``RedisTTLAdapter`` so all gunicorn workers share one cache;
@@ -151,7 +145,7 @@ class BucketedTTLCache:
                 out.append(adapter)
         return out
 
-    # ── The memoisation dance ───────────────────────────────────────────
+    # The memoisation dance
 
     def get_or_compute(self, bucket: str, key: Hashable,
                        compute: Callable[[], Any], *,
@@ -165,7 +159,7 @@ class BucketedTTLCache:
         module docstring).
 
         The compute runs OUTSIDE the adapter lock: these are multi-second
-        plugin queries, and holding the lock across one would serialise every
+        plugin queries, and holding the lock across one would serialize every
         other reader of the bucket.
         """
         adapter = self.adapter(bucket)
@@ -189,7 +183,7 @@ class BucketedTTLCache:
                 pass
         return result
 
-    # ── Admin / facade hooks ────────────────────────────────────────────
+    # Admin / facade hooks
 
     def purge(self) -> int:
         """Clear every bucket. Returns the total entries cleared."""
@@ -229,14 +223,14 @@ class BucketedTTLCache:
         """
         return tuple(f'{spec.name}:' for spec in self.buckets.values())
 
-    # ── Test hook ───────────────────────────────────────────────────────
+    # Test hook
 
     def reset_for_tests(self, *, disabled: bool = True) -> None:
         """Force every bucket to a known adapter state.
 
         ``disabled=True`` (the default) pins all buckets off, so a test
         exercising a service function sees real computes instead of a
-        neighbour test's cached value. ``disabled=False`` drops the memo so
+        neighbor test's cached value. ``disabled=False`` drops the memo so
         the next call re-reads config — used by tests that flip TTL/size
         config and expect it to take effect.
 

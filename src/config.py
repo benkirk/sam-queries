@@ -1,6 +1,6 @@
 """Base configuration for SAM CLI tools and webapp.
 
-All env-var reading for the two databases and mail is centralised here.
+All env-var reading for the two databases and mail is centralized here.
 sam.session / system_status.session continue to work unchanged; they read
 the same vars at import time for connection-string building.
 """
@@ -41,8 +41,8 @@ class SAMConfig:
     MAIL_DEFAULT_FROM = os.getenv('MAIL_DEFAULT_FROM', 'sam-admin@ucar.edu')
 
     # ------------------------------------------------------------ Formatting
-    # SAM_RAW_OUTPUT=1  → bypass compact notation; emit bare comma-separated numbers
-    # SAM_SIG_FIGS=3    → significant figures used by compact number / size display
+    # SAM_RAW_OUTPUT=1  -> bypass compact notation; emit bare comma-separated numbers
+    # SAM_SIG_FIGS=3    -> significant figures used by compact number / size display
     SAM_RAW_OUTPUT = os.getenv('SAM_RAW_OUTPUT', 'false').lower() in ('true', '1', 'yes')
     SAM_SIG_FIGS   = int(os.getenv('SAM_SIG_FIGS', '3'))
 

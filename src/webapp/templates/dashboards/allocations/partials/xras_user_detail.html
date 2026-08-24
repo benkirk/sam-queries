@@ -7,7 +7,7 @@
            is_reconciled / stuck_placeholder, merge_url, back_url /
            back_request_number, write_enabled, configured.
 
-  ⚠️ No `data-bs-toggle="modal"` on any control here. This body is always
+  WARNING: No `data-bs-toggle="modal"` on any control here. This body is always
   swapped INTO the already-open #auditDetailsModal, so every link just
   hx-gets a new body — a toggle would fire on the open modal and HIDE it (the
   PR #464 self-closing-modal bug). The Request links below reuse that idiom to
@@ -22,19 +22,19 @@
 {# Back link (if we came from a request roster) — plain body-swap, no toggle. #}
 {{ shell.back_link(back_url, back_request_number) }}
 
-{# ── who XRAS says this is ───────────────────────────────────────────────── #}
+{# who XRAS says this is #}
 {% from 'dashboards/fragments/xras_person_detail.html' import person_detail %}
 {{ person_detail(person) }}
 
-{# ── identity state + SAM cross-reference ────────────────────────────────── #}
+{# identity state + SAM cross-reference #}
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
     {# XRAS-side reconciliation state, in the Accounts-Needed vocabulary. #}
     {% if is_reconciled is none %}
     <span class="badge bg-body-secondary text-body-secondary border fw-normal"
           title="XRAS was not asked, or does not say">identity unknown</span>
     {% elif stuck_placeholder %}
-    <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
-          title="Identified but never merged — XRAS keeps sending this throwaway username, so the handoff cannot complete.">identified, not merged</span>
+    <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle"
+          title="Misidentified — XRAS flagged this placeholder as reconciled without merging it, so it keeps sending the throwaway username and the handoff cannot complete.">misidentified</span>
     {% elif is_reconciled %}
     <span class="badge bg-body-secondary text-body-secondary border fw-normal"
           title="XRAS has linked this username to a real identity. It does NOT mean a SAM account exists.">identified</span>
@@ -61,7 +61,7 @@
     </span>
 </div>
 
-{# ── the one write: resolve a stuck placeholder by merge ─────────────────── #}
+{# the one write: resolve a stuck placeholder by merge #}
 {% if stuck_placeholder %}
 <div class="alert alert-warning d-flex align-items-center gap-2 py-2">
     <i class="fas fa-triangle-exclamation"></i>
@@ -81,54 +81,68 @@
 
 <hr>
 
-{# ── requests this person holds a role on ────────────────────────────────── #}
-<div class="small text-uppercase text-muted mb-1">Requests &amp; roles</div>
+{# requests this person holds a role on — one project per projcode, with its
+   list of actions. Two date kinds are kept distinct: the action's period of
+   performance (begin – end) and when the action was entered in XRAS. #}
+<div class="small text-uppercase text-muted mb-1">Projects &amp; roles</div>
 {% if role_groups %}
 {% for group in role_groups %}
 <div class="mb-3">
-    <div class="fw-semibold small mb-1">
+    <div class="fw-semibold small mb-2">
         {{ group.role_name or 'Role' }}
-        <span class="text-muted fw-normal">· {{ group.requests | length }}</span>
+        <span class="text-muted fw-normal">· {{ group.projects | length }}
+            project{{ '' if group.projects | length == 1 else 's' }}</span>
     </div>
-    <div class="table-responsive">
-    <table class="table table-sm align-middle mb-0">
-        <tbody>
-        {% for req in group.requests %}
-            <tr>
-                <td class="font-monospace text-nowrap">
-                    {% if configured %}
-                    {# Swap the request detail in place — no toggle, the modal
-                       is already open. #}
-                    <a href="#" class="text-decoration-none"
-                       hx-get="{{ url_for('allocations_dashboard.xras_request_detail',
-                                          request_number=req.request_number) }}"
-                       hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
-                        {{ req.request_number }}
-                    </a>
-                    {% else %}
-                    {{ req.request_number }}
-                    {% endif %}
-                </td>
-                <td>
-                    {{ req.title or '—' }}
-                    {% if req.opportunity %}
-                    <span class="text-muted small d-block">{{ req.opportunity }}</span>
-                    {% endif %}
-                </td>
-                <td class="text-nowrap small">
-                    {% if req.action_type %}
-                    <span class="badge bg-body-secondary text-body-secondary border fw-normal">{{ req.action_type }}</span>
-                    {% endif %}
-                </td>
-                <td class="text-nowrap small text-muted">
-                    {% if req.begin_date %}{{ req.begin_date | fmt_date }}{% endif %}
-                    {%- if req.end_date %} – {{ req.end_date | fmt_date }}{% endif %}
-                </td>
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
+    {% for proj in group.projects %}
+    <div class="mb-3 ps-2 border-start">
+        <div class="d-flex flex-wrap align-items-baseline gap-2">
+            <span class="font-monospace">
+                {% if configured %}
+                {# Swap the request detail in place — no toggle, the modal is
+                   already open. #}
+                <a href="#" class="text-decoration-none"
+                   hx-get="{{ url_for('allocations_dashboard.xras_request_detail',
+                                      request_number=proj.request_number) }}"
+                   hx-target="#auditDetailsModalBody" hx-swap="innerHTML">{{ proj.request_number }}</a>
+                {% else %}{{ proj.request_number }}{% endif %}
+            </span>
+            <span class="fw-semibold">{{ proj.title or '—' }}</span>
+        </div>
+        {% if proj.opportunity %}
+        <div class="text-muted small mb-1">{{ proj.opportunity }}</div>
+        {% endif %}
+        <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+                <tr class="small text-muted">
+                    <th class="fw-normal">Action</th>
+                    <th class="fw-normal">Period of performance</th>
+                    <th class="fw-normal" title="When the action was entered in XRAS">Action date</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for a in proj.actions %}
+                <tr>
+                    <td class="text-nowrap small">
+                        {% if a.action_type %}
+                        <span class="badge bg-body-secondary text-body-secondary border fw-normal">{{ a.action_type }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-nowrap small text-muted">
+                        {% if a.begin_date %}{{ a.begin_date | fmt_date }}{% endif %}
+                        {%- if a.end_date %} – {{ a.end_date | fmt_date }}{% endif %}
+                        {%- if not a.begin_date and not a.end_date %}—{% endif %}
+                    </td>
+                    <td class="text-nowrap small text-muted">
+                        {% if a.activity_date %}{{ a.activity_date | fmt_date }}{% else %}—{% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
     </div>
+    {% endfor %}
 </div>
 {% endfor %}
 {% else %}

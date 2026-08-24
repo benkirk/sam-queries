@@ -117,9 +117,9 @@ class Account(Base, SoftDeleteMixin, SessionMixin):
         soft-deleted row still occupies the slot and a blind ``create()`` would
         raise an IntegrityError:
 
-          1. A soft-deleted account exists → un-delete it, re-seed members, return.
-          2. A live account exists → return it unchanged.
-          3. No account exists → create one (delegates to :meth:`create`).
+          1. A soft-deleted account exists -> un-delete it, re-seed members, return.
+          2. A live account exists -> return it unchanged.
+          3. No account exists -> create one (delegates to :meth:`create`).
 
         All allocation-creation paths route account acquisition through here so
         re-allocating a resource whose account was previously removed just works.

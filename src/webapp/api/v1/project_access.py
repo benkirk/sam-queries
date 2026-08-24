@@ -1,36 +1,11 @@
-"""
-Project Access API endpoints (v1).
+"""Project Access API endpoints (v1).
 
-Provides per-access-branch project group status consumed by LDAP provisioning
-and other tooling.  Reproduces the output of the legacy SAM Java endpoint:
-  GET /api/protected/admin/sysacct/groupstatus/{access_branch}
+Per-access-branch project group status for LDAP provisioning. Reproduces legacy
+``GET /api/protected/admin/sysacct/groupstatus/{access_branch}``.
 
-Example usage:
-    GET /api/v1/project_access/           — all access branches
-    GET /api/v1/project_access/hpc        — single branch
-    GET /api/v1/project_access/hpc-data   — single branch
-    POST /api/v1/project_access/refresh   — invalidate cache
-
-Response format (all-branches):
-    {
-        "hpc": [
-            {
-                "groupName": "wyom0218",
-                "panel": "WRAP",
-                "autoRenewing": false,
-                "projectActive": true,
-                "status": "ACTIVE",
-                "expiration": "2028-07-01",
-                "resourceGroupStatuses": [
-                    {"resourceName": "Derecho",  "endDate": "2028-07-01"},
-                    {"resourceName": "Casper",   "endDate": "2028-07-01"}
-                ]
-            },
-            ...
-        ],
-        "hpc-data": [...],
-        "hpc-dev":  [...]
-    }
+``GET /`` all branches, ``GET /<branch>`` one of hpc / hpc-data / hpc-dev,
+``POST /refresh`` invalidates the cache. Response shape:
+``docs/apis/SYSTEMS_INTEGRATION_APIs.md``.
 """
 
 from flask import Blueprint, jsonify, abort

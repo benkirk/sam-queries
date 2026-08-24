@@ -1,7 +1,7 @@
 """Unit tests for the rate-limit facade and event ring.
 
 Covers:
-- `_key_func` branches (M2M → user → IP fallback)
+- `_key_func` branches (M2M -> user -> IP fallback)
 - `record_429` Redis path: ZADD, retention trim, hard cap
 - `record_429` deque fallback when Redis client is None
 - 429 errorhandler response shapes (JSON / HTMX / HTML)
@@ -31,11 +31,11 @@ from webapp.limiter.events import (
 )
 
 
-# ── _key_func ──────────────────────────────────────────────────────────
+# _key_func
 
 
 def test_key_func_falls_back_to_ip(app):
-    """Anonymous request → 'ip:<addr>' (get_remote_address default)."""
+    """Anonymous request -> 'ip:<addr>' (get_remote_address default)."""
     with app.test_request_context('/', environ_base={'REMOTE_ADDR': '10.0.0.5'}):
         assert _key_func() == 'ip:10.0.0.5'
 
@@ -47,7 +47,7 @@ def test_key_func_uses_api_key_user_when_set(app):
 
 
 def test_key_func_uses_authenticated_user(app, monkeypatch):
-    """`flask_login.current_user.is_authenticated` → 'user:<username>'."""
+    """`flask_login.current_user.is_authenticated` -> 'user:<username>'."""
     class _U:
         is_authenticated = True
         username = 'benkirk'
@@ -62,7 +62,7 @@ def test_key_func_uses_authenticated_user(app, monkeypatch):
         assert _key_func() == 'user:benkirk'
 
 
-# ── record_429 (Redis path) ────────────────────────────────────────────
+# record_429 (Redis path)
 
 
 @pytest.fixture
@@ -116,7 +116,7 @@ def test_record_429_enforces_hard_cap(app, fake_redis_events, monkeypatch):
     assert fake_redis_events.zcard('ratelimit:events') == 5
 
 
-# ── record_429 (deque fallback) ────────────────────────────────────────
+# record_429 (deque fallback)
 
 
 def test_record_429_falls_back_to_deque_when_redis_none(app):
@@ -129,7 +129,7 @@ def test_record_429_falls_back_to_deque_when_redis_none(app):
     assert events[0]['actor'] == 'ip:10.0.0.9'
 
 
-# ── recent / top_offenders ─────────────────────────────────────────────
+# recent / top_offenders
 
 
 def test_recent_returns_newest_first(app, fake_redis_events):
@@ -168,7 +168,7 @@ def test_active_blocks_includes_recent_actors_only(app, fake_redis_events):
     assert 'ip:stale' not in actors
 
 
-# ── 429 errorhandler response shape ────────────────────────────────────
+# 429 errorhandler response shape
 #
 # These tests exercise `_format_429_response` directly under a synthetic
 # request context. The handler itself is just `_format_429_response` plus
@@ -191,7 +191,7 @@ def test_429_handler_returns_json_for_api_paths(app):
 
 
 def test_429_handler_returns_html_fragment_for_htmx(app):
-    """HX-Request → fragment body, status 429, text/html, no `<html>`."""
+    """HX-Request -> fragment body, status 429, text/html, no `<html>`."""
     with app.test_request_context('/anything',
                                     headers={'HX-Request': 'true'}):
         resp = _format_429_response('5 per minute', None)
@@ -202,7 +202,7 @@ def test_429_handler_returns_html_fragment_for_htmx(app):
 
 
 def test_429_handler_returns_full_html_otherwise(app):
-    """Non-API, non-HTMX → full HTML page extending base.html."""
+    """Non-API, non-HTMX -> full HTML page extending base.html."""
     with app.test_request_context('/anything'):
         resp = _format_429_response('5 per minute', None)
     assert resp.status_code == 429
@@ -210,7 +210,7 @@ def test_429_handler_returns_full_html_otherwise(app):
     assert b'<html' in resp.data.lower()
 
 
-# ── Limiting.stats() ──────────────────────────────────────────────────
+# Limiting.stats()
 
 
 def test_stats_returns_documented_shape(app):

@@ -120,7 +120,7 @@ class TestProjectFactories:
         f = make_facility(session)
         assert f.facility_id is not None
         assert f.facility_name.startswith("F")
-        assert f.code is None  # nullable, 1-char unique → factory leaves None
+        assert f.code is None  # nullable, 1-char unique -> factory leaves None
         assert f.description
 
     def test_make_aoi_group_assigns_pk(self, session):

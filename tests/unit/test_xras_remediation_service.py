@@ -90,7 +90,7 @@ def _rows(session, **kw):
     return list_remediation_events(session, **kw)
 
 
-# ── the audit row outlives the write ────────────────────────────────────
+# the audit row outlives the write
 
 class TestTheAuditRowSurvives:
 
@@ -125,7 +125,7 @@ class TestTheAuditRowSurvives:
 
     def test_a_rejection_records_xras_own_validation_errors(
             self, factory, session):
-        """⚠️ The list is what an operator revisits, and it does not fit in
+        """WARNING: The list is what an operator revisits, and it does not fit in
         `outcome_reason` (VARCHAR(255)) — so it goes to `after_state`, which is
         TEXT and utf8mb4. Previously `exc.errors` was dropped entirely and the
         row said only "validation failed"."""
@@ -213,7 +213,7 @@ class TestTheAuditRowSurvives:
         assert outcome.succeeded is True
 
 
-# ── merge ───────────────────────────────────────────────────────────────
+# merge
 
 class TestMerge:
 
@@ -245,7 +245,7 @@ class TestMerge:
 
     def test_the_pre_merge_person_sheet_is_recorded(self, factory, session,
                                                     monkeypatch):
-        """⚠️ The reason `before_state` exists at all.
+        """WARNING: The reason `before_state` exists at all.
 
         Merge does not copy person detail, so `residenceCountry` — which the
         inbound wire never carries either — exists nowhere SAM can reach once
@@ -299,8 +299,62 @@ class TestMerge:
                                   client=client)
         assert refreshed == ['EXAM0001']
 
+    def test_a_merged_placeholder_pending_row_is_dropped(
+            self, factory, monkeypatch):
+        """The Pending Users card renders the cached pending half, so a merged
+        placeholder must lose its row now, not at the next sweep."""
+        monkeypatch.setattr(service, '_patch_requests_naming', lambda _u: True)
+        monkeypatch.setattr(xras_cache, 'invalidate_person', lambda _u: None)
+        xras_cache.store_pending_worklist(
+            {'generated_at': datetime.now(), 'window_days': 14,
+             'rows': [{'username': 'Ghost-User-Abcde'}, {'username': 'other'}]})
 
-# ── the coherence patch ─────────────────────────────────────────────────
+        client = MagicMock()
+        client.merge_person.return_value = _result('merge_person')
+        service.merge_placeholder(factory, source_username='ghost-user-abcde',
+                                  target_username='real', operator='benkirk',
+                                  client=client)
+
+        remaining = [r['username']
+                     for r in xras_cache.load_pending_worklist()['rows']]
+        assert remaining == ['other']       # matched case-insensitively
+
+    def test_a_failed_pending_drop_does_not_fail_the_merge(
+            self, factory, monkeypatch):
+        monkeypatch.setattr(service, '_patch_requests_naming', lambda _u: True)
+        monkeypatch.setattr(xras_cache, 'invalidate_person', lambda _u: None)
+        monkeypatch.setattr(
+            xras_cache, 'drop_pending_worklist_row',
+            lambda _u: (_ for _ in ()).throw(RuntimeError('cache down')))
+
+        client = MagicMock()
+        client.merge_person.return_value = _result('merge_person')
+        outcome = service.merge_placeholder(
+            factory, source_username='ghost-user-abcde',
+            target_username='real', operator='benkirk', client=client)
+        assert outcome.status == 'verified'
+
+
+class TestDropPendingWorklistRow:
+    """The cache primitive behind the merge's coherence patch."""
+
+    def test_no_snapshot_is_not_an_error(self):
+        assert xras_cache.drop_pending_worklist_row('ghost') is False
+
+    def test_an_absent_username_is_not_an_error(self):
+        xras_cache.store_pending_worklist(
+            {'rows': [{'username': 'someone'}]})
+        assert xras_cache.drop_pending_worklist_row('nobody') is False
+
+    def test_it_drops_the_matching_row_case_insensitively(self):
+        xras_cache.store_pending_worklist(
+            {'rows': [{'username': 'Ghost'}, {'username': 'keep'}]})
+        assert xras_cache.drop_pending_worklist_row('ghost') is True
+        rows = xras_cache.load_pending_worklist()['rows']
+        assert [r['username'] for r in rows] == ['keep']
+
+
+# the coherence patch
 
 class TestTheSnapshotPatch:
 
@@ -401,7 +455,7 @@ class TestTheSnapshotPatch:
         assert called == []
 
 
-# ── roles ───────────────────────────────────────────────────────────────
+# roles
 
 class TestRoleChanges:
 
@@ -630,7 +684,7 @@ class TestTheEditorOps:
         assert client.add_action.call_args.args[1] == 'Supplement'
 
 
-# ── the read side ───────────────────────────────────────────────────────
+# the read side
 
 class TestListing:
 

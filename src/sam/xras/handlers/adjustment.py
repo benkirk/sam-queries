@@ -1,47 +1,35 @@
-"""Adjustment — the handler to review hardest, because legacy has never run one.
+"""Adjustment -- the handler to review hardest, because legacy has never run one.
 
-Two independent legacy defects have kept ``AdjustProjectActionService`` dark for its
-entire existence:
+Two independent legacy defects kept ``AdjustProjectActionService`` dark for its
+entire existence: ``isServiceable`` tests ``actionType.equals("Adjust")`` while
+XRAS sends ``"Adjustment"`` (defect 4), and the factory is a near-verbatim copy
+of Supplement's INCLUDING its positive-amount guard, which silently drops the
+one thing an adjustment exists to do.
 
-1. **Defect 4, the spelling.** ``isServiceable`` tests
-   ``actionType.equals("Adjust")``; XRAS sends ``"Adjustment"``. They never match, so
-   every Adjustment falls through ``ProjectActionServiceSelector`` to the manual-email
-   fallback. The corpus confirms the wire spelling.
-2. **The copy-pasted ``> 0`` gate.** ``AdjustProjectAllocationActionCommandsFactory`` is
-   a near-verbatim copy of the supplement factory, *including* the positive-amount
-   guard — which silently drops the one thing an adjustment exists to do.
+So this is the only handler that will begin servicing traffic a human has
+always handled, with **no production outcome to diff against**. Everything here
+is reasoned from source rather than confirmed against behavior.
 
-So this is the only handler in the sprint that will begin servicing traffic a human has
-always handled, with **no production outcome to diff against**. Everything below is
-reasoned from the source rather than confirmed against behaviour, and that is worth
-knowing when reading it.
+* **Negatives are honored** -- removing the ``> 0`` gate is the point. Nothing
+  depends on it, because nothing has ever run.
+* **A negative taking the allocation below zero is rejected.** Legacy has no
+  such guard, but legacy also never applies one. A below-zero amount makes every
+  ``remaining = allocated - used`` nonsense, and the guard can only reject,
+  never corrupt. A rejected Adjustment goes to a human -- where 100% of them go
+  today.
+* **Both spellings dispatch here**, via ``canonical_action_type``.
 
-Three consequences:
+Otherwise the shape is Supplement's, and the per-resource pieces are imported
+from it rather than copied. The differences are the transaction type and the sign.
 
-* **Negatives are honoured.** Removing the ``> 0`` gate is the point of the handler.
-  Nothing depends on it, because nothing has ever run.
-* **A negative that would take the allocation below zero is rejected.** Legacy has no
-  such guard — ``verifyValidateState`` checks only the end date — but legacy also never
-  applies one. A below-zero ``amount`` makes every ``remaining = allocated − used``
-  nonsense, and the guard can only reject, never corrupt. A rejected Adjustment goes to
-  a human, which is where 100% of them go today.
-* **Both spellings dispatch here**, via the existing ``canonical_action_type``.
+WARNING: ``auth_at_panel_mtg`` splits by COMMAND, not by handler. The ADJUSTMENT
+row does not carry it, but the CREATE row this handler can also write does,
+because that builder is the copy taken verbatim from the supplement factory.
+Getting this half-right is what the original port did -- the flag was computed,
+carried through a tuple, unpacked, and then never applied.
 
-Otherwise the shape is Supplement's, and the per-resource pieces are imported from it
-rather than copied: same resource-key resolution, same amount parsing, same unfiltered
-account lookup, same create branch. The differences are the transaction type and the
-sign.
-
-⚠️ **``auth_at_panel_mtg`` splits by command, not by handler.** The ADJUSTMENT row does
-not carry it — ``buildAdjustAllocationCommand`` never calls ``.authAtPanelMeeting(...)``
-— but the CREATE row this handler can also write does, because
-``buildAddAllocationCommand`` is the copy taken verbatim from the supplement factory and
-that one does. Getting this half-right is what the original port did: the flag was
-computed, carried through the creations tuple, unpacked, and then never applied.
-
-Verified against ``~/codes/sam`` at tag 2.0.3
-(``AdjustProjectAllocationActionCommandsFactory``, ``Allocation.adjust``).
-See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Adjustment*.
+Verified against ``~/codes/sam`` at tag 2.0.3. See
+``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``, *Adjustment*.
 """
 
 import logging
@@ -74,11 +62,11 @@ class AdjustmentHandler(ActionHandler):
         """Supplement's assembly with the sign gate replaced and two guards added:
         the create branch's non-positive refusal and the below-zero one.
 
-        ⚠️ This used to be a separate ``_plan`` arguing for its own existence — *"the
-        two differ in three places and a shared function with three flags reads worse
-        than two functions that each say what they do"*. The count was wrong (four,
-        not three) and so was the conclusion: the duplicated thirty lines are where
-        the panel-authorisation flag went missing for an entire sprint. What actually
+        WARNING: do not split this back into a separate ``_plan``. The argument
+        for one — *"the two differ in three places and a shared function with three
+        flags reads worse than two functions that each say what they do"* — has the
+        count wrong (four, not three) and the conclusion with it: the thirty lines are where
+        the panel-authorization flag went missing for an entire sprint. What actually
         needed naming was the shared **create policy**, not the whole planner.
         """
         self.planned: List[object] = []
@@ -111,9 +99,9 @@ class AdjustmentHandler(ActionHandler):
                     # `Allocation.create`'s `amount > 0` validation; reporting is the
                     # legible version of that.
                     #
-                    # ⚠️ This guard is Adjustment's alone. Supplement has no equivalent
+                    # WARNING: This guard is Adjustment's alone. Supplement has no equivalent
                     # and must not gain one here — that would turn a Supplement crash
-                    # into a 422, which is a behaviour change nobody asked for.
+                    # into a 422, which is a behavior change nobody asked for.
                     self.errors.report(e.adjustment_would_go_negative(
                         resource.resource_name, 0.0, amount))
                     continue
@@ -146,7 +134,7 @@ class AdjustmentHandler(ActionHandler):
                 comment=resource_comment(wire_resource)))
 
     def execute(self) -> None:
-        # ⚠️ ADJUSTMENT rows get no `auth_at_panel_mtg` while the CREATE rows do.
+        # WARNING: ADJUSTMENT rows get no `auth_at_panel_mtg` while the CREATE rows do.
         # That split is `buildAdjustAllocationCommand`'s, not a slip, and it now
         # lives in the plan types rather than in this loop.
         self.execute_plan(self.planned)

@@ -9,7 +9,7 @@ Click, Flask or kubernetes.
 ``now`` is **injected and never read from the clock inside**. That is what
 makes a simulated week testable in milliseconds, and it is not a testing
 convenience bolted on — a scheduler that reads the clock in three places is a
-scheduler whose behaviour you cannot reason about.
+scheduler whose behavior you cannot reason about.
 
 See ``docs/plans/implemented/SCHEDULED_TASKS.md`` § 5 and § 6.4.
 """

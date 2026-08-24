@@ -20,7 +20,7 @@ Reproduce, don't tidy. A cleaned-up string is a contract change nobody asked for
 and it would break any grep an operator has saved. Every one of these is pinned by
 a test asserting the exact bytes, so a well-meant cleanup fails loudly.
 
-⚠️ ``docs/xras/incoming/XRAS_REIMPLEMENTATION.md`` § 3.4 lists these too, and **it is wrong
+WARNING: ``docs/xras/incoming/XRAS_REIMPLEMENTATION.md`` § 3.4 lists these too, and **it is wrong
 in seven places** — a double space dropped, two strings collapsed into one, four
 missing entirely. It was written from the POJOs before anyone read the emitters.
 ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *The error vocabulary* carries the verified table
@@ -32,7 +32,7 @@ Legacy assembles the entire command list first, reporting every problem it finds
 into a ``LinkedHashSet`` on ``ProcessingAction``, then raises **once** with the
 whole list (``AbstractServiceableProjectActionService.addOrUpdate``). Nothing is
 written unless assembly was clean. That is what lets an operator fix a request in
-one pass instead of five, and it is the behaviour `ActionErrors` exists to provide.
+one pass instead of five, and it is the behavior `ActionErrors` exists to provide.
 
 A ``LinkedHashSet`` is insertion-ordered **and deduplicating**, and both halves
 matter:
@@ -59,7 +59,7 @@ class XrasActionRejected(Exception):
     into a 422 whose body is the list — see ``webapp/api/xras/actions.py``.
 
     This is deliberately *not* raised from inside ``management_transaction``: the
-    contract is assemble → check → execute, so a rejection happens before any
+    contract is assemble -> check -> execute, so a rejection happens before any
     transaction is opened. A handler that raises this mid-write has a bug.
     """
 
@@ -147,18 +147,18 @@ def pi_not_in_database(username: str) -> str:
 
 
 def pi_not_active(username: str) -> str:
-    """`ProjectActionCommandFactoryBase:45` — ⚠️ trailing colon-space, nothing after it."""
+    """`ProjectActionCommandFactoryBase:45` — WARNING: trailing colon-space, nothing after it."""
     return f'PI {username} is not an active user: '
 
 
 def manager_not_in_database(username: str) -> str:
-    """`ProjectActionCommandFactoryBase:58` — ⚠️ trailing colon-space. The PI variant
+    """`ProjectActionCommandFactoryBase:58` — WARNING: trailing colon-space. The PI variant
     above has none; the inconsistency is legacy's."""
     return f'Allocation Manager {username} is not in database: '
 
 
 def manager_not_active(username: str) -> str:
-    """`ProjectActionCommandFactoryBase:60` — ⚠️ trailing space, no colon, and
+    """`ProjectActionCommandFactoryBase:60` — WARNING: trailing space, no colon, and
     "is not active" rather than the PI variant's "is not an active user"."""
     return f'Allocation Manager {username} is not active '
 
@@ -223,7 +223,7 @@ def awarded_amount_missing() -> str:
 
 
 def could_not_convert_amount(amount: str) -> str:
-    """`ProjectAllocationActionCommandsFactoryBase:66` — ⚠️ **two spaces** before
+    """`ProjectAllocationActionCommandsFactoryBase:66` — WARNING: **two spaces** before
     ``to float``. The source concatenates ``"\\""`` and ``"\\"  to float"``."""
     return f'Could not convert awarded amount "{amount}"  to float'
 
@@ -272,7 +272,7 @@ def allocation_end_before_commission(end_date: str, resource_name: str) -> str:
     """`DefaultAddAllocationToProjectCommand:63` — an ``IllegalStateException``, so in
     legacy it is **not** observer-reported and becomes a 500 with no diagnostic.
 
-    ⚠️ Reproduced with its typo: **no space** before the parenthesis in
+    WARNING: Reproduced with its typo: **no space** before the parenthesis in
     ``resource(%s)``. Legacy never shows this string to an XRAS admin — it escapes as
     an exception — so reproducing the bytes buys nothing on the wire. It is kept
     anyway, because the moment it *does* reach someone it should read the way the
@@ -300,7 +300,7 @@ def adjustment_would_go_negative(resource_name: str, current: float,
     reject, never corrupt — and a rejected Adjustment goes to a human, which is where
     100% of them go today.
 
-    ⚠️ ``,.2f`` rather than ``g``, and the difference is not cosmetic: ``g`` carries six
+    WARNING: ``,.2f`` rather than ``g``, and the difference is not cosmetic: ``g`` carries six
     significant digits, so an adjustment of **-1,000,001** against an allocation of
     1,000,000 rendered as ``-1e+06`` — a message stating that a number *equal* to the
     balance would take it below zero. The operator has to be able to see which number is
@@ -360,10 +360,11 @@ def mnemonic_internal_failed() -> str:
     """`MnemonicCodeExtractor:47` — **24% of legacy's XRAS failures** carry this one.
 
     The cause is data, not code: ``user_organization`` has been frozen since
-    2026-07-09 and the fuzzy match behind it is ``code LIKE '%name%'`` against a
-    ``varchar(3)`` column, which 150 of 171 active organizations cannot satisfy.
-    Surfacing it as a reviewable 422 is the point; fixing the data is not this
-    sprint's job.
+    2026-07-09, and the soft link is an exact casefolded match of
+    ``mnemonic_code.description`` to the organization name
+    (``MnemonicCode.build_lookup``), which 153 of 171 active organizations cannot
+    satisfy (legacy's ``code LIKE '%name%'`` measured 150). Surfacing it as a
+    reviewable 422 is the point; fixing the data is not this sprint's job.
     """
     return 'Could not determine Mnemonic code for internal PI via organization'
 
@@ -408,7 +409,7 @@ def no_allocation_type_for_pair(panel: str, allocation_type: str) -> str:
 # -- Transfer -- action/command/TransferProjectAllocationActionCommandsFactory
 #
 # Transfer routes to the manual-fallback path in this port (zero production traffic,
-# no sample payload, and `exchange_allocations` does not fit its 1→N clamping
+# no sample payload, and `exchange_allocations` does not fit its 1->N clamping
 # semantics). These are defined so the vocabulary is complete and so a future
 # Transfer handler starts from the verified strings rather than re-reading the Java.
 
@@ -437,7 +438,7 @@ def transfer_source_has_no_allocation(projcode: str, resource_name: str) -> str:
 def transfer_credit_exceeds_debit(credit: float, debit: float) -> str:
     """`TransferProjectAllocationActionCommandsFactory:102`.
 
-    ⚠️ Java's ``%f`` is **six decimal places**, not Python's ``float`` repr —
+    WARNING: Java's ``%f`` is **six decimal places**, not Python's ``float`` repr —
     ``1000.000000``, not ``1000.0``. Formatted explicitly here for that reason.
     """
     return (f'Transfer destination credit ({credit:f}) exceeds '

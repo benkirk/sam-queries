@@ -157,7 +157,7 @@ jobs:
             type=ref,event=branch
             # tag name (e.g. v1.2.3)
             type=ref,event=tag
-            # semver components from tag (v1.2.3 → 1.2.3, 1.2, 1)
+            # semver components from tag (v1.2.3 -> 1.2.3, 1.2, 1)
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}

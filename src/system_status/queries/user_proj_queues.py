@@ -42,7 +42,7 @@ _VALID_METRICS = ('jobs', 'cores', 'gpus', 'nodes')
 
 _VALID_RANK_BY = ('peak', 'current')
 
-# (state, metric) → DB column on UserProjQueueStatus / QueueRollupMetricsMixin.
+# (state, metric) -> DB column on UserProjQueueStatus / QueueRollupMetricsMixin.
 # `nodes` is only defined for state='running' (the schema has no
 # nodes_pending / nodes_held columns); other (state, metric) combos
 # raise ValueError when looked up. Callers should clamp before calling.
@@ -209,10 +209,10 @@ def get_user_proj_timeseries(
 
     Scope is determined by ``queue_name``:
 
-    - ``queue_name='main'`` → filter on a single ``(system, queue)``,
+    - ``queue_name='main'`` -> filter on a single ``(system, queue)``,
       one ``UserProjQueueStatus`` row per (timestamp, user, project)
       already aggregated to that queue.
-    - ``queue_name=None`` → sum across **all** queues for ``system``,
+    - ``queue_name=None`` -> sum across **all** queues for ``system``,
       so per-tick values reflect the user/project's load on the
       whole system.
 
@@ -246,7 +246,7 @@ def get_user_proj_timeseries(
         }
 
     Series ordering matches ``get_disk_usage_timeseries_by_user``: Others
-    first (so it stacks at the bottom under a neutral colour), then named
+    first (so it stacks at the bottom under a neutral color), then named
     series smallest-to-largest by the rank value so the largest sits on
     top of the stack.
 

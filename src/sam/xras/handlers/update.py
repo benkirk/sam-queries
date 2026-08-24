@@ -1,60 +1,42 @@
-"""Update — ``New`` or ``Renewal`` against a project that already exists.
+"""Update -- ``New`` or ``Renewal`` against a project that already exists.
 
-Not an ``actionType``. "Update" is a *handler*, selected by the pair
-``(actionType ∈ {New, Renewal}, the project exists)`` — so New and Update are one
-dispatch decision resolved against the database, and ``new_uwis0071_existing_ok.json``
-is the production proof.
+Not an ``actionType``; "Update" is a handler, selected by the pair
+``(actionType in {New, Renewal}, the project exists)``. Order:
+UpdateProject -> AddContract -> UpdateAllocation x N -> AddUser x N. No
+mnemonic, and no inactivation step -- the source of bug 1 below.
 
-Assembler order: **UpdateProject → AddContract → UpdateAllocation×N → AddUser×N.**
-No mnemonic (the projcode already exists) and, critically, **no inactivation step** —
-which is the source of the first bug below.
+Per resource, and one resource can emit three commands:
 
-Per resource, and a single resource can emit **three** commands
--------------------------------------------------------------
+* no allocation, or none overlapping the action window -> **ADD**
+* overlaps, existing EOD end AFTER action end -> **ERROR**
+* overlaps, existing end BEFORE action end -> **EXTEND**, then stop if
+  ``comments == "AUTO_DEFAULT_ALLOCATION_TRANSACTION"`` (a contingent resource
+  gets its date moved but not its amount), else **SUPPLEMENT** (> 0) or
+  **ADJUST** (< 0)
 
-==================================================  ==========================================
-condition                                           result
-==================================================  ==========================================
-no allocation, **or** it does not overlap the       **ADD**, using the action's dates
-action window
-overlaps, existing EOD end **after** action end     **ERROR** ``Action end date before
-                                                    existing allocation end date for %s``
-overlaps, existing end **before** action end        **EXTEND**, then…
-…unless ``comments == "AUTO_DEFAULT_ALLOCATION_     stop — a contingent resource gets its
-TRANSACTION"``                                      date moved but not its amount
-otherwise                                           **SUPPLEMENT** (``> 0``) or
-                                                    **ADJUST** (``< 0``)
-==================================================  ==========================================
+WARNING: the error string here is NOT Extension's. This one interpolates a
+*resource name* and omits the word "is"; Extension's interpolates a *date* and
+includes it. Which one an operator sees is how they tell which path rejected
+them, so the two builders stay separate. Update-driven extends also carry the
+**resource comment**, not ``XrasAction Extension Request``.
 
-⚠️ The error string here is **not** Extension's. ``Action end date before existing
-allocation end date for %s`` interpolates a *resource name* and omits the word "is";
-Extension's interpolates a *date* and includes it. Which one an operator sees is how
-they tell which path rejected them, so the two builders are separate.
+Three legacy bugs:
 
-⚠️ Update-driven extends carry the **resource comment**, not
-``XrasAction Extension Request``.
+1. **Silently re-activates an inactive project** -- ``getActive()`` is
+   hardcoded true and nothing runs ``InactivateNewProject`` afterwards. An XRAS
+   project is inactive because a human has not approved it. NOT ported: leave
+   ``active`` alone and warn.
+2. **Never updates the lead or admin** -- the guard compares the fetched user's
+   username against the lookup key, always equal, and ``setLeadUser`` is missing
+   braces. FIXED.
+3. **The ``UNDO AUTO/DEFAULT`` compensating adjustment** -- writers use
+   ``.name()``, the detector compares ``.getValue()``; production holds zero
+   ``UNDO`` rows of either spelling. NOT ported: detected and warned. The
+   separate contingent-resource short-circuit compares ``.name()`` on both
+   sides and does work, so that one IS ported.
 
-Three legacy bugs, and what this port does with each
-----------------------------------------------------
-
-1. **It silently re-activates an inactive project.** ``getActive()`` is hardcoded
-   ``true`` and, unlike the Add path, nothing runs ``InactivateNewProject`` afterwards.
-   An XRAS project is inactive because a human has not approved it yet, so re-approving
-   it as a side effect of a Supplement is wrong. **Not ported** — we leave ``active``
-   alone and warn.
-2. **It never actually updates the lead or the admin.** The guard compares the fetched
-   user's username against the lookup key, which is always equal, and ``setLeadUser``
-   is missing braces so only its first statement is guarded. **Fixed** — plainly a bug.
-3. **The ``UNDO AUTO/DEFAULT`` compensating adjustment.** ``ActionTag`` writers use
-   ``.name()`` while the detector compares ``.getValue()``; they never match, and
-   production holds **zero** ``UNDO`` rows of either spelling. **Not ported** — detected
-   and warned. See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Legacy defect 5*. The separate
-   *contingent-resource* short-circuit compares ``.name()`` on both sides and does work,
-   so that one **is** ported.
-
-Verified against ``~/codes/sam`` at tag 2.0.3 (``UpdateProjectAssembler``,
-``UpdateProjectActionCommandFactory``, ``UpdateProjectAllocationActionCommandsFactory``).
-See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Update*.
+Verified against ``~/codes/sam`` at tag 2.0.3. See
+``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``, *Update* and *Legacy defect 5*.
 """
 
 import logging
@@ -115,7 +97,7 @@ def is_allocation_overlapping(allocation: Allocation, start: Optional[datetime],
                               end: Optional[datetime]) -> bool:
     """``isAllocationOverlapping`` — standard interval overlap, both dates required.
 
-    ⚠️ It returns ``False`` when **either** action date is null, which routes the
+    WARNING: It returns ``False`` when **either** action date is null, which routes the
     resource to the ADD branch — and legacy then dereferences the same null date on the
     commission clamp and throws. Unreachable here because the handler reports a missing
     or unparseable date during assembly and never reaches this, but the guard stays
@@ -161,7 +143,7 @@ class UpdateHandler(ActionHandler):
         self.start = parse_action_begin_date(self.action, self.errors)
         self.end = parse_action_end_date(self.action, self.errors)
 
-        # ⚠️ Here, and not one line later. `execute()` writes `allocation_type_id`
+        # WARNING: Here, and not one line later. `execute()` writes `allocation_type_id`
         # through `project.update()`, which flushes — so a lazily-evaluated version of
         # this would read back the type this very action installed rather than the one
         # the project had when it arrived. Nothing in the suite would catch that.
@@ -184,7 +166,7 @@ class UpdateHandler(ActionHandler):
         """The per-resource decision. Returns a list of ``(kind, …)`` tuples, in order.
 
         A single resource can emit **three** commands — see the module docstring's
-        table. Panel authorisation is decided per step, not per action: only the ADD
+        table. Panel authorization is decided per step, not per action: only the ADD
         and SUPPLEMENT arms carry it.
         """
         start, end = self.start, self.end
@@ -258,7 +240,7 @@ class UpdateHandler(ActionHandler):
     def get_resource_comment_raw(wire_resource):
         """The **unnormalised** ``comments`` field.
 
-        ⚠️ Not :func:`resource_comment`. The contingent-resource sentinel is compared
+        WARNING: Not :func:`resource_comment`. The contingent-resource sentinel is compared
         byte-for-byte against ``ActionTag.AUTO_DEFAULT_ALLOCATION_TRANSACTION.name()``,
         so it must not pass through ``StringUtil.normalize`` first.
         """

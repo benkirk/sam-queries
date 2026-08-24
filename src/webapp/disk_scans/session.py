@@ -66,9 +66,9 @@ class FsScansExtension(PluginExtension):
         plugin itself from the ``FS_SCAN_*`` environment at engine-creation
         time — SAM does not pass them through.
 
-        The set of DISTINCT databases comes from the resource→database map
-        (Campaign_Store → campaign, Destor → desc1). An empty map falls back
-        to the plugin's single default database (None → ``FS_SCAN_PG_DB``),
+        The set of DISTINCT databases comes from the resource->database map
+        (Campaign_Store -> campaign, Destor -> desc1). An empty map falls back
+        to the plugin's single default database (None -> ``FS_SCAN_PG_DB``),
         preserving the original single-database behavior.
         """
         # Read once here (main thread) and close over it — the warm pool runs in
@@ -154,13 +154,13 @@ class FsScansExtension(PluginExtension):
                     engines[collection] = engine
         return engines
 
-    # ── fs-scans-specific accessors ─────────────────────────────────────
+    # fs-scans-specific accessors
 
     def get_databases(self, app: Optional[Flask] = None) -> Dict[str, Any]:
         """Return ``{database: {'collections': [...], 'engines': {...}}}`` (warmed).
 
-        The per-database warmed state. Used by the Admin → Configuration card to
-        render one health row per CNPG database, and by the resource→database
+        The per-database warmed state. Used by the Admin -> Configuration card to
+        render one health row per CNPG database, and by the resource->database
         helpers below. Empty when the plugin is disabled/unreachable.
         """
         return self._state(app).get('databases') or {}
@@ -193,7 +193,7 @@ class FsScansExtension(PluginExtension):
                               app: Optional[Flask] = None) -> Optional[str]:
         """The CNPG database that backs a disk *resource* (or ``None``).
 
-        Reads the ``FS_SCAN_RESOURCE_DATABASES`` map (resource NAME → database).
+        Reads the ``FS_SCAN_RESOURCE_DATABASES`` map (resource NAME -> database).
         Threaded into ``FsScanQueries(database=...)`` by the service layer so each
         resource's queries hit its own database. Safe outside an app context
         (returns ``None``) so service helpers can resolve it unconditionally.
@@ -208,7 +208,7 @@ class FsScansExtension(PluginExtension):
                                  app: Optional[Flask] = None) -> List[str]:
         """Warmed collection schemas that make up a disk *resource*, unscoped.
 
-        The single decision point for resource→collections when a query is **not**
+        The single decision point for resource->collections when a query is **not**
         project-scoped (resource mode). Resolves the resource's database via
         :meth:`database_for_resource`, then returns that database's warmed
         collections. Returns ``[]`` when the plugin is off, the resource is

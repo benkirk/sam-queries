@@ -15,7 +15,7 @@
  *
  * One deliberate exception to (1): a tablist marked data-tab-url-param keeps
  * its state in the query string instead, and this file's job for it is to
- * keep the URL and every same-route link in step. See the tab ⇄ URL-param
+ * keep the URL and every same-route link in step. See the tab <-> URL-param
  * sync section for why the two channels must not both be live.
  *
  * Tab / collapse handling works for both initial page load and after
@@ -24,7 +24,7 @@
 (function () {
     'use strict';
 
-    // ── Tab persistence ──────────────────────────────────────────────────────
+    // Tab persistence
 
     var STORAGE_PREFIX = 'tab:';
 
@@ -39,7 +39,7 @@
         var tablist = trigger.closest('[role="tablist"]');
         if (!tablist || !tablist.id) return;
         // URL-driven tablists own their state in the query string — see the
-        // tab ⇄ URL-param sync below for why the two channels can't coexist.
+        // tab <-> URL-param sync below for why the two channels can't coexist.
         if (tablist.hasAttribute('data-tab-url-param')) return;
         var paneSelector = getPaneSelector(trigger);
         if (paneSelector && paneSelector.startsWith('#')) {
@@ -85,7 +85,7 @@
         restoreTabs(event.target);
     });
 
-    // ── Tab ⇄ URL-param sync ─────────────────────────────────────────────────
+    // Tab <-> URL-param sync
     //
     // Markup contract:
     //   [role="tablist"][data-tab-url-param="usage_tab"]  the tablist
@@ -153,7 +153,7 @@
 
     document.addEventListener('shown.bs.tab', syncTabParam);
 
-    // ── Collapse (expanded row) persistence ──────────────────────────────────
+    // Collapse (expanded row) persistence
 
     var COLLAPSE_PREFIX = 'collapse:';
 
@@ -210,11 +210,11 @@
         restoreCollapses(event.target);
     });
 
-    // (The referrer-based `.back-link` machinery that used to live here was
-    // removed when detail pages moved to server-derived breadcrumbs —
-    // see dashboards/fragments/breadcrumbs.html and webapp/utils/nav.py.)
+    // Detail-page breadcrumbs are server-derived, so there is deliberately no
+    // referrer-based `.back-link` machinery here — see
+    // dashboards/fragments/breadcrumbs.html and webapp/utils/nav.py.
 
-    // ── Chart selector persistence ───────────────────────────────────────────
+    // Chart selector persistence
     //
     // Chart fragments with multiple HTMX btn-group selectors (group_by,
     // state, metric, rank_by, …) lose their selection on a full page
@@ -371,7 +371,7 @@
         }
     });
 
-    // ── Job-history period pills ─────────────────────────────────────────────
+    // Job-history period pills
     //
     // The jobs card's 30d/60d/90d/1yr pills re-render the whole card shell,
     // because each of its six panels bakes the window into its own hx-get
@@ -385,7 +385,7 @@
     //   [data-jobs-explore-link] "Open full view", whose ?days= tracks them
     //
     // Cards sharing a persist id — the per-machine subtabs on My Jobs and
-    // Status → Job History — stay in lockstep: a click saves the window and
+    // Status -> Job History — stay in lockstep: a click saves the window and
     // re-renders its siblings. That fan-out goes through htmx.ajax() rather
     // than hx-* attributes on the wrapper, because hx-target/hx-swap are
     // inherited: declaring them on a card would hijack every descendant
@@ -472,7 +472,7 @@
         restoreTabs(card);
     });
 
-    // ── Job explorer: tell the server which tab is open ──────────────────────
+    // Job explorer: tell the server which tab is open
     //
     // The explorer's filter panel re-renders the whole card, for the same
     // reason a pill does. Without this the server would always render Jobs
@@ -492,7 +492,7 @@
             .forEach(function (input) { input.value = key; });
     });
 
-    // ── Scroll preservation across full-page navigation ──────────────────────
+    // Scroll preservation across full-page navigation
     //
     // Time-filter clicks (?hours=N) trigger `window.location.href = ...` or
     // a plain link, both of which reload the page and reset scroll to the

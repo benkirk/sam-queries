@@ -77,8 +77,8 @@ class TestAssignColors:
         assert colors[0] == UNITY_NCAR_GRAY_LIGHT
 
     def test_others_does_not_advance_the_cursor(self):
-        """A named band keeps its colour whether or not a remainder exists —
-        otherwise the same user changes colour when the tail happens to be
+        """A named band keeps its color whether or not a remainder exists —
+        otherwise the same user changes color when the tail happens to be
         empty."""
         with_other = S.assign_colors(self._bands('Others', 'a', 'b'),
                                      UNITY_STACK_10, UNITY_NCAR_GRAY_LIGHT)

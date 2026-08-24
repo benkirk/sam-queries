@@ -1,66 +1,44 @@
-"""``POST /api/xras/v1/actions`` — the only writing surface on the XRAS integration.
+"""``POST /api/xras/v1/actions`` -- the only writing surface on the XRAS integration.
 
-The endpoint authenticates, parses, audits, and then dispatches — unless
-``XRAS_ACTIONS_CAPTURE_ONLY`` is on, which it is by default. The audit row is written
-*in front of* dispatch rather than behind it, which is what turns every production post
-into a harvested payload and what makes replay possible when a handler explodes.
+Authenticate, parse, audit, then dispatch -- unless ``XRAS_ACTIONS_CAPTURE_ONLY``
+is on. Two flags gate dispatch and they are not the same flag: that one is the
+interlock, while ``XRAS_ACTIONS_ENABLED`` is the per-type triage lever checked
+inside :mod:`sam.xras.dispatch`.
 
-Two flags gate dispatch and they are not the same flag. ``XRAS_ACTIONS_CAPTURE_ONLY``
-is the interlock — while legacy is still the system of record, dispatching would apply
-an action it has already applied. ``XRAS_ACTIONS_ENABLED`` is the per-type triage
-lever, checked inside :mod:`sam.xras.dispatch`; see that module for why it keys on
-action type.
+Order of operations, and the part that is not negotiable::
 
-Order of operations, and the part that is not negotiable
---------------------------------------------------------
+    JSON parse fails -> row (status='failed', action_type=NULL) -> 400
+    schema rejects   -> row (status='failed')                   -> 422
+    row (status='received')        <- BEFORE dispatch
+    dispatch
+      capture-only   -> stays 'received'                        -> 200
+      success        -> 'processed' + projcode_result           -> 200
+      validation errs-> 'failed' + error_messages               -> 422
+      no serviceable -> 'manual'                                -> 200
 
-::
+Legacy's only record of an action is an email and its only replay mechanism is
+pasting JSON into a form, so a row written only on success would be a success
+log rather than an audit trail. Persisting first is what makes replay possible
+when a handler explodes.
 
-    read raw body
-      │
-      ├─ JSON parse fails ──> write row (status='failed', action_type=NULL) ──> 400
-      ├─ schema rejects   ──> write row (status='failed')                   ──> 422
-      │
-      ├─ write row (status='received')          ← BEFORE dispatch
-      │
-      └─ dispatch
-             ├─ capture-only    → row stays 'received'                      → 200
-             ├─ success         → 'processed' + projcode_result             → 200
-             ├─ validation errs → 'failed' + error_messages                 → 422
-             └─ no serviceable  → 'manual'                                  → 200 †
+WARNING: the row is committed on its OWN connection, outside the handler
+transaction. ``management_transaction`` rolls the whole session back on
+exception, so an audit row enrolled in it would vanish in exactly the case it
+exists for. :func:`_record` and :func:`_finish` open short-lived sessions and
+commit immediately. No happy-path test would catch this.
 
-Legacy's only record of an action is an email and its only replay mechanism is pasting
-JSON into a form, so a row written *only on success* would be a success log rather than
-an audit trail. Persisting before dispatch is what makes replay possible when a handler
-explodes.
+Status codes are a deliberate improvement, not a port: legacy answers 500 with
+an opaque timestamp for both a malformed body and a failed validation, and 200
+for an action it silently parked. Here 400 is a malformed body and 422 a failed
+validation, and the 422 body carries the accumulated ordered error list because
+XRAS admins read it directly in their "Accounting Service Posts" panel.
 
-⚠️  **The row is committed on its own connection, outside the handler transaction.**
-``management_transaction`` rolls the entire session back on exception
-(``sam/manage/transaction.py``), so an audit row enrolled in it would vanish in exactly
-the case it exists for. :func:`_record` and :func:`_finish` therefore open short-lived
-sessions of their own and commit immediately. This is the one behaviour here that no
-happy-path test would catch.
-
-Status codes are a deliberate improvement, not a port: legacy answers 500 with an
-opaque timestamp for both a malformed body and a failed validation, and 200 for an
-action it silently parked for a human. Ours separates the malformed body (400) from the
-failed validation (422). The 422 body is the headline deliverable — XRAS admins read it
-directly in their "Accounting Service Posts" panel — so it carries the accumulated,
-ordered error list rather than a summary. ACCESS confirmed on 2026-08-11 that this is
-wanted: *"the response body is saved and made available in xras_admin for the admin to
-see, so it's nice to include something informative"*, quoting legacy's opaque
-``Unhandled SAM exception ... (timestamp ...)`` as the thing to fix.
-
-† **A parked action is distinguished on the wire** — this is the one place the POST
-contract deliberately leaves legacy behind. Legacy answered a bare ``'OK'`` for an action
-it had silently deferred to a human, byte-identical to a success, so the admin who pushed
-the button was told it worked. That stopped being hypothetical once ``Date Adjustment``
-was discovered: it parks, and it is 4 of the 41 corpus payloads. ACCESS asked for exactly
-this on 2026-08-11 — *"the response body is saved and made available in xras_admin for the
-admin to see, so it's nice to include something informative"* — so ``manual`` now answers
-:data:`_MANUAL_MESSAGE` while ``processed`` keeps ``'OK'``. The **status stays 200**:
-ACCESS treats any other status as an error, and a parked action is not one. Decision
-recorded at ``docs/xras/incoming/XRAS_CUTOVER_RUNBOOK.md`` § gate 4.
+A parked action is distinguished on the wire -- the one place this contract
+deliberately leaves legacy behind, which answered a bare ``'OK'`` byte-identical
+to a success. ``manual`` answers :data:`_MANUAL_MESSAGE` while ``processed``
+keeps ``'OK'``. The **status stays 200**: ACCESS treats any other status as an
+error, and a parked action is not one. Decision recorded at
+``docs/xras/incoming/XRAS_CUTOVER_RUNBOOK.md`` gate 4.
 """
 
 import json
@@ -106,8 +84,8 @@ _REQUEST_NUMBER_WIDTH = 30
 #: ``requestNumber`` — and an audit write that 500s is what ``_fit`` exists to prevent.
 _PROJCODE_RESULT_WIDTH = 30
 #: ``xras_action_log.processed_by`` is ``varchar(35)`` — ``users.username`` width. The
-#: slice lives here rather than at the four ``recheck.py`` call sites that used to carry
-#: it: a width guard belongs next to the column it guards, or the fifth caller misses it.
+#: slice lives here rather than at the four ``recheck.py`` call sites: a width guard
+#: belongs next to the column it guards, or the fifth caller misses it.
 _PROCESSED_BY_WIDTH = 35
 #: ``service`` holds one of ``sam.xras.dispatch.SERVICES``; ``outcome_reason`` holds a
 #: sentence written for whoever reads the row at 3am. Both bounded rather than ``TEXT``,
@@ -118,7 +96,7 @@ _OUTCOME_REASON_WIDTH = 255
 #: ``raw_payload`` and ``error_messages`` are ``TEXT`` — 65,535 **bytes**, not
 #: characters, and the column is utf8mb3.
 #:
-#: ⚠️ Under ``STRICT_TRANS_TABLES`` an oversized value does **not** truncate, it raises
+#: WARNING: Under ``STRICT_TRANS_TABLES`` an oversized value does **not** truncate, it raises
 #: ``1406 Data too long`` — so an unbounded write here loses the audit row entirely.
 #: That is measured, not theoretical: ``tests/stress/test_audit_row_survives.py``
 #: reproduced it against the test container before this guard existed.
@@ -129,7 +107,7 @@ _TRUNCATION_MARGIN = 512
 
 #: The wire message a **parked** action gets, in place of the ``'OK'`` a success gets.
 #:
-#: ⚠️ Deliberately **not** ``DispatchResult.reason``. Three of the four park causes name
+#: WARNING: Deliberately **not** ``DispatchResult.reason``. Three of the four park causes name
 #: internal machinery — ``XRAS_ACTIONS_ENABLED``, an unregistered handler — that an ACCESS
 #: admin can neither act on nor should see. The internal reason keeps going to
 #: ``xras_action_log.outcome_reason``, which is what the operator surfaces read; this
@@ -151,7 +129,7 @@ def _truncate_bytes(text, width):
 def _strip_astral(text):
     """Replace codepoints above the BMP with U+FFFD.
 
-    ⚠️ For the **utf8mb3** columns only. utf8mb3 cannot represent a 4-byte character
+    WARNING: For the **utf8mb3** columns only. utf8mb3 cannot represent a 4-byte character
     at all, and under ``STRICT_TRANS_TABLES`` that is not a truncation — MySQL raises
     ``1366 Incorrect string value`` and the audit row is lost. Same outcome as the
     ``1406`` overflow the widths guard, reached by encoding rather than by length.
@@ -161,7 +139,7 @@ def _strip_astral(text):
     sent is stored as sent. The identifiers cannot follow them, because
     ``sam/queries/xras_activation.py`` joins ``request_number`` and ``projcode_result``
     against ``project.projcode`` and a mixed-charset comparison stops using the index
-    (measured on production: ``type: const, rows: 1`` → ``type: index, rows: 4650``).
+    (measured on production: ``type: const, rows: 1`` -> ``type: index, rows: 4650``).
 
     Lossy, and losing nothing anyone wanted — these columns hold projcodes, usernames
     and a fixed action vocabulary, where a 4-byte glyph carries no meaning. The
@@ -173,7 +151,7 @@ def _strip_astral(text):
 def _fit_payload(raw_payload):
     """Bound ``raw_payload``, announcing the cut. Returns ``(text, was_truncated)``.
 
-    ⚠️ A truncated payload is **not replayable** — the bytes are no longer valid JSON,
+    WARNING: A truncated payload is **not replayable** — the bytes are no longer valid JSON,
     and replay reads them back through the schema. The marker says so in the stored
     value itself, because an operator deciding whether to click Replay sees the payload
     long before they see any documentation.
@@ -251,7 +229,7 @@ def _fit(value, width):
 
     Two ways to raise, and this guards both. Length is the obvious one. Encoding is
     the other: every column reached through here is **utf8mb3**, which cannot hold a
-    4-byte character — see :func:`_strip_astral`. Sanitise *before* slicing, so a
+    4-byte character — see :func:`_strip_astral`. Sanitize *before* slicing, so a
     replacement character cannot be cut in half.
 
     ``width`` counts **characters**, correctly: MySQL ``VARCHAR(n)`` is n characters,
@@ -377,11 +355,11 @@ def _parse_action(raw_payload):
       identity columns. Callers merge their own kwargs on top and decide what to
       return.
 
-    ⚠️ **The three message strings are on the wire contract.** XRAS administrators
+    WARNING: **The three message strings are on the wire contract.** XRAS administrators
     read them in their "Accounting Service Posts" panel, the same standing as the
     error vocabulary in :mod:`sam.xras.errors`. Reproduce, do not tidy.
 
-    ⚠️ **Identity is read off the *raw* dict on the 422 arm, and off the *validated*
+    WARNING: **Identity is read off the *raw* dict on the 422 arm, and off the *validated*
     action on the success arm.** That asymmetry is deliberate: a rejected body never
     passed the schema, so the only ``actionType`` / ``requestNumber`` / ``actionId``
     available are untrusted — which is exactly why :func:`_fit` and :func:`_fit_int`
@@ -444,17 +422,17 @@ def _dispatch(log_id, action):
 
     The four terminal states, and the reason each is what it is:
 
-    - ``XrasActionRejected`` → ``failed`` + **422** carrying the accumulated, ordered
-      error list. Nothing was written: the handler contract is assemble → check once →
+    - ``XrasActionRejected`` -> ``failed`` + **422** carrying the accumulated, ordered
+      error list. Nothing was written: the handler contract is assemble -> check once ->
       execute, so a rejection happens before any transaction opens.
-    - **any other exception** → ``failed`` + **500**, with ``outcome_reason`` naming
+    - **any other exception** -> ``failed`` + **500**, with ``outcome_reason`` naming
       the exception class, then re-raised. Every exit from this function must leave a
       terminal status behind: the pre-dispatch row says ``received``, and so does the
       capture-only backlog, so a row left at ``received`` by a crash is invisible
       among rows that are merely waiting.
-    - ``processed`` → 200, with ``projcode_result`` recorded. This is the status that
+    - ``processed`` -> 200, with ``projcode_result`` recorded. This is the status that
       has never once existed in this table.
-    - ``manual`` → 200. Legacy's ``catch (BadRequestException)`` arm, except that
+    - ``manual`` -> 200. Legacy's ``catch (BadRequestException)`` arm, except that
       legacy answers a bare 200 and leaves no trace that SAM quietly parked the action.
       The ``reason`` is logged because "nothing matched" and "the type is disabled"
       look identical in the table otherwise.
@@ -548,7 +526,7 @@ def post_action(action_id=None, request_id=None, action_type=None):
     ``/v1/actions``, the only form legacy maps — but the ACCESS/XRAS specification
     documents ``/v1/actions/<actionId>/<requestId>/<actionType>``. If the broker is
     ever corrected to match its own published spec, every post would 404. The path
-    segments are ignored in favour of the body, which is authoritative and which the
+    segments are ignored in favor of the body, which is authoritative and which the
     bare form has always relied on.
 
     ``@csrf.exempt`` is required: ``CSRFProtect`` covers every POST, and a token-auth

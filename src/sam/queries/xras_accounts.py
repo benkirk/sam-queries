@@ -1,46 +1,27 @@
-"""The XRAS account-creation worklist — who must exist in SAM before a handoff works.
+"""The XRAS account-creation worklist -- who must exist in SAM before a handoff works.
 
-The problem
------------
-``src/sam/xras/handlers/new.py:24-27`` records the measured causes of the legacy
-70% failure rate, and the largest single one — **55%** — is unreconciled ARC
-placeholder identities: a researcher XRAS names on a request who has no SAM
-account. Account creation is manual, so the fix is not code that creates
-accounts; it is a worklist telling an operator *who*, *why*, and *with what
-detail*.
+The largest single cause of the legacy 70% failure rate, at **55%**, is
+unreconciled ARC placeholder identities: a researcher XRAS names on a request
+who has no SAM account. Account creation is manual, so the fix is not code that
+creates accounts; it is a worklist saying who, why, and with what detail.
 
-Two feeds, one classifier
--------------------------
-::
+Two feeds, one classifier, joined at :class:`RosterRecord`: Feed A is
+``xras_action_log.raw_payload`` at push time, Feed B is
+``GET /v1/reports/requests`` ahead of the push. Feed B reaches people Feed A
+structurally cannot -- a brand-new PI on a solo New request, connected to
+nobody SAM knows -- and neither feed should imply a second copy of the rules.
 
-    Feed A  xras_action_log.raw_payload   ──┐
-            (inbound pushes, at push time)  │   normalized        classify vs
-                                            ├── RosterRecord ──►  users  ──► rows
-    Feed B  GET /v1/reports/requests        │   (feed-neutral)   absent/inactive
-            (enumeration, ahead of push)  ──┘
-
-The feed-agnostic seam is :class:`RosterRecord`. It is the one decision that
-keeps the classifier, the card, the CLI and the eventual operator-notes table
-single-sourced — Feed B reaches people Feed A structurally cannot (a brand-new
-PI on a solo New request, connected to nobody SAM knows, *before* the push),
-and neither feed should imply a second copy of the classification rules.
-
-⚠️ Not exported from ``sam/queries/__init__.py``
-------------------------------------------------
-That module imports its submodules eagerly, so listing this one would drag
-``requests`` and the cache layer into every ``from sam.queries import ...``.
-Same reasoning as ``expiration_notices`` and ``xras_notices``; import it by
-module path. For the same reason the default person lookup is resolved by a
-**deferred import** inside :func:`enrich_worklist` rather than at module scope —
-``src/scheduling/`` imports this module, and
+WARNING: not exported from ``sam/queries/__init__.py``, which imports its
+submodules eagerly -- listing this would drag ``requests`` and the cache layer
+into every ``from sam.queries import ...``. Import it by module path. For the
+same reason the default person lookup is a DEFERRED import inside
+:func:`enrich_worklist`: ``src/scheduling/`` imports this module, and
 ``test_task_ledger.py::TestPortabilityBoundary`` walks what that drags in.
 
-⚠️ Regime-proof by construction
---------------------------------
-Classification is a check against the **current** state of ``users``, never
-against the action's ``status``. Actions in the log may be ``received`` (under
-capture-only) or ``processed``/``failed``/``manual`` (under live dispatch), and
-the worklist must mean the same thing on both sides of that flip.
+WARNING: classification checks the CURRENT state of ``users``, never the
+action's ``status``. Actions may be ``received`` under capture-only or
+``processed``/``failed``/``manual`` under live dispatch, and the worklist must
+mean the same thing on both sides of that flip.
 """
 
 from __future__ import annotations
@@ -62,32 +43,27 @@ from sam.queries.xras_actions import XRAS_ACTION_STATUSES
 
 logger = logging.getLogger(__name__)
 
-#: ⚠️ **Every status, deliberately — do not narrow this to the "interesting"
-#: ones.** An earlier version read only ``received``/``failed``/``manual`` on
-#: the reasoning that a ``processed`` action had already succeeded, so its
-#: roster must have resolved.
+#: WARNING: **every status, deliberately.** Narrowing to the "interesting" ones
+#: -- ``received``/``failed``/``manual``, on the reasoning that a ``processed``
+#: action must have resolved its roster -- is wrong, and the local smoke
+#: measured it. Seeding 41 real payloads under live dispatch left 28
+#: ``processed``, and excluding them hid **5 usernames SAM cannot use: four
+#: inactive, one absent entirely, most of them Allocation Managers.** An action
+#: processes fine while naming such a person, because ``resolve_roster`` reports
+#: a missing or inactive member as a warning, not an error, and the handler
+#: skips assigning them. The account is still needed.
 #:
-#: That reasoning is wrong, and the local smoke measured it: seeding 41 real
-#: payloads under live dispatch left 28 ``processed``, and excluding them hid
-#: **5 usernames SAM cannot use — four inactive, one absent entirely, most of
-#: them Allocation Managers.** An action processes fine while naming such a
-#: person, because ``resolve_roster`` reports a missing or inactive *member*
-#: as a warning rather than an error; the handler simply skips assigning them.
-#: The account is still needed, and the operator still has to create it.
-#:
-#: Worse, the narrow list made the worklist **regime-dependent** — the exact
-#: property § 1 of the design says it must not have. The same corpus produced
-#: 9 rows under capture-only (all ``received``) and 4 under live dispatch.
-#: Classification keys off the ``users`` table alone; this must not
-#: reintroduce a status dependency behind it.
+#: A narrow list also makes the worklist **regime-dependent**, the exact
+#: property § 1 of the design forbids: the same corpus produced 9 rows under
+#: capture-only and 4 under live dispatch. Classification keys off the ``users``
+#: table alone and must stay that way.
 WORKLIST_STATUSES: Tuple[str, ...] = XRAS_ACTION_STATUSES
 
-#: Which actions are worth running the dispatch pre-flight over. **This** is
-#: the bounded-work knob the status list used to be conflated with: validating
-#: a ``processed`` action re-runs a handler's whole assembly to learn something
-#: already known, and ``rechecked``/``unmapped`` are not an action's own
-#: outcome. Narrowing this costs provenance on those rows, never a
-#: classification.
+#: Which actions are worth a dispatch pre-flight. **This** is the bounded-work
+#: knob, distinct from the status list: validating a ``processed`` action re-runs
+#: a handler's whole assembly to learn what is already known, and
+#: ``rechecked``/``unmapped`` are not an action's own outcome. Narrowing this
+#: costs provenance on those rows, never a classification.
 VALIDATE_STATUSES: Tuple[str, ...] = ('received', 'failed', 'manual')
 
 #: ARC placeholder identities, e.g. ``placeholder34-user-00034``. XRAS mints one
@@ -95,11 +71,10 @@ VALIDATE_STATUSES: Tuple[str, ...] = ('received', 'failed', 'manual')
 #: ``GET /v1/people/<username>``, which is what makes the detail sheet possible.
 PLACEHOLDER_USERNAME_RE = re.compile(r'^\S+-user-\S+$')
 
-#: Wire role strings, spaced — the *inbound* vocabulary. Verified live: the
+#: Wire role strings, spaced -- the *inbound* vocabulary. Verified live: the
 #: NCAR process defines exactly these three role types (13 PI / 14 Allocation
-#: Manager / 19 User), so no co-PI can ever appear. Deliberately NOT the
-#: ``Pi``/``CoPi``/``AllocationManager`` vocabulary SAM's own outbound GET side
-#: uses (``webapp/api/xras/requests.py:33-37``); the two must not be conflated.
+#: Manager / 19 User), so no co-PI can appear. Deliberately NOT the
+#: ``Pi``/``CoPi``/``AllocationManager`` vocabulary SAM's outbound GET side uses.
 PI_ROLE = 'PI'
 ALLOCATION_MANAGER_ROLE = 'Allocation Manager'
 USER_ROLE = 'User'
@@ -111,6 +86,13 @@ _ROLE_ORDER = (PI_ROLE, ALLOCATION_MANAGER_ROLE, USER_ROLE)
 PERSON_FIELDS = ('firstName', 'middleName', 'lastName', 'email', 'phone',
                  'organization', 'academicStatus', 'residenceCountry',
                  'isReconciled', 'orcid')
+
+#: Provenance tags carried on a row's ``sources`` and each action's ``source``:
+#: Feed A (a posted ``xras_action_log`` row) vs Feed B (the sweep's enumeration
+#: of approved, not-yet-pushed requests). Rendered as badges on the Pending
+#: Users card; a row may carry both.
+SOURCE_ACTION_LOG = 'action_log'
+SOURCE_REPORTS = 'reports'
 
 
 CLASSIFICATION_ABSENT = 'absent'
@@ -135,21 +117,23 @@ class ActionRef:
     action_type: Optional[str] = None
     status: Optional[str] = None
     received_time: Optional[datetime] = None
-    #: When the request appeared in XRAS (``submitDate``), for a feed that has
-    #: no arrival of its own. Feed A leaves it ``None`` and uses
-    #: ``received_time`` — when XRAS pushed the action to us.
-    #:
-    #: These two are the SAME QUESTION per feed — "when did this show up?" —
-    #: which is what lets one window control span both. Filtering Feed B on
-    #: its period of performance instead was tried and is wrong: a pending
-    #: request's allocation almost always ends a year out, so a one-sided
-    #: window keeps every row at every width and the control looks dead. The
-    #: period of performance belongs where it already is, bounding what the
-    #: sweep collects.
+    #: When the request appeared in XRAS (``submitDate``), for a feed with no
+    #: arrival of its own. Feed A leaves it ``None`` and uses ``received_time``.
+    #: The two are the SAME QUESTION per feed -- "when did this show up?" --
+    #: which is what lets one window control span both. NOT the period of
+    #: performance: a pending request's allocation almost always ends a year
+    #: out, so a one-sided window on it keeps every row at every width and the
+    #: control looks dead. That bounds what the sweep collects instead.
     submit_date: Optional[str] = None
-    source: str = 'action_log'
+    source: str = SOURCE_ACTION_LOG
     #: ``dispatch_action(validate_only=True)``'s verdict. ``None`` = not run.
     would_succeed: Optional[bool] = None
+    #: The richer verdict behind ``would_succeed``: ``rechecked`` (would land) /
+    #: ``failed`` (would 422) / ``manual`` (nothing would run — parked) /
+    #: ``incomplete`` (preflight raised) / ``None`` (not run). ``would_succeed``
+    #: is ``status == 'rechecked'``; ``manual`` is NOT success (its reason rides
+    #: ``reject_messages``) — the trap Phase 0 fixed.
+    preflight_status: Optional[str] = None
     #: Verbatim, **display-only**. These are a byte-pinned wire contract
     #: (``sam/xras/errors.py``), not an interface — never parse them.
     reject_messages: Tuple[str, ...] = ()
@@ -174,7 +158,7 @@ def is_placeholder(username: str) -> bool:
     return bool(username) and bool(PLACEHOLDER_USERNAME_RE.match(username))
 
 
-# ── Feed A: the inbound action log ──────────────────────────────────────
+# Feed A: the inbound action log
 
 def _roster_from_action(action) -> Tuple[Tuple[str, ...],
                                          Dict[str, List[str]],
@@ -280,10 +264,10 @@ def records_from_action_log(session: Session, *,
         if not usernames:
             continue
 
-        would_succeed, messages = None, ()
+        preflight_status, messages = None, ()
         if validate and row.status in VALIDATE_STATUSES:
-            would_succeed, messages = _validate(session, action,
-                                                row.xras_action_log_id)
+            preflight_status, messages = _validate(session, action,
+                                                   row.xras_action_log_id)
 
         records.append(RosterRecord(
             ref=ActionRef(action_log_id=row.xras_action_log_id,
@@ -291,8 +275,9 @@ def records_from_action_log(session: Session, *,
                           action_type=row.action_type,
                           status=row.status,
                           received_time=row.received_time,
-                          source='action_log',
-                          would_succeed=would_succeed,
+                          source=SOURCE_ACTION_LOG,
+                          would_succeed=_would_succeed(preflight_status),
+                          preflight_status=preflight_status,
                           reject_messages=messages),
             usernames=usernames,
             roles_by_username={k: tuple(v) for k, v in roles.items()},
@@ -300,26 +285,42 @@ def records_from_action_log(session: Session, *,
     return records
 
 
+def _would_succeed(status: Optional[str]) -> Optional[bool]:
+    """``rechecked`` is the only success; ``manual`` is not (Phase 0 trap)."""
+    if status is None or status == 'incomplete':
+        return None
+    return status == 'rechecked'
+
+
 def _validate(session: Session, action, action_log_id
-              ) -> Tuple[Optional[bool], Tuple[str, ...]]:
-    """Run the dispatch pre-flight, catching its rejection."""
+              ) -> Tuple[Optional[str], Tuple[str, ...]]:
+    """Run the dispatch pre-flight; return its ``(status, messages)`` verdict.
+
+    Registers the handlers first (import side effect) — the CLI/sweep path
+    imports none, so without this every dispatch parks as ``manual``. ``manual``
+    is a real not-success answer here, its reason carried in ``messages``; only
+    ``rechecked`` is success.
+    """
     from sam.xras.dispatch import dispatch_action
     from sam.xras.errors import XrasActionRejected
+    import sam.xras.handlers  # noqa: F401 — registers handlers by side effect
 
     try:
-        dispatch_action(session, action, validate_only=True)
-        return True, ()
+        result = dispatch_action(session, action, validate_only=True)
     except XrasActionRejected as exc:
-        return False, tuple(exc.messages)
+        return 'failed', tuple(exc.messages)
     except Exception as exc:                     # noqa: BLE001
         # The worklist is a report. A handler blowing up on one action must
         # not take the whole card down — record "we could not tell".
         logger.warning('xras worklist: validate failed for action %s (%s)',
                        action_log_id, exc)
-        return None, ()
+        return 'incomplete', ()
+    if result.status == 'manual':
+        return 'manual', (result.reason,) if result.reason else ()
+    return 'rechecked', ()
 
 
-# ── Feed B: the outbound enumeration ────────────────────────────────────
+# Feed B: the outbound enumeration
 
 def iter_roster_entries(
         payload: dict) -> Iterator[Tuple[dict, List[dict]]]:
@@ -347,6 +348,20 @@ def iter_roster_entries(
             person = {}
         roles = [r for r in (entry.get('roles') or ()) if isinstance(r, dict)]
         yield person, roles
+
+
+def _report_action_type(payload: dict) -> Optional[str]:
+    """The request's representative ``actionType`` — never ``requestType``.
+
+    ``requestType`` is ``New``/``Renewal`` on every row and does not select a
+    handler (``schemas/forms/xras.py``); the dispatching type lives on each
+    action. A request usually carries one action; take the first that names a
+    type, falling back to ``requestType`` only when none do.
+    """
+    for action in payload.get('actions') or ():
+        if isinstance(action, dict) and action.get('actionType'):
+            return action.get('actionType')
+    return payload.get('requestType')
 
 
 def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]:
@@ -388,12 +403,12 @@ def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]
         records.append(RosterRecord(
             ref=ActionRef(action_log_id=None,
                           request_number=payload.get('requestNumber'),
-                          action_type=payload.get('requestType'),
+                          action_type=_report_action_type(payload),
                           status=payload.get('requestStatus'),
                           received_time=None,
                           submit_date=(str(payload.get('submitDate'))[:10]
                                        if payload.get('submitDate') else None),
-                          source='reports'),
+                          source=SOURCE_REPORTS),
             usernames=tuple(usernames),
             roles_by_username={k: tuple(v) for k, v in roles.items()},
             account_flag=flags,
@@ -401,13 +416,13 @@ def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]
     return records
 
 
-# ── the classifier ──────────────────────────────────────────────────────
+# the classifier
 
 def _waiting_since(first_seen: Optional[datetime],
                    actions: Sequence[Dict[str, Any]]) -> Optional[date]:
     """The earliest date this person is known to have been blocking something.
 
-    ⚠️ **Neither feed alone answers this**, which is why it is derived here
+    WARNING: **Neither feed alone answers this**, which is why it is derived here
     rather than read off a column. Feed A knows ``received_time`` — when XRAS
     pushed the action at us — and leaves ``submit_date`` null. Feed B is the
     exact inverse: a request that has not been pushed has no arrival, only the
@@ -451,14 +466,14 @@ def classify_accounts(session: Session,
     Two classes, because they block a handoff identically but need different
     work:
 
-    ``absent``    no ``users`` row at all            → create the account
-    ``inactive``  a row that fails ``User.is_active``  → reactivate it
+    ``absent``    no ``users`` row at all            -> create the account
+    ``inactive``  a row that fails ``User.is_active``  -> reactivate it
 
     A predicate that only checked existence would miss the second entirely —
     of 19 live roster usernames sampled during design, all 19 existed but
     **five were inactive**, a quarter of the real cases.
 
-    ⚠️ ``isAccountToBeCreated`` is **never** the predicate. XRAS sets it when
+    WARNING: ``isAccountToBeCreated`` is **never** the predicate. XRAS sets it when
     the role is created and never clears it, so live data shows active,
     present SAM users still carrying ``true``. It rides along as a hint column
     and nothing more.
@@ -469,20 +484,16 @@ def classify_accounts(session: Session,
 
     # One query for the whole batch, never per username.
     #
-    # ⚠️ **Keyed case-INSENSITIVELY, and this is not cosmetic.**
-    # ``users.username`` is ``utf8mb3_general_ci`` with a UNIQUE index, so
-    # MySQL considers ``Jsmith`` and ``jsmith`` the same account and the
-    # ``IN`` above matches either spelling. A case-sensitive Python dict
-    # underneath that then MISSES the row it was just handed, and the
-    # username is reported ``absent`` — telling an operator to create an
-    # account that already exists and is active.
-    #
-    # The local smoke hit exactly this: XRAS sent ``Jsmith``, SAM holds
-    # ``jsmith`` active, and the card said "Create". No in-tree fixture could
-    # have caught it — the anonymizer emits lowercase ``user_<hex>`` for
-    # every username, so every scrubbed roster is already case-matched.
-    # ``roster.normalize_username`` deliberately does not fold case either
-    # (it reproduces Java), so the wire spelling reaches here untouched.
+    # WARNING: **keyed case-INSENSITIVELY, and this is not cosmetic.**
+    # ``users.username`` is ``utf8mb3_general_ci`` with a UNIQUE index, so MySQL
+    # treats ``Jsmith`` and ``jsmith`` as one account and the ``IN`` matches
+    # either spelling. A case-sensitive dict underneath then MISSES the row it
+    # was just handed and reports the username ``absent`` -- telling an operator
+    # to create an account that already exists and is active. The local smoke
+    # hit exactly that. No in-tree fixture can catch it: the anonymizer emits
+    # lowercase ``user_<hex>``, so every scrubbed roster is already
+    # case-matched, and ``roster.normalize_username`` does not fold case either
+    # (it reproduces Java), so the wire spelling arrives untouched.
     existing = {u.username.casefold(): u for u in
                 session.query(User).filter(User.username.in_(sorted(wanted))).all()}
 
@@ -531,12 +542,10 @@ def classify_accounts(session: Session,
 
             person = record.person_by_username.get(username)
             if person and row['person'] is None:
-                # Filtered to PERSON_FIELDS, exactly as `enrich_worklist` does
-                # for Feed A. Two reasons beyond consistency: a raw XRAS person
-                # carries fields we never declared (`hasOrcidToken`, a
-                # duplicate `username`), and a Feed-B row is PERSISTED — the
-                # sweep publishes it into the cache — so whatever lands here
-                # outlives the request that made it.
+                # Filtered to PERSON_FIELDS as `enrich_worklist` does for Feed
+                # A: a raw XRAS person carries fields we never declared
+                # (`hasOrcidToken`, a duplicate `username`), and a Feed-B row is
+                # PERSISTED into the cache, so it outlives its request.
                 row['person'] = {k: person.get(k) for k in PERSON_FIELDS
                                  if k in person}
                 if 'isReconciled' in person:
@@ -551,6 +560,7 @@ def classify_accounts(session: Session,
                 'submit_date': record.ref.submit_date,
                 'source': record.ref.source,
                 'would_succeed': record.ref.would_succeed,
+                'preflight_status': record.ref.preflight_status,
                 'reject_messages': list(record.ref.reject_messages),
             })
 
@@ -595,7 +605,7 @@ def get_account_worklist(session: Session, *,
     "Feed B is empty", so a caller that *tried* should say so rather than
     reporting a smaller queue as if it were the whole one.
 
-    ⚠️ **Overlap is normal**, and this is a union, not a concatenation. The two
+    WARNING: **Overlap is normal**, and this is a union, not a concatenation. The two
     feeds answer adjacent questions — Feed A is precisely the actions that have
     **posted**, Feed B is what XRAS has approved and *may or may not* have
     posted — so the same person legitimately appears in both. They are merged
@@ -635,11 +645,16 @@ def merge_worklists(primary: Sequence[Dict[str, Any]],
         if seen is None:
             merged[key] = dict(row)
             merged[key]['roles'] = tuple(row.get('roles') or ())
-            merged[key]['actions'] = list(row.get('actions') or [])
+            # Copy each action dict, not just the list: the primary rows are the
+            # cached snapshot's own objects, and `stamp_project_existence` writes
+            # `action['is_project']` in place -- without the copy the in-process
+            # cache adapter would carry that mutation into the next render.
+            merged[key]['actions'] = [dict(a) for a in (row.get('actions') or [])]
             merged[key]['sources'] = list(row.get('sources') or [])
             continue
         seen['roles'] = _sorted_roles((*seen['roles'], *(row.get('roles') or ())))
-        seen['actions'] = list(seen['actions']) + list(row.get('actions') or [])
+        seen['actions'] = list(seen['actions']) + [
+            dict(a) for a in (row.get('actions') or [])]
         seen['sources'] = sorted(set(seen['sources']) | set(row.get('sources') or []))
         for field_name in ('first_seen', 'waiting_since'):
             other = row.get(field_name)
@@ -656,12 +671,60 @@ def merge_worklists(primary: Sequence[Dict[str, Any]],
             if seen.get(field_name) is None and row.get(field_name) is not None:
                 seen[field_name] = row[field_name]
 
+    # Received-push rows lead: a Feed-A row is the more urgent flavor -- a push
+    # already arrived and is blocked -- so it sorts ahead of the absent-before-
+    # inactive-then-username order the CLI and card both inherit.
     return sorted(merged.values(),
-                  key=lambda r: (r['classification'] != CLASSIFICATION_ABSENT,
+                  key=lambda r: (SOURCE_ACTION_LOG not in (r.get('sources') or ()),
+                                 r['classification'] != CLASSIFICATION_ABSENT,
                                  r['username']))
 
 
-# ── enrichment ──────────────────────────────────────────────────────────
+@dataclass(frozen=True)
+class PendingFeed:
+    """The sweep's Feed B as last published, plus WHY it may be empty.
+
+    ``checked`` is whether we could look at all; ``reason`` names the degraded
+    state so the one consumer with a place to show it can. ``rows`` is always a
+    list -- empty on any degraded path -- so a caller can inject it unguarded.
+    """
+
+    rows: List[Dict[str, Any]] = field(default_factory=list)
+    checked: bool = False
+    #: ``unconfigured`` / ``no_snapshot`` / ``unreadable`` / ``None`` (read OK).
+    reason: Optional[str] = None
+    snapshot: Optional[Dict[str, Any]] = None
+
+
+def load_pending_worklist_rows() -> PendingFeed:
+    """Read Feed B from the cache, degrading rather than raising.
+
+    The three failure modes are distinct facts, kept apart the way
+    ``live_checked`` is on the mapping audit: an unconfigured deployment, a
+    configured one with no sweep yet, and an unreadable backend must render
+    different notes -- an empty ``rows`` alone cannot tell them apart. Cache and
+    API imports are DEFERRED (this module's rule -- see the module docstring).
+    """
+    from sam.integration.xras_api import xras_api_configured
+
+    if not xras_api_configured():
+        return PendingFeed(reason='unconfigured')
+    try:
+        from sam.integration.xras_api.cache import load_pending_worklist
+        snapshot = load_pending_worklist()
+    except Exception as exc:                     # noqa: BLE001
+        # The cache backend is infrastructure, not a contract -- a laptop with
+        # no CACHE_REDIS_URL raises from the adapter stack rather than returning
+        # empty, and that must not take the report down.
+        logger.warning('xras worklist: pending feed unreadable (%s)', exc)
+        return PendingFeed(reason='unreadable')
+    if snapshot is None:
+        return PendingFeed(reason='no_snapshot')
+    return PendingFeed(rows=list(snapshot.get('rows') or []), checked=True,
+                       snapshot=snapshot)
+
+
+# enrichment
 
 def enrich_worklist(rows: Sequence[Dict[str, Any]], *,
                     person_lookup: Optional[Callable[[str], Optional[dict]]] = None,
@@ -677,7 +740,7 @@ def enrich_worklist(rows: Sequence[Dict[str, Any]], *,
     to counts and usernames instead of returning 500. *max_lookups* bounds a
     cold-cache render.
 
-    ⚠️ **``isReconciled`` is NOT a closure signal**, despite what the design
+    WARNING: **``isReconciled`` is NOT a closure signal**, despite what the design
     document originally claimed. The local smoke measured **9 of 9** worklist
     rows reconciled in XRAS while every one still had no usable SAM account —
     reconciliation is XRAS linking a placeholder to a real identity (often by
@@ -740,6 +803,10 @@ def worklist_counts(rows: Sequence[Dict[str, Any]]) -> Dict[str, int]:
             1 for r in rows if r['classification'] == CLASSIFICATION_INACTIVE),
         'placeholder': sum(1 for r in rows if r['placeholder']),
         'reconciled': sum(1 for r in rows if r.get('is_reconciled') is True),
+        'received_push': sum(
+            1 for r in rows if SOURCE_ACTION_LOG in (r.get('sources') or ())),
+        'pending_request': sum(
+            1 for r in rows if SOURCE_REPORTS in (r.get('sources') or ())),
         # How long the oldest row has been blocking something, in days. The
         # single number that says whether this queue is being worked — a count
         # alone reads the same on a healthy day and a neglected one.
@@ -760,13 +827,12 @@ def waiting_days(row: Dict[str, Any], *, today: Optional[date] = None
     since = row.get('waiting_since')
     if since is None:
         return None
-    # ⚠️ Clamped at zero. `received_time` is naive-Mountain from the app clock,
-    # so a process running in a different zone stamps rows that read as the
-    # future — a container with no TZ set does exactly this, six hours ahead of
-    # the data it is writing. A negative age is never a fact about the queue,
-    # only about the clock, and "-1d waiting" is a worse thing to render than
-    # "0d". The cause is fixed where it belongs (compose sets TZ, as the chart
-    # already does); this keeps the column honest if it ever recurs.
+    # WARNING: clamped at zero. `received_time` is naive-Mountain from the app
+    # clock, so a process in another zone stamps rows that read as the future --
+    # a container with no TZ set runs six hours ahead of the data it writes. A
+    # negative age is never a fact about the queue, only about the clock. The
+    # cause is fixed where it belongs (compose sets TZ); this keeps the column
+    # honest if it recurs.
     return max(0, ((today or date.today()) - since).days)
 
 
@@ -822,12 +888,11 @@ def stamp_waiting_days(rows: Sequence[Dict[str, Any]], *,
     """
     when = today or date.today()
     for row in rows:
-        # ⚠️ Backfill rather than assume. A Feed-B row is read back from a
-        # snapshot the *task* published, and the task can be running older code
-        # than the reader — mid-deploy that is guaranteed, and a cached
-        # snapshot outlives a rollback. So a row with no `waiting_since` is a
-        # version skew, not a row with no age, and it is recomputed from the
-        # provenance every row carries.
+        # WARNING: backfill rather than assume. A Feed-B row is read back from a
+        # snapshot the *task* published, and the task can run older code than
+        # the reader -- guaranteed mid-deploy, and a cached snapshot outlives a
+        # rollback. A row with no `waiting_since` is version skew, not a row
+        # with no age, so recompute it from the provenance every row carries.
         if row.get('waiting_since') is None:
             row['waiting_since'] = _waiting_since(row.get('first_seen'),
                                                   row.get('actions') or ())

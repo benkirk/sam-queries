@@ -12,12 +12,12 @@
     - Bootstrap pill tabs, one per non-empty resource type (HPC/DAV, Disk, etc.)
     - Within each tab: single table with multiple <tbody> sections
       - One <tbody> per resource: a header row (collapsible on click) + a tree body
-      - All rows share the same <colgroup> → progress bars align perfectly
+      - All rows share the same <colgroup> -> progress bars align perfectly
 #}
 {% from 'dashboards/shared/project_tree.html' import render_project_tree, render_project_tree_rows, shared_badge with context %}
 {% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
 
-{# ── Point-in-time status badge ──────────────────────────────────────────
+{# Point-in-time status badge
    The "Active at" date picker that drives this lives in the parent template
    (edit_project.html), gated to operators alongside the Extend/Renew/Add
    buttons. This badge re-renders on every tree reload, so it stays accurate. #}
@@ -49,7 +49,7 @@
    a flat "one row per resource" layout instead. #}
 {% set is_standalone = (root.children | length == 0) and (root.parent_id is none) %}
 
-{# ── Resource Type pill tabs ─────────────────────────────────────────── #}
+{# Resource Type pill tabs #}
 <ul class="nav nav-pills mb-3" id="allocResourceTypeTabs" role="tablist">
   {% for tab_label, tab_data in resources_by_tab.items() %}
   {% set tab_idx = loop.index %}
@@ -68,7 +68,7 @@
   {% endfor %}
 </ul>
 
-{# ── Tab pane content ────────────────────────────────────────────────── #}
+{# Tab pane content #}
 <div class="tab-content" id="allocResourceTypeTabsContent">
   {% for tab_label, tab_data in resources_by_tab.items() %}
   {% set tab_idx = loop.index %}
@@ -83,10 +83,10 @@
       column regardless of resource name length or tree depth.
 
       Structure per resource:
-        <tbody>   ← header row (clickable, toggles tree body)
+        <tbody>   <- header row (clickable, toggles tree body)
           <tr class="alloc-resource-header"> ... </tr>
         </tbody>
-        <tbody id="alloc-body-…">  ← tree rows (collapsible)
+        <tbody id="alloc-body-…">  <- tree rows (collapsible)
           {{ render_project_tree_rows(...) }}
         </tbody>
     #}
@@ -122,7 +122,7 @@
       {%- set pct = [root_alloc.percent_used, 100] | min if root_alloc else 0 -%}
 
       {% if is_standalone %}
-      {# ── Flat row — one per resource (no accordion, edit pencil at rest) ── #}
+      {# Flat row — one per resource (no accordion, edit pencil at rest) #}
       <tbody>
         <tr style="border-top: 1px solid var(--border-default);">
 
@@ -179,7 +179,7 @@
       </tbody>
 
       {% else %}
-      {# ── Resource header row ──────────────────────────────────────── #}
+      {# Resource header row #}
       <tbody>
         <tr class="table-secondary alloc-resource-header"
             style="cursor:pointer; border-top: 2px solid var(--border-default);"
@@ -237,7 +237,7 @@
         </tr>
       </tbody>
 
-      {# ── Tree rows — collapsible tbody ────────────────────────────── #}
+      {# Tree rows — collapsible tbody #}
       {#  Build per-resource {projcode: resource_dict|None} lookup #}
       {%- set alloc_by_projcode = {} -%}
       {%- for pc, res_dict in resources_by_projcode.items() -%}

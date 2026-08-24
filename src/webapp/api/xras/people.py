@@ -46,7 +46,7 @@ def get_person_by_username(username):
     The 404 body is `{"message":"username=<u> not found","result":null}`, whose
     length is a closed form: **len(username) + 47**. Note the `requests/*`
     family uses different wording for the same condition (`User <u> not found`),
-    so the message is passed to `abort` rather than centralised.
+    so the message is passed to `abort` rather than centralized.
     """
     person = get_person(db.session, username)
     if person is None:

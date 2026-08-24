@@ -84,7 +84,7 @@ SAM uses a modern Python web stack with focus on:
 
 **Project-specific patterns**:
 - **Base classes**: See `src/sam/base.py` for `Base`, mixins, and common patterns
-- **Example model**: `src/sam/core/user.py` - well-documented reference
+- **Example model**: `src/sam/core/users.py` - well-documented reference
 - **Hybrid properties**: `Allocation.is_active` works in Python expressions and SQL WHERE clauses
 - **Class methods**: `User.get_by_username(session, username)` - preferred query pattern
 - **SessionMixin**: Models can access session via `self.session`
@@ -350,7 +350,7 @@ tests/
 - **Help text**: Making user-friendly CLIs
 
 **Project-specific**:
-- **Main CLI**: `src/sam_search.py` - comprehensive search tool
+- **Main CLI**: `src/sam_search_cli.py` - comprehensive search tool
 - **Usage**: `sam-search user benkirk --list-projects`
 - **Entry points**: Defined in `pyproject.toml` (sam-search, sam-status)
 
@@ -388,7 +388,7 @@ sam-search project SCSG0001 --list-users --verbose
 **Project-specific**:
 - We use Rich tables extensively for user/project data
 - Progress bars for batch operations
-- See `src/sam_search.py` for implementation examples
+- See `src/sam_search_cli.py` for implementation examples
 
 ---
 
@@ -503,7 +503,7 @@ asset inventory; no CDN dependency, required for the CSP policy)
 - **Filters**: `{{ value|filter }}`
 
 **Project-specific**:
-- Base template: `src/webapp/templates/base.html`
+- Base template: `src/webapp/templates/dashboards/base.html`
 - Template inheritance used throughout
 - Partials pattern for reusable components
 
@@ -629,7 +629,7 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 **Week 4: SQLAlchemy ORM**
 - [ ] [SQLAlchemy ORM Tutorial](https://docs.sqlalchemy.org/en/20/tutorial/)
 - [ ] Read SAM base classes (`src/sam/base.py`)
-- [ ] Review User model (`src/sam/core/user.py`)
+- [ ] Review User model (`src/sam/core/users.py`)
 
 **Week 5: Project Exploration**
 - [ ] Set up SAM development environment

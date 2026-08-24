@@ -4,14 +4,14 @@
 
   Context: username, person, candidates[], write_enabled, post_url
 
-  ── WHY THIS IS A MERGE AND NOT AN "UNRECONCILE" ─────────────────────────
+ WHY THIS IS A MERGE AND NOT AN "UNRECONCILE"
   The obvious fix — flip `isReconciled` back to false so the placeholder
   rejoins XRAS's own unreconciled queue — does not exist. That endpoint
   returns 200 and silently drops the parameter; a button wired to it would be
   the worst kind, green and inert. Reconciliation in XRAS *is* a merge, so the
   remedy is to complete the merge that never happened.
 
-  ── WHY NOTHING IS PRESELECTED WHEN THERE IS MORE THAN ONE CANDIDATE ─────
+ WHY NOTHING IS PRESELECTED WHEN THERE IS MORE THAN ONE CANDIDATE
   Measured on real data: one human had two live XRAS identities differing only
   by email and organization — a university address and an NCAR-staff one. A
   name match picks between them arbitrarily, and merge DELETES the loser and
@@ -108,7 +108,7 @@
             No real XRAS identity matched this placeholder's email or surname.
             Merging is not the fix here — this person genuinely needs an account
             or identity created first, which is the ordinary
-            <em>Accounts Needed</em> path. The reconciled flag was a red herring.
+            <em>Pending Users</em> path. The reconciled flag was a red herring.
         </div>
         {% endfor %}
     </div>

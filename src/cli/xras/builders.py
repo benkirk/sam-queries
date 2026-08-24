@@ -84,10 +84,10 @@ def build_summary(session, *, filters: Dict[str, Any]) -> Dict[str, Any]:
         # than "none" — AND deliberately keeps any status outside the vocabulary,
         # because that is a bug worth surfacing rather than a filter miss.
         #
-        # ⚠️ This used to be `{s: ... for s in XRAS_ACTION_STATUSES}`, which
-        # re-applied the zero-fill (already done) and silently dropped the stray.
-        # `total` counted it either way, so the envelope reported a total that did
-        # not reconcile with the sum of its own buckets.
+        # WARNING: do NOT rewrite this as `{s: ... for s in XRAS_ACTION_STATUSES}`.
+        # That re-applies the zero-fill (already done) and silently drops the stray,
+        # while `total` counts it either way — so the envelope reports a total that
+        # does not reconcile with the sum of its own buckets.
         'by_status':  summary['by_status'],
         'by_type':    summary['by_type'],
     }
@@ -126,7 +126,7 @@ def build_mapping_report(session, *, xras_keys=None) -> dict:
     """The ``xras_resource_mapping`` envelope.
 
     The audit itself is :func:`sam.queries.xras_actions.audit_resource_mapping` —
-    builders are ORM→dict extractors, not query modules, and the webapp should be
+    builders are ORM->dict extractors, not query modules, and the webapp should be
     able to reach the same answer without importing the CLI.
 
     *xras_keys* is the live catalog when one could be fetched, making the report
@@ -145,7 +145,7 @@ def build_opportunity_report(session, *, opportunities=None) -> dict:
     are shared with ``xras_sweep``, so the CLI and the task cannot drift into two
     opinions about the same opportunity.
 
-    ⚠️ **The proposal runs over the UNMAPPED subset only**, exactly as
+    WARNING: **The proposal runs over the UNMAPPED subset only**, exactly as
     ``_map_new_opportunities`` does in the sweep. Run over everything and the two
     permanent ``manual`` rows — the ones where XRAS is wrong about SAM and a human
     said so — reappear in ``review`` on every invocation, which is how an operator
@@ -180,7 +180,7 @@ def build_account_worklist(session, *, since=None, until=None,
     and a consumer diffing two runs needs to tell them apart.
 
     *pending_rows* is the Feed-B worklist ``xras_sweep`` published, injected by
-    the caller. ⚠️ ``pending_checked`` is the same distinction ``live_checked``
+    the caller. WARNING: ``pending_checked`` is the same distinction ``live_checked``
     draws on the mapping audit and is the reason it is a separate flag rather
     than ``pending_rows is not None``: a consumer must be able to tell "Feed B
     is empty" from "we could not read Feed B", because the second one means the
@@ -238,6 +238,55 @@ def _account_row(row) -> dict:
     }
 
 
+#: Verdict order for the readiness board — most urgent first.
+_READINESS_RANK = {'failed': 0, 'manual': 1, 'incomplete': 2, 'rechecked': 3,
+                   None: 4}
+
+
+def build_readiness(snapshot) -> dict:
+    """The ``xras_readiness`` envelope — the sweep's per-request preflight roll-up.
+
+    Reads the published requests-index snapshot (no network). Rows are sorted
+    red -> amber -> green; an empty board is a successful, empty report.
+    """
+    rows = []
+    for entry in (snapshot or {}).get('rows', ()) if snapshot else ():
+        verdicts = [a.get('preflight') for a in entry.get('actions', ())
+                    if a.get('preflight')]
+        counts = {}
+        for v in verdicts:
+            counts[v['status']] = counts.get(v['status'], 0) + 1
+        rows.append({
+            'request_number': entry.get('request_number'),
+            'rollup': entry.get('preflight_rollup'),
+            'status': entry.get('status'),
+            'opportunity_name': entry.get('opportunity_name'),
+            'pi': (entry.get('pi') or {}).get('username'),
+            'pending_push': entry.get('pending_push'),
+            'counts': counts,
+            'messages': sorted({m for v in verdicts if v['status'] == 'failed'
+                                for m in v.get('messages', ())}),
+        })
+    rows.sort(key=lambda r: (_READINESS_RANK.get(r['rollup'], 4),
+                             str(r['request_number'])))
+    return {
+        'kind': 'xras_readiness',
+        'generated_at': (snapshot or {}).get('generated_at') if snapshot else None,
+        'total': len(rows),
+        'requests': rows,
+    }
+
+
+def build_mnemonic_report(session, snapshot) -> dict:
+    """The ``xras_mnemonic_report`` envelope — orgs to link, ranked by unblock impact.
+
+    Reads the sweep's published snapshot (no network) and resolves each failing PI's
+    org against the DB, so it needs a session — unlike the pure `build_readiness`.
+    """
+    from sam.queries.xras_mnemonic_report import mnemonic_unblock_report
+    return mnemonic_unblock_report(session, snapshot)
+
+
 def build_person_report(username, person) -> dict:
     """The ``xras_person`` envelope — a direct ``/v1/people`` probe.
 
@@ -249,4 +298,22 @@ def build_person_report(username, person) -> dict:
         'username': username,
         'found': person is not None,
         'person': person,
+    }
+
+
+def build_family_report(projcode, lines) -> dict:
+    """The ``xras_request_family`` envelope — a projcode's request lifecycle.
+
+    *lines* is the ``reports/request_numbers`` list; ``family`` is ``None`` when
+    XRAS has no request under that projcode, keeping not-found distinct from an
+    unreachable API (which raises before this is called).
+    """
+    from sam.queries.xras_requests import request_family
+
+    family = request_family(lines)
+    return {
+        'kind': 'xras_request_family',
+        'projcode': projcode,
+        'found': family is not None,
+        'family': family,
     }

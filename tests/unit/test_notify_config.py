@@ -16,7 +16,7 @@ class TestEnvironmentSeam:
     """Reading from os.environ, i.e. the CLI."""
 
     def test_defaults_are_fail_closed(self, monkeypatch):
-        """⚠️ Clear every var this asserts a default for, not just the first.
+        """WARNING: Clear every var this asserts a default for, not just the first.
 
         `from_environment()` falls back to `os.environ`, and a developer
         running the local notification smoke has NOTIFY_REDIRECT_TO and

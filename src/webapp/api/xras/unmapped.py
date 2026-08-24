@@ -1,44 +1,28 @@
 """The catch-all: turn a request for an unmapped ``/api/xras/*`` path into a record.
 
-Why this exists
----------------
+An unmapped path under this prefix otherwise produces Werkzeug's default HTML
+404 and leaves no trace -- not a log line, not a row, nothing on the operator
+dashboard. That is how ``POST /v1/roles/...``, a *write*, went unported for an
+entire build; it took an audit of the deployed ``ROOT.war`` to find. Any
+authenticated request under ``/api/xras/`` matching no other rule lands here,
+gets a row at ``status='unmapped'`` and a WARN, so "did XRAS start calling
+something new?" is a filter on a page operators already watch.
 
-``POST /v1/roles/{requestNumber}/{role}/{username}`` — a *write* — went unported for
-an entire build, and nothing in the running system could have told anyone. An unmapped
-path under this prefix produced Werkzeug's default HTML 404 and left no trace: not a
-log line, not a row, nothing on the operator dashboard. It took an audit of the deployed
-``ROOT.war`` to find it.
+Three things are load-bearing:
 
-That is the same shape as the failure ``xras_action_log`` was built for. Legacy answered
-12.4% of its ``POST /actions`` calls with a 200 and wrote nothing anywhere; this table is
-the fix. An unmapped path is the same silence one level up — XRAS asked for something and
-we have no record that it asked.
+**A route, not an errorhandler.** ``@bp.errorhandler(404)`` cannot do this: a
+genuinely unmatched URL never reaches a view, so ``request.blueprint`` is None
+and Flask dispatches to the app's handler, of which there is none for 404. The
+blueprint's handler fires only for ``abort(404)`` inside a matched view.
+Registering a real rule is also what buys the ``XA-`` header shim and auth,
+since ``before_request`` likewise runs only for a matched blueprint.
 
-So: any authenticated request under ``/api/xras/`` that matches no other rule lands here,
-gets a row at ``status='unmapped'``, and gets a WARN. "Did XRAS start calling something
-new?" becomes a filter on a page operators already watch, instead of an archaeology
-project.
+**Behind auth, deliberately.** An unauthenticated caller gets the 41-byte 401
+and writes NO row. Only an authenticated caller can be XRAS; without the gate
+every internet scanner probing ``/api/xras/v1/wp-admin`` would mint audit rows.
 
-Three things that are load-bearing
-----------------------------------
-
-**A route, not an errorhandler.** ``@bp.errorhandler(404)`` cannot do this. A genuinely
-unmatched URL never reaches a view, so ``request.blueprint`` is ``None`` and Flask
-dispatches to the *app*'s handler — of which there is none for 404 (``run.py`` registers
-only CSRF, 403 and 429). The blueprint's handler only ever fires for ``abort(404)`` raised
-*inside* a matched view. Registering a real rule is the only way to see these, and it also
-buys the ``XA-`` header shim and auth, since ``before_request`` likewise only runs for a
-matched blueprint.
-
-**Behind auth, deliberately.** An unauthenticated caller gets the 41-byte 401 and writes
-**no row**. The question this answers is "did *XRAS* call something new", and only an
-authenticated caller can. Without the gate, every internet scanner probing
-``/api/xras/v1/wp-admin`` would mint audit rows — noise in the table, and an unbounded
-write amplification from an unauthenticated endpoint.
-
-**A row *and* a log line.** Pod logs in k8s are ephemeral; a WARN that a caller reads
-three weeks later is a WARN nobody reads. The row is the durable half, the log line is
-the half that shows up in an incident tail.
+**A row AND a log line.** Pod logs in k8s are ephemeral, so the row is the
+durable half and the log line is the half that shows up in an incident tail.
 """
 
 from flask import current_app, request

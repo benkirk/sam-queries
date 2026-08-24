@@ -4,9 +4,9 @@ The three-outcome model is copied deliberately from
 ``sam.integration.awards.base``, because every consumer downstream — the
 worklist query, the card, the CLI's exit codes — branches on it:
 
-* a value            → XRAS answered, and this is the answer
-* ``None``           → XRAS answered, and there is no such thing
-* an exception       → we could not ask
+* a value            -> XRAS answered, and this is the answer
+* ``None``           -> XRAS answered, and there is no such thing
+* an exception       -> we could not ask
 
 Collapsing the last two is the bug this split exists to prevent: "no such
 person" and "XRAS is down" look identical in a ``try: ... except: return

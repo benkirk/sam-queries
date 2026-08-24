@@ -1,19 +1,19 @@
 {#
   What XRAS knows about one person, rendered whole.
 
-  Shared by BOTH XRAS worklist tabs — "Accounts Needed" (Feed A) and "Pending
-  Requests" (Feed B) — because the two answer the same operator question and
-  had already started to diverge: Feed B rendered name and organization only,
-  so an operator who found a row there still had to go elsewhere for the email
-  and country they needed to actually create the account.
+  Renders for rows from BOTH feeds on the Pending Users tab — received pushes
+  (Feed A) and the pending-request lookahead (Feed B) — because the two answer
+  the same operator question: Feed B rendered name and organization only, so an
+  operator who found a row there still had to go elsewhere for the email and
+  country they needed to actually create the account.
 
-  ⚠️ EVERY declared field, not a chosen subset. The fields are
+  WARNING: EVERY declared field, not a chosen subset. The fields are
   `sam.queries.xras_accounts.PERSON_FIELDS`, which is also the filter both
   feeds pass their person dicts through — so what an operator sees here is
   exactly what SAM holds, with nothing quietly withheld. Add a field there and
   it appears here; there is no second list to keep in step.
 
-  ⚠️ This is PII (name, email, phone, organization, academic status, residence
+  WARNING: This is PII (name, email, phone, organization, academic status, residence
   country). The ROUTES strip `person` to None for a viewer without
   MANAGE_XRAS, so a VIEW_XRAS response never carries these bytes at all. The
   `{% if person %}` here is a second gate over an already-empty value, not the

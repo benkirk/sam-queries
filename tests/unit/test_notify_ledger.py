@@ -182,7 +182,7 @@ class TestSuppression:
 
 
 class TestTheStaleQueuedDeadlock:
-    """§ 5's ⚠️. Invisible without a test that manipulates the clock."""
+    """§ 5's WARNING: . Invisible without a test that manipulates the clock."""
 
     def test_a_fresh_queued_row_suppresses(self, ledger, session):
         """A process that died AFTER handing the message to the relay must
@@ -225,8 +225,8 @@ class TestTheStaleQueuedDeadlock:
         make_notification_log(session, status='queued', dedup_key='Q4',
                               age=timedelta(hours=1))
         make_notification_log(session, status='queued', dedup_key='Q5')
-        assert ledger.already_sent('Q4') is False        # stale → retryable
-        assert ledger.already_sent('Q5') is True         # fresh → in flight
+        assert ledger.already_sent('Q4') is False        # stale -> retryable
+        assert ledger.already_sent('Q5') is True         # fresh -> in flight
         assert ledger.stuck_queued() >= 1
 
 
@@ -260,7 +260,7 @@ class TestReadFailsOpen:
         assert ledger.already_sent('K') is False
 
 
-# ── already_sent_many ────────────────────────────────────────────────────────
+# already_sent_many
 #
 # The batch form exists for the scheduled expiration send, where a typical
 # week's selection is ~85% already-notified and asking one key at a time is
@@ -433,7 +433,7 @@ class TestAlreadySentManyFailsOpenPerChunk:
         for i in range(4):
             make_notification_log(session, status='sent', dedup_key=f'F{i}')
 
-        # chunk_size=2 → chunk one succeeds, chunk two raises.
+        # chunk_size=2 -> chunk one succeeds, chunk two raises.
         found = ledger.already_sent_many([f'F{i}' for i in range(4)],
                                          chunk_size=2)
         assert found == {'F0', 'F1'}
