@@ -184,6 +184,7 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
 | 17:09:41 | **First live action landed.** UFSU0023 Extension re-posted: 200 in 504 ms, `xras_action_log` #1 `processed`/`extend`, allocations 24992–24994 moved 2027-08-31 → 2027-09-30, three `EXTENSION` transactions with NULL amounts — the same shape as all 1,675 legacy XRAS extension rows. |
 | 17:12:37 | **First New landed.** NCAR4277 → `UPSU0087` (GID 99058): 200 in 1.0 s, `xras_action_log` #2 `processed`/`add`, no warnings. Project row (lead/admin `dkpeng`, Small (No NSF award), UNIV USS), three `NEW` allocations (Derecho 500,000 · Casper 5,000 · Casper GPU 3,000, 2026-08-19 → 2027-08-31), roster `dkpeng` + `yingpan`. `active=0` by design — awaiting activate + notify on the XRAS card. |
 | 17:21 | **First full lifecycle.** UPSU0087 activated from the XRAS card (`active` 0 → 1, `xras_activation_event` #1 `activated`) and notified (`notification_log` #1 `xras_activation` → lead, smtp, `queued` → `sent` in the same second, `xras_activation_event` #2 `notified`, `failed=0`). First production mail from `sam.notify`. |
+| 17:34 | UFSU0023 notified from the card: `notification_log` #2 (lead) and #3 (admin), `xras_extension`, both `sent`, `xras_activation_event` #3 `notified` → action #1. `failed=0`. |
 
 ### Questions for Steve (batched, not piecemeal)
 
