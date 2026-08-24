@@ -1,9 +1,9 @@
 # XRAS Contract Blockers — surface, then assist
 
-**Status: Phase 0 MEASURED 2026-08-24 — trigger met; Phase 1 scheduled for
-the post-cutover branch.** Sketched during cutover week
-(`XRAS_TRIAGE_WEEK.md`); builds on the grant handling shipped in PR #479
-(`XRAS_DATA_MODEL_UPLIFT.md`, Track A commit 1).
+**Status: Phase 0 MEASURED 2026-08-24 — trigger met; Phase 1 mapped below,
+ready to build on `xras_incoming_triage` (2026-08-25).** Sketched during
+cutover week (`XRAS_TRIAGE_WEEK.md`); builds on the grant handling shipped in
+PR #479 (`XRAS_DATA_MODEL_UPLIFT.md`, Track A commit 1).
 
 ## The gap
 
@@ -121,6 +121,102 @@ nobody reviewed. The opportunity-map precedent
 overwrites a human's row) is the house answer — **auto-propose, one-click
 confirm**. Recorded here so it is not re-litigated.
 
+## Phase 1 implementation map (verified against the tree 2026-08-24)
+
+One PR, four ordered commits. Every path below was read, not assumed.
+
+### Correction to the channel design
+
+`preflight_action` (`src/sam/xras/preflight.py`) builds a **failed** verdict
+with `resolved=None`: the handler's `dispatch()` raises `XrasActionRejected`
+from `raise_if_any()` *before* `_resolved_summary()` runs, and only the
+`rechecked` branch passes `result.resolved`. A contract blocker is by
+definition a failed action, so "expose it through `_resolved_summary`" does
+nothing on its own. The summary has to ride the exception.
+
+### Commit 1 — the structured channel
+
+| Where | Change |
+|---|---|
+| `src/sam/xras/extractors.py` `resolve_contract(session, grant_number, errs, *, unresolved=None)` | Optional list; on each `errs.report(...)` append `{'number', 'core', 'reason': 'missing' \| 'ambiguous', 'candidates': [...]}`. Strings and ordering untouched (`test_xras_error_coverage.py` stays green). Lift the suffix query into `contract_candidates(session, core)` so the report reuses it (two-consumers rule). |
+| `src/sam/xras/handlers/_fields.py` `plan_contracts` | Returns `(contracts, warnings, unresolved)`; each unresolved entry also carries the wire `grants[]` keys `_grant_without_number` already reads (title/agency — confirm names against `~/xras_payloads_raw/`). |
+| `handlers/new.py:105`, `handlers/update.py:154` | `self.contracts, contract_warnings, self.unresolved_grants = plan_contracts(...)`. |
+| `handlers/base.py` `_resolved_summary` | `out['unresolved_grants'] = list(...)` when non-empty, via `getattr` like every other key. |
+| `handlers/base.py` `dispatch` | `XrasActionRejected` gains `resolved: Optional[dict] = None` (`errors.py:66`); `dispatch` catches it around `raise_if_any()`, sets `exc.resolved = self._resolved_summary()`, re-raises. |
+| `preflight.py` failed branch | `_verdict('failed', ..., resolved=getattr(exc, 'resolved', None))`. `verdict_to_dict` already forwards it; the snapshot cell needs nothing. |
+
+Tests: `test_xras_extractors.py` (missing vs ambiguous entries),
+`test_xras_new_handler.py::test_an_unresolvable_grant_reports` and the
+update twin (`exc.value.resolved['unresolved_grants']`),
+`test_xras_preflight.py` (a failed verdict carries `resolved`).
+
+### Commit 2 — the report and the CLI
+
+`src/sam/queries/xras_contract_report.py` — `contract_unblock_report(session,
+snapshot)`, the `mnemonic_unblock_report` shape line for line: walk
+`rows[].actions[].preflight` where `status == 'failed'`, read
+`resolved.unresolved_grants`, **re-check each number against the current
+`contract` table** (`Contract.get_by_number` then `contract_candidates`):
+
+| re-check result | bucket |
+|---|---|
+| exact or single suffix hit | dropped — created since the sweep |
+| no hit | `targets` (create) |
+| tie | `variants` — "possible spelling variant", never a create button |
+
+Target row: `number` (raw, never the core), `core`, `award_like`
+(`extract_core_number(n) != n.strip()` — the ≥6-digit regex hit), wire
+title/agency, `unblock_count`, `sample[:10]`, `pis`. Ranked by
+`(-unblock_count, number)`. Envelope `kind='xras_contract_report'` with
+`generated_at`, `actions_seen`, `targets`, `variants`. NOT exported from
+`sam/queries/__init__.py` (same reason as the notices modules).
+
+CLI, mirroring `--mnemonic-report` exactly: option in `cli/cmds/admin.py`
+(~line 689, help group `[board]`, epilog examples ~730/781),
+`XrasCommand.execute(contract_report=False)` + `_contract_report()` in
+`cli/xras/commands.py:257`, `builders.build_contract_report`,
+`display.display_contract_report` (rich Table: number · award-like ·
+unblocks · sample · note). Tests: new `test_xras_contract_report.py` cloned
+from `test_xras_mnemonic_report.py` (`_entry`/`_snapshot` helpers, using a
+`resolved` cell instead of messages; drop-out via `make_contract`; tie via two
+factory rows sharing a core), plus an envelope-kind case in
+`test_admin_xras_cli.py`.
+
+### Commit 3 — the card strip and the create link
+
+- `webapp/dashboards/allocations/xras/remediation.py:123` — compute
+  `contract_summary` beside `mnemonic_summary`, pass it to `_CARD`.
+- `xras_remediations_card.html` after the mnemonic strip (line ~147): the same
+  `alert` shape — "N failing push(es) cite M contract(s) SAM does not hold",
+  first six numbers inline, `+more — sam-admin xras --contract-report`, a
+  separate line for `variants`. Each number links to Admin → Contracts, the
+  way the mnemonic strip links to Organizations: **no cross-page modal**
+  (`HTMX_FRAGMENT_SHELL_DEPS`).
+- `admin/contracts_routes.py` — the page route accepts `?create=<number>&mode=`
+  and renders an `hx-get` to `htmx_contract_create_form` with
+  `hx-trigger="load"`; `htmx_contract_create_form` gains `mode` (`lookup`
+  default when seeded, `manual` on request). `award_like` targets link with
+  `mode=lookup` (NSF prefill), the rest with `mode=manual` — that *is* the
+  non-award verdict: same form, no lookup, the number already in the box.
+  Additive; `CreateContractForm` unchanged.
+- Route-map parity snapshot if a rule changes (`ROUTE_MAP_REGEN=1`).
+- Tests: `TestContractUnblockStrip` in `test_xras_remediations.py` (publish a
+  failing verdict whose `resolved` carries `unresolved_grants`; the number and
+  its link render; view-only 403), and a contracts-page `?create=` render case.
+
+### Commit 4 — docs
+
+This file's status line; `docs/xras/incoming/XRAS_TRIAGE_PLAYBOOK.md` gains
+the contract row next to the mnemonic one; `XRAS_TRIAGE_WEEK.md:154` CLI
+list; CLAUDE.md needs nothing (no new pattern).
+
+### Definition of done
+
+`sam-admin xras --contract-report` on the prod snapshot lists NCAR4293
+(`001368-00183`, manual) and NCAR4300 (`ISS 25-643`, manual) with
+`unblock_count=1` each, NCAR4212 with two blockers still visible on the
+board, and the strip renders on the Remediations card after the next sweep.
+
 ## Traps for whoever builds it
 
 - `contract` text columns are `utf8mb3_bin` — case-sensitive; every
@@ -133,6 +229,10 @@ confirm**. Recorded here so it is not re-litigated.
   checks are the guard, and the report should flag a number whose core
   already suffix-matches an existing row as "possible spelling variant",
   not "missing".
+- `_xras_readiness_why.html:46` prints "Would mint <series>" whenever
+  `pf.resolved.series` exists. Once failed verdicts carry `resolved`, gate
+  that line on `pf.would_succeed` or a failed New says it would mint a
+  projcode.
 - A grant with digits but no contract stays a hard 422 by design (the
   ≤4-digit carve-out was rejected in #479); this feature changes what the
   operator *sees*, not what the handler *decides*.
