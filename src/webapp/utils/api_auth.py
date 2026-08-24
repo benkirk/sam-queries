@@ -55,9 +55,16 @@ def _auth_challenge(message: str = 'Authentication required'):
 
 
 def _bcrypt_matches(password: str, stored_hash: str) -> bool:
-    """Timing-safe bcrypt check that tolerates legacy ``$2a$``/``$2y$`` hashes."""
+    """Timing-safe bcrypt check that tolerates legacy ``$2a$``/``$2y$`` hashes.
+
+    The 72-byte cut is load-bearing: Spring's ``BCryptPasswordEncoder`` truncated
+    silently, so a legacy key longer than that verified there for years, while
+    ``bcrypt`` >= 5 raises and the swallowed error read as a wrong key (XRAS
+    cutover, 2026-08-24: every post 401'd).
+    """
     try:
-        return bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8'))
+        return bcrypt.checkpw(password.encode('utf-8')[:72],
+                              stored_hash.encode('utf-8'))
     except Exception:
         return False
 
@@ -262,6 +269,12 @@ def login_or_token_required(
 
                 ident = _verify_api_key(auth.username, auth.password)
                 if ident is None:
+                    known = (auth.username in current_app.config.get('API_KEYS', {})
+                             or auth.username in _get_db_api_keys())
+                    current_app.logger.warning(
+                        'API auth failed: user=%r path=%s reason=%s',
+                        auth.username, request.path,
+                        'bad_key' if known else 'unknown_user')
                     return _deny(401, 'Invalid credentials')
 
                 _set_api_identity(ident)
@@ -269,6 +282,10 @@ def login_or_token_required(
                 if required_roles is not None and not required_roles.intersection(
                     ident['roles']
                 ):
+                    current_app.logger.warning(
+                        'API auth denied: user=%r path=%s roles=%s need=%s',
+                        auth.username, request.path, sorted(ident['roles']),
+                        sorted(required_roles))
                     return _deny(403, 'Forbidden - insufficient permissions')
 
                 return f(*args, **kwargs)

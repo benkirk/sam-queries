@@ -138,6 +138,23 @@ class TestVerifyPrecedence:
             assert ident is not None and ident["source"] == "db"
 
 
+    def test_accepts_a_key_longer_than_bcrypts_72_bytes(self, api_app, monkeypatch):
+        """Spring's BCryptPasswordEncoder truncated silently, so a legacy key can be
+        longer than 72 bytes and its stored hash covers only the first 72. bcrypt >= 5
+        raises on the full key instead; the XRAS credential 401'd on cutover day
+        (2026-08-24) for exactly this."""
+        long_key = "k" * 100
+        spring_hash = bcrypt.hashpw(long_key.encode()[:72],
+                                    bcrypt.gensalt(rounds=4)).decode()
+        monkeypatch.setattr(
+            api_auth, "_get_db_api_keys",
+            lambda: {"longkey": {"hash": spring_hash, "roles": []}},
+        )
+        with api_app.test_request_context("/"):
+            assert api_auth._verify_api_key("longkey", long_key) is not None
+            assert api_auth._verify_api_key("longkey", "k" * 71) is None
+
+
 # ---------------------------------------------------------------------------
 # _get_db_api_keys TTL cache
 # ---------------------------------------------------------------------------
@@ -298,6 +315,26 @@ class TestRoleGatedTokenAuth:
         self._db_loader(monkeypatch, roles=["ROLE_XRAS"])
         resp = self._call(api_app, self._view(roles=("ROLE_XRAS",)), password="wrong")
         assert resp[1] == 401
+
+    def test_a_rejected_key_logs_who_and_why_but_never_the_secret(
+            self, api_app, monkeypatch, caplog):
+        """A silent 401 cost the cutover its first hour: the log must say which
+        username was presented and whether it was unknown or mis-keyed."""
+        self._db_loader(monkeypatch, roles=["ROLE_XRAS"])
+        view = self._view(roles=("ROLE_XRAS",))
+        with caplog.at_level("WARNING"):
+            self._call(api_app, view, password="wrong-secret")
+            self._call(api_app, view, username="nobody", password="wrong-secret")
+        assert "user='legacyusr'" in caplog.text and "reason=bad_key" in caplog.text
+        assert "user='nobody'" in caplog.text and "reason=unknown_user" in caplog.text
+        assert "wrong-secret" not in caplog.text
+
+    def test_a_missing_role_logs_the_roles_held(self, api_app, monkeypatch, caplog):
+        self._db_loader(monkeypatch, roles=["SOMETHING_ELSE"])
+        with caplog.at_level("WARNING"):
+            self._call(api_app, self._view(roles=("ROLE_XRAS",)))
+        assert "API auth denied" in caplog.text
+        assert "['SOMETHING_ELSE']" in caplog.text and "['ROLE_XRAS']" in caplog.text
 
     def test_config_sourced_key_fails_closed(self, api_app, monkeypatch):
         """Config keys always resolve with roles=[] — a role gate must reject them.
