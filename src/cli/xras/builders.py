@@ -299,3 +299,21 @@ def build_person_report(username, person) -> dict:
         'found': person is not None,
         'person': person,
     }
+
+
+def build_family_report(projcode, lines) -> dict:
+    """The ``xras_request_family`` envelope — a projcode's request lifecycle.
+
+    *lines* is the ``reports/request_numbers`` list; ``family`` is ``None`` when
+    XRAS has no request under that projcode, keeping not-found distinct from an
+    unreachable API (which raises before this is called).
+    """
+    from sam.queries.xras_requests import request_family
+
+    family = request_family(lines)
+    return {
+        'kind': 'xras_request_family',
+        'projcode': projcode,
+        'found': family is not None,
+        'family': family,
+    }

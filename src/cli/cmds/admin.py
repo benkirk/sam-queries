@@ -688,6 +688,8 @@ def cache(ctx: Context, refresh: bool, category, base_url):
               help='[worklist] Add XRAS person detail (requires --accounts and the API)')
 @click.option('--person', type=str, default=None,
               help='[detail] Look one username up in the XRAS directory')
+@click.option('--family', type=str, default=None,
+              help='[tree] A projcode\'s full request lifecycle (New + renewals/actions)')
 @click.option('--status', multiple=True,
               type=click.Choice(['received', 'processed', 'manual',
                                  'failed', 'rechecked']),
@@ -704,7 +706,7 @@ def cache(ctx: Context, refresh: bool, category, base_url):
 @pass_context
 def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mapping,
          validate_opportunities, accounts, readiness, mnemonic_report, enrich, person,
-         status, action_type, request_number, last, limit, verbose):
+         family, status, action_type, request_number, last, limit, verbose):
     """Inspect and re-check the XRAS action log.
 
     \b
@@ -722,6 +724,7 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
       --readiness  would each swept request land if XRAS pushed it now?
       --mnemonic-report  orgs to link, ranked by the pushes each would unblock
       --person U   one username in the XRAS directory
+      --family P   a projcode's whole allocation lifecycle as a request tree
       --validate-mapping  which resources XRAS and SAM can name each other's
       --validate-opportunities  which XRAS opportunities resolve to a SAM type
 
@@ -771,6 +774,8 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
       sam-admin xras --mnemonic-report
       sam-admin --format json xras --mnemonic-report | jq .targets
       sam-admin xras --person somebody-user-00042
+      sam-admin xras --family UCUB0089
+      sam-admin --format json xras --family UCUB0089 | jq .timeline
       sam-admin xras --recheck 42
       sam-admin --format json xras --summary | jq .by_status
     """
@@ -806,6 +811,7 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
         mnemonic_report=mnemonic_report,
         enrich=enrich,
         person=person,
+        family=family,
         status=status,
         action_type=action_type,
         request_number=request_number,
