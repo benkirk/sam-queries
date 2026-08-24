@@ -400,6 +400,33 @@ class TestFeedB:
         assert records_from_report_requests(
             [REPORT_REQUEST])[0].ref.action_type == 'New'
 
+    def test_an_ended_role_window_excludes_the_person(self, session):
+        """A person whose every role is dated out of range needs no account —
+        the window rule the inbound roster already applies (the
+        placeholder34 case in docs/xras/outgoing/XRAS_OUTGOING_QUERIES.md)."""
+        entry = dict(REPORT_REQUEST['roles'][0])
+        entry['roles'] = [dict(entry['roles'][0], endDate='2026-07-28')]
+        payload = dict(REPORT_REQUEST, roles=[entry])
+        assert records_from_report_requests([payload]) == []
+
+    def test_a_surviving_role_keeps_the_person_and_drops_the_ended_one(
+            self, session):
+        entry = dict(REPORT_REQUEST['roles'][0])
+        entry['roles'] = [
+            dict(entry['roles'][0], role='User', roleTypeId=19,
+                 endDate='2026-07-28'),
+            dict(entry['roles'][0], roleId=2),
+        ]
+        records = records_from_report_requests([dict(REPORT_REQUEST,
+                                                     roles=[entry])])
+        assert records[0].roles_by_username['ghost-user-77777'] == ('PI',)
+
+    def test_a_future_dated_role_is_not_yet_in_window(self, session):
+        entry = dict(REPORT_REQUEST['roles'][0])
+        entry['roles'] = [dict(entry['roles'][0], beginDate='2126-01-01')]
+        assert records_from_report_requests(
+            [dict(REPORT_REQUEST, roles=[entry])]) == []
+
     def test_both_feeds_reach_the_same_classifier_identically(self, session):
         """The feed-agnostic proof."""
         feed_b = classify_accounts(session, records_from_report_requests(

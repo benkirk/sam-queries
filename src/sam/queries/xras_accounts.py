@@ -350,6 +350,23 @@ def iter_roster_entries(
         yield person, roles
 
 
+def role_in_window(role: dict, *, on: Optional[str] = None) -> bool:
+    """Whether one ``roles[].roles[]`` entry is current on *on* (default today).
+
+    The inbound roster (``sam/xras/roster.py``) windows every role on its
+    dates against the action's begin date; these outbound worklist/roster
+    reads answer "who holds the role NOW", so the reference date is today
+    (naive-Mountain, the wire's calendar-date convention). Null dates are
+    open ends.
+    """
+    today = on or datetime.now().strftime('%Y-%m-%d')
+    begin = str(role.get('beginDate') or '')[:10]
+    end = str(role.get('endDate') or '')[:10]
+    if begin and begin > today:
+        return False
+    return not (end and end < today)
+
+
 def _report_action_type(payload: dict) -> Optional[str]:
     """The request's representative ``actionType`` — never ``requestType``.
 
@@ -385,10 +402,16 @@ def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]
             username = str(person.get('username') or '').strip()
             if not username:
                 continue
+            current = [r for r in role_entries if role_in_window(r)]
+            if role_entries and not current:
+                # Every role this person held is dated out of range: the role
+                # is over and the handoff does not need the account — the
+                # window rule the inbound roster already applies.
+                continue
             if username not in usernames:
                 usernames.append(username)
                 people[username] = person
-            for role in role_entries:
+            for role in current:
                 name = str(role.get('role') or '').strip()
                 if name and name not in roles.setdefault(username, []):
                     roles[username].append(name)
