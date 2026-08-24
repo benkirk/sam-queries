@@ -77,6 +77,7 @@ def action_log(app, monkeypatch):
                         'outcome_reason': r.outcome_reason,
                         'raw_payload': r.raw_payload,
                         'error_messages': r.error_messages,
+                        'warnings': r.warnings,
                         'projcode_result': r.projcode_result,
                         'processed_time': r.processed_time,
                         'received_time': r.received_time,

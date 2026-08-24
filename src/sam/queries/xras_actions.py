@@ -424,6 +424,7 @@ def get_recent_xras_actions(
             'outcome_reason': row.outcome_reason,
             'http_status': row.http_status,
             'errors': _split_errors(row.error_messages),
+            'warnings': _split_errors(row.warnings),
             'projcode_result': row.projcode_result,
             'processed_time': row.processed_time,
             'processed_by': row.processed_by,

@@ -460,6 +460,7 @@ class TestModelCoverage:
 UTF8MB4_COLUMNS = {
     ('xras_action_log',       'raw_payload'),
     ('xras_action_log',       'error_messages'),
+    ('xras_action_log',       'warnings'),
     ('xras_activation_event', 'comment'),
     ('xras_activation_event', 'notified_to'),
     ('xras_remediation_event', 'comment'),

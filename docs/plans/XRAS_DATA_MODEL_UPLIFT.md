@@ -103,9 +103,23 @@ The corpus already holds the counterexample:
 column linking them.
 
 Work:
-- Hand-applied DDL (Ben runs it; database is the schema source of truth):
-  `ALTER TABLE xras_action_log ADD COLUMN request_id INT NULL AFTER
-  action_id`, plus an index on `request_id`.
+- Hand-applied DDL (Ben runs it; database is the schema source of truth).
+  As built, the trip carries TWO columns — `request_id` plus the `warnings`
+  column whose earlier decline
+  (`docs/xras/incoming/implemented/XRAS_STRESS_AND_SCHEMA.md`) was reversed
+  once warnings became rendered sentences with live instances:
+
+  ```sql
+  ALTER TABLE xras_action_log
+    ADD COLUMN request_id INT UNSIGNED NULL AFTER action_id,
+    ADD INDEX xras_action_log_request_id (request_id),
+    ADD COLUMN warnings TEXT CHARACTER SET utf8mb4
+      COLLATE utf8mb4_general_ci NULL AFTER error_messages;
+  ```
+
+  Order: prod ALTER FIRST, then the LFS blob regen —
+  `containers/sam-sql-dev/dump/schema_tables.sql` is re-dumped from prod, so
+  the regen picks the columns up only after they exist there.
 - ORM column in `src/sam/integration/xras.py`; rewrite the comment (keep the
   idempotency trap about `action_id`).
 - `_record()` kwarg + `_parse_action` in `src/webapp/api/xras/actions.py`.

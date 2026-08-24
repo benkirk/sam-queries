@@ -291,7 +291,7 @@ def _record(*, status, raw_payload, action_type=None, request_number=None,
 
 
 def _finish(log_id, *, status, projcode_result=None, error_messages=None,
-            http_status=None, service=None, outcome_reason=None):
+            warnings=None, http_status=None, service=None, outcome_reason=None):
     """Update an existing audit row to its terminal state, again on its own connection."""
     with Session(db.engine) as session:
         row = session.get(XrasActionLog, log_id)
@@ -309,6 +309,10 @@ def _finish(log_id, *, status, projcode_result=None, error_messages=None,
             row.projcode_result = _fit(projcode_result, _PROJCODE_RESULT_WIDTH)
         if error_messages:
             row.error_messages = _fit_error_messages(error_messages)
+        if warnings:
+            # Same message-boundary bounding as error_messages — the 1406 trap
+            # is the same at any width.
+            row.warnings = _fit_error_messages(warnings)
         if http_status is not None:
             row.http_status = http_status
         if service is not None:
@@ -489,11 +493,10 @@ def _dispatch(log_id, action):
         raise
 
     if result.warnings:
-        # Non-fatal disagreements the action survived — today, only the legacy defect-3
-        # roster/role split. `sam.xras.roster` already logs each one, but against
-        # `actionId`; `log_id` is the handle an operator actually has, and only the
-        # route knows it. Whether these earn a column of their own is deferred to
-        # `docs/xras/incoming/implemented/XRAS_STRESS_AND_SCHEMA.md`.
+        # Non-fatal facts the action survived — an unlinkable grant, a fos
+        # fallback, the defect-3 roster split. They land on the audit row below
+        # (the artifact that survives into triage week); the log line keeps the
+        # live-tail visibility.
         current_app.logger.warning(
             'XRAS action completed with %d warning(s): id=%s service=%s — %s',
             len(result.warnings), log_id, result.service,
@@ -501,7 +504,7 @@ def _dispatch(log_id, action):
 
     if result.status == 'processed':
         _finish(log_id, status='processed', projcode_result=result.projcode,
-                service=result.service)
+                service=result.service, warnings=result.warnings)
         current_app.logger.info(
             'XRAS action processed: id=%s service=%s projcode=%s',
             log_id, result.service, result.projcode)
@@ -512,7 +515,8 @@ def _dispatch(log_id, action):
     # byte-identical. `service` is NULL when nothing matched at all, which is itself
     # the answer to "why did this park".
     _finish(log_id, status='manual', projcode_result=result.projcode,
-            service=result.service, outcome_reason=result.reason)
+            service=result.service, outcome_reason=result.reason,
+            warnings=result.warnings)
     current_app.logger.warning(
         'XRAS action parked for a human: id=%s service=%s projcode=%s reason=%s',
         log_id, result.service, result.projcode, result.reason)

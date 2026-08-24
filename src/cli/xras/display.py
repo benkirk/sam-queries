@@ -194,6 +194,16 @@ def display_action_detail(ctx, payload) -> None:
         ctx.console.print(Panel(err, title=f"Errors ({len(a['errors'])})",
                                 border_style='red'))
 
+    if a.get('warnings'):
+        warn = Table(show_header=False, box=None, padding=(0, 1, 0, 0))
+        warn.add_column('n', justify='right', style='dim')
+        warn.add_column('message', style='yellow', overflow='fold')
+        for i, message in enumerate(a['warnings'], start=1):
+            warn.add_row(str(i), message)
+        ctx.console.print(Panel(
+            warn, title=f"Warnings ({len(a['warnings'])}) — non-fatal",
+            border_style='yellow'))
+
     if payload['payload_included']:
         ctx.console.print(Panel(a.get('raw_payload', ''),
                                 title='Raw payload (verbatim, contains PII)',
