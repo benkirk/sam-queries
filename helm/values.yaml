@@ -203,6 +203,13 @@ webapp:
     MAIL_USE_TLS: "true"
     MAIL_TIMEOUT: "10"
     MAIL_DEFAULT_FROM: "sam-admin@ucar.edu"
+    # XRAS handoff mails ONLY (sam.queries.xras_notices). Comma lists for
+    # CC/BCC; empty means off. A From override must stay a ucar.edu address
+    # for the SPF note above to hold.
+    NOTIFY_XRAS_CC: ""
+    NOTIFY_XRAS_BCC: ""
+    NOTIFY_XRAS_FROM: ""
+    NOTIFY_XRAS_REPLY_TO: ""
     # WARNING: EXPLICIT, not inherited. NOTIFY_ENABLED is fail-closed everywhere
     #     (sam.notify.NotifyConfig defaults it false) precisely so a dev
     #     container cannot mail real users. Production is the one place that

@@ -218,6 +218,8 @@ unused. New alongside it:
 | `NOTIFY_TRANSPORT` | `smtp` | `smtp` / `console` / `null` |
 | `NOTIFY_REDIRECT_TO` | *(empty)* | when set, **every** message is re-addressed here |
 | `NOTIFY_BCC` | *(empty)* | an **envelope** Bcc; replaces the hardcoded address |
+| `NOTIFY_XRAS_CC` / `NOTIFY_XRAS_BCC` | *(empty)* | comma lists copied onto the XRAS handoff messages only (`build_xras_messages`); dropped on a redirect |
+| `NOTIFY_XRAS_FROM` / `NOTIFY_XRAS_REPLY_TO` | *(empty)* | XRAS-only From override (header and envelope) / Reply-To header |
 | `MAIL_TIMEOUT` | `10` | socket timeout, seconds |
 | `NOTIFY_QUEUED_STALE_SECONDS` | `300` | how long a `queued` row blocks its own retry — see § 5 |
 

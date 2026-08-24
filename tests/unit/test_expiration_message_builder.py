@@ -59,6 +59,16 @@ def _build(expiring, milestone=None, **kwargs):
         expiring[1], milestone=milestone or MILESTONES[0], **kwargs)
 
 
+class TestNoSharedMailboxCopies:
+
+    def test_the_xras_addressing_never_reaches_an_expiration_notice(
+            self, expiring, monkeypatch):
+        monkeypatch.setenv('NOTIFY_XRAS_CC', 'alloc@example.edu')
+        monkeypatch.setenv('NOTIFY_XRAS_FROM', 'alloc@example.edu')
+        msg = _build(expiring)[0]
+        assert (msg.cc, msg.bcc, msg.sender, msg.reply_to) == ((), (), None, None)
+
+
 # The band type
 
 class TestMilestone:

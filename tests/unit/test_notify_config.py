@@ -25,13 +25,17 @@ class TestEnvironmentSeam:
         left this test asserting a default it was not actually isolating.
         """
         for name in ('NOTIFY_ENABLED', 'NOTIFY_TRANSPORT',
-                     'NOTIFY_REDIRECT_TO', 'NOTIFY_BCC'):
+                     'NOTIFY_REDIRECT_TO', 'NOTIFY_BCC', 'NOTIFY_XRAS_CC',
+                     'NOTIFY_XRAS_BCC', 'NOTIFY_XRAS_FROM',
+                     'NOTIFY_XRAS_REPLY_TO'):
             monkeypatch.delenv(name, raising=False)
         cfg = NotifyConfig.from_environment()
         assert cfg.enabled is False
         assert cfg.transport == 'smtp'
         assert cfg.redirect_to == ''
         assert cfg.bcc == ''
+        assert (cfg.xras_cc, cfg.xras_bcc, cfg.xras_from, cfg.xras_reply_to) \
+            == ('', '', '', '')
 
     @pytest.mark.parametrize('value', ['1', 'true', 'TRUE', 'yes', 'on'])
     def test_enabled_accepts_the_usual_truthy_spellings(self, monkeypatch, value):
@@ -104,6 +108,18 @@ class TestDerivedValues:
     def test_no_bcc_is_an_empty_list_not_a_blank_address(self, monkeypatch):
         monkeypatch.delenv('NOTIFY_BCC', raising=False)
         assert NotifyConfig.from_environment().bcc_addresses == []
+
+    def test_xras_copies_split_like_bcc_and_show_on_the_summary(self, monkeypatch):
+        monkeypatch.setenv('NOTIFY_XRAS_CC', ' alloc@x.edu ,, ')
+        monkeypatch.setenv('NOTIFY_XRAS_BCC', 'a@x.edu, b@x.edu')
+        monkeypatch.setenv('NOTIFY_XRAS_REPLY_TO', 'alloc@x.edu')
+        cfg = NotifyConfig.from_environment()
+        assert cfg.xras_cc_addresses == ['alloc@x.edu']
+        assert cfg.xras_bcc_addresses == ['a@x.edu', 'b@x.edu']
+        summary = cfg.summary()
+        assert summary['xras_cc'] == 'alloc@x.edu'
+        assert summary['xras_reply_to'] == 'alloc@x.edu'
+        assert summary['xras_from'] is None
 
     def test_resolve_recipient_is_identity_without_a_redirect(self):
         cfg = NotifyConfig()

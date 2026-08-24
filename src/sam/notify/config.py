@@ -84,6 +84,12 @@ class NotifyConfig:
     #: above ``mail_timeout``: fresh means "in flight, leave it", stale means
     #: "we never learned the outcome, try again". See § 5.
     queued_stale_seconds: int = 300
+    #: XRAS handoff mails only (``build_xras_messages`` copies these onto each
+    #: ``Message``); the expiration and summary kinds never read them.
+    xras_cc: str = ''
+    xras_bcc: str = ''
+    xras_from: str = ''
+    xras_reply_to: str = ''
 
     # ------------------------------------------------------------------ mail
     mail_server: str = 'ndir.ucar.edu'
@@ -103,6 +109,10 @@ class NotifyConfig:
             redirect_to=_config_str('NOTIFY_REDIRECT_TO', ''),
             bcc=_config_str('NOTIFY_BCC', ''),
             queued_stale_seconds=_config_int('NOTIFY_QUEUED_STALE_SECONDS', 300),
+            xras_cc=_config_str('NOTIFY_XRAS_CC', ''),
+            xras_bcc=_config_str('NOTIFY_XRAS_BCC', ''),
+            xras_from=_config_str('NOTIFY_XRAS_FROM', ''),
+            xras_reply_to=_config_str('NOTIFY_XRAS_REPLY_TO', ''),
             mail_server=_config_str('MAIL_SERVER', 'ndir.ucar.edu'),
             mail_port=_config_int('MAIL_PORT', 25),
             # Defaults true: § 9 measured STARTTLS working on ndir.ucar.edu,
@@ -122,6 +132,14 @@ class NotifyConfig:
         return [a.strip() for a in self.bcc.split(',') if a.strip()]
 
     @property
+    def xras_cc_addresses(self) -> list[str]:
+        return [a.strip() for a in self.xras_cc.split(',') if a.strip()]
+
+    @property
+    def xras_bcc_addresses(self) -> list[str]:
+        return [a.strip() for a in self.xras_bcc.split(',') if a.strip()]
+
+    @property
     def is_redirecting(self) -> bool:
         return bool(self.redirect_to)
 
@@ -135,6 +153,10 @@ class NotifyConfig:
             'mail_from': self.mail_from,
             'redirect_to': self.redirect_to or None,
             'bcc': ', '.join(self.bcc_addresses) or None,
+            'xras_cc': ', '.join(self.xras_cc_addresses) or None,
+            'xras_bcc': ', '.join(self.xras_bcc_addresses) or None,
+            'xras_from': self.xras_from or None,
+            'xras_reply_to': self.xras_reply_to or None,
             'timeout': self.mail_timeout,
         }
 

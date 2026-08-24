@@ -42,11 +42,18 @@ class ConsoleTransport(Transport):
     def deliver(self, message: Message, rendered: RenderedMessage) -> None:
         self.delivered.append((message, rendered))
         out = self.stream
-        from_addr = getattr(self.config, 'mail_from', 'sam-admin@ucar.edu')
+        from_addr = message.sender or getattr(self.config, 'mail_from',
+                                              'sam-admin@ucar.edu')
         out.write(f'{_RULE}\n')
         out.write(f'kind:      {message.kind}\n')
         out.write(f'from:      {from_addr}\n')
         out.write(f'to:        {message.recipient.address}\n')
+        if message.reply_to:
+            out.write(f'reply-to:  {message.reply_to}\n')
+        if message.cc and not message.intended_recipient:
+            out.write(f'cc:        {", ".join(message.cc)}\n')
+        if message.bcc and not message.intended_recipient:
+            out.write(f'bcc:       {", ".join(message.bcc)}\n')
         if message.intended_recipient:
             out.write(f'intended:  {message.intended_recipient}\n')
         out.write(f'subject:   {rendered.subject}\n')

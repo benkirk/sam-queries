@@ -190,6 +190,73 @@ class TestBcc:
         assert to_addrs == ['pi@x.edu']
 
 
+class TestPerMessageAddressing:
+    """`Message.cc/bcc/sender/reply_to` -- the XRAS shared-mailbox copy."""
+
+    def _headers(self, smtp):
+        _, to_addrs, payload = smtp.sendmail.call_args[0]
+        return to_addrs, payload.split('\n\n')[0]
+
+    def test_cc_is_a_header_and_an_envelope_recipient(self, smtp):
+        transport = SmtpTransport(_config())
+        transport.open()
+        transport.deliver(_message('pi@x.edu', cc=('alloc@x.edu',)), _rendered())
+        to_addrs, headers = self._headers(smtp)
+        assert to_addrs == ['pi@x.edu', 'alloc@x.edu']
+        assert 'Cc: alloc@x.edu' in headers
+
+    def test_message_bcc_is_envelope_only(self, smtp):
+        transport = SmtpTransport(_config())
+        transport.open()
+        transport.deliver(_message('pi@x.edu', bcc=('alloc@x.edu',)), _rendered())
+        to_addrs, headers = self._headers(smtp)
+        assert to_addrs == ['pi@x.edu', 'alloc@x.edu']
+        assert 'Bcc' not in headers and 'alloc@x.edu' not in headers
+
+    def test_message_and_config_copies_union_without_duplicates(self, smtp):
+        transport = SmtpTransport(_config(bcc='ops@x.edu, alloc@x.edu'))
+        transport.open()
+        transport.deliver(_message('pi@x.edu', cc=('alloc@x.edu',),
+                                   bcc=('pi@x.edu',)), _rendered())
+        to_addrs, _ = self._headers(smtp)
+        assert to_addrs == ['pi@x.edu', 'alloc@x.edu', 'ops@x.edu']
+
+    def test_copies_are_dropped_on_a_redirect(self, smtp):
+        """A staging run must never copy the real shared mailbox."""
+        transport = SmtpTransport(_config())
+        transport.open()
+        transport.deliver(_message('me@x.edu', intended_recipient='pi@x.edu',
+                                   cc=('alloc@x.edu',), bcc=('ops@x.edu',)),
+                          _rendered())
+        to_addrs, headers = self._headers(smtp)
+        assert to_addrs == ['me@x.edu']
+        assert 'Cc' not in headers and 'alloc@x.edu' not in headers
+
+    def test_a_sender_override_moves_header_and_envelope_from_together(self, smtp):
+        transport = SmtpTransport(_config(mail_from='sam-admin@x.edu'))
+        transport.open()
+        transport.deliver(_message(sender='alloc@x.edu'), _rendered())
+        assert smtp.sendmail.call_args[0][0] == 'alloc@x.edu'
+        _, headers = self._headers(smtp)
+        assert 'From: alloc@x.edu' in headers
+
+    def test_reply_to_is_a_header_and_leaves_from_alone(self, smtp):
+        transport = SmtpTransport(_config(mail_from='sam-admin@x.edu'))
+        transport.open()
+        transport.deliver(_message(reply_to='alloc@x.edu'), _rendered())
+        assert smtp.sendmail.call_args[0][0] == 'sam-admin@x.edu'
+        _, headers = self._headers(smtp)
+        assert 'Reply-To: alloc@x.edu' in headers
+        assert 'From: sam-admin@x.edu' in headers
+
+    def test_defaults_change_nothing_on_the_wire(self, smtp):
+        transport = SmtpTransport(_config())
+        transport.open()
+        transport.deliver(_message(), _rendered())
+        _, headers = self._headers(smtp)
+        assert 'Cc' not in headers and 'Reply-To' not in headers
+
+
 class TestDeliveryErrors:
 
     def test_envelope_from_is_the_configured_sender(self, smtp):

@@ -152,6 +152,24 @@ spec:
               - name: NOTIFY_BCC
                 value: {{ . | quote }}
               {{- end }}
+              # The xras_notices task builds the same messages as the Notify
+              # button, so it must see the same XRAS-only addressing.
+              {{- with .Values.webapp.env.NOTIFY_XRAS_CC }}
+              - name: NOTIFY_XRAS_CC
+                value: {{ . | quote }}
+              {{- end }}
+              {{- with .Values.webapp.env.NOTIFY_XRAS_BCC }}
+              - name: NOTIFY_XRAS_BCC
+                value: {{ . | quote }}
+              {{- end }}
+              {{- with .Values.webapp.env.NOTIFY_XRAS_FROM }}
+              - name: NOTIFY_XRAS_FROM
+                value: {{ . | quote }}
+              {{- end }}
+              {{- with .Values.webapp.env.NOTIFY_XRAS_REPLY_TO }}
+              - name: NOTIFY_XRAS_REPLY_TO
+                value: {{ . | quote }}
+              {{- end }}
               # The dispatcher reads SAM's config validator on startup even
               # though its only task touches Postgres, so both DB blocks are
               # supplied. Same namespace Secrets the Deployment consumes — no

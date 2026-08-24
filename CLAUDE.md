@@ -686,6 +686,7 @@ makes `smtplib.SMTP` raise so no test can open a socket whatever its config.
 | **`preview()` writes no row** | a preview is not an attempt; a stray row would poison the dedup query. |
 | **Templates** | `src/sam/notify/templates/`, resolved `{base}-{facility}` → `{base}-UNIV` → `{base}`. Text selects the variant and HTML follows it — never resolved independently, or a WNA recipient gets UNIV HTML. |
 | **Visibility** | Admin → Configuration → Notifications (`VIEW_SYSTEM_CONFIG`, counts only) → `Details »` (`SYSTEM_ADMIN`, rows name real addresses). |
+| **XRAS copies** | `NOTIFY_XRAS_CC` / `_BCC` / `_FROM` / `_REPLY_TO` are read by `build_xras_messages` alone and ride on the `Message` (`cc`, `bcc`, `sender`, `reply_to`); the transport drops cc/bcc on a redirect. `NOTIFY_BCC` is the kind-blind global. |
 
 **Batch knobs**: `send_many(chunk_size=N)` opens one transport connection per N
 *delivered* messages (`None` = one chunk, byte-identical to a plain batch) —

@@ -107,6 +107,14 @@ class Message:
     dedup_key: Optional[str] = None
     requested_by: str = 'system'
     intended_recipient: Optional[str] = None
+    #: Copies a builder adds per message (the XRAS handoff mails copy a shared
+    #: mailbox). ``cc`` is a header and an envelope recipient; ``bcc`` is
+    #: envelope-only. Both are dropped on a redirect.
+    cc: Tuple[str, ...] = ()
+    bcc: Tuple[str, ...] = ()
+    #: ``None`` keeps the configured From; ``reply_to`` adds a header.
+    sender: Optional[str] = None
+    reply_to: Optional[str] = None
 
     @property
     def entity_type(self) -> Optional[str]:

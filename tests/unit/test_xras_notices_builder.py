@@ -129,6 +129,42 @@ def _built(session, project, *, service, action_type, payload=None,
     return action, messages
 
 
+class TestSharedMailboxCopies:
+    """The XRAS-only addressing rides on the Message, from NOTIFY_XRAS_*."""
+
+    def test_the_copies_and_sender_come_from_config(self, session, project,
+                                                    monkeypatch):
+        monkeypatch.setenv('NOTIFY_XRAS_CC', 'alloc@example.edu')
+        monkeypatch.setenv('NOTIFY_XRAS_BCC', 'a@example.edu, b@example.edu')
+        monkeypatch.setenv('NOTIFY_XRAS_FROM', 'alloc@example.edu')
+        monkeypatch.setenv('NOTIFY_XRAS_REPLY_TO', 'alloc@example.edu')
+        _, messages = _built(session, project, service='extend',
+                             action_type='Extension')
+        msg = messages[0]
+        assert msg.cc == ('alloc@example.edu',)
+        assert msg.bcc == ('a@example.edu', 'b@example.edu')
+        assert (msg.sender, msg.reply_to) == ('alloc@example.edu',
+                                              'alloc@example.edu')
+
+    def test_unset_means_no_copies_and_the_site_sender(self, session, project,
+                                                       monkeypatch):
+        for name in ('NOTIFY_XRAS_CC', 'NOTIFY_XRAS_BCC', 'NOTIFY_XRAS_FROM',
+                     'NOTIFY_XRAS_REPLY_TO'):
+            monkeypatch.delenv(name, raising=False)
+        _, messages = _built(session, project, service='extend',
+                             action_type='Extension')
+        msg = messages[0]
+        assert (msg.cc, msg.bcc, msg.sender, msg.reply_to) == ((), (), None, None)
+
+    def test_the_dedup_key_ignores_the_copies(self, session, project, monkeypatch):
+        monkeypatch.setenv('NOTIFY_XRAS_CC', 'alloc@example.edu')
+        action, messages = _built(session, project, service='extend',
+                                  action_type='Extension')
+        assert messages[0].dedup_key == xras_dedup_key(
+            'xras_extension', project.projcode, action.xras_action_log_id,
+            'pi@example.edu')
+
+
 class TestOneMessagePerRecipient:
 
     def test_the_dedup_key_is_the_one_the_card_reads_back(self, session, project):
