@@ -300,6 +300,19 @@ class TestEndpoints:
         url = client.session.request.call_args.args[1]
         assert '/v1/reports/request_numbers/NCAR0001' in url
 
+    def test_the_family_lookup_keeps_every_line_not_just_the_first(self, monkeypatch):
+        """A project with a New and a Renewal returns a list; the family needs both."""
+        client = _client(monkeypatch, [_response(200, _envelope(
+            [_request(111, 'NCAR0001'), _request(222, 'NCAR0001')]))])
+        family = client.get_request_family_by_number('NCAR0001')
+        assert [r['requestId'] for r in family] == [111, 222]
+
+    def test_the_family_lookup_wraps_a_bare_object_and_survives_empty(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200, _envelope(_request(5, 'X')))])
+        assert [r['requestId'] for r in client.get_request_family_by_number('X')] == [5]
+        client = _client(monkeypatch, [_response(404, {'message': 'no'})])
+        assert client.get_request_family_by_number('X') == []
+
     def test_search_people_hits_the_search_route(self, monkeypatch):
         client = _client(monkeypatch, [_response(200, _envelope([PERSON]))])
         assert client.search_people('Invented') == [PERSON]
