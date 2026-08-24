@@ -186,6 +186,7 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
 | 17:21 | **First full lifecycle.** UPSU0087 activated from the XRAS card (`active` 0 → 1, `xras_activation_event` #1 `activated`) and notified (`notification_log` #1 `xras_activation` → lead, smtp, `queued` → `sent` in the same second, `xras_activation_event` #2 `notified`, `failed=0`). First production mail from `sam.notify`. |
 | 17:34 | UFSU0023 notified from the card: `notification_log` #2 (lead) and #3 (admin), `xras_extension`, both `sent`, `xras_activation_event` #3 `notified` → action #1. `failed=0`. |
 | 18:13:04 | **First organic approve → post.** UCNN0045 Extension #394352 (submitted 08-19, approved and posted today; allocations were a week from expiry): `xras_action_log` #3 `processed`/`extend`, 300 ms, 20590–20592 → 2027-08-31. Preflighted read-only at Requested and again at Approved before the post. |
+| 18:14:50 | UCNN0045 notified: `notification_log` #4 (lead) and #5 (admin), both `sent`. Three actions, five messages, zero failures for the day. |
 
 ### Questions for Steve (batched, not piecemeal)
 
