@@ -418,6 +418,7 @@ def get_recent_xras_actions(
             'action_type': row.action_type,
             'request_number': row.request_number,
             'action_id': row.action_id,
+            'request_id': row.request_id,
             'status': row.status,
             'service': row.service,
             'outcome_reason': row.outcome_reason,

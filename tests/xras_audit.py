@@ -72,6 +72,7 @@ def action_log(app, monkeypatch):
                         'action_type': r.action_type,
                         'request_number': r.request_number,
                         'action_id': r.action_id,
+                        'request_id': r.request_id,
                         'service': r.service,
                         'outcome_reason': r.outcome_reason,
                         'raw_payload': r.raw_payload,

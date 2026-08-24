@@ -613,6 +613,8 @@ class TestPostActionsCapture:
         assert row['status'] == 'received'
         assert row['action_type'] == expected['actionType']
         assert row['request_number'] == expected['requestNumber']
+        # The request-LINE identity; request_number names the whole family.
+        assert row['request_id'] == expected['requestId']
         assert row['remote_actor'] == 'samuel'
         assert row['error_messages'] is None
 

@@ -242,8 +242,9 @@ def _fit(value, width):
 
 
 def _record(*, status, raw_payload, action_type=None, request_number=None,
-            action_id=None, error_messages=None, http_status=None,
-            remote_actor=None, source_action_id=None, processed_by=None):
+            action_id=None, request_id=None, error_messages=None,
+            http_status=None, remote_actor=None, source_action_id=None,
+            processed_by=None):
     """Write one audit row on a private connection and commit. Returns its id.
 
     Deliberately does **not** use ``db.session``: this row must outlive a rollback of
@@ -278,6 +279,7 @@ def _record(*, status, raw_payload, action_type=None, request_number=None,
             action_type=_fit(action_type, _ACTION_TYPE_WIDTH),
             request_number=_fit(request_number, _REQUEST_NUMBER_WIDTH),
             action_id=_fit_int(action_id),
+            request_id=_fit_int(request_id),
             error_messages=_fit_error_messages(error_messages),
             http_status=http_status,
             source_action_id=source_action_id,
@@ -393,12 +395,14 @@ def _parse_action(raw_payload):
                       'error_messages': _flatten(exc.messages),
                       'action_type': parsed.get('actionType'),
                       'request_number': parsed.get('requestNumber'),
-                      'action_id': parsed.get('actionId')}
+                      'action_id': parsed.get('actionId'),
+                      'request_id': parsed.get('requestId')}
 
     return action, {'status': 'received', 'http_status': 200,
                     'action_type': action.get('actionType'),
                     'request_number': action.get('requestNumber'),
-                    'action_id': action.get('actionId')}
+                    'action_id': action.get('actionId'),
+                    'request_id': action.get('requestId')}
 
 
 def _capture_only():
