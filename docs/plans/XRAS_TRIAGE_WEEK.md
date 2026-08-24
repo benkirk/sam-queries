@@ -190,6 +190,7 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
 | 19:12–19:37 | Team demo: UMCP0037 #394505 and UFIT0017 #394646 extensions approved, posted (`xras_action_log` #4, #5), allocations → 2027-08-31. UMCP0037 notified (#6 lead, #7 admin). |
 | 20:18 | `sha-e6084c9` rolled out: per-message `cc`/`bcc`/`sender`/`reply_to` on `Message`, read from `NOTIFY_XRAS_*` by `build_xras_messages` alone; values set to CC + Reply-To `alloc@ucar.edu` (team decision). |
 | 20:19 | UFIT0017 notified (#8, lead=admin so one message): `cc=1 bcc=0` — the first copy in alloc@. Follow-up agreed: generalize to a per-family (`NotificationKind.family`) addressing convention applied in the `Notifier`, admin card iterating families, CronJob forwarding `NOTIFY_*` by prefix. |
+| 20:39 | `sha-62d3b9c` rolled out: per-family addressing (`NotificationKind.family`, `NOTIFY_<FAMILY>_*` applied by the `Notifier`, CronJob forwards `NOTIFY_*` by prefix, admin card rows). Env in-pod unchanged; PR #481 body updated. |
 
 ### Questions for Steve (batched, not piecemeal)
 
