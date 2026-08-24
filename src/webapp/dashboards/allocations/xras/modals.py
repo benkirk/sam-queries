@@ -23,7 +23,10 @@ from sam.integration.xras_api import (
 from sam.queries.xras_accounts import is_placeholder
 from sam.queries.xras_requests import (
     _as_date,
+    _text,
+    actions_from_payload,
     person_roles_from_payload,
+    request_family,
     request_index_entry,
 )
 from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
@@ -33,8 +36,8 @@ from webapp.utils.rbac import Permission, has_permission, require_permission
 
 from .. import bp
 from ._shared import (
-    _degraded, _entry, _impersonation, _live_request, _read_client,
-    _render_xras_modal, _role_options,
+    _degraded, _entry, _impersonation, _live_family,
+    _primary_line, _read_client, _render_xras_modal, _role_options,
 )
 
 
@@ -174,9 +177,16 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
     modal looks identical however it was reached. Raises
     :class:`XrasSourceUnavailable` on an outage — the caller degrades.
     """
-    payload = _live_request(request_number)
-    if payload is None:
+    # The whole family in one fetch. A projcode can have several request lines
+    # (a New plus Renewals, each its own requestId); the modal anchors on the
+    # PRIMARY line (the one holding the globally most-recent action) so header,
+    # roster and every write target the current request deterministically —
+    # never lines[0], which is XRAS's arbitrary order.
+    lines = _live_family(request_number)
+    if not lines:
         return None
+    payload = _primary_line(lines)
+    family = request_family(lines)
 
     entry = _entry(request_number)
     # The preflight verdicts live in the sweep snapshot (keyed by actionId); the
@@ -185,14 +195,38 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
     preflights = {a['action_id']: a['preflight']
                   for a in (entry or {}).get('actions', ())
                   if a.get('preflight')}
-    # Reproduces the exact `row` shape the shared include expects (roster +
-    # actions with can_withdraw/can_resubmit), so the modal's buttons are
-    # identical to the card's by construction. `pending_push` only feeds the
-    # card's SAM badge, which the include does not render — default it safely.
+    # Reproduces the exact `row` shape the roster editor expects (roster + PI),
+    # from the primary line. `pending_push` only feeds the card's SAM badge,
+    # which the include does not render — default it safely.
     row = request_index_entry(
         payload, pending_push=bool((entry or {}).get('pending_push', True)),
         preflights=preflights)
-    detail_actions = _detail_actions(payload)
+
+    # One action list spanning EVERY request line, chronological by action_id.
+    # Only the single globally-most-recent action is editable/withdrawable; the
+    # rest are applied history. `offers` (status-derived withdraw/resubmit) comes
+    # from the line-scoped entry builder; the modal re-gates it on `is_latest`.
+    offers = {a['action_id']: a
+              for line in lines for a in actions_from_payload(line)}
+    detail_actions = []
+    for line in lines:
+        for action in _detail_actions(line):
+            o = offers.get(action['action_id'], {})
+            action['request_id'] = line.get('requestId')
+            action['request_type'] = _text(line.get('requestType'))
+            action['entry_date'] = o.get('entry_date')
+            action['submit_date'] = o.get('submit_date')
+            action['can_withdraw'] = bool(o.get('can_withdraw'))
+            action['can_resubmit'] = bool(o.get('can_resubmit'))
+            detail_actions.append(action)
+    detail_actions.sort(key=lambda a: a['action_id'])
+    latest_id = detail_actions[-1]['action_id'] if detail_actions else None
+    for action in detail_actions:
+        action['is_latest'] = action['action_id'] == latest_id
+        # Only the most-recent action may be edited; older ones are history.
+        action['can_withdraw'] = action['can_withdraw'] and action['is_latest']
+        action['can_resubmit'] = action['can_resubmit'] and action['is_latest']
+
     actuals = _actual_log_outcomes(a['action_id'] for a in detail_actions)
     for action in detail_actions:
         action['preflight'] = preflights.get(action['action_id'])
@@ -205,6 +239,9 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
         'request_number': request_number,
         'payload': payload,
         'row': row,
+        # The whole project lifecycle (all request lines + counts), for the
+        # danger-zone delete confirm and any family-level display.
+        'family': family,
         'detail_actions': detail_actions,
         'grants': _detail_grants(payload),
         'xa_user': xa_user,

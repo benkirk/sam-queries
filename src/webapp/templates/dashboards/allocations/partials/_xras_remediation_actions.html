@@ -1,11 +1,11 @@
 {#
-  Roster editor + actions strip for one request, rendered inside the read-only
-  detail modal (`xras_request_detail.html`).
+  Roster editor for one request, rendered inside the read-only detail modal
+  (`xras_request_detail.html`). The action list moved to a family-wide
+  collapsible section in that template.
 
   The roster is full width with its editing controls inline — add a role, remove
   a role, resolve a placeholder identity — so there is no separate "Roles…"
-  view to bounce through; the Actions table sits below it rather than competing
-  for half the width.
+  view to bounce through.
 
   WARNING: **No `data-bs-toggle="modal"` on any control here.** Every button lives
   INSIDE the already-open `#auditDetailsModal` and swaps `#auditDetailsModalBody`
@@ -155,48 +155,6 @@
     </div>
 </form>
 
-{# Actions (full width, below the roster) #}
-<div class="small text-uppercase text-muted mb-1">Actions</div>
-<table class="table table-sm align-middle mb-0">
-    <tbody>
-    {% for action in row.actions %}
-        <tr>
-            <td class="font-monospace">{{ action.action_id }}</td>
-            <td>{{ action.action_type or '—' }}</td>
-            <td>
-                <span class="badge bg-body-secondary text-body-secondary border">
-                    {{ action.action_status or '—' }}
-                </span>
-            </td>
-            {# When the action was entered/submitted — the recency the card windows
-               on. `entry_date` because an action's own submitDate is often null. #}
-            <td class="text-nowrap small text-muted">
-                {% if action.entry_date or action.submit_date %}{{ (action.entry_date or action.submit_date) | fmt_date }}{% endif %}
-            </td>
-            <td class="text-end">
-                {% if action.can_withdraw %}
-                <button type="button" class="btn btn-sm btn-outline-warning" {{ disabled }}
-                        {% if not write_enabled %}title="{{ why_disabled }}"{% endif %}
-                        hx-get="{{ url_for('allocations_dashboard.xras_withdraw_form',
-                                           request_number=row.request_number,
-                                           action_id=action.action_id) }}"
-                        hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
-                    Withdraw…
-                </button>
-                {% elif action.can_resubmit %}
-                <button type="button" class="btn btn-sm btn-outline-primary" {{ disabled }}
-                        {% if not write_enabled %}title="{{ why_disabled }}"{% endif %}
-                        hx-get="{{ url_for('allocations_dashboard.xras_resubmit_form',
-                                           request_number=row.request_number,
-                                           action_id=action.action_id) }}"
-                        hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
-                    Re-submit…
-                </button>
-                {% endif %}
-            </td>
-        </tr>
-    {% else %}
-        <tr><td class="text-muted">No actions on this request.</td></tr>
-    {% endfor %}
-    </tbody>
-</table>
+{# The action list (with Withdraw/Re-submit) now lives in xras_request_detail.html
+   as one chronological, family-wide collapsible section — only the most-recent
+   action is editable. This include is the roster editor only. #}
