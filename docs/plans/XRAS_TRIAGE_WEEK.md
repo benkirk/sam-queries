@@ -164,6 +164,42 @@ missing-user rows are the Pending-Users worklist's job
   Brka); POSTs are human-triggered in xras_admin and never auto-retried,
   so a 422's body is read by a person and a re-post is a human decision.
 
+## Cutover log
+
+Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
+
+| When | What |
+|---|---|
+| 15:55 | staging `e15c40a7` (#479) dispatched to CIRRUS from the staging branch; prod carried #479 before the repoint, so ordering step 4 was met without waiting on the main promotion (#480). |
+| 16:15:20 | XRAS base URL repointed to `https://sam.hpc.ucar.edu/api/xras/v1` and apps restarted (Steve Peckins, 11:15:20 CDT). |
+| 16:21 | Unauthenticated probes from the workstation: `GET /people/benkirk` and `POST /actions` both answer the 41-byte 401 and land in the webapp pod log. Prod `xras_action_log`: 0 rows, no stranded `received`. Healthcheck 40 PASS / 3 WARN / 1 FAIL (the FAIL is section 12's task-dispatch envelope, not XRAS). |
+| 16:25 | xras_admin "reconcile users" exercised; **no request reached the new host.** Either that screen reads XRAS's own cached roster (legacy pulled it by the 03:00 MDT cron) or XRAS is still talking to legacy — undecided until a legacy-side log check or a curl from XRAS. |
+| 16:30 | First candidate post, UFSU0023 Extension #392184 (new end 2027-09-30), preflighted read-only before clicking: **would 422** — `end date is before existing allocation end date (2033-07-31)`. 2033 is the end of three `deleted=1` rows left by a renew-with-replace on 2026-08-04; the live rows end 2027-08-31. Novel class, not on the inventory: `latest_allocation()` did not skip soft-deleted rows. |
+| 16:37 | Fix `be253d5d` (selector skips `deleted`; 459 XRAS tests green; prod preflight flips to `would_succeed`) pushed to `xras_incoming_triage`; branch dispatched to CIRRUS. |
+
+| 16:46 | `sha-be253d5` rolled out (both pods); healthcheck unchanged from baseline. NCAR4277 New #390572 preflighted as the second sample: true `add`, would succeed. |
+| 16:52 | UFSU0023 posted from xras_admin: **401**, the 41-byte legacy body ("Failed to initiate the action"). XRAS's request reached us (`Ruby` UA, username `XRAS`), so the repoint is real and the first "no traffic" hour was xras_admin reading its own cached roster. Row `XRAS` is enabled with `ROLE_XRAS`; the `samuel` credential passed the identical XA-header path. Cause: `bcrypt` 5.0.0 raises on a password over 72 bytes and `_bcrypt_matches` swallowed it as a wrong key, where Spring's encoder truncated silently. No `xras_action_log` row: the deny runs before `_record`. |
+| 16:58 | Fix `bf4e37f1` (truncate to 72 bytes; log every API-key refusal with username and reason) dispatched. Meanwhile four XRAS person lookups (`qiangsun`, `mlevy`, `kkeene`) 401'd on the old image — real admins working. |
+| 17:07 | `sha-bf4e37f` rolled out; healthcheck unchanged. |
+| 17:09:41 | **First live action landed.** UFSU0023 Extension re-posted: 200 in 504 ms, `xras_action_log` #1 `processed`/`extend`, allocations 24992–24994 moved 2027-08-31 → 2027-09-30, three `EXTENSION` transactions with NULL amounts — the same shape as all 1,675 legacy XRAS extension rows. |
+
+### Questions for Steve (batched, not piecemeal)
+
+1. How many characters is the `XA-API-KEY` XRAS sends? Over 72 confirms the
+   bcrypt truncation story without anyone handling the secret.
+2. Two `/people/{username}` lookups at 17:06:49Z (`ncar_guest_11554785`,
+   `sortiz`) arrived with **no usable credential** (401 in 0.2 ms, no bcrypt
+   run) while the lookups seconds earlier carried the XA pair. Is there a
+   second code path in xras_admin that calls the accounting service without
+   the XA headers?
+3. Does xras_admin's "reconcile users" screen read the nightly `GET /people?`
+   roster cache rather than calling SAM? (Explains the traffic-free first hour.)
+
+Inventory deltas: the other four date-conflict rows (UCSU0136, UMCP0014,
+UMMM0016, UCOR0102) have no deleted rows and stand as genuine XRAS-vs-SAM
+conflicts. Side note from the sweep detail: the accounts-needed sample lists
+both `harrter` and `hartter`.
+
 ## End-of-week close-out
 
 When traffic is boring: fold anything durable from this doc into the
