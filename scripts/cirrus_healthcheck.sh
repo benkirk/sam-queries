@@ -951,19 +951,33 @@ else
     # --- Last dispatch stdout ----------------------------------------------
     #
     # The CronJob is log-scraped: `sam-admin --format json tasks` must emit a
-    # clean envelope. A stray print to stdout broke this once already.
+    # clean envelope on stdout. A stray print broke this once already.
+    # kubectl merges stdout and stderr, so the CLI's stderr logging is stripped
+    # by shape first — CLI_LOG_FORMAT in src/cli/core/utils.py, "LEVEL name: msg".
+    # Whole log, not --tail: a truncated envelope never parses.
     LAST_JOB=$(echo "$JOBS_JSON" | jq -r '[.items[]] | sort_by(.metadata.creationTimestamp) | last | .metadata.name // ""')
     if [[ -n "$LAST_JOB" ]]; then
         echo
-        echo "  Last dispatch stdout ($LAST_JOB):"
-        LOGS=$("${KCTL_NS[@]}" logs "job/$LAST_JOB" --tail=40 2>/dev/null || echo "")
-        echo "$LOGS" | sed 's/^/    /'
+        LOGS=$("${KCTL_NS[@]}" logs "job/$LAST_JOB" 2>/dev/null || echo "")
+        CLI_LOG_RE='^(DEBUG|INFO|WARNING|ERROR|CRITICAL) [A-Za-z0-9_.]+: '
+        STDERR_LINES=$(echo "$LOGS" | grep -Ec "$CLI_LOG_RE" || true)
+        ENVELOPE=$(echo "$LOGS" | grep -Ev "$CLI_LOG_RE" || true)
+        ENVELOPE_LINES=$(echo "$ENVELOPE" | wc -l | tr -d ' ')
+        echo "  Last dispatch stdout ($LAST_JOB, last 40 of $ENVELOPE_LINES envelope lines):"
+        echo "$ENVELOPE" | tail -n 40 | sed 's/^/    /'
+        if [[ "$STDERR_LINES" -gt 0 ]]; then
+            echo "  ℹ $STDERR_LINES stderr logging line(s) stripped (kubectl merges the streams):"
+            echo "$LOGS" | grep -E "$CLI_LOG_RE" | cut -c1-160 | sed 's/^/    /'
+        fi
         if [[ -z "$LOGS" ]]; then
             warn "no logs retained for $LAST_JOB"
-        elif echo "$LOGS" | jq -e . >/dev/null 2>&1; then
+        elif echo "$ENVELOPE" | jq -e . >/dev/null 2>&1; then
             pass "dispatch output parses as JSON"
         else
-            fail "dispatch output is NOT valid JSON — something is printing to stdout ahead of the envelope"
+            fail "dispatch output is NOT valid JSON — something unprefixed is on the container log ahead of the envelope"
+        fi
+        if echo "$LOGS" | grep -Eq '^(ERROR|CRITICAL) '; then
+            warn "dispatcher logged ERROR/CRITICAL lines — read them above"
         fi
     fi
 fi

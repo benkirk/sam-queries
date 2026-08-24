@@ -765,8 +765,10 @@ named `xras_activation.py` **is** exported, safely, because it imports no
 `sam.notify`.
 ❌ **DON'T** import Click, Flask, `rich` or `kubernetes` anywhere under
 `src/scheduling/` — a task writes to `ctx.logger`, never to stdout, because the
-CronJob's stdout is a JSON envelope. `test_task_ledger.py` AST-walks the
-package.
+CronJob's stdout is a JSON envelope. The CLI routes logging to stderr as `LEVEL
+name: message` (`configure_logging` in `src/cli/core/utils.py`); `kubectl logs`
+merges the streams, so `cirrus_healthcheck.sh` strips that shape before
+parsing. `test_task_ledger.py` AST-walks the package.
 
 ---
 

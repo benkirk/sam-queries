@@ -10,7 +10,7 @@ import click
 
 from config import SAMConfig
 from cli.core.context import Context
-from cli.core.utils import EXIT_ERROR
+from cli.core.utils import EXIT_ERROR, configure_logging
 from cli.user.commands import (
     UserSearchCommand,
     UserPatternSearchCommand,
@@ -54,6 +54,7 @@ def cli(ctx: Context, verbose: bool, inactive_projects: bool, inactive_users: bo
         sys.exit(2)
 
     ctx.verbose = verbose
+    configure_logging(verbose)
     ctx.inactive_projects = inactive_projects
     ctx.inactive_users = inactive_users
     ctx.output_format = output_format

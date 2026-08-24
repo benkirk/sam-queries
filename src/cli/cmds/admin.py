@@ -12,7 +12,7 @@ from datetime import date as _date, datetime
 
 from config import SAMConfig
 from cli.core.context import Context
-from cli.core.utils import EXIT_SUCCESS, EXIT_ERROR
+from cli.core.utils import EXIT_SUCCESS, EXIT_ERROR, configure_logging
 from cli.user.commands import UserAdminCommand
 from cli.project.commands import (
     ProjectAdminCommand,
@@ -49,6 +49,7 @@ def cli(ctx: Context, verbose: bool, output_format: str):
         sys.exit(2)
 
     ctx.verbose = verbose
+    configure_logging(verbose)
     ctx.output_format = output_format
 
     # NO database connection here. `Context.require_sam()` opens one on first

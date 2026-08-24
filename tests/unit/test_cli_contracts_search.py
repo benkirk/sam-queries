@@ -165,7 +165,7 @@ class TestJsonOutput:
         result = runner.invoke(cli, ['--format', 'json', 'contracts',
                                      contract.contract_number])
         assert result.exit_code == 0, result.output
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['kind'] == 'contract'
         assert data['contract_number'] == contract.contract_number
         assert isinstance(data['projects'], list)
@@ -175,7 +175,7 @@ class TestJsonOutput:
         result = runner.invoke(cli, ['--format', 'json', 'contracts',
                                      '--search', token])
         assert result.exit_code == 0, result.output
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['kind'] == 'contract_search_results'
         assert data['pattern'] == token
         assert data['scope'] == 'open'
@@ -187,7 +187,7 @@ class TestJsonOutput:
                                      token):
         result = runner.invoke(cli, ['--format', 'json', 'contracts',
                                      '--search', token, '--source', 'NSF'])
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['filters'] == {'source': 'NSF'}
 
     def test_not_found_still_emits_its_envelope_and_exits_one(
@@ -195,7 +195,7 @@ class TestJsonOutput:
         result = runner.invoke(cli, ['--format', 'json', 'contracts',
                                      'NO-SUCH-CONTRACT-9999'])
         assert result.exit_code == 1
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data == {'kind': 'contract', 'error': 'not_found',
                         'contract_number': 'NO-SUCH-CONTRACT-9999'}
 
@@ -204,7 +204,7 @@ class TestJsonOutput:
         result = runner.invoke(cli, ['--format', 'json', 'contracts',
                                      '--search', 'zzz-no-such-zzz'])
         assert result.exit_code == 1
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['kind'] == 'contract_search_results'
         assert data['count'] == 0
         assert data['contracts'] == []
@@ -212,6 +212,6 @@ class TestJsonOutput:
     def test_dates_serialise_to_iso(self, runner, mock_db_session, contract):
         result = runner.invoke(cli, ['--format', 'json', 'contracts',
                                      contract.contract_number])
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['start_date'].startswith(
             contract.start_date.strftime('%Y-%m-%d'))
