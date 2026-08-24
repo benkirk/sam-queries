@@ -139,10 +139,16 @@ def latest_allocation(account) -> Optional[Allocation]:
     open-ended allocations — a shape that should not exist and, if it did, would make
     legacy's own answer arbitrary. Reproduced rather than tidied, and flagged here
     because "latest" is a misleading name for it.
+
+    Soft-deleted rows are invisible. SAM's renew-with-replace leaves ``deleted=1``
+    rows whose end date can exceed the live one (UFSU0023 on cutover day,
+    2026-08-24: a deleted 2033 row rejected a valid Extension to 2027-09-30).
     """
     latest = None
     latest_end = None
     for allocation in account.allocations:
+        if allocation.deleted:
+            continue
         end = effective_end_date(allocation)
         if end is None:
             return allocation
