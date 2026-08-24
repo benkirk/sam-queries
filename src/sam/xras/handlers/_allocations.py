@@ -48,16 +48,25 @@ __all__ = [
     'account_for_resource',
     'new_allocation_end_date',
     'clamp_start_to_commission',
+    'PANEL_AUTHORISED_TYPES',
+    'PANEL_AUTHORISED_PANEL_ABBRS',
     'auth_at_panel_meeting',
     'mark_panel_authorised',
     'create_window_from_project_history',
     'create_window_from_action_dates',
 ]
 
-#: ``AllocationTypeIdExtractor``'s two panel-authorized types. ``getAuthAtPanelMeeting()``
-#: is ``true`` iff the resolved type is one of these.
-_PANEL_AUTHORISED = frozenset({'CSL', 'CHAP'})
+#: ``AllocationTypeIdExtractor``'s two panel-authorized ALLOCATION TYPES —
+#: ``getAuthAtPanelMeeting()`` is ``true`` iff the resolved type is one of these.
+#: Both must resolve to real ``allocation_type`` rows; pinned by
+#: ``tests/unit/test_xras_transaction_seam.py`` and re-checked by
+#: ``sam-admin xras --validate-vocabulary``.
+PANEL_AUTHORISED_TYPES = frozenset({'CSL', 'CHAP'})
 
+#: The wire's ``panels[]`` speaks panel ABBRS, a different vocabulary from the
+#: type names above: CHAP is the only panel-authorized abbr the wire sends
+#: (CSL exists solely as a stored legacy type, no payload names it).
+PANEL_AUTHORISED_PANEL_ABBRS = frozenset({'CHAP'})
 
 def effective_end_date(allocation: Allocation) -> Optional[datetime]:
     """``Allocation.getEndDate()`` — the stored end, clamped by decommission.
@@ -248,13 +257,13 @@ def auth_at_panel_meeting(session, action) -> bool:
     """
     if get_field(action, 'allocationType'):
         parms = select_allocation_type_mapped(session, action)
-        derived = parms is not None and parms.allocation_type in _PANEL_AUTHORISED
+        derived = parms is not None and parms.allocation_type in PANEL_AUTHORISED_TYPES
     else:
         projcode = (get_field(action, 'requestNumber') or '').strip()
         project = Project.get_by_projcode(session, projcode) if projcode else None
         stored = (getattr(project.allocation_type, 'allocation_type', None)
                   if project else None)
-        derived = stored in _PANEL_AUTHORISED
+        derived = stored in PANEL_AUTHORISED_TYPES
 
     # The wire names the reviewing panel outright in panels[] — CHAP in exactly
     # the payloads where this flag matters. It can only ADD authorization (it
@@ -283,7 +292,7 @@ def _panel_authorised_on_the_wire(action):
     for panel in get_field(action, 'panels') or ():
         if get_field(panel, 'isPrimary'):
             abbr = str(get_field(panel, 'abbr') or '').strip()
-            return abbr in _PANEL_AUTHORISED
+            return abbr in PANEL_AUTHORISED_PANEL_ABBRS
     return None
 
 

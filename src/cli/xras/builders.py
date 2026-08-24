@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 from sam.queries.xras_actions import (
     audit_opportunity_mapping,
     audit_resource_mapping,
+    audit_vocabulary,
     get_recent_xras_actions,
     propose_opportunity_mapping,
     summarize_xras_actions,
@@ -134,6 +135,15 @@ def build_mapping_report(session, *, xras_keys=None) -> dict:
     """
     return {'kind': 'xras_resource_mapping',
             **audit_resource_mapping(session, xras_keys=xras_keys)}
+
+
+def build_vocabulary_report(session, *, live_role_types=None,
+                            live_panels=None) -> dict:
+    """The ``xras_vocabulary_validation`` envelope; the audit is
+    :func:`sam.queries.xras_actions.audit_vocabulary`."""
+    return {'kind': 'xras_vocabulary_validation',
+            **audit_vocabulary(session, live_role_types=live_role_types,
+                               live_panels=live_panels)}
 
 
 def build_opportunity_report(session, *, opportunities=None) -> dict:

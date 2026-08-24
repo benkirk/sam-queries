@@ -867,3 +867,109 @@ class TestWorklistRendering:
             ctx.console = console
             display_person(ctx, payload)
             assert expected in console.export_text()
+
+
+class TestVocabularyAudit:
+    """The hand-verified constants get a live re-verification path."""
+
+    LIVE_ROLES = [
+        {'roleTypeId': 13, 'roleType': 'PI',
+         'displayRoleType': 'Project Lead', 'isActive': True},
+        {'roleTypeId': 14, 'roleType': 'Allocation Manager',
+         'displayRoleType': 'Project Admin', 'isActive': True},
+        {'roleTypeId': 19, 'roleType': 'User',
+         'displayRoleType': 'User', 'isActive': True},
+    ]
+    LIVE_PANELS = [
+        {'panelId': 500021, 'panelName': 'CISL Resource Support',
+         'panelAbbr': 'CISL RSD', 'isActive': True},
+        {'panelId': 500022, 'panelName': 'CISL HPC Allocation Panel',
+         'panelAbbr': 'CHAP', 'isActive': True},
+        {'panelId': 500032, 'panelName': 'External reviewers for CHAP',
+         'panelAbbr': 'CHAP External', 'isActive': True},
+        {'panelId': 500045, 'panelName': 'NSC Allocation Panel',
+         'panelAbbr': 'NSC-AP', 'isActive': True},
+        {'panelId': 500046, 'panelName': 'Admin Panel',
+         'panelAbbr': 'admin', 'isActive': True},
+    ]
+
+    def _stub_live(self, monkeypatch, roles, panels):
+        from sam.integration.xras_api.client import XrasApiClient
+
+        stub = MagicMock()
+        stub.get_role_types.return_value = roles
+        stub.get_panels.return_value = panels
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        monkeypatch.setattr(XrasApiClient, 'from_environment',
+                            staticmethod(lambda: stub))
+
+    def test_agreement_reports_no_drift_and_exits_zero(self, runner,
+                                                       cli_session,
+                                                       monkeypatch):
+        self._stub_live(monkeypatch, self.LIVE_ROLES, self.LIVE_PANELS)
+        result = runner.invoke(cli, ['--format', 'json', 'xras',
+                                     '--validate-vocabulary'])
+        payload = json.loads(result.output)
+        assert payload['drift'] == [] and payload['unresolved'] == []
+        # The DB half: both legacy names resolve to real allocation_type rows.
+        resolved = {r['name'] for r in payload['panel_authorized']['types']}
+        assert resolved == {'CHAP', 'CSL'}
+        assert result.exit_code == EXIT_SUCCESS
+
+    def test_a_renamed_live_role_type_is_drift(self, runner, cli_session,
+                                               monkeypatch):
+        roles = [dict(self.LIVE_ROLES[0], roleType='Principal Investigator'),
+                 *self.LIVE_ROLES[1:]]
+        self._stub_live(monkeypatch, roles, self.LIVE_PANELS)
+        result = runner.invoke(cli, ['--format', 'json', 'xras',
+                                     '--validate-vocabulary'])
+        payload = json.loads(result.output)
+        assert any('roleTypeId 13' in d for d in payload['drift'])
+        assert result.exit_code == EXIT_NOT_FOUND
+
+    def test_a_missing_declared_panel_is_drift(self, runner, cli_session,
+                                               monkeypatch):
+        self._stub_live(monkeypatch, self.LIVE_ROLES, self.LIVE_PANELS[1:])
+        result = runner.invoke(cli, ['--format', 'json', 'xras',
+                                     '--validate-vocabulary'])
+        payload = json.loads(result.output)
+        assert any('500021' in d for d in payload['drift'])
+        assert result.exit_code == EXIT_NOT_FOUND
+
+    def test_unconfigured_still_runs_the_db_half(self, runner, cli_session,
+                                                 monkeypatch):
+        monkeypatch.delenv('XRAS_OUTGOING_ENABLED', raising=False)
+        monkeypatch.delenv('XRAS_API_KEY', raising=False)
+        result = runner.invoke(cli, ['--format', 'json', 'xras',
+                                     '--validate-vocabulary'])
+        payload = json.loads(result.output)
+        assert payload['role_types']['live_checked'] is False
+        assert payload['panels']['live_checked'] is False
+        assert {r['name'] for r in payload['panel_authorized']['types']} == {
+            'CHAP', 'CSL'}
+        assert result.exit_code == EXIT_SUCCESS
+
+    def test_an_unresolvable_authorized_type_fails(self, cli_session,
+                                                   monkeypatch):
+        from sam.queries.xras_actions import audit_vocabulary
+        import sam.xras.handlers._allocations as alloc
+
+        monkeypatch.setattr(alloc, 'PANEL_AUTHORISED_TYPES',
+                            frozenset({'CHAP', 'NOSUCH'}))
+        report = audit_vocabulary(cli_session)
+        assert report['unresolved'] == ['NOSUCH']
+
+    def test_an_extra_live_panel_is_informational_not_drift(self, runner,
+                                                            cli_session,
+                                                            monkeypatch):
+        panels = [*self.LIVE_PANELS,
+                  {'panelId': 500099, 'panelName': 'Brand New Panel',
+                   'panelAbbr': 'BNP', 'isActive': True}]
+        self._stub_live(monkeypatch, self.LIVE_ROLES, panels)
+        result = runner.invoke(cli, ['--format', 'json', 'xras',
+                                     '--validate-vocabulary'])
+        payload = json.loads(result.output)
+        assert payload['drift'] == []
+        assert payload['panels']['extra_live'] == ['500099 (Brand New Panel)']
+        assert result.exit_code == EXIT_SUCCESS

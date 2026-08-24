@@ -18,6 +18,7 @@ class XrasCommand(BaseCommand):
 
     def execute(self, *, action_id=None, recheck=None, summary=False,
                 validate_mapping=False, validate_opportunities=False,
+                validate_vocabulary=False,
                 accounts=False, readiness=False, mnemonic_report=False, person=None,
                 family=None, enrich=False,
                 status=(), action_type=(), request_number=None, last=None,
@@ -29,6 +30,8 @@ class XrasCommand(BaseCommand):
                 return self._validate_mapping()
             if validate_opportunities:
                 return self._validate_opportunities()
+            if validate_vocabulary:
+                return self._validate_vocabulary()
             if person is not None:
                 return self._person(person)
             if family is not None:
@@ -106,6 +109,44 @@ class XrasCommand(BaseCommand):
                 f'[yellow]Could not reach the XRAS API ({exc}); reporting the '
                 f'local half only.[/yellow]')
             return None
+
+    def _validate_vocabulary(self) -> int:
+        """Re-verify the hardcoded XRAS vocabularies against their sources.
+
+        Two-sided when the API is configured (role types and panels read
+        live); the DB half — the panel-authorized type set resolving to
+        ``allocation_type`` rows — always runs. Non-zero is reserved for drift
+        and unresolved names; XRAS growing a new panel or role type is
+        reported, not failed.
+        """
+        live_role_types, live_panels = self._live_vocabulary()
+        payload = builders.build_vocabulary_report(
+            self.session, live_role_types=live_role_types,
+            live_panels=live_panels)
+        if self.ctx.output_format == 'json':
+            output_json(payload)
+        else:
+            display.display_vocabulary_report(self.ctx, payload)
+        return (EXIT_NOT_FOUND if payload['drift'] or payload['unresolved']
+                else EXIT_SUCCESS)
+
+    def _live_vocabulary(self):
+        """``(role_types, panels)`` live, or ``(None, None)`` — same degrade
+        rule as :meth:`_live_keys`."""
+        from sam.integration.xras_api import (XrasSourceUnavailable,
+                                              xras_api_configured)
+        from sam.integration.xras_api.client import XrasApiClient
+
+        if not xras_api_configured():
+            return None, None
+        try:
+            client = XrasApiClient.from_environment()
+            return client.get_role_types(), client.get_panels()
+        except XrasSourceUnavailable as exc:
+            self.ctx.stderr_console.print(
+                f'[yellow]Could not reach the XRAS API ({exc}); reporting the '
+                f'local half only.[/yellow]')
+            return None, None
 
     def _validate_opportunities(self) -> int:
         """Report the state of ``xras_opportunity_allocation_type``.

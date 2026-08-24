@@ -252,7 +252,7 @@ class TestPanelAuthorisationAgreesWithTheResolvedType:
         both consumers must read the *same* pair."""
         from sam.xras.extractors import (resolve_allocation_type,
                                          select_allocation_type_mapped)
-        from sam.xras.handlers._allocations import (_PANEL_AUTHORISED,
+        from sam.xras.handlers._allocations import (PANEL_AUTHORISED_TYPES,
                                                     auth_at_panel_meeting)
         from xras_helpers import FIXTURE_DIR, load_fixture
 
@@ -266,7 +266,7 @@ class TestPanelAuthorisationAgreesWithTheResolvedType:
             row = resolve_allocation_type(session, payload, ActionErrors())
             assert row is not None and row.allocation_type == parms.allocation_type
             assert auth_at_panel_meeting(session, payload) == (
-                parms.allocation_type in _PANEL_AUTHORISED)
+                parms.allocation_type in PANEL_AUTHORISED_TYPES)
         assert checked, 'no payload carried allocationType — the loop proved nothing'
 
 
