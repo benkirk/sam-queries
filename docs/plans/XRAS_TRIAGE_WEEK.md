@@ -187,6 +187,9 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
 | 17:34 | UFSU0023 notified from the card: `notification_log` #2 (lead) and #3 (admin), `xras_extension`, both `sent`, `xras_activation_event` #3 `notified` → action #1. `failed=0`. |
 | 18:13:04 | **First organic approve → post.** UCNN0045 Extension #394352 (submitted 08-19, approved and posted today; allocations were a week from expiry): `xras_action_log` #3 `processed`/`extend`, 300 ms, 20590–20592 → 2027-08-31. Preflighted read-only at Requested and again at Approved before the post. |
 | 18:14:50 | UCNN0045 notified: `notification_log` #4 (lead) and #5 (admin), both `sent`. Three actions, five messages, zero failures for the day. |
+| 19:12–19:37 | Team demo: UMCP0037 #394505 and UFIT0017 #394646 extensions approved, posted (`xras_action_log` #4, #5), allocations → 2027-08-31. UMCP0037 notified (#6 lead, #7 admin). |
+| 20:18 | `sha-e6084c9` rolled out: per-message `cc`/`bcc`/`sender`/`reply_to` on `Message`, read from `NOTIFY_XRAS_*` by `build_xras_messages` alone; values set to CC + Reply-To `alloc@ucar.edu` (team decision). |
+| 20:19 | UFIT0017 notified (#8, lead=admin so one message): `cc=1 bcc=0` — the first copy in alloc@. Follow-up agreed: generalize to a per-family (`NotificationKind.family`) addressing convention applied in the `Notifier`, admin card iterating families, CronJob forwarding `NOTIFY_*` by prefix. |
 
 ### Questions for Steve (batched, not piecemeal)
 
