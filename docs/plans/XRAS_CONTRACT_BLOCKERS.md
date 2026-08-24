@@ -1,10 +1,9 @@
 # XRAS Contract Blockers — surface, then assist
 
-**Status: PROPOSED, unscheduled.** Sketched 2026-08-24 during cutover
-week (`XRAS_TRIAGE_WEEK.md`); builds on the grant handling shipped in
-PR #479 (`XRAS_DATA_MODEL_UPLIFT.md`, Track A commit 1). Phase 0 is a
-measurement, not code; nothing past it is built until the measurement says
-so.
+**Status: Phase 0 MEASURED 2026-08-24 — trigger met; Phase 1 scheduled for
+the post-cutover branch.** Sketched during cutover week
+(`XRAS_TRIAGE_WEEK.md`); builds on the grant handling shipped in PR #479
+(`XRAS_DATA_MODEL_UPLIFT.md`, Track A commit 1).
 
 ## The gap
 
@@ -15,12 +14,26 @@ username with role, source, identity state, and days waiting. A
 action's preflight messages, so an operator learns that one `contract` row
 would unblock a push only by reading each failing request's tooltip.
 
-Measured 2026-08-24: 2 of the 15 expected cutover failures are this class.
+Measured 2026-08-24 (cutover day), over every New request not yet in SAM —
+23 Submitted plus the approved-but-unposted: **6 of 32 carry a grant number,
+and 0 of the 6 resolve** against `contract` (core-number `ilike`, the
+handler's own rule).
 
-| Request | Grant number | Agency | Notes |
+| Request | Stage | Grant number | Other blockers |
 |---|---|---|---|
-| NCAR4212 | `PRJ013992 BWI` | Other | An external project reference, not an award. The request's **only** blocker (PI has a real account) — the quickest unblock on the board, invisible as such. |
-| NCAR4231 | `2423211` | NSF | A real NSF award ("PFI (MCA): Smart Disaster Response…"). Also blocked on its PI's account; 41 days waiting. |
+| NCAR4212 | Approved | `PRJ013992 BWI` | the mnemonic failure too — **two** blockers, not one (the preflight lists both) |
+| NCAR4231 | Approved | `2423211` (a real NSF award) | placeholder PI |
+| NCAR4280 | Submitted | `2624974` | two placeholder identities |
+| NCAR4287 | Submitted | `2331527` | inactive PI |
+| **NCAR4293** | Submitted | `001368-00183` | **none** |
+| **NCAR4300** | Submitted | `ISS 25-643` | **none** |
+
+The last two are the case this doc exists for: clean rosters, both under the
+"NCAR External Projects" opportunity, whose approvals are quick — the day
+they are approved, a missing `contract` row is the *only* thing between them
+and a 200, and nothing today says so. Four of the six numbers are project
+references rather than NSF awards, which is why the human verdict below is
+Phase 1, not Phase 2.
 
 ## The shape: the mnemonic report, for contracts
 
@@ -54,14 +67,15 @@ forbids. So:
 
 ## Phases
 
-### Phase 0 — measure (triage week, no code)
+### Phase 0 — measure (done 2026-08-24)
 
-The `warnings` and `error_messages` audit columns make this countable from
-`xras_action_log` alone: how many real posts fail on `Cannot find
-contract`, which agencies they cite, how many are NSF numbers the award
-search resolves. **Trigger for Phase 1:** the class recurs beyond the two
-known cases, or those two prove hard to clear by hand. If neither, this
-doc stays a sketch — don't build for unseen failures.
+Measured on the forward pipeline (the table above) rather than the audit
+log: extensions ignore `grants[]` and the one New posted on cutover day had
+none, so the log alone would have said "0". **Trigger for Phase 1 was "the
+class recurs beyond the two known cases" — it did, twice, before any post
+exercised the path.** Re-count from `xras_action_log` (`error_messages`,
+`warnings`) once posts accumulate; the sweep preflight is the ongoing
+source.
 
 ### Phase 1 — surface
 
@@ -77,6 +91,14 @@ doc stays a sketch — don't build for unseen failures.
   Remediations card; each row links to the existing
   `htmx_contract_create_form` (`src/webapp/dashboards/admin/contracts_routes.py`)
   with the grant number carried as the award-search query.
+- **The "not an award number?" verdict, here rather than Phase 2.** Four of
+  the six measured numbers (`PRJ013992 BWI`, `ISS 25-643`, `001368-00183`,
+  and the External-Projects pattern generally) are project references, so
+  NSF prefill cannot help them; what clears them is a `contract` row created
+  as a non-award reference, recorded once. The row must exist either way —
+  the handler links, never creates — so the affordance is "create as a
+  non-award contract with this reference", and the report stops re-listing
+  it the next sweep.
 
 ### Phase 2 — assist
 
@@ -87,10 +109,7 @@ doc stays a sketch — don't build for unseen failures.
   create button lands on a fully prefilled form.
 - Create → automatic re-check of the blocked actions (the existing
   `--recheck` / modal Replay path) so the row clears itself.
-- Non-NSF agencies ("Other", like `PRJ013992 BWI`) get no prefill and a
-  "not an award number?" affordance — the human verdict that it is a
-  project reference, not a contract, recorded once instead of re-read
-  every sweep.
+- Non-NSF numbers get no prefill; the non-award verdict is already Phase 1.
 
 ### Rejected — fully automatic contract creation
 
