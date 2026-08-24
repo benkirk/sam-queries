@@ -19,7 +19,7 @@ class XrasCommand(BaseCommand):
     def execute(self, *, action_id=None, recheck=None, summary=False,
                 validate_mapping=False, validate_opportunities=False,
                 accounts=False, readiness=False, mnemonic_report=False, person=None,
-                enrich=False,
+                family=None, enrich=False,
                 status=(), action_type=(), request_number=None, last=None,
                 show_payload=False, limit=50, **_) -> int:
         try:
@@ -31,6 +31,8 @@ class XrasCommand(BaseCommand):
                 return self._validate_opportunities()
             if person is not None:
                 return self._person(person)
+            if family is not None:
+                return self._family(family)
             if readiness:
                 return self._readiness()
             if mnemonic_report:
@@ -281,6 +283,35 @@ class XrasCommand(BaseCommand):
         else:
             display.display_person(self.ctx, payload)
         return EXIT_SUCCESS if person else EXIT_NOT_FOUND
+
+    def _family(self, projcode) -> int:
+        """The whole allocation lifecycle for a projcode — a request tree.
+
+        Same three-outcome model as :meth:`_person`: found 0, no such projcode 1,
+        could-not-ask 2. A projcode XRAS has never seen is not-found, not an error.
+        """
+        from sam.integration.xras_api import (XrasApiClient,
+                                              XrasSourceUnavailable,
+                                              xras_api_configured)
+
+        if not xras_api_configured():
+            self.ctx.console.print(
+                '[red]--family needs the XRAS API: set XRAS_OUTGOING_ENABLED=1 '
+                'and XRAS_API_KEY.[/red]')
+            return EXIT_ERROR
+        try:
+            lines = XrasApiClient.from_environment().get_request_family_by_number(
+                projcode)
+        except XrasSourceUnavailable as exc:
+            self.ctx.console.print(f'[red]XRAS unavailable: {exc}[/red]')
+            return EXIT_ERROR
+
+        payload = builders.build_family_report(projcode, lines)
+        if self.ctx.output_format == 'json':
+            output_json(payload)
+        else:
+            display.display_family(self.ctx, payload)
+        return EXIT_SUCCESS if payload.get('family') else EXIT_NOT_FOUND
 
     def _list(self, filters, limit) -> int:
         payload = builders.build_action_list(self.session, filters=filters,

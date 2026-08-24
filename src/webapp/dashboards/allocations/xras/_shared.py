@@ -90,15 +90,40 @@ def _read_client():
     return XrasApiClient.from_environment()
 
 
-def _live_request(request_number):
-    """Live roster + action states for one request, via the reports family.
+def _primary_line(lines):
+    """The request line holding the project's globally most-recent action.
 
-    WARNING: Not ``GET /v1/requests/<id>``, which is 401 for our credential in every
-    context — so ``rules{allowedOperations}``, the API's own answer to "what may
-    I do to this action", is unavailable and the offers are derived instead
-    (PRIVILEGE(#1)).
+    A projcode can have several request lines (a New plus Renewals, each its own
+    ``requestId``); this picks the one with the highest ``actionId`` — the current
+    request. The modal anchors its header/roster and every write on it, so the
+    target is deterministic rather than XRAS's arbitrary ``lines[0]`` order.
     """
-    return _read_client().get_request_by_number(request_number)
+    def _max_action(line):
+        ids = [a.get('actionId') for a in (line.get('actions') or ())
+               if isinstance(a.get('actionId'), int)]
+        return max(ids) if ids else -1
+    return max(lines, key=_max_action) if lines else None
+
+
+def _live_request(request_number):
+    """The project's **primary** request line, via the reports family.
+
+    WARNING: Not ``lines[0]`` (XRAS's arbitrary order) and not
+    ``GET /v1/requests/<id>`` (401 for our credential — so
+    ``rules{allowedOperations}`` is unavailable and offers are derived,
+    PRIVILEGE(#1)). Returning the primary line here is what makes every write
+    handler that resolves ``request_id`` from it target the current request.
+    """
+    return _primary_line(_read_client().get_request_family_by_number(request_number))
+
+
+def _live_family(request_number):
+    """Every request line for a projcode — the whole allocation lifecycle, one call.
+
+    All lines (a New plus any Renewals, each with its own ``requestId`` and
+    ``actions[]``); :func:`_live_request` returns the primary one of these.
+    """
+    return _read_client().get_request_family_by_number(request_number)
 
 
 def _impersonation(entry, live=None):

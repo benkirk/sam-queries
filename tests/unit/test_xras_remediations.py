@@ -174,6 +174,10 @@ def _reader(monkeypatch, payload=_payload(), person=None, candidates=(),
     """Swap in a scripted read client for every live lookup."""
     client = MagicMock()
     client.get_request_by_number.return_value = payload
+    # The detail modal fetches the whole family; derive it from the single-line
+    # mock so a test's return_value/side_effect (not-found, outage) still applies.
+    client.get_request_family_by_number.side_effect = (
+        lambda n: [row] if (row := client.get_request_by_number(n)) else [])
     client.get_person.return_value = person
     client.search_people.return_value = list(candidates)
     # Default to an empty dict, not MagicMock's auto-child — the parser tests
@@ -1009,6 +1013,7 @@ class TestModalGets:
         renders as an empty modal indistinguishable from a broken button."""
         client = MagicMock()
         client.get_request_by_number.side_effect = XrasSourceUnavailable('down')
+        client.get_request_family_by_number.side_effect = XrasSourceUnavailable('down')
         client.get_person.side_effect = XrasSourceUnavailable('down')
         client.get_opportunity.side_effect = XrasSourceUnavailable('down')
         monkeypatch.setattr(
@@ -1087,6 +1092,38 @@ class TestRequestDetailModal:
         # No separate Roles… entry point, and no Details… link back to itself.
         assert 'Roles…' not in body
         assert 'Details…' not in body
+
+    def test_the_actions_list_spans_all_request_lines(self, auth_client, armed,
+                                                      monkeypatch):
+        """A multi-line project shows ONE actions list across every request line;
+        only the globally-most-recent action (in the primary line) is withdrawable."""
+        client = _reader(monkeypatch, payload=_detail_payload())
+        new_line = _detail_payload()
+        new_line['requestId'] = 111
+        new_line['requestType'] = 'New'          # its action is id 7 (Supplement)
+        renewal = _detail_payload()
+        renewal.update({'requestId': 222, 'requestType': 'Renewal',
+                        'beginDate': '2027-01-01'})
+        renewal['actions'] = [{'actionId': 88, 'actionType': 'Renewal',
+                               'actionStatus': 'Approved', 'entryDate': '2027-01-02'}]
+        client.get_request_family_by_number.side_effect = None
+        client.get_request_family_by_number.return_value = [new_line, renewal]
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        # both lines' actions are in one collapsible list
+        assert 'xras-action-7' in body and 'xras-action-88' in body
+        assert '2 requests in this project' in body
+        # only the latest (88, the renewal) is withdrawable
+        assert body.count('Withdraw…') == 1
+
+    def test_a_single_line_request_still_renders_its_actions(self, auth_client,
+                                                             armed, monkeypatch):
+        """One request line -> the same one-list rendering, its action editable."""
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'xras-action-7' in body       # the lone action
+        assert body.count('Withdraw…') == 1  # it is the latest → editable
 
     def test_the_card_row_links_the_request_to_the_detail_modal(
             self, auth_client, armed):
@@ -1497,6 +1534,33 @@ class TestPartCIsAdminOnly:
         body = auth_client.post(
             '/allocations/xras_request_delete/EXAM0001').get_data(as_text=True)
         assert 'switched off' in body
+
+    def test_delete_loops_the_whole_tree(self, auth_client, armed, monkeypatch):
+        """A multi-line project deletes EVERY request line, not just lines[0]."""
+        from types import SimpleNamespace
+
+        client = _reader(monkeypatch, payload=_detail_payload())
+        new_line = _detail_payload(); new_line['requestId'] = 111
+        renewal = _detail_payload(); renewal['requestId'] = 222
+        renewal['actions'] = [{'actionId': 88, 'actionType': 'Renewal',
+                               'actionStatus': 'Approved', 'entryDate': '2027-01-02'}]
+        client.get_request_family_by_number.side_effect = None
+        client.get_request_family_by_number.return_value = [new_line, renewal]
+
+        calls = []
+
+        def fake_delete(session, *, request_number, request_id, pi_username, operator):
+            calls.append(request_id)
+            return SimpleNamespace(status='verified',
+                                   result=SimpleNamespace(errors=None))
+
+        monkeypatch.setattr(
+            'webapp.dashboards.allocations.xras.remediation.remediation.delete_request',
+            fake_delete)
+        body = auth_client.post(
+            '/allocations/xras_request_delete/EXAM0001').get_data(as_text=True)
+        assert sorted(calls) == [111, 222]     # both lines deleted
+        assert '2 request' in body             # the confirm/result names the scope
 
 
 # POST validation

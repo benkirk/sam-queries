@@ -60,8 +60,8 @@ from webapp.utils.rbac import Permission, require_permission
 from .. import bp
 from ._shared import (
     _XRAS_MODAL_TRIGGERS, _degraded, _entry, _impersonation, _index,
-    _live_request, _parse_activity_window, _read_client, _role_options,
-    _session_factory, sort_rows,
+    _live_family, _live_request, _parse_activity_window, _read_client,
+    _role_options, _session_factory, sort_rows,
 )
 from .modals import _render_detail
 
@@ -1708,37 +1708,60 @@ def _inline_alert(message, *, variant='warning'):
 @login_required
 @require_permission(Permission.ADMIN_XRAS)
 def xras_request_delete(request_number: str):
-    """Delete a whole request in XRAS. **Irreversible.** Bodiless; hx-confirm.
+    """Delete a project's **whole request tree** in XRAS. **Irreversible.**
 
-    On success the request is gone, so the modal cannot re-render it — it closes
-    and the card refreshes (the sweep patch drops the now-missing row).
+    A projcode can carry several request lines (a New plus Renewals, each its own
+    requestId); this loops over every one so the delete is projcode-scoped and
+    independent of which line the modal opened on. Each line is impersonated as
+    its own PI. Reports partial failure rather than claiming success — the
+    surviving lines still exist. Bodiless; hx-confirm.
     """
-    try:
-        request_id, xa_user = _editor_target(request_number)
-    except FormError as exc:
-        return _inline_alert(str(exc))
+    from sam.queries.xras_requests import resolve_pi, roster_from_payload
 
     try:
-        outcome = remediation.delete_request(
-            _session_factory(), request_number=request_number,
-            request_id=request_id, pi_username=xa_user,
-            operator=current_user.username)
-    except XrasWriteNotConfigured:
-        return _inline_alert('XRAS writes are switched off for this '
-                             'deployment. Nothing was sent.')
+        lines = _live_family(request_number)
+    except XrasSourceUnavailable:
+        return _inline_alert('XRAS could not be reached, so nothing was changed. '
+                             'Try again shortly.')
+    if not lines:
+        return _inline_alert('XRAS no longer lists this request.')
 
-    if outcome.status == 'verified':
+    deleted, failures = [], []
+    for line in lines:
+        request_id = line.get('requestId')
+        xa_user = resolve_pi(roster_from_payload(line))
+        if request_id is None or not xa_user:
+            failures.append(f'requestId {request_id} (no role-holder to act as)')
+            continue
+        try:
+            outcome = remediation.delete_request(
+                _session_factory(), request_number=request_number,
+                request_id=request_id, pi_username=xa_user,
+                operator=current_user.username)
+        except XrasWriteNotConfigured:
+            return _inline_alert('XRAS writes are switched off for this '
+                                 'deployment. Nothing was sent.')
+        if outcome.status == 'verified':
+            deleted.append(request_id)
+        else:
+            reason = outcome.error or 'XRAS did not confirm it'
+            extra = getattr(outcome.result, 'errors', None)
+            if extra:
+                reason += ' — ' + '; '.join(str(m) for m in extra)
+            failures.append(f'requestId {request_id} ({reason})')
+
+    if not failures:
+        n = len(deleted)
         return htmx_success_message(
-            _XRAS_MODAL_TRIGGERS, f'Deleted request {request_number} in XRAS.',
+            _XRAS_MODAL_TRIGGERS,
+            f'Deleted the whole project {request_number} in XRAS '
+            f'({n} request{"" if n == 1 else "s"}).',
             detail='It no longer exists in XRAS and drops off the card.')
 
-    reason = outcome.error or 'XRAS did not confirm it'
-    extra = getattr(outcome.result, 'errors', None)
-    if extra:
-        reason += ' — ' + '; '.join(str(m) for m in extra)
     return _inline_alert(
-        f'Deletion did not complete: {reason}. The attempt is recorded in the '
-        'remediation log.', variant='danger')
+        f'Deleted {len(deleted)} of {len(lines)} request(s) for {request_number}; '
+        f'these did not complete: {"; ".join(failures)}. The attempts are recorded '
+        'in the remediation log.', variant='danger')
 
 
 @bp.route('/xras_request_renew/<path:request_number>', methods=['POST'])

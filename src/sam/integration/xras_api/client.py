@@ -358,18 +358,29 @@ class XrasApiClient(_XrasTransport):
 
     # requests (the Reports family)
 
+    def get_request_family_by_number(self, request_number: str
+                                     ) -> List[Dict[str, Any]]:
+        """Every request line for a projcode — the whole allocation lifecycle.
+
+        ``reports/request_numbers/<n>`` returns a **list** when a project has
+        more than one request line (a New plus later Renewals, each with its own
+        ``requestId`` and ``actions[]``). :meth:`get_request_by_number` keeps only
+        the first; this keeps all of them, for the family derivation.
+        """
+        result = self._get(
+            f'/v1/reports/request_numbers/{quote(str(request_number), safe="")}')
+        return [r for r in (_as_list(result) or ()) if isinstance(r, dict)]
+
     def get_request_by_number(self, request_number: str
                               ) -> Optional[Dict[str, Any]]:
         """Look up one request **by request number — i.e. by projcode**.
 
         ``GET /v1/requests/<requestNumber>`` is *not* this: that route is keyed
-        on ``requestId`` and 401s for a number. This is the reports path.
+        on ``requestId`` and 401s for a number. This is the reports path. Returns
+        the first line only; use :meth:`get_request_family_by_number` for all of them.
         """
-        result = self._get(
-            f'/v1/reports/request_numbers/{quote(str(request_number), safe="")}')
-        if isinstance(result, list):
-            return result[0] if result else None
-        return _as_dict(result)
+        family = self.get_request_family_by_number(request_number)
+        return family[0] if family else None
 
     def get_requests_page(self, *, status: Optional[str] = 'Approved',
                           limit: int = DEFAULT_PAGE_SIZE,

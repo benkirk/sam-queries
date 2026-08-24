@@ -7,6 +7,7 @@ plain dict a builder produced — never an ORM object. All formatting goes throu
 
 from rich.panel import Panel
 from rich.table import Table
+from rich.tree import Tree
 
 from cli.core.display_utils import BLANK, text, truncate
 
@@ -534,3 +535,41 @@ def display_person(ctx, payload) -> None:
         ctx.console.print(
             '[dim]XRAS has not linked this username to a confirmed identity, so '
             'the detail above may be self-reported and incomplete.[/dim]')
+
+
+def display_family(ctx, payload) -> None:
+    """Render a projcode's request lifecycle as a tree: lines, then their actions."""
+    from sam import fmt
+
+    projcode = payload['projcode']
+    ctx.console.rule(f"[bold]XRAS request family: {projcode}")
+    family = payload.get('family')
+    if not family:
+        ctx.console.print(f"[yellow]XRAS has no request under {projcode}.[/yellow]")
+        return
+
+    def _d(value):
+        return fmt.date_str(value, fmt='%Y-%m-%d') if value else BLANK
+
+    pi = family.get('pi') or {}
+    ctx.console.print(Panel(
+        f"PI: {text(pi.get('name') or pi.get('username'))}   "
+        f"span {_d(family['begin_date'])} → {_d(family['end_date'])}   "
+        f"last activity {_d(family['activity_date'])}   "
+        f"{len(family['requests'])} request line(s)", expand=False))
+
+    tree = Tree(f"[bold]{projcode}")
+    for line in family['requests']:
+        label = (f"[bold]{line.get('request_type') or '?'}[/bold] "
+                 f"· request {line['request_id']} "
+                 f"· begin {_d(line.get('begin_date'))}")
+        if line.get('status'):
+            label += f"  [dim]{line['status']}[/dim]"
+        node = tree.add(label)
+        for action in line['actions']:
+            when = action.get('entry_date') or action.get('submit_date')
+            row = f"{action.get('action_type') or '?'} · {_d(when)}"
+            if action.get('action_status'):
+                row += f"  [dim]{action['action_status']}[/dim]"
+            node.add(row)
+    ctx.console.print(tree)

@@ -424,6 +424,75 @@ class TestPersonMode:
                            'found': False, 'person': None}
 
 
+class TestFamilyMode:
+    """The request-family tree probe — same three-outcome model as --person."""
+
+    def _configure(self, monkeypatch, lines):
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        client = MagicMock()
+        client.get_request_family_by_number.return_value = lines
+        monkeypatch.setattr(
+            'sam.integration.xras_api.XrasApiClient.from_environment',
+            classmethod(lambda cls, *a, **k: client))
+
+    def _lines(self):
+        return [
+            {'requestId': 111, 'requestNumber': 'UCUB0089', 'requestType': 'New',
+             'beginDate': '2020-01-01', 'endDate': '2024-12-31',
+             'actions': [{'actionId': 1, 'actionType': 'New',
+                          'actionStatus': 'Approved', 'entryDate': '2020-01-01'}]},
+            {'requestId': 222, 'requestNumber': 'UCUB0089', 'requestType': 'Renewal',
+             'beginDate': '2022-05-01', 'endDate': '2024-12-31',
+             'actions': [{'actionId': 4, 'actionType': 'Extension',
+                          'actionStatus': 'Submitted', 'entryDate': '2024-12-23'}]},
+        ]
+
+    def test_a_found_family_exits_zero(self, runner, cli_session, monkeypatch):
+        self._configure(monkeypatch, self._lines())
+        result = runner.invoke(cli, ['xras', '--family', 'UCUB0089'])
+        assert result.exit_code == EXIT_SUCCESS
+
+    def test_an_unknown_projcode_exits_not_found(self, runner, cli_session,
+                                                 monkeypatch):
+        self._configure(monkeypatch, [])
+        result = runner.invoke(cli, ['xras', '--family', 'NOSUCH0001'])
+        assert result.exit_code == EXIT_NOT_FOUND
+
+    def test_an_outage_exits_error_not_not_found(self, runner, cli_session,
+                                                 monkeypatch):
+        from sam.integration.xras_api.base import XrasSourceUnavailable
+
+        self._configure(monkeypatch, [])
+        client = MagicMock()
+        client.get_request_family_by_number.side_effect = \
+            XrasSourceUnavailable('down')
+        monkeypatch.setattr(
+            'sam.integration.xras_api.XrasApiClient.from_environment',
+            classmethod(lambda cls, *a, **k: client))
+        result = runner.invoke(cli, ['xras', '--family', 'UCUB0089'])
+        assert result.exit_code == EXIT_ERROR
+
+    def test_unconfigured_exits_error(self, runner, cli_session, monkeypatch):
+        monkeypatch.delenv('XRAS_OUTGOING_ENABLED', raising=False)
+        monkeypatch.delenv('XRAS_API_KEY', raising=False)
+        result = runner.invoke(cli, ['xras', '--family', 'UCUB0089'])
+        assert result.exit_code == EXIT_ERROR
+
+    def test_the_json_envelope_carries_the_tree(self, runner, cli_session,
+                                                monkeypatch):
+        self._configure(monkeypatch, self._lines())
+        result = runner.invoke(cli, ['--format', 'json', 'xras',
+                                     '--family', 'UCUB0089'])
+        payload = json.loads(result.output)
+        assert payload['kind'] == 'xras_request_family'
+        assert payload['found'] is True
+        assert payload['family']['new_request_id'] == 111
+        # timeline flattens both lines' actions, date-ordered, ISO strings
+        assert [a['action_id'] for a in payload['family']['timeline']] == [1, 4]
+        assert payload['family']['activity_date'] == '2024-12-23'
+
+
 class TestTwoSidedMappingAudit:
     """The gap that made the pre-cutover gate one-sided."""
 

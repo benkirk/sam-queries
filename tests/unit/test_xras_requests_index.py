@@ -15,6 +15,7 @@ from sam.queries.xras_requests import (
     actions_from_payload,
     latest_action_type,
     person_roles_from_payload,
+    request_family,
     request_index_entry,
     resolve_pi,
     roster_from_payload,
@@ -120,19 +121,43 @@ class TestPersonRoles:
     def test_groups_are_preserved_and_role_labelled(self):
         groups = person_roles_from_payload(self._payload())
         assert [g['role_name'] for g in groups] == ['Project Lead', 'User']
-        assert groups[0]['requests'][0]['request_number'] == 'UCIR0072'
+        assert groups[0]['projects'][0]['request_number'] == 'UCIR0072'
 
     def test_it_takes_either_spelling_of_the_id(self):
         # The feed spells it requestId in one place, requestID in another.
         groups = person_roles_from_payload(self._payload())
-        assert groups[0]['requests'][0]['request_id'] == 1446007
-        assert groups[1]['requests'][0]['request_id'] == 42
+        assert groups[0]['projects'][0]['actions'][0]['request_id'] == 1446007
+        assert groups[1]['projects'][0]['actions'][0]['request_id'] == 42
 
     def test_dates_are_parsed_for_fmt_date(self):
         from datetime import date
-        req = person_roles_from_payload(self._payload())[0]['requests'][0]
-        assert req['begin_date'] == date(2026, 8, 4)
-        assert req['end_date'] == date(2027, 8, 31)
+        action = person_roles_from_payload(
+            self._payload())[0]['projects'][0]['actions'][0]
+        assert action['begin_date'] == date(2026, 8, 4)
+        assert action['end_date'] == date(2027, 8, 31)
+
+    def test_actions_group_under_one_project_not_duplicated_rows(self):
+        # The feed lists one entry per action; the same projcode must collapse to
+        # one project carrying the action list, oldest action first.
+        from datetime import date
+        payload = self._payload(requestRoles=[{'roleName': 'User', 'requests': [
+            {'requestNumber': 'UWAS0104', 'requestId': 1, 'requestTitle': 'SST',
+             'actionType': 'New', 'beginDate': '2021-05-01',
+             'endDate': '2023-05-31', 'updateDate': '2021-04-28'},
+            {'requestNumber': 'UWAS0104', 'requestId': 2, 'requestTitle': 'SST',
+             'actionType': 'Extension', 'beginDate': '2023-05-31',
+             'endDate': '2024-05-31', 'updateDate': '2023-05-31'},
+        ]}])
+        projects = person_roles_from_payload(payload)[0]['projects']
+        assert len(projects) == 1
+        proj = projects[0]
+        assert proj['request_number'] == 'UWAS0104'
+        assert proj['title'] == 'SST'
+        # Oldest-first (newest at the bottom).
+        assert [a['action_type'] for a in proj['actions']] == ['New', 'Extension']
+        # Project recency is its newest (last) action; each action keeps its own PoP.
+        assert proj['activity_date'] == date(2023, 5, 31)
+        assert proj['actions'][0]['begin_date'] == date(2021, 5, 1)
 
     def test_a_request_without_a_number_is_dropped(self):
         # The modal's only link key is the number; a row without one cannot
@@ -141,8 +166,8 @@ class TestPersonRoles:
             {'roleName': 'User', 'requests': [
                 {'requestId': 5},
                 {'requestNumber': 'NCAR0009', 'requestId': 6}]}])
-        rows = person_roles_from_payload(payload)[0]['requests']
-        assert [r['request_number'] for r in rows] == ['NCAR0009']
+        projects = person_roles_from_payload(payload)[0]['projects']
+        assert [p['request_number'] for p in projects] == ['NCAR0009']
 
     def test_a_group_with_no_usable_request_is_dropped(self):
         payload = self._payload(requestRoles=[
@@ -248,6 +273,89 @@ class TestTheEntry:
         e = request_index_entry(p)
         assert e['activity_date'] == date(2026, 8, 21)   # the recent Extension
         assert e['submit_date'] == date(2022, 6, 16)     # request date unchanged
+
+
+def _line(request_id, request_type, begin, actions, **over):
+    payload = {
+        'requestId': request_id, 'requestNumber': 'EXAM0001',
+        'requestStatus': 'Approved', 'requestType': request_type,
+        'beginDate': begin, 'endDate': '2024-12-31',
+        'roles': [{'person': {'username': 'pi-user', 'firstName': 'Ada',
+                              'lastName': 'Invented'},
+                   'roles': [{'roleId': 1, 'role': 'PI', 'roleTypeId': 13}]}],
+        'actions': actions,
+    }
+    payload.update(over)
+    return payload
+
+
+def _new_and_renewal():
+    return [
+        _line(111, 'New', '2020-01-01', [
+            {'actionId': 1, 'actionType': 'New', 'actionStatus': 'Approved',
+             'entryDate': '2020-01-01'},
+            {'actionId': 2, 'actionType': 'Supplement', 'actionStatus': 'Approved',
+             'entryDate': '2021-03-01'}]),
+        _line(222, 'Renewal', '2022-05-01', [
+            {'actionId': 3, 'actionType': 'Renewal', 'actionStatus': 'Approved',
+             'entryDate': '2022-05-01'},
+            {'actionId': 4, 'actionType': 'Extension', 'actionStatus': 'Submitted',
+             'entryDate': '2024-12-23'}]),
+    ]
+
+
+class TestRequestFamily:
+    """Grouping a project's request lines into one allocation-lifecycle tree."""
+
+    def test_two_lines_group_into_one_family(self):
+        fam = request_family(_new_and_renewal())
+        assert fam['request_number'] == 'EXAM0001'
+        assert [r['request_id'] for r in fam['requests']] == [111, 222]  # New first
+        assert fam['new_request_id'] == 111
+
+    def test_the_timeline_flattens_actions_date_ordered(self):
+        from datetime import date
+        fam = request_family(_new_and_renewal())
+        assert [a['action_id'] for a in fam['timeline']] == [1, 2, 3, 4]
+        assert fam['timeline'][-1]['entry_date'] == date(2024, 12, 23)
+        # every timeline action carries its parent line id
+        assert {a['request_id'] for a in fam['timeline']} == {111, 222}
+
+    def test_activity_date_is_the_max_across_the_family(self):
+        from datetime import date
+        # The Extension is years after the New — the family's recency is the max.
+        assert request_family(_new_and_renewal())['activity_date'] == date(2024, 12, 23)
+
+    def test_span_is_earliest_begin_to_latest_end(self):
+        from datetime import date
+        fam = request_family(_new_and_renewal())
+        assert fam['begin_date'] == date(2020, 1, 1)
+        assert fam['end_date'] == date(2024, 12, 31)
+
+    def test_new_renewal_comes_off_the_wire(self):
+        fam = request_family(_new_and_renewal())
+        by_id = {r['request_id']: r['request_type'] for r in fam['requests']}
+        assert (by_id[111], by_id[222]) == ('New', 'Renewal')
+
+    def test_earliest_begin_is_the_new_fallback(self):
+        # No line claims New -> the earliest-begin line becomes it.
+        lines = _new_and_renewal()
+        for ln in lines:
+            ln['requestType'] = 'Renewal'
+        fam = request_family(lines)
+        assert fam['new_request_id'] == 111       # the 2020 line
+        assert fam['requests'][0]['request_id'] == 111
+
+    def test_a_bare_dict_is_accepted_as_a_family_of_one(self):
+        fam = request_family(_new_and_renewal()[0])
+        assert [r['request_id'] for r in fam['requests']] == [111]
+        assert fam['new_request_id'] == 111
+
+    def test_a_malformed_input_is_none(self):
+        assert request_family('not a list') is None
+        assert request_family(None) is None
+        assert request_family([]) is None
+        assert request_family([{'requestNumber': None}]) is None  # unusable line
 
 
 def _verdict(status, *, push_state='pending'):
