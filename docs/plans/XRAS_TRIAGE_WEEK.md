@@ -1,0 +1,172 @@
+# XRAS Cutover Triage Week
+
+**Status: ACTIVE.** Written 2026-08-24, the day of the #433 cutover — XRAS
+repoints `sam.ucar.edu` → `sam.hpc.ucar.edu` and the incoming path becomes
+live production traffic. This is the operating manual for the week: the
+deploy loop, the watch, and the expected-failure inventory that separates
+known failures from novel ones. Branch: `xras_incoming_triage` (this doc is
+its first commit); the living PR vs `staging` tracks the week's work.
+
+Prior art this doc leans on rather than repeats:
+`docs/xras/incoming/XRAS_CUTOVER_RUNBOOK.md` (the cutover checklist),
+`docs/xras/incoming/XRAS_TRIAGE_PLAYBOOK.md` (per-failure recipes), and
+`docs/plans/XRAS_DATA_MODEL_UPLIFT.md` (what PR #479 changed and why). The
+first two predate #479 — deltas are noted here, not rewritten there.
+
+## Repoint ordering (the sequencing that matters)
+
+1. ✅ PR #479 merged to staging (2026-08-24).
+2. ✅ `xras_action_log` DDL applied to prod (`request_id` + index,
+   `warnings` utf8mb4) — old code + new columns is safe; new code + old
+   columns is not, which is why DDL preceded everything.
+3. ⬜ Staging → main promotion PR.
+4. ⬜ Prod deploy — the push to main auto-triggers
+   `build-images-cirrus-deploy`; verify the new `sha-*` tag is what nwc1
+   serves (`scripts/cirrus_healthcheck.sh` prints it).
+5. ⬜ THEN the XRAS repoint. If XRAS repoints before step 4, the 11
+   numberless-grant actions in the current cohort bounce as false 422s —
+   the exact class #479 commit 1 removes.
+
+## The living-PR loop (rapid deploys)
+
+Work lands on `xras_incoming_triage`; the living PR vs staging stays open
+all week. Deploying the branch to CIRRUS does NOT wait for a merge:
+
+```bash
+git push                                     # branch to origin
+gh workflow run build-images-cirrus-deploy.yaml --ref xras_incoming_triage
+gh run watch                                 # or gh run list --limit 1
+scripts/cirrus_healthcheck.sh                # post-deploy gate
+sam-admin cache --refresh                    # if cached fragments changed
+```
+
+What the dispatch does: builds the webapp image from the named ref, pins
+`ghcr.io/.../webapp:sha-<short>` into `helm/values.yaml`, and force-pushes
+the locked `cirrus` branch as the deploy App (a concurrency group
+serializes racing deploys — a second dispatch queues, never races).
+
+Rules of the loop:
+
+- **Small batches to staging.** A fix that sits on the branch all day
+  protects nobody once prod is back on a main-built image. Merge the living
+  PR's contents into staging in reviewed chunks; after each merge, rebase
+  `xras_incoming_triage` on staging and force-push (the PR follows).
+- **While a branch-built image serves prod, prod runs code staging does not
+  have.** The living PR body says which sha is deployed; update it when
+  dispatching.
+- **Never write a CI-skip token in prose** in commits, the PR title, or the
+  PR body — GitHub scans the whole squash message, and this PR's body will
+  eventually be one (the #406/#408 incidents). Break the string if the
+  convention must be discussed.
+- `gh pr checks` right after a push reporting nothing is the race, not a
+  skip. Wait and re-ask.
+
+## First-hour watch
+
+- **Rows arriving:** `sam-admin xras --last 1h` (and `--summary`), or the
+  Allocations → XRAS tab. Read-only against prod from a workstation:
+
+  ```bash
+  set -a; source .env; set +a
+  export SAM_DB_USERNAME="$PROD_SAM_DB_USERNAME" \
+         SAM_DB_SERVER="$PROD_SAM_DB_SERVER" \
+         SAM_DB_PASSWORD="$PROD_SAM_DB_PASSWORD"
+  sam-admin xras --last 1h
+  ```
+
+- **Live log follow** (webapp pods; every XRAS line is prefixed `XRAS `):
+
+  ```bash
+  kubectl logs -n sam-queries -l app=samuel -f --all-containers=true \
+      --prefix | grep --line-buffered 'XRAS '
+  ```
+
+  The tasks pods are a DIFFERENT selector (`-l app=samuel-tasks`) — the
+  hourly `xras_sweep` logs live there, not under `app=samuel`.
+
+- **Log-access caveats** (from the `cirrus_healthcheck.sh` review): its
+  section 10 greps only `ERROR|CRITICAL|Exception|Traceback`, and every
+  XRAS operational line — "parked for a human", "completed with N
+  warning(s)", "panels[] disagreement" — is WARNING/INFO level, invisible
+  to it. The healthcheck is the health gate, not the XRAS watch. Pod logs
+  are also ephemeral across rollouts; the durable record is the
+  `xras_action_log` row, which since #479 carries `warnings` and
+  `request_id` — so triage from the table, tail logs only for live color.
+
+- **Health endpoint + edge:** the healthcheck script covers both; run it
+  once after each deploy.
+
+## Expected-failure inventory (measured 2026-08-24)
+
+Sweep-replica preflight over the live cohort: **366 candidate actions in
+the 120-day window → 324 would succeed, 15 would fail, 4 park, 23
+incomplete**. A cutover failure NOT on this list is the interesting kind;
+one that IS on it is pre-triaged, not news.
+
+| Request | Action | Service | Expected failure |
+|---|---|---|---|
+| NCAR4279 | New#393444 | add | PI `cgriffin-user-fu8sr` not in database / username missing / no affiliation |
+| NCAR4275 | New#393140 | add | Username `dlowry-user-spe13` missing |
+| NCAR4261 | New#392319 | add | PI `ggeogdzhayev-user-7016v` not in database (its grant warning cleared in #479 and revealed this) |
+| NCAR4262 | New#392007 | add | PI `glarouche-user-cj2nx` not in database |
+| NCAR4252 | New#390940 | add | PI `sseyedzadeh-user-a85do` + AM `akhosronejad-user-sc52a` not in database |
+| NCAR4212 | New#386948 | add | Contract `PRJ013992 BWI` unmatched (real number, leading zero — needs a contract row or review) |
+| NCAR4231 | New#386569 | add | Contract `2423211` unmatched (same class) |
+| UMMM0016 | New#383236 | update | Action end date before existing allocation end date (Casper GPU, Derecho GPU, …) |
+| UNEB0017 | New#382870 | update | PI/AM `rdixon` inactive |
+| UCOR0102 | New#382231 | update | Action end date before existing allocation end date (Campaign_Store) |
+| UNOA0010 | New#379534 | update | Ambiguous Allocation Manager: `bwolding`, `hjimenez` |
+| UJHB0034 | New#379039 | update | Ambiguous Allocation Manager: `jlundqui`, `yuan` |
+| UCSU0136 | Ext#378879 | extend | End date before existing allocation end (2027-01-31) |
+| UMCP0014 | Ext#384480 | extend | End date before existing allocation end (2027-09-30) |
+| UCUB0160 | Adj#382993 | adjust | −500,000 Derecho GPU would take the allocation below zero |
+
+Parks (4): Transfer for UCNN0063 (deliberately unserviced) + the unsampled
+action types (`Advance`, `Date Adjustment`) if any arrive. The
+missing-user rows are the Pending-Users worklist's job
+(`sam-admin xras --accounts`); the two contract numbers need either a
+`contract` row or a human verdict that they are not contracts.
+
+## What #479 changed vs legacy (what an XRAS admin may notice)
+
+- A `grants[]` entry with an empty or digit-free number **applies with a
+  recorded warning** instead of bouncing 422 (`Cannot find contract for
+  grant number "" ("")` is gone for that class; real-but-unmatched numbers
+  still fail loudly).
+- Two spellings of one contract (`2146709` / `AGS-2146709`) link once
+  instead of raising a mid-transaction 500.
+- Every audit row now records `request_id` (the request-line identity) and
+  `warnings` (non-fatal facts: unlinkable grant, unflagged-primary fos
+  fallback, roster disagreements) — visible in the action-details modal,
+  `sam-admin xras --show N`, and JSON.
+- Ended roles are excluded from the Pending-Users worklist and badged in
+  the request modal; the worklist renders person detail from the payload
+  with no XRAS lookups.
+- `panels[]` can add a panel authorization the opportunityName ladder
+  missed (never withdraws one); disagreements are logged.
+
+## Tooling inventory
+
+- `sam-admin xras` — `--last/--status/--type/--request` (list),
+  `--show N --payload` (detail incl. warnings), `--recheck N` (would it
+  succeed now; applies nothing), `--summary`, `--accounts [--enrich]`
+  (Pending-Users worklist), `--readiness` (sweep snapshot board),
+  `--mnemonic-report`, `--family PROJCODE`, `--person USERNAME`,
+  `--validate-mapping`, `--validate-opportunities`,
+  `--validate-vocabulary` (new: the hardcoded role/panel constants vs live
+  XRAS + DB).
+- The XRAS tab (Allocations dashboard): action log with filters, details
+  modal (errors + warnings), Replay; the Remediations and Pending-Users
+  cards.
+- `scripts/cirrus_healthcheck.sh` — post-deploy gate (see log caveats
+  above).
+- Escalation: XRAS/ACCESS contact is hdt@ucar.edu (Travis Fair / Haris
+  Brka); POSTs are human-triggered in xras_admin and never auto-retried,
+  so a 422's body is read by a person and a re-post is a human decision.
+
+## End-of-week close-out
+
+When traffic is boring: fold anything durable from this doc into the
+runbook/playbook, close the living PR (contents long since merged), and
+decide Track B (`docs/plans/XRAS_DATA_MODEL_UPLIFT.md`, outgoing fixes)
+scheduling.
