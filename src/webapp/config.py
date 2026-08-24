@@ -47,6 +47,11 @@ class SAMWebappConfig(SAMConfig):
     # env var explicitly either way.
     FLASK_ADMIN_ENABLED = os.getenv('FLASK_ADMIN_ENABLED', '1').lower() in ('1', 'true', 'yes')
 
+    # Dev-only component gallery (/dev/gallery). When off, the blueprint is not
+    # mounted. ProductionConfig flips the default OFF so the public deploy never
+    # serves it — same idiom and posture as FLASK_ADMIN_ENABLED above.
+    COMPONENT_GALLERY_ENABLED = os.getenv('COMPONENT_GALLERY_ENABLED', '1').lower() in ('1', 'true', 'yes')
+
     # Create Project workflow. When off, the modal still renders with all inputs
     # editable but its submit button is replaced with a disabled indicator, and
     # the create POST route 403s. Lets ops temporarily freeze project creation.
@@ -276,6 +281,10 @@ class ProductionConfig(SAMWebappConfig):
     # Default OFF in production — the public deploy doesn't mount /database;
     # full-CRUD admin stays available locally (webdev/webapp compose).
     FLASK_ADMIN_ENABLED = os.getenv('FLASK_ADMIN_ENABLED', '0').lower() in ('1', 'true', 'yes')
+
+    # Default OFF in production — the dev-only component gallery is never mounted
+    # on the public deploy.
+    COMPONENT_GALLERY_ENABLED = os.getenv('COMPONENT_GALLERY_ENABLED', '0').lower() in ('1', 'true', 'yes')
 
     @classmethod
     def validate(cls):

@@ -41,6 +41,7 @@ from webapp.dashboards.admin import bp as admin_dashboard_bp
 from webapp.dashboards.status import bp as status_dashboard_bp
 from webapp.dashboards.allocations import bp as allocations_dashboard_bp
 from webapp.dashboards.project_members import bp as project_members_bp
+from webapp.dashboards.gallery import bp as component_gallery_bp
 from webapp.auth.models import AuthUser
 from webapp.utils.rbac import rbac_context_processor
 from sam.core.users import User
@@ -402,6 +403,10 @@ def create_app(*, config_overrides: dict | None = None):
     app.register_blueprint(project_members_bp)
     app.register_blueprint(jobs_bp, url_prefix='/dashboards/user/jobs')
     app.register_blueprint(disk_scans_bp, url_prefix='/dashboards/user/disk-scans')
+    # Dev-only component gallery (kill-switch: OFF by default in production —
+    # never mounted on the public deploy), mirroring the init_admin gate below.
+    if app.config.get('COMPONENT_GALLERY_ENABLED', False):
+        app.register_blueprint(component_gallery_bp)
     # NOTE: admin_bp blueprint removed - Flask-Admin handles /database routing
     # app.register_blueprint(admin_bp, url_prefix='/database')
 
