@@ -25,13 +25,16 @@ class TestEnvironmentSeam:
         left this test asserting a default it was not actually isolating.
         """
         for name in ('NOTIFY_ENABLED', 'NOTIFY_TRANSPORT',
-                     'NOTIFY_REDIRECT_TO', 'NOTIFY_BCC'):
+                     'NOTIFY_REDIRECT_TO', 'NOTIFY_BCC', 'NOTIFY_XRAS_CC',
+                     'NOTIFY_XRAS_BCC', 'NOTIFY_XRAS_FROM',
+                     'NOTIFY_XRAS_REPLY_TO'):
             monkeypatch.delenv(name, raising=False)
         cfg = NotifyConfig.from_environment()
         assert cfg.enabled is False
         assert cfg.transport == 'smtp'
         assert cfg.redirect_to == ''
         assert cfg.bcc == ''
+        assert cfg.addressing('xras').is_empty
 
     @pytest.mark.parametrize('value', ['1', 'true', 'TRUE', 'yes', 'on'])
     def test_enabled_accepts_the_usual_truthy_spellings(self, monkeypatch, value):
@@ -104,6 +107,39 @@ class TestDerivedValues:
     def test_no_bcc_is_an_empty_list_not_a_blank_address(self, monkeypatch):
         monkeypatch.delenv('NOTIFY_BCC', raising=False)
         assert NotifyConfig.from_environment().bcc_addresses == []
+
+    def test_family_addressing_reads_the_family_keys(self, monkeypatch):
+        monkeypatch.setenv('NOTIFY_XRAS_CC', ' alloc@x.edu ,, ')
+        monkeypatch.setenv('NOTIFY_XRAS_BCC', 'a@x.edu, b@x.edu')
+        monkeypatch.setenv('NOTIFY_XRAS_REPLY_TO', 'alloc@x.edu')
+        addressing = NotifyConfig.from_environment().addressing('xras')
+        assert addressing.cc == ('alloc@x.edu',)
+        assert addressing.bcc == ('a@x.edu', 'b@x.edu')
+        assert (addressing.sender, addressing.reply_to) == (None, 'alloc@x.edu')
+
+    def test_a_family_with_nothing_set_is_empty(self, monkeypatch):
+        for name in ('NOTIFY_EXPIRATION_CC', 'NOTIFY_EXPIRATION_BCC',
+                     'NOTIFY_EXPIRATION_FROM', 'NOTIFY_EXPIRATION_REPLY_TO'):
+            monkeypatch.delenv(name, raising=False)
+        assert NotifyConfig.from_environment().addressing('expiration').is_empty
+        assert NotifyConfig.from_environment().addressing('').is_empty
+
+    def test_the_summary_lists_only_families_with_something_set(self, monkeypatch):
+        from sam.notify.kinds import families
+        for family in families():
+            for suffix in ('CC', 'BCC', 'FROM', 'REPLY_TO'):
+                monkeypatch.delenv(f'NOTIFY_{family.upper()}_{suffix}', raising=False)
+        monkeypatch.setenv('NOTIFY_XRAS_CC', 'alloc@x.edu')
+        assert NotifyConfig.from_environment().summary()['addressing'] == {
+            'xras': {'cc': 'alloc@x.edu', 'bcc': None, 'from': None,
+                     'reply_to': None}}
+
+    def test_every_kind_declares_an_env_safe_family(self):
+        import re
+        from sam.notify.kinds import NOTIFICATION_KINDS, families
+        for kind in NOTIFICATION_KINDS.values():
+            assert re.fullmatch(r'[a-z][a-z_]*', kind.family), kind.key
+        assert families() == ('expiration', 'task', 'xras')
 
     def test_resolve_recipient_is_identity_without_a_redirect(self):
         cfg = NotifyConfig()

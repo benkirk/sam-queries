@@ -281,9 +281,22 @@ class Notifier:
         )
 
     # --------------------------------------------------------------- deliver
+    def _addressed(self, message: Message) -> Message:
+        """Fill empty cc/bcc/sender/reply_to from the kind's family config."""
+        addressing = self.config.addressing(get_kind(message.kind).family)
+        if addressing.is_empty:
+            return message
+        return replace(
+            message,
+            cc=message.cc or addressing.cc,
+            bcc=message.bcc or addressing.bcc,
+            sender=message.sender or addressing.sender,
+            reply_to=message.reply_to or addressing.reply_to,
+        )
+
     def _deliver_one(self, message: Message,
                      transport: Transport) -> DeliveryResult:
-        outgoing = self._redirected(message)
+        outgoing = self._addressed(self._redirected(message))
 
         try:
             rendered = self.renderer.render(outgoing)

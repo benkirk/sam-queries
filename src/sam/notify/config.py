@@ -59,6 +59,29 @@ def _config_int(key: str, default: int) -> int:
 
 
 @dataclass(frozen=True)
+class Addressing:
+    """Per-family extra addressing, from ``NOTIFY_<FAMILY>_{CC,BCC,FROM,REPLY_TO}``."""
+
+    cc: tuple[str, ...] = ()
+    bcc: tuple[str, ...] = ()
+    sender: Optional[str] = None
+    reply_to: Optional[str] = None
+
+    @property
+    def is_empty(self) -> bool:
+        return not (self.cc or self.bcc or self.sender or self.reply_to)
+
+    def as_dict(self) -> dict:
+        return {'cc': ', '.join(self.cc) or None,
+                'bcc': ', '.join(self.bcc) or None,
+                'from': self.sender, 'reply_to': self.reply_to}
+
+
+def _split(value: str) -> tuple[str, ...]:
+    return tuple(a.strip() for a in value.split(',') if a.strip())
+
+
+@dataclass(frozen=True)
 class NotifyConfig:
     """A snapshot of notification config, resolved at construction.
 
@@ -121,6 +144,34 @@ class NotifyConfig:
         """``NOTIFY_BCC`` as a list — it accepts a comma-separated string."""
         return [a.strip() for a in self.bcc.split(',') if a.strip()]
 
+    @staticmethod
+    def addressing(family: str) -> Addressing:
+        """The family's extra addressing, read live so the CLI and webapp agree.
+
+        The ``Notifier`` fills a ``Message``'s empty ``cc``/``bcc``/``sender``/
+        ``reply_to`` from this; a builder-set value wins. ``family`` comes from
+        ``NotificationKind.family``; an empty one has no addressing.
+        """
+        if not family:
+            return Addressing()
+        prefix = f'NOTIFY_{family.upper()}_'
+        return Addressing(
+            cc=_split(_config_str(prefix + 'CC', '')),
+            bcc=_split(_config_str(prefix + 'BCC', '')),
+            sender=_config_str(prefix + 'FROM', '') or None,
+            reply_to=_config_str(prefix + 'REPLY_TO', '') or None,
+        )
+
+    def addressing_summary(self) -> dict:
+        """``{family: Addressing.as_dict()}`` for every family with anything set."""
+        from sam.notify.kinds import families     # kinds imports base only; no cycle
+        out = {}
+        for family in families():
+            addressing = self.addressing(family)
+            if not addressing.is_empty:
+                out[family] = addressing.as_dict()
+        return out
+
     @property
     def is_redirecting(self) -> bool:
         return bool(self.redirect_to)
@@ -135,6 +186,7 @@ class NotifyConfig:
             'mail_from': self.mail_from,
             'redirect_to': self.redirect_to or None,
             'bcc': ', '.join(self.bcc_addresses) or None,
+            'addressing': self.addressing_summary(),
             'timeout': self.mail_timeout,
         }
 

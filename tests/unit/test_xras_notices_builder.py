@@ -129,6 +129,27 @@ def _built(session, project, *, service, action_type, payload=None,
     return action, messages
 
 
+class TestSharedMailboxCopies:
+    """Addressing is the Notifier's job (NOTIFY_<FAMILY>_*), not the builder's."""
+
+    def test_the_builder_sets_no_addressing_even_when_configured(
+            self, session, project, monkeypatch):
+        monkeypatch.setenv('NOTIFY_XRAS_CC', 'alloc@example.edu')
+        monkeypatch.setenv('NOTIFY_XRAS_FROM', 'alloc@example.edu')
+        _, messages = _built(session, project, service='extend',
+                             action_type='Extension')
+        msg = messages[0]
+        assert (msg.cc, msg.bcc, msg.sender, msg.reply_to) == ((), (), None, None)
+
+    def test_the_dedup_key_ignores_the_copies(self, session, project, monkeypatch):
+        monkeypatch.setenv('NOTIFY_XRAS_CC', 'alloc@example.edu')
+        action, messages = _built(session, project, service='extend',
+                                  action_type='Extension')
+        assert messages[0].dedup_key == xras_dedup_key(
+            'xras_extension', project.projcode, action.xras_action_log_id,
+            'pi@example.edu')
+
+
 class TestOneMessagePerRecipient:
 
     def test_the_dedup_key_is_the_one_the_card_reads_back(self, session, project):
