@@ -175,6 +175,10 @@ def actions_from_payload(payload: Dict[str, Any],
             'can_resubmit': status == DRAFT_ACTION_STATUS,
             'preflight': (preflights or {}).get(action.get('actionId')),
         })
+    # Chronological by action_id — XRAS's true sequence. Date-only ties lose
+    # order (two same-day actions differ only by id/time), and the payload
+    # arrives newest-first.
+    rows.sort(key=lambda r: r['action_id'])
     return rows
 
 
@@ -305,18 +309,77 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
     }
 
 
+def request_family(payloads: Any, *, pending_push: bool = False
+                   ) -> Optional[Dict[str, Any]]:
+    """Group a project's request lines into one allocation-lifecycle tree.
+
+    ``payloads``: what ``reports/request_numbers/<n>`` returns — a list of request
+    dicts sharing one ``requestNumber`` (a New line plus any later Renewals, each
+    with its own ``requestId`` and ``actions[]``); a bare dict is accepted too.
+    ``timeline`` flattens every action across every line, date-ordered. ``None``
+    when nothing usable is present.
+    """
+    if isinstance(payloads, dict):
+        payloads = [payloads]
+    if not isinstance(payloads, (list, tuple)):
+        return None
+    lines = [e for e in (request_index_entry(p, pending_push=pending_push)
+                         for p in payloads if isinstance(p, dict)) if e]
+    if not lines:
+        return None
+
+    # New/Renewal comes off the wire; when no line claims New, the earliest-begin
+    # line is it (the same rule the inbound accounting API derives by hand).
+    if not any((ln.get('request_type') or '').lower() == 'new' for ln in lines):
+        min(lines, key=lambda ln: ln.get('begin_date')
+            or date.max)['request_type'] = 'New'
+    lines.sort(key=lambda ln: (0 if (ln.get('request_type') or '').lower() == 'new'
+                               else 1, ln.get('begin_date') or date.max))
+
+    timeline: List[Dict[str, Any]] = []
+    for line in lines:
+        for action in line['actions']:
+            timeline.append({**action, 'request_id': line['request_id'],
+                             'request_type': line['request_type']})
+    # By action_id — XRAS's true sequence; date-only ties lose intra-day order.
+    timeline.sort(key=lambda a: a['action_id'])
+
+    activity = [ln['activity_date'] for ln in lines if ln.get('activity_date')]
+    begins = [ln['begin_date'] for ln in lines if ln.get('begin_date')]
+    ends = [ln['end_date'] for ln in lines if ln.get('end_date')]
+    new_line = next((ln for ln in lines
+                     if (ln.get('request_type') or '').lower() == 'new'), None)
+    return {
+        'request_number': lines[0]['request_number'],
+        'pending_push': bool(pending_push),
+        'requests': lines,
+        'timeline': timeline,
+        # Most-recent activity across the WHOLE family — a supplement/extension is
+        # usually a year after the New, so this is the date the card sorts on.
+        'activity_date': max(activity) if activity else None,
+        'begin_date': min(begins) if begins else None,
+        'end_date': max(ends) if ends else None,
+        'new_request_id': new_line['request_id'] if new_line else None,
+        'pi': (new_line or lines[0])['pi'],
+    }
+
+
 def person_roles_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Flatten a ``reports/username/<username>`` payload to role-labeled rows.
+    """Group a ``reports/username/<username>`` payload by role, then by project.
 
-    The feed groups a person's requests by role name
-    (``{requestRoles: [{roleName, requests[]}]}``); this preserves that
-    grouping and keeps only what the XRAS User modal renders — a request is a
-    link to the Request modal plus a few identifying fields. Deliberately
-    **no ``requestStatus``**: this feed does not carry one (probed 2026-08-22),
-    and the modal keys each row to the Request modal by number for live state.
+    The feed lists a person's requests grouped by role name
+    (``{requestRoles: [{roleName, requests[]}]}``), one entry **per action** — so a
+    project with a New and several supplements/extensions repeats. This collapses
+    each role's entries to one ``project`` per ``requestNumber`` (projcode shown
+    once, with its title) carrying the list of ``actions``. Each action keeps its
+    period-of-performance dates (``begin_date``/``end_date``) distinct from its
+    ``activity_date`` (``updateDate`` — when it was last touched, the feed's only
+    recency signal; there is no submit/entry date here).
 
-    A group with no usable request, and a request with no ``requestNumber``
-    (the modal's only link key), is dropped — the same "cost the row, not the
+    Deliberately **no ``requestStatus``**: the feed carries none (probed
+    2026-08-22); the modal keys each project to the Request modal by number for
+    live state. A group with no usable request, and a request with no
+    ``requestNumber`` (the only link key), is dropped — the "cost the row, not the
     view" rule the sweep's :func:`request_index_entry` follows.
     """
     groups: List[Dict[str, Any]] = []
@@ -325,32 +388,45 @@ def person_roles_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     for group in payload.get('requestRoles') or ():
         if not isinstance(group, dict):
             continue
-        rows: List[Dict[str, Any]] = []
+        projects: Dict[str, Dict[str, Any]] = {}
+        order: List[str] = []
         for req in group.get('requests') or ():
             if not isinstance(req, dict):
                 continue
             number = _text(req.get('requestNumber'))
             if not number:
                 continue
-            rows.append({
-                'request_number': number,
-                # The feed spells it both ways; take either.
+            proj = projects.get(number)
+            if proj is None:
+                proj = projects[number] = {
+                    'request_number': number,
+                    'title': _text(req.get('requestTitle')),
+                    'allocation_type': _text(req.get('allocationType')),
+                    'opportunity': _text(req.get('opportunity')),
+                    'pi': _text(req.get('pi')),
+                    'pi_username': _text(req.get('piUsername')),
+                    'actions': [],
+                }
+                order.append(number)
+            proj['actions'].append({
+                # The feed spells the id both ways; take either.
                 'request_id': req.get('requestId') or req.get('requestID'),
-                'title': _text(req.get('requestTitle')),
                 'action_type': _text(req.get('actionType')),
-                'allocation_type': _text(req.get('allocationType')),
-                'opportunity': _text(req.get('opportunity')),
-                # When the request was last touched — this feed's recency signal
-                # (it carries no submit/entry date), so the modal's request list
-                # can be read newest-activity-first like the card.
-                'activity_date': _as_date(req.get('updateDate')),
                 'begin_date': _as_date(req.get('beginDate')),
                 'end_date': _as_date(req.get('endDate')),
-                'pi': _text(req.get('pi')),
-                'pi_username': _text(req.get('piUsername')),
+                'activity_date': _as_date(req.get('updateDate')),
             })
-        if rows:
-            rows.sort(key=lambda r: r.get('activity_date') or date.min, reverse=True)
-            groups.append({'role_name': _text(group.get('roleName')),
-                           'requests': rows})
+        if not order:
+            continue
+        for number in order:
+            proj = projects[number]
+            # Actions oldest-first (newest at the bottom), like the request modal;
+            # the project's recency is therefore its last action.
+            proj['actions'].sort(key=lambda a: a.get('activity_date') or date.min)
+            proj['activity_date'] = proj['actions'][-1].get('activity_date')
+        groups.append({
+            'role_name': _text(group.get('roleName')),
+            'projects': sorted(
+                (projects[n] for n in order),
+                key=lambda p: p.get('activity_date') or date.min, reverse=True)})
     return groups
