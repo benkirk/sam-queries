@@ -32,6 +32,7 @@ import pytest
 from factories import make_user
 
 from sam.queries.xras_accounts import (
+    PERSON_FIELDS,
     ActionRef,
     PendingFeed,
     RosterRecord,
@@ -271,6 +272,25 @@ class TestFeedA:
         assert entry['actions'][0]['request_number'] == 'NCAR4227'
         assert entry['actions'][0]['source'] == 'action_log'
 
+    def test_the_inline_person_makes_feed_a_need_no_lookup(
+            self, session, no_committed_placeholder):
+        """The POST body carried ``roles[].person`` all along; the worklist
+        reads it instead of paying a ``GET /v1/people`` per row. A lookup
+        that would raise proves none is attempted."""
+        self._log_row(session, PLACEHOLDER_FIXTURE, action_type='New',
+                      request_number='NCAR4227')
+        rows = classify_accounts(
+            session, records_from_action_log(session, validate=False))
+        target = next(r for r in rows if r['username'] == PLACEHOLDER_USERNAME)
+        assert target['person'], 'person did not arrive from the payload'
+        assert set(target['person']) <= set(PERSON_FIELDS)
+
+        def boom(_username):
+            raise AssertionError('lookup attempted despite the inline person')
+
+        report = enrich_worklist(rows, person_lookup=boom)
+        assert report['looked_up'] == 0
+
     def test_statuses_bound_which_rows_are_read(self, session):
         row = self._log_row(session, PLACEHOLDER_FIXTURE, status='processed')
         ids = {r.ref.action_log_id for r in records_from_action_log(
@@ -399,6 +419,33 @@ class TestFeedB:
         # With no actions, it falls back rather than inventing one.
         assert records_from_report_requests(
             [REPORT_REQUEST])[0].ref.action_type == 'New'
+
+    def test_an_ended_role_window_excludes_the_person(self, session):
+        """A person whose every role is dated out of range needs no account —
+        the window rule the inbound roster already applies (the
+        placeholder34 case in docs/xras/outgoing/XRAS_OUTGOING_QUERIES.md)."""
+        entry = dict(REPORT_REQUEST['roles'][0])
+        entry['roles'] = [dict(entry['roles'][0], endDate='2026-07-28')]
+        payload = dict(REPORT_REQUEST, roles=[entry])
+        assert records_from_report_requests([payload]) == []
+
+    def test_a_surviving_role_keeps_the_person_and_drops_the_ended_one(
+            self, session):
+        entry = dict(REPORT_REQUEST['roles'][0])
+        entry['roles'] = [
+            dict(entry['roles'][0], role='User', roleTypeId=19,
+                 endDate='2026-07-28'),
+            dict(entry['roles'][0], roleId=2),
+        ]
+        records = records_from_report_requests([dict(REPORT_REQUEST,
+                                                     roles=[entry])])
+        assert records[0].roles_by_username['ghost-user-77777'] == ('PI',)
+
+    def test_a_future_dated_role_is_not_yet_in_window(self, session):
+        entry = dict(REPORT_REQUEST['roles'][0])
+        entry['roles'] = [dict(entry['roles'][0], beginDate='2126-01-01')]
+        assert records_from_report_requests(
+            [dict(REPORT_REQUEST, roles=[entry])]) == []
 
     def test_both_feeds_reach_the_same_classifier_identically(self, session):
         """The feed-agnostic proof."""

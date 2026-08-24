@@ -369,6 +369,16 @@ Three pieces of evidence, and they point the same way:
 If triage week shows operators reaching for it, `outcome_reason` above is a reasonable
 home for a rendered summary and costs nothing extra at that point.
 
+**REVERSED 2026-08-24** (`docs/plans/XRAS_DATA_MODEL_UPLIFT.md` Track A): two of the
+three legs fell. Warnings are now rendered sentences, not bare usernames — the
+incoming-hardening series added the unlinkable-grant and unflagged-primary-fos
+warnings — and the observed-instances count went from zero to 11 requests in the live
+readiness cohort that will emit the grant warning on their real POST at cutover.
+`warnings TEXT CHARACTER SET utf8mb4 NULL` shipped in the same DDL trip as
+`request_id` (utf8mb4 because grant titles are user free text); `_finish` writes it
+through the same message-boundary bounding as `error_messages` on the processed,
+manual, and rechecked arms. `error_messages` stays the untouched 422 wire contract.
+
 ### ➖ `raw_payload` / `error_messages` — **no schema change**, fixed in code
 
 Both were unbounded into `TEXT` (65,535 bytes). Under `STRICT_TRANS_TABLES` — confirmed

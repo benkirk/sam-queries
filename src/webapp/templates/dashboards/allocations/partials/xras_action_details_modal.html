@@ -138,6 +138,19 @@
     </div>
     {% endif %}
 
+    {% if r.warnings %}
+    <div class="stat-item stat-item-block">
+        <span class="stat-label d-block mb-1">
+            Warnings ({{ r.warnings | length }}) — non-fatal; the action was applied:
+        </span>
+        <ol class="stat-value mb-0 ps-3 small" style="font-weight:normal;">
+            {% for w in r.warnings %}
+            <li><code>{{ w }}</code></li>
+            {% endfor %}
+        </ol>
+    </div>
+    {% endif %}
+
     {% if may_see_payload %}
     <div class="stat-item stat-item-block">
         <span class="stat-label d-block mb-1">

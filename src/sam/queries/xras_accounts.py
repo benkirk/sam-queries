@@ -162,7 +162,8 @@ def is_placeholder(username: str) -> bool:
 
 def _roster_from_action(action) -> Tuple[Tuple[str, ...],
                                          Dict[str, List[str]],
-                                         Dict[str, bool]]:
+                                         Dict[str, bool],
+                                         Dict[str, dict]]:
     """Usernames and roles from a loaded action, via the structured helpers.
 
     Uses ``sam.xras.roster`` rather than parsing the error strings in
@@ -203,12 +204,22 @@ def _roster_from_action(action) -> Tuple[Tuple[str, ...],
             roles[username] = [USER_ROLE]
 
     flags: Dict[str, bool] = {}
+    people: Dict[str, dict] = {}
     for role in get_field(action, 'roles') or ():
         username = normalize_username(get_field(role, 'username'))
-        if username and get_field(role, 'isAccountToBeCreated'):
+        if not username:
+            continue
+        if get_field(role, 'isAccountToBeCreated'):
             flags[username] = True
+        # The POST body carries the person inline (8 of the 10 PERSON_FIELDS;
+        # only residenceCountry and orcid are absent from the inbound wire).
+        # Keeping it here is what lets the worklist render person detail with
+        # NO outbound round trip — and no 25-lookup budget cliff.
+        person = get_field(role, 'person')
+        if isinstance(person, dict) and username not in people:
+            people[username] = person
 
-    return tuple(ordered), roles, flags
+    return tuple(ordered), roles, flags, people
 
 
 def records_from_action_log(session: Session, *,
@@ -260,7 +271,7 @@ def records_from_action_log(session: Session, *,
                          row.xras_action_log_id, exc)
             continue
 
-        usernames, roles, flags = _roster_from_action(action)
+        usernames, roles, flags, people = _roster_from_action(action)
         if not usernames:
             continue
 
@@ -281,7 +292,8 @@ def records_from_action_log(session: Session, *,
                           reject_messages=messages),
             usernames=usernames,
             roles_by_username={k: tuple(v) for k, v in roles.items()},
-            account_flag=flags))
+            account_flag=flags,
+            person_by_username=people))
     return records
 
 
@@ -350,6 +362,23 @@ def iter_roster_entries(
         yield person, roles
 
 
+def role_in_window(role: dict, *, on: Optional[str] = None) -> bool:
+    """Whether one ``roles[].roles[]`` entry is current on *on* (default today).
+
+    The inbound roster (``sam/xras/roster.py``) windows every role on its
+    dates against the action's begin date; these outbound worklist/roster
+    reads answer "who holds the role NOW", so the reference date is today
+    (naive-Mountain, the wire's calendar-date convention). Null dates are
+    open ends.
+    """
+    today = on or datetime.now().strftime('%Y-%m-%d')
+    begin = str(role.get('beginDate') or '')[:10]
+    end = str(role.get('endDate') or '')[:10]
+    if begin and begin > today:
+        return False
+    return not (end and end < today)
+
+
 def _report_action_type(payload: dict) -> Optional[str]:
     """The request's representative ``actionType`` — never ``requestType``.
 
@@ -385,10 +414,16 @@ def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]
             username = str(person.get('username') or '').strip()
             if not username:
                 continue
+            current = [r for r in role_entries if role_in_window(r)]
+            if role_entries and not current:
+                # Every role this person held is dated out of range: the role
+                # is over and the handoff does not need the account — the
+                # window rule the inbound roster already applies.
+                continue
             if username not in usernames:
                 usernames.append(username)
                 people[username] = person
-            for role in role_entries:
+            for role in current:
                 name = str(role.get('role') or '').strip()
                 if name and name not in roles.setdefault(username, []):
                     roles[username].append(name)

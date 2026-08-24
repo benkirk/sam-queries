@@ -613,8 +613,28 @@ class TestPostActionsCapture:
         assert row['status'] == 'received'
         assert row['action_type'] == expected['actionType']
         assert row['request_number'] == expected['requestNumber']
+        # The request-LINE identity; request_number names the whole family.
+        assert row['request_id'] == expected['requestId']
         assert row['remote_actor'] == 'samuel'
         assert row['error_messages'] is None
+
+    def test_warnings_persist_on_the_row(self, app, xras_client, action_log):
+        """Non-fatal facts land in the ``warnings`` column — the row is the
+        artifact that survives into triage week, not the pod log. (The
+        handlers producing them are covered at the unit tier; this is the
+        persistence seam.)"""
+        message = ('Supporting grant "Graduate Research Fellowship" [NSF] '
+                   'has no award number; no contract linked')
+        resp = xras_client.post(self.PATH, data=_payload(ACTION_FIXTURES[0]),
+                                content_type='application/json',
+                                headers=_auth())
+        assert resp.status_code == 200
+        log_id = action_log.one()['id']
+        with app.app_context():
+            actions._finish(log_id, status='processed', warnings=(message,))
+        row = action_log.one()
+        assert row['status'] == 'processed'
+        assert row['warnings'] == message
 
     def test_raw_payload_is_stored_verbatim(self, xras_client, action_log):
         """Byte-for-byte, before parsing — that is what makes a row replayable."""

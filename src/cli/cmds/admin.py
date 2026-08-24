@@ -678,6 +678,9 @@ def cache(ctx: Context, refresh: bool, category, base_url):
               help='[check] Report SAM resources XRAS cannot name (pre-cutover gate)')
 @click.option('--validate-opportunities', is_flag=True,
               help='[check] Report the opportunityId -> allocation-type map')
+@click.option('--validate-vocabulary', is_flag=True,
+              help='[check] Re-verify the hardcoded role-type/panel constants '
+                   'against XRAS and the DB')
 @click.option('--accounts', is_flag=True,
               help='[worklist] Accounts to create or reactivate before a handoff')
 @click.option('--readiness', is_flag=True,
@@ -705,7 +708,8 @@ def cache(ctx: Context, refresh: bool, category, base_url):
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
 @pass_context
 def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mapping,
-         validate_opportunities, accounts, readiness, mnemonic_report, enrich, person,
+         validate_opportunities, validate_vocabulary, accounts, readiness,
+         mnemonic_report, enrich, person,
          family, status, action_type, request_number, last, limit, verbose):
     """Inspect and re-check the XRAS action log.
 
@@ -727,6 +731,7 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
       --family P   a projcode's whole allocation lifecycle as a request tree
       --validate-mapping  which resources XRAS and SAM can name each other's
       --validate-opportunities  which XRAS opportunities resolve to a SAM type
+      --validate-vocabulary  the hardcoded role-type/panel constants vs live XRAS
 
     \b
     --recheck answers "would this succeed if XRAS posted it now?" It re-parses the
@@ -767,6 +772,7 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
       sam-admin xras --summary --last 30d
       sam-admin xras --validate-mapping
       sam-admin xras --validate-opportunities
+      sam-admin xras --validate-vocabulary
       sam-admin xras --accounts
       sam-admin xras --accounts --enrich --last 30d
       sam-admin xras --readiness
@@ -806,6 +812,7 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
         summary=summary,
         validate_mapping=validate_mapping,
         validate_opportunities=validate_opportunities,
+        validate_vocabulary=validate_vocabulary,
         accounts=accounts,
         readiness=readiness,
         mnemonic_report=mnemonic_report,
