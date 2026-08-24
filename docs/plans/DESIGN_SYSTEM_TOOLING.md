@@ -2,7 +2,8 @@
 
 > **Status.** Two deliverables. **Deliverable A (the `wire-dashboard-feature`
 > skill + a CLAUDE.md §9 modal rule) is DONE** and lives on branch
-> **`ux_gallery`**, opened as the initial PR vs `staging`. **Deliverable B (the
+> **`ux_gallery`**, opened as **PR #478** vs `staging`
+> (https://github.com/benkirk/sam-queries/pull/478). **Deliverable B (the
 > `/dev/gallery` component gallery) is the remaining work** — add it as further
 > commits on the **same branch `ux_gallery`** and push to the **same PR**.
 >
