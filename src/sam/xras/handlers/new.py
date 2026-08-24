@@ -100,7 +100,8 @@ class NewHandler(ActionHandler):
         self.mnemonic = resolve_mnemonic_code(
             self.session, self.action, self.errors,
             pi_username=self.roster.pi_username, pi=self.roster.pi)
-        self.contracts = plan_contracts(self.session, self.action, self.errors)
+        self.contracts, contract_warnings = plan_contracts(
+            self.session, self.action, self.errors)
 
         # WARNING: Before `_plan_allocations()`, and that ordering is now load-bearing: the
         # plan records capture the flag at construction, where the old execute-time
@@ -118,7 +119,7 @@ class NewHandler(ActionHandler):
         self.lead = self.roster.pi
         self.admin = self.roster.admin
         self.members = list(self.roster.members)
-        self.warnings = self.roster.warnings
+        self.warnings = self.roster.warnings + contract_warnings
 
     def _plan_allocations(self):
         """One allocation per ``resources[]`` entry, using the **action's own** dates.

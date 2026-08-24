@@ -149,7 +149,8 @@ class UpdateHandler(ActionHandler):
         # the project had when it arrived. Nothing in the suite would catch that.
         self.panel_authorised = auth_at_panel_meeting(self.session, self.action)
 
-        self.contracts = plan_contracts(self.session, self.action, self.errors)
+        self.contracts, contract_warnings = plan_contracts(
+            self.session, self.action, self.errors)
 
         self.planned: List[tuple] = []
         if self.project is not None:
@@ -160,7 +161,7 @@ class UpdateHandler(ActionHandler):
         self.lead = self.roster.pi
         self.admin = self.roster.admin
         self.members = list(self.roster.members)
-        self.warnings = self.roster.warnings
+        self.warnings = self.roster.warnings + contract_warnings
 
     def _plan_resource(self, wire_resource):
         """The per-resource decision. Returns a list of ``(kind, …)`` tuples, in order.
@@ -269,6 +270,7 @@ class UpdateHandler(ActionHandler):
         existing = {pc.contract_id for pc in project.contracts}
         for contract in self.contracts:
             if contract.contract_id not in existing:
+                existing.add(contract.contract_id)
                 ProjectContract.create(self.session, project_id=project.project_id,
                                        contract_id=contract.contract_id)
 
