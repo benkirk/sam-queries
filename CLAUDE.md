@@ -387,6 +387,15 @@ min_len). Endpoints whose branching is the feature stay hand-written.
 `modal_triggers('reloadXCard')` builds the standard close-modal+reload
 HX-Trigger payload.
 
+**Modal fragments (the PR #464 trap):** a fragment that swaps into an
+already-open modal body must **not** carry `data-bs-toggle="modal"` for that
+modal — Bootstrap fires the toggle on the open modal and hides it, so the
+control looks dead with nothing in the console. Openers live on the *card*
+(modal closed); in-modal controls only `hx-target` the body. A fragment that
+reaches for a host-page shell id is pinned in `HTMX_FRAGMENT_SHELL_DEPS`
+(`tests/unit/test_modal_shell_contract.py`); the `wire-dashboard-feature` skill
+(`.claude/skills/`) carries the author-time checklist for wiring dashboard UI.
+
 **PUT (partial update) gating:** load with `partial=True`, then gate the
 updates dict on keys present in the original `request.form`, NOT on the loaded
 output — `load_default` fills absent fields with None, which would silently

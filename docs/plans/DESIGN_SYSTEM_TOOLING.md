@@ -1,209 +1,275 @@
-# Design-System Tooling — handoff (skill + component gallery)
+# Design-System Tooling — handoff (component gallery)
 
-> **Status:** planned, not started. A self-contained brief for a fresh session.
-> Grounded in three research passes (Claude Code skill format; the app's
-> config/blueprint/axes wiring; a macro-by-macro renderability audit of
-> `dashboards/fragments/`).
+> **Status.** Two deliverables. **Deliverable A (the `wire-dashboard-feature`
+> skill + a CLAUDE.md §9 modal rule) is DONE** and lives on branch
+> **`ux_gallery`**, opened as the initial PR vs `staging`. **Deliverable B (the
+> `/dev/gallery` component gallery) is the remaining work** — add it as further
+> commits on the **same branch `ux_gallery`** and push to the **same PR**.
+>
+> This doc is written to be read cold: a fresh session needs nothing but this
+> file to finish Deliverable B. It is grounded in the current tree (line numbers
+> verified 2026-08-23), not the original brief.
+
+## Where to pick up (fresh session)
+
+1. You are on branch `ux_gallery` (off `staging`). Deliverable A already landed
+   here: `.claude/skills/wire-dashboard-feature/SKILL.md` and a modal-fragment
+   paragraph in `CLAUDE.md` §9. Do not redo those.
+2. Build **Deliverable B** below as three commits: (2) config flag + blueprint,
+   (3) specimens + template + axes, (4) tests. Push to the same PR.
+3. Verify per *End-to-end verification*. Then hand back.
+
+---
 
 ## Context
 
-Every major feature ends in a manual "UX-polish dance": wiring new UI into the
-project's shared patterns (entity links, modals, tables, widths) and catching
-recurring bugs — e.g. the PR #464 bug where a `data-bs-toggle="modal"` inside a
-fragment that swaps into an *already-open* modal silently **closes** it. The
-project already has a strong design foundation: ~32 shared macros in
-`src/webapp/templates/dashboards/fragments/`, a role-token CSS layer + raw-colour
-gate, `sam.fmt` for all formatting, and structural gates
-(`modal_shell_contract`, `collapse_trigger_rows`, `route_map_parity`,
-`static_assets`, `template_csp_lint`). What's missing is (1) a way to **apply
-those conventions without re-deriving them each feature**, and (2) a **visual
-reference** to eyeball components against.
+Every major dashboard feature ends in a manual "UX-polish dance": re-deriving
+the shared UI patterns (entity links, modals, tables, widths, axes) and
+re-learning recurring traps — the canonical one being the PR #464 bug, where a
+`data-bs-toggle="modal"` inside a fragment that swaps into an *already-open*
+modal silently closes it. The app already has ~32 shared macros in
+`src/webapp/templates/dashboards/fragments/`, a role-token CSS layer, `sam.fmt`,
+and structural gates. What was missing: (1) a way to apply those conventions
+without re-deriving them (the skill — done), and (2) a visual reference to
+eyeball components against (the gallery — this handoff).
 
-This adds both (the two directions chosen from four discussed):
-- **A project skill** (`wire-dashboard-feature`) — a task checklist Claude
-  auto-loads when adding/changing dashboard UI.
-- **A dev-only component gallery** (`/dev/gallery`) — renders every shared macro
-  in representative states across the theme × layout axes.
+Deliverable B is a **dev-only `/dev/gallery` page** that renders each shared
+macro in representative states across the theme × layout axes. A visual
+reference for a human and a render-smoke surface for Claude.
 
-Directions **3 (bug-class gates)** and **4 (component-index doc)** are
-deliberately deferred (noted as follow-ups below).
+Directions 3 (bug-class gates) and 4 (component-index doc) stay deferred — see
+*Deferred follow-ups*.
 
 ---
 
-## Deliverable A — the `wire-dashboard-feature` skill
+## Foundation check — no pre-refactor pass
 
-**Format** (confirmed against Claude Code v2.1.218+): a project skill lives at
-`.claude/skills/wire-dashboard-feature/SKILL.md`. Frontmatter fields are all
-optional; `description` drives auto-loading; the `/command` name **is** the
-directory name. Keep SKILL.md < 500 lines; sibling files (referenced from the
-body) hold any overflow. There is **no** `.claude/skills` dir yet — this is the
-first.
+We asked whether obvious cruft should be fixed first. Answer: **build directly.**
+The one flagged asymmetry is deliberate, the rest are intentional or
+high-churn/low-value.
 
-**Frontmatter** (leave it model-invocable so it auto-applies; also `/wire-dashboard-feature`):
-```yaml
----
-description: >-
-  Adding or changing UI on a Flask dashboard page (tables, modals, htmx
-  fragments, forms, charts). Load before writing dashboard templates/routes to
-  reuse SAM's shared macros, avoid the modal/collapse capture-phase bugs, and
-  run the right gates + browser smoke.
----
-```
-
-**Body = an ordered checklist**, distilled from CLAUDE.md §7–§11 plus the PR #464
-lessons. **State the rule and point to the canonical CLAUDE.md section — do NOT
-re-paste CLAUDE.md at length** (it's already always-loaded; the skill's value is
-the *procedure* + the freshly-learned pitfalls):
-
-1. **Reuse before authoring** — reach for an existing macro in
-   `dashboards/fragments/` (entity links `request_cell`/`render_user_rows`/
-   `contract_user_link`; `badges.status_badge`; `collapse_toggle`; `facet_row`;
-   `form_fields.*`; `pagination`; `filter_panel_shell`). Open `/dev/gallery` to
-   pick one.
-2. **Links/entities** — entity-modal idiom is a plain `<a>` / `btn-link
-   btn-entity` with inner `.font-monospace` (avoids `.btn` uppercasing).
-3. **Formatting** — only `sam.fmt` filters (`fmt_number/fmt_date/fmt_size/…`);
-   never `strftime` / `'{:,}'`.
-4. **Writes** — §8 access decorators (view receives the object); §9 handler
-   tiers (`handle_htmx_form_post` → `CrudSpec` → `HtmxFormHandler`); forms in
-   `sam.schemas.forms`.
-5. ⚠️ **Modals — the PR #464 rule:** a fragment that swaps into a modal body must
-   **not** carry `data-bs-toggle="modal"` for that same modal (Bootstrap fires
-   toggle on the open modal and hides it — "the button does nothing"). Openers
-   live on the *card* (modal closed); in-modal controls only `hx-target` the
-   body. Update `HTMX_FRAGMENT_SHELL_DEPS` when a fragment references a new shell.
-6. **Collapse triggers** — never a link/button inside a `data-bs-toggle="collapse"`
-   trigger cell/row (capture phase); use `collapse.html`, toggle non-link cells,
-   chevron via `.collapse-icon`.
-7. **Active-only toggles** — `read_active_only` (absent = off).
-8. **Static/CSP** — `url_for('static', …)` only; no inline `<script>`/`on*`/
-   `hx-on`/`<style>` (static JS + `data-*` + JSON script blocks).
-9. **Axes** — pass `read_theme()`/`read_layout()` to charts; a fragment renderer
-   relaying to a delegate must forward them.
-10. **Before commit — smoke + gates:** browser-smoke the new UI at **3 layouts ×
-    2 themes** (open `/dev/gallery` to eyeball any shared components touched);
-    run `test_modal_shell_contract`, `test_collapse_trigger_rows`,
-    `test_route_map_parity` (regen if routes changed), `test_static_assets`,
-    `test_template_csp_lint`, and the feature tests.
-
-**Also (same PR, small):** add the modal-fragment rule (#5) to CLAUDE.md's §9
-modal guidance so the canonical doc carries it and the skill can reference it.
-
-**Files:** `.claude/skills/wire-dashboard-feature/SKILL.md` (new); optional
-`.../reference.md`; `CLAUDE.md` (one-paragraph modal-fragment rule).
-
-**Verify:** `/skills` lists it; `/wire-dashboard-feature` loads it; every
-section/path it references resolves.
+- **`theme` is a global context processor; `layout` is threaded at call sites.**
+  This looks like an accident but is documented and deliberate
+  (`docs/plans/implemented/DARK_MODE.md`, § "One transport channel, not two").
+  `theme` is *declared* by a click that reloads, so it is global chrome rendered
+  onto `data-bs-theme` on the `<html>` root for a flash-free paint. `layout` is
+  *discovered* client-side per request via a `?layout=` param and is fed into
+  `chart_view` / `user_aware_cache_key` at the call sites. `base.html` and
+  `login.html` never read `{{ layout }}`, so a global `layout` processor would
+  serve no chrome and merely duplicate a value the cache layer already reads.
+  **Leave it;** the gallery passes `layout=read_layout()` like every other
+  layout-aware route (the house pattern, not a workaround).
+- **Fragment file ↔ macro name mismatches** (`facet_chips.html` → `facet_row`,
+  `filter_panel.html` → `filter_panel_shell`, `_breadcrumb.html` → `breadcrumb`)
+  — cosmetic; renaming touches ~17 import sites for zero behavioral gain. Skip.
+- **`form_fields.*` reading `form` / `errors` from context** — an implicit
+  dependency, but making it explicit touches every form template. The gallery
+  just supplies `form={}` / `errors={}`.
 
 ---
 
-## Deliverable B — the `/dev/gallery` component gallery
+## Verified wiring facts (build against these)
 
-Dev-only page rendering each shared macro in representative states, viewable
-across the theme × layout axes. A visual reference for Ben and a
-render-smoke/self-check surface for Claude.
+**Config** (`src/webapp/config.py`):
+- `FLASK_ADMIN_ENABLED` default `'1'` is in `SAMWebappConfig` at **line 48**;
+  the `'0'` override is `ProductionConfig` at **line 278**. Idiom:
+  `os.getenv('NAME', '1').lower() in ('1', 'true', 'yes')`.
+- `get_webapp_config()` (line 413) reads `FLASK_CONFIG`, default `development`.
+  So the flag is **ON in webdev, OFF only in production** — mirror this exactly.
 
-**B1 — Config flag** (`src/webapp/config.py`). Add `COMPONENT_GALLERY_ENABLED`,
+**Registration** (`src/webapp/run.py`):
+- Dashboard blueprint imports: lines 39–43. Registration: lines 397–404. The
+  `init_admin` kill-switch gate is **lines 438–439**:
+  `if app.config.get('FLASK_ADMIN_ENABLED', False): init_admin(app)`.
+- `theme` context processor: lines 349–352 (there is no `layout` one).
+
+**Smallest blueprint pattern** is the allocations one
+(`src/webapp/dashboards/allocations/__init__.py`): define `bp` with its own
+`url_prefix` in `__init__.py`, register with a bare `app.register_blueprint(bp)`.
+
+**Base template**: pages `{% extends 'dashboards/base.html' %}`. It provides the
+blocks `title`, `content`, `extra_css`, `extra_js`, `breadcrumbs`, and the
+`content_container_class` etc.; it already loads htmx, Bootstrap, the theme
+toggle (`dashboards/fragments/theme_toggle.html`), `layout-axis.js`,
+`collapse-chevron.js`, `tooltip-init.js`, and the modal JS. `theme` is a global
+template var; `layout` is not.
+
+**Route-map parity** (`tests/unit/test_route_map_parity.py`) enumerates a
+**hardcoded** `DASHBOARD_BLUEPRINTS` tuple (lines 35–43). A new blueprint is
+ignored unless added. The gallery is dev-only → **leave it out**; no snapshot
+regen.
+
+**Axes readers** live in `src/webapp/utils/htmx.py`: `read_layout(default=
+'desktop')` (line 17), `read_theme(default='light')` (line 55), and
+`read_active_only(args, default=False)` (line 116).
+
+---
+
+## Macro inventory (ground truth, `dashboards/fragments/`)
+
+31 `.html` files. **Three define no macros** and are `{% include %}` partials,
+not `{% import %}` targets: `htmx_success.html`, `mobile_nav.html`,
+`group_members_fragment.html`.
+
+| File | Macros |
+|---|---|
+| `badges.html` | `status_badge` (state vocab incl. active/inactive/locked/expired/received/processed/manual/failed/sent/queued/suppressed/running/succeeded/partial/skipped; unknown → `bg-secondary`) |
+| `collapse.html` | `collapse_toggle` |
+| `help.html` | `help_icon`, `term` (keyed to a `glossary.g_*` term) |
+| `glossary.html` | 27 `g_*` term macros (content for `help`) |
+| `modals.html` | `confirm_modal`, `modal_scaffold` |
+| `modal_form.html` | `htmx_form` |
+| `plugin_state.html` | `plugin_disabled`, `plugin_error`, `plugin_empty` (no macro named `plugin_state`) |
+| `theme_toggle.html` | `theme_toggle` |
+| `form_fields.html` | `text_field`, `number_field`, `date_field`, `datetime_field`, `textarea_field`, `select_field`, `multiselect_filter`, `checkbox_field`, `readonly_display`, `fk_search_field`, `form_errors_panel` (private `_label` etc.) |
+| `search_box.html` | `active_toggle_search` |
+| `pagination.html` | `pagination` |
+| `facet_chips.html` | `facet_row` |
+| `filter_panel.html` | `filter_panel_shell` |
+| `sort_link.html` | `sort_header`, `sort_link` |
+| `window_pills.html` | `window_pills` |
+| `date_range_picker.html` | `drp_pills`, `drp_custom`, `date_range_picker` |
+| `time_range_picker.html` | `time_range_picker` |
+| `ladder_range.html` | `ladder_range` (**layout-aware**) |
+| `age_band_range.html` | `age_band_range` (**layout-aware**) |
+| `audit_filters.html` | `audit_filters` (**layout-aware**) |
+| `xras_filters.html` | `xras_filters` (**layout-aware**) |
+| `_breadcrumb.html` | `breadcrumb` (distinct from nav-registry `breadcrumbs`) |
+| `contract_bits.html` | `contract_user_link`, `nsf_program_link` (both emit modal links), `contract_status_badge` |
+| `user_rows.html` | `user_table_head`, `render_user_rows` |
+| `xras_person_detail.html` | `person_detail` |
+| `action_buttons.html` | `edit_modal_button`, `delete_row_button` (both emit modal openers) |
+| `breadcrumbs.html` | `breadcrumbs` (needs `request.endpoint` + `nav_locate()`) |
+| `page_tabs.html` | `page_tabs` (needs `url_for(tab.endpoint)`) |
+
+Layout-aware (take a `layout` arg, forward it): `ladder_range`, `age_band_range`,
+`audit_filters`, `xras_filters`.
+
+---
+
+## The shell-contract mechanic (read before choosing specimens)
+
+The gallery page `{% extends %}` base, so `test_page_template_targets_resolve`
+(`tests/unit/test_modal_shell_contract.py`) applies. **It scans template source
+for literal `data-bs-target` / `hx-target="#id"` strings across a page's
+`{% extends %}` / `{% include %}` closure — it does NOT follow `{% import %}`.**
+Consequences:
+
+- Render every macro via `{% import 'dashboards/fragments/X.html' as x %}` +
+  `{{ x.macro(...) }}`. Imported macro source never enters the closure, so a
+  modal-opener macro renders **inert** (its button opens nothing) without
+  tripping the gate. That is acceptable for a visual reference — label it.
+- **Do NOT `{% include %}` a fragment pinned in `HTMX_FRAGMENT_SHELL_DEPS`.**
+  From `fragments/` that is `contract_bits.html` and `user_rows.html`. An
+  include makes the fragment statically reachable, drops it from
+  `_htmx_only_fragment_deps()`, and breaks `test_htmx_fragment_shell_deps_match_pin`.
+
+---
+
+## Deliverable B — the build
+
+**B1 — Config flag** (`src/webapp/config.py`). Add `COMPONENT_GALLERY_ENABLED`
 mirroring `FLASK_ADMIN_ENABLED` exactly: default `'1'` in `SAMWebappConfig`
-(~line 50), `'0'` in `ProductionConfig` (~line 305). `FLASK_CONFIG` selects the
-class (`development` default in webdev; `production` in helm).
+(beside line 48), `'0'` in `ProductionConfig` (beside line 278). Same idiom and
+a one-line comment in the FLASK_ADMIN style.
 
-**B2 — Blueprint.** New `src/webapp/dashboards/gallery/` package (or single
-`gallery.py`): `bp = Blueprint('component_gallery', __name__,
-url_prefix='/dev/gallery')`, one `@bp.route('/')` `@login_required` view. Import
-in `run.py` (~lines 45-67) and register with a **gated** block mirroring the
-`FLASK_ADMIN_ENABLED`/`init_admin` gate at `run.py:468-471`:
+**B2 — Blueprint** (`src/webapp/dashboards/gallery/`, allocations-style):
+- `__init__.py`: `bp = Blueprint('component_gallery', __name__,
+  url_prefix='/dev/gallery')`, `__all__ = ['bp']`, then `from . import blueprint`.
+- `blueprint.py`: one `@bp.route('/')` `@login_required` view that builds plain
+  dicts / lists / `datetime`s (no DB) and renders
+  `dashboards/gallery/index.html` with `specimens=SPECIMENS` and
+  `layout=read_layout()` (theme is global).
+- `specimens.py`: the specimen manifest (B3).
+
+Wire into `run.py`: import beside line 43; register with a **gated** block
+mirroring the `init_admin` gate (lines 438–439):
+
 ```python
 if app.config.get('COMPONENT_GALLERY_ENABLED', False):
     app.register_blueprint(component_gallery_bp)
 ```
-⚠️ **Do NOT cache** the view (no `@cache.cached` — it must reflect live template
-edits; `user_aware_cache_key` at `extensions.py:26-91` already partitions by
-layout+theme if caching were ever wanted).
 
-**B3 — Specimen manifest** (`.../gallery/specimens.py`). A list of specimens
-`{group, name, sample_kwargs/context, note}`; the route builds plain
-dicts/lists/`datetime`s (no DB) and the template `{% import %}`s each macro and
-renders it. Tiers (from the macro audit):
-- **(a) cheap (~10):** `badges.status_badge` (iterate its state vocab),
-  `collapse_toggle`, `help_icon`/`term` (wire a `glossary.*` string),
+Do **not** cache the view — it must reflect live template edits.
+
+**B3 — Specimen manifest** (`specimens.py`). A list of `{group, name, note, …}`;
+the template `{% import %}`s each macro and renders it with the sample context.
+Tiers:
+
+- **(a) cheap, zero-context (~12):** `badges.status_badge` (iterate the state
+  vocab), `collapse.collapse_toggle`, `help.help_icon` / `help.term`,
   `modals.modal_scaffold`, `modal_form.htmx_form` (`{% call %}`),
-  `htmx_success`, `plugin_state.*`, `theme_toggle`, **all** `form_fields.*`
-  (text/number/date/select/checkbox/readonly/fk_search/errors_panel),
-  `search_box.active_toggle_search`.
-- **(b) small fixture (~14):** `pagination` (`page={'n':2,'per_page':25}`,
-  `total=200`, `sort={…}`), `facet_row` (`values=[{'value','count','label'}]`,
-  `active=[…]`), `window_pills`, `date_range_picker`/`time_range_picker`
-  (datetimes), `filter_panel_shell` (`{% call %}`), `_breadcrumb.breadcrumb`,
-  `sort_link` (render in a context supplying `sortable_columns/sort/
-  fragment_url/target_id/form_id`), `ladder_range`/`age_band_range` (bands+fields
-  dicts), `audit_filters`/`xras_filters` (age_bands list + string vocab),
-  `xras_person_detail.person_detail` (fake person dict),
-  `user_rows.render_user_rows(users, can_view_users=false)`,
-  `contract_bits.contract_status_badge` (fake obj w/ `.is_active/.is_future`).
-- **(c) app-context/DB/shell — degrade or note-and-skip:** `action_buttons.*`
-  with `permission=None` (renders; opener inert — note it needs a shell);
-  `contract_bits` links + `user_rows(can_view_users=true)` — only if the host
-  shells `userDetailsModalBody`/`nsfProgramContractsModalBody` are included
-  (they're the two fragments this dir pins in `HTMX_FRAGMENT_SHELL_DEPS`), else
-  show the non-linking mode; **skip with a one-line placeholder card**:
-  `page_tabs`, `breadcrumbs` (nav registry), `mobile_nav`,
-  `group_members_fragment` — these genuinely need live app/nav/request context.
+  `plugin_state`'s three macros, `theme_toggle.theme_toggle`, all 11
+  `form_fields.*`, `search_box.active_toggle_search`. Import `form_fields.html`
+  **with context** (`{% import … with context %}`) and supply `form={}` and
+  `errors={}` (add a populated `errors` specimen to show `form_errors_panel`).
+  `htmx_success.html` renders via `{% include %}` with `message` / `detail`.
+- **(b) small fixture (~14):** `pagination.pagination`, `facet_chips.facet_row`,
+  `window_pills.window_pills`, `date_range_picker.*` / `time_range_picker`,
+  `filter_panel.filter_panel_shell` (`{% call %}`), `_breadcrumb.breadcrumb`,
+  `sort_link.sort_link` / `sort_header` (context supplying `sortable_columns`,
+  `sort`, `fragment_url`, `target_id`, `form_id`), `ladder_range.ladder_range` /
+  `age_band_range.age_band_range` (**pass `layout`**), `audit_filters` /
+  `xras_filters` (**pass `layout`**), `xras_person_detail.person_detail`,
+  `user_rows.render_user_rows(users, can_view_users=false)` (non-linking mode),
+  `contract_bits.contract_status_badge` (fake obj with `.is_active` /
+  `.is_future`).
+- **(c) inert openers + note-and-skip:**
+  - `action_buttons.edit_modal_button` / `delete_row_button`,
+    `contract_bits.contract_user_link` / `nsf_program_link`,
+    `user_rows.render_user_rows(can_view_users=true)` — import (not include) so
+    they render but open nothing; label each "opener wired to a shell on real
+    pages".
+  - Note-and-skip with a placeholder card (need live app/nav/DB context):
+    `breadcrumbs.breadcrumbs`, `page_tabs.page_tabs`, `mobile_nav` (include),
+    `group_members_fragment` (include).
 
-**B4 — Axes.** The view reads `read_theme()`/`read_layout()`
-(`utils/htmx.py:17,55`) and passes `layout=` to the layout-aware macros
-(`ladder_range`, `age_band_range`, the pickers, `audit_filters`/`xras_filters`).
-The page offers a **theme toggle** (reuse the `theme_toggle` macro) and **layout
-links** (`?layout=mobile|tablet|desktop`, already supported by the `sam_layout`
-cookie/param) so one page flips through all six states. Plain `?layout=` links
-need no JS; any switcher JS goes in a static file (CSP).
+**B4 — Axes.** The view passes `layout=read_layout()`; the template forwards
+`layout=` to the layout-aware macros. Offer a theme toggle (reuse
+`theme_toggle`) and plain layout links (`?layout=mobile|tablet|desktop`, carried
+by the `sam_layout` cookie/param) so one page flips all six states with no JS.
 
-**B5 — Chrome/CSP.** The gallery's own wrapper markup must pass
-`test_template_csp_lint` (no inline `<script>`/`on*`/`hx-on`/`<style>`) and
-`test_static_assets` (assets via `url_for('static')`). Gallery JS → `static/js/`;
-gallery styling → a static CSS file.
+**B5 — Chrome/CSP.** Extend `dashboards/base.html` (gets htmx/Bootstrap/theme/
+collapse JS for free). Keep the wrapper markup CSP-clean: no inline `<script>`,
+`on*`, `hx-on:`, or `<style>`; assets via `url_for('static', …)`. Any switcher
+JS goes in `src/webapp/static/js/`; any styling in a static CSS file. Gates:
+`tests/unit/test_template_csp_lint.py`, `tests/unit/test_static_assets.py`.
 
 **B6 — Tests** (`tests/unit/test_component_gallery.py`): (1) flag on →
-`GET /dev/gallery` returns 200 and renders (no 500), with a per-tier marker;
-(2) `ProductionConfig` defaults the flag **off** (mirror the FLASK_ADMIN default
-test if one exists); (3) static/CSP gates stay green (they scan all templates
-automatically). Check whether `test_route_map_parity` enumerates this blueprint;
-regen its snapshot only if it does.
+`GET /dev/gallery` returns 200 and renders (no 500); (2) `ProductionConfig`
+defaults the flag off → route absent; (3) confirm the page does not trip the
+static / CSP / modal-shell gates (they scan all templates automatically). Do
+**not** touch `test_route_map_parity` (gallery stays out of the allowlist).
 
-**Files:** `src/webapp/config.py` (flag); `src/webapp/run.py` (import + gated
-register); `src/webapp/dashboards/gallery/{__init__,blueprint,specimens}.py`
-(new); `src/webapp/templates/dashboards/gallery/index.html` (new — imports the
-macros); optional `static/js/gallery.js` + a gallery CSS file (only if a JS
-switcher is added); `tests/unit/test_component_gallery.py` (new).
-
-**Verify (end-to-end):**
-- `docker compose up webdev --watch`; visit `http://localhost:5050/dev/gallery`
-  (stub click-login, any RBAC tier). Flip `?theme=dark`, `?layout=mobile|tablet`,
-  and the theme toggle; confirm every tier-(a)/(b) macro renders in all six
-  states.
-- Under the prod gate (`FLASK_CONFIG=production` or the flag off) the route is
-  **absent (404)**.
-- `pytest tests/unit/test_component_gallery.py tests/unit/test_static_assets.py \
-    tests/unit/test_template_csp_lint.py tests/unit/test_route_map_parity.py`.
+**Files:** `config.py` (flag); `run.py` (import + gated register);
+`src/webapp/dashboards/gallery/{__init__,blueprint,specimens}.py` (new);
+`src/webapp/templates/dashboards/gallery/index.html` (new); optional
+`static/js/gallery*.js` + gallery CSS (only if a JS switcher is added);
+`tests/unit/test_component_gallery.py` (new).
 
 ---
 
-## Sequencing, PRs, and scope
+## End-to-end verification
 
-1. **Skill first** — fast, immediately useful; folds the modal-fragment rule into
-   CLAUDE.md. → one small PR vs `staging`.
-2. **Gallery** — config flag → blueprint → specimens → template → axes → tests.
-   → a second PR vs `staging`.
-3. **Cross-link** — the skill's smoke step points at `/dev/gallery`.
+- `docker compose up webdev --watch`; visit `http://localhost:5050/dev/gallery`
+  (stub click-login, any RBAC tier). Flip `?theme=dark`,
+  `?layout=mobile|tablet`, and the navbar theme toggle; confirm every tier-(a)
+  and tier-(b) macro renders across the six states.
+- Under the prod gate (`FLASK_CONFIG=production`, or the flag off) the route is
+  absent (404).
+- `pytest tests/unit/test_component_gallery.py tests/unit/test_static_assets.py tests/unit/test_template_csp_lint.py tests/unit/test_modal_shell_contract.py`.
 
-**Deferred (not this handoff, note as follow-ups):**
-- **Bug-class gates** (direction 3): e.g. a static gate failing on
-  `data-bs-toggle="modal"` inside a fragment that swaps into a modal body — would
-  have caught the PR #464 bug in pytest instead of the browser. Highest-leverage
-  next step once these two land.
+---
+
+## Deferred follow-ups
+
+- **Bug-class gates** (direction 3): a static gate that fails on
+  `data-bs-toggle="modal"` inside a fragment that swaps into a modal body —
+  would have caught the PR #464 bug in pytest instead of the browser.
+  Highest-leverage next step once the gallery lands.
 - **Component-index doc** (direction 4): a one-page "need X → macro Y, rules Z"
-  map (the rules currently live as inline template comments).
+  map (the rules currently live as inline template comments and in the skill).
 
 **Reference example:** PR #464 (branch `xras_ux`) is the concrete case the skill
-encodes — the table modal-links, the collapsible-section cards, the inline roster
-editor, and the `data-bs-toggle` self-closing-modal bug.
+encodes — the table modal-links, the collapsible-section cards, the inline
+roster editor, and the self-closing-modal bug.
