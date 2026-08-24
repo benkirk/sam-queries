@@ -32,6 +32,7 @@ import pytest
 from factories import make_user
 
 from sam.queries.xras_accounts import (
+    PERSON_FIELDS,
     ActionRef,
     PendingFeed,
     RosterRecord,
@@ -270,6 +271,25 @@ class TestFeedA:
         assert entry['placeholder'] is True
         assert entry['actions'][0]['request_number'] == 'NCAR4227'
         assert entry['actions'][0]['source'] == 'action_log'
+
+    def test_the_inline_person_makes_feed_a_need_no_lookup(
+            self, session, no_committed_placeholder):
+        """The POST body carried ``roles[].person`` all along; the worklist
+        reads it instead of paying a ``GET /v1/people`` per row. A lookup
+        that would raise proves none is attempted."""
+        self._log_row(session, PLACEHOLDER_FIXTURE, action_type='New',
+                      request_number='NCAR4227')
+        rows = classify_accounts(
+            session, records_from_action_log(session, validate=False))
+        target = next(r for r in rows if r['username'] == PLACEHOLDER_USERNAME)
+        assert target['person'], 'person did not arrive from the payload'
+        assert set(target['person']) <= set(PERSON_FIELDS)
+
+        def boom(_username):
+            raise AssertionError('lookup attempted despite the inline person')
+
+        report = enrich_worklist(rows, person_lookup=boom)
+        assert report['looked_up'] == 0
 
     def test_statuses_bound_which_rows_are_read(self, session):
         row = self._log_row(session, PLACEHOLDER_FIXTURE, status='processed')

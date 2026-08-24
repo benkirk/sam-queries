@@ -162,7 +162,8 @@ def is_placeholder(username: str) -> bool:
 
 def _roster_from_action(action) -> Tuple[Tuple[str, ...],
                                          Dict[str, List[str]],
-                                         Dict[str, bool]]:
+                                         Dict[str, bool],
+                                         Dict[str, dict]]:
     """Usernames and roles from a loaded action, via the structured helpers.
 
     Uses ``sam.xras.roster`` rather than parsing the error strings in
@@ -203,12 +204,22 @@ def _roster_from_action(action) -> Tuple[Tuple[str, ...],
             roles[username] = [USER_ROLE]
 
     flags: Dict[str, bool] = {}
+    people: Dict[str, dict] = {}
     for role in get_field(action, 'roles') or ():
         username = normalize_username(get_field(role, 'username'))
-        if username and get_field(role, 'isAccountToBeCreated'):
+        if not username:
+            continue
+        if get_field(role, 'isAccountToBeCreated'):
             flags[username] = True
+        # The POST body carries the person inline (8 of the 10 PERSON_FIELDS;
+        # only residenceCountry and orcid are absent from the inbound wire).
+        # Keeping it here is what lets the worklist render person detail with
+        # NO outbound round trip — and no 25-lookup budget cliff.
+        person = get_field(role, 'person')
+        if isinstance(person, dict) and username not in people:
+            people[username] = person
 
-    return tuple(ordered), roles, flags
+    return tuple(ordered), roles, flags, people
 
 
 def records_from_action_log(session: Session, *,
@@ -260,7 +271,7 @@ def records_from_action_log(session: Session, *,
                          row.xras_action_log_id, exc)
             continue
 
-        usernames, roles, flags = _roster_from_action(action)
+        usernames, roles, flags, people = _roster_from_action(action)
         if not usernames:
             continue
 
@@ -281,7 +292,8 @@ def records_from_action_log(session: Session, *,
                           reject_messages=messages),
             usernames=usernames,
             roles_by_username={k: tuple(v) for k, v in roles.items()},
-            account_flag=flags))
+            account_flag=flags,
+            person_by_username=people))
     return records
 
 
