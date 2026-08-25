@@ -174,6 +174,22 @@ class TestVerdictMapping:
             assert v.messages
             assert v.push_state == 'pending'          # New, no project
 
+    def test_a_failed_verdict_carries_what_assembly_resolved(self, session):
+        """A contract blocker is a *failed* action, so `resolved` must survive the
+        rejection — the contract-blockers report has nothing else to read."""
+        action = _new_action()
+        report = _report(number='NCAR9098', actions=[action])
+        report['grants'] = [{'grantNumber': 'NSF-9990301', 'title': 'Ice',
+                             'fundingAgency': 'National Science Foundation'}]
+        v = preflight_action(session, report, action,
+                             resource_keys=KEYS, opportunities=OPPS)
+        assert v.status == 'failed'
+        [grant] = v.resolved['unresolved_grants']
+        assert grant['number'] == 'NSF-9990301' and grant['reason'] == 'missing'
+        assert grant['title'] == 'Ice'
+        from sam.xras.preflight import verdict_to_dict
+        assert verdict_to_dict(v)['resolved']['unresolved_grants'][0]['core'] == '9990301'
+
     def test_the_call_registers_the_handlers(self, session):
         import sam.xras.dispatch as d
         action = _new_action(actionType='Date Adjustment')

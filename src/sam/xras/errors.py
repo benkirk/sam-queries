@@ -63,8 +63,11 @@ class XrasActionRejected(Exception):
     transaction is opened. A handler that raises this mid-write has a bug.
     """
 
-    def __init__(self, messages: Iterable[str]):
+    def __init__(self, messages: Iterable[str], *, resolved: Optional[dict] = None):
         self.messages: List[str] = list(messages)
+        # What assembly resolved before it rejected — the preflight board reads
+        # it (unresolved grants, series). The handler sets it; the bag cannot.
+        self.resolved: Optional[dict] = resolved
         super().__init__('\n'.join(self.messages))
 
 

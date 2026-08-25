@@ -351,7 +351,8 @@ def preflight_action(session, report_payload: dict, action: dict, *,
         result = dispatch_action(session, synthesis.action,
                                  enabled=enabled, validate_only=True)
     except XrasActionRejected as exc:
-        return _verdict('failed', messages=tuple(exc.messages), service=service)
+        return _verdict('failed', messages=tuple(exc.messages), service=service,
+                        resolved=getattr(exc, 'resolved', None))
     except Exception as exc:                     # noqa: BLE001
         logger.warning('preflight: dispatch raised for action %s (%s)', action_id, exc)
         return _verdict('incomplete', service=service)
