@@ -1,7 +1,7 @@
 # XRAS Contract Blockers — surface, then assist
 
-**Status: Phase 1 refined 2026-08-24, building on PR #482
-(`xras_incoming_triage`).** Sketched during
+**Status: Phase 1 BUILT 2026-08-24 on PR #482 (`xras_incoming_triage`),
+smoked against the local sweep in a browser and by `e2e/`.** Sketched during
 cutover week (`XRAS_TRIAGE_WEEK.md`); builds on the grant handling shipped in
 PR #479 (`XRAS_DATA_MODEL_UPLIFT.md`, Track A commit 1).
 
@@ -135,6 +135,8 @@ One PR, four ordered commits. Every path below was read, not assumed.
 | Contract sources | Prod: `NSF`, `NASA`, `DOI`, `DOD`, `DOT`, `USAID`, `LANL`, `Other`, plus institution-named rows. Only NSF has a lookup provider. `suggested_source='NSF'` when the agency is NSF *and* the number is award-shaped; else the operator picks. |
 | Create link | Page hop to Admin → Contracts (the mnemonic strip's shape); `?create=…` auto-opens the seeded modal. CSP is `script-src 'self'`, so a data attribute plus a `DOMContentLoaded` hook in `form-helpers.js`, reusing the `project-details-modal` pair. |
 | Readiness partial | `_xras_readiness_why.html` printed "Would mint in series …" on `pf.resolved.series`; now gated on `pf.would_succeed`, since failed verdicts carry `resolved`. |
+| The sweep's grants carry no agency **name** | The GET shape (`reports/requests`) has `fundingAgencyId`, the POST shape `fundingAgency`; the synthesizer passes `grants[]` through verbatim and the GET client has no agency vocabulary. So on the sweep path `suggested_source` is `None` and every link opens in **manual** mode with title and dates seeded — the operator flips to Lookup when it is NSF. Resolving the id (admin `types/all`) in the sweep is a Phase 2 item. |
+| Only assembled actions reach the channel | A Submitted request has no approved dates, so the preflight is `incomplete` and never runs `plan_contracts`. NCAR4293/NCAR4300 surface the hour they are approved — the hourly sweep — not before. |
 
 ### Commit 1 — the structured channel (`sam/xras`)
 
@@ -206,10 +208,13 @@ make e2e SAM_E2E_BASE_URL=http://localhost:5050
 
 ### Definition of done
 
-`sam-admin xras --contract-report` on the prod snapshot lists NCAR4293
-(`001368-00183`, manual) and NCAR4300 (`ISS 25-643`, manual) at
-`unblock_count=1`, NCAR4212 still shows both blockers on the board, and the
-strip renders on the Remediations card after the next sweep.
+Met locally 2026-08-24 on a fresh sweep: `--contract-report` listed three
+targets (NCAR4231, NCAR4280, NCAR4212 — the approved ones; the two Submitted
+requests join on approval), the strip rendered with each number linking to
+Admin → Contracts, and the link opened the New Contract modal in manual mode
+with number, title and both dates seeded, zero console errors. The
+`e2e/` case passed unskipped. Prod: the same after the branch dispatch and
+the next hourly sweep.
 
 ## Traps for whoever builds it
 

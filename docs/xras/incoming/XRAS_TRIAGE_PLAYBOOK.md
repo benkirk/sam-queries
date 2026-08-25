@@ -224,6 +224,10 @@ A **missing Allocation Manager is not an error**; a missing PI is.
 never seen is a 422 naming the *contract*, not the grant.
 
 **Fix:** create or link the contract in SAM first, then ask XRAS to re-post.
+`sam-admin xras --contract-report` ranks the numbers to create by the pushes
+each unblocks, and the Remediations card's contract strip opens Admin →
+Contracts with the New Contract form seeded from the wire
+(`docs/plans/XRAS_CONTRACT_BLOCKERS.md`).
 
 ### 5. `Ambiguous contract for grant number "{grant}" ("{core}"): matches {a, b}`
 
@@ -416,6 +420,7 @@ Two rows were overtaken by #458/#459 and are marked so; the rest stand unchanged
 |---|---|
 | Resource-key 422s recur across **different** keys | A mapping *writer* on `sam-admin xras` (today it is a hand INSERT). Must print the parity warning — closing a mapping moves GET bytes. ⚠️ **Narrowed:** the *detection* half shipped with #458's two-sided `--validate-mapping`, which exits non-zero when XRAS offers a key SAM cannot resolve. You now learn about this before an award does |
 | Mnemonic failures dominate the `New` failure bucket | A bulk organization-mnemonic linker, plus a report of which orgs would unblock the most awards. This is the highest-leverage data fix available |
+| Contract 422s recur beyond the two known cases | **BUILT** (PR #482): `--contract-report` and the Remediations strip, the mnemonic report's shape for contracts. Phase 2 (NSF prefill in the sweep, re-check after create) is in `docs/plans/XRAS_CONTRACT_BLOCKERS.md` |
 | Operators repeatedly fix a row, re-check it green, and wait on ACCESS | **A re-apply path.** Explicitly deferred in `recheck.py`; it needs an idempotency key enforced on `action_id` *first*, because 4 of the 6 handlers double-apply — Supplement and Adjustment are additive, and a re-applied successful `New` routes to `update` and supplements the allocation it just created. Do not build the second half before the first |
 | You reach for `--status unmapped` and cannot | Derive the CLI `click.Choice` from `XRAS_ACTION_STATUSES` rather than restating it, and give `unmapped` a style in `src/cli/xras/display.py`. One line each; both are restatements of a vocabulary that already exists in one place. ⚠️ Still both unbuilt — and #458 edited a *neighboring* `click.Choice` on the same command without noticing this one |
 | Polling the dashboard stops being enough | A digest of `failed` / `manual` / `unmapped` rows. ⚠️ A new entry in `src/scheduling/tasks/` goes live on the next hourly wake unless `SAM_TASKS_DISABLED` names it in the **same** change — the registry is code-side, the list is chart-side, and nothing couples them but the reviewer. `xras_sweep` is **not** this: it digests the *outbound* enumeration and mails nobody. Its arrival did make that warning load-bearing, though — three tasks are live now, not one |
