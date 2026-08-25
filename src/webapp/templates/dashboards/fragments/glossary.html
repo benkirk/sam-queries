@@ -215,3 +215,18 @@ itself is inactive</strong> (deactivated)
 the project is still active, but this user's
 <strong>membership has ended</strong>.
 {%- endmacro %}
+
+
+{# XRAS Remediations: pending work vs. everything (popover) #}
+{% macro g_xras_pending_work() -%}
+<strong>Off &mdash; pending work only.</strong> The same population as XRAS
+admin&rsquo;s <em>Recent submissions</em>: a request with an action the last
+sweep checked that is still <strong>in review</strong> (Submitted / Under
+Review), or <strong>Approved and not yet posted to SAM</strong> &mdash; no SAM
+project yet, or arrived after the repoint with no action-log row. No date
+filter: an old approval nobody pushed is exactly the point.
+<br><br><strong>On &mdash; everything the sweep found</strong>, including
+requests already applied in SAM and older actions outside the sweep
+window, with the date filter above applied. This is the only view with
+&ldquo;not checked&rdquo; rows, so <em>Check all</em> lives here.
+{%- endmacro %}

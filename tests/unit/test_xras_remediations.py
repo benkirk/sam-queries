@@ -551,6 +551,13 @@ class TestPendingWorkToggle:
                                 data={'show_all': '1'})
         assert 'Checked 1 request' in resp.get_data(as_text=True)
 
+    def test_the_switch_explains_both_sets_in_a_popover(self, auth_client, configured):
+        _publish(_payload())
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        after = body.split('id="xras-remediation-show-all"')[1][:2500]
+        assert 'data-bs-toggle="popover"' in after
+        assert 'pending work only' in after and 'everything the sweep found' in after
+
     def test_the_switch_belongs_to_the_filter_form(self, auth_client, configured):
         _publish(_payload())
         body = auth_client.get(FRAGMENT).get_data(as_text=True)

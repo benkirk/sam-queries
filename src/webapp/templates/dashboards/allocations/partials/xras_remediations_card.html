@@ -1,3 +1,5 @@
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/glossary.html' import g_xras_pending_work with context %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
@@ -206,10 +208,11 @@
                            hx-swap="innerHTML"
                            hx-trigger="change"
                            hx-include="#xras-window-filters, #{{ form_id }}">
-                    <label class="form-check-label" for="xras-remediation-show-all"
-                           title="Off: pending work only — in review, or approved and not yet posted to SAM (what XRAS admin's Recent submissions lists; no date filter). On: every swept request, with the date filter above applied.">
+                    <label class="form-check-label" for="xras-remediation-show-all">
                         Show everything ({{ swept_total | fmt_number }} swept)
                     </label>
+                    {{ help_icon(g_xras_pending_work(), rich=True,
+                                 title='Pending work vs. everything', placement='right') }}
                 </div>
             </div>
             <div class="facet-grid-label">Search</div>
