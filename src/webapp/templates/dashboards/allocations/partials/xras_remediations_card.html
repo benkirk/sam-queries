@@ -148,6 +148,38 @@
         </div>
         {% endif %}
 
+        {# Contract-unblock strip — the same shape for the other data fix. Each
+           number opens Admin -> Contracts with the New Contract form seeded
+           (page hop, never a cross-page modal). A tie is a spelling problem,
+           so variants get no create link. #}
+        {% if contract_summary and (contract_summary.targets or contract_summary.variants) %}
+        {% set _ctargets = contract_summary.targets %}
+        <div class="alert alert-info d-flex gap-2 py-2 mb-3" id="xras-contract-strip">
+            <i class="fas fa-file-contract mt-1"></i>
+            <div class="small">
+                {% if _ctargets %}
+                <strong>{{ contract_summary.actions_seen | fmt_number }} failing push(es) cite
+                {{ _ctargets | length | fmt_number }} contract(s) SAM does not hold.</strong>
+                Create the row in
+                <a href="{{ url_for('admin_dashboard.contracts') }}">Admin&nbsp;→&nbsp;Contracts</a>:
+                {% for t in _ctargets[:6] %}
+                <a href="{{ t.create_url }}"
+                   title="{{ t.title or 'no title on the wire' }} · would unblock {{ t.unblock_count }} — {{ t.sample | join(', ') }}">{{ t.number }}</a>&nbsp;({{ t.unblock_count }}){% if not loop.last %} ·{% endif %}
+                {% endfor %}
+                {% if _ctargets | length > 6 %}
+                … (+{{ (_ctargets | length) - 6 }} more — <code>sam-admin xras --contract-report</code>)
+                {% endif %}
+                {% endif %}
+                {% if contract_summary.variants %}
+                <br>{{ contract_summary.variants | length | fmt_number }} number(s) would
+                <strong>tie</strong> against existing contracts
+                ({% for v in contract_summary.variants[:4] %}<code>{{ v.number }}</code>{% if not loop.last %}, {% endif %}{% endfor %})
+                — a spelling variant to reconcile, not a row to create.
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
         {# WARNING: The controls render whenever anything was swept — NOT only when
            rows survive. Inside the old `{% if groups %}` they vanished at the
            moment they emptied the card, leaving copy that said "clear the

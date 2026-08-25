@@ -207,3 +207,36 @@ class TestInteraction:
         # operator's place in a card they scrolled to.
         assert page.evaluate('() => window.__remediationMarker') == 1
         assert _rows(card).count() <= before
+
+
+class TestContractStrip:
+    """The contract-blockers strip: each number opens Admin -> Contracts with the
+    New Contract modal already showing and seeded. Guarded like the rest of this
+    file — a stack whose sweep found no contract blocker skips, and nothing here
+    asserts on a number, a name, or a count."""
+
+    STRIP = f'{CARD} #xras-contract-strip'
+
+    def test_each_number_links_to_a_seeded_create(self, page):
+        _load(page)
+        strip = page.locator(self.STRIP)
+        if strip.count() == 0:
+            pytest.skip('no contract blocker on this stack')
+        links = strip.locator('a[href*="create="]')
+        if links.count() == 0:
+            pytest.skip('only spelling variants on this stack')
+        for i in range(links.count()):
+            assert '/admin/contracts?' in links.nth(i).get_attribute('href')
+
+    def test_following_a_link_opens_the_modal_seeded(self, page):
+        _load(page)
+        links = page.locator(f'{self.STRIP} a[href*="create="]')
+        if links.count() == 0:
+            pytest.skip('no contract blocker on this stack')
+        href = links.first.get_attribute('href')
+        response = page.goto(href)
+        assert response is not None and response.status == 200
+        assert page.locator('[data-auto-open-create]').count() == 1
+        page.wait_for_selector('#createContractModal.show', timeout=15_000)
+        page.wait_for_selector('#createContractModal #createContractNumber', timeout=15_000)
+        assert page.locator('#createContractModal #createContractNumber').input_value().strip()

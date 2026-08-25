@@ -509,6 +509,72 @@ class TestMnemonicUnblockStrip:
         assert view_only_client.get(FRAGMENT).status_code == 403
 
 
+class TestContractUnblockStrip:
+    """The contract-blockers strip — the mnemonic strip's shape, linking to Admin -> Contracts."""
+
+    def _publish_contract_failure(self, grants):
+        payload = _payload('EXAM0001')
+        verdict = {'status': 'failed', 'would_succeed': False,
+                   'messages': ['x'], 'gaps': [],
+                   'service': 'add', 'stage': 'Approved', 'action_status': 'Approved',
+                   'request_status': 'Approved', 'push_state': 'pending',
+                   'push_detail': None,
+                   'resolved': {'unresolved_grants': list(grants)},
+                   'checked_at': '2026-08-23T09:00:00'}
+        xras_cache.store_requests_index({
+            'generated_at': datetime.now(), 'statuses': ['Approved'],
+            'extra_statuses': {},
+            'rows': [request_index_entry(payload, pending_push=True,
+                                         preflights={7: verdict})]})
+
+    @staticmethod
+    def _grant(number, **over):
+        grant = {'number': number, 'core': number, 'reason': 'missing',
+                 'candidates': [], 'agency': None, 'title': 'Seeded Title',
+                 'pi_name': 'P. Eye', 'begin_date': '2026-01-01',
+                 'end_date': '2027-12-31', 'is_pending': False}
+        grant.update(over)
+        return grant
+
+    def test_a_reference_links_to_a_seeded_manual_form(self, auth_client, configured):
+        self._publish_contract_failure([self._grant('ISS 25-643')])
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'id="xras-contract-strip"' in body
+        assert 'ISS 25-643' in body
+        assert '/admin/contracts?' in body and 'create=ISS' in body
+        assert 'mode=manual' in body and 'title=Seeded' in body
+        assert 'start_date=2026-01-01' in body and 'end_date=2027-12-31' in body
+
+    def test_an_nsf_award_links_to_lookup_mode(self, auth_client, configured):
+        self._publish_contract_failure([self._grant(
+            '9980401', agency='National Science Foundation')])
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'create=9980401' in body and 'mode=lookup' in body
+
+    def test_a_tie_renders_as_a_variant_with_no_create_link(self, auth_client,
+                                                            configured, monkeypatch):
+        # The route's db.session cannot see rows made in the test SAVEPOINT, so
+        # the live re-check is stubbed; the tie itself is covered in
+        # test_xras_contract_report.py.
+        monkeypatch.setattr('sam.queries.xras_contract_report._recheck',
+                            lambda session, number, core: 'ambiguous')
+        self._publish_contract_failure([self._grant(
+            'NSF-9980402', core='9980402', reason='ambiguous',
+            candidates=['9980402', 'PLR-9980402'])])
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'NSF-9980402' in body and 'spelling variant' in body
+        assert 'create=NSF-9980402' not in body
+
+    def test_no_grants_means_no_strip(self, auth_client, configured):
+        self._publish_contract_failure([])
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'xras-contract-strip' not in body
+
+    def test_view_only_is_still_forbidden(self, view_only_client, configured):
+        self._publish_contract_failure([self._grant('ISS 25-643')])
+        assert view_only_client.get(FRAGMENT).status_code == 403
+
+
 class TestItIsACardNotATab:
 
     def test_the_worklist_still_has_exactly_two_tabs(self, auth_client):

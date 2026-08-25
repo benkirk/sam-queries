@@ -122,6 +122,10 @@ def xras_remediations_fragment():
     # lives there, so this page stays read-only about org metadata.
     from sam.queries.xras_mnemonic_report import mnemonic_unblock_report
     mnemonic_summary = mnemonic_unblock_report(db.session, payload)
+    # Same shape for contracts: the fix is a `contract` row, created in
+    # Admin -> Contracts, so each target links there with the form seeded.
+    from sam.queries.xras_contract_report import contract_unblock_report
+    contract_summary = _with_create_links(contract_unblock_report(db.session, payload))
 
     rows = list(payload.get('rows') or []) if payload else []
     swept_total = len(rows)
@@ -196,6 +200,7 @@ def xras_remediations_fragment():
         search=search,
         snapshot=payload,
         mnemonic_summary=mnemonic_summary,
+        contract_summary=contract_summary,
         configured=configured,
         write_enabled=write_enabled,
         # Distinguishes "no sweep at all" from "a sweep that predates this
@@ -297,6 +302,33 @@ def xras_recheck_visible():
         f'{totals["failed"]} would fail, {totals["manual"]} would park, '
         f'{totals["incomplete"]} incomplete.',
         detail=detail)
+
+
+def _with_create_links(summary: dict) -> dict:
+    """Stamp each target with the Admin -> Contracts URL that opens the seeded form.
+
+    `lookup` mode (auto-fires the NSF fetch) only when the report suggests NSF;
+    everything else opens in manual mode with the wire's title and dates
+    already in the boxes. The NSF source id is resolved by name, never pinned.
+    """
+    from sam.projects.contracts import ContractSource
+    nsf_id = None
+    for target in summary.get('targets') or ():
+        args = {'create': target['number'],
+                'mode': 'lookup' if target.get('suggested_source') == 'NSF' else 'manual'}
+        for key in ('title', 'start_date', 'end_date'):
+            value = target.get({'start_date': 'begin_date'}.get(key, key))
+            if value:
+                args[key] = value
+        if args['mode'] == 'lookup':
+            if nsf_id is None:
+                row = (db.session.query(ContractSource)
+                       .filter(ContractSource.contract_source == 'NSF').first())
+                nsf_id = row.contract_source_id if row else 0
+            if nsf_id:
+                args['contract_source_id'] = nsf_id
+        target['create_url'] = url_for('admin_dashboard.contracts', **args)
+    return summary
 
 
 def _has_worklist():

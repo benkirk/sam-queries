@@ -327,13 +327,21 @@ def htmx_contract_create_form():
         return render_template(CREATE_CONTRACT_TEMPLATE,
                                **_contract_create_context())
 
-    form = {'contract_number': number, 'contract_mode': 'lookup'}
+    # `mode=manual` is the contract-blockers path: a reference that is not an
+    # award, so no fetch fires and the wire's title/dates seed the boxes.
+    lookup = (request.args.get('mode') or 'lookup') != 'manual'
+    form = {'contract_number': number,
+            'contract_mode': 'lookup' if lookup else 'manual'}
     if source_id.isdigit():
         form['contract_source_id'] = source_id
+    for key in ('title', 'start_date', 'end_date'):
+        value = (request.args.get(key) or '').strip()
+        if value:
+            form[key] = value
 
     return render_template(
         CREATE_CONTRACT_TEMPLATE,
-        **_contract_create_context(form, seeded=True))
+        **_contract_create_context(form, seeded=True, lookup=lookup))
 
 
 #: Minimum query length before the award search bothers the public APIs.
