@@ -396,8 +396,9 @@ UMIT0073 (Submitted Renewal, as `shuangw`): the action carries
 `allowedOperations: ["Edit","Delete"]`, and `GET .../actions/<aid>/validate`
 answers `{"validation": "successful", "errors": []}`. No key or config lever is
 involved — the XA-USER is per call and the write paths already resolve the PI.
-Wiring this as an offer overlay is **parked** (`docs/plans/XRAS_DATA_MODEL_UPLIFT.md`);
-until then offers are derived from swept state, which every modal re-checks live.
+Wiring this as an offer overlay is **retired unless a named trigger appears**
+(`docs/plans/XRAS_DATA_MODEL_UPLIFT.md` § B4); offers are derived from swept
+state, which every modal re-checks live, and an illegal move fails loud.
 
 ### 4.4 People endpoints that do not exist
 

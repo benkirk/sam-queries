@@ -2,8 +2,8 @@
 
 **Status: Track A SHIPPED as PR #479 (2026-08-24). Track B REPLANNED 2026-08-25
 after the triage week: B1–B3 plus four triage-week additions ship as one PR on
-`xras_incoming_triage`; B4 (the `rules`/`validate` overlay) is PARKED with its
-premise corrected.** Findings from the 2026-08-24 audit stay here; the
+`xras_incoming_triage`; B4 (the `rules`/`validate` overlay) is RETIRED unless a
+named trigger appears (2026-08-25).** Findings from the 2026-08-24 audit stay here; the
 2026-08-25 audit of the tree is folded in.
 
 ## Context
@@ -125,14 +125,24 @@ it and badge it in the card's vocabulary.
 are not SAM accounts — every SAM username resolves. Qualify the copy; confirm
 the picker is the SAM user picker.
 
-### B4 — PARKED: `rules`/`validate` overlay (premise corrected)
+### B4 — RETIRED unless triggered: `rules`/`validate` overlay
 
-The comment this replaces said `rules{}` is 401 for our credential. Measured
-2026-08-24: it is **XA-USER-gated** — 401 as `arcguest`, 200 as the request's
-PI in both contexts (payloads in `XRAS_OUTGOING_QUERIES.md` § 4.3). No config
-lever is needed; the XA-USER is per call and the write paths already resolve
-the PI. Parked until an operator needs authoritative offers; the design when
-it is built:
+`rules{}` is **XA-USER-gated**, not key-gated — 401 as `arcguest`, 200 as the
+request's PI in both contexts (payloads in `XRAS_OUTGOING_QUERIES.md` § 4.3).
+No config lever is needed. Re-examined 2026-08-25 after four production merges
+and the day's re-posts: every blocker was SAM-side inventory (identity,
+affiliation, contracts, an inactive AM); no operator clicked an action XRAS
+then refused. An illegal move already fails loud (XRAS 4xx, mapped to a message,
+and every write re-reads the targeted line), and `rules{}` is scoped to the PI's
+legal moves — it says nothing about the Approved-stage remediation staff
+actually drive. Build it only on one of these triggers, measured, not supposed:
+
+- a `xras_remediation_event` row carrying a 4xx on an operation our state
+  heuristics offered;
+- staff editing Requested-stage submissions on a PI's behalf (then `validate`
+  is a real dry-run).
+
+The design when a trigger fires:
 
 - Client `get_request_rules(request_id, *, xa_user)` and a read-context
   `validate_action`; gate offers on `existingActions[].allowedOperations` /
