@@ -255,3 +255,22 @@ class TestPendingWorkToggle:
         switch.check()
         page.wait_for_selector(f'{CARD} #xras-remediation-show-all:checked', timeout=15_000)
         assert page.locator(f'{CARD} .card').count() == 1
+
+
+class TestSortKeepsScroll:
+
+    def test_a_header_click_does_not_jump_to_the_top(self, page):
+        """The sort header is an <a href="#"> driven by data-action; the handler
+        must preventDefault or the swap is followed by a jump to the top."""
+        card = _load(page)
+        header = card.locator('th a[data-action="set-sort-submit"]').first
+        if header.count() == 0:
+            pytest.skip('no sortable rows on this stack')
+        header.scroll_into_view_if_needed()
+        before = page.evaluate('() => window.scrollY')
+        if before < 200:
+            pytest.skip('card sits at the top of the viewport on this stack')
+        header.click()
+        page.wait_for_timeout(1500)          # the swap, then any hash scroll
+        after = page.evaluate('() => window.scrollY')
+        assert after > 200, f'scrolled from {before} to {after}'
