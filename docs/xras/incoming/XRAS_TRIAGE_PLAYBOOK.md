@@ -201,6 +201,10 @@ highest-value surface on this page:
 - **Each row carries a `validate_only` pre-flight** (`would_succeed` / `reject_messages`),
   so the card also surfaces **mnemonic and resource-key** rejections on the same rows —
   it is not only about accounts. That overlaps § 3.2 deliberately.
+- **A merged PI can still 422 on the mnemonic route.** `PI {u} has no current institution
+  or organization in SAM` means the upstream affiliation sync end-dated their rows
+  (NCAR4262: the Miami `user_institution` row ended 2026-06-24). SAM has no write surface
+  for those tables — the fix is upstream, or a one-off row the operator owns.
 
 The pending-request half of *Pending Users* is the same question asked **before** the
 action arrives, which is the only pre-emptive surface in this document.

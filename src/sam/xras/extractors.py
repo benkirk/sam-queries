@@ -587,6 +587,11 @@ def resolve_mnemonic_code(session, action, errs: ActionErrors, *,
     lookup = MnemonicCode.build_lookup(session)
     opportunity = _clean(get_field(action, 'opportunityName')) or ''
 
+    # Declared divergence: legacy falls through to the internal-PI string here.
+    if _best_institution(user) is None and _best_organization(user) is None:
+        errs.report(e.no_current_affiliation_for_pi(pi_username))
+        return None
+
     if opportunity.startswith('NCAR '):
         lab = _lab_level_organization(_organization_parentage(_best_organization(user)))
         code = MnemonicCode.resolve_for_organization(lab, lookup) if lab else None

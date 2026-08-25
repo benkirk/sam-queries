@@ -819,17 +819,20 @@ class TestResolveMnemonicCode:
         assert list(errs) == [
             'Could not determine Mnemonic code for external PI via institution']
 
-    def test_a_pi_with_no_affiliation_at_all_reports_the_internal_string(self, session):
-        """Legacy's ``UserAffiliationDTO`` is non-null for such a user, so it reaches
-        ``getMnemonicCodeViaOrganization`` and fails there — not the affiliation
-        string, which is reserved for a PI who is not a SAM user at all."""
+    def test_a_pi_with_no_current_affiliation_names_that_gap(self, session):
+        """Declared divergence. Legacy's ``UserAffiliationDTO`` is non-null for
+        such a user, so it reaches ``getMnemonicCodeViaOrganization`` and reports
+        the internal-PI string -- misleading for an external PI whose rows the
+        upstream sync end-dated (NCAR4262). The affiliation string proper stays
+        reserved for a PI who is not a SAM user at all."""
         from factories import make_user
         user = make_user(session)
-        errs = ActionErrors()
-        assert resolve_mnemonic_code(session, action(opportunityName='Small Allocation'),
-                                     errs, pi_username=user.username) is None
-        assert list(errs) == [
-            'Could not determine Mnemonic code for internal PI via organization']
+        for opportunity in ('Small Allocation', 'NCAR Thing'):
+            errs = ActionErrors()
+            assert resolve_mnemonic_code(session, action(opportunityName=opportunity),
+                                         errs, pi_username=user.username) is None
+            assert list(errs) == [
+                f'PI {user.username} has no current institution or organization in SAM']
 
     def test_an_unknown_pi_reports_the_affiliation_string(self, session):
         errs = ActionErrors()
