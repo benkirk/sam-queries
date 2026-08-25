@@ -227,18 +227,15 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
    01:37Z 08-25), what does xras_admin do — skip, retry, or post with a
    placeholder? And what are its connect/read timeouts and retry counts?
 
-**Question for George** (DB timestamps only): `user_institution` changed
-character on **2026-07-09**. Jan–Jun 2026: 883 rows created, none with an end
-date already set. Since 07-09: 63 of 226 new rows (28%) arrive with `end_date`
-*before* `creation_time`, by minutes (`geogdzhayev` ended 08:33:12, created
-08:37:29; `sseyedzadeh` ended 11:00:49, created 11:11:10). Same day,
-`user_organization` gained 7,716 rows, 7,681 pre-ended; 07-17 re-stamped 17,097
-institution rows; bulk re-stamps since (08-10, 08-17, 08-21, 08-24). Legacy's
-mnemonic evaluator is unchanged across the FI commits (empty diffs); the feed
-is what changed, and the route still wants a row current *now*. Is a closed
-same-morning collaboration what FI intends — is `user_institution` no longer
-where a current external affiliation lives — and if so, where should the
-mnemonic route look? NCAR4261/4262/4252 fail on exactly this.
+**Question for George:** "I've noticed `user_institution` and
+`user_organization` rows arriving with odd timestamps since the cutover — e.g.
+an institution row created 08:37 with an end date of 08:33 the same morning,
+another created 11:11 already ended at 11:00, and a batch of ~7,700
+organization rows that landed pre-ended on 07-09. In some cases this interferes
+with the mnemonic lookup, which wants a currently valid collaboration — does
+this make sense to you?" (Measurements behind it: 0 of 883 institution rows
+arrived ended Jan–Jun; 28% since 07-09. Legacy's evaluator is unchanged across
+the FI commits. Blocks NCAR4261/4262/4252.)
 
 Inventory deltas: the other four date-conflict rows (UCSU0136, UMCP0014,
 UMMM0016, UCOR0102) have no deleted rows and stand as genuine XRAS-vs-SAM
