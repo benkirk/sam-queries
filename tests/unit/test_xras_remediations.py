@@ -601,12 +601,12 @@ class TestMnemonicUnblockStrip:
 class TestContractUnblockStrip:
     """The contract-blockers strip — the mnemonic strip's shape, linking to Admin -> Contracts."""
 
-    def _publish_contract_failure(self, grants):
+    def _publish_contract_failure(self, grants, push_state='pending'):
         payload = _payload('EXAM0001')
         verdict = {'status': 'failed', 'would_succeed': False,
                    'messages': ['x'], 'gaps': [],
                    'service': 'add', 'stage': 'Approved', 'action_status': 'Approved',
-                   'request_status': 'Approved', 'push_state': 'pending',
+                   'request_status': 'Approved', 'push_state': push_state,
                    'push_detail': None,
                    'resolved': {'unresolved_grants': list(grants)},
                    'checked_at': '2026-08-23T09:00:00'}
@@ -653,6 +653,20 @@ class TestContractUnblockStrip:
         body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'NSF-9980402' in body and 'spelling variant' in body
         assert 'create=NSF-9980402' not in body
+
+    def test_the_strip_explains_itself_in_a_popover(self, auth_client, configured):
+        self._publish_contract_failure([self._grant('ISS 25-643')])
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        strip = body.split('id="xras-contract-strip"')[1][:3000]
+        assert 'data-bs-toggle="popover"' in strip and 'Contracts to create' in strip
+
+    def test_the_strip_follows_the_rows_in_view(self, auth_client, configured):
+        # A failing row that is NOT pending work (already posted) feeds the strip
+        # only under Show everything — the strip ranks fixes for what is in view.
+        self._publish_contract_failure([self._grant('ISS 25-643')], push_state='seen_in_log')
+        assert 'xras-contract-strip' not in auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'xras-contract-strip' in auth_client.get(
+            FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
 
     def test_no_grants_means_no_strip(self, auth_client, configured):
         self._publish_contract_failure([])

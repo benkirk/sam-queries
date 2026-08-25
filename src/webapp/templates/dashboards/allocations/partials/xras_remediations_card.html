@@ -1,5 +1,5 @@
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
-{% from 'dashboards/fragments/glossary.html' import g_xras_pending_work with context %}
+{% from 'dashboards/fragments/glossary.html' import g_xras_pending_work, g_xras_mnemonic_strip, g_xras_contract_strip with context %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
@@ -137,6 +137,7 @@
                 {% if _mtargets %}
                 <strong>{{ mnemonic_summary.actions_seen | fmt_number }} failing push(es) cite
                 {{ _mtargets | length | fmt_number }} missing organization mnemonic(s).</strong>
+                {{ help_icon(g_xras_mnemonic_strip(), rich=True, title='Missing mnemonic codes', placement='bottom') }}
                 Create the code in
                 <a href="{{ url_for('admin_dashboard.organizations') }}">Admin&nbsp;→&nbsp;Organizations</a>:
                 {% for t in _mtargets[:6] %}
@@ -168,6 +169,7 @@
                 {% if _ctargets %}
                 <strong>{{ contract_summary.actions_seen | fmt_number }} failing push(es) cite
                 {{ _ctargets | length | fmt_number }} contract(s) SAM does not hold.</strong>
+                {{ help_icon(g_xras_contract_strip(), rich=True, title='Contracts to create', placement='bottom') }}
                 Create the row in
                 <a href="{{ url_for('admin_dashboard.contracts') }}">Admin&nbsp;→&nbsp;Contracts</a>:
                 {% for t in _ctargets[:6] %}

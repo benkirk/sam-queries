@@ -117,17 +117,6 @@ def xras_remediations_fragment():
     configured = xras_api_configured()
     write_enabled = xras_write_configured()
 
-    # The mnemonic-unblock ranking rides the same snapshot the card already loaded —
-    # no extra fetch. It resolves each failing PI's org against the DB (why it needs
-    # db.session). The strip points at Admin -> Organizations to fix; the write action
-    # lives there, so this page stays read-only about org metadata.
-    from sam.queries.xras_mnemonic_report import mnemonic_unblock_report
-    mnemonic_summary = mnemonic_unblock_report(db.session, payload)
-    # Same shape for contracts: the fix is a `contract` row, created in
-    # Admin -> Contracts, so each target links there with the form seeded.
-    from sam.queries.xras_contract_report import contract_unblock_report
-    contract_summary = _with_create_links(contract_unblock_report(db.session, payload))
-
     rows = list(payload.get('rows') or []) if payload else []
     swept_total = len(rows)
     pending_total = sum(1 for r in rows if is_pending_work(r))
@@ -137,6 +126,17 @@ def xras_remediations_fragment():
     show_all = read_flag(request.args, 'show_all')
     window = _parse_activity_window(request.args)
     rows = _scope_rows(rows, request.args)
+
+    # The two data-fix strips rank over the rows IN VIEW (queue or everything,
+    # before search and chips) — a fix that only unblocks a legacy-era row the
+    # operator is not looking at must not head the list. Both resolve against
+    # the DB (why db.session); both point at Admin to fix, so this page stays
+    # read-only about org and contract metadata.
+    scoped = dict(payload or {}, rows=rows)
+    from sam.queries.xras_mnemonic_report import mnemonic_unblock_report
+    mnemonic_summary = mnemonic_unblock_report(db.session, scoped)
+    from sam.queries.xras_contract_report import contract_unblock_report
+    contract_summary = _with_create_links(contract_unblock_report(db.session, scoped))
     # Counted BEFORE the chips and the search box, because the header badge it
     # feeds names the date filter specifically. Measured against `swept_total`
     # it would grow every time an operator typed, and blame the window for it.
