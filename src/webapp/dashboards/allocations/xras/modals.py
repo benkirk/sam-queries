@@ -127,7 +127,8 @@ def _detail_actions(payload):
             'dates': [{'allocation_date_id': d.get('allocationDateId'),
                        'begin': _as_date(d.get('beginDate')),
                        'end': _as_date(d.get('endDate')),
-                       'type': d.get('type')}
+                       # Wire key is allocationDateType (resources[] use `type`).
+                       'type': d.get('allocationDateType')}
                       for d in (action.get('allocationDates') or ())
                       if isinstance(d, dict)],
             'documents': [d for d in (action.get('documents') or ())

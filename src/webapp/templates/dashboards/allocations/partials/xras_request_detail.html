@@ -303,9 +303,9 @@
         <span class="text-muted ms-1">none</span>
         {% endif %}
     </div>
-    {# `d.type` and `d.allocation_date_id` come from _detail_actions, which
-       passes the raw allocationDates dicts through untouched apart from the
-       begin/end parse. #}
+    {# `d.type` is the wire's `allocationDateType`; `d.allocation_date_id` is
+       `allocationDateId` -- both renamed by _detail_actions, which also parses
+       begin/end. #}
 
     <div class="small mt-2 d-flex align-items-start gap-2">
         <div class="flex-grow-1">

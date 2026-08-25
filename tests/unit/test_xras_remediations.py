@@ -167,7 +167,7 @@ def _detail_payload(number='EXAM0001'):
     ]
     payload['actions'][0]['allocationDates'] = [
         {'allocationDateId': 9, 'beginDate': '2026-01-01', 'endDate': '2026-12-31',
-         'type': 'Requested'}]
+         'allocationDateType': 'Requested'}]
     payload['actions'][0]['documents'] = [
         {'documentId': 1, 'documentType': 'Supp_Info', 'title': 'Award Letter',
          'filename': 'award.pdf', 'size': 44042}]
@@ -2170,3 +2170,36 @@ class TestIdentityUnblockStrip:
     def test_view_only_is_still_forbidden(self, view_only_client, armed, monkeypatch):
         self._publish()
         assert view_only_client.get(FRAGMENT).status_code == 403
+
+
+class TestAllocationDateWireKeys:
+    """The third fixture-agrees-with-the-bug occurrence (after resourceRepositoryKey):
+    the modal read `type` while the wire says `allocationDateType`, and the
+    fixture spelled it the modal's way, so the stage label rendered blank in
+    production with every test green."""
+
+    WIRE = {'allocationDateId', 'allocationDateType', 'beginDate', 'endDate'}
+
+    def test_the_fixture_speaks_the_wire(self):
+        for entry in _detail_payload()['actions'][0]['allocationDates']:
+            assert set(entry) <= self.WIRE, set(entry) - self.WIRE
+
+    def test_the_modal_reads_only_wire_keys(self):
+        import ast
+        import inspect
+
+        from webapp.dashboards.allocations.xras import modals
+        tree = ast.parse(inspect.getsource(modals))
+        keys = {node.args[0].value for node in ast.walk(tree)
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == 'get' and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and str(node.args[0].value).startswith('allocationDate')}
+        # `allocationDates` itself is the array key on the action.
+        assert keys and keys <= self.WIRE | {'allocationDates'}, keys
+
+    def test_the_stage_label_renders(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert '(Requested)' in body
