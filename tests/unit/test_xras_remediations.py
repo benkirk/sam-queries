@@ -1265,7 +1265,7 @@ class TestRequestDetailModal:
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'Withdraw…' in body
         # The inline roster editor: an add-role form and a per-role Remove.
-        assert 'Add XRAS username' in body
+        assert 'Add username (SAM or XRAS)' in body
         assert '/allocations/xras_role_remove/EXAM0001/' in body
         # No separate Roles… entry point, and no Details… link back to itself.
         assert 'Roles…' not in body
