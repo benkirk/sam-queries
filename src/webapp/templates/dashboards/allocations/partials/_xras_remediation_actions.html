@@ -84,7 +84,8 @@
                       title="This role's date window is over in XRAS.">ended</span>
                 {%- endif %}</td>
             <td class="text-end text-nowrap">
-                {% if member.placeholder and member.is_reconciled
+                {% if member.placeholder
+                      and (member.is_reconciled or (member.merge_target and member.merge_target.active))
                       and member.username not in merge_offered %}
                 {% set _ = merge_offered.append(member.username) %}
                 {# WARNING: The contradiction the merge fixup exists for. Reconciliation
@@ -102,7 +103,7 @@
                         and member.username not in merge_offered %}
                 {% set _ = merge_offered.append(member.username) %}
                 <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle"
-                      title="Genuinely unreconciled — XRAS cannot yet say who this is. The healthy path: create the account.">
+                      title="No active SAM account holds this person's email yet. Once one does, the merge is offered here.">
                     needs an account
                 </span>
                 {% endif %}

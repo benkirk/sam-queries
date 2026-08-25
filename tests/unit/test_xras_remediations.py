@@ -108,14 +108,16 @@ def armed(configured, monkeypatch):
 
 
 def _payload(number='EXAM0001', *, status='Approved', action_status='Approved',
-             placeholder=True, reconciled=True, submit_date=None):
+             placeholder=True, reconciled=True, submit_date=None, email=None):
     roles = [{'person': {'username': 'pi-user', 'firstName': 'P',
                          'lastName': 'Eye', 'isReconciled': True},
               'roles': [{'roleId': 1, 'role': 'PI', 'roleTypeId': 13}]}]
     if placeholder:
-        roles.append({'person': {'username': 'ghost-user-abcde',
-                                 'firstName': 'G', 'lastName': 'Host',
-                                 'isReconciled': reconciled},
+        ghost = {'username': 'ghost-user-abcde', 'firstName': 'G',
+                 'lastName': 'Host', 'isReconciled': reconciled}
+        if email:
+            ghost['email'] = email
+        roles.append({'person': ghost,
                       'roles': [{'roleId': 2, 'role': 'User',
                                  'roleTypeId': 19}]})
     return {'requestId': 900001, 'requestNumber': number,
@@ -173,8 +175,13 @@ def _detail_payload(number='EXAM0001'):
 
 
 def _reader(monkeypatch, payload=_payload(), person=None, candidates=(),
-            person_roles=None, opportunity=None, fos_types=None):
-    """Swap in a scripted read client for every live lookup."""
+            person_roles=None, opportunity=None, fos_types=None, people=None):
+    """Swap in a scripted read client for every live lookup.
+
+    *people* maps username -> sheet for the direct `get_person` probes the
+    merge finder and the handler's target check make; unknown names fall
+    back to *person*.
+    """
     client = MagicMock()
     client.get_request_by_number.return_value = payload
     # The detail modal fetches the whole family; derive it from the single-line
@@ -182,6 +189,8 @@ def _reader(monkeypatch, payload=_payload(), person=None, candidates=(),
     client.get_request_family_by_number.side_effect = (
         lambda n: [row] if (row := client.get_request_by_number(n)) else [])
     client.get_person.return_value = person
+    if people is not None:
+        client.get_person.side_effect = lambda u: people.get(u, person)
     client.search_people.return_value = list(candidates)
     # Default to an empty dict, not MagicMock's auto-child — the parser tests
     # its type and a MagicMock would read as "no such thing" only by accident.
@@ -1994,3 +2003,96 @@ class TestTheServiceGetsAFactory:
             assert isinstance(session, Session)
         finally:
             session.close()
+
+
+def _sam_holds(monkeypatch, email, username, active=True):
+    """Stub the one derivation: the route's db.session cannot see SAVEPOINT rows."""
+    monkeypatch.setattr(
+        'sam.queries.xras_accounts.sam_merge_targets',
+        lambda session, emails: ({email.lower(): {'username': username,
+                                                  'active': active}}
+                                 if email.lower() in {e.lower() for e in emails}
+                                 else {}))
+
+
+class TestUnidentifiedPlaceholdersCanMerge:
+    """Every active SAM account resolves in XRAS, so the SAM account holding a
+    placeholder's email is a merge target — reconciled or not."""
+
+    GHOST = 'ghost-user-abcde'
+    EMAIL = 'g@example.invalid'
+
+    def _ghost(self, **over):
+        return _person(username=self.GHOST, firstName='G', lastName='Host',
+                       email=self.EMAIL, isReconciled=False, **over)
+
+    def test_the_user_modal_offers_the_merge_when_sam_holds_the_email(
+            self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, person=self._ghost())
+        _sam_holds(monkeypatch, self.EMAIL, 'ghost')
+        body = auth_client.get(
+            f'/allocations/xras_user_detail/{self.GHOST}').get_data(as_text=True)
+        assert f'/allocations/xras_merge_form/{self.GHOST}' in body
+        assert 'SAM holds this email on' in body and 'ghost' in body
+
+    def test_the_user_modal_offers_nothing_without_a_target(
+            self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, person=self._ghost())
+        _sam_holds(monkeypatch, 'someone.else@example.invalid', 'other')
+        body = auth_client.get(
+            f'/allocations/xras_user_detail/{self.GHOST}').get_data(as_text=True)
+        assert 'xras_merge_form' not in body
+        assert 'No SAM account' in body
+
+    def test_an_inactive_holder_is_shown_but_not_offered(
+            self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, person=self._ghost())
+        _sam_holds(monkeypatch, self.EMAIL, 'ghost', active=False)
+        body = auth_client.get(
+            f'/allocations/xras_user_detail/{self.GHOST}').get_data(as_text=True)
+        assert 'xras_merge_form' not in body
+        assert 'inactive' in body
+
+    def test_the_request_roster_offers_the_merge_when_sam_holds_the_email(
+            self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_payload(reconciled=False, email=self.EMAIL))
+        _sam_holds(monkeypatch, self.EMAIL, 'ghost')
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'Resolve identity' in body
+        assert 'needs an account' not in body
+
+    def test_the_finder_resolves_the_sam_account_directly(
+            self, auth_client, armed, monkeypatch):
+        """search/people never matches an email and caps at 20, so the SAM
+        account holding the email is asked for by name."""
+        real = {'username': 'ghost', 'firstName': 'G', 'lastName': 'Host',
+                'email': self.EMAIL, 'organization': 'Example U'}
+        client = _reader(monkeypatch, person=self._ghost(), candidates=[],
+                         people={'ghost': real})
+        _sam_holds(monkeypatch, self.EMAIL, 'ghost')
+        body = auth_client.get(
+            f'/allocations/xras_merge_form/{self.GHOST}').get_data(as_text=True)
+        assert 'email matches exactly' in body
+        assert 'checked' not in body, 'no preselect, ever'
+        assert 'g@example.invalid' not in [c[0][0] for c in client.search_people.call_args_list], \
+            'the dead email query is gone'
+
+    def test_the_finder_asks_for_the_full_name_as_well_as_the_surname(
+            self, auth_client, armed, monkeypatch):
+        hit = {'username': 'ghosth', 'firstName': 'G', 'lastName': 'Host',
+               'email': 'other@example.invalid', 'organization': 'Example U'}
+        client = _reader(monkeypatch, person=self._ghost(organization='Example U'))
+        client.search_people.side_effect = lambda q: [hit] if q == 'G Host' else []
+        _sam_holds(monkeypatch, 'nobody@example.invalid', 'x')
+        body = auth_client.get(
+            f'/allocations/xras_merge_form/{self.GHOST}').get_data(as_text=True)
+        assert 'ghosth' in body and 'organization matches' in body
+
+    def test_an_unreconciled_placeholder_with_no_target_still_says_needs_an_account(
+            self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_payload(reconciled=False, email=self.EMAIL))
+        _sam_holds(monkeypatch, 'nobody@example.invalid', 'x')
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'needs an account' in body

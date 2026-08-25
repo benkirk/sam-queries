@@ -8,6 +8,8 @@ from ``remediation``), which is what keeps the modals<->remediation graph
 acyclic. Moved verbatim out of ``xras_remediation_routes.py``.
 """
 
+from typing import Optional
+
 from flask import current_app, render_template, request, url_for
 from flask_login import current_user, login_required
 
@@ -20,7 +22,7 @@ from sam.integration.xras_api import (
     xras_api_configured,
     xras_write_configured,
 )
-from sam.queries.xras_accounts import is_placeholder
+from sam.queries.xras_accounts import is_placeholder, iter_roster_entries
 from sam.queries.xras_requests import (
     _as_date,
     _text,
@@ -201,6 +203,7 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
     row = request_index_entry(
         payload, pending_push=bool((entry or {}).get('pending_push', True)),
         preflights=preflights)
+    _stamp_roster_targets(payload, row['roster'])
 
     # One action list spanning EVERY request line, chronological by action_id.
     # Only the single globally-most-recent action is editable/withdrawable; the
@@ -363,14 +366,47 @@ def xras_readiness_detail(request_number: str):
 _USER_DETAIL_FORM = 'dashboards/allocations/partials/xras_user_detail.html'
 
 
+def _merge_target_for(person) -> Optional[dict]:
+    """``{'username', 'active'}`` of the SAM account holding *person*'s email, or None."""
+    from sam.queries.xras_accounts import sam_merge_targets
+    email = ((person or {}).get('email') or '').strip().lower()
+    if not email:
+        return None
+    target = sam_merge_targets(db.session, [email]).get(email)
+    if not target or not target.get('username'):
+        return None
+    return {'username': target['username'], 'active': target['active']}
+
+
+def _stamp_roster_targets(payload, roster) -> None:
+    """Stamp ``merge_target`` onto each placeholder roster row from the payload's emails."""
+    from sam.queries.xras_accounts import sam_merge_targets
+    emails = {}
+    for person, _roles in iter_roster_entries(payload):
+        username = (person.get('username') or '').strip()
+        email = (person.get('email') or '').strip().lower()
+        if username and email:
+            emails[username.casefold()] = email
+    targets = sam_merge_targets(db.session, emails.values())
+    for member in roster:
+        target = None
+        if member.get('placeholder'):
+            target = targets.get(emails.get((member.get('username') or '').casefold(), ''))
+        member['merge_target'] = (
+            {'username': target['username'], 'active': target['active']}
+            if target and target.get('username') else None)
+
+
 def _user_context(username, *, back_request_number=None):
     """Everything the XRAS User modal renders, or ``None`` if XRAS has no such
     person. Raises :class:`XrasSourceUnavailable` on an outage — caller degrades.
 
     Read-only apart from the reused merge: the only person-level write our key
-    holds is the identity merge, offered here only for the stuck-placeholder
-    contradiction (reconciled yet still a placeholder). XRAS exposes no
-    person-attribute write on our credential, so there is nothing else to edit.
+    holds is the identity merge, offered for a placeholder that is either
+    misidentified (reconciled yet still a placeholder) or unidentified with
+    an active SAM account holding its email -- every active SAM user resolves
+    in XRAS, so that account is a merge target already. ``merge_target``
+    carries the matched username only; the email stays on ``person``.
     """
     person = _read_client().get_person(username)
     if person is None:
@@ -384,6 +420,7 @@ def _user_context(username, *, back_request_number=None):
     sam_user = User.get_by_username(db.session, username)
     placeholder = is_placeholder(username)
     is_reconciled = person.get('isReconciled')
+    merge_target = _merge_target_for(person) if placeholder else None
 
     back_url = (url_for('allocations_dashboard.xras_request_detail',
                         request_number=back_request_number)
@@ -403,6 +440,9 @@ def _user_context(username, *, back_request_number=None):
         'placeholder': placeholder,
         'is_reconciled': is_reconciled,
         'stuck_placeholder': bool(placeholder and is_reconciled),
+        'merge_target': merge_target,
+        'mergeable': bool(placeholder and (is_reconciled or
+                                           (merge_target and merge_target['active']))),
         'merge_url': url_for('allocations_dashboard.xras_merge_form',
                              username=username),
         'back_url': back_url,

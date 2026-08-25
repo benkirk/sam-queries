@@ -600,14 +600,29 @@ class _XrasRemediationHandler(HtmxFormHandler):
 # merge — a person operation
 # ---------------------------------------------------------------------------
 
-def _merge_candidates(person, *, source_username):
+def _sam_target_for(person):
+    """``{'username', 'active'}`` of the SAM account holding the email, or None."""
+    from sam.queries.xras_accounts import sam_merge_targets
+    email = ((person or {}).get('email') or '').strip().lower()
+    target = sam_merge_targets(db.session, [email]).get(email) if email else None
+    if not target or not target.get('username'):
+        return None
+    return {'username': target['username'], 'active': target['active']}
+
+
+def _merge_candidates(person, *, source_username, sam_target=None):
     """Real XRAS identities this placeholder might be, best first.
 
-    Searched by **email first, then surname**, and ranked email -> organization ->
-    name. That order is the whole safety property, measured on real data: one
-    human had two live identities differing only in email and organization (a
-    university address and an NCAR-staff one), and a name match picks between
-    them arbitrarily. Merge deletes the loser.
+    Ranked email -> organization -> name. That order is the whole safety
+    property, measured on real data: one human had two live identities
+    differing only in email and organization (a university address and an
+    NCAR-staff one), and a name match picks between them arbitrarily. Merge
+    deletes the loser.
+
+    WARNING: XRAS ``search/people`` matches name/username only (never email)
+    and caps at 20 rows, so a common surname hides the target ("Hu" misses
+    ``jhu279``; "Jie Hu" finds it). The SAM account holding the email is
+    resolved directly instead -- every active SAM user resolves in XRAS.
 
     Intersected with SAM's ``users`` so the modal can say whether the target has
     a SAM account — which decides whether the handoff can proceed after the
@@ -616,10 +631,16 @@ def _merge_candidates(person, *, source_username):
     client = _read_client()
     email = (person or {}).get('email') or ''
     surname = (person or {}).get('lastName') or ''
+    full_name = ' '.join(x for x in [(person or {}).get('firstName'), surname] if x)
     organization = ((person or {}).get('organization') or '').strip().casefold()
 
     found = {}
-    for query in [q for q in (email, surname) if q]:
+    direct = (sam_target or {}).get('username')
+    if direct and direct.casefold() != source_username.casefold():
+        row = client.get_person(direct)
+        if isinstance(row, dict) and row.get('username'):
+            found[row['username'].strip()] = row
+    for query in [q for q in (full_name, surname) if q]:
         for row in (client.search_people(query) or ()):
             if not isinstance(row, dict):
                 continue
@@ -633,6 +654,8 @@ def _merge_candidates(person, *, source_username):
         row_org = (row.get('organization') or '').strip().casefold()
         if email and row_email == email.strip().casefold():
             rank, why = 0, 'email matches exactly'
+        elif direct and username.casefold() == direct.casefold():
+            rank, why = 0, 'SAM holds this email'
         elif organization and row_org == organization:
             rank, why = 1, 'organization matches'
         else:
@@ -669,7 +692,9 @@ def xras_merge_form(username: str):
                 f'{username} no longer exists in XRAS — it has already been '
                 'merged away. This row is a stale echo and will clear on the '
                 'next sweep.', title='Already merged')
-        candidates = _merge_candidates(person, source_username=username)
+        sam_target = _sam_target_for(person)
+        candidates = _merge_candidates(person, source_username=username,
+                                       sam_target=sam_target)
     except XrasSourceUnavailable as exc:
         current_app.logger.warning('xras merge form: %s', exc)
         return _degraded(
@@ -678,7 +703,7 @@ def xras_merge_form(username: str):
 
     return render_template(
         _MERGE_FORM, username=username, person=person, candidates=candidates,
-        write_enabled=xras_write_configured(),
+        sam_target=sam_target, write_enabled=xras_write_configured(),
         post_url=url_for('allocations_dashboard.xras_merge', username=username),
     )
 
@@ -731,13 +756,16 @@ class _XrasMergeHandler(_XrasRemediationHandler):
 
     def context(self):
         """Rebuild the modal for an error re-render — it needs its candidates."""
+        sam_target = None
         try:
             person = _read_client().get_person(self.username)
-            candidates = _merge_candidates(person, source_username=self.username)
+            sam_target = _sam_target_for(person)
+            candidates = _merge_candidates(person, source_username=self.username,
+                                           sam_target=sam_target)
         except XrasSourceUnavailable:
             person, candidates = None, []
         return {'username': self.username, 'person': person,
-                'candidates': candidates,
+                'candidates': candidates, 'sam_target': sam_target,
                 'write_enabled': xras_write_configured(),
                 'post_url': url_for('allocations_dashboard.xras_merge',
                                     username=self.username)}

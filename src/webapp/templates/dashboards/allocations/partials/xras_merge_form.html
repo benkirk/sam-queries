@@ -31,9 +31,16 @@
 </h5>
 
 <p class="text-muted small">
+    {% if person and person.isReconciled %}
     This placeholder is marked <em>reconciled</em> in XRAS but was never merged
     into a real account, so XRAS keeps sending the throwaway username and the
-    handoff stays blocked. Resolving it <strong>merges this placeholder into the
+    handoff stays blocked.
+    {% else %}
+    XRAS has not linked this placeholder to a confirmed person. Every active
+    SAM account resolves in XRAS, so the SAM account holding this person's
+    email is the identity to merge into.
+    {% endif %}
+    Resolving it <strong>merges this placeholder into the
     real XRAS identity you pick below and deletes the placeholder.</strong> From
     then on XRAS sends the real username. This does <strong>not</strong> create
     a SAM account — that is still a separate step if the person has none.
@@ -105,10 +112,11 @@
         </div>
         {% else %}
         <div class="alert alert-warning py-2 small mb-2">
-            No real XRAS identity matched this placeholder's email or surname.
-            Merging is not the fix here — this person genuinely needs an account
-            or identity created first, which is the ordinary
-            <em>Pending Users</em> path. The reconciled flag was a red herring.
+            No XRAS identity matched this placeholder's name
+            {%- if sam_target %}, and SAM's <span class="font-monospace">{{ sam_target.username }}</span>
+            (which holds this email) did not resolve in XRAS{% endif %}.
+            Merging is not the fix here — this person needs a SAM account
+            first, which is the ordinary <em>Pending Users</em> path.
         </div>
         {% endfor %}
     </div>
