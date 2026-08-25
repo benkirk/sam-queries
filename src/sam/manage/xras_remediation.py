@@ -165,8 +165,13 @@ def _client(client=None):
 
 # cache coherence
 
-def _refresh_index_entry(request_number: str, *, reader=None) -> bool:
+def _refresh_index_entry(request_number: str, *, reader=None,
+                         session_factory=None) -> bool:
     """Re-read one request and patch its snapshot entry. ``True`` if patched.
+
+    With *session_factory* the preflight is re-run too. Without it the entry
+    carries no verdict, so a request the operator just fixed drops out of the
+    pending-work queue until the next sweep — the first production merge did.
 
     Uses the **read** client (report context) because the readable state source
     is the reports family. Builds the entry through the same function the sweep
@@ -196,8 +201,12 @@ def _refresh_index_entry(request_number: str, *, reader=None) -> bool:
             # — there is nothing to render and nothing left to act on.
             return patch_requests_index(request_number, None)
 
+        verdicts = None
+        if session_factory is not None:
+            with session_factory() as session:
+                verdicts, _ = _preflight_verdicts(reader, session, payload)
         entry = request_index_entry(payload, pending_push=_still_pending(request_number),
-                                    refreshed_at=datetime.now())
+                                    refreshed_at=datetime.now(), preflights=verdicts)
         if entry is None:
             return False
         return patch_requests_index(request_number, entry)
@@ -216,12 +225,9 @@ def recheck_readiness(request_number: str, *, session, reader=None) -> dict:
     ``available`` is False when the read client is unavailable, so the route can
     degrade with a 200. Never raises.
     """
-    from sam.integration.xras import XrasActionLog
     from sam.integration.xras_api.cache import patch_requests_index
     from sam.integration.xras_api.client import XrasApiClient
     from sam.queries.xras_requests import request_index_entry
-    from sam.xras.preflight import (iter_candidate_actions, preflight_action,
-                                    verdict_to_dict)
 
     counts = {'rechecked': 0, 'failed': 0, 'manual': 0, 'incomplete': 0}
     try:
@@ -237,8 +243,28 @@ def recheck_readiness(request_number: str, *, session, reader=None) -> dict:
         patch_requests_index(request_number, None)
         return {'available': True, 'patched': True, 'counts': counts}
 
-    # No lookback: the operator asked about this one request, so check every
-    # candidate action it carries.
+    verdicts, counts = _preflight_verdicts(reader, session, payload)
+
+    # No `refreshed_at`: a re-check writes nothing to XRAS or SAM, so the "updated
+    # since the sweep" marker (which reads "after your change") would lie. The
+    # freshly flipped verdict badge and the toast already report the outcome.
+    entry = request_index_entry(payload, pending_push=_still_pending(request_number),
+                                preflights=verdicts)
+    patched = bool(entry) and patch_requests_index(request_number, entry)
+    return {'available': True, 'patched': patched, 'counts': counts}
+
+
+def _preflight_verdicts(reader, session, payload):
+    """``(verdicts, counts)`` for every candidate action on one request.
+
+    No lookback: the caller asked about this one request, so every candidate
+    action it carries is checked. A raising preflight counts as ``incomplete``.
+    """
+    from sam.integration.xras import XrasActionLog
+    from sam.xras.preflight import (iter_candidate_actions, preflight_action,
+                                    verdict_to_dict)
+
+    counts = {'rechecked': 0, 'failed': 0, 'manual': 0, 'incomplete': 0}
     candidates = list(iter_candidate_actions(payload, since=None))
     action_ids = {a.get('actionId') for a in candidates if a.get('actionId') is not None}
     log_seen = {}
@@ -269,14 +295,7 @@ def recheck_readiness(request_number: str, *, session, reader=None) -> dict:
         counts[verdict.status] = counts.get(verdict.status, 0) + 1
         if verdict.action_id is not None:
             verdicts[verdict.action_id] = verdict_to_dict(verdict)
-
-    # No `refreshed_at`: a re-check writes nothing to XRAS or SAM, so the "updated
-    # since the sweep" marker (which reads "after your change") would lie. The
-    # freshly flipped verdict badge and the toast already report the outcome.
-    entry = request_index_entry(payload, pending_push=_still_pending(request_number),
-                                preflights=verdicts)
-    patched = bool(entry) and patch_requests_index(request_number, entry)
-    return {'available': True, 'patched': patched, 'counts': counts}
+    return verdicts, counts
 
 
 def _preflight_maps(reader, payload):
@@ -374,7 +393,8 @@ def merge_placeholder(session_factory, *, source_username, target_username,
                                                     invalidate_person)
         invalidate_person(source_username)
         invalidate_person(target_username)
-        patched = _patch_requests_naming(source_username)
+        patched = _patch_requests_naming(source_username,
+                                         session_factory=session_factory)
         # Best-effort: the Pending Users card renders the cached pending half,
         # so a just-merged placeholder would keep its row until the next sweep.
         try:
@@ -387,7 +407,7 @@ def merge_placeholder(session_factory, *, source_username, target_username,
                               patched=patched)
 
 
-def _patch_requests_naming(username: str) -> bool:
+def _patch_requests_naming(username: str, *, session_factory=None) -> bool:
     """Refresh every index entry whose roster carries *username*.
 
     A merged placeholder is usually on one or two requests, so this is a
@@ -406,7 +426,8 @@ def _patch_requests_naming(username: str) -> bool:
                        for r in (row.get('roster') or []))]
     if not numbers:
         return True
-    return all(_refresh_index_entry(number) for number in numbers if number)
+    return all(_refresh_index_entry(number, session_factory=session_factory)
+               for number in numbers if number)
 
 
 def withdraw_action(session_factory, *, request_number, request_id, action_id,
@@ -562,7 +583,8 @@ def _editor_op(operation, session_factory, dispatch, *, open_fields,
 
     extra = close_extra(result) if close_extra else {}
     _close_event(session_factory, event_id, **extra, **_outcome_fields(result))
-    patched = _refresh_index_entry(request_number) if result.succeeded else True
+    patched = (_refresh_index_entry(request_number, session_factory=session_factory)
+               if result.succeeded else True)
     return RemediationOutcome(event_id, result=result, status=result.status,
                               patched=patched)
 

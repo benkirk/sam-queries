@@ -221,7 +221,8 @@ class TestMerge:
         """Source because it is gone; target because its roles changed."""
         seen = []
         monkeypatch.setattr(xras_cache, 'invalidate_person', seen.append)
-        monkeypatch.setattr(service, '_patch_requests_naming', lambda _u: True)
+        monkeypatch.setattr(service, '_patch_requests_naming',
+                            lambda _u, **kw: True)
 
         client = MagicMock()
         client.merge_person.return_value = _result('merge_person')
@@ -255,7 +256,8 @@ class TestMerge:
         wrote it, leaving the column permanently NULL. Caught by a local DDL
         smoke on 2026-08-21, not by any test — hence this one.
         """
-        monkeypatch.setattr(service, '_patch_requests_naming', lambda _u: True)
+        monkeypatch.setattr(service, '_patch_requests_naming',
+                            lambda _u, **kw: True)
         monkeypatch.setattr(xras_cache, 'invalidate_person', lambda _u: None)
 
         sheet = {'username': 'ghost-user-abcde', 'residenceCountry': 'Canada',
@@ -303,7 +305,8 @@ class TestMerge:
             self, factory, monkeypatch):
         """The Pending Users card renders the cached pending half, so a merged
         placeholder must lose its row now, not at the next sweep."""
-        monkeypatch.setattr(service, '_patch_requests_naming', lambda _u: True)
+        monkeypatch.setattr(service, '_patch_requests_naming',
+                            lambda _u, **kw: True)
         monkeypatch.setattr(xras_cache, 'invalidate_person', lambda _u: None)
         xras_cache.store_pending_worklist(
             {'generated_at': datetime.now(), 'window_days': 14,
@@ -321,7 +324,8 @@ class TestMerge:
 
     def test_a_failed_pending_drop_does_not_fail_the_merge(
             self, factory, monkeypatch):
-        monkeypatch.setattr(service, '_patch_requests_naming', lambda _u: True)
+        monkeypatch.setattr(service, '_patch_requests_naming',
+                            lambda _u, **kw: True)
         monkeypatch.setattr(xras_cache, 'invalidate_person', lambda _u: None)
         monkeypatch.setattr(
             xras_cache, 'drop_pending_worklist_row',
@@ -723,3 +727,35 @@ class TestListing:
         """Exporting it would drag the ORM into every `from sam.queries import`."""
         import sam.queries as queries
         assert not hasattr(queries, 'list_remediation_events')
+
+
+class TestTheRefreshRerunsThePreflight:
+    """A patched entry must carry a verdict, or the request it just fixed
+    leaves the pending-work queue until the next sweep."""
+
+    def test_a_refresh_with_a_factory_carries_verdicts(self, factory, published,
+                                                       monkeypatch):
+        reader = MagicMock()
+        reader.get_request_by_number.return_value = _payload()
+        monkeypatch.setattr(
+            service, '_preflight_verdicts',
+            lambda r, s, p: ({7: {'status': 'failed', 'messages': ['x']}},
+                             {'failed': 1}))
+        assert service._refresh_index_entry('EXAM0001', reader=reader,
+                                            session_factory=factory) is True
+        row = xras_cache.load_requests_index()['rows'][0]
+        assert row['preflight_rollup'] == 'failed'
+        assert row['refreshed_at']
+
+    def test_the_merge_threads_its_factory_through(self, factory, published,
+                                                   monkeypatch):
+        seen = []
+        monkeypatch.setattr(
+            service, '_refresh_index_entry',
+            lambda n, **kw: seen.append(kw.get('session_factory')) or True)
+        client = MagicMock()
+        client.merge_person.return_value = _result('merge_person')
+        service.merge_placeholder(factory, source_username='ghost-user-abcde',
+                                  target_username='pi-user', operator='benkirk',
+                                  client=client)
+        assert seen == [factory]

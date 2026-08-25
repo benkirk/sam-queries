@@ -67,3 +67,10 @@ action the sweep had not pulled — a sweep-coverage gap, not a rule gap.
   join `xras_activation_event` instead.
 - The two misses: check why the sweep's request pull lacks the newest action
   for a request with an in-flight renewal.
+- ✅ **A write patches the queue, not just the roster** (2026-08-25, the
+  first production merge): `_refresh_index_entry` re-runs the preflight when
+  given the write's session factory, so a just-fixed request keeps a verdict
+  instead of dropping out of the queue until the next sweep. Same day, on
+  Pending Users: a failed post's roster is history once a later real post
+  exists for the same action (`superseded_log_ids`), and a verified
+  `merge_person` source is never work (`merged_away_usernames`).

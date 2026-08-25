@@ -29,7 +29,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 import pytest
-from factories import make_user
+from factories import make_user, make_xras_remediation_event
 
 from sam.queries.xras_accounts import (
     PERSON_FIELDS,
@@ -290,6 +290,49 @@ class TestFeedA:
 
         report = enrich_worklist(rows, person_lookup=boom)
         assert report['looked_up'] == 0
+
+    def test_a_later_real_post_supersedes_an_earlier_one(
+            self, session, no_committed_placeholder):
+        """A failed post stays failed forever; the re-post is the live roster."""
+        old = self._log_row(session, PLACEHOLDER_FIXTURE, status='failed',
+                            action_id=990388011, request_number='NCAR4227')
+        new = self._log_row(session, PLACEHOLDER_FIXTURE, status='failed',
+                            action_id=990388011, request_number='NCAR4227',
+                            received_time=datetime(2026, 8, 2))
+        ids = {r.ref.action_log_id
+               for r in records_from_action_log(session, validate=False)}
+        assert new.xras_action_log_id in ids
+        assert old.xras_action_log_id not in ids
+
+    def test_a_recheck_row_supersedes_nothing(self, session,
+                                             no_committed_placeholder):
+        post = self._log_row(session, PLACEHOLDER_FIXTURE, status='failed',
+                             action_id=990388012, request_number='NCAR4227')
+        self._log_row(session, PLACEHOLDER_FIXTURE, status='rechecked',
+                      action_id=990388012, request_number='NCAR4227',
+                      source_action_id=post.xras_action_log_id,
+                      received_time=datetime(2026, 8, 2))
+        ids = {r.ref.action_log_id
+               for r in records_from_action_log(session, validate=False)}
+        assert post.xras_action_log_id in ids
+
+    def test_a_merged_away_identity_is_history_not_work(
+            self, session, no_committed_placeholder):
+        self._log_row(session, PLACEHOLDER_FIXTURE, action_type='New',
+                      request_number='NCAR4227')
+        make_xras_remediation_event(session, status='attempted',
+                                    username=PLACEHOLDER_USERNAME,
+                                    target_username='real')
+        names = {u for r in records_from_action_log(session, validate=False)
+                 for u in r.usernames}
+        assert PLACEHOLDER_USERNAME in names, 'an attempt is not a merge'
+
+        make_xras_remediation_event(session, status='verified',
+                                    username=PLACEHOLDER_USERNAME.upper(),
+                                    target_username='real')
+        names = {u for r in records_from_action_log(session, validate=False)
+                 for u in r.usernames}
+        assert PLACEHOLDER_USERNAME not in names
 
     def test_statuses_bound_which_rows_are_read(self, session):
         row = self._log_row(session, PLACEHOLDER_FIXTURE, status='processed')

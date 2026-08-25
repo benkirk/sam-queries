@@ -34,10 +34,11 @@ from datetime import date, datetime
 from typing import (Any, Callable, Dict, Iterable, Iterator, List, Mapping,
                     Optional, Sequence, Tuple)
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from sam.core.users import User
-from sam.integration.xras import XrasActionLog
+from sam.integration.xras import XrasActionLog, XrasRemediationEvent
 from sam.projects.projects import Project
 from sam.queries.xras_actions import XRAS_ACTION_STATUSES
 
@@ -260,7 +261,12 @@ def records_from_action_log(session: Session, *,
 
     schema = XrasActionSchema()
     records: List[RosterRecord] = []
-    for row in query.all():
+    rows = query.all()
+    superseded = superseded_log_ids(session, rows)
+    merged_away = merged_away_usernames(session)
+    for row in rows:
+        if row.xras_action_log_id in superseded:
+            continue
         try:
             action = schema.load(json.loads(row.raw_payload or '{}'))
         except (ValueError, ValidationError) as exc:
@@ -272,6 +278,8 @@ def records_from_action_log(session: Session, *,
             continue
 
         usernames, roles, flags, people = _roster_from_action(action)
+        usernames = [u for u in usernames
+                     if u and u.casefold() not in merged_away]
         if not usernames:
             continue
 
@@ -295,6 +303,34 @@ def records_from_action_log(session: Session, *,
             account_flag=flags,
             person_by_username=people))
     return records
+
+
+def superseded_log_ids(session: Session, rows) -> set:
+    """Log ids with a later real post (``source_action_id`` NULL) for the same action.
+
+    A failed post stays ``failed`` forever, so without this the roster it named
+    keeps a Pending Users row open after XRAS re-posts the action with the fixed
+    identity. Re-check rows replay a post and never supersede one.
+    """
+    action_ids = {r.action_id for r in rows if r.action_id is not None}
+    if not action_ids:
+        return set()
+    latest = dict(session.query(XrasActionLog.action_id,
+                                func.max(XrasActionLog.xras_action_log_id))
+                  .filter(XrasActionLog.action_id.in_(action_ids),
+                          XrasActionLog.source_action_id.is_(None))
+                  .group_by(XrasActionLog.action_id).all())
+    return {r.xras_action_log_id for r in rows
+            if r.action_id in latest
+            and r.xras_action_log_id < latest[r.action_id]}
+
+
+def merged_away_usernames(session: Session) -> set:
+    """Casefolded sources of every verified ``merge_person``: identities XRAS deleted."""
+    query = (session.query(XrasRemediationEvent.username)
+             .filter(XrasRemediationEvent.operation == 'merge_person',
+                     XrasRemediationEvent.status == 'verified'))
+    return {str(u).strip().casefold() for (u,) in query if u}
 
 
 def _would_succeed(status: Optional[str]) -> Optional[bool]:
