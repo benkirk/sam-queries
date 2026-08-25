@@ -203,6 +203,12 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
    the XA headers?
 3. Does xras_admin's "reconcile users" screen read the nightly `GET /people?`
    roster cache rather than calling SAM? (Explains the traffic-free first hour.)
+4. "Recent submissions" drops a row once it is posted **and notified**, and
+   the notified half is XRAS's own record. SAM now sends the handoff mail
+   (`sam.notify`, the Notify button / `xras_notices`), so nothing tells XRAS.
+   What clears it — an admin action in xras_admin, an API call SAM could make
+   after a send, or a per-site setting? Until answered, posted rows sit in
+   their queue and in ours (`docs/plans/XRAS_PENDING_WORK.md`).
 
 Inventory deltas: the other four date-conflict rows (UCSU0136, UMCP0014,
 UMMM0016, UCOR0102) have no deleted rows and stand as genuine XRAS-vs-SAM

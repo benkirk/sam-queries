@@ -59,5 +59,11 @@ action the sweep had not pulled — a sweep-coverage gap, not a rule gap.
 - Posted-but-not-notified is not in the predicate: XRAS admin drops a row
   once it is posted *and* notified, and SAM knows "notified" only through
   `xras_activation_event`. Join it if the queue proves too eager.
+- **The notified half is a cross-system question.** XRAS's "notified" is its
+  own record, and with SAM sending the handoff mail nothing sets it, so
+  posted rows will linger in their queue. Batched for Steve
+  (`XRAS_TRIAGE_WEEK.md` § Questions for Steve, item 4); the answer decides
+  whether SAM's Notify path should call XRAS back or the predicate should
+  join `xras_activation_event` instead.
 - The two misses: check why the sweep's request pull lacks the newest action
   for a request with an in-flight renewal.
