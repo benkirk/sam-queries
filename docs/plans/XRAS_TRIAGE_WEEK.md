@@ -227,15 +227,16 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
    01:37Z 08-25), what does xras_admin do — skip, retry, or post with a
    placeholder? And what are its connect/read timeouts and retry counts?
 
-**Question for George:** "I've noticed `user_institution` and
-`user_organization` rows arriving with odd timestamps since the cutover — e.g.
-an institution row created 08:37 with an end date of 08:33 the same morning,
-another created 11:11 already ended at 11:00, and a batch of ~7,700
-organization rows that landed pre-ended on 07-09. In some cases this interferes
-with the mnemonic lookup, which wants a currently valid collaboration — does
-this make sense to you?" (Measurements behind it: 0 of 883 institution rows
-arrived ended Jan–Jun; 28% since 07-09. Legacy's evaluator is unchanged across
-the FI commits. Blocks NCAR4261/4262/4252.)
+**Question for George:** "Since about 08-18, new `user_institution` rows have
+been arriving with an end date a few minutes *before* their creation time —
+e.g. `user_institution_id` 72308 (`geogdzhayev`, user 31424: created 08-25
+08:37:29, ended 08:33:12) and 72312 (`sseyedzadeh`, user 31428: created 11:11:10,
+ended 11:00:49) — 19 of 25 last week, none before that. `user_organization`
+looks normal (its pre-ended rows are history). It trips the mnemonic lookup,
+which wants a currently valid collaboration. Does that make sense — did
+something change around the 08-17 sync?" (Aug 4–17: 58 rows, 0 pre-ended;
+08-18 on: 27 of 54, 20 within the hour. July's backfill is noise. Blocks
+NCAR4261/4262/4252.)
 
 Inventory deltas: the other four date-conflict rows (UCSU0136, UMCP0014,
 UMMM0016, UCOR0102) have no deleted rows and stand as genuine XRAS-vs-SAM
