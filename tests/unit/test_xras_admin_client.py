@@ -180,17 +180,18 @@ class TestTheWriteLever:
         assert 'super-secret-value' not in repr(summary)
 
 
-class TestHelmDoesNotArmWrites:
+class TestHelmWriteLever:
     """Two drift gates. Flipping either is a deliberate, reviewed act."""
 
     def _values(self):
         return yaml.safe_load((REPO_ROOT / 'helm' / 'values.yaml').read_text())
 
-    def test_the_write_lever_ships_off(self):
+    def test_the_write_lever_is_armed_on_purpose(self):
+        """Armed 2026-08-25 (PR #482). Disarming means editing this line too."""
         env = self._values()['webapp']['env']
         assert 'XRAS_WRITE_ENABLED' in env, \
-            'the lever must be present and visibly off, not merely absent'
-        assert str(env['XRAS_WRITE_ENABLED']) == '0'
+            'the lever must be present and explicit, not merely absent'
+        assert str(env['XRAS_WRITE_ENABLED']) == '1'
 
     def test_the_tasks_env_never_arms_writes(self):
         """No scheduled task may write to XRAS.

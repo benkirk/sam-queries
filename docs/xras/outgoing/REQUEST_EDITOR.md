@@ -42,7 +42,7 @@ for an `ADMIN_XRAS` holder and the routes 403 otherwise.
 | Env var | Governs | Default |
 |---|---|---|
 | `XRAS_OUTGOING_ENABLED` | reads (the sweep, the modals' live reads) | off |
-| `XRAS_WRITE_ENABLED` | **all writes** | off (on `helm/values.yaml` never; webapp-only, never tasks) |
+| `XRAS_WRITE_ENABLED` | **all writes** | off; `helm/values.yaml` arms it since 2026-08-25 (webapp-only, never tasks) |
 | `XRAS_ADMIN_CONTEXT_ENABLED` | the Approved/Recommended-**stage** editors (see §4) | off |
 
 When the write lever is off, the editors **render disabled with a reason** rather

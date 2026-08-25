@@ -224,7 +224,7 @@ row is (placeholder AND is_reconciled)
    `sam.integration.xras_api.admin_client.XrasAdminClient`, its own module, its
    own tests. The GET-only pin on the read client stays.
 2. **Its own credential, fail-closed.** A separate lever
-   (`XRAS_WRITE_ENABLED`, default off, pinned `"0"` in `helm/values.yaml`) and,
+   (`XRAS_WRITE_ENABLED`, default off, set explicitly in `helm/values.yaml`) and,
    ideally, a **separately-scoped key** — today one key can read reports *and*
    merge people *and* withdraw actions, which is far too much authority for the
    reporting path to also hold. Raise a scoped-write-key request with XRAS; it
