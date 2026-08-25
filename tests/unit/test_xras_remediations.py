@@ -1957,3 +1957,40 @@ class TestSelfMergeIsRefusedCaseInsensitively:
                                 data={'target_username': 'Ghost-USER-Abcde'}
                                 ).get_data(as_text=True)
         assert 'different account' in body
+
+
+class TestTheServiceGetsAFactory:
+    """The audit row is written on a session the service opens itself.
+
+    Passing an already-open ``Session`` where the service expects a factory
+    does not fail the request: ``_open_event`` logs and returns None, the
+    write proceeds, and the irreversible act leaves no audit row. That is
+    exactly what the first production merge did.
+    """
+
+    def test_the_merge_route_hands_the_service_a_callable(
+            self, auth_client, armed, monkeypatch):
+        from sqlalchemy.orm import Session
+
+        from sam.manage import xras_remediation
+        from sam.manage.xras_remediation import RemediationOutcome
+
+        _reader(monkeypatch, person={'username': 'ghost-user-abcde'})
+        seen = {}
+
+        def spy(session_factory, **kwargs):
+            seen['factory'] = session_factory
+            return RemediationOutcome(event_id=None, status='error',
+                                      error='spy')
+
+        monkeypatch.setattr(xras_remediation, 'merge_placeholder', spy)
+        auth_client.post('/allocations/xras_merge/ghost-user-abcde',
+                         data={'target_username': 'real'})
+
+        assert callable(seen['factory']), \
+            'the route passed a Session, not a factory; no audit row is written'
+        session = seen['factory']()
+        try:
+            assert isinstance(session, Session)
+        finally:
+            session.close()

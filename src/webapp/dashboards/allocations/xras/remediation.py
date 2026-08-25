@@ -717,7 +717,7 @@ class _XrasMergeHandler(_XrasRemediationHandler):
 
     def perform(self, data):
         outcome = remediation.merge_placeholder(
-            _session_factory(), source_username=self.username,
+            _session_factory, source_username=self.username,
             target_username=data['target_username'],
             operator=current_user.username, comment=data.get('comment'))
         self._target = data['target_username']
@@ -868,7 +868,7 @@ class _XrasWithdrawHandler(_XrasRemediationHandler):
 
     def perform(self, data):
         outcome = remediation.withdraw_action(
-            _session_factory(), request_number=self.request_number,
+            _session_factory, request_number=self.request_number,
             request_id=self._context['request_id'], action_id=self.action_id,
             pi_username=self._context['xa_user'],
             operator=current_user.username, comment=data['comment'])
@@ -992,7 +992,7 @@ def xras_resubmit(request_number: str, action_id: int):
 
     try:
         outcome = remediation.resubmit_action(
-            _session_factory(), request_number=request_number,
+            _session_factory, request_number=request_number,
             request_id=context['request_id'], action_id=action_id,
             pi_username=context['xa_user'], operator=current_user.username)
     except XrasWriteNotConfigured:
@@ -1112,7 +1112,7 @@ class _XrasRoleAddHandler(_XrasRemediationHandler):
 
     def perform(self, data):
         outcome = remediation.change_role(
-            _session_factory(), add=True, request_number=self.request_number,
+            _session_factory, add=True, request_number=self.request_number,
             request_id=self._context['request_id'], username=data['username'],
             operator=current_user.username, xa_user=self._context['xa_user'],
             role=data['role_type'], comment=data.get('comment'))
@@ -1188,7 +1188,7 @@ def xras_role_remove(request_number: str, role_id: int):
 
     try:
         outcome = remediation.change_role(
-            _session_factory(), add=False, request_number=request_number,
+            _session_factory, add=False, request_number=request_number,
             request_id=context['request_id'], username=target.get('username'),
             operator=current_user.username, xa_user=context['xa_user'],
             role_id=role_id)
@@ -1347,7 +1347,7 @@ class _XrasResourceAmountHandler(_XrasRemediationHandler):
     def perform(self, data):
         context = 'admin' if self.stage != 'Requested' else 'submit'
         outcome = remediation.update_resource_amount(
-            _session_factory(), request_number=self.request_number,
+            _session_factory, request_number=self.request_number,
             request_id=self._request_id, action_id=self.action_id,
             resource_id=self.resource_id, amount=data['amount'],
             pi_username=self._xa_user, operator=current_user.username,
@@ -1394,7 +1394,7 @@ def xras_resource_remove(request_number: str, action_id: int,
 
     try:
         outcome = remediation.remove_resource(
-            _session_factory(), request_number=request_number,
+            _session_factory, request_number=request_number,
             request_id=request_id, action_id=action_id,
             resource_id=resource_id, pi_username=xa_user,
             operator=current_user.username)
@@ -1485,7 +1485,7 @@ class _XrasActionDatesHandler(_XrasRemediationHandler):
     def perform(self, data):
         if self.allocation_date_id:
             outcome = remediation.update_action_dates(
-                _session_factory(), request_number=self.request_number,
+                _session_factory, request_number=self.request_number,
                 request_id=self._request_id, action_id=self.action_id,
                 allocation_date_id=self.allocation_date_id,
                 begin_date=data['begin_date'], end_date=data['end_date'],
@@ -1493,7 +1493,7 @@ class _XrasActionDatesHandler(_XrasRemediationHandler):
                 comment=data.get('comment'))
         else:
             outcome = remediation.set_action_dates(
-                _session_factory(), request_number=self.request_number,
+                _session_factory, request_number=self.request_number,
                 request_id=self._request_id, action_id=self.action_id,
                 begin_date=data['begin_date'], end_date=data['end_date'],
                 pi_username=self._xa_user, operator=current_user.username,
@@ -1534,7 +1534,7 @@ def xras_dates_remove(request_number: str, action_id: int,
 
     try:
         outcome = remediation.remove_action_dates(
-            _session_factory(), request_number=request_number,
+            _session_factory, request_number=request_number,
             request_id=request_id, action_id=action_id,
             allocation_date_id=allocation_date_id, pi_username=xa_user,
             operator=current_user.username)
@@ -1621,7 +1621,7 @@ class _XrasAttributesHandler(_XrasRemediationHandler):
             'abstract': data.get('abstract') or '',
         }
         outcome = remediation.update_request_attributes(
-            _session_factory(), request_number=self.request_number,
+            _session_factory, request_number=self.request_number,
             request_id=self._request_id, fields=fields,
             pi_username=self._xa_user, operator=current_user.username)
         return self._finish(outcome, verb='The attribute change')
@@ -1714,7 +1714,7 @@ class _XrasActionFieldsHandler(_XrasRemediationHandler):
     def perform(self, data):
         fields = {'userComments': data.get('user_comments') or ''}
         outcome = remediation.update_action(
-            _session_factory(), request_number=self.request_number,
+            _session_factory, request_number=self.request_number,
             request_id=self._request_id, action_id=self.action_id,
             fields=fields, pi_username=self._xa_user,
             operator=current_user.username)
@@ -1782,7 +1782,7 @@ def xras_request_delete(request_number: str):
             continue
         try:
             outcome = remediation.delete_request(
-                _session_factory(), request_number=request_number,
+                _session_factory, request_number=request_number,
                 request_id=request_id, pi_username=xa_user,
                 operator=current_user.username)
         except XrasWriteNotConfigured:
@@ -1827,7 +1827,7 @@ def xras_request_renew(request_number: str):
 
     try:
         outcome = remediation.renew_request(
-            _session_factory(), request_number=request_number,
+            _session_factory, request_number=request_number,
             request_id=request_id, pi_username=xa_user,
             operator=current_user.username)
     except XrasWriteNotConfigured:
@@ -1879,7 +1879,7 @@ class _XrasAddActionHandler(_XrasRemediationHandler):
 
     def perform(self, data):
         outcome = remediation.add_action(
-            _session_factory(), request_number=self.request_number,
+            _session_factory, request_number=self.request_number,
             request_id=self._request_id, action_type=data['action_type'],
             pi_username=self._xa_user, operator=current_user.username)
         return self._finish(outcome, verb='Adding the action')

@@ -31,6 +31,11 @@ def _session_factory():
 
     Deliberately **not** ``db.session``: an audit row that a request rollback
     could erase would be a record of an irreversible act that can be un-said.
+
+    WARNING: the service takes the factory, not a session -- pass
+    ``_session_factory``, never ``_session_factory()``. The first production
+    merge (2026-08-25) shipped the call form and wrote no audit row; the
+    service logs and proceeds by design, so nothing else fails.
     """
     from sqlalchemy.orm import Session
     return Session(db.engine)
