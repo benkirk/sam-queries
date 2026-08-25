@@ -115,10 +115,11 @@ def _live_request(request_number):
     """The project's **primary** request line, via the reports family.
 
     WARNING: Not ``lines[0]`` (XRAS's arbitrary order) and not
-    ``GET /v1/requests/<id>`` (401 for our credential — so
-    ``rules{allowedOperations}`` is unavailable and offers are derived,
-    PRIVILEGE(#1)). Returning the primary line here is what makes every write
-    handler that resolves ``request_id`` from it target the current request.
+    ``GET /v1/requests/<id>``, which is XA-USER-scoped (200 only as a
+    role-holder) and whose ``rules{allowedOperations}`` overlay is parked, so
+    offers are derived from state. Returning the primary line here is what makes
+    every write handler that resolves ``request_id`` from it target the current
+    request.
     """
     return _primary_line(_read_client().get_request_family_by_number(request_number))
 

@@ -23,11 +23,12 @@
 
  THE OFFERS HERE ARE SNAPSHOT-DERIVED, NOT AUTHORITATIVE
   XRAS publishes the real answer to "what may I do to this action" in
-  `rules{allowedOperations}` on `GET /v1/requests/<id>`, and that route is 401
-  for our credential in every context. So `can_withdraw` / `can_resubmit` are
-  computed from the action's last-swept status: good enough to decide which
-  button to draw, never good enough to decide whether it may be pressed. Each
-  modal re-reads XRAS live, and the client verifies afterwards regardless.
+  `rules{allowedOperations}` on `GET /v1/requests/<id>`. That route is
+  XA-USER-scoped (200 as the request's PI, 401 as arcguest) and reading it is
+  parked (docs/plans/XRAS_DATA_MODEL_UPLIFT.md). So `can_withdraw` /
+  `can_resubmit` are computed from the action's last-swept status: good enough
+  to decide which button to draw, never good enough to decide whether it may be
+  pressed. Each modal re-reads XRAS live, and the client verifies afterwards.
 
   Drawing a button XRAS then refuses is fine — it comes back as XRAS's own
   refusal, in the modal. Hiding a button that would have worked is not.

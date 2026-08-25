@@ -381,8 +381,23 @@ header is inert.
 | Impersonating genuine XRAS administrators via `XA-USER` | only *their own* role-scoped requests; a foreign Approved request still 401s |
 
 Scanning the numeric `requestId` space through `/v1/requests/:id` yields only
-401s without a role. All of this is now academic — the reports family answers
-every one of these questions properly.
+401s without a role. The reports family answers every *read* question, so the
+route matters for one thing only: its `rules{}` block, the authoritative
+legal-moves answer. Measured 2026-08-24 (read-only, PI identity, both contexts):
+
+| XA-USER | context | `GET /v1/requests/<rid>` |
+|---|---|---|
+| `arcguest` | submit or report | 401 |
+| the request's PI | submit or report | 200, `rules` present |
+
+UCUB0089 (Approved New, as `kmussel`): `allowedActions: ["Transfer","Supplement"]`
+with per-type `availableResourceIds`, every existing action `allowedOperations: []`.
+UMIT0073 (Submitted Renewal, as `shuangw`): the action carries
+`allowedOperations: ["Edit","Delete"]`, and `GET .../actions/<aid>/validate`
+answers `{"validation": "successful", "errors": []}`. No key or config lever is
+involved — the XA-USER is per call and the write paths already resolve the PI.
+Wiring this as an offer overlay is **parked** (`docs/plans/XRAS_DATA_MODEL_UPLIFT.md`);
+until then offers are derived from swept state, which every modal re-checks live.
 
 ### 4.4 People endpoints that do not exist
 
