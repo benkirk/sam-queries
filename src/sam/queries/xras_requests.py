@@ -369,6 +369,38 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
     }
 
 
+def primary_line(lines: Any) -> Optional[Dict[str, Any]]:
+    """The request line holding the project's globally most-recent action.
+
+    A projcode can have several lines (a New plus Renewals, each its own
+    ``requestId``); the one with the highest ``actionId`` is the current
+    request. Never ``lines[0]``: XRAS pages by descending ``requestId``, which
+    is not the same order.
+    """
+    def _max_action(line):
+        ids = [a.get('actionId') for a in (line.get('actions') or ())
+               if isinstance(a.get('actionId'), int)]
+        return max(ids) if ids else -1
+    candidates = [ln for ln in (lines or ()) if isinstance(ln, dict)]
+    return max(candidates, key=_max_action) if candidates else None
+
+
+def line_by_id(lines: Any, request_id: Any) -> Optional[Dict[str, Any]]:
+    """The family line whose ``requestId`` is *request_id*, or ``None``."""
+    try:
+        wanted = int(request_id)
+    except (TypeError, ValueError):
+        return None
+    for line in lines or ():
+        if isinstance(line, dict):
+            try:
+                if int(line.get('requestId')) == wanted:
+                    return line
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
 def request_family(payloads: Any, *, pending_push: bool = False
                    ) -> Optional[Dict[str, Any]]:
     """Group a project's request lines into one allocation-lifecycle tree.

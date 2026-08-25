@@ -183,11 +183,11 @@ def _reader(monkeypatch, payload=_payload(), person=None, candidates=(),
     back to *person*.
     """
     client = MagicMock()
-    client.get_request_by_number.return_value = payload
+    client.get_request_line.return_value = payload
     # The detail modal fetches the whole family; derive it from the single-line
     # mock so a test's return_value/side_effect (not-found, outage) still applies.
     client.get_request_family_by_number.side_effect = (
-        lambda n: [row] if (row := client.get_request_by_number(n)) else [])
+        lambda n: [row] if (row := client.get_request_line(n)) else [])
     client.get_person.return_value = person
     if people is not None:
         client.get_person.side_effect = lambda u: people.get(u, person)
@@ -285,7 +285,7 @@ class TestRecheckNow:
     def test_it_degrades_200_when_xras_is_unreachable(self, auth_client,
                                                       configured, monkeypatch):
         client = _reader(monkeypatch)
-        client.get_request_by_number.side_effect = XrasSourceUnavailable('down')
+        client.get_request_line.side_effect = XrasSourceUnavailable('down')
         resp = auth_client.post('/allocations/xras_recheck_request/EXAM0001')
         # 200, not 4xx: htmx will not swap a 4xx into the open modal.
         assert resp.status_code == 200
@@ -467,7 +467,7 @@ class TestCheckAll:
                                                       monkeypatch):
         _publish(_payload('EXAM0001'))
         client = _reader(monkeypatch)
-        client.get_request_by_number.side_effect = XrasSourceUnavailable('down')
+        client.get_request_line.side_effect = XrasSourceUnavailable('down')
         resp = auth_client.post('/allocations/xras_recheck_visible', data={'show_all': '1'})
         assert resp.status_code == 200
         assert 'could not be reached' in resp.get_data(as_text=True)
@@ -1190,7 +1190,7 @@ class TestModalGets:
         """WARNING: htmx will not swap a 4xx into an open modal — an error status
         renders as an empty modal indistinguishable from a broken button."""
         client = MagicMock()
-        client.get_request_by_number.side_effect = XrasSourceUnavailable('down')
+        client.get_request_line.side_effect = XrasSourceUnavailable('down')
         client.get_request_family_by_number.side_effect = XrasSourceUnavailable('down')
         client.get_person.side_effect = XrasSourceUnavailable('down')
         client.get_opportunity.side_effect = XrasSourceUnavailable('down')
@@ -1876,7 +1876,7 @@ class TestAPostDuringAnOutageDegradesInline:
     def test_a_withdraw_post_renders_the_outage_inline(self, auth_client,
                                                        armed, monkeypatch):
         client = _reader(monkeypatch)
-        client.get_request_by_number.side_effect = XrasSourceUnavailable('down')
+        client.get_request_line.side_effect = XrasSourceUnavailable('down')
         response = auth_client.post('/allocations/xras_withdraw/EXAM0001/7',
                                     data={'comment': 'stale award'})
         assert response.status_code == 200
@@ -1885,7 +1885,7 @@ class TestAPostDuringAnOutageDegradesInline:
     def test_a_role_add_post_renders_the_outage_inline(self, auth_client,
                                                        armed, monkeypatch):
         client = _reader(monkeypatch)
-        client.get_request_by_number.side_effect = XrasSourceUnavailable('down')
+        client.get_request_line.side_effect = XrasSourceUnavailable('down')
         response = auth_client.post('/allocations/xras_role_add/EXAM0001',
                                     data={'username': 'somebody',
                                           'role_type': 'User'})

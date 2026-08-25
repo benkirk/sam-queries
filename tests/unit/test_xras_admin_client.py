@@ -91,13 +91,17 @@ def _response(status, result=None, message=None, text='', raw=False):
 
 
 class _FakeReader:
-    """Stands in for the report-context read client used by verification."""
+    """Stands in for the report-context read client used by verification.
+
+    Each scripted item is one family read: a dict (a one-line family), a list
+    of lines, None (nothing resolves) or an exception.
+    """
 
     def __init__(self, *payloads):
         self.payloads = list(payloads)
         self.calls = 0
 
-    def get_request_by_number(self, request_number):
+    def _next(self):
         self.calls += 1
         if not self.payloads:
             raise AssertionError('reader called more times than scripted')
@@ -106,6 +110,18 @@ class _FakeReader:
         if isinstance(payload, Exception):
             raise payload
         return payload
+
+    def get_request_family_by_number(self, request_number):
+        payload = self._next()
+        if payload is None:
+            return []
+        return list(payload) if isinstance(payload, list) else [payload]
+
+    def get_request_line(self, request_number, *, request_id=None):
+        from sam.queries.xras_requests import line_by_id, primary_line
+        family = self.get_request_family_by_number(request_number)
+        return (line_by_id(family, request_id) if request_id is not None
+                else primary_line(family))
 
 
 def _client(monkeypatch, responses, *, reader=None, **config_kwargs):
@@ -829,3 +845,66 @@ class TestTheResultRecord:
         result = XrasWriteResult('op', 'POST', '/p')
         with pytest.raises(Exception):
             result.verified = True
+
+
+class TestVerifiesReadTheTargetedLine:
+    """A projcode is a FAMILY; writes target one line and verifies must read it."""
+
+    @staticmethod
+    def _family():
+        # XRAS order: descending requestId. The primary line (highest actionId)
+        # is the LAST one, so family[0] would be wrong on every read below.
+        new = dict(_reports_request(actions=((30, 'Approved'),), number='FAM0001',
+                                    roster=(('renewal-pi', 7, 'PI', 13),)),
+                   requestId=900003, title='renewal')
+        mid = dict(_reports_request(actions=((20, 'Approved'),), number='FAM0001'),
+                   requestId=900002, title='middle')
+        old = dict(_reports_request(actions=((40, 'Approved'),), number='FAM0001',
+                                    roster=(('original-pi', 1, 'PI', 13),)),
+                   requestId=900001, title='original')
+        return [new, mid, old]
+
+    def test_actions_span_every_line(self, monkeypatch):
+        client = _client(monkeypatch, [], reader=_FakeReader(self._family()))
+        assert {a['actionId'] for a in client._actions('FAM0001')} == {20, 30, 40}
+        assert client.action_status('FAM0001', 30) == 'Approved'
+
+    def test_the_roster_is_the_targeted_line_else_the_primary(self, monkeypatch):
+        client = _client(monkeypatch, [], reader=_FakeReader(self._family()))
+        assert client.resolve_pi('FAM0001', 900003) == 'renewal-pi'
+        assert client.resolve_pi('FAM0001') == 'original-pi', 'primary = highest actionId'
+
+    def test_deleting_one_line_verifies_against_the_family(self, monkeypatch):
+        family = self._family()
+        after = [ln for ln in family if ln['requestId'] != 900002]
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(family, after))
+        result = client.delete_request(900002, request_number='FAM0001',
+                                       xa_user='pi-user')
+        assert result.verified is True
+        assert 'line no longer resolves' in result.verify_detail
+
+    def test_a_surviving_line_is_not_a_failed_delete_of_a_sibling(self, monkeypatch):
+        family = self._family()
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(family, family))
+        result = client.delete_request(900002, request_number='FAM0001',
+                                       xa_user='pi-user')
+        assert result.verified is False
+
+    def test_attribute_verify_reads_the_targeted_line(self, monkeypatch):
+        family = self._family()
+        changed = [dict(ln, title='renamed') if ln['requestId'] == 900001 else ln
+                   for ln in family]
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(family, changed))
+        result = client.update_request_attributes(
+            900001, request_number='FAM0001', xa_user='pi-user', title='renamed')
+        assert result.verified is True
+        assert result.before == {'title': 'original'}
+
+    def test_the_first_element_read_is_gone(self):
+        import pathlib
+        src = pathlib.Path(__file__).resolve().parents[2] / 'src'
+        hits = [p for p in src.rglob('*.py') if 'get_request_by_number' in p.read_text()]
+        assert hits == [], hits

@@ -505,28 +505,29 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
               if str(p.get('requestNumber') or '').strip() in keep]
     cohort.extend(p for p in extra_payloads if isinstance(p, dict))
 
-    entries, indexed, deleted = [], set(), 0
+    # One entry per projcode, built from the PRIMARY line (highest actionId):
+    # the line the modal shows and every write targets. XRAS pages by
+    # descending requestId, so "first copy" was the newest line, not always
+    # the current one. Deleted lines carry no handoff and are excluded.
+    from sam.queries.xras_requests import primary_line
+
+    by_number: dict = {}
     for payload in cohort:
         number = str(payload.get('requestNumber') or '').strip()
-        if number in indexed:
-            # A primary pass overridden to 'all' (or to one of the extra
-            # statuses) re-reads the extras' cohorts, and a duplicate row
-            # would carry a second Withdraw button — while the post-write
-            # patch rewrites only the first match. First copy wins; the
-            # primary copy comes first and carries the same classification.
-            continue
-        if payload.get('isDeleted'):
-            # A deleted request has no handoff to remediate and no pushable
-            # action — iter_candidate_actions skips its deleted actions, so it
-            # would sit on the card as a "not checked" row a re-check can never
-            # resolve. Excluded from the cohort entirely.
+        if number:
+            by_number.setdefault(number, []).append(payload)
+
+    entries, deleted = [], 0
+    for number, lines in by_number.items():
+        live = [p for p in lines if not p.get('isDeleted')]
+        if not live:
             deleted += 1
             continue
-        entry = request_index_entry(payload, pending_push=number in pending,
+        entry = request_index_entry(primary_line(live),
+                                    pending_push=number in pending,
                                     preflights=preflights_by_number.get(number))
         if entry is not None:
             entries.append(entry)
-            indexed.add(number)
 
     entries.sort(key=lambda e: (str(e.get('opportunity_name') or ''),
                                 str(e.get('request_number') or '')))

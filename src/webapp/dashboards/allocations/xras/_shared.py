@@ -97,18 +97,9 @@ def _read_client():
 
 
 def _primary_line(lines):
-    """The request line holding the project's globally most-recent action.
-
-    A projcode can have several request lines (a New plus Renewals, each its own
-    ``requestId``); this picks the one with the highest ``actionId`` — the current
-    request. The modal anchors its header/roster and every write on it, so the
-    target is deterministic rather than XRAS's arbitrary ``lines[0]`` order.
-    """
-    def _max_action(line):
-        ids = [a.get('actionId') for a in (line.get('actions') or ())
-               if isinstance(a.get('actionId'), int)]
-        return max(ids) if ids else -1
-    return max(lines, key=_max_action) if lines else None
+    """The current request line -- :func:`sam.queries.xras_requests.primary_line`."""
+    from sam.queries.xras_requests import primary_line
+    return primary_line(lines)
 
 
 def _live_request(request_number):

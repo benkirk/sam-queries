@@ -366,7 +366,7 @@ class TestTheSnapshotPatch:
             self, factory, published, monkeypatch):
         """The two-consumers rule, asserted rather than trusted."""
         reader = MagicMock()
-        reader.get_request_by_number.return_value = _payload(
+        reader.get_request_line.return_value = _payload(
             action_status='Incomplete')
         monkeypatch.setattr(
             'sam.integration.xras_api.client.XrasApiClient.from_environment',
@@ -388,7 +388,7 @@ class TestTheSnapshotPatch:
     def test_a_patched_row_is_stamped_so_the_card_can_say_so(
             self, factory, published, monkeypatch):
         reader = MagicMock()
-        reader.get_request_by_number.return_value = _payload()
+        reader.get_request_line.return_value = _payload()
         monkeypatch.setattr(
             'sam.integration.xras_api.client.XrasApiClient.from_environment',
             classmethod(lambda cls, *a, **k: reader))
@@ -408,7 +408,7 @@ class TestTheSnapshotPatch:
             self, factory, published, monkeypatch):
         """The operator must see the effect, not a vanishing row."""
         reader = MagicMock()
-        reader.get_request_by_number.return_value = _payload(
+        reader.get_request_line.return_value = _payload(
             status='Incomplete', action_status='Incomplete')
         monkeypatch.setattr(
             'sam.integration.xras_api.client.XrasApiClient.from_environment',
@@ -428,7 +428,7 @@ class TestTheSnapshotPatch:
     def test_a_failed_refresh_is_not_a_failed_write(
             self, factory, published, monkeypatch):
         reader = MagicMock()
-        reader.get_request_by_number.side_effect = XrasSourceUnavailable('down')
+        reader.get_request_line.side_effect = XrasSourceUnavailable('down')
         monkeypatch.setattr(
             'sam.integration.xras_api.client.XrasApiClient.from_environment',
             classmethod(lambda cls, *a, **k: reader))
@@ -736,7 +736,7 @@ class TestTheRefreshRerunsThePreflight:
     def test_a_refresh_with_a_factory_carries_verdicts(self, factory, published,
                                                        monkeypatch):
         reader = MagicMock()
-        reader.get_request_by_number.return_value = _payload()
+        reader.get_request_line.return_value = _payload()
         monkeypatch.setattr(
             service, '_preflight_verdicts',
             lambda r, s, p: ({7: {'status': 'failed', 'messages': ['x']}},

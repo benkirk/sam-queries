@@ -195,7 +195,7 @@ def _refresh_index_entry(request_number: str, *, reader=None,
 
     try:
         reader = reader or XrasApiClient.from_environment()
-        payload = reader.get_request_by_number(request_number)
+        payload = reader.get_request_line(request_number)
         if payload is None:
             # XRAS no longer knows this number. Dropping the row is right here
             # — there is nothing to render and nothing left to act on.
@@ -232,7 +232,7 @@ def recheck_readiness(request_number: str, *, session, reader=None) -> dict:
     counts = {'rechecked': 0, 'failed': 0, 'manual': 0, 'incomplete': 0}
     try:
         reader = reader or XrasApiClient.from_environment()
-        payload = reader.get_request_by_number(request_number)
+        payload = reader.get_request_line(request_number)
     except Exception as exc:                            # noqa: BLE001
         logger.warning('xras recheck: could not read %s (%s)', request_number, exc)
         return {'available': False, 'patched': False, 'counts': counts}

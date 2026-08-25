@@ -384,23 +384,28 @@ class XrasApiClient(_XrasTransport):
 
         ``reports/request_numbers/<n>`` returns a **list** when a project has
         more than one request line (a New plus later Renewals, each with its own
-        ``requestId`` and ``actions[]``). :meth:`get_request_by_number` keeps only
-        the first; this keeps all of them, for the family derivation.
+        ``requestId`` and ``actions[]``). :meth:`get_request_line` selects one;
+        this keeps all of them, for the family derivation.
         """
         result = self._get(
             f'/v1/reports/request_numbers/{quote(str(request_number), safe="")}')
         return [r for r in (_as_list(result) or ()) if isinstance(r, dict)]
 
-    def get_request_by_number(self, request_number: str
-                              ) -> Optional[Dict[str, Any]]:
-        """Look up one request **by request number — i.e. by projcode**.
+    def get_request_line(self, request_number: str, *,
+                         request_id: Optional[int] = None
+                         ) -> Optional[Dict[str, Any]]:
+        """One request line **by projcode**: the line holding *request_id*, else
+        the primary line (highest ``actionId``). Never ``family[0]``.
 
         ``GET /v1/requests/<requestNumber>`` is *not* this: that route is keyed
-        on ``requestId`` and 401s for a number. This is the reports path. Returns
-        the first line only; use :meth:`get_request_family_by_number` for all of them.
+        on ``requestId`` and 401s for a number. This is the reports path.
         """
+        from sam.queries.xras_requests import line_by_id, primary_line
+
         family = self.get_request_family_by_number(request_number)
-        return family[0] if family else None
+        if request_id is not None:
+            return line_by_id(family, request_id)
+        return primary_line(family)
 
     def get_requests_page(self, *, status: Optional[str] = 'Approved',
                           limit: int = DEFAULT_PAGE_SIZE,
