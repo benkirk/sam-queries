@@ -204,11 +204,12 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
 | 16:58 (25th) | `sha-acd3d95` rolled out: Track B of `XRAS_DATA_MODEL_UPLIFT.md` (allocationDateType, the family seam, the affiliation message, identity badge, add-role copy). Healthcheck 42/2/0. A live re-check of NCAR4262 now reads **PI `glarouche` has no current institution or organization in SAM** — the affiliation class named as itself. |
 | 18:59 (25th) | Third production merge, first from the **Ready to merge** flag: `ggeogdzhayev-user-7016v` -> `geogdzhayev` (NCAR4261). Audit row #2 `verified`, placeholder 404, roster PI moved with its roleId, index entry re-preflighted at click time: `PI geogdzhayev has no current institution or organization in SAM` — the affiliation class again, no sweep needed. The identity strip then showed a second target that surfaced on its own: `sseyedzadeh-user-a85do` -> `sseyedzadeh` (NCAR4252). NCAR4261 was never posted to SAM; XRAS admin must re-push after the affiliation fix. |
 | 19:06 (25th) | Fourth merge, second from the flag: `sseyedzadeh-user-a85do` -> `sseyedzadeh` (NCAR4252). Audit row #3, placeholder 404, PI moved with roleId 573038, click-time preflight: `PI sseyedzadeh has no current institution or organization in SAM` — predicted from the Stony Brook `user_institution` row that arrived already end-dated. Identity strip empty; 4 need an account. **Three of the board's PIs (NCAR4261/4262/4252) now share the affiliation class** — the upstream sync, not identity, is the bottleneck. None of the three was ever posted; each needs an XRAS re-push after the fix. |
+| 19:40 (25th) | Steve's 08-24 findings correlated by request id — XRAS's ids are our `rid`s, and this session's watch log kept SAM's side. The two slow lookups (`kbarragan` 3.5 s, `ncar_guest_11554795` 7.4 s on their clock) were **182 ms and 76 ms app-side**: the seconds sit between their client and gunicorn, on the edge path. The 60 s connect failure (`apauls`, 01:37:32–01:38:32Z) never reached the app and is the 08-17 connect-timeout class — pods stable 5 h, third independent client, unconfirmable from our account; handed to CIRRUS with the window. Steve's log clock is CDT. Key is 96 chars: question 1 closed. |
 
 ### Questions for Steve (batched, not piecemeal)
 
-1. How many characters is the `XA-API-KEY` XRAS sends? Over 72 confirms the
-   bcrypt truncation story without anyone handling the secret.
+1. ~~How many characters is the `XA-API-KEY`?~~ **Answered 08-25: 96** — the
+   bcrypt truncation story is confirmed without anyone handling the secret.
 2. Two `/people/{username}` lookups at 17:06:49Z (`ncar_guest_11554785`,
    `sortiz`) arrived with **no usable credential** (401 in 0.2 ms, no bcrypt
    run) while the lookups seconds earlier carried the XA pair. Is there a
@@ -222,6 +223,12 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
    What clears it — an admin action in xras_admin, an API call SAM could make
    after a send, or a per-site setting? Until answered, posted rows sit in
    their queue and in ours (`docs/plans/XRAS_PENDING_WORK.md`).
+5. When an identity lookup fails to *connect* (the 60 s `apauls` failure,
+   01:37Z 08-25), what does xras_admin do — skip, retry, or post with a
+   placeholder? And what are its connect/read timeouts and retry counts?
+6. `user_institution` rows arrive from the upstream sync already end-dated
+   (Stony Brook: inserted 11:11, ended 11:00 the same day; Miami: ended
+   06-24). Who owns that feed, and is the end-dating intended?
 
 Inventory deltas: the other four date-conflict rows (UCSU0136, UMCP0014,
 UMMM0016, UCOR0102) have no deleted rows and stand as genuine XRAS-vs-SAM
