@@ -227,12 +227,11 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
    01:37Z 08-25), what does xras_admin do — skip, retry, or post with a
    placeholder? And what are its connect/read timeouts and retry counts?
 
-Not for Steve — an NCAR-side feed question: SAM's `user_institution` table
-(read by the mnemonic route, written by no SAM code; XRAS's post carries only a
-free-text `organization` SAM never stores) gets rows from the account-provisioning
-sync already end-dated (`users` and `user_institution` share a `creation_time`;
-Stony Brook ended 11:00, inserted 11:11; Miami ended 06-24). Who owns that feed,
-and is the end-dating intended? Blocks NCAR4261/4262/4252.
+**Question for George:** after the recent FI transition, is SAM's
+`user_institution` deprecated? Rows now arrive already end-dated (Stony Brook
+inserted 11:11 with an end of 11:00; Miami ended 06-24), no SAM code writes the
+table, and the mnemonic route still reads it — which is what blocks
+NCAR4261/4262/4252 today.
 
 Inventory deltas: the other four date-conflict rows (UCSU0136, UMCP0014,
 UMMM0016, UCOR0102) have no deleted rows and stand as genuine XRAS-vs-SAM
