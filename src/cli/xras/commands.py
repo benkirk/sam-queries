@@ -20,7 +20,7 @@ class XrasCommand(BaseCommand):
                 validate_mapping=False, validate_opportunities=False,
                 validate_vocabulary=False,
                 accounts=False, readiness=False, mnemonic_report=False,
-                contract_report=False, person=None,
+                contract_report=False, identity_report=False, person=None,
                 family=None, enrich=False,
                 status=(), action_type=(), request_number=None, last=None,
                 show_payload=False, limit=50, **_) -> int:
@@ -43,6 +43,8 @@ class XrasCommand(BaseCommand):
                 return self._mnemonic_report()
             if contract_report:
                 return self._contract_report()
+            if identity_report:
+                return self._identity_report()
             if accounts:
                 return self._accounts(filters, enrich)
             if recheck is not None:
@@ -281,6 +283,23 @@ class XrasCommand(BaseCommand):
             output_json(payload)
         else:
             display.display_contract_report(self.ctx, payload)
+        return EXIT_SUCCESS
+
+    def _identity_report(self) -> int:
+        """Placeholders to merge, ranked by the pushes each would unblock.
+
+        Feed A + Feed B, enriched when the API is configured (a Feed-A row has no
+        email to match until then). An empty board exits 0.
+        """
+        from sam.integration.xras_api import xras_api_configured
+
+        pending, _checked = self._pending_worklist()
+        payload = builders.build_identity_report(
+            self.session, pending_rows=pending, enrich=xras_api_configured())
+        if self.ctx.output_format == 'json':
+            output_json(payload)
+        else:
+            display.display_identity_report(self.ctx, payload)
         return EXIT_SUCCESS
 
     def _pending_worklist(self):

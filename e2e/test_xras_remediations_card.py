@@ -242,6 +242,25 @@ class TestContractStrip:
         assert page.locator('#createContractModal #createContractNumber').input_value().strip()
 
 
+class TestIdentityStrip:
+    """The identity strip: each placeholder opens the merge modal in place.
+    Guarded like the rest of this file, and asserting on structure only —
+    never a username, an email, or a count."""
+
+    STRIP = f'{CARD} #xras-identity-strip'
+
+    def test_each_ready_placeholder_opens_the_merge_modal(self, page):
+        _load(page)
+        strip = page.locator(self.STRIP)
+        if strip.count() == 0:
+            pytest.skip('no placeholder blocker on this stack')
+        assert '@' not in strip.inner_text()
+        buttons = strip.locator('button[hx-get*="/allocations/xras_merge_form/"]')
+        if buttons.count() == 0:
+            pytest.skip('nothing ready to merge on this stack')
+        assert buttons.first.get_attribute('data-bs-target') == '#auditDetailsModal'
+
+
 class TestPendingWorkToggle:
 
     def test_show_everything_reloads_the_card(self, page):

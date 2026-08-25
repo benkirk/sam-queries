@@ -1,5 +1,5 @@
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
-{% from 'dashboards/fragments/glossary.html' import g_xras_pending_work, g_xras_mnemonic_strip, g_xras_contract_strip with context %}
+{% from 'dashboards/fragments/glossary.html' import g_xras_pending_work, g_xras_mnemonic_strip, g_xras_contract_strip, g_xras_identity_strip with context %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
@@ -187,6 +187,48 @@
                 <strong>tie</strong> against existing contracts
                 ({% for v in contract_summary.variants[:4] %}<code>{{ v.number }}</code>{% if not loop.last %}, {% endif %}{% endfor %})
                 — a spelling variant to reconcile, not a row to create.
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {# Identity strip — placeholders whose email SAM already holds on an active
+           account. Each name opens the merge modal from the card body (a closed
+           modal, so data-bs-toggle is right here and wrong inside a modal).
+           Disabled with the lever off, like every other write on this card. #}
+        {% if identity_summary and (identity_summary.targets or identity_summary.reactivations or identity_summary.needs_account) %}
+        {% set _itargets = identity_summary.targets %}
+        <div class="alert alert-info d-flex gap-2 py-2 mb-3" id="xras-identity-strip">
+            <i class="fas fa-user-check mt-1"></i>
+            <div class="small">
+                {% if _itargets %}
+                <strong>{{ _itargets | length | fmt_plural('placeholder') }}
+                {{ 'is' if _itargets | length == 1 else 'are' }} ready to merge —
+                SAM already holds the email on an active account.</strong>
+                {{ help_icon(g_xras_identity_strip(), rich=True, title='Placeholders to merge', placement='bottom') }}
+                Resolve each in XRAS:
+                {% for t in _itargets[:6] %}
+                <button type="button" class="btn btn-link btn-sm p-0 align-baseline"
+                        {% if not write_enabled %}disabled title="XRAS writes are switched off for this deployment (XRAS_WRITE_ENABLED)."{% else %}
+                        title="merges into {{ t.target_username }} · would unblock {{ t.unblock_count }} — {{ t.sample | join(', ') }}"{% endif %}
+                        hx-get="{{ t.merge_url }}"
+                        hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                        data-bs-toggle="modal" data-bs-target="#auditDetailsModal"><span class="font-monospace">{{ t.username }}</span></button>
+                &rarr; <span class="font-monospace">{{ t.target_username }}</span>&nbsp;({{ t.unblock_count }}){% if not loop.last %} ·{% endif %}
+                {% endfor %}
+                {% if _itargets | length > 6 %}
+                … (+{{ (_itargets | length) - 6 }} more — <code>sam-admin xras --identity-report</code>)
+                {% endif %}
+                {% endif %}
+                {% if identity_summary.reactivations %}
+                {% if _itargets %}<br>{% endif %}{{ identity_summary.reactivations | length | fmt_plural('placeholder') }}
+                {{ 'matches' if identity_summary.reactivations | length == 1 else 'match' }} an
+                <strong>inactive</strong> SAM account — reactivate it, then merge.
+                {% endif %}
+                {% if identity_summary.needs_account %}
+                {% if _itargets or identity_summary.reactivations %}<br>{% endif %}{{ identity_summary.needs_account | length | fmt_plural('placeholder') }}
+                {{ 'needs' if identity_summary.needs_account | length == 1 else 'need' }} a SAM account
+                before a merge is possible — <code>sam-admin xras --identity-report</code> lists the emails.
                 {% endif %}
             </div>
         </div>

@@ -158,6 +158,55 @@ class TestMnemonicReportMode:
         assert targets[0]['unblock_count'] == 2
 
 
+class TestIdentityReportMode:
+
+    @staticmethod
+    def _feed(monkeypatch, rows):
+        from sam.queries.xras_accounts import PendingFeed
+        monkeypatch.setattr('sam.queries.xras_accounts.load_pending_worklist_rows',
+                            lambda: PendingFeed(rows=rows, checked=True))
+
+    def test_no_snapshot_is_an_empty_report_not_an_error(self, runner, cli_session,
+                                                         monkeypatch):
+        from sam.queries.xras_accounts import PendingFeed
+        monkeypatch.setattr('sam.queries.xras_accounts.load_pending_worklist_rows',
+                            lambda: PendingFeed(reason='no_snapshot'))
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--identity-report'])
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.stdout)
+        assert payload['kind'] == 'xras_identity_report'
+        # Feed A may hold rows other tests committed; none is a merge target.
+        assert payload['targets'] == []
+
+    def test_a_placeholder_sam_holds_is_a_target(self, runner, cli_session,
+                                                 monkeypatch):
+        from factories import make_email_address, make_user
+        mail = make_email_address(session=cli_session, user=make_user(cli_session))
+        self._feed(monkeypatch, [{
+            'username': 'ghost-user-cli1', 'classification': 'absent',
+            'remedy': 'create', 'placeholder': True, 'is_reconciled': False,
+            'roles': ('PI',), 'sources': ['reports'], 'waiting_since': None,
+            'person': {'email': mail.email_address},
+            'actions': [{'action_log_id': None, 'request_number': 'NCAR0777',
+                         'action_type': 'New', 'status': 'Approved',
+                         'received_time': None, 'submit_date': '2026-08-20',
+                         'source': 'reports', 'would_succeed': None,
+                         'preflight_status': None, 'reject_messages': []}]}])
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--identity-report'])
+        assert result.exit_code == 0, result.output
+        targets = json.loads(result.stdout)['targets']
+        assert [t['username'] for t in targets] == ['ghost-user-cli1']
+        assert targets[0]['target_username'] == mail.user.username
+        assert targets[0]['sample'] == ['NCAR0777']
+
+    def test_rich_mode_renders(self, runner, cli_session, monkeypatch):
+        from sam.queries.xras_accounts import PendingFeed
+        monkeypatch.setattr('sam.queries.xras_accounts.load_pending_worklist_rows',
+                            lambda: PendingFeed(reason='no_snapshot'))
+        result = runner.invoke(cli, ['xras', '--identity-report'])
+        assert result.exit_code == 0, result.output
+
+
 class TestContractReportMode:
 
     def test_no_snapshot_is_an_empty_report_not_an_error(self, runner, cli_session,

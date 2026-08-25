@@ -690,6 +690,8 @@ def cache(ctx: Context, refresh: bool, category, base_url):
               help='[board] Orgs to link, ranked by the failing pushes each would unblock')
 @click.option('--contract-report', is_flag=True,
               help='[board] Contracts to create, ranked by the failing pushes each would unblock')
+@click.option('--identity-report', is_flag=True,
+              help='[board] Placeholders to merge, ranked by the failing pushes each would unblock')
 @click.option('--enrich', is_flag=True,
               help='[worklist] Add XRAS person detail (requires --accounts and the API)')
 @click.option('--person', type=str, default=None,
@@ -712,7 +714,7 @@ def cache(ctx: Context, refresh: bool, category, base_url):
 @pass_context
 def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mapping,
          validate_opportunities, validate_vocabulary, accounts, readiness,
-         mnemonic_report, contract_report, enrich, person,
+         mnemonic_report, contract_report, identity_report, enrich, person,
          family, status, action_type, request_number, last, limit, verbose):
     """Inspect and re-check the XRAS action log.
 
@@ -731,6 +733,7 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
       --readiness  would each swept request land if XRAS pushed it now?
       --mnemonic-report  orgs to link, ranked by the pushes each would unblock
       --contract-report  contracts to create, ranked by the pushes each would unblock
+      --identity-report  placeholders to merge, ranked by the pushes each would unblock
       --person U   one username in the XRAS directory
       --family P   a projcode's whole allocation lifecycle as a request tree
       --validate-mapping  which resources XRAS and SAM can name each other's
@@ -784,6 +787,7 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
       sam-admin xras --mnemonic-report
       sam-admin --format json xras --mnemonic-report | jq .targets
       sam-admin xras --contract-report
+      sam-admin xras --identity-report
       sam-admin xras --person somebody-user-00042
       sam-admin xras --family UCUB0089
       sam-admin --format json xras --family UCUB0089 | jq .timeline
@@ -822,6 +826,7 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
         readiness=readiness,
         mnemonic_report=mnemonic_report,
         contract_report=contract_report,
+        identity_report=identity_report,
         enrich=enrich,
         person=person,
         family=family,

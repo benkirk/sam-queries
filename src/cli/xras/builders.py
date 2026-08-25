@@ -196,19 +196,11 @@ def build_account_worklist(session, *, since=None, until=None,
     is empty" from "we could not read Feed B", because the second one means the
     number it is looking at is a **subset of the queue** and the first does not.
     """
-    from sam.queries.xras_accounts import (enrich_worklist,
-                                           get_account_worklist,
-                                           stamp_merge_targets,
-                                           stamp_waiting_days,
-                                           worklist_counts)
+    from sam.queries.xras_accounts import worklist_counts
 
-    rows = get_account_worklist(session, since=since, until=until,
-                                pending_rows=pending_rows)
-    stamp_waiting_days(rows)
-    enrichment = (enrich_worklist(rows, max_lookups=max_lookups)
-                  if enrich else None)
-    # After enrichment: a Feed-A row has no email to match until then.
-    stamp_merge_targets(session, rows)
+    rows, enrichment = _stamped_worklist(session, since=since, until=until,
+                                         enrich=enrich, max_lookups=max_lookups,
+                                         pending_rows=pending_rows)
 
     return {
         'kind': 'xras_accounts',
@@ -218,6 +210,34 @@ def build_account_worklist(session, *, since=None, until=None,
         'pending_checked': bool(pending_checked),
         'accounts': [_account_row(r) for r in rows],
     }
+
+
+def _stamped_worklist(session, *, since=None, until=None, enrich=False,
+                      max_lookups=100, pending_rows=None):
+    """The worklist with every caller-applied stamp; ``(rows, enrichment)``."""
+    from sam.queries.xras_accounts import (enrich_worklist,
+                                           get_account_worklist,
+                                           stamp_merge_targets,
+                                           stamp_waiting_days)
+
+    rows = get_account_worklist(session, since=since, until=until,
+                                pending_rows=pending_rows)
+    stamp_waiting_days(rows)
+    enrichment = (enrich_worklist(rows, max_lookups=max_lookups)
+                  if enrich else None)
+    # After enrichment: a Feed-A row has no email to match until then.
+    stamp_merge_targets(session, rows)
+    return rows, enrichment
+
+
+def build_identity_report(session, *, pending_rows=None, enrich=False,
+                          max_lookups=100, generated_at=None) -> dict:
+    """The ``xras_identity_report`` envelope — placeholders to merge, ranked by unblock impact."""
+    from sam.queries.xras_identity_report import identity_merge_report
+
+    rows, _ = _stamped_worklist(session, enrich=enrich, max_lookups=max_lookups,
+                                pending_rows=pending_rows)
+    return identity_merge_report(rows, generated_at=generated_at)
 
 
 def _account_row(row) -> dict:

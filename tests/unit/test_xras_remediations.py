@@ -2096,3 +2096,77 @@ class TestUnidentifiedPlaceholdersCanMerge:
         body = auth_client.get(
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'needs an account' in body
+
+
+class TestIdentityUnblockStrip:
+    """The identity strip — placeholders SAM can merge now, opening the merge modal."""
+
+    EMAIL = 'ghost@example.invalid'
+
+    def _publish(self, push_state='pending'):
+        payload = _payload('EXAM0001', reconciled=False, email=self.EMAIL)
+        _publish_with_verdict(payload, push_state=push_state, status='failed')
+        xras_cache.store_pending_worklist({
+            'generated_at': datetime.now(), 'window_days': 120,
+            'rows': [{'username': 'ghost-user-abcde', 'classification': 'absent',
+                      'remedy': 'create', 'placeholder': True,
+                      'is_reconciled': False, 'roles': ('User',),
+                      'sources': ['reports'], 'waiting_since': None,
+                      'person': {'email': self.EMAIL, 'firstName': 'G',
+                                 'lastName': 'Host'},
+                      'actions': [{'action_log_id': None,
+                                   'request_number': 'EXAM0001',
+                                   'action_type': 'Supplement',
+                                   'status': 'Approved', 'received_time': None,
+                                   'submit_date': '2026-08-20',
+                                   'source': 'reports', 'would_succeed': None,
+                                   'preflight_status': None,
+                                   'reject_messages': []}]}]})
+
+    def test_a_ready_placeholder_opens_the_merge_modal(self, auth_client, armed,
+                                                       monkeypatch):
+        self._publish()
+        _sam_holds(monkeypatch, self.EMAIL, 'ghost')
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        strip = body.split('id="xras-identity-strip"')[1][:4000]
+        assert 'ready to merge' in strip
+        assert '/allocations/xras_merge_form/ghost-user-abcde' in strip
+        assert 'data-bs-target="#auditDetailsModal"' in strip
+        assert 'ghost' in strip
+        assert self.EMAIL not in strip, 'the strip names accounts, never emails'
+
+    def test_the_strip_explains_itself_in_a_popover(self, auth_client, armed,
+                                                    monkeypatch):
+        self._publish()
+        _sam_holds(monkeypatch, self.EMAIL, 'ghost')
+        strip = auth_client.get(FRAGMENT).get_data(as_text=True).split(
+            'id="xras-identity-strip"')[1][:4000]
+        assert 'data-bs-toggle="popover"' in strip and 'Placeholders to merge' in strip
+
+    def test_the_lever_off_disables_the_button(self, auth_client, configured,
+                                               monkeypatch):
+        self._publish()
+        _sam_holds(monkeypatch, self.EMAIL, 'ghost')
+        strip = auth_client.get(FRAGMENT).get_data(as_text=True).split(
+            'id="xras-identity-strip"')[1][:4000]
+        assert 'disabled' in strip and 'XRAS_WRITE_ENABLED' in strip
+
+    def test_the_strip_follows_the_rows_in_view(self, auth_client, armed, monkeypatch):
+        self._publish(push_state='seen_in_log')
+        _sam_holds(monkeypatch, self.EMAIL, 'ghost')
+        assert 'xras-identity-strip' not in auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'xras-identity-strip' in auth_client.get(
+            FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+
+    def test_no_sam_account_says_so_rather_than_offering(self, auth_client, armed,
+                                                         monkeypatch):
+        self._publish()
+        _sam_holds(monkeypatch, 'nobody@example.invalid', 'x')
+        strip = auth_client.get(FRAGMENT).get_data(as_text=True).split(
+            'id="xras-identity-strip"')[1][:4000]
+        assert 'need' in strip and 'SAM account' in strip
+        assert 'xras_merge_form' not in strip
+
+    def test_view_only_is_still_forbidden(self, view_only_client, armed, monkeypatch):
+        self._publish()
+        assert view_only_client.get(FRAGMENT).status_code == 403

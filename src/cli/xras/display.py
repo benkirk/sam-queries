@@ -108,6 +108,42 @@ def display_mnemonic_report(ctx, payload) -> None:
             f"{', '.join(pis) or '—'}")
 
 
+def display_identity_report(ctx, payload) -> None:
+    """Placeholders to merge, ranked by how many pushes each merge unblocks."""
+    targets = payload['targets']
+    others = payload['reactivations'], payload['needs_account']
+    if not targets and not any(others):
+        ctx.console.print('No failing push is blocked by a placeholder SAM already knows.',
+                          style='yellow')
+        return
+    if targets:
+        table = Table(
+            title=f"Placeholders to merge ({len(targets)}), ranked by pushes unblocked",
+            show_lines=False, header_style='bold')
+        table.add_column('Placeholder', no_wrap=True)
+        table.add_column('Merge into', no_wrap=True)
+        table.add_column('Email', overflow='fold')
+        table.add_column('Identified?', no_wrap=True)
+        table.add_column('Unblocks', justify='right', no_wrap=True)
+        table.add_column('Sample requests', overflow='fold')
+        for t in targets:
+            table.add_row(text(t['username']), text(t['target_username']),
+                          text(t['email']),
+                          'yes' if t['is_reconciled'] else 'no',
+                          str(t['unblock_count']), ', '.join(t['sample']))
+        ctx.console.print(table)
+    for r in payload['reactivations']:
+        ctx.console.print(
+            f"[yellow]{r['username']}[/yellow] matches {r['target_username']}, "
+            f"which is inactive — reactivate, then merge ({r['unblock_count']} push(es))")
+    if payload['needs_account']:
+        names = ', '.join(f"{n['username']} <{n['email'] or BLANK}>"
+                          for n in payload['needs_account'])
+        ctx.console.print(
+            f"[dim]{len(payload['needs_account'])} need a SAM account before a merge "
+            f"is possible: {names}[/dim]")
+
+
 def display_contract_report(ctx, payload) -> None:
     """The contracts to create, ranked by how many failing pushes each unblocks."""
     targets, variants = payload['targets'], payload['variants']

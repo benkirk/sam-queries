@@ -255,3 +255,16 @@ references. A number that would <em>tie</em> against existing rows is a
 spelling variant to reconcile, not a row to create, and gets no link. Rows
 created since the sweep drop out on their own.
 {%- endmacro %}
+
+{# XRAS Remediations: the identity strip (popover) #}
+{% macro g_xras_identity_strip() -%}
+Ranks the <strong>ARC placeholders</strong> (<code>&lt;name&gt;-user-&lt;token&gt;</code>)
+among the requests in view whose email SAM already holds on an
+<strong>active</strong> account. Every active SAM account resolves in XRAS, so
+that account is a merge target already: merging deletes the placeholder and
+moves its roles onto the real username, and XRAS sends the real username from
+then on. The match is the email, never the name &mdash; a name-only match can
+pick the wrong one of two real people. Placeholders whose email SAM does not
+hold still need an account created first; merged rows drop out on their own.
+{%- endmacro %}
+

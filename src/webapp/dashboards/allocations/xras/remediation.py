@@ -137,6 +137,7 @@ def xras_remediations_fragment():
     mnemonic_summary = mnemonic_unblock_report(db.session, scoped)
     from sam.queries.xras_contract_report import contract_unblock_report
     contract_summary = _with_create_links(contract_unblock_report(db.session, scoped))
+    identity_summary = _with_merge_links(_identity_summary(rows))
     # Counted BEFORE the chips and the search box, because the header badge it
     # feeds names the date filter specifically. Measured against `swept_total`
     # it would grow every time an operator typed, and blame the window for it.
@@ -208,6 +209,7 @@ def xras_remediations_fragment():
         pending_total=pending_total,
         mnemonic_summary=mnemonic_summary,
         contract_summary=contract_summary,
+        identity_summary=identity_summary,
         configured=configured,
         write_enabled=write_enabled,
         # Distinguishes "no sweep at all" from "a sweep that predates this
@@ -335,6 +337,37 @@ def _with_create_links(summary: dict) -> dict:
             if nsf_id:
                 args['contract_source_id'] = nsf_id
         target['create_url'] = url_for('admin_dashboard.contracts', **args)
+    return summary
+
+
+def _identity_summary(rows_in_view) -> dict:
+    """Placeholders SAM can merge now, ranked over the requests in view.
+
+    Zero network: Feed B and the inline persons Feed A carries (`max_lookups=0`),
+    no dispatch preflight (`validate=False`). The CLI's `--identity-report`
+    enriches; the strip points at it for the full list.
+    """
+    from sam.queries.xras_accounts import (enrich_worklist,
+                                           get_account_worklist,
+                                           load_pending_worklist_rows,
+                                           stamp_merge_targets)
+    from sam.queries.xras_identity_report import identity_merge_report
+
+    feed = load_pending_worklist_rows()
+    worklist = get_account_worklist(db.session, validate=False,
+                                    pending_rows=feed.rows if feed.checked else None)
+    enrich_worklist(worklist, max_lookups=0)
+    stamp_merge_targets(db.session, worklist)
+    return identity_merge_report(
+        worklist, in_view={r.get('request_number') for r in rows_in_view},
+        generated_at=(feed.snapshot or {}).get('generated_at'))
+
+
+def _with_merge_links(summary: dict) -> dict:
+    """Stamp each target with the merge modal's URL (an htmx fragment, not a page)."""
+    for target in summary.get('targets') or ():
+        target['merge_url'] = url_for('allocations_dashboard.xras_merge_form',
+                                      username=target['username'])
     return summary
 
 
