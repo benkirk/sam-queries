@@ -198,6 +198,7 @@ def build_account_worklist(session, *, since=None, until=None,
     """
     from sam.queries.xras_accounts import (enrich_worklist,
                                            get_account_worklist,
+                                           stamp_merge_targets,
                                            stamp_waiting_days,
                                            worklist_counts)
 
@@ -206,6 +207,8 @@ def build_account_worklist(session, *, since=None, until=None,
     stamp_waiting_days(rows)
     enrichment = (enrich_worklist(rows, max_lookups=max_lookups)
                   if enrich else None)
+    # After enrichment: a Feed-A row has no email to match until then.
+    stamp_merge_targets(session, rows)
 
     return {
         'kind': 'xras_accounts',
@@ -245,6 +248,7 @@ def _account_row(row) -> dict:
              'reject_messages': list(a['reject_messages'])}
             for a in row['actions']
         ],
+        'merge_target': row.get('merge_target'),
     }
 
 

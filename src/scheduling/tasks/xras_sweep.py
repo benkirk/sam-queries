@@ -672,6 +672,7 @@ def xras_sweep(ctx) -> TaskResult:
         classify_accounts,
         get_account_worklist,
         records_from_report_requests,
+        stamp_merge_targets,
         worklist_counts,
     )
     from sam.queries.xras_actions import (audit_opportunity_mapping,
@@ -858,6 +859,9 @@ def xras_sweep(ctx) -> TaskResult:
                         if str(p.get('requestNumber') or '').strip() in pending_set]
     enumerated = classify_accounts(session,
                                    records_from_report_requests(pending_payloads))
+    # Sweep-time Feed B only: the card re-stamps at render, so a SAM account
+    # created between sweeps flips its row an hour before this count moves.
+    stamp_merge_targets(session, enumerated)
     detail['accounts'] = worklist_counts(enumerated)
     detail['accounts_sample'] = [r['username'] for r in enumerated][:_MAX_REPORTED]
 

@@ -486,8 +486,14 @@ def display_account_worklist(ctx, payload) -> None:
         # WARNING: The artifact, not an action — SAM cannot create or reactivate an
         # account. Same words the card uses, because the terminal and the
         # dashboard have to teach one vocabulary; the footer says who does.
-        needs = ('[red]new account[/red]' if row['classification'] == 'absent'
-                 else '[yellow]reactivation[/yellow]')
+        target = row.get('merge_target') or {}
+        if row.get('remedy') == 'merge':
+            needs = f"[green]merge into {target.get('username')}[/green]"
+        else:
+            needs = ('[red]new account[/red]' if row['classification'] == 'absent'
+                     else '[yellow]reactivation[/yellow]')
+            if target.get('username'):
+                needs += f" [dim]then merge into {target['username']}[/dim]"
         if row['placeholder']:
             needs += ' [dim](placeholder)[/dim]'
         numbers = [a['request_number'] for a in row['actions'] if a['request_number']]
@@ -511,7 +517,7 @@ def display_account_worklist(ctx, payload) -> None:
         # conflating them made this line contradict the table above it.
         f"[dim]{counts['absent']} new account(s), {counts['inactive']} "
         f"reactivation(s), {counts['placeholder']} ARC placeholder "
-        f"identities.[/dim]")
+        f"identities, {counts.get('merge_ready', 0)} ready to merge.[/dim]")
     ctx.console.print(
         # The invariant, said once. There is no INSERT into `users` anywhere in
         # this repo and nothing writes `active`/`locked` — both remedies are

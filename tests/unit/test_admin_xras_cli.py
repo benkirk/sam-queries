@@ -861,6 +861,11 @@ class TestWorklistRendering:
         assert 'create' in out and 'placeholder' in out
         assert 'NCAR0001' in out
 
+    def test_a_ready_row_names_its_merge_target(self):
+        out = self._render(self._payload(
+            remedy='merge', merge_target={'username': 'realname', 'active': True}))
+        assert 'merge into realname' in out
+
     def test_an_inactive_row_says_reactivate(self):
         out = self._render(self._payload(classification='inactive',
                                          remedy='reactivate',

@@ -64,12 +64,15 @@ def ctx(session):
 
 
 def _request(request_id: int, number: str, username: str = 'ghost-user-1',
-             end_date: str = None):
+             end_date: str = None, email: str = None):
+    person = {'username': username, 'firstName': 'Ada',
+              'lastName': 'Invented', 'isReconciled': False}
+    if email:
+        person['email'] = email
     return {
         'requestId': request_id, 'requestNumber': number, 'endDate': end_date,
         'requestStatus': 'Approved', 'requestType': 'New',
-        'roles': [{'person': {'username': username, 'firstName': 'Ada',
-                              'lastName': 'Invented', 'isReconciled': False},
+        'roles': [{'person': person,
                    'roles': [{'role': 'PI', 'roleTypeId': 13,
                               'isAccountToBeCreated': True}]}],
     }
@@ -446,6 +449,15 @@ class TestClassification:
         assert detail['accounts']['total'] == 1
         assert detail['accounts']['absent'] == 1
         assert 'ghost-user-42' in detail['accounts_sample']
+
+    def test_a_placeholder_sam_already_holds_is_ready_to_merge(self, ctx, wire,
+                                                               session):
+        from factories import make_email_address, make_user
+        mail = make_email_address(session, make_user(session))
+        wire([[_request(1, 'ZZZZ9998', username='ghost-user-43',
+                        email=mail.email_address)]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['accounts']['merge_ready'] == 1
 
     def test_an_active_sam_user_is_not_counted(self, ctx, wire, session):
         from factories import make_user
