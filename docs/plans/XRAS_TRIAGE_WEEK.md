@@ -151,7 +151,7 @@ missing-user rows are the Pending-Users worklist's job
   `--show N --payload` (detail incl. warnings), `--recheck N` (would it
   succeed now; applies nothing), `--summary`, `--accounts [--enrich]`
   (Pending-Users worklist), `--readiness` (sweep snapshot board),
-  `--mnemonic-report`, `--contract-report`, `--family PROJCODE`, `--person USERNAME`,
+  `--mnemonic-report`, `--contract-report`, `--identity-report`, `--family PROJCODE`, `--person USERNAME`,
   `--validate-mapping`, `--validate-opportunities`,
   `--validate-vocabulary` (new: the hardcoded role/panel constants vs live
   XRAS + DB).

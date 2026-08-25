@@ -321,7 +321,7 @@ docstring. Every GET form route catches `XrasSourceUnavailable` → a **200** de
 
 | Modal | GET (live reads) | POST | Notes |
 |---|---|---|---|
-| **Merge** `xras_merge_form/<username>` | `get_person` (404 → "already merged away; stale echo"); candidates = `search_people` (email first, then surname — its first real caller; today dead code at `client.py:186`) ∩ SAM users, ranked email→org→name | `_XrasMergeHandler`: `clean()` = exactly-one-of candidate-radio / fk-picker override, target ≠ source, **target must resolve in XRAS** (fail-closed) | `XRAS_WRITE_FIXUPS.md` § 3 copy verbatim; radios `required`, NO default when >1; the picker override carries the fragility warning (the kquagraine decoy case); `btn-danger` "Merge and delete placeholder" |
+| **Merge** `xras_merge_form/<username>` | `get_person` (404 → "already merged away; stale echo"); candidates = the SAM account holding the email resolved directly via `get_person` (rank 0), then `search_people` by full name and surname (name/username only, 20-row cap), annotated with SAM state, ranked email→org→name | `_XrasMergeHandler`: `clean()` = exactly-one-of candidate-radio / fk-picker override, target ≠ source, **target must resolve in XRAS** (fail-closed) | `XRAS_WRITE_FIXUPS.md` § 3 copy verbatim; radios `required`, NO default when >1; the picker override carries the fragility warning (the kquagraine decoy case); `btn-danger` "Merge and delete placeholder" |
 | **Withdraw** `xras_withdraw_form/<request_number>/<int:action_id>` | `get_request_by_number` only (state + roster + PI). **No `rules{}`** — it is 401 route-wide; the offer keys on `actionStatus` | `_XrasWithdrawHandler` + `XrasRemediationReasonForm` (comment required — the dismiss precedent) | Addendum copy: de-approves to a draft, reversible, rewrites history; names the impersonated PI AND the recorded operator |
 | **Re-submit** `xras_resubmit_form/...` | validate preflight rendered before the button, **labelled with the impersonated user** (the verdict is per-user); errors → disabled button | hand-rolled bodiless POST (no fields — a schema would be furniture); `XrasWriteRejected` re-renders with `errors[]` | inverse-of-withdraw framing |
 | **Roles** `xras_roles_form/<request_number>` | live roster | add: `_XrasRoleAddHandler` + `XrasRoleForm` (role_type OneOf imported from the service, submitted as the **string**; user via fk-picker); remove keys on the roster's `role_id`; `on_success()` re-renders the roster and does NOT close the modal (roster fixes come in batches). remove: bodiless POST + `hx-confirm` danger | warning: an unknown username creates a new XRAS identity |
@@ -336,7 +336,7 @@ Ten new routes (fragment + 4 GET forms + 5 POSTs), all
 ### 7.4 Pending Users entry — edit `partials/xras_accounts_card.html`
 
 "Resolve identity (merge in XRAS)…" button inside the **expansion panel** above
-`person_detail(row.person)`, visible when `may_manage ∧ row.placeholder ∧ row.is_reconciled`
+`person_detail(row.person)`, visible when `may_manage ∧ row.placeholder ∧ (row.is_reconciled ∨ an active row.merge_target)`
 (keeps the `<tr>` toggle and the e2e data-bs-target-off-the-row pin intact). Same merge modal.
 Passive tell: the "identified" badge gains warning styling for that conjunction ("identified but
 never merged — XRAS keeps sending the throwaway username").

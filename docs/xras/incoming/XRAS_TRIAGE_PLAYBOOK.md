@@ -178,9 +178,12 @@ reconciled to a SAM user.
 reconciliation" — that is a category, not a loop. #458 made it a worklist, and it is the
 highest-value surface on this page:
 
-- **Two classifications, each with its remedy:** `absent` → **Create**, `inactive` →
-  **Reactivate**. Account creation is manual; the worklist tells you *who*, *why*, and —
-  behind `MANAGE_XRAS` — with what person detail to create them from.
+- **Two classifications, three remedies:** `absent` → **Create**, `inactive` →
+  **Reactivate**, and **Merge** when an active SAM account already holds a placeholder's
+  email (every active SAM account resolves in XRAS, so it is a merge target already) —
+  the card's "Ready to merge" rows, the Remediations identity strip, and
+  `sam-admin xras --identity-report`. Account creation is manual; the worklist tells you
+  *who*, *why*, and — behind `MANAGE_XRAS` — with what person detail to create them from.
 - ⚠️ **`placeholder` is a flag on the row, not a third classification.** A placeholder
   identity is still either absent or inactive. Do not filter on it expecting a bucket.
 - **Rows close themselves.** Classification is a check against the *current* `users`
@@ -189,8 +192,8 @@ highest-value surface on this page:
   to mark done.
 - ⚠️ **`isReconciled` is not a closure signal**, despite reading like one. It means XRAS
   linked the username to a real identity — it says nothing about SAM. The UI calls it
-  identified / unidentified, and **unidentified is the harder row**: no detail sheet to
-  create the account from.
+  identified / unidentified; an unidentified row is only harder when SAM holds no
+  account for the email — with one, the merge is offered exactly as for a misidentified row.
 - ⚠️ **`isAccountToBeCreated` is never the predicate.** XRAS sets it when a role is
   created and never clears it; every username measured carrying the flag was an existing
   active SAM account. It ships as a hint column with a regression test pinning that a

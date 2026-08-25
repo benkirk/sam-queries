@@ -832,10 +832,10 @@ def enrich_worklist(rows: Sequence[Dict[str, Any]], *,
     reconciliation is XRAS linking a placeholder to a real identity (often by
     merging it), which says nothing about whether SAM has a row.
 
-    What it *is* worth showing: whether XRAS knows who the person really is. A
-    **reconciled** placeholder is the easy case — there is a real detail sheet
-    behind it to create the account from. An **unreconciled** one is the hard
-    case, because XRAS cannot say who they are either.
+    What it *is* worth showing: whether XRAS knows who the person really is.
+    Either way the email decides the remedy (:func:`stamp_merge_targets`): an
+    active SAM account holding it is a merge target already, because every
+    active SAM account resolves in XRAS.
 
     The real closure signal needs no polling: classification is a current-state
     check, so a row leaves this list the moment its ``users`` row exists and is

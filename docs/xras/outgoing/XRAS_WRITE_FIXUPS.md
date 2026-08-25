@@ -55,10 +55,14 @@ account and an active real XRAS identity. Nobody can act on it from SAM today.
 
 ### The trigger predicate
 
-> A row qualifies for the fixup when **`placeholder` is true AND
-> `is_reconciled` is true**. Both are already computed and already on the
-> `VIEW_XRAS` side of the PII line (`is_reconciled` is "account state, not a
-> personal detail" — `xras_accounts_fragment` in `xras/card_routes.py`). The control itself is gated higher,
+> A row qualifies for the fixup when **`placeholder` is true AND either
+> `is_reconciled` is true, or an active SAM account holds the row's email**
+> (`merge_target`, stamped by `stamp_merge_targets` in `sam/queries/xras_accounts.py`
+> — measured 2026-08-25: every active SAM account resolves in XRAS, so it is a
+> merge target already). Both flags are on the `VIEW_XRAS` side of the PII line
+> (`is_reconciled` is "account state, not a personal detail" —
+> `xras_accounts_fragment` in `xras/card_routes.py`; the matched *username* rides
+> top-level, the email stays on `person`). The control itself is gated higher,
 > on **`MANAGE_XRAS`** (§ 5).
 
 Note the three-way split the card already half-recognizes (see the badge comment
@@ -66,7 +70,7 @@ in `xras_accounts_card.html` — *"placeholder", NOT "unreconciled"*):
 
 | placeholder | `is_reconciled` | Meaning | Action |
 |---|---|---|---|
-| true | **false** | genuinely unreconciled — XRAS can't say who they are | create the SAM account (healthy path, leave alone) |
+| true | **false** | unreconciled — XRAS has not linked it to a person | merge when an active SAM account holds the email ("Ready to merge"); otherwise create the SAM account first |
 | true | **true** | ⚠️ erroneously reconciled — merge never happened | **this fixup** |
 | true | **None** (404 on enrich) | already merged away in XRAS; row is a stale echo of the old username | ages out as real-username actions arrive |
 
@@ -178,16 +182,17 @@ and never an automation that guesses the target.
 Decision tree the control should implement:
 
 ```
-row is (placeholder AND is_reconciled)
+row is placeholder AND (is_reconciled OR an active SAM account holds its email)
         │
-        ├─ search XRAS + SAM for the real identity (by email first, then org, then name)
+        ├─ resolve the SAM account holding the email directly in XRAS (rank 0), then
+        │  search XRAS by full name and surname (search matches name/username only,
+        │  never email, and caps at 20 rows); rank email → org → name
         │
         ├─ exactly one email-exact active candidate ──► offer merge into it (confirm)
         ├─ several candidates ───────────────────────► show all with email+org; operator picks; NO default
-        └─ no candidate at all ──────────────────────► merge is impossible; the person genuinely
-                                                        needs an account/identity created first
-                                                        (this is the ordinary "create" path — the
-                                                        reconciled flag was a red herring)
+        └─ no candidate at all ──────────────────────► merge is impossible; the person
+                                                        needs a SAM account first (the
+                                                        ordinary "create" path)
 ```
 
 ---
@@ -195,15 +200,18 @@ row is (placeholder AND is_reconciled)
 ## 5. Proposed UX — a `MANAGE_XRAS` fixup on the card
 
 - **Where.** A per-row action on `xras_accounts_card.html`, visible only when
-  `may_manage` (MANAGE_XRAS) **and** the row is `placeholder and is_reconciled`.
+  `may_manage` (MANAGE_XRAS) **and** the row is a placeholder that is either
+  reconciled or has an active `merge_target`; the identity strip on the
+  Remediations card and `sam-admin xras --identity-report` rank the same rows.
   It sits beside the existing person-detail disclosure, not on the `<tr>` (the
   Bootstrap collapse data-api runs in capture phase — the card's own comment
   explains why row-level controls misfire).
 - **Popover** carries the § 3 copy. This is a destructive, cross-system write; the
   operator must see what it does *before* the modal.
 - **Modal** = the assisted decision (§ 4): the placeholder's detail sheet on one
-  side, candidate real identities (XRAS `search/people` ∩ SAM `users`, ranked
-  email → org → name) on the other, each with email and organization shown. No
+  side, candidate real identities (the SAM account holding the email resolved
+  directly, plus XRAS name matches, ranked email → org → name) on the other,
+  each with email and organization shown. No
   pre-selected default when there is more than one. Mirror the XRAS admin
   Reconcile-User screen deliberately — operators who know that screen will read
   this one for free.
@@ -272,12 +280,10 @@ row is (placeholder AND is_reconciled)
    process such that email-exact still needs org to disambiguate? Case C's decoy
    differs on email, so email alone would have sufficed there — but the modal
    should still show org, and never auto-merge on a multi-candidate result.
-3. **Post-merge account creation.** After a merge into a real identity that has an
-   active SAM account (Cases A/B), the handoff can proceed. When the real identity
-   exists in XRAS but **not** in SAM, merge fixes the wire username but the person
-   still needs a SAM account — the row re-classifies from "erroneously reconciled
-   placeholder" to an ordinary "create" and stays on the card, correctly. Confirm
-   that is the desired behavior (it is: SAM never creates users).
+3. ✅ **Post-merge account creation — answered 2026-08-25.** Every active SAM
+   account resolves in XRAS (`GET /v1/people` proxies SAM's identity service), so
+   the order is the reverse: the SAM account comes first, and then the merge is
+   one click. A merge target never needs creating in XRAS. SAM never creates users.
 
 ---
 
