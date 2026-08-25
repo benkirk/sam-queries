@@ -243,9 +243,14 @@ UMMM0016, UCOR0102) have no deleted rows and stand as genuine XRAS-vs-SAM
 conflicts. Side note from the sweep detail: the accounts-needed sample lists
 both `harrter` and `hartter`.
 
-## End-of-week close-out
+## Handoff — 2026-08-25 EOD (day 3)
 
-When traffic is boring: fold anything durable from this doc into the
-runbook/playbook, close the living PR (contents long since merged), and
-decide Track B (`docs/plans/XRAS_DATA_MODEL_UPLIFT.md`, outgoing fixes)
-scheduling.
+Prod `sha-acd3d95`, public health green (23:53Z), CI green on #482 head
+`4c95a92a` (mergeable; past the image: docs + the Needs-cell fix `686778b3`,
+nothing prod needs). Morning: (1) errors + `/api/xras` status counts on both
+pods, `--since=12h`; (2) `sam-admin --format json xras --last 12h` for rows
+past #9; (3) `--identity-report` (strip was empty; 4 need an account);
+(4) answers from Steve (Q2–5) and George; a George yes unblocks NCAR4261/
+4262/4252, then XRAS re-pushes each. Ben's calls: squash #482 to staging;
+the CIRRUS hand-off for the 01:37Z connect failure. When traffic is boring:
+fold what is durable into the playbook and close the living PR.
