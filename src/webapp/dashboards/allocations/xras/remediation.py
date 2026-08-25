@@ -40,7 +40,7 @@ from sam.integration.xras_api import (
     xras_write_configured,
 )
 from sam.manage import xras_remediation as remediation
-from sam.queries.xras_requests import _as_date
+from sam.queries.xras_requests import _as_date, is_pending_work
 from sam.schemas.forms import (
     XrasActionDatesForm,
     XrasActionFieldsForm,
@@ -54,7 +54,8 @@ from sam.schemas.forms import (
 from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
 from webapp.extensions import db
 from webapp.utils.form_handler import FormError, HtmxFormHandler
-from webapp.utils.htmx import htmx_modal_not_found, htmx_success_message, read_sort
+from webapp.utils.htmx import (htmx_modal_not_found, htmx_success_message,
+                               read_flag, read_sort)
 from webapp.utils.rbac import Permission, require_permission
 
 from .. import bp
@@ -129,9 +130,13 @@ def xras_remediations_fragment():
 
     rows = list(payload.get('rows') or []) if payload else []
     swept_total = len(rows)
+    pending_total = sum(1 for r in rows if is_pending_work(r))
 
+    # Default is the pending-work queue (XRAS admin's "Recent submissions"),
+    # which is state, not a window. "Show everything" restores the date filter.
+    show_all = read_flag(request.args, 'show_all')
     window = _parse_activity_window(request.args)
-    rows = [r for r in rows if _in_window(r, window['since'])]
+    rows = _scope_rows(rows, request.args)
     # Counted BEFORE the chips and the search box, because the header badge it
     # feeds names the date filter specifically. Measured against `swept_total`
     # it would grow every time an operator typed, and blame the window for it.
@@ -199,6 +204,8 @@ def xras_remediations_fragment():
         window_total=window_total,
         search=search,
         snapshot=payload,
+        show_all=show_all,
+        pending_total=pending_total,
         mnemonic_summary=mnemonic_summary,
         contract_summary=contract_summary,
         configured=configured,
@@ -404,11 +411,19 @@ def _selected_facets(args):
             'actions': [a for a in args.getlist('action_type') if a]}
 
 
+def _scope_rows(rows, args):
+    """Pending work by default; the date window only under ``show_all``."""
+    if read_flag(args, 'show_all'):
+        since = _parse_activity_window(args)['since']
+        return [r for r in rows if _in_window(r, since)]
+    return [r for r in rows if is_pending_work(r)]
+
+
 def _filtered_rows(payload, args):
-    """The rows currently in view: window -> search -> facets. Shared by the card
+    """The rows currently in view: scope -> search -> facets. Shared by the card
     fragment and the batch re-check so they can never act on different sets."""
     rows = list(payload.get('rows') or []) if payload else []
-    rows = [r for r in rows if _in_window(r, _parse_activity_window(args)['since'])]
+    rows = _scope_rows(rows, args)
     rows = _search(rows, (args.get('search') or '').strip())
     return _apply(rows, **_selected_facets(args))
 

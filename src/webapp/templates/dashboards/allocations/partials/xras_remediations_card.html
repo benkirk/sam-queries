@@ -29,7 +29,13 @@
     <div class="card-header d-flex align-items-center flex-wrap gap-2">
         <strong>XRAS Remediations</strong>
         {% if snapshot %}
-        <span class="badge bg-secondary">{{ total | fmt_number }} request(s)</span>
+        <span class="badge bg-secondary">{{ total | fmt_number }} {{ 'request(s)' if show_all else 'pending' }}</span>
+        {% if not show_all and swept_total > pending_total %}
+        <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle"
+              title="Pending work only — what XRAS admin's Recent submissions shows: in review, or approved and not yet posted to SAM. The rest were swept but need nothing; switch on Show everything to see them.">
+            {{ (swept_total - pending_total) | fmt_number }} more with Show everything
+        </span>
+        {% endif %}
         {# WARNING: "N of M" whenever the window hides rows, never a bare N — and on
            THIS card the hidden ones skew urgent. A 2015 approval nobody ever
            pushed is the row most worth closing, and it is the first thing any
@@ -38,7 +44,7 @@
            must count only what the date filter hid. Against `total` it would
            grow with every chip and every keystroke in the search box and
            blame the window for them. #}
-        {% if window_total != swept_total %}
+        {% if show_all and window_total != swept_total %}
         <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
               title="Older requests are hidden by the date filter above. On this card an older request is usually the MORE urgent one — widen the filter to see them.">
             {{ (swept_total - window_total) | fmt_number }} outside the date filter
@@ -185,6 +191,27 @@
            moment they emptied the card, leaving copy that said "clear the
            chips" above a card with no chips on it and no way back. #}
         <div class="facet-grid mb-3">
+            {# The queue toggle. Off (absent) is the default: pending work only,
+               the same population as XRAS admin's Recent submissions. Bound to
+               the hidden filter form like the search box, so a chip click keeps
+               the mode. #}
+            <div class="facet-grid-label">View</div>
+            <div class="facet-grid-values">
+                <div class="form-check form-switch small mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="xras-remediation-show-all" name="show_all" value="1"
+                           form="{{ form_id }}" {% if show_all %}checked{% endif %}
+                           hx-get="{{ fragment_url }}"
+                           hx-target="#{{ target_id }}"
+                           hx-swap="innerHTML"
+                           hx-trigger="change"
+                           hx-include="#xras-window-filters, #{{ form_id }}">
+                    <label class="form-check-label" for="xras-remediation-show-all"
+                           title="Off: pending work only — in review, or approved and not yet posted to SAM (what XRAS admin's Recent submissions lists; no date filter). On: every swept request, with the date filter above applied.">
+                        Show everything ({{ swept_total | fmt_number }} swept)
+                    </label>
+                </div>
+            </div>
             <div class="facet-grid-label">Search</div>
             <div class="facet-grid-values">
                 {# `form=`: the input lives here, next to the chips, but belongs
@@ -234,11 +261,18 @@
            is what emptied the card, the card says so and says how many, rather
            than implying there is no work. #}
         <div class="alert alert-warning mb-0">
+            {% if not show_all %}
+            <strong>No pending work.</strong> None of the
+            {{ swept_total | fmt_number }} swept request(s) is in review or
+            approved-and-unposted within the current search and chips. Switch on
+            <em>Show everything</em> to see them all.
+            {% else %}
             <strong>{{ swept_total | fmt_number }} request(s) were swept, and
             the current filters hide all of them.</strong>
             On this card an older request is usually the <em>more</em> urgent
             one — widen the date filter above, or clear the search and chips,
             to see them.
+            {% endif %}
         </div>
         {% else %}
         <div class="table-responsive">

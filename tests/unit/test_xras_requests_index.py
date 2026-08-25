@@ -7,6 +7,7 @@ parses and the promises the card renders against.
 
 from __future__ import annotations
 
+from datetime import date
 import pytest
 
 from sam.queries.xras_requests import (
@@ -462,3 +463,51 @@ class TestAMalformedActionCostsItsRowNotTheCard:
         entry = request_index_entry(payload)
         assert entry is not None
         assert entry['actions'] == []
+
+
+class TestIsPendingWork:
+    """The XRAS-admin "Recent submissions" population, from the snapshot alone."""
+
+    @staticmethod
+    def _entry(*actions):
+        return {'request_number': 'EXAM0001', 'actions': list(actions)}
+
+    @staticmethod
+    def _action(status, push_state=None, *, entry_date=date(2026, 8, 25), checked=True):
+        return {'action_id': 1, 'action_status': status, 'entry_date': entry_date,
+                'preflight': ({'status': 'rechecked', 'push_state': push_state}
+                              if checked else None)}
+
+    def test_an_in_flight_action_is_pending(self):
+        from sam.queries.xras_requests import is_pending_work
+        for status in ('Submitted', 'Under Review'):
+            assert is_pending_work(self._entry(self._action(status, 'unknown')))
+
+    def test_an_approved_new_with_no_sam_project_is_pending(self):
+        from sam.queries.xras_requests import is_pending_work
+        assert is_pending_work(self._entry(self._action('Approved', 'pending',
+                                                        entry_date=date(2025, 1, 1))))
+
+    def test_an_approved_action_after_the_repoint_with_no_log_row_is_pending(self):
+        from sam.queries.xras_requests import XRAS_REPOINTED_ON, is_pending_work
+        assert is_pending_work(self._entry(
+            self._action('Approved', 'unknown', entry_date=XRAS_REPOINTED_ON)))
+
+    def test_a_legacy_era_unknown_is_assumed_posted(self):
+        from sam.queries.xras_requests import is_pending_work
+        assert not is_pending_work(self._entry(
+            self._action('Approved', 'unknown', entry_date=date(2026, 8, 23))))
+
+    def test_a_posted_or_applied_action_is_not_pending(self):
+        from sam.queries.xras_requests import is_pending_work
+        for push_state in ('seen_in_log', 'applied_inferred'):
+            assert not is_pending_work(self._entry(self._action('Approved', push_state)))
+
+    def test_an_action_outside_the_sweep_window_is_not_recent_work(self):
+        from sam.queries.xras_requests import is_pending_work
+        assert not is_pending_work(self._entry(self._action('Submitted', checked=False)))
+
+    def test_declined_and_empty_are_not_pending(self):
+        from sam.queries.xras_requests import is_pending_work
+        assert not is_pending_work(self._entry(self._action('Declined', 'unknown')))
+        assert not is_pending_work(self._entry())

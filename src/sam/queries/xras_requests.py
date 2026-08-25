@@ -197,6 +197,43 @@ def actions_from_payload(payload: Dict[str, Any],
 _ROLLUP_ORDER = ('failed', 'manual', 'incomplete', 'rechecked')
 
 
+#: The day ACCESS repointed XRAS at sam.hpc.ucar.edu. From here on, an approved
+#: action with no xras_action_log row was never posted; before it, legacy SAM
+#: received the post and this log cannot see it.
+XRAS_REPOINTED_ON = date(2026, 8, 24)
+
+#: An action still in XRAS's review pipeline.
+IN_FLIGHT_ACTION_STATUSES = ('Submitted', 'Under Review')
+
+
+def is_pending_work(entry: Mapping[str, Any]) -> bool:
+    """Would XRAS admin's "Recent submissions" list show this request?
+
+    Measured against that list on 2026-08-24 (46 of 48 matched; the misses were
+    actions the sweep had not pulled). It is state, not a date window: an action
+    the sweep checked that is either still in flight, or Approved and known
+    unposted — no SAM project yet, or entered after the repoint with no log row.
+    An action outside the sweep window (no ``preflight``) is not recent work.
+    """
+    for action in entry.get('actions') or ():
+        preflight = action.get('preflight')
+        if not preflight:
+            continue
+        status = action.get('action_status')
+        if status in IN_FLIGHT_ACTION_STATUSES:
+            return True
+        if status != 'Approved':
+            continue
+        push_state = preflight.get('push_state')
+        if push_state == 'pending':
+            return True
+        if push_state == 'unknown':
+            when = action.get('entry_date') or action.get('submit_date')
+            if when is not None and _as_date(when) >= XRAS_REPOINTED_ON:
+                return True
+    return False
+
+
 def _preflight_rollup(preflights: Optional[Mapping[Any, dict]]) -> Optional[str]:
     """The worst verdict across a request's actions, preferring the PENDING ones.
 

@@ -240,3 +240,14 @@ class TestContractStrip:
         page.wait_for_selector('#createContractModal.show', timeout=15_000)
         page.wait_for_selector('#createContractModal #createContractNumber', timeout=15_000)
         assert page.locator('#createContractModal #createContractNumber').input_value().strip()
+
+
+class TestPendingWorkToggle:
+
+    def test_show_everything_reloads_the_card(self, page):
+        card = _load(page)
+        switch = card.locator('#xras-remediation-show-all')
+        assert switch.count() == 1 and not switch.is_checked()
+        switch.check()
+        page.wait_for_selector(f'{CARD} #xras-remediation-show-all:checked', timeout=15_000)
+        assert page.locator(f'{CARD} .card').count() == 1

@@ -259,6 +259,7 @@ def build_readiness(snapshot) -> dict:
     Reads the published requests-index snapshot (no network). Rows are sorted
     red -> amber -> green; an empty board is a successful, empty report.
     """
+    from sam.queries.xras_requests import is_pending_work
     rows = []
     for entry in (snapshot or {}).get('rows', ()) if snapshot else ():
         verdicts = [a.get('preflight') for a in entry.get('actions', ())
@@ -273,6 +274,7 @@ def build_readiness(snapshot) -> dict:
             'opportunity_name': entry.get('opportunity_name'),
             'pi': (entry.get('pi') or {}).get('username'),
             'pending_push': entry.get('pending_push'),
+            'pending_work': is_pending_work(entry),
             'counts': counts,
             'messages': sorted({m for v in verdicts if v['status'] == 'failed'
                                 for m in v.get('messages', ())}),
