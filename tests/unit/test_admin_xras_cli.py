@@ -158,6 +158,48 @@ class TestMnemonicReportMode:
         assert targets[0]['unblock_count'] == 2
 
 
+class TestContractReportMode:
+
+    def test_no_snapshot_is_an_empty_report_not_an_error(self, runner, cli_session,
+                                                         monkeypatch):
+        monkeypatch.setattr('sam.integration.xras_api.cache.load_requests_index',
+                            lambda: None)
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--contract-report'])
+        assert result.exit_code == 0
+        payload = json.loads(result.stdout)
+        assert payload['kind'] == 'xras_contract_report'
+        assert payload['targets'] == [] and payload['variants'] == []
+
+    def test_it_ranks_numbers_from_the_snapshot(self, runner, cli_session,
+                                                monkeypatch):
+        def _entry(num, number):
+            return {'request_number': num, 'preflight_rollup': 'failed',
+                    'pi': {'username': 'pi-x'}, 'activity_date': '2026-08-20',
+                    'actions': [{'action_id': 1, 'preflight': {
+                        'status': 'failed', 'messages': ['x'],
+                        'resolved': {'unresolved_grants': [
+                            {'number': number, 'core': number, 'reason': 'missing',
+                             'candidates': [], 'agency': 'NSF', 'title': 'T'}]}}}]}
+        snapshot = {'generated_at': '2026-08-24', 'rows': [
+            _entry('NCAR0001', '9980101'), _entry('NCAR0002', '9980101'),
+            _entry('NCAR0003', 'ISS 25-643')]}
+        monkeypatch.setattr('sam.integration.xras_api.cache.load_requests_index',
+                            lambda: snapshot)
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--contract-report'])
+        assert result.exit_code == 0, result.output
+        targets = json.loads(result.stdout)['targets']
+        assert [t['number'] for t in targets] == ['9980101', 'ISS 25-643']
+        assert targets[0]['unblock_count'] == 2
+        assert targets[0]['suggested_source'] == 'NSF'
+
+    def test_rich_mode_renders(self, runner, cli_session, monkeypatch):
+        monkeypatch.setattr('sam.integration.xras_api.cache.load_requests_index',
+                            lambda: None)
+        result = runner.invoke(cli, ['xras', '--contract-report'])
+        assert result.exit_code == 0, result.output
+        assert 'No failing push cites a contract' in result.output
+
+
 class TestSummaryMode:
     def test_summary_json_lists_every_status_including_zero(self, runner,
                                                             cli_session):

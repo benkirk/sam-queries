@@ -297,6 +297,12 @@ def build_mnemonic_report(session, snapshot) -> dict:
     return mnemonic_unblock_report(session, snapshot)
 
 
+def build_contract_report(session, snapshot) -> dict:
+    """The ``xras_contract_report`` envelope — contracts to create, ranked by unblock impact."""
+    from sam.queries.xras_contract_report import contract_unblock_report
+    return contract_unblock_report(session, snapshot)
+
+
 def build_person_report(username, person) -> dict:
     """The ``xras_person`` envelope — a direct ``/v1/people`` probe.
 

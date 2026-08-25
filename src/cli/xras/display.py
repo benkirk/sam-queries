@@ -108,6 +108,37 @@ def display_mnemonic_report(ctx, payload) -> None:
             f"{', '.join(pis) or '—'}")
 
 
+def display_contract_report(ctx, payload) -> None:
+    """The contracts to create, ranked by how many failing pushes each unblocks."""
+    targets, variants = payload['targets'], payload['variants']
+    if not targets and not variants:
+        ctx.console.print('No failing push cites a contract SAM does not hold.',
+                          style='yellow')
+        return
+    if targets:
+        table = Table(
+            title=f"Contracts to create ({len(targets)}), ranked by pushes unblocked",
+            show_lines=False, header_style='bold')
+        table.add_column('Grant number', no_wrap=True)
+        table.add_column('Agency', overflow='fold')
+        table.add_column('Award?', no_wrap=True)
+        table.add_column('Title', overflow='fold')
+        table.add_column('Unblocks', justify='right', no_wrap=True)
+        table.add_column('Sample requests', overflow='fold')
+        for t in targets:
+            table.add_row(text(t['number']), text(t['agency']),
+                          'yes' if t['award_like'] else 'no',
+                          truncate(t['title'] or '', 48), str(t['unblock_count']),
+                          ', '.join(t['sample']))
+        ctx.console.print(table)
+    for v in variants:
+        # A tie is a spelling problem, not a missing row — do not create a second one.
+        ctx.console.print(
+            f"[yellow]{v['number']}[/yellow] would tie against "
+            f"{', '.join(v['candidates']) or '—'} — a possible spelling variant, "
+            f"not a missing contract ({v['unblock_count']} push(es))")
+
+
 def display_action_list(ctx, payload) -> None:
     """Table of recent actions."""
     actions = payload['actions']
