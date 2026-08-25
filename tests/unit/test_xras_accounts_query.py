@@ -29,7 +29,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 import pytest
-from factories import make_user, make_xras_remediation_event
+from factories import make_email_address, make_user, make_xras_remediation_event
 
 from sam.queries.xras_accounts import (
     PERSON_FIELDS,
@@ -38,6 +38,9 @@ from sam.queries.xras_accounts import (
     RosterRecord,
     classify_accounts,
     enrich_worklist,
+    sam_merge_targets,
+    stamp_merge_targets,
+    worklist_sort_key,
     is_placeholder,
     load_pending_worklist_rows,
     merge_worklists,
@@ -229,6 +232,90 @@ class TestGrouping:
         assert counts['total'] == 2
         assert counts['absent'] == 1 and counts['inactive'] == 1
         assert counts['placeholder'] == 1
+        assert counts['merge_ready'] == 0
+
+
+def _ghost(email, username='ghost-user-1', **over):
+    person = {'email': email, 'firstName': 'G', 'lastName': 'Host'}
+    return _record(username, people={username: person}, **over)
+
+
+class TestMergeTargets:
+    """The third remedy: SAM already holds the placeholder's email."""
+
+    def test_an_active_holder_makes_the_row_ready_to_merge(self, session):
+        holder = make_user(session)
+        mail = make_email_address(session, holder)
+        rows = classify_accounts(session, [_ghost(mail.email_address)])
+        assert rows[0]['remedy'] == 'create', 'the classifier never stamps'
+        stamp_merge_targets(session, rows)
+        assert rows[0]['remedy'] == 'merge'
+        assert rows[0]['merge_target'] == {'username': holder.username, 'active': True}
+        assert worklist_counts(rows)['merge_ready'] == 1
+
+    def test_an_inactive_holder_means_reactivate_then_merge(self, session):
+        holder = make_user(session, active=False)
+        mail = make_email_address(session, holder)
+        rows = classify_accounts(session, [_ghost(mail.email_address)])
+        stamp_merge_targets(session, rows)
+        assert rows[0]['remedy'] == 'reactivate'
+        assert rows[0]['merge_target'] == {'username': holder.username, 'active': False}
+
+    def test_the_email_collation_is_binary_so_case_is_folded(self, session):
+        """email_address.email_address is utf8mb3_bin, unlike users.username."""
+        holder = make_user(session)
+        make_email_address(session, holder, email='Ghost.Host@Example.INVALID')
+        targets = sam_merge_targets(session, ['ghost.host@example.invalid'])
+        assert targets['ghost.host@example.invalid']['username'] == holder.username
+
+    def test_a_retired_address_does_not_vouch(self, session):
+        holder = make_user(session)
+        mail = make_email_address(session, holder, active=False)
+        assert sam_merge_targets(session, [mail.email_address]) == {}
+
+    def test_two_active_holders_are_ambiguous_and_yield_no_target(self, session):
+        email = f'shared-{make_user(session).username}@example.invalid'
+        make_email_address(session, make_user(session), email=email)
+        make_email_address(session, make_user(session), email=email)
+        rows = classify_accounts(session, [_ghost(email)])
+        counts = stamp_merge_targets(session, rows)
+        assert counts == {'ambiguous': 1}
+        assert rows[0]['merge_target'] is None and rows[0]['remedy'] == 'create'
+
+    def test_a_row_without_a_person_is_left_alone(self, session):
+        rows = classify_accounts(session, [_record('ghost-user-2')])
+        stamp_merge_targets(session, rows)
+        assert rows[0]['merge_target'] is None and rows[0]['remedy'] == 'create'
+
+    def test_a_snapshot_row_from_an_older_image_is_backfilled(self, session):
+        """A cached row carries no key and `remedy: create`; the stamp decides."""
+        holder = make_user(session)
+        mail = make_email_address(session, holder)
+        stale = {'username': 'ghost-user-3', 'classification': 'absent',
+                 'remedy': 'create', 'placeholder': True, 'sources': ['reports'],
+                 'person': {'email': mail.email_address}, 'actions': []}
+        rows = [stale]
+        stamp_merge_targets(session, rows)
+        assert stale['remedy'] == 'merge'
+        assert stale['merge_target']['username'] == holder.username
+
+    def test_only_placeholders_are_stamped(self, session):
+        holder = make_user(session)
+        mail = make_email_address(session, holder)
+        rows = classify_accounts(
+            session, [_record('realname', people={'realname': {'email': mail.email_address}})])
+        stamp_merge_targets(session, rows)
+        assert rows[0]['merge_target'] is None and rows[0]['remedy'] == 'create'
+
+    def test_ready_rows_sort_first_behind_received_pushes(self):
+        rows = [
+            {'username': 'b', 'remedy': 'create', 'sources': ['reports']},
+            {'username': 'a', 'remedy': 'reactivate', 'sources': ['reports']},
+            {'username': 'c', 'remedy': 'merge', 'sources': ['reports']},
+            {'username': 'z', 'remedy': 'create', 'sources': ['action_log']},
+        ]
+        assert [r['username'] for r in sorted(rows, key=worklist_sort_key)] == \
+            ['z', 'c', 'b', 'a']
 
 
 # Feed A

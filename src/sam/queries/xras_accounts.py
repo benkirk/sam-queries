@@ -37,7 +37,7 @@ from typing import (Any, Callable, Dict, Iterable, Iterator, List, Mapping,
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from sam.core.users import User
+from sam.core.users import EmailAddress, User
 from sam.integration.xras import XrasActionLog, XrasRemediationEvent
 from sam.projects.projects import Project
 from sam.queries.xras_actions import XRAS_ACTION_STATUSES
@@ -102,6 +102,22 @@ CLASSIFICATION_INACTIVE = 'inactive'
 #: What an operator has to *do*, which is not the same question as why the row
 #: is here — the two remedies are different pieces of work.
 REMEDIES = {CLASSIFICATION_ABSENT: 'create', CLASSIFICATION_INACTIVE: 'reactivate'}
+
+#: The third remedy: a placeholder whose email SAM already holds on an ACTIVE
+#: account is one merge in XRAS away from a working handoff. Stamped by
+#: :func:`stamp_merge_targets`, never by :func:`classify_accounts`.
+REMEDY_MERGE = 'merge'
+
+#: Cheapest work first. Also the "Needs" facet order on the card.
+REMEDY_ORDER = (REMEDY_MERGE, 'create', 'reactivate')
+
+
+def worklist_sort_key(row: Mapping[str, Any]) -> tuple:
+    """Received-push rows first, then the cheapest remedy, then username."""
+    remedy = row.get('remedy') or REMEDIES.get(row.get('classification'), 'create')
+    order = REMEDY_ORDER.index(remedy) if remedy in REMEDY_ORDER else len(REMEDY_ORDER)
+    return (SOURCE_ACTION_LOG not in (row.get('sources') or ()), order,
+            row.get('username') or '')
 
 
 @dataclass(frozen=True)
@@ -540,6 +556,9 @@ def classify_accounts(session: Session,
     ``absent``    no ``users`` row at all            -> create the account
     ``inactive``  a row that fails ``User.is_active``  -> reactivate it
 
+    A third remedy, ``merge``, is stamped afterwards by :func:`stamp_merge_targets`
+    when SAM holds the placeholder's email on an active account.
+
     A predicate that only checked existence would miss the second entirely —
     of 19 live roster usernames sampled during design, all 19 existed but
     **five were inactive**, a quarter of the real cases.
@@ -651,9 +670,7 @@ def classify_accounts(session: Session,
             (a['action_log_id'] for a in row['actions'] if a['action_log_id']), None)
         row['sources'] = sorted(row['sources'])
 
-    return sorted(rows.values(),
-                  key=lambda r: (r['classification'] != CLASSIFICATION_ABSENT,
-                                 r['username']))
+    return sorted(rows.values(), key=worklist_sort_key)
 
 
 def get_account_worklist(session: Session, *,
@@ -738,17 +755,15 @@ def merge_worklists(primary: Sequence[Dict[str, Any]],
             seen['last_seen'] = row['last_seen']
         # Person detail and the XRAS identity flag ride whichever feed carried
         # them; Feed B always does, Feed A only after an --enrich pass.
-        for field_name in ('person', 'is_reconciled', 'latest_action_log_id'):
+        for field_name in ('person', 'is_reconciled', 'latest_action_log_id',
+                           'merge_target'):
             if seen.get(field_name) is None and row.get(field_name) is not None:
                 seen[field_name] = row[field_name]
 
     # Received-push rows lead: a Feed-A row is the more urgent flavor -- a push
-    # already arrived and is blocked -- so it sorts ahead of the absent-before-
-    # inactive-then-username order the CLI and card both inherit.
-    return sorted(merged.values(),
-                  key=lambda r: (SOURCE_ACTION_LOG not in (r.get('sources') or ()),
-                                 r['classification'] != CLASSIFICATION_ABSENT,
-                                 r['username']))
+    # already arrived and is blocked -- so it sorts ahead of the remedy-then-
+    # username order the CLI and card both inherit.
+    return sorted(merged.values(), key=worklist_sort_key)
 
 
 @dataclass(frozen=True)
@@ -874,6 +889,7 @@ def worklist_counts(rows: Sequence[Dict[str, Any]]) -> Dict[str, int]:
             1 for r in rows if r['classification'] == CLASSIFICATION_INACTIVE),
         'placeholder': sum(1 for r in rows if r['placeholder']),
         'reconciled': sum(1 for r in rows if r.get('is_reconciled') is True),
+        'merge_ready': sum(1 for r in rows if r.get('remedy') == REMEDY_MERGE),
         'received_push': sum(
             1 for r in rows if SOURCE_ACTION_LOG in (r.get('sources') or ())),
         'pending_request': sum(
@@ -905,6 +921,76 @@ def waiting_days(row: Dict[str, Any], *, today: Optional[date] = None
     # cause is fixed where it belongs (compose sets TZ); this keeps the column
     # honest if it recurs.
     return max(0, ((today or date.today()) - since).days)
+
+
+def sam_merge_targets(session: Session, emails: Iterable[str]) -> Dict[str, dict]:
+    """``lower(email) -> {'username', 'active'}`` for the SAM user holding each email.
+
+    The ONE derivation of "does SAM already know this placeholder"; every
+    consumer (row stamp, modal, roster, finder, report) reads this.
+
+    WARNING: ``email_address.email_address`` is ``utf8mb3_bin`` -- the OPPOSITE of
+    the ``users.username`` trap in :func:`classify_accounts` -- so both sides are
+    lowered. Two ACTIVE users on one address is ambiguous and yields
+    ``{'username': None, 'active': False, 'ambiguous': True}``: merge deletes
+    the loser, so a guess is the wrong failure.
+    """
+    wanted = sorted({e.strip().lower() for e in emails if e and e.strip()})
+    if not wanted:
+        return {}
+    lowered = func.lower(EmailAddress.email_address)
+    query = (session.query(lowered, User)
+             .join(User, User.user_id == EmailAddress.user_id)
+             .filter(lowered.in_(wanted), EmailAddress.is_active))
+    holders: Dict[str, Dict[str, bool]] = {}
+    for email, user in query.all():
+        holders.setdefault(email, {})[user.username] = bool(user.is_active)
+
+    targets: Dict[str, dict] = {}
+    for email, users in holders.items():
+        active = sorted(u for u, is_active in users.items() if is_active)
+        if len(active) == 1:
+            targets[email] = {'username': active[0], 'active': True}
+        elif not active and len(users) == 1:
+            targets[email] = {'username': next(iter(users)), 'active': False}
+        else:
+            targets[email] = {'username': None, 'active': False, 'ambiguous': True}
+    return targets
+
+
+def stamp_merge_targets(session: Session, rows: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Stamp ``merge_target`` on each placeholder row, re-derive ``remedy``, re-sort.
+
+    Caller-applied AFTER :func:`enrich_worklist`, for the same reason
+    :func:`stamp_project_existence` is: a Feed-A row has no ``person`` (so no
+    email) until then. Backfills rows read from a snapshot an older image
+    published, like :func:`stamp_waiting_days`. Only placeholder rows are
+    stamped -- the merge modal exists for those alone. Returns counts.
+    """
+    emails = [((row.get('person') or {}).get('email') or '')
+              for row in rows if row.get('placeholder')]
+    targets = sam_merge_targets(session, emails)
+    ambiguous = 0
+    for row in rows:
+        target = None
+        if row.get('placeholder'):
+            email = ((row.get('person') or {}).get('email') or '').strip().lower()
+            target = targets.get(email)
+            if target and target.get('ambiguous'):
+                ambiguous += 1
+                target = None
+        row['merge_target'] = (
+            {'username': target['username'], 'active': target['active']}
+            if target else None)
+        if target and target['active']:
+            row['remedy'] = REMEDY_MERGE
+        elif target:
+            row['remedy'] = REMEDIES[CLASSIFICATION_INACTIVE]
+        else:
+            row['remedy'] = REMEDIES.get(row.get('classification'), 'create')
+    if isinstance(rows, list):
+        rows.sort(key=worklist_sort_key)
+    return {'ambiguous': ambiguous}
 
 
 def stamp_project_existence(session: Session,

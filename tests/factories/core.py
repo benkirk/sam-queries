@@ -13,7 +13,7 @@ from sam.core.organizations import (
     UserInstitution,
     UserOrganization,
 )
-from sam.core.users import User
+from sam.core.users import EmailAddress, User
 
 from ._seq import next_int, next_seq
 
@@ -294,3 +294,23 @@ def make_adhoc_group(
     session.add(group)
     session.flush()
     return group
+
+
+def make_email_address(
+    session,
+    user: User,
+    *,
+    email: Optional[str] = None,
+    is_primary: bool = True,
+    active: Optional[bool] = None,
+) -> EmailAddress:
+    """Attach an email to *user*. `is_primary` is NOT NULL; `active` None means active."""
+    row = EmailAddress(
+        email_address=email or f"{next_seq('mail')}@example.invalid",
+        user_id=user.user_id,
+        is_primary=is_primary,
+        active=active,
+    )
+    session.add(row)
+    session.flush()
+    return row
