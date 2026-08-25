@@ -2203,3 +2203,30 @@ class TestAllocationDateWireKeys:
         body = auth_client.get(
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert '(Requested)' in body
+
+
+class TestTheMergeScreenShowsIdentityState:
+    """The client returns isReconciled; the irreversible screen must show it."""
+
+    def test_candidates_carry_the_identity_badge(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch,
+                person={'username': 'ghost-user-abcde', 'firstName': 'G',
+                        'lastName': 'Host', 'email': 'g@example.invalid'},
+                candidates=[{'username': 'ghost', 'firstName': 'G', 'lastName': 'Host',
+                             'email': 'g@example.invalid', 'isReconciled': True},
+                            {'username': 'ghost2', 'firstName': 'G', 'lastName': 'Host',
+                             'email': 'g2@example.invalid', 'isReconciled': False}])
+        _sam_holds(monkeypatch, 'nobody@example.invalid', 'x')
+        body = auth_client.get(
+            '/allocations/xras_merge_form/ghost-user-abcde').get_data(as_text=True)
+        assert '>identified<' in body and '>unidentified<' in body
+
+
+class TestTheAddRoleCopyKnowsSamResolves:
+
+    def test_the_field_says_a_sam_account_is_safe(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch)
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'Add username (SAM or XRAS)' in body
+        assert 'any active SAM account' in body

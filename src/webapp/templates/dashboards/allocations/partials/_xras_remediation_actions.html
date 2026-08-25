@@ -133,15 +133,16 @@
 
 {# Add a role. A plain username field — the handler resolves it against XRAS
    before writing and refuses one XRAS does not already know, so this cannot
-   mint a new placeholder. Errors surface as a flash at the top of the modal
-   (this form carries no per-field macros). #}
+   mint a new placeholder. Every active SAM account resolves (XRAS proxies
+   SAM's identity service), so a SAM username is always a safe entry. Errors
+   surface as a flash at the top of the modal (no per-field macros here). #}
 <form hx-post="{{ role_add_url }}"
       hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
       class="row g-2 align-items-end mb-3">
     <div class="col-sm-6">
-        <label class="form-label small mb-1" for="xras-add-role-username">Add XRAS username</label>
+        <label class="form-label small mb-1" for="xras-add-role-username">Add username (SAM or XRAS)</label>
         <input type="text" class="form-control form-control-sm" id="xras-add-role-username"
-               name="username" maxlength="64" placeholder="exact XRAS username"
+               name="username" maxlength="64" placeholder="any active SAM account, or an exact XRAS username"
                autocomplete="off" {{ disabled }}>
     </div>
     <div class="col-sm-4">

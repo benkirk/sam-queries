@@ -100,6 +100,13 @@
                 <span class="small">{{ candidate.name }}</span>
                 <span class="small text-muted">· {{ candidate.email }}</span>
                 <span class="small text-muted">· {{ candidate.organization }}</span>
+                {% if candidate.reconciled is true %}
+                <span class="badge bg-body-secondary text-body-secondary border fw-normal"
+                      title="XRAS has linked this username to a confirmed person">identified</span>
+                {% elif candidate.reconciled is false %}
+                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+                      title="XRAS has not confirmed the person behind this username — merging into it keeps the placeholder's roles on an unconfirmed identity">unidentified</span>
+                {% endif %}
                 <br>
                 {% if candidate.sam_active %}
                 <span class="small text-success">has an active SAM account — the handoff can proceed after the merge</span>

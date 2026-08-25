@@ -700,6 +700,7 @@ def _merge_candidates(person, *, source_username, sam_target=None):
                                          row.get('lastName')] if x),
             'email': row.get('email'),
             'organization': row.get('organization'),
+            'reconciled': row.get('isReconciled'),
             'in_sam': sam_user is not None,
             'sam_active': bool(sam_user is not None and sam_user.is_active),
         })
