@@ -322,7 +322,11 @@
                         {% endif %}
                     </td>
 
-                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
+                    {# No toggle here: the merge-target link below is a button,
+                       and a toggle on its cell would fire on the click too
+                       (Bootstrap's data-api runs in capture). Siblings keep
+                       theirs; the chevron lives in the username cell. #}
+                    <td>
                         {# Three remedies, text only: the e2e suite forbids icons
                            on summary rows. The MATCHED username links; the
                            placeholder beside it never does. #}
