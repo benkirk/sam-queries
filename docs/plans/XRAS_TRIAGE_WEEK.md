@@ -191,6 +191,8 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
 | 20:18 | `sha-e6084c9` rolled out: per-message `cc`/`bcc`/`sender`/`reply_to` on `Message`, read from `NOTIFY_XRAS_*` by `build_xras_messages` alone; values set to CC + Reply-To `alloc@ucar.edu` (team decision). |
 | 20:19 | UFIT0017 notified (#8, lead=admin so one message): `cc=1 bcc=0` — the first copy in alloc@. Follow-up agreed: generalize to a per-family (`NotificationKind.family`) addressing convention applied in the `Notifier`, admin card iterating families, CronJob forwarding `NOTIFY_*` by prefix. |
 | 20:39 | `sha-62d3b9c` rolled out: per-family addressing (`NotificationKind.family`, `NOTIFY_<FAMILY>_*` applied by the `Notifier`, CronJob forwards `NOTIFY_*` by prefix, admin card rows). Env in-pod unchanged; PR #481 body updated. |
+| 22:39 | XRAS posted **NCAR4285** (New, action 394088) → **422**: Allocation Manager `sdahal` is inactive in SAM. Inventory class (inactive account), not code — the preflight had predicted it. Clears when the account is reactivated or XRAS drops the role, then XRAS re-posts. |
+| 02:59 (25th) | Day-2 dispatch: `sha-1adf2dd` on both pods (PR #482 — healthcheck stderr fix, contract blockers Phase 1, pending-work queue, sort-header scroll fix). Healthcheck **41 PASS / 3 WARN / 0 FAIL**, section 12 PASS for the first time. The 03:00 sweep on the new image: `--contract-report` 3 targets (NCAR4231, NCAR4280, NCAR4212); pending work 47 of 467 swept. |
 
 ### Questions for Steve (batched, not piecemeal)
 
