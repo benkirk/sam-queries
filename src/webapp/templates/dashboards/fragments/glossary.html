@@ -237,7 +237,8 @@ window, with the date filter above applied. This is the only view with
 Ranks the organizations and institutions whose <strong>missing mnemonic
 code</strong> blocks the failing pushes in view. SAM mints a project code from
 the PI&rsquo;s org (internal) or institution (external) mnemonic; with none
-linked, a New fails with the mnemonic 422 and the request waits. Create the
+linked, posting a New is rejected (a posting error, HTTP 422) and the
+request waits. Create the
 code in Admin &rarr; Organizations and the next sweep drops the org from
 this list. The count is the pushes that one link unblocks; PIs with no
 current affiliation need a membership fix instead and are counted apart.
@@ -247,8 +248,8 @@ current affiliation need a membership fix instead and are counted apart.
 {% macro g_xras_contract_strip() -%}
 Ranks the <strong>grant numbers SAM holds no contract for</strong> among the
 failing pushes in view. The New handler links a contract, never creates one,
-so a number SAM has never seen is a 422 until a <code>contract</code> row
-exists. Each number opens Admin &rarr; Contracts with the form seeded from
+so a number SAM has never seen is rejected at posting (a posting error,
+HTTP 422) until a <code>contract</code> row exists. Each number opens Admin &rarr; Contracts with the form seeded from
 XRAS (title, dates) &mdash; look-up mode for NSF awards, manual for project
 references. A number that would <em>tie</em> against existing rows is a
 spelling variant to reconcile, not a row to create, and gets no link. Rows

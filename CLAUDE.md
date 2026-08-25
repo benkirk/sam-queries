@@ -640,6 +640,7 @@ Jinja2 filters are registered in `create_app()` — use them in every template.
 | Date / datetime | `{{ x \| fmt_date }}` | `fmt.date_str(x)` |
 | Byte size | `{{ x \| fmt_size }}` | `fmt.size(x)` |
 | Hours / charge factors / relative time | `fmt_hours`, `fmt_factor`, `fmt_ago` | `fmt.hours(x)`, … |
+| Count + agreeing noun (`3 pushes`) | `{{ n \| fmt_plural('push', 'pushes') }}` | `fmt.plural(n, 'push', 'pushes')` |
 | UTC→local, allocation units | `to_local_dt`, `alloc_unit` | — |
 
 **Key behaviors**

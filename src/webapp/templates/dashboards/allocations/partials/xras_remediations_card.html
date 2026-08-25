@@ -135,8 +135,9 @@
             <i class="fas fa-link-slash mt-1"></i>
             <div class="small">
                 {% if _mtargets %}
-                <strong>{{ mnemonic_summary.actions_seen | fmt_number }} failing push(es) cite
-                {{ _mtargets | length | fmt_number }} missing organization mnemonic(s).</strong>
+                <strong>{{ mnemonic_summary.actions_seen | fmt_plural('failing push', 'failing pushes') }}
+                {{ 'cites' if mnemonic_summary.actions_seen == 1 else 'cite' }}
+                {{ _mtargets | length | fmt_plural('missing organization mnemonic') }}.</strong>
                 {{ help_icon(g_xras_mnemonic_strip(), rich=True, title='Missing mnemonic codes', placement='bottom') }}
                 Create the code in
                 <a href="{{ url_for('admin_dashboard.organizations') }}">Admin&nbsp;→&nbsp;Organizations</a>:
@@ -149,7 +150,7 @@
                 {% endif %}
                 {% endif %}
                 {% if mnemonic_summary.unresolved %}
-                <br>{{ mnemonic_summary.unresolved | length | fmt_number }} more action(s)
+                <br>{{ mnemonic_summary.unresolved | length | fmt_plural('more action') }}
                 blocked by PIs with <strong>no current affiliation</strong> — those need a
                 membership fix, not a mnemonic.
                 {% endif %}
@@ -167,8 +168,9 @@
             <i class="fas fa-file-contract mt-1"></i>
             <div class="small">
                 {% if _ctargets %}
-                <strong>{{ contract_summary.actions_seen | fmt_number }} failing push(es) cite
-                {{ _ctargets | length | fmt_number }} contract(s) SAM does not hold.</strong>
+                <strong>{{ contract_summary.actions_seen | fmt_plural('failing push', 'failing pushes') }}
+                {{ 'cites' if contract_summary.actions_seen == 1 else 'cite' }}
+                {{ _ctargets | length | fmt_plural('contract') }} SAM does not hold.</strong>
                 {{ help_icon(g_xras_contract_strip(), rich=True, title='Contracts to create', placement='bottom') }}
                 Create the row in
                 <a href="{{ url_for('admin_dashboard.contracts') }}">Admin&nbsp;→&nbsp;Contracts</a>:
@@ -181,7 +183,7 @@
                 {% endif %}
                 {% endif %}
                 {% if contract_summary.variants %}
-                <br>{{ contract_summary.variants | length | fmt_number }} number(s) would
+                <br>{{ contract_summary.variants | length | fmt_plural('number') }} would
                 <strong>tie</strong> against existing contracts
                 ({% for v in contract_summary.variants[:4] %}<code>{{ v.number }}</code>{% if not loop.last %}, {% endif %}{% endfor %})
                 — a spelling variant to reconcile, not a row to create.
