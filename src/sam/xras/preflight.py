@@ -386,6 +386,29 @@ def verdict_to_dict(verdict: Verdict) -> dict:
     }
 
 
+def log_seen_for(session, action_ids) -> Dict[int, dict]:
+    """``action_id -> {status, received_time, log_id}`` of the LATEST log row each.
+
+    Ordered by id so the highest row wins: a failed post followed by a re-post
+    must report the re-post, and the pending-work queue reads this status.
+    """
+    from sam.integration.xras import XrasActionLog
+
+    ids = {a for a in action_ids if a is not None}
+    if not ids:
+        return {}
+    seen: Dict[int, dict] = {}
+    for row in (session.query(XrasActionLog)
+                .filter(XrasActionLog.action_id.in_(ids))
+                .order_by(XrasActionLog.xras_action_log_id.asc()).all()):
+        seen[row.action_id] = {
+            'status': row.status,
+            'received_time': (row.received_time.isoformat()
+                              if row.received_time else None),
+            'log_id': row.xras_action_log_id}
+    return seen
+
+
 def _resolve_push_state(session, synthesis: Synthesis, service: Optional[str],
                         log_seen: Mapping[int, dict]) -> Tuple[str, Optional[dict]]:
     """seen_in_log > applied_inferred > pending (New, no project) > unknown."""

@@ -473,10 +473,21 @@ class TestIsPendingWork:
         return {'request_number': 'EXAM0001', 'actions': list(actions)}
 
     @staticmethod
-    def _action(status, push_state=None, *, entry_date=date(2026, 8, 25), checked=True):
+    def _action(status, push_state=None, *, entry_date=date(2026, 8, 25), checked=True,
+                push_detail=None):
         return {'action_id': 1, 'action_status': status, 'entry_date': entry_date,
-                'preflight': ({'status': 'rechecked', 'push_state': push_state}
+                'preflight': ({'status': 'rechecked', 'push_state': push_state,
+                               'push_detail': push_detail}
                               if checked else None)}
+
+    def test_a_push_that_did_not_land_is_still_pending(self):
+        """NCAR4262: two failed posts in the log, still on XRAS admin's list."""
+        from sam.queries.xras_requests import is_pending_work
+        for status in ('failed', 'manual', 'received'):
+            assert is_pending_work(self._entry(self._action(
+                'Approved', 'seen_in_log', push_detail={'status': status, 'log_id': 9})))
+        assert not is_pending_work(self._entry(self._action(
+            'Approved', 'seen_in_log', push_detail={'status': 'processed', 'log_id': 9})))
 
     def test_an_in_flight_action_is_pending(self):
         from sam.queries.xras_requests import is_pending_work

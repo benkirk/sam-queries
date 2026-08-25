@@ -260,22 +260,14 @@ def _preflight_verdicts(reader, session, payload):
     No lookback: the caller asked about this one request, so every candidate
     action it carries is checked. A raising preflight counts as ``incomplete``.
     """
-    from sam.integration.xras import XrasActionLog
-    from sam.xras.preflight import (iter_candidate_actions, preflight_action,
-                                    verdict_to_dict)
+    from sam.xras.preflight import (iter_candidate_actions, log_seen_for,
+                                    preflight_action, verdict_to_dict)
 
     counts = {'rechecked': 0, 'failed': 0, 'manual': 0, 'incomplete': 0}
     candidates = list(iter_candidate_actions(payload, since=None))
-    action_ids = {a.get('actionId') for a in candidates if a.get('actionId') is not None}
     log_seen = {}
     try:
-        for row in (session.query(XrasActionLog)
-                    .filter(XrasActionLog.action_id.in_(action_ids)).all()):
-            log_seen[row.action_id] = {
-                'status': row.status,
-                'received_time': (row.received_time.isoformat()
-                                  if row.received_time else None),
-                'log_id': row.xras_action_log_id}
+        log_seen = log_seen_for(session, (a.get('actionId') for a in candidates))
     except Exception as exc:                            # noqa: BLE001
         logger.warning('xras recheck: log_seen lookup failed (%s)', exc)
 

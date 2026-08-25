@@ -304,9 +304,8 @@ def _run_preflights(ctx, client, session, all_payloads, *, since, detail):
     ``numbers`` is the set of requests carrying at least one candidate action.
     Injects the resource/opportunity maps; a raising preflight costs that action.
     """
-    from sam.integration.xras import XrasActionLog
-    from sam.xras.preflight import (iter_candidate_actions, preflight_action,
-                                    verdict_to_dict)
+    from sam.xras.preflight import (iter_candidate_actions, log_seen_for,
+                                    preflight_action, verdict_to_dict)
 
     candidates = [(p, a) for p in all_payloads if isinstance(p, dict)
                   for a in iter_candidate_actions(p, since=since)]
@@ -321,17 +320,9 @@ def _run_preflights(ctx, client, session, all_payloads, *, since, detail):
     if not candidates:
         return {}, set()
 
-    action_ids = {a.get('actionId') for _, a in candidates
-                  if a.get('actionId') is not None}
     log_seen = {}
     try:
-        for row in (session.query(XrasActionLog)
-                    .filter(XrasActionLog.action_id.in_(action_ids)).all()):
-            log_seen[row.action_id] = {
-                'status': row.status,
-                'received_time': (row.received_time.isoformat()
-                                  if row.received_time else None),
-                'log_id': row.xras_action_log_id}
+        log_seen = log_seen_for(session, (a.get('actionId') for _, a in candidates))
     except Exception as exc:                            # noqa: BLE001
         ctx.logger.warning('xras_sweep: log_seen lookup failed: %s', exc)
 

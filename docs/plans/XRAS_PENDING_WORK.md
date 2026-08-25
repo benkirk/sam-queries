@@ -74,3 +74,9 @@ action the sweep had not pulled — a sweep-coverage gap, not a rule gap.
   Pending Users: a failed post's roster is history once a later real post
   exists for the same action (`superseded_log_ids`), and a verified
   `merge_person` source is never work (`merged_away_usernames`).
+- ✅ **`seen_in_log` is not "posted"** (2026-08-25, NCAR4262 #8/#9): a log row
+  in `received`/`failed`/`manual` is a push that did not land, so the action
+  stays pending (`UNLANDED_LOG_STATUSES`). `log_seen_for` now picks the
+  highest log id per action, so a failed re-post after a success — or the
+  reverse — reports the latest attempt.
+

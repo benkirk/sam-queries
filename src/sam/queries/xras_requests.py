@@ -206,6 +206,11 @@ XRAS_REPOINTED_ON = date(2026, 8, 24)
 IN_FLIGHT_ACTION_STATUSES = ('Submitted', 'Under Review')
 
 
+#: A log row in one of these states is a push that has NOT landed, so the action
+#: is still XRAS admin's pending work even though ``push_state`` says seen_in_log.
+UNLANDED_LOG_STATUSES = ('received', 'failed', 'manual')
+
+
 def is_pending_work(entry: Mapping[str, Any]) -> bool:
     """Would XRAS admin's "Recent submissions" list show this request?
 
@@ -214,6 +219,8 @@ def is_pending_work(entry: Mapping[str, Any]) -> bool:
     the sweep checked that is either still in flight, or Approved and known
     unposted — no SAM project yet, or entered after the repoint with no log row.
     An action outside the sweep window (no ``preflight``) is not recent work.
+    ``seen_in_log`` alone does not mean posted: the first failed re-post after
+    the cutover (NCAR4262, #8/#9) showed the log row's own status decides.
     """
     for action in entry.get('actions') or ():
         preflight = action.get('preflight')
@@ -227,6 +234,11 @@ def is_pending_work(entry: Mapping[str, Any]) -> bool:
         push_state = preflight.get('push_state')
         if push_state == 'pending':
             return True
+        if push_state == 'seen_in_log':
+            detail = preflight.get('push_detail') or {}
+            if detail.get('status') in UNLANDED_LOG_STATUSES:
+                return True
+            continue
         if push_state == 'unknown':
             when = action.get('entry_date') or action.get('submit_date')
             if when is not None and _as_date(when) >= XRAS_REPOINTED_ON:
