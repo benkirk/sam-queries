@@ -21,8 +21,9 @@ from sam.integration.xras_api import XrasSourceUnavailable
 from sam.manage import xras_remediation as remediation
 from sam.queries.xras_actions import XRAS_ACTION_SORT_COLUMNS
 from sam.queries.xras_activation import ACTIVITY_TAGS
-from sam.queries.xras_accounts import (CLASSIFICATION_ABSENT,
-                                       CLASSIFICATION_INACTIVE,
+from sam.queries.xras_accounts import (REMEDIES,
+                                       REMEDY_MERGE,
+                                       REMEDY_ORDER,
                                        SOURCE_ACTION_LOG, SOURCE_REPORTS)
 
 
@@ -383,10 +384,16 @@ def _activity_facets(rows, dimension, *, tags=None, types=None) -> dict:
 #: Naming the artifact rather than the team is deliberate too: the owning group
 #: can change without touching 26 rows and the CLI's JSON envelope, and the
 #: banner names it once where it can be kept current.
-_ACCOUNT_CLASSIFICATION_LABELS = {
-    CLASSIFICATION_ABSENT: 'New account',
-    CLASSIFICATION_INACTIVE: 'Reactivation',
+_ACCOUNT_REMEDY_LABELS = {
+    REMEDY_MERGE: 'Ready to merge',
+    'create': 'New account',
+    'reactivate': 'Reactivation',
 }
+
+
+def _remedy_of(row) -> str:
+    """A row's remedy, derived for a snapshot row an older image stamped without one."""
+    return row.get('remedy') or REMEDIES.get(row.get('classification'), 'create')
 
 _ACCOUNTS_FORM_ID = 'xras-accounts-filters'
 _ACCOUNTS_TARGET = 'alloc-xras-accounts'
@@ -415,7 +422,7 @@ _SOURCE_LABELS = {
 }
 
 
-def _filter_accounts(rows, *, classifications=None, roles=None, origins=None,
+def _filter_accounts(rows, *, remedies=None, roles=None, origins=None,
                      sources=None):
     """Facet filters: ANDed across dimensions, ORed within one.
 
@@ -436,8 +443,8 @@ def _filter_accounts(rows, *, classifications=None, roles=None, origins=None,
     mean something different here than on every other card.
     """
     out = rows
-    if classifications:
-        out = [r for r in out if r['classification'] in classifications]
+    if remedies:
+        out = [r for r in out if _remedy_of(r) in remedies]
     if roles:
         out = [r for r in out if any(role in roles for role in r['roles'])]
     if origins:
@@ -482,14 +489,14 @@ def _submitted_since(row, since):
     return False
 
 
-def _request_facets(rows, *, classifications=None):
+def _request_facets(rows, *, remedies=None):
     """Counts per XRAS request number, most-affected first.
 
     Self-excluding on its own dimension, like every other facet here. Rows
     naming no request number contribute nothing: a NULL cannot round-trip
     through the form, so it must not become a chip.
     """
-    scoped = _filter_accounts(rows, classifications=classifications)
+    scoped = _filter_accounts(rows, remedies=remedies)
     counts = {}
     for row in scoped:
         for number in {a['request_number'] for a in row['actions'] if a['request_number']}:
@@ -498,7 +505,7 @@ def _request_facets(rows, *, classifications=None):
     return [{'value': k, 'count': v} for k, v in ordered[:_MAX_REQUEST_CHIPS]]
 
 
-def _account_facets(rows, dimension, *, classifications=None, roles=None,
+def _account_facets(rows, dimension, *, remedies=None, roles=None,
                     sources=None):
     """Self-excluding counts for one dimension.
 
@@ -506,13 +513,13 @@ def _account_facets(rows, dimension, *, classifications=None, roles=None,
     unselected value reads 0 the moment one is picked, which turns the chips
     from switchers into a dead end. Same rule as :func:`_activity_facets`.
     """
-    if dimension == 'classification':
+    if dimension == 'remedy':
         scoped = _filter_accounts(rows, roles=roles, sources=sources)
-        return {key: sum(1 for r in scoped if r['classification'] == key)
-                for key in (CLASSIFICATION_ABSENT, CLASSIFICATION_INACTIVE)}
+        return {key: sum(1 for r in scoped if _remedy_of(r) == key)
+                for key in REMEDY_ORDER}
 
     if dimension == 'role':
-        scoped = _filter_accounts(rows, classifications=classifications,
+        scoped = _filter_accounts(rows, remedies=remedies,
                                   sources=sources)
         counts = {}
         for row in scoped:
@@ -521,7 +528,7 @@ def _account_facets(rows, dimension, *, classifications=None, roles=None,
         return dict(sorted(counts.items()))
 
     if dimension == 'origin':
-        scoped = _filter_accounts(rows, classifications=classifications,
+        scoped = _filter_accounts(rows, remedies=remedies,
                                   roles=roles, sources=sources)
         return {
             ORIGIN_PLACEHOLDER: sum(1 for r in scoped if r['placeholder']),
@@ -529,7 +536,7 @@ def _account_facets(rows, dimension, *, classifications=None, roles=None,
         }
 
     if dimension == 'source':
-        scoped = _filter_accounts(rows, classifications=classifications,
+        scoped = _filter_accounts(rows, remedies=remedies,
                                   roles=roles)
         # A both-feeds row counts in both, so this is not a partition.
         return {key: sum(1 for r in scoped if key in (r.get('sources') or ()))
