@@ -400,6 +400,36 @@ class TestTheFridayCase:
 
 class TestASendableAction:
 
+    def test_the_approver_note_rides_the_context(self, session, ctx, wire,
+                                                 transport, monkeypatch):
+        import sam.integration.xras_api as api
+        seen = []
+
+        def note(action, **_):
+            seen.append(action.xras_action_log_id)
+            return 'Approved with caveats.'
+        monkeypatch.setattr(api, 'approver_comment_for_action', note)
+        _project, action = _notifiable(session, received=SLOT - timedelta(days=2))
+
+        result = mod.xras_notices(ctx())
+
+        assert result.detail['sent'] == 1
+        assert seen == [action.xras_action_log_id]
+        message, _rendered = transport.delivered[0]
+        assert message.context['approver_comment'] == 'Approved with caveats.'
+
+    def test_an_unconfigured_xras_api_never_withholds_the_mail(self, session, ctx,
+                                                               wire, transport):
+        """The real resolver under the test config (``XRAS_API_KEY=''``):
+        refuses, returns None, and the notice still goes."""
+        _notifiable(session, received=SLOT - timedelta(days=2))
+
+        result = mod.xras_notices(ctx())
+
+        assert result.detail['sent'] == 1
+        message, _rendered = transport.delivered[0]
+        assert message.context['approver_comment'] is None
+
     def test_it_mails_the_lead_and_records_the_event(self, session, ctx, wire,
                                                      transport):
         project, action = _notifiable(session, received=SLOT - timedelta(days=2))

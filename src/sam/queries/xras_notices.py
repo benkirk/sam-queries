@@ -139,8 +139,14 @@ def action_increments(session: Session, action, *,
 
 def build_xras_messages(session: Session, project,
                         people: Sequence[Mapping[str, str]], *,
-                        action=None, requested_by: str) -> List[Message]:
+                        action=None, requested_by: str,
+                        approver_comment: Optional[str] = None) -> List[Message]:
     """Build one :class:`~sam.notify.Message` per recipient for one XRAS action.
+
+    ``approver_comment`` is the XRAS reviewer's note (``adminComments``),
+    resolved by the caller because it lives on the outbound reports feed and
+    this builder is DB-only. It rides the context; the templates decide
+    whether to render it.
 
     ``dedup_key`` embeds the action, so a Supplement mints a different key from
     the New that preceded it: each outcome can be reported once, and re-opening
@@ -194,6 +200,7 @@ def build_xras_messages(session: Session, project,
         'changes': (action_increments(session, action, signed=True)
                     if kind == 'xras_adjustment' else []),
         'action_type': action.action_type if action else None,
+        'approver_comment': approver_comment,
     }
     subject = XRAS_KIND_SUBJECTS.get(
         kind, XRAS_KIND_SUBJECTS['xras_activation']

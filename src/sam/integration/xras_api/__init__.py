@@ -41,6 +41,10 @@ from sam.integration.xras_api.base import (
 )
 from sam.integration.xras_api.cache import invalidate_person
 from sam.integration.xras_api.client import XrasApiClient
+from sam.integration.xras_api.comments import (
+    approver_comment,
+    approver_comment_for_action,
+)
 from sam.integration.xras_api.config import (
     XrasApiConfig,
     xras_admin_context_available,
@@ -59,6 +63,8 @@ from sam.integration.xras_api.people import (
 )
 
 __all__ = [
+    'approver_comment',
+    'approver_comment_for_action',
     'PI_ROLE_TYPE_ID',
     'ROLE_TYPES',
     'RoleType',

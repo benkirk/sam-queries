@@ -30,6 +30,7 @@ from sam.queries.xras_activation import (
 # Full dotted path, never through `sam.queries` — that package imports its
 # submodules eagerly, and this one imports `sam.notify`. See the module
 # docstring; `tests/unit/test_notify_import_graph.py` is the gate.
+from sam.integration.xras_api import approver_comment_for_action
 from sam.queries.xras_notices import build_xras_messages, load_xras_action
 from sam.schemas.forms import XrasActivationEventForm
 
@@ -101,7 +102,8 @@ def _xras_messages(project, people, *, action=None):
     never disagree about what has already been sent.
     """
     return build_xras_messages(db.session, project, people, action=action,
-                               requested_by=current_user.username)
+                               requested_by=current_user.username,
+                               approver_comment=approver_comment_for_action(action))
 
 
 @bp.route('/xras_notify_form/<int:project_id>')
