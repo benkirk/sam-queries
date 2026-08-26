@@ -111,8 +111,9 @@
                 {# Remove is per role, keyed on role_id. Bodiless POST behind the
                    shared confirm; re-renders the detail modal in place. #}
                 {% if member.role_id is not none %}
-                <button type="button" class="btn btn-sm btn-outline-secondary ms-1" {{ disabled }}
-                        {% if not write_enabled %}title="{{ why_disabled }}"{% endif %}
+                <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 ms-1" {{ disabled }}
+                        title="{% if not write_enabled %}{{ why_disabled }}{% else %}Remove {{ member.username }} as {{ member.role_type }}{% endif %}"
+                        aria-label="Remove {{ member.username }} as {{ member.role_type }}"
                         hx-post="{{ url_for('allocations_dashboard.xras_role_remove',
                                             request_number=row.request_number,
                                             role_id=member.role_id) }}"
@@ -120,7 +121,7 @@
                         hx-confirm="Remove {{ member.username }} as {{ member.role_type }} on {{ row.request_number }} in XRAS?"
                         data-confirm-title="Remove role in XRAS"
                         data-confirm-ok="Remove" data-confirm-variant="danger">
-                    Remove
+                    <i class="fas fa-user-minus"></i>
                 </button>
                 {% endif %}
             </td>

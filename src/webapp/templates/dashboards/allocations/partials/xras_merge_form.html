@@ -77,17 +77,22 @@
         </div>
 
         {% for candidate in candidates %}
-        <div class="form-check border rounded p-2 mb-1">
-            {# NO `checked` on any radio, even when there is only one — the
-               choice must be made, never inherited. And NO `required`: native
-               constraint validation would block the free-text override below
-               (the browser insists a radio be picked, the schema refuses a
-               radio beside an override), making the documented "none of these
-               is right" path unreachable. The exactly-one guarantee lives in
-               XrasMergeForm._exactly_one_target, which renders a real error. #}
-            <input class="form-check-input" type="radio" name="candidate"
+        {# The whole card is the control: a <label> wrapping the radio, so a
+           click anywhere on it picks the candidate, and `.xras-candidate`
+           (allocations.css) marks the picked card. A bare radio at the edge
+           of a wide card was missed on the real thing.
+           NO `checked` on any radio, even when there is only one — the
+           choice must be made, never inherited. And NO `required`: native
+           constraint validation would block the free-text override below
+           (the browser insists a radio be picked, the schema refuses a
+           radio beside an override), making the documented "none of these
+           is right" path unreachable. The exactly-one guarantee lives in
+           XrasMergeForm._exactly_one_target, which renders a real error. #}
+        <label class="xras-candidate list-group-item list-group-item-action d-flex gap-2 align-items-start rounded mb-1"
+               for="cand-{{ loop.index }}">
+            <input class="form-check-input mt-1 flex-shrink-0" type="radio" name="candidate"
                    id="cand-{{ loop.index }}" value="{{ candidate.username }}">
-            <label class="form-check-label w-100" for="cand-{{ loop.index }}">
+            <span class="flex-grow-1">
                 <span class="font-monospace">{{ candidate.username }}</span>
                 {% if candidate.rank == 0 %}
                 <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">{{ candidate.why }}</span>
@@ -115,8 +120,9 @@
                 {% else %}
                 <span class="small text-muted">no SAM account — the person will still need one created</span>
                 {% endif %}
-            </label>
-        </div>
+            </span>
+            <i class="fas fa-circle-check xras-candidate-check mt-1" aria-hidden="true"></i>
+        </label>
         {% else %}
         <div class="alert alert-warning py-2 small mb-2">
             No XRAS identity matched this placeholder's name
