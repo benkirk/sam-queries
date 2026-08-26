@@ -1,8 +1,13 @@
 # XRAS Activations Card — Attention Queue by Default
 
-**Status: HANDOFF, not started (2026-08-25 EOD).** Designed after three read-only
-maps of the tree; nothing built. Restart from § *Commits*. The discussion that
-produced it is § *Why this shape*; the consolidation question is § *Follow-up*.
+**Status: IMPLEMENTED 2026-08-25 on PR #482** (six commits from `43b0faeb`).
+Two calls by Ben changed the rule below while building: a **dismissed row
+leaves the queue at once** (undo is Restore under *Everything in the window*),
+so the 3-day clause is recency only; and **Dismiss is offered on every live
+row**, in an icon-only action strip. One design deviation: the card fetches
+all time once and applies the window in Python under `show_all`
+(`_activity_in_window`, the SQL bounds), so `scope_rows` is used identically on
+both cards. The rest is as designed. The consolidation question is § *Follow-up*.
 
 ## Problem
 
@@ -23,7 +28,7 @@ actions in an afternoon, each needing a Notify click. At that rate the window ho
    `xras_dismiss` / `xras_restore` (`lifecycle_routes.py:323-390`), events
    `dismissed` / `restored` (`sam/integration/xras.py:307-313`), tests in
    `tests/unit/test_xras_dashboard.py` and `test_xras_action_queries.py`. PR #424
-   removed only the *hiding*; dismissal now greys the row and swaps Activate for
+   removed only the *hiding*; dismissal now grays the row and swaps Activate for
    Restore.
 2. **The card is not window-only.** It already has self-excluding State chips
    (`needs_activation`, `not_notified`, `notified`, `failed`, `dismissed`) and
@@ -48,7 +53,7 @@ beside `activity_tags` — pure, testable, reusable by CLI and task:
 needs_activation                                    # already excludes dismissed
 or (notifiable and not notified and not dismissed)  # a Notify nobody clicked
 or received_time >= now - recent_days               # informational; a dismissed
-                                                    # row stays greyed here = undo
+                                                    # row stays grayed here = undo
 ```
 
 Decisions inside it:
@@ -57,7 +62,7 @@ Decisions inside it:
   the only time-bound part. `_ACTIVITY_RECENT_DAYS = 3` beside the pill constants
   in `_shared.py`.
 - **Dismiss declutters again, in the default view only.** A dismissed row older
-  than 3 days leaves the queue; "Everything in the window" still shows it greyed
+  than 3 days leaves the queue; "Everything in the window" still shows it grayed
   with Restore. The #424 principle (history never vanishes from the full table)
   and the SPRINT_B misclick concern (undo without a "show dismissed" toggle that
   "would vanish exactly when every row was dismissed") both hold.
@@ -116,7 +121,7 @@ tests/unit/test_route_map_parity.py tests/unit/test_docs.py -n 0` under
 `set -o pipefail`; a route-test pair (default hides a 10-day-old notified row and
 shows an un-notified one; `show_all=1` shows both; badge text; switch renders on an
 empty queue); a webdev Playwright walk (queue → switch → window rows; dismiss a
-recent row stays greyed, an old one leaves; chips still filter). The e2e suites pin
+recent row stays grayed, an old one leaves; chips still filter). The e2e suites pin
 *exactly two tabs* — unchanged.
 
 ## Why this shape — the three cards compared

@@ -27,7 +27,7 @@ In the order you will reach for them:
 
 | Surface | What it answers |
 |---|---|
-| XRAS → **Pending Activations & Notifications** | Everything received, filterable, raw payload behind `MANAGE_XRAS` |
+| XRAS → **Pending Activations & Notifications** | Needs attention by default — activation pending, Notify unclicked, or received in the last 3 days; **Everything in the window** for the full ledger, raw payload behind `MANAGE_XRAS` |
 | XRAS → **Pending Users** | Who needs a SAM account before a handoff can land, both feeds unioned with a per-row **Source** badge: *Received push* (usernames on actions already received, § 3.3's fix as a worklist) and *Pending request* (approved XRAS requests **not yet pushed** — the same problem before the action arrives, from the `xras_sweep` snapshot). Received pushes sort first |
 | `sam-admin xras --summary --last 24h` | Status counts at a glance |
 | `sam-admin xras --status failed --last 24h` | The 400s and 422s, with their error lists |

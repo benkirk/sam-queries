@@ -3,6 +3,8 @@
 **Status: BUILT 2026-08-24 on PR #482.** The Remediations card defaults to
 the same population as XRAS admin's "Recent submissions" list; a
 **Show everything** switch restores the full swept set with the date filter.
+The Activations card got the same shape on 2026-08-25 (§ *The Activations
+card*); both go through one seam, `_shared.scope_rows`.
 
 ## What XRAS admin's list keys on (measured 2026-08-24)
 
@@ -53,6 +55,35 @@ action the sweep had not pulled — a sweep-coverage gap, not a rule gap.
   chip click keeps the mode, and the batch re-check reads it from the POST
   body. Absent means off (CLAUDE.md § 10).
 - `sam-admin --format json xras --readiness` rows carry `pending_work`.
+
+## The Activations card — the attention queue
+
+"Pending Activations & Notifications" defaults to `needs_attention()` in
+`sam/queries/xras_activation.py`, a pure predicate on the rows
+`get_xras_activity` already returns (record:
+`implemented/XRAS_ATTENTION_QUEUE.md`):
+
+| condition | why |
+|---|---|
+| `dismissed` | **never in** — Dismiss is how a row leaves; undo is Restore under the switch |
+| `needs_activation` | project inactive and this is its latest action |
+| `notifiable and not notified` | a Notify nobody clicked (`transfer` has no notice, so it never queues on this clause) |
+| `received_time` within `ATTENTION_RECENT_DAYS` (3) | a fresh post is seen once even when nothing needs a click |
+
+- **No date window in the queue**, as here: a New nobody activated three
+  months ago is the point. The card fetches all time once and applies the
+  shared window in Python (`_activity_in_window`, the SQL bounds) only under
+  **Everything in the window** — so the toggled view is the pre-queue ledger.
+- Badges: `N need attention` + `M more with Everything in the window`;
+  under the switch, `N needing attention outside the date filter`, because on
+  this card the rows a recency filter drops are the urgent ones.
+- Dismiss is offered on every live row, not only one needing activation, and
+  the `xras_notices` task skips dismissed rows — so dismissing an un-notified
+  Update is a decision, not a lost mail.
+- **The notification half self-clears only if somebody clicks Notify or
+  `xras_notices` is enabled** (chart-side `SAM_TASKS_DISABLED`). With the
+  task off, 15 posts a day is 15 clicks a day or a growing queue; the card
+  reports that work, it does not create it.
 
 ## Follow-ups
 
