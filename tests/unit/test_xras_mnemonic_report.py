@@ -129,3 +129,51 @@ class TestUnresolvedBucket:
 def test_an_empty_snapshot_is_a_clean_empty_report(session):
     assert mnemonic_unblock_report(session, None)['targets'] == []
     assert mnemonic_unblock_report(session, {'rows': []})['actions_seen'] == 0
+
+
+class TestSharedLeafWithTheIngestResolver:
+    """The report resolver (`_resolve_target`) and the ingest resolver
+    (`sam.xras.extractors.resolve_mnemonic_code`) are a DELIBERATE fork —
+    opportunity-driven code-minting vs 422-family-driven diagnosis — that share
+    the `_best_*` / `resolve_for_*` leaves. Merging them would be wrong; these
+    pin that they still AGREE on the shared org leaf, so re-inlining one is caught.
+    """
+
+    def _org_pi(self, session, org_name, username, *, mapped):
+        org = make_organization(session, name=org_name)
+        if mapped:
+            make_mnemonic_code(session, description=org_name)
+        user = make_user(session, username=username)
+        make_user_organization(session, user=user, organization=org)
+        return user, org
+
+    def _ingest(self, session, user):
+        from sam.xras.errors import ActionErrors
+        from sam.xras.extractors import resolve_mnemonic_code
+        errs = ActionErrors()
+        row = resolve_mnemonic_code(session, {'opportunityName': 'Small Allocation'},
+                                    errs, pi_username=user.username)
+        return row, errs
+
+    def _report(self, session, user):
+        from sam.core.organizations import MnemonicCode
+        from sam.queries.xras_mnemonic_report import (FAMILY_ORGANIZATION,
+                                                      _resolve_target)
+        lookup = MnemonicCode.build_lookup(session)
+        return _resolve_target(user, FAMILY_ORGANIZATION, lookup)
+
+    def test_a_mapped_org_reads_mapped_in_both(self, session):
+        user, org = self._org_pi(session, 'Shared Leaf Section', 'pi-shared',
+                                 mapped=True)
+        row, errs = self._ingest(session, user)
+        assert row is not None and not errs
+        status, name, _ = self._report(session, user)
+        assert (status, name) == ('mapped', org.name)
+
+    def test_an_unmapped_org_reads_unmapped_in_both(self, session):
+        user, org = self._org_pi(session, 'Unmapped Leaf Section', 'pi-unmapped',
+                                 mapped=False)
+        row, errs = self._ingest(session, user)
+        assert row is None and list(errs)          # ingest reports the miss
+        status, name, _ = self._report(session, user)
+        assert (status, name) == ('unmapped', org.name)
