@@ -224,40 +224,46 @@
                     </td>
 
                     {% if may_manage %}
+                    {# One icon-only strip, the shape of action_buttons.html: up
+                       to four buttons at a fixed width, with the verb in the
+                       title. Dismiss is offered on every live row — it is how
+                       a row leaves the attention queue, not only a "do not
+                       activate" mark. #}
                     <td class="text-end" style="white-space:nowrap;">
+                        <div class="btn-group btn-group-sm" role="group" aria-label="Actions for {{ r.projcode }}">
                         {% if r.notifiable %}
-                        <button class="btn btn-sm btn-outline-secondary"
-                                title="Preview and send the notice for this action"
+                        {% set notify_title = 'Notify again — preview and resend the notice' if r.notified else 'Notify — preview and send the notice for this action' %}
+                        <button class="btn {{ 'btn-outline-secondary' if r.notified else 'btn-outline-primary' }}"
+                                title="{{ notify_title }}" aria-label="{{ notify_title }}"
                                 hx-get="{{ url_for('allocations_dashboard.xras_notify_form', project_id=r.project_id, action_id=r.action_log_id) }}"
                                 hx-target="#auditDetailsModalBody"
                                 hx-swap="innerHTML"
                                 data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
                             <i class="fas fa-envelope"></i>
-                            {{ 'Notify again' if r.notified else 'Notify' }}
                         </button>
                         {% endif %}
                         {% if r.needs_activation and may_activate.get(r.project_id) %}
-                        <button class="btn btn-sm btn-outline-success"
-                                title="Activate this project"
+                        <button class="btn btn-outline-success"
+                                title="Activate this project" aria-label="Activate this project"
                                 hx-post="{{ url_for('allocations_dashboard.xras_activate', project_id=r.project_id) }}"
                                 hx-confirm="Activate {{ r.projcode }}? Its allocations become usable right away, and the activation is added to the project's history."
                                 data-confirm-title="Activate project"
                                 data-confirm-variant="info"
                                 data-confirm-label="Activate"
                                 hx-swap="none">
-                            <i class="fas fa-circle-check"></i> Activate
+                            <i class="fas fa-circle-check"></i>
                         </button>
                         {% endif %}
                         {% if r.dismissed %}
-                        <button class="btn btn-sm btn-outline-secondary"
-                                title="Return this project to the worklist"
+                        <button class="btn btn-outline-secondary"
+                                title="Restore to the attention queue" aria-label="Restore to the attention queue"
                                 hx-post="{{ url_for('allocations_dashboard.xras_restore', project_id=r.project_id) }}"
                                 hx-swap="none">
                             <i class="fas fa-rotate-left"></i>
                         </button>
-                        {% elif r.needs_activation %}
-                        <button class="btn btn-sm btn-outline-warning"
-                                title="This should not be activated via XRAS"
+                        {% else %}
+                        <button class="btn btn-outline-warning"
+                                title="Dismiss — take this row out of the attention queue" aria-label="Dismiss — take this row out of the attention queue"
                                 hx-get="{{ url_for('allocations_dashboard.xras_dismiss_form', project_id=r.project_id) }}"
                                 hx-target="#auditDetailsModalBody"
                                 hx-swap="innerHTML"
@@ -265,17 +271,18 @@
                             <i class="fas fa-eye-slash"></i>
                         </button>
                         {% endif %}
-                        <button class="btn btn-sm btn-outline-secondary"
-                                title="Activation history and comments"
+                        <button class="btn btn-outline-secondary position-relative"
+                                title="Activation history and comments" aria-label="Activation history and comments"
                                 hx-get="{{ url_for('allocations_dashboard.xras_history', project_id=r.project_id) }}"
                                 hx-target="#auditDetailsModalBody"
                                 hx-swap="innerHTML"
                                 data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
                             <i class="fas fa-comment"></i>
                             {% if r.comment_count %}
-                            <span class="badge bg-secondary">{{ r.comment_count }}</span>
+                            <span class="badge bg-secondary ms-1">{{ r.comment_count | fmt_number }}</span>
                             {% endif %}
                         </button>
+                        </div>
                     </td>
                     {% endif %}
                 </tr>

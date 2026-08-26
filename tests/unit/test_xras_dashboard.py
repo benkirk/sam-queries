@@ -903,6 +903,34 @@ class TestActivityRowExpansion:
                 fragment_url='/allocations/xras_pending_fragment',
                 target_id='alloc-xras-pending', **counts)
 
+    def _actions_cell(self, body):
+        cell = body.split('<td class="text-end"')[1].split('</td>')[0]
+        assert 'xras_history' in cell, 'wrong cell — test is vacuous'
+        return cell
+
+    def test_the_actions_are_one_icon_only_strip(self, app):
+        """Four verbs at a fixed width: the label is the `title`, never text
+        beside the icon, so a row with everything to offer stays one line."""
+        cell = self._actions_cell(self._render(app, may_manage=True))
+        assert 'btn-group btn-group-sm' in cell
+        for button in cell.split('<button')[1:]:
+            visible = button.split('>', 1)[1]
+            for tag in ('<i class', '</i>', '<span class', '</span>', '</button>'):
+                visible = visible.replace(tag, '')
+            assert 'Notify' not in visible and 'Activate' not in visible
+            assert 'aria-label="' in button
+
+    def test_every_live_row_offers_dismiss_and_a_dismissed_one_restore(self, app):
+        """Dismiss is how a row leaves the attention queue, so it is not gated
+        on needing activation any more than Notify is."""
+        live = self._actions_cell(self._render(app, may_manage=True))
+        assert 'xras_dismiss_form' in live and 'xras_restore' not in live
+        gone = self._actions_cell(self._render(
+            app, may_manage=True,
+            rows=[self._row(dismissed=True, dismissed_by='benkirk',
+                            tags=['notified', 'dismissed'])]))
+        assert 'xras_restore' in gone and 'xras_dismiss_form' not in gone
+
     def test_the_hidden_count_badge_names_the_switch(self, app):
         body = self._render(app, may_manage=True, window_total=3, hidden_count=2)
         assert '1 need attention' in body
