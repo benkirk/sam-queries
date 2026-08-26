@@ -26,6 +26,8 @@ from sam.queries.xras_actions import (
     summarize_xras_actions,
 )
 from sam.queries.xras_activation import (
+    ATTENTION_RECENT_DAYS,
+    needs_attention,
     ACTIVITY_TAGS,
     get_xras_activity,
     get_xras_pending_recipients,
@@ -46,6 +48,8 @@ from sam.queries.xras_accounts import (
 from .. import bp
 from ..blueprint import _window_control_context
 from ._shared import (
+    _activity_in_window,
+    scope_rows,
     ORIGIN_KNOWN, ORIGIN_PLACEHOLDER, _ACCOUNT_REMEDY_LABELS,
     _ACCOUNTS_ENRICH_BUDGET, _ACCOUNTS_FORM_ID, _ACCOUNTS_TARGET,
     _ACTIVITY_TAG_LABELS, _ACTIVITY_WINDOW_PILLS, _ORIGIN_LABELS,
@@ -55,7 +59,7 @@ from ._shared import (
     _parse_activity_window, _parse_xras_filters,
     _request_facets, _submitted_since, sort_rows,
 )
-from webapp.utils.htmx import read_sort
+from webapp.utils.htmx import read_flag, read_sort
 
 
 #: Pending Users' sortable non-facet columns -> row key. Needs / Role / Source /
@@ -235,14 +239,27 @@ def xras_pending_fragment():
       place and this is only ever a rendering hint.
     """
     may_manage = has_permission(current_user, Permission.MANAGE_XRAS)
+    show_all = read_flag(request.args, 'show_all')
     window = _parse_activity_window(request.args)
     selected_tags = [t for t in request.args.getlist('tag') if t]
     selected_types = [t for t in request.args.getlist('activity_type') if t]
 
-    rows = get_xras_activity(db.session,
-                             since=window['since'], until=window['until'])
+    # All time, then scoped in Python: the queue has no date bound (a New
+    # nobody activated months ago is its point) and the badges need both
+    # counts. `show_all` applies the window with the same inclusive bounds.
+    everything = get_xras_activity(db.session)
+    now = datetime.now()
 
-    # Facets over the *unfiltered* window set, each dimension dropping its own
+    def queue(row):
+        return needs_attention(row, now=now)
+
+    in_window = [r for r in everything if _activity_in_window(r, window)]
+    attention_total = sum(1 for r in everything if queue(r))
+    queued_in_window = sum(1 for r in in_window if queue(r))
+    rows = scope_rows(everything, request.args,
+                      queue=queue, in_window=_activity_in_window)
+
+    # Facets over the *unfiltered* scoped set, each dimension dropping its own
     # selection -- the same self-exclusion `facet_notifications` and
     # `xras_fragment` keep, and for the same reason: scope a dimension by itself
     # and the chips stop being switchers.
@@ -278,6 +295,12 @@ def xras_pending_fragment():
         type_values=[{'value': k, 'count': v} for k, v in type_facets.items()],
         selected_tags=selected_tags,
         selected_types=selected_types,
+        show_all=show_all,
+        attention_total=attention_total,
+        window_total=len(in_window),
+        hidden_count=len(in_window) - queued_in_window,
+        outside_count=attention_total - queued_in_window,
+        recent_days=ATTENTION_RECENT_DAYS,
         form_id=_XRAS_ACTIVITY_FORM_ID,
         fragment_url=url_for('allocations_dashboard.xras_pending_fragment'),
         target_id=_XRAS_ACTIVITY_TARGET,

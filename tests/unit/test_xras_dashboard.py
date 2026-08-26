@@ -172,12 +172,20 @@ class TestXrasFragments:
 
     def test_pending_empty_state_does_not_claim_nothing_is_pending(
             self, auth_client):
-        """The card can only see actions this log knows about. While capture
-        mode is on, "empty" must not be presented as "all clear".
+        """The card can only see actions this log knows about, so an empty
+        queue must not be presented as "all clear".
 
         WARNING: Both literals are copy assertions. If you reword the empty state,
         reword them — do not delete the second one, which is the honest half."""
         resp = auth_client.get('/allocations/xras_pending_fragment')
+        assert b'Nothing needs attention' in resp.data
+        assert b'does not mean nothing is pending' in resp.data
+
+    def test_everything_empty_state_names_the_window(self, auth_client):
+        """Under the toggle the empty state blames the date filter, and keeps
+        the honest half."""
+        resp = auth_client.get('/allocations/xras_pending_fragment',
+                               query_string={'show_all': '1'})
         assert b'No XRAS activity in this window' in resp.data
         assert b'does not mean nothing is pending' in resp.data
 
@@ -449,6 +457,62 @@ class TestScopeSeam:
                           queue=lambda r: False, in_window=in_window)
         assert [r['id'] for r in rows] == [1, 2]
         assert seen == [7, 7], 'the window dict is parsed once and passed through'
+
+    def test_activity_in_window_matches_the_sql_bounds(self):
+        """Inclusive at both ends, an absent bound is open, a dateless row is
+        kept — so `show_all` renders exactly what the SQL window would."""
+        from datetime import datetime
+
+        from webapp.dashboards.allocations.xras._shared import _activity_in_window
+
+        since, until = datetime(2026, 8, 1), datetime(2026, 8, 31, 23, 59, 59)
+        window = {'since': since, 'until': until}
+        assert _activity_in_window({'received_time': since}, window)
+        assert _activity_in_window({'received_time': until}, window)
+        assert not _activity_in_window({'received_time': datetime(2026, 7, 31)}, window)
+        assert not _activity_in_window({'received_time': datetime(2026, 9, 1)}, window)
+        assert _activity_in_window({'received_time': datetime(2020, 1, 1)},
+                                   {'since': None, 'until': None})
+        assert _activity_in_window({'received_time': None}, window)
+
+
+class TestAttentionQueueToggle:
+    """The Activations card's `show_all` switch, on an empty DB — what the
+    HTTP tier can pin: it renders, it binds, it explains, it does not lie."""
+
+    FRAGMENT = '/allocations/xras_pending_fragment'
+    SWITCH = 'id="xras-activity-show-all"'
+
+    def _switch(self, body):
+        return body.split(self.SWITCH)[1].split('>')[0]
+
+    def test_the_switch_renders_on_an_empty_queue_unchecked(self, auth_client):
+        body = auth_client.get(self.FRAGMENT).get_data(as_text=True)
+        assert self.SWITCH in body
+        assert 'checked' not in self._switch(body)
+        assert 'Everything in the window (0)' in body
+
+    def test_the_switch_belongs_to_the_filter_form(self, auth_client):
+        body = auth_client.get(self.FRAGMENT).get_data(as_text=True)
+        switch = self._switch(body)
+        assert 'name="show_all"' in switch
+        assert 'form="xras-activity-filters"' in switch
+        assert 'hx-include="#xras-window-filters, #xras-activity-filters"' in switch
+
+    def test_show_all_checks_the_switch(self, auth_client):
+        body = auth_client.get(self.FRAGMENT,
+                               query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'checked' in self._switch(body)
+
+    def test_the_switch_explains_both_sets_in_a_popover(self, auth_client):
+        body = auth_client.get(self.FRAGMENT).get_data(as_text=True)
+        assert 'data-bs-toggle="popover"' in body
+        assert 'needs attention' in body and 'everything in the window' in body
+
+    def test_an_empty_queue_shows_no_hidden_count_badge(self, auth_client):
+        body = auth_client.get(self.FRAGMENT).get_data(as_text=True)
+        assert 'more with Everything in the window' not in body
+        assert '0 need attention' in body
 
 
 # ===========================================================================
@@ -818,8 +882,11 @@ class TestActivityRowExpansion:
         row.update(over)
         return row
 
-    def _render(self, app, *, may_manage, rows=None):
+    def _render(self, app, *, may_manage, rows=None, **counts):
         from flask import render_template
+        counts = {'show_all': False, 'attention_total': 1, 'window_total': 1,
+                  'hidden_count': 0, 'outside_count': 0, 'recent_days': 3,
+                  **counts}
         with app.test_request_context():
             return render_template(
                 self.TEMPLATE,
@@ -834,7 +901,20 @@ class TestActivityRowExpansion:
                 selected_tags=[], selected_types=[],
                 form_id='xras-activity-filters',
                 fragment_url='/allocations/xras_pending_fragment',
-                target_id='alloc-xras-pending')
+                target_id='alloc-xras-pending', **counts)
+
+    def test_the_hidden_count_badge_names_the_switch(self, app):
+        body = self._render(app, may_manage=True, window_total=3, hidden_count=2)
+        assert '1 need attention' in body
+        assert '2 more with Everything in the window' in body
+        assert 'outside the date filter' not in body
+
+    def test_show_all_warns_about_queue_rows_outside_the_window(self, app):
+        body = self._render(app, may_manage=True, show_all=True,
+                            attention_total=2, outside_count=1)
+        assert '1 needing attention outside the date filter' in body
+        assert 'more with Everything in the window' not in body
+        assert 'need attention</span>' not in body
 
     def test_the_actions_cell_carries_no_collapse_toggle(self, app):
         """Bootstrap's collapse data-api runs in the CAPTURE phase on document,

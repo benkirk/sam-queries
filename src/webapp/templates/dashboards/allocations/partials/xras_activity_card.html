@@ -1,11 +1,19 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/glossary.html' import g_xras_attention_queue with context %}
 {#
   Recent XRAS outcomes — "Pending Activations & Recent Notifications".
 
   Context:
-    rows            get_xras_activity(...) rows, already filtered
+    rows            get_xras_activity(...) rows, already scoped and filtered
+    show_all        bool — the queue (absent) or everything in the window
+    attention_total rows needing attention, all time
+    window_total    rows inside the shared date window
+    hidden_count    window rows the queue leaves out (badge, queue mode)
+    outside_count   queue rows the window leaves out (badge, show_all mode)
+    recent_days     the queue's recency clause, for the popover
     recipients      {project_id: [{'name','email','role'}]}  (MANAGE_XRAS only)
     may_activate    {project_id: bool}                       (MANAGE_XRAS only)
     may_manage      bool
@@ -43,11 +51,50 @@
     <div class="card-header d-flex align-items-center flex-wrap gap-2">
         <i class="fas fa-paper-plane text-secondary"></i>
         <strong>Pending Activations &amp; Recent Notifications</strong>
-        <span class="badge bg-secondary">{{ rows | length | fmt_number }}</span>
+        <span class="badge bg-secondary">{{ rows | length | fmt_number }}{{ '' if show_all else ' need attention' }}</span>
+        {% if not show_all and hidden_count %}
+        <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle"
+              title="Needs attention only. The rest of the window was activated, notified or dismissed; switch on Everything in the window to see it.">
+            {{ hidden_count | fmt_number }} more with Everything in the window
+        </span>
+        {% endif %}
+        {# WARNING: "N of M" whenever the window hides queue rows — on this card
+           the hidden ones skew urgent: a New nobody activated is the first
+           thing a recency filter drops. #}
+        {% if show_all and outside_count %}
+        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+              title="Rows needing attention that the date filter above hides. Widen the filter, or switch the toggle off to see the queue without a date bound.">
+            {{ outside_count | fmt_number }} needing attention outside the date filter
+        </span>
+        {% endif %}
     </div>
 
+    {# The controls render whenever the card does — NOT only when rows
+       survive — or an emptied queue would lose the one switch that leads out
+       of it. #}
     <div class="card-body border-bottom py-2">
         <div class="facet-grid">
+            {# The queue toggle. Absent is the default: needs attention only.
+               Bound to the hidden filter form with `form=`, so a chip click
+               keeps the mode. #}
+            <div class="facet-grid-label">View</div>
+            <div class="facet-grid-values">
+                <div class="form-check form-switch small mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="xras-activity-show-all" name="show_all" value="1"
+                           form="{{ form_id }}" {% if show_all %}checked{% endif %}
+                           hx-get="{{ fragment_url }}"
+                           hx-target="#{{ target_id }}"
+                           hx-swap="innerHTML"
+                           hx-trigger="change"
+                           hx-include="#xras-window-filters, #{{ form_id }}">
+                    <label class="form-check-label" for="xras-activity-show-all">
+                        Everything in the window ({{ (window_total or 0) | fmt_number }})
+                    </label>
+                    {{ help_icon(g_xras_attention_queue(recent_days or 3), rich=True,
+                                 title='Needs attention vs. everything', placement='right') }}
+                </div>
+            </div>
             {{ facet_row('State', tag_values, form_id, 'tag',
                          active=selected_tags) }}
             {{ facet_row('Action', type_values, form_id, 'activity_type',
@@ -290,12 +337,23 @@
     {% else %}
     <div class="card-body">
         <div class="alert alert-light border small mb-0">
+            {% if show_all %}
             <strong>No XRAS activity in this window.</strong>
-            This table lists successfully processed XRAS actions, and it only sees
-            what the action log knows about — while <code>POST /actions</code> is in
-            capture mode and legacy is still the system of record, an empty list here
-            <strong>does not mean nothing is pending</strong>. Widen the window, clear
-            any filters, or check the action log below for failures.
+            {% elif attention_total %}
+            <strong>No rows match the chips.</strong>
+            {% else %}
+            <strong>Nothing needs attention.</strong>
+            {% endif %}
+            This table lists successfully processed XRAS actions and only sees what
+            the action log knows about, so an empty list here
+            <strong>does not mean nothing is pending</strong>.
+            {% if show_all %}
+            Widen the window, clear any filters, or check the action log below for failures.
+            {% else %}
+            Switch on <strong>Everything in the window</strong> for the
+            {{ (window_total or 0) | fmt_number }} action(s) there, clear any
+            filters, or check the action log below for failures.
+            {% endif %}
         </div>
     </div>
     {% endif %}

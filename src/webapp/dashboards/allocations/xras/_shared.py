@@ -311,6 +311,15 @@ def scope_rows(rows, args, *, queue, in_window):
     return [r for r in rows if queue(r)]
 
 
+def _activity_in_window(row, window) -> bool:
+    """The SQL bounds of ``get_xras_activity`` in Python: inclusive both ends."""
+    when = row.get('received_time')
+    if when is None:
+        return True
+    since, until = window['since'], window['until']
+    return (since is None or when >= since) and (until is None or when <= until)
+
+
 def sort_rows(rows, sort, keymap):
     """In-Python sort of snapshot rows by a whitelisted column, None-last in both
     directions. ``keymap`` maps a ``sort_by`` value to a row-key function; an
