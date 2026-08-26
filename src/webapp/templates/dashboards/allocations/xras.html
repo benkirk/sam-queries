@@ -152,8 +152,9 @@
 
 {% if has_permission(Permission.MANAGE_XRAS) %}
 {# The operator WRITE surface
-   A CARD, not a third tab: `#xrasWorklistTabs` stays at two, which
-   test_xras_remediations.py::TestItIsACardNotATab pins. The two tabs are read-only views of the same window; this is
+   A CARD, not a third tab: `#xrasWorklistTabs` stays at two, which both
+   e2e/test_xras_remediations_card.py and
+   test_xras_remediations.py::TestItIsACardNotATab pin. The two tabs are read-only views of the same window; this is
    a different kind of thing — every control on it changes production XRAS —
    and burying it as a peer of "Pending Users" would understate that.
 
