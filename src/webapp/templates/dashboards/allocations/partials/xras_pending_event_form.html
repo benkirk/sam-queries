@@ -6,10 +6,9 @@
     project   the Project being dismissed
     post_url  where to POST (passed in so this stays action-agnostic)
 
-  Dismiss asks for a reason rather than using an hx-confirm, deliberately: it is
-  the one action that removes a row from everyone's view until new information
-  arrives, so "why" is exactly what the next operator will want, and the moment of
-  the decision is the cheapest possible time to capture it.
+  Dismiss asks for a reason rather than using an hx-confirm, deliberately: the
+  row leaves the attention queue, so "why" is exactly what the next operator
+  will want, and the moment of the decision is the cheapest time to capture it.
 #}
 {# `with context` is load-bearing: the field macros read `field_errors` and `form`
    from the template context, and a plain import gives them neither — the form
@@ -21,14 +20,16 @@
     Dismiss {{ project.projcode }}
 </h5>
 
-{# Wording follows the card's rebuild: dismissing no longer HIDES anything.
-   The row is a record of an XRAS action and stays put; what it loses is the
-   call to action. Nothing leaves this list because someone did their job. #}
+{# Dismissing takes the row out of the attention queue and clears its call to
+   action; the row is a record of an XRAS action and stays, grayed, under
+   Everything in the window. Never say it hides the project. #}
 <p class="text-muted small">
-    This marks the project as one that should not be activated from XRAS. The
-    row stays in the list with your reason on it — it just stops asking to be
-    activated. Not permanent: click <strong>Restore</strong> to undo, and a new
-    XRAS action naming the project brings the prompt back.
+    This takes the row out of the attention queue and marks the project as one
+    that should not be activated from XRAS. The row stays in the list under
+    <strong>Everything in the window</strong>, grayed, with your reason on it,
+    and no automatic notice goes out for it. Not permanent: click
+    <strong>Restore</strong> to undo, and a new XRAS action naming the project
+    brings it back.
 </p>
 
 <form hx-post="{{ post_url }}"
