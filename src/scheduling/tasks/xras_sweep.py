@@ -263,23 +263,14 @@ def _resource_key_map(ctx, client, detail) -> Optional[dict]:
     None (a read failure) makes every resource a synthesis gap rather than a
     fabricated key — the pure preflight never calls out itself.
     """
+    from sam.integration.xras_api.people import resource_key_map
     try:
         catalog = client.get_resources()
     except Exception as exc:                            # noqa: BLE001
         detail['unavailable_errors'] += 1
         ctx.logger.warning('xras_sweep: resource catalog fetch failed: %s', exc)
         return None
-    mapping = {}
-    for resource in catalog or ():
-        if not isinstance(resource, dict):
-            continue
-        rid, key = resource.get('resourceId'), resource.get('resourceRepositoryKey')
-        if rid is not None and key is not None:
-            try:
-                mapping[int(rid)] = int(key)
-            except (TypeError, ValueError):
-                continue
-    return mapping
+    return resource_key_map(catalog)
 
 
 def _opportunity_map(ctx, client, opportunity_ids, detail) -> Optional[dict]:
