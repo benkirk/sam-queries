@@ -205,6 +205,7 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
 | 18:59 (25th) | Third production merge, first from the **Ready to merge** flag: `ggeogdzhayev-user-7016v` -> `geogdzhayev` (NCAR4261). Audit row #2 `verified`, placeholder 404, roster PI moved with its roleId, index entry re-preflighted at click time: `PI geogdzhayev has no current institution or organization in SAM` — the affiliation class again, no sweep needed. The identity strip then showed a second target that surfaced on its own: `sseyedzadeh-user-a85do` -> `sseyedzadeh` (NCAR4252). NCAR4261 was never posted to SAM; XRAS admin must re-push after the affiliation fix. |
 | 19:06 (25th) | Fourth merge, second from the flag: `sseyedzadeh-user-a85do` -> `sseyedzadeh` (NCAR4252). Audit row #3, placeholder 404, PI moved with roleId 573038, click-time preflight: `PI sseyedzadeh has no current institution or organization in SAM` — predicted from the Stony Brook `user_institution` row that arrived already end-dated. Identity strip empty; 4 need an account. **Three of the board's PIs (NCAR4261/4262/4252) now share the affiliation class** — the upstream sync, not identity, is the bottleneck. None of the three was ever posted; each needs an XRAS re-push after the fix. |
 | 19:40 (25th) | Steve's 08-24 findings correlated by request id — XRAS's ids are our `rid`s, and this session's watch log kept SAM's side. The two slow lookups (`kbarragan` 3.5 s, `ncar_guest_11554795` 7.4 s on their clock) were **182 ms and 76 ms app-side**: the seconds sit between their client and gunicorn, on the edge path. The 60 s connect failure (`apauls`, 01:37:32–01:38:32Z) never reached the app and is the 08-17 connect-timeout class — pods stable 5 h, third independent client, unconfirmable from our account; handed to CIRRUS with the window. Steve's log clock is CDT. Key is 96 chars: question 1 closed. |
+| 14:36–23:52 (25th) | **Fifteen organic posts, fifteen `processed`, zero failures** (`xras_action_log` #10–#24: 10 extensions, 4 supplements, 1 New) — the allocation team working the board on the new code. **#10 is NCAR4285's New → `UUSL0048`** (active, PI `hholmes`, 500,000 units 2026-08-24 → 2027-08-23): the first New project minted in production. XRAS dropped the inactive AM `sdahal` from the request before re-posting, so the inventory blocker cleared on their side, as the table predicted. `sdahal` is still inactive in SAM. Identity strip found a third self-surfaced target: `mrahnemoonfar-user-j3bc3` → `maryamr` (NCAR4231, a contract-report target too). Pods 0 errors; `/api/xras` 138×200 / 37×404 over 6 h. |
 
 ### Questions for Steve (batched, not piecemeal)
 
@@ -249,8 +250,9 @@ Prod `sha-acd3d95`, public health green (23:53Z), CI green on #482 head
 `4c95a92a` (mergeable; past the image: docs + the Needs-cell fix `686778b3`,
 nothing prod needs). Morning: (1) errors + `/api/xras` status counts on both
 pods, `--since=12h`; (2) `sam-admin --format json xras --last 12h` for rows
-past #9; (3) `--identity-report` (strip was empty; 4 need an account);
+past #24; (3) `--identity-report` (strip was empty; 4 need an account);
 (4) answers from Steve (Q2–5) and George; a George yes unblocks NCAR4261/
-4262/4252, then XRAS re-pushes each. Ben's calls: squash #482 to staging;
+4262/4252, then XRAS re-pushes each; (5) `maryamr` merge click (NCAR4231).
+NCAR4285 is DONE (`UUSL0048`). Ben's calls: squash #482 to staging;
 the CIRRUS hand-off for the 01:37Z connect failure. When traffic is boring:
 fold what is durable into the playbook and close the living PR.
