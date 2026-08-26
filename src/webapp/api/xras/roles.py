@@ -75,7 +75,7 @@ def set_user_role(request_number, role, username):
     if role.lower() != 'pi':
         _reject(f'role {role} does not exist', 404)
 
-    if current_app.config.get('XRAS_ACTIONS_CAPTURE_ONLY', True):
+    if actions._capture_only():
         # The same interlock `POST /actions` honors, and the reason this endpoint is not
         # simply "the write, plus auth": while legacy is still the system of record,
         # applying the change here would fight it. The role check above is this route's
