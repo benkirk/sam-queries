@@ -124,6 +124,29 @@ def pytest_configure(config):
     os.environ["XRAS_OUTGOING_ENABLED"] = "0"
     os.environ["XRAS_WRITE_ENABLED"] = "0"
 
+    # ---- Per-worker Redis keyspace under xdist ---------------------------
+    #
+    # WARNING: The bucketed caches use a SHARED RedisTTLAdapter when CACHE_REDIS_URL
+    # is set — which it is inside the CI webapp container (compose sets
+    # redis://cache:6379/0). The xras_pending mailbox is a single GLOBAL key
+    # (`xras_pending:worklist`), so with `-n auto` every xdist worker races it:
+    # a `xras_sweep` test publishes its worklist while an `xras_accounts_card`
+    # test on another worker reads, and the reader sees the writer's snapshot
+    # (observed as the far-future sweep date bleeding across). Give each worker
+    # its own Redis logical DB so the key spaces cannot overlap. Only when a real
+    # Redis is configured (local in-process runs are already per-process) and
+    # only under xdist (the controller and `-n 0` have no worker id).
+    _redis_url = os.environ.get("CACHE_REDIS_URL")
+    _worker = getattr(config, "workerinput", {}).get("workerid") if _redis_url else None
+    if _redis_url and _worker:
+        import re
+        m = re.search(r"(\d+)$", _worker)                # 'gw3' -> 3
+        if m:
+            db = 2 + (int(m.group(1)) % 14)              # 2..15, clear of 0/1
+            os.environ["CACHE_REDIS_URL"] = (
+                re.sub(r"/\d+$", f"/{db}", _redis_url)
+                if re.search(r"/\d+$", _redis_url) else f"{_redis_url}/{db}")
+
     url = os.environ.get("SAM_TEST_DB_URL")
     if not url:
         pytest.exit(
