@@ -340,11 +340,12 @@ def xras_dismiss_form(project_id: int):
 @login_required
 @require_permission(Permission.MANAGE_XRAS)
 def xras_dismiss(project_id: int):
-    """Hide a pending project from the card, with a required reason.
+    """Take a project out of the attention queue, with a required reason.
 
     Not permanent and not a delete: a dismissal is superseded by whichever comes
     later, a new XRAS action or an explicit Restore. See
-    ``get_xras_pending_activation`` for the rule.
+    :func:`sam.queries.xras_activation.get_xras_activity` for the rule; the row
+    stays, grayed, under Everything in the window.
     """
     project = _load_pending_project(project_id)
     if project is None:
@@ -357,7 +358,8 @@ def xras_dismiss(project_id: int):
             project, 'dismissed', comment=data['comment']),
         success_triggers=_XRAS_MODAL_TRIGGERS,
         success_message=f'Dismissed {project.projcode}.',
-        success_detail='It will reappear if a new XRAS action names it.',
+        success_detail='Out of the attention queue; Restore it under Everything '
+                       'in the window, or a new XRAS action brings it back.',
         error_prefix='Error dismissing project',
         extra_context={
             'project': project,
@@ -386,7 +388,7 @@ def xras_restore(project_id: int):
 
     return htmx_success_message(
         {'refreshXrasTab': {}},
-        f'Restored {project.projcode} to the worklist.')
+        f'Restored {project.projcode} to the attention queue.')
 
 
 @bp.route('/xras_history/<int:project_id>')

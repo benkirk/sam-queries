@@ -16,13 +16,14 @@ from datetime import date, datetime, timedelta
 from flask import current_app, render_template
 
 from webapp.extensions import db
-from webapp.utils.htmx import modal_triggers, read_page, read_sort
+from webapp.utils.htmx import modal_triggers, read_flag, read_page, read_sort
 from sam.integration.xras_api import XrasSourceUnavailable
 from sam.manage import xras_remediation as remediation
 from sam.queries.xras_actions import XRAS_ACTION_SORT_COLUMNS
 from sam.queries.xras_activation import ACTIVITY_TAGS
-from sam.queries.xras_accounts import (CLASSIFICATION_ABSENT,
-                                       CLASSIFICATION_INACTIVE,
+from sam.queries.xras_accounts import (REMEDIES,
+                                       REMEDY_MERGE,
+                                       REMEDY_ORDER,
                                        SOURCE_ACTION_LOG, SOURCE_REPORTS)
 
 
@@ -31,6 +32,11 @@ def _session_factory():
 
     Deliberately **not** ``db.session``: an audit row that a request rollback
     could erase would be a record of an irreversible act that can be un-said.
+
+    WARNING: the service takes the factory, not a session -- pass
+    ``_session_factory``, never ``_session_factory()``. The first production
+    merge (2026-08-25) shipped the call form and wrote no audit row; the
+    service logs and proceeds by design, so nothing else fails.
     """
     from sqlalchemy.orm import Session
     return Session(db.engine)
@@ -91,28 +97,20 @@ def _read_client():
 
 
 def _primary_line(lines):
-    """The request line holding the project's globally most-recent action.
-
-    A projcode can have several request lines (a New plus Renewals, each its own
-    ``requestId``); this picks the one with the highest ``actionId`` — the current
-    request. The modal anchors its header/roster and every write on it, so the
-    target is deterministic rather than XRAS's arbitrary ``lines[0]`` order.
-    """
-    def _max_action(line):
-        ids = [a.get('actionId') for a in (line.get('actions') or ())
-               if isinstance(a.get('actionId'), int)]
-        return max(ids) if ids else -1
-    return max(lines, key=_max_action) if lines else None
+    """The current request line -- :func:`sam.queries.xras_requests.primary_line`."""
+    from sam.queries.xras_requests import primary_line
+    return primary_line(lines)
 
 
 def _live_request(request_number):
     """The project's **primary** request line, via the reports family.
 
     WARNING: Not ``lines[0]`` (XRAS's arbitrary order) and not
-    ``GET /v1/requests/<id>`` (401 for our credential — so
-    ``rules{allowedOperations}`` is unavailable and offers are derived,
-    PRIVILEGE(#1)). Returning the primary line here is what makes every write
-    handler that resolves ``request_id`` from it target the current request.
+    ``GET /v1/requests/<id>``, which is XA-USER-scoped (200 only as a
+    role-holder) and whose ``rules{allowedOperations}`` overlay is parked, so
+    offers are derived from state. Returning the primary line here is what makes
+    every write handler that resolves ``request_id`` from it target the current
+    request.
     """
     return _primary_line(_read_client().get_request_family_by_number(request_number))
 
@@ -300,6 +298,28 @@ def _parse_activity_window(args) -> dict:
             'until': None, 'start_date': '', 'end_date': '', 'custom': False}
 
 
+def scope_rows(rows, args, *, queue, in_window):
+    """``queue(row)`` by default; ``in_window(row, window)`` only under ``show_all``.
+
+    The worklist cards share this seam so "queue vs. everything" cannot drift
+    between them: the queue is state with no date bound, and the shared date
+    filter applies only once the operator asks for everything.
+    """
+    if read_flag(args, 'show_all'):
+        window = _parse_activity_window(args)
+        return [r for r in rows if in_window(r, window)]
+    return [r for r in rows if queue(r)]
+
+
+def _activity_in_window(row, window) -> bool:
+    """The SQL bounds of ``get_xras_activity`` in Python: inclusive both ends."""
+    when = row.get('received_time')
+    if when is None:
+        return True
+    since, until = window['since'], window['until']
+    return (since is None or when >= since) and (until is None or when <= until)
+
+
 def sort_rows(rows, sort, keymap):
     """In-Python sort of snapshot rows by a whitelisted column, None-last in both
     directions. ``keymap`` maps a ``sort_by`` value to a row-key function; an
@@ -378,10 +398,16 @@ def _activity_facets(rows, dimension, *, tags=None, types=None) -> dict:
 #: Naming the artifact rather than the team is deliberate too: the owning group
 #: can change without touching 26 rows and the CLI's JSON envelope, and the
 #: banner names it once where it can be kept current.
-_ACCOUNT_CLASSIFICATION_LABELS = {
-    CLASSIFICATION_ABSENT: 'New account',
-    CLASSIFICATION_INACTIVE: 'Reactivation',
+_ACCOUNT_REMEDY_LABELS = {
+    REMEDY_MERGE: 'Ready to merge',
+    'create': 'New account',
+    'reactivate': 'Reactivation',
 }
+
+
+def _remedy_of(row) -> str:
+    """A row's remedy, derived for a snapshot row an older image stamped without one."""
+    return row.get('remedy') or REMEDIES.get(row.get('classification'), 'create')
 
 _ACCOUNTS_FORM_ID = 'xras-accounts-filters'
 _ACCOUNTS_TARGET = 'alloc-xras-accounts'
@@ -410,7 +436,7 @@ _SOURCE_LABELS = {
 }
 
 
-def _filter_accounts(rows, *, classifications=None, roles=None, origins=None,
+def _filter_accounts(rows, *, remedies=None, roles=None, origins=None,
                      sources=None):
     """Facet filters: ANDed across dimensions, ORed within one.
 
@@ -431,8 +457,8 @@ def _filter_accounts(rows, *, classifications=None, roles=None, origins=None,
     mean something different here than on every other card.
     """
     out = rows
-    if classifications:
-        out = [r for r in out if r['classification'] in classifications]
+    if remedies:
+        out = [r for r in out if _remedy_of(r) in remedies]
     if roles:
         out = [r for r in out if any(role in roles for role in r['roles'])]
     if origins:
@@ -477,14 +503,14 @@ def _submitted_since(row, since):
     return False
 
 
-def _request_facets(rows, *, classifications=None):
+def _request_facets(rows, *, remedies=None):
     """Counts per XRAS request number, most-affected first.
 
     Self-excluding on its own dimension, like every other facet here. Rows
     naming no request number contribute nothing: a NULL cannot round-trip
     through the form, so it must not become a chip.
     """
-    scoped = _filter_accounts(rows, classifications=classifications)
+    scoped = _filter_accounts(rows, remedies=remedies)
     counts = {}
     for row in scoped:
         for number in {a['request_number'] for a in row['actions'] if a['request_number']}:
@@ -493,7 +519,7 @@ def _request_facets(rows, *, classifications=None):
     return [{'value': k, 'count': v} for k, v in ordered[:_MAX_REQUEST_CHIPS]]
 
 
-def _account_facets(rows, dimension, *, classifications=None, roles=None,
+def _account_facets(rows, dimension, *, remedies=None, roles=None,
                     sources=None):
     """Self-excluding counts for one dimension.
 
@@ -501,13 +527,13 @@ def _account_facets(rows, dimension, *, classifications=None, roles=None,
     unselected value reads 0 the moment one is picked, which turns the chips
     from switchers into a dead end. Same rule as :func:`_activity_facets`.
     """
-    if dimension == 'classification':
+    if dimension == 'remedy':
         scoped = _filter_accounts(rows, roles=roles, sources=sources)
-        return {key: sum(1 for r in scoped if r['classification'] == key)
-                for key in (CLASSIFICATION_ABSENT, CLASSIFICATION_INACTIVE)}
+        return {key: sum(1 for r in scoped if _remedy_of(r) == key)
+                for key in REMEDY_ORDER}
 
     if dimension == 'role':
-        scoped = _filter_accounts(rows, classifications=classifications,
+        scoped = _filter_accounts(rows, remedies=remedies,
                                   sources=sources)
         counts = {}
         for row in scoped:
@@ -516,7 +542,7 @@ def _account_facets(rows, dimension, *, classifications=None, roles=None,
         return dict(sorted(counts.items()))
 
     if dimension == 'origin':
-        scoped = _filter_accounts(rows, classifications=classifications,
+        scoped = _filter_accounts(rows, remedies=remedies,
                                   roles=roles, sources=sources)
         return {
             ORIGIN_PLACEHOLDER: sum(1 for r in scoped if r['placeholder']),
@@ -524,7 +550,7 @@ def _account_facets(rows, dimension, *, classifications=None, roles=None,
         }
 
     if dimension == 'source':
-        scoped = _filter_accounts(rows, classifications=classifications,
+        scoped = _filter_accounts(rows, remedies=remedies,
                                   roles=roles)
         # A both-feeds row counts in both, so this is not a partition.
         return {key: sum(1 for r in scoped if key in (r.get('sources') or ()))

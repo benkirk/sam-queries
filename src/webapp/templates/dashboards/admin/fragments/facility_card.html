@@ -44,7 +44,7 @@
                     <td class="cursor-pointer" {{ collapse_toggle(f_toggle) }}>
                         {{ f.fair_share_percentage | fmt_pct(decimals=2) }}
                     </td>
-                    <td class="text-end">
+                    <td class="text-end text-nowrap">
                         {{ edit_modal_button(
                             url_for('admin_dashboard.htmx_facility_edit_form', facility_id=f.facility_id),
                             modal_id='editFacilityModal',
@@ -74,7 +74,7 @@
                     <td>—</td>
                     <td class="text-muted small">{{ p.description or '—' }}</td>
                     <td>—</td>
-                    <td class="text-end">
+                    <td class="text-end text-nowrap">
                         {{ edit_modal_button(
                             url_for('admin_dashboard.htmx_panel_edit_form', panel_id=p.panel_id),
                             modal_id='editPanelModal',
@@ -110,7 +110,7 @@
                                     <td>{{ at.default_allocation_amount | fmt_number }}</td>
                                     <td>{{ at.fair_share_percentage | fmt_pct(decimals=2) }}</td>
                                     <td>{{ at.projects | length }}</td>
-                                    <td class="text-end">
+                                    <td class="text-end text-nowrap">
                                         {{ edit_modal_button(
                                             url_for('admin_dashboard.htmx_allocation_type_edit_form', allocation_type_id=at.allocation_type_id),
                                             modal_id='editAllocationTypeModal',

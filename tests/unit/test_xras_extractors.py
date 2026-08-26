@@ -557,6 +557,17 @@ class TestCoreNumberExtraction:
         assert extract_core_number(None) == ''
         assert extract_core_number('') == ''
 
+    @pytest.mark.parametrize('grant, award_like', [
+        ('2423211', True), ('AGS-2146709', True),
+        ('PRJ013992 BWI', True),        # 013992 is a six-digit run — the handler would suffix-match it
+        ('ISS 25-643', False), ('001368-00183', False), ('', False), (None, False),
+    ])
+    def test_has_core_number_is_the_award_shape(self, grant, award_like):
+        """Exactly the handler's regex — a bare NSF number is award-shaped, a
+        reference with no six-digit run is not."""
+        from sam.xras.extractors import has_core_number
+        assert has_core_number(grant) is award_like
+
 
 class TestResolveContract:
 
@@ -594,6 +605,30 @@ class TestResolveContract:
         assert message.startswith('Ambiguous contract for grant number "NSF-9990003" ("9990003")')
         # The candidates are named because the fix is a data fix.
         assert '9990003' in message and 'PLR-9990003' in message
+
+    def test_the_unresolved_channel_records_missing_and_ambiguous(self, session):
+        """The contract-blockers report reads this list, never the 422 string."""
+        from factories import make_contract
+        make_contract(session, contract_number='9990013')
+        make_contract(session, contract_number='PLR-9990013')
+        errs, seen = ActionErrors(), []
+        resolve_contract(session, 'NSF-9990012', errs, unresolved=seen)
+        resolve_contract(session, 'NSF-9990013', errs, unresolved=seen)
+        assert seen == [
+            {'number': 'NSF-9990012', 'core': '9990012', 'reason': 'missing',
+             'candidates': []},
+            {'number': 'NSF-9990013', 'core': '9990013', 'reason': 'ambiguous',
+             'candidates': ['9990013', 'PLR-9990013']},
+        ]
+        assert len(errs) == 2                      # the strings are unchanged
+
+    def test_a_resolved_grant_leaves_the_channel_empty(self, session):
+        from factories import make_contract
+        make_contract(session, contract_number='AGS-9990014')
+        seen = []
+        assert resolve_contract(session, 'NSF-9990014', ActionErrors(),
+                                unresolved=seen) is not None
+        assert seen == []
 
     def test_no_match_reports_the_legacy_string_with_both_numbers(self, session):
         errs = ActionErrors()
@@ -784,17 +819,20 @@ class TestResolveMnemonicCode:
         assert list(errs) == [
             'Could not determine Mnemonic code for external PI via institution']
 
-    def test_a_pi_with_no_affiliation_at_all_reports_the_internal_string(self, session):
-        """Legacy's ``UserAffiliationDTO`` is non-null for such a user, so it reaches
-        ``getMnemonicCodeViaOrganization`` and fails there — not the affiliation
-        string, which is reserved for a PI who is not a SAM user at all."""
+    def test_a_pi_with_no_current_affiliation_names_that_gap(self, session):
+        """Declared divergence. Legacy's ``UserAffiliationDTO`` is non-null for
+        such a user, so it reaches ``getMnemonicCodeViaOrganization`` and reports
+        the internal-PI string -- misleading for an external PI whose rows the
+        upstream sync end-dated (NCAR4262). The affiliation string proper stays
+        reserved for a PI who is not a SAM user at all."""
         from factories import make_user
         user = make_user(session)
-        errs = ActionErrors()
-        assert resolve_mnemonic_code(session, action(opportunityName='Small Allocation'),
-                                     errs, pi_username=user.username) is None
-        assert list(errs) == [
-            'Could not determine Mnemonic code for internal PI via organization']
+        for opportunity in ('Small Allocation', 'NCAR Thing'):
+            errs = ActionErrors()
+            assert resolve_mnemonic_code(session, action(opportunityName=opportunity),
+                                         errs, pi_username=user.username) is None
+            assert list(errs) == [
+                f'PI {user.username} has no current institution or organization in SAM']
 
     def test_an_unknown_pi_reports_the_affiliation_string(self, session):
         errs = ActionErrors()

@@ -25,7 +25,7 @@ Everything is re-exported through :mod:`sam.queries`, so call sites are unaffect
 the split.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from sqlalchemy import func
@@ -39,8 +39,10 @@ from .xras_actions import _LATEST_ACTION_ORDER, action_names_project
 
 __all__ = [
     'ACTIVITY_TAGS',
+    'ATTENTION_RECENT_DAYS',
     'XRAS_SERVICE_KINDS',
     'activity_tags',
+    'needs_attention',
     'get_xras_activity',
     'xras_dedup_key',
     'parse_xras_dedup_key',
@@ -66,7 +68,9 @@ __all__ = [
 #:
 #: A row whose service is not here still appears on the activity table as
 #: history; it simply has no Notify button. Adding a kind is this dict plus
-#: :data:`sam.notify.kinds.NOTIFICATION_KINDS` plus the two template files.
+#: :data:`sam.notify.kinds.NOTIFICATION_KINDS` plus :data:`XRAS_KIND_SUBJECTS`
+#: plus the two template files; ``tests/unit/test_xras_taxonomy_parity.py`` fails
+#: if any of those layers is left behind.
 XRAS_SERVICE_KINDS: Mapping[str, str] = {
     'add': 'xras_activation',
     'update': 'xras_update',
@@ -198,8 +202,8 @@ def get_xras_activity(
 
     Args:
         session: the session to query.
-        since: lower bound on ``received_time``. ``None`` means all time,
-            which the route never passes — the window is always explicit.
+        since: lower bound on ``received_time``. ``None`` means all time —
+            the attention queue, which is state rather than a window.
         until: upper bound, for a custom range.
         statuses: which ``xras_action_log.status`` values qualify.
 
@@ -352,6 +356,29 @@ def activity_tags(row: Mapping[str, Any]) -> List[str]:
     if row.get('dismissed'):
         tags.append('dismissed')
     return tags
+
+
+#: Days a row stays in the attention queue on recency alone, so a fresh post
+#: is seen once even when nothing about it needs a click.
+ATTENTION_RECENT_DAYS = 3
+
+
+def needs_attention(row: Mapping[str, Any], *, now: datetime,
+                    recent_days: int = ATTENTION_RECENT_DAYS) -> bool:
+    """Needs a human, or too recent to have been looked at. Dismissed is never in.
+
+    ``now`` is injected, unlike :func:`get_xras_activity`'s own clock, so the
+    boundary is testable without patching. A dateless row is never "recent" —
+    the same guard as the ``xras_notices`` task.
+    """
+    if row.get('dismissed'):
+        return False
+    if row.get('needs_activation'):
+        return True
+    if row.get('notifiable') and not row.get('notified'):
+        return True
+    received = row.get('received_time')
+    return received is not None and received >= now - timedelta(days=recent_days)
 
 
 def get_latest_xras_action_id(

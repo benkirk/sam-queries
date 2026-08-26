@@ -140,7 +140,7 @@
                     </td>
                     <td class="text-nowrap small">{{ pd.start_date | fmt_date }}</td>
                     <td class="text-nowrap small">{{ pd.end_date | fmt_date }}</td>
-                    <td class="text-end">
+                    <td class="text-end text-nowrap">
                         {{ edit_modal_button(
                             url_for('admin_dashboard.htmx_admin_project_directory_edit_form', pd_id=pd.project_directory_id),
                             modal_id='editProjectDirectoryModal',

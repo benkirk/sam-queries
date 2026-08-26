@@ -26,18 +26,20 @@ from sam.queries.xras_actions import (
     summarize_xras_actions,
 )
 from sam.queries.xras_activation import (
+    ATTENTION_RECENT_DAYS,
+    needs_attention,
     ACTIVITY_TAGS,
     get_xras_activity,
     get_xras_pending_recipients,
 )
 from sam.queries.xras_accounts import (
-    CLASSIFICATION_ABSENT,
-    CLASSIFICATION_INACTIVE,
+    REMEDY_ORDER,
     SOURCE_ACTION_LOG,
     SOURCE_REPORTS,
     enrich_worklist,
     get_account_worklist,
     load_pending_worklist_rows,
+    stamp_merge_targets,
     stamp_project_existence,
     stamp_waiting_days,
     worklist_counts,
@@ -46,7 +48,9 @@ from sam.queries.xras_accounts import (
 from .. import bp
 from ..blueprint import _window_control_context
 from ._shared import (
-    ORIGIN_KNOWN, ORIGIN_PLACEHOLDER, _ACCOUNT_CLASSIFICATION_LABELS,
+    _activity_in_window,
+    scope_rows,
+    ORIGIN_KNOWN, ORIGIN_PLACEHOLDER, _ACCOUNT_REMEDY_LABELS,
     _ACCOUNTS_ENRICH_BUDGET, _ACCOUNTS_FORM_ID, _ACCOUNTS_TARGET,
     _ACTIVITY_TAG_LABELS, _ACTIVITY_WINDOW_PILLS, _ORIGIN_LABELS,
     _SOURCE_LABELS, _XRAS_ACTIVITY_FORM_ID,
@@ -55,7 +59,7 @@ from ._shared import (
     _parse_activity_window, _parse_xras_filters,
     _request_facets, _submitted_since, sort_rows,
 )
-from webapp.utils.htmx import read_sort
+from webapp.utils.htmx import read_flag, read_sort
 
 
 #: Pending Users' sortable non-facet columns -> row key. Needs / Role / Source /
@@ -235,14 +239,27 @@ def xras_pending_fragment():
       place and this is only ever a rendering hint.
     """
     may_manage = has_permission(current_user, Permission.MANAGE_XRAS)
+    show_all = read_flag(request.args, 'show_all')
     window = _parse_activity_window(request.args)
     selected_tags = [t for t in request.args.getlist('tag') if t]
     selected_types = [t for t in request.args.getlist('activity_type') if t]
 
-    rows = get_xras_activity(db.session,
-                             since=window['since'], until=window['until'])
+    # All time, then scoped in Python: the queue has no date bound (a New
+    # nobody activated months ago is its point) and the badges need both
+    # counts. `show_all` applies the window with the same inclusive bounds.
+    everything = get_xras_activity(db.session)
+    now = datetime.now()
 
-    # Facets over the *unfiltered* window set, each dimension dropping its own
+    def queue(row):
+        return needs_attention(row, now=now)
+
+    in_window = [r for r in everything if _activity_in_window(r, window)]
+    attention_total = sum(1 for r in everything if queue(r))
+    queued_in_window = sum(1 for r in in_window if queue(r))
+    rows = scope_rows(everything, request.args,
+                      queue=queue, in_window=_activity_in_window)
+
+    # Facets over the *unfiltered* scoped set, each dimension dropping its own
     # selection -- the same self-exclusion `facet_notifications` and
     # `xras_fragment` keep, and for the same reason: scope a dimension by itself
     # and the chips stop being switchers.
@@ -278,6 +295,12 @@ def xras_pending_fragment():
         type_values=[{'value': k, 'count': v} for k, v in type_facets.items()],
         selected_tags=selected_tags,
         selected_types=selected_types,
+        show_all=show_all,
+        attention_total=attention_total,
+        window_total=len(in_window),
+        hidden_count=len(in_window) - queued_in_window,
+        outside_count=attention_total - queued_in_window,
+        recent_days=ATTENTION_RECENT_DAYS,
         form_id=_XRAS_ACTIVITY_FORM_ID,
         fragment_url=url_for('allocations_dashboard.xras_pending_fragment'),
         target_id=_XRAS_ACTIVITY_TARGET,
@@ -320,7 +343,7 @@ def xras_accounts_fragment():
 
     may_manage = has_permission(current_user, Permission.MANAGE_XRAS)
     window = _parse_activity_window(request.args)
-    selected_classes = [c for c in request.args.getlist('classification') if c]
+    selected_remedies = [c for c in request.args.getlist('remedy') if c]
     selected_roles = [r for r in request.args.getlist('role') if r]
     selected_origins = [o for o in request.args.getlist('origin') if o]
     selected_sources = [s for s in request.args.getlist('source') if s]
@@ -346,6 +369,9 @@ def xras_accounts_fragment():
     # Enrichment is best-effort and never fatal: it skips rows Feed B already
     # carried a person for, and an outage leaves the rest `person=None`.
     enrichment = enrich_worklist(rows, max_lookups=_ACCOUNTS_ENRICH_BUDGET)
+    # After enrichment (a Feed-A row has no email until then) and before the
+    # PII strip: the matched USERNAME is account state and rides top-level.
+    stamp_merge_targets(db.session, rows)
 
     if not may_manage:
         # After the merge every row is a copy, so strip in place -- and only
@@ -354,20 +380,20 @@ def xras_accounts_fragment():
         for row in rows:
             row['person'] = None
 
-    class_facets = _account_facets(rows, 'classification', roles=selected_roles,
+    class_facets = _account_facets(rows, 'remedy', roles=selected_roles,
                                    sources=selected_sources)
-    role_facets = _account_facets(rows, 'role', classifications=selected_classes,
+    role_facets = _account_facets(rows, 'role', remedies=selected_remedies,
                                   sources=selected_sources)
     origin_facets = _account_facets(rows, 'origin',
-                                    classifications=selected_classes,
+                                    remedies=selected_remedies,
                                     roles=selected_roles,
                                     sources=selected_sources)
     source_facets = _account_facets(rows, 'source',
-                                    classifications=selected_classes,
+                                    remedies=selected_remedies,
                                     roles=selected_roles)
-    request_facets = _request_facets(rows, classifications=selected_classes)
+    request_facets = _request_facets(rows, remedies=selected_remedies)
 
-    rows = _filter_accounts(rows, classifications=selected_classes,
+    rows = _filter_accounts(rows, remedies=selected_remedies,
                             roles=selected_roles, origins=selected_origins,
                             sources=selected_sources)
     if selected_requests:
@@ -391,13 +417,13 @@ def xras_accounts_fragment():
         enrichment=enrichment,
         window=window,
         window_pill_choices=_ACTIVITY_WINDOW_PILLS,
-        # Both classifications render even at zero: an absent chip reads as
+        # Every remedy renders even at zero: an absent chip reads as
         # "not measured", a different claim from "none".
-        classification_values=[
+        remedy_values=[
             {'value': key,
-             'label': _ACCOUNT_CLASSIFICATION_LABELS.get(key, key),
+             'label': _ACCOUNT_REMEDY_LABELS.get(key, key),
              'count': class_facets.get(key, 0)}
-            for key in (CLASSIFICATION_ABSENT, CLASSIFICATION_INACTIVE)],
+            for key in REMEDY_ORDER],
         role_values=[{'value': k, 'count': v} for k, v in role_facets.items()],
         origin_values=[{'value': k, 'label': _ORIGIN_LABELS[k],
                         'count': origin_facets.get(k, 0)}
@@ -413,7 +439,7 @@ def xras_accounts_fragment():
         feed_generated_at=snapshot.get('generated_at'),
         feed_window_days=snapshot.get('window_days'),
         pending_hidden=pending_hidden,
-        selected_classifications=selected_classes,
+        selected_remedies=selected_remedies,
         selected_roles=selected_roles,
         selected_origins=selected_origins,
         selected_sources=selected_sources,

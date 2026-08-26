@@ -47,7 +47,7 @@ from sam.manage.transaction import management_transaction
 from sam.projects.projects import Project
 
 from ..dispatch import DispatchResult
-from ..errors import ActionErrors
+from ..errors import ActionErrors, XrasActionRejected
 from ..wire import get_field
 from ._allocations import mark_panel_authorised
 from ._plans import apply_plan
@@ -116,7 +116,11 @@ class ActionHandler(ABC):
         should surface.
         """
         self.assemble()
-        self.errors.raise_if_any()
+        try:
+            self.errors.raise_if_any()
+        except XrasActionRejected as exc:
+            exc.resolved = self._resolved_summary()
+            raise
         if validate_only:
             return DispatchResult(status='rechecked', service=self.service,
                                   projcode=self.projcode or None,
@@ -152,6 +156,9 @@ class ActionHandler(ABC):
         # The New path mints a projcode in this series; show it before it burns one.
         if out.get('facility_code') and out.get('mnemonic_code'):
             out['series'] = f"{out['facility_code']}{out['mnemonic_code']}"
+        unresolved = getattr(self, 'unresolved_grants', None)
+        if unresolved:
+            out['unresolved_grants'] = [dict(g) for g in unresolved]
         out['panel_authorised'] = bool(getattr(self, 'panel_authorised', False))
         return out or None
 

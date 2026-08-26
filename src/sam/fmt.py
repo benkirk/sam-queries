@@ -437,6 +437,14 @@ def size(
 
 # Framework integration
 
+def plural(value, singular: str, plural_form: Optional[str] = None,
+           *, raw: bool = False) -> str:
+    """``3 pushes`` / ``1 push`` — the count (via :func:`number`) and the noun that agrees with it."""
+    count = 0 if value is None else value
+    word = singular if count == 1 else (plural_form or f'{singular}s')
+    return f'{number(count, raw=raw)} {word}'
+
+
 def register_jinja_filters(target) -> None:
     """Register fmt_* Jinja2 filters on a Flask app **or** a bare Environment.
 
@@ -471,6 +479,7 @@ def register_jinja_filters(target) -> None:
     env.filters['fmt_hours']    = hours
     env.filters['fmt_factor']   = factor
     env.filters['fmt_ago']      = ago
+    env.filters['fmt_plural']   = plural
     env.filters['to_local_dt']  = to_local_dt
     # Resource-type allocation unit label ('hours' / 'TiB' / None). Used on
     # the headline "<n> allocated" figures. Usage:

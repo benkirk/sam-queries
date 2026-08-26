@@ -258,7 +258,10 @@ _SQL_ROLES = text("""
 """)
 
 #: One "request" is one (projcode, end-date) group — SAM has no request entity,
-#: so legacy derives one. `allocationIds` is the group's membership list.
+#: so legacy derives one. `allocationIds` is the group's membership list. The
+#: dashboard's lifecycle tree (`queries/xras_requests.request_family`) derives its
+#: own New/current from the reports payload; it is deliberately NOT this query, whose
+#: bytes are the frozen legacy contract, so the two must not be merged.
 _SQL_REQUESTS = text("""
     SELECT p.projcode AS projectId,
            MIN(CAST(al.start_date AS DATE)) AS requestBeginDate,

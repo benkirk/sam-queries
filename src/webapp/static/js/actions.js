@@ -186,7 +186,10 @@
      * hidden fields, then submit it — so sort is form state and survives every
      * facet/window change, exactly like a chip. The form must carry hidden
      * `sort_by` / `sort_dir` inputs. Pairs with sort_header() in sort_link.html. */
-    window.registerAction('set-sort-submit', function (el) {
+    window.registerAction('set-sort-submit', function (el, evt) {
+        /* The header is an <a href="#">: without this the browser follows
+         * the hash after the swap and scrolls the page to the top. */
+        if (evt) { evt.preventDefault(); }
         var form = document.getElementById(el.dataset.formId);
         if (!form) { return; }
         var by = form.elements['sort_by'];

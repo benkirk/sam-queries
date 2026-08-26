@@ -170,7 +170,25 @@ def contracts():
     from webapp.dashboards.admin.contracts_routes import active_contract_sources
     return render_template('dashboards/admin/contracts.html',
                            user=current_user,
-                           contract_sources=active_contract_sources())
+                           contract_sources=active_contract_sources(),
+                           auto_create_url=_auto_create_url())
+
+
+def _auto_create_url():
+    """The seeded create-form URL a ``?create=<number>`` link asks the page to open.
+
+    Only for a user who can create contracts — the modal shell it targets is
+    rendered under the same guard. Seed keys pass through by name.
+    """
+    number = (request.args.get('create') or '').strip()
+    if not number or not has_permission(current_user, Permission.CREATE_CONTRACTS):
+        return None
+    seed = {'contract_number': number}
+    for key in ('mode', 'title', 'start_date', 'end_date', 'contract_source_id'):
+        value = (request.args.get(key) or '').strip()
+        if value:
+            seed[key] = value
+    return url_for('admin_dashboard.htmx_contract_create_form', **seed)
 
 
 @bp.route('/facilities')

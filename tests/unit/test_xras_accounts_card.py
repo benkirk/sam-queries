@@ -105,6 +105,38 @@ def committed_worklist_action(app):
 
 
 @pytest.fixture
+def merge_ready_email_user(app):
+    """A committed ACTIVE user holding the fixture placeholder's email.
+
+    `user38@example.invalid` is the inline person on the committed action's
+    payload, so after enrichment the stamp finds this account and the row
+    becomes "Ready to merge". Committed for the same reason as the rows above.
+    """
+    from webapp.extensions import db
+
+    from sam.core.users import EmailAddress, User
+
+    with app.app_context():
+        user = User(username='realname38', unix_uid=999_000_039,
+                    active=True, locked=False)
+        db.session.add(user)
+        db.session.flush()
+        mail = EmailAddress(email_address='user38@example.invalid',
+                            user_id=user.user_id, is_primary=True)
+        db.session.add(mail)
+        db.session.commit()
+        user_id, mail_id = user.user_id, mail.email_address_id
+
+    yield 'realname38'
+
+    with app.app_context():
+        db.session.query(EmailAddress).filter(
+            EmailAddress.email_address_id == mail_id).delete()
+        db.session.query(User).filter(User.user_id == user_id).delete()
+        db.session.commit()
+
+
+@pytest.fixture
 def deactivated_worklist_user(app):
     """A committed, INACTIVE `users` row for the worklist payload's username.
 
@@ -413,13 +445,12 @@ class TestFacets:
 
         rows = [{'classification': 'absent', 'roles': ('PI',)},
                 {'classification': 'inactive', 'roles': ('User',)}]
-        # Filtering on classification must NOT collapse the classification
-        # rollup — it is the dimension being chosen.
-        facets = _account_facets(rows, 'classification',
-                                 classifications=['absent'])
-        assert facets == {'absent': 1, 'inactive': 1}
+        # Filtering on remedy must NOT collapse the remedy rollup — it is the
+        # dimension being chosen. Rows without a stamped remedy derive one.
+        facets = _account_facets(rows, 'remedy', remedies=['create'])
+        assert facets == {'merge': 0, 'create': 1, 'reactivate': 1}
         # But it does scope the other dimension.
-        assert _account_facets(rows, 'role', classifications=['absent']) == {'PI': 1}
+        assert _account_facets(rows, 'role', remedies=['create']) == {'PI': 1}
 
     def test_an_unknown_dimension_raises(self):
         from webapp.dashboards.allocations.xras._shared import _account_facets
@@ -432,13 +463,26 @@ class TestFacets:
 
         rows = [{'classification': 'absent', 'roles': ('PI',)},
                 {'classification': 'absent', 'roles': ('User',)}]
-        assert len(_filter_accounts(rows, classifications=['absent'])) == 2
-        assert len(_filter_accounts(rows, classifications=['absent'],
+        assert len(_filter_accounts(rows, remedies=['create'])) == 2
+        assert len(_filter_accounts(rows, remedies=['create'],
                                     roles=['PI'])) == 1
 
-    def test_a_classification_filter_reaches_the_route(self, auth_client):
-        assert auth_client.get(f'{URL}?classification=absent').status_code == 200
+    def test_a_remedy_filter_reaches_the_route(self, auth_client):
+        assert auth_client.get(f'{URL}?remedy=create').status_code == 200
         assert auth_client.get(f'{URL}?role=PI').status_code == 200
+
+    def test_every_facet_chip_has_a_control_in_the_hidden_form(self, auth_client):
+        """A chip whose field has no control writes into nothing and re-submits
+        nothing — the click looks dead. `xras.html` warns in prose; this pins it."""
+        import re
+
+        page = auth_client.get('/allocations/xras').get_data(as_text=True)
+        form = page.split('id="xras-accounts-filters"', 1)[1].split('</form>', 1)[0]
+        card = auth_client.get(URL).get_data(as_text=True)
+        fields = set(re.findall(r'data-field="([a-z_]+)"', card))
+        assert 'remedy' in fields, 'the Needs facet did not render'
+        missing = [f for f in fields if f'name="{f}"' not in form]
+        assert not missing, missing
 
 
 class TestTheHeaderDoesNotConflateTwoFacts:
@@ -703,3 +747,32 @@ class TestTheMergedCardUnionsBothFeeds:
         # reads a stale in-place flag.
         snapshot = load_pending_worklist()
         assert 'is_project' not in snapshot['rows'][0]['actions'][0]
+
+
+class TestReadyToMerge:
+    """The proactive signal: SAM already holds the placeholder's email."""
+
+    def test_a_placeholder_sam_holds_is_ready_to_merge(
+            self, auth_client, committed_worklist_action, merge_ready_email_user):
+        body = auth_client.get(URL).get_data(as_text=True)
+        assert 'Ready to merge' in body
+        assert 'ready to merge' in body, 'the header count'
+        assert merge_ready_email_user in body
+        # The expansion offers the merge even though XRAS calls it unidentified.
+        assert 'xras_merge_form/placeholder38-user-00038' in body
+        assert 'SAM already holds' in body
+
+    def test_the_needs_facet_offers_the_third_remedy(self, auth_client,
+                                                     committed_worklist_action,
+                                                     merge_ready_email_user):
+        body = auth_client.get(f'{URL}?remedy=merge').get_data(as_text=True)
+        assert 'placeholder38-user-00038' in body
+        body = auth_client.get(f'{URL}?remedy=create').get_data(as_text=True)
+        assert 'placeholder38-user-00038' not in body
+
+    def test_view_only_sees_the_target_but_never_the_email(
+            self, view_only_client, committed_worklist_action, merge_ready_email_user):
+        body = view_only_client.get(URL).get_data(as_text=True)
+        assert merge_ready_email_user in body
+        assert 'user38@example.invalid' not in body
+        assert 'xras_merge_form' not in body, 'view-only never sees the write'

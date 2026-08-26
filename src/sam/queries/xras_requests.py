@@ -37,9 +37,10 @@ from sam.queries.xras_accounts import (is_placeholder, iter_roster_entries,
                                        role_in_window)
 
 #: Action fields carried into the entry. The states are what the card's
-#: withdraw/re-submit offers key on, since the authoritative legal-moves read
-#: (``rules{allowedOperations}`` on ``GET /v1/requests/<rid>``) is 401 for our
-#: credential — PRIVILEGE(#1).
+#: withdraw/re-submit offers key on. The authoritative legal-moves read
+#: (``rules{allowedOperations}`` on ``GET /v1/requests/<rid>``) is XA-USER-scoped
+#: (200 as the request's PI) and parked, not unavailable -- see
+#: ``docs/plans/XRAS_DATA_MODEL_UPLIFT.md``.
 _ACTION_KEYS = ('actionId', 'actionType', 'actionStatus', 'submitDate')
 
 #: An action in one of these states is finished; the card offers nothing on it.
@@ -127,24 +128,34 @@ def roster_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     return rows
 
 
+def resolve_role(roster: List[Dict[str, Any]],
+                 role_type_id: int) -> Optional[Dict[str, Any]]:
+    """The roster row holding *role_type_id*, preferring an in-window holder.
+
+    Prefer a holder whose role window is current; an ended holder is the
+    fail-open fallback so a request with only historical leads still resolves a
+    row rather than none. Callers read username and display name off the SAME
+    row — picking them with independent scans could pair one person's username
+    with another's name.
+    """
+    fallback = None
+    for row in roster:
+        if row.get('role_type_id') == role_type_id:
+            if row.get('active', True):
+                return row
+            fallback = fallback or row
+    return fallback
+
+
 def resolve_pi(roster: List[Dict[str, Any]]) -> Optional[str]:
     """The PI's username, or ``None``.
 
     Every request-scoped XRAS write authorizes on ``XA-USER`` holding a role on
     that request, and the PI is the impersonation the modals default to —
     measured, because the same action validated as the PI and failed as the
-    Allocation Manager (PRIVILEGE(#5)).
+    Allocation Manager (PRIVILEGE(#5)). Active-preferring via :func:`resolve_role`.
     """
-    fallback = None
-    for row in roster:
-        if row.get('role_type_id') == PI_ROLE_TYPE_ID:
-            # Prefer a PI whose role window is current; an ended PI is the
-            # fail-open fallback so a request with only historical leads
-            # still gets an impersonation identity rather than none.
-            if row.get('active', True):
-                return row.get('username')
-            fallback = fallback or row.get('username')
-    return fallback
+    return (resolve_role(roster, PI_ROLE_TYPE_ID) or {}).get('username')
 
 
 def actions_from_payload(payload: Dict[str, Any],
@@ -195,6 +206,55 @@ def actions_from_payload(payload: Dict[str, Any],
 #: Roll-up precedence, worst first — the badge shows the most urgent verdict on
 #: any of a request's candidate actions.
 _ROLLUP_ORDER = ('failed', 'manual', 'incomplete', 'rechecked')
+
+
+#: The day ACCESS repointed XRAS at sam.hpc.ucar.edu. From here on, an approved
+#: action with no xras_action_log row was never posted; before it, legacy SAM
+#: received the post and this log cannot see it.
+XRAS_REPOINTED_ON = date(2026, 8, 24)
+
+#: An action still in XRAS's review pipeline.
+IN_FLIGHT_ACTION_STATUSES = ('Submitted', 'Under Review')
+
+
+#: A log row in one of these states is a push that has NOT landed, so the action
+#: is still XRAS admin's pending work even though ``push_state`` says seen_in_log.
+UNLANDED_LOG_STATUSES = ('received', 'failed', 'manual')
+
+
+def is_pending_work(entry: Mapping[str, Any]) -> bool:
+    """Would XRAS admin's "Recent submissions" list show this request?
+
+    Measured against that list on 2026-08-24 (46 of 48 matched; the misses were
+    actions the sweep had not pulled). It is state, not a date window: an action
+    the sweep checked that is either still in flight, or Approved and known
+    unposted — no SAM project yet, or entered after the repoint with no log row.
+    An action outside the sweep window (no ``preflight``) is not recent work.
+    ``seen_in_log`` alone does not mean posted: the first failed re-post after
+    the cutover (NCAR4262, #8/#9) showed the log row's own status decides.
+    """
+    for action in entry.get('actions') or ():
+        preflight = action.get('preflight')
+        if not preflight:
+            continue
+        status = action.get('action_status')
+        if status in IN_FLIGHT_ACTION_STATUSES:
+            return True
+        if status != 'Approved':
+            continue
+        push_state = preflight.get('push_state')
+        if push_state == 'pending':
+            return True
+        if push_state == 'seen_in_log':
+            detail = preflight.get('push_detail') or {}
+            if detail.get('status') in UNLANDED_LOG_STATUSES:
+                return True
+            continue
+        if push_state == 'unknown':
+            when = action.get('entry_date') or action.get('submit_date')
+            if when is not None and _as_date(when) >= XRAS_REPOINTED_ON:
+                return True
+    return False
 
 
 def _preflight_rollup(preflights: Optional[Mapping[Any, dict]]) -> Optional[str]:
@@ -270,6 +330,8 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
         return None
 
     roster = roster_from_payload(payload)
+    _pi = resolve_role(roster, PI_ROLE_TYPE_ID) or {}
+    _admin = resolve_role(roster, ADMIN_ROLE_TYPE_ID) or {}
     actions = actions_from_payload(payload, preflights)
     # Most-recent activity across the request's actions — what a date filter must
     # window on. Falls back to the request's own submitDate for a request whose
@@ -292,17 +354,12 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
         'opportunity_id': payload.get('opportunityId'),
         'opportunity_name': _text(payload.get('opportunity_name')
                                   or payload.get('opportunityName')),
-        'pi': {'username': resolve_pi(roster),
-               'name': next((r['name'] for r in roster
-                             if r.get('role_type_id') == PI_ROLE_TYPE_ID), None)},
+        # username and name off the one resolved row, so they cannot pair one
+        # person's login with another's name.
+        'pi': {'username': _pi.get('username'), 'name': _pi.get('name')},
         # The Allocation Manager (SAM: "Project Admin"), when the request names
         # one — often it does not, so both keys are None on those rows.
-        'admin': {'username': next((r['username'] for r in roster
-                                    if r.get('role_type_id') == ADMIN_ROLE_TYPE_ID),
-                                   None),
-                  'name': next((r['name'] for r in roster
-                                if r.get('role_type_id') == ADMIN_ROLE_TYPE_ID),
-                               None)},
+        'admin': {'username': _admin.get('username'), 'name': _admin.get('name')},
         'roster': roster,
         'actions': actions,
         # The in-flight action type, precomputed for the card's Type column and
@@ -317,6 +374,38 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
                                      for r in roster),
         'refreshed_at': refreshed_at,
     }
+
+
+def primary_line(lines: Any) -> Optional[Dict[str, Any]]:
+    """The request line holding the project's globally most-recent action.
+
+    A projcode can have several lines (a New plus Renewals, each its own
+    ``requestId``); the one with the highest ``actionId`` is the current
+    request. Never ``lines[0]``: XRAS pages by descending ``requestId``, which
+    is not the same order.
+    """
+    def _max_action(line):
+        ids = [a.get('actionId') for a in (line.get('actions') or ())
+               if isinstance(a.get('actionId'), int)]
+        return max(ids) if ids else -1
+    candidates = [ln for ln in (lines or ()) if isinstance(ln, dict)]
+    return max(candidates, key=_max_action) if candidates else None
+
+
+def line_by_id(lines: Any, request_id: Any) -> Optional[Dict[str, Any]]:
+    """The family line whose ``requestId`` is *request_id*, or ``None``."""
+    try:
+        wanted = int(request_id)
+    except (TypeError, ValueError):
+        return None
+    for line in lines or ():
+        if isinstance(line, dict):
+            try:
+                if int(line.get('requestId')) == wanted:
+                    return line
+            except (TypeError, ValueError):
+                continue
+    return None
 
 
 def request_family(payloads: Any, *, pending_push: bool = False
@@ -339,7 +428,9 @@ def request_family(payloads: Any, *, pending_push: bool = False
         return None
 
     # New/Renewal comes off the wire; when no line claims New, the earliest-begin
-    # line is it (the same rule the inbound accounting API derives by hand).
+    # line is New — a PAYLOAD-only fallback for this dashboard tree. The accounting
+    # API (xras_access._SQL_ACTIONS) reads the DB transaction_type instead and is a
+    # frozen legacy byte-contract, so the two derivations are deliberately NOT shared.
     if not any((ln.get('request_type') or '').lower() == 'new' for ln in lines):
         min(lines, key=lambda ln: ln.get('begin_date')
             or date.max)['request_type'] = 'New'

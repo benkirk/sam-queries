@@ -587,6 +587,11 @@ def resolve_mnemonic_code(session, action, errs: ActionErrors, *,
     lookup = MnemonicCode.build_lookup(session)
     opportunity = _clean(get_field(action, 'opportunityName')) or ''
 
+    # Declared divergence: legacy falls through to the internal-PI string here.
+    if _best_institution(user) is None and _best_organization(user) is None:
+        errs.report(e.no_current_affiliation_for_pi(pi_username))
+        return None
+
     if opportunity.startswith('NCAR '):
         lab = _lab_level_organization(_organization_parentage(_best_organization(user)))
         code = MnemonicCode.resolve_for_organization(lab, lookup) if lab else None
@@ -635,6 +640,11 @@ def _mnemonic_row(session, code: str) -> Optional[MnemonicCode]:
 _CORE_NUMBER_PATTERN = re.compile(r'^(.*[^0-9])?([0-9]{6,})[^0-9]*$')
 
 
+def has_core_number(grant_number: Optional[str]) -> bool:
+    """Whether the number carries a ≥6-digit core — the shape of an award number."""
+    return _CORE_NUMBER_PATTERN.match(grant_number or '') is not None
+
+
 def extract_core_number(grant_number: str) -> str:
     """The ≥6-digit core of an award number, or the input trimmed.
 
@@ -662,8 +672,29 @@ _LIKE_ESCAPE = str.maketrans({'\\': r'\\', '%': r'\%', '_': r'\_'})
 _MAX_CONTRACT_CANDIDATES = 25
 
 
+def contract_candidates(session, core: str) -> List[Contract]:
+    """Every contract whose number ends in *core* — legacy's suffix match, escaped and capped.
+
+    Shared by the handler and the contract-blockers report so both ask the
+    same question of the table.
+    """
+    # `core` is the payload's `grantNumber` verbatim whenever the ≥6-digit pattern
+    # misses, so `%` and `_` off the wire would otherwise reach LIKE as wildcards: a
+    # `grantNumber` of `%` matches every contract in the table, and every match is
+    # then named in `ambiguous_contract` and stored in `error_messages`. Never an
+    # injection — SQLAlchemy binds the parameter — but a third-party broker should
+    # not get to choose how many rows this returns. Escaped and capped.
+    suffix = core.translate(_LIKE_ESCAPE)
+    return (session.query(Contract)
+            .filter(Contract.contract_number.ilike(f'%{suffix}', escape='\\'))
+            .order_by(Contract.contract_id)
+            .limit(_MAX_CONTRACT_CANDIDATES)
+            .all())
+
+
 def resolve_contract(session, grant_number: Optional[str],
-                     errs: ActionErrors) -> Optional[Contract]:
+                     errs: ActionErrors, *,
+                     unresolved: Optional[List[dict]] = None) -> Optional[Contract]:
     """The SAM ``contract`` row behind one ``grants[]`` entry.
 
     Legacy extracts the core number and runs a single suffix match —
@@ -692,6 +723,10 @@ def resolve_contract(session, grant_number: Optional[str],
 
     Steps 1 and 3 are the divergence; step 2 is legacy. Nothing here can resolve to a
     row legacy would have rejected — only to one it would have crashed on.
+
+    *unresolved*, when given, receives one entry per reported failure —
+    ``{number, core, reason: missing|ambiguous, candidates}`` — the structured
+    channel the contract-blockers report reads instead of parsing the 422 string.
     """
     grant_number = (grant_number or '').strip()
     if not grant_number:
@@ -703,25 +738,20 @@ def resolve_contract(session, grant_number: Optional[str],
         return exact
 
     core = extract_core_number(grant_number)
-    # `core` is the payload's `grantNumber` verbatim whenever the ≥6-digit pattern
-    # misses, so `%` and `_` off the wire would otherwise reach LIKE as wildcards: a
-    # `grantNumber` of `%` matches every contract in the table, and every match is
-    # then named in `ambiguous_contract` and stored in `error_messages`. Never an
-    # injection — SQLAlchemy binds the parameter — but a third-party broker should
-    # not get to choose how many rows this returns. Escaped and capped.
-    suffix = core.translate(_LIKE_ESCAPE)
-    candidates = (session.query(Contract)
-                  .filter(Contract.contract_number.ilike(f'%{suffix}', escape='\\'))
-                  .order_by(Contract.contract_id)
-                  .limit(_MAX_CONTRACT_CANDIDATES)
-                  .all())
+    candidates = contract_candidates(session, core)
 
     if not candidates:
         errs.report(e.cannot_find_contract(grant_number, core))
+        if unresolved is not None:
+            unresolved.append({'number': grant_number, 'core': core,
+                               'reason': 'missing', 'candidates': []})
         return None
     if len(candidates) == 1:
         return candidates[0]
 
-    errs.report(e.ambiguous_contract(
-        grant_number, core, [c.contract_number for c in candidates]))
+    names = [c.contract_number for c in candidates]
+    errs.report(e.ambiguous_contract(grant_number, core, names))
+    if unresolved is not None:
+        unresolved.append({'number': grant_number, 'core': core,
+                           'reason': 'ambiguous', 'candidates': names})
     return None

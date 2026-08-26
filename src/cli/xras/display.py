@@ -108,6 +108,73 @@ def display_mnemonic_report(ctx, payload) -> None:
             f"{', '.join(pis) or '—'}")
 
 
+def display_identity_report(ctx, payload) -> None:
+    """Placeholders to merge, ranked by how many pushes each merge unblocks."""
+    targets = payload['targets']
+    others = payload['reactivations'], payload['needs_account']
+    if not targets and not any(others):
+        ctx.console.print('No failing push is blocked by a placeholder SAM already knows.',
+                          style='yellow')
+        return
+    if targets:
+        table = Table(
+            title=f"Placeholders to merge ({len(targets)}), ranked by pushes unblocked",
+            show_lines=False, header_style='bold')
+        table.add_column('Placeholder', no_wrap=True)
+        table.add_column('Merge into', no_wrap=True)
+        table.add_column('Email', overflow='fold')
+        table.add_column('Identified?', no_wrap=True)
+        table.add_column('Unblocks', justify='right', no_wrap=True)
+        table.add_column('Sample requests', overflow='fold')
+        for t in targets:
+            table.add_row(text(t['username']), text(t['target_username']),
+                          text(t['email']),
+                          'yes' if t['is_reconciled'] else 'no',
+                          str(t['unblock_count']), ', '.join(t['sample']))
+        ctx.console.print(table)
+    for r in payload['reactivations']:
+        ctx.console.print(
+            f"[yellow]{r['username']}[/yellow] matches {r['target_username']}, "
+            f"which is inactive — reactivate, then merge ({r['unblock_count']} push(es))")
+    if payload['needs_account']:
+        names = ', '.join(f"{n['username']} <{n['email'] or BLANK}>"
+                          for n in payload['needs_account'])
+        ctx.console.print(
+            f"[dim]{len(payload['needs_account'])} need a SAM account before a merge "
+            f"is possible: {names}[/dim]")
+
+
+def display_contract_report(ctx, payload) -> None:
+    """The contracts to create, ranked by how many failing pushes each unblocks."""
+    targets, variants = payload['targets'], payload['variants']
+    if not targets and not variants:
+        ctx.console.print('No failing push cites a contract SAM does not hold.',
+                          style='yellow')
+        return
+    if targets:
+        table = Table(
+            title=f"Contracts to create ({len(targets)}), ranked by pushes unblocked",
+            show_lines=False, header_style='bold')
+        table.add_column('Grant number', no_wrap=True)
+        table.add_column('Agency', overflow='fold')
+        table.add_column('Award?', no_wrap=True)
+        table.add_column('Title', overflow='fold')
+        table.add_column('Unblocks', justify='right', no_wrap=True)
+        table.add_column('Sample requests', overflow='fold')
+        for t in targets:
+            table.add_row(text(t['number']), text(t['agency']),
+                          'yes' if t['award_like'] else 'no',
+                          truncate(t['title'] or '', 48), str(t['unblock_count']),
+                          ', '.join(t['sample']))
+        ctx.console.print(table)
+    for v in variants:
+        # A tie is a spelling problem, not a missing row — do not create a second one.
+        ctx.console.print(
+            f"[yellow]{v['number']}[/yellow] would tie against "
+            f"{', '.join(v['candidates']) or '—'} — a possible spelling variant, "
+            f"not a missing contract ({v['unblock_count']} push(es))")
+
+
 def display_action_list(ctx, payload) -> None:
     """Table of recent actions."""
     actions = payload['actions']
@@ -455,8 +522,14 @@ def display_account_worklist(ctx, payload) -> None:
         # WARNING: The artifact, not an action — SAM cannot create or reactivate an
         # account. Same words the card uses, because the terminal and the
         # dashboard have to teach one vocabulary; the footer says who does.
-        needs = ('[red]new account[/red]' if row['classification'] == 'absent'
-                 else '[yellow]reactivation[/yellow]')
+        target = row.get('merge_target') or {}
+        if row.get('remedy') == 'merge':
+            needs = f"[green]merge into {target.get('username')}[/green]"
+        else:
+            needs = ('[red]new account[/red]' if row['classification'] == 'absent'
+                     else '[yellow]reactivation[/yellow]')
+            if target.get('username'):
+                needs += f" [dim]then merge into {target['username']}[/dim]"
         if row['placeholder']:
             needs += ' [dim](placeholder)[/dim]'
         numbers = [a['request_number'] for a in row['actions'] if a['request_number']]
@@ -480,7 +553,7 @@ def display_account_worklist(ctx, payload) -> None:
         # conflating them made this line contradict the table above it.
         f"[dim]{counts['absent']} new account(s), {counts['inactive']} "
         f"reactivation(s), {counts['placeholder']} ARC placeholder "
-        f"identities.[/dim]")
+        f"identities, {counts.get('merge_ready', 0)} ready to merge.[/dim]")
     ctx.console.print(
         # The invariant, said once. There is no INSERT into `users` anywhere in
         # this repo and nothing writes `active`/`locked` — both remedies are

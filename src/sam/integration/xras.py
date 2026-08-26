@@ -307,7 +307,7 @@ class XrasActionLog(Base):
 #: ``sam.queries.xras_actions``.
 XRAS_ACTIVATION_EVENT_TYPES = (
     'notified',    # an operator asserted they handed the project off
-    'dismissed',   # should not be activated via XRAS; hides the row
+    'dismissed',   # should not be activated via XRAS; clears the call to action
     'activated',   # the project was activated from the card
     'comment',     # a free note on the worklist row
     'restored',    # supersedes a dismissal — undo, appended rather than deleted

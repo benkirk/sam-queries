@@ -63,8 +63,11 @@ class XrasActionRejected(Exception):
     transaction is opened. A handler that raises this mid-write has a bug.
     """
 
-    def __init__(self, messages: Iterable[str]):
+    def __init__(self, messages: Iterable[str], *, resolved: Optional[dict] = None):
         self.messages: List[str] = list(messages)
+        # What assembly resolved before it rejected — the preflight board reads
+        # it (unresolved grants, series). The handler sets it; the bag cannot.
+        self.resolved: Optional[dict] = resolved
         super().__init__('\n'.join(self.messages))
 
 
@@ -372,6 +375,17 @@ def mnemonic_internal_failed() -> str:
 def no_affiliation_for_pi(username: str) -> str:
     """`MnemonicCodeExtractor:56`."""
     return f'Could not produce affiliation data for PI {username}'
+
+
+def no_current_affiliation_for_pi(username: str) -> str:
+    """Not a legacy string -- a declared divergence.
+
+    Legacy reaches ``getMnemonicCodeViaOrganization`` for a SAM user with no
+    current institution and no current organization and reports the internal-PI
+    string, which misleads on an external PI whose affiliation rows the
+    upstream sync end-dated (NCAR4262, 2026-08-25). Name the real gap.
+    """
+    return f'PI {username} has no current institution or organization in SAM'
 
 
 # -- Area of interest -- action/domain/model/AreaOfInterestExtractor

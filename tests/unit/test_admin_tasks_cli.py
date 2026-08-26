@@ -70,7 +70,7 @@ def ledger(status_engine):
 
 
 def _json(result):
-    return json.loads(result.output)
+    return json.loads(result.stdout)
 
 
 # --------------------------------------------------------------------- list
@@ -341,7 +341,7 @@ class TestJsonWriteCarveOut:
     def test_stdout_is_pure_json(self, runner, wired):
         """The CronJob's output is log-scraped; one stray line breaks it."""
         result = runner.invoke(cli, ['--format', 'json', 'tasks', '--run-due'])
-        json.loads(result.output)       # raises if anything else was printed
+        json.loads(result.stdout)       # raises if anything else was printed
 
 
 class TestNoSamConnection:

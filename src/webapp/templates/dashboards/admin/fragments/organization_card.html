@@ -101,7 +101,7 @@
                                 {% endif %}
                             </td>
                             <td>{{ org.users|length }}</td>
-                            <td class="text-end">
+                            <td class="text-end text-nowrap">
                                 {{ edit_modal_button(
                                     url_for('admin_dashboard.htmx_organization_edit_form', org_id=org.organization_id),
                                     modal_id='editOrganizationModal',
@@ -179,7 +179,7 @@
                                 {{ g.name }}
                             </td>
                             <td class="text-muted small cursor-pointer" {{ collapse_toggle(g_toggle) }}>{{ g.areas|length }} area{{ 's' if g.areas|length != 1 else '' }}</td>
-                            <td class="text-end">
+                            <td class="text-end text-nowrap">
                                 {{ edit_modal_button(
                                     url_for('admin_dashboard.htmx_aoi_group_edit_form', group_id=g.area_of_interest_group_id),
                                     modal_id='editAoiGroupModal',
@@ -200,7 +200,7 @@
                         <tr class="table-secondary{% if not a.active %} opacity-50{% endif %}">
                             <td class="ps-4">{{ a.area_of_interest }}</td>
                             <td class="text-muted small">{{ a.projects|length }} project{{ 's' if a.projects|length != 1 else '' }}</td>
-                            <td class="text-end">
+                            <td class="text-end text-nowrap">
                                 {{ edit_modal_button(
                                     url_for('admin_dashboard.htmx_aoi_edit_form', aoi_id=a.area_of_interest_id),
                                     modal_id='editAoiModal',
@@ -264,7 +264,7 @@
                     <thead class="table-subtle">
                         <tr>
                             <th class="sortable-header" data-sort="text">Program Name</th>
-                            <th class="sortable-header" data-sort="numeric"># Contracts</th>
+                            <th class="sortable-header text-end" data-sort="numeric"># Contracts</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
@@ -277,10 +277,10 @@
                             <td data-sort-value="{{ p.nsf_program_name }}">
                                 {{ nsf_program_link(p, compact=True) }}
                             </td>
-                            <td data-sort-value="{{ p.contracts|length }}">
+                            <td class="text-end" data-sort-value="{{ p.contracts|length }}">
                                 {{ nsf_program_link(p, label=p.contracts|length) }}
                             </td>
-                            <td class="text-end">
+                            <td class="text-end text-nowrap">
                                 {{ edit_modal_button(
                                     url_for('admin_dashboard.htmx_nsf_program_edit_form', nsf_program_id=p.nsf_program_id),
                                     modal_id='editNsfProgramModal',

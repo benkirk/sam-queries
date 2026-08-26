@@ -85,7 +85,7 @@
                     </span>
                     {% endif %}
                 </td>
-                <td class="text-end">
+                <td class="text-end text-nowrap">
                     {% if has_permission(Permission.EDIT_RESOURCES) %}
                     <button class="btn btn-sm btn-outline-secondary"
                             title="{% if dr.is_active %}Deactivate (soft-delete){% else %}Activate{% endif %} root directory"

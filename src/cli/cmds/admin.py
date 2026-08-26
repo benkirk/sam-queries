@@ -12,7 +12,7 @@ from datetime import date as _date, datetime
 
 from config import SAMConfig
 from cli.core.context import Context
-from cli.core.utils import EXIT_SUCCESS, EXIT_ERROR
+from cli.core.utils import EXIT_SUCCESS, EXIT_ERROR, configure_logging
 from cli.user.commands import UserAdminCommand
 from cli.project.commands import (
     ProjectAdminCommand,
@@ -49,6 +49,7 @@ def cli(ctx: Context, verbose: bool, output_format: str):
         sys.exit(2)
 
     ctx.verbose = verbose
+    configure_logging(verbose)
     ctx.output_format = output_format
 
     # NO database connection here. `Context.require_sam()` opens one on first
@@ -687,6 +688,10 @@ def cache(ctx: Context, refresh: bool, category, base_url):
               help='[board] Would each swept request land if pushed now? (from the sweep snapshot)')
 @click.option('--mnemonic-report', is_flag=True,
               help='[board] Orgs to link, ranked by the failing pushes each would unblock')
+@click.option('--contract-report', is_flag=True,
+              help='[board] Contracts to create, ranked by the failing pushes each would unblock')
+@click.option('--identity-report', is_flag=True,
+              help='[board] Placeholders to merge, ranked by the failing pushes each would unblock')
 @click.option('--enrich', is_flag=True,
               help='[worklist] Add XRAS person detail (requires --accounts and the API)')
 @click.option('--person', type=str, default=None,
@@ -709,7 +714,7 @@ def cache(ctx: Context, refresh: bool, category, base_url):
 @pass_context
 def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mapping,
          validate_opportunities, validate_vocabulary, accounts, readiness,
-         mnemonic_report, enrich, person,
+         mnemonic_report, contract_report, identity_report, enrich, person,
          family, status, action_type, request_number, last, limit, verbose):
     """Inspect and re-check the XRAS action log.
 
@@ -727,6 +732,8 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
       --accounts   who must be created or reactivated before a handoff works
       --readiness  would each swept request land if XRAS pushed it now?
       --mnemonic-report  orgs to link, ranked by the pushes each would unblock
+      --contract-report  contracts to create, ranked by the pushes each would unblock
+      --identity-report  placeholders to merge, ranked by the pushes each would unblock
       --person U   one username in the XRAS directory
       --family P   a projcode's whole allocation lifecycle as a request tree
       --validate-mapping  which resources XRAS and SAM can name each other's
@@ -779,6 +786,8 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
       sam-admin --format json xras --readiness | jq .requests
       sam-admin xras --mnemonic-report
       sam-admin --format json xras --mnemonic-report | jq .targets
+      sam-admin xras --contract-report
+      sam-admin xras --identity-report
       sam-admin xras --person somebody-user-00042
       sam-admin xras --family UCUB0089
       sam-admin --format json xras --family UCUB0089 | jq .timeline
@@ -816,6 +825,8 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
         accounts=accounts,
         readiness=readiness,
         mnemonic_report=mnemonic_report,
+        contract_report=contract_report,
+        identity_report=identity_report,
         enrich=enrich,
         person=person,
         family=family,

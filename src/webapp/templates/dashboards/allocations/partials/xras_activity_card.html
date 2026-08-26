@@ -1,11 +1,19 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/glossary.html' import g_xras_attention_queue with context %}
 {#
   Recent XRAS outcomes — "Pending Activations & Recent Notifications".
 
   Context:
-    rows            get_xras_activity(...) rows, already filtered
+    rows            get_xras_activity(...) rows, already scoped and filtered
+    show_all        bool — the queue (absent) or everything in the window
+    attention_total rows needing attention, all time
+    window_total    rows inside the shared date window
+    hidden_count    window rows the queue leaves out (badge, queue mode)
+    outside_count   queue rows the window leaves out (badge, show_all mode)
+    recent_days     the queue's recency clause, for the popover
     recipients      {project_id: [{'name','email','role'}]}  (MANAGE_XRAS only)
     may_activate    {project_id: bool}                       (MANAGE_XRAS only)
     may_manage      bool
@@ -43,11 +51,50 @@
     <div class="card-header d-flex align-items-center flex-wrap gap-2">
         <i class="fas fa-paper-plane text-secondary"></i>
         <strong>Pending Activations &amp; Recent Notifications</strong>
-        <span class="badge bg-secondary">{{ rows | length | fmt_number }}</span>
+        <span class="badge bg-secondary">{{ rows | length | fmt_number }}{{ '' if show_all else ' need attention' }}</span>
+        {% if not show_all and hidden_count %}
+        <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle"
+              title="Needs attention only. The rest of the window was activated, notified or dismissed; switch on Everything in the window to see it.">
+            {{ hidden_count | fmt_number }} more with Everything in the window
+        </span>
+        {% endif %}
+        {# WARNING: "N of M" whenever the window hides queue rows — on this card
+           the hidden ones skew urgent: a New nobody activated is the first
+           thing a recency filter drops. #}
+        {% if show_all and outside_count %}
+        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+              title="Rows needing attention that the date filter above hides. Widen the filter, or switch the toggle off to see the queue without a date bound.">
+            {{ outside_count | fmt_number }} needing attention outside the date filter
+        </span>
+        {% endif %}
     </div>
 
+    {# The controls render whenever the card does — NOT only when rows
+       survive — or an emptied queue would lose the one switch that leads out
+       of it. #}
     <div class="card-body border-bottom py-2">
         <div class="facet-grid">
+            {# The queue toggle. Absent is the default: needs attention only.
+               Bound to the hidden filter form with `form=`, so a chip click
+               keeps the mode. #}
+            <div class="facet-grid-label">View</div>
+            <div class="facet-grid-values">
+                <div class="form-check form-switch small mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="xras-activity-show-all" name="show_all" value="1"
+                           form="{{ form_id }}" {% if show_all %}checked{% endif %}
+                           hx-get="{{ fragment_url }}"
+                           hx-target="#{{ target_id }}"
+                           hx-swap="innerHTML"
+                           hx-trigger="change"
+                           hx-include="#xras-window-filters, #{{ form_id }}">
+                    <label class="form-check-label" for="xras-activity-show-all">
+                        Everything in the window ({{ (window_total or 0) | fmt_number }})
+                    </label>
+                    {{ help_icon(g_xras_attention_queue(recent_days or 3), rich=True,
+                                 title='Needs attention vs. everything', placement='right') }}
+                </div>
+            </div>
             {{ facet_row('State', tag_values, form_id, 'tag',
                          active=selected_tags) }}
             {{ facet_row('Action', type_values, form_id, 'activity_type',
@@ -69,10 +116,13 @@
                     <th style="width:99%; min-width:18rem;">Title</th>
                     <th style="width:120px;">Action</th>
                     <th style="white-space:nowrap;">Received</th>
-                    {# "State", not "Project" — the first column is already
-                       headed Project, and two identical headers over different
-                       data read as a rendering bug. #}
+                    {# State only under Everything in the window: the queue can
+                       hold nothing but Active and Needs activation, and the
+                       latter rides on the Action cell there. "State", not
+                       "Project" — two identical headers read as a bug. #}
+                    {% if show_all %}
                     <th style="width:150px;">State</th>
+                    {% endif %}
                     <th style="white-space:nowrap;">Notified</th>
                     {# No Recipients column: the addresses live in the row
                        expansion, which every manageable row now has. Eight
@@ -123,6 +173,9 @@
                     </td>
                     <td {% if expandable %}class="cursor-pointer" {{ collapse_toggle(detail_id) }}{% endif %}>
                         <span class="badge bg-secondary">{{ r.action_type or '—' }}</span>
+                        {% if r.needs_activation and not show_all %}
+                        <span class="badge bg-warning text-dark">Needs activation</span>
+                        {% endif %}
                     </td>
                     <td class="small{% if expandable %} cursor-pointer{% endif %}"
                         style="white-space:nowrap;"
@@ -131,6 +184,7 @@
                         {{ r.received_time | fmt_date }}
                     </td>
 
+                    {% if show_all %}
                     <td class="small">
                         {% if r.dismissed %}
                         <span class="badge bg-secondary"
@@ -145,6 +199,7 @@
                         <span class="badge bg-secondary-subtle text-secondary-emphasis">Inactive</span>
                         {% endif %}
                     </td>
+                    {% endif %}
 
                     <td class="small" style="white-space:nowrap;">
                         {% if r.notified %}
@@ -177,40 +232,49 @@
                     </td>
 
                     {% if may_manage %}
+                    {# One icon-only strip, the shape of action_buttons.html: up
+                       to four buttons at a fixed width, with the verb in the
+                       title. Dismiss is offered on every live row — it is how
+                       a row leaves the attention queue, not only a "do not
+                       activate" mark. #}
                     <td class="text-end" style="white-space:nowrap;">
+                        {# flex-nowrap: without it the strip stacks vertically
+                           inside a narrow cell and every row grows to three
+                           buttons tall on a phone. The wrapper scrolls instead. #}
+                        <div class="btn-group btn-group-sm flex-nowrap" role="group" aria-label="Actions for {{ r.projcode }}">
                         {% if r.notifiable %}
-                        <button class="btn btn-sm btn-outline-secondary"
-                                title="Preview and send the notice for this action"
+                        {% set notify_title = 'Notify again — preview and resend the notice' if r.notified else 'Notify — preview and send the notice for this action' %}
+                        <button class="btn {{ 'btn-outline-secondary' if r.notified else 'btn-outline-primary' }}"
+                                title="{{ notify_title }}" aria-label="{{ notify_title }}"
                                 hx-get="{{ url_for('allocations_dashboard.xras_notify_form', project_id=r.project_id, action_id=r.action_log_id) }}"
                                 hx-target="#auditDetailsModalBody"
                                 hx-swap="innerHTML"
                                 data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
                             <i class="fas fa-envelope"></i>
-                            {{ 'Notify again' if r.notified else 'Notify' }}
                         </button>
                         {% endif %}
                         {% if r.needs_activation and may_activate.get(r.project_id) %}
-                        <button class="btn btn-sm btn-outline-success"
-                                title="Activate this project"
+                        <button class="btn btn-outline-success"
+                                title="Activate this project" aria-label="Activate this project"
                                 hx-post="{{ url_for('allocations_dashboard.xras_activate', project_id=r.project_id) }}"
                                 hx-confirm="Activate {{ r.projcode }}? Its allocations become usable right away, and the activation is added to the project's history."
                                 data-confirm-title="Activate project"
                                 data-confirm-variant="info"
                                 data-confirm-label="Activate"
                                 hx-swap="none">
-                            <i class="fas fa-circle-check"></i> Activate
+                            <i class="fas fa-circle-check"></i>
                         </button>
                         {% endif %}
                         {% if r.dismissed %}
-                        <button class="btn btn-sm btn-outline-secondary"
-                                title="Return this project to the worklist"
+                        <button class="btn btn-outline-secondary"
+                                title="Restore to the attention queue" aria-label="Restore to the attention queue"
                                 hx-post="{{ url_for('allocations_dashboard.xras_restore', project_id=r.project_id) }}"
                                 hx-swap="none">
                             <i class="fas fa-rotate-left"></i>
                         </button>
-                        {% elif r.needs_activation %}
-                        <button class="btn btn-sm btn-outline-warning"
-                                title="This should not be activated via XRAS"
+                        {% else %}
+                        <button class="btn btn-outline-warning"
+                                title="Dismiss — take this row out of the attention queue" aria-label="Dismiss — take this row out of the attention queue"
                                 hx-get="{{ url_for('allocations_dashboard.xras_dismiss_form', project_id=r.project_id) }}"
                                 hx-target="#auditDetailsModalBody"
                                 hx-swap="innerHTML"
@@ -218,24 +282,25 @@
                             <i class="fas fa-eye-slash"></i>
                         </button>
                         {% endif %}
-                        <button class="btn btn-sm btn-outline-secondary"
-                                title="Activation history and comments"
+                        <button class="btn btn-outline-secondary position-relative"
+                                title="Activation history and comments" aria-label="Activation history and comments"
                                 hx-get="{{ url_for('allocations_dashboard.xras_history', project_id=r.project_id) }}"
                                 hx-target="#auditDetailsModalBody"
                                 hx-swap="innerHTML"
                                 data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
                             <i class="fas fa-comment"></i>
                             {% if r.comment_count %}
-                            <span class="badge bg-secondary">{{ r.comment_count }}</span>
+                            <span class="badge bg-secondary ms-1">{{ r.comment_count | fmt_number }}</span>
                             {% endif %}
                         </button>
+                        </div>
                     </td>
                     {% endif %}
                 </tr>
 
                 {% if expandable %}
                 <tr class="collapse" id="{{ detail_id }}">
-                    <td colspan="7" class="bg-body-tertiary small">
+                    <td colspan="{{ 5 + (1 if show_all else 0) + (1 if may_manage else 0) }}" class="bg-body-tertiary small">
                         <div class="px-2 py-1">
                             {% set people = recipients.get(r.project_id, []) %}
                             <span class="text-muted text-uppercase small">Recipients</span>
@@ -290,12 +355,23 @@
     {% else %}
     <div class="card-body">
         <div class="alert alert-light border small mb-0">
+            {% if show_all %}
             <strong>No XRAS activity in this window.</strong>
-            This table lists successfully processed XRAS actions, and it only sees
-            what the action log knows about — while <code>POST /actions</code> is in
-            capture mode and legacy is still the system of record, an empty list here
-            <strong>does not mean nothing is pending</strong>. Widen the window, clear
-            any filters, or check the action log below for failures.
+            {% elif attention_total %}
+            <strong>No rows match the chips.</strong>
+            {% else %}
+            <strong>Nothing needs attention.</strong>
+            {% endif %}
+            This table lists successfully processed XRAS actions and only sees what
+            the action log knows about, so an empty list here
+            <strong>does not mean nothing is pending</strong>.
+            {% if show_all %}
+            Widen the window, clear any filters, or check the action log below for failures.
+            {% else %}
+            Switch on <strong>Everything in the window</strong> for the
+            {{ (window_total or 0) | fmt_number }} action(s) there, clear any
+            filters, or check the action log below for failures.
+            {% endif %}
         </div>
     </div>
     {% endif %}

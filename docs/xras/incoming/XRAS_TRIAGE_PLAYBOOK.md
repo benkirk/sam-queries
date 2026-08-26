@@ -27,7 +27,7 @@ In the order you will reach for them:
 
 | Surface | What it answers |
 |---|---|
-| XRAS → **Pending Activations & Notifications** | Everything received, filterable, raw payload behind `MANAGE_XRAS` |
+| XRAS → **Pending Activations & Notifications** | Needs attention by default — activation pending, Notify unclicked, or received in the last 3 days; **Everything in the window** for the full ledger, raw payload behind `MANAGE_XRAS` |
 | XRAS → **Pending Users** | Who needs a SAM account before a handoff can land, both feeds unioned with a per-row **Source** badge: *Received push* (usernames on actions already received, § 3.3's fix as a worklist) and *Pending request* (approved XRAS requests **not yet pushed** — the same problem before the action arrives, from the `xras_sweep` snapshot). Received pushes sort first |
 | `sam-admin xras --summary --last 24h` | Status counts at a glance |
 | `sam-admin xras --status failed --last 24h` | The 400s and 422s, with their error lists |
@@ -178,9 +178,12 @@ reconciled to a SAM user.
 reconciliation" — that is a category, not a loop. #458 made it a worklist, and it is the
 highest-value surface on this page:
 
-- **Two classifications, each with its remedy:** `absent` → **Create**, `inactive` →
-  **Reactivate**. Account creation is manual; the worklist tells you *who*, *why*, and —
-  behind `MANAGE_XRAS` — with what person detail to create them from.
+- **Two classifications, three remedies:** `absent` → **Create**, `inactive` →
+  **Reactivate**, and **Merge** when an active SAM account already holds a placeholder's
+  email (every active SAM account resolves in XRAS, so it is a merge target already) —
+  the card's "Ready to merge" rows, the Remediations identity strip, and
+  `sam-admin xras --identity-report`. Account creation is manual; the worklist tells you
+  *who*, *why*, and — behind `MANAGE_XRAS` — with what person detail to create them from.
 - ⚠️ **`placeholder` is a flag on the row, not a third classification.** A placeholder
   identity is still either absent or inactive. Do not filter on it expecting a bucket.
 - **Rows close themselves.** Classification is a check against the *current* `users`
@@ -189,8 +192,8 @@ highest-value surface on this page:
   to mark done.
 - ⚠️ **`isReconciled` is not a closure signal**, despite reading like one. It means XRAS
   linked the username to a real identity — it says nothing about SAM. The UI calls it
-  identified / unidentified, and **unidentified is the harder row**: no detail sheet to
-  create the account from.
+  identified / unidentified; an unidentified row is only harder when SAM holds no
+  account for the email — with one, the merge is offered exactly as for a misidentified row.
 - ⚠️ **`isAccountToBeCreated` is never the predicate.** XRAS sets it when a role is
   created and never clears it; every username measured carrying the flag was an existing
   active SAM account. It ships as a hint column with a regression test pinning that a
@@ -198,6 +201,10 @@ highest-value surface on this page:
 - **Each row carries a `validate_only` pre-flight** (`would_succeed` / `reject_messages`),
   so the card also surfaces **mnemonic and resource-key** rejections on the same rows —
   it is not only about accounts. That overlaps § 3.2 deliberately.
+- **A merged PI can still 422 on the mnemonic route.** `PI {u} has no current institution
+  or organization in SAM` means the upstream affiliation sync end-dated their rows
+  (NCAR4262: the Miami `user_institution` row ended 2026-06-24). SAM has no write surface
+  for those tables — the fix is upstream, or a one-off row the operator owns.
 
 The pending-request half of *Pending Users* is the same question asked **before** the
 action arrives, which is the only pre-emptive surface in this document.
@@ -224,6 +231,10 @@ A **missing Allocation Manager is not an error**; a missing PI is.
 never seen is a 422 naming the *contract*, not the grant.
 
 **Fix:** create or link the contract in SAM first, then ask XRAS to re-post.
+`sam-admin xras --contract-report` ranks the numbers to create by the pushes
+each unblocks, and the Remediations card's contract strip opens Admin →
+Contracts with the New Contract form seeded from the wire
+(`docs/plans/XRAS_CONTRACT_BLOCKERS.md`).
 
 ### 5. `Ambiguous contract for grant number "{grant}" ("{core}"): matches {a, b}`
 
@@ -416,6 +427,7 @@ Two rows were overtaken by #458/#459 and are marked so; the rest stand unchanged
 |---|---|
 | Resource-key 422s recur across **different** keys | A mapping *writer* on `sam-admin xras` (today it is a hand INSERT). Must print the parity warning — closing a mapping moves GET bytes. ⚠️ **Narrowed:** the *detection* half shipped with #458's two-sided `--validate-mapping`, which exits non-zero when XRAS offers a key SAM cannot resolve. You now learn about this before an award does |
 | Mnemonic failures dominate the `New` failure bucket | A bulk organization-mnemonic linker, plus a report of which orgs would unblock the most awards. This is the highest-leverage data fix available |
+| Contract 422s recur beyond the two known cases | **BUILT** (PR #482): `--contract-report` and the Remediations strip, the mnemonic report's shape for contracts. Phase 2 (NSF prefill in the sweep, re-check after create) is in `docs/plans/XRAS_CONTRACT_BLOCKERS.md` |
 | Operators repeatedly fix a row, re-check it green, and wait on ACCESS | **A re-apply path.** Explicitly deferred in `recheck.py`; it needs an idempotency key enforced on `action_id` *first*, because 4 of the 6 handlers double-apply — Supplement and Adjustment are additive, and a re-applied successful `New` routes to `update` and supplements the allocation it just created. Do not build the second half before the first |
 | You reach for `--status unmapped` and cannot | Derive the CLI `click.Choice` from `XRAS_ACTION_STATUSES` rather than restating it, and give `unmapped` a style in `src/cli/xras/display.py`. One line each; both are restatements of a vocabulary that already exists in one place. ⚠️ Still both unbuilt — and #458 edited a *neighboring* `click.Choice` on the same command without noticing this one |
 | Polling the dashboard stops being enough | A digest of `failed` / `manual` / `unmapped` rows. ⚠️ A new entry in `src/scheduling/tasks/` goes live on the next hourly wake unless `SAM_TASKS_DISABLED` names it in the **same** change — the registry is code-side, the list is chart-side, and nothing couples them but the reviewer. `xras_sweep` is **not** this: it digests the *outbound* enumeration and mails nobody. Its arrival did make that warning load-bearing, though — three tasks are live now, not one |

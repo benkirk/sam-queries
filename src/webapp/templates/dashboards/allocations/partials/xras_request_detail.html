@@ -94,11 +94,16 @@
         <div class="small text-muted fst-italic">No title.</div>
         {% endif %}
     </div>
-    <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" {{ write_disabled }}
-            {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+    {# Quiet pencils for the text fields, the amounts-row idiom below: a text
+       "Edit…" beside every field outweighed the fields. Consequential verbs
+       (Withdraw, Re-submit, Renew, Delete) keep their words. #}
+    <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 flex-shrink-0" {{ write_disabled }}
+            title="{% if not write_enabled %}{{ why_off }}{% else %}Edit the title, short title and abstract…{% endif %}"
+            aria-label="Edit the title, short title and abstract"
             hx-get="{{ url_for('allocations_dashboard.xras_attributes_form',
                                request_number=request_number) }}"
-            hx-target="#auditDetailsModalBody" hx-swap="innerHTML">Edit…</button>
+            hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+        <i class="fas fa-pencil"></i></button>
 </div>
 {% if payload.abstract %}
 <details class="mb-3">
@@ -259,12 +264,14 @@
     <div class="small mt-2">
         <span class="text-uppercase text-muted">Allocation dates</span>
         {% if action.is_latest %}
-        <button type="button" class="btn btn-sm btn-outline-secondary ms-2" {{ write_disabled }}
-                {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 ms-2" {{ write_disabled }}
+                title="{% if not write_enabled %}{{ why_off }}{% else %}Add an allocation-date range…{% endif %}"
+                aria-label="Add an allocation-date range"
                 hx-get="{{ url_for('allocations_dashboard.xras_dates_form',
                                    request_number=request_number,
                                    action_id=action.action_id) }}"
-                hx-target="#auditDetailsModalBody" hx-swap="innerHTML">Set dates…</button>
+                hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+            <i class="fas fa-calendar-plus"></i></button>
         {% endif %}
         {% if action.dates %}
         <table class="table table-sm mb-0 mt-1">
@@ -277,14 +284,18 @@
                     </td>
                     <td class="text-end text-nowrap">
                     {% if d.allocation_date_id is not none and action.is_latest %}
-                        <button type="button" class="btn btn-sm btn-outline-secondary" {{ write_disabled }}
-                                {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+                        <span class="d-inline-flex gap-1">
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" {{ write_disabled }}
+                                title="{% if not write_enabled %}{{ why_off }}{% else %}Edit this date range…{% endif %}"
+                                aria-label="Edit this date range"
                                 hx-get="{{ url_for('allocations_dashboard.xras_dates_form',
                                                    request_number=request_number,
                                                    action_id=action.action_id) }}?allocation_date_id={{ d.allocation_date_id }}"
-                                hx-target="#auditDetailsModalBody" hx-swap="innerHTML">Edit…</button>
-                        <button type="button" class="btn btn-sm btn-outline-danger" {{ write_disabled }}
-                                {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+                                hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+                            <i class="fas fa-pencil"></i></button>
+                        <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" {{ write_disabled }}
+                                title="{% if not write_enabled %}{{ why_off }}{% else %}Remove this date range{% endif %}"
+                                aria-label="Remove this date range"
                                 hx-post="{{ url_for('allocations_dashboard.xras_dates_remove',
                                                     request_number=request_number,
                                                     action_id=action.action_id,
@@ -292,7 +303,9 @@
                                 hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
                                 hx-confirm="Remove this allocation-date range from {{ request_number }} in XRAS?"
                                 data-confirm-title="Remove allocation dates"
-                                data-confirm-ok="Remove" data-confirm-variant="danger">Remove</button>
+                                data-confirm-ok="Remove" data-confirm-variant="danger">
+                            <i class="fas fa-trash"></i></button>
+                        </span>
                     {% endif %}
                     </td>
                 </tr>
@@ -303,9 +316,9 @@
         <span class="text-muted ms-1">none</span>
         {% endif %}
     </div>
-    {# `d.type` and `d.allocation_date_id` come from _detail_actions, which
-       passes the raw allocationDates dicts through untouched apart from the
-       begin/end parse. #}
+    {# `d.type` is the wire's `allocationDateType`; `d.allocation_date_id` is
+       `allocationDateId` -- both renamed by _detail_actions, which also parses
+       begin/end. #}
 
     <div class="small mt-2 d-flex align-items-start gap-2">
         <div class="flex-grow-1">
@@ -315,12 +328,14 @@
             {% else %}<span class="text-muted ms-1">none</span>{% endif %}
         </div>
         {% if action.is_latest %}
-        <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" {{ write_disabled }}
-                {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 flex-shrink-0" {{ write_disabled }}
+                title="{% if not write_enabled %}{{ why_off }}{% else %}Edit the comments and action fields…{% endif %}"
+                aria-label="Edit the comments and action fields"
                 hx-get="{{ url_for('allocations_dashboard.xras_action_fields_form',
                                    request_number=request_number,
                                    action_id=action.action_id) }}"
-                hx-target="#auditDetailsModalBody" hx-swap="innerHTML">Edit…</button>
+                hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+            <i class="fas fa-pencil"></i></button>
         {% endif %}
     </div>
 

@@ -55,19 +55,31 @@
         <span class="text-success"><i class="fas fa-circle-check"></i> Active SAM account</span>
         {% elif in_sam %}
         <span class="text-warning"><i class="fas fa-circle-exclamation"></i> SAM account exists but is inactive</span>
+        {% elif merge_target and merge_target.active %}
+        <span class="text-success"><i class="fas fa-circle-check"></i> SAM holds this email on <span class="font-monospace">{{ merge_target.username }}</span></span>
+        {% elif merge_target %}
+        <span class="text-warning"><i class="fas fa-circle-exclamation"></i> SAM holds this email on <span class="font-monospace">{{ merge_target.username }}</span>, inactive</span>
         {% else %}
         <span class="text-muted"><i class="fas fa-circle-xmark"></i> No SAM account</span>
         {% endif %}
     </span>
 </div>
 
-{# the one write: resolve a stuck placeholder by merge #}
-{% if stuck_placeholder %}
+{# the one write: resolve a placeholder by merge -- misidentified, or
+   unidentified with a SAM account already holding its email #}
+{% if mergeable %}
 <div class="alert alert-warning d-flex align-items-center gap-2 py-2">
     <i class="fas fa-triangle-exclamation"></i>
     <div class="small flex-grow-1">
+        {% if stuck_placeholder %}
         XRAS marks this placeholder identified but never merged it, so XRAS
         keeps sending the throwaway username and any handoff stays blocked.
+        {% else %}
+        SAM already holds this person's email on
+        <span class="font-monospace">{{ merge_target.username }}</span>, which
+        XRAS resolves; merging the placeholder into it lets XRAS send the real
+        username.
+        {% endif %}
     </div>
     <button type="button" class="btn btn-sm btn-outline-danger text-nowrap"
             {% if not write_enabled %}disabled

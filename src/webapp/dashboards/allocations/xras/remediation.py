@@ -40,7 +40,7 @@ from sam.integration.xras_api import (
     xras_write_configured,
 )
 from sam.manage import xras_remediation as remediation
-from sam.queries.xras_requests import _as_date
+from sam.queries.xras_requests import _as_date, is_pending_work
 from sam.schemas.forms import (
     XrasActionDatesForm,
     XrasActionFieldsForm,
@@ -54,14 +54,15 @@ from sam.schemas.forms import (
 from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
 from webapp.extensions import db
 from webapp.utils.form_handler import FormError, HtmxFormHandler
-from webapp.utils.htmx import htmx_modal_not_found, htmx_success_message, read_sort
+from webapp.utils.htmx import (htmx_modal_not_found, htmx_success_message,
+                               read_flag, read_sort)
 from webapp.utils.rbac import Permission, require_permission
 
 from .. import bp
 from ._shared import (
     _XRAS_MODAL_TRIGGERS, _degraded, _entry, _impersonation, _index,
     _live_family, _live_request, _parse_activity_window, _read_client,
-    _role_options, _session_factory, sort_rows,
+    _role_options, _session_factory, scope_rows, sort_rows,
 )
 from .modals import _render_detail
 
@@ -116,18 +117,27 @@ def xras_remediations_fragment():
     configured = xras_api_configured()
     write_enabled = xras_write_configured()
 
-    # The mnemonic-unblock ranking rides the same snapshot the card already loaded —
-    # no extra fetch. It resolves each failing PI's org against the DB (why it needs
-    # db.session). The strip points at Admin -> Organizations to fix; the write action
-    # lives there, so this page stays read-only about org metadata.
-    from sam.queries.xras_mnemonic_report import mnemonic_unblock_report
-    mnemonic_summary = mnemonic_unblock_report(db.session, payload)
-
     rows = list(payload.get('rows') or []) if payload else []
     swept_total = len(rows)
+    pending_total = sum(1 for r in rows if is_pending_work(r))
 
+    # Default is the pending-work queue (XRAS admin's "Recent submissions"),
+    # which is state, not a window. "Show everything" restores the date filter.
+    show_all = read_flag(request.args, 'show_all')
     window = _parse_activity_window(request.args)
-    rows = [r for r in rows if _in_window(r, window['since'])]
+    rows = _scope_rows(rows, request.args)
+
+    # The two data-fix strips rank over the rows IN VIEW (queue or everything,
+    # before search and chips) — a fix that only unblocks a legacy-era row the
+    # operator is not looking at must not head the list. Both resolve against
+    # the DB (why db.session); both point at Admin to fix, so this page stays
+    # read-only about org and contract metadata.
+    scoped = dict(payload or {}, rows=rows)
+    from sam.queries.xras_mnemonic_report import mnemonic_unblock_report
+    mnemonic_summary = mnemonic_unblock_report(db.session, scoped)
+    from sam.queries.xras_contract_report import contract_unblock_report
+    contract_summary = _with_create_links(contract_unblock_report(db.session, scoped))
+    identity_summary = _with_merge_links(_identity_summary(rows))
     # Counted BEFORE the chips and the search box, because the header badge it
     # feeds names the date filter specifically. Measured against `swept_total`
     # it would grow every time an operator typed, and blame the window for it.
@@ -195,7 +205,11 @@ def xras_remediations_fragment():
         window_total=window_total,
         search=search,
         snapshot=payload,
+        show_all=show_all,
+        pending_total=pending_total,
         mnemonic_summary=mnemonic_summary,
+        contract_summary=contract_summary,
+        identity_summary=identity_summary,
         configured=configured,
         write_enabled=write_enabled,
         # Distinguishes "no sweep at all" from "a sweep that predates this
@@ -299,6 +313,64 @@ def xras_recheck_visible():
         detail=detail)
 
 
+def _with_create_links(summary: dict) -> dict:
+    """Stamp each target with the Admin -> Contracts URL that opens the seeded form.
+
+    `lookup` mode (auto-fires the NSF fetch) only when the report suggests NSF;
+    everything else opens in manual mode with the wire's title and dates
+    already in the boxes. The NSF source id is resolved by name, never pinned.
+    """
+    from sam.projects.contracts import ContractSource
+    nsf_id = None
+    for target in summary.get('targets') or ():
+        args = {'create': target['number'],
+                'mode': 'lookup' if target.get('suggested_source') == 'NSF' else 'manual'}
+        for key in ('title', 'start_date', 'end_date'):
+            value = target.get({'start_date': 'begin_date'}.get(key, key))
+            if value:
+                args[key] = value
+        if args['mode'] == 'lookup':
+            if nsf_id is None:
+                row = (db.session.query(ContractSource)
+                       .filter(ContractSource.contract_source == 'NSF').first())
+                nsf_id = row.contract_source_id if row else 0
+            if nsf_id:
+                args['contract_source_id'] = nsf_id
+        target['create_url'] = url_for('admin_dashboard.contracts', **args)
+    return summary
+
+
+def _identity_summary(rows_in_view) -> dict:
+    """Placeholders SAM can merge now, ranked over the requests in view.
+
+    Zero network: Feed B and the inline persons Feed A carries (`max_lookups=0`),
+    no dispatch preflight (`validate=False`). The CLI's `--identity-report`
+    enriches; the strip points at it for the full list.
+    """
+    from sam.queries.xras_accounts import (enrich_worklist,
+                                           get_account_worklist,
+                                           load_pending_worklist_rows,
+                                           stamp_merge_targets)
+    from sam.queries.xras_identity_report import identity_merge_report
+
+    feed = load_pending_worklist_rows()
+    worklist = get_account_worklist(db.session, validate=False,
+                                    pending_rows=feed.rows if feed.checked else None)
+    enrich_worklist(worklist, max_lookups=0)
+    stamp_merge_targets(db.session, worklist)
+    return identity_merge_report(
+        worklist, in_view={r.get('request_number') for r in rows_in_view},
+        generated_at=(feed.snapshot or {}).get('generated_at'))
+
+
+def _with_merge_links(summary: dict) -> dict:
+    """Stamp each target with the merge modal's URL (an htmx fragment, not a page)."""
+    for target in summary.get('targets') or ():
+        target['merge_url'] = url_for('allocations_dashboard.xras_merge_form',
+                                      username=target['username'])
+    return summary
+
+
 def _has_worklist():
     from sam.integration.xras_api.cache import load_pending_worklist
     return load_pending_worklist() is not None
@@ -372,11 +444,17 @@ def _selected_facets(args):
             'actions': [a for a in args.getlist('action_type') if a]}
 
 
+def _scope_rows(rows, args):
+    """Pending work by default; the date window only under ``show_all``."""
+    return scope_rows(rows, args, queue=is_pending_work,
+                      in_window=lambda r, w: _in_window(r, w['since']))
+
+
 def _filtered_rows(payload, args):
-    """The rows currently in view: window -> search -> facets. Shared by the card
+    """The rows currently in view: scope -> search -> facets. Shared by the card
     fragment and the batch re-check so they can never act on different sets."""
     rows = list(payload.get('rows') or []) if payload else []
-    rows = [r for r in rows if _in_window(r, _parse_activity_window(args)['since'])]
+    rows = _scope_rows(rows, args)
     rows = _search(rows, (args.get('search') or '').strip())
     return _apply(rows, **_selected_facets(args))
 
@@ -553,14 +631,29 @@ class _XrasRemediationHandler(HtmxFormHandler):
 # merge — a person operation
 # ---------------------------------------------------------------------------
 
-def _merge_candidates(person, *, source_username):
+def _sam_target_for(person):
+    """``{'username', 'active'}`` of the SAM account holding the email, or None."""
+    from sam.queries.xras_accounts import sam_merge_targets
+    email = ((person or {}).get('email') or '').strip().lower()
+    target = sam_merge_targets(db.session, [email]).get(email) if email else None
+    if not target or not target.get('username'):
+        return None
+    return {'username': target['username'], 'active': target['active']}
+
+
+def _merge_candidates(person, *, source_username, sam_target=None):
     """Real XRAS identities this placeholder might be, best first.
 
-    Searched by **email first, then surname**, and ranked email -> organization ->
-    name. That order is the whole safety property, measured on real data: one
-    human had two live identities differing only in email and organization (a
-    university address and an NCAR-staff one), and a name match picks between
-    them arbitrarily. Merge deletes the loser.
+    Ranked email -> organization -> name. That order is the whole safety
+    property, measured on real data: one human had two live identities
+    differing only in email and organization (a university address and an
+    NCAR-staff one), and a name match picks between them arbitrarily. Merge
+    deletes the loser.
+
+    WARNING: XRAS ``search/people`` matches name/username only (never email)
+    and caps at 20 rows, so a common surname hides the target ("Hu" misses
+    ``jhu279``; "Jie Hu" finds it). The SAM account holding the email is
+    resolved directly instead -- every active SAM user resolves in XRAS.
 
     Intersected with SAM's ``users`` so the modal can say whether the target has
     a SAM account — which decides whether the handoff can proceed after the
@@ -569,16 +662,29 @@ def _merge_candidates(person, *, source_username):
     client = _read_client()
     email = (person or {}).get('email') or ''
     surname = (person or {}).get('lastName') or ''
+    full_name = ' '.join(x for x in [(person or {}).get('firstName'), surname] if x)
     organization = ((person or {}).get('organization') or '').strip().casefold()
 
     found = {}
-    for query in [q for q in (email, surname) if q]:
-        for row in (client.search_people(query) or ()):
-            if not isinstance(row, dict):
-                continue
-            username = (row.get('username') or '').strip()
-            if username and username != source_username:
-                found.setdefault(username, row)
+    direct = (sam_target or {}).get('username')
+    if direct and direct.casefold() != source_username.casefold():
+        row = client.get_person(direct)
+        if isinstance(row, dict) and row.get('username'):
+            found[row['username'].strip()] = row
+    # The email -> SAM -> XRAS path is authoritative: every active SAM user
+    # resolves in XRAS, so when it lands the target is known. The name search
+    # (XRAS matches name/username only and caps at 20) is the FALLBACK for the
+    # no-SAM-target case; running it once the target is known only adds the
+    # rank-2 "name only" rows the merge warning above is about, tempting an
+    # arbitrary pick between two identities.
+    if not found:
+        for query in [q for q in (full_name, surname) if q]:
+            for row in (client.search_people(query) or ()):
+                if not isinstance(row, dict):
+                    continue
+                username = (row.get('username') or '').strip()
+                if username and username != source_username:
+                    found.setdefault(username, row)
 
     candidates = []
     for username, row in found.items():
@@ -586,6 +692,8 @@ def _merge_candidates(person, *, source_username):
         row_org = (row.get('organization') or '').strip().casefold()
         if email and row_email == email.strip().casefold():
             rank, why = 0, 'email matches exactly'
+        elif direct and username.casefold() == direct.casefold():
+            rank, why = 0, 'SAM holds this email'
         elif organization and row_org == organization:
             rank, why = 1, 'organization matches'
         else:
@@ -597,6 +705,7 @@ def _merge_candidates(person, *, source_username):
                                          row.get('lastName')] if x),
             'email': row.get('email'),
             'organization': row.get('organization'),
+            'reconciled': row.get('isReconciled'),
             'in_sam': sam_user is not None,
             'sam_active': bool(sam_user is not None and sam_user.is_active),
         })
@@ -622,7 +731,9 @@ def xras_merge_form(username: str):
                 f'{username} no longer exists in XRAS — it has already been '
                 'merged away. This row is a stale echo and will clear on the '
                 'next sweep.', title='Already merged')
-        candidates = _merge_candidates(person, source_username=username)
+        sam_target = _sam_target_for(person)
+        candidates = _merge_candidates(person, source_username=username,
+                                       sam_target=sam_target)
     except XrasSourceUnavailable as exc:
         current_app.logger.warning('xras merge form: %s', exc)
         return _degraded(
@@ -631,7 +742,7 @@ def xras_merge_form(username: str):
 
     return render_template(
         _MERGE_FORM, username=username, person=person, candidates=candidates,
-        write_enabled=xras_write_configured(),
+        sam_target=sam_target, write_enabled=xras_write_configured(),
         post_url=url_for('allocations_dashboard.xras_merge', username=username),
     )
 
@@ -670,7 +781,7 @@ class _XrasMergeHandler(_XrasRemediationHandler):
 
     def perform(self, data):
         outcome = remediation.merge_placeholder(
-            _session_factory(), source_username=self.username,
+            _session_factory, source_username=self.username,
             target_username=data['target_username'],
             operator=current_user.username, comment=data.get('comment'))
         self._target = data['target_username']
@@ -684,13 +795,16 @@ class _XrasMergeHandler(_XrasRemediationHandler):
 
     def context(self):
         """Rebuild the modal for an error re-render — it needs its candidates."""
+        sam_target = None
         try:
             person = _read_client().get_person(self.username)
-            candidates = _merge_candidates(person, source_username=self.username)
+            sam_target = _sam_target_for(person)
+            candidates = _merge_candidates(person, source_username=self.username,
+                                           sam_target=sam_target)
         except XrasSourceUnavailable:
             person, candidates = None, []
         return {'username': self.username, 'person': person,
-                'candidates': candidates,
+                'candidates': candidates, 'sam_target': sam_target,
                 'write_enabled': xras_write_configured(),
                 'post_url': url_for('allocations_dashboard.xras_merge',
                                     username=self.username)}
@@ -821,7 +935,7 @@ class _XrasWithdrawHandler(_XrasRemediationHandler):
 
     def perform(self, data):
         outcome = remediation.withdraw_action(
-            _session_factory(), request_number=self.request_number,
+            _session_factory, request_number=self.request_number,
             request_id=self._context['request_id'], action_id=self.action_id,
             pi_username=self._context['xa_user'],
             operator=current_user.username, comment=data['comment'])
@@ -945,7 +1059,7 @@ def xras_resubmit(request_number: str, action_id: int):
 
     try:
         outcome = remediation.resubmit_action(
-            _session_factory(), request_number=request_number,
+            _session_factory, request_number=request_number,
             request_id=context['request_id'], action_id=action_id,
             pi_username=context['xa_user'], operator=current_user.username)
     except XrasWriteNotConfigured:
@@ -1065,7 +1179,7 @@ class _XrasRoleAddHandler(_XrasRemediationHandler):
 
     def perform(self, data):
         outcome = remediation.change_role(
-            _session_factory(), add=True, request_number=self.request_number,
+            _session_factory, add=True, request_number=self.request_number,
             request_id=self._context['request_id'], username=data['username'],
             operator=current_user.username, xa_user=self._context['xa_user'],
             role=data['role_type'], comment=data.get('comment'))
@@ -1141,7 +1255,7 @@ def xras_role_remove(request_number: str, role_id: int):
 
     try:
         outcome = remediation.change_role(
-            _session_factory(), add=False, request_number=request_number,
+            _session_factory, add=False, request_number=request_number,
             request_id=context['request_id'], username=target.get('username'),
             operator=current_user.username, xa_user=context['xa_user'],
             role_id=role_id)
@@ -1300,7 +1414,7 @@ class _XrasResourceAmountHandler(_XrasRemediationHandler):
     def perform(self, data):
         context = 'admin' if self.stage != 'Requested' else 'submit'
         outcome = remediation.update_resource_amount(
-            _session_factory(), request_number=self.request_number,
+            _session_factory, request_number=self.request_number,
             request_id=self._request_id, action_id=self.action_id,
             resource_id=self.resource_id, amount=data['amount'],
             pi_username=self._xa_user, operator=current_user.username,
@@ -1347,7 +1461,7 @@ def xras_resource_remove(request_number: str, action_id: int,
 
     try:
         outcome = remediation.remove_resource(
-            _session_factory(), request_number=request_number,
+            _session_factory, request_number=request_number,
             request_id=request_id, action_id=action_id,
             resource_id=resource_id, pi_username=xa_user,
             operator=current_user.username)
@@ -1438,7 +1552,7 @@ class _XrasActionDatesHandler(_XrasRemediationHandler):
     def perform(self, data):
         if self.allocation_date_id:
             outcome = remediation.update_action_dates(
-                _session_factory(), request_number=self.request_number,
+                _session_factory, request_number=self.request_number,
                 request_id=self._request_id, action_id=self.action_id,
                 allocation_date_id=self.allocation_date_id,
                 begin_date=data['begin_date'], end_date=data['end_date'],
@@ -1446,7 +1560,7 @@ class _XrasActionDatesHandler(_XrasRemediationHandler):
                 comment=data.get('comment'))
         else:
             outcome = remediation.set_action_dates(
-                _session_factory(), request_number=self.request_number,
+                _session_factory, request_number=self.request_number,
                 request_id=self._request_id, action_id=self.action_id,
                 begin_date=data['begin_date'], end_date=data['end_date'],
                 pi_username=self._xa_user, operator=current_user.username,
@@ -1487,7 +1601,7 @@ def xras_dates_remove(request_number: str, action_id: int,
 
     try:
         outcome = remediation.remove_action_dates(
-            _session_factory(), request_number=request_number,
+            _session_factory, request_number=request_number,
             request_id=request_id, action_id=action_id,
             allocation_date_id=allocation_date_id, pi_username=xa_user,
             operator=current_user.username)
@@ -1574,7 +1688,7 @@ class _XrasAttributesHandler(_XrasRemediationHandler):
             'abstract': data.get('abstract') or '',
         }
         outcome = remediation.update_request_attributes(
-            _session_factory(), request_number=self.request_number,
+            _session_factory, request_number=self.request_number,
             request_id=self._request_id, fields=fields,
             pi_username=self._xa_user, operator=current_user.username)
         return self._finish(outcome, verb='The attribute change')
@@ -1667,7 +1781,7 @@ class _XrasActionFieldsHandler(_XrasRemediationHandler):
     def perform(self, data):
         fields = {'userComments': data.get('user_comments') or ''}
         outcome = remediation.update_action(
-            _session_factory(), request_number=self.request_number,
+            _session_factory, request_number=self.request_number,
             request_id=self._request_id, action_id=self.action_id,
             fields=fields, pi_username=self._xa_user,
             operator=current_user.username)
@@ -1735,7 +1849,7 @@ def xras_request_delete(request_number: str):
             continue
         try:
             outcome = remediation.delete_request(
-                _session_factory(), request_number=request_number,
+                _session_factory, request_number=request_number,
                 request_id=request_id, pi_username=xa_user,
                 operator=current_user.username)
         except XrasWriteNotConfigured:
@@ -1780,7 +1894,7 @@ def xras_request_renew(request_number: str):
 
     try:
         outcome = remediation.renew_request(
-            _session_factory(), request_number=request_number,
+            _session_factory, request_number=request_number,
             request_id=request_id, pi_username=xa_user,
             operator=current_user.username)
     except XrasWriteNotConfigured:
@@ -1832,7 +1946,7 @@ class _XrasAddActionHandler(_XrasRemediationHandler):
 
     def perform(self, data):
         outcome = remediation.add_action(
-            _session_factory(), request_number=self.request_number,
+            _session_factory, request_number=self.request_number,
             request_id=self._request_id, action_type=data['action_type'],
             pi_username=self._xa_user, operator=current_user.username)
         return self._finish(outcome, verb='Adding the action')

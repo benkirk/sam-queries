@@ -172,12 +172,20 @@ class TestXrasFragments:
 
     def test_pending_empty_state_does_not_claim_nothing_is_pending(
             self, auth_client):
-        """The card can only see actions this log knows about. While capture
-        mode is on, "empty" must not be presented as "all clear".
+        """The card can only see actions this log knows about, so an empty
+        queue must not be presented as "all clear".
 
         WARNING: Both literals are copy assertions. If you reword the empty state,
         reword them — do not delete the second one, which is the honest half."""
         resp = auth_client.get('/allocations/xras_pending_fragment')
+        assert b'Nothing needs attention' in resp.data
+        assert b'does not mean nothing is pending' in resp.data
+
+    def test_everything_empty_state_names_the_window(self, auth_client):
+        """Under the toggle the empty state blames the date filter, and keeps
+        the honest half."""
+        resp = auth_client.get('/allocations/xras_pending_fragment',
+                               query_string={'show_all': '1'})
         assert b'No XRAS activity in this window' in resp.data
         assert b'does not mean nothing is pending' in resp.data
 
@@ -414,6 +422,97 @@ class TestDefaultWindowUpperBound:
             MultiDict([('end_date', '2026-01-15')]))
         assert filters['end_date'].strftime('%Y-%m-%d %H:%M:%S') \
             == '2026-01-15 23:59:59'
+
+
+class TestScopeSeam:
+    """`scope_rows` is the one "queue vs. everything" switch both worklist
+    cards go through, so the two cannot disagree on what `show_all` means."""
+
+    ROWS = [{'id': 1, 'queued': True}, {'id': 2, 'queued': False}]
+
+    def test_default_applies_the_queue_and_never_the_window(self):
+        from werkzeug.datastructures import MultiDict
+
+        from webapp.dashboards.allocations.xras._shared import scope_rows
+
+        def boom(row, window):
+            raise AssertionError('the window must not be consulted by default')
+
+        rows = scope_rows(self.ROWS, MultiDict(),
+                          queue=lambda r: r['queued'], in_window=boom)
+        assert [r['id'] for r in rows] == [1]
+
+    def test_show_all_applies_the_parsed_window_to_every_row(self):
+        from werkzeug.datastructures import MultiDict
+
+        from webapp.dashboards.allocations.xras._shared import scope_rows
+
+        seen = []
+
+        def in_window(row, window):
+            seen.append(window['days'])
+            return True
+
+        rows = scope_rows(self.ROWS, MultiDict([('show_all', '1'), ('days', '7')]),
+                          queue=lambda r: False, in_window=in_window)
+        assert [r['id'] for r in rows] == [1, 2]
+        assert seen == [7, 7], 'the window dict is parsed once and passed through'
+
+    def test_activity_in_window_matches_the_sql_bounds(self):
+        """Inclusive at both ends, an absent bound is open, a dateless row is
+        kept — so `show_all` renders exactly what the SQL window would."""
+        from datetime import datetime
+
+        from webapp.dashboards.allocations.xras._shared import _activity_in_window
+
+        since, until = datetime(2026, 8, 1), datetime(2026, 8, 31, 23, 59, 59)
+        window = {'since': since, 'until': until}
+        assert _activity_in_window({'received_time': since}, window)
+        assert _activity_in_window({'received_time': until}, window)
+        assert not _activity_in_window({'received_time': datetime(2026, 7, 31)}, window)
+        assert not _activity_in_window({'received_time': datetime(2026, 9, 1)}, window)
+        assert _activity_in_window({'received_time': datetime(2020, 1, 1)},
+                                   {'since': None, 'until': None})
+        assert _activity_in_window({'received_time': None}, window)
+
+
+class TestAttentionQueueToggle:
+    """The Activations card's `show_all` switch, on an empty DB — what the
+    HTTP tier can pin: it renders, it binds, it explains, it does not lie."""
+
+    FRAGMENT = '/allocations/xras_pending_fragment'
+    SWITCH = 'id="xras-activity-show-all"'
+
+    def _switch(self, body):
+        return body.split(self.SWITCH)[1].split('>')[0]
+
+    def test_the_switch_renders_on_an_empty_queue_unchecked(self, auth_client):
+        body = auth_client.get(self.FRAGMENT).get_data(as_text=True)
+        assert self.SWITCH in body
+        assert 'checked' not in self._switch(body)
+        assert 'Everything in the window (0)' in body
+
+    def test_the_switch_belongs_to_the_filter_form(self, auth_client):
+        body = auth_client.get(self.FRAGMENT).get_data(as_text=True)
+        switch = self._switch(body)
+        assert 'name="show_all"' in switch
+        assert 'form="xras-activity-filters"' in switch
+        assert 'hx-include="#xras-window-filters, #xras-activity-filters"' in switch
+
+    def test_show_all_checks_the_switch(self, auth_client):
+        body = auth_client.get(self.FRAGMENT,
+                               query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'checked' in self._switch(body)
+
+    def test_the_switch_explains_both_sets_in_a_popover(self, auth_client):
+        body = auth_client.get(self.FRAGMENT).get_data(as_text=True)
+        assert 'data-bs-toggle="popover"' in body
+        assert 'needs attention' in body and 'everything in the window' in body
+
+    def test_an_empty_queue_shows_no_hidden_count_badge(self, auth_client):
+        body = auth_client.get(self.FRAGMENT).get_data(as_text=True)
+        assert 'more with Everything in the window' not in body
+        assert '0 need attention' in body
 
 
 # ===========================================================================
@@ -783,8 +882,11 @@ class TestActivityRowExpansion:
         row.update(over)
         return row
 
-    def _render(self, app, *, may_manage, rows=None):
+    def _render(self, app, *, may_manage, rows=None, **counts):
         from flask import render_template
+        counts = {'show_all': False, 'attention_total': 1, 'window_total': 1,
+                  'hidden_count': 0, 'outside_count': 0, 'recent_days': 3,
+                  **counts}
         with app.test_request_context():
             return render_template(
                 self.TEMPLATE,
@@ -799,7 +901,71 @@ class TestActivityRowExpansion:
                 selected_tags=[], selected_types=[],
                 form_id='xras-activity-filters',
                 fragment_url='/allocations/xras_pending_fragment',
-                target_id='alloc-xras-pending')
+                target_id='alloc-xras-pending', **counts)
+
+    def _actions_cell(self, body):
+        cell = body.split('<td class="text-end"')[1].split('</td>')[0]
+        assert 'xras_history' in cell, 'wrong cell — test is vacuous'
+        return cell
+
+    def test_the_actions_are_one_icon_only_strip(self, app):
+        """Four verbs at a fixed width: the label is the `title`, never text
+        beside the icon, so a row with everything to offer stays one line."""
+        cell = self._actions_cell(self._render(app, may_manage=True))
+        assert 'btn-group btn-group-sm' in cell
+        for button in cell.split('<button')[1:]:
+            visible = button.split('>', 1)[1]
+            for tag in ('<i class', '</i>', '<span class', '</span>', '</button>'):
+                visible = visible.replace(tag, '')
+            assert 'Notify' not in visible and 'Activate' not in visible
+            assert 'aria-label="' in button
+
+    def test_every_live_row_offers_dismiss_and_a_dismissed_one_restore(self, app):
+        """Dismiss is how a row leaves the attention queue, so it is not gated
+        on needing activation any more than Notify is."""
+        live = self._actions_cell(self._render(app, may_manage=True))
+        assert 'xras_dismiss_form' in live and 'xras_restore' not in live
+        gone = self._actions_cell(self._render(
+            app, may_manage=True,
+            rows=[self._row(dismissed=True, dismissed_by='benkirk',
+                            tags=['notified', 'dismissed'])]))
+        assert 'xras_restore' in gone and 'xras_dismiss_form' not in gone
+
+    def test_the_state_column_renders_only_under_everything(self, app):
+        """In the queue the column could only ever say Active or Needs
+        activation; the latter rides on the Action cell there instead."""
+        queue = self._render(app, may_manage=True,
+                             rows=[self._row(needs_activation=True, project_active=False)])
+        assert '>State<' not in queue
+        action_cell = queue.split('<span class="badge bg-secondary">Supplement</span>')[1].split('</td>')[0]
+        assert 'Needs activation' in action_cell
+        everything = self._render(app, may_manage=True, show_all=True,
+                                  rows=[self._row(needs_activation=True, project_active=False)])
+        assert '>State<' in everything
+        assert everything.count('Needs activation') == 1
+
+    def test_the_expansion_spans_the_columns_actually_drawn(self, app):
+        """Only a manager gets an expansion row, so both cases carry Actions."""
+        for show_all, span in ((True, 7), (False, 6)):
+            body = self._render(app, may_manage=True, show_all=show_all)
+            assert f'colspan="{span}"' in body, show_all
+
+    def test_the_strip_never_wraps(self, app):
+        cell = self._actions_cell(self._render(app, may_manage=True))
+        assert 'btn-group btn-group-sm flex-nowrap' in cell
+
+    def test_the_hidden_count_badge_names_the_switch(self, app):
+        body = self._render(app, may_manage=True, window_total=3, hidden_count=2)
+        assert '1 need attention' in body
+        assert '2 more with Everything in the window' in body
+        assert 'outside the date filter' not in body
+
+    def test_show_all_warns_about_queue_rows_outside_the_window(self, app):
+        body = self._render(app, may_manage=True, show_all=True,
+                            attention_total=2, outside_count=1)
+        assert '1 needing attention outside the date filter' in body
+        assert 'more with Everything in the window' not in body
+        assert 'need attention</span>' not in body
 
     def test_the_actions_cell_carries_no_collapse_toggle(self, app):
         """Bootstrap's collapse data-api runs in the CAPTURE phase on document,

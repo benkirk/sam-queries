@@ -207,3 +207,89 @@ class TestInteraction:
         # operator's place in a card they scrolled to.
         assert page.evaluate('() => window.__remediationMarker') == 1
         assert _rows(card).count() <= before
+
+
+class TestContractStrip:
+    """The contract-blockers strip: each number opens Admin -> Contracts with the
+    New Contract modal already showing and seeded. Guarded like the rest of this
+    file — a stack whose sweep found no contract blocker skips, and nothing here
+    asserts on a number, a name, or a count."""
+
+    STRIP = f'{CARD} #xras-contract-strip'
+
+    def test_each_number_links_to_a_seeded_create(self, page):
+        _load(page)
+        strip = page.locator(self.STRIP)
+        if strip.count() == 0:
+            pytest.skip('no contract blocker on this stack')
+        links = strip.locator('a[href*="create="]')
+        if links.count() == 0:
+            pytest.skip('only spelling variants on this stack')
+        for i in range(links.count()):
+            assert '/admin/contracts?' in links.nth(i).get_attribute('href')
+
+    def test_following_a_link_opens_the_modal_seeded(self, page):
+        _load(page)
+        links = page.locator(f'{self.STRIP} a[href*="create="]')
+        if links.count() == 0:
+            pytest.skip('no contract blocker on this stack')
+        href = links.first.get_attribute('href')
+        response = page.goto(href)
+        assert response is not None and response.status == 200
+        assert page.locator('[data-auto-open-create]').count() == 1
+        page.wait_for_selector('#createContractModal.show', timeout=15_000)
+        page.wait_for_selector('#createContractModal #createContractNumber', timeout=15_000)
+        assert page.locator('#createContractModal #createContractNumber').input_value().strip()
+
+
+class TestIdentityStrip:
+    """The identity strip: each placeholder opens the merge modal in place.
+    Guarded like the rest of this file, and asserting on structure only —
+    never a username, an email, or a count."""
+
+    STRIP = f'{CARD} #xras-identity-strip'
+
+    def test_each_ready_placeholder_opens_the_merge_modal(self, page):
+        _load(page)
+        strip = page.locator(self.STRIP)
+        if strip.count() == 0:
+            pytest.skip('no placeholder blocker on this stack')
+        assert '@' not in strip.inner_text()
+        buttons = strip.locator('button[hx-get*="/allocations/xras_merge_form/"]')
+        if buttons.count() == 0:
+            pytest.skip('nothing ready to merge on this stack')
+        assert buttons.first.get_attribute('data-bs-target') == '#auditDetailsModal'
+
+
+class TestPendingWorkToggle:
+
+    def test_show_everything_reloads_the_card(self, page):
+        card = _load(page)
+        switch = card.locator('#xras-remediation-show-all')
+        if switch.count() == 0:
+            # The controls render only once something was swept; CI and a
+            # fresh stack have published nothing.
+            pytest.skip('no swept requests on this stack')
+        assert not switch.is_checked()
+        switch.check()
+        page.wait_for_selector(f'{CARD} #xras-remediation-show-all:checked', timeout=15_000)
+        assert page.locator(f'{CARD} .card').count() == 1
+
+
+class TestSortKeepsScroll:
+
+    def test_a_header_click_does_not_jump_to_the_top(self, page):
+        """The sort header is an <a href="#"> driven by data-action; the handler
+        must preventDefault or the swap is followed by a jump to the top."""
+        card = _load(page)
+        header = card.locator('th a[data-action="set-sort-submit"]').first
+        if header.count() == 0:
+            pytest.skip('no sortable rows on this stack')
+        header.scroll_into_view_if_needed()
+        before = page.evaluate('() => window.scrollY')
+        if before < 200:
+            pytest.skip('card sits at the top of the viewport on this stack')
+        header.click()
+        page.wait_for_timeout(1500)          # the swap, then any hash scroll
+        after = page.evaluate('() => window.scrollY')
+        assert after > 200, f'scrolled from {before} to {after}'

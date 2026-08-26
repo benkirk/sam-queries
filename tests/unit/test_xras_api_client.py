@@ -295,7 +295,7 @@ class TestEndpoints:
         """`GET /v1/requests/<number>` 401s — the number is not its key."""
         client = _client(monkeypatch,
                          [_response(200, _envelope([_request(1, 'NCAR0001')]))])
-        row = client.get_request_by_number('NCAR0001')
+        row = client.get_request_line('NCAR0001')
         assert row['requestNumber'] == 'NCAR0001'
         url = client.session.request.call_args.args[1]
         assert '/v1/reports/request_numbers/NCAR0001' in url

@@ -331,8 +331,10 @@ webapp:
     #
     # With it off the Remediations card still renders — with its controls DISABLED and
     # an explanation — rather than vanishing, so the state is visible rather than
-    # mysterious.
-    XRAS_WRITE_ENABLED: "0"
+    # mysterious. Armed 2026-08-25 (PR #482) for the triage-week identity merges;
+    # the drift test in tests/unit/test_xras_admin_client.py pins whichever value
+    # ships, so a flip in either direction is a reviewed change to both files.
+    XRAS_WRITE_ENABLED: "1"
 
   # Each block below syncs one secret from OpenBao. `enabled: false` skips it;
   # `useExternalSecret: false` skips the ExternalSecret CRD so the secret can be

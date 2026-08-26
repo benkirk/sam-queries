@@ -153,3 +153,27 @@
     padding-left: 0;
     margin-bottom: 0.5rem;
 }
+
+/* ===================================================================
+   XRAS merge form — the whole candidate card is the control
+   =================================================================== */
+
+.xras-candidate {
+    cursor: pointer;
+    border-color: var(--border-default);
+}
+
+.xras-candidate .xras-candidate-check {
+    color: var(--text-link);
+    visibility: hidden;
+}
+
+.xras-candidate:has(.form-check-input:checked) {
+    border-color: var(--text-link);
+    background-color: var(--surface-accent);
+    box-shadow: inset 0.25rem 0 0 var(--text-link);
+}
+
+.xras-candidate:has(.form-check-input:checked) .xras-candidate-check {
+    visibility: visible;
+}

@@ -494,4 +494,17 @@
             SamCollapseChevron.attach('#projectDirectoriesSection', '.pd-res-collapse-icon');
         }
     });
+
+    /* Admin -> Contracts opened from a contract-blocker link: the page carries
+     * data-auto-open-create="<seeded create-form url>". Load it into the New
+     * Contract modal and show it — the project-details-modal pair, on page
+     * load, because CSP (script-src 'self') forbids an inline script. */
+    document.addEventListener('DOMContentLoaded', function () {
+        var opener = document.querySelector('[data-auto-open-create]');
+        var modal = document.getElementById('createContractModal');
+        if (!opener || !modal) { return; }
+        htmx.ajax('GET', opener.dataset.autoOpenCreate,
+                  {target: '#createContractFormContainer', swap: 'innerHTML'});
+        bootstrap.Modal.getOrCreateInstance(modal).show();
+    });
 })();

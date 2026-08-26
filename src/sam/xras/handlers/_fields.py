@@ -191,8 +191,17 @@ def _grant_without_number(number: str, grant) -> str:
     return f'Supporting grant {what}{where} has no award number; no contract linked'
 
 
-def plan_contracts(session, action, errs: ActionErrors) -> Tuple[List, Tuple[str, ...]]:
-    """Resolve ``grants[]`` to ``(contracts, warnings)``, deduped by contract id.
+_GRANT_DETAIL_KEYS = {'fundingAgency': 'agency', 'title': 'title', 'piName': 'pi_name',
+                      'beginDate': 'begin_date', 'endDate': 'end_date',
+                      'isPending': 'is_pending'}
+
+
+def plan_contracts(session, action, errs: ActionErrors) -> Tuple[List, Tuple[str, ...], List[dict]]:
+    """Resolve ``grants[]`` to ``(contracts, warnings, unresolved)``, deduped by contract id.
+
+    ``unresolved`` is the structured channel for the contract-blockers report:
+    one entry per grant that reported a 422, carrying the wire's own title,
+    agency, PI and dates so the create form can be seeded without a lookup.
 
     WARNING: ``grants: []`` is **not** an error — ``new_ncar4232_failed.json`` is an
     Educational allocation with no grant at all, and its failure was the mnemonic, not
@@ -205,14 +214,22 @@ def plan_contracts(session, action, errs: ActionErrors) -> Tuple[List, Tuple[str
     ``project_contract`` is UNIQUE per ``(project, contract)``, so legacy's second
     insert was an unhandled ``IntegrityError``.
     """
-    contracts, warnings, seen = [], [], set()
+    contracts, warnings, unresolved, seen = [], [], [], set()
     for grant in get_field(action, 'grants') or ():
         number = str(get_field(grant, 'grantNumber') or '').strip()
         if not any(ch.isdigit() for ch in number):
             warnings.append(_grant_without_number(number, grant))
             continue
-        contract = resolve_contract(session, number, errs)
+        failed: List[dict] = []
+        contract = resolve_contract(session, number, errs, unresolved=failed)
+        # Wire detail for the create form. A literal tuple of names: the
+        # vocabulary gate (test_xras_wire_vocabulary) resolves them from the loop.
+        for entry in failed:
+            for wire in ('fundingAgency', 'title', 'piName', 'beginDate', 'endDate',
+                         'isPending'):
+                entry[_GRANT_DETAIL_KEYS[wire]] = get_field(grant, wire)
+            unresolved.append(entry)
         if contract is not None and contract.contract_id not in seen:
             seen.add(contract.contract_id)
             contracts.append(contract)
-    return contracts, tuple(warnings)
+    return contracts, tuple(warnings), unresolved

@@ -135,7 +135,7 @@ class TestRecentMode:
             '--machine', 'derecho',
         ])
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['kind'] == 'comp_jobs'
         assert data['mode'] == 'recent'
         assert data['machines'] == ['derecho']
@@ -191,7 +191,7 @@ class TestLargestMode:
             '--last', '30d', '--machine', 'derecho',
         ])
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['mode'] == 'largest'
         sort_keys = sorted(c['sort_by'] for c in captured['calls'])
         assert sort_keys == ['cpu_charges', 'gpu_charges']
@@ -267,7 +267,7 @@ class TestJobIdMode:
             '--job-id', '6049117', '--last', '365d', '--machine', 'derecho',
         ])
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['kind'] == 'comp_jobs'
         assert data['mode'] == 'job_id'
         assert data['count'] == 1
@@ -288,7 +288,7 @@ class TestJobIdMode:
             '--job-id', '6049117', '--last', '365d', '--machine', 'derecho',
         ])
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['count'] == 31
 
     def test_job_id_rejects_recent_combo(self, runner, mock_search_session, monkeypatch):
@@ -317,7 +317,7 @@ class TestJobIdMode:
             '--job-id', '99999999', '--last', '365d', '--machine', 'derecho',
         ])
         assert result.exit_code == 1
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['mode'] == 'job_id'
         assert data['count'] == 0
 
@@ -338,7 +338,7 @@ class TestMultiMachine:
             '--last', '7d',
         ])
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['machines'] == ['derecho', 'casper']
         assert data['count'] == 3                      # 4 merged -> truncated to 3
         # sorted by end desc: newest first
@@ -388,7 +388,7 @@ class TestErrorPaths:
             '--machine', 'derecho',
         ])
         assert result.exit_code == 1
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['kind'] == 'comp_jobs'
         assert data['count'] == 0
 
