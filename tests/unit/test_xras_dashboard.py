@@ -931,6 +931,29 @@ class TestActivityRowExpansion:
                             tags=['notified', 'dismissed'])]))
         assert 'xras_restore' in gone and 'xras_dismiss_form' not in gone
 
+    def test_the_state_column_renders_only_under_everything(self, app):
+        """In the queue the column could only ever say Active or Needs
+        activation; the latter rides on the Action cell there instead."""
+        queue = self._render(app, may_manage=True,
+                             rows=[self._row(needs_activation=True, project_active=False)])
+        assert '>State<' not in queue
+        action_cell = queue.split('<span class="badge bg-secondary">Supplement</span>')[1].split('</td>')[0]
+        assert 'Needs activation' in action_cell
+        everything = self._render(app, may_manage=True, show_all=True,
+                                  rows=[self._row(needs_activation=True, project_active=False)])
+        assert '>State<' in everything
+        assert everything.count('Needs activation') == 1
+
+    def test_the_expansion_spans_the_columns_actually_drawn(self, app):
+        """Only a manager gets an expansion row, so both cases carry Actions."""
+        for show_all, span in ((True, 7), (False, 6)):
+            body = self._render(app, may_manage=True, show_all=show_all)
+            assert f'colspan="{span}"' in body, show_all
+
+    def test_the_strip_never_wraps(self, app):
+        cell = self._actions_cell(self._render(app, may_manage=True))
+        assert 'btn-group btn-group-sm flex-nowrap' in cell
+
     def test_the_hidden_count_badge_names_the_switch(self, app):
         body = self._render(app, may_manage=True, window_total=3, hidden_count=2)
         assert '1 need attention' in body

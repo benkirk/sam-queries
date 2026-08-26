@@ -116,10 +116,13 @@
                     <th style="width:99%; min-width:18rem;">Title</th>
                     <th style="width:120px;">Action</th>
                     <th style="white-space:nowrap;">Received</th>
-                    {# "State", not "Project" — the first column is already
-                       headed Project, and two identical headers over different
-                       data read as a rendering bug. #}
+                    {# State only under Everything in the window: the queue can
+                       hold nothing but Active and Needs activation, and the
+                       latter rides on the Action cell there. "State", not
+                       "Project" — two identical headers read as a bug. #}
+                    {% if show_all %}
                     <th style="width:150px;">State</th>
+                    {% endif %}
                     <th style="white-space:nowrap;">Notified</th>
                     {# No Recipients column: the addresses live in the row
                        expansion, which every manageable row now has. Eight
@@ -170,6 +173,9 @@
                     </td>
                     <td {% if expandable %}class="cursor-pointer" {{ collapse_toggle(detail_id) }}{% endif %}>
                         <span class="badge bg-secondary">{{ r.action_type or '—' }}</span>
+                        {% if r.needs_activation and not show_all %}
+                        <span class="badge bg-warning text-dark">Needs activation</span>
+                        {% endif %}
                     </td>
                     <td class="small{% if expandable %} cursor-pointer{% endif %}"
                         style="white-space:nowrap;"
@@ -178,6 +184,7 @@
                         {{ r.received_time | fmt_date }}
                     </td>
 
+                    {% if show_all %}
                     <td class="small">
                         {% if r.dismissed %}
                         <span class="badge bg-secondary"
@@ -192,6 +199,7 @@
                         <span class="badge bg-secondary-subtle text-secondary-emphasis">Inactive</span>
                         {% endif %}
                     </td>
+                    {% endif %}
 
                     <td class="small" style="white-space:nowrap;">
                         {% if r.notified %}
@@ -230,7 +238,10 @@
                        a row leaves the attention queue, not only a "do not
                        activate" mark. #}
                     <td class="text-end" style="white-space:nowrap;">
-                        <div class="btn-group btn-group-sm" role="group" aria-label="Actions for {{ r.projcode }}">
+                        {# flex-nowrap: without it the strip stacks vertically
+                           inside a narrow cell and every row grows to three
+                           buttons tall on a phone. The wrapper scrolls instead. #}
+                        <div class="btn-group btn-group-sm flex-nowrap" role="group" aria-label="Actions for {{ r.projcode }}">
                         {% if r.notifiable %}
                         {% set notify_title = 'Notify again — preview and resend the notice' if r.notified else 'Notify — preview and send the notice for this action' %}
                         <button class="btn {{ 'btn-outline-secondary' if r.notified else 'btn-outline-primary' }}"
@@ -289,7 +300,7 @@
 
                 {% if expandable %}
                 <tr class="collapse" id="{{ detail_id }}">
-                    <td colspan="7" class="bg-body-tertiary small">
+                    <td colspan="{{ 5 + (1 if show_all else 0) + (1 if may_manage else 0) }}" class="bg-body-tertiary small">
                         <div class="px-2 py-1">
                             {% set people = recipients.get(r.project_id, []) %}
                             <span class="text-muted text-uppercase small">Recipients</span>
