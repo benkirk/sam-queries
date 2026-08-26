@@ -314,36 +314,24 @@ class XrasAdminClient(_XrasTransport):
                request_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """The roster of one line (the write's, by *request_id*), one row per *role*.
 
-        PRIVILEGE(#4). WARNING: The reports payload **nests**: each ``roles[]`` entry carries a
-        ``person`` plus its own ``roles[]`` list of
-        ``{roleId, role, roleTypeId, …}``. Reading ``roleType`` off the outer
-        object returns ``None``, which is a trap worth flattening once here.
+        PRIVILEGE(#4). Delegates to the shared payload parser — the reports payload
+        **nests** (each ``roles[]`` entry carries a ``person`` plus its own
+        ``roles[]``; ``roleType`` off the outer object is ``None``), and flattening
+        it in one place keeps this verify roster from drifting from the worklist
+        and dashboard rosters.
         """
-        payload = self._line(request_number, request_id)
-        flat: List[Dict[str, Any]] = []
-        for entry in (payload.get('roles') or []):
-            if not isinstance(entry, dict):
-                continue
-            person = entry.get('person') or {}
-            for role in (entry.get('roles') or []):
-                if not isinstance(role, dict):
-                    continue
-                flat.append({
-                    'role_id': role.get('roleId'),
-                    'role_type_id': role.get('roleTypeId'),
-                    'role_type': role.get('role'),
-                    'username': person.get('username'),
-                    'is_reconciled': person.get('isReconciled'),
-                })
-        return flat
+        from sam.queries.xras_requests import roster_from_payload
+        return roster_from_payload(self._line(request_number, request_id))
 
     def resolve_pi(self, request_number: str,
                    request_id: Optional[int] = None) -> Optional[str]:
-        """The username of the request's PI — the default impersonation target."""
-        for row in self.roster(request_number, request_id):
-            if row.get('role_type_id') == PI_ROLE_TYPE_ID:
-                return row.get('username')
-        return None
+        """The username of the request's PI — the default impersonation target.
+
+        The shared active-preferring resolver: an ended PI is the fallback, the
+        same way the modals resolve it.
+        """
+        from sam.queries.xras_requests import resolve_pi as pi_of
+        return pi_of(self.roster(request_number, request_id))
 
     # people
 

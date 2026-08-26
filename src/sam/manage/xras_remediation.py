@@ -292,14 +292,10 @@ def _preflight_verdicts(reader, session, payload):
 
 def _preflight_maps(reader, payload):
     """``(resource_keys, opportunities)`` for one request's preflight. Guarded."""
+    from sam.integration.xras_api.people import resource_key_map
     resource_keys = None
     try:
-        catalog = reader.get_resources()
-        resource_keys = {}
-        for r in catalog or ():
-            if isinstance(r, dict) and r.get('resourceId') is not None \
-                    and r.get('resourceRepositoryKey') is not None:
-                resource_keys[int(r['resourceId'])] = int(r['resourceRepositoryKey'])
+        resource_keys = resource_key_map(reader.get_resources())
     except Exception:                                   # noqa: BLE001
         resource_keys = None
 

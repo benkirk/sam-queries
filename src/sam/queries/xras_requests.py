@@ -128,24 +128,34 @@ def roster_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     return rows
 
 
+def resolve_role(roster: List[Dict[str, Any]],
+                 role_type_id: int) -> Optional[Dict[str, Any]]:
+    """The roster row holding *role_type_id*, preferring an in-window holder.
+
+    Prefer a holder whose role window is current; an ended holder is the
+    fail-open fallback so a request with only historical leads still resolves a
+    row rather than none. Callers read username and display name off the SAME
+    row — picking them with independent scans could pair one person's username
+    with another's name.
+    """
+    fallback = None
+    for row in roster:
+        if row.get('role_type_id') == role_type_id:
+            if row.get('active', True):
+                return row
+            fallback = fallback or row
+    return fallback
+
+
 def resolve_pi(roster: List[Dict[str, Any]]) -> Optional[str]:
     """The PI's username, or ``None``.
 
     Every request-scoped XRAS write authorizes on ``XA-USER`` holding a role on
     that request, and the PI is the impersonation the modals default to —
     measured, because the same action validated as the PI and failed as the
-    Allocation Manager (PRIVILEGE(#5)).
+    Allocation Manager (PRIVILEGE(#5)). Active-preferring via :func:`resolve_role`.
     """
-    fallback = None
-    for row in roster:
-        if row.get('role_type_id') == PI_ROLE_TYPE_ID:
-            # Prefer a PI whose role window is current; an ended PI is the
-            # fail-open fallback so a request with only historical leads
-            # still gets an impersonation identity rather than none.
-            if row.get('active', True):
-                return row.get('username')
-            fallback = fallback or row.get('username')
-    return fallback
+    return (resolve_role(roster, PI_ROLE_TYPE_ID) or {}).get('username')
 
 
 def actions_from_payload(payload: Dict[str, Any],
@@ -320,6 +330,8 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
         return None
 
     roster = roster_from_payload(payload)
+    _pi = resolve_role(roster, PI_ROLE_TYPE_ID) or {}
+    _admin = resolve_role(roster, ADMIN_ROLE_TYPE_ID) or {}
     actions = actions_from_payload(payload, preflights)
     # Most-recent activity across the request's actions — what a date filter must
     # window on. Falls back to the request's own submitDate for a request whose
@@ -342,17 +354,12 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
         'opportunity_id': payload.get('opportunityId'),
         'opportunity_name': _text(payload.get('opportunity_name')
                                   or payload.get('opportunityName')),
-        'pi': {'username': resolve_pi(roster),
-               'name': next((r['name'] for r in roster
-                             if r.get('role_type_id') == PI_ROLE_TYPE_ID), None)},
+        # username and name off the one resolved row, so they cannot pair one
+        # person's login with another's name.
+        'pi': {'username': _pi.get('username'), 'name': _pi.get('name')},
         # The Allocation Manager (SAM: "Project Admin"), when the request names
         # one — often it does not, so both keys are None on those rows.
-        'admin': {'username': next((r['username'] for r in roster
-                                    if r.get('role_type_id') == ADMIN_ROLE_TYPE_ID),
-                                   None),
-                  'name': next((r['name'] for r in roster
-                                if r.get('role_type_id') == ADMIN_ROLE_TYPE_ID),
-                               None)},
+        'admin': {'username': _admin.get('username'), 'name': _admin.get('name')},
         'roster': roster,
         'actions': actions,
         # The in-flight action type, precomputed for the card's Type column and
@@ -421,7 +428,9 @@ def request_family(payloads: Any, *, pending_push: bool = False
         return None
 
     # New/Renewal comes off the wire; when no line claims New, the earliest-begin
-    # line is it (the same rule the inbound accounting API derives by hand).
+    # line is New — a PAYLOAD-only fallback for this dashboard tree. The accounting
+    # API (xras_access._SQL_ACTIONS) reads the DB transaction_type instead and is a
+    # frozen legacy byte-contract, so the two derivations are deliberately NOT shared.
     if not any((ln.get('request_type') or '').lower() == 'new' for ln in lines):
         min(lines, key=lambda ln: ln.get('begin_date')
             or date.max)['request_type'] = 'New'

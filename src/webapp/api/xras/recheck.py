@@ -37,7 +37,6 @@ from sqlalchemy.orm import Session
 from sam.integration.xras import XrasActionLog
 from sam.xras.dispatch import (
     dispatch_action,
-    parse_enabled_action_types,
     select_service,
 )
 from sam.xras.errors import XrasActionRejected
@@ -71,10 +70,10 @@ def _enabled():
 
     A re-check honors it deliberately: if a type is parked by config, "nothing would
     run" is the true answer to *"would this succeed if posted now?"* — and an operator
-    who has forgotten the lever is set is exactly who needs telling.
+    who has forgotten the lever is set is exactly who needs telling. Delegates to the
+    ingest helper (through the module, like ``_record``) so the two cannot drift.
     """
-    return parse_enabled_action_types(
-        current_app.config.get('XRAS_ACTIONS_ENABLED'))
+    return actions._enabled_action_types()
 
 
 def _load_original(log_id):

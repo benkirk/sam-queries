@@ -68,7 +68,9 @@ __all__ = [
 #:
 #: A row whose service is not here still appears on the activity table as
 #: history; it simply has no Notify button. Adding a kind is this dict plus
-#: :data:`sam.notify.kinds.NOTIFICATION_KINDS` plus the two template files.
+#: :data:`sam.notify.kinds.NOTIFICATION_KINDS` plus :data:`XRAS_KIND_SUBJECTS`
+#: plus the two template files; ``tests/unit/test_xras_taxonomy_parity.py`` fails
+#: if any of those layers is left behind.
 XRAS_SERVICE_KINDS: Mapping[str, str] = {
     'add': 'xras_activation',
     'update': 'xras_update',
