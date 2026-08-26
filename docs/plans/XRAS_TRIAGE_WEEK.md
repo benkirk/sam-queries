@@ -216,6 +216,8 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
 
 | 17:01 (26th) | **`UCNN0065` activated outside the new stack.** `project.active` 0 → 1 at 11:01:42 MDT with no `xras_activation_event`, no `notification_log` row, no webapp write in either pod's log (collector POSTs only), and no other table touched in the window. Legacy SAM has no scheduled activation path (its `activateProject` callers are AMIE handlers), so the writer is almost certainly a person in the legacy admin UI. Consequence: the XRAS card sees an active project with no `activated`/`notified` event, so it stays in the attention queue as un-notified — and a Notify click would double-mail the PI if legacy already did. Process question for Ben: is the team still activating in legacy, and should the card treat `active=1` with no event as "activated elsewhere"? |
 
+| 20:07 (26th) | Sweep: two newly Approved requests. **NCAR4282** — PI `ssharma-user-s8etm` (gmail placeholder, no SAM account; identity strip lists it; needs an account before a merge). **NCAR4281** — PI `kheyblom` has **two concurrent current `user_institution` rows**: Victoria (2021, still open, no mnemonic) and Michigan (since 08-10, resolves `MIC`); the first-current rule (ours and legacy's `findAny()`) lands on Victoria, so the mnemonic report offers "link University of Victoria". If Michigan is the real affiliation the right fix is upstream (end the Victoria collaboration — George's domain), not a Victoria link that would stamp the project with the wrong series. Ben's call. |
+
 ### Questions for Steve (batched, not piecemeal)
 
 1. ~~How many characters is the `XA-API-KEY`?~~ **Answered 08-25: 96** — the
