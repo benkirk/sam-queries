@@ -366,7 +366,7 @@ class TestTheFailurePaths:
         """The point of assemble-then-check-once: an operator fixes a request in one
         pass rather than five."""
         from factories import make_user
-        pi = make_user(session)                       # no organization -> no mnemonic
+        pi = make_user(session)                       # no affiliation -> no mnemonic
         payload = action_for({'pi': pi}, wire_resource(999_995))
         payload['requestTitle'] = ''
         payload['fos'] = []
@@ -377,7 +377,7 @@ class TestTheFailurePaths:
             'Missing title',
             'No FieldOfScience (fos) objects',
             'No resource found in SAM corresponding to key 999995',
-            'Could not determine Mnemonic code for internal PI via organization',
+            f'PI {pi.username} has no current institution or organization in SAM',
         }
 
     def test_nothing_is_written_and_no_projcode_is_consumed(self, committing, session,
@@ -447,11 +447,22 @@ class TestContracts:
     def test_an_unresolvable_grant_reports(self, committing, creatable,
                                            mapped_resource):
         payload = action_for(creatable, wire_resource(mapped_resource.xras_key))
-        payload['grants'] = [{'grantNumber': 'NSF-9990102'}]
+        payload['grants'] = [{'grantNumber': 'NSF-9990102', 'title': 'Clouds',
+                              'fundingAgency': 'National Science Foundation',
+                              'piName': 'A. Person', 'beginDate': '2026-01-01',
+                              'endDate': '2028-12-31', 'isPending': False}]
         with pytest.raises(XrasActionRejected) as exc:
             handle_new(committing, payload)
         assert ('Cannot find contract for grant number "NSF-9990102" ("9990102")'
                 in exc.value.messages)
+        # The structured channel rides the rejection, wire detail included, so
+        # the contract-blockers report never parses that string.
+        [grant] = exc.value.resolved['unresolved_grants']
+        assert grant['number'] == 'NSF-9990102' and grant['reason'] == 'missing'
+        assert (grant['title'], grant['agency'], grant['pi_name'],
+                grant['begin_date'], grant['end_date']) == (
+            'Clouds', 'National Science Foundation', 'A. Person',
+            '2026-01-01', '2028-12-31')
 
     def test_a_numberless_grant_warns_instead_of_failing(self, committing, session,
                                                          creatable, mapped_resource):

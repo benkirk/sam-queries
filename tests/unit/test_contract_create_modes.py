@@ -198,6 +198,54 @@ PROGRAM_CREATE_URL = '/admin/htmx/contract-program-create'
 PROGRAM_SEARCH_URL = '/admin/htmx/search/nsf-programs'
 
 
+CREATE_FORM_URL = '/admin/htmx/contract-create-form'
+CONTRACTS_PAGE = '/admin/contracts'
+
+
+class TestSeededCreateForm:
+    """`?create=` from a contract-blocker link: seeded, in the mode the link chose."""
+
+    def test_lookup_mode_seeds_the_number_and_fires_the_fetch(self, auth_client):
+        body = auth_client.get(CREATE_FORM_URL, query_string={
+            'contract_number': 'NSF-9980501'}).get_data(as_text=True)
+        assert 'value="NSF-9980501"' in body
+        assert 'hx-trigger="load, click"' in body
+        assert 'id="contractModeLookup" value="lookup" autocomplete="off"\n' \
+               '                       checked' in body or 'value="lookup"' in body
+
+    def test_manual_mode_seeds_title_and_dates_without_a_fetch(self, auth_client):
+        body = auth_client.get(CREATE_FORM_URL, query_string={
+            'contract_number': 'ISS 25-643', 'mode': 'manual', 'title': 'Seeded Title',
+            'start_date': '2026-01-01', 'end_date': '2027-12-31'}).get_data(as_text=True)
+        assert 'value="ISS 25-643"' in body
+        assert 'value="Seeded Title"' in body
+        assert 'value="2026-01-01"' in body and 'value="2027-12-31"' in body
+        assert 'hx-trigger="load, click"' not in body
+
+    def test_the_contracts_page_carries_the_auto_open_marker(self, auth_client):
+        body = auth_client.get(CONTRACTS_PAGE, query_string={
+            'create': 'ISS 25-643', 'mode': 'manual', 'title': 'T'}).get_data(as_text=True)
+        assert 'data-auto-open-create="' in body
+        assert 'contract_number=ISS' in body and 'mode=manual' in body and 'title=T' in body
+
+    def test_no_create_arg_means_no_marker(self, auth_client):
+        body = auth_client.get(CONTRACTS_PAGE).get_data(as_text=True)
+        assert 'data-auto-open-create' not in body
+
+    def test_a_viewer_without_create_gets_no_marker(self, auth_client, monkeypatch):
+        from webapp.utils import rbac
+        from webapp.utils.rbac import Permission
+        allowed = {Permission.ACCESS_ADMIN_DASHBOARD, Permission.VIEW_CONTRACTS}
+        monkeypatch.setattr(rbac, 'get_user_permissions', lambda user: allowed)
+        monkeypatch.setattr('webapp.dashboards.admin.blueprint.has_permission',
+                            lambda user, perm: perm in allowed)
+        monkeypatch.setattr('webapp.dashboards.admin.blueprint.has_permission_any_facility',
+                            lambda user, perm, **kw: perm in allowed)
+        resp = auth_client.get(CONTRACTS_PAGE, query_string={'create': 'X'})
+        assert resp.status_code == 200
+        assert 'data-auto-open-create' not in resp.get_data(as_text=True)
+
+
 class TestNsfProgramTypeahead:
     """~240 programs is a list you search, not one you scroll."""
 

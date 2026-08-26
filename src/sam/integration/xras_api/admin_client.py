@@ -281,9 +281,27 @@ class XrasAdminClient(_XrasTransport):
     # verification helpers
 
     def _actions(self, request_number: str) -> List[Dict[str, Any]]:
-        """Actions for a request, via the **reports** family (report context)."""
-        payload = self.reader.get_request_by_number(request_number) or {}
-        return [a for a in (payload.get('actions') or []) if isinstance(a, dict)]
+        """Every action across the **reports** family (report context).
+
+        ``actionId`` is globally unique, so a by-id lookup needs no line
+        selection -- and a verify must not miss an action on a sibling line.
+        """
+        family = self.reader.get_request_family_by_number(request_number) or []
+        return [a for line in family if isinstance(line, dict)
+                for a in (line.get('actions') or []) if isinstance(a, dict)]
+
+    def _line(self, request_number: str,
+              request_id: Optional[int] = None) -> Dict[str, Any]:
+        """The line a write targeted (by ``request_id``), else the primary line.
+
+        One family read. A ``request_id`` the family no longer carries falls
+        back to the primary line -- ``delete_request`` is the one verify where
+        absence is the answer, and it reads the line directly.
+        """
+        from sam.queries.xras_requests import line_by_id, primary_line
+        family = self.reader.get_request_family_by_number(request_number) or []
+        line = line_by_id(family, request_id) if request_id is not None else None
+        return line or primary_line(family) or {}
 
     def action_status(self, request_number: str, action_id: int) -> Optional[str]:
         """The live ``actionStatus`` for one action, or ``None`` if not found."""
@@ -292,15 +310,16 @@ class XrasAdminClient(_XrasTransport):
                 return action.get('actionStatus')
         return None
 
-    def roster(self, request_number: str) -> List[Dict[str, Any]]:
-        """The request's roster, flattened to one row per *role*.
+    def roster(self, request_number: str,
+               request_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        """The roster of one line (the write's, by *request_id*), one row per *role*.
 
         PRIVILEGE(#4). WARNING: The reports payload **nests**: each ``roles[]`` entry carries a
         ``person`` plus its own ``roles[]`` list of
         ``{roleId, role, roleTypeId, …}``. Reading ``roleType`` off the outer
         object returns ``None``, which is a trap worth flattening once here.
         """
-        payload = self.reader.get_request_by_number(request_number) or {}
+        payload = self._line(request_number, request_id)
         flat: List[Dict[str, Any]] = []
         for entry in (payload.get('roles') or []):
             if not isinstance(entry, dict):
@@ -318,9 +337,10 @@ class XrasAdminClient(_XrasTransport):
                 })
         return flat
 
-    def resolve_pi(self, request_number: str) -> Optional[str]:
+    def resolve_pi(self, request_number: str,
+                   request_id: Optional[int] = None) -> Optional[str]:
         """The username of the request's PI — the default impersonation target."""
-        for row in self.roster(request_number):
+        for row in self.roster(request_number, request_id):
             if row.get('role_type_id') == PI_ROLE_TYPE_ID:
                 return row.get('username')
         return None
@@ -520,12 +540,12 @@ class XrasAdminClient(_XrasTransport):
         chosen = role_type(role)
         path = (f'/v1/requests/{int(request_id)}/roles/'
                 f'{quote(chosen.name, safe="")}/{quote(str(username), safe="")}')
-        before = self.roster(request_number)
+        before = self.roster(request_number, request_id)
         status, result, message, error = self._write('POST', path, xa_user=xa_user)
         role_id = result.get('roleId') if isinstance(result, dict) else None
 
         try:
-            after = self.roster(request_number)
+            after = self.roster(request_number, request_id)
             wanted = str(username).casefold()
             verified = any(str(r.get('username') or '').casefold() == wanted
                            and r.get('role_type_id') == chosen.type_id
@@ -553,11 +573,11 @@ class XrasAdminClient(_XrasTransport):
         the sweep's index entry gets it.
         """
         path = f'/v1/requests/{int(request_id)}/roles/{int(role_id)}'
-        before = self.roster(request_number)
+        before = self.roster(request_number, request_id)
         status, _, message, error = self._write('DELETE', path, xa_user=xa_user)
 
         try:
-            after = self.roster(request_number)
+            after = self.roster(request_number, request_id)
             verified = not any(r.get('role_id') == int(role_id) for r in after)
             detail = (f'roleId {role_id} gone' if verified
                       else f'roleId {role_id} still on the roster')
@@ -838,13 +858,13 @@ class XrasAdminClient(_XrasTransport):
         """
         params = {k: ('' if v is None else str(v)) for k, v in fields.items()}
         path = f'/v1/requests/{int(request_id)}/attributes'
-        before_src = self.reader.get_request_by_number(request_number) or {}
+        before_src = self._line(request_number, request_id)
         before = {k: before_src.get(k) for k in fields}
         status, _, message, error = self._write(
             'PUT', path, params=params, xa_user=xa_user, context=context)
 
         try:
-            after_src = self.reader.get_request_by_number(request_number) or {}
+            after_src = self._line(request_number, request_id)
             verified = self._fields_verified(after_src, params)
             after = {k: after_src.get(k) for k in fields}
             detail = 'attributes ' + ', '.join(
@@ -926,20 +946,23 @@ class XrasAdminClient(_XrasTransport):
                        context: Optional[str] = None) -> XrasWriteResult:
         """Delete a whole request. **Irreversible in XRAS.**
 
-        Verified by: the request no longer resolves through the reports family.
-        The pre-delete identity is captured for the audit row, because after
-        this there is nothing left to read.
+        Verified by: **this line** is absent from the reports family -- sibling
+        lines (a New beside the deleted Renewal) still resolve and must not read
+        as a failed delete. The pre-delete identity is captured for the audit
+        row, because after this there is nothing left to read.
         """
         path = f'/v1/requests/{int(request_id)}'
-        before = self._identity(self.reader.get_request_by_number(request_number))
+        before = self._identity(self.reader.get_request_line(
+            request_number, request_id=request_id))
         status, _, message, error = self._write(
             'DELETE', path, xa_user=xa_user, context=context)
 
         try:
-            after = self.reader.get_request_by_number(request_number)
+            after = self.reader.get_request_line(request_number,
+                                                 request_id=request_id)
             verified = after is None
-            detail = ('request no longer resolves' if verified
-                      else 'request still resolves')
+            detail = ('line no longer resolves in the family' if verified
+                      else 'line still resolves')
         except XrasSourceUnavailable as exc:
             verified, detail = None, f'verify read failed: {exc}'
 

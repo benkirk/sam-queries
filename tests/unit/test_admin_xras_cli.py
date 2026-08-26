@@ -47,7 +47,7 @@ class TestListMode:
     def test_json_envelope_shape(self, runner, cli_session):
         result = runner.invoke(cli, ['--format', 'json', 'xras'])
         assert result.exit_code == 0
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload['kind'] == 'xras_action_list'
         assert set(payload) >= {'kind', 'count', 'filters', 'limit', 'actions'}
         assert payload['count'] == len(payload['actions'])
@@ -58,7 +58,7 @@ class TestListMode:
             '--format', 'json', 'xras',
             '--status', 'failed', '--type', 'New', '--request', 'NCAR4232'])
         assert result.exit_code == 0
-        filters = json.loads(result.output)['filters']
+        filters = json.loads(result.stdout)['filters']
         assert filters['status'] == ['failed']
         assert filters['action_type'] == ['New']
         assert filters['request_number'] == 'NCAR4232'
@@ -68,7 +68,7 @@ class TestListMode:
             '--format', 'json', 'xras',
             '--status', 'failed', '--status', 'received'])
         assert result.exit_code == 0
-        assert json.loads(result.output)['filters']['status'] == [
+        assert json.loads(result.stdout)['filters']['status'] == [
             'failed', 'received']
 
     def test_an_invalid_status_is_rejected_by_click(self, runner, cli_session):
@@ -78,13 +78,13 @@ class TestListMode:
     def test_last_window_is_applied(self, runner, cli_session):
         result = runner.invoke(cli, ['--format', 'json', 'xras', '--last', '7d'])
         assert result.exit_code == 0
-        assert json.loads(result.output)['filters']['start_date'] is not None
+        assert json.loads(result.stdout)['filters']['start_date'] is not None
 
     def test_no_window_means_all_time(self, runner, cli_session):
         """A CLI invocation is explicit by nature; a hidden default window would
         make --summary quietly wrong."""
         result = runner.invoke(cli, ['--format', 'json', 'xras'])
-        assert json.loads(result.output)['filters']['start_date'] is None
+        assert json.loads(result.stdout)['filters']['start_date'] is None
 
 
 class TestReadinessMode:
@@ -93,7 +93,7 @@ class TestReadinessMode:
                             lambda: None)
         result = runner.invoke(cli, ['--format', 'json', 'xras', '--readiness'])
         assert result.exit_code == 0
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload['kind'] == 'xras_readiness'
         assert payload['total'] == 0
 
@@ -115,7 +115,7 @@ class TestReadinessMode:
                             lambda: snapshot)
         result = runner.invoke(cli, ['--format', 'json', 'xras', '--readiness'])
         assert result.exit_code == 0
-        rows = json.loads(result.output)['requests']
+        rows = json.loads(result.stdout)['requests']
         assert [r['request_number'] for r in rows] == ['RED0001', 'GREEN0001']
         assert rows[0]['messages'] == ['PI x is not in database']
 
@@ -126,7 +126,7 @@ class TestMnemonicReportMode:
                             lambda: None)
         result = runner.invoke(cli, ['--format', 'json', 'xras', '--mnemonic-report'])
         assert result.exit_code == 0
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload['kind'] == 'xras_mnemonic_report'
         assert payload['targets'] == []
 
@@ -153,9 +153,100 @@ class TestMnemonicReportMode:
                             lambda: snapshot)
         result = runner.invoke(cli, ['--format', 'json', 'xras', '--mnemonic-report'])
         assert result.exit_code == 0
-        targets = json.loads(result.output)['targets']
+        targets = json.loads(result.stdout)['targets']
         assert [t['name'] for t in targets] == ['Top Org', 'Lesser Org']
         assert targets[0]['unblock_count'] == 2
+
+
+class TestIdentityReportMode:
+
+    @staticmethod
+    def _feed(monkeypatch, rows):
+        from sam.queries.xras_accounts import PendingFeed
+        monkeypatch.setattr('sam.queries.xras_accounts.load_pending_worklist_rows',
+                            lambda: PendingFeed(rows=rows, checked=True))
+
+    def test_no_snapshot_is_an_empty_report_not_an_error(self, runner, cli_session,
+                                                         monkeypatch):
+        from sam.queries.xras_accounts import PendingFeed
+        monkeypatch.setattr('sam.queries.xras_accounts.load_pending_worklist_rows',
+                            lambda: PendingFeed(reason='no_snapshot'))
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--identity-report'])
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.stdout)
+        assert payload['kind'] == 'xras_identity_report'
+        # Feed A may hold rows other tests committed; none is a merge target.
+        assert payload['targets'] == []
+
+    def test_a_placeholder_sam_holds_is_a_target(self, runner, cli_session,
+                                                 monkeypatch):
+        from factories import make_email_address, make_user
+        mail = make_email_address(session=cli_session, user=make_user(cli_session))
+        self._feed(monkeypatch, [{
+            'username': 'ghost-user-cli1', 'classification': 'absent',
+            'remedy': 'create', 'placeholder': True, 'is_reconciled': False,
+            'roles': ('PI',), 'sources': ['reports'], 'waiting_since': None,
+            'person': {'email': mail.email_address},
+            'actions': [{'action_log_id': None, 'request_number': 'NCAR0777',
+                         'action_type': 'New', 'status': 'Approved',
+                         'received_time': None, 'submit_date': '2026-08-20',
+                         'source': 'reports', 'would_succeed': None,
+                         'preflight_status': None, 'reject_messages': []}]}])
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--identity-report'])
+        assert result.exit_code == 0, result.output
+        targets = json.loads(result.stdout)['targets']
+        assert [t['username'] for t in targets] == ['ghost-user-cli1']
+        assert targets[0]['target_username'] == mail.user.username
+        assert targets[0]['sample'] == ['NCAR0777']
+
+    def test_rich_mode_renders(self, runner, cli_session, monkeypatch):
+        from sam.queries.xras_accounts import PendingFeed
+        monkeypatch.setattr('sam.queries.xras_accounts.load_pending_worklist_rows',
+                            lambda: PendingFeed(reason='no_snapshot'))
+        result = runner.invoke(cli, ['xras', '--identity-report'])
+        assert result.exit_code == 0, result.output
+
+
+class TestContractReportMode:
+
+    def test_no_snapshot_is_an_empty_report_not_an_error(self, runner, cli_session,
+                                                         monkeypatch):
+        monkeypatch.setattr('sam.integration.xras_api.cache.load_requests_index',
+                            lambda: None)
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--contract-report'])
+        assert result.exit_code == 0
+        payload = json.loads(result.stdout)
+        assert payload['kind'] == 'xras_contract_report'
+        assert payload['targets'] == [] and payload['variants'] == []
+
+    def test_it_ranks_numbers_from_the_snapshot(self, runner, cli_session,
+                                                monkeypatch):
+        def _entry(num, number):
+            return {'request_number': num, 'preflight_rollup': 'failed',
+                    'pi': {'username': 'pi-x'}, 'activity_date': '2026-08-20',
+                    'actions': [{'action_id': 1, 'preflight': {
+                        'status': 'failed', 'messages': ['x'],
+                        'resolved': {'unresolved_grants': [
+                            {'number': number, 'core': number, 'reason': 'missing',
+                             'candidates': [], 'agency': 'NSF', 'title': 'T'}]}}}]}
+        snapshot = {'generated_at': '2026-08-24', 'rows': [
+            _entry('NCAR0001', '9980101'), _entry('NCAR0002', '9980101'),
+            _entry('NCAR0003', 'ISS 25-643')]}
+        monkeypatch.setattr('sam.integration.xras_api.cache.load_requests_index',
+                            lambda: snapshot)
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--contract-report'])
+        assert result.exit_code == 0, result.output
+        targets = json.loads(result.stdout)['targets']
+        assert [t['number'] for t in targets] == ['9980101', 'ISS 25-643']
+        assert targets[0]['unblock_count'] == 2
+        assert targets[0]['suggested_source'] == 'NSF'
+
+    def test_rich_mode_renders(self, runner, cli_session, monkeypatch):
+        monkeypatch.setattr('sam.integration.xras_api.cache.load_requests_index',
+                            lambda: None)
+        result = runner.invoke(cli, ['xras', '--contract-report'])
+        assert result.exit_code == 0, result.output
+        assert 'No failing push cites a contract' in result.output
 
 
 class TestSummaryMode:
@@ -169,7 +260,7 @@ class TestSummaryMode:
         """
         result = runner.invoke(cli, ['--format', 'json', 'xras', '--summary'])
         assert result.exit_code == 0
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload['kind'] == 'xras_action_summary'
         assert set(payload['by_status']) >= {
             'received', 'processed', 'manual', 'failed', 'rechecked'}
@@ -220,7 +311,7 @@ class TestDetailMode:
         result = runner.invoke(
             cli, ['--format', 'json', 'xras', '--show', '999999999'])
         assert result.exit_code == 1
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload['kind'] == 'xras_action'
         assert payload['error'] == 'not_found'
         assert payload['action_log_id'] == 999999999
@@ -238,7 +329,7 @@ class TestWriteGuards:
         invites scripting a write loop nobody reviewed."""
         result = runner.invoke(cli, ['--format', 'json', 'xras', '--recheck', '1'])
         assert result.exit_code == 2
-        assert json.loads(result.output)['error'] == 'json_unsupported_for_writes'
+        assert json.loads(result.stdout)['error'] == 'json_unsupported_for_writes'
 
     def test_the_guard_fires_before_any_app_is_built(self, runner, cli_session):
         """If it did not, the rejection would cost a full Flask app construction."""
@@ -419,7 +510,7 @@ class TestPersonMode:
                             lambda u: None)
         result = runner.invoke(cli, ['--format', 'json', 'xras',
                                      '--person', 'nobody'])
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload == {'kind': 'xras_person', 'username': 'nobody',
                            'found': False, 'person': None}
 
@@ -484,7 +575,7 @@ class TestFamilyMode:
         self._configure(monkeypatch, self._lines())
         result = runner.invoke(cli, ['--format', 'json', 'xras',
                                      '--family', 'UCUB0089'])
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload['kind'] == 'xras_request_family'
         assert payload['found'] is True
         assert payload['family']['new_request_id'] == 111
@@ -503,7 +594,7 @@ class TestTwoSidedMappingAudit:
         monkeypatch.delenv('XRAS_API_KEY', raising=False)
         result = runner.invoke(cli, ['--format', 'json', 'xras',
                                      '--validate-mapping'])
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         # `live_checked` False distinguishes "XRAS sends nothing SAM lacks"
         # from "we never asked" — the report must not imply the stronger claim.
         assert payload['live_checked'] is False
@@ -522,7 +613,7 @@ class TestTwoSidedMappingAudit:
             lambda: [999999999])
         result = runner.invoke(cli, ['--format', 'json', 'xras',
                                      '--validate-mapping'])
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload['live_checked'] is True
         assert 999999999 in payload['xras_only_keys']
         assert result.exit_code == EXIT_NOT_FOUND
@@ -613,7 +704,7 @@ class TestOpportunityAudit:
         monkeypatch.delenv('XRAS_API_KEY', raising=False)
         result = runner.invoke(cli, ['--format', 'json', 'xras',
                                      '--validate-opportunities'])
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload['kind'] == 'xras_opportunity_mapping'
         assert payload['live_checked'] is False
         assert payload['live_id_count'] is None
@@ -650,7 +741,7 @@ class TestOpportunityAudit:
             9_100_001, type_id=500024, panel_id=500021,
             name='Small Allocation (University)', alloc_type='Small')],
             monkeypatch)
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert 9_100_001 in payload['unmapped_ids']
         assert result.exit_code == EXIT_SUCCESS
 
@@ -667,7 +758,7 @@ class TestOpportunityAudit:
         row = make_xras_opportunity_mapping(session, allocation_type=alloc_type)
 
         result = self._run(runner, [], monkeypatch)
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert row.opportunity_id in payload['dangling_ids']
         assert result.exit_code == EXIT_NOT_FOUND
 
@@ -681,7 +772,7 @@ class TestOpportunityAudit:
             9_100_002, type_id=500023, panel_id=500022,
             name='Large Allocation (University) - Fall 2026',
             alloc_type='Large')], monkeypatch)
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         agreed = {e['opportunity_id']: e for e in payload['proposal']['agree']}
         assert 9_100_002 in agreed
         assert agreed[9_100_002]['pair'] == ['CHAP', 'CHAP']
@@ -701,7 +792,7 @@ class TestOpportunityAudit:
             9_100_003, type_id=500026, panel_id=500021,
             name='University small request - unsponsored',
             alloc_type='Exploratory')], monkeypatch)
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         review = {e['opportunity_id']: e for e in payload['proposal']['review']}
         assert 9_100_003 in review
         assert review[9_100_003]['xras'] != review[9_100_003]['ladder']
@@ -718,7 +809,7 @@ class TestOpportunityAudit:
         result = self._run(runner, [self._payload(
             9_100_004, type_id=999_001, panel_id=999_002,
             name='Wyoming Small Allocation', alloc_type='Small')], monkeypatch)
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         unknown = [e['opportunity_id']
                    for e in payload['proposal']['unknown_pair']]
         assert 9_100_004 in unknown
@@ -748,7 +839,7 @@ class TestOpportunityAudit:
             row.opportunity_id, type_id=500026, panel_id=500021,
             name='already decided by a human',
             alloc_type='Exploratory')], monkeypatch)
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
 
         assert row.opportunity_id in payload['mapped_ids']
         assert row.opportunity_id not in payload['unmapped_ids']
@@ -818,6 +909,11 @@ class TestWorklistRendering:
         assert 'ghost-user-1' in out
         assert 'create' in out and 'placeholder' in out
         assert 'NCAR0001' in out
+
+    def test_a_ready_row_names_its_merge_target(self):
+        out = self._render(self._payload(
+            remedy='merge', merge_target={'username': 'realname', 'active': True}))
+        assert 'merge into realname' in out
 
     def test_an_inactive_row_says_reactivate(self):
         out = self._render(self._payload(classification='inactive',
@@ -910,7 +1006,7 @@ class TestVocabularyAudit:
         self._stub_live(monkeypatch, self.LIVE_ROLES, self.LIVE_PANELS)
         result = runner.invoke(cli, ['--format', 'json', 'xras',
                                      '--validate-vocabulary'])
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload['drift'] == [] and payload['unresolved'] == []
         # The DB half: both legacy names resolve to real allocation_type rows.
         resolved = {r['name'] for r in payload['panel_authorized']['types']}
@@ -924,7 +1020,7 @@ class TestVocabularyAudit:
         self._stub_live(monkeypatch, roles, self.LIVE_PANELS)
         result = runner.invoke(cli, ['--format', 'json', 'xras',
                                      '--validate-vocabulary'])
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert any('roleTypeId 13' in d for d in payload['drift'])
         assert result.exit_code == EXIT_NOT_FOUND
 
@@ -933,7 +1029,7 @@ class TestVocabularyAudit:
         self._stub_live(monkeypatch, self.LIVE_ROLES, self.LIVE_PANELS[1:])
         result = runner.invoke(cli, ['--format', 'json', 'xras',
                                      '--validate-vocabulary'])
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert any('500021' in d for d in payload['drift'])
         assert result.exit_code == EXIT_NOT_FOUND
 
@@ -943,7 +1039,7 @@ class TestVocabularyAudit:
         monkeypatch.delenv('XRAS_API_KEY', raising=False)
         result = runner.invoke(cli, ['--format', 'json', 'xras',
                                      '--validate-vocabulary'])
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload['role_types']['live_checked'] is False
         assert payload['panels']['live_checked'] is False
         assert {r['name'] for r in payload['panel_authorized']['types']} == {
@@ -969,7 +1065,7 @@ class TestVocabularyAudit:
         self._stub_live(monkeypatch, self.LIVE_ROLES, panels)
         result = runner.invoke(cli, ['--format', 'json', 'xras',
                                      '--validate-vocabulary'])
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload['drift'] == []
         assert payload['panels']['extra_live'] == ['500099 (Brand New Panel)']
         assert result.exit_code == EXIT_SUCCESS

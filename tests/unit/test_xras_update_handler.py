@@ -386,6 +386,18 @@ class TestContracts:
         assert contract.contract_id in {pc.contract_id
                                         for pc in existing['project'].contracts}
 
+    def test_an_unresolvable_grant_rides_the_rejection(self, committing, existing,
+                                                       mapped_resource):
+        from sam.xras.errors import XrasActionRejected
+        payload = action_for(existing, wire_resource(mapped_resource.xras_key,
+                                                     '250000'))
+        payload['grants'] = [{'grantNumber': 'AGS-9990203', 'title': 'Winds'}]
+        with pytest.raises(XrasActionRejected) as exc:
+            handle_update(committing, payload)
+        [grant] = exc.value.resolved['unresolved_grants']
+        assert (grant['number'], grant['reason'], grant['title']) == (
+            'AGS-9990203', 'missing', 'Winds')
+
     def test_an_already_linked_contract_is_not_duplicated(self, committing, existing,
                                                           mapped_resource, session):
         from factories import make_contract, make_project_contract

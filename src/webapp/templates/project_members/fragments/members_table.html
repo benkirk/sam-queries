@@ -119,7 +119,7 @@ hx-target="#userDetailsModalBody" hx-swap="innerHTML"
                     {% endif %}
                 </td>
                 {% if can_manage %}
-                <td class="text-end">
+                <td class="text-end text-nowrap">
                     {% if member.role == 'Lead' %}
                         {# Cannot modify the lead #}
                         <span class="text-muted small" title="Project lead cannot be removed">

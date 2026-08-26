@@ -114,12 +114,12 @@ class TestJsonOutput:
         """
         result = runner.invoke(cli, ['--format', 'json', 'contracts', '--validate'])
         assert result.exit_code in (0, 2), result.output
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['kind'] == 'contract_audit'
 
     def test_envelope_top_level_keys(self, runner, mock_db_session):
         result = runner.invoke(cli, ['--format', 'json', 'contracts', '--validate'])
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         for required in ('kind', 'scope', 'contracts_audited', 'checked_sources',
                          'total_findings', 'checks', 'program_findings',
                          'source_check'):
@@ -131,7 +131,7 @@ class TestJsonOutput:
     def test_every_check_is_present_even_when_clean(self, runner, mock_db_session):
         """A missing section reads as "not run"; a zero count reads as clean."""
         result = runner.invoke(cli, ['--format', 'json', 'contracts', '--validate'])
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert [c['key'] for c in data['checks']] == [k for k, _l, _s in CHECKS]
         for check in data['checks']:
             assert check['count'] == len(check['findings'])
@@ -140,7 +140,7 @@ class TestJsonOutput:
     def test_findings_carry_the_contract_schema(self, runner, mock_db_session):
         result = runner.invoke(cli, ['--format', 'json', 'contracts', '--validate',
                                      '--all'])
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         findings = [f for c in data['checks'] for f in c['findings']]
         if not findings:
             pytest.skip('snapshot has no contract findings')
@@ -152,7 +152,7 @@ class TestJsonOutput:
     def test_all_scope_is_reported(self, runner, mock_db_session):
         result = runner.invoke(cli, ['--format', 'json', 'contracts', '--validate',
                                      '--all'])
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['scope'] == 'all'
 
 
@@ -168,7 +168,7 @@ class TestCheckSources:
         with patch('sam.integration.awards.resolve_award', return_value=_award()):
             result = self._invoke(runner)
         assert result.exit_code in (0, 2), result.output
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['checked_sources'] is True
         assert data['source_check']['checked'] == 3
 
@@ -178,14 +178,14 @@ class TestCheckSources:
                    side_effect=AwardSourceUnavailable('NSF is down')):
             result = self._invoke(runner)
         assert result.exit_code in (0, 2), result.output
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['source_check']['unchecked'] == 3
         assert data['source_check']['checked'] == 0
 
     def test_no_record_is_distinct_from_divergence(self, runner, mock_db_session):
         with patch('sam.integration.awards.resolve_award', return_value=None):
             result = self._invoke(runner)
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['source_check']['no_record'] == 3
         assert data['source_check']['divergent'] == 0
 
@@ -196,7 +196,7 @@ class TestCheckSources:
                         unavailable_fields=frozenset({'pi', 'monitor'}))
         with patch('sam.integration.awards.resolve_award', return_value=record):
             result = self._invoke(runner)
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         diverged = {d['field']
                     for c in data['source_check']['contracts']
                     for d in c['divergences']}

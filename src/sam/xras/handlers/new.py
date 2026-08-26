@@ -102,7 +102,7 @@ class NewHandler(ActionHandler):
         self.mnemonic = resolve_mnemonic_code(
             self.session, self.action, self.errors,
             pi_username=self.roster.pi_username, pi=self.roster.pi)
-        self.contracts, contract_warnings = plan_contracts(
+        self.contracts, contract_warnings, self.unresolved_grants = plan_contracts(
             self.session, self.action, self.errors)
 
         # WARNING: Before `_plan_allocations()`, and that ordering is now load-bearing: the

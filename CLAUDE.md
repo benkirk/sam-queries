@@ -621,6 +621,7 @@ sam-search --format json project SCSG0001 | jq          # JSON envelopes everywh
 sam-admin user benkirk --validate
 sam-admin project SCSG0001 --validate ; sam-admin project SCSG0001 --reconcile
 sam-admin accounting --disk --dry-run                   # summary rebuild/reconcile ops
+sam-admin xras --readiness | --mnemonic-report | --contract-report | --identity-report   # XRAS boards (docs/xras/)
 # Cache refresh — HTTP client for POST /api/v1/admin/cache/refresh (caches live
 # in the running webapp + Redis, NOT the DB). Needs SAM_API_USER / SAM_API_PASS.
 sam-admin cache --refresh [--category flask|chart|usage|scans|jobs]
@@ -640,6 +641,7 @@ Jinja2 filters are registered in `create_app()` — use them in every template.
 | Date / datetime | `{{ x \| fmt_date }}` | `fmt.date_str(x)` |
 | Byte size | `{{ x \| fmt_size }}` | `fmt.size(x)` |
 | Hours / charge factors / relative time | `fmt_hours`, `fmt_factor`, `fmt_ago` | `fmt.hours(x)`, … |
+| Count + agreeing noun (`3 pushes`) | `{{ n \| fmt_plural('push', 'pushes') }}` | `fmt.plural(n, 'push', 'pushes')` |
 | UTC→local, allocation units | `to_local_dt`, `alloc_unit` | — |
 
 **Key behaviors**
@@ -765,8 +767,10 @@ named `xras_activation.py` **is** exported, safely, because it imports no
 `sam.notify`.
 ❌ **DON'T** import Click, Flask, `rich` or `kubernetes` anywhere under
 `src/scheduling/` — a task writes to `ctx.logger`, never to stdout, because the
-CronJob's stdout is a JSON envelope. `test_task_ledger.py` AST-walks the
-package.
+CronJob's stdout is a JSON envelope. The CLI routes logging to stderr as `LEVEL
+name: message` (`configure_logging` in `src/cli/core/utils.py`); `kubectl logs`
+merges the streams, so `cirrus_healthcheck.sh` strips that shape before
+parsing. `test_task_ledger.py` AST-walks the package.
 
 ---
 

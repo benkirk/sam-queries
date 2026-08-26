@@ -64,12 +64,15 @@ def ctx(session):
 
 
 def _request(request_id: int, number: str, username: str = 'ghost-user-1',
-             end_date: str = None):
+             end_date: str = None, email: str = None):
+    person = {'username': username, 'firstName': 'Ada',
+              'lastName': 'Invented', 'isReconciled': False}
+    if email:
+        person['email'] = email
     return {
         'requestId': request_id, 'requestNumber': number, 'endDate': end_date,
         'requestStatus': 'Approved', 'requestType': 'New',
-        'roles': [{'person': {'username': username, 'firstName': 'Ada',
-                              'lastName': 'Invented', 'isReconciled': False},
+        'roles': [{'person': person,
                    'roles': [{'role': 'PI', 'roleTypeId': 13,
                               'isAccountToBeCreated': True}]}],
     }
@@ -446,6 +449,32 @@ class TestClassification:
         assert detail['accounts']['total'] == 1
         assert detail['accounts']['absent'] == 1
         assert 'ghost-user-42' in detail['accounts_sample']
+
+    def test_a_multi_line_project_indexes_its_primary_line(self, ctx, wire):
+        """XRAS pages by descending requestId; the current line is the one
+        with the highest actionId, which here is the OLDER requestId."""
+        from sam.integration.xras_api.cache import load_requests_index
+        older = dict(_request(1, 'ZZZZ9997'),
+                     actions=[{'actionId': 20, 'actionType': 'Renewal',
+                               'actionStatus': 'Approved'}])
+        newer = dict(_request(2, 'ZZZZ9997'),
+                     actions=[{'actionId': 10, 'actionType': 'New',
+                               'actionStatus': 'Approved'}])
+        wire([[newer, older]])
+        mod.xras_sweep(ctx())
+        rows = [r for r in (load_requests_index() or {}).get('rows', [])
+                if r['request_number'] == 'ZZZZ9997']
+        assert len(rows) == 1
+        assert [a['action_id'] for a in rows[0]['actions']] == [20]
+
+    def test_a_placeholder_sam_already_holds_is_ready_to_merge(self, ctx, wire,
+                                                               session):
+        from factories import make_email_address, make_user
+        mail = make_email_address(session, make_user(session))
+        wire([[_request(1, 'ZZZZ9998', username='ghost-user-43',
+                        email=mail.email_address)]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['accounts']['merge_ready'] == 1
 
     def test_an_active_sam_user_is_not_counted(self, ctx, wire, session):
         from factories import make_user

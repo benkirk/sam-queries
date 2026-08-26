@@ -151,7 +151,7 @@ class UpdateHandler(ActionHandler):
         # the project had when it arrived. Nothing in the suite would catch that.
         self.panel_authorised = auth_at_panel_meeting(self.session, self.action)
 
-        self.contracts, contract_warnings = plan_contracts(
+        self.contracts, contract_warnings, self.unresolved_grants = plan_contracts(
             self.session, self.action, self.errors)
 
         self.planned: List[tuple] = []

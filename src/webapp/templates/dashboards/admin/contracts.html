@@ -19,6 +19,12 @@
   than gated on shown.bs.collapse, so nothing lazy-loads behind the toggle.
 #}
 
+{% if auto_create_url %}
+{# Opened from a contract-blocker link: form-helpers.js loads this into the
+   New Contract modal and shows it on DOMContentLoaded (CSP: no inline JS). #}
+<div data-auto-open-create="{{ auto_create_url }}"></div>
+{% endif %}
+
 <!-- Search Existing Contracts -->
 <div class="row">
     <div class="col-12">

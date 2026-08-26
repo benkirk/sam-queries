@@ -37,9 +37,10 @@ from sam.queries.xras_accounts import (is_placeholder, iter_roster_entries,
                                        role_in_window)
 
 #: Action fields carried into the entry. The states are what the card's
-#: withdraw/re-submit offers key on, since the authoritative legal-moves read
-#: (``rules{allowedOperations}`` on ``GET /v1/requests/<rid>``) is 401 for our
-#: credential — PRIVILEGE(#1).
+#: withdraw/re-submit offers key on. The authoritative legal-moves read
+#: (``rules{allowedOperations}`` on ``GET /v1/requests/<rid>``) is XA-USER-scoped
+#: (200 as the request's PI) and parked, not unavailable -- see
+#: ``docs/plans/XRAS_DATA_MODEL_UPLIFT.md``.
 _ACTION_KEYS = ('actionId', 'actionType', 'actionStatus', 'submitDate')
 
 #: An action in one of these states is finished; the card offers nothing on it.
@@ -197,6 +198,55 @@ def actions_from_payload(payload: Dict[str, Any],
 _ROLLUP_ORDER = ('failed', 'manual', 'incomplete', 'rechecked')
 
 
+#: The day ACCESS repointed XRAS at sam.hpc.ucar.edu. From here on, an approved
+#: action with no xras_action_log row was never posted; before it, legacy SAM
+#: received the post and this log cannot see it.
+XRAS_REPOINTED_ON = date(2026, 8, 24)
+
+#: An action still in XRAS's review pipeline.
+IN_FLIGHT_ACTION_STATUSES = ('Submitted', 'Under Review')
+
+
+#: A log row in one of these states is a push that has NOT landed, so the action
+#: is still XRAS admin's pending work even though ``push_state`` says seen_in_log.
+UNLANDED_LOG_STATUSES = ('received', 'failed', 'manual')
+
+
+def is_pending_work(entry: Mapping[str, Any]) -> bool:
+    """Would XRAS admin's "Recent submissions" list show this request?
+
+    Measured against that list on 2026-08-24 (46 of 48 matched; the misses were
+    actions the sweep had not pulled). It is state, not a date window: an action
+    the sweep checked that is either still in flight, or Approved and known
+    unposted — no SAM project yet, or entered after the repoint with no log row.
+    An action outside the sweep window (no ``preflight``) is not recent work.
+    ``seen_in_log`` alone does not mean posted: the first failed re-post after
+    the cutover (NCAR4262, #8/#9) showed the log row's own status decides.
+    """
+    for action in entry.get('actions') or ():
+        preflight = action.get('preflight')
+        if not preflight:
+            continue
+        status = action.get('action_status')
+        if status in IN_FLIGHT_ACTION_STATUSES:
+            return True
+        if status != 'Approved':
+            continue
+        push_state = preflight.get('push_state')
+        if push_state == 'pending':
+            return True
+        if push_state == 'seen_in_log':
+            detail = preflight.get('push_detail') or {}
+            if detail.get('status') in UNLANDED_LOG_STATUSES:
+                return True
+            continue
+        if push_state == 'unknown':
+            when = action.get('entry_date') or action.get('submit_date')
+            if when is not None and _as_date(when) >= XRAS_REPOINTED_ON:
+                return True
+    return False
+
+
 def _preflight_rollup(preflights: Optional[Mapping[Any, dict]]) -> Optional[str]:
     """The worst verdict across a request's actions, preferring the PENDING ones.
 
@@ -317,6 +367,38 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
                                      for r in roster),
         'refreshed_at': refreshed_at,
     }
+
+
+def primary_line(lines: Any) -> Optional[Dict[str, Any]]:
+    """The request line holding the project's globally most-recent action.
+
+    A projcode can have several lines (a New plus Renewals, each its own
+    ``requestId``); the one with the highest ``actionId`` is the current
+    request. Never ``lines[0]``: XRAS pages by descending ``requestId``, which
+    is not the same order.
+    """
+    def _max_action(line):
+        ids = [a.get('actionId') for a in (line.get('actions') or ())
+               if isinstance(a.get('actionId'), int)]
+        return max(ids) if ids else -1
+    candidates = [ln for ln in (lines or ()) if isinstance(ln, dict)]
+    return max(candidates, key=_max_action) if candidates else None
+
+
+def line_by_id(lines: Any, request_id: Any) -> Optional[Dict[str, Any]]:
+    """The family line whose ``requestId`` is *request_id*, or ``None``."""
+    try:
+        wanted = int(request_id)
+    except (TypeError, ValueError):
+        return None
+    for line in lines or ():
+        if isinstance(line, dict):
+            try:
+                if int(line.get('requestId')) == wanted:
+                    return line
+            except (TypeError, ValueError):
+                continue
+    return None
 
 
 def request_family(payloads: Any, *, pending_push: bool = False

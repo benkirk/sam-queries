@@ -241,7 +241,7 @@ class TestCrossReference:
                    return_value=record):
             result = runner.invoke(cli, ['--format', 'json', 'awards', number])
 
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['in_sam']['status'] == 'suspect_match'
         assert data['in_sam']['divergences'] == []
         assert data['in_sam']['source_summary']['title'] == 'MEALS'
@@ -304,7 +304,7 @@ class TestSearchOutput:
             result = runner.invoke(cli, ['--format', 'json', 'awards',
                                          '--search', 'ncar'])
 
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['already_in_sam'] == 1
         by_number = {r['contract_number']: r for r in data['results']}
         assert by_number[number]['in_sam']['contract_number'] == number
@@ -317,7 +317,7 @@ class TestSearchOutput:
                                          '--search', 'turbulence',
                                          '--limit', '4'])
         assert result.exit_code == 0, result.output
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['kind'] == 'award_search_results'
         assert data['query'] == 'turbulence'
         assert data['limit'] == 4
@@ -334,14 +334,14 @@ class TestSearchOutput:
                    return_value=([_award()], [])):
             result = runner.invoke(cli, ['--format', 'json', 'awards',
                                          '--search', 'ncar'])
-        assert 'errors' in json.loads(result.output)
+        assert 'errors' in json.loads(result.stdout)
 
     def test_lookup_envelope_is_pure_json(self, runner, mock_db_session):
         with patch('sam.integration.awards.resolve_award',
                    return_value=_award()):
             result = runner.invoke(cli, ['--format', 'json', 'awards',
                                          'AGS-1852977'])
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['kind'] == 'award'
         assert data['contract_number'] == 'AGS-1852977'
         assert data['award']['provenance'] == 'NSF Awards API'
@@ -352,7 +352,7 @@ class TestSearchOutput:
             result = runner.invoke(cli, ['--format', 'json', 'awards',
                                          'DE-SC0012671'])
         assert result.exit_code == 1
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data == {'kind': 'award', 'error': 'not_found',
                         'contract_number': 'DE-SC0012671', 'source': None}
 
@@ -362,7 +362,7 @@ class TestSearchOutput:
             result = runner.invoke(cli, ['--format', 'json', 'awards',
                                          'DE-SC0012671', '--source', 'DOE'])
         assert result.exit_code == 2
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data['error'] == 'source_unavailable'
         assert data['source'] == 'DOE'
         assert 'down' in data['reason']

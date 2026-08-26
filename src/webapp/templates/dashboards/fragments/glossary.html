@@ -215,3 +215,69 @@ itself is inactive</strong> (deactivated)
 the project is still active, but this user's
 <strong>membership has ended</strong>.
 {%- endmacro %}
+
+
+{# XRAS Activations: needs attention vs. everything in the window (popover) #}
+{% macro g_xras_attention_queue(recent_days) -%}
+<strong>Off &mdash; needs attention.</strong> An action whose project is still
+<strong>waiting for activation</strong>, a notice <strong>nobody has sent</strong>,
+or anything <strong>received in the last {{ recent_days }} days</strong>. No date
+filter: a New nobody activated three months ago is exactly the point.
+<br><br><strong>Dismiss</strong> takes a row out of this view at once and
+suppresses its automatic notice; the row stays, grayed with <em>Restore</em>,
+under Everything in the window. Activate and Notify clear their own prompts.
+<br><br><strong>On &mdash; everything in the window</strong>, every processed
+action within the date filter above, whether or not it needs anything.
+{%- endmacro %}
+
+{# XRAS Remediations: pending work vs. everything (popover) #}
+{% macro g_xras_pending_work() -%}
+<strong>Off &mdash; pending work only.</strong> The same population as XRAS
+admin&rsquo;s <em>Recent submissions</em>: a request with an action the last
+sweep checked that is still <strong>in review</strong> (Submitted / Under
+Review), or <strong>Approved and not yet posted to SAM</strong> &mdash; no SAM
+project yet, or arrived after the repoint with no action-log row. No date
+filter: an old approval nobody pushed is exactly the point.
+<br><br><strong>On &mdash; everything the sweep found</strong>, including
+requests already applied in SAM and older actions outside the sweep
+window, with the date filter above applied. This is the only view with
+&ldquo;not checked&rdquo; rows, so <em>Check all</em> lives here.
+{%- endmacro %}
+
+
+{# XRAS Remediations: the mnemonic-unblock strip (popover) #}
+{% macro g_xras_mnemonic_strip() -%}
+Ranks the organizations and institutions whose <strong>missing mnemonic
+code</strong> blocks the failing pushes in view. SAM mints a project code from
+the PI&rsquo;s org (internal) or institution (external) mnemonic; with none
+linked, posting a New is rejected (a posting error, HTTP 422) and the
+request waits. Create the
+code in Admin &rarr; Organizations and the next sweep drops the org from
+this list. The count is the pushes that one link unblocks; PIs with no
+current affiliation need a membership fix instead and are counted apart.
+{%- endmacro %}
+
+{# XRAS Remediations: the contract-blockers strip (popover) #}
+{% macro g_xras_contract_strip() -%}
+Ranks the <strong>grant numbers SAM holds no contract for</strong> among the
+failing pushes in view. The New handler links a contract, never creates one,
+so a number SAM has never seen is rejected at posting (a posting error,
+HTTP 422) until a <code>contract</code> row exists. Each number opens Admin &rarr; Contracts with the form seeded from
+XRAS (title, dates) &mdash; look-up mode for NSF awards, manual for project
+references. A number that would <em>tie</em> against existing rows is a
+spelling variant to reconcile, not a row to create, and gets no link. Rows
+created since the sweep drop out on their own.
+{%- endmacro %}
+
+{# XRAS Remediations: the identity strip (popover) #}
+{% macro g_xras_identity_strip() -%}
+Ranks the <strong>ARC placeholders</strong> (<code>&lt;name&gt;-user-&lt;token&gt;</code>)
+among the requests in view whose email SAM already holds on an
+<strong>active</strong> account. Every active SAM account resolves in XRAS, so
+that account is a merge target already: merging deletes the placeholder and
+moves its roles onto the real username, and XRAS sends the real username from
+then on. The match is the email, never the name &mdash; a name-only match can
+pick the wrong one of two real people. Placeholders whose email SAM does not
+hold still need an account created first; merged rows drop out on their own.
+{%- endmacro %}
+

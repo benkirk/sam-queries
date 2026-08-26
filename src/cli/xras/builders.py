@@ -196,16 +196,11 @@ def build_account_worklist(session, *, since=None, until=None,
     is empty" from "we could not read Feed B", because the second one means the
     number it is looking at is a **subset of the queue** and the first does not.
     """
-    from sam.queries.xras_accounts import (enrich_worklist,
-                                           get_account_worklist,
-                                           stamp_waiting_days,
-                                           worklist_counts)
+    from sam.queries.xras_accounts import worklist_counts
 
-    rows = get_account_worklist(session, since=since, until=until,
-                                pending_rows=pending_rows)
-    stamp_waiting_days(rows)
-    enrichment = (enrich_worklist(rows, max_lookups=max_lookups)
-                  if enrich else None)
+    rows, enrichment = _stamped_worklist(session, since=since, until=until,
+                                         enrich=enrich, max_lookups=max_lookups,
+                                         pending_rows=pending_rows)
 
     return {
         'kind': 'xras_accounts',
@@ -215,6 +210,34 @@ def build_account_worklist(session, *, since=None, until=None,
         'pending_checked': bool(pending_checked),
         'accounts': [_account_row(r) for r in rows],
     }
+
+
+def _stamped_worklist(session, *, since=None, until=None, enrich=False,
+                      max_lookups=100, pending_rows=None):
+    """The worklist with every caller-applied stamp; ``(rows, enrichment)``."""
+    from sam.queries.xras_accounts import (enrich_worklist,
+                                           get_account_worklist,
+                                           stamp_merge_targets,
+                                           stamp_waiting_days)
+
+    rows = get_account_worklist(session, since=since, until=until,
+                                pending_rows=pending_rows)
+    stamp_waiting_days(rows)
+    enrichment = (enrich_worklist(rows, max_lookups=max_lookups)
+                  if enrich else None)
+    # After enrichment: a Feed-A row has no email to match until then.
+    stamp_merge_targets(session, rows)
+    return rows, enrichment
+
+
+def build_identity_report(session, *, pending_rows=None, enrich=False,
+                          max_lookups=100, generated_at=None) -> dict:
+    """The ``xras_identity_report`` envelope — placeholders to merge, ranked by unblock impact."""
+    from sam.queries.xras_identity_report import identity_merge_report
+
+    rows, _ = _stamped_worklist(session, enrich=enrich, max_lookups=max_lookups,
+                                pending_rows=pending_rows)
+    return identity_merge_report(rows, generated_at=generated_at)
 
 
 def _account_row(row) -> dict:
@@ -245,6 +268,7 @@ def _account_row(row) -> dict:
              'reject_messages': list(a['reject_messages'])}
             for a in row['actions']
         ],
+        'merge_target': row.get('merge_target'),
     }
 
 
@@ -259,6 +283,7 @@ def build_readiness(snapshot) -> dict:
     Reads the published requests-index snapshot (no network). Rows are sorted
     red -> amber -> green; an empty board is a successful, empty report.
     """
+    from sam.queries.xras_requests import is_pending_work
     rows = []
     for entry in (snapshot or {}).get('rows', ()) if snapshot else ():
         verdicts = [a.get('preflight') for a in entry.get('actions', ())
@@ -273,6 +298,7 @@ def build_readiness(snapshot) -> dict:
             'opportunity_name': entry.get('opportunity_name'),
             'pi': (entry.get('pi') or {}).get('username'),
             'pending_push': entry.get('pending_push'),
+            'pending_work': is_pending_work(entry),
             'counts': counts,
             'messages': sorted({m for v in verdicts if v['status'] == 'failed'
                                 for m in v.get('messages', ())}),
@@ -295,6 +321,12 @@ def build_mnemonic_report(session, snapshot) -> dict:
     """
     from sam.queries.xras_mnemonic_report import mnemonic_unblock_report
     return mnemonic_unblock_report(session, snapshot)
+
+
+def build_contract_report(session, snapshot) -> dict:
+    """The ``xras_contract_report`` envelope — contracts to create, ranked by unblock impact."""
+    from sam.queries.xras_contract_report import contract_unblock_report
+    return contract_unblock_report(session, snapshot)
 
 
 def build_person_report(username, person) -> dict:

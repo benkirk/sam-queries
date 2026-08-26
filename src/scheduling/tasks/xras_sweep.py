@@ -304,9 +304,8 @@ def _run_preflights(ctx, client, session, all_payloads, *, since, detail):
     ``numbers`` is the set of requests carrying at least one candidate action.
     Injects the resource/opportunity maps; a raising preflight costs that action.
     """
-    from sam.integration.xras import XrasActionLog
-    from sam.xras.preflight import (iter_candidate_actions, preflight_action,
-                                    verdict_to_dict)
+    from sam.xras.preflight import (iter_candidate_actions, log_seen_for,
+                                    preflight_action, verdict_to_dict)
 
     candidates = [(p, a) for p in all_payloads if isinstance(p, dict)
                   for a in iter_candidate_actions(p, since=since)]
@@ -321,17 +320,9 @@ def _run_preflights(ctx, client, session, all_payloads, *, since, detail):
     if not candidates:
         return {}, set()
 
-    action_ids = {a.get('actionId') for _, a in candidates
-                  if a.get('actionId') is not None}
     log_seen = {}
     try:
-        for row in (session.query(XrasActionLog)
-                    .filter(XrasActionLog.action_id.in_(action_ids)).all()):
-            log_seen[row.action_id] = {
-                'status': row.status,
-                'received_time': (row.received_time.isoformat()
-                                  if row.received_time else None),
-                'log_id': row.xras_action_log_id}
+        log_seen = log_seen_for(session, (a.get('actionId') for _, a in candidates))
     except Exception as exc:                            # noqa: BLE001
         ctx.logger.warning('xras_sweep: log_seen lookup failed: %s', exc)
 
@@ -514,28 +505,29 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
               if str(p.get('requestNumber') or '').strip() in keep]
     cohort.extend(p for p in extra_payloads if isinstance(p, dict))
 
-    entries, indexed, deleted = [], set(), 0
+    # One entry per projcode, built from the PRIMARY line (highest actionId):
+    # the line the modal shows and every write targets. XRAS pages by
+    # descending requestId, so "first copy" was the newest line, not always
+    # the current one. Deleted lines carry no handoff and are excluded.
+    from sam.queries.xras_requests import primary_line
+
+    by_number: dict = {}
     for payload in cohort:
         number = str(payload.get('requestNumber') or '').strip()
-        if number in indexed:
-            # A primary pass overridden to 'all' (or to one of the extra
-            # statuses) re-reads the extras' cohorts, and a duplicate row
-            # would carry a second Withdraw button — while the post-write
-            # patch rewrites only the first match. First copy wins; the
-            # primary copy comes first and carries the same classification.
-            continue
-        if payload.get('isDeleted'):
-            # A deleted request has no handoff to remediate and no pushable
-            # action — iter_candidate_actions skips its deleted actions, so it
-            # would sit on the card as a "not checked" row a re-check can never
-            # resolve. Excluded from the cohort entirely.
+        if number:
+            by_number.setdefault(number, []).append(payload)
+
+    entries, deleted = [], 0
+    for number, lines in by_number.items():
+        live = [p for p in lines if not p.get('isDeleted')]
+        if not live:
             deleted += 1
             continue
-        entry = request_index_entry(payload, pending_push=number in pending,
+        entry = request_index_entry(primary_line(live),
+                                    pending_push=number in pending,
                                     preflights=preflights_by_number.get(number))
         if entry is not None:
             entries.append(entry)
-            indexed.add(number)
 
     entries.sort(key=lambda e: (str(e.get('opportunity_name') or ''),
                                 str(e.get('request_number') or '')))
@@ -681,6 +673,7 @@ def xras_sweep(ctx) -> TaskResult:
         classify_accounts,
         get_account_worklist,
         records_from_report_requests,
+        stamp_merge_targets,
         worklist_counts,
     )
     from sam.queries.xras_actions import (audit_opportunity_mapping,
@@ -867,6 +860,9 @@ def xras_sweep(ctx) -> TaskResult:
                         if str(p.get('requestNumber') or '').strip() in pending_set]
     enumerated = classify_accounts(session,
                                    records_from_report_requests(pending_payloads))
+    # Sweep-time Feed B only: the card re-stamps at render, so a SAM account
+    # created between sweeps flips its row an hour before this count moves.
+    stamp_merge_targets(session, enumerated)
     detail['accounts'] = worklist_counts(enumerated)
     detail['accounts_sample'] = [r['username'] for r in enumerated][:_MAX_REPORTED]
 

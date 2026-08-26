@@ -122,6 +122,7 @@ from .xras_actions import (
     summarize_xras_actions,
 )
 from .xras_activation import (
+    ATTENTION_RECENT_DAYS,
     ACTIVITY_TAGS,
     XRAS_SERVICE_KINDS,
     activity_tags,
@@ -129,6 +130,7 @@ from .xras_activation import (
     get_xras_activation_events,
     get_xras_activity,
     get_xras_pending_recipients,
+    needs_attention,
     parse_xras_dedup_key,
     xras_dedup_key,
 )
@@ -274,8 +276,10 @@ __all__ = [
     'count_recent_xras_actions',
     'summarize_xras_actions',
     'ACTIVITY_TAGS',
+    'ATTENTION_RECENT_DAYS',
     'XRAS_SERVICE_KINDS',
     'activity_tags',
+    'needs_attention',
     'get_xras_activity',
     'parse_xras_dedup_key',
     'xras_dedup_key',

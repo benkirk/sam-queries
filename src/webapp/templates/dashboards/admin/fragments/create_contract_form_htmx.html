@@ -118,7 +118,7 @@
                         hx-target="#createContractFields"
                         hx-swap="innerHTML"
                         hx-include="closest form"
-                        {% if seeded %}hx-trigger="load, click"{% endif %}
+                        {% if seeded and lookup %}hx-trigger="load, click"{% endif %}
                         hx-indicator="#createContractLookupSpinner">
                     <i class="fas fa-cloud-arrow-down me-1"></i> Fetch award
                 </button>

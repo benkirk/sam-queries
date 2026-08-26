@@ -30,6 +30,9 @@ from webapp.utils.rbac import Permission
 pytestmark = pytest.mark.unit
 
 FRAGMENT = '/allocations/xras_remediations'
+# Most tests below publish UNCHECKED rows (no preflight), which the default
+# pending-work queue excludes by definition, so they read the card with
+# show_all=1. TestPendingWorkToggle covers the default.
 
 
 @pytest.fixture
@@ -105,14 +108,16 @@ def armed(configured, monkeypatch):
 
 
 def _payload(number='EXAM0001', *, status='Approved', action_status='Approved',
-             placeholder=True, reconciled=True, submit_date=None):
+             placeholder=True, reconciled=True, submit_date=None, email=None):
     roles = [{'person': {'username': 'pi-user', 'firstName': 'P',
                          'lastName': 'Eye', 'isReconciled': True},
               'roles': [{'roleId': 1, 'role': 'PI', 'roleTypeId': 13}]}]
     if placeholder:
-        roles.append({'person': {'username': 'ghost-user-abcde',
-                                 'firstName': 'G', 'lastName': 'Host',
-                                 'isReconciled': reconciled},
+        ghost = {'username': 'ghost-user-abcde', 'firstName': 'G',
+                 'lastName': 'Host', 'isReconciled': reconciled}
+        if email:
+            ghost['email'] = email
+        roles.append({'person': ghost,
                       'roles': [{'roleId': 2, 'role': 'User',
                                  'roleTypeId': 19}]})
     return {'requestId': 900001, 'requestNumber': number,
@@ -162,7 +167,7 @@ def _detail_payload(number='EXAM0001'):
     ]
     payload['actions'][0]['allocationDates'] = [
         {'allocationDateId': 9, 'beginDate': '2026-01-01', 'endDate': '2026-12-31',
-         'type': 'Requested'}]
+         'allocationDateType': 'Requested'}]
     payload['actions'][0]['documents'] = [
         {'documentId': 1, 'documentType': 'Supp_Info', 'title': 'Award Letter',
          'filename': 'award.pdf', 'size': 44042}]
@@ -170,15 +175,22 @@ def _detail_payload(number='EXAM0001'):
 
 
 def _reader(monkeypatch, payload=_payload(), person=None, candidates=(),
-            person_roles=None, opportunity=None, fos_types=None):
-    """Swap in a scripted read client for every live lookup."""
+            person_roles=None, opportunity=None, fos_types=None, people=None):
+    """Swap in a scripted read client for every live lookup.
+
+    *people* maps username -> sheet for the direct `get_person` probes the
+    merge finder and the handler's target check make; unknown names fall
+    back to *person*.
+    """
     client = MagicMock()
-    client.get_request_by_number.return_value = payload
+    client.get_request_line.return_value = payload
     # The detail modal fetches the whole family; derive it from the single-line
     # mock so a test's return_value/side_effect (not-found, outage) still applies.
     client.get_request_family_by_number.side_effect = (
-        lambda n: [row] if (row := client.get_request_by_number(n)) else [])
+        lambda n: [row] if (row := client.get_request_line(n)) else [])
     client.get_person.return_value = person
+    if people is not None:
+        client.get_person.side_effect = lambda u: people.get(u, person)
     client.search_people.return_value = list(candidates)
     # Default to an empty dict, not MagicMock's auto-child — the parser tests
     # its type and a MagicMock would read as "no such thing" only by accident.
@@ -273,7 +285,7 @@ class TestRecheckNow:
     def test_it_degrades_200_when_xras_is_unreachable(self, auth_client,
                                                       configured, monkeypatch):
         client = _reader(monkeypatch)
-        client.get_request_by_number.side_effect = XrasSourceUnavailable('down')
+        client.get_request_line.side_effect = XrasSourceUnavailable('down')
         resp = auth_client.post('/allocations/xras_recheck_request/EXAM0001')
         # 200, not 4xx: htmx will not swap a 4xx into the open modal.
         assert resp.status_code == 200
@@ -346,13 +358,13 @@ class TestReadinessBadgeWiring:
     def test_a_verdict_badge_links_to_the_readiness_modal(self, auth_client,
                                                           configured):
         _publish_one_verdict('failed', messages=['x'])
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'xras_readiness_detail/EXAM0001' in body
         assert 'would fail' in body
 
     def test_an_incomplete_badge_is_passive(self, auth_client, configured):
         _publish_one_verdict('incomplete')
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert '>incomplete</span>' in body
         # No re-check (it can't resolve it) and no modal link.
         assert 'xras_recheck_request/EXAM0001' not in body
@@ -362,7 +374,7 @@ class TestReadinessBadgeWiring:
                                                         configured):
         # No preflight at all -> rollup None -> the checkable "not checked" state.
         _publish(_payload('EXAM0001'))
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'not checked' in body
         assert 'xras_recheck_request/EXAM0001' in body
 
@@ -380,14 +392,14 @@ class TestActionsColumnAndFacet:
 
     def test_the_column_renders_the_type(self, auth_client, configured):
         self._publish_types('New')
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert '>Type<' in body                # the header
         assert 'New' in body                   # the row badge
 
     def test_the_facet_narrows_to_the_chosen_type(self, auth_client, configured):
         self._publish_types('New', 'Supplement')
         body = auth_client.get(
-            FRAGMENT + '?action_type=New').get_data(as_text=True)
+            FRAGMENT + '?show_all=1&action_type=New').get_data(as_text=True)
         assert 'EXAM0000' in body             # the New request survives
         assert 'EXAM0001' not in body         # the Supplement request is filtered
 
@@ -399,7 +411,7 @@ class TestActionsColumnAndFacet:
             {'actionId': 1, 'actionType': 'Supplement', 'actionStatus': 'Approved'},
             {'actionId': 2, 'actionType': 'Extension', 'actionStatus': 'Submitted'}]
         _publish(p)
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'Extension' in body
         assert 'Supplement' not in body       # neither the cell nor the facet
 
@@ -411,9 +423,9 @@ class TestSortableColumns:
         # All three share the default opportunity -> one group.
         _publish(_payload('EXAM0003'), _payload('EXAM0001'), _payload('EXAM0002'))
         asc = auth_client.get(
-            FRAGMENT + '?sort_by=request&sort_dir=asc').get_data(as_text=True)
+            FRAGMENT + '?show_all=1&sort_by=request&sort_dir=asc').get_data(as_text=True)
         desc = auth_client.get(
-            FRAGMENT + '?sort_by=request&sort_dir=desc').get_data(as_text=True)
+            FRAGMENT + '?show_all=1&sort_by=request&sort_dir=desc').get_data(as_text=True)
         assert asc.index('EXAM0001') < asc.index('EXAM0003')
         assert desc.index('EXAM0003') < desc.index('EXAM0001')
 
@@ -421,31 +433,33 @@ class TestSortableColumns:
                                                                   configured):
         _publish(_payload())
         body = auth_client.get(
-            FRAGMENT + '?sort_by=request&sort_dir=asc').get_data(as_text=True)
+            FRAGMENT + '?show_all=1&sort_by=request&sort_dir=asc').get_data(as_text=True)
         assert 'set-sort-submit' in body            # writes the form, not a URL
         assert 'data-sort-by="request"' in body
 
     def test_an_unknown_sort_column_is_ignored(self, auth_client, configured):
         _publish(_payload('EXAM0001'))
         assert auth_client.get(
-            FRAGMENT + '?sort_by=bogus&sort_dir=asc').status_code == 200
+            FRAGMENT + '?show_all=1&sort_by=bogus&sort_dir=asc').status_code == 200
 
 
 class TestCheckAll:
-    """The header 'Check all' batch re-check over the not-checked rows in view."""
+    """Sent with show_all: an unchecked row is outside the pending-work queue.
+
+    The header 'Check all' batch re-check over the not-checked rows in view."""
 
     def test_it_rechecks_the_not_checked_rows(self, auth_client, configured,
                                               monkeypatch):
         _publish(_payload('EXAM0001'))        # no preflight -> rollup None
         _reader(monkeypatch, payload=_detail_payload('EXAM0001'))
-        resp = auth_client.post('/allocations/xras_recheck_visible')
+        resp = auth_client.post('/allocations/xras_recheck_visible', data={'show_all': '1'})
         assert resp.status_code == 200
         assert 'refreshXrasTab' in resp.headers.get('HX-Trigger', '')
         assert 'Checked 1 request' in resp.get_data(as_text=True)
 
     def test_nothing_to_check_when_all_are_verdicts(self, auth_client, configured):
         _publish_one_verdict('failed', messages=['x'])   # a real verdict, not None
-        resp = auth_client.post('/allocations/xras_recheck_visible')
+        resp = auth_client.post('/allocations/xras_recheck_visible', data={'show_all': '1'})
         assert resp.status_code == 200
         assert 'Nothing to check' in resp.get_data(as_text=True)
 
@@ -453,8 +467,8 @@ class TestCheckAll:
                                                       monkeypatch):
         _publish(_payload('EXAM0001'))
         client = _reader(monkeypatch)
-        client.get_request_by_number.side_effect = XrasSourceUnavailable('down')
-        resp = auth_client.post('/allocations/xras_recheck_visible')
+        client.get_request_line.side_effect = XrasSourceUnavailable('down')
+        resp = auth_client.post('/allocations/xras_recheck_visible', data={'show_all': '1'})
         assert resp.status_code == 200
         assert 'could not be reached' in resp.get_data(as_text=True)
 
@@ -472,8 +486,92 @@ class TestCheckAll:
         # a wide window in the body picks it up
         resp = auth_client.post(
             '/allocations/xras_recheck_visible',
-            data={'start_date': '2000-01-01', 'end_date': '2030-01-01'})
+            data={'show_all': '1', 'start_date': '2000-01-01', 'end_date': '2030-01-01'})
         assert 'Checked 1 request' in resp.get_data(as_text=True)
+
+
+def _publish_with_verdict(payload, *, push_state, status='rechecked'):
+    verdict = {'status': status, 'would_succeed': status == 'rechecked',
+               'messages': [], 'gaps': [], 'service': 'supplement',
+               'stage': 'Approved', 'action_status': 'Approved',
+               'request_status': 'Approved', 'push_state': push_state,
+               'push_detail': None, 'resolved': None,
+               'checked_at': '2026-08-24T09:00:00'}
+    xras_cache.store_requests_index({
+        'generated_at': datetime.now(), 'statuses': ['Approved'],
+        'extra_statuses': {},
+        'rows': [request_index_entry(payload, pending_push=True,
+                                     preflights={7: verdict})]})
+
+
+class TestPendingWorkToggle:
+    """Default is the pending-work queue (XRAS admin's Recent submissions);
+    `show_all=1` restores everything, with the date filter."""
+
+    def test_a_posted_request_is_hidden_by_default(self, auth_client, configured):
+        _publish_with_verdict(_payload('EXAM0001'), push_state='seen_in_log')
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'No pending work' in body
+        assert 'EXAM0001' not in body.split('id="xras-remediation-show-all"')[1]
+
+    def test_show_everything_reveals_it(self, auth_client, configured):
+        _publish_with_verdict(_payload('EXAM0001'), push_state='seen_in_log')
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'EXAM0001' in body
+        assert 'checked' in body.split('id="xras-remediation-show-all"')[1].split('>')[0]
+
+    def test_an_in_flight_request_is_pending_whatever_its_age(self, auth_client,
+                                                              configured):
+        # No date window in the queue: a 2015 submission still in review is work.
+        _publish_with_verdict(_payload('EXAM0001', action_status='Submitted',
+                                       submit_date='2015-01-01T00:00:00Z'),
+                              push_state='unknown')
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'EXAM0001' in body and 'No pending work' not in body
+        assert 'outside the date filter' not in body
+        # ... and the date filter hides it once everything is shown.
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'outside the date filter' in body
+
+    def test_the_header_counts_pending_and_the_rest(self, auth_client, configured):
+        xras_cache.store_requests_index({
+            'generated_at': datetime.now(), 'statuses': ['Approved'],
+            'extra_statuses': {},
+            'rows': [request_index_entry(_payload('EXAM0001', action_status='Submitted'),
+                                         pending_push=True,
+                                         preflights={7: {'status': 'incomplete',
+                                                         'push_state': 'unknown'}}),
+                     request_index_entry(_payload('EXAM0002'), pending_push=False,
+                                         preflights={7: {'status': 'rechecked',
+                                                         'push_state': 'seen_in_log'}})]})
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert '1 pending' in body
+        assert '1 more with Show everything' in body
+
+    def test_the_batch_recheck_honors_the_toggle(self, auth_client, configured,
+                                                 monkeypatch):
+        # An unchecked row is never pending work (no verdict = outside the sweep
+        # window), so "Check all" only finds it under Show everything.
+        _publish(_payload('EXAM0001'))
+        _reader(monkeypatch, payload=_detail_payload('EXAM0001'))
+        assert 'Nothing to check' in auth_client.post(
+            '/allocations/xras_recheck_visible').get_data(as_text=True)
+        resp = auth_client.post('/allocations/xras_recheck_visible',
+                                data={'show_all': '1'})
+        assert 'Checked 1 request' in resp.get_data(as_text=True)
+
+    def test_the_switch_explains_both_sets_in_a_popover(self, auth_client, configured):
+        _publish(_payload())
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        after = body.split('id="xras-remediation-show-all"')[1][:2500]
+        assert 'data-bs-toggle="popover"' in after
+        assert 'pending work only' in after and 'everything the sweep found' in after
+
+    def test_the_switch_belongs_to_the_filter_form(self, auth_client, configured):
+        _publish(_payload())
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        switch = body.split('id="xras-remediation-show-all"')[1].split('>')[0]
+        assert 'name="show_all"' in switch and 'form="xras-remediation-filters"' in switch
 
 
 class TestMnemonicUnblockStrip:
@@ -501,11 +599,91 @@ class TestMnemonicUnblockStrip:
         # which the strip surfaces as the no-affiliation line. Deterministic
         # without committing users.
         self._publish_mnemonic_failure('ghost-user-strip-xyz')
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'no current affiliation' in body
 
     def test_view_only_is_still_forbidden(self, view_only_client, configured):
         self._publish_mnemonic_failure('ghost-user-strip-xyz')
+        assert view_only_client.get(FRAGMENT).status_code == 403
+
+
+class TestContractUnblockStrip:
+    """The contract-blockers strip — the mnemonic strip's shape, linking to Admin -> Contracts."""
+
+    def _publish_contract_failure(self, grants, push_state='pending'):
+        payload = _payload('EXAM0001')
+        verdict = {'status': 'failed', 'would_succeed': False,
+                   'messages': ['x'], 'gaps': [],
+                   'service': 'add', 'stage': 'Approved', 'action_status': 'Approved',
+                   'request_status': 'Approved', 'push_state': push_state,
+                   'push_detail': None,
+                   'resolved': {'unresolved_grants': list(grants)},
+                   'checked_at': '2026-08-23T09:00:00'}
+        xras_cache.store_requests_index({
+            'generated_at': datetime.now(), 'statuses': ['Approved'],
+            'extra_statuses': {},
+            'rows': [request_index_entry(payload, pending_push=True,
+                                         preflights={7: verdict})]})
+
+    @staticmethod
+    def _grant(number, **over):
+        grant = {'number': number, 'core': number, 'reason': 'missing',
+                 'candidates': [], 'agency': None, 'title': 'Seeded Title',
+                 'pi_name': 'P. Eye', 'begin_date': '2026-01-01',
+                 'end_date': '2027-12-31', 'is_pending': False}
+        grant.update(over)
+        return grant
+
+    def test_a_reference_links_to_a_seeded_manual_form(self, auth_client, configured):
+        self._publish_contract_failure([self._grant('ISS 25-643')])
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'id="xras-contract-strip"' in body
+        assert 'ISS 25-643' in body
+        assert '/admin/contracts?' in body and 'create=ISS' in body
+        assert 'mode=manual' in body and 'title=Seeded' in body
+        assert 'start_date=2026-01-01' in body and 'end_date=2027-12-31' in body
+
+    def test_an_nsf_award_links_to_lookup_mode(self, auth_client, configured):
+        self._publish_contract_failure([self._grant(
+            '9980401', agency='National Science Foundation')])
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'create=9980401' in body and 'mode=lookup' in body
+
+    def test_a_tie_renders_as_a_variant_with_no_create_link(self, auth_client,
+                                                            configured, monkeypatch):
+        # The route's db.session cannot see rows made in the test SAVEPOINT, so
+        # the live re-check is stubbed; the tie itself is covered in
+        # test_xras_contract_report.py.
+        monkeypatch.setattr('sam.queries.xras_contract_report._recheck',
+                            lambda session, number, core: 'ambiguous')
+        self._publish_contract_failure([self._grant(
+            'NSF-9980402', core='9980402', reason='ambiguous',
+            candidates=['9980402', 'PLR-9980402'])])
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'NSF-9980402' in body and 'spelling variant' in body
+        assert 'create=NSF-9980402' not in body
+
+    def test_the_strip_explains_itself_in_a_popover(self, auth_client, configured):
+        self._publish_contract_failure([self._grant('ISS 25-643')])
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        strip = body.split('id="xras-contract-strip"')[1][:3000]
+        assert 'data-bs-toggle="popover"' in strip and 'Contracts to create' in strip
+
+    def test_the_strip_follows_the_rows_in_view(self, auth_client, configured):
+        # A failing row that is NOT pending work (already posted) feeds the strip
+        # only under Show everything — the strip ranks fixes for what is in view.
+        self._publish_contract_failure([self._grant('ISS 25-643')], push_state='seen_in_log')
+        assert 'xras-contract-strip' not in auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'xras-contract-strip' in auth_client.get(
+            FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+
+    def test_no_grants_means_no_strip(self, auth_client, configured):
+        self._publish_contract_failure([])
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+        assert 'xras-contract-strip' not in body
+
+    def test_view_only_is_still_forbidden(self, view_only_client, configured):
+        self._publish_contract_failure([self._grant('ISS 25-643')])
         assert view_only_client.get(FRAGMENT).status_code == 403
 
 
@@ -579,7 +757,7 @@ class TestFacetParity:
         every chip silently resets the search.
         """
         _publish(_payload())
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         box = body.split('id="xras-remediation-search"')[1].split('>')[0]
         assert 'name="search"' in box
         assert 'form="xras-remediation-filters"' in box
@@ -593,39 +771,39 @@ class TestTheFourEmptyStates:
     def test_unconfigured(self, auth_client, monkeypatch):
         monkeypatch.delenv('XRAS_OUTGOING_ENABLED', raising=False)
         monkeypatch.delenv('XRAS_API_KEY', raising=False)
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'not configured' in body
 
     def test_no_sweep_at_all(self, auth_client, configured):
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'No sweep has published yet' in body
 
     def test_a_worklist_without_an_index(self, auth_client, configured):
         """The hour after deploy, and the independent-failure case the two
         cache keys exist for. A lie if reported as 'nothing to remediate'."""
         xras_cache.store_pending_worklist({'rows': [], 'counts': {}})
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'did not publish this list' in body
 
     def test_published_and_empty(self, auth_client, configured):
         xras_cache.store_requests_index({'generated_at': datetime.now(),
                                           'rows': []})
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'Nothing to remediate' in body
 
     def test_the_four_bodies_are_distinct(self, auth_client, configured,
                                           monkeypatch):
         seen = set()
         monkeypatch.delenv('XRAS_OUTGOING_ENABLED', raising=False)
-        seen.add(auth_client.get(FRAGMENT).get_data(as_text=True))
+        seen.add(auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True))
         monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
         monkeypatch.setenv('XRAS_API_KEY', 'k')
-        seen.add(auth_client.get(FRAGMENT).get_data(as_text=True))
+        seen.add(auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True))
         xras_cache.store_pending_worklist({'rows': []})
-        seen.add(auth_client.get(FRAGMENT).get_data(as_text=True))
+        seen.add(auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True))
         xras_cache.store_requests_index({'generated_at': datetime.now(),
                                           'rows': []})
-        seen.add(auth_client.get(FRAGMENT).get_data(as_text=True))
+        seen.add(auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True))
         assert len(seen) == 4
 
 
@@ -675,14 +853,14 @@ class TestRendering:
     def test_the_window_says_what_it_hid(self, auth_client, armed):
         """WARNING: On this card the hidden rows skew URGENT — never hide silently."""
         _publish(_payload(), _payload('EXAM0002', submit_date='2015-01-01T00:00:00Z'))
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'outside the date filter' in body
 
     def test_a_card_emptied_by_the_window_says_so_rather_than_nothing_to_do(
             self, auth_client, armed):
         """The default lookback hides stale rows, which are the point here."""
         _publish(_payload(submit_date='2015-01-01T00:00:00Z'))
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'the current filters hide all of them' in body
         assert 'Nothing to remediate' not in body
 
@@ -693,7 +871,7 @@ class TestRendering:
         payload['submitDate'] = None
         _publish(payload)
         body = auth_client.get(
-            FRAGMENT + '?start_date=2026-08-01').get_data(as_text=True)
+            FRAGMENT + '?show_all=1&start_date=2026-08-01').get_data(as_text=True)
         assert 'EXAM0001' in body
 
     def test_a_patched_row_is_marked_as_newer_than_the_sweep(self, auth_client,
@@ -701,13 +879,13 @@ class TestRendering:
         xras_cache.store_requests_index({
             'generated_at': datetime.now(), 'rows': [
                 request_index_entry(_payload(), refreshed_at=datetime.now())]})
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'newer than the sweep' in body
 
     def test_status_chips_filter(self, auth_client, armed):
         _publish(_payload('EXAM0001'), _payload('EXAM0002', status='Submitted'))
         body = auth_client.get(
-            FRAGMENT + '?status=Submitted').get_data(as_text=True)
+            FRAGMENT + '?show_all=1&status=Submitted').get_data(as_text=True)
         assert 'EXAM0002' in body and 'EXAM0001' not in body
 
     def test_the_type_column_shows_the_in_flight_action_not_a_count(
@@ -718,7 +896,7 @@ class TestRendering:
         payload['actions'].append({'actionId': 8, 'actionType': 'Extension',
                                    'actionStatus': 'Approved'})
         _publish(payload)
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'Extension' in body          # the latest (highest-id) action type
         assert '2 actions' not in body      # the old count note is gone
 
@@ -733,7 +911,7 @@ class TestRendering:
              'roles': [{'roleId': 3, 'role': 'Allocation Manager',
                         'roleTypeId': 14}]})
         _publish(payload)
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'Project Admin' in body      # the column header
         assert 'Al Manager' in body         # the resolved admin
 
@@ -742,7 +920,7 @@ class TestRendering:
         """The base payload names no Allocation Manager — the cell is a dash,
         and the header still renders."""
         _publish(_payload())
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'Project Admin' in body
 
 
@@ -762,7 +940,7 @@ class TestTheSamBadgeLinksWhenTheProjectExists:
 
     def test_a_pushed_request_links_to_its_project(self, auth_client, armed):
         _publish(_payload('EXAM0001'), pending=False)
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert '/user/project-details-modal/EXAM0001' in body
         assert 'data-bs-target="#projectDetailsModal"' in body
         assert 'hx-target="#projectDetailsModalBody"' in body
@@ -772,7 +950,7 @@ class TestTheSamBadgeLinksWhenTheProjectExists:
         no project for this number" — the reason most rows are on this card at
         all. A link would 404 the modal on the majority of the table."""
         _publish(_payload('EXAM0001'), pending=True)
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'no project' in body
         assert 'projectDetailsModal' not in body
 
@@ -781,7 +959,7 @@ class TestTheSamBadgeLinksWhenTheProjectExists:
         detail modal — even when a SAM project by that name exists (the SAM
         cell keeps the project link). It is no longer a collapse trigger."""
         _publish(_payload('EXAM0001'), pending=False)
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert '/allocations/xras_request_detail/EXAM0001' in body
         assert 'data-bs-target="#auditDetailsModal"' in body
         # The SAM cell still links the found project — Request vs Result.
@@ -798,7 +976,7 @@ class TestTheOpportunityGroupCollapses:
     def test_the_group_header_is_the_toggle_default_open(self, auth_client,
                                                          armed):
         _publish(_payload('EXAM0001'))
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'data-bs-target="#xopp-5"' in body
         assert 'aria-expanded="true"' in body
         assert '<tbody id="xopp-5" class="collapse show">' in body
@@ -808,7 +986,7 @@ class TestTheOpportunityGroupCollapses:
         a single line that opens the modal, so the roster/actions expansion no
         longer ships in the card (it lives in the modal)."""
         _publish(_payload('EXAM0001'))
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert '#xrem-' not in body
 
     def test_the_group_id_is_numeric_not_the_free_text_number(
@@ -820,7 +998,7 @@ class TestTheOpportunityGroupCollapses:
         payload = _payload('New University Large Request - Fall 2017 Zhong',
                            status='Submitted')
         _publish(payload)
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'data-bs-target="#xopp-5"' in body
         assert 'id="xopp-New' not in body
 
@@ -839,14 +1017,14 @@ class TestSearch:
     def test_it_matches_the_request_number(self, auth_client, armed):
         _publish(_payload('EXAM0001'), _payload('EXAM0002'))
         body = auth_client.get(
-            FRAGMENT + '?search=exam0002').get_data(as_text=True)
+            FRAGMENT + '?show_all=1&search=exam0002').get_data(as_text=True)
         assert 'EXAM0002' in body and 'EXAM0001' not in body
 
     def test_it_matches_the_project_lead_by_display_name(self, auth_client,
                                                           armed):
         """The column shows a name, so a name is what gets typed."""
         _publish(_payload('EXAM0001'), _payload('EXAM0002'))
-        body = auth_client.get(FRAGMENT + '?search=Eye').get_data(as_text=True)
+        body = auth_client.get(FRAGMENT + '?show_all=1&search=Eye').get_data(as_text=True)
         assert 'EXAM0001' in body and 'EXAM0002' in body
 
     def test_it_matches_a_roster_member_the_row_does_not_show(
@@ -857,7 +1035,7 @@ class TestSearch:
         _publish(_payload('EXAM0001'),
                  _payload('EXAM0002', placeholder=False))
         body = auth_client.get(
-            FRAGMENT + '?search=ghost-user').get_data(as_text=True)
+            FRAGMENT + '?show_all=1&search=ghost-user').get_data(as_text=True)
         assert 'EXAM0001' in body and 'EXAM0002' not in body
 
     def test_a_search_that_matches_nothing_keeps_its_own_box(self, auth_client,
@@ -865,7 +1043,7 @@ class TestSearch:
         """Otherwise the only way out of a typo is a page reload."""
         _publish(_payload())
         body = auth_client.get(
-            FRAGMENT + '?search=nothingmatchesthis').get_data(as_text=True)
+            FRAGMENT + '?show_all=1&search=nothingmatchesthis').get_data(as_text=True)
         assert 'the current filters hide all of them' in body
         assert 'id="xras-remediation-search"' in body
         assert 'value="nothingmatchesthis"' in body
@@ -876,7 +1054,7 @@ class TestSearch:
         the moment they are needed."""
         _publish(_payload('EXAM0001'), _payload('EXAM0002', status='Submitted'))
         body = auth_client.get(
-            FRAGMENT + '?status=Submitted&search=EXAM0001').get_data(as_text=True)
+            FRAGMENT + '?show_all=1&status=Submitted&search=EXAM0001').get_data(as_text=True)
         assert 'the current filters hide all of them' in body
         assert 'facet-chip' in body
 
@@ -886,11 +1064,11 @@ class TestSearch:
         blame the window for the search."""
         _publish(_payload('EXAM0001'),
                  _payload('EXAM0002', submit_date='2015-01-01T00:00:00Z'))
-        plain = auth_client.get(FRAGMENT).get_data(as_text=True)
+        plain = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert '1 outside the date filter' in plain
 
         searched = auth_client.get(
-            FRAGMENT + '?search=zzz').get_data(as_text=True)
+            FRAGMENT + '?show_all=1&search=zzz').get_data(as_text=True)
         assert '1 outside the date filter' in searched
 
 
@@ -1012,7 +1190,7 @@ class TestModalGets:
         """WARNING: htmx will not swap a 4xx into an open modal — an error status
         renders as an empty modal indistinguishable from a broken button."""
         client = MagicMock()
-        client.get_request_by_number.side_effect = XrasSourceUnavailable('down')
+        client.get_request_line.side_effect = XrasSourceUnavailable('down')
         client.get_request_family_by_number.side_effect = XrasSourceUnavailable('down')
         client.get_person.side_effect = XrasSourceUnavailable('down')
         client.get_opportunity.side_effect = XrasSourceUnavailable('down')
@@ -1087,7 +1265,7 @@ class TestRequestDetailModal:
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'Withdraw…' in body
         # The inline roster editor: an add-role form and a per-role Remove.
-        assert 'Add XRAS username' in body
+        assert 'Add username (SAM or XRAS)' in body
         assert '/allocations/xras_role_remove/EXAM0001/' in body
         # No separate Roles… entry point, and no Details… link back to itself.
         assert 'Roles…' not in body
@@ -1130,7 +1308,7 @@ class TestRequestDetailModal:
         """The Request number is the single entry point into the detail modal
         now — the separate "Details…" link is gone."""
         _publish(_payload('EXAM0001'))
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert '/allocations/xras_request_detail/EXAM0001' in body
         assert 'Details…' not in body
 
@@ -1311,7 +1489,7 @@ class TestOpportunityModal:
     def test_the_group_header_links_the_opportunity_when_configured(
             self, auth_client, configured):
         _publish(_payload('EXAM0001'))     # opportunityId 5
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert '/allocations/xras_opportunity_detail/5' in body
 
     def test_the_group_header_offers_no_modal_without_the_outbound_api(
@@ -1321,7 +1499,7 @@ class TestOpportunityModal:
         monkeypatch.delenv('XRAS_OUTGOING_ENABLED', raising=False)
         monkeypatch.delenv('XRAS_API_KEY', raising=False)
         _publish(_payload('EXAM0001'))
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'xras_opportunity_detail' not in body
 
 
@@ -1698,7 +1876,7 @@ class TestAPostDuringAnOutageDegradesInline:
     def test_a_withdraw_post_renders_the_outage_inline(self, auth_client,
                                                        armed, monkeypatch):
         client = _reader(monkeypatch)
-        client.get_request_by_number.side_effect = XrasSourceUnavailable('down')
+        client.get_request_line.side_effect = XrasSourceUnavailable('down')
         response = auth_client.post('/allocations/xras_withdraw/EXAM0001/7',
                                     data={'comment': 'stale award'})
         assert response.status_code == 200
@@ -1707,7 +1885,7 @@ class TestAPostDuringAnOutageDegradesInline:
     def test_a_role_add_post_renders_the_outage_inline(self, auth_client,
                                                        armed, monkeypatch):
         client = _reader(monkeypatch)
-        client.get_request_by_number.side_effect = XrasSourceUnavailable('down')
+        client.get_request_line.side_effect = XrasSourceUnavailable('down')
         response = auth_client.post('/allocations/xras_role_add/EXAM0001',
                                     data={'username': 'somebody',
                                           'role_type': 'User'})
@@ -1788,3 +1966,267 @@ class TestSelfMergeIsRefusedCaseInsensitively:
                                 data={'target_username': 'Ghost-USER-Abcde'}
                                 ).get_data(as_text=True)
         assert 'different account' in body
+
+
+class TestTheServiceGetsAFactory:
+    """The audit row is written on a session the service opens itself.
+
+    Passing an already-open ``Session`` where the service expects a factory
+    does not fail the request: ``_open_event`` logs and returns None, the
+    write proceeds, and the irreversible act leaves no audit row. That is
+    exactly what the first production merge did.
+    """
+
+    def test_the_merge_route_hands_the_service_a_callable(
+            self, auth_client, armed, monkeypatch):
+        from sqlalchemy.orm import Session
+
+        from sam.manage import xras_remediation
+        from sam.manage.xras_remediation import RemediationOutcome
+
+        _reader(monkeypatch, person={'username': 'ghost-user-abcde'})
+        seen = {}
+
+        def spy(session_factory, **kwargs):
+            seen['factory'] = session_factory
+            return RemediationOutcome(event_id=None, status='error',
+                                      error='spy')
+
+        monkeypatch.setattr(xras_remediation, 'merge_placeholder', spy)
+        auth_client.post('/allocations/xras_merge/ghost-user-abcde',
+                         data={'target_username': 'real'})
+
+        assert callable(seen['factory']), \
+            'the route passed a Session, not a factory; no audit row is written'
+        session = seen['factory']()
+        try:
+            assert isinstance(session, Session)
+        finally:
+            session.close()
+
+
+def _sam_holds(monkeypatch, email, username, active=True):
+    """Stub the one derivation: the route's db.session cannot see SAVEPOINT rows."""
+    monkeypatch.setattr(
+        'sam.queries.xras_accounts.sam_merge_targets',
+        lambda session, emails: ({email.lower(): {'username': username,
+                                                  'active': active}}
+                                 if email.lower() in {e.lower() for e in emails}
+                                 else {}))
+
+
+class TestUnidentifiedPlaceholdersCanMerge:
+    """Every active SAM account resolves in XRAS, so the SAM account holding a
+    placeholder's email is a merge target — reconciled or not."""
+
+    GHOST = 'ghost-user-abcde'
+    EMAIL = 'g@example.invalid'
+
+    def _ghost(self, **over):
+        return _person(username=self.GHOST, firstName='G', lastName='Host',
+                       email=self.EMAIL, isReconciled=False, **over)
+
+    def test_the_user_modal_offers_the_merge_when_sam_holds_the_email(
+            self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, person=self._ghost())
+        _sam_holds(monkeypatch, self.EMAIL, 'ghost')
+        body = auth_client.get(
+            f'/allocations/xras_user_detail/{self.GHOST}').get_data(as_text=True)
+        assert f'/allocations/xras_merge_form/{self.GHOST}' in body
+        assert 'SAM holds this email on' in body and 'ghost' in body
+
+    def test_the_user_modal_offers_nothing_without_a_target(
+            self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, person=self._ghost())
+        _sam_holds(monkeypatch, 'someone.else@example.invalid', 'other')
+        body = auth_client.get(
+            f'/allocations/xras_user_detail/{self.GHOST}').get_data(as_text=True)
+        assert 'xras_merge_form' not in body
+        assert 'No SAM account' in body
+
+    def test_an_inactive_holder_is_shown_but_not_offered(
+            self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, person=self._ghost())
+        _sam_holds(monkeypatch, self.EMAIL, 'ghost', active=False)
+        body = auth_client.get(
+            f'/allocations/xras_user_detail/{self.GHOST}').get_data(as_text=True)
+        assert 'xras_merge_form' not in body
+        assert 'inactive' in body
+
+    def test_the_request_roster_offers_the_merge_when_sam_holds_the_email(
+            self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_payload(reconciled=False, email=self.EMAIL))
+        _sam_holds(monkeypatch, self.EMAIL, 'ghost')
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'Resolve identity' in body
+        assert 'needs an account' not in body
+
+    def test_the_finder_resolves_the_sam_account_directly(
+            self, auth_client, armed, monkeypatch):
+        """search/people never matches an email and caps at 20, so the SAM
+        account holding the email is asked for by name."""
+        real = {'username': 'ghost', 'firstName': 'G', 'lastName': 'Host',
+                'email': self.EMAIL, 'organization': 'Example U'}
+        client = _reader(monkeypatch, person=self._ghost(), candidates=[],
+                         people={'ghost': real})
+        _sam_holds(monkeypatch, self.EMAIL, 'ghost')
+        body = auth_client.get(
+            f'/allocations/xras_merge_form/{self.GHOST}').get_data(as_text=True)
+        assert 'email matches exactly' in body
+        assert 'checked' not in body, 'no preselect, ever'
+        assert 'g@example.invalid' not in [c[0][0] for c in client.search_people.call_args_list], \
+            'the dead email query is gone'
+
+    def test_the_finder_asks_for_the_full_name_as_well_as_the_surname(
+            self, auth_client, armed, monkeypatch):
+        hit = {'username': 'ghosth', 'firstName': 'G', 'lastName': 'Host',
+               'email': 'other@example.invalid', 'organization': 'Example U'}
+        client = _reader(monkeypatch, person=self._ghost(organization='Example U'))
+        client.search_people.side_effect = lambda q: [hit] if q == 'G Host' else []
+        _sam_holds(monkeypatch, 'nobody@example.invalid', 'x')
+        body = auth_client.get(
+            f'/allocations/xras_merge_form/{self.GHOST}').get_data(as_text=True)
+        assert 'ghosth' in body and 'organization matches' in body
+
+    def test_an_unreconciled_placeholder_with_no_target_still_says_needs_an_account(
+            self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_payload(reconciled=False, email=self.EMAIL))
+        _sam_holds(monkeypatch, 'nobody@example.invalid', 'x')
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'needs an account' in body
+
+
+class TestIdentityUnblockStrip:
+    """The identity strip — placeholders SAM can merge now, opening the merge modal."""
+
+    EMAIL = 'ghost@example.invalid'
+
+    def _publish(self, push_state='pending'):
+        payload = _payload('EXAM0001', reconciled=False, email=self.EMAIL)
+        _publish_with_verdict(payload, push_state=push_state, status='failed')
+        xras_cache.store_pending_worklist({
+            'generated_at': datetime.now(), 'window_days': 120,
+            'rows': [{'username': 'ghost-user-abcde', 'classification': 'absent',
+                      'remedy': 'create', 'placeholder': True,
+                      'is_reconciled': False, 'roles': ('User',),
+                      'sources': ['reports'], 'waiting_since': None,
+                      'person': {'email': self.EMAIL, 'firstName': 'G',
+                                 'lastName': 'Host'},
+                      'actions': [{'action_log_id': None,
+                                   'request_number': 'EXAM0001',
+                                   'action_type': 'Supplement',
+                                   'status': 'Approved', 'received_time': None,
+                                   'submit_date': '2026-08-20',
+                                   'source': 'reports', 'would_succeed': None,
+                                   'preflight_status': None,
+                                   'reject_messages': []}]}]})
+
+    def test_a_ready_placeholder_opens_the_merge_modal(self, auth_client, armed,
+                                                       monkeypatch):
+        self._publish()
+        _sam_holds(monkeypatch, self.EMAIL, 'ghost')
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        strip = body.split('id="xras-identity-strip"')[1][:4000]
+        assert 'ready to merge' in strip
+        assert '/allocations/xras_merge_form/ghost-user-abcde' in strip
+        assert 'data-bs-target="#auditDetailsModal"' in strip
+        assert 'ghost' in strip
+        assert self.EMAIL not in strip, 'the strip names accounts, never emails'
+
+    def test_the_strip_explains_itself_in_a_popover(self, auth_client, armed,
+                                                    monkeypatch):
+        self._publish()
+        _sam_holds(monkeypatch, self.EMAIL, 'ghost')
+        strip = auth_client.get(FRAGMENT).get_data(as_text=True).split(
+            'id="xras-identity-strip"')[1][:4000]
+        assert 'data-bs-toggle="popover"' in strip and 'Placeholders to merge' in strip
+
+    def test_the_lever_off_disables_the_button(self, auth_client, configured,
+                                               monkeypatch):
+        self._publish()
+        _sam_holds(monkeypatch, self.EMAIL, 'ghost')
+        strip = auth_client.get(FRAGMENT).get_data(as_text=True).split(
+            'id="xras-identity-strip"')[1][:4000]
+        assert 'disabled' in strip and 'XRAS_WRITE_ENABLED' in strip
+
+    def test_the_strip_follows_the_rows_in_view(self, auth_client, armed, monkeypatch):
+        self._publish(push_state='seen_in_log')
+        _sam_holds(monkeypatch, self.EMAIL, 'ghost')
+        assert 'xras-identity-strip' not in auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'xras-identity-strip' in auth_client.get(
+            FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
+
+    def test_no_sam_account_says_so_rather_than_offering(self, auth_client, armed,
+                                                         monkeypatch):
+        self._publish()
+        _sam_holds(monkeypatch, 'nobody@example.invalid', 'x')
+        strip = auth_client.get(FRAGMENT).get_data(as_text=True).split(
+            'id="xras-identity-strip"')[1][:4000]
+        assert 'need' in strip and 'SAM account' in strip
+        assert 'xras_merge_form' not in strip
+
+    def test_view_only_is_still_forbidden(self, view_only_client, armed, monkeypatch):
+        self._publish()
+        assert view_only_client.get(FRAGMENT).status_code == 403
+
+
+class TestAllocationDateWireKeys:
+    """The third fixture-agrees-with-the-bug occurrence (after resourceRepositoryKey):
+    the modal read `type` while the wire says `allocationDateType`, and the
+    fixture spelled it the modal's way, so the stage label rendered blank in
+    production with every test green."""
+
+    WIRE = {'allocationDateId', 'allocationDateType', 'beginDate', 'endDate'}
+
+    def test_the_fixture_speaks_the_wire(self):
+        for entry in _detail_payload()['actions'][0]['allocationDates']:
+            assert set(entry) <= self.WIRE, set(entry) - self.WIRE
+
+    def test_the_modal_reads_only_wire_keys(self):
+        import ast
+        import inspect
+
+        from webapp.dashboards.allocations.xras import modals
+        tree = ast.parse(inspect.getsource(modals))
+        keys = {node.args[0].value for node in ast.walk(tree)
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == 'get' and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and str(node.args[0].value).startswith('allocationDate')}
+        # `allocationDates` itself is the array key on the action.
+        assert keys and keys <= self.WIRE | {'allocationDates'}, keys
+
+    def test_the_stage_label_renders(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert '(Requested)' in body
+
+
+class TestTheMergeScreenShowsIdentityState:
+    """The client returns isReconciled; the irreversible screen must show it."""
+
+    def test_candidates_carry_the_identity_badge(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch,
+                person={'username': 'ghost-user-abcde', 'firstName': 'G',
+                        'lastName': 'Host', 'email': 'g@example.invalid'},
+                candidates=[{'username': 'ghost', 'firstName': 'G', 'lastName': 'Host',
+                             'email': 'g@example.invalid', 'isReconciled': True},
+                            {'username': 'ghost2', 'firstName': 'G', 'lastName': 'Host',
+                             'email': 'g2@example.invalid', 'isReconciled': False}])
+        _sam_holds(monkeypatch, 'nobody@example.invalid', 'x')
+        body = auth_client.get(
+            '/allocations/xras_merge_form/ghost-user-abcde').get_data(as_text=True)
+        assert '>identified<' in body and '>unidentified<' in body
+
+
+class TestTheAddRoleCopyKnowsSamResolves:
+
+    def test_the_field_says_a_sam_account_is_safe(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch)
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'Add username (SAM or XRAS)' in body
+        assert 'any active SAM account' in body

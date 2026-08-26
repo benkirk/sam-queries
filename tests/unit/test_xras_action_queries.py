@@ -28,6 +28,8 @@ from sam.queries.xras_actions import (
     summarize_xras_actions,
 )
 from sam.queries.xras_activation import (
+    ATTENTION_RECENT_DAYS,
+    needs_attention,
     ACTIVITY_TAGS,
     XRAS_SERVICE_KINDS,
     get_latest_xras_action_id,
@@ -614,6 +616,64 @@ class TestActivityTags:
         assert 'not_notified' in row['tags']
 
 
+class TestNeedsAttention:
+    """The attention queue's predicate, on literal rows with a fixed clock.
+
+    Three ways in — a pending activation, a Notify nobody clicked, or received
+    in the last ``recent_days`` — and one way out that beats all three:
+    dismissed. Undo is Restore under "Everything in the window", so a
+    dismissed row must not linger here.
+    """
+
+    NOW = datetime(2026, 8, 25, 12, 0, 0)
+    OLD = NOW - timedelta(days=30)
+
+    def _row(self, **over):
+        row = {'needs_activation': False, 'notifiable': True, 'notified': True,
+               'dismissed': False, 'received_time': self.OLD}
+        row.update(over)
+        return row
+
+    def test_an_old_notified_row_is_out(self):
+        assert needs_attention(self._row(), now=self.NOW) is False
+
+    def test_a_pending_activation_is_in_whatever_its_age(self):
+        assert needs_attention(self._row(needs_activation=True), now=self.NOW)
+
+    def test_an_unclicked_notify_is_in_whatever_its_age(self):
+        assert needs_attention(self._row(notified=False), now=self.NOW)
+
+    def test_a_recent_row_is_in_even_with_nothing_to_click(self):
+        row = self._row(received_time=self.NOW - timedelta(days=1))
+        assert needs_attention(row, now=self.NOW)
+
+    def test_an_old_unmapped_service_is_out(self):
+        """No notice defined means nothing to click: not a to-do."""
+        row = self._row(notifiable=False, notified=False)
+        assert needs_attention(row, now=self.NOW) is False
+
+    def test_dismissed_beats_every_way_in(self):
+        row = self._row(dismissed=True, needs_activation=True, notified=False,
+                        received_time=self.NOW)
+        assert needs_attention(row, now=self.NOW) is False
+
+    def test_the_recency_boundary_is_inclusive(self):
+        edge = self.NOW - timedelta(days=ATTENTION_RECENT_DAYS)
+        assert needs_attention(self._row(received_time=edge), now=self.NOW)
+        just_past = edge - timedelta(seconds=1)
+        assert needs_attention(self._row(received_time=just_past),
+                               now=self.NOW) is False
+
+    def test_recent_days_is_overridable(self):
+        row = self._row(received_time=self.NOW - timedelta(days=5))
+        assert needs_attention(row, now=self.NOW) is False
+        assert needs_attention(row, now=self.NOW, recent_days=7)
+
+    def test_a_dateless_row_is_never_recent(self):
+        assert needs_attention(self._row(received_time=None),
+                               now=self.NOW) is False
+
+
 class TestActivationDeriveRule:
     """Dismissal MARKS a row; it no longer hides it.
 
@@ -698,6 +758,55 @@ class TestActivationDeriveRule:
         row = _activity_row(session, project)
         assert row['project_active'] is False
         assert row['needs_activation'] is True
+
+    def test_the_queue_keeps_an_old_new_and_drops_an_old_notified_extension(
+            self, session):
+        """End to end through `get_xras_activity`: no date window in the queue."""
+        stale = make_project(session, active=False)
+        _action(session, status='processed', request_number=stale.projcode,
+                action_type='New', received_time=datetime.now() - timedelta(days=90))
+        done = make_project(session, active=True)
+        action = _action(session, status='processed', request_number=done.projcode,
+                         received_time=datetime.now() - timedelta(days=90))
+        action.service = 'extend'
+        session.flush()
+        row = _activity_row(session, done)
+        _notification(session, kind=row['kind'], projcode=done.projcode,
+                      action_id=action.xras_action_log_id, address='pi@x.edu',
+                      when=datetime.now() - timedelta(days=89))
+
+        now = datetime.now()
+        assert needs_attention(_activity_row(session, stale), now=now)
+        assert needs_attention(_activity_row(session, done), now=now) is False
+
+    def test_dismissing_leaves_the_queue_and_restoring_returns_to_it(
+            self, session):
+        project = make_project(session, active=False)
+        _action(session, status='processed', request_number=project.projcode,
+                received_time=datetime.now() - timedelta(days=5))
+        now = datetime.now()
+        assert needs_attention(_activity_row(session, project), now=now)
+
+        _event(session, project, 'dismissed',
+               when=datetime.now() - timedelta(days=4))
+        assert needs_attention(_activity_row(session, project), now=now) is False
+
+        _event(session, project, 'restored', when=datetime.now())
+        assert needs_attention(_activity_row(session, project), now=now)
+
+    def test_a_dismissed_project_with_a_fresh_action_is_back_in_the_queue(
+            self, session):
+        project = make_project(session, active=False)
+        _action(session, status='processed', request_number=project.projcode,
+                action_type='New',
+                received_time=datetime.now() - timedelta(days=5))
+        _event(session, project, 'dismissed',
+               when=datetime.now() - timedelta(days=4))
+        _action(session, status='processed', request_number=project.projcode,
+                action_type='Extension', received_time=datetime.now())
+
+        assert needs_attention(_activity_row(session, project),
+                               now=datetime.now())
 
 
 class TestActivationEventModel:

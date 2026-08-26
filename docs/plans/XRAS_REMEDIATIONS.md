@@ -1,8 +1,7 @@
 # XRAS Remediations — an operator write surface on Allocations → XRAS
 
-**Status: Phases 0-5 BUILT 2026-08-21 on `xras_write_exploration`. Phase 6 (arming) NOT done,
-deliberately.** This document is now a record of what was built and why, plus the two operator
-steps that remain.
+**Status: Phases 0-5 BUILT 2026-08-21 on `xras_write_exploration`; Phase 6 (arming) done
+2026-08-25 on PR #482.** This document is now a record of what was built and why.
 
 ✅ **Phase 0 (the live probe) is done** — results in
 [`XRAS_WRITE_PROBES.md`](../xras/outgoing/XRAS_WRITE_PROBES.md), and § 3, § 5.1, § 5.3, § 5.4,
@@ -322,7 +321,7 @@ docstring. Every GET form route catches `XrasSourceUnavailable` → a **200** de
 
 | Modal | GET (live reads) | POST | Notes |
 |---|---|---|---|
-| **Merge** `xras_merge_form/<username>` | `get_person` (404 → "already merged away; stale echo"); candidates = `search_people` (email first, then surname — its first real caller; today dead code at `client.py:186`) ∩ SAM users, ranked email→org→name | `_XrasMergeHandler`: `clean()` = exactly-one-of candidate-radio / fk-picker override, target ≠ source, **target must resolve in XRAS** (fail-closed) | `XRAS_WRITE_FIXUPS.md` § 3 copy verbatim; radios `required`, NO default when >1; the picker override carries the fragility warning (the kquagraine decoy case); `btn-danger` "Merge and delete placeholder" |
+| **Merge** `xras_merge_form/<username>` | `get_person` (404 → "already merged away; stale echo"); candidates = the SAM account holding the email resolved directly via `get_person` (rank 0), then `search_people` by full name and surname (name/username only, 20-row cap), annotated with SAM state, ranked email→org→name | `_XrasMergeHandler`: `clean()` = exactly-one-of candidate-radio / fk-picker override, target ≠ source, **target must resolve in XRAS** (fail-closed) | `XRAS_WRITE_FIXUPS.md` § 3 copy verbatim; radios `required`, NO default when >1; the picker override carries the fragility warning (the kquagraine decoy case); `btn-danger` "Merge and delete placeholder" |
 | **Withdraw** `xras_withdraw_form/<request_number>/<int:action_id>` | `get_request_by_number` only (state + roster + PI). **No `rules{}`** — it is 401 route-wide; the offer keys on `actionStatus` | `_XrasWithdrawHandler` + `XrasRemediationReasonForm` (comment required — the dismiss precedent) | Addendum copy: de-approves to a draft, reversible, rewrites history; names the impersonated PI AND the recorded operator |
 | **Re-submit** `xras_resubmit_form/...` | validate preflight rendered before the button, **labelled with the impersonated user** (the verdict is per-user); errors → disabled button | hand-rolled bodiless POST (no fields — a schema would be furniture); `XrasWriteRejected` re-renders with `errors[]` | inverse-of-withdraw framing |
 | **Roles** `xras_roles_form/<request_number>` | live roster | add: `_XrasRoleAddHandler` + `XrasRoleForm` (role_type OneOf imported from the service, submitted as the **string**; user via fk-picker); remove keys on the roster's `role_id`; `on_success()` re-renders the roster and does NOT close the modal (roster fixes come in batches). remove: bodiless POST + `hx-confirm` danger | warning: an unknown username creates a new XRAS identity |
@@ -337,7 +336,7 @@ Ten new routes (fragment + 4 GET forms + 5 POSTs), all
 ### 7.4 Pending Users entry — edit `partials/xras_accounts_card.html`
 
 "Resolve identity (merge in XRAS)…" button inside the **expansion panel** above
-`person_detail(row.person)`, visible when `may_manage ∧ row.placeholder ∧ row.is_reconciled`
+`person_detail(row.person)`, visible when `may_manage ∧ row.placeholder ∧ (row.is_reconciled ∨ an active row.merge_target)`
 (keeps the `<tr>` toggle and the e2e data-bs-target-off-the-row pin intact). Same merge modal.
 Passive tell: the "identified" badge gains warning styling for that conjunction ("identified but
 never merged — XRAS keeps sending the throwaway username").
@@ -352,7 +351,7 @@ never merged — XRAS keeps sending the throwaway username").
   sibling-not-subclass; `XA-CONTEXT == 'submit'`; per-call XA-USER; writes single-attempt (mock
   503 → `call_count == 1`); 4xx → `XrasWriteRejected`; per-method verify semantics (merge
   source-still-200 ⇒ `verified=False`); the two helm drift tests
-  (`test_the_write_lever_ships_off`, `test_the_tasks_env_never_arms_writes`).
+  (`test_the_write_lever_is_armed_on_purpose`, `test_the_tasks_env_never_arms_writes`).
 - New `tests/unit/test_xras_remediation_service.py` — attempt row survives a client explosion;
   completion status mapping; cache invalidation on merge; coherence patch produces the same entry
   shape as the sweep (shared-builder assertion), reaches both cache keys on merge, leaves the
@@ -393,9 +392,10 @@ One PR vs staging with an ordered commit series, after the probe:
    `requests_index` key, and a refactor guard on the worklist payload's shape. 11 tests.
 5. ✅ **UI** — 10 routes in `xras_remediation_routes.py`, the card, three modals, three form
    schemas, the Pending Users merge entry, route-map regen, modal-shell pin, e2e file. 44 tests.
-6. ⏳ **Arm** — flip `XRAS_WRITE_ENABLED` in `values.yaml` + its drift test, same commit. **Not
-   done**: the whole design is fail-closed until this is a deliberate, reviewed act, and Ben owns
-   deploy mechanics. § 10 has the verification steps.
+6. ✅ **Arm** — `XRAS_WRITE_ENABLED: "1"` in `values.yaml` + its drift test
+   (`TestHelmWriteLever`), same commit, 2026-08-25 on PR #482. First use: merging the
+   `glarouche-user-cj2nx` placeholder into `glarouche` to unblock NCAR4262. § 10 has the
+   verification steps; the tasks-env gate is unchanged (a CronJob still never carries the lever).
 
 ⚠️ **Across commits 1, 3 and 5**: every site that exists only because of the key's privilege
 ceiling carries a `PRIVILEGE(#n)` comment keyed to

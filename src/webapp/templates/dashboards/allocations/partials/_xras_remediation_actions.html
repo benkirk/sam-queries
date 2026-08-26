@@ -23,11 +23,12 @@
 
  THE OFFERS HERE ARE SNAPSHOT-DERIVED, NOT AUTHORITATIVE
   XRAS publishes the real answer to "what may I do to this action" in
-  `rules{allowedOperations}` on `GET /v1/requests/<id>`, and that route is 401
-  for our credential in every context. So `can_withdraw` / `can_resubmit` are
-  computed from the action's last-swept status: good enough to decide which
-  button to draw, never good enough to decide whether it may be pressed. Each
-  modal re-reads XRAS live, and the client verifies afterwards regardless.
+  `rules{allowedOperations}` on `GET /v1/requests/<id>`. That route is
+  XA-USER-scoped (200 as the request's PI, 401 as arcguest) and reading it is
+  parked (docs/plans/XRAS_DATA_MODEL_UPLIFT.md). So `can_withdraw` /
+  `can_resubmit` are computed from the action's last-swept status: good enough
+  to decide which button to draw, never good enough to decide whether it may be
+  pressed. Each modal re-reads XRAS live, and the client verifies afterwards.
 
   Drawing a button XRAS then refuses is fine — it comes back as XRAS's own
   refusal, in the modal. Hiding a button that would have worked is not.
@@ -84,7 +85,8 @@
                       title="This role's date window is over in XRAS.">ended</span>
                 {%- endif %}</td>
             <td class="text-end text-nowrap">
-                {% if member.placeholder and member.is_reconciled
+                {% if member.placeholder
+                      and (member.is_reconciled or (member.merge_target and member.merge_target.active))
                       and member.username not in merge_offered %}
                 {% set _ = merge_offered.append(member.username) %}
                 {# WARNING: The contradiction the merge fixup exists for. Reconciliation
@@ -102,15 +104,16 @@
                         and member.username not in merge_offered %}
                 {% set _ = merge_offered.append(member.username) %}
                 <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle"
-                      title="Genuinely unreconciled — XRAS cannot yet say who this is. The healthy path: create the account.">
+                      title="No active SAM account holds this person's email yet. Once one does, the merge is offered here.">
                     needs an account
                 </span>
                 {% endif %}
                 {# Remove is per role, keyed on role_id. Bodiless POST behind the
                    shared confirm; re-renders the detail modal in place. #}
                 {% if member.role_id is not none %}
-                <button type="button" class="btn btn-sm btn-outline-secondary ms-1" {{ disabled }}
-                        {% if not write_enabled %}title="{{ why_disabled }}"{% endif %}
+                <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 ms-1" {{ disabled }}
+                        title="{% if not write_enabled %}{{ why_disabled }}{% else %}Remove {{ member.username }} as {{ member.role_type }}{% endif %}"
+                        aria-label="Remove {{ member.username }} as {{ member.role_type }}"
                         hx-post="{{ url_for('allocations_dashboard.xras_role_remove',
                                             request_number=row.request_number,
                                             role_id=member.role_id) }}"
@@ -118,7 +121,7 @@
                         hx-confirm="Remove {{ member.username }} as {{ member.role_type }} on {{ row.request_number }} in XRAS?"
                         data-confirm-title="Remove role in XRAS"
                         data-confirm-ok="Remove" data-confirm-variant="danger">
-                    Remove
+                    <i class="fas fa-user-minus"></i>
                 </button>
                 {% endif %}
             </td>
@@ -131,15 +134,16 @@
 
 {# Add a role. A plain username field — the handler resolves it against XRAS
    before writing and refuses one XRAS does not already know, so this cannot
-   mint a new placeholder. Errors surface as a flash at the top of the modal
-   (this form carries no per-field macros). #}
+   mint a new placeholder. Every active SAM account resolves (XRAS proxies
+   SAM's identity service), so a SAM username is always a safe entry. Errors
+   surface as a flash at the top of the modal (no per-field macros here). #}
 <form hx-post="{{ role_add_url }}"
       hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
       class="row g-2 align-items-end mb-3">
     <div class="col-sm-6">
-        <label class="form-label small mb-1" for="xras-add-role-username">Add XRAS username</label>
+        <label class="form-label small mb-1" for="xras-add-role-username">Add username (SAM or XRAS)</label>
         <input type="text" class="form-control form-control-sm" id="xras-add-role-username"
-               name="username" maxlength="64" placeholder="exact XRAS username"
+               name="username" maxlength="64" placeholder="any active SAM account, or an exact XRAS username"
                autocomplete="off" {{ disabled }}>
     </div>
     <div class="col-sm-4">

@@ -59,6 +59,7 @@ SCENARIOS = {
     'mnemonic_external_failed': 'a PI whose institution has no soft link',
     'mnemonic_internal_failed': 'a PI whose organization has no soft link',
     'no_affiliation_for_pi': 'a PI who is not a SAM user at all',
+    'no_current_affiliation_for_pi': 'a SAM user with no current institution or organization',
     'no_fos_objects': 'fos: []',
     'aoi_not_in_database': 'a fosNum that is no area_of_interest id',
     'allocation_type_undetermined': 'nothing for the eleven strategies to match',
@@ -303,6 +304,15 @@ class TestMnemonicStrings:
         out = messages(committing, new_action(
             pi, wire_resource(mapped_resource.xras_key)))
         assert e.mnemonic_internal_failed() in out
+
+    def test_no_current_affiliation_for_pi(self, committing, session, mapped_resource):
+        """The affiliation rows were end-dated upstream (NCAR4262's class)."""
+        from factories import make_user
+        pi = make_user(session)
+        out = messages(committing, new_action(
+            pi, wire_resource(mapped_resource.xras_key)))
+        assert e.no_current_affiliation_for_pi(pi.username) in out
+        assert e.mnemonic_internal_failed() not in out
 
     def test_mnemonic_external_failed(self, committing, session, mapped_resource):
         from factories import make_institution, make_user, make_user_institution

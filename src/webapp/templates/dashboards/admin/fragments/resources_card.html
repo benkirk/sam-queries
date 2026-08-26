@@ -73,7 +73,7 @@
                                 {% if rt.grace_period_days is not none %}Grace: {{ rt.grace_period_days }}d{% endif %}
                             </td>
                             <td class="cursor-pointer" {{ collapse_toggle(rt_toggle) }}></td>
-                            <td class="text-end">
+                            <td class="text-end text-nowrap">
                                 {{ edit_modal_button(
                                     url_for('admin_dashboard.htmx_resource_type_edit_form', resource_type_id=rt.resource_type_id),
                                     modal_id='editResourceTypeModal',
@@ -381,7 +381,7 @@
                             <td class="text-muted small text-nowrap">
                                 {{ q.end_date | fmt_date }}
                             </td>
-                            <td class="text-end">
+                            <td class="text-end text-nowrap">
                                 {{ edit_modal_button(
                                     url_for('admin_dashboard.htmx_queue_edit_form', queue_id=q.queue_id),
                                     modal_id='editQueueModal',
@@ -494,7 +494,7 @@
                             <td class="text-nowrap small">{{ e.start_date | fmt_date }}</td>
                             <td class="text-nowrap small">{{ e.end_date | fmt_date }}</td>
                             <td class="small text-muted">{{ e.comment or '—' }}</td>
-                            <td class="text-end">
+                            <td class="text-end text-nowrap">
                                 {{ edit_modal_button(
                                     url_for('admin_dashboard.htmx_edit_exemption_form', exemption_id=e.wallclock_exemption_id),
                                     modal_id='editExemptionModal',

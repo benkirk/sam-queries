@@ -61,13 +61,13 @@
     enrichment      {'looked_up','found','reconciled','unavailable','budget_exhausted','error'}
     window          {'days','since','until','start_date','end_date','custom'}
     window_pill_choices  ((days, label), ...)
-    classification_values  [{'value','label','count'}]  self-excluding
+    remedy_values          [{'value','label','count'}]  self-excluding
     role_values            [{'value','count'}]          self-excluding
     origin_values          [{'value','label','count'}]  self-excluding
     source_values          [{'value','label','count'}]  self-excluding
     feed_checked, feed_reason, feed_generated_at, feed_window_days  Feed-B state
     pending_hidden         int — Feed-B rows outside the date filter
-    selected_classifications, selected_roles, selected_origins, selected_sources  [str]
+    selected_remedies, selected_roles, selected_origins, selected_sources  [str]
     form_id, fragment_url, target_id
 
  ONE ROW PER USERNAME, NOT PER ACTION
@@ -115,6 +115,14 @@
             oldest {{ counts.oldest_days | fmt_number }}d
         </span>
         {% endif %}
+        {% if counts.merge_ready %}
+        {# The proactive signal: SAM already holds this person's email on an
+           active account, so one merge in XRAS unblocks the handoff. #}
+        <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle"
+              title="Placeholders whose email SAM already holds on an active account — one merge in XRAS each">
+            {{ counts.merge_ready | fmt_number }} ready to merge
+        </span>
+        {% endif %}
         {% if counts.placeholder %}
         {# WARNING: "placeholder", NOT "unreconciled". These are two different facts
            and the smoke caught the badge conflating them: all three
@@ -152,8 +160,8 @@
 
     <div class="card-body border-bottom py-2">
         <div class="facet-grid">
-            {{ facet_row('Needs', classification_values, form_id,
-                         'classification', active=selected_classifications) }}
+            {{ facet_row('Needs', remedy_values, form_id,
+                         'remedy', active=selected_remedies) }}
             {{ facet_row('Role', role_values, form_id, 'role',
                          active=selected_roles) }}
             {# Separates the two populations that share this card: an ARC
@@ -314,13 +322,31 @@
                         {% endif %}
                     </td>
 
-                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
-                        {% if row.classification == 'absent' %}
+                    {# No toggle here: the merge-target link below is a button,
+                       and a toggle on its cell would fire on the click too
+                       (Bootstrap's data-api runs in capture). Siblings keep
+                       theirs; the chevron lives in the username cell. #}
+                    <td>
+                        {# Three remedies, text only: the e2e suite forbids icons
+                           on summary rows. The MATCHED username links; the
+                           placeholder beside it never does. #}
+                        {% if row.remedy == 'merge' %}
+                        <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">Ready to merge</span>
+                        <button type="button" class="btn btn-link btn-entity p-0 small"
+                                title="SAM holds this person's email on this active account"
+                                data-bs-toggle="modal" data-bs-target="#userDetailsModal"
+                                hx-get="{{ url_for('admin_dashboard.user_card',
+                                                   username=row.merge_target.username) }}"
+                                hx-target="#userDetailsModalBody"
+                                hx-swap="innerHTML"><span class="font-monospace">{{ row.merge_target.username }}</span></button>
+                        {% elif row.classification == 'absent' and not row.merge_target %}
                         <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">New account</span>
                         {% else %}
                         <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Reactivation</span>
+                        {% if row.merge_target %}
+                        <span class="small text-body-secondary">then merge into <span class="font-monospace">{{ row.merge_target.username }}</span></span>
                         {% endif %}
-
+                        {% endif %}
                     </td>
 
                     <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
@@ -457,7 +483,7 @@
 
                 <tr class="collapse" id="{{ body_id }}">
                     <td colspan="{{ 8 if may_manage else 7 }}" class="bg-body-tertiary">
-                        {% if may_manage and row.placeholder and row.is_reconciled %}
+                        {% if may_manage and row.placeholder and (row.is_reconciled or (row.merge_target and row.merge_target.active)) %}
                         {# Inside the EXPANSION, above the detail sheet — not on
                            the <tr>. Bootstrap's collapse data-api runs in the
                            capture phase, so a button on the row cannot stop the
@@ -467,9 +493,16 @@
                         <div class="alert alert-warning d-flex align-items-center gap-2 py-2">
                             <i class="fas fa-triangle-exclamation"></i>
                             <div class="small flex-grow-1">
+                                {% if row.is_reconciled %}
                                 XRAS marks this placeholder as identified but it
                                 was never merged, so XRAS keeps sending the
                                 throwaway username and the handoff stays blocked.
+                                {% else %}
+                                SAM already holds this person's email on
+                                <span class="font-monospace">{{ row.merge_target.username }}</span>;
+                                merging the placeholder into it lets XRAS send the
+                                real username.
+                                {% endif %}
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-danger text-nowrap"
                                     hx-get="{{ url_for('allocations_dashboard.xras_merge_form',
@@ -552,7 +585,7 @@
        degraded-half note above still renders beside this. #}
     <div class="card-body text-center text-muted py-4">
         No users are waiting on an account
-        {%- if selected_classifications or selected_roles or selected_origins or selected_sources or selected_requests %} for these filters{% endif %}.
+        {%- if selected_remedies or selected_roles or selected_origins or selected_sources or selected_requests %} for these filters{% endif %}.
     </div>
     {% endif %}
 </div>

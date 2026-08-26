@@ -174,6 +174,22 @@ class TestVerdictMapping:
             assert v.messages
             assert v.push_state == 'pending'          # New, no project
 
+    def test_a_failed_verdict_carries_what_assembly_resolved(self, session):
+        """A contract blocker is a *failed* action, so `resolved` must survive the
+        rejection — the contract-blockers report has nothing else to read."""
+        action = _new_action()
+        report = _report(number='NCAR9098', actions=[action])
+        report['grants'] = [{'grantNumber': 'NSF-9990301', 'title': 'Ice',
+                             'fundingAgency': 'National Science Foundation'}]
+        v = preflight_action(session, report, action,
+                             resource_keys=KEYS, opportunities=OPPS)
+        assert v.status == 'failed'
+        [grant] = v.resolved['unresolved_grants']
+        assert grant['number'] == 'NSF-9990301' and grant['reason'] == 'missing'
+        assert grant['title'] == 'Ice'
+        from sam.xras.preflight import verdict_to_dict
+        assert verdict_to_dict(v)['resolved']['unresolved_grants'][0]['core'] == '9990301'
+
     def test_the_call_registers_the_handlers(self, session):
         import sam.xras.dispatch as d
         action = _new_action(actionType='Date Adjustment')
@@ -274,3 +290,36 @@ class TestInferApplied:
                              log_seen={22: {'status': 'processed', 'log_id': 1}})
         assert v.push_state == 'seen_in_log'
         assert v.push_detail['status'] == 'processed'
+
+
+class TestLogSeenFor:
+    """The latest log row per action wins, whatever order the rows come back."""
+
+    @staticmethod
+    def _row(session, action_id, status):
+        from datetime import datetime
+
+        from sam.integration.xras import XrasActionLog
+        row = XrasActionLog(received_time=datetime(2026, 8, 25), remote_actor='XRAS',
+                            raw_payload='{}', status=status, action_id=action_id)
+        session.add(row)
+        session.flush()
+        return row
+
+    def test_the_highest_id_wins(self, session):
+        from sam.xras.preflight import log_seen_for
+        self._row(session, 990392007, 'failed')
+        latest = self._row(session, 990392007, 'processed')
+        seen = log_seen_for(session, [990392007, None])
+        assert seen[990392007]['status'] == 'processed'
+        assert seen[990392007]['log_id'] == latest.xras_action_log_id
+
+    def test_a_failed_repost_reports_failed(self, session):
+        from sam.xras.preflight import log_seen_for
+        self._row(session, 990392008, 'processed')
+        self._row(session, 990392008, 'failed')
+        assert log_seen_for(session, [990392008])[990392008]['status'] == 'failed'
+
+    def test_nothing_asked_nothing_queried(self, session):
+        from sam.xras.preflight import log_seen_for
+        assert log_seen_for(session, [None]) == {}

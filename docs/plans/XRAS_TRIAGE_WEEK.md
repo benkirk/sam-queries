@@ -151,7 +151,7 @@ missing-user rows are the Pending-Users worklist's job
   `--show N --payload` (detail incl. warnings), `--recheck N` (would it
   succeed now; applies nothing), `--summary`, `--accounts [--enrich]`
   (Pending-Users worklist), `--readiness` (sweep snapshot board),
-  `--mnemonic-report`, `--family PROJCODE`, `--person USERNAME`,
+  `--mnemonic-report`, `--contract-report`, `--identity-report`, `--family PROJCODE`, `--person USERNAME`,
   `--validate-mapping`, `--validate-opportunities`,
   `--validate-vocabulary` (new: the hardcoded role/panel constants vs live
   XRAS + DB).
@@ -191,11 +191,27 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
 | 20:18 | `sha-e6084c9` rolled out: per-message `cc`/`bcc`/`sender`/`reply_to` on `Message`, read from `NOTIFY_XRAS_*` by `build_xras_messages` alone; values set to CC + Reply-To `alloc@ucar.edu` (team decision). |
 | 20:19 | UFIT0017 notified (#8, lead=admin so one message): `cc=1 bcc=0` — the first copy in alloc@. Follow-up agreed: generalize to a per-family (`NotificationKind.family`) addressing convention applied in the `Notifier`, admin card iterating families, CronJob forwarding `NOTIFY_*` by prefix. |
 | 20:39 | `sha-62d3b9c` rolled out: per-family addressing (`NotificationKind.family`, `NOTIFY_<FAMILY>_*` applied by the `Notifier`, CronJob forwards `NOTIFY_*` by prefix, admin card rows). Env in-pod unchanged; PR #481 body updated. |
+| 22:39 | XRAS posted **NCAR4285** (New, action 394088) → **422**: Allocation Manager `sdahal` is inactive in SAM. Inventory class (inactive account), not code — the preflight had predicted it. Clears when the account is reactivated or XRAS drops the role, then XRAS re-posts. |
+| 02:59 (25th) | Day-2 dispatch: `sha-1adf2dd` on both pods (PR #482 — healthcheck stderr fix, contract blockers Phase 1, pending-work queue, sort-header scroll fix). Healthcheck **41 PASS / 3 WARN / 0 FAIL**, section 12 PASS for the first time. The 03:00 sweep on the new image: `--contract-report` 3 targets (NCAR4231, NCAR4280, NCAR4212); pending work 47 of 467 swept. |
+| 11:12 (25th) | `sha-06e63b8` rolled out: `XRAS_WRITE_ENABLED: "1"` (webapp only; drift test flipped in the same commit). In-pod parsed config `write_configured: True`; CronJobs carry no lever; healthcheck 41/3/0. |
+| 11:16 (25th) | XRAS re-posted **NCAR4262** (New, action 392007) → **422**, `xras_action_log` #8: the three placeholder messages (PI `glarouche-user-cj2nx` not in database / username missing / no affiliation). As predicted; XRAS looked the placeholder up (404) 77 s before posting and posted anyway. |
+| 11:18 (25th) | **First production merge from the card**: `glarouche-user-cj2nx` → `glarouche` (email-exact; SAM `glarouche` active). XRAS: placeholder 404, target retained; Pending Users row dropped; NCAR4262's index entry re-fetched with `glarouche` on the roster. Two defects surfaced: (1) **no `xras_remediation_event` row** — every write route passed `_session_factory()` (a Session) where the service takes the factory, so `_open_event` logged `'Session' object is not callable` and proceeded by design; fixed on #482 with a route-level gate. (2) The refreshed entry carries **no preflight** (`preflight_rollup: None`), so a just-fixed request drops out of the pending-work queue until the next sweep — follow-on: `_refresh_index_entry` should re-run the preflight. Merge copied no person detail (organization, phone, residence country), as documented. |
+| 11:50 (25th) | `sha-8ed71ad` rolled out: write routes pass the session factory (audit rows), Feed A supersession + merged-away rules, preflight re-run on refresh. 0 errors. |
+| 12:14 (25th) | XRAS re-posted **NCAR4262** → **422**, `xras_action_log` #9, one message, exactly as predicted: *Could not determine Mnemonic code for internal PI via organization*. The identity is fixed; the blocker moved to affiliation. Pending Users dropped the placeholder on the next render (#9 supersedes #8). Root cause: SAM's `glarouche` had a `user_institution` row for UNIVERSITY OF MIAMI (id 55, resolves to `MIA`) that the upstream affiliation sync **end-dated on 2026-06-24**; no organization row either, so the extractor fell to the organization route and reported the "internal PI" string. Fix is affiliation data, not code; see the day-3 notes. |
+| 13:10 (25th) | `sha-fb99e21` rolled out: `is_pending_work` keeps a `seen_in_log` action whose latest log row is `received`/`failed`/`manual`; `log_seen_for` picks the highest log id. NCAR4262 back in the default queue at render time (48 of 465), no re-sweep. Diagnosis: the queue rule was calibrated on cutover day, when every log row was a success, so "seen in log" and "posted" were the same thing until the first failed re-post. |
+| 13:45 (25th) | **Second merge, an *unreconciled* placeholder, via the service from a pod** (API validation before any UI): `jhu-user-fo5ee` → `jhu279` (NCAR4280; email-exact, same name, WVU/Wisconsin both on the SAM user). Verified 200; `xras_remediation_event` **#1** — the first audit row, `before_state` holding the WVU sheet; the refreshed entry carries a preflight (`refreshed_at` set, still `failed`: AM `skannenberg-user-uxqws` + contract `2624974`). Three findings that reshape the feature: (1) **XRAS resolves every active SAM account live** (`GET /v1/people` proxies SAM's identity service — six role-less SAM users all resolve, reconciled) so a merge target exists as soon as SAM has the user and **no create step is ever needed**; (2) `isReconciled` is not flipped by anything — the retained identity is already `true`, and the placeholder is deleted; (3) `search/people` matches name/username only, capped at 20, so a common surname ("Hu") hides the target while the full name ("Jie Hu") finds it. |
+| 15:47 (25th) | `sha-11a7729` rolled out: the identity-merge feature (`docs/plans/XRAS_IDENTITY_MERGE.md`). Healthcheck 41/3/0. First render already found work the morning's probe could not: `ggeogdzhayev-user-7016v` reads **Ready to merge → `geogdzhayev`** (NCAR4261) — the SAM account was created at 14:37Z, after the sweep, and the row flipped at render with no sweep. `--identity-report`: 1 target, 6 need an account. |
+| 16:58 (25th) | `sha-acd3d95` rolled out: Track B of `XRAS_DATA_MODEL_UPLIFT.md` (allocationDateType, the family seam, the affiliation message, identity badge, add-role copy). Healthcheck 42/2/0. A live re-check of NCAR4262 now reads **PI `glarouche` has no current institution or organization in SAM** — the affiliation class named as itself. |
+| 18:59 (25th) | Third production merge, first from the **Ready to merge** flag: `ggeogdzhayev-user-7016v` -> `geogdzhayev` (NCAR4261). Audit row #2 `verified`, placeholder 404, roster PI moved with its roleId, index entry re-preflighted at click time: `PI geogdzhayev has no current institution or organization in SAM` — the affiliation class again, no sweep needed. The identity strip then showed a second target that surfaced on its own: `sseyedzadeh-user-a85do` -> `sseyedzadeh` (NCAR4252). NCAR4261 was never posted to SAM; XRAS admin must re-push after the affiliation fix. |
+| 19:06 (25th) | Fourth merge, second from the flag: `sseyedzadeh-user-a85do` -> `sseyedzadeh` (NCAR4252). Audit row #3, placeholder 404, PI moved with roleId 573038, click-time preflight: `PI sseyedzadeh has no current institution or organization in SAM` — predicted from the Stony Brook `user_institution` row that arrived already end-dated. Identity strip empty; 4 need an account. **Three of the board's PIs (NCAR4261/4262/4252) now share the affiliation class** — the upstream sync, not identity, is the bottleneck. None of the three was ever posted; each needs an XRAS re-push after the fix. |
+| 19:40 (25th) | Steve's 08-24 findings correlated by request id — XRAS's ids are our `rid`s, and this session's watch log kept SAM's side. The two slow lookups (`kbarragan` 3.5 s, `ncar_guest_11554795` 7.4 s on their clock) were **182 ms and 76 ms app-side**: the seconds sit between their client and gunicorn, on the edge path. The 60 s connect failure (`apauls`, 01:37:32–01:38:32Z) never reached the app and is the 08-17 connect-timeout class — pods stable 5 h, third independent client, unconfirmable from our account; handed to CIRRUS with the window. Steve's log clock is CDT. Key is 96 chars: question 1 closed. |
+| 14:36–23:52 (25th) | **Fifteen organic posts, fifteen `processed`, zero failures** (`xras_action_log` #10–#24: 10 extensions, 4 supplements, 1 New) — the allocation team working the board on the new code. **#10 is NCAR4285's New → `UUSL0048`** (active, PI `hholmes`, 500,000 units 2026-08-24 → 2027-08-23): the first New project minted in production. XRAS dropped the inactive AM `sdahal` from the request before re-posting, so the inventory blocker cleared on their side, as the table predicted. `sdahal` is still inactive in SAM. Identity strip found a third self-surfaced target: `mrahnemoonfar-user-j3bc3` → `maryamr` (NCAR4231, a contract-report target too). Pods 0 errors; `/api/xras` 138×200 / 37×404 over 6 h. |
+| 01:28–01:31 (26th) | **NCAR4231 unblocked end to end from the card, all three strips used in sequence.** Fifth merge, third from the flag: `mrahnemoonfar-user-j3bc3` -> `maryamr` (audit #4 `verified`; the XRAS merge call itself took ~14 s this time, 16.6 s end to end, flagged Slow — XRAS-side latency, the earlier four took ~2 s). Then the contract strip's seeded link created contract 2270 (`2423211`, `mode=manual`, title pre-filled from the wire), then Re-check: `rechecked`, **`would_succeed: true`**, no messages — mnemonic `LHI`, series `ULHI`, UNIV USS, Small. Contract report down to 2 targets (NCAR4280, NCAR4212); identity strip empty. Never posted: the next XRAS push should mint a `ULHI` project. |
 
 ### Questions for Steve (batched, not piecemeal)
 
-1. How many characters is the `XA-API-KEY` XRAS sends? Over 72 confirms the
-   bcrypt truncation story without anyone handling the secret.
+1. ~~How many characters is the `XA-API-KEY`?~~ **Answered 08-25: 96** — the
+   bcrypt truncation story is confirmed without anyone handling the secret.
 2. Two `/people/{username}` lookups at 17:06:49Z (`ncar_guest_11554785`,
    `sortiz`) arrived with **no usable credential** (401 in 0.2 ms, no bcrypt
    run) while the lookups seconds earlier carried the XA pair. Is there a
@@ -203,15 +219,41 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
    the XA headers?
 3. Does xras_admin's "reconcile users" screen read the nightly `GET /people?`
    roster cache rather than calling SAM? (Explains the traffic-free first hour.)
+4. "Recent submissions" drops a row once it is posted **and notified**, and
+   the notified half is XRAS's own record. SAM now sends the handoff mail
+   (`sam.notify`, the Notify button / `xras_notices`), so nothing tells XRAS.
+   What clears it — an admin action in xras_admin, an API call SAM could make
+   after a send, or a per-site setting? Until answered, posted rows sit in
+   their queue and in ours (`docs/plans/XRAS_PENDING_WORK.md`).
+5. When an identity lookup fails to *connect* (the 60 s `apauls` failure,
+   01:37Z 08-25), what does xras_admin do — skip, retry, or post with a
+   placeholder? And what are its connect/read timeouts and retry counts?
+
+**Question for George:** "Since about 08-18, new `user_institution` rows have
+been arriving with an end date a few minutes *before* their creation time —
+e.g. `user_institution_id` 72308 (`geogdzhayev`, user 31424: created 08-25
+08:37:29, ended 08:33:12) and 72312 (`sseyedzadeh`, user 31428: created 11:11:10,
+ended 11:00:49) — 19 of 25 last week, none before that. `user_organization`
+looks normal (its pre-ended rows are history). It trips the mnemonic lookup,
+which wants a currently valid collaboration. Does that make sense — did
+something change around the 08-17 sync?" (Aug 4–17: 58 rows, 0 pre-ended;
+08-18 on: 27 of 54, 20 within the hour. July's backfill is noise. Blocks
+NCAR4261/4262/4252.)
 
 Inventory deltas: the other four date-conflict rows (UCSU0136, UMCP0014,
 UMMM0016, UCOR0102) have no deleted rows and stand as genuine XRAS-vs-SAM
 conflicts. Side note from the sweep detail: the accounts-needed sample lists
 both `harrter` and `hartter`.
 
-## End-of-week close-out
+## Handoff — 2026-08-25 EOD (day 3)
 
-When traffic is boring: fold anything durable from this doc into the
-runbook/playbook, close the living PR (contents long since merged), and
-decide Track B (`docs/plans/XRAS_DATA_MODEL_UPLIFT.md`, outgoing fixes)
-scheduling.
+Prod `sha-acd3d95`, public health green (23:53Z), CI green on #482 head
+`4c95a92a` (mergeable; past the image: docs + the Needs-cell fix `686778b3`,
+nothing prod needs). Morning: (1) errors + `/api/xras` status counts on both
+pods, `--since=12h`; (2) `sam-admin --format json xras --last 12h` for rows
+past #24; (3) `--identity-report` (strip was empty; 4 need an account);
+(4) answers from Steve (Q2–5) and George; a George yes unblocks NCAR4261/
+4262/4252, then XRAS re-pushes each; (5) `maryamr` merge click (NCAR4231).
+NCAR4285 is DONE (`UUSL0048`). Ben's calls: squash #482 to staging;
+the CIRRUS hand-off for the 01:37Z connect failure. When traffic is boring:
+fold what is durable into the playbook and close the living PR.

@@ -118,6 +118,20 @@ class TestNumber:
 # ============================================================================
 
 
+class TestPlural:
+
+    def test_agrees_with_the_count(self):
+        from sam import fmt
+        assert fmt.plural(1, 'push', 'pushes') == '1 push'
+        assert fmt.plural(3, 'push', 'pushes') == '3 pushes'
+        assert fmt.plural(0, 'contract') == '0 contracts'
+        assert fmt.plural(None, 'row') == '0 rows'
+
+    def test_the_count_goes_through_number(self):
+        from sam import fmt
+        assert fmt.plural(34283, 'request') == '34,283 requests'
+
+
 class TestAgo:
 
     def test_sub_minute(self):
