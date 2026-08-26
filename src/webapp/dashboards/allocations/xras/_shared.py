@@ -16,7 +16,7 @@ from datetime import date, datetime, timedelta
 from flask import current_app, render_template
 
 from webapp.extensions import db
-from webapp.utils.htmx import modal_triggers, read_page, read_sort
+from webapp.utils.htmx import modal_triggers, read_flag, read_page, read_sort
 from sam.integration.xras_api import XrasSourceUnavailable
 from sam.manage import xras_remediation as remediation
 from sam.queries.xras_actions import XRAS_ACTION_SORT_COLUMNS
@@ -296,6 +296,19 @@ def _parse_activity_window(args) -> dict:
     days = max(1, min(days, _ACTIVITY_MAX_DAYS))
     return {'days': days, 'since': datetime.now() - timedelta(days=days),
             'until': None, 'start_date': '', 'end_date': '', 'custom': False}
+
+
+def scope_rows(rows, args, *, queue, in_window):
+    """``queue(row)`` by default; ``in_window(row, window)`` only under ``show_all``.
+
+    The worklist cards share this seam so "queue vs. everything" cannot drift
+    between them: the queue is state with no date bound, and the shared date
+    filter applies only once the operator asks for everything.
+    """
+    if read_flag(args, 'show_all'):
+        window = _parse_activity_window(args)
+        return [r for r in rows if in_window(r, window)]
+    return [r for r in rows if queue(r)]
 
 
 def sort_rows(rows, sort, keymap):

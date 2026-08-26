@@ -416,6 +416,41 @@ class TestDefaultWindowUpperBound:
             == '2026-01-15 23:59:59'
 
 
+class TestScopeSeam:
+    """`scope_rows` is the one "queue vs. everything" switch both worklist
+    cards go through, so the two cannot disagree on what `show_all` means."""
+
+    ROWS = [{'id': 1, 'queued': True}, {'id': 2, 'queued': False}]
+
+    def test_default_applies_the_queue_and_never_the_window(self):
+        from werkzeug.datastructures import MultiDict
+
+        from webapp.dashboards.allocations.xras._shared import scope_rows
+
+        def boom(row, window):
+            raise AssertionError('the window must not be consulted by default')
+
+        rows = scope_rows(self.ROWS, MultiDict(),
+                          queue=lambda r: r['queued'], in_window=boom)
+        assert [r['id'] for r in rows] == [1]
+
+    def test_show_all_applies_the_parsed_window_to_every_row(self):
+        from werkzeug.datastructures import MultiDict
+
+        from webapp.dashboards.allocations.xras._shared import scope_rows
+
+        seen = []
+
+        def in_window(row, window):
+            seen.append(window['days'])
+            return True
+
+        rows = scope_rows(self.ROWS, MultiDict([('show_all', '1'), ('days', '7')]),
+                          queue=lambda r: False, in_window=in_window)
+        assert [r['id'] for r in rows] == [1, 2]
+        assert seen == [7, 7], 'the window dict is parsed once and passed through'
+
+
 # ===========================================================================
 # The activation worklist — Notify / Activate / Dismiss / Restore / Comment
 # ===========================================================================

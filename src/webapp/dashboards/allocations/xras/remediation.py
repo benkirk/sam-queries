@@ -62,7 +62,7 @@ from .. import bp
 from ._shared import (
     _XRAS_MODAL_TRIGGERS, _degraded, _entry, _impersonation, _index,
     _live_family, _live_request, _parse_activity_window, _read_client,
-    _role_options, _session_factory, sort_rows,
+    _role_options, _session_factory, scope_rows, sort_rows,
 )
 from .modals import _render_detail
 
@@ -446,10 +446,8 @@ def _selected_facets(args):
 
 def _scope_rows(rows, args):
     """Pending work by default; the date window only under ``show_all``."""
-    if read_flag(args, 'show_all'):
-        since = _parse_activity_window(args)['since']
-        return [r for r in rows if _in_window(r, since)]
-    return [r for r in rows if is_pending_work(r)]
+    return scope_rows(rows, args, queue=is_pending_work,
+                      in_window=lambda r, w: _in_window(r, w['since']))
 
 
 def _filtered_rows(payload, args):
