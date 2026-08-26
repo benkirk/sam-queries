@@ -406,6 +406,26 @@ class TestOIDCCallbackRoute:
             app.config['AUTH_PROVIDER'] = 'stub'
             app.extensions.pop('oauth', None)
 
+    def test_callback_idp_error_is_a_warning_not_a_traceback(self, app, caplog):
+        """``?error=`` from the IdP never reaches the exchange and logs no stack trace."""
+        mock_oauth = MagicMock()
+        app.extensions['oauth'] = mock_oauth
+        app.config['AUTH_PROVIDER'] = 'oidc'
+        try:
+            with app.test_client() as c, caplog.at_level('WARNING', logger='webapp.auth.blueprint'):
+                resp = c.get('/auth/oidc/callback?error=access_denied&error_description=user+cancelled')
+                assert resp.status_code == 302
+                assert '/auth/login' in resp.headers.get('Location', '')
+            mock_oauth.entra.authorize_access_token.assert_not_called()
+            records = [r for r in caplog.records if 'OIDC callback rejected' in r.getMessage()]
+            assert len(records) == 1
+            assert records[0].levelname == 'WARNING'
+            assert records[0].exc_info is None
+            assert 'access_denied' in records[0].getMessage()
+        finally:
+            app.config['AUTH_PROVIDER'] = 'stub'
+            app.extensions.pop('oauth', None)
+
     def test_callback_token_exchange_failure(self, app):
         """Callback handles token exchange exceptions gracefully."""
         mock_oauth = MagicMock()
