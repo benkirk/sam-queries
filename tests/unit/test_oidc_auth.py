@@ -417,7 +417,8 @@ class TestOIDCCallbackRoute:
                 assert resp.status_code == 302
                 assert '/auth/login' in resp.headers.get('Location', '')
             mock_oauth.entra.authorize_access_token.assert_not_called()
-            records = [r for r in caplog.records if 'OIDC callback rejected' in r.getMessage()]
+            records = [r for r in caplog.records if 'OIDC callback refused' in r.getMessage()]
+            assert 'error' not in records[0].getMessage().lower().replace('error_description', '').replace('access_denied', ''), 'healthcheck greps for the token'
             assert len(records) == 1
             assert records[0].levelname == 'WARNING'
             assert records[0].exc_info is None
