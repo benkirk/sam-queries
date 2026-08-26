@@ -671,13 +671,20 @@ def _merge_candidates(person, *, source_username, sam_target=None):
         row = client.get_person(direct)
         if isinstance(row, dict) and row.get('username'):
             found[row['username'].strip()] = row
-    for query in [q for q in (full_name, surname) if q]:
-        for row in (client.search_people(query) or ()):
-            if not isinstance(row, dict):
-                continue
-            username = (row.get('username') or '').strip()
-            if username and username != source_username:
-                found.setdefault(username, row)
+    # The email -> SAM -> XRAS path is authoritative: every active SAM user
+    # resolves in XRAS, so when it lands the target is known. The name search
+    # (XRAS matches name/username only and caps at 20) is the FALLBACK for the
+    # no-SAM-target case; running it once the target is known only adds the
+    # rank-2 "name only" rows the merge warning above is about, tempting an
+    # arbitrary pick between two identities.
+    if not found:
+        for query in [q for q in (full_name, surname) if q]:
+            for row in (client.search_people(query) or ()):
+                if not isinstance(row, dict):
+                    continue
+                username = (row.get('username') or '').strip()
+                if username and username != source_username:
+                    found.setdefault(username, row)
 
     candidates = []
     for username, row in found.items():

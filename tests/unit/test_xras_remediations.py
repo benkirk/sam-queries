@@ -2078,6 +2078,25 @@ class TestUnidentifiedPlaceholdersCanMerge:
         assert 'g@example.invalid' not in [c[0][0] for c in client.search_people.call_args_list], \
             'the dead email query is gone'
 
+    def test_the_finder_skips_the_name_search_when_sam_resolves_the_email(
+            self, auth_client, armed, monkeypatch):
+        """Every active SAM user resolves in XRAS, so a direct email->SAM->XRAS
+        hit IS the merge target. The name-only search (capped at 20) is then not
+        run at all — keeping its rank-2 arbitrary matches out of a destructive
+        merge decision."""
+        real = {'username': 'ghost', 'firstName': 'G', 'lastName': 'Host',
+                'email': self.EMAIL, 'organization': 'Example U'}
+        noise = {'username': 'ghosty', 'firstName': 'G', 'lastName': 'Host',
+                 'email': 'other@example.invalid', 'organization': 'NCAR'}
+        client = _reader(monkeypatch, person=self._ghost(), candidates=[noise],
+                         people={'ghost': real})
+        _sam_holds(monkeypatch, self.EMAIL, 'ghost')
+        body = auth_client.get(
+            f'/allocations/xras_merge_form/{self.GHOST}').get_data(as_text=True)
+        assert 'email matches exactly' in body
+        assert 'ghosty' not in body, 'name-only rows suppressed once SAM resolves'
+        assert client.search_people.call_count == 0
+
     def test_the_finder_asks_for_the_full_name_as_well_as_the_surname(
             self, auth_client, armed, monkeypatch):
         hit = {'username': 'ghosth', 'firstName': 'G', 'lastName': 'Host',
