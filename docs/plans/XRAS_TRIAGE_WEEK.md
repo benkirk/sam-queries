@@ -223,6 +223,8 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
 
 | 23:30 (26th) | **Approver comments: found and wired (Part 1).** The review team's note to the PI is not on the POST (29 payloads, 41 fixtures) but is `actions[].adminComments` on the reports feed — non-empty on 223/457 approved actions. New resolver `src/sam/integration/xras_api/comments.py` (projcode + `actionId`, fail-open), threaded through the Notify route and the `xras_notices` task into the notice context, and shown in the Request modal as "Approver's note". Mail templates deliberately untouched (silent drop) — Ben's template PR follows before anything is sent with it. Also: `sha-1b2f713` (update-handler membership fix) rolled out 22:5xZ, 0 errors. |
 
+| 14:30 (27th) | **Dismiss reason made optional** (Ben's call): new `XrasDismissForm` (blank → NULL) for `xras_dismiss`; Comment keeps the required `XrasActivationEventForm`; modal marks the field "(optional)"; the card badge tooltip says "No reason given" instead of rendering `None`. |
+
 ### Questions for Steve (batched, not piecemeal)
 
 1. ~~How many characters is the `XA-API-KEY`?~~ **Answered 08-25: 96** — the

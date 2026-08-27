@@ -237,6 +237,7 @@ from .operational import (
 # Its own module precisely so it is not confused with the block below.
 from .xras_activation import (
     XrasActivationEventForm,
+    XrasDismissForm,
 )
 from .xras_remediation import (
     XrasMergeForm,
@@ -337,6 +338,7 @@ __all__ = [
     'EditWallclockExemptionForm',
     # XRAS action ingest
     'XrasActivationEventForm',
+    'XrasDismissForm',
     'XrasMergeForm',
     'XrasRemediationReasonForm',
     'XrasRoleForm',

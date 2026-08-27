@@ -32,7 +32,7 @@ from sam.queries.xras_activation import (
 # docstring; `tests/unit/test_notify_import_graph.py` is the gate.
 from sam.integration.xras_api import approver_comment_for_action
 from sam.queries.xras_notices import build_xras_messages, load_xras_action
-from sam.schemas.forms import XrasActivationEventForm
+from sam.schemas.forms import XrasActivationEventForm, XrasDismissForm
 
 from .. import bp
 from ._shared import _XRAS_MODAL_TRIGGERS
@@ -342,7 +342,7 @@ def xras_dismiss_form(project_id: int):
 @login_required
 @require_permission(Permission.MANAGE_XRAS)
 def xras_dismiss(project_id: int):
-    """Take a project out of the attention queue, with a required reason.
+    """Take a project out of the attention queue, with an optional reason.
 
     Not permanent and not a delete: a dismissal is superseded by whichever comes
     later, a new XRAS action or an explicit Restore. See
@@ -354,10 +354,10 @@ def xras_dismiss(project_id: int):
         return htmx_not_found('Project')
 
     return handle_htmx_form_post(
-        schema_cls=XrasActivationEventForm,
+        schema_cls=XrasDismissForm,
         template='dashboards/allocations/partials/xras_pending_event_form.html',
         do_action=lambda data: _record_activation_event(
-            project, 'dismissed', comment=data['comment']),
+            project, 'dismissed', comment=data.get('comment')),
         success_triggers=_XRAS_MODAL_TRIGGERS,
         success_message=f'Dismissed {project.projcode}.',
         success_detail='Out of the attention queue; Restore it under Everything '
