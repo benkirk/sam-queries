@@ -225,6 +225,8 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
 
 | 14:30 (27th) | **Dismiss reason made optional** (Ben's call): new `XrasDismissForm` (blank → NULL) for `xras_dismiss`; Comment keeps the required `XrasActivationEventForm`; modal marks the field "(optional)"; the card badge tooltip says "No reason given" instead of rendering `None`. |
 
+| 15:13 (27th) | XRAS pushed **NCAR4281** (New, action 393550) → **422**, `xras_action_log` #30: *Could not determine Mnemonic code for external PI via institution* — the two-open-institutions case pre-triaged 08-26 (`kheyblom`: Victoria 2021 still open and unmapped, Michigan since 08-10 → `MIC`; first-current wins). Fix is upstream (end the Victoria collaboration) or a Victoria mnemonic link if that is really his affiliation — Ben's call, then XRAS re-pushes. Strip/contract reports unchanged. |
+
 ### Questions for Steve (batched, not piecemeal)
 
 1. ~~How many characters is the `XA-API-KEY`?~~ **Answered 08-25: 96** — the
