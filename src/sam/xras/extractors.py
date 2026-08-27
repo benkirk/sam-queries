@@ -593,11 +593,13 @@ def resolve_mnemonic_code(session, action, errs: ActionErrors, *,
         return None
 
     if opportunity.startswith('NCAR '):
-        lab = _lab_level_organization(_organization_parentage(_best_organization(user)))
+        org = _best_organization(user)
+        lab = _lab_level_organization(_organization_parentage(org))
         code = MnemonicCode.resolve_for_organization(lab, lookup) if lab else None
         if code is None:
             # Divergence, argued above: legacy returns null here in silence.
-            errs.report(e.mnemonic_internal_failed())
+            errs.report(e.mnemonic_internal_failed(
+                pi_username, org.name if org else None, lab.name if lab else None))
             return None
         return _mnemonic_row(session, code)
 
@@ -605,14 +607,21 @@ def resolve_mnemonic_code(session, action, errs: ActionErrors, *,
     if institution is not None:
         code = MnemonicCode.resolve_for_institution(institution, lookup)
         if code is None:
-            errs.report(e.mnemonic_external_failed())
+            # Name the other current rows too: `_best_institution` takes the first,
+            # and a stale one can shadow the right one (kheyblom, 2026-08-27).
+            others = [ui.institution for ui in user.institutions
+                      if ui.is_active and ui.institution is not None
+                      and ui.institution is not institution]
+            errs.report(e.mnemonic_external_failed(
+                pi_username, institution.name, getattr(institution, 'city', None),
+                [(o.name, MnemonicCode.resolve_for_institution(o, lookup)) for o in others]))
             return None
         return _mnemonic_row(session, code)
 
     org = _best_organization(user)
     code = MnemonicCode.resolve_for_organization(org, lookup) if org else None
     if code is None:
-        errs.report(e.mnemonic_internal_failed())
+        errs.report(e.mnemonic_internal_failed(pi_username, org.name if org else None))
         return None
     return _mnemonic_row(session, code)
 

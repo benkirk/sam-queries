@@ -233,6 +233,8 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
 
 | 21:10 (27th) | Organic: UCNN0063 Supplement (#37), UWKU0002 Supplement (#38), UPSU0076 Extension (#39) — all `processed`, no warnings. Sweeps admitted four new approvals: **NCAR4283** (PI `kheyblom` — same Victoria blocker as NCAR4281, so that fix now unblocks two), **NCAR4284** (PI `pengz`, would land clean), **NCAR4286** (PI placeholder `jscheffel-user-y8btp`, needs a SAM account), **NCAR4287** (PI `akeesee`: inactive user, no current affiliation, and grant `2331527` has no contract — contract report now 3). Sweep 1645/4094, 19 pending push, 13 accounts. Affiliation watch still 37 / 0 open — no reset yet. |
 
+| 23:30 (27th) | **Mnemonic 422s now name the affiliation.** After NCAR4281's four blind retries: `mnemonic_external_failed`/`mnemonic_internal_failed` keep the legacy sentence as a prefix and append `: <pi>'s current institution "X" (city) has no mnemonic link; also current: "Y" -> CODE`. The mnemonic report classifies on the prefix; nothing parses the detail. |
+
 ### Questions for Steve (batched, not piecemeal)
 
 1. ~~How many characters is the `XA-API-KEY`?~~ **Answered 08-25: 96** — the

@@ -337,8 +337,8 @@ class TestTheFailurePaths:
 
         with pytest.raises(XrasActionRejected) as exc:
             handle_new(committing, payload)
-        assert ('Could not determine Mnemonic code for internal PI via organization'
-                in exc.value.messages)
+        assert any(m.startswith('Could not determine Mnemonic code for internal PI via organization')
+                   for m in exc.value.messages)
 
     def test_an_unknown_pi_reports_and_creates_nothing(self, committing, session,
                                                        creatable, mapped_resource):

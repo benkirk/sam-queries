@@ -27,11 +27,15 @@ _SAMPLE_CAP = 10
 
 
 def _mnemonic_family(message: str) -> Optional[str]:
-    """Which mnemonic family a 422 string is, matched by equality — never sub-parsed."""
-    from sam.xras.errors import mnemonic_external_failed, mnemonic_internal_failed
-    if message == mnemonic_internal_failed():
+    """Which mnemonic family a 422 string is, matched on the legacy sentence as a prefix.
+
+    The named detail after the colon is never parsed: the target comes from the
+    DB in `_resolve_target`, so the message only says which family to look in.
+    """
+    from sam.xras.errors import MNEMONIC_EXTERNAL_PREFIX, MNEMONIC_INTERNAL_PREFIX
+    if message.startswith(MNEMONIC_INTERNAL_PREFIX):
         return FAMILY_ORGANIZATION
-    if message == mnemonic_external_failed():
+    if message.startswith(MNEMONIC_EXTERNAL_PREFIX):
         return FAMILY_INSTITUTION
     return None
 

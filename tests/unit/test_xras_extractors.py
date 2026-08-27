@@ -804,8 +804,10 @@ class TestResolveMnemonicCode:
         errs = ActionErrors()
         assert resolve_mnemonic_code(session, action(opportunityName='NCAR Thing'),
                                      errs, pi_username=user.username) is None
-        assert list(errs) == [
-            'Could not determine Mnemonic code for internal PI via organization']
+        (message,) = list(errs)
+        assert message.startswith(
+            'Could not determine Mnemonic code for internal PI via organization')
+        assert 'Extractor Unlinked Lab' in message and user.username in message
 
     def test_an_unlinked_institution_reports_the_external_string(self, session):
         from factories import make_institution, make_user, make_user_institution
@@ -816,8 +818,33 @@ class TestResolveMnemonicCode:
         errs = ActionErrors()
         assert resolve_mnemonic_code(session, action(opportunityName='Small Allocation'),
                                      errs, pi_username=user.username) is None
-        assert list(errs) == [
-            'Could not determine Mnemonic code for external PI via institution']
+        (message,) = list(errs)
+        assert message.startswith(
+            'Could not determine Mnemonic code for external PI via institution')
+        assert 'Extractor Unlinked University' in message and user.username in message
+        assert 'also current' not in message
+
+    def test_a_shadowed_second_institution_is_named_with_its_code(self, session):
+        """kheyblom, 2026-08-27: a stale open row is first in DB order and unlinked,
+        while a newer one resolves. `_best_institution` keeps taking the first
+        (legacy parity); the 422 now says what the admin needs to know."""
+        from factories import (make_institution, make_mnemonic_code, make_user,
+                               make_user_institution)
+        stale = make_institution(session, name='Extractor Stale University')
+        current = make_institution(session, name='Extractor Current University')
+        linked = make_mnemonic_code(session, description='Extractor Current University')
+        user = make_user(session)
+        make_user_institution(session, user=user, institution=stale)
+        make_user_institution(session, user=user, institution=current)
+        session.flush()
+        session.expire(user)
+
+        errs = ActionErrors()
+        assert resolve_mnemonic_code(session, action(opportunityName='Small Allocation'),
+                                     errs, pi_username=user.username) is None
+        (message,) = list(errs)
+        assert '"Extractor Stale University"' in message
+        assert f'also current: "Extractor Current University" -> {linked.code}' in message
 
     def test_a_pi_with_no_current_affiliation_names_that_gap(self, session):
         """Declared divergence. Legacy's ``UserAffiliationDTO`` is non-null for
