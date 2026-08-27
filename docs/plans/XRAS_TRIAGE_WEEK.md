@@ -235,6 +235,8 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
 
 | 23:30 (27th) | **Mnemonic 422s now name the affiliation.** After NCAR4281's four blind retries: `mnemonic_external_failed`/`mnemonic_internal_failed` keep the legacy sentence as a prefix and append `: <pi>'s current institution "X" (city) has no mnemonic link; also current: "Y" -> CODE`. The mnemonic report classifies on the prefix; nothing parses the detail. |
 
+| 00:20 (28th) | **Users API accepts API keys** (Ben's decision, for the new `gdex` credential): list/search/`<username>`/`<username>/projects` moved from `@login_required` + `@require_permission` to `@login_or_token_required(Permission…)`, the legacy-compat pattern — any valid key reads users; sessions keep the permission check; `/me` stays session-only. Unauthenticated now answers JSON 401 instead of a 302. `users_api_demo.sh` (untracked) is the colleague-facing demo. |
+
 ### Questions for Steve (batched, not piecemeal)
 
 1. ~~How many characters is the `XA-API-KEY`?~~ **Answered 08-25: 96** — the

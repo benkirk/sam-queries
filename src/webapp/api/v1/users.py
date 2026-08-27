@@ -1,7 +1,11 @@
 """
 User API endpoints (v1).
 
-Provides RESTful API for user management with RBAC.
+Provides RESTful API for user management with RBAC. The list, search and
+per-user routes accept an HTTP Basic API key as well as a browser session
+(``login_or_token_required``: the token path bypasses RBAC by design, so any
+valid key can read user records); ``/me`` stays session-only because it
+reads ``current_user.user_id``.
 
 Example usage:
     GET /api/v1/users?page=1&per_page=50
@@ -12,7 +16,8 @@ Example usage:
 from datetime import datetime
 from flask import Blueprint, jsonify, request, abort
 from flask_login import login_required, current_user
-from webapp.utils.rbac import require_permission, Permission
+from webapp.utils.api_auth import login_or_token_required
+from webapp.utils.rbac import Permission
 from webapp.extensions import db
 from webapp.utils.htmx import read_active_only
 from sam.schemas import UserSchema, UserListSchema, UserSummarySchema, ProjectListSchema
@@ -160,8 +165,7 @@ def get_current_user_projects():
 
 
 @bp.route('/search', methods=['GET'])
-@login_required
-@require_permission(Permission.VIEW_USERS)
+@login_or_token_required(Permission.VIEW_USERS)
 def search_users():
     """
     GET /api/v1/users/search - Search users for autocomplete functionality.
@@ -219,8 +223,7 @@ def search_users():
 
 
 @bp.route('/', methods=['GET'])
-@login_required
-@require_permission(Permission.VIEW_USERS)
+@login_or_token_required(Permission.VIEW_USERS)
 def list_users():
     """
     GET /api/v1/users - List users with pagination and filtering.
@@ -271,8 +274,7 @@ def list_users():
 
 
 @bp.route('/<username>', methods=['GET'])
-@login_required
-@require_permission(Permission.VIEW_USERS)
+@login_or_token_required(Permission.VIEW_USERS)
 def get_user(username):
     """
     GET /api/v1/users/<username> - Get user details.
@@ -288,8 +290,7 @@ def get_user(username):
 
 
 @bp.route('/<username>/projects', methods=['GET'])
-@login_required
-@require_permission(Permission.VIEW_PROJECTS)
+@login_or_token_required(Permission.VIEW_PROJECTS)
 def get_user_projects(username):
     """
     GET /api/v1/users/<username>/projects - Get user's projects.
