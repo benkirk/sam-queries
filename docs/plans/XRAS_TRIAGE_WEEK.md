@@ -227,6 +227,8 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
 
 | 15:13 (27th) | XRAS pushed **NCAR4281** (New, action 393550) → **422**, `xras_action_log` #30: *Could not determine Mnemonic code for external PI via institution* — the two-open-institutions case pre-triaged 08-26 (`kheyblom`: Victoria 2021 still open and unmapped, Michigan since 08-10 → `MIC`; first-current wins). Fix is upstream (end the Victoria collaboration) or a Victoria mnemonic link if that is really his affiliation — Ben's call, then XRAS re-pushes. Strip/contract reports unchanged. |
 
+| 16:54 (27th) | NCAR4281 re-pushed three more times (#31–#33, identical 422) and NCAR4252 once (#34, affiliation, unchanged). **NCAR4282** (#35, action 393811) → 422 *PI sanjib has no current institution or organization*: XRAS reconciled the `ssharma-user-s8etm` placeholder onto the existing SAM user `sanjib` (since 2020; Howard row ended 2026-07-03), so it moved from the account class to the affiliation class. **George** (~11:00 MDT) says he fixed the end-date bug and is running a full reset — the tick now watches the 37-user cohort for open rows. Identity strip: **`skannenberg-user-uxqws` → `kannenberg` Ready to merge** (NCAR4280 AM; the account the admin was searching for this morning landed). `--accounts` 12 → 11. |
+
 ### Questions for Steve (batched, not piecemeal)
 
 1. ~~How many characters is the `XA-API-KEY`?~~ **Answered 08-25: 96** — the
