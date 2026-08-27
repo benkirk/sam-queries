@@ -239,6 +239,7 @@ def xras_notices(ctx) -> TaskResult:
     from sam.queries.xras_activation import (
         get_xras_activity, get_xras_pending_recipients,
     )
+    from sam.integration.xras_api import approver_comment_for_action
     from sam.queries.xras_notices import build_xras_messages, load_xras_action
 
     # ONE conversion, zone read off SCHEDULE rather than repeated as a literal.
@@ -284,9 +285,13 @@ def xras_notices(ctx) -> TaskResult:
             ctx.logger.info('%s action %s: no recipients on file',
                             row['projcode'], row['action_log_id'])
             continue
+        action = load_xras_action(session, row['action_log_id'])
         built = build_xras_messages(
             session, project, people,
-            action=load_xras_action(session, row['action_log_id']),
+            action=action,
+            # One reports GET per action, fail-open: the audience is capped at
+            # SAM_TASKS_XRAS_MAX and a missing note never withholds the mail.
+            approver_comment=approver_comment_for_action(action),
             # NOT getpass.getuser(): in this pod that is the runtime UID or a
             # KeyError, either way a lie in the column the admin card renders
             # as "who asked".

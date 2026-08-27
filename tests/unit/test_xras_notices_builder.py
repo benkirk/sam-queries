@@ -249,3 +249,43 @@ class TestTheIncrementsGoToTheRightSlot:
                                      payload=self._payload(key, 50_000))
         assert message.context['added'] == []
         assert message.context['changes'] == []
+
+
+class TestTheApproverComment:
+    """The note rides the context; the templates do not render it yet (the
+    template PR flips the last assertion)."""
+
+    NOTE = 'Your extension is approved. Please verify your balance.'
+
+    def _message(self, session, project, *, note, service='extend',
+                 action_type='Extension'):
+        action = make_xras_action(
+            session, status='processed', action_type=action_type, service=service,
+            request_number=project.projcode, projcode_result=project.projcode,
+            payload=json.dumps({'actionType': action_type}))
+        (message,) = build_xras_messages(session, project, PEOPLE, action=action,
+                                         requested_by='t', approver_comment=note)
+        return message
+
+    def test_the_context_carries_the_note(self, session, project):
+        message = self._message(session, project, note=self.NOTE)
+        assert message.context['approver_comment'] == self.NOTE
+
+    def test_the_key_exists_even_when_there_is_no_note(self, session, project):
+        message = self._message(session, project, note=None)
+        assert 'approver_comment' in message.context
+        assert message.context['approver_comment'] is None
+
+    @pytest.mark.parametrize('service, action_type', [
+        ('add', 'New'), ('extend', 'Extension'), ('supplement', 'Supplement'),
+        ('update', 'New'), ('adjust', 'Adjust'),
+    ])
+    def test_no_template_renders_it_yet(self, session, project, service,
+                                        action_type):
+        from sam.notify import TemplateRenderer
+        message = self._message(session, project, note=self.NOTE,
+                                service=service, action_type=action_type)
+        rendered = TemplateRenderer().render(message)
+        assert self.NOTE not in (rendered.text or '')
+        assert self.NOTE not in (rendered.html or '')
+

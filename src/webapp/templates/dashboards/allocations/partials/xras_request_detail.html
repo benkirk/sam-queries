@@ -320,6 +320,14 @@
        `allocationDateId` -- both renamed by _detail_actions, which also parses
        begin/end. #}
 
+    {# adminComments is the reviewer's note to the PI; the handoff notice
+       will relay it, so the operator sees it here first. #}
+    <div class="small mt-2">
+        <span class="text-uppercase text-muted">Approver's note:</span>
+        {% if action.admin_comments %}
+        <em>{{ action.admin_comments }}</em>
+        {% else %}<span class="text-muted ms-1">none</span>{% endif %}
+    </div>
     <div class="small mt-2 d-flex align-items-start gap-2">
         <div class="flex-grow-1">
             <span class="text-uppercase text-muted">Comments:</span>

@@ -118,6 +118,7 @@ def _detail_actions(payload):
             'action_type': action.get('actionType'),
             'action_status': action.get('actionStatus'),
             'user_comments': action.get('userComments'),
+            'admin_comments': action.get('adminComments'),
             'stages_present': stages_present,
             'resource_rows': resource_rows,
             # Dates arrive as raw ISO strings; parse to date objects here (the

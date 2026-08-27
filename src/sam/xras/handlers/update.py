@@ -283,6 +283,11 @@ class UpdateHandler(ActionHandler):
         self.execute_plan(self.planned, project=project)
 
         # 4. Membership. As on the Add path, skipped when the project has no accounts.
+        # Re-read the collection first: step 3 creates accounts through
+        # `Account.create` (add + flush, no append), so a project that arrived
+        # bare still shows `accounts == []` here and every member is dropped --
+        # UNYU0028, 2026-08-26.
+        self.session.expire(project, ['accounts'])
         if project.accounts:
             for member in self.members:
                 if member is not None:
