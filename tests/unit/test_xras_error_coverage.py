@@ -303,7 +303,8 @@ class TestMnemonicStrings:
                                organization=make_organization(session))
         out = messages(committing, new_action(
             pi, wire_resource(mapped_resource.xras_key)))
-        assert e.mnemonic_internal_failed() in out
+        # The named form starts with the legacy sentence (2026-08-27).
+        assert any(m.startswith(e.mnemonic_internal_failed()) for m in out)
 
     def test_no_current_affiliation_for_pi(self, committing, session, mapped_resource):
         """The affiliation rows were end-dated upstream (NCAR4262's class)."""
@@ -312,7 +313,7 @@ class TestMnemonicStrings:
         out = messages(committing, new_action(
             pi, wire_resource(mapped_resource.xras_key)))
         assert e.no_current_affiliation_for_pi(pi.username) in out
-        assert e.mnemonic_internal_failed() not in out
+        assert not any(m.startswith(e.mnemonic_internal_failed()) for m in out)
 
     def test_mnemonic_external_failed(self, committing, session, mapped_resource):
         from factories import make_institution, make_user, make_user_institution
@@ -321,7 +322,7 @@ class TestMnemonicStrings:
                               institution=make_institution(session))
         out = messages(committing, new_action(
             pi, wire_resource(mapped_resource.xras_key)))
-        assert e.mnemonic_external_failed() in out
+        assert any(m.startswith(e.mnemonic_external_failed()) for m in out)
 
 
 # ---------------------------------------------------------------------------
@@ -548,12 +549,14 @@ class TestAccumulationAcrossCategories:
         assert {
             e.missing_title(),
             e.no_fos_objects(),
-            e.mnemonic_internal_failed(),
             e.no_resource_for_key('777778'),
             e.awarded_amount_missing(),
             e.cannot_find_contract('NSF-8880003', '8880003'),
             e.username_missing('ecov_ghost_2'),
         } <= set(out)
+        # The seventh: the mnemonic message now carries the organization after
+        # the legacy sentence, so match its prefix rather than the whole string.
+        assert any(m.startswith(e.mnemonic_internal_failed()) for m in out)
 
     def test_nothing_is_written_when_anything_is_reported(self, committing, session):
         from factories import make_project
