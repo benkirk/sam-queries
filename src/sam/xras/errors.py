@@ -354,12 +354,32 @@ def ambiguous_contract(grant_number: str, core_number: str,
 # -- Mnemonic -- action/domain/model/mnemoniccode/MnemonicCodeExtractor
 
 
-def mnemonic_external_failed() -> str:
-    """`MnemonicCodeExtractor:39`."""
-    return 'Could not determine Mnemonic code for external PI via institution'
+#: The legacy sentences, kept verbatim as prefixes: the playbook, the parity oracle
+#: and `xras_mnemonic_report._mnemonic_family` all key on them. Detail goes after
+#: a colon and is never parsed.
+MNEMONIC_EXTERNAL_PREFIX = 'Could not determine Mnemonic code for external PI via institution'
+MNEMONIC_INTERNAL_PREFIX = 'Could not determine Mnemonic code for internal PI via organization'
 
 
-def mnemonic_internal_failed() -> str:
+def _alternatives_clause(alternatives) -> str:
+    """``; also current: "X" -> ABC, "Y" (no mnemonic link)`` for up to three others."""
+    parts = []
+    for name, code in list(alternatives or ())[:3]:
+        parts.append(f'"{name}" -> {code}' if code else f'"{name}" (no mnemonic link)')
+    return f'; also current: {", ".join(parts)}' if parts else ''
+
+
+def mnemonic_external_failed(username=None, institution=None, city=None,
+                             alternatives=()) -> str:
+    """`MnemonicCodeExtractor:39`, plus which institution and any other current one."""
+    if not institution:
+        return MNEMONIC_EXTERNAL_PREFIX
+    where = f'"{institution}"' + (f' ({city})' if city else '')
+    return (f'{MNEMONIC_EXTERNAL_PREFIX}: {username or "the PI"}\'s current institution '
+            f'{where} has no mnemonic link{_alternatives_clause(alternatives)}')
+
+
+def mnemonic_internal_failed(username=None, organization=None, lab=None) -> str:
     """`MnemonicCodeExtractor:47` — **24% of legacy's XRAS failures** carry this one.
 
     The cause is data, not code: ``user_organization`` has been frozen since
@@ -369,7 +389,11 @@ def mnemonic_internal_failed() -> str:
     satisfy (legacy's ``code LIKE '%name%'`` measured 150). Surfacing it as a
     reviewable 422 is the point; fixing the data is not this sprint's job.
     """
-    return 'Could not determine Mnemonic code for internal PI via organization'
+    if not organization:
+        return MNEMONIC_INTERNAL_PREFIX
+    where = f'"{organization}"' + (f' (lab "{lab}")' if lab and lab != organization else '')
+    return (f'{MNEMONIC_INTERNAL_PREFIX}: {username or "the PI"}\'s organization '
+            f'{where} has no mnemonic link')
 
 
 def no_affiliation_for_pi(username: str) -> str:

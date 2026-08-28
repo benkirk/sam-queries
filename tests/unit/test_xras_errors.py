@@ -209,3 +209,36 @@ class TestEveryBuilderIsExported:
         }
         missing = sorted(b for b in builders if not hasattr(pkg, b))
         assert missing == [], f'not exported from sam.xras: {missing}'
+
+
+class TestMnemonicMessagesKeepTheLegacyPrefix:
+    """The bare legacy sentences are the prefixes everything else keys on."""
+
+    def test_no_arguments_is_the_bare_legacy_sentence(self):
+        from sam.xras.errors import (
+            MNEMONIC_EXTERNAL_PREFIX, MNEMONIC_INTERNAL_PREFIX,
+            mnemonic_external_failed, mnemonic_internal_failed,
+        )
+        assert mnemonic_external_failed() == MNEMONIC_EXTERNAL_PREFIX == \
+            'Could not determine Mnemonic code for external PI via institution'
+        assert mnemonic_internal_failed() == MNEMONIC_INTERNAL_PREFIX == \
+            'Could not determine Mnemonic code for internal PI via organization'
+
+    def test_the_named_form_starts_with_the_sentence(self):
+        from sam.xras.errors import mnemonic_external_failed, mnemonic_internal_failed
+        ext = mnemonic_external_failed('kheyblom', 'UNIVERSITY OF VICTORIA', 'Victoria',
+                                       [('UNIVERSITY OF MICHIGAN', 'MIC'), ('ELSEWHERE', None)])
+        assert ext == ('Could not determine Mnemonic code for external PI via institution: '
+                       'kheyblom\'s current institution "UNIVERSITY OF VICTORIA" (Victoria) '
+                       'has no mnemonic link; also current: "UNIVERSITY OF MICHIGAN" -> MIC, '
+                       '"ELSEWHERE" (no mnemonic link)')
+        internal = mnemonic_internal_failed('pengz', 'CGD Admin', 'CGD')
+        assert internal == ('Could not determine Mnemonic code for internal PI via '
+                            'organization: pengz\'s organization "CGD Admin" (lab "CGD") '
+                            'has no mnemonic link')
+
+    def test_alternatives_are_capped_at_three(self):
+        from sam.xras.errors import mnemonic_external_failed
+        msg = mnemonic_external_failed('u', 'A', None, [(f'X{i}', None) for i in range(6)])
+        assert msg.count('no mnemonic link') == 1 + 3
+

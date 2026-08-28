@@ -370,8 +370,8 @@ class TestTheFailureOracles:
 
         with pytest.raises(XrasActionRejected) as exc:
             dispatch_action(committing, data)
-        assert ('Could not determine Mnemonic code for internal PI via organization'
-                in exc.value.messages)
+        assert any(m.startswith('Could not determine Mnemonic code for internal PI via organization')
+                   for m in exc.value.messages)
 
 
 # ---------------------------------------------------------------------------

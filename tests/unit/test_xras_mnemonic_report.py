@@ -177,3 +177,15 @@ class TestSharedLeafWithTheIngestResolver:
         assert row is None and list(errs)          # ingest reports the miss
         status, name, _ = self._report(session, user)
         assert (status, name) == ('unmapped', org.name)
+
+
+def test_the_family_match_is_a_prefix_so_the_named_form_still_classifies():
+    from sam.queries.xras_mnemonic_report import (
+        FAMILY_INSTITUTION, FAMILY_ORGANIZATION, _mnemonic_family,
+    )
+    assert _mnemonic_family(EXTERNAL) == FAMILY_INSTITUTION
+    assert _mnemonic_family(INTERNAL) == FAMILY_ORGANIZATION
+    assert _mnemonic_family(mnemonic_external_failed('u', 'Somewhere U')) == FAMILY_INSTITUTION
+    assert _mnemonic_family(mnemonic_internal_failed('u', 'Some Lab')) == FAMILY_ORGANIZATION
+    assert _mnemonic_family('PI u has no current institution or organization in SAM') is None
+

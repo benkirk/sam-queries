@@ -192,7 +192,8 @@ Registered blueprints: `projects`, `users`, `charges`, `allocations`, `status`,
 `health`, `admin`, plus the **legacy-compat** set below.
 
 Key endpoints (all JSON):
-- `GET /api/v1/users/`, `/users/<username>`, `/users/<username>/projects`
+- `GET /api/v1/users/`, `/users/<username>`, `/users/<username>/projects` — accept an
+  API key (any valid key; sessions need `VIEW_USERS`/`VIEW_PROJECTS`); `/users/me` is session-only
 - `GET /api/v1/projects/`, `/projects/<projcode>`, `/projects/<projcode>/members`
 - `GET /api/v1/projects/<projcode>/allocations` → `AllocationWithUsageSchema(many=True)` ⭐
 - `GET /api/v1/projects/<projcode>/charges` (+ `/summary`) — detailed / aggregated charge rollups ⭐

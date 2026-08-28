@@ -660,7 +660,7 @@ class TestActivationModalBodies:
         assert 'hides the project' not in body
         assert 'row stays' in body
 
-    @pytest.mark.parametrize('endpoint', ['xras_comment', 'xras_dismiss'])
+    @pytest.mark.parametrize('endpoint', ['xras_comment'])
     def test_a_blank_note_is_rejected_with_a_VISIBLE_error(
             self, auth_client, active_project, endpoint):
         """`_strip_empty_strings` drops '' but not '   ' — the post_load guard is
@@ -682,6 +682,41 @@ class TestActivationModalBodies:
         html = resp.data.decode()
         assert 'invalid-feedback' in html, 'no field-error block rendered'
         assert 'This field is required.' in html
+
+    @pytest.mark.parametrize('posted', [{}, {'comment': ''}, {'comment': '   '}])
+    def test_dismiss_accepts_an_empty_reason(self, auth_client, active_project,
+                                             monkeypatch, posted):
+        """The reason is optional: absent, empty and whitespace all dismiss, and
+        the event stores NULL rather than a blank string."""
+        from webapp.dashboards.allocations.xras import lifecycle_routes as blueprint
+        seen = []
+        monkeypatch.setattr(blueprint, '_record_activation_event',
+                            lambda project, event_type, **kw: seen.append((event_type, kw)))
+        resp = auth_client.post(
+            f'/allocations/xras_dismiss/{active_project.project_id}', data=posted)
+        assert resp.status_code == 200
+        assert 'refreshXrasTab' in resp.headers.get('HX-Trigger', '')
+        assert seen == [('dismissed', {'comment': None})]
+
+    def test_dismiss_keeps_a_reason_when_given(self, auth_client, active_project,
+                                               monkeypatch):
+        from webapp.dashboards.allocations.xras import lifecycle_routes as blueprint
+        seen = []
+        monkeypatch.setattr(blueprint, '_record_activation_event',
+                            lambda project, event_type, **kw: seen.append((event_type, kw)))
+        resp = auth_client.post(
+            f'/allocations/xras_dismiss/{active_project.project_id}',
+            data={'comment': '  Duplicate of UHSS0002.  '})
+        assert resp.status_code == 200
+        assert seen == [('dismissed', {'comment': 'Duplicate of UHSS0002.'})]
+
+    def test_the_dismiss_form_marks_the_reason_optional(self, auth_client,
+                                                        active_project):
+        resp = auth_client.get(
+            f'/allocations/xras_dismiss_form/{active_project.project_id}')
+        html = resp.data.decode()
+        assert '(optional)' in html
+        assert 'required' not in html.split('<textarea', 1)[1].split('>', 1)[0]
 
 
 class TestActivityCardGating:
@@ -930,6 +965,14 @@ class TestActivityRowExpansion:
             rows=[self._row(dismissed=True, dismissed_by='benkirk',
                             tags=['notified', 'dismissed'])]))
         assert 'xras_restore' in gone and 'xras_dismiss_form' not in gone
+
+    def test_a_dismissal_without_a_reason_never_renders_none(self, app):
+        html = self._render(
+            app, may_manage=True, show_all=True,
+            rows=[self._row(dismissed=True, dismissed_by='benkirk',
+                            dismissed_reason=None, tags=['notified', 'dismissed'])])
+        assert 'title="None"' not in html
+        assert 'No reason given' in html
 
     def test_the_state_column_renders_only_under_everything(self, app):
         """In the queue the column could only ever say Active or Needs
