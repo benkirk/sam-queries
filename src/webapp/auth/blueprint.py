@@ -153,6 +153,18 @@ def oidc_callback():
         flash('OIDC is not configured.', 'error')
         return redirect(url_for('auth.login'))
 
+    # An IdP-reported refusal (access_denied, login_required, ...) is a
+    # non-event -- crawlers hit this URL with ?error=access_denied -- so it
+    # gets one WARNING line, not the exception path's stack trace. The line
+    # avoids the token "error": cirrus_healthcheck.sh greps for it.
+    idp_error = request.args.get('error')
+    if idp_error:
+        logger.warning("OIDC callback refused by IdP: reason=%s description=%r ip=%s ua=%r",
+                       idp_error, request.args.get('error_description', ''),
+                       get_remote_address(), request.user_agent.string[:120])
+        flash('Authentication was not completed. Please try again.', 'error')
+        return redirect(url_for('auth.login'))
+
     try:
         provider = OIDCAuthProvider(
             db_session=db.session,

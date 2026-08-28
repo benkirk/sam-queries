@@ -34,13 +34,7 @@ _COMMENT_MAX = 4000
 
 
 class XrasActivationEventForm(HtmxFormSchema):
-    """The note attached to a Dismiss or a Comment.
-
-    One field, shared by both actions: Dismiss requires a *reason* (it is the one
-    action that removes a row from everyone's view until new information arrives,
-    so "why" is exactly what the next operator will want, and the moment of the
-    decision is the cheapest time to capture it), and Comment requires the comment
-    itself.
+    """The note attached to a Comment, where the note *is* the payload.
 
     ``event_type`` is deliberately **not** a field here and not a URL segment
     either. It is a route-local constant, which is the security property: there is
@@ -59,3 +53,17 @@ class XrasActivationEventForm(HtmxFormSchema):
             raise ValidationError({'comment': ['This field is required.']})
         data['comment'] = comment
         return data
+
+
+class XrasDismissForm(HtmxFormSchema):
+    """Dismiss takes an *optional* reason; Comment keeps :class:`XrasActivationEventForm`."""
+
+    comment = f.Str(required=False, load_default=None,
+                    validate=v.Length(max=_COMMENT_MAX))
+
+    @post_load
+    def _blank_is_none(self, data, **kwargs):
+        """A whitespace-only reason is no reason, stored as NULL rather than ``'   '``."""
+        data['comment'] = (data.get('comment') or '').strip() or None
+        return data
+

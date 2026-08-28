@@ -112,6 +112,23 @@ class TestPreviewForm:
         resp = auth_client.get(f'/allocations/xras_notify_form/{PROJECT_ID}')
         assert f'/allocations/xras_notify/{PROJECT_ID}'.encode() in resp.data
 
+    def test_the_approver_note_is_resolved_for_the_preview(self, auth_client,
+                                                           notifier, monkeypatch):
+        """Resolved once per click, in the same binding the send uses."""
+        from webapp.dashboards.allocations.xras import lifecycle_routes as blueprint
+        seen = []
+        monkeypatch.setattr(blueprint, 'approver_comment_for_action',
+                            lambda action, **_: seen.append(action) or 'A note.')
+        resp = auth_client.get(f'/allocations/xras_notify_form/{PROJECT_ID}')
+        assert resp.status_code == 200
+        assert len(seen) == 1
+
+    def test_the_preview_survives_an_unconfigured_xras_api(self, auth_client,
+                                                           notifier):
+        """The real resolver, refused by the test config: preview unchanged."""
+        resp = auth_client.get(f'/allocations/xras_notify_form/{PROJECT_ID}')
+        assert resp.status_code == 200
+
     def test_the_preview_sends_nothing(self, auth_client, notifier, transport):
         auth_client.get(f'/allocations/xras_notify_form/{PROJECT_ID}')
         assert transport.delivered == []

@@ -188,7 +188,7 @@
                     <td class="small">
                         {% if r.dismissed %}
                         <span class="badge bg-secondary"
-                              title="{{ r.dismissed_reason }}">
+                              title="{{ r.dismissed_reason or 'No reason given' }}">
                             Dismissed by {{ r.dismissed_by }}
                         </span>
                         {% elif r.needs_activation %}

@@ -6,9 +6,10 @@
     project   the Project being dismissed
     post_url  where to POST (passed in so this stays action-agnostic)
 
-  Dismiss asks for a reason rather than using an hx-confirm, deliberately: the
-  row leaves the attention queue, so "why" is exactly what the next operator
-  will want, and the moment of the decision is the cheapest time to capture it.
+  Dismiss offers a reason field rather than using an hx-confirm, deliberately:
+  the row leaves the attention queue, so "why" is what the next operator will
+  want, and the moment of the decision is the cheapest time to capture it. The
+  reason is optional -- an empty one dismisses cleanly.
 #}
 {# `with context` is load-bearing: the field macros read `field_errors` and `form`
    from the template context, and a plain import gives them neither — the form
@@ -26,8 +27,8 @@
 <p class="text-muted small">
     This takes the row out of the attention queue and marks the project as one
     that should not be activated from XRAS. The row stays in the list under
-    <strong>Everything in the window</strong>, grayed, with your reason on it,
-    and no automatic notice goes out for it. Not permanent: click
+    <strong>Everything in the window</strong>, grayed, with your reason on it
+    if you leave one, and no automatic notice goes out for it. Not permanent: click
     <strong>Restore</strong> to undo, and a new XRAS action naming the project
     brings it back.
 </p>
@@ -35,7 +36,7 @@
 <form hx-post="{{ post_url }}"
       hx-target="#auditDetailsModalBody"
       hx-swap="innerHTML">
-    {{ textarea_field('comment', 'Reason', required=True, rows=3,
+    {{ textarea_field('comment', 'Reason', required=False, rows=3,
                       maxlength=4000,
                       placeholder='Why should this not be activated via XRAS?',
                       help='Recorded on the project timeline with your username.') }}

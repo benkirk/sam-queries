@@ -192,7 +192,8 @@ Registered blueprints: `projects`, `users`, `charges`, `allocations`, `status`,
 `health`, `admin`, plus the **legacy-compat** set below.
 
 Key endpoints (all JSON):
-- `GET /api/v1/users/`, `/users/<username>`, `/users/<username>/projects`
+- `GET /api/v1/users/`, `/users/<username>`, `/users/<username>/projects` — accept an
+  API key (any valid key; sessions need `VIEW_USERS`/`VIEW_PROJECTS`); `/users/me` is session-only
 - `GET /api/v1/projects/`, `/projects/<projcode>`, `/projects/<projcode>/members`
 - `GET /api/v1/projects/<projcode>/allocations` → `AllocationWithUsageSchema(many=True)` ⭐
 - `GET /api/v1/projects/<projcode>/charges` (+ `/summary`) — detailed / aggregated charge rollups ⭐
@@ -688,6 +689,7 @@ makes `smtplib.SMTP` raise so no test can open a socket whatever its config.
 | **`preview()` writes no row** | a preview is not an attempt; a stray row would poison the dedup query. |
 | **Templates** | `src/sam/notify/templates/`, resolved `{base}-{facility}` → `{base}-UNIV` → `{base}`. Text selects the variant and HTML follows it — never resolved independently, or a WNA recipient gets UNIV HTML. |
 | **Visibility** | Admin → Configuration → Notifications (`VIEW_SYSTEM_CONFIG`, counts only) → `Details »` (`SYSTEM_ADMIN`, rows name real addresses). |
+| **Approver's note** | `adminComments` from the XRAS reports feed (`src/sam/integration/xras_api/comments.py`, keyed by projcode + `actionId`), resolved by the Notify route and the `xras_notices` task and handed to `build_xras_messages(approver_comment=...)`. Fail-open: unconfigured/XRAS down/no match → `None` + one log line, never a withheld mail. Reaches the render context; the `xras_*` templates do not render it yet (template PR pending). |
 | **Family addressing** | `NOTIFY_<FAMILY>_{CC,BCC,FROM,REPLY_TO}` (family = `NotificationKind.family`) is filled onto empty `Message` fields by the `Notifier`; a builder-set value wins; the transport drops cc/bcc on a redirect. The CronJob forwards every non-empty `NOTIFY_*` by prefix. `NOTIFY_BCC` is the kind-blind global. |
 
 **Batch knobs**: `send_many(chunk_size=N)` opens one transport connection per N

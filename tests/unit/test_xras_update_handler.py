@@ -371,6 +371,34 @@ class TestTheProjectBugsWeFix:
         assert existing['project'].abstract == 'Updated abstract.'
 
 
+class TestMembershipOnABareProject:
+    """UNYU0028, 2026-08-26: an admin minted the project in the dashboard seconds
+    before XRAS pushed, so the update created the first accounts itself -- and
+    then skipped every ``User`` role because ``project.accounts`` had been loaded
+    empty during planning and never re-read."""
+
+    def test_users_are_added_when_the_update_creates_the_first_account(
+            self, committing, mapped_resource):
+        session = committing
+        from factories import make_project, make_user
+        pi = make_user(session)
+        collaborator = make_user(session)
+        bare = make_project(session, lead=pi)
+        session.flush()
+        assert not bare.accounts
+        payload = action_for({'project': bare, 'pi': pi},
+                             wire_resource(mapped_resource.xras_key, '500000'))
+        payload['roles'].append({'roleType': 'User', 'username': collaborator.username,
+                                 'beginDate': '2025-01-01', 'endDate': None})
+
+        result = handle_update(session, payload)
+
+        assert result.status == 'processed'
+        project = Project.get_by_projcode(session, bare.projcode)
+        assert len(project.accounts) == 1
+        assert collaborator.user_id in {u.user_id for u in project.users}
+
+
 class TestContracts:
 
     def test_a_new_grant_is_linked(self, committing, existing, mapped_resource,

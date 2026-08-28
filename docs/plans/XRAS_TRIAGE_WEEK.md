@@ -208,6 +208,35 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
 | 14:36–23:52 (25th) | **Fifteen organic posts, fifteen `processed`, zero failures** (`xras_action_log` #10–#24: 10 extensions, 4 supplements, 1 New) — the allocation team working the board on the new code. **#10 is NCAR4285's New → `UUSL0048`** (active, PI `hholmes`, 500,000 units 2026-08-24 → 2027-08-23): the first New project minted in production. XRAS dropped the inactive AM `sdahal` from the request before re-posting, so the inventory blocker cleared on their side, as the table predicted. `sdahal` is still inactive in SAM. Identity strip found a third self-surfaced target: `mrahnemoonfar-user-j3bc3` → `maryamr` (NCAR4231, a contract-report target too). Pods 0 errors; `/api/xras` 138×200 / 37×404 over 6 h. |
 | 01:28–01:31 (26th) | **NCAR4231 unblocked end to end from the card, all three strips used in sequence.** Fifth merge, third from the flag: `mrahnemoonfar-user-j3bc3` -> `maryamr` (audit #4 `verified`; the XRAS merge call itself took ~14 s this time, 16.6 s end to end, flagged Slow — XRAS-side latency, the earlier four took ~2 s). Then the contract strip's seeded link created contract 2270 (`2423211`, `mode=manual`, title pre-filled from the wire), then Re-check: `rechecked`, **`would_succeed: true`**, no messages — mnemonic `LHI`, series `ULHI`, UNIV USS, Small. Contract report down to 2 targets (NCAR4280, NCAR4212); identity strip empty. Never posted: the next XRAS push should mint a `ULHI` project. |
 
+| 06:30 (26th) | Day-4 open: prod `sha-e59c9af` (#482 + #484 promoted via #483), 41/3/0, first sweep on the consolidated resolvers identical to the previous image (1639/4088, 17 pending, 12 accounts), first authenticated XRAS lookup on the new image 200 in 165 ms; no action rows past #24. George answered the `user_institution` question — see below: not a feed defect, but 31/31 already-ended rows since 08-18 still have no successor, so the three PIs stay blocked on upstream data. |
+
+| 14:59 (26th) | XRAS re-pushed **NCAR4252** (New, action 390940) → **422**, `xras_action_log` #25, one message: *PI sseyedzadeh has no current institution or organization in SAM* — the affiliation class, exactly as the click-time preflight predicted after the 08-25 merge. Identity merged, contract fine; blocked on the upstream collaboration (George). Strip still empty; contract report still 2. |
+
+| 16:13 (26th) | XRAS posted **NCAR4275** (New, action 393140) → **200**, `xras_action_log` #26 → **`UCNN0065`** (GID 99060, lead `jschnaubelt`, Derecho 500,000 · Casper 5,000, 2026-08-19 → 2027-08-31, `active=0` awaiting the card). Inventory said it would fail on `dlowry-user-spe13`; the payload names only the PI — XRAS dropped the placeholder before posting, the `sdahal` move again. No warnings. Third New minted in prod; awaits activate + notify. |
+
+| 17:01 (26th) | **`UCNN0065` activated outside the new stack.** `project.active` 0 → 1 at 11:01:42 MDT with no `xras_activation_event`, no `notification_log` row, no webapp write in either pod's log (collector POSTs only), and no other table touched in the window. Legacy SAM has no scheduled activation path (its `activateProject` callers are AMIE handlers), so the writer is almost certainly a person in the legacy admin UI. Consequence: the XRAS card sees an active project with no `activated`/`notified` event, so it stays in the attention queue as un-notified — and a Notify click would double-mail the PI if legacy already did. Process question for Ben: is the team still activating in legacy, and should the card treat `active=1` with no event as "activated elsewhere"? |
+
+| 20:07 (26th) | Sweep: two newly Approved requests. **NCAR4282** — PI `ssharma-user-s8etm` (gmail placeholder, no SAM account; identity strip lists it; needs an account before a merge). **NCAR4281** — PI `kheyblom` has **two concurrent current `user_institution` rows**: Victoria (2021, still open, no mnemonic) and Michigan (since 08-10, resolves `MIC`); the first-current rule (ours and legacy's `findAny()`) lands on Victoria, so the mnemonic report offers "link University of Victoria". If Michigan is the real affiliation the right fix is upstream (end the Victoria collaboration — George's domain), not a Victoria link that would stamp the project with the wrong series. Ben's call. |
+
+| 21:49 (26th) | URTG0040 Extension → `processed` (#27); UUTA0018 Extension → `processed` (#28). Routine. |
+| 22:12 (26th) | **NCAR4261 landed — as an `update`, via a workaround the team ran themselves.** An admin minted `UNYU0028` in *our* dashboard (`POST /admin/htmx/project-create`, 16:11:45 MDT, NYU mnemonic chosen by hand — sidestepping the missing affiliation), renumbered the XRAS request to the projcode, and pushed 22 s later: action 392319 arrived as `requestNumber=UNYU0028`, `select_service` found the project and routed `update` (#29, 200, no warnings): three accounts, three `NEW` allocations (Casper 5,000 · Data_Access · CMIP AP, 08-18 → 2027-08-31), lead `geogdzhayev`. **Bug found:** the two `User` roles (`yizhang`, `zanna`) were silently dropped — step 4 guards on `project.accounts`, which was loaded empty during planning and not re-read after step 3 created the accounts. The admin added both by hand at 16:12:43/49. Fix on #485: expire the collection before the guard + regression test. No activation event (project created active); the card shows it un-notified. |
+
+| 23:30 (26th) | **Approver comments: found and wired (Part 1).** The review team's note to the PI is not on the POST (29 payloads, 41 fixtures) but is `actions[].adminComments` on the reports feed — non-empty on 223/457 approved actions. New resolver `src/sam/integration/xras_api/comments.py` (projcode + `actionId`, fail-open), threaded through the Notify route and the `xras_notices` task into the notice context, and shown in the Request modal as "Approver's note". Mail templates deliberately untouched (silent drop) — Ben's template PR follows before anything is sent with it. Also: `sha-1b2f713` (update-handler membership fix) rolled out 22:5xZ, 0 errors. |
+
+| 14:30 (27th) | **Dismiss reason made optional** (Ben's call): new `XrasDismissForm` (blank → NULL) for `xras_dismiss`; Comment keeps the required `XrasActivationEventForm`; modal marks the field "(optional)"; the card badge tooltip says "No reason given" instead of rendering `None`. |
+
+| 15:13 (27th) | XRAS pushed **NCAR4281** (New, action 393550) → **422**, `xras_action_log` #30: *Could not determine Mnemonic code for external PI via institution* — the two-open-institutions case pre-triaged 08-26 (`kheyblom`: Victoria 2021 still open and unmapped, Michigan since 08-10 → `MIC`; first-current wins). Fix is upstream (end the Victoria collaboration) or a Victoria mnemonic link if that is really his affiliation — Ben's call, then XRAS re-pushes. Strip/contract reports unchanged. |
+
+| 16:54 (27th) | NCAR4281 re-pushed three more times (#31–#33, identical 422) and NCAR4252 once (#34, affiliation, unchanged). **NCAR4282** (#35, action 393811) → 422 *PI sanjib has no current institution or organization*: XRAS reconciled the `ssharma-user-s8etm` placeholder onto the existing SAM user `sanjib` (since 2020; Howard row ended 2026-07-03), so it moved from the account class to the affiliation class. **George** (~11:00 MDT) says he fixed the end-date bug and is running a full reset — the tick now watches the 37-user cohort for open rows. Identity strip: **`skannenberg-user-uxqws` → `kannenberg` Ready to merge** (NCAR4280 AM; the account the admin was searching for this morning landed). `--accounts` 12 → 11. |
+
+| 17:48 (27th) | **NCAR4231 landed: `ULHI0005`** (#36, action 386569, 200, no warnings) — lead `maryamr`, admin `zel`, contract 2270 (`2423211`) linked, six allocations 2026-07-28 → 2027-07-31 (Derecho 500,000 · Derecho GPU 2,000 · Casper 20,000 · Casper GPU 1,000 · Campaign_Store 10 · CMIP AP 1). The merge + seeded contract from 08-26 did their job. Activated 71 s later via **`POST /admin/htmx/project-update/ULHI0005`** (the Admin › Projects edit form), so no `xras_activation_event` and no notice — the team's activation path is the project edit page, which is what the "activated elsewhere" follow-up must cover. Identity strip: **two** targets, `cgriffin-user-fu8sr → cgriffin` (NCAR4279) and `skannenberg-user-uxqws → kannenberg` (NCAR4280). Pending push 16 → 15. Two `MismatchingStateError` tracebacks at 11:51 MDT were a replayed IdP callback with no preceding `/auth/oidc/login`; the same user logged in normally 15 s later — a candidate for the same one-WARNING treatment as `?error=`. |
+
+| 21:10 (27th) | Organic: UCNN0063 Supplement (#37), UWKU0002 Supplement (#38), UPSU0076 Extension (#39) — all `processed`, no warnings. Sweeps admitted four new approvals: **NCAR4283** (PI `kheyblom` — same Victoria blocker as NCAR4281, so that fix now unblocks two), **NCAR4284** (PI `pengz`, would land clean), **NCAR4286** (PI placeholder `jscheffel-user-y8btp`, needs a SAM account), **NCAR4287** (PI `akeesee`: inactive user, no current affiliation, and grant `2331527` has no contract — contract report now 3). Sweep 1645/4094, 19 pending push, 13 accounts. Affiliation watch still 37 / 0 open — no reset yet. |
+
+| 23:30 (27th) | **Mnemonic 422s now name the affiliation.** After NCAR4281's four blind retries: `mnemonic_external_failed`/`mnemonic_internal_failed` keep the legacy sentence as a prefix and append `: <pi>'s current institution "X" (city) has no mnemonic link; also current: "Y" -> CODE`. The mnemonic report classifies on the prefix; nothing parses the detail. |
+
+| 00:20 (28th) | **Users API accepts API keys** (Ben's decision, for the new `gdex` credential): list/search/`<username>`/`<username>/projects` moved from `@login_required` + `@require_permission` to `@login_or_token_required(Permission…)`, the legacy-compat pattern — any valid key reads users; sessions keep the permission check; `/me` stays session-only. Unauthenticated now answers JSON 401 instead of a 302. `users_api_demo.sh` (untracked) is the colleague-facing demo. |
+
 ### Questions for Steve (batched, not piecemeal)
 
 1. ~~How many characters is the `XA-API-KEY`?~~ **Answered 08-25: 96** — the
@@ -229,16 +258,26 @@ Times UTC. Prod DB reads are the workstation `PROD_SAM_DB_*` recipe above.
    01:37Z 08-25), what does xras_admin do — skip, retry, or post with a
    placeholder? And what are its connect/read timeouts and retry counts?
 
-**Question for George:** "Since about 08-18, new `user_institution` rows have
-been arriving with an end date a few minutes *before* their creation time —
-e.g. `user_institution_id` 72308 (`geogdzhayev`, user 31424: created 08-25
-08:37:29, ended 08:33:12) and 72312 (`sseyedzadeh`, user 31428: created 11:11:10,
-ended 11:00:49) — 19 of 25 last week, none before that. `user_organization`
-looks normal (its pre-ended rows are history). It trips the mnemonic lookup,
-which wants a currently valid collaboration. Does that make sense — did
-something change around the 08-17 sync?" (Aug 4–17: 58 rows, 0 pre-ended;
-08-18 on: 27 of 54, 20 within the hour. July's backfill is noise. Blocks
-NCAR4261/4262/4252.)
+**George, asked 08-25, answered 08-26:** `creation_time` is only when the row
+landed in SAM; `end_date` belongs to the upstream "collaboration" record, so a
+row created after its own end is a historical record, not a defect, and
+mnemonic logic must not read `creation_time`. (It does not: `_best_institution`
+takes the first row whose start/end window contains now, the same rule as
+legacy `User.getBestInstitution` → `findOptionalCurrentInstitution`.) That
+retires the "feed is broken" reading and sharpens the real one, measured
+08-26 06:30 MDT: of 45 `user_institution` rows created since 08-18, **31
+arrived already ended — every one on a user created in SAM the same hour, a
+median 2 h upstream lifetime (6 min–6 d), row created ~4 min after the end —
+and 0 of the 31 has since received an open institution or organization row**,
+nor a successor under a duplicate user (2 same-name rows, both ordinary
+collisions). The other 14 (8 also new users, same institutions — Albany 12
+ended vs 4 open) arrived open and are current. Follow-up for George (Ben sends): does
+the source hold an open collaboration for these people (e.g. `geogdzhayev`,
+user 31424: NYU 08-24 16:12:23 → 08-25 08:33:12, row created 08:37:29, nothing
+else on the user) that the synchronizer is not matching — a re-key when the
+identity is finalized would explain the 2-hour "pre-finalization" records — or
+do they genuinely have no open collaboration, in which case NCAR4261/4262/4252
+need an upstream re-affiliation before XRAS can post. Blocks the same three.
 
 Inventory deltas: the other four date-conflict rows (UCSU0136, UMCP0014,
 UMMM0016, UCOR0102) have no deleted rows and stand as genuine XRAS-vs-SAM

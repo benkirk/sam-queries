@@ -110,3 +110,50 @@ class TestUserProjectsEndpoint:
         """Test 404 for non-existent user."""
         response = auth_client.get('/api/v1/users/invalid_user_xyz/projects')
         assert response.status_code == 404
+
+
+def _key_header():
+    """A bare Basic header for the TestingConfig collector key -- no session."""
+    import base64
+    creds = base64.b64encode(b"collector:test-api-key").decode("ascii")
+    return {"Authorization": f"Basic {creds}"}
+
+
+class TestApiKeyAccess:
+    """The list, search and per-user routes accept an API key (no session);
+    ``/me`` does not, because it reads ``current_user.user_id``."""
+
+    def test_list_with_a_key_only(self, client):
+        resp = client.get('/api/v1/users/?per_page=2', headers=_key_header())
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert set(body) == {'users', 'page', 'per_page', 'total'}
+        assert len(body['users']) <= 2
+
+    def test_search_with_a_key_only(self, client):
+        resp = client.get('/api/v1/users/search?q=ben', headers=_key_header())
+        assert resp.status_code == 200
+        assert any(u['username'] == 'benkirk' for u in resp.get_json())
+
+    def test_one_user_and_their_projects_with_a_key_only(self, client):
+        assert client.get('/api/v1/users/benkirk', headers=_key_header()).status_code == 200
+        resp = client.get('/api/v1/users/benkirk/projects', headers=_key_header())
+        assert resp.status_code == 200
+        assert resp.get_json()['username'] == 'benkirk'
+
+    def test_a_bad_key_is_a_json_401(self, client):
+        import base64
+        bad = {"Authorization": "Basic " + base64.b64encode(b"collector:nope").decode()}
+        resp = client.get('/api/v1/users/benkirk', headers=bad)
+        assert resp.status_code == 401
+        assert 'error' in resp.get_json()
+
+    def test_me_stays_session_only(self, client):
+        resp = client.get('/api/v1/users/me', headers=_key_header())
+        assert resp.status_code in (302, 401)
+
+    def test_no_credentials_is_a_json_401_not_a_redirect(self, client):
+        resp = client.get('/api/v1/users/benkirk')
+        assert resp.status_code == 401
+        assert 'error' in resp.get_json()
+

@@ -195,7 +195,7 @@ GET only — the key is write-provisioned and a person merge is irreversible.
 ## Deferred (from the 2026-08-24 investigation, still open)
 
 Review-pipeline signals unread (`returnedForCorrections`, `states[]`,
-`adminComments`, `finalReviews[]`); `reports/username` award detail and
+`finalReviews[]` — `adminComments` is now read, see PR #485); `reports/username` award detail and
 `opportunityId` dropped by `person_roles_from_payload` (the user modal cannot
 link the opportunity modal); `reports/allocations` as a requested-vs-awarded
 feed; `_as_dict` first-elementing list responses in the client
