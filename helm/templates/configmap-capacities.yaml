@@ -1,0 +1,13 @@
+{{- if .Values.webapp.capacities.enabled }}
+# Per-machine capacity constants for the fairshare endpoint, read in-process by
+# the hpc-scheduling-tools plugin via $HPC_SCHED_CAPACITIES. Rendered from
+# helm/files/capacities.json; mounted over the image's baked default so ops can
+# retune N_cpu/N_gpu with `kubectl edit configmap` + a rollout, no rebuild.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.webapp.name }}-capacities
+data:
+  capacities.json: |-
+{{ .Files.Get "files/capacities.json" | indent 4 }}
+{{- end }}

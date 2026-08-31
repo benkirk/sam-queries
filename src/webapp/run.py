@@ -54,6 +54,7 @@ from webapp.api.v1.health import bp as api_health_bp
 from webapp.api.v1.directory_access import bp as api_directory_access_bp
 from webapp.api.v1.project_access import bp as api_project_access_bp
 from webapp.api.v1.fstree_access import bp as api_fstree_access_bp
+from webapp.api.v1.fairshare import bp as api_fairshare_bp
 from webapp.api.v1.queue import bp as api_queue_bp
 from webapp.api.v1.wallclock_exemption import bp as api_wallclock_exemption_bp
 from webapp.api.v1.admin import bp as api_admin_bp
@@ -420,6 +421,7 @@ def create_app(*, config_overrides: dict | None = None):
     app.register_blueprint(api_directory_access_bp, url_prefix='/api/v1/directory_access')
     app.register_blueprint(api_project_access_bp, url_prefix='/api/v1/project_access')
     app.register_blueprint(api_fstree_access_bp, url_prefix='/api/v1/fstree_access')
+    app.register_blueprint(api_fairshare_bp, url_prefix='/api/v1/fairshare')
     app.register_blueprint(api_queue_bp, url_prefix='/api/v1/queue')
     app.register_blueprint(api_wallclock_exemption_bp, url_prefix='/api/v1/wallclock_exemption')
     app.register_blueprint(api_admin_bp, url_prefix='/api/v1/admin')

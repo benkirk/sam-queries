@@ -20,10 +20,17 @@ config_env := module load conda >/dev/null 2>&1 || true && . $(CONDA_ROOT)/etc/p
 # -------------------------------------------------------------------
 HPC_USAGE_QUERIES_REF ?= main
 
-# 12-char content hash of: env spec + python deps + hpc ref.
+# hpc-scheduling-tools (private NCAR repo, optional plugin). Empty = skip;
+# set HPC_SCHEDULING_TOOLS non-empty to install (needs SSH read access, e.g.
+# your own key or ~/.ssh/hpc_sched_deploy). REF pins branch/tag/sha.
+HPC_SCHEDULING_TOOLS     ?=
+HPC_SCHEDULING_TOOLS_REF ?= main
+
+# 12-char content hash of: env spec + python deps + hpc refs.
 # Drives both the build dir name and the cache-hit decision.
 ENV_HASH := $(shell { cat conda-env.yaml pyproject.toml; \
                       echo "HPC_USAGE_QUERIES_REF=$(HPC_USAGE_QUERIES_REF)"; \
+                      echo "HPC_SCHEDULING_TOOLS=$(HPC_SCHEDULING_TOOLS):$(HPC_SCHEDULING_TOOLS_REF)"; \
                     } | shasum -a 256 | cut -c1-12)
 ENV_PREFIX := conda-env-$(ENV_HASH)
 ENV_STAMP  := $(ENV_PREFIX)/.sam-env-ready
@@ -111,6 +118,9 @@ $(ENV_STAMP):
 	    conda activate ./$(ENV_PREFIX) && \
 	    pip install -e ".[test]" && \
 	    pip install "hpc-usage-queries[postgres] @ git+https://github.com/benkirk/hpc-usage-queries.git@$(HPC_USAGE_QUERIES_REF)" && \
+	    ( [ -z "$(HPC_SCHEDULING_TOOLS)" ] || \
+	        GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new" \
+	        pip install "hpc-scheduling-tools @ git+ssh://git@github.com/NCAR/hpc-scheduling-tools.git@$(HPC_SCHEDULING_TOOLS_REF)" ) && \
 	    (pipdeptree --all 2>/dev/null || true)
 	@touch $(ENV_STAMP)
 

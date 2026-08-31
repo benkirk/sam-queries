@@ -232,3 +232,19 @@ spec:
           timeoutSeconds: {{ .Values.webapp.probes.readiness.timeoutSeconds }}
           failureThreshold: {{ .Values.webapp.probes.readiness.failureThreshold }}
         {{- end }}
+        {{- if .Values.webapp.capacities.enabled }}
+        # Mount the capacities ConfigMap over the image's baked default
+        # (subPath keeps the rest of /etc/sam intact). Retune N_cpu/N_gpu by
+        # editing the ConfigMap + rolling out — no image rebuild.
+        volumeMounts:
+        - name: capacities
+          mountPath: {{ .Values.webapp.capacities.mountPath }}
+          subPath: capacities.json
+          readOnly: true
+        {{- end }}
+      {{- if .Values.webapp.capacities.enabled }}
+      volumes:
+      - name: capacities
+        configMap:
+          name: {{ .Values.webapp.name }}-capacities
+      {{- end }}

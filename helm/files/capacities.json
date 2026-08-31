@@ -1,0 +1,26 @@
+{
+    "_comment": "SAM's copy of the hpc-scheduling-tools capacities.json, consumed in-process by the /api/v1/fairshare endpoint via $HPC_SCHED_CAPACITIES. The plugin repo (NCAR/hpc-scheduling-tools) is the source of truth for these constants; keep this in sync on a hardware change. N_cpu/N_gpu are operator-tunable and must track the scheduler's fairshare_usage_res formula, which is why they live here (mounted as a ConfigMap in prod, editable without an image rebuild) rather than baked into the wheel.",
+    "default_duration_days": 365,
+    "scale": 100,
+    "machines": {
+        "Casper": {
+            "_comment": "Roughly the number of CPU cores and GPGPUs allocated against CPU- and GPU- project allocations, respectively."
+            "cpu_resource": "Casper",
+            "gpu_resource": "Casper GPU",
+            "N_cpu": 4096,
+            "N_gpu": 92
+        },
+        "Derecho": {
+            "cpu_resource": "Derecho",
+            "gpu_resource": "Derecho GPU",
+            "N_cpu": 318464,
+            "N_gpu": 328
+        },
+        "Gust": {
+            "cpu_resource": "Gust",
+            "gpu_resource": "Gust GPU",
+            "N_cpu": 2048,
+            "N_gpu": 8
+        }
+    }
+}
