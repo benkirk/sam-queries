@@ -4,7 +4,7 @@
     "scale": 100,
     "machines": {
         "Casper": {
-            "_comment": "Roughly the number of CPU cores and GPGPUs allocated against CPU- and GPU- project allocations, respectively."
+            "_comment": "Roughly the number of CPU cores and GPGPUs allocated against CPU- and GPU- project allocations, respectively.",
             "cpu_resource": "Casper",
             "gpu_resource": "Casper GPU",
             "N_cpu": 4096,
