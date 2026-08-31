@@ -172,6 +172,23 @@ jobs:
         # for the tzdata guard.
         run: echo "value=$(.github/scripts/build_stamp.sh)" >> "$GITHUB_OUTPUT"
 
+      # Write the deploy key to a file via env (preserves the multi-line value
+      # intact) and hand it to buildx as a secret-FILE. The inline `secrets:`
+      # KEY=VALUE parser mangles a multi-line OpenSSH key -> "error in libcrypto".
+      - name: Stage deploy key for BuildKit
+        env:
+          HPC_SCHED_DEPLOY_KEY: ${{ secrets.HPC_SCHEDULING_TOOLS_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          install -m 600 /dev/null "$RUNNER_TEMP/hpc_sched_deploy_key"
+          # Empty secret -> leave the file empty so the Dockerfile skips (optional).
+          if [ -n "$HPC_SCHED_DEPLOY_KEY" ]; then
+            printf '%s\n' "$HPC_SCHED_DEPLOY_KEY" > "$RUNNER_TEMP/hpc_sched_deploy_key"
+          fi
+          # Diagnostic (byte count only, no key material): a full key is ~444 B;
+          # a truncated/mangled delivery shows far fewer.
+          echo "staged deploy key: $(wc -c < "$RUNNER_TEMP/hpc_sched_deploy_key") bytes"
+
       - name: Build and push
         id: build
         uses: docker/build-push-action@v7
@@ -190,9 +207,9 @@ jobs:
             BUILD_DATE=${{ steps.build_date.outputs.value }}
           # Read-only deploy key for the private NCAR/hpc-scheduling-tools plugin.
           # Consumed only by the webapp/webdev Dockerfile secret mount; unused by
-          # the mysql/collectors builds. Empty secret -> Dockerfile skips.
-          secrets: |
-            hpc_sched_deploy_key=${{ secrets.HPC_SCHEDULING_TOOLS_DEPLOY_KEY }}
+          # the mysql/collectors builds. Empty file -> Dockerfile skips.
+          secret-files: |
+            hpc_sched_deploy_key=${{ runner.temp }}/hpc_sched_deploy_key
 
       - name: Collect image facts
         run: |
