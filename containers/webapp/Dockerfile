@@ -58,6 +58,13 @@ else
 fi
 EOF
 
+# capacities.json for the fairshare endpoint. Baked as a default so the plugin's
+# load_config resolves in-container; prod mounts a ConfigMap over this path
+# (helm) so N_cpu/N_gpu are tunable without a rebuild — the plugin repo keeps
+# it out of the wheel on purpose (operator-tunable, must track sched_config).
+COPY helm/files/capacities.json /etc/sam/capacities.json
+ENV HPC_SCHED_CAPACITIES=/etc/sam/capacities.json
+
 # Optional build provenance - set by CI via --build-arg; empty locally.
 # Placed AFTER pip install so a changing SHA does not invalidate the install layer.
 ARG GIT_SHA=""

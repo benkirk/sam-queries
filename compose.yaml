@@ -14,6 +14,9 @@ services:
         # Override at build time to pin/test against a peer branch:
         #   HPC_USAGE_QUERIES_REF=my-branch docker compose build webapp
         HPC_USAGE_QUERIES_REF: ${HPC_USAGE_QUERIES_REF:-main}
+        # Pin the private hpc-scheduling-tools plugin (needs the deploy key below):
+        #   HPC_SCHEDULING_TOOLS_REF=my-branch HPC_SCHEDULING_TOOLS_DEPLOY_KEY_FILE=~/.ssh/hpc_sched_deploy docker compose build webapp
+        HPC_SCHEDULING_TOOLS_REF: ${HPC_SCHEDULING_TOOLS_REF:-main}
       secrets:
         - hpc_sched_deploy_key
     depends_on:
@@ -123,6 +126,9 @@ services:
         # Override at build time to pin/test against a peer branch:
         #   HPC_USAGE_QUERIES_REF=my-branch docker compose build webdev
         HPC_USAGE_QUERIES_REF: ${HPC_USAGE_QUERIES_REF:-main}
+        # Pin the private hpc-scheduling-tools plugin (needs the deploy key below):
+        #   HPC_SCHEDULING_TOOLS_REF=my-branch HPC_SCHEDULING_TOOLS_DEPLOY_KEY_FILE=~/.ssh/hpc_sched_deploy docker compose build webdev
+        HPC_SCHEDULING_TOOLS_REF: ${HPC_SCHEDULING_TOOLS_REF:-main}
       secrets:
         - hpc_sched_deploy_key
     depends_on:

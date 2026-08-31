@@ -104,6 +104,15 @@ webapp:
   # client can spoof its IP. Start at 1 (safe), then confirm the real depth from
   # the gunicorn access-log xff="…" field and bump to match. See webapp/run.py.
   proxyFixForwardedHops: 1
+
+  # capacities.json for the fairshare endpoint, rendered from
+  # helm/files/capacities.json into a ConfigMap and mounted over the image's
+  # baked /etc/sam/capacities.json. Edit that file (or the ConfigMap) + roll out
+  # to retune N_cpu/N_gpu without an image rebuild. Set enabled:false to fall
+  # back to the baked default only.
+  capacities:
+    enabled: true
+    mountPath: /etc/sam/capacities.json
   # Kubernetes probes. Endpoints from src/webapp/api/v1/health.py:
   #   /live  -> process up, no DB call          (liveness + startup)
   #   /ready -> DB-gated, 200 healthy / 503 not  (readiness: gates rollout
@@ -267,6 +276,12 @@ webapp:
     # campaign). A resource whose database is unreachable simply warms nothing and
     # drops out of the UI.
     FS_SCANS_ENABLED: "1"
+    # hpc-scheduling-tools fairshare endpoint (/api/v1/fairshare). The plugin
+    # reads capacities.json via $HPC_SCHED_CAPACITIES, which the image bakes to
+    # /etc/sam/capacities.json and the ConfigMap below mounts over (edit + roll
+    # out to retune N_cpu/N_gpu without an image rebuild). Set "0" to disable.
+    HPC_SCHEDULING_TOOLS_ENABLED: "1"
+    HPC_SCHED_CAPACITIES: "/etc/sam/capacities.json"
     FS_SCAN_DB_BACKEND: "postgres"
     FS_SCAN_PG_HOST: "csg-postgres-ro.k8s.ucar.edu"
     FS_SCAN_PG_PORT: "5432"
