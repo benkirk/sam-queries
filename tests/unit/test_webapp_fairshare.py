@@ -57,6 +57,8 @@ def fake_plugin(monkeypatch):
         normalize_options=normalize_options,
         OptionError=FakeOptionError,
         build_tree=build_tree,
+        load_config=lambda m: ({'cpu_resource': m, 'gpu_resource': m + ' GPU',
+                                'N_cpu': 100, 'N_gpu': 4}, 365, 100),
         format_warnings=lambda ws: [f'{s}: {name}' for (s, name, *_rest) in ws],
     )
     monkeypatch.setattr('sam.plugins.HPC_SCHEDULING_TOOLS.load', lambda: mod)
@@ -124,11 +126,21 @@ def test_json_envelope(auth_client, enabled, fake_plugin):
     assert data['warnings'] == ['rollup: U_X']
 
 
+def test_json_includes_loaded_capacities(auth_client, enabled, fake_plugin):
+    data = auth_client.get('/api/v1/fairshare/casper').get_json()
+    assert data['capacities'] == {
+        'cpu_resource': 'Casper', 'gpu_resource': 'Casper GPU',
+        'N_cpu': 100, 'N_gpu': 4, 'scale': 100, 'default_duration_days': 365,
+    }
+
+
 def test_format_text(auth_client, enabled, fake_plugin):
     resp = auth_client.get('/api/v1/fairshare/casper?format=text')
     assert resp.status_code == 200
     assert resp.mimetype == 'text/plain'
-    assert resp.get_data(as_text=True).startswith('casper 2 root 100\n')
+    body = resp.get_data(as_text=True)
+    assert body.startswith('casper 2 root 100\n')
+    assert 'N_cpu' not in body          # text is raw PBS lines only, no capacities
 
 
 def test_rollup_and_equalize_passthrough(auth_client, enabled, fake_plugin):

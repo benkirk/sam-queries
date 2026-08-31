@@ -7,8 +7,11 @@ payload straight from SAM's DB (``get_fstree_data``) — no HTTP loopback, no AP
 credentials. This is a NEW, non-legacy blueprint; it does not touch the
 legacy-compat ``fstree_access`` endpoints.
 
-``GET /<machine>`` → JSON ``{machine, rollup, equalize, lines, warnings}``;
-``?format=text`` returns the raw resource_group as ``text/plain``.
+``GET /<machine>`` → JSON ``{machine, capacities, rollup, equalize, lines,
+warnings}`` — ``capacities`` is the per-machine config SAM actually loaded
+(N_cpu/N_gpu/…), surfaced so drift in the baked/ConfigMap capacities.json is
+visible on every call. ``?format=text`` returns the raw resource_group as
+``text/plain`` (no capacities block).
 ``?rollup=`` / ``?equalize=`` map to the CLI flags; ``?clear_cache=1`` recomputes.
 """
 from flask import Blueprint, Response, abort, current_app, jsonify, request
@@ -102,8 +105,20 @@ def get_fairshare_tree(machine):
 
     if fmt == 'text':
         return Response(''.join(line + '\n' for line in lines), mimetype='text/plain')
+
+    # The constants that produced this tree, surfaced for drift-spotting against
+    # the plugin's source capacities.json. machine_key is already validated, so
+    # load_config succeeds; guard its die() anyway rather than 500 the response.
+    try:
+        mcfg, default_days, scale = mod.load_config(machine_key)
+        capacities = {**mcfg, 'scale': scale, 'default_duration_days': default_days}
+    except SystemExit:
+        current_app.logger.error('fairshare: load_config failed for %s', machine_key)
+        capacities = None
+
     return jsonify({
         'machine': machine_key,
+        'capacities': capacities,
         'rollup': rollup,
         'equalize': list(equalize_key),
         'lines': lines,
