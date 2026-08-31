@@ -95,3 +95,11 @@ FS_SCANS = Plugin(
     package="fs_scans",
     install_hint="pip install -e '.[hpc]'  # or: pip install 'hpc-usage-queries[postgres] @ git+https://github.com/benkirk/hpc-usage-queries.git'",
 )
+
+# Private NCAR repo, installed over SSH (deploy key). Registered here so callers
+# can require_plugin() and degrade cleanly when it isn't installed.
+HPC_SCHEDULING_TOOLS = Plugin(
+    name="HPC Scheduling Tools",
+    package="hpc_scheduling_tools",
+    install_hint="pip install -e '.[hpc]'  # or: pip install 'hpc-scheduling-tools @ git+ssh://git@github.com/NCAR/hpc-scheduling-tools.git'",
+)

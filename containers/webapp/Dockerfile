@@ -37,6 +37,20 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -e ".[test]" && \
     pip install --no-cache-dir "hpc-usage-queries[postgres] @ git+https://github.com/benkirk/hpc-usage-queries.git@${HPC_USAGE_QUERIES_REF}"
 
+# hpc-scheduling-tools (private NCAR repo) — optional plugin, installed over SSH.
+# The read-only deploy key arrives as a BuildKit secret (never a layer); an
+# absent key (local build without creds) skips the install. required=false.
+ARG HPC_SCHEDULING_TOOLS_REF=main
+RUN --mount=type=secret,id=hpc_sched_deploy_key,target=/root/.ssh/hpc_sched,mode=0400,required=false <<'EOF'
+set -eu
+if [ -s /root/.ssh/hpc_sched ]; then
+  export GIT_SSH_COMMAND="ssh -i /root/.ssh/hpc_sched -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+  pip install --no-cache-dir "hpc-scheduling-tools @ git+ssh://git@github.com/NCAR/hpc-scheduling-tools.git@${HPC_SCHEDULING_TOOLS_REF}"
+else
+  echo "NOTE: no hpc_sched deploy key mounted; skipping hpc-scheduling-tools (optional plugin)."
+fi
+EOF
+
 # Optional build provenance - set by CI via --build-arg; empty locally.
 # Placed AFTER pip install so a changing SHA does not invalidate the install layer.
 ARG GIT_SHA=""

@@ -188,6 +188,11 @@ jobs:
           build-args: |
             GIT_SHA=${{ github.sha }}
             BUILD_DATE=${{ steps.build_date.outputs.value }}
+          # Read-only deploy key for the private NCAR/hpc-scheduling-tools plugin.
+          # Consumed only by the webapp/webdev Dockerfile secret mount; unused by
+          # the mysql/collectors builds. Empty secret -> Dockerfile skips.
+          secrets: |
+            hpc_sched_deploy_key=${{ secrets.HPC_SCHEDULING_TOOLS_DEPLOY_KEY }}
 
       - name: Collect image facts
         run: |

@@ -63,6 +63,8 @@ sam-status = "system_status:main"
 hpc = [
     # hpc-usage-queries: job history & charge summary ingest (sam-admin accounting --comp)
     "hpc-usage-queries[postgres] @ git+https://github.com/benkirk/hpc-usage-queries.git",
+    # hpc-scheduling-tools: private NCAR repo, installed over SSH (needs read access)
+    "hpc-scheduling-tools @ git+ssh://git@github.com/NCAR/hpc-scheduling-tools.git",
 ]
 test = [
     "pytest",

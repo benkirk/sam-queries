@@ -32,9 +32,14 @@ if [ -z "$CONDA_SHLVL" ]; then
     fi
 fi
 
-# Pass HPC_USAGE_QUERIES_REF (default: main) through to make so it's
-# included in the env hash. Mirrors the container build convention.
-make --silent -C ${ROOT_DIR} HPC_USAGE_QUERIES_REF="${HPC_USAGE_QUERIES_REF:-main}" ${ENV_NAME}
+# Pass the hpc-plugin refs through to make so they're included in the env
+# hash. Mirrors the container build convention. HPC_SCHEDULING_TOOLS is empty
+# by default (opt-in; needs SSH read access to the private repo).
+make --silent -C ${ROOT_DIR} \
+    HPC_USAGE_QUERIES_REF="${HPC_USAGE_QUERIES_REF:-main}" \
+    HPC_SCHEDULING_TOOLS="${HPC_SCHEDULING_TOOLS:-}" \
+    HPC_SCHEDULING_TOOLS_REF="${HPC_SCHEDULING_TOOLS_REF:-main}" \
+    ${ENV_NAME}
 
 conda activate ${ENV_DIR}
 
