@@ -196,6 +196,11 @@ class SAMWebappConfig(SAMConfig):
         '0', 'false', 'no', '',
     )
 
+    # Master switch for the /api/v1/fairshare endpoint (hpc-scheduling-tools
+    # plugin). Off skips the plugin load entirely; TestingConfig forces it off.
+    HPC_SCHEDULING_TOOLS_ENABLED = os.getenv(
+        'HPC_SCHEDULING_TOOLS_ENABLED', '1').lower() not in ('0', 'false', 'no', '')
+
     # Server-side Postgres statement_timeout (ms) applied to every fs-scans
     # connection. A runaway scope can otherwise hold a CNPG connection (and a
     # gthread thread) until the gunicorn worker timeout kills it; this caps the
@@ -388,6 +393,10 @@ class TestingConfig(SAMWebappConfig):
     # test container does not provide. Disable eager load at startup;
     # route-level tests stub the service layer instead.
     FS_SCANS_ENABLED = False
+
+    # The hpc-scheduling-tools plugin is not installed in the test image; route
+    # tests mock HPC_SCHEDULING_TOOLS.load. Individual tests flip this on.
+    HPC_SCHEDULING_TOOLS_ENABLED = False
 
     # OFF and pinned to the recording transport: here the shared state a test
     # tier can reach is the internet — ndir.ucar.edu relays for the whole UCAR
