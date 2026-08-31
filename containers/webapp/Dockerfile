@@ -41,11 +41,18 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # The read-only deploy key arrives as a BuildKit secret (never a layer); an
 # absent key (local build without creds) skips the install. required=false.
 ARG HPC_SCHEDULING_TOOLS_REF=main
-RUN --mount=type=secret,id=hpc_sched_deploy_key,target=/root/.ssh/hpc_sched,mode=0400,required=false <<'EOF'
+RUN --mount=type=secret,id=hpc_sched_deploy_key,target=/run/secrets/hpc_sched,required=false <<'EOF'
 set -eu
-if [ -s /root/.ssh/hpc_sched ]; then
-  export GIT_SSH_COMMAND="ssh -i /root/.ssh/hpc_sched -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+if [ -s /run/secrets/hpc_sched ]; then
+  # Copy the read-only secret out and normalize it: strip CR and guarantee a
+  # trailing newline, or OpenSSH rejects the key ("error in libcrypto") —
+  # GitHub secret storage strips the key's final newline. Removed same-layer.
+  tr -d '\r' < /run/secrets/hpc_sched > /root/hpc_sched_key
+  [ -n "$(tail -c1 /root/hpc_sched_key)" ] && printf '\n' >> /root/hpc_sched_key || true
+  chmod 600 /root/hpc_sched_key
+  export GIT_SSH_COMMAND="ssh -i /root/hpc_sched_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
   pip install --no-cache-dir "hpc-scheduling-tools @ git+ssh://git@github.com/NCAR/hpc-scheduling-tools.git@${HPC_SCHEDULING_TOOLS_REF}"
+  rm -f /root/hpc_sched_key
 else
   echo "NOTE: no hpc_sched deploy key mounted; skipping hpc-scheduling-tools (optional plugin)."
 fi
