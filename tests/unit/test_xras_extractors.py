@@ -846,6 +846,81 @@ class TestResolveMnemonicCode:
         assert '"Extractor Stale University"' in message
         assert f'also current: "Extractor Current University" -> {linked.code}' in message
 
+    def _pi_role(self, username, organization):
+        return [{'roleType': 'PI', 'username': username,
+                 'person': {'organization': organization}}]
+
+    def test_the_wire_organization_breaks_a_shadowed_institution_tie(self, session):
+        """kheyblom, the fix: the stale unlinked row is first, but the wire's
+        `person.organization` names the resolvable one, so the mnemonic resolves
+        instead of 422-ing. Beyond parity — legacy read only the DB user."""
+        from factories import (make_institution, make_mnemonic_code, make_user,
+                               make_user_institution)
+        stale = make_institution(session, name='Extractor Stale University')
+        current = make_institution(session, name='Extractor Current University')
+        linked = make_mnemonic_code(session, description='Extractor Current University')
+        user = make_user(session)
+        make_user_institution(session, user=user, institution=stale)
+        make_user_institution(session, user=user, institution=current)
+        session.flush()
+        session.expire(user)
+
+        errs = ActionErrors()
+        row = resolve_mnemonic_code(
+            session,
+            action(opportunityName='Small Allocation',
+                   roles=self._pi_role(user.username, 'Extractor Current University')),
+            errs, pi_username=user.username)
+        assert not errs
+        assert row.code == linked.code
+
+    def test_the_wire_organization_is_ignored_when_it_names_no_current_row(self, session):
+        """A wire org the PI does not hold changes nothing: the first-row fallback and
+        the same 422 stand. The tie-break only reorders existing current rows."""
+        from factories import (make_institution, make_mnemonic_code, make_user,
+                               make_user_institution)
+        stale = make_institution(session, name='Extractor Stale University')
+        current = make_institution(session, name='Extractor Current University')
+        make_mnemonic_code(session, description='Extractor Current University')
+        user = make_user(session)
+        make_user_institution(session, user=user, institution=stale)
+        make_user_institution(session, user=user, institution=current)
+        session.flush()
+        session.expire(user)
+
+        errs = ActionErrors()
+        assert resolve_mnemonic_code(
+            session,
+            action(opportunityName='Small Allocation',
+                   roles=self._pi_role(user.username, 'University Nobody Holds')),
+            errs, pi_username=user.username) is None
+        (message,) = list(errs)
+        assert '"Extractor Stale University"' in message
+
+    def test_a_wire_organization_naming_an_unlinked_row_does_not_unseat_a_resolvable_first(self, session):
+        """The resolve-gate: the wire names the *unlinked* second row, but switching to
+        it would 422 a PI whose first row resolves. The tie-break is gated on resolving,
+        so it keeps the working first row — the change can only help, never regress."""
+        from factories import (make_institution, make_mnemonic_code, make_user,
+                               make_user_institution)
+        linked_inst = make_institution(session, name='Extractor Linked University')
+        linked = make_mnemonic_code(session, description='Extractor Linked University')
+        unlinked = make_institution(session, name='Extractor Unlinked University')
+        user = make_user(session)
+        make_user_institution(session, user=user, institution=linked_inst)
+        make_user_institution(session, user=user, institution=unlinked)
+        session.flush()
+        session.expire(user)
+
+        errs = ActionErrors()
+        row = resolve_mnemonic_code(
+            session,
+            action(opportunityName='Small Allocation',
+                   roles=self._pi_role(user.username, 'Extractor Unlinked University')),
+            errs, pi_username=user.username)
+        assert not errs
+        assert row.code == linked.code
+
     def test_a_pi_with_no_current_affiliation_names_that_gap(self, session):
         """Declared divergence. Legacy's ``UserAffiliationDTO`` is non-null for
         such a user, so it reaches ``getMnemonicCodeViaOrganization`` and reports

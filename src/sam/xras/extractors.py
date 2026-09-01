@@ -494,6 +494,40 @@ def _best_institution(user: User):
     return next((ui.institution for ui in user.institutions if ui.is_active), None)
 
 
+def _pi_wire_organization(action, pi_username: Optional[str]) -> Optional[str]:
+    """The PI role's free-text ``person.organization`` from the wire, or ``None``.
+
+    Beyond parity: legacy resolved the mnemonic off the DB user and never read this.
+    Null-safe at every hop (roles/person/org each may be absent).
+    """
+    roles = get_field(action, 'roles') or ()
+    pi_role = (next((r for r in roles if get_field(r, 'username') == pi_username), None)
+               or next((r for r in roles if get_field(r, 'roleType') == 'PI'), None))
+    person = get_field(pi_role, 'person') if pi_role is not None else None
+    return _clean(get_field(person, 'organization')) if person is not None else None
+
+
+def _select_institution(user: User, wire_org: Optional[str], lookup: dict):
+    """The current institution to mint the mnemonic from.
+
+    ``getBestInstitution`` took the first current row with no tie-break, assuming one
+    current institution (``HashSet`` "should only have best"); a PI with several got an
+    arbitrary one. When the wire names an institution (``person.organization``) that
+    *uniquely* matches a current row and *resolves* to a code, prefer it — gated on
+    resolving so the tie-break can only turn a failure into a success, never the reverse.
+    """
+    first = _best_institution(user)
+    if not wire_org:
+        return first
+    key = wire_org.casefold()
+    matched = [ui.institution for ui in user.institutions
+               if ui.is_active and ui.institution is not None
+               and (ui.institution.name or '').strip().casefold() == key]
+    if len(matched) == 1 and MnemonicCode.resolve_for_institution(matched[0], lookup):
+        return matched[0]
+    return first
+
+
 def _organization_parentage(org: Optional[Organization]) -> List[Organization]:
     """The org and its ancestors, **deepest first**, root last.
 
@@ -554,7 +588,9 @@ def resolve_mnemonic_code(session, action, errs: ActionErrors, *,
        PI's organization parentage to level 3 and match that. Note this catches the
        NSC opportunity prefix (``'NCAR - NSC Allocation Request'``) as well as the
        NCAR ASD one.
-    2. The PI has an institution -> match ``"Name, City"``, then ``"Name"``.
+    2. The PI has an institution -> match ``"Name, City"``, then ``"Name"``. With
+       several current institutions, the wire's ``person.organization`` breaks the tie
+       (``_select_institution``) — beyond parity; legacy read only the DB user.
     3. Otherwise -> match the PI's organization name.
 
     ``MnemonicCode.build_lookup`` + ``resolve_for_*`` are the existing ports of
@@ -603,12 +639,14 @@ def resolve_mnemonic_code(session, action, errs: ActionErrors, *,
             return None
         return _mnemonic_row(session, code)
 
-    institution = _best_institution(user)
+    institution = _select_institution(
+        user, _pi_wire_organization(action, pi_username), lookup)
     if institution is not None:
         code = MnemonicCode.resolve_for_institution(institution, lookup)
         if code is None:
-            # Name the other current rows too: `_best_institution` takes the first,
-            # and a stale one can shadow the right one (kheyblom, 2026-08-27).
+            # Name the other current rows too: the fallback takes the first, and a
+            # stale one can shadow the right one (kheyblom, 2026-08-27). When the wire
+            # named a resolvable institution, `_select_institution` already preferred it.
             others = [ui.institution for ui in user.institutions
                       if ui.is_active and ui.institution is not None
                       and ui.institution is not institution]
