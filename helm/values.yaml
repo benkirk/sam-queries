@@ -547,8 +547,8 @@ tasks:
     #                                         only where two derivations agree, never
     #                                         overwriting. Ingestion does not depend
     #                                         on this task or on api.xras.org.)
-    # Disabled: expiration_notices           (mails external PIs)
-    #           xras_notices                 (mails external PIs)
+    #           expiration_notices           (mails external PIs; Mon 09:00 MT)
+    # Disabled: xras_notices                 (mails external PIs)
     #
     # WARNING: this is an ENUMERATION and it is fail-OPEN. `disabled_tasks()` in
     # src/scheduling/runner.py is a case-sensitive exact match against registry
@@ -562,4 +562,4 @@ tasks:
     # so re-enabling one mid-slot does not backfill: the first real run is the next
     # occurrence. The switch is checked ahead of `only`/`force`, so
     # `sam-admin tasks --run X --force` cannot override it.
-    SAM_TASKS_DISABLED: "expiration_notices,xras_notices"
+    SAM_TASKS_DISABLED: "xras_notices"
