@@ -7,6 +7,7 @@ Used by:
 Pure read-only INFORMATION_SCHEMA queries plus SQLAlchemy mapper inspection.
 No writes, no mocking.
 """
+import re
 from collections import defaultdict
 from typing import Dict, List, Tuple
 
@@ -21,6 +22,7 @@ from sqlalchemy.schema import Index, UniqueConstraint
 TYPE_MAPPINGS = {
     'Integer':    ['INT', 'INTEGER', 'TINYINT', 'SMALLINT', 'MEDIUMINT', 'BIGINT'],
     'BigInteger': ['BIGINT'],
+    'SmallInteger': ['SMALLINT'],
     'String':     ['VARCHAR', 'CHAR'],
     'Text':       ['TEXT', 'MEDIUMTEXT', 'LONGTEXT', 'TINYTEXT'],
     'Float':      ['FLOAT', 'DOUBLE'],
@@ -33,8 +35,17 @@ TYPE_MAPPINGS = {
 
 
 def normalize_type(db_type: str) -> str:
-    """'VARCHAR(255) UNSIGNED' -> 'VARCHAR'. Strips size + sign."""
-    base = db_type.split('(')[0].upper()
+    """'VARCHAR(255) UNSIGNED' / 'TEXT COLLATE "..."' -> base word.
+
+    Strips size, sign, and the COLLATE/CHARACTER SET suffix that SQLAlchemy's
+    reflected type string carries for non-default-collation columns (utf8mb4
+    TEXT etc.) — a bare INFORMATION_SCHEMA COLUMN_TYPE never has it, so this is
+    a no-op for the INFORMATION_SCHEMA callers and only aligns the reflection
+    path in orm_inventory.py.
+    """
+    s = re.sub(r'\s+COLLATE\s+.*$', '', db_type, flags=re.IGNORECASE)
+    s = re.sub(r'\s+CHARACTER SET\s+\S+', '', s, flags=re.IGNORECASE)
+    base = s.split('(')[0].upper()
     base = base.replace(' UNSIGNED', '').replace(' SIGNED', '')
     return base.strip()
 
