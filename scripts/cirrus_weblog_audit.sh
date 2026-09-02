@@ -142,7 +142,10 @@ explain "Reading the last '$SINCE' of webapp stdout across all '$WEBAPP_NAME' po
 # --- harvest once -----------------------------------------------------------
 # All signals (gunicorn access + app logger + 429 warnings + auth failures)
 # share one stdout stream, so a single fetch feeds every section below.
-LOGS=$("${KCTL_NS[@]}" logs -l "app=$WEBAPP_NAME" --since="$SINCE" \
+# --tail=-1 is REQUIRED: with a -l selector kubectl defaults to --tail=10 per
+# pod, which silently caps the harvest at ~10 lines/pod and undercounts every
+# section below (--since alone does NOT lift that cap).
+LOGS=$("${KCTL_NS[@]}" logs -l "app=$WEBAPP_NAME" --since="$SINCE" --tail=-1 \
        --all-containers=true --timestamps=false 2>/dev/null || true)
 
 # Normalize gunicorn access lines to "ip<TAB>status<TAB>method<TAB>path<TAB>ua".
