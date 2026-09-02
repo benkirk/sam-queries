@@ -84,11 +84,18 @@ change, so any remedy is **caching or query-shape**, never a response redesign.
    spacing, per-resource key cardinality) or whether the cost is JSON
    serialization of a ~200 MB/16h payload after the cache hit —
    [`src/webapp/api/v1/fstree_access.py`](../../src/webapp/api/v1/fstree_access.py).
-2. **`directory_access/` averages 6.9 s for ~2.7 MB per call**, uncached —
-   [`src/webapp/api/v1/directory_access.py`](../../src/webapp/api/v1/directory_access.py).
-   Assess an additive cache (the consumer polls it hourly) and the query shape
-   behind the payload.
+2. **`directory_access/` averaged 6.9 s — ADDRESSED (query optimization).**
+   It *is* cached (`@cache.cached`, 300 s), but the `ssg` consumer polls every
+   5 min, so the poll cadence matched the TTL and ~98 % of polls paid a cold
+   recompute. The recompute was a single mega-join in
+   [`src/sam/queries/directory_access.py`](../../src/sam/queries/directory_access.py)
+   `user_populator` that fanned each user ~14× (accounts × allocations × phone ×
+   institution × organization) into a ~135 k-row temporary-table `GROUP BY`.
+   Rewritten split-and-assemble (per-user bulk lookups + home/shell in Python):
+   ~4× faster and plan-stable on every instance, verified byte-identical on real
+   data except deterministic whitespace-trimming of a handful of duplicate phone
+   numbers. The 5-min TTL is kept (freshness is intentional). Watch the tick's
+   `directory_access` latency drop after deploy.
 
-Neither is urgent — 0 5xx, the callers are batch integrations, and the median
-user request is fast. This note tracks them so the tail is watched rather than
-forgotten.
+Neither was urgent — 0 5xx, the callers are batch integrations, and the median
+user request is fast. This note tracks the tail so it is watched, not forgotten.

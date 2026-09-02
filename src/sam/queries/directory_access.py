@@ -106,28 +106,26 @@ _SQL_ADHOC_MEMBERS = text("""
      WHERE (:branch IS NULL OR ase.access_branch_name = :branch)
 """)
 
-# Unix account data — mirrors legacy unixAccountForAccessBranchNameAndUsername
-# The hpc-data branch uses GLADE* resource attributes (legacy kludge)
-_SQL_UNIX_ACCOUNTS = text("""
-    SELECT ab.name AS access_branch_name,
+# Account membership + user identity. Split-and-assemble (see module docstring /
+# group_populator): the legacy single mega-join fanned each user out ~14x over
+# accounts x allocations x phone x institution x organization, then collapsed
+# ~135k rows with a temporary-table GROUP BY that dominated the ~7s cost. This
+# query keeps ONLY the account-chain membership -> one row per (branch, user);
+# phone/institution/organization and the home/shell "key resource" logic are
+# fetched as small bulk lookups below and merged in Python. Home/shell were
+# pulled OUT of SQL deliberately: joining the key-resource/override tables inside
+# this query gave the optimizer a plan that exploded to >1M rows on some
+# instances (plan-fragile). DISTINCT here is stable at ~0.2s on every instance.
+_SQL_MEMBERSHIP = text("""
+    SELECT DISTINCT ab.name AS branch,
+           u.user_id AS user_id,
            u.username AS username,
            u.unix_uid AS uid,
-           IFNULL(u.primary_gid, :default_gid) AS gid,
-           IFNULL(urh.home_directory,
-               CASE WHEN k.default_home_dir_base IS NULL
-                    THEN CONCAT(:default_home_base, '/', u.username)
-                    ELSE CONCAT(k.default_home_dir_base, '/', u.username)
-               END
-           ) AS home_directory,
-           IFNULL(urs.path, IFNULL(drs.path, :default_shell)) AS login_shell,
-           CONCAT(IFNULL(u.nickname, u.first_name), ' ', u.last_name) AS name,
-           u.upid AS upid,
-           CASE
-               WHEN uoph.phone_number IS NOT NULL THEN uoph.phone_number
-               ELSE eoph.phone_number
-           END AS phone_number,
-           MAX(inst.name) AS institution_name,
-           MAX(org.acronym) AS organization_acronym
+           u.primary_gid AS primary_gid,
+           u.nickname AS nickname,
+           u.first_name AS first_name,
+           u.last_name AS last_name,
+           u.upid AS upid
       FROM account AS a
       JOIN project AS p ON (a.project_id = p.project_id AND p.active IS TRUE)
       JOIN resources AS r ON (a.resource_id = r.resource_id AND r.configurable IS TRUE)
@@ -139,43 +137,74 @@ _SQL_UNIX_ACCOUNTS = text("""
            AND au.start_date <= NOW()
            AND (au.end_date IS NULL OR au.end_date > NOW()))
       JOIN users AS u ON (au.user_id = u.user_id AND u.active IS TRUE)
-      -- "key resource" kludge: hpc-data uses GLADE resource for home/shell defaults
-      JOIN (
-          SELECT kr1.resource_id, kr1.resource_name, kr1.default_home_dir_base,
-                 kr1.default_resource_shell_id
-            FROM resources AS kr1
-           UNION
-          SELECT kr2.resource_id, 'hpc-data' AS resource_name,
-                 kr2.default_home_dir_base, kr2.default_resource_shell_id
-            FROM resources AS kr2
-           WHERE kr2.resource_name LIKE 'GLADE%'
-      ) AS k ON LOWER(ab.name) = LOWER(k.resource_name)
-      LEFT JOIN user_resource_home AS urh ON (k.resource_id = urh.resource_id
-           AND u.user_id = urh.user_id)
-      LEFT JOIN (
-          SELECT ilrs.resource_id, ilrs.path, ilurs.user_id
-            FROM resource_shell AS ilrs
-            JOIN user_resource_shell AS ilurs ON ilrs.resource_shell_id = ilurs.resource_shell_id
-      ) AS urs ON (k.resource_id = urs.resource_id AND u.user_id = urs.user_id)
-      LEFT JOIN resource_shell AS drs ON k.default_resource_shell_id = drs.resource_shell_id
-      -- Phone numbers: UCAR Office preferred, then External Office
-      LEFT JOIN phone_type AS uopht ON uopht.phone_type = 'Ucar Office'
-      LEFT JOIN phone_type AS eopht ON eopht.phone_type = 'External Office'
-      LEFT JOIN phone AS uoph ON (u.user_id = uoph.user_id
-           AND uopht.ext_phone_type_id = uoph.ext_phone_type_id)
-      LEFT JOIN phone AS eoph ON (u.user_id = eoph.user_id
-           AND eopht.ext_phone_type_id = eoph.ext_phone_type_id)
-      -- Institution (for external users)
-      LEFT JOIN user_institution AS ui ON (u.user_id = ui.user_id AND ui.end_date IS NULL)
-      LEFT JOIN institution AS inst ON ui.institution_id = inst.institution_id
-      -- Organization (for UCAR staff)
-      LEFT JOIN user_organization AS uo ON (u.user_id = uo.user_id AND uo.end_date IS NULL)
-      LEFT JOIN organization AS org ON uo.organization_id = org.organization_id
      WHERE (:branch IS NULL OR ab.name = :branch)
-     GROUP BY ab.name, u.username, u.unix_uid, u.primary_gid,
-              urh.home_directory, k.default_home_dir_base,
-              urs.path, drs.path, u.nickname, u.first_name, u.last_name,
-              u.upid, uoph.phone_number, eoph.phone_number
+""")
+
+# Home/shell "key resource" kludge, decomposed. The branch->key-resource map is a
+# JOIN in legacy (hpc-data maps to 3 GLADE rows); an account is emitted only if
+# its branch has a key resource, so a branch absent here has no accounts. Legacy
+# collapsed the per-key-resource fan-out non-deterministically (row-order
+# last-wins); we take MAX() in Python, which reproduces the observed output on
+# real data (hpc-data resolves to /home — the GLADE base is not applied; that
+# legacy behavior is preserved, not "fixed").
+_SQL_KEY_RESOURCE = text("""
+    SELECT ab.name AS branch, k.resource_id AS resource_id,
+           k.default_home_dir_base AS home_base,
+           k.default_resource_shell_id AS shell_default_id
+      FROM access_branch AS ab
+      JOIN (
+          SELECT resource_id, resource_name, default_home_dir_base, default_resource_shell_id
+            FROM resources
+           UNION
+          SELECT resource_id, 'hpc-data', default_home_dir_base, default_resource_shell_id
+            FROM resources WHERE resource_name LIKE 'GLADE%'
+      ) AS k ON LOWER(ab.name) = LOWER(k.resource_name)
+     WHERE (:branch IS NULL OR ab.name = :branch)
+""")
+
+_SQL_HOME_OVERRIDES = text("""
+    SELECT resource_id, user_id, home_directory FROM user_resource_home
+""")
+
+_SQL_SHELL_OVERRIDES = text("""
+    SELECT rs.resource_id, urs.user_id, rs.path
+      FROM resource_shell AS rs
+      JOIN user_resource_shell AS urs ON rs.resource_shell_id = urs.resource_shell_id
+""")
+
+_SQL_SHELL_DEFAULTS = text("""
+    SELECT resource_shell_id, path FROM resource_shell
+""")
+
+# Per-user phone (no account fan-out): UCAR Office preferred, then External
+# Office. Legacy fanned duplicate phone rows and kept a non-deterministic
+# last-wins; MIN() makes it deterministic and reproduces the legacy choice on
+# real data (a "+1 303…" entry sorts before a bare "303-…" duplicate).
+_SQL_USER_PHONE = text("""
+    SELECT ph.user_id,
+           MIN(CASE WHEN pt.phone_type = 'Ucar Office'     THEN TRIM(ph.phone_number) END) AS ucar_phone,
+           MIN(CASE WHEN pt.phone_type = 'External Office' THEN TRIM(ph.phone_number) END) AS ext_phone
+      FROM phone AS ph
+      JOIN phone_type AS pt ON ph.ext_phone_type_id = pt.ext_phone_type_id
+     WHERE pt.phone_type IN ('Ucar Office', 'External Office')
+     GROUP BY ph.user_id
+""")
+
+# Per-user institution / organization (MAX matches the legacy tie-break).
+_SQL_USER_INSTITUTION = text("""
+    SELECT ui.user_id, MAX(inst.name) AS institution_name
+      FROM user_institution AS ui
+      JOIN institution AS inst ON ui.institution_id = inst.institution_id
+     WHERE ui.end_date IS NULL
+     GROUP BY ui.user_id
+""")
+
+_SQL_USER_ORGANIZATION = text("""
+    SELECT uo.user_id, MAX(org.acronym) AS organization_acronym
+      FROM user_organization AS uo
+      JOIN organization AS org ON uo.organization_id = org.organization_id
+     WHERE uo.end_date IS NULL
+     GROUP BY uo.user_id
 """)
 
 
@@ -324,38 +353,81 @@ def user_populator(
         access_branch: Optional branch name filter. None = all branches.
         grace_period_days: Days beyond allocation end_date to remain active.
     """
-    params = {
-        'branch': access_branch,
-        'grace_period': grace_period_days,
-        'default_gid': DEFAULT_COMMON_GROUP_GID,
-        'default_shell': DEFAULT_SHELL,
-        'default_home_base': DEFAULT_HOME_BASE,
-    }
+    params = {'branch': access_branch, 'grace_period': grace_period_days}
+
+    # Per-user attribute lookups (one row per user, no account fan-out).
+    phones: Dict[int, Optional[str]] = {}
+    for user_id, ucar_phone, ext_phone in session.execute(_SQL_USER_PHONE):
+        phones[user_id] = ucar_phone if ucar_phone is not None else ext_phone
+    institutions = {uid: name for uid, name in session.execute(_SQL_USER_INSTITUTION)}
+    organizations = {uid: acr for uid, acr in session.execute(_SQL_USER_ORGANIZATION)}
+
+    # Home/shell "key resource" inputs (small tables), computed in Python.
+    key_resources: Dict[str, List[Tuple]] = {}
+    for branch, resource_id, home_base, shell_default_id in session.execute(
+            _SQL_KEY_RESOURCE, {'branch': access_branch}):
+        key_resources.setdefault(branch, []).append((resource_id, home_base, shell_default_id))
+    home_overrides = {(rid, uid): home
+                      for rid, uid, home in session.execute(_SQL_HOME_OVERRIDES)}
+    shell_overrides = {(rid, uid): path
+                       for rid, uid, path in session.execute(_SQL_SHELL_OVERRIDES)}
+    shell_defaults = {rsid: path for rsid, path in session.execute(_SQL_SHELL_DEFAULTS)}
+
+    def _home(branch: str, user_id: int, username: str) -> Optional[str]:
+        # MAX over the branch's key resources (legacy collapsed the fan-out).
+        candidates = []
+        for resource_id, home_base, _shell in key_resources.get(branch, ()):
+            home = home_overrides.get((resource_id, user_id))
+            if home is None:
+                home = (f'{home_base}/{username}' if home_base is not None
+                        else f'{DEFAULT_HOME_BASE}/{username}')
+            candidates.append(home)
+        return max(candidates) if candidates else None
+
+    def _shell(branch: str, user_id: int) -> Optional[str]:
+        candidates = []
+        for resource_id, _home_base, shell_default_id in key_resources.get(branch, ()):
+            path = shell_overrides.get((resource_id, user_id))
+            if path is None:
+                path = shell_defaults.get(shell_default_id) if shell_default_id is not None else None
+                if path is None:
+                    path = DEFAULT_SHELL
+            candidates.append(path)
+        return max(candidates) if candidates else None
 
     branches: Dict[str, Dict] = {}
-    rows = session.execute(_SQL_UNIX_ACCOUNTS, params).fetchall()
+    for row in session.execute(_SQL_MEMBERSHIP, params):
+        # Legacy INNER-joins the key resource, so a branch with none has no accounts.
+        if row.branch not in key_resources:
+            continue
+        b = branches.setdefault(row.branch, {'accounts': {}})
 
-    for row in rows:
-        branch_name = row.access_branch_name
-        username = row.username
+        # name = CONCAT(IFNULL(nickname, first_name), ' ', last_name); MySQL CONCAT
+        # yields NULL if any part is NULL, which the legacy code mapped to ''.
+        first_part = row.nickname if row.nickname is not None else row.first_name
+        if first_part is None or row.last_name is None:
+            name = ''
+        else:
+            name = f'{first_part} {row.last_name}'
 
-        b = branches.setdefault(branch_name, {'accounts': {}})
-
-        # Build gecos field
-        name = row.name or ''
-        org = ''
-        if row.organization_acronym:
-            org = f'UCAR/{row.organization_acronym}'
-        elif row.institution_name:
-            org = row.institution_name
-        phone = row.phone_number or ''
+        # gecos = "{name},{org},{phone}"; org = UCAR/{acronym} for staff, else
+        # institution name for external, else "".
+        acronym = organizations.get(row.user_id)
+        institution = institutions.get(row.user_id)
+        if acronym:
+            org = f'UCAR/{acronym}'
+        elif institution:
+            org = institution
+        else:
+            org = ''
+        phone = phones.get(row.user_id) or ''
         gecos = f'{name},{org},{phone}'
 
-        b['accounts'][username] = {
+        b['accounts'][row.username] = {
             'uid': row.uid,
-            'gid': row.gid,
-            'home_directory': row.home_directory,
-            'login_shell': row.login_shell,
+            'gid': row.primary_gid if row.primary_gid is not None else DEFAULT_COMMON_GROUP_GID,
+            'home_directory': _home(row.branch, row.user_id, row.username),
+            'login_shell': _shell(row.branch, row.user_id),
             'name': name,
             'upid': row.upid,
             'gecos': gecos,
