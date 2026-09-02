@@ -330,6 +330,10 @@ part of C are net wins even if Postgres never ships.
    any remaining GROUP BY; run the full suite on PG; apply Fix 5 triggers if raw-SQL
    auto-stamping is required; **bring SAM under `migrations/sam/` Alembic** (stamp a
    baseline against the migrated PG schema); flip prod's `SAM_DB_DRIVER`.
+6. **Drop the objects nothing uses.** Once legacy SAM is gone we own the schema and
+   can retire unused views (and later tables). The inventory of retirement candidates
+   — starting with the 7 views SAM's own code no longer queries — lives in
+   `SCHEMA_RETIREMENT.md`; port only the objects it does not list.
 
 ---
 
