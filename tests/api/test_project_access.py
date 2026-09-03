@@ -47,11 +47,13 @@ class TestProjectAccessAllBranches:
                     assert 'resourceName' in rgs
                     assert 'endDate' in rgs
 
-    def test_auto_renewing_always_false(self, auth_client):
+    def test_auto_renewing_derived_from_panel(self, auth_client):
+        from sam.queries.project_access import AUTO_RENEW_PANELS
         data = auth_client.get('/api/v1/project_access/').get_json()
         for branch_name, projects in data.items():
             for proj in projects[:10]:
-                assert proj['autoRenewing'] is False
+                assert isinstance(proj['autoRenewing'], bool)
+                assert proj['autoRenewing'] == (proj['panel'] in AUTO_RENEW_PANELS)
 
 
 class TestProjectAccessSingleBranch:

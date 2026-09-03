@@ -71,6 +71,18 @@ class LegacyClient(_BaseClient):
     def wallclock_exemption(self) -> dict:
         return self._get('/api/protected/admin/ssg/wallClockExemption')
 
+    def disk_quota(self, *, allow_403: bool = False) -> list | None:
+        # Requires ROLE_API_DASG, which the SAM_LEGACY_* account may not hold.
+        # 403 -> return None so the caller can SKIP rather than fail.
+        resp = self._session.get(
+            f'{self.base_url}/api/protected/admin/dasg/diskquota', timeout=self.timeout)
+        if resp.status_code == 403 and allow_403:
+            return None
+        if resp.status_code != 200:
+            raise RuntimeError(
+                f'GET diskquota returned HTTP {resp.status_code}: {resp.text[:200]}')
+        return resp.json()
+
 
 class NewClient(_BaseClient):
     """Client for samuel.k8s.ucar.edu new Python API."""
@@ -92,6 +104,9 @@ class NewClient(_BaseClient):
 
     def wallclock_exemption(self) -> dict:
         return self._get('/api/v1/wallclock_exemption/')
+
+    def disk_quota(self) -> list:
+        return self._get('/api/v1/disk_quota/')
 
 
 class XrasClient(_BaseClient):

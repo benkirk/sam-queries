@@ -209,6 +209,17 @@ intentionally match legacy Java API response shapes for systems-integration
 consumers. Additive changes only (e.g. `invalidate_queue_cache()` in queue.py);
 response bytes must not change.
 
+**Output shaping — the hand-built dict is a frozen exception, not the norm.**
+Those five blueprints assemble camelCase JSON by hand in `sam/queries/` for
+byte-shape reasons. Do NOT copy that into new work. A **new** endpoint — even a
+legacy-shaped one — declares its output via a Marshmallow schema (`data_key` for
+camelCase; `disk_quota.py` + `schemas/disk_quota.py` is the reference). Fetch is
+ORM by default (`queue_access.py`); raw `text()` SQL only when a measured perf
+constraint forces it, then with the split-and-assemble discipline
+(`directory_access.py`) plus a `make perf` benchmark. Deep nested trees
+(wallclock/fstree) that map poorly onto declarative fields stay the documented
+hand-rolled exception.
+
 ---
 
 ## Important Patterns & Conventions

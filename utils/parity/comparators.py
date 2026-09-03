@@ -495,8 +495,16 @@ def compare_project_access(legacy_by_branch: dict, new: dict) -> list[CheckResul
         compared=compared,
     ))
 
-    # 6. Expiration dates match within ±1 day
-    mismatches = []
+    # 6. Expiration dates match within ±1 day — directional.
+    # Legacy groupstatus omits the `deleted` filter on its allocation join, so
+    # MAX(end_date) counts soft-deleted allocations; new correctly excludes them
+    # (e.g. ufsu0023's stale 2033 rows superseded by live 2027 ones). So
+    # legacy-later-than-new is an explainable legacy bug (allowed, capped for
+    # safety). new-later-than-legacy is a real concern (we'd claim a longer life)
+    # and always fails. A dropped *live* allocation shows up in the names/counts
+    # and resourceGroupStatuses checks, so this direction cannot mask a regression.
+    real_mismatches = []
+    explained = []
     compared = 0
     for branch in shared_branches:
         new_by_name = {p['groupName']: p for p in new[branch]}
@@ -509,13 +517,24 @@ def compare_project_access(legacy_by_branch: dict, new: dict) -> list[CheckResul
             if not (le and ne):
                 continue
             compared += 1
-            if not dates_within_one_day(le, ne):
-                mismatches.append(f'{branch}/{name}: legacy={le!r}, new={ne!r}')
+            if dates_within_one_day(le, ne):
+                continue
+            entry = f'{branch}/{name}: legacy={le!r}, new={ne!r}'
+            if le > ne:
+                explained.append(entry)   # legacy later — deleted-allocation edge
+            else:
+                real_mismatches.append(entry)
+    EXPLAINED_CAP = 10
+    over_cap = len(explained) > EXPLAINED_CAP
+    note = ''
+    if explained:
+        note = (f'; {len(explained)} legacy-later (soft-deleted allocations, '
+                f'explainable): {explained[:3]}')
     results.append(CheckResult(
         name='project_access / expiration dates within ±1 day',
-        passed=not mismatches,
-        summary=f'{compared} matched projects checked',
-        mismatches=mismatches,
+        passed=not real_mismatches and not over_cap,
+        summary=f'{compared} matched projects checked{note}',
+        mismatches=real_mismatches + (explained if over_cap else []),
         compared=compared,
     ))
 
@@ -547,6 +566,52 @@ def compare_project_access(legacy_by_branch: dict, new: dict) -> list[CheckResul
         passed=len(failures) <= 10,
         summary=f'{compared} legacy resource entries checked (tolerance 10 mismatches)',
         mismatches=failures,
+        compared=compared,
+    ))
+
+    # 8. panel matches (legacy panel.panel_name; the field the LDAP feed reads)
+    mismatches = []
+    compared = 0
+    for branch in shared_branches:
+        new_by_name = {p['groupName']: p for p in new[branch]}
+        for proj in legacy_by_branch[branch]:
+            name = proj['groupName']
+            if name not in new_by_name:
+                continue
+            compared += 1
+            if proj.get('panel') != new_by_name[name].get('panel'):
+                mismatches.append(
+                    f'{branch}/{name}: legacy panel={proj.get("panel")!r}, '
+                    f'new={new_by_name[name].get("panel")!r}'
+                )
+    results.append(CheckResult(
+        name='project_access / panel matches',
+        passed=not mismatches,
+        summary=f'{compared} matched projects checked',
+        mismatches=mismatches,
+        compared=compared,
+    ))
+
+    # 9. autoRenewing matches (legacy derives panel in {NCAR Labs, CSLAP})
+    mismatches = []
+    compared = 0
+    for branch in shared_branches:
+        new_by_name = {p['groupName']: p for p in new[branch]}
+        for proj in legacy_by_branch[branch]:
+            name = proj['groupName']
+            if name not in new_by_name:
+                continue
+            compared += 1
+            if proj.get('autoRenewing') != new_by_name[name].get('autoRenewing'):
+                mismatches.append(
+                    f'{branch}/{name}: legacy autoRenewing={proj.get("autoRenewing")!r}, '
+                    f'new={new_by_name[name].get("autoRenewing")!r}'
+                )
+    results.append(CheckResult(
+        name='project_access / autoRenewing matches',
+        passed=not mismatches,
+        summary=f'{compared} matched projects checked',
+        mismatches=mismatches,
         compared=compared,
     ))
 
@@ -970,6 +1035,96 @@ def compare_queue(legacy: dict, new: dict) -> list[CheckResult]:
         passed=not date_mismatches,
         summary=f'{compared} shared queues checked',
         mismatches=date_mismatches,
+        compared=compared,
+    ))
+
+    return results
+
+
+# ===========================================================================
+# Disk Quota — 4 checks
+# ===========================================================================
+
+def compare_diskquota(legacy: list, new: list) -> list[CheckResult]:
+    """Compare the ``/dasg/diskquota`` responses.
+
+    Both are flat lists of ``{projcode, groupName, dataManager, resourceName,
+    quota, paths}``. Indexed by (projcode, resourceName); tolerant of DB-mirror
+    lag between the legacy and new hosts.
+    """
+    results: list[CheckResult] = []
+
+    def _key(r):
+        return (r.get('projcode'), r.get('resourceName'))
+
+    legacy_idx = {_key(r): r for r in legacy}
+    new_idx = {_key(r): r for r in new}
+
+    # 1. Records: legacy (projcode, resource) pairs ⊆ new
+    miss, ok = subset_diff(set(legacy_idx), set(new_idx), max_missing=10)
+    results.append(CheckResult(
+        name='diskquota / legacy records ⊆ new',
+        passed=ok,
+        summary=f'{len(legacy_idx)} legacy records vs {len(new_idx)} new',
+        mismatches=[f'record {k} present in legacy, absent from new'
+                    for k in sorted(str(m) for m in miss)[:10]],
+        compared=len(legacy_idx),
+    ))
+
+    shared = sorted(set(legacy_idx) & set(new_idx))
+
+    # 2. dataManager equality for shared records
+    dm_mismatches, compared = [], 0
+    for k in shared:
+        compared += 1
+        if legacy_idx[k].get('dataManager') != new_idx[k].get('dataManager'):
+            dm_mismatches.append(
+                f'{k}: legacy dataManager={legacy_idx[k].get("dataManager")!r}, '
+                f'new={new_idx[k].get("dataManager")!r}'
+            )
+    results.append(CheckResult(
+        name='diskquota / dataManager matches',
+        passed=not dm_mismatches,
+        summary=f'{compared} shared records checked',
+        mismatches=dm_mismatches,
+        compared=compared,
+    ))
+
+    # 3. quota within ±5% for shared records
+    q_mismatches, compared = [], 0
+    for k in shared:
+        lq, nq = legacy_idx[k].get('quota'), new_idx[k].get('quota')
+        compared += 1
+        if lq is None or nq is None:
+            if lq is not nq:
+                q_mismatches.append(f'{k}: legacy quota={lq}, new={nq}')
+        elif not within_tolerance(lq, nq, pct=0.05):
+            q_mismatches.append(f'{k}: legacy quota={lq}, new={nq}')
+    results.append(CheckResult(
+        name='diskquota / quota within ±5%',
+        passed=not q_mismatches,
+        summary=f'{compared} shared records checked',
+        mismatches=q_mismatches,
+        compared=compared,
+    ))
+
+    # 4. paths: legacy ⊆ new per shared record
+    p_failures, compared = [], 0
+    for k in shared:
+        legacy_paths = set(legacy_idx[k].get('paths') or [])
+        new_paths = set(new_idx[k].get('paths') or [])
+        compared += len(legacy_paths)
+        pmiss, pok = subset_diff(legacy_paths, new_paths, max_missing=5)
+        if not pok:
+            p_failures.append(
+                f'{k}: {len(pmiss)} legacy paths missing from new. '
+                f'Sample: {sorted(pmiss)[:5]}'
+            )
+    results.append(CheckResult(
+        name='diskquota / legacy paths ⊆ new',
+        passed=not p_failures,
+        summary=f'{compared} legacy paths checked',
+        mismatches=p_failures,
         compared=compared,
     ))
 

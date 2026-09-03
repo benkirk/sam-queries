@@ -12,11 +12,11 @@ This is the companion to directory_access.py (which handles unix group / account
 data).  Both use the same access_branch_resource JOIN pattern and the same
 ACCESS_GRACE_PERIOD constant.
 
-Note on `autoRenewing`:
-    This field appears in the legacy output but is NOT stored in the SAM
-    database — no table has an auto_renewing or auto_renewal column.
-    All observed production values are `false`.  We hardcode False here to
-    match legacy behavior rather than omit the field.
+Note on `panel` and `autoRenewing`:
+    `panel` is `panel.panel_name` (via allocation_type.panel_id -> panel), NOT
+    the allocation_type name -- those are different vocabularies (e.g. CSL vs
+    CSLAP). `autoRenewing` is not stored; legacy derives it as panel in
+    {NCAR Labs, CSLAP} (see AUTO_RENEW_PANELS).
 """
 
 from datetime import date
@@ -38,7 +38,9 @@ from .directory_access import ACCESS_GRACE_PERIOD
 # Filters:
 #   • r.configurable = TRUE   — same gate used by directory_access (omits
 #                               non-provisioned resources)
-#   • al.deleted = FALSE      — ignore soft-deleted allocations
+#   • al.deleted = FALSE      — ignore soft-deleted allocations. INTENTIONAL
+#     divergence from legacy groupstatus, which omits this filter and so counts
+#     deleted rows in MAX(end_date) (e.g. ufsu0023's stale 2033 rows). Keep it.
 #   • end_date within grace period — include recently-expired projects
 #
 # The subquery MAX(al.end_date) gives the latest allocation end_date for each
@@ -48,7 +50,7 @@ _SQL_PROJECT_GROUP_STATUS = text("""
     SELECT ab.name              AS access_branch_name,
            LOWER(p.projcode)   AS group_name,
            p.active            AS project_active,
-           at.allocation_type  AS panel,
+           pa.panel_name       AS panel,
            r.resource_name     AS resource_name,
            MAX(al.end_date)    AS end_date
       FROM account AS a
@@ -66,8 +68,10 @@ _SQL_PROJECT_GROUP_STATUS = text("""
                AND (al.end_date + INTERVAL :dead_cutoff DAY) > NOW())
       LEFT JOIN allocation_type AS at
            ON p.allocation_type_id = at.allocation_type_id
+      LEFT JOIN panel AS pa
+           ON at.panel_id = pa.panel_id
      WHERE (:branch IS NULL OR ab.name = :branch)
-     GROUP BY ab.name, p.projcode, p.active, at.allocation_type, r.resource_name
+     GROUP BY ab.name, p.projcode, p.active, pa.panel_name, r.resource_name
      ORDER BY LOWER(p.projcode), r.resource_name
 """)
 
@@ -82,6 +86,9 @@ _SQL_PROJECT_GROUP_STATUS = text("""
 #   accessBranch.group.warningPeriod      = 30   (ACTIVE vs EXPIRING boundary)
 DEAD_CUTOFF_DAYS   = 180   # projects expired beyond this are not returned at all
 WARNING_PERIOD_DAYS = 30   # projects expiring within this many days are EXPIRING
+
+# Legacy GroupStatus.setPanel: autoRenewing is derived from the panel, not stored.
+AUTO_RENEW_PANELS = frozenset({'NCAR Labs', 'CSLAP'})
 
 
 def get_project_group_status(
@@ -104,8 +111,8 @@ def get_project_group_status(
                 "hpc": [
                     {
                         "groupName":    "wyom0218",      # lowercase projcode
-                        "panel":        "WRAP",          # allocation_type name
-                        "autoRenewing": False,           # never set in DB; hardcoded
+                        "panel":        "WRAP",          # panel.panel_name
+                        "autoRenewing": False,           # panel in {NCAR Labs, CSLAP}
                         "projectActive": True,           # project.active
                         "status":       "ACTIVE",        # see status semantics below
                         "days_remaining": 90,            # int when ACTIVE/EXPIRING, else omitted
@@ -206,7 +213,7 @@ def get_project_group_status(
             entry: Dict = {
                 'groupName':    group_name,
                 'panel':        proj['panel'],
-                'autoRenewing': False,  # Not stored in SAM DB; always False in legacy
+                'autoRenewing': proj['panel'] in AUTO_RENEW_PANELS,
                 'projectActive': bool(proj['project_active']),
                 'status':        status,
                 'expiration':    max_end.isoformat() if max_end else None,
