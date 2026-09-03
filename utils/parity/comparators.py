@@ -495,8 +495,16 @@ def compare_project_access(legacy_by_branch: dict, new: dict) -> list[CheckResul
         compared=compared,
     ))
 
-    # 6. Expiration dates match within ±1 day
-    mismatches = []
+    # 6. Expiration dates match within ±1 day — directional.
+    # Legacy groupstatus omits the `deleted` filter on its allocation join, so
+    # MAX(end_date) counts soft-deleted allocations; new correctly excludes them
+    # (e.g. ufsu0023's stale 2033 rows superseded by live 2027 ones). So
+    # legacy-later-than-new is an explainable legacy bug (allowed, capped for
+    # safety). new-later-than-legacy is a real concern (we'd claim a longer life)
+    # and always fails. A dropped *live* allocation shows up in the names/counts
+    # and resourceGroupStatuses checks, so this direction cannot mask a regression.
+    real_mismatches = []
+    explained = []
     compared = 0
     for branch in shared_branches:
         new_by_name = {p['groupName']: p for p in new[branch]}
@@ -509,13 +517,24 @@ def compare_project_access(legacy_by_branch: dict, new: dict) -> list[CheckResul
             if not (le and ne):
                 continue
             compared += 1
-            if not dates_within_one_day(le, ne):
-                mismatches.append(f'{branch}/{name}: legacy={le!r}, new={ne!r}')
+            if dates_within_one_day(le, ne):
+                continue
+            entry = f'{branch}/{name}: legacy={le!r}, new={ne!r}'
+            if le > ne:
+                explained.append(entry)   # legacy later — deleted-allocation edge
+            else:
+                real_mismatches.append(entry)
+    EXPLAINED_CAP = 10
+    over_cap = len(explained) > EXPLAINED_CAP
+    note = ''
+    if explained:
+        note = (f'; {len(explained)} legacy-later (soft-deleted allocations, '
+                f'explainable): {explained[:3]}')
     results.append(CheckResult(
         name='project_access / expiration dates within ±1 day',
-        passed=not mismatches,
-        summary=f'{compared} matched projects checked',
-        mismatches=mismatches,
+        passed=not real_mismatches and not over_cap,
+        summary=f'{compared} matched projects checked{note}',
+        mismatches=real_mismatches + (explained if over_cap else []),
         compared=compared,
     ))
 

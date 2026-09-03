@@ -38,7 +38,9 @@ from .directory_access import ACCESS_GRACE_PERIOD
 # Filters:
 #   • r.configurable = TRUE   — same gate used by directory_access (omits
 #                               non-provisioned resources)
-#   • al.deleted = FALSE      — ignore soft-deleted allocations
+#   • al.deleted = FALSE      — ignore soft-deleted allocations. INTENTIONAL
+#     divergence from legacy groupstatus, which omits this filter and so counts
+#     deleted rows in MAX(end_date) (e.g. ufsu0023's stale 2033 rows). Keep it.
 #   • end_date within grace period — include recently-expired projects
 #
 # The subquery MAX(al.end_date) gives the latest allocation end_date for each

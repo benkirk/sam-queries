@@ -896,9 +896,18 @@ The new APIs were validated against the live legacy system
 | fstree_access Derecho     | ~1,260      | ~1,257    | ~3 projects missing (DB mirror lag; same root cause as above) |
 | queue                     | _run harness_ | _run harness_ | New excludes future-dated queues (`Queue.is_active` start_date bound) — absorbed by count tolerance |
 | wallclock_exemption       | _run harness_ | _run harness_ | Exemption date-window filter matches legacy exactly |
+| disk_quota                | 590         | 590       | Exact on identical data (dataManager / quota / paths all match) |
 
 The one consistent gap (1 project, 1 user across LDAP APIs; ~3 projects in fstree)
 is a known local database mirror sync lag — not a code defect.
+
+**`project_access` expiration — an explainable legacy bug.** For a project whose
+latest allocation was *soft-deleted and replaced* (only `ufsu0023` in prod today),
+legacy reports the later, deleted allocation's date because its groupstatus SQL
+omits the `deleted` filter; the new API excludes deleted rows (correct — a deleted
+allocation must not extend reported expiration or LDAP access). The parity
+expiration check allows this **legacy-later-than-new** direction and still fails on
+**new-later-than-legacy** (a real regression).
 
 ### Cache Refresh Workflow
 
