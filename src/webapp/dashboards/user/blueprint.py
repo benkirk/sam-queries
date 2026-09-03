@@ -7,6 +7,8 @@ Refactored to use server-side rendering with direct ORM queries instead of
 JavaScript API calls for improved performance and simplicity.
 """
 
+import json
+
 from flask import Blueprint, abort, render_template, request, flash, redirect, url_for, session, jsonify, make_response, current_app
 from flask_login import login_required, current_user
 from datetime import datetime, date, timedelta
@@ -1526,6 +1528,9 @@ class _UserEditAllocationHandler(HtmxFormHandler):
         }
 
     def on_success(self, result):
+        # closeActiveModal (htmx-config.js) hides the modal CSP-safely — an
+        # inline <script> here is blocked by script-src 'self'. allocationUpdated
+        # reloads the card/details modal in place (modals.js).
         response = make_response('''
         <div class="modal-body text-center text-success py-4">
             <i class="fas fa-check-circle fa-2x"></i>
@@ -1534,14 +1539,9 @@ class _UserEditAllocationHandler(HtmxFormHandler):
         <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
         </div>
-        <script>
-        setTimeout(function() {
-            var modal = bootstrap.Modal.getInstance(document.getElementById('editAllocationModal'));
-            if (modal) modal.hide();
-        }, 1000);
-        </script>
     ''')
-        response.headers['HX-Trigger'] = 'allocationUpdated'
+        response.headers['HX-Trigger'] = json.dumps(
+            {'allocationUpdated': {}, 'closeActiveModal': {}})
         return response
 
 
