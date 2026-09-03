@@ -49,11 +49,24 @@ class TestGetProjectGroupStatus:
             for proj in projects:
                 assert proj['groupName'] == proj['groupName'].lower()
 
-    def test_auto_renewing_always_false(self, session):
+    def test_auto_renewing_derived_from_panel(self, session):
+        from sam.queries.project_access import AUTO_RENEW_PANELS
         result = get_project_group_status(session)
         for _branch, projects in result.items():
             for proj in projects:
-                assert proj['autoRenewing'] is False
+                assert isinstance(proj['autoRenewing'], bool)
+                assert proj['autoRenewing'] == (proj['panel'] in AUTO_RENEW_PANELS)
+
+    def test_panel_comes_from_panel_name_not_allocation_type(self, session):
+        # panel must be panel.panel_name (legacy), never an allocation_type name.
+        from sqlalchemy import text
+        panel_names = {r[0] for r in session.execute(
+            text('SELECT panel_name FROM panel')).fetchall()}
+        result = get_project_group_status(session)
+        seen = {proj['panel'] for projects in result.values() for proj in projects
+                if proj['panel'] is not None}
+        assert seen, 'expected at least one non-null panel in the test data'
+        assert seen <= panel_names, f'panels not from panel_name: {seen - panel_names}'
 
     def test_project_active_is_bool(self, session):
         result = get_project_group_status(session)

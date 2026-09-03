@@ -323,8 +323,8 @@ Invalidates the response cache.
 | Field                    | Type    | Description                                              |
 |--------------------------|---------|----------------------------------------------------------|
 | `groupName`              | string  | Lowercase project code (`projcode`)                      |
-| `panel`                  | string  | Allocation type name (e.g. `"WRAP"`, `"UNIV USS"`)       |
-| `autoRenewing`           | bool    | Always `false` — not stored in SAM database              |
+| `panel`                  | string  | `panel.panel_name` (e.g. `"UNIV USS"`, `"CSLAP"`) — NOT the allocation-type name |
+| `autoRenewing`           | bool    | `true` when `panel` in {`NCAR Labs`, `CSLAP`} (legacy derivation) |
 | `projectActive`          | bool    | `project.active` flag                                    |
 | `status`                 | string  | See status values below                                  |
 | `days_remaining`         | int     | Days until expiration — present when `ACTIVE` or `EXPIRING` |
@@ -803,6 +803,50 @@ Redis configured (production) the shared stores clear globally.
 
 ---
 
+## 7. Disk Quota API
+
+**Base URL**: `/api/v1/disk_quota/`  
+**Permission required**: `VIEW_PROJECTS` (legacy gated `ROLE_API_DASG`; SAM has
+no disk-specific permission)  
+**Source**: `src/webapp/api/v1/disk_quota.py`, `src/sam/queries/disk_quota.py`,
+`src/sam/schemas/disk_quota.py`
+
+Reproduces legacy `GET /api/protected/admin/dasg/diskquota` — one record per
+DISK account whose project is active, whose resource is commissioned, and which
+has a currently-active allocation. Consumed by DASG for disk provisioning.
+
+**This is the reference for the "legacy shape via a declared schema" pattern**:
+the camelCase contract is declared with marshmallow `data_key`
+(`DiskQuotaSchema`), not hand-built in the query layer — unlike the older
+legacy-compat endpoints (see CLAUDE.md § API, "Output shaping").
+
+### Endpoints
+
+`GET /api/v1/disk_quota/` — full list. `POST /api/v1/disk_quota/refresh` —
+invalidate the cache.
+
+### Response Fields
+
+| Field          | Type          | Description                                               |
+|----------------|---------------|-----------------------------------------------------------|
+| `projcode`     | string        | Project code                                              |
+| `groupName`    | string        | Lowercase `projcode`                                      |
+| `dataManager`  | string\|null  | Project admin username, else project lead username        |
+| `resourceName` | string        | Disk resource name                                        |
+| `quota`        | float\|null   | Latest allocation `amount` (null-end_date, else max end_date) |
+| `paths`        | array[string] | Active project directories resolving to this resource, sorted |
+
+`paths` resolution mirrors legacy `DiskResourceByPathSelector`: a directory
+belongs to the disk resource whose `root_directory` is the longest prefix of the
+directory name (`disk_resource_root_directory`).
+
+> **Difference from legacy** (explainable): resource eligibility uses the house
+> `Resource.is_active` hybrid (CLAUDE.md § 5), which treats a NULL
+> `commission_date` as commissioned; legacy required `commission_date <= NOW()`.
+> Immaterial for real disk resources, which always carry a commission date.
+
+---
+
 ## Common Design Notes
 
 ### Shared Infrastructure
@@ -865,7 +909,7 @@ export SAM_API_USER='my-api-user'
 export SAM_API_PASS='...'
 export SAM_API_BASE='https://samuel.k8s.ucar.edu'
 
-for api in directory_access project_access fstree_access queue wallclock_exemption; do
+for api in directory_access project_access fstree_access queue wallclock_exemption disk_quota; do
   curl -X POST -u "$SAM_API_USER:$SAM_API_PASS" "$SAM_API_BASE/api/v1/$api/refresh"
 done
 ```

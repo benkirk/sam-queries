@@ -174,6 +174,11 @@ from .queue_access import (
     get_queue_data,
 )
 
+# Disk quota (per-project disk allocations + paths, DASG)
+from .disk_quota import (
+    get_disk_quotas,
+)
+
 # Wallclock exemptions (per-user queue wallclock overrides by resource)
 from .wallclock_exemption_access import (
     get_wallclock_exemption_data,
@@ -309,6 +314,7 @@ __all__ = [
     'get_user_fsdata',
     # Queue
     'get_queue_data',
+    'get_disk_quotas',
     # Wallclock exemptions
     'get_wallclock_exemption_data',
     # Rolling window usage
