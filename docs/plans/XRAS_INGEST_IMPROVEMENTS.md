@@ -3,7 +3,7 @@
 **Status: brainstorm, deliberately unbuilt.** Written 2026-08-23 against issue #433, the
 week before XRAS repoints and real payloads start arriving. The incoming API predates two
 capabilities that now exist on the outgoing side — the **Remediations card** (merge /
-withdraw / re-submit / roster; [`XRAS_REMEDIATIONS.md`](XRAS_REMEDIATIONS.md), built,
+withdraw / re-submit / roster; [`XRAS_REMEDIATIONS.md`](implemented/XRAS_REMEDIATIONS.md), built,
 unarmed) and the **request editor** (amounts / dates / attributes;
 [`../xras/outgoing/REQUEST_EDITOR.md`](../xras/outgoing/REQUEST_EDITOR.md)) — and this
 page asks what that unlocks for the ingest side, plus what else would help the operators
@@ -15,7 +15,7 @@ Companion pages: [`../xras/incoming/XRAS_TRIAGE_PLAYBOOK.md`](../xras/incoming/X
 table, which several entries below promote from "shape + trigger" to a fuller design.
 
 **§ 2.1 is promoted to its own build plan:
-[`XRAS_PUSH_READINESS.md`](XRAS_PUSH_READINESS.md).** The summary below is the pointer.
+[`XRAS_PUSH_READINESS.md`](implemented/XRAS_PUSH_READINESS.md).** The summary below is the pointer.
 
 > **Corrections, 2026-08-23** — a research pass against the code overturned several of
 > this page's premises; the affected sections are rewritten, and this note says why:
@@ -113,7 +113,7 @@ sentinel arguments and turning the result into a regex. Wire bytes stay untouche
 asserts every emitter round-trips to its own family, so an emitter added without a hint
 fails the suite rather than rendering unannotated. One classifier serves both the stored
 `error_messages` (Feed A) and the push-readiness verdicts
-([`XRAS_PUSH_READINESS.md`](XRAS_PUSH_READINESS.md)), which are the same strings.
+([`XRAS_PUSH_READINESS.md`](implemented/XRAS_PUSH_READINESS.md)), which are the same strings.
 
 ### 1.4 "Ready for re-post" batching — tier A
 
@@ -142,7 +142,7 @@ impersonated user, on the re-submit modal). This section and § 2.1 are the SAM-
 
 ### 2.1 Push-readiness: a SAM-side preflight of every action XRAS has not pushed — tier B
 
-**Promoted to [`XRAS_PUSH_READINESS.md`](XRAS_PUSH_READINESS.md); this is the pointer.**
+**Promoted to [`XRAS_PUSH_READINESS.md`](implemented/XRAS_PUSH_READINESS.md); this is the pointer.**
 The premise this section first had — "the Pending Users received-push rows already carry a
 `validate_only` preflight; generalize it to Feed B" — was half wrong: only Feed-A rows run
 it, Feed-B rows always read "not checked", no synthesizer exists, and the sweep publishes
@@ -231,7 +231,7 @@ shape the fix:
 Recommendation: the log line now; make the resolution **visible pre-push** instead of
 attributable post-hoc — `DispatchResult` carries a small `resolved` dict on the
 validate_only path (allocation type, panel, facility, mnemonic, map-vs-ladder), and the
-push-readiness board ([`XRAS_PUSH_READINESS.md`](XRAS_PUSH_READINESS.md)) renders "would
+push-readiness board ([`XRAS_PUSH_READINESS.md`](implemented/XRAS_PUSH_READINESS.md)) renders "would
 mint in series …" before a projcode is burned. A column only if triage week shows a real
 mis-series. Folding `--validate-opportunities` into § 2.3's digest still stands.
 
@@ -315,7 +315,7 @@ is when each will be reached for:
 | "What did this action write?" | the runbook's correlation query (action → `allocation_transaction` rows in the dispatch window), surfaced on the action detail modal instead of pasted into a SQL prompt |
 | `manual` rows have no "done" | a parked row worked by hand leaves no record. Cheapest honest fix: an event-style note ("applied by hand by X", timestamp) on the row — vocabulary shaped like `xras_activation_event`, not a status rewrite |
 | `replayed` docstring drift | `sam/integration/xras.py` documents a status the code never writes (`rechecked`); becomes actively confusing the day § 3 adds a real re-apply vocabulary |
-| Feed-A preflight on the CLI path | handlers register by import side effect, fired only by `webapp/api/xras/actions.py`; `sam-admin xras --accounts` never imports them, so every dispatch parks and `_validate` maps a parked result to **"would succeed"**. The playbook recommends that command. Fix + test in Phase 0 of [`XRAS_PUSH_READINESS.md`](XRAS_PUSH_READINESS.md) |
+| Feed-A preflight on the CLI path | handlers register by import side effect, fired only by `webapp/api/xras/actions.py`; `sam-admin xras --accounts` never imports them, so every dispatch parks and `_validate` maps a parked result to **"would succeed"**. The playbook recommends that command. Fix + test in Phase 0 of [`XRAS_PUSH_READINESS.md`](implemented/XRAS_PUSH_READINESS.md) |
 | `manual` ≠ success | the same `_validate` discards the `DispatchResult`; a parked action shows green on the Accounts card too. Carry `preflight_status` on `ActionRef` and derive `would_succeed` from it |
 | Feed-B `ActionRef.action_type` | set from `requestType`, which `schemas/forms/xras.py` documents as not the action type; read the action's `actionType` |
 
@@ -340,7 +340,7 @@ Ranked by (value during triage week) ÷ (risk of building the wrong thing before
 traffic is seen):
 
 1. **§ 1.3 remedy hints + the § 4 preflight fixes** (Phase 0 of
-   [`XRAS_PUSH_READINESS.md`](XRAS_PUSH_READINESS.md)) — turns the playbook into the UI
+   [`XRAS_PUSH_READINESS.md`](implemented/XRAS_PUSH_READINESS.md)) — turns the playbook into the UI
    before the first real 422, and stops `--accounts` saying "would succeed" for everything.
 2. **§ 2.1 push-readiness** — the one surface that acts *before* a push is burned, and it
    covers Extensions and Supplements as well as News. Its verdicts are what § 2.2 pivots.

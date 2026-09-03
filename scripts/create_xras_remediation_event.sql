@@ -4,7 +4,7 @@
 --   Apply with:  mysql -u <hpc-writer> -h <host> -p sam \
 --                      < scripts/create_xras_remediation_event.sql
 --
--- Backs the XRAS Remediations card (docs/plans/XRAS_REMEDIATIONS.md).
+-- Backs the XRAS Remediations card (docs/plans/implemented/XRAS_REMEDIATIONS.md).
 -- DDL of record + verification: docs/xras/incoming/XRAS_CUTOVER_RUNBOOK.md § 2d
 --
 -- ⚠️ NO DROP, and no rollback script. This table is an audit trail of

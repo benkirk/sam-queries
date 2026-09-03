@@ -207,7 +207,7 @@ def plan_contracts(session, action, errs: ActionErrors) -> Tuple[List, Tuple[str
     Educational allocation with no grant at all, and its failure was the mnemonic, not
     the missing contract. A project with no contract is legitimate.
 
-    Two declared divergences from legacy (docs/plans/XRAS_DATA_MODEL_UPLIFT.md):
+    Two declared divergences from legacy (docs/plans/implemented/XRAS_DATA_MODEL_UPLIFT.md):
     a number that is empty or digit-free ("NSF Graduate Fellowship") cannot name an
     award, so it warns instead of hard-failing the action; and two entries resolving
     to one row (``2146709`` / ``AGS-2146709``) link it once —

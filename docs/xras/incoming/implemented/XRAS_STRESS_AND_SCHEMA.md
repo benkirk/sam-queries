@@ -369,7 +369,7 @@ Three pieces of evidence, and they point the same way:
 If triage week shows operators reaching for it, `outcome_reason` above is a reasonable
 home for a rendered summary and costs nothing extra at that point.
 
-**REVERSED 2026-08-24** (`docs/plans/XRAS_DATA_MODEL_UPLIFT.md` Track A): two of the
+**REVERSED 2026-08-24** (`docs/plans/implemented/XRAS_DATA_MODEL_UPLIFT.md` Track A): two of the
 three legs fell. Warnings are now rendered sentences, not bare usernames — the
 incoming-hardening series added the unlinkable-grant and unflagged-primary-fos
 warnings — and the observed-instances count went from zero to 11 requests in the live

@@ -48,7 +48,7 @@ Follow-ons still NOT built (unobserved in corpus or a product call):
 - `_refresh_index_entry` re-runs the preflight; Feed A drops a failed post's
   roster once a later real post exists, and any username a verified merge
   deleted.
-- The identity-merge feature: `docs/plans/XRAS_IDENTITY_MERGE.md`.
+- The identity-merge feature: `docs/plans/implemented/XRAS_IDENTITY_MERGE.md`.
 
 Facts measured that change premises below: XRAS `GET /v1/people/<u>` proxies
 SAM's identity service (every active SAM account resolves, reconciled);

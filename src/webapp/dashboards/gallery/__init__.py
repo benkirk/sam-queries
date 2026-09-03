@@ -3,7 +3,7 @@ Component gallery blueprint (dev-only).
 
 Renders each shared ``dashboards/fragments/`` macro across the theme x layout
 axes — a visual reference and a render-smoke surface. Gated OFF in production by
-COMPONENT_GALLERY_ENABLED; see docs/plans/DESIGN_SYSTEM_TOOLING.md.
+COMPONENT_GALLERY_ENABLED; see docs/plans/implemented/DESIGN_SYSTEM_TOOLING.md.
 """
 
 from flask import Blueprint

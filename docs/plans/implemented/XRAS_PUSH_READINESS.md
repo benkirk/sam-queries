@@ -1,7 +1,7 @@
 # XRAS push-readiness — a SAM-side preflight of what XRAS has not pushed yet
 
 **Status: BUILT 2026-08-23, one PR vs `staging` (branch `xras_screener`), Phases 0-4.**
-Promoted out of [`XRAS_INGEST_IMPROVEMENTS.md`](XRAS_INGEST_IMPROVEMENTS.md) § 2.1 once
+Promoted out of [`XRAS_INGEST_IMPROVEMENTS.md`](../XRAS_INGEST_IMPROVEMENTS.md) § 2.1 once
 research showed it was not "generalize the existing preflight" but a new capability: nothing
 on the outgoing side preflights anything today, and the sweep discards the fields a preflight
 needs.
@@ -29,8 +29,8 @@ needs.
   xras --readiness` confirmed red→amber→green ordering. The modal pre-flight section is
   covered by a unit test (a live XRAS reader is unavailable in dev).
 
-Companion pages: [`../xras/incoming/XRAS_TRIAGE_PLAYBOOK.md`](../xras/incoming/XRAS_TRIAGE_PLAYBOOK.md)
-(the 422 catalog this predicts), [`../xras/outgoing/XRAS_OUTGOING_QUERIES.md`](../xras/outgoing/XRAS_OUTGOING_QUERIES.md)
+Companion pages: [`../../xras/incoming/XRAS_TRIAGE_PLAYBOOK.md`](../../xras/incoming/XRAS_TRIAGE_PLAYBOOK.md)
+(the 422 catalog this predicts), [`../../xras/outgoing/XRAS_OUTGOING_QUERIES.md`](../../xras/outgoing/XRAS_OUTGOING_QUERIES.md)
 § 3.3 (the reports payload this reads) and § 7.4 (the sweep this rides),
 [`XRAS_REMEDIATIONS.md`](XRAS_REMEDIATIONS.md) § 6 (the snapshot-patch idiom the
 re-check button reuses).
