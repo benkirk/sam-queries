@@ -47,6 +47,7 @@ from utils.parity.comparators import (  # noqa: E402
     CheckResult,
     collect_resource_names,
     compare_directory_access,
+    compare_diskquota,
     compare_fstree_access,
     compare_project_access,
     compare_queue,
@@ -318,7 +319,7 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         '--api', choices=('directory', 'project', 'fstree', 'queue', 'wallclock',
-                          'xras', 'all'),
+                          'diskquota', 'xras', 'all'),
         default='all', help='Which API to compare (default: all)',
     )
     p.add_argument(
@@ -386,7 +387,7 @@ def main() -> int:
     )
 
     selected = (
-        ('directory', 'project', 'fstree', 'queue', 'wallclock', 'xras')
+        ('directory', 'project', 'fstree', 'queue', 'wallclock', 'diskquota', 'xras')
         if args.api == 'all' else (args.api,)
     )
 
@@ -409,6 +410,18 @@ def main() -> int:
             elif api == 'wallclock':
                 ld, nd = _fetch_wallclock(legacy, new, args.verbose)
                 results = compare_wallclock_exemption(ld, nd)
+            elif api == 'diskquota':
+                if args.verbose:
+                    print('  fetching legacy diskquota ...', file=sys.stderr)
+                ld = legacy.disk_quota(allow_403=True)
+                if ld is None:
+                    print('SKIP diskquota: legacy 403 (account lacks ROLE_API_DASG)',
+                          file=sys.stderr)
+                    continue
+                if args.verbose:
+                    print('  fetching new disk_quota ...', file=sys.stderr)
+                nd = new.disk_quota()
+                results = compare_diskquota(ld, nd)
             elif api == 'xras':
                 if xras_auth is None:
                     print('SKIP xras: SAM_XRAS_USER / SAM_XRAS_PASS not set',

@@ -33,7 +33,6 @@ from webapp.api.helpers import register_error_handlers, get_project_or_404, pars
 from webapp.api.access_control import require_project_member_access
 from datetime import datetime, timedelta
 from sam.summaries.archive_summaries import *
-from sam.integration.xras_views import *
 
 from sam.queries.charges import get_daily_charge_trends_for_accounts, get_raw_charge_summaries_for_accounts
 

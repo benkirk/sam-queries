@@ -31,7 +31,7 @@ jobs:
           fetch-depth: 0
 
       - name: TruffleHog scan
-        uses: trufflesecurity/trufflehog@v3.97.0
+        uses: trufflesecurity/trufflehog@v3.97.1
         with:
           # --exclude-detectors=lob: the Lob (postal mail API) detector matches
           # `test_` followed by 35 word characters, so ANY Python test method

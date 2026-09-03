@@ -53,6 +53,7 @@ from .charges import (
     ArchiveChargeSummarySchema
 )
 from .jobs import CompJobSchema
+from .disk_quota import DiskQuotaSchema
 from .charge_details import (
     HPCChargeDetailSchema,
     DavChargeDetailSchema,
@@ -88,6 +89,8 @@ __all__ = [
     'ArchiveChargeSummarySchema',
     # Job schemas
     'CompJobSchema',
+    # Disk-quota schema (legacy shape via data_key)
+    'DiskQuotaSchema',
     # Charge detail schemas
     'HPCChargeDetailSchema',
     'DavChargeDetailSchema',
