@@ -676,6 +676,26 @@ def get_project_dashboard_data(session: Session, projcode: str) -> Optional[Dict
     }
 
 
+def get_projects_dashboard_data(
+    session: Session, projects: List[Project]
+) -> List[Dict]:
+    """project_data dicts for an arbitrary project list, batched (no per-project N+1).
+
+    Shared by the user dashboard and the admin expirations views: one call to
+    _build_user_projects_resources_batched instead of get_project_dashboard_data
+    per project. Preserves the caller's project ordering.
+    """
+    resources_map = _build_user_projects_resources_batched(session, projects)
+    return [
+        {
+            'project': p,
+            'resources': resources_map.get(p.project_id, []),
+            'has_children': p.has_children if hasattr(p, 'has_children') else False,
+        }
+        for p in projects
+    ]
+
+
 def get_user_dashboard_data(session: Session, user_id: int) -> Dict:
     """
     Get all dashboard data for a user in one optimized query set.
@@ -726,21 +746,9 @@ def get_user_dashboard_data(session: Session, user_id: int) -> Dict:
     # Get active projects, sorted by project code for consistent display order
     projects = sorted(user.active_projects(), key=lambda p: p.projcode)
 
-    # Batched fetch: collect alloc work units across all projects and call
-    # Project.batch_get_*_charges twice total instead of firing per-project
-    # get_detailed_allocation_usage() (which would fire 3-4 queries per
-    # (project, account)). See _build_user_projects_resources_batched docstring.
-    project_resources_map: Dict[int, List[DashboardResource]] = (
-        _build_user_projects_resources_batched(session, projects)
-    )
-
-    project_data_list = []
-    for project in projects:
-        project_data_list.append({
-            'project': project,
-            'resources': project_resources_map.get(project.project_id, []),
-            'has_children': project.has_children if hasattr(project, 'has_children') else False
-        })
+    # Batched build (avoids the per-project get_detailed_allocation_usage()
+    # fan-out — see get_projects_dashboard_data / the batched helper docstring).
+    project_data_list = get_projects_dashboard_data(session, projects)
 
     return {
         'user': user,
