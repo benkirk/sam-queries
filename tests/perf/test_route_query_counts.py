@@ -264,3 +264,32 @@ def test_admin_contracts_table_route(auth_client, route_count_queries):
         f"{stats.count} queries > {baseline} baseline. "
         f"{stats.summary()}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 10. Admin expirations (Recently Expired) — GET /admin/expirations?view=expired
+# ---------------------------------------------------------------------------
+
+def test_admin_expirations_expired_route(auth_client, route_count_queries):
+    """Full-stack query count for the Recently Expired card view.
+
+    `_build_expiration_project_data` renders one card per expired project.
+    It once called `get_project_dashboard_data` per project (~45 charge-summary
+    queries each) — a per-project N+1 across the whole expired set. It now uses
+    the batched `get_projects_dashboard_data`; without a baseline here that N+1
+    could silently return. Same builder feeds the Upcoming view and the
+    deactivate-expired re-render.
+    """
+    baseline = get_baseline("admin_expirations_expired_route")
+
+    with route_count_queries() as stats:
+        response = auth_client.get('/admin/expirations?view=expired')
+
+    assert response.status_code == 200, (
+        f"GET /admin/expirations?view=expired returned {response.status_code}"
+    )
+    assert stats.count <= baseline, (
+        f"Admin expirations route query regression: "
+        f"{stats.count} queries > {baseline} baseline. "
+        f"{stats.summary()}"
+    )

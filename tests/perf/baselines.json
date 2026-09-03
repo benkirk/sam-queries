@@ -92,5 +92,9 @@
     "admin_contracts_table_route": {
         "queries": 45,
         "notes": "measured 25 \u2014 full GET /admin/htmx/contracts-table?active_only=1. Where the contract load lives since it moved off the organizations card; guards the selectinload/lazyload set in get_contracts_with_pi."
+    },
+    "admin_expirations_expired_route": {
+        "queries": 40,
+        "notes": "measured 21 \u2014 full GET /admin/expirations?view=expired. Batched via get_projects_dashboard_data; count is near-flat in project count (selectinload chunks), so the old per-project path (~45 queries \u00d7 N expired projects) regressing back runs into the hundreds+. Extra headroom absorbs expired-set size variance across snapshot refreshes."
     }
 }

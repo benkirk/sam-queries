@@ -149,8 +149,8 @@ class TestTheRouteSetsItForEveryProject:
 
         project = _Project('QQQQ0001')
         monkeypatch.setattr(
-            blueprint, 'get_project_dashboard_data',
-            lambda _s, _code: {'project': project, 'resources': []})
+            blueprint, 'get_projects_dashboard_data',
+            lambda _s, projects: [{'project': p, 'resources': []} for p in projects])
 
         with app.test_request_context('/'):
             built = blueprint._build_expiration_project_data(
@@ -160,9 +160,9 @@ class TestTheRouteSetsItForEveryProject:
 
     def test_it_is_one_bulk_query_not_one_per_project(self, app, session,
                                                       monkeypatch):
-        """`_build_expiration_project_data` is already N+1 on
-        `get_project_dashboard_data`; this must not staple a second
-        per-project round trip to it."""
+        """The builder does one bulk `get_expiration_notice_status` for the
+        whole page — not a per-project round trip (batched via
+        `get_projects_dashboard_data`)."""
         from webapp.dashboards.admin import blueprint
 
         calls = []
@@ -170,8 +170,8 @@ class TestTheRouteSetsItForEveryProject:
         monkeypatch.setattr(blueprint, 'get_expiration_notice_status',
                             lambda s, codes: calls.append(list(codes)) or real(s, codes))
         monkeypatch.setattr(
-            blueprint, 'get_project_dashboard_data',
-            lambda _s, code: {'project': _Project(code), 'resources': []})
+            blueprint, 'get_projects_dashboard_data',
+            lambda _s, projects: [{'project': p, 'resources': []} for p in projects])
 
         rows = [(_Project(f'BULK{i:04d}'), None, 'Derecho', 20)
                 for i in range(5)]

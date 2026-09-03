@@ -30,7 +30,7 @@ from sam.schemas.forms import (
     EditWallclockExemptionForm,
 )
 from sam.manage import deactivate_projects, management_transaction
-from sam.queries.dashboard import get_project_dashboard_data
+from sam.queries.dashboard import get_project_dashboard_data, get_projects_dashboard_data
 from sam.queries.expirations import (
     DEACTIVATION_MIN_DAYS_EXPIRED,
     get_projects_by_allocation_end_date,
@@ -426,27 +426,23 @@ def _build_expiration_project_data(expiring_results: List[Tuple]) -> List[Dict]:
     Returns:
         List of project_data dicts (expiration info calculated from resources)
     """
-    # Get unique projects from results
+    # Unique projects in first-seen order (preserves the query's expiration sort).
     seen_projcodes = set()
-    projects_data = []
-
+    unique_projects = []
     for project, allocation, resource_name, days in expiring_results:
         if project.projcode not in seen_projcodes:
             seen_projcodes.add(project.projcode)
-            # Call get_project_dashboard_data once per project
-            # The resources will have days_until_expiration calculated
-            project_data = get_project_dashboard_data(db.session, project.projcode)
-            if project_data:
-                projects_data.append(project_data)
+            unique_projects.append(project)
 
-    # ONE bulk query for the whole page, outside the loop above — which is
-    # already N+1 on get_project_dashboard_data and does not need a second
-    # per-project round trip stapled to it.
-    #
-    # The key is set ONLY here, and for every project on the page including
-    # the never-notified ones. `render_project_card` is shared with the user
-    # dashboard, which never sets it, so the badge is absent there by
-    # construction rather than by a permission check that could be forgotten.
+    # Batched build — one call instead of get_project_dashboard_data per project
+    # (the per-project path fired ~45 charge-summary queries each). Both card
+    # views (upcoming/expired) and the deactivate-expired re-render share this.
+    projects_data = get_projects_dashboard_data(db.session, unique_projects)
+
+    # ONE bulk notice query for the whole page. The key is set ONLY here, for
+    # every project including never-notified ones. `render_project_card` is
+    # shared with the user dashboard, which never sets it, so the badge is
+    # absent there by construction rather than by a permission check.
     notices = get_expiration_notice_status(db.session, sorted(seen_projcodes))
     for project_data in projects_data:
         project_data['notification'] = notices[project_data['project'].projcode]
