@@ -13,7 +13,7 @@ surname (capped); the Pending Users row's SAM cross-reference was keyed on the
 placeholder username, so every row read "No SAM account". An operator had to
 click into each row to learn a merge was possible.
 
-## What was measured (cutover log, `XRAS_TRIAGE_WEEK.md`, 25th 11:18 / 13:45)
+## What was measured (cutover log, `../XRAS_TRIAGE_WEEK.md`, 25th 11:18 / 13:45)
 
 | Fact | Consequence |
 |---|---|

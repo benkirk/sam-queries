@@ -490,7 +490,7 @@ class TestContracts:
     def test_any_digit_still_takes_the_resolution_path(self, committing, creatable,
                                                        mapped_resource):
         """A ≤4-digit carve-out ("… 2026" as a non-number) was considered and
-        REJECTED as unwarranted complexity — docs/plans/XRAS_DATA_MODEL_UPLIFT.md."""
+        REJECTED as unwarranted complexity — docs/plans/implemented/XRAS_DATA_MODEL_UPLIFT.md."""
         payload = action_for(creatable, wire_resource(mapped_resource.xras_key))
         payload['grants'] = [{'grantNumber': 'NSF Graduate Fellowship 2026'}]
         with pytest.raises(XrasActionRejected) as exc:

@@ -93,7 +93,7 @@ action the sweep had not pulled — a sweep-coverage gap, not a rule gap.
 - **The notified half is a cross-system question.** XRAS's "notified" is its
   own record, and with SAM sending the handoff mail nothing sets it, so
   posted rows will linger in their queue. Batched for Steve
-  (`XRAS_TRIAGE_WEEK.md` § Questions for Steve, item 4); the answer decides
+  (`../XRAS_TRIAGE_WEEK.md` § Questions for Steve, item 4); the answer decides
   whether SAM's Notify path should call XRAS back or the predicate should
   join `xras_activation_event` instead.
 - The two misses: check why the sweep's request pull lacks the newest action

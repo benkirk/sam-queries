@@ -4,7 +4,7 @@
 2026-08-25 on PR #482.** This document is now a record of what was built and why.
 
 ✅ **Phase 0 (the live probe) is done** — results in
-[`XRAS_WRITE_PROBES.md`](../xras/outgoing/XRAS_WRITE_PROBES.md), and § 3, § 5.1, § 5.3, § 5.4,
+[`XRAS_WRITE_PROBES.md`](../../xras/outgoing/XRAS_WRITE_PROBES.md), and § 3, § 5.1, § 5.3, § 5.4,
 § 7.3 and § 11 below are updated with what it settled. Read the probe doc before touching the
 client: the API cannot be cheaply re-probed, half the calls are destructive, and two of the
 plan's original assumptions turned out to be wrong.
@@ -15,7 +15,7 @@ plan's original assumptions turned out to be wrong.
 
 `xras_sweep` + the Feed-B "XRAS Requests Awaiting a Handoff" tab were built read-only, as a
 look-ahead at incoming users. The 2026-08-20 live probe
-([`XRAS_WRITE_FIXUPS.md`](../xras/outgoing/XRAS_WRITE_FIXUPS.md)) proved the outbound
+([`XRAS_WRITE_FIXUPS.md`](../../xras/outgoing/XRAS_WRITE_FIXUPS.md)) proved the outbound
 `XRAS_API_KEY` is write-provisioned for a small, useful subset of the XRAS admin surface: person
 **merge** ✅ (destructive, user-agnostic), action **withdraw** ✅ (XA-USER/PI-scoped),
 un-reconcile ❌ (200 + silently ignored), whole-request delete ❌ (401). Fetching
@@ -98,7 +98,7 @@ diagnostic; POST is a loop we never drive. Out of v1.
 ## 4. Phase 0 — live probe ✅ **DONE 2026-08-21**
 
 Full runbook, results and net-zero proof:
-[`docs/xras/outgoing/XRAS_WRITE_PROBES.md`](../xras/outgoing/XRAS_WRITE_PROBES.md). Targets were
+[`docs/xras/outgoing/XRAS_WRITE_PROBES.md`](../../xras/outgoing/XRAS_WRITE_PROBES.md). Targets were
 **NCAR0001** (requestId 1166819; PI `dhart`, Allocation Manager `bjsmith`) and **NCAR0007**
 (1167091; Supplement action 30578), neither of which is a `project.projcode` in SAM. Every write
 was paired with its inverse and verified by re-read; both targets ended exactly as found.
@@ -399,7 +399,7 @@ One PR vs staging with an ordered commit series, after the probe:
 
 ⚠️ **Across commits 1, 3 and 5**: every site that exists only because of the key's privilege
 ceiling carries a `PRIVILEGE(#n)` comment keyed to
-[`XRAS_WRITE_PROBES.md`](../xras/outgoing/XRAS_WRITE_PROBES.md) § 7, so
+[`XRAS_WRITE_PROBES.md`](../../xras/outgoing/XRAS_WRITE_PROBES.md) § 7, so
 `grep -rn 'PRIVILEGE(#' src/` is a live index rather than a doc that quietly goes stale. The PR
 body's **Follow-ons** paragraph names § 7 and its top three rows.
 
@@ -451,7 +451,7 @@ stale requests this card exists for, so a generic "no matches" would read as "no
 4. **Key privilege / the refactor register.** A scoped write key (`XRAS_WRITE_FIXUPS.md` § 8.1)
    stays on the XRAS ask register; nothing here blocks on it. ⚠️ Separately, **eleven places in
    this design are shaped by what our key may *not* do** — inventoried in
-   [`XRAS_WRITE_PROBES.md`](../xras/outgoing/XRAS_WRITE_PROBES.md) § 7, with the code deleted by
+   [`XRAS_WRITE_PROBES.md`](../../xras/outgoing/XRAS_WRITE_PROBES.md) § 7, with the code deleted by
    each. The highest-value ask there is a **read** grant, not a write one: `GET /v1/requests/<rid>`
    alone retires the four structural contortions (`rules{}` inference, the admin client's second
    report-context `reader`, the `request_id` + `request_number` double parameter, and the nested
@@ -463,9 +463,9 @@ stale requests this card exists for, so a generic "no matches" would read as "no
 
 | | |
 |---|---|
-| [`../xras/outgoing/XRAS_WRITE_FIXUPS.md`](../xras/outgoing/XRAS_WRITE_FIXUPS.md) | The research this builds on: proven write surface, merge decision tree, withdraw addendum, structural rules |
-| [`../xras/outgoing/XRAS_OUTGOING_QUERIES.md`](../xras/outgoing/XRAS_OUTGOING_QUERIES.md) | The readable surface, the sweep design, § 7.6 (the `xras_account_event` spec this deliberately does not reuse) |
-| [`../xras/incoming/XRAS_CUTOVER_RUNBOOK.md`](../xras/incoming/XRAS_CUTOVER_RUNBOOK.md) | § 2/2c — the DDL-of-record home and the new-table process precedent |
+| [`../../xras/outgoing/XRAS_WRITE_FIXUPS.md`](../../xras/outgoing/XRAS_WRITE_FIXUPS.md) | The research this builds on: proven write surface, merge decision tree, withdraw addendum, structural rules |
+| [`../../xras/outgoing/XRAS_OUTGOING_QUERIES.md`](../../xras/outgoing/XRAS_OUTGOING_QUERIES.md) | The readable surface, the sweep design, § 7.6 (the `xras_account_event` spec this deliberately does not reuse) |
+| [`../../xras/incoming/XRAS_CUTOVER_RUNBOOK.md`](../../xras/incoming/XRAS_CUTOVER_RUNBOOK.md) | § 2/2c — the DDL-of-record home and the new-table process precedent |
 | `https://api.xras.org/apidoc.html` + `apidoc/1.0/*` | The authoritative API docs — static pages, fetchable with plain curl (`/apidoc` without `.html` is a 404 decoy) |
-| [`../xras/outgoing/XRAS_WRITE_PROBES.md`](../xras/outgoing/XRAS_WRITE_PROBES.md) | **Phase 0, done.** Every verb measured against production, the one authorization rule, the role-type encoding trap, the net-zero proof |
+| [`../../xras/outgoing/XRAS_WRITE_PROBES.md`](../../xras/outgoing/XRAS_WRITE_PROBES.md) | **Phase 0, done.** Every verb measured against production, the one authorization rule, the role-type encoding trap, the net-zero proof |
 | Memory: `xras-write-capability`, `xras-raw-payload-corpus` | The condensed live-probe record; the fixture-data ground rules |

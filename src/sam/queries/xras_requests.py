@@ -40,7 +40,7 @@ from sam.queries.xras_accounts import (is_placeholder, iter_roster_entries,
 #: withdraw/re-submit offers key on. The authoritative legal-moves read
 #: (``rules{allowedOperations}`` on ``GET /v1/requests/<rid>``) is XA-USER-scoped
 #: (200 as the request's PI) and parked, not unavailable -- see
-#: ``docs/plans/XRAS_DATA_MODEL_UPLIFT.md``.
+#: ``docs/plans/implemented/XRAS_DATA_MODEL_UPLIFT.md``.
 _ACTION_KEYS = ('actionId', 'actionType', 'actionStatus', 'submitDate')
 
 #: An action in one of these states is finished; the card offers nothing on it.

@@ -1,14 +1,14 @@
 # Pending Users — merge the two user-keyed XRAS worklist tabs into one
 
-**Status: handoff, written 2026-08-23, unbuilt.** Decision taken with Ben the same day;
-nothing below exists yet. Written so a fresh session can build it without re-deriving the
+**Status: SHIPPED via PR #473.** (This handoff was written 2026-08-23 as "unbuilt";
+it was built and merged — the header is preserved as the point-in-time record.) Written so a fresh session can build it without re-deriving the
 touchpoint map — every file:line here was verified on `xras_screener` @ `160ad330`
 (rebased on `origin/staging` @ `102607a9`).
 
 Companion pages: [`XRAS_PUSH_READINESS.md`](XRAS_PUSH_READINESS.md) (Phase 3 later adds a
 Pre-flight column to the tab this page creates), [`XRAS_REMEDIATIONS.md`](XRAS_REMEDIATIONS.md)
 § 6b/§ 7.4 (the merge entry and the snapshot-patch idiom),
-[`../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md`](../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md) § 3 (the
+[`../../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md`](../../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md) § 3 (the
 two-tab rationale this page reverses).
 
 ---
@@ -190,7 +190,7 @@ is no `patch_pending_worklist` today); `merge_placeholder`
   first sign XRAS has repointed"; § 3.3 "work the Accounts Needed tab" → "Pending Users".
 - `docs/xras/incoming/XRAS_CUTOVER_RUNBOOK.md` triage-week table; `docs/xras/README.md`;
   `XRAS_REMEDIATIONS.md` § 6b/§ 7.4; `XRAS_PUSH_READINESS.md` Phase 3 surface name;
-  `XRAS_INGEST_IMPROVEMENTS.md`; `docs/xras/outgoing/XRAS_WRITE_FIXUPS.md` UI-name mentions.
+  `../XRAS_INGEST_IMPROVEMENTS.md`; `docs/xras/outgoing/XRAS_WRITE_FIXUPS.md` UI-name mentions.
 - Gates (`tests/unit/test_docs.py`): American spelling, no changelog phrasing, cited paths
   exist, budgets (playbook 455/490, lifecycle 159/250, write-fixups budget 460). Run the
   gate's regexes over the touched docs before committing.
