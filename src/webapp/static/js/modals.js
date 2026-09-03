@@ -82,11 +82,10 @@
         var adminCard = document.getElementById('projectCardContainer');
         if (adminCard && adminCard.innerHTML.trim()) {
             var projEl = adminCard.querySelector('[data-projcode]');
-            if (projEl) {
-                htmx.ajax('GET', '/admin/project/' + projEl.dataset.projcode,
+            var baseUrl = adminCard.getAttribute('data-reload-url');
+            if (projEl && baseUrl) {
+                htmx.ajax('GET', baseUrl + projEl.dataset.projcode,
                           {target: adminCard, swap: 'innerHTML'});
-            } else {
-                window.location.reload();
             }
         }
     });
