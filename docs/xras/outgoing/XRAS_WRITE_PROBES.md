@@ -1,7 +1,7 @@
 # XRAS write probes — the runbook and the results
 
 **Status: run 2026-08-21 against production `api.xras.org`, operator-approved call by call.**
-This is Phase 0 of [`../../plans/XRAS_REMEDIATIONS.md`](../../plans/XRAS_REMEDIATIONS.md): the
+This is Phase 0 of [`../../plans/implemented/XRAS_REMEDIATIONS.md`](../../plans/implemented/XRAS_REMEDIATIONS.md): the
 targeted probe that settles the ⚠️-marked half of the write surface
 [`XRAS_WRITE_FIXUPS.md`](XRAS_WRITE_FIXUPS.md) § 2 left documented-but-untested. Everything below
 was executed by hand with `curl`; nothing here has, or needs, a client behind it.
@@ -391,5 +391,5 @@ either not built yet or no longer true. Applied in the phases that introduce eac
 | | |
 |---|---|
 | [`XRAS_WRITE_FIXUPS.md`](XRAS_WRITE_FIXUPS.md) | § 2 — the 2026-08-20 probe this extends |
-| [`../../plans/XRAS_REMEDIATIONS.md`](../../plans/XRAS_REMEDIATIONS.md) | the feature these probes unblock |
+| [`../../plans/implemented/XRAS_REMEDIATIONS.md`](../../plans/implemented/XRAS_REMEDIATIONS.md) | the feature these probes unblock |
 | `https://api.xras.org/apidoc.html` | the published surface; static pages, plain `curl`, no key needed |

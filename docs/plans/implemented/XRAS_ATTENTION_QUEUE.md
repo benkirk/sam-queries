@@ -110,7 +110,7 @@ real work the display reports, not a display bug. Separate decision, Ben's.
    `partials/xras_pending_event_form.html:9-12` still describes pre-#424 hiding.
    Both become the precise rule: clears the call to action, suppresses the
    auto-notice, leaves the attention queue after 3 days, visible under Everything.
-5. **Docs.** `docs/plans/XRAS_PENDING_WORK.md` gains a section for this card (the
+5. **Docs.** `docs/plans/implemented/XRAS_PENDING_WORK.md` gains a section for this card (the
    rule, no-window decision, undo window, the `xras_notices` interaction). One
    playbook row. A cutover-log row in `docs/plans/XRAS_TRIAGE_WEEK.md` at deploy.
 

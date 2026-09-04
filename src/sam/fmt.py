@@ -309,6 +309,19 @@ def ago(
     return f"{n} {unit}{'s' if n != 1 else ''}"
 
 
+def age(value, *, null: str = '—') -> str:
+    """Relative age of a stored date/datetime from now (e.g. a Submitted column as an Age).
+
+    Convenience over `ago()` for a stored date: computes the elapsed delta itself.
+    Naive-Mountain like the DB.
+    """
+    if value is None:
+        return null
+    if isinstance(value, date) and not isinstance(value, datetime):
+        value = datetime(value.year, value.month, value.day)
+    return ago(datetime.now() - value, null=null)
+
+
 def factor(
     x:        Optional[Union[int, float]],
     *,
@@ -479,6 +492,7 @@ def register_jinja_filters(target) -> None:
     env.filters['fmt_hours']    = hours
     env.filters['fmt_factor']   = factor
     env.filters['fmt_ago']      = ago
+    env.filters['fmt_age']      = age
     env.filters['fmt_plural']   = plural
     env.filters['to_local_dt']  = to_local_dt
     # Resource-type allocation unit label ('hours' / 'TiB' / None). Used on

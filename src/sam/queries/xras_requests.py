@@ -40,7 +40,7 @@ from sam.queries.xras_accounts import (is_placeholder, iter_roster_entries,
 #: withdraw/re-submit offers key on. The authoritative legal-moves read
 #: (``rules{allowedOperations}`` on ``GET /v1/requests/<rid>``) is XA-USER-scoped
 #: (200 as the request's PI) and parked, not unavailable -- see
-#: ``docs/plans/XRAS_DATA_MODEL_UPLIFT.md``.
+#: ``docs/plans/implemented/XRAS_DATA_MODEL_UPLIFT.md``.
 _ACTION_KEYS = ('actionId', 'actionType', 'actionStatus', 'submitDate')
 
 #: An action in one of these states is finished; the card offers nothing on it.
@@ -292,6 +292,33 @@ def latest_action_type(actions) -> Optional[str]:
                  if a.get('action_status') in ('Submitted', 'Under Review')]
     latest = max(in_flight or typed, key=lambda a: a.get('action_id') or 0)
     return latest.get('action_type')
+
+
+#: Blocker categories a swept request can be stuck on, in display order. The slug
+#: is what the facet filter round-trips; the label is the chip text.
+BLOCKER_LABELS = (('mnemonic', 'Mnemonic'), ('contract', 'Contract'),
+                  ('account', 'Account'))
+
+
+def row_blockers(row: Mapping[str, Any]) -> set:
+    """Which push-blocker categories a Remediations row is stuck on.
+
+    Derived, not stored: the same three signals the unblock reports pivot on —
+    the mnemonic 422 prefix, the structured unresolved-grant channel, and the
+    stuck-placeholder flag. Pure, so the card route and a unit test agree.
+    """
+    from sam.xras.errors import MNEMONIC_EXTERNAL_PREFIX, MNEMONIC_INTERNAL_PREFIX
+    kinds = set()
+    for action in row.get('actions') or []:
+        preflight = action.get('preflight') or {}
+        if any((m or '').startswith((MNEMONIC_INTERNAL_PREFIX, MNEMONIC_EXTERNAL_PREFIX))
+               for m in (preflight.get('messages') or [])):
+            kinds.add('mnemonic')
+        if (preflight.get('resolved') or {}).get('unresolved_grants'):
+            kinds.add('contract')
+    if row.get('has_stuck_placeholder'):
+        kinds.add('account')
+    return kinds
 
 
 def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,

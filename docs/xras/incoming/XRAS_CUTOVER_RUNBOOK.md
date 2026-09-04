@@ -186,7 +186,7 @@ is the deployment target; ECS-staging is a check-the-render environment.
 
 The fifth table, and the first that records SAM writing **out** to XRAS rather than
 XRAS writing in. Backs the Remediations card
-([`../../plans/XRAS_REMEDIATIONS.md`](../../plans/XRAS_REMEDIATIONS.md)); the write
+([`../../plans/implemented/XRAS_REMEDIATIONS.md`](../../plans/implemented/XRAS_REMEDIATIONS.md)); the write
 surface it audits is measured in
 [`../outgoing/XRAS_WRITE_PROBES.md`](../outgoing/XRAS_WRITE_PROBES.md).
 

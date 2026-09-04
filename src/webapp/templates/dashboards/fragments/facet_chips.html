@@ -24,8 +24,10 @@
   Args:
     label    — dimension name shown in the label column
     values   — [{'value': str, 'count': int}], already ordered and filtered.
-               An optional 'label' key is the display text; `value` stays the
-               thing written into the form. That split exists because some
+               An optional 'label' key is the display text; an optional 'icon'
+               (a Font Awesome class string) renders a leading glyph so the strip
+               reads as its own legend. `value` stays the thing written into the
+               form. That split exists because some
                dimensions are keyed on a slug an operator should never see
                ("needs_activation"), and rendering the slug would leak an
                internal vocabulary into the UI.
@@ -62,6 +64,8 @@
            throws. See the note on status_badge. #}
         {{ status_badge(row.value, tooltip=False) }}
         {% else %}
+        {# Optional leading icon (see `row.icon`) makes the strip its own legend. #}
+        {% if row.icon %}<i class="fas {{ row.icon }} me-1" aria-hidden="true"></i>{% endif %}
         <span class="facet-chip-value">{{ row.label or row.value }}</span>
         {% endif %}
         <span class="facet-chip-count">{{ row.count | fmt_number }}</span>

@@ -4,7 +4,7 @@ The synthesizer is a guess about what XRAS puts on the wire; these pin the field
 map against hand-built ``reports/requests`` fixtures. The verdict itself is the
 real ingest path (``dispatch_action(validate_only=True)``), so a green here means
 a green push. Nothing touches the network — ``resource_keys`` and
-``opportunities`` are injected. See ``docs/plans/XRAS_PUSH_READINESS.md``.
+``opportunities`` are injected. See ``docs/plans/implemented/XRAS_PUSH_READINESS.md``.
 """
 
 from __future__ import annotations

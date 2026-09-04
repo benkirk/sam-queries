@@ -9,7 +9,7 @@ importing this module registers nothing and drags in no webapp/cli graph.
 
 The verdict is advisory. A field it cannot synthesize is a ``gap`` and the row
 reads ``incomplete`` — never a guessed green. See
-``docs/plans/XRAS_PUSH_READINESS.md``.
+``docs/plans/implemented/XRAS_PUSH_READINESS.md``.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ _DATE_STAGE_ORDER: Tuple[str, ...] = ('Approved', 'Requested')
 #: and Renewal mint/replace a full window; an Extension supplies the new end alone
 #: (the handler inherits the begin from the existing allocation); every other type
 #: inherits both. Keyed on the canonical action type. See the handler audit in
-#: docs/plans/XRAS_PUSH_READINESS.md.
+#: docs/plans/implemented/XRAS_PUSH_READINESS.md.
 _REQUIRED_DATES: Dict[str, frozenset] = {
     'New': frozenset({'begin', 'end'}),
     'Renewal': frozenset({'begin', 'end'}),

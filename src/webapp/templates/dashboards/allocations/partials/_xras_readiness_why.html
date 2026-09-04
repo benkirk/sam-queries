@@ -44,7 +44,11 @@
     <div class="text-success-emphasis mt-1">No blocking checks — SAM's ingest would accept it.</div>
     {% endif %}
     {% if pf.would_succeed and pf.resolved and pf.resolved.series %}
-    <div class="text-muted">Would mint in series <span class="font-monospace">{{ pf.resolved.series }}</span>{% if pf.resolved.allocation_type %} · {{ pf.resolved.allocation_type }}{% endif %}{% if pf.resolved.panel_authorised %} · panel authorized{% endif %}</div>
+    {# The series (facility + mnemonic) is deterministic; the 4-digit number is
+       only assigned at creation (a race), hence the dimmed xxxx placeholder. #}
+    <div class="text-muted">Would be created as
+        <span class="font-monospace"
+              title="The 4-digit number is assigned when the project is created.">{{ pf.resolved.series }}<span class="opacity-50">xxxx</span></span>{% if pf.resolved.allocation_type %} · {{ pf.resolved.allocation_type }}{% endif %}{% if pf.resolved.panel_authorised %} · panel authorized{% endif %}</div>
     {% endif %}
     {% if pf.gaps %}
     <div class="text-muted">Not synthesized: {{ pf.gaps | join(', ') }}</div>

@@ -360,12 +360,13 @@ class TestReadinessBadgeWiring:
         _publish_one_verdict('failed', messages=['x'])
         body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
         assert 'xras_readiness_detail/EXAM0001' in body
-        assert 'would fail' in body
+        # Icon-only in the dense cell; the Readiness facet chip keeps "Would fail".
+        assert 'fa-triangle-exclamation' in body
 
     def test_an_incomplete_badge_is_passive(self, auth_client, configured):
         _publish_one_verdict('incomplete')
         body = auth_client.get(FRAGMENT, query_string={'show_all': '1'}).get_data(as_text=True)
-        assert '>incomplete</span>' in body
+        assert 'fa-circle-question' in body
         # No re-check (it can't resolve it) and no modal link.
         assert 'xras_recheck_request/EXAM0001' not in body
         assert 'xras_readiness_detail/EXAM0001' not in body
@@ -1089,6 +1090,11 @@ class TestModalGets:
             '/allocations/xras_merge_form/ghost-user-abcde').get_data(as_text=True)
         assert 'ghost' in body
         assert 'email matches exactly' in body
+        # A single match is the confirmed target: no radio to click, the value
+        # rides a hidden input, and the free-text override does not render.
+        assert 'type="radio"' not in body
+        assert 'type="hidden" name="candidate" value="ghost"' in body
+        assert 'Or merge into a different XRAS username' not in body
 
     def test_two_candidates_leave_nothing_preselected(self, auth_client, armed,
                                                       monkeypatch):
@@ -1108,6 +1114,43 @@ class TestModalGets:
             '/allocations/xras_merge_form/ghost-user-abcde').get_data(as_text=True)
         assert 'checked' not in body
         assert '2 candidates' in body
+
+    def test_a_single_strong_match_is_the_confirmed_target(self, auth_client,
+                                                           armed, monkeypatch):
+        # Email resolves to exactly one identity -> rank 0 -> confirmed target,
+        # no radio, no override (the one-click case the operator asked for).
+        _reader(monkeypatch,
+                person={'username': 'ghost-user-abcde', 'firstName': 'G',
+                        'lastName': 'Host', 'email': 'g@example.invalid',
+                        'organization': 'Example U'},
+                candidates=[{'username': 'ghost', 'firstName': 'G',
+                             'lastName': 'Host', 'email': 'g@example.invalid',
+                             'organization': 'Example U'}])
+        body = auth_client.get(
+            '/allocations/xras_merge_form/ghost-user-abcde').get_data(as_text=True)
+        assert 'Merging into' in body
+        assert 'type="radio"' not in body
+        assert 'type="hidden" name="candidate" value="ghost"' in body
+        assert 'Or merge into a different XRAS username' not in body
+
+    def test_a_single_weak_match_still_gets_a_radio(self, auth_client, armed,
+                                                    monkeypatch):
+        # A lone name-only candidate (different email and organization) is not
+        # trustworthy enough to auto-confirm -> it stays a radio to pick, with
+        # the override available.
+        _reader(monkeypatch,
+                person={'username': 'ghost-user-abcde', 'firstName': 'G',
+                        'lastName': 'Host', 'email': 'kyle@example.invalid',
+                        'organization': 'Rutgers'},
+                candidates=[{'username': 'ghosty', 'firstName': 'A',
+                             'lastName': 'Host', 'email': 'alan@nsf.example',
+                             'organization': 'NSF'}])
+        body = auth_client.get(
+            '/allocations/xras_merge_form/ghost-user-abcde').get_data(as_text=True)
+        assert 'name only' in body
+        assert 'type="radio" name="candidate"' in body
+        assert 'Or merge into a different XRAS username' in body
+        assert 'Merging into' not in body
 
     def test_an_already_merged_placeholder_says_so(self, auth_client, armed,
                                                    monkeypatch):
@@ -1924,16 +1967,19 @@ class TestARejectionCarriesXrasReasons:
 class TestTheMergeOverrideIsReachable:
     """`required` on the candidate radios let native constraint validation
     block the free-text override — the documented path for 'none of these is
-    right' — whenever at least one candidate rendered."""
+    right' — whenever radios render (two or more candidates; a single match is
+    the confirmed target with no radio and no override)."""
 
     def _form(self, auth_client, monkeypatch):
         _reader(monkeypatch,
                 person={'username': 'ghost-user-abcde', 'firstName': 'G',
                         'lastName': 'Host', 'email': 'g@example.invalid'},
                 candidates=[{'username': 'ghost', 'firstName': 'G',
-                             'lastName': 'Host',
-                             'email': 'g@example.invalid',
-                             'organization': 'Example U'}])
+                             'lastName': 'Host', 'email': 'g@example.invalid',
+                             'organization': 'Example U'},
+                            {'username': 'ghosty', 'firstName': 'G',
+                             'lastName': 'Host', 'email': 'other@example.invalid',
+                             'organization': 'NCAR'}])
         return auth_client.get(
             '/allocations/xras_merge_form/ghost-user-abcde'
         ).get_data(as_text=True)
@@ -2249,3 +2295,101 @@ class TestTheAddRoleCopyKnowsSamResolves:
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'Add username (SAM or XRAS)' in body
         assert 'any active SAM account' in body
+
+
+class TestBlockerFacet:
+    """The Blocker facet: a per-row category derived from the same signals the
+    three summary strips pivot on, filterable so an operator can trace an
+    aggregate blocker down to the rows it blocks."""
+
+    @staticmethod
+    def _publish_blockers():
+        from sam.xras.errors import MNEMONIC_INTERNAL_PREFIX
+
+        mnem = _payload('MNEM0001', placeholder=False)
+        ctract = _payload('CTRL0001', placeholder=False)
+        acct = _payload('ACCT0001')  # placeholder+reconciled -> account blocker
+        preflights = {
+            'MNEM0001': {7: {'status': 'failed', 'push_state': None,
+                             'messages': [MNEMONIC_INTERNAL_PREFIX + ': ACME Org'],
+                             'resolved': {}}},
+            'CTRL0001': {7: {'status': 'failed', 'push_state': None,
+                             'messages': ['grant not found'],
+                             'resolved': {'unresolved_grants': [{'number': 'X-1'}]}}},
+        }
+        xras_cache.store_requests_index({
+            'generated_at': datetime.now(),
+            'statuses': ['Approved', 'Submitted', 'Under Review'],
+            'extra_statuses': {},
+            'rows': [request_index_entry(mnem, pending_push=True,
+                                         preflights=preflights['MNEM0001']),
+                     request_index_entry(ctract, pending_push=True,
+                                         preflights=preflights['CTRL0001']),
+                     request_index_entry(acct, pending_push=True)]})
+
+    def test_the_chip_row_counts_each_category(self, auth_client, configured):
+        self._publish_blockers()
+        body = auth_client.get(FRAGMENT + '?show_all=1').get_data(as_text=True)
+        assert 'Blocker' in body
+        # Each category is present exactly once across the three rows.
+        for field in ('Mnemonic', 'Contract', 'Account'):
+            assert field in body
+
+    @staticmethod
+    def _table_rows(body):
+        # The row's request cell links via xras_request_detail/<number>; the
+        # summary strips reference numbers too, so assert on the table marker.
+        import re
+        return set(re.findall(r'xras_request_detail/(\w+)', body))
+
+    def test_it_filters_to_the_contract_rows(self, auth_client, configured):
+        self._publish_blockers()
+        body = auth_client.get(
+            FRAGMENT + '?show_all=1&blockers=contract').get_data(as_text=True)
+        assert self._table_rows(body) == {'CTRL0001'}
+
+    def test_it_filters_to_the_mnemonic_rows(self, auth_client, configured):
+        self._publish_blockers()
+        body = auth_client.get(
+            FRAGMENT + '?show_all=1&blockers=mnemonic').get_data(as_text=True)
+        assert self._table_rows(body) == {'MNEM0001'}
+
+    def test_unfiltered_shows_all_three(self, auth_client, configured):
+        self._publish_blockers()
+        body = auth_client.get(FRAGMENT + '?show_all=1').get_data(as_text=True)
+        assert self._table_rows(body) == {'MNEM0001', 'CTRL0001', 'ACCT0001'}
+
+    def test_each_row_carries_its_blocker_icon(self, auth_client, configured):
+        self._publish_blockers()
+        body = auth_client.get(FRAGMENT + '?show_all=1').get_data(as_text=True)
+        assert 'fa-link-slash' in body      # mnemonic
+        assert 'fa-file-contract' in body   # contract
+        # The account icon replaces the old verbose "placeholder roster" badge.
+        assert 'placeholder roster' not in body
+
+
+class TestProjcodePreview:
+    """The readiness partial previews the projcode a would-land New request would
+    mint — series + a placeholder for the number, which is only assigned at
+    creation (a race). Shared by the request-detail and readiness modals."""
+
+    _T = 'dashboards/allocations/partials/_xras_readiness_why.html'
+
+    def test_a_would_land_new_shows_the_projcode_shape(self, app):
+        with app.test_request_context():
+            from flask import render_template
+            html = render_template(self._T, action={'preflight': {
+                'status': 'rechecked', 'would_succeed': True,
+                'resolved': {'series': 'NRAL', 'allocation_type': 'University'}}})
+        assert 'Would be created as' in html
+        assert 'NRAL' in html and 'opacity-50">xxxx' in html
+        assert '· University' in html          # keeps the allocation-type suffix
+
+    def test_a_would_fail_action_shows_no_projcode(self, app):
+        # No series without a resolved mint -> no preview (also the New-only gate).
+        with app.test_request_context():
+            from flask import render_template
+            html = render_template(self._T, action={'preflight': {
+                'status': 'failed', 'would_succeed': False,
+                'messages': ['x'], 'resolved': {}}})
+        assert 'created as' not in html

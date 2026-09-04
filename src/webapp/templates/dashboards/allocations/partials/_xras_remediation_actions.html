@@ -25,7 +25,7 @@
   XRAS publishes the real answer to "what may I do to this action" in
   `rules{allowedOperations}` on `GET /v1/requests/<id>`. That route is
   XA-USER-scoped (200 as the request's PI, 401 as arcguest) and reading it is
-  parked (docs/plans/XRAS_DATA_MODEL_UPLIFT.md). So `can_withdraw` /
+  parked (docs/plans/implemented/XRAS_DATA_MODEL_UPLIFT.md). So `can_withdraw` /
   `can_resubmit` are computed from the action's last-swept status: good enough
   to decide which button to draw, never good enough to decide whether it may be
   pressed. Each modal re-reads XRAS live, and the client verifies afterwards.
