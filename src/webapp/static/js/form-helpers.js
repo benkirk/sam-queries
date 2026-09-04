@@ -264,19 +264,35 @@
         document.getElementById('projcodeHidden').value = input.value;
     });
 
-    /* Create Mnemonic Code form
-     * Populate description from the selected dropdown option's
-     * data-description; reset the other dropdown so only one source is
-     * active at a time. */
-    registerAction('mc-fill-description', function (selectEl) {
-        var opt = selectEl.options[selectEl.selectedIndex];
-        var desc = opt.dataset.description || '';
-        if (desc) {
-            document.getElementById('createMcDescription').value = desc;
-            var otherId = selectEl.dataset.source === 'institution'
-                ? 'createMcOrganization' : 'createMcInstitution';
-            document.getElementById(otherId).value = '';
+    /* Mnemonic description control (Create/Edit/Reassign): toggle Match/Custom
+     * blocks, and copy a picked entity's resolver-exact string into the one
+     * canonical description field (then fire mc:picked so htmx re-checks the
+     * live match). Scoped to the enclosing .mnemonic-desc-control. */
+    registerAction('mc-desc-mode', function (radio) {
+        var matchBlock = document.querySelector(radio.dataset.match);
+        var customBlock = document.querySelector(radio.dataset.custom);
+        if (!matchBlock || !customBlock) { return; }
+        var isMatch = radio.value === 'match';
+        matchBlock.style.display = isMatch ? '' : 'none';
+        customBlock.style.display = isMatch ? 'none' : '';
+    });
+    registerAction('mc-pick-target', function (row) {
+        var control = row.closest('.mnemonic-desc-control');
+        if (!control) { return; }
+        var desc = row.dataset.description || '';
+        var field = control.querySelector('.mc-desc-field');
+        if (field) {
+            field.value = desc;
+            field.dispatchEvent(new CustomEvent('mc:picked', { bubbles: true }));
         }
+        var nameSpan = control.querySelector('.mc-desc-selected-name');
+        if (nameSpan) { nameSpan.textContent = desc; }
+        var badge = control.querySelector('[id$="SelectedBadge"]');
+        if (badge) { badge.style.display = ''; }
+        var search = control.querySelector('input[name="q"]');
+        if (search) { search.value = ''; }
+        var results = control.querySelector('[id$="TargetResults"]');
+        if (results) { results.innerHTML = ''; }
     });
 
     /* Edit Allocation form: break-inheritance unlock checkbox */
@@ -463,29 +479,10 @@
         render();
     }
 
-    function initMnemonicPrefill(root) {
-        /* If a prefill description was passed (e.g. from clicking a
-         * missing-mnemonic badge), set it and try to pre-select the
-         * matching institution in the dropdown. */
-        var block = has(root, '#createMcPrefill');
-        if (!block) { return; }
-        var prefill = JSON.parse(block.textContent);
-        if (!prefill) { return; }
-        document.getElementById('createMcDescription').value = prefill;
-        var instSel = document.getElementById('createMcInstitution');
-        for (var i = 0; i < instSel.options.length; i++) {
-            if (instSel.options[i].dataset.description === prefill) {
-                instSel.selectedIndex = i;
-                break;
-            }
-        }
-    }
-
     htmx.onLoad(function (root) {
         if (has(root, '#projcodeHidden')) { initCreateProjectForm(); }
         if (has(root, '#contractLookupRow')) { initCreateContractForm(); }
         if (has(root, '#exchangeFromProject')) { initExchangeForm(root); }
-        initMnemonicPrefill(root);
 
         if (has(root, '.facility-collapse-icon')) {
             SamCollapseChevron.attach('#facilities-pane', '.facility-collapse-icon');

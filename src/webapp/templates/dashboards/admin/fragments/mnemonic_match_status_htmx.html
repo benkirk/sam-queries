@@ -1,0 +1,12 @@
+{# htmx: live match indicator for the mnemonic description field. #}
+{% if not description %}
+{# blank — say nothing #}
+{% elif match %}
+<div class="small text-success-emphasis">
+    <i class="fas fa-circle-check me-1"></i>Routes to {{ match.kind }} <span class="fw-semibold">{{ match.name }}</span>
+</div>
+{% else %}
+<div class="small text-warning-emphasis">
+    <i class="fas fa-triangle-exclamation me-1"></i>Matches no live organization or institution — this code would be orphaned
+</div>
+{% endif %}

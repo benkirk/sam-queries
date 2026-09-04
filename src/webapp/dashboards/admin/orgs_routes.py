@@ -300,39 +300,19 @@ def htmx_institutions_fragment():
 @login_required
 @require_permission(Permission.CREATE_ORG_METADATA)
 def htmx_mnemonic_code_create_form():
-    """Return the mnemonic code create form fragment (loaded into modal)."""
-    prefill_description = request.args.get('description', '')
+    """Return the mnemonic code create form fragment (loaded into modal).
 
-    institutions = (
-        db.session.query(Institution)
-        .order_by(Institution.name)
-        .all()
-    )
-    organizations = (
-        db.session.query(Organization)
-        .filter(Organization.is_active)
-        .order_by(Organization.name)
-        .all()
-    )
+    The description control searches orgs/institutions on demand, so the whole
+    lists no longer ride the render — only an optional prefill (missing-side link).
+    """
     return render_template(
         'dashboards/admin/fragments/create_mnemonic_code_form_htmx.html',
-        institutions=institutions,
-        organizations=organizations,
-        prefill_description=prefill_description,
+        prefill_description=request.args.get('description', ''),
     )
 
 
 def _mnemonic_create_context():
-    return {
-        'institutions': db.session.query(Institution).order_by(Institution.name).all(),
-        'organizations': (
-            db.session.query(Organization)
-            .filter(Organization.is_active)
-            .order_by(Organization.name)
-            .all()
-        ),
-        'prefill_description': '',
-    }
+    return {'prefill_description': ''}
 
 
 @bp.route('/htmx/mnemonic-code-create', methods=['POST'])
@@ -597,6 +577,37 @@ def htmx_mnemonic_code_reassign(mnemonic_code_id):
     except Exception as e:
         return _reload_form([f'Error reassigning mnemonic code: {e}'])
     return htmx_success_message(_MNEMONIC_TRIGGERS, 'Reassigned successfully.')
+
+
+# Description picker: entity typeahead + live match indicator (all three forms)
+
+
+def _search_mnemonic_targets(q, active_only):
+    from sam.queries.mnemonic_console import search_targets
+    return search_targets(db.session, q)
+
+
+register_typeahead(
+    bp, rule='/htmx/search-mnemonic-targets',
+    endpoint='htmx_search_mnemonic_targets',
+    permission=Permission.VIEW_ORG_METADATA, any_facility=True,
+    search=_search_mnemonic_targets,
+    template='dashboards/admin/fragments/mnemonic_target_search_results_htmx.html',
+    ctx_key='targets')
+
+
+@bp.route('/htmx/mnemonic-match-check')
+@login_required
+@require_permission_any_facility(Permission.VIEW_ORG_METADATA)
+def htmx_mnemonic_match_check():
+    """Live indicator: which live org/institution the typed description would route to."""
+    from sam.queries.mnemonic_console import describes_live_entity
+
+    description = request.args.get('description', '')
+    return render_template(
+        'dashboards/admin/fragments/mnemonic_match_status_htmx.html',
+        description=description.strip(),
+        match=describes_live_entity(db.session, description))
 
 
 # CRUD quintets — generated from specs

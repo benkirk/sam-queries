@@ -798,6 +798,13 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_mnemonic_match_check",
+    "/admin/htmx/mnemonic-match-check",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_nsf_program_create",
     "/admin/htmx/nsf-program-create",
     [
@@ -1199,6 +1206,13 @@
   [
     "admin_dashboard.htmx_search_groups",
     "/admin/htmx/search/groups",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_search_mnemonic_targets",
+    "/admin/htmx/search-mnemonic-targets",
     [
       "GET"
     ]

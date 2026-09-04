@@ -6,10 +6,12 @@ import pytest
 from sam.core.organizations import MnemonicCode
 from sam.resources.facilities import ProjectCode
 from sam.projects.projects import formulate_projcode
-from sam.queries.mnemonic_console import mnemonic_inventory
+from sam.queries.mnemonic_console import (
+    describes_live_entity, mnemonic_inventory, search_targets)
 from sam.schemas.forms import EditMnemonicCodeForm, ReassignMnemonicForm
 
-from factories import make_facility, make_mnemonic_code, make_organization
+from factories import (
+    make_facility, make_institution, make_mnemonic_code, make_organization)
 
 pytestmark = pytest.mark.unit
 
@@ -143,6 +145,53 @@ class TestPreviewMath:
         assert formulate_projcode('N', 'MMM', max(100, 85 + 1)) == 'NMMM0100'
         # A floor at or below the high-water mark yields last + 1, never a rewind.
         assert formulate_projcode('N', 'MMM', max(5, 85 + 1)) == 'NMMM0086'
+
+
+class TestSearchTargets:
+
+    def test_finds_org_by_name_with_exact_string(self, session):
+        make_organization(session, name=f"{_N} Findable Org Alpha")
+        hits = search_targets(session, f"{_N} Findable Org Alpha")
+        assert any(t['kind'] == 'organization' and t['description'] == f"{_N} Findable Org Alpha"
+                   for t in hits)
+
+    def test_institution_description_is_name_comma_city(self, session):
+        inst = make_institution(session, name=f"{_N} Findable Institute Beta")
+        inst.city = "Testville"
+        session.flush()
+        hits = search_targets(session, f"{_N} Findable Institute Beta")
+        t = next(h for h in hits if h['kind'] == 'institution')
+        assert t['description'] == f"{_N} Findable Institute Beta, Testville"
+
+    def test_empty_query_returns_nothing(self, session):
+        assert search_targets(session, '  ') == []
+
+
+class TestDescribesLiveEntity:
+
+    def test_exact_org_name(self, session):
+        make_organization(session, name=f"{_N} Exact Org Gamma")
+        m = describes_live_entity(session, f"{_N} Exact Org Gamma")
+        assert m == {'kind': 'organization', 'name': f"{_N} Exact Org Gamma"}
+
+    def test_soft_matched_org(self, session):
+        # Mirrors the resolver's Lab<->Laboratory soft match.
+        make_organization(session, name=f"{_N} Delta Lab")
+        m = describes_live_entity(session, f"{_N} Delta Laboratory")
+        assert m == {'kind': 'organization', 'name': f"{_N} Delta Lab"}
+
+    def test_institution_name_comma_city(self, session):
+        inst = make_institution(session, name=f"{_N} Epsilon University")
+        inst.city = "Boulder"
+        session.flush()
+        m = describes_live_entity(session, f"{_N} Epsilon University, Boulder")
+        assert m == {'kind': 'institution', 'name': f"{_N} Epsilon University, Boulder"}
+
+    def test_a_genuine_miss_is_none(self, session):
+        assert describes_live_entity(session, f"{_N} Nothing Resolves Zeta") is None
+
+    def test_empty_is_none(self, session):
+        assert describes_live_entity(session, '   ') is None
 
 
 def _row_for(rows, code):

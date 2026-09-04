@@ -1,5 +1,6 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
-{% from 'dashboards/fragments/form_fields.html' import text_field, checkbox_field, readonly_display with context %}
+{% from 'dashboards/fragments/form_fields.html' import checkbox_field, readonly_display with context %}
+{% from 'dashboards/admin/fragments/_mnemonic_description_field.html' import mnemonic_description_field with context %}
 {#
   htmx: Edit Mnemonic Code (loaded into #editMnemonicCodeFormContainer).
   The 3-letter code is read-only — changing it would split a minted projcode
@@ -14,11 +15,7 @@
 ) %}
         {{ readonly_display('Code', mc.code) }}
 
-        {{ text_field('description', 'Description',
-                      required=True, maxlength=200,
-                      default=mc.description,
-                      help='Must exactly match the organization or institution name used for project routing.',
-                      id='editMcDescription') }}
+        {{ mnemonic_description_field('editMc', (form.get('description') if form else mc.description) or '') }}
 
         {{ checkbox_field('active', 'Active',
                           default=mc.active,

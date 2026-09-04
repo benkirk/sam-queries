@@ -1,0 +1,14 @@
+{# htmx: entity search results for the mnemonic description picker.
+   Each row carries the resolver-exact `data-description`; clicking it copies
+   that into the control's description field (mc-pick-target, form-helpers.js). #}
+{% if targets %}
+{% for t in targets %}
+<div class="list-group-item list-group-item-action p-2" style="cursor:pointer;"
+     data-action="mc-pick-target" data-description="{{ t.description }}">
+    <span class="badge bg-secondary-subtle text-secondary-emphasis border me-1">{{ t.kind }}</span>
+    {{ t.name }}{% if t.city %} <span class="text-muted small">({{ t.city }})</span>{% endif %}
+</div>
+{% endfor %}
+{% else %}
+<div class="list-group-item text-muted small py-2">No organizations or institutions found</div>
+{% endif %}

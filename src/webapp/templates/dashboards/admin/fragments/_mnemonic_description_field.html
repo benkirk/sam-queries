@@ -1,0 +1,65 @@
+{#
+  Shared description control for the mnemonic Create / Edit / Reassign forms.
+
+  The description is the soft-link key (must exactly match an org name or an
+  institution "name, city"), so free text alone invites a typo that orphans the
+  code. This offers "Match an entity" (search + pick a resolver-exact string) OR
+  "Custom text", with a live match indicator on whatever the field holds.
+
+  One canonical `input[name="description"]` (id `{prefix}Description`) always in
+  the DOM, so it submits in either mode; the picker writes into it. Behavior is
+  in static/js/form-helpers.js (mc-desc-mode / mc-pick-target) — CSP-safe.
+  No `required` attr: it can be hidden in match mode, and a hidden required field
+  blocks native submit; the schemas enforce description server-side.
+#}
+{% macro mnemonic_description_field(id_prefix, current_description='') %}
+{% set p = id_prefix %}
+{% set start_mode = 'custom' if current_description else 'match' %}
+<div class="mb-3 mnemonic-desc-control">
+    <label class="form-label">Description <span class="text-danger">*</span></label>
+
+    <div class="btn-group btn-group-sm mb-2 w-100" role="group" aria-label="Description entry mode">
+        <input type="radio" class="btn-check" name="{{ p }}_desc_mode" id="{{ p }}ModeMatch"
+               value="match" autocomplete="off" data-action-change="mc-desc-mode"
+               data-match="#{{ p }}MatchBlock" data-custom="#{{ p }}CustomBlock"
+               {% if start_mode == 'match' %}checked{% endif %}>
+        <label class="btn btn-outline-secondary" for="{{ p }}ModeMatch">
+            <i class="fas fa-magnifying-glass me-1"></i> Match an entity
+        </label>
+        <input type="radio" class="btn-check" name="{{ p }}_desc_mode" id="{{ p }}ModeCustom"
+               value="custom" autocomplete="off" data-action-change="mc-desc-mode"
+               data-match="#{{ p }}MatchBlock" data-custom="#{{ p }}CustomBlock"
+               {% if start_mode == 'custom' %}checked{% endif %}>
+        <label class="btn btn-outline-secondary" for="{{ p }}ModeCustom">
+            <i class="fas fa-keyboard me-1"></i> Custom text
+        </label>
+    </div>
+
+    <div id="{{ p }}MatchBlock"{% if start_mode != 'match' %} style="display:none"{% endif %}>
+        <div class="input-group input-group-sm mb-1">
+            <span class="input-group-text"><i class="fas fa-search"></i></span>
+            <input type="text" class="form-control" name="q" id="{{ p }}TargetSearch"
+                   autocomplete="off" placeholder="Search organizations and institutions"
+                   hx-get="{{ url_for('admin_dashboard.htmx_search_mnemonic_targets') }}"
+                   hx-target="#{{ p }}TargetResults" hx-swap="innerHTML"
+                   hx-trigger="input changed delay:300ms" hx-include="this">
+        </div>
+        <div id="{{ p }}TargetResults" class="list-group mb-1"></div>
+        <div id="{{ p }}SelectedBadge" class="small text-muted mb-1"{% if not current_description %} style="display:none"{% endif %}>
+            Selected: <span class="fw-semibold mc-desc-selected-name">{{ current_description }}</span>
+        </div>
+    </div>
+
+    <div id="{{ p }}CustomBlock"{% if start_mode != 'custom' %} style="display:none"{% endif %}>
+        <input type="text" class="form-control mc-desc-field" name="description"
+               id="{{ p }}Description" maxlength="200"
+               value="{{ current_description }}"
+               placeholder="e.g. University of Colorado, Boulder"
+               hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_match_check') }}"
+               hx-target="#{{ p }}MatchStatus" hx-swap="innerHTML" hx-include="this"
+               hx-trigger="keyup changed delay:400ms, mc:picked, load">
+    </div>
+
+    <div id="{{ p }}MatchStatus" class="mt-1"></div>
+</div>
+{% endmacro %}

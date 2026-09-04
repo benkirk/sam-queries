@@ -13,7 +13,7 @@ push path's NCAR-lab arm.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 def mnemonic_inventory(session, *, active_only: bool = True) -> List[Dict[str, Any]]:
@@ -77,3 +77,70 @@ class _Named:
     def __init__(self, name, city=None):
         self.name = name
         self.city = city
+
+
+def search_targets(session, q, *, limit: int = 15) -> List[Dict[str, Any]]:
+    """Active orgs + institutions matching `q`, each with its resolver-exact string.
+
+    `description` is what the operator must store for the code to route: `org.name`
+    for an org, `"name, city"` (else `name`) for an institution.
+    """
+    from sam.core.organizations import Institution, Organization
+
+    q = (q or '').strip()
+    if not q:
+        return []
+    like = f"%{q}%"
+    out: List[Dict[str, Any]] = []
+    for o in (session.query(Organization)
+              .filter(Organization.is_active,
+                      Organization.name.ilike(like) | Organization.acronym.ilike(like))
+              .order_by(Organization.name).limit(limit)):
+        out.append({'kind': 'organization', 'id': o.organization_id,
+                    'name': o.name, 'city': None, 'description': o.name})
+    for i in (session.query(Institution)
+              .filter(Institution.deleted.isnot(True), Institution.name.ilike(like))
+              .order_by(Institution.name).limit(limit)):
+        desc = f"{i.name}, {i.city}" if i.city else i.name
+        out.append({'kind': 'institution', 'id': i.institution_id,
+                    'name': i.name, 'city': i.city, 'description': desc})
+    return out
+
+
+def describes_live_entity(session, description) -> Optional[Dict[str, Any]]:
+    """The org/institution a candidate description would route to, or None.
+
+    Mirrors the resolver in reverse — org exact then the &/Lab soft match,
+    institution exact ("name" or "name, city") as in legacy — so the console's
+    match indicator can never disagree with real routing.
+    """
+    from sqlalchemy import func
+
+    from sam.core.organizations import (Institution, MnemonicCode, Organization,
+                                        _MnemonicLookup)
+
+    d = (description or '').strip()
+    if not d:
+        return None
+    key = d.casefold()
+
+    org = (session.query(Organization)
+           .filter(Organization.is_active, func.lower(Organization.name) == key).first())
+    if org:
+        return {'kind': 'organization', 'name': org.name}
+    probe = _MnemonicLookup({key: 'HIT'})
+    probe.soft = {MnemonicCode._soft_key(d): 'HIT'}
+    for o in session.query(Organization).filter(Organization.is_active):
+        if MnemonicCode.resolve_for_organization(o, probe) == 'HIT':
+            return {'kind': 'organization', 'name': o.name}
+
+    inst = (session.query(Institution)
+            .filter(Institution.deleted.isnot(True), func.lower(Institution.name) == key).first())
+    if inst:
+        return {'kind': 'institution', 'name': inst.name}
+    inst = (session.query(Institution)
+            .filter(Institution.deleted.isnot(True),
+                    func.lower(func.concat(Institution.name, ', ', Institution.city)) == key).first())
+    if inst:
+        return {'kind': 'institution', 'name': f"{inst.name}, {inst.city}"}
+    return None
