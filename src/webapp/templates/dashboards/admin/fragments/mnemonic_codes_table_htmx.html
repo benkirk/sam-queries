@@ -1,5 +1,6 @@
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
+{% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {#
   Mnemonic Codes console table. All controls live in one filter form so a facet
   chip, the search box, and the active-only switch round-trip together (a chip
@@ -12,6 +13,8 @@
         hx-target="#mnemonicCodesSection" hx-swap="innerHTML"
         hx-trigger="submit, keyup changed delay:300ms from:#mnemonicSearch, change from:#mnemonicActiveOnly">
     <input type="hidden" name="filter" value="{{ facet }}">
+    <input type="hidden" name="sort_by" value="{{ sort.sort_by }}">
+    <input type="hidden" name="sort_dir" value="{{ sort.sort_dir }}">
     <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
       <div class="input-group input-group-sm" style="max-width: 22rem;">
         <span class="input-group-text"><i class="fas fa-search"></i></span>
@@ -78,10 +81,10 @@
     <table class="table table-sm table-hover align-middle mb-0">
       <thead>
         <tr>
-          <th scope="col">Code</th>
-          <th scope="col">Description</th>
-          <th scope="col">Links to</th>
-          <th scope="col" class="text-end">Minted</th>
+          <th scope="col">{{ sort_header('code', 'Code') }}</th>
+          <th scope="col">{{ sort_header('description', 'Description') }}</th>
+          <th scope="col">{{ sort_header('links', 'Links to') }}</th>
+          <th scope="col" class="text-end">{{ sort_header('minted', 'Minted') }}</th>
           <th scope="col">Status</th>
           {% if can_edit or can_reassign %}<th scope="col" class="text-end">Actions</th>{% endif %}
         </tr>

@@ -385,6 +385,23 @@ def _mnemonic_missing_targets():
     return mnemonic_unblock_report(db.session, snapshot).get('targets', [])
 
 
+_MNEMONIC_SORT_KEYS = {
+    'code': lambda r: r['code'],
+    'description': lambda r: r['description'].casefold(),
+    # Orphaned/unlinked sort together; linked rows by their first target name.
+    'links': lambda r: (len(r['links_to']),
+                        r['links_to'][0]['name'].casefold() if r['links_to'] else ''),
+    'minted': lambda r: r['minted_total'],
+}
+
+
+def _sort_inventory(rows, sort_by, sort_dir):
+    key = _MNEMONIC_SORT_KEYS.get(sort_by)
+    if not key:
+        return rows  # default: mnemonic_inventory already orders by code
+    return sorted(rows, key=key, reverse=(sort_dir == 'desc'))
+
+
 def _filter_inventory(rows, *, facet, q):
     if facet == 'linked':
         rows = [r for r in rows if r['links_to']]
@@ -422,10 +439,15 @@ def htmx_mnemonic_codes_table():
         'orphaned': sum(1 for r in rows if r['orphaned']),
         'unused': sum(1 for r in rows if r['minted_total'] == 0),
     }
+    shown = _sort_inventory(_filter_inventory(rows, facet=facet, q=q),
+                            request.args.get('sort_by'), request.args.get('sort_dir'))
     return render_template(
         'dashboards/admin/fragments/mnemonic_codes_table_htmx.html',
-        rows=_filter_inventory(rows, facet=facet, q=q),
-        counts=counts, facet=facet, q=q, active_only=active_only,
+        rows=shown, counts=counts, facet=facet, q=q, active_only=active_only,
+        form_id='mnemonicFilterForm',
+        sortable_columns=set(_MNEMONIC_SORT_KEYS),
+        sort={'sort_by': request.args.get('sort_by') or 'code',
+              'sort_dir': request.args.get('sort_dir') or 'asc'},
         missing=_mnemonic_missing_targets(),
         can_edit=has_permission_any_facility(current_user, Permission.EDIT_ORG_METADATA),
         can_reassign=has_permission(current_user, Permission.SYSTEM_ADMIN),

@@ -2,21 +2,22 @@
    A selectable row carries the resolver-exact `data-description` (mc-pick-target
    copies it into the field). A row whose description another code already owns is
    shown disabled — descriptions are UNIQUE, so it cannot be re-used. #}
+{% macro _label(t) %}
+    {{ t.name }}
+    <span class="badge bg-secondary-subtle text-secondary-emphasis border ms-1">{{ t.kind }}</span>
+    {%- if t.city %} <span class="text-muted small">({{ t.city }})</span>{% endif %}
+{% endmacro %}
 {% if targets %}
 {% for t in targets %}
 {% if t.claimed_by %}
 <div class="list-group-item p-2 disabled text-muted d-flex justify-content-between align-items-center" aria-disabled="true">
-    <span>
-        <span class="badge bg-secondary-subtle text-secondary-emphasis border me-1">{{ t.kind }}</span>
-        {{ t.name }}{% if t.city %} <span class="small">({{ t.city }})</span>{% endif %}
-    </span>
+    <span>{{ _label(t) }}</span>
     <span class="badge bg-secondary-subtle text-secondary-emphasis border">in use by {{ t.claimed_by }}</span>
 </div>
 {% else %}
 <div class="list-group-item list-group-item-action p-2" style="cursor:pointer;"
      data-action="mc-pick-target" data-description="{{ t.description }}">
-    <span class="badge bg-secondary-subtle text-secondary-emphasis border me-1">{{ t.kind }}</span>
-    {{ t.name }}{% if t.city %} <span class="text-muted small">({{ t.city }})</span>{% endif %}
+    {{ _label(t) }}
 </div>
 {% endif %}
 {% endfor %}
