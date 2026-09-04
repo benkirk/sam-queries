@@ -17,10 +17,13 @@ import re
 from string import ascii_uppercase
 from typing import Any, Dict, List, Optional
 
-# Dropped when initialing a name; single letters are KEPT ("U OF ALASKA
-# FAIRBANKS" -> UAF), so the list is words, not characters.
+# Dropped when initialing a name. "university" goes too: the projcode facility
+# letter is already "U", so a University-led mnemonic is redundant ("University
+# of Victoria" -> VIC -> UVIC, not UUVI). A bare "U" abbreviation token is KEPT
+# ("U OF ALASKA FAIRBANKS" -> UAF) — only the spelled-out word is dropped.
 _STOPWORDS = frozenset({'of', 'the', 'and', 'at', 'for', 'in', 'on', 'to',
-                        'a', 'an', '&', 'de', 'du', 'di', 'la', 'le'})
+                        'a', 'an', '&', 'de', 'du', 'di', 'la', 'le',
+                        'university'})
 
 
 def mnemonic_inventory(session, *, active_only: bool = True) -> List[Dict[str, Any]]:
