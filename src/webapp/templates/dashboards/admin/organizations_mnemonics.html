@@ -1,0 +1,40 @@
+{% extends 'dashboards/admin/base_admin_organizations.html' %}
+
+{% block title %}Admin: Mnemonic Codes - SAM{% endblock %}
+
+{% block organizations_content %}
+{% if auto_create_url %}
+{# Opened from an XRAS mnemonic-blocker link (?create=<name>): form-helpers.js
+   loads this into the New Mnemonic Code modal and shows it on load (CSP: no
+   inline JS). Mirrors Contracts' ?create= auto-open. #}
+<div data-auto-open-create="{{ auto_create_url }}"
+     data-modal-id="createMnemonicCodeModal"
+     data-target-id="createMnemonicCodeFormContainer"></div>
+{% endif %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 flex-grow-1">
+            <i class="fas fa-hashtag"></i> Mnemonic Codes
+        </h5>
+        {% if has_permission(Permission.CREATE_ORG_METADATA) %}
+        <button type="button" class="btn btn-primary btn-sm"
+                data-bs-toggle="modal"
+                data-bs-target="#createMnemonicCodeModal"
+                hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_code_create_form') }}"
+                hx-target="#createMnemonicCodeFormContainer"
+                hx-trigger="click">
+            <i class="fas fa-plus"></i> New Mnemonic Code
+        </button>
+        {% endif %}
+    </div>
+    <div id="mnemonicCodesSection"
+         hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_codes_table') }}?active_only=1"
+         hx-trigger="load once, reloadMnemonicCodesCard from:body, reloadOrganizationsCard from:body"
+         hx-swap="innerHTML">
+        <div class="card-body text-center text-muted py-4" role="status">
+            <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
+            <p class="mt-2">Loading...</p>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -564,6 +564,15 @@ class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         session.flush()
         return obj
 
+    def update(self, *, description=None, active=None):
+        """Update the description and/or active flag (the 3-letter code is fixed)."""
+        if description is not None:
+            self.description = description
+        if active is not None:
+            self.active = active
+        self.session.flush()
+        return self
+
     def __str__(self):
         return f"{self.code} - {self.description}"
 

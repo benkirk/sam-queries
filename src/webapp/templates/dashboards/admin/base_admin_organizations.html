@@ -1,0 +1,23 @@
+{#
+  Shared layout for the admin Organizations pages
+  (/admin/organizations and /admin/organizations/mnemonics): adds the
+  secondary Manage | Mnemonic Codes link strip under the main admin tab
+  strip. Pages fill {% block organizations_content %}.
+#}
+{% extends 'dashboards/admin/base_admin.html' %}
+
+{% block admin_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0 flex-grow-1">
+        <i class="fas fa-sitemap"></i> Organizations
+    </h5>
+</div>
+
+{{ page_tabs([
+    {'endpoint': 'admin_dashboard.organizations', 'label': 'Manage', 'icon': 'fas fa-sitemap'},
+    {'endpoint': 'admin_dashboard.organizations_mnemonics', 'label': 'Mnemonic Codes', 'icon': 'fas fa-hashtag'},
+]) }}
+
+{% block organizations_content %}{% endblock %}
+
+{% endblock %}
