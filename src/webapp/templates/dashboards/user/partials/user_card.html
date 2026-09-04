@@ -150,9 +150,15 @@
                 <span class="stat-label d-block mb-1">Organization{{ '(s)' if active_orgs|length == 0 else ('' if active_orgs|length == 1 else 's') }}:</span>
                 <div class="stat-value text-body-emphasis text-detail">
                     {% for uo in active_orgs %}
+                    {% set ancestors = uo.organization.ancestry(include_self=False) %}
                     <div class="mb-1">
                         <span class="badge bg-body-tertiary text-body-emphasis border">{{ uo.organization.acronym }}</span>
                         <span class="text-muted">{{ uo.organization.name }}</span>
+                        {% if ancestors %}
+                        <div class="text-muted small ms-1">
+                            {%- for a in ancestors %}<i class="fas fa-angle-left mx-1 opacity-50" aria-hidden="true"></i><span title="{{ a.name }}">{{ a.acronym }}</span>{% endfor %}
+                        </div>
+                        {% endif %}
                     </div>
                     {% else %}
                     <span class="text-muted fst-italic">No current affiliation</span>
@@ -171,6 +177,7 @@
                 </span>
                 <div class="stat-value text-body-emphasis text-detail">
                     {% for uo in former_orgs %}
+                    {% set ancestors = uo.organization.ancestry(include_self=False) %}
                     <div class="mb-1">
                         <span class="badge bg-body-tertiary text-body-secondary border">{{ uo.organization.acronym }}</span>
                         <span class="text-muted">{{ uo.organization.name }}</span>
@@ -178,6 +185,11 @@
                             {%- if uo.is_future %} — starts {{ uo.start_date | fmt_date }}
                             {%- else %} — ended {{ uo.end_date | fmt_date }}{% endif %}
                         </span>
+                        {% if ancestors %}
+                        <div class="text-muted small ms-1">
+                            {%- for a in ancestors %}<i class="fas fa-angle-left mx-1 opacity-50" aria-hidden="true"></i><span title="{{ a.name }}">{{ a.acronym }}</span>{% endfor %}
+                        </div>
+                        {% endif %}
                     </div>
                     {% endfor %}
                 </div>

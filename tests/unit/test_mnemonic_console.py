@@ -310,5 +310,66 @@ class TestSuggestCodes:
             assert "SMX" in out
 
 
+class TestResolveForOrganizationWalk:
+    """The parent-walk in resolve_for_organization (kkeene: WMR -> parent MMM)."""
+
+    def test_leaf_hit_is_unchanged(self, session):
+        org = make_organization(session, name=f"{_N} Leaf Coded Org")
+        mc = make_mnemonic_code(session, description=f"{_N} Leaf Coded Org")
+        code = MnemonicCode.resolve_for_organization(
+            org, MnemonicCode.build_lookup(session))
+        assert code == mc.code
+
+    def test_walks_to_coded_parent(self, session):
+        parent = make_organization(session, name=f"{_N} Parent Lab Org")
+        parent.level_code = '0300'
+        child = make_organization(session, name=f"{_N} Child Uncoded Org",
+                                  parent_org_id=parent.organization_id)
+        child.level_code = '0400'
+        session.flush()
+        mc = make_mnemonic_code(session, description=f"{_N} Parent Lab Org")
+        code = MnemonicCode.resolve_for_organization(
+            child, MnemonicCode.build_lookup(session))
+        assert code == mc.code
+
+    def test_refuses_center_level_ancestor(self, session):
+        center = make_organization(session, name=f"{_N} Center Org")
+        center.level_code = '0200'  # NCAR-level, capped
+        child = make_organization(session, name=f"{_N} Under Center Org",
+                                  parent_org_id=center.organization_id)
+        child.level_code = '0400'
+        session.flush()
+        make_mnemonic_code(session, description=f"{_N} Center Org")
+        code = MnemonicCode.resolve_for_organization(
+            child, MnemonicCode.build_lookup(session))
+        assert code is None  # the only coded ancestor is too broad
+
+    def test_null_level_code_ancestor_still_matches(self, session):
+        parent = make_organization(session, name=f"{_N} Null Level Parent")
+        child = make_organization(session, name=f"{_N} Null Level Child",
+                                  parent_org_id=parent.organization_id)
+        session.flush()
+        mc = make_mnemonic_code(session, description=f"{_N} Null Level Parent")
+        code = MnemonicCode.resolve_for_organization(
+            child, MnemonicCode.build_lookup(session))
+        assert code == mc.code  # NULL level_code is allowed, not floored
+
+    def test_walk_parents_false_is_leaf_only(self, session):
+        parent = make_organization(session, name=f"{_N} NoWalk Parent")
+        child = make_organization(session, name=f"{_N} NoWalk Child",
+                                  parent_org_id=parent.organization_id)
+        session.flush()
+        make_mnemonic_code(session, description=f"{_N} NoWalk Parent")
+        code = MnemonicCode.resolve_for_organization(
+            child, MnemonicCode.build_lookup(session), walk_parents=False)
+        assert code is None
+
+    def test_named_stub_does_not_crash(self, session):
+        from sam.queries.mnemonic_console import _Named
+        assert MnemonicCode.resolve_for_organization(
+            _Named(f"{_N} Nonexistent Stub"),
+            MnemonicCode.build_lookup(session)) is None
+
+
 def _row_for(rows, code):
     return next((r for r in rows if r['code'] == code), None)
