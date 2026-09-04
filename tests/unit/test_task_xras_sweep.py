@@ -23,8 +23,10 @@ from pathlib import Path
 
 import pytest
 
+from zoneinfo import ZoneInfo
+
 from scheduling.registry import TASKS, TaskContext
-from scheduling.schedules import Hourly, occurrence_key
+from scheduling.schedules import DEFAULT_TZ, Hourly, occurrence_key, to_local_naive
 from scheduling.tasks import xras_sweep as mod
 
 from factories import make_xras_opportunity_mapping
@@ -47,6 +49,22 @@ def _one_worker_at_a_time(serial_file_lock):
 
 NAME = 'xras_sweep'
 OCC = datetime(2033, 11, 16, 10, 30)      # naive UTC
+#: OCC in Mountain — the hour the full-slot gate compares against. Computed, not
+#: hardcoded, so a TZ change can't silently desync the default-full fixture.
+_OCC_LOCAL_HOUR = to_local_naive(OCC, ZoneInfo(DEFAULT_TZ)).hour
+
+
+@pytest.fixture(autouse=True)
+def _full_slot_by_default(monkeypatch):
+    """Pin the daily full-`Approved` slot to OCC's local hour.
+
+    The two-cadence split means only the `full_hour()` slot runs the heavy pass
+    every legacy test asserts on (window, index, extra statuses). Pinning the
+    knob to OCC's hour makes every default-OCC run a full slot, so those tests
+    keep exercising the full path regardless of ambient cache state. The
+    cadence tests override this env to land on a light hour.
+    """
+    monkeypatch.setenv('SAM_TASKS_XRAS_SWEEP_FULL_HOUR', str(_OCC_LOCAL_HOUR))
 
 
 @pytest.fixture
@@ -98,6 +116,7 @@ class _StubClient:
         #: only the Approved pass.
         self.extra_pages = dict(extra_pages or {})
         self.statuses_asked = []
+        self.active_asked = []
         self.calls = 0
 
     def get_resources(self):
@@ -121,8 +140,10 @@ class _StubClient:
         """
         return list(self.opportunities)
 
-    def iter_request_pages(self, *, status=None, page_size=None, max_pages=None):
+    def iter_request_pages(self, *, status=None, page_size=None, max_pages=None,
+                           active=None):
         self.statuses_asked.append(status)
+        self.active_asked.append(active)
         pages = (self.extra_pages.get(status, [])
                  if status in mod.EXTRA_STATUSES else self.pages)
         for index, page in enumerate(pages):
@@ -291,6 +312,69 @@ class TestBudgets:
     def test_the_status_reader(self, raw, expected):
         env = {} if raw is None else {'SAM_TASKS_XRAS_SWEEP_STATUS': raw}
         assert mod.sweep_status(env) == expected
+
+    @pytest.mark.parametrize('raw,expected', [
+        (None, 4), ('', 4), ('0', 0), ('23', 23), ('11', 11),
+        ('24', 4), ('-1', 4), ('nonsense', 4),      # out of 0-23 -> default
+    ])
+    def test_the_full_hour_reader(self, raw, expected):
+        env = {} if raw is None else {'SAM_TASKS_XRAS_SWEEP_FULL_HOUR': raw}
+        assert mod.full_hour(env) == expected
+
+
+class TestTwoCadences:
+    """Cheap `active=true` worklist hourly; heavy full-`Approved` index daily.
+
+    The default fixture pins the full slot to OCC's hour; these tests move it so
+    a run lands on a light hour, and pin `load_requests_index` so the self-heal
+    (any hour with no published index runs full) does not mask the split.
+    """
+
+    def _light(self, monkeypatch):
+        """Force a light hour: full slot elsewhere AND an index already exists."""
+        monkeypatch.setenv('SAM_TASKS_XRAS_SWEEP_FULL_HOUR',
+                           str((_OCC_LOCAL_HOUR + 12) % 24))
+        # The task re-imports this name from the cache module at call time, so
+        # patch it there, not on `mod`.
+        monkeypatch.setattr('sam.integration.xras_api.cache.load_requests_index',
+                            lambda: {'rows': []})
+
+    def test_the_full_slot_runs_the_approved_pass(self, ctx, wire):
+        client = wire([[_request(1, 'NCAR0001')]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['mode'] == 'full' and detail['full_slot'] is True
+        assert None in client.active_asked          # a status pass, not active
+        assert 'Approved' in client.statuses_asked
+
+    def test_a_light_hour_asks_for_active_and_skips_the_index(self, ctx, wire,
+                                                              monkeypatch):
+        self._light(monkeypatch)
+        client = wire([[_request(1, 'NCAR0001')]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['mode'] == 'active' and detail['full_slot'] is False
+        # active=true, and no status/extra passes this hour
+        assert client.active_asked == [True]
+        assert client.statuses_asked == [None]
+        assert detail['index_publish_backend'] == 'not_this_slot'
+
+    def test_a_light_hour_still_publishes_the_worklist(self, ctx, wire,
+                                                       monkeypatch):
+        self._light(monkeypatch)
+        wire([[_request(1, 'NCAR0001')]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['publish_backend'] in ('redis', 'local')
+        assert detail['status'] == 'active'
+
+    def test_a_light_hour_self_heals_when_no_index_is_published(self, ctx, wire,
+                                                                monkeypatch):
+        monkeypatch.setenv('SAM_TASKS_XRAS_SWEEP_FULL_HOUR',
+                           str((_OCC_LOCAL_HOUR + 12) % 24))
+        monkeypatch.setattr('sam.integration.xras_api.cache.load_requests_index',
+                            lambda: None)
+        client = wire([[_request(1, 'NCAR0001')]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['mode'] == 'full'             # None index forced a full pass
+        assert 'Approved' in client.statuses_asked
 
 
 class TestTheWindow:

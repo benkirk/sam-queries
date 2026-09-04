@@ -409,7 +409,8 @@ class XrasApiClient(_XrasTransport):
 
     def get_requests_page(self, *, status: Optional[str] = 'Approved',
                           limit: int = DEFAULT_PAGE_SIZE,
-                          prev_min_request_id: Optional[int] = None
+                          prev_min_request_id: Optional[int] = None,
+                          active: Optional[bool] = None
                           ) -> List[Dict[str, Any]]:
         """One page of ``GET /v1/reports/requests``, newest ``requestId`` first.
 
@@ -417,9 +418,18 @@ class XrasApiClient(_XrasTransport):
         ``XA-USER`` holds a role on. Each row carries its full ``roles[]`` with
         the **person object inline** — which is why the enumeration feed never
         needs a separate ``/v1/people`` call.
+
+        ``active`` (Approved with endDate null-or-future for True, past for False)
+        is **mutually exclusive with ``status``** per the XRAS API — pass
+        ``status=None`` alongside it.
         """
+        if active is not None and status is not None:
+            raise ValueError("reports/requests: 'active' and 'status' are "
+                             "mutually exclusive; pass status=None with active")
         params: Dict[str, Any] = {'limit': limit}
-        if status:
+        if active is not None:
+            params['active'] = 'true' if active else 'false'
+        elif status:
             params['status'] = status
         if prev_min_request_id is not None:
             # Strictly-less-than, so the smallest id on the page is what asks
@@ -429,7 +439,8 @@ class XrasApiClient(_XrasTransport):
 
     def iter_request_pages(self, *, status: Optional[str] = 'Approved',
                            page_size: int = DEFAULT_PAGE_SIZE,
-                           max_pages: Optional[int] = None
+                           max_pages: Optional[int] = None,
+                           active: Optional[bool] = None
                            ) -> Iterator[List[Dict[str, Any]]]:
         """Paginate ``reports/requests``, yielding whole pages.
 
@@ -441,12 +452,16 @@ class XrasApiClient(_XrasTransport):
         Stops on an empty page, on *max_pages*, or if the cursor fails to
         advance (a defensive guard: a server that repeated a page would
         otherwise loop forever).
+
+        ``active`` supersedes ``status`` (the two are mutually exclusive on the
+        API): when given, ``status`` is dropped from the request.
         """
+        effective_status = None if active is not None else status
         cursor: Optional[int] = None
         pages = 0
         while max_pages is None or pages < max_pages:
-            rows = self.get_requests_page(status=status, limit=page_size,
-                                          prev_min_request_id=cursor)
+            rows = self.get_requests_page(status=effective_status, active=active,
+                                          limit=page_size, prev_min_request_id=cursor)
             if not rows:
                 return
             pages += 1
@@ -467,11 +482,12 @@ class XrasApiClient(_XrasTransport):
 
     def iter_requests(self, *, status: Optional[str] = 'Approved',
                       page_size: int = DEFAULT_PAGE_SIZE,
-                      max_pages: Optional[int] = None
+                      max_pages: Optional[int] = None,
+                      active: Optional[bool] = None
                       ) -> Iterator[Dict[str, Any]]:
         """Every request in the process, flattened across pages."""
         for page in self.iter_request_pages(status=status, page_size=page_size,
-                                            max_pages=max_pages):
+                                            max_pages=max_pages, active=active):
             for row in page:
                 if isinstance(row, dict):
                     yield row
