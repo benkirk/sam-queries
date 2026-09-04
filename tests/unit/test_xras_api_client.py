@@ -409,6 +409,31 @@ class TestPagination:
         params = client.session.request.call_args.kwargs['params']
         assert params == {'limit': 200, 'status': 'Approved'}
 
+    def test_active_sends_active_and_drops_status(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200, _envelope([]))])
+        client.get_requests_page(status=None, limit=200, active=True)
+        params = client.session.request.call_args.kwargs['params']
+        assert params == {'limit': 200, 'active': 'true'}
+
+    def test_active_false_serializes_as_the_string_false(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200, _envelope([]))])
+        client.get_requests_page(status=None, active=False)
+        assert client.session.request.call_args.kwargs['params']['active'] == 'false'
+
+    def test_active_and_status_together_raise(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200, _envelope([]))])
+        with pytest.raises(ValueError, match='mutually exclusive'):
+            client.get_requests_page(status='Approved', active=True)
+
+    def test_iter_supersedes_status_with_active(self, monkeypatch):
+        """The iterator drops `status` when `active` is given (they conflict)."""
+        page = [_request(30, 'NCAR0030'), _request(29, 'NCAR0029')]
+        client = _client(monkeypatch, [_response(200, _envelope(page)),
+                                       _response(200, _envelope([]))])
+        list(client.iter_request_pages(page_size=2, active=True))  # status defaults
+        params = client.session.request.call_args_list[0].kwargs['params']
+        assert params.get('active') == 'true' and 'status' not in params
+
 
 # caching
 

@@ -68,7 +68,7 @@ def _resolve_target(user, family: str, lookup: dict
     if inst is None:
         return 'no_affiliation', None, None, None
     code = MnemonicCode.resolve_for_institution(inst, lookup)
-    prefill = f'{inst.name}, {inst.city}' if getattr(inst, 'city', None) else inst.name
+    prefill = MnemonicCode.description_for(inst)
     if code:
         return 'mapped', inst.name, prefill, None
     via = _other_resolvable_institution(inst, user, lookup)

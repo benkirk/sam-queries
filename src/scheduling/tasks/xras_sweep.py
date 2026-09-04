@@ -6,9 +6,16 @@ rather than reading only SAM's own tables, and the third declaring
 
 It is also the first task that **publishes to the dashboard**. The Feed-B tab
 on Allocations -> XRAS renders what this writes to the ``xras_pending`` cache
-bucket, because the enumeration behind it (21 pages, 60-90s) is far outside
-what an htmx round-trip can afford. The cadence here is therefore the tab's
-freshness, which is why this runs hourly rather than nightly.
+bucket, because the enumeration behind it is far outside what an htmx round-trip
+can afford. The cadence here is therefore the tab's freshness.
+
+**Two cadences, one task.** The full ``status=Approved`` enumeration is ~100s
+(pages back to 2015), so it runs **once a day** at ``full_hour()`` and rebuilds
+the Remediations index (which needs the un-windowed corpus — stale approvals are
+the point). Every other hour runs only the cheap ``active=true`` pass (Approved
+with endDate null-or-future) for the account worklist, and lets the index ride
+its 24h TTL. A light hour that finds no published index self-heals to a full
+pass, so the card cannot go blank. ``detail['mode']`` says which ran.
 
 What it is for
 --------------
@@ -138,6 +145,13 @@ DEFAULT_MAP_MAX = 20
 #: and gets a different card, not a broken one.
 EXTRA_STATUSES = ('Submitted', 'Under Review')
 
+#: Local hour-of-day (Mountain) the heavy full-`Approved` pass fires on — once
+#: per 24h, overridable via ``$SAM_TASKS_XRAS_SWEEP_FULL_HOUR``. Every other hour
+#: runs only the cheap ``active=true`` worklist pass. 04:00 is off-peak, away
+#: from the evening cluster of edge connect-timeouts. NB: an hour of the day, not
+#: an every-N-hours interval.
+DEFAULT_FULL_HOUR = 4
+
 #: Page budget for **each** extra pass. Far smaller than the primary budget
 #: because these cohorts are small — a process holds a few dozen requests
 #: awaiting review at any moment, against thousands ever approved. Reported
@@ -228,6 +242,22 @@ def sweep_status(env: Optional[dict] = None) -> Optional[str]:
     # path, which imports this package only to print a table.
     from sam.integration.xras_api.client import REQUEST_STATUSES
     return raw if raw in REQUEST_STATUSES else DEFAULT_STATUS
+
+
+def full_hour(env: Optional[dict] = None) -> int:
+    """Local hour (0-23) the daily full-`Approved` pass runs, from the environment.
+
+    Unlike the budget knobs, hour 0 (midnight) is valid, so this accepts the whole
+    0-23 range and falls back to the default on anything else.
+    """
+    raw = (env if env is not None else os.environ).get('SAM_TASKS_XRAS_SWEEP_FULL_HOUR')
+    if raw is None or not str(raw).strip():
+        return DEFAULT_FULL_HOUR
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_FULL_HOUR
+    return value if 0 <= value <= 23 else DEFAULT_FULL_HOUR
 
 
 def overlaps_window(payload: dict, *, window_start: date) -> bool:
@@ -657,7 +687,8 @@ def xras_sweep(ctx) -> TaskResult:
         XrasSourceUnavailable,
         xras_api_configured,
     )
-    from sam.integration.xras_api.cache import (store_pending_worklist,
+    from sam.integration.xras_api.cache import (load_requests_index,
+                                                store_pending_worklist,
                                                 store_requests_index)
     from sam.projects.projects import Project
     from sam.queries.xras_accounts import (
@@ -677,6 +708,10 @@ def xras_sweep(ctx) -> TaskResult:
         'requests_in_window': 0,
         'window_days': 0,
         'status': '',
+        # 'full' = the daily heavy Approved pass (rebuilds the Remediations
+        # index); 'active' = a light hourly worklist-only pass.
+        'mode': '',
+        'full_slot': False,
         'budget_exhausted': False,
         'pending_push': 0,
         'pending_push_sample': [],
@@ -720,18 +755,37 @@ def xras_sweep(ctx) -> TaskResult:
     session = ctx.sam_session
     client = XrasApiClient.from_environment()
     page_budget = max_pages()
-    status = sweep_status()
     window = window_days()
     window_start = to_local_naive(
         ctx.occurrence, ZoneInfo(DEFAULT_TZ)).date() - timedelta(days=window)
-    detail['window_days'] = window
-    detail['status'] = status or 'all'
+
+    # Two cadences from one hourly task. The cheap `active=true` worklist pass
+    # runs every hour; the heavy full-`Approved` enumeration — which the
+    # Remediations index needs un-windowed, back to 2015 — runs once a day at
+    # `full_hour()`. Self-heal: any hour that finds no published index runs the
+    # full pass, so a cold start or a missed daily slot cannot leave the card
+    # blank once the 24h TTL lapses.
+    slot_hour = to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ)).hour
+    is_full = slot_hour == full_hour() or load_requests_index() is None
+    detail['full_slot'] = is_full
+    detail['mode'] = 'full' if is_full else 'active'
+
+    if is_full:
+        primary_status: Optional[str] = sweep_status()
+        primary_active: Optional[bool] = None
+        detail['status'] = primary_status or 'all'
+        detail['window_days'] = window
+    else:
+        primary_status = None
+        primary_active = True
+        detail['status'] = 'active'
 
     # 1. enumerate
     payloads = []
     enumeration_failed = False
     try:
-        for page in client.iter_request_pages(status=status,
+        for page in client.iter_request_pages(status=primary_status,
+                                              active=primary_active,
                                               page_size=PAGE_SIZE,
                                               max_pages=page_budget):
             detail['pages'] += 1
@@ -747,21 +801,19 @@ def xras_sweep(ctx) -> TaskResult:
     detail['requests_seen'] = len(payloads)
     detail['budget_exhausted'] = detail['pages'] >= page_budget
 
-    # WARNING: Kept **before** the window filter below, for the Remediations index.
+    # WARNING: `unwindowed` (full slot only) is the Remediations index's corpus.
     # The two feeds want opposite things from the same enumeration: the account
     # worklist wants only live periods of performance, while remediation is
     # about requests that went stale — a 2015 approval nobody ever pushed is
     # precisely the row an operator needs to close, and the window would hide
-    # exactly those. Same read, two cohorts, no second enumeration.
-    unwindowed = list(payloads)
-
-    # 1b. drop what had already ended when the window opened
-    #
-    # Both counts are reported: `requests_seen` says how much was read,
-    # `requests_in_window` how much was work. Reporting only the second would
-    # make a narrowed window look like a shrinking problem.
-    payloads = [p for p in payloads
-                if overlaps_window(p, window_start=window_start)]
+    # exactly those. In `active` mode the API already returned only live/future,
+    # so the window is a no-op and the index is not rebuilt this slot.
+    if is_full:
+        unwindowed = list(payloads)
+        # Both counts are reported: `requests_seen` says how much was read,
+        # `requests_in_window` how much was work.
+        payloads = [p for p in payloads
+                    if overlaps_window(p, window_start=window_start)]
     detail['requests_in_window'] = len(payloads)
 
     # 1c. opportunities SAM cannot resolve to an allocation type
@@ -880,13 +932,16 @@ def xras_sweep(ctx) -> TaskResult:
             # from real detail, not because anything closed.
             detail['reconciled'] += 1
 
-    # 4b. the Remediations index
-    index_entries = _build_requests_index(ctx, client, session, unwindowed, detail)
-
-    # 4c. fill the Pending Users tab's Pre-flight column for Feed-B rows from the
-    # per-request roll-up the index just computed. The worklist's pending
-    # requests are a subset of the index cohort, so no second preflight is run.
-    _apply_worklist_preflights(enumerated, index_entries)
+    # 4b. the Remediations index — full slot only; light hours ride its 24h TTL.
+    # `unwindowed` and the extra-status passes exist only on the full path.
+    if is_full:
+        index_entries = _build_requests_index(ctx, client, session, unwindowed, detail)
+        # 4c. fill the Pending Users tab's Pre-flight column for Feed-B rows from
+        # the per-request roll-up the index just computed. Light hours publish the
+        # worklist without this enrichment; the daily full run restores it.
+        _apply_worklist_preflights(enumerated, index_entries)
+    else:
+        index_entries = None
 
     # 5. publish for the dashboard
     #
@@ -899,7 +954,7 @@ def xras_sweep(ctx) -> TaskResult:
         # `detail` beside it is JSON and must stay stringly-typed. The two
         # have different serialization contracts and this is the seam.
         'generated_at': to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ)),
-        'window_days': window,
+        'window_days': detail['window_days'],
         'status': detail['status'],
         'requests_seen': detail['requests_seen'],
         'requests_in_window': detail['requests_in_window'],
@@ -928,25 +983,30 @@ def xras_sweep(ctx) -> TaskResult:
     # snapshot would render exactly that, and its 24h TTL would otherwise have
     # carried the good one across the blind hour. A *genuinely* empty index
     # still publishes: that IS the healthy answer.
-    extras_seen = sum(s.get('seen', 0)
-                      for s in detail['extra_statuses'].values())
-    if index_entries is None or (not index_entries and enumeration_failed
-                                 and extras_seen == 0):
-        detail['index_publish_backend'] = 'skipped'
-        detail['index_skipped'] = ('build failed' if index_entries is None
-                                   else 'nothing enumerated — total outage')
-        ctx.logger.warning(
-            'xras_sweep: index not published (%s); the card keeps the '
-            'previous snapshot', detail['index_skipped'])
+    if not is_full:
+        # Light hour: the last full slot's index rides its 24h TTL. Not a
+        # failure — the card keeps the previous snapshot by design.
+        detail['index_publish_backend'] = 'not_this_slot'
     else:
-        index_backend = store_requests_index({
-            'generated_at': to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ)),
-            'statuses': [detail['status']] + list(EXTRA_STATUSES),
-            'extra_statuses': detail['extra_statuses'],
-            'rows': index_entries,
-        })
-        detail['index_publish_backend'] = index_backend
-        detail['index_published'] = index_backend == 'redis'
+        extras_seen = sum(s.get('seen', 0)
+                          for s in detail['extra_statuses'].values())
+        if index_entries is None or (not index_entries and enumeration_failed
+                                     and extras_seen == 0):
+            detail['index_publish_backend'] = 'skipped'
+            detail['index_skipped'] = ('build failed' if index_entries is None
+                                       else 'nothing enumerated — total outage')
+            ctx.logger.warning(
+                'xras_sweep: index not published (%s); the card keeps the '
+                'previous snapshot', detail['index_skipped'])
+        else:
+            index_backend = store_requests_index({
+                'generated_at': to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ)),
+                'statuses': [detail['status']] + list(EXTRA_STATUSES),
+                'extra_statuses': detail['extra_statuses'],
+                'rows': index_entries,
+            })
+            detail['index_publish_backend'] = index_backend
+            detail['index_published'] = index_backend == 'redis'
     if backend != 'redis':
         ctx.logger.warning(
             'xras_sweep: worklist went to the %s cache, so the dashboard tab '
@@ -954,7 +1014,8 @@ def xras_sweep(ctx) -> TaskResult:
             backend)
 
     counts = detail['accounts']
-    message = (f"{detail['requests_in_window']}/{detail['requests_seen']} in-window request(s), "
+    message = (f"[{detail['mode']}] "
+               f"{detail['requests_in_window']}/{detail['requests_seen']} in-window request(s), "
                f"{detail['pending_push']} pending push, "
                f"{counts.get('total', 0)} account(s) needed, "
                f"{detail['reconciled']} reconciled in XRAS, "
