@@ -449,6 +449,26 @@ class ProjectCode(Base):
     facility = relationship('Facility', back_populates='project_codes')
     mnemonic_code = relationship('MnemonicCode', back_populates='project_codes')
 
+    @classmethod
+    def set_number_floor(cls, session, facility_id, mnemonic_code_id, floor):
+        """Raise the counter so the next mint is >= floor (reassignment discontinuity).
+
+        Never lowers it — a smaller floor would risk projcode collisions. The
+        visible gap is the durable in-house signal a code was reused for a new
+        owner (the model audit log is ephemeral in k8s).
+        """
+        if floor < 1:
+            raise ValueError(f"floor must be >= 1, got {floor}")
+        target = floor - 1  # digits holds the LAST issued number
+        pc = session.get(cls, (facility_id, mnemonic_code_id))
+        if pc is None:
+            pc = cls(facility_id=facility_id, mnemonic_code_id=mnemonic_code_id, digits=target)
+            session.add(pc)
+        elif pc.digits < target:
+            pc.digits = target
+        session.flush()
+        return pc
+
     def __str__(self):
         # Relationship attrs are None on pending (not-yet-flushed) rows built
         # from raw FK ids — e.g. inside the audit before_flush hook — so fall

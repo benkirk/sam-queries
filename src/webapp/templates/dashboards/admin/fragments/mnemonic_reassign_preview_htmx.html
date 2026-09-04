@@ -1,0 +1,12 @@
+{# htmx: live 'next code' preview for the reassign form (no side effects). #}
+{% if preview %}
+<div class="text-muted small">
+    Next project would be created as
+    <span class="font-monospace fw-semibold">{{ preview }}</span>{% if last_issued is not none %}
+    <span class="opacity-75">(current high-water mark: {{ facility.code }}{{ '%04d' % last_issued }})</span>{% endif %}
+</div>
+{% elif facility %}
+<div class="text-muted small">Enter a next number to preview the projcode.</div>
+{% else %}
+<div class="text-muted small">Select a facility to preview the next projcode.</div>
+{% endif %}

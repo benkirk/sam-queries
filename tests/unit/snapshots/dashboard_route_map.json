@@ -756,6 +756,48 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_mnemonic_code_edit",
+    "/admin/htmx/mnemonic-code-edit/<int:mnemonic_code_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_mnemonic_code_edit_form",
+    "/admin/htmx/mnemonic-code-edit-form/<int:mnemonic_code_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_mnemonic_code_reassign",
+    "/admin/htmx/mnemonic-code-reassign/<int:mnemonic_code_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_mnemonic_code_reassign_form",
+    "/admin/htmx/mnemonic-code-reassign-form/<int:mnemonic_code_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_mnemonic_code_reassign_preview",
+    "/admin/htmx/mnemonic-code-reassign-preview/<int:mnemonic_code_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_mnemonic_codes_table",
+    "/admin/htmx/mnemonic-codes-table",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_nsf_program_create",
     "/admin/htmx/nsf-program-create",
     [
@@ -1248,6 +1290,13 @@
   [
     "admin_dashboard.organizations",
     "/admin/organizations",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.organizations_mnemonics",
+    "/admin/organizations/mnemonics",
     [
       "GET"
     ]

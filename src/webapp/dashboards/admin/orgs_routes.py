@@ -53,7 +53,7 @@ from sam.schemas.forms.orgs import (
     EditOrganizationForm, CreateOrganizationForm,
     EditInstitutionTypeForm, CreateInstitutionTypeForm,
     EditInstitutionForm, CreateInstitutionForm,
-    CreateMnemonicCodeForm,
+    CreateMnemonicCodeForm, EditMnemonicCodeForm, ReassignMnemonicForm,
     EditAoiGroupForm, CreateAoiGroupForm,
     EditAoiForm, CreateAoiForm,
 )
@@ -377,6 +377,226 @@ def htmx_mnemonic_code_create():
         return _reload_form([f'Error creating mnemonic code: {e}'])
 
     return htmx_success_message(_ORG_TRIGGERS, 'Saved successfully.')
+
+
+# Mnemonic Codes console (sub-tab under Organizations)
+#
+# Edit and reassign are bespoke, not CrudSpec: `code` and `description` are
+# UNIQUE, so both need a DB pre-check (the same reason create is hand-written),
+# and reassign edits `project_code.digits` — outside the model's own row.
+
+_MNEMONIC_TRIGGERS = modal_triggers('reloadMnemonicCodesCard')
+
+_MNEMONIC_FILTERS = ('all', 'linked', 'orphaned', 'unused')
+
+
+def _mnemonic_missing_targets():
+    """Orgs/institutions needing a code, ranked by the XRAS pushes each unblocks.
+
+    Reuses the push-readiness sweep snapshot (no new scan); empty when the
+    outgoing API is off or no sweep has published yet.
+    """
+    from sam.integration.xras_api.cache import load_requests_index
+    from sam.queries.xras_mnemonic_report import mnemonic_unblock_report
+
+    snapshot = load_requests_index()
+    if not snapshot:
+        return []
+    return mnemonic_unblock_report(db.session, snapshot).get('targets', [])
+
+
+def _filter_inventory(rows, *, facet, q):
+    if facet == 'linked':
+        rows = [r for r in rows if r['links_to']]
+    elif facet == 'orphaned':
+        rows = [r for r in rows if r['orphaned']]
+    elif facet == 'unused':
+        rows = [r for r in rows if r['minted_total'] == 0]
+    if q:
+        needle = q.strip().casefold()
+        rows = [r for r in rows
+                if needle in r['code'].casefold() or needle in r['description'].casefold()]
+    return rows
+
+
+@bp.route('/htmx/mnemonic-codes-table')
+@login_required
+@require_permission_any_facility(Permission.VIEW_ORG_METADATA)
+def htmx_mnemonic_codes_table():
+    """The mnemonic console table: inventory + reverse-links + usage + missing side.
+
+    Not cached (a mutable admin list; the query is cheap) so an edit shows at once.
+    """
+    from sam.queries.mnemonic_console import mnemonic_inventory
+
+    active_only = read_active_only(request.args)
+    facet = request.args.get('filter', 'all')
+    if facet not in _MNEMONIC_FILTERS:
+        facet = 'all'
+    q = request.args.get('q', '')
+
+    rows = mnemonic_inventory(db.session, active_only=active_only)
+    counts = {
+        'all': len(rows),
+        'linked': sum(1 for r in rows if r['links_to']),
+        'orphaned': sum(1 for r in rows if r['orphaned']),
+        'unused': sum(1 for r in rows if r['minted_total'] == 0),
+    }
+    return render_template(
+        'dashboards/admin/fragments/mnemonic_codes_table_htmx.html',
+        rows=_filter_inventory(rows, facet=facet, q=q),
+        counts=counts, facet=facet, q=q, active_only=active_only,
+        missing=_mnemonic_missing_targets(),
+        can_edit=has_permission_any_facility(current_user, Permission.EDIT_ORG_METADATA),
+    )
+
+
+def _load_mnemonic_or_404(mnemonic_code_id):
+    from sam.core.organizations import MnemonicCode
+    return db.session.get(MnemonicCode, mnemonic_code_id)
+
+
+@bp.route('/htmx/mnemonic-code-edit-form/<int:mnemonic_code_id>')
+@login_required
+@require_permission(Permission.EDIT_ORG_METADATA)
+def htmx_mnemonic_code_edit_form(mnemonic_code_id):
+    """Edit form fragment — description + active only (the 3-letter code is fixed)."""
+    mc = _load_mnemonic_or_404(mnemonic_code_id)
+    if not mc:
+        return htmx_not_found('Mnemonic code not found.')
+    return render_template(
+        'dashboards/admin/fragments/edit_mnemonic_code_form_htmx.html', mc=mc)
+
+
+@bp.route('/htmx/mnemonic-code-edit/<int:mnemonic_code_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_ORG_METADATA)
+def htmx_mnemonic_code_edit(mnemonic_code_id):
+    """Apply a description/active edit, with a DB-uniqueness pre-check on description."""
+    from sam.core.organizations import MnemonicCode
+    from marshmallow import ValidationError
+
+    mc = _load_mnemonic_or_404(mnemonic_code_id)
+    if not mc:
+        return htmx_not_found('Mnemonic code not found.')
+
+    def _reload_form(extra_errors=None):
+        return render_template(
+            'dashboards/admin/fragments/edit_mnemonic_code_form_htmx.html',
+            mc=mc, form=request.form, errors=extra_errors or [])
+
+    try:
+        data = EditMnemonicCodeForm().load(request.form)
+    except ValidationError as e:
+        return _reload_form(EditMnemonicCodeForm.flatten_errors(e.messages))
+
+    active = 'active' in request.form
+    clash = (db.session.query(MnemonicCode)
+             .filter(MnemonicCode.description == data['description'],
+                     MnemonicCode.mnemonic_code_id != mnemonic_code_id).first())
+    if clash:
+        return _reload_form([f'Description "{data["description"]}" is already in use '
+                             f'by mnemonic code "{clash.code}".'])
+
+    try:
+        with management_transaction(db.session):
+            mc.update(description=data['description'], active=active)
+    except Exception as e:
+        return _reload_form([f'Error updating mnemonic code: {e}'])
+    return htmx_success_message(_MNEMONIC_TRIGGERS, 'Saved successfully.')
+
+
+def _mnemonic_reassign_context(mc):
+    """Facilities dropdown + this code's current per-facility high-water marks."""
+    from sam.resources.facilities import Facility, ProjectCode
+
+    facilities = (db.session.query(Facility)
+                  .filter(Facility.is_active, Facility.code.isnot(None))
+                  .order_by(Facility.facility_name).all())
+    last_by_facility = dict(
+        db.session.query(ProjectCode.facility_id, ProjectCode.digits)
+        .filter(ProjectCode.mnemonic_code_id == mc.mnemonic_code_id))
+    return {'facilities': facilities, 'last_by_facility': last_by_facility}
+
+
+@bp.route('/htmx/mnemonic-code-reassign-form/<int:mnemonic_code_id>')
+@login_required
+@require_permission(Permission.EDIT_ORG_METADATA)
+def htmx_mnemonic_code_reassign_form(mnemonic_code_id):
+    """Reassign form — repoint description + insert a digit-band discontinuity."""
+    mc = _load_mnemonic_or_404(mnemonic_code_id)
+    if not mc:
+        return htmx_not_found('Mnemonic code not found.')
+    return render_template(
+        'dashboards/admin/fragments/reassign_mnemonic_form_htmx.html',
+        mc=mc, **_mnemonic_reassign_context(mc))
+
+
+@bp.route('/htmx/mnemonic-code-reassign-preview/<int:mnemonic_code_id>')
+@login_required
+@require_permission(Permission.EDIT_ORG_METADATA)
+def htmx_mnemonic_code_reassign_preview(mnemonic_code_id):
+    """Live 'next code' preview for the reassign form (no side effects)."""
+    from sam.projects.projects import formulate_projcode
+    from sam.resources.facilities import Facility, ProjectCode
+
+    mc = _load_mnemonic_or_404(mnemonic_code_id)
+    facility = db.session.get(Facility, request.args.get('facility_id', type=int))
+    next_start = request.args.get('next_start', type=int)
+    preview = last_issued = None
+    if mc and facility and facility.code:
+        pc = db.session.get(ProjectCode, (facility.facility_id, mc.mnemonic_code_id))
+        last_issued = pc.digits if pc else 0
+        effective = max(next_start or 0, last_issued + 1)
+        preview = formulate_projcode(facility.code, mc.code, effective)
+    return render_template(
+        'dashboards/admin/fragments/mnemonic_reassign_preview_htmx.html',
+        preview=preview, last_issued=last_issued,
+        facility=facility, next_start=next_start)
+
+
+@bp.route('/htmx/mnemonic-code-reassign/<int:mnemonic_code_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_ORG_METADATA)
+def htmx_mnemonic_code_reassign(mnemonic_code_id):
+    """Repoint the description and raise one facility's counter, in one transaction."""
+    from sam.core.organizations import MnemonicCode
+    from sam.resources.facilities import Facility, ProjectCode
+    from marshmallow import ValidationError
+
+    mc = _load_mnemonic_or_404(mnemonic_code_id)
+    if not mc:
+        return htmx_not_found('Mnemonic code not found.')
+
+    def _reload_form(extra_errors=None):
+        return render_template(
+            'dashboards/admin/fragments/reassign_mnemonic_form_htmx.html',
+            mc=mc, form=request.form, errors=extra_errors or [],
+            **_mnemonic_reassign_context(mc))
+
+    try:
+        data = ReassignMnemonicForm().load(request.form)
+    except ValidationError as e:
+        return _reload_form(ReassignMnemonicForm.flatten_errors(e.messages))
+
+    facility = db.session.get(Facility, data['facility_id'])
+    if not facility or not facility.code:
+        return _reload_form(['Select a facility with a projcode prefix.'])
+    clash = (db.session.query(MnemonicCode)
+             .filter(MnemonicCode.description == data['description'],
+                     MnemonicCode.mnemonic_code_id != mnemonic_code_id).first())
+    if clash:
+        return _reload_form([f'Description "{data["description"]}" is already in use '
+                             f'by mnemonic code "{clash.code}".'])
+
+    try:
+        with management_transaction(db.session):
+            mc.update(description=data['description'])
+            ProjectCode.set_number_floor(db.session, facility.facility_id,
+                                         mc.mnemonic_code_id, data['next_start'])
+    except Exception as e:
+        return _reload_form([f'Error reassigning mnemonic code: {e}'])
+    return htmx_success_message(_MNEMONIC_TRIGGERS, 'Reassigned successfully.')
 
 
 # CRUD quintets — generated from specs

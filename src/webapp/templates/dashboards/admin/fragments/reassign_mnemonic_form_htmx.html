@@ -1,0 +1,56 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, readonly_display with context %}
+{#
+  htmx: Reassign Mnemonic Code (loaded into #reassignMnemonicCodeFormContainer).
+  Reuse a stale code for a new owner: repoint the description AND insert a
+  digit-band discontinuity on one facility's counter, so the new owner's
+  projects read (e.g.) UALB0100+ while the old owner keeps UALB0001-0045.
+#}
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_mnemonic_code_reassign', mnemonic_code_id=mc.mnemonic_code_id),
+    '#reassignMnemonicCodeFormContainer',
+    'Reassign',
+    submit_icon='right-left',
+    errors=errors
+) %}
+        {{ readonly_display('Code', mc.code) }}
+
+        {{ text_field('description', 'New owner description',
+                      required=True, maxlength=200,
+                      default=mc.description,
+                      help='The organization or institution name the code should now route to.',
+                      id='reassignDescription') }}
+
+        <div class="mb-3">
+            <label for="reassignFacility" class="form-label">
+                Facility <span class="text-danger">*</span>
+            </label>
+            <select class="form-select" id="reassignFacility" name="facility_id" required>
+                <option value="">— Select facility —</option>
+                {% for f in facilities %}
+                <option value="{{ f.facility_id }}"{% if form and form.get('facility_id')|string == f.facility_id|string %} selected{% endif %}>
+                    {{ f.code }} — {{ f.facility_name }} (last issued: {{ last_by_facility.get(f.facility_id, 0) }})
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="mb-3">
+            <label for="reassignNextStart" class="form-label">
+                Next number (discontinuity floor) <span class="text-danger">*</span>
+            </label>
+            <input type="number" min="1" step="1" class="form-control" style="max-width: 10rem;"
+                   id="reassignNextStart" name="next_start"
+                   value="{{ form.get('next_start') if form else '' }}" placeholder="e.g. 100">
+            <small class="form-text text-muted">
+                Pick a round number above the facility's current high-water mark — the
+                visible gap is the in-house signal the code was reused.
+            </small>
+        </div>
+
+        <div id="reassignPreview" class="mb-1"
+             hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_code_reassign_preview', mnemonic_code_id=mc.mnemonic_code_id) }}"
+             hx-trigger="change from:#reassignFacility, keyup changed delay:300ms from:#reassignNextStart"
+             hx-include="#reassignFacility, #reassignNextStart"
+             hx-target="this" hx-swap="innerHTML"></div>
+{% endcall %}

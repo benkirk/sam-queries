@@ -1,0 +1,149 @@
+"""The Mnemonic Codes console: model writes, the reassignment primitive, the
+inventory insight query, the two form schemas, and the projcode-preview math.
+"""
+import pytest
+
+from sam.core.organizations import MnemonicCode
+from sam.resources.facilities import ProjectCode
+from sam.projects.projects import formulate_projcode
+from sam.queries.mnemonic_console import mnemonic_inventory
+from sam.schemas.forms import EditMnemonicCodeForm, ReassignMnemonicForm
+
+from factories import make_facility, make_mnemonic_code, make_organization
+
+pytestmark = pytest.mark.unit
+
+_N = "Zzq"  # nonce prefix: disjoint from real snapshot descriptions/names
+
+
+class TestModelWrites:
+
+    def test_update_description_and_active(self, session):
+        mc = make_mnemonic_code(session, description=f"{_N} Before")
+        mc.update(description=f"{_N} After", active=False)
+        session.refresh(mc)
+        assert mc.description == f"{_N} After"
+        assert mc.active is False
+
+    def test_update_leaves_unset_fields_alone(self, session):
+        mc = make_mnemonic_code(session, description=f"{_N} Keep")
+        mc.update(active=False)
+        assert mc.description == f"{_N} Keep"  # untouched
+
+    def test_code_is_not_editable(self, session):
+        # update() has no `code` parameter — the 3-letter code is fixed.
+        mc = make_mnemonic_code(session)
+        original = mc.code
+        mc.update(description=f"{_N} New desc")
+        assert mc.code == original
+
+
+class TestNumberFloor:
+
+    def test_creates_row_at_floor_minus_one(self, session):
+        fac = make_facility(session)
+        mc = make_mnemonic_code(session)
+        ProjectCode.set_number_floor(session, fac.facility_id, mc.mnemonic_code_id, 100)
+        pc = session.get(ProjectCode, (fac.facility_id, mc.mnemonic_code_id))
+        assert pc.digits == 99  # next mint is 100
+
+    def test_raises_a_low_counter(self, session):
+        fac = make_facility(session)
+        mc = make_mnemonic_code(session)
+        session.add(ProjectCode(facility_id=fac.facility_id,
+                                mnemonic_code_id=mc.mnemonic_code_id, digits=42))
+        session.flush()
+        ProjectCode.set_number_floor(session, fac.facility_id, mc.mnemonic_code_id, 100)
+        assert session.get(ProjectCode, (fac.facility_id, mc.mnemonic_code_id)).digits == 99
+
+    def test_never_lowers_a_counter(self, session):
+        fac = make_facility(session)
+        mc = make_mnemonic_code(session)
+        session.add(ProjectCode(facility_id=fac.facility_id,
+                                mnemonic_code_id=mc.mnemonic_code_id, digits=99))
+        session.flush()
+        ProjectCode.set_number_floor(session, fac.facility_id, mc.mnemonic_code_id, 5)
+        assert session.get(ProjectCode, (fac.facility_id, mc.mnemonic_code_id)).digits == 99
+
+    def test_rejects_a_zero_floor(self, session):
+        fac = make_facility(session)
+        mc = make_mnemonic_code(session)
+        with pytest.raises(ValueError):
+            ProjectCode.set_number_floor(session, fac.facility_id, mc.mnemonic_code_id, 0)
+
+
+class TestInventory:
+
+    def test_linked_code_reports_its_org(self, session):
+        org = make_organization(session, name=f"{_N} Linked Org XYZ")
+        mc = make_mnemonic_code(session, description=f"{_N} Linked Org XYZ")
+        row = _row_for(mnemonic_inventory(session, active_only=True), mc.code)
+        assert row['orphaned'] is False
+        assert any(l['name'] == f"{_N} Linked Org XYZ" for l in row['links_to'])
+
+    def test_unmatched_active_code_is_orphaned(self, session):
+        mc = make_mnemonic_code(session, description=f"{_N} Nothing Resolves Here Qux")
+        row = _row_for(mnemonic_inventory(session, active_only=True), mc.code)
+        assert row['orphaned'] is True
+        assert row['links_to'] == []
+
+    def test_minted_totals_from_project_code(self, session):
+        fac = make_facility(session)
+        mc = make_mnemonic_code(session, description=f"{_N} Minted Code Desc")
+        session.add(ProjectCode(facility_id=fac.facility_id,
+                                mnemonic_code_id=mc.mnemonic_code_id, digits=42))
+        session.flush()
+        row = _row_for(mnemonic_inventory(session, active_only=True), mc.code)
+        assert row['minted_total'] == 42
+        assert any(u['facility_id'] == fac.facility_id and u['last'] == 42
+                   for u in row['usage'])
+
+    def test_active_only_hides_retired_codes(self, session):
+        mc = make_mnemonic_code(session, description=f"{_N} Retired One", active=False)
+        assert _row_for(mnemonic_inventory(session, active_only=True), mc.code) is None
+        assert _row_for(mnemonic_inventory(session, active_only=False), mc.code) is not None
+
+    def test_retired_code_is_not_orphaned(self, session):
+        mc = make_mnemonic_code(session, description=f"{_N} Retired Two", active=False)
+        row = _row_for(mnemonic_inventory(session, active_only=False), mc.code)
+        assert row['active'] is False
+        assert row['orphaned'] is False  # retired != orphaned
+
+
+class TestForms:
+
+    def test_edit_form_requires_description(self, session):
+        from marshmallow import ValidationError
+        with pytest.raises(ValidationError):
+            EditMnemonicCodeForm().load({'description': ''})
+
+    def test_edit_form_drops_absent_active(self, session):
+        # No `code` field, and active defaults to False when absent (checkbox off).
+        data = EditMnemonicCodeForm().load({'description': 'A Name'})
+        assert data['description'] == 'A Name'
+        assert data['active'] is False
+        assert 'code' not in data
+
+    def test_reassign_form_validates(self, session):
+        data = ReassignMnemonicForm().load(
+            {'description': 'New Owner', 'facility_id': '3', 'next_start': '100'})
+        assert data == {'description': 'New Owner', 'facility_id': 3, 'next_start': 100}
+
+    def test_reassign_form_rejects_zero_floor(self, session):
+        from marshmallow import ValidationError
+        with pytest.raises(ValidationError):
+            ReassignMnemonicForm().load(
+                {'description': 'X', 'facility_id': '3', 'next_start': '0'})
+
+
+class TestPreviewMath:
+
+    def test_effective_number_honors_floor_and_high_water(self):
+        # The preview endpoint's logic: effective = max(next_start, last + 1).
+        assert formulate_projcode('N', 'MMM', max(100, 85 + 1)) == 'NMMM0100'
+        # A floor at or below the high-water mark yields last + 1, never a rewind.
+        assert formulate_projcode('N', 'MMM', max(5, 85 + 1)) == 'NMMM0086'
+
+
+def _row_for(rows, code):
+    return next((r for r in rows if r['code'] == code), None)

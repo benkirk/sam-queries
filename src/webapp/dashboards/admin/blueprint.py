@@ -157,6 +157,14 @@ def organizations():
     return render_template('dashboards/admin/organizations.html', user=current_user)
 
 
+@bp.route('/organizations/mnemonics')
+@login_required
+@require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)
+def organizations_mnemonics():
+    """Admin Mnemonic Codes console (sub-tab under Organizations, htmx-loaded table)."""
+    return render_template('dashboards/admin/organizations_mnemonics.html', user=current_user)
+
+
 @bp.route('/contracts')
 @login_required
 @require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)

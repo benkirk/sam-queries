@@ -1,0 +1,27 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, checkbox_field, readonly_display with context %}
+{#
+  htmx: Edit Mnemonic Code (loaded into #editMnemonicCodeFormContainer).
+  The 3-letter code is read-only — changing it would split a minted projcode
+  series. Editable: description (the soft-link target) and active.
+#}
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_mnemonic_code_edit', mnemonic_code_id=mc.mnemonic_code_id),
+    '#editMnemonicCodeFormContainer',
+    'Save Changes',
+    is_edit=True,
+    errors=errors
+) %}
+        {{ readonly_display('Code', mc.code) }}
+
+        {{ text_field('description', 'Description',
+                      required=True, maxlength=200,
+                      default=mc.description,
+                      help='Must exactly match the organization or institution name used for project routing.',
+                      id='editMcDescription') }}
+
+        {{ checkbox_field('active', 'Active',
+                          default=mc.active,
+                          help='Retiring (unchecking) drops the code from project routing but keeps its history.',
+                          id='editMcActive') }}
+{% endcall %}
