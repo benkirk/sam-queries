@@ -375,5 +375,43 @@ class TestResolveForOrganizationWalk:
             MnemonicCode.build_lookup(session)) is None
 
 
+class TestDescriptionFor:
+    """The single canonical description normalizer (org name / institution Name, City)."""
+
+    def test_org_is_name(self, session):
+        org = make_organization(session, name=f"{_N} Desc Org")
+        assert MnemonicCode.description_for(org) == f"{_N} Desc Org"
+
+    def test_institution_with_city(self, session):
+        inst = make_institution(session, name=f"{_N} Desc Inst")
+        inst.city = "Boulder"
+        session.flush()
+        assert MnemonicCode.description_for(inst) == f"{_N} Desc Inst, Boulder"
+
+    def test_institution_without_city(self, session):
+        inst = make_institution(session, name=f"{_N} NoCity Inst")
+        inst.city = None
+        session.flush()
+        assert MnemonicCode.description_for(inst) == f"{_N} NoCity Inst"
+
+    def test_named_stub(self, session):
+        from sam.queries.mnemonic_console import _Named
+        assert MnemonicCode.description_for(_Named("X", "Y")) == "X, Y"
+        assert MnemonicCode.description_for(_Named("X", None)) == "X"
+
+    def test_python_helper_matches_sql_concat(self, session):
+        # The reverse-lookup SQL builds func.concat(name, ', ', city); the Python
+        # helper must produce the identical key so forward/reverse cannot drift.
+        from sqlalchemy import func
+        from sam.core.organizations import Institution
+        inst = make_institution(session, name=f"{_N} Parity Inst")
+        inst.city = "Denver"
+        session.flush()
+        sql_key = session.query(
+            func.lower(func.concat(Institution.name, ', ', Institution.city))
+        ).filter(Institution.institution_id == inst.institution_id).scalar()
+        assert MnemonicCode.description_for(inst).casefold() == sql_key
+
+
 def _row_for(rows, code):
     return next((r for r in rows if r['code'] == code), None)

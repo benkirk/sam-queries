@@ -115,7 +115,7 @@ def search_targets(session, q, *, limit: int = 15,
     code that already owns that description (unique) — non-`exclude_code` — so the
     UI can bar re-using it.
     """
-    from sam.core.organizations import Institution, Organization
+    from sam.core.organizations import Institution, MnemonicCode, Organization
 
     q = (q or '').strip()
     if not q:
@@ -138,7 +138,7 @@ def search_targets(session, q, *, limit: int = 15,
     for i in (session.query(Institution)
               .filter(Institution.deleted.isnot(True), Institution.name.ilike(like))
               .order_by(Institution.name).limit(limit)):
-        desc = f"{i.name}, {i.city}" if i.city else i.name
+        desc = MnemonicCode.description_for(i)
         out.append({'kind': 'institution', 'id': i.institution_id,
                     'name': i.name, 'city': i.city, 'description': desc,
                     'claimed_by': _claimed(desc)})
@@ -210,6 +210,7 @@ def _entity_for_suggest(session, description) -> tuple:
             .filter(Institution.deleted.isnot(True), func.lower(Institution.name) == key).first())
     if inst:
         return inst.name, inst.acronym
+    # SQL mirror of MnemonicCode.description_for's "Name, City" form (city present).
     inst = (session.query(Institution)
             .filter(Institution.deleted.isnot(True),
                     func.lower(func.concat(Institution.name, ', ', Institution.city)) == key).first())
@@ -290,9 +291,10 @@ def describes_live_entity(session, description) -> Optional[Dict[str, Any]]:
             .filter(Institution.deleted.isnot(True), func.lower(Institution.name) == key).first())
     if inst:
         return {'kind': 'institution', 'name': inst.name}
+    # SQL mirror of MnemonicCode.description_for's "Name, City" form (city present).
     inst = (session.query(Institution)
             .filter(Institution.deleted.isnot(True),
                     func.lower(func.concat(Institution.name, ', ', Institution.city)) == key).first())
     if inst:
-        return {'kind': 'institution', 'name': f"{inst.name}, {inst.city}"}
+        return {'kind': 'institution', 'name': MnemonicCode.description_for(inst)}
     return None

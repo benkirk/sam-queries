@@ -514,23 +514,26 @@ class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         return out
 
     @staticmethod
-    def resolve_for_institution(inst, lookup: dict) -> str | None:
-        """Resolve the mnemonic code for an Institution using the soft-link strategy.
+    def description_for(entity) -> str:
+        """The description string a mnemonic soft-links to: an org's name, or an
+        institution's "Name, City" (falling back to "Name" when city is blank).
 
-        Mirrors the legacy Java UserInstitutionStrategy: tries "Name, City"
-        first, then falls back to "Name" alone.
-
-        Args:
-            inst: Institution ORM instance (needs .name and .city attributes).
-            lookup: dict returned by ``build_lookup()``.
-
-        Returns:
-            3-letter mnemonic string, or None if no match.
+        The single source of truth for how a description is spelled, so every forward
+        match, reverse match, and prefill produces the identical string and cannot drift.
         """
-        if inst.city:
-            result = lookup.get(f"{inst.name}, {inst.city}".casefold())
-            if result:
-                return result
+        name = getattr(entity, 'name', None) or ''
+        city = getattr(entity, 'city', None)
+        return f"{name}, {city}" if city else name
+
+    @staticmethod
+    def resolve_for_institution(inst, lookup: dict) -> str | None:
+        """Resolve an Institution's mnemonic, or None (legacy UserInstitutionStrategy).
+
+        Tries the canonical "Name, City" (``description_for``) then falls back to "Name".
+        """
+        result = lookup.get(MnemonicCode.description_for(inst).casefold())
+        if result:
+            return result
         return lookup.get((inst.name or '').casefold())
 
     #: Org level_codes too broad to inherit a mnemonic from when walking parents:

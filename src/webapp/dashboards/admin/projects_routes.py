@@ -448,8 +448,11 @@ def htmx_project_lead_hint():
     if not user:
         return ''
 
-    org = next((uo.organization for uo in user.organizations if uo.is_active), None)
-    institution = next((ui.institution for ui in user.institutions if ui.is_active), None)
+    # The same "first current affiliation" selectors the XRAS push uses, so the
+    # suggested mnemonic and what XRAS mints resolve from the identical row.
+    from sam.xras.extractors import _best_institution, _best_organization
+    org = _best_organization(user)
+    institution = _best_institution(user)
     if not org and not institution:
         return render_template(
             'dashboards/admin/fragments/project_lead_hint_htmx.html',
