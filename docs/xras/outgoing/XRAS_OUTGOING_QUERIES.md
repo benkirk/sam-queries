@@ -680,6 +680,17 @@ A fragment beside the existing XRAS surfaces in
 
 ### 7.4 The `xras_sweep` scheduled task — enumerate-and-diff, shipped disabled
 
+> **Update (2026-09): two cadences.** The full `status=Approved` enumeration is
+> ~100s (it pages back to 2015), so it now runs **once a day** at `full_hour()`
+> (default 04:00 Mountain) and rebuilds the Remediations index — which needs the
+> un-windowed corpus, stale approvals being the point. Every **other** hour runs
+> only the cheap `active=true` pass (Approved with endDate null-or-future) for
+> the account worklist, and lets the index ride its 24h TTL. A light hour that
+> finds no published index self-heals to a full pass. The account worklist is
+> therefore "active approved, not-yet-pushed" (the 90-day window applies only on
+> the full slot). `detail['mode']` records which ran. The module docstring is
+> canonical; the step list below predates the index/opportunity-map passes.
+
 `src/scheduling/tasks/xras_sweep.py`, `Daily(hour=3, minute=30,
 tz='America/Denver')`, `needs=('sam',)`, `expected_runtime=timedelta(minutes=20)`
 (lease `3 × 20 min = 3600 s` > the CronJob's `activeDeadlineSeconds: 3000` —
