@@ -246,12 +246,16 @@ class TestCandidateBases:
     def test_org_acronym_wins_when_clean(self):
         assert _candidate_bases("Weather Modeling & Research", "WMR")[0] == "WMR"
 
-    def test_initials_drop_stopwords_keep_single_letters(self):
-        assert "UAF" in _candidate_bases("University of Alaska Fairbanks", None)
+    def test_university_word_dropped_but_u_abbrev_kept(self):
+        # "University" is a stopword (the facility U already provides it), so the
+        # code is the distinctive part; a bare "U" abbreviation token is KEPT.
+        assert _candidate_bases("University of Victoria", None)[0] == "VIC"
         assert "UAF" in _candidate_bases("U OF ALASKA FAIRBANKS", None)
+        assert "UAF" not in _candidate_bases("University of Alaska Fairbanks", None)
 
-    def test_initials_include_city_token(self):
-        assert "UCB" in _candidate_bases("University of Colorado, Boulder", None)
+    def test_no_redundant_university_u_lead(self):
+        # A university's top suggestion must not lead with U (would mint UU… codes).
+        assert not _candidate_bases("University of Colorado, Boulder", None)[0].startswith("U")
 
     def test_ampersand_is_dropped(self):
         assert "WMR" in _candidate_bases("Weather Modeling & Research", None)

@@ -40,31 +40,57 @@ def _mnemonic_family(message: str) -> Optional[str]:
     return None
 
 
-def _resolve_target(user, family: str, lookup: dict) -> Tuple[str, Optional[str], Optional[str]]:
-    """``(status, name, prefill)`` — status is unmapped | mapped | no_affiliation.
+def _resolve_target(user, family: str, lookup: dict
+                    ) -> Tuple[str, Optional[str], Optional[str], Optional[Tuple[str, str]]]:
+    """``(status, name, prefill, via)`` — status is unmapped | mapped | no_affiliation
+    | resolvable_elsewhere.
 
     ``mapped`` means an affiliation exists AND already resolves to a code (fixed since the
     sweep) — dropped from the report. ``no_affiliation`` means the PI has no current active
     org/institution to link at all (the frozen ``user_organization`` cohort).
+    ``resolvable_elsewhere`` (institution family) means the best institution is unmapped but
+    ANOTHER current institution resolves — an affiliation-ordering fix, not a new code (the
+    push's tie-break can land the resolving one); ``via`` is that institution's ``(name, code)``.
     """
     from sam.core.organizations import MnemonicCode
 
     if user is None:
-        return 'no_affiliation', None, None
+        return 'no_affiliation', None, None, None
     if family == FAMILY_ORGANIZATION:
         from sam.xras.extractors import _best_organization
         org = _best_organization(user)
         if org is None:
-            return 'no_affiliation', None, None
+            return 'no_affiliation', None, None, None
         code = MnemonicCode.resolve_for_organization(org, lookup)
-        return ('mapped' if code else 'unmapped'), org.name, org.name
+        return ('mapped' if code else 'unmapped'), org.name, org.name, None
     from sam.xras.extractors import _best_institution
     inst = _best_institution(user)
     if inst is None:
-        return 'no_affiliation', None, None
+        return 'no_affiliation', None, None, None
     code = MnemonicCode.resolve_for_institution(inst, lookup)
     prefill = f'{inst.name}, {inst.city}' if getattr(inst, 'city', None) else inst.name
-    return ('mapped' if code else 'unmapped'), inst.name, prefill
+    if code:
+        return 'mapped', inst.name, prefill, None
+    via = _other_resolvable_institution(inst, user, lookup)
+    if via is not None:
+        return 'resolvable_elsewhere', inst.name, prefill, via
+    return 'unmapped', inst.name, prefill, None
+
+
+def _other_resolvable_institution(best, user, lookup) -> Optional[Tuple[str, str]]:
+    """A current institution of the PI other than ``best`` that resolves — ``(name, code)``.
+
+    No wire, no network: minting a code for the unmapped best would stamp the wrong
+    series, so a PI who already resolves elsewhere is an ordering fix, not a target.
+    """
+    from sam.core.organizations import MnemonicCode
+    for ui in user.institutions:
+        inst = ui.institution
+        if ui.is_active and inst is not None and inst is not best:
+            code = MnemonicCode.resolve_for_institution(inst, lookup)
+            if code:
+                return inst.name, code
+    return None
 
 
 def mnemonic_unblock_report(session, snapshot) -> dict:
@@ -77,6 +103,7 @@ def mnemonic_unblock_report(session, snapshot) -> dict:
 
     targets: Dict[Tuple[str, str], dict] = {}
     unresolved: List[dict] = []
+    resolvable: List[dict] = []
     users: Dict[str, Any] = {}
     actions_seen = 0
 
@@ -101,8 +128,13 @@ def mnemonic_unblock_report(session, snapshot) -> dict:
 
             statuses = set()
             for family in families:
-                status, name, prefill = _resolve_target(user, family, lookup)
+                status, name, prefill, via = _resolve_target(user, family, lookup)
                 statuses.add(status)
+                if status == 'resolvable_elsewhere':
+                    resolvable.append(
+                        {'request_number': request_number, 'pi': pi_username,
+                         'name': name, 'via_name': via[0], 'via_code': via[1]})
+                    continue
                 if status != 'unmapped':
                     continue
                 bucket = targets.setdefault(
@@ -128,4 +160,5 @@ def mnemonic_unblock_report(session, snapshot) -> dict:
         'actions_seen': actions_seen,
         'targets': ranked,
         'unresolved': unresolved,
+        'resolvable': resolvable,
     }

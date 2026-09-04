@@ -81,7 +81,7 @@ def display_readiness(ctx, payload) -> None:
 def display_mnemonic_report(ctx, payload) -> None:
     """The orgs/institutions to link, ranked by how many failing pushes each unblocks."""
     targets = payload['targets']
-    if not targets and not payload['unresolved']:
+    if not targets and not payload['unresolved'] and not payload.get('resolvable'):
         ctx.console.print('No failing push cites a missing organization mnemonic.',
                           style='yellow')
         return
@@ -105,6 +105,15 @@ def display_mnemonic_report(ctx, payload) -> None:
             f"[yellow]{len(payload['unresolved'])} action(s) blocked by "
             f"{len(pis)} PI(s) with no current affiliation[/yellow] "
             f"(need a user_organization row, not a mnemonic): "
+            f"{', '.join(pis) or '—'}")
+    if payload.get('resolvable'):
+        # Best affiliation unmapped but another current one resolves — minting a
+        # code for the unmapped one would stamp the wrong series; fix the ordering.
+        pis = sorted({r['pi'] for r in payload['resolvable'] if r['pi']})
+        ctx.console.print(
+            f"[yellow]{len(payload['resolvable'])} action(s) blocked by "
+            f"{len(pis)} PI(s) whose best affiliation is unmapped but another "
+            f"resolves[/yellow] (affiliation-ordering fix, not a mnemonic): "
             f"{', '.join(pis) or '—'}")
 
 

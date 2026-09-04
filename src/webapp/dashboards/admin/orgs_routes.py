@@ -370,21 +370,6 @@ _MNEMONIC_TRIGGERS = modal_triggers('reloadMnemonicCodesCard')
 _MNEMONIC_FILTERS = ('all', 'linked', 'orphaned', 'unused')
 
 
-def _mnemonic_missing_targets():
-    """Orgs/institutions needing a code, ranked by the XRAS pushes each unblocks.
-
-    Reuses the push-readiness sweep snapshot (no new scan); empty when the
-    outgoing API is off or no sweep has published yet.
-    """
-    from sam.integration.xras_api.cache import load_requests_index
-    from sam.queries.xras_mnemonic_report import mnemonic_unblock_report
-
-    snapshot = load_requests_index()
-    if not snapshot:
-        return []
-    return mnemonic_unblock_report(db.session, snapshot).get('targets', [])
-
-
 _MNEMONIC_SORT_KEYS = {
     'code': lambda r: r['code'],
     'description': lambda r: r['description'].casefold(),
@@ -420,9 +405,11 @@ def _filter_inventory(rows, *, facet, q):
 @login_required
 @require_permission_any_facility(Permission.VIEW_ORG_METADATA)
 def htmx_mnemonic_codes_table():
-    """The mnemonic console table: inventory + reverse-links + usage + missing side.
+    """The mnemonic console table: inventory + reverse-links + usage.
 
     Not cached (a mutable admin list; the query is cheap) so an edit shows at once.
+    Missing-mnemonic prompts live only on the XRAS Remediations strip (the single
+    source of truth, with tie-break context); it deep-links here via ``?create=``.
     """
     from sam.queries.mnemonic_console import mnemonic_inventory
 
@@ -448,7 +435,6 @@ def htmx_mnemonic_codes_table():
         sortable_columns=set(_MNEMONIC_SORT_KEYS),
         sort={'sort_by': request.args.get('sort_by') or 'code',
               'sort_dir': request.args.get('sort_dir') or 'asc'},
-        missing=_mnemonic_missing_targets(),
         can_edit=has_permission_any_facility(current_user, Permission.EDIT_ORG_METADATA),
         can_reassign=has_permission(current_user, Permission.SYSTEM_ADMIN),
     )
