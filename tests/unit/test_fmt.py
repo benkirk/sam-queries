@@ -162,6 +162,24 @@ class TestAgo:
         assert ago(None) == '—'
 
 
+class TestAge:
+    """`age()` — the date/datetime convenience over `ago()` (Submitted -> Age column)."""
+
+    def test_none_returns_null(self):
+        assert fmt.age(None) == '—'
+
+    def test_datetime_days(self):
+        assert fmt.age(datetime.now() - timedelta(days=3)) == '3 days'
+
+    def test_datetime_hours(self):
+        assert fmt.age(datetime.now() - timedelta(hours=5)) == '5 hours'
+
+    def test_a_bare_date_is_coerced(self):
+        # A stored `date` is midnight, so the age is the whole-day count give or
+        # take the current time of day — never a crash from mixing date/datetime.
+        assert fmt.age(date.today() - timedelta(days=10)) in ('10 days', '11 days')
+
+
 # ============================================================================
 # factor()
 # ============================================================================
