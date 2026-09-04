@@ -129,7 +129,7 @@
            mnemonic. The FIX lives in Admin -> Organizations (this page stays
            read-only about org metadata), so each org links there. Lists every
            blocking org inline when few; truncates to the CLI past a small cap. #}
-        {% if mnemonic_summary and (mnemonic_summary.targets or mnemonic_summary.unresolved) %}
+        {% if mnemonic_summary and (mnemonic_summary.targets or mnemonic_summary.unresolved or mnemonic_summary.resolvable) %}
         {% set _mtargets = mnemonic_summary.targets %}
         <div class="alert alert-info d-flex gap-2 py-2 mb-3">
             <i class="fas fa-link-slash mt-1"></i>
@@ -157,6 +157,11 @@
                 <br>{{ mnemonic_summary.unresolved | length | fmt_plural('more action') }}
                 blocked by PIs with <strong>no current affiliation</strong> — those need a
                 membership fix, not a mnemonic.
+                {% endif %}
+                {% if mnemonic_summary.resolvable %}
+                <br>{{ mnemonic_summary.resolvable | length | fmt_plural('action') }}
+                blocked by a PI whose best affiliation is unmapped but <strong>another
+                current affiliation already resolves</strong> — an ordering fix, not a new code.
                 {% endif %}
             </div>
         </div>
