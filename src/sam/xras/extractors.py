@@ -481,10 +481,10 @@ def _best_organization(user: User) -> Optional[Organization]:
     """``User.getBestOrganization()`` — the first *current* ``user_organization``.
 
     "First" is DB order in both implementations; there is no tie-break, and a user
-    with two concurrent organizations gets whichever the row order hands over. Kept
-    as-is: it matches the existing lead-hint route
-    (``dashboards/admin/projects_routes.py:451``), so the mnemonic this suggests to an
-    operator and the one XRAS resolves are the same value.
+    with two concurrent organizations gets whichever the row order hands over. The
+    admin lead-hint route (``dashboards/admin/projects_routes.py``) calls this directly,
+    so the mnemonic it suggests to an operator and the one XRAS resolves are the same
+    value by construction.
     """
     return next((uo.organization for uo in user.organizations if uo.is_active), None)
 
