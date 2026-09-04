@@ -3,6 +3,26 @@
 from ..base import *
 #-------------------------------------------------------------------------eh-
 
+import logging
+import re
+
+logger = logging.getLogger(__name__)
+
+#: The two orthographic drifts between a hand-kept mnemonic description and its
+#: upstream org name (& vs and, Lab vs Laboratory) that the 2026 IdMS lab rename
+#: introduced. Normalizing both is injective across active descriptions (guarded
+#: below + in test_mnemonic_soft_match); punctuation is deliberately NOT touched —
+#: a trailing comma distinguishes real distinct codes (CMU vs CMI).
+_MNEMONIC_SOFT_SUBS = ((re.compile(r'\s*&\s*'), ' and '),
+                       (re.compile(r'\blaboratory\b'), 'lab'))
+
+
+class _MnemonicLookup(dict):
+    """Exact ``{casefold(description): code}`` map carrying a ``.soft`` fallback
+    index only ``resolve_for_organization`` reads. A dict subclass so every
+    existing caller (and ``resolve_for_institution``) still sees the exact map."""
+    soft: dict
+
 
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
@@ -437,21 +457,45 @@ class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
     project_codes = relationship('ProjectCode', back_populates='mnemonic_code')
 
+    @staticmethod
+    def _soft_key(text: str) -> str:
+        """Casefolded key tolerant of the &/and and Lab/Laboratory drift only."""
+        key = (text or '').casefold()
+        for pat, repl in _MNEMONIC_SOFT_SUBS:
+            key = pat.sub(repl, key)
+        return re.sub(r'\s+', ' ', key).strip()
+
     @classmethod
-    def build_lookup(cls, session) -> dict:
-        """Return a {description: code} dict for all active mnemonic codes.
+    def build_lookup(cls, session) -> '_MnemonicLookup':
+        """Active ``{casefold(description): code}`` map — one fetch for bulk
+        resolution; pass to ``resolve_for_institution`` / ``resolve_for_organization``.
 
-        Intended as the single fetch for bulk resolution — call once, then
-        pass the result to ``resolve_for_institution`` / ``resolve_for_org``.
-
-        Keys are casefolded: the soft-link descriptions were hand-entered
-        over decades and drift in capitalization from the org/institution
-        names they mirror ("High-end" vs "High-End").
+        Keys casefolded (descriptions drift in capitalization). The result also
+        carries a ``.soft`` index that ``resolve_for_organization`` consults on an
+        exact miss, tolerant of the &/and + Lab/Laboratory drift between a
+        description and its upstream org name; a collision logs and drops the
+        ambiguous alias (exact still resolves). Institutions stay exact.
         """
-        return {
-            mc.description.casefold(): mc.code
-            for mc in session.query(cls).filter(cls.is_active).all()
-        }
+        rows = session.query(cls).filter(cls.is_active).all()
+        exact = {mc.description.casefold(): mc.code for mc in rows}
+        soft: dict = {}
+        collided: set = set()
+        for mc in rows:
+            key = cls._soft_key(mc.description)
+            if key in exact:                        # a real description owns it
+                continue
+            if soft.get(key, mc.code) != mc.code:
+                collided.add(key)
+                logger.warning('mnemonic soft-key collision on %r: %s vs %s '
+                               '(dropping soft alias; exact match still works)',
+                               key, soft[key], mc.code)
+            else:
+                soft[key] = mc.code
+        for key in collided:
+            soft.pop(key, None)
+        out = _MnemonicLookup(exact)
+        out.soft = soft
+        return out
 
     @staticmethod
     def resolve_for_institution(inst, lookup: dict) -> str | None:
@@ -475,18 +519,27 @@ class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
     @staticmethod
     def resolve_for_organization(org, lookup: dict) -> str | None:
-        """Resolve the mnemonic code for an Organization using the soft-link strategy.
+        """Resolve the mnemonic code for an Organization by name, or None.
 
-        Mirrors the legacy Java UserOrganizationStrategy: matches on name only.
-
-        Args:
-            org: Organization ORM instance (needs .name attribute).
-            lookup: dict returned by ``build_lookup()``.
-
-        Returns:
-            3-letter mnemonic string, or None if no match.
+        Exact match first, then the injective &/and + Lab/Laboratory soft key.
+        WARNING: legacy's UserOrganizationStrategy matched the name as a
+        *substring* (ilike ANYWHERE); the SAM port narrowed that to exact, which
+        broke on the 2026 lab renames. The soft fallback restores that tolerance
+        safely (see ``build_lookup``); institutions stay exact, as in legacy.
         """
-        return lookup.get((org.name or '').casefold())
+        name = org.name or ''
+        code = lookup.get(name.casefold())
+        if code:
+            return code
+        # The org's normalized key may match either an exact description (which
+        # already spells it "and"/"Laboratory") or a soft alias; build_lookup
+        # keeps the two key spaces disjoint, so this stays unambiguous.
+        soft_key = MnemonicCode._soft_key(name)
+        code = lookup.get(soft_key) or (getattr(lookup, 'soft', None) or {}).get(soft_key)
+        if code:
+            logger.debug('mnemonic for org %r resolved via soft match -> %s '
+                         '(description drifted from the org name)', name, code)
+        return code
 
     @classmethod
     def create(cls, session, *, code: str, description: str) -> 'MnemonicCode':
