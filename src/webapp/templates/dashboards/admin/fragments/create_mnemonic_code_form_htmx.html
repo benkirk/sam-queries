@@ -1,5 +1,5 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
-{% from 'dashboards/fragments/form_fields.html' import text_field with context %}
+{% from 'dashboards/admin/fragments/_mnemonic_description_field.html' import mnemonic_description_field with context %}
 {# htmx: Create Mnemonic Code Form #}
 {% call htmx_form(
     url_for('admin_dashboard.htmx_mnemonic_code_create'),
@@ -24,52 +24,14 @@
                    style="max-width: 8rem;">
         </div>
 
-        {# Quick-fill from Institution — has data-description and onchange #}
-        <div class="mb-3">
-            <label for="createMcInstitution" class="form-label">
-                Fill description from Institution <span class="text-muted">(optional)</span>
-            </label>
-            <select class="form-select" id="createMcInstitution"
-                    data-action-change="mc-fill-description" data-source="institution">
-                <option value="">— None —</option>
-                {% for inst in institutions %}
-                <option value="{{ inst.institution_id }}"
-                        data-description="{{ (inst.name ~ ', ' ~ inst.city) if inst.city else inst.name }}">
-                    {{ inst.name }}{% if inst.city %} ({{ inst.city }}){% endif %}
-                </option>
-                {% endfor %}
-            </select>
-            <div class="form-text">
-                Selects the description that will be matched for project routing (Name, City format if city is set).
-            </div>
-        </div>
+        {# Suggested codes: driven by the description below, so every entry point
+           that seeds a description (XRAS strip, missing-side, org/inst tables)
+           inherits the suggestor. A chip fills the Code field (mc-fill-code). #}
+        <div id="createMcSuggestions" class="mb-3"
+             hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_suggest_codes') }}"
+             hx-target="this" hx-swap="innerHTML"
+             hx-include="#createMcDescription"
+             hx-trigger="load, mc:picked from:#createMcDescription, keyup changed delay:500ms from:#createMcDescription"></div>
 
-        {# Quick-fill from NCAR Organization #}
-        <div class="mb-3">
-            <label for="createMcOrganization" class="form-label">
-                Fill description from NCAR Organization <span class="text-muted">(optional)</span>
-            </label>
-            <select class="form-select" id="createMcOrganization"
-                    data-action-change="mc-fill-description" data-source="organization">
-                <option value="">— None —</option>
-                {% for org in organizations %}
-                <option value="{{ org.organization_id }}"
-                        data-description="{{ org.name }}">
-                    {{ org.name }}{% if org.acronym %} ({{ org.acronym }}){% endif %}
-                </option>
-                {% endfor %}
-            </select>
-        </div>
-
-        {{ text_field('description', 'Description',
-                      required=True, maxlength=200,
-                      default=prefill_description,
-                      placeholder='e.g. University of Colorado, Boulder',
-                      help='Must exactly match the institution or organization name used for project routing. Auto-populated when you select from the dropdowns above.',
-                      id='createMcDescription') }}
+        {{ mnemonic_description_field('createMc', (form.get('description') if form else prefill_description) or '') }}
 {% endcall %}
-
-{# Description quick-fill + prefill behavior lives in static/js/form-helpers.js
-   (mc-fill-description action + initMnemonicPrefill); the prefill value rides
-   the non-executable JSON block below (exempt from script-src). #}
-<script type="application/json" id="createMcPrefill">{{ prefill_description | tojson }}</script>

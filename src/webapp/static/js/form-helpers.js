@@ -264,19 +264,52 @@
         document.getElementById('projcodeHidden').value = input.value;
     });
 
-    /* Create Mnemonic Code form
-     * Populate description from the selected dropdown option's
-     * data-description; reset the other dropdown so only one source is
-     * active at a time. */
-    registerAction('mc-fill-description', function (selectEl) {
-        var opt = selectEl.options[selectEl.selectedIndex];
-        var desc = opt.dataset.description || '';
-        if (desc) {
-            document.getElementById('createMcDescription').value = desc;
-            var otherId = selectEl.dataset.source === 'institution'
-                ? 'createMcOrganization' : 'createMcInstitution';
-            document.getElementById(otherId).value = '';
+    /* Mnemonic description control (Create/Edit/Reassign): toggle Match/Custom
+     * blocks, and copy a picked entity's resolver-exact string into the one
+     * canonical description field (then fire mc:picked so htmx re-checks the
+     * live match). Scoped to the enclosing .mnemonic-desc-control. */
+    registerAction('mc-desc-mode', function (radio) {
+        var matchBlock = document.querySelector(radio.dataset.match);
+        var customBlock = document.querySelector(radio.dataset.custom);
+        if (!matchBlock || !customBlock) { return; }
+        var isMatch = radio.value === 'match';
+        matchBlock.style.display = isMatch ? '' : 'none';
+        customBlock.style.display = isMatch ? 'none' : '';
+    });
+    /* Reassign form: picking a facility auto-fills the suggested discontinuity
+     * floor for that facility, then refreshes the projcode preview. */
+    registerAction('reassign-fac', function (sel) {
+        var opt = sel.options[sel.selectedIndex];
+        var suggested = opt && opt.dataset ? opt.dataset.suggested : '';
+        var input = document.getElementById('reassignNextStart');
+        if (input && suggested) { input.value = suggested; }
+        document.body.dispatchEvent(new CustomEvent('mc:reassignpreview', { bubbles: true }));
+    });
+    registerAction('mc-pick-target', function (row) {
+        var control = row.closest('.mnemonic-desc-control');
+        if (!control) { return; }
+        var desc = row.dataset.description || '';
+        var field = control.querySelector('.mc-desc-field');
+        if (field) {
+            field.value = desc;
+            field.dispatchEvent(new CustomEvent('mc:picked', { bubbles: true }));
         }
+        var nameSpan = control.querySelector('.mc-desc-selected-name');
+        if (nameSpan) { nameSpan.textContent = desc; }
+        var badge = control.querySelector('[id$="SelectedBadge"]');
+        if (badge) { badge.style.display = ''; }
+        var search = control.querySelector('input[name="q"]');
+        if (search) { search.value = ''; }
+        var results = control.querySelector('[id$="TargetResults"]');
+        if (results) { results.innerHTML = ''; }
+    });
+    /* Create form: a suggested-code chip fills the Code field; the input's own
+     * uppercase handler then normalizes it. */
+    registerAction('mc-fill-code', function (btn) {
+        var input = document.getElementById('createMcCode');
+        if (!input) { return; }
+        input.value = btn.dataset.code || '';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
     });
 
     /* Edit Allocation form: break-inheritance unlock checkbox */
@@ -463,29 +496,10 @@
         render();
     }
 
-    function initMnemonicPrefill(root) {
-        /* If a prefill description was passed (e.g. from clicking a
-         * missing-mnemonic badge), set it and try to pre-select the
-         * matching institution in the dropdown. */
-        var block = has(root, '#createMcPrefill');
-        if (!block) { return; }
-        var prefill = JSON.parse(block.textContent);
-        if (!prefill) { return; }
-        document.getElementById('createMcDescription').value = prefill;
-        var instSel = document.getElementById('createMcInstitution');
-        for (var i = 0; i < instSel.options.length; i++) {
-            if (instSel.options[i].dataset.description === prefill) {
-                instSel.selectedIndex = i;
-                break;
-            }
-        }
-    }
-
     htmx.onLoad(function (root) {
         if (has(root, '#projcodeHidden')) { initCreateProjectForm(); }
         if (has(root, '#contractLookupRow')) { initCreateContractForm(); }
         if (has(root, '#exchangeFromProject')) { initExchangeForm(root); }
-        initMnemonicPrefill(root);
 
         if (has(root, '.facility-collapse-icon')) {
             SamCollapseChevron.attach('#facilities-pane', '.facility-collapse-icon');
@@ -495,16 +509,19 @@
         }
     });
 
-    /* Admin -> Contracts opened from a contract-blocker link: the page carries
-     * data-auto-open-create="<seeded create-form url>". Load it into the New
-     * Contract modal and show it — the project-details-modal pair, on page
-     * load, because CSP (script-src 'self') forbids an inline script. */
+    /* A page opened from a data-blocker link carries data-auto-open-create=
+     * "<seeded create-form url>". Load it into the named create modal and show
+     * it on page load (CSP: no inline script). Modal + container ids default to
+     * the Contracts pair; the mnemonics page overrides via data-modal-id /
+     * data-target-id. */
     document.addEventListener('DOMContentLoaded', function () {
         var opener = document.querySelector('[data-auto-open-create]');
-        var modal = document.getElementById('createContractModal');
-        if (!opener || !modal) { return; }
+        if (!opener) { return; }
+        var modal = document.getElementById(opener.dataset.modalId || 'createContractModal');
+        if (!modal) { return; }
+        var targetId = opener.dataset.targetId || 'createContractFormContainer';
         htmx.ajax('GET', opener.dataset.autoOpenCreate,
-                  {target: '#createContractFormContainer', swap: 'innerHTML'});
+                  {target: '#' + targetId, swap: 'innerHTML'});
         bootstrap.Modal.getOrCreateInstance(modal).show();
     });
 })();

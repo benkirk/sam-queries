@@ -72,6 +72,21 @@ class CreateMnemonicCodeForm(HtmxFormSchema):
             raise ValidationError('Code must be exactly 3 uppercase letters (A–Z).')
 
 
+class EditMnemonicCodeForm(HtmxFormSchema):
+    # The 3-letter code is fixed after creation (changing it would split a
+    # minted projcode series); only description and active are editable.
+    description = f.Str(required=True, validate=v.Length(min=1, max=200))
+    active = f.Bool(load_default=False)
+
+
+class ReassignMnemonicForm(HtmxFormSchema):
+    # Reuse a stale code for a new owner: repoint the description and insert a
+    # digit-band discontinuity on one facility's counter (next mint >= next_start).
+    description = f.Str(required=True, validate=v.Length(min=1, max=200))
+    facility_id = f.Int(required=True)
+    next_start = f.Int(required=True, validate=v.Range(min=1))
+
+
 class EditAoiGroupForm(HtmxFormSchema):
     name = f.Str(required=True, validate=v.Length(min=1))
     active = f.Bool(load_default=False)

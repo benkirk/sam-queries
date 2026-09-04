@@ -1,0 +1,150 @@
+{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
+{% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
+{#
+  Mnemonic Codes console table. All controls live in one filter form so a facet
+  chip, the search box, and the active-only switch round-trip together (a chip
+  writes into #mnemonicFilterForm and re-submits it — set-filter-submit).
+#}
+<div class="card-body">
+
+  <form id="mnemonicFilterForm" class="mb-3"
+        hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_codes_table') }}"
+        hx-target="#mnemonicCodesSection" hx-swap="innerHTML"
+        hx-trigger="submit, keyup changed delay:300ms from:#mnemonicSearch, change from:#mnemonicActiveOnly">
+    <input type="hidden" name="filter" value="{{ facet }}">
+    <input type="hidden" name="sort_by" value="{{ sort.sort_by }}">
+    <input type="hidden" name="sort_dir" value="{{ sort.sort_dir }}">
+    <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
+      <div class="input-group input-group-sm" style="max-width: 22rem;">
+        <span class="input-group-text"><i class="fas fa-search"></i></span>
+        <input id="mnemonicSearch" name="q" value="{{ q }}" class="form-control"
+               type="search" placeholder="Search code or description"
+               autocomplete="off" aria-label="Search mnemonic codes">
+      </div>
+      <div class="form-check form-switch mb-0">
+        <input class="form-check-input" type="checkbox" id="mnemonicActiveOnly"
+               name="active_only" value="1"{{ ' checked' if active_only else '' }}>
+        <label class="form-check-label small text-muted fw-normal" for="mnemonicActiveOnly">Active only</label>
+      </div>
+    </div>
+    <div class="facet-grid">
+      {{ facet_row('Show',
+          [{'value': 'all', 'label': 'All', 'count': counts.all},
+           {'value': 'linked', 'label': 'Linked', 'count': counts.linked, 'icon': 'fa-link'},
+           {'value': 'orphaned', 'label': 'Orphaned', 'count': counts.orphaned, 'icon': 'fa-unlink'},
+           {'value': 'unused', 'label': 'Unused', 'count': counts.unused, 'icon': 'fa-circle'}],
+          'mnemonicFilterForm', 'filter', active=[facet]) }}
+    </div>
+  </form>
+
+  {% if missing %}
+  <div class="alert alert-warning py-2 px-3 mb-3">
+    <button type="button" class="btn btn-link btn-sm text-decoration-none p-0 fw-semibold"
+            data-bs-toggle="collapse" data-bs-target="#mnemonicMissingPanel"
+            aria-expanded="false" aria-controls="mnemonicMissingPanel">
+      <i class="fas fa-triangle-exclamation me-1"></i>
+      {{ missing | length | fmt_number }} affiliation{{ '' if missing|length == 1 else 's' }}
+      need a mnemonic (blocking XRAS pushes)
+    </button>
+    <div id="mnemonicMissingPanel" class="collapse mt-2">
+      <div class="small text-muted mb-2">Ranked by the pushes each missing code would unblock. Create one to fix it.</div>
+      <ul class="list-group list-group-flush">
+        {% for t in missing %}
+        <li class="list-group-item bg-transparent d-flex justify-content-between align-items-center px-0 py-1">
+          <span>
+            <span class="badge bg-secondary-subtle text-secondary-emphasis border me-2">{{ t.family }}</span>
+            {{ t.name }}
+            <span class="text-muted small ms-1">unblocks {{ t.unblock_count | fmt_number }}</span>
+          </span>
+          {% if has_permission(Permission.CREATE_ORG_METADATA) %}
+          <button type="button" class="btn btn-sm btn-outline-primary"
+                  data-bs-toggle="modal" data-bs-target="#createMnemonicCodeModal"
+                  hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_code_create_form', description=t.prefill) }}"
+                  hx-target="#createMnemonicCodeFormContainer" hx-trigger="click"
+                  title="Create a mnemonic for {{ t.name }}">
+            <i class="fas fa-plus"></i> Create
+          </button>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="text-muted small mb-2">
+    {{ rows | length | fmt_number }} code{{ '' if rows|length == 1 else 's' }} shown
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th scope="col">{{ sort_header('code', 'Code') }}</th>
+          <th scope="col">{{ sort_header('description', 'Description') }}</th>
+          <th scope="col">{{ sort_header('links', 'Links to') }}</th>
+          <th scope="col" class="text-end">{{ sort_header('minted', 'Minted') }}</th>
+          <th scope="col">Status</th>
+          {% if can_edit or can_reassign %}<th scope="col" class="text-end">Actions</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td><span class="badge bg-dark-subtle text-dark-emphasis border font-monospace">{{ r.code }}</span></td>
+          <td>{{ r.description }}</td>
+          <td>
+            {% if not r.active %}
+            <span class="text-muted">—</span>
+            {% elif r.orphaned %}
+            <span class="badge bg-warning-subtle text-warning-emphasis border">
+              <i class="fas fa-unlink me-1"></i>Orphaned</span>
+            {% else %}
+            {% for link in r.links_to[:2] %}
+            <span class="d-inline-flex align-items-center me-2" title="{{ link.kind }}">
+              <i class="fas {{ 'fa-sitemap' if link.kind == 'organization' else 'fa-university' }} text-muted me-1"></i>{{ link.name }}</span>
+            {% endfor %}
+            {% if r.links_to | length > 2 %}
+            <span class="text-muted small">+{{ (r.links_to | length - 2) | fmt_number }} more</span>
+            {% endif %}
+            {% endif %}
+          </td>
+          <td class="text-end">
+            {% if r.minted_total %}
+            <span title="{% for u in r.usage %}{{ u.facility }}: {{ u.last }}{{ '  ' if not loop.last }}{% endfor %}">{{ r.minted_total | fmt_number }}</span>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td>
+            {% if r.active %}
+            <span class="badge bg-success-subtle text-success-emphasis border">Active</span>
+            {% else %}
+            <span class="badge bg-secondary-subtle text-secondary-emphasis border">Retired</span>
+            {% endif %}
+          </td>
+          {% if can_edit or can_reassign %}
+          <td class="text-end text-nowrap">
+            {{ edit_modal_button(
+                url_for('admin_dashboard.htmx_mnemonic_code_edit_form', mnemonic_code_id=r.id),
+                modal_id='editMnemonicCodeModal', target_id='editMnemonicCodeFormContainer',
+                title='Edit description / status', permission=Permission.EDIT_ORG_METADATA) }}
+            {% if can_reassign %}
+            <button class="btn btn-sm btn-outline-secondary ms-1"
+                    data-bs-toggle="modal" data-bs-target="#reassignMnemonicCodeModal"
+                    hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_code_reassign_form', mnemonic_code_id=r.id) }}"
+                    hx-target="#reassignMnemonicCodeFormContainer" hx-trigger="click"
+                    title="Reassign to a new owner (system admin)">
+              <i class="fas fa-right-left"></i>
+            </button>
+            {% endif %}
+          </td>
+          {% endif %}
+        </tr>
+        {% else %}
+        <tr><td colspan="{{ 6 if can_edit else 5 }}" class="text-center text-muted py-4">
+          No mnemonic codes match the current filters.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
