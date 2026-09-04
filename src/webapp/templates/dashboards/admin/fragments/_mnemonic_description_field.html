@@ -14,7 +14,10 @@
 #}
 {% macro mnemonic_description_field(id_prefix, current_description='') %}
 {% set p = id_prefix %}
-{% set start_mode = 'custom' if current_description else 'match' %}
+{# Match is always the default (even on edit/reassign, where the current value
+   shows in the "Selected" badge + the live indicator); Custom is a deliberate
+   opt-in for a name not in the tables. #}
+{% set start_mode = 'match' %}
 <div class="mb-3 mnemonic-desc-control">
     <label class="form-label">Description <span class="text-danger">*</span></label>
 
