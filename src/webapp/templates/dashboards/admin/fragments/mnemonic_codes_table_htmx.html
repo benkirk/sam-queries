@@ -38,41 +38,6 @@
     </div>
   </form>
 
-  {% if missing %}
-  <div class="alert alert-warning py-2 px-3 mb-3">
-    <button type="button" class="btn btn-link btn-sm text-decoration-none p-0 fw-semibold"
-            data-bs-toggle="collapse" data-bs-target="#mnemonicMissingPanel"
-            aria-expanded="false" aria-controls="mnemonicMissingPanel">
-      <i class="fas fa-triangle-exclamation me-1"></i>
-      {{ missing | length | fmt_number }} affiliation{{ '' if missing|length == 1 else 's' }}
-      need a mnemonic (blocking XRAS pushes)
-    </button>
-    <div id="mnemonicMissingPanel" class="collapse mt-2">
-      <div class="small text-muted mb-2">Ranked by the pushes each missing code would unblock. Create one to fix it.</div>
-      <ul class="list-group list-group-flush">
-        {% for t in missing %}
-        <li class="list-group-item bg-transparent d-flex justify-content-between align-items-center px-0 py-1">
-          <span>
-            <span class="badge bg-secondary-subtle text-secondary-emphasis border me-2">{{ t.family }}</span>
-            {{ t.name }}
-            <span class="text-muted small ms-1">unblocks {{ t.unblock_count | fmt_number }}</span>
-          </span>
-          {% if has_permission(Permission.CREATE_ORG_METADATA) %}
-          <button type="button" class="btn btn-sm btn-outline-primary"
-                  data-bs-toggle="modal" data-bs-target="#createMnemonicCodeModal"
-                  hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_code_create_form', description=t.prefill) }}"
-                  hx-target="#createMnemonicCodeFormContainer" hx-trigger="click"
-                  title="Create a mnemonic for {{ t.name }}">
-            <i class="fas fa-plus"></i> Create
-          </button>
-          {% endif %}
-        </li>
-        {% endfor %}
-      </ul>
-    </div>
-  </div>
-  {% endif %}
-
   <div class="text-muted small mb-2">
     {{ rows | length | fmt_number }} code{{ '' if rows|length == 1 else 's' }} shown
   </div>
