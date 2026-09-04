@@ -8,7 +8,8 @@ from sam.resources.facilities import ProjectCode
 from sam.projects.projects import formulate_projcode
 from sam.queries.mnemonic_console import (
     claiming_code, describes_live_entity, mnemonic_inventory, search_targets,
-    suggest_discontinuity)
+    suggest_codes, suggest_discontinuity)
+from sam.queries.mnemonic_console import _candidate_bases
 from sam.schemas.forms import EditMnemonicCodeForm, ReassignMnemonicForm
 
 from factories import (
@@ -237,6 +238,76 @@ class TestDescribesLiveEntity:
 
     def test_empty_is_none(self, session):
         assert describes_live_entity(session, '   ') is None
+
+
+class TestCandidateBases:
+    """The pure name->3-char logic, snapshot-independent (no DB)."""
+
+    def test_org_acronym_wins_when_clean(self):
+        assert _candidate_bases("Weather Modeling & Research", "WMR")[0] == "WMR"
+
+    def test_initials_drop_stopwords_keep_single_letters(self):
+        assert "UAF" in _candidate_bases("University of Alaska Fairbanks", None)
+        assert "UAF" in _candidate_bases("U OF ALASKA FAIRBANKS", None)
+
+    def test_initials_include_city_token(self):
+        assert "UCB" in _candidate_bases("University of Colorado, Boulder", None)
+
+    def test_ampersand_is_dropped(self):
+        assert "WMR" in _candidate_bases("Weather Modeling & Research", None)
+
+    def test_acronym_equal_to_name_is_ignored(self):
+        # A dirty acronym (== the full name, spaces) never becomes a candidate.
+        cands = _candidate_bases("Foo Bar Baz", "Foo Bar Baz")
+        assert cands[0] == "FBB"
+
+    def test_long_name_offers_first_two_plus_last(self):
+        cands = _candidate_bases("National Center for Atmospheric Research", None)
+        assert "NCR" in cands  # first-2 + last: National, Center, ... Research
+
+    def test_every_candidate_is_three_upper(self):
+        import re
+        for c in _candidate_bases("University of Colorado, Boulder", "CUB"):
+            assert re.fullmatch(r'[A-Z]{3}', c)
+
+
+class TestSuggestCodes:
+
+    def test_empty_description_is_empty_list(self, session):
+        assert suggest_codes(session, '   ') == []
+
+    def test_results_are_valid_unique_and_free(self, session):
+        import re
+        from sam.core.organizations import MnemonicCode
+        taken = {mc.code for mc in session.query(MnemonicCode)}
+        out = suggest_codes(session, f"{_N} University of Testing Springs")
+        assert out, "expected at least one suggestion"
+        assert len(out) == len(set(out))
+        for c in out:
+            assert re.fullmatch(r'[A-Z]{3}', c)
+            assert c not in taken
+
+    def test_collision_falls_through_to_variant(self, session):
+        # A base already owned by a code is skipped; a 3rd-char variant is offered.
+        org = make_organization(session, name=f"{_N} Qqz Collide Org")
+        org.acronym = "QQZ"
+        session.flush()
+        make_mnemonic_code(session, code="QQZ", description=f"{_N} Owns QQZ")
+        out = suggest_codes(session, f"{_N} Qqz Collide Org", limit=30)
+        assert "QQZ" not in out  # the taken code is filtered out
+        # the 3rd-char sweep off the QQZ base still offers QQ-variants
+        assert any(c.startswith("QQ") and c != "QQZ" for c in out)
+
+    def test_matched_org_contributes_its_acronym(self, session):
+        org = make_organization(session, name=f"{_N} Suggestor Match Org")
+        org.acronym = "SMX"
+        session.flush()
+        # SMX free? if taken the suggestor still must not return it.
+        from sam.core.organizations import MnemonicCode
+        taken = {mc.code for mc in session.query(MnemonicCode)}
+        out = suggest_codes(session, f"{_N} Suggestor Match Org")
+        if "SMX" not in taken:
+            assert "SMX" in out
 
 
 def _row_for(rows, code):

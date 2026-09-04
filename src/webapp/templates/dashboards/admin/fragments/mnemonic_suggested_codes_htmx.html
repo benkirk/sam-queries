@@ -1,0 +1,14 @@
+{# htmx: suggested collision-free codes for the mnemonic create form.
+   A chip fills #createMcCode (mc-fill-code). Empty -> nothing rendered. #}
+{% if codes %}
+<div class="small text-muted mb-1">
+  <i class="fas fa-wand-magic-sparkles me-1"></i>Suggested (collision-free):
+</div>
+<div class="d-flex flex-wrap gap-1">
+  {% for c in codes %}
+  <button type="button" class="btn btn-sm btn-outline-primary font-monospace py-0"
+          data-action="mc-fill-code" data-code="{{ c }}"
+          title="Use {{ c }}">{{ c }}</button>
+  {% endfor %}
+</div>
+{% endif %}

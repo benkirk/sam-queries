@@ -641,6 +641,17 @@ def htmx_mnemonic_match_check():
         claimed_by=claiming_code(db.session, description, exclude_code=exclude))
 
 
+@bp.route('/htmx/mnemonic-suggest-codes')
+@login_required
+@require_permission(Permission.CREATE_ORG_METADATA)
+def htmx_mnemonic_suggest_codes():
+    """Collision-free code chips for the create form's current description."""
+    from sam.queries.mnemonic_console import suggest_codes
+    return render_template(
+        'dashboards/admin/fragments/mnemonic_suggested_codes_htmx.html',
+        codes=suggest_codes(db.session, request.args.get('description', '')))
+
+
 # CRUD quintets — generated from specs
 #
 # Endpoints, URL rules, templates, permissions, and not-found messages are

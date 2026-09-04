@@ -303,6 +303,14 @@
         var results = control.querySelector('[id$="TargetResults"]');
         if (results) { results.innerHTML = ''; }
     });
+    /* Create form: a suggested-code chip fills the Code field; the input's own
+     * uppercase handler then normalizes it. */
+    registerAction('mc-fill-code', function (btn) {
+        var input = document.getElementById('createMcCode');
+        if (!input) { return; }
+        input.value = btn.dataset.code || '';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
 
     /* Edit Allocation form: break-inheritance unlock checkbox */
     registerAction('alloc-break-inheritance', function (checkbox) {
@@ -501,16 +509,19 @@
         }
     });
 
-    /* Admin -> Contracts opened from a contract-blocker link: the page carries
-     * data-auto-open-create="<seeded create-form url>". Load it into the New
-     * Contract modal and show it — the project-details-modal pair, on page
-     * load, because CSP (script-src 'self') forbids an inline script. */
+    /* A page opened from a data-blocker link carries data-auto-open-create=
+     * "<seeded create-form url>". Load it into the named create modal and show
+     * it on page load (CSP: no inline script). Modal + container ids default to
+     * the Contracts pair; the mnemonics page overrides via data-modal-id /
+     * data-target-id. */
     document.addEventListener('DOMContentLoaded', function () {
         var opener = document.querySelector('[data-auto-open-create]');
-        var modal = document.getElementById('createContractModal');
-        if (!opener || !modal) { return; }
+        if (!opener) { return; }
+        var modal = document.getElementById(opener.dataset.modalId || 'createContractModal');
+        if (!modal) { return; }
+        var targetId = opener.dataset.targetId || 'createContractFormContainer';
         htmx.ajax('GET', opener.dataset.autoOpenCreate,
-                  {target: '#createContractFormContainer', swap: 'innerHTML'});
+                  {target: '#' + targetId, swap: 'innerHTML'});
         bootstrap.Modal.getOrCreateInstance(modal).show();
     });
 })();

@@ -13,7 +13,14 @@ push path's NCAR-lab arm.
 
 from __future__ import annotations
 
+import re
+from string import ascii_uppercase
 from typing import Any, Dict, List, Optional
+
+# Dropped when initialing a name; single letters are KEPT ("U OF ALASKA
+# FAIRBANKS" -> UAF), so the list is words, not characters.
+_STOPWORDS = frozenset({'of', 'the', 'and', 'at', 'for', 'in', 'on', 'to',
+                        'a', 'an', '&', 'de', 'du', 'di', 'la', 'le'})
 
 
 def mnemonic_inventory(session, *, active_only: bool = True) -> List[Dict[str, Any]]:
@@ -138,6 +145,114 @@ def suggest_discontinuity(last_issued) -> int:
     """Next round hundred strictly above the high-water mark (min 100) — the
     reassignment gap the console pre-fills so an operator need not invent one."""
     return max(100, ((int(last_issued or 0) // 100) + 1) * 100)
+
+
+def suggest_codes(session, description, *, limit: int = 6) -> List[str]:
+    """Ranked, collision-free ``[A-Z]{3}`` candidates for a new mnemonic.
+
+    The finder is the primary line of defense; this is the operator's safety net
+    for the residual gaps it leaves (a genuinely new, unmapped org/institution).
+    Prefers a clean acronym, then name-initials (stopwords dropped, single
+    letters kept), then the first word, then a 3rd-char sweep to break collisions;
+    everything already owned by a code is filtered out.
+    """
+    from sam.core.organizations import MnemonicCode
+
+    d = (description or '').strip()
+    if not d:
+        return []
+    _, acronym = _entity_for_suggest(session, d)
+    taken = {mc.code for mc in session.query(MnemonicCode)}
+
+    out: List[str] = []
+    seen: set = set()
+    for cand in _candidate_bases(d, acronym):
+        if (re.fullmatch(r'[A-Z]{3}', cand) and cand not in taken
+                and cand not in seen):
+            seen.add(cand)
+            out.append(cand)
+            if len(out) >= limit:
+                break
+    return out
+
+
+def _entity_for_suggest(session, description) -> tuple:
+    """``(name, acronym)`` the description routes to, else ``(description, None)``.
+
+    Same resolution order as ``describes_live_entity`` (org exact/soft, then
+    institution), but returns the acronym so ``suggest_codes`` can prefer it.
+    """
+    from sqlalchemy import func
+
+    from sam.core.organizations import (Institution, MnemonicCode, Organization,
+                                        _MnemonicLookup)
+
+    d = (description or '').strip()
+    if not d:
+        return '', None
+    key = d.casefold()
+
+    org = (session.query(Organization)
+           .filter(Organization.is_active, func.lower(Organization.name) == key).first())
+    if org:
+        return org.name, org.acronym
+    probe = _MnemonicLookup({key: 'HIT'})
+    probe.soft = {MnemonicCode._soft_key(d): 'HIT'}
+    for o in session.query(Organization).filter(Organization.is_active):
+        if MnemonicCode.resolve_for_organization(o, probe) == 'HIT':
+            return o.name, o.acronym
+
+    inst = (session.query(Institution)
+            .filter(Institution.deleted.isnot(True), func.lower(Institution.name) == key).first())
+    if inst:
+        return inst.name, inst.acronym
+    inst = (session.query(Institution)
+            .filter(Institution.deleted.isnot(True),
+                    func.lower(func.concat(Institution.name, ', ', Institution.city)) == key).first())
+    if inst:
+        return inst.name, inst.acronym
+    return d, None
+
+
+def _clean(s) -> str:
+    return re.sub(r'[^A-Z]', '', (s or '').upper())
+
+
+def _sig_words(name) -> List[str]:
+    raw = re.findall(r'[A-Za-z]+', name or '')
+    words = [w for w in raw if w.lower() not in _STOPWORDS]
+    return words or raw
+
+
+def _candidate_bases(name, acronym) -> List[str]:
+    """Ordered 3-char candidates (pre-filter): acronym, initials, first word,
+    then a 3rd-char sweep off the best base to break collisions."""
+    cands: List[str] = []
+    ac = _clean(acronym)
+    # A clean acronym only: no spaces, short, and not just the full name echoed
+    # back (institution acronyms are frequently the whole name).
+    if (acronym and ' ' not in acronym and len(acronym) <= 8
+            and acronym.casefold() != (name or '').casefold() and len(ac) >= 3):
+        cands.append(ac[:3])
+
+    words = _sig_words(name)
+    initials = [w[0].upper() for w in words]
+    if len(initials) >= 3:
+        cands.append(''.join(initials[:3]))
+    if len(words) > 3:
+        cands.append(initials[0] + initials[1] + initials[-1])
+    if words:
+        first = _clean(words[0])
+        if len(first) >= 3:
+            cands.append(first[:3])
+        cons = _clean(''.join(c for c in words[0] if c.lower() not in 'aeiou'))
+        if len(cons) >= 3:
+            cands.append(cons[:3])
+
+    base = next((c for c in cands if re.fullmatch(r'[A-Z]{3}', c)), None)
+    if base:
+        cands.extend(base[:2] + ch for ch in ascii_uppercase)
+    return cands
 
 
 def describes_live_entity(session, description) -> Optional[Dict[str, Any]]:

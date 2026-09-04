@@ -24,5 +24,14 @@
                    style="max-width: 8rem;">
         </div>
 
+        {# Suggested codes: driven by the description below, so every entry point
+           that seeds a description (XRAS strip, missing-side, org/inst tables)
+           inherits the suggestor. A chip fills the Code field (mc-fill-code). #}
+        <div id="createMcSuggestions" class="mb-3"
+             hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_suggest_codes') }}"
+             hx-target="this" hx-swap="innerHTML"
+             hx-include="#createMcDescription"
+             hx-trigger="load, mc:picked from:#createMcDescription, keyup changed delay:500ms from:#createMcDescription"></div>
+
         {{ mnemonic_description_field('createMc', (form.get('description') if form else prefill_description) or '') }}
 {% endcall %}

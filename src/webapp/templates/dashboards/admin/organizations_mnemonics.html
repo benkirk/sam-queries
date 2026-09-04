@@ -3,6 +3,14 @@
 {% block title %}Admin: Mnemonic Codes - SAM{% endblock %}
 
 {% block organizations_content %}
+{% if auto_create_url %}
+{# Opened from an XRAS mnemonic-blocker link (?create=<name>): form-helpers.js
+   loads this into the New Mnemonic Code modal and shows it on load (CSP: no
+   inline JS). Mirrors Contracts' ?create= auto-open. #}
+<div data-auto-open-create="{{ auto_create_url }}"
+     data-modal-id="createMnemonicCodeModal"
+     data-target-id="createMnemonicCodeFormContainer"></div>
+{% endif %}
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0 flex-grow-1">

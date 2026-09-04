@@ -162,7 +162,20 @@ def organizations():
 @require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)
 def organizations_mnemonics():
     """Admin Mnemonic Codes console (sub-tab under Organizations, htmx-loaded table)."""
-    return render_template('dashboards/admin/organizations_mnemonics.html', user=current_user)
+    return render_template('dashboards/admin/organizations_mnemonics.html',
+                           user=current_user,
+                           auto_create_url=_mnemonic_auto_create_url())
+
+
+def _mnemonic_auto_create_url():
+    """The seeded create-form URL a ``?create=<description>`` link asks the page
+    to open (mirrors ``_auto_create_url`` for contracts). Only for a user who can
+    create the metadata — the modal shell it targets is under the same guard."""
+    description = (request.args.get('create') or '').strip()
+    if not description or not has_permission(current_user, Permission.CREATE_ORG_METADATA):
+        return None
+    return url_for('admin_dashboard.htmx_mnemonic_code_create_form',
+                   description=description)
 
 
 @bp.route('/contracts')

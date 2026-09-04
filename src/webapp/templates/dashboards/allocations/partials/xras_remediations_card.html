@@ -144,9 +144,9 @@
                         data-field="blockers" data-value="mnemonic"
                         title="Filter the table to the requests this blocks">Show in&nbsp;table&nbsp;›</button>
                 Create the code in
-                <a href="{{ url_for('admin_dashboard.organizations') }}">Admin&nbsp;→&nbsp;Organizations</a>:
+                <a href="{{ url_for('admin_dashboard.organizations_mnemonics') }}">Admin&nbsp;→&nbsp;Mnemonic&nbsp;Codes</a>:
                 {% for t in _mtargets[:6] %}
-                <a href="{{ url_for('admin_dashboard.organizations') }}"
+                <a href="{{ url_for('admin_dashboard.organizations_mnemonics', create=t.prefill) }}"
                    title="{{ t.family }} · would unblock {{ t.unblock_count }} — {{ t.sample | join(', ') }}">{{ t.name }}</a>&nbsp;({{ t.unblock_count }}){% if not loop.last %} ·{% endif %}
                 {% endfor %}
                 {% if _mtargets | length > 6 %}

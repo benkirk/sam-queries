@@ -805,6 +805,13 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_mnemonic_suggest_codes",
+    "/admin/htmx/mnemonic-suggest-codes",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_nsf_program_create",
     "/admin/htmx/nsf-program-create",
     [
