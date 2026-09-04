@@ -73,6 +73,22 @@ class Organization(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSe
     projects = relationship('ProjectOrganization', back_populates='organization')
     users = relationship('UserOrganization', back_populates='organization')
 
+    def ancestry(self, *, include_self: bool = True) -> list['Organization']:
+        """This org and its ancestors, deepest first (leaf -> root), via parent_org_id.
+
+        NOT NestedSetMixin.get_ancestors(): org tree_left/right are NULL (vestigial),
+        so that returns []. parent_org_id is the live hierarchy; the seen set guards a
+        cycle the unconstrained self-FK could otherwise hold.
+        """
+        chain: list['Organization'] = []
+        node = self if include_self else self.parent
+        seen: set = set()
+        while node is not None and node.organization_id not in seen:
+            seen.add(node.organization_id)
+            chain.append(node)
+            node = node.parent
+        return chain
+
     def update(
         self,
         *,

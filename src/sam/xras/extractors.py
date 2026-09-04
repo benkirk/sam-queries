@@ -529,19 +529,12 @@ def _select_institution(user: User, wire_org: Optional[str], lookup: dict):
 
 
 def _organization_parentage(org: Optional[Organization]) -> List[Organization]:
-    """The org and its ancestors, **deepest first**, root last.
+    """The org and its ancestors, deepest first, root last.
 
-    ``DefaultUserAffiliationQuery`` walks ``getParentOrg()`` to the top. The visited
-    set is a cycle guard: ``parent_org_id`` is a self-FK with nothing stopping a
-    loop, and an import that made one would otherwise hang the request thread.
+    ``DefaultUserAffiliationQuery`` walks ``getParentOrg()`` to the top. Delegates to
+    ``Organization.ancestry`` (one cycle-guarded walker shared with the display side).
     """
-    parentage: List[Organization] = []
-    seen = set()
-    while org is not None and org.organization_id not in seen:
-        seen.add(org.organization_id)
-        parentage.append(org)
-        org = org.parent
-    return parentage
+    return org.ancestry() if org is not None else []
 
 
 def _lab_level_organization(parentage: List[Organization]) -> Optional[Organization]:
