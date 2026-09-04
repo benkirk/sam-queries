@@ -1,8 +1,13 @@
 name: Deploy to Staging
 
 on:
-  push:
-    branches: [staging]
+  # Gated in code 2026-09-04: this workflow was disabled in the GitHub UI weeks
+  # ago, but the manual disable stopped being honored for push events — it fired
+  # on the #508 and #510 staging merges (both failed against the retired AWS ECS
+  # target). Commenting the push trigger guarantees it in code. Uncomment these
+  # two lines to restore automatic staging deploys.
+  # push:
+  #   branches: [staging]
   workflow_dispatch:
 
 concurrency:

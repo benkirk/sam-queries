@@ -199,7 +199,6 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # per-row Edit button uses the edit_modal_button macro, which the closure walker
     # does not expand, so #editMnemonicCodeModal is not (and need not be) listed.
     'dashboards/admin/fragments/mnemonic_codes_table_htmx.html': [
-        'createMnemonicCodeFormContainer', 'createMnemonicCodeModal',
         'reassignMnemonicCodeFormContainer', 'reassignMnemonicCodeModal'],
     'dashboards/admin/fragments/nsf_program_contracts_htmx.html': [
         'contractDetailsModalBody'],

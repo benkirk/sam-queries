@@ -294,3 +294,45 @@ class TestUpdateNSFProgram:
         any_nsf_program.update()
         assert any_nsf_program.nsf_program_name == original
         session.rollback()
+
+
+# ============================================================================
+# Organization.ancestry()  (parent_org_id walk; the shared tree primitive)
+# ============================================================================
+
+
+class TestOrganizationAncestry:
+
+    def test_deepest_first_chain(self, session):
+        from factories import make_organization
+        root = make_organization(session, name="Ancestry Root")
+        mid = make_organization(session, name="Ancestry Mid",
+                                parent_org_id=root.organization_id)
+        leaf = make_organization(session, name="Ancestry Leaf",
+                                 parent_org_id=mid.organization_id)
+        assert [o.organization_id for o in leaf.ancestry()] == [
+            leaf.organization_id, mid.organization_id, root.organization_id]
+
+    def test_exclude_self_starts_at_parent(self, session):
+        from factories import make_organization
+        root = make_organization(session, name="Excl Root")
+        leaf = make_organization(session, name="Excl Leaf",
+                                 parent_org_id=root.organization_id)
+        assert [o.organization_id for o in leaf.ancestry(include_self=False)] == [
+            root.organization_id]
+
+    def test_single_node_is_just_self(self, session):
+        from factories import make_organization
+        solo = make_organization(session, name="Solo Org")
+        assert [o.organization_id for o in solo.ancestry()] == [solo.organization_id]
+
+    def test_cycle_terminates(self, session):
+        from factories import make_organization
+        a = make_organization(session, name="AncCycle A")
+        b = make_organization(session, name="AncCycle B",
+                              parent_org_id=a.organization_id)
+        a.parent_org_id = b.organization_id
+        session.flush()
+        session.expire(a)
+        assert {o.organization_id for o in b.ancestry()} == {
+            a.organization_id, b.organization_id}

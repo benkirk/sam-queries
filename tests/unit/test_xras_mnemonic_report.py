@@ -119,6 +119,36 @@ class TestUnresolvedBucket:
         assert len(report['unresolved']) == 1
         assert report['unresolved'][0]['pi'] == 'pi-orphan'
 
+
+class TestResolvableElsewhere:
+    """A multi-affiliation PI whose best institution is unmapped but another resolves
+    (the kkeene/kheyblom shape): an affiliation-ordering fix, not a new code."""
+
+    def test_reclassified_out_of_targets(self, session):
+        user = make_user(session, username='pi-multi')
+        unmapped = make_institution(session, name='Unmapped First Institute')
+        resolvable = make_institution(session, name='Resolvable Second Institute')
+        make_mnemonic_code(session, description='Resolvable Second Institute')
+        make_user_institution(session, user=user, institution=unmapped)   # first-current
+        make_user_institution(session, user=user, institution=resolvable)
+        report = mnemonic_unblock_report(
+            session, _snapshot(_entry('NCAR0001', 'pi-multi', messages=[EXTERNAL])))
+        assert not any(t['name'] == 'Unmapped First Institute' for t in report['targets'])
+        assert len(report['resolvable']) == 1
+        r = report['resolvable'][0]
+        assert r['pi'] == 'pi-multi'
+        assert r['name'] == 'Unmapped First Institute'
+        assert r['via_name'] == 'Resolvable Second Institute'
+
+    def test_single_unmapped_institution_is_still_a_target(self, session):
+        user = make_user(session, username='pi-solo')
+        inst = make_institution(session, name='Only Unmapped Institute')
+        make_user_institution(session, user=user, institution=inst)
+        report = mnemonic_unblock_report(
+            session, _snapshot(_entry('NCAR0001', 'pi-solo', messages=[EXTERNAL])))
+        assert any(t['name'] == 'Only Unmapped Institute' for t in report['targets'])
+        assert report['resolvable'] == []
+
     def test_a_pi_sam_does_not_know(self, session):
         report = mnemonic_unblock_report(
             session, _snapshot(_entry('NCAR0001', 'ghost-user-1', messages=[INTERNAL])))
@@ -167,7 +197,7 @@ class TestSharedLeafWithTheIngestResolver:
                                  mapped=True)
         row, errs = self._ingest(session, user)
         assert row is not None and not errs
-        status, name, _ = self._report(session, user)
+        status, name, _, _ = self._report(session, user)
         assert (status, name) == ('mapped', org.name)
 
     def test_an_unmapped_org_reads_unmapped_in_both(self, session):
@@ -175,7 +205,7 @@ class TestSharedLeafWithTheIngestResolver:
                                  mapped=False)
         row, errs = self._ingest(session, user)
         assert row is None and list(errs)          # ingest reports the miss
-        status, name, _ = self._report(session, user)
+        status, name, _, _ = self._report(session, user)
         assert (status, name) == ('unmapped', org.name)
 
 

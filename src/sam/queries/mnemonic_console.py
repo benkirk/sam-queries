@@ -17,10 +17,13 @@ import re
 from string import ascii_uppercase
 from typing import Any, Dict, List, Optional
 
-# Dropped when initialing a name; single letters are KEPT ("U OF ALASKA
-# FAIRBANKS" -> UAF), so the list is words, not characters.
+# Dropped when initialing a name. "university" goes too: the projcode facility
+# letter is already "U", so a University-led mnemonic is redundant ("University
+# of Victoria" -> VIC -> UVIC, not UUVI). A bare "U" abbreviation token is KEPT
+# ("U OF ALASKA FAIRBANKS" -> UAF) — only the spelled-out word is dropped.
 _STOPWORDS = frozenset({'of', 'the', 'and', 'at', 'for', 'in', 'on', 'to',
-                        'a', 'an', '&', 'de', 'du', 'di', 'la', 'le'})
+                        'a', 'an', '&', 'de', 'du', 'di', 'la', 'le',
+                        'university'})
 
 
 def mnemonic_inventory(session, *, active_only: bool = True) -> List[Dict[str, Any]]:
@@ -34,7 +37,8 @@ def mnemonic_inventory(session, *, active_only: bool = True) -> List[Dict[str, A
     reverse: Dict[str, List[dict]] = {}
     for org_id, name in session.query(Organization.organization_id, Organization.name)\
             .filter(Organization.is_active):
-        code = MnemonicCode.resolve_for_organization(_Named(name), lookup)
+        code = MnemonicCode.resolve_for_organization(_Named(name), lookup,
+                                                     walk_parents=False)
         if code:
             reverse.setdefault(code, []).append(
                 {'kind': 'organization', 'id': org_id, 'name': name})
@@ -199,7 +203,7 @@ def _entity_for_suggest(session, description) -> tuple:
     probe = _MnemonicLookup({key: 'HIT'})
     probe.soft = {MnemonicCode._soft_key(d): 'HIT'}
     for o in session.query(Organization).filter(Organization.is_active):
-        if MnemonicCode.resolve_for_organization(o, probe) == 'HIT':
+        if MnemonicCode.resolve_for_organization(o, probe, walk_parents=False) == 'HIT':
             return o.name, o.acronym
 
     inst = (session.query(Institution)
@@ -279,7 +283,7 @@ def describes_live_entity(session, description) -> Optional[Dict[str, Any]]:
     probe = _MnemonicLookup({key: 'HIT'})
     probe.soft = {MnemonicCode._soft_key(d): 'HIT'}
     for o in session.query(Organization).filter(Organization.is_active):
-        if MnemonicCode.resolve_for_organization(o, probe) == 'HIT':
+        if MnemonicCode.resolve_for_organization(o, probe, walk_parents=False) == 'HIT':
             return {'kind': 'organization', 'name': o.name}
 
     inst = (session.query(Institution)
