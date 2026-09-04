@@ -533,29 +533,61 @@ class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
                 return result
         return lookup.get((inst.name or '').casefold())
 
-    @staticmethod
-    def resolve_for_organization(org, lookup: dict) -> str | None:
-        """Resolve the mnemonic code for an Organization by name, or None.
+    #: Org level_codes too broad to inherit a mnemonic from when walking parents:
+    #: UCAR corporation (0100) and NCAR center (0200) — the latter really owns a
+    #: code (NAR), so an uncapped walk could mint a deep org under it.
+    _MNEMONIC_WALK_STOP_LEVELS = frozenset({'0100', '0200'})
 
-        Exact match first, then the injective &/and + Lab/Laboratory soft key.
-        WARNING: legacy's UserOrganizationStrategy matched the name as a
-        *substring* (ilike ANYWHERE); the SAM port narrowed that to exact, which
-        broke on the 2026 lab renames. The soft fallback restores that tolerance
-        safely (see ``build_lookup``); institutions stay exact, as in legacy.
+    @staticmethod
+    def _resolve_org_name(name, lookup) -> str | None:
+        """Leaf lookup: exact, then the injective &/and + Lab/Laboratory soft key.
+
+        build_lookup keeps the exact and soft key spaces disjoint, so this stays
+        unambiguous.
         """
-        name = org.name or ''
-        code = lookup.get(name.casefold())
+        code = lookup.get((name or '').casefold())
         if code:
             return code
-        # The org's normalized key may match either an exact description (which
-        # already spells it "and"/"Laboratory") or a soft alias; build_lookup
-        # keeps the two key spaces disjoint, so this stays unambiguous.
-        soft_key = MnemonicCode._soft_key(name)
-        code = lookup.get(soft_key) or (getattr(lookup, 'soft', None) or {}).get(soft_key)
+        soft_key = MnemonicCode._soft_key(name or '')
+        return lookup.get(soft_key) or (getattr(lookup, 'soft', None) or {}).get(soft_key)
+
+    @staticmethod
+    def resolve_for_organization(org, lookup: dict, *,
+                                 walk_parents: bool = True) -> str | None:
+        """Resolve the mnemonic code for an Organization, or None.
+
+        Leaf name first (exact, then the injective &/and + Lab/Laboratory soft key);
+        on a miss, climb ``parent_org_id`` to the nearest coded ancestor. Monotonic:
+        the leaf is tried first, so the walk only turns a failure into a success
+        (WMR -> parent MMM). Ancestors at UCAR/NCAR level are too broad to mint under
+        and are skipped, so a genuine gap still falls to the human suggestor.
+
+        ``walk_parents=False`` is the leaf-only form the console's reverse lookups
+        need — probing "which org does this description name" must not climb, and the
+        ``_Named`` stub has no tree.
+
+        WARNING: legacy's UserOrganizationStrategy matched the leaf name as a
+        *substring* (ilike ANYWHERE); the SAM port narrowed that to exact (broke on
+        the 2026 lab renames). The soft key restores that tolerance safely (see
+        ``build_lookup``); the parent walk is net-new. Institutions stay exact.
+        """
+        if org is None:
+            return None
+        code = MnemonicCode._resolve_org_name(org.name, lookup)
         if code:
-            logger.debug('mnemonic for org %r resolved via soft match -> %s '
-                         '(description drifted from the org name)', name, code)
-        return code
+            return code
+        ancestry = getattr(org, 'ancestry', None)
+        if not walk_parents or not callable(ancestry):
+            return None
+        for ancestor in ancestry(include_self=False):
+            if ancestor.level_code in MnemonicCode._MNEMONIC_WALK_STOP_LEVELS:
+                continue
+            code = MnemonicCode._resolve_org_name(ancestor.name, lookup)
+            if code:
+                logger.debug('mnemonic for org %r inherited from ancestor %r -> %s',
+                             org.name, ancestor.name, code)
+                return code
+        return None
 
     @classmethod
     def create(cls, session, *, code: str, description: str) -> 'MnemonicCode':
