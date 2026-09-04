@@ -16,7 +16,11 @@
   by email and organization — a university address and an NCAR-staff one. A
   name match picks between them arbitrarily, and merge DELETES the loser and
   moves the placeholder's roles onto the winner. So the safe key is email and
-  organization, never the name, and the operator chooses.
+  organization, never the name, and the operator chooses. A single STRONG match
+  (rank 0 — the email resolves to it) is the opposite case, nothing to choose
+  between, so it is shown read-only as the confirmed target (no radio); Cancel
+  rejects it. A single WEAK match still gets a radio — a name-only hit is not
+  trustworthy enough to confirm for the operator.
 
   Deliberate deviation from the plan: the override is a plain text input, not
   an FK picker. A picker over SAM users would return a SAM username, and the
@@ -66,6 +70,52 @@
       hx-target="#auditDetailsModalBody"
       hx-swap="innerHTML">
 
+    {% if candidates | length == 1 and candidates[0].rank == 0 %}
+    {# A single STRONG match (rank 0 — the email resolves to this identity) is
+       the confirmed target, shown read-only: no radio to click, nothing to
+       choose between. The value rides a hidden input so the schema still gets a
+       `candidate`; Cancel is the way out if it is somehow wrong. A single WEAK
+       match (name/organization only) is NOT auto-confirmed — it falls to the
+       radio branch below, where the operator must pick it deliberately and the
+       override is available. The never-preselect rule is about that ambiguity. #}
+    {% set candidate = candidates[0] %}
+    <div class="mb-3">
+        <div class="form-label">Merging into</div>
+        <input type="hidden" name="candidate" value="{{ candidate.username }}">
+        <div class="xras-candidate list-group-item d-flex gap-2 align-items-start rounded mb-1">
+            <i class="fas fa-arrow-right-to-bracket mt-1 flex-shrink-0 text-success-emphasis" aria-hidden="true"></i>
+            <span class="flex-grow-1">
+                <span class="font-monospace">{{ candidate.username }}</span>
+                {% if candidate.rank == 0 %}
+                <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">{{ candidate.why }}</span>
+                {% elif candidate.rank == 1 %}
+                <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle">{{ candidate.why }}</span>
+                {% else %}
+                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">{{ candidate.why }}</span>
+                {% endif %}
+                <br>
+                <span class="small">{{ candidate.name }}</span>
+                <span class="small text-muted">· {{ candidate.email }}</span>
+                <span class="small text-muted">· {{ candidate.organization }}</span>
+                {% if candidate.reconciled is true %}
+                <span class="badge bg-body-secondary text-body-secondary border fw-normal"
+                      title="XRAS has linked this username to a confirmed person">identified</span>
+                {% elif candidate.reconciled is false %}
+                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+                      title="XRAS has not confirmed the person behind this username — merging into it keeps the placeholder's roles on an unconfirmed identity">unidentified</span>
+                {% endif %}
+                <br>
+                {% if candidate.sam_active %}
+                <span class="small text-success">has an active SAM account — the handoff can proceed after the merge</span>
+                {% elif candidate.in_sam %}
+                <span class="small text-warning">SAM account exists but is inactive</span>
+                {% else %}
+                <span class="small text-muted">no SAM account — the person will still need one created</span>
+                {% endif %}
+            </span>
+        </div>
+    </div>
+    {% else %}
     <div class="mb-3">
         <div class="form-label">
             Merge into
@@ -81,12 +131,14 @@
            click anywhere on it picks the candidate, and `.xras-candidate`
            (allocations.css) marks the picked card. A bare radio at the edge
            of a wide card was missed on the real thing.
-           NO `checked` on any radio, even when there is only one — the
-           choice must be made, never inherited. And NO `required`: native
-           constraint validation would block the free-text override below
-           (the browser insists a radio be picked, the schema refuses a
-           radio beside an override), making the documented "none of these
-           is right" path unreachable. The exactly-one guarantee lives in
+           NO `checked` on any radio — the choice must be made, never inherited
+           (a single STRONG match does not reach here; it is the confirmed
+           target above — but a single weak, name-only match does, as one
+           unchecked radio). And NO `required`: native constraint
+           validation would block the free-text override below (the browser
+           insists a radio be picked, the schema refuses a radio beside an
+           override), making the documented "none of these is right" path
+           unreachable. The exactly-one guarantee lives in
            XrasMergeForm._exactly_one_target, which renders a real error. #}
         <label class="xras-candidate list-group-item list-group-item-action d-flex gap-2 align-items-start rounded mb-1"
                for="cand-{{ loop.index }}">
@@ -137,6 +189,7 @@
     {{ text_field('target_username', 'Or merge into a different XRAS username',
                   placeholder='exact XRAS username',
                   help='Only if none of the candidates above is right. The name must already exist in XRAS — a username that does not would be CREATED, and this placeholder\'s roles moved onto it.') }}
+    {% endif %}
 
     {{ textarea_field('comment', 'Note', rows=2, maxlength=4000,
                       placeholder='Why this target? (recorded in the remediation log)') }}

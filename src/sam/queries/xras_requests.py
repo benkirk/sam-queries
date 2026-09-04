@@ -294,6 +294,33 @@ def latest_action_type(actions) -> Optional[str]:
     return latest.get('action_type')
 
 
+#: Blocker categories a swept request can be stuck on, in display order. The slug
+#: is what the facet filter round-trips; the label is the chip text.
+BLOCKER_LABELS = (('mnemonic', 'Mnemonic'), ('contract', 'Contract'),
+                  ('account', 'Account'))
+
+
+def row_blockers(row: Mapping[str, Any]) -> set:
+    """Which push-blocker categories a Remediations row is stuck on.
+
+    Derived, not stored: the same three signals the unblock reports pivot on —
+    the mnemonic 422 prefix, the structured unresolved-grant channel, and the
+    stuck-placeholder flag. Pure, so the card route and a unit test agree.
+    """
+    from sam.xras.errors import MNEMONIC_EXTERNAL_PREFIX, MNEMONIC_INTERNAL_PREFIX
+    kinds = set()
+    for action in row.get('actions') or []:
+        preflight = action.get('preflight') or {}
+        if any((m or '').startswith((MNEMONIC_INTERNAL_PREFIX, MNEMONIC_EXTERNAL_PREFIX))
+               for m in (preflight.get('messages') or [])):
+            kinds.add('mnemonic')
+        if (preflight.get('resolved') or {}).get('unresolved_grants'):
+            kinds.add('contract')
+    if row.get('has_stuck_placeholder'):
+        kinds.add('account')
+    return kinds
+
+
 def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
                         refreshed_at: Any = None,
                         preflights: Optional[Mapping[Any, dict]] = None
