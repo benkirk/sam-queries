@@ -1,6 +1,12 @@
-{# htmx: live match indicator for the mnemonic description field. #}
+{# htmx: live match indicator for the mnemonic description field.
+   Collision (description already owned by another code) wins — it is a hard save
+   error — then the routes-to / orphaned status. #}
 {% if not description %}
 {# blank — say nothing #}
+{% elif claimed_by %}
+<div class="small text-danger-emphasis">
+    <i class="fas fa-circle-xmark me-1"></i>Already used by mnemonic <span class="font-monospace">{{ claimed_by }}</span> — descriptions must be unique
+</div>
 {% elif match %}
 <div class="small text-success-emphasis">
     <i class="fas fa-circle-check me-1"></i>Routes to {{ match.kind }} <span class="fw-semibold">{{ match.name }}</span>

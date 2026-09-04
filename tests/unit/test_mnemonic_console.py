@@ -7,7 +7,8 @@ from sam.core.organizations import MnemonicCode
 from sam.resources.facilities import ProjectCode
 from sam.projects.projects import formulate_projcode
 from sam.queries.mnemonic_console import (
-    describes_live_entity, mnemonic_inventory, search_targets)
+    claiming_code, describes_live_entity, mnemonic_inventory, search_targets,
+    suggest_discontinuity)
 from sam.schemas.forms import EditMnemonicCodeForm, ReassignMnemonicForm
 
 from factories import (
@@ -138,6 +139,15 @@ class TestForms:
                 {'description': 'X', 'facility_id': '3', 'next_start': '0'})
 
 
+class TestSuggestDiscontinuity:
+
+    @pytest.mark.parametrize('last, expected', [
+        (0, 100), (4, 100), (85, 100), (99, 100),
+        (100, 200), (142, 200), (250, 300), (None, 100)])
+    def test_next_round_hundred_strictly_above(self, last, expected):
+        assert suggest_discontinuity(last) == expected
+
+
 class TestPreviewMath:
 
     def test_effective_number_honors_floor_and_high_water(self):
@@ -165,6 +175,41 @@ class TestSearchTargets:
 
     def test_empty_query_returns_nothing(self, session):
         assert search_targets(session, '  ') == []
+
+    def test_claimed_entity_is_flagged(self, session):
+        # An org whose name already equals a mnemonic's description cannot be re-used.
+        make_organization(session, name=f"{_N} Taken Org Theta")
+        mc = make_mnemonic_code(session, description=f"{_N} Taken Org Theta")
+        hit = next(t for t in search_targets(session, f"{_N} Taken Org Theta")
+                   if t['kind'] == 'organization')
+        assert hit['claimed_by'] == mc.code
+
+    def test_exclude_code_frees_its_own_claim(self, session):
+        # Editing the very code that owns the description: its own entity stays pickable.
+        make_organization(session, name=f"{_N} Self Org Iota")
+        mc = make_mnemonic_code(session, description=f"{_N} Self Org Iota")
+        hit = next(t for t in search_targets(session, f"{_N} Self Org Iota",
+                                             exclude_code=mc.code)
+                   if t['kind'] == 'organization')
+        assert hit['claimed_by'] is None
+
+
+class TestClaimingCode:
+
+    def test_returns_the_owning_code(self, session):
+        mc = make_mnemonic_code(session, description=f"{_N} Owned Desc Kappa")
+        assert claiming_code(session, f"{_N} Owned Desc Kappa") == mc.code
+
+    def test_case_insensitive(self, session):
+        mc = make_mnemonic_code(session, description=f"{_N} Mixed Case Lambda")
+        assert claiming_code(session, f"{_N} mixed case lambda") == mc.code
+
+    def test_excludes_self(self, session):
+        mc = make_mnemonic_code(session, description=f"{_N} Own It Mu")
+        assert claiming_code(session, f"{_N} Own It Mu", exclude_code=mc.code) is None
+
+    def test_unclaimed_is_none(self, session):
+        assert claiming_code(session, f"{_N} Nobody Owns This Nu") is None
 
 
 class TestDescribesLiveEntity:

@@ -30,7 +30,7 @@ from webapp.utils.htmx import (
 )
 from webapp.extensions import db, cache, user_aware_cache_key
 from webapp.utils.rbac import (
-    has_permission_any_facility,
+    has_permission, has_permission_any_facility,
     require_permission, require_permission_any_facility, Permission,
 )
 from sam.manage import management_transaction
@@ -428,6 +428,7 @@ def htmx_mnemonic_codes_table():
         counts=counts, facet=facet, q=q, active_only=active_only,
         missing=_mnemonic_missing_targets(),
         can_edit=has_permission_any_facility(current_user, Permission.EDIT_ORG_METADATA),
+        can_reassign=has_permission(current_user, Permission.SYSTEM_ADMIN),
     )
 
 
@@ -487,7 +488,9 @@ def htmx_mnemonic_code_edit(mnemonic_code_id):
 
 
 def _mnemonic_reassign_context(mc):
-    """Facilities dropdown + this code's current per-facility high-water marks."""
+    """Facilities dropdown + this code's per-facility high-water marks + the
+    suggested discontinuity floor for each (so the operator need not pick one)."""
+    from sam.queries.mnemonic_console import suggest_discontinuity
     from sam.resources.facilities import Facility, ProjectCode
 
     facilities = (db.session.query(Facility)
@@ -496,12 +499,15 @@ def _mnemonic_reassign_context(mc):
     last_by_facility = dict(
         db.session.query(ProjectCode.facility_id, ProjectCode.digits)
         .filter(ProjectCode.mnemonic_code_id == mc.mnemonic_code_id))
-    return {'facilities': facilities, 'last_by_facility': last_by_facility}
+    suggested_by_facility = {f.facility_id: suggest_discontinuity(last_by_facility.get(f.facility_id, 0))
+                             for f in facilities}
+    return {'facilities': facilities, 'last_by_facility': last_by_facility,
+            'suggested_by_facility': suggested_by_facility}
 
 
 @bp.route('/htmx/mnemonic-code-reassign-form/<int:mnemonic_code_id>')
 @login_required
-@require_permission(Permission.EDIT_ORG_METADATA)
+@require_permission(Permission.SYSTEM_ADMIN)
 def htmx_mnemonic_code_reassign_form(mnemonic_code_id):
     """Reassign form — repoint description + insert a digit-band discontinuity."""
     mc = _load_mnemonic_or_404(mnemonic_code_id)
@@ -514,7 +520,7 @@ def htmx_mnemonic_code_reassign_form(mnemonic_code_id):
 
 @bp.route('/htmx/mnemonic-code-reassign-preview/<int:mnemonic_code_id>')
 @login_required
-@require_permission(Permission.EDIT_ORG_METADATA)
+@require_permission(Permission.SYSTEM_ADMIN)
 def htmx_mnemonic_code_reassign_preview(mnemonic_code_id):
     """Live 'next code' preview for the reassign form (no side effects)."""
     from sam.projects.projects import formulate_projcode
@@ -537,7 +543,7 @@ def htmx_mnemonic_code_reassign_preview(mnemonic_code_id):
 
 @bp.route('/htmx/mnemonic-code-reassign/<int:mnemonic_code_id>', methods=['POST'])
 @login_required
-@require_permission(Permission.EDIT_ORG_METADATA)
+@require_permission(Permission.SYSTEM_ADMIN)
 def htmx_mnemonic_code_reassign(mnemonic_code_id):
     """Repoint the description and raise one facility's counter, in one transaction."""
     from sam.core.organizations import MnemonicCode
@@ -584,7 +590,8 @@ def htmx_mnemonic_code_reassign(mnemonic_code_id):
 
 def _search_mnemonic_targets(q, active_only):
     from sam.queries.mnemonic_console import search_targets
-    return search_targets(db.session, q)
+    return search_targets(db.session, q,
+                          exclude_code=request.args.get('exclude_code') or None)
 
 
 register_typeahead(
@@ -600,14 +607,16 @@ register_typeahead(
 @login_required
 @require_permission_any_facility(Permission.VIEW_ORG_METADATA)
 def htmx_mnemonic_match_check():
-    """Live indicator: which live org/institution the typed description would route to."""
-    from sam.queries.mnemonic_console import describes_live_entity
+    """Live indicator: which entity the description routes to, or a code collision."""
+    from sam.queries.mnemonic_console import claiming_code, describes_live_entity
 
     description = request.args.get('description', '')
+    exclude = request.args.get('exclude_code') or None
     return render_template(
         'dashboards/admin/fragments/mnemonic_match_status_htmx.html',
         description=description.strip(),
-        match=describes_live_entity(db.session, description))
+        match=describes_live_entity(db.session, description),
+        claimed_by=claiming_code(db.session, description, exclude_code=exclude))
 
 
 # CRUD quintets — generated from specs

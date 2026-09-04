@@ -12,7 +12,7 @@
   No `required` attr: it can be hidden in match mode, and a hidden required field
   blocks native submit; the schemas enforce description server-side.
 #}
-{% macro mnemonic_description_field(id_prefix, current_description='') %}
+{% macro mnemonic_description_field(id_prefix, current_description='', exclude_code='') %}
 {% set p = id_prefix %}
 {# Match is always the default (even on edit/reassign, where the current value
    shows in the "Selected" badge + the live indicator); Custom is a deliberate
@@ -20,6 +20,10 @@
 {% set start_mode = 'match' %}
 <div class="mb-3 mnemonic-desc-control">
     <label class="form-label">Description <span class="text-danger">*</span></label>
+    {# The code being edited — so search/indicator don't flag its own description
+       as a collision. Rides the POST too, but the form schemas drop it (EXCLUDE). #}
+    <input type="hidden" id="{{ p }}ExcludeCode" name="exclude_code" value="{{ exclude_code }}">
+
 
     <div class="btn-group btn-group-sm mb-2 w-100" role="group" aria-label="Description entry mode">
         <input type="radio" class="btn-check" name="{{ p }}_desc_mode" id="{{ p }}ModeMatch"
@@ -45,7 +49,7 @@
                    autocomplete="off" placeholder="Search organizations and institutions"
                    hx-get="{{ url_for('admin_dashboard.htmx_search_mnemonic_targets') }}"
                    hx-target="#{{ p }}TargetResults" hx-swap="innerHTML"
-                   hx-trigger="input changed delay:300ms" hx-include="this">
+                   hx-trigger="input changed delay:300ms" hx-include="this, #{{ p }}ExcludeCode">
         </div>
         <div id="{{ p }}TargetResults" class="list-group mb-1"></div>
         <div id="{{ p }}SelectedBadge" class="small text-muted mb-1"{% if not current_description %} style="display:none"{% endif %}>
@@ -59,7 +63,8 @@
                value="{{ current_description }}"
                placeholder="e.g. University of Colorado, Boulder"
                hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_match_check') }}"
-               hx-target="#{{ p }}MatchStatus" hx-swap="innerHTML" hx-include="this"
+               hx-target="#{{ p }}MatchStatus" hx-swap="innerHTML"
+               hx-include="this, #{{ p }}ExcludeCode"
                hx-trigger="keyup changed delay:400ms, mc:picked, load">
     </div>
 

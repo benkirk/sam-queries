@@ -276,6 +276,15 @@
         matchBlock.style.display = isMatch ? '' : 'none';
         customBlock.style.display = isMatch ? 'none' : '';
     });
+    /* Reassign form: picking a facility auto-fills the suggested discontinuity
+     * floor for that facility, then refreshes the projcode preview. */
+    registerAction('reassign-fac', function (sel) {
+        var opt = sel.options[sel.selectedIndex];
+        var suggested = opt && opt.dataset ? opt.dataset.suggested : '';
+        var input = document.getElementById('reassignNextStart');
+        if (input && suggested) { input.value = suggested; }
+        document.body.dispatchEvent(new CustomEvent('mc:reassignpreview', { bubbles: true }));
+    });
     registerAction('mc-pick-target', function (row) {
         var control = row.closest('.mnemonic-desc-control');
         if (!control) { return; }

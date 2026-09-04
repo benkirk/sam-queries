@@ -15,7 +15,7 @@
 ) %}
         {{ readonly_display('Code', mc.code) }}
 
-        {{ mnemonic_description_field('editMc', (form.get('description') if form else mc.description) or '') }}
+        {{ mnemonic_description_field('editMc', (form.get('description') if form else mc.description) or '', exclude_code=mc.code) }}
 
         {{ checkbox_field('active', 'Active',
                           default=mc.active,

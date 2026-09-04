@@ -83,7 +83,7 @@
           <th scope="col">Links to</th>
           <th scope="col" class="text-end">Minted</th>
           <th scope="col">Status</th>
-          {% if can_edit %}<th scope="col" class="text-end">Actions</th>{% endif %}
+          {% if can_edit or can_reassign %}<th scope="col" class="text-end">Actions</th>{% endif %}
         </tr>
       </thead>
       <tbody>
@@ -119,19 +119,21 @@
             <span class="badge bg-secondary-subtle text-secondary-emphasis border">Retired</span>
             {% endif %}
           </td>
-          {% if can_edit %}
+          {% if can_edit or can_reassign %}
           <td class="text-end text-nowrap">
             {{ edit_modal_button(
                 url_for('admin_dashboard.htmx_mnemonic_code_edit_form', mnemonic_code_id=r.id),
                 modal_id='editMnemonicCodeModal', target_id='editMnemonicCodeFormContainer',
                 title='Edit description / status', permission=Permission.EDIT_ORG_METADATA) }}
+            {% if can_reassign %}
             <button class="btn btn-sm btn-outline-secondary ms-1"
                     data-bs-toggle="modal" data-bs-target="#reassignMnemonicCodeModal"
                     hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_code_reassign_form', mnemonic_code_id=r.id) }}"
                     hx-target="#reassignMnemonicCodeFormContainer" hx-trigger="click"
-                    title="Reassign to a new owner (digit-band discontinuity)">
+                    title="Reassign to a new owner (system admin)">
               <i class="fas fa-right-left"></i>
             </button>
+            {% endif %}
           </td>
           {% endif %}
         </tr>

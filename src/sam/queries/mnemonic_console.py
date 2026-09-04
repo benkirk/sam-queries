@@ -79,17 +79,42 @@ class _Named:
         self.city = city
 
 
-def search_targets(session, q, *, limit: int = 15) -> List[Dict[str, Any]]:
+def _description_claims(session) -> Dict[str, str]:
+    """casefold(description) -> code, over ALL mnemonics (description is UNIQUE,
+    active or not) — so the picker can flag an entity a code already claims."""
+    from sam.core.organizations import MnemonicCode
+    return {mc.description.casefold(): mc.code for mc in session.query(MnemonicCode)}
+
+
+def claiming_code(session, description, *, exclude_code=None) -> Optional[str]:
+    """The code whose description already equals `description` (not `exclude_code`)."""
+    d = (description or '').strip()
+    if not d:
+        return None
+    code = _description_claims(session).get(d.casefold())
+    return code if code and code != exclude_code else None
+
+
+def search_targets(session, q, *, limit: int = 15,
+                   exclude_code=None) -> List[Dict[str, Any]]:
     """Active orgs + institutions matching `q`, each with its resolver-exact string.
 
     `description` is what the operator must store for the code to route: `org.name`
-    for an org, `"name, city"` (else `name`) for an institution.
+    for an org, `"name, city"` (else `name`) for an institution. `claimed_by` is a
+    code that already owns that description (unique) — non-`exclude_code` — so the
+    UI can bar re-using it.
     """
     from sam.core.organizations import Institution, Organization
 
     q = (q or '').strip()
     if not q:
         return []
+    claims = _description_claims(session)
+
+    def _claimed(desc):
+        code = claims.get(desc.casefold())
+        return code if code and code != exclude_code else None
+
     like = f"%{q}%"
     out: List[Dict[str, Any]] = []
     for o in (session.query(Organization)
@@ -97,14 +122,22 @@ def search_targets(session, q, *, limit: int = 15) -> List[Dict[str, Any]]:
                       Organization.name.ilike(like) | Organization.acronym.ilike(like))
               .order_by(Organization.name).limit(limit)):
         out.append({'kind': 'organization', 'id': o.organization_id,
-                    'name': o.name, 'city': None, 'description': o.name})
+                    'name': o.name, 'city': None, 'description': o.name,
+                    'claimed_by': _claimed(o.name)})
     for i in (session.query(Institution)
               .filter(Institution.deleted.isnot(True), Institution.name.ilike(like))
               .order_by(Institution.name).limit(limit)):
         desc = f"{i.name}, {i.city}" if i.city else i.name
         out.append({'kind': 'institution', 'id': i.institution_id,
-                    'name': i.name, 'city': i.city, 'description': desc})
+                    'name': i.name, 'city': i.city, 'description': desc,
+                    'claimed_by': _claimed(desc)})
     return out
+
+
+def suggest_discontinuity(last_issued) -> int:
+    """Next round hundred strictly above the high-water mark (min 100) — the
+    reassignment gap the console pre-fills so an operator need not invent one."""
+    return max(100, ((int(last_issued or 0) // 100) + 1) * 100)
 
 
 def describes_live_entity(session, description) -> Optional[Dict[str, Any]]:
