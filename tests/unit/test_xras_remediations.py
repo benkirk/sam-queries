@@ -2366,3 +2366,30 @@ class TestBlockerFacet:
         assert 'fa-file-contract' in body   # contract
         # The account icon replaces the old verbose "placeholder roster" badge.
         assert 'placeholder roster' not in body
+
+
+class TestProjcodePreview:
+    """The readiness partial previews the projcode a would-land New request would
+    mint — series + a placeholder for the number, which is only assigned at
+    creation (a race). Shared by the request-detail and readiness modals."""
+
+    _T = 'dashboards/allocations/partials/_xras_readiness_why.html'
+
+    def test_a_would_land_new_shows_the_projcode_shape(self, app):
+        with app.test_request_context():
+            from flask import render_template
+            html = render_template(self._T, action={'preflight': {
+                'status': 'rechecked', 'would_succeed': True,
+                'resolved': {'series': 'NRAL', 'allocation_type': 'University'}}})
+        assert 'Would be created as' in html
+        assert 'NRAL' in html and 'opacity-50">xxxx' in html
+        assert '· University' in html          # keeps the allocation-type suffix
+
+    def test_a_would_fail_action_shows_no_projcode(self, app):
+        # No series without a resolved mint -> no preview (also the New-only gate).
+        with app.test_request_context():
+            from flask import render_template
+            html = render_template(self._T, action={'preflight': {
+                'status': 'failed', 'would_succeed': False,
+                'messages': ['x'], 'resolved': {}}})
+        assert 'created as' not in html
