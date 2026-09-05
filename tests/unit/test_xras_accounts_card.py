@@ -458,6 +458,27 @@ class TestFacets:
         with pytest.raises(ValueError):
             _account_facets([], 'nonsense')
 
+    def test_origin_of_buckets_a_row(self):
+        """Mergeable wins over placeholder; the rest is placeholder-vs-known."""
+        from webapp.dashboards.allocations.xras._shared import _origin_of
+
+        assert _origin_of({'placeholder': True, 'remedy': 'merge'}) == 'mergeable'
+        assert _origin_of({'placeholder': True, 'remedy': 'create'}) == 'placeholder'
+        assert _origin_of({'placeholder': False, 'remedy': 'reactivate'}) == 'known'
+
+    def test_origin_carves_mergeable_out_of_placeholder(self):
+        """A mergeable placeholder leaves the placeholder count for its own."""
+        from webapp.dashboards.allocations.xras._shared import (
+            _account_facets, _filter_accounts)
+
+        rows = [{'placeholder': True, 'remedy': 'merge', 'roles': ()},
+                {'placeholder': True, 'remedy': 'create', 'roles': ()},
+                {'placeholder': False, 'remedy': 'reactivate', 'roles': ()}]
+        assert _account_facets(rows, 'origin') == {
+            'placeholder': 1, 'known': 1, 'mergeable': 1}
+        merged = _filter_accounts(rows, origins=['mergeable'])
+        assert merged == [rows[0]]
+
     def test_filters_are_anded_across_dimensions(self):
         from webapp.dashboards.allocations.xras._shared import _filter_accounts
 
@@ -768,6 +789,23 @@ class TestReadyToMerge:
         body = auth_client.get(f'{URL}?remedy=merge').get_data(as_text=True)
         assert 'placeholder38-user-00038' in body
         body = auth_client.get(f'{URL}?remedy=create').get_data(as_text=True)
+        assert 'placeholder38-user-00038' not in body
+
+    def test_the_identity_column_shows_mergeable_not_unidentified(
+            self, auth_client, committed_worklist_action, merge_ready_email_user):
+        """The actionable state wins the identity column — the whole point of the
+        badge: an operator spots the merge without opening the row."""
+        body = auth_client.get(URL).get_data(as_text=True)
+        identity = body.split('placeholder38-user-00038', 1)[1]
+        assert '>mergeable<' in identity
+        assert '>unidentified<' not in identity.split('</tr>', 1)[0]
+
+    def test_the_identity_facet_offers_mergeable(self, auth_client,
+                                                 committed_worklist_action,
+                                                 merge_ready_email_user):
+        body = auth_client.get(f'{URL}?origin=mergeable').get_data(as_text=True)
+        assert 'placeholder38-user-00038' in body
+        body = auth_client.get(f'{URL}?origin=placeholder').get_data(as_text=True)
         assert 'placeholder38-user-00038' not in body
 
     def test_view_only_sees_the_target_but_never_the_email(
