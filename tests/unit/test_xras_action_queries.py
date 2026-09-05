@@ -30,6 +30,7 @@ from sam.queries.xras_actions import (
 from sam.queries.xras_activation import (
     ATTENTION_RECENT_DAYS,
     needs_attention,
+    notify_only_project_ids,
     ACTIVITY_TAGS,
     XRAS_SERVICE_KINDS,
     get_latest_xras_action_id,
@@ -303,6 +304,47 @@ class TestProjectExistenceFlags:
         got = get_recent_xras_actions(session, action_log_id=row.xras_action_log_id)
         assert got[0]['request_is_project'] is False
         assert got[0]['result_is_project'] is False
+
+
+class TestNotifyOnlyProjectIds:
+    """The bulk 'dismiss notify-only' selector — per project, never sweeping a
+    project that still needs manual activation."""
+
+    @staticmethod
+    def _row(project_id, *, notifiable=True, notified=False,
+             needs_activation=False, dismissed=False):
+        return {'project_id': project_id, 'notifiable': notifiable,
+                'notified': notified, 'needs_activation': needs_activation,
+                'dismissed': dismissed}
+
+    def test_a_pure_notify_only_project_qualifies(self):
+        assert notify_only_project_ids([self._row(10)]) == [10]
+
+    def test_a_notified_project_does_not(self):
+        assert notify_only_project_ids([self._row(10, notified=True)]) == []
+
+    def test_a_dismissed_project_does_not(self):
+        assert notify_only_project_ids([self._row(10, dismissed=True)]) == []
+
+    def test_a_non_notifiable_project_does_not(self):
+        assert notify_only_project_ids([self._row(10, notifiable=False)]) == []
+
+    def test_a_needs_activation_project_is_excluded(self):
+        assert notify_only_project_ids([self._row(10, needs_activation=True)]) == []
+
+    def test_a_project_with_both_rows_is_excluded_whole(self):
+        """The trap: an older notify-only action AND a latest needs-activation
+        action. A project-scoped dismiss would suppress the activation too, so
+        the whole project stays out."""
+        rows = [self._row(10, needs_activation=False),
+                self._row(10, needs_activation=True, notifiable=False)]
+        assert notify_only_project_ids(rows) == []
+
+    def test_it_selects_only_the_clean_projects_sorted(self):
+        rows = [self._row(30), self._row(10),
+                self._row(20, needs_activation=True),
+                self._row(20, needs_activation=False)]
+        assert notify_only_project_ids(rows) == [10, 30]
 
 
 class TestSummary:

@@ -1491,6 +1491,13 @@
     ]
   ],
   [
+    "allocations_dashboard.htmx_search_mnemonic_codes",
+    "/allocations/htmx/search-mnemonic-codes",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.index",
     "/allocations/",
     [
@@ -1617,6 +1624,13 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_clear_override",
+    "/allocations/xras_clear_override/<kind>",
+    [
+      "POST"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_comment",
     "/allocations/xras_comment/<int:project_id>",
     [
@@ -1656,6 +1670,13 @@
     "/allocations/xras_dismiss_form/<int:project_id>",
     [
       "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_dismiss_notify_only",
+    "/allocations/xras_dismiss_notify_only",
+    [
+      "POST"
     ]
   ],
   [
@@ -1822,6 +1843,13 @@
   [
     "allocations_dashboard.xras_role_remove",
     "/allocations/xras_role_remove/<path:request_number>/<int:role_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_set_override",
+    "/allocations/xras_set_override",
     [
       "POST"
     ]

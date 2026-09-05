@@ -25,7 +25,9 @@ from sam.queries.xras_actions import get_recent_xras_actions
 from sam.queries.xras_activation import (
     get_latest_xras_action_id,
     get_xras_activation_events,
+    get_xras_activity,
     get_xras_pending_recipients,
+    notify_only_project_ids,
 )
 # Full dotted path, never through `sam.queries` — that package imports its
 # submodules eagerly, and this one imports `sam.notify`. See the module
@@ -391,6 +393,37 @@ def xras_restore(project_id: int):
     return htmx_success_message(
         {'refreshXrasTab': {}},
         f'Restored {project.projcode} to the attention queue.')
+
+
+@bp.route('/xras_dismiss_notify_only', methods=['POST'])
+@login_required
+@require_permission(Permission.ADMIN_XRAS)
+def xras_dismiss_notify_only():
+    """Bulk-dismiss every project whose only remaining step is a notification.
+
+    Temporary: notices still send from XRAS, not SAM, so a notify-only row never
+    flips to ``notified`` on its own and lingers in the queue forever. A higher
+    bar than the per-row Dismiss (ADMIN_XRAS), because it clears many at once.
+
+    The selector is per PROJECT and excludes any project needing manual
+    activation (see :func:`notify_only_project_ids`), so this never suppresses an
+    activation. Re-safe: already-dismissed projects fall out of the selector; a
+    duplicate click writes a superseding ``dismissed`` event. One transaction.
+    """
+    ids = notify_only_project_ids(get_xras_activity(db.session))
+    with management_transaction(db.session):
+        for pid in ids:
+            project = _load_pending_project(pid)
+            if project is not None:
+                _record_activation_event(
+                    project, 'dismissed',
+                    comment='Bulk: notification-only, pending SAM-side notices')
+
+    return htmx_success_message(
+        {'refreshXrasTab': {}},
+        f'Dismissed {len(ids)} notify-only project(s).',
+        detail='Restore any under Everything in the window; a new XRAS action '
+               'brings one back.')
 
 
 @bp.route('/xras_history/<int:project_id>')

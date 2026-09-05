@@ -135,6 +135,142 @@ class XrasOpportunityAllocationType(Base):
                 f"allocation_type_id={self.allocation_type_id})>")
 
 
+#: ``xras_request_override.kind`` vocabulary. Each names a blocker an operator
+#: waives for one specific XRAS request from the Remediations modal: ``mnemonic``
+#: pins the code the projcode is minted from (bypassing org/institution
+#: resolution); ``ignore_contract`` waives the "Cannot find contract" 422 so the
+#: project is created with the erroneous grant unlinked. Validated in
+#: :meth:`XrasRequestOverride.set` — the column is a bare ``VARCHAR`` by design.
+XRAS_REQUEST_OVERRIDE_KINDS = ('mnemonic', 'ignore_contract')
+
+
+#----------------------------------------------------------------------------
+class XrasRequestOverride(Base, SessionMixin, ActiveFlagMixin):
+    """One operator decision that unblocks a single XRAS request at ingest.
+
+    This is an actual database TABLE (not a view). Like
+    :class:`XrasOpportunityAllocationType` it is a local table populated
+    out-of-band and **read at ingest** — here by ``sam.xras.extractors`` /
+    ``handlers`` while resolving a New action — never written by anything that
+    talks to the XRAS API.
+
+    Keyed on ``request_number`` (the ``NCAR####`` / projcode token the whole
+    subsystem keys on — the card, the reports and the recheck all use it) plus
+    ``kind``, so at most one active override of each kind exists per request.
+    Clearing sets ``active`` False and keeps the row as the trail; re-setting
+    flips it back.
+
+    WARNING: **Not ``request_id``.** The XRAS ``requestId`` is per-request-line and
+    volatile — a re-issue mints a new one, orphaning an id-keyed override, and a
+    request family exposes several ids for one ``request_number``. ``request_id``
+    is kept only as an informational column. The consult reads
+    ``get_field(action, 'requestNumber')``, which every action carries.
+
+    An override is a blunt escape hatch scoped to one request — the durable fix
+    for a mnemonic gap stays the Mnemonic Codes console (map the org). It is
+    reversible, which is why it is a local ``active`` flag, not an outbound write.
+    """
+    __tablename__ = 'xras_request_override'
+
+    __table_args__ = (
+        PrimaryKeyConstraint('request_number', 'kind', name='pk_xras_request_override'),
+        Index('xras_request_override_reqid', 'request_id'),
+    )
+
+    #: The ``NCAR####`` / projcode token — the stable consult key.
+    request_number = Column(String(128), nullable=False)
+
+    #: One of :data:`XRAS_REQUEST_OVERRIDE_KINDS`.
+    kind = Column(String(24), nullable=False)
+
+    #: The XRAS ``requestId`` at set time — informational only, NOT the key.
+    request_id = Column(Integer)
+
+    #: Set for ``kind='mnemonic'``, NULL for ``ignore_contract``.
+    mnemonic_code_id = Column(Integer,
+                              ForeignKey('mnemonic_code.mnemonic_code_id'))
+
+    #: ``manual`` — spelled like the sibling tables so a query reads the same.
+    source = Column(String(32), nullable=False, server_default=text("'manual'"))
+
+    #: The operator's reason. utf8mb4 (free text, real names).
+    comment = Column(String(255))
+
+    #: The human who set it, at ``users.username`` width.
+    created_by = Column(String(35), nullable=False)
+
+    #: App clock, naive-Mountain (not a server default — SAM's convention).
+    creation_time = Column(DateTime, nullable=False)
+    modified_time = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'),
+                           onupdate=text('CURRENT_TIMESTAMP'))
+
+    mnemonic_code = relationship('MnemonicCode', back_populates='request_overrides')
+
+    @classmethod
+    def set(cls, session, *, request_number, kind, created_by,
+            mnemonic_code_id=None, request_id=None, comment=None):
+        """Set (or re-set) the active override for ``(request_number, kind)``.
+
+        Upserts the one row for the key and returns it. ``mnemonic_code_id`` is
+        required for ``kind='mnemonic'`` and rejected for any other kind.
+
+        Raises:
+            ValueError: unknown *kind*, or a mnemonic_code_id / kind mismatch.
+        """
+        if kind not in XRAS_REQUEST_OVERRIDE_KINDS:
+            raise ValueError(
+                f"unknown xras_request_override.kind {kind!r}; "
+                f"expected one of {', '.join(XRAS_REQUEST_OVERRIDE_KINDS)}")
+        if kind == 'mnemonic' and mnemonic_code_id is None:
+            raise ValueError("kind='mnemonic' override requires a mnemonic_code_id")
+        if kind != 'mnemonic' and mnemonic_code_id is not None:
+            raise ValueError(f"kind={kind!r} override must not carry a mnemonic_code_id")
+
+        row = session.get(cls, {'request_number': request_number, 'kind': kind})
+        if row is None:
+            row = cls(request_number=request_number, kind=kind,
+                      creation_time=datetime.now())
+            session.add(row)
+        row.created_by = str(created_by)[:35]
+        row.mnemonic_code_id = mnemonic_code_id
+        row.request_id = request_id
+        row.comment = comment
+        row.active = True
+        session.flush()
+        return row
+
+    def clear(self):
+        """Deactivate this override, keeping the row as the trail."""
+        self.active = False
+        self.session.flush()
+        return self
+
+    def __str__(self):
+        target = (f"code {self.mnemonic_code_id}" if self.kind == 'mnemonic'
+                  else 'waive contract')
+        return (f"XRAS request {self.request_number} override "
+                f"{self.kind} -> {target}")
+
+    def __repr__(self):
+        return (f"<XrasRequestOverride(request_number={self.request_number!r}, "
+                f"kind={self.kind!r}, active={self.active})>")
+
+
+def lookup_request_override(session, request_number, kind):
+    """The active override of *kind* for *request_number*, or None.
+
+    The consult primitive shared by ``resolve_mnemonic_code`` (mnemonic) and
+    ``plan_contracts`` (ignore_contract).
+    """
+    if not request_number:
+        return None
+    return (session.query(XrasRequestOverride)
+            .filter(XrasRequestOverride.request_number == request_number)
+            .filter(XrasRequestOverride.kind == kind)
+            .filter(XrasRequestOverride.is_active)
+            .first())
+
+
 #----------------------------------------------------------------------------
 class XrasActionLog(Base):
     """Audit trail for ``POST /api/xras/v1/actions`` — one row per post.

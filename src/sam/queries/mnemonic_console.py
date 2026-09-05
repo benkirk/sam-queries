@@ -145,6 +145,29 @@ def search_targets(session, q, *, limit: int = 15,
     return out
 
 
+def search_mnemonic_codes(session, q, *, limit: int = 20) -> List[Dict[str, Any]]:
+    """Active mnemonic codes matching `q` on the code OR the linked entity name.
+
+    The soft-link stores the org/institution name in `description`, so matching
+    code + description searches by code or by the org/institution it represents,
+    inherently scoped to entities that already have a code. Powers the "Set
+    mnemonic code" picker in the XRAS Remediations readiness modal.
+    """
+    from sam.core.organizations import MnemonicCode
+
+    q = (q or '').strip()
+    if not q:
+        return []
+    like = f"%{q}%"
+    return [{'mnemonic_code_id': m.mnemonic_code_id, 'code': m.code,
+             'description': m.description}
+            for m in (session.query(MnemonicCode)
+                      .filter(MnemonicCode.is_active,
+                              MnemonicCode.code.ilike(like)
+                              | MnemonicCode.description.ilike(like))
+                      .order_by(MnemonicCode.code).limit(limit))]
+
+
 def suggest_discontinuity(last_issued) -> int:
     """Next round hundred strictly above the high-water mark (min 100) — the
     reassignment gap the console pre-fills so an operator need not invent one."""

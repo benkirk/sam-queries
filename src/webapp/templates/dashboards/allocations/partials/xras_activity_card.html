@@ -67,6 +67,18 @@
             {{ outside_count | fmt_number }} needing attention outside the date filter
         </span>
         {% endif %}
+        {# ADMIN_XRAS bulk lever. Temporary: notices still send from XRAS not
+           SAM, so notify-only rows never clear on their own. Excludes any
+           project needing manual activation (the route re-derives the set). #}
+        {% if can_bulk_dismiss and notify_only_count %}
+        <button type="button" class="btn btn-sm btn-outline-secondary ms-auto"
+                hx-post="{{ url_for('allocations_dashboard.xras_dismiss_notify_only') }}"
+                hx-swap="none"
+                hx-confirm="Dismiss {{ notify_only_count }} project(s) that only need a notification? Projects still needing manual activation are left untouched."
+                title="Dismiss every project whose only remaining step is a notification (temporary — notices are still sent from XRAS, not SAM)">
+            <i class="fas fa-bell-slash me-1"></i>Dismiss {{ notify_only_count | fmt_number }} notify-only
+        </button>
+        {% endif %}
     </div>
 
     {# The controls render whenever the card does — NOT only when rows

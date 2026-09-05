@@ -472,6 +472,7 @@ class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
     description = Column(String(200), nullable=False)
 
     project_codes = relationship('ProjectCode', back_populates='mnemonic_code')
+    request_overrides = relationship('XrasRequestOverride', back_populates='mnemonic_code')
 
     @staticmethod
     def _soft_key(text: str) -> str:

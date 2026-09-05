@@ -307,13 +307,19 @@ def row_blockers(row: Mapping[str, Any]) -> set:
     the mnemonic 422 prefix, the structured unresolved-grant channel, and the
     stuck-placeholder flag. Pure, so the card route and a unit test agree.
     """
-    from sam.xras.errors import MNEMONIC_EXTERNAL_PREFIX, MNEMONIC_INTERNAL_PREFIX
+    from sam.xras.errors import (MNEMONIC_EXTERNAL_PREFIX, MNEMONIC_INTERNAL_PREFIX,
+                                 NO_AFFILIATION_MARKERS)
     kinds = set()
     for action in row.get('actions') or []:
         preflight = action.get('preflight') or {}
-        if any((m or '').startswith((MNEMONIC_INTERNAL_PREFIX, MNEMONIC_EXTERNAL_PREFIX))
-               for m in (preflight.get('messages') or [])):
-            kinds.add('mnemonic')
+        for m in (preflight.get('messages') or []):
+            m = m or ''
+            # A resolved-but-uncoded affiliation carries a MNEMONIC_*_PREFIX; a
+            # missing affiliation carries neither but is the same push blocker
+            # (no code can be minted) and the same override fixes it.
+            if (m.startswith((MNEMONIC_INTERNAL_PREFIX, MNEMONIC_EXTERNAL_PREFIX))
+                    or any(marker in m for marker in NO_AFFILIATION_MARKERS)):
+                kinds.add('mnemonic')
         if (preflight.get('resolved') or {}).get('unresolved_grants'):
             kinds.add('contract')
     if row.get('has_stuck_placeholder'):

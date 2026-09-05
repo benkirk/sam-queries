@@ -417,15 +417,28 @@ _ACCOUNTS_TARGET = 'alloc-xras-accounts'
 #: past it still render, just without person detail.
 _ACCOUNTS_ENRICH_BUDGET = 25
 
-#: The ``placeholder`` facet's two values. Strings rather than a bool because a
-#: form round-trips strings, and ``'false'`` is truthy on the way back in.
+#: The Identity facet's three values. Strings rather than a bool because a form
+#: round-trips strings, and ``'false'`` is truthy on the way back in. MERGEABLE
+#: is carved out of PLACEHOLDER: a placeholder whose email SAM already holds on
+#: an active account (``remedy == 'merge'``) is the actionable subset, surfaced
+#: as its own state so it is distinguishable from a placeholder we cannot yet
+#: merge. Reuses the merge signal — it can never disagree with the Needs column.
 ORIGIN_PLACEHOLDER = 'placeholder'
 ORIGIN_KNOWN = 'known'
+ORIGIN_MERGEABLE = 'mergeable'
 
 _ORIGIN_LABELS = {
     ORIGIN_PLACEHOLDER: 'ARC placeholder',
     ORIGIN_KNOWN: 'Known identity',
+    ORIGIN_MERGEABLE: 'Mergeable',
 }
+
+
+def _origin_of(row) -> str:
+    """A row's Identity bucket — mergeable wins over placeholder/known."""
+    if _remedy_of(row) == REMEDY_MERGE:
+        return ORIGIN_MERGEABLE
+    return ORIGIN_PLACEHOLDER if row['placeholder'] else ORIGIN_KNOWN
 
 #: The ``source`` facet, keyed on the provenance tags a worklist row carries.
 #: A received-push row is the more urgent flavor (a push already arrived and is
@@ -440,13 +453,12 @@ def _filter_accounts(rows, *, remedies=None, roles=None, origins=None,
                      sources=None):
     """Facet filters: ANDed across dimensions, ORed within one.
 
-    *origins* is the ``placeholder`` dimension, expressed as the two values a
-    form can round-trip. It earns a facet because it separates the two
-    populations that share this card: an ARC placeholder is a researcher who
-    has never had a site account, while a non-placeholder is a real identity
-    whose account lapsed. Those are different pieces of work for different
-    people, and until now the only way to tell them apart was to read the shape
-    of the username.
+    *origins* is the Identity dimension, expressed as the three values a form
+    can round-trip. It separates the populations that share this card: an ARC
+    placeholder is a researcher who never had a site account, a known identity
+    had one that lapsed, and a *mergeable* row is the placeholder subset SAM can
+    absorb into an existing active account. Bucketed by ``_origin_of`` so the
+    filter and the counts cannot drift.
 
     *sources* is the provenance dimension — which feed put the row here. A row
     is kept when ANY selected source is one it carries, so a both-feeds row
@@ -462,8 +474,8 @@ def _filter_accounts(rows, *, remedies=None, roles=None, origins=None,
     if roles:
         out = [r for r in out if any(role in roles for role in r['roles'])]
     if origins:
-        wanted = {o == ORIGIN_PLACEHOLDER for o in origins}
-        out = [r for r in out if bool(r['placeholder']) in wanted]
+        wanted = set(origins)
+        out = [r for r in out if _origin_of(r) in wanted]
     if sources:
         out = [r for r in out
                if any(s in (r.get('sources') or ()) for s in sources)]
@@ -544,10 +556,12 @@ def _account_facets(rows, dimension, *, remedies=None, roles=None,
     if dimension == 'origin':
         scoped = _filter_accounts(rows, remedies=remedies,
                                   roles=roles, sources=sources)
-        return {
-            ORIGIN_PLACEHOLDER: sum(1 for r in scoped if r['placeholder']),
-            ORIGIN_KNOWN: sum(1 for r in scoped if not r['placeholder']),
-        }
+        # Mergeable is carved out of placeholder — same _origin_of the filter
+        # uses, so a mergeable row leaves the placeholder count.
+        counts = {ORIGIN_PLACEHOLDER: 0, ORIGIN_KNOWN: 0, ORIGIN_MERGEABLE: 0}
+        for r in scoped:
+            counts[_origin_of(r)] += 1
+        return counts
 
     if dimension == 'source':
         scoped = _filter_accounts(rows, remedies=remedies,
