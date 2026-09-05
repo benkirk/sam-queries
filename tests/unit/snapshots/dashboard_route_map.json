@@ -1673,6 +1673,13 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_dismiss_notify_only",
+    "/allocations/xras_dismiss_notify_only",
+    [
+      "POST"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_fragment",
     "/allocations/xras_fragment",
     [

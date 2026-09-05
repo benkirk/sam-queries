@@ -28,6 +28,7 @@ from sam.queries.xras_actions import (
 from sam.queries.xras_activation import (
     ATTENTION_RECENT_DAYS,
     needs_attention,
+    notify_only_project_ids,
     ACTIVITY_TAGS,
     get_xras_activity,
     get_xras_pending_recipients,
@@ -50,7 +51,7 @@ from ..blueprint import _window_control_context
 from ._shared import (
     _activity_in_window,
     scope_rows,
-    ORIGIN_KNOWN, ORIGIN_PLACEHOLDER, _ACCOUNT_REMEDY_LABELS,
+    ORIGIN_KNOWN, ORIGIN_MERGEABLE, ORIGIN_PLACEHOLDER, _ACCOUNT_REMEDY_LABELS,
     _ACCOUNTS_ENRICH_BUDGET, _ACCOUNTS_FORM_ID, _ACCOUNTS_TARGET,
     _ACTIVITY_TAG_LABELS, _ACTIVITY_WINDOW_PILLS, _ORIGIN_LABELS,
     _SOURCE_LABELS, _XRAS_ACTIVITY_FORM_ID,
@@ -301,6 +302,10 @@ def xras_pending_fragment():
         hidden_count=len(in_window) - queued_in_window,
         outside_count=attention_total - queued_in_window,
         recent_days=ATTENTION_RECENT_DAYS,
+        # Bulk "dismiss notify-only" is an ADMIN_XRAS lever: the count is over
+        # the whole set (not the window), matching "skip ALL pending notices".
+        notify_only_count=len(notify_only_project_ids(everything)),
+        can_bulk_dismiss=has_permission(current_user, Permission.ADMIN_XRAS),
         form_id=_XRAS_ACTIVITY_FORM_ID,
         fragment_url=url_for('allocations_dashboard.xras_pending_fragment'),
         target_id=_XRAS_ACTIVITY_TARGET,
@@ -427,7 +432,8 @@ def xras_accounts_fragment():
         role_values=[{'value': k, 'count': v} for k, v in role_facets.items()],
         origin_values=[{'value': k, 'label': _ORIGIN_LABELS[k],
                         'count': origin_facets.get(k, 0)}
-                       for k in (ORIGIN_PLACEHOLDER, ORIGIN_KNOWN)],
+                       for k in (ORIGIN_PLACEHOLDER, ORIGIN_KNOWN,
+                                 ORIGIN_MERGEABLE)],
         source_values=[{'value': k, 'label': _SOURCE_LABELS[k],
                         'count': source_facets.get(k, 0)}
                        for k in (SOURCE_ACTION_LOG, SOURCE_REPORTS)],

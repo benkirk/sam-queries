@@ -447,7 +447,15 @@
                                               username=row.username) }}"
                            hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
                         {% endif %}
-                        {% if row.is_reconciled is none %}
+                        {% if row.remedy == 'merge' %}
+                        {# The actionable state wins the column: this placeholder
+                           would otherwise read unidentified/misidentified, but
+                           SAM already holds its email on an active account, so
+                           it is ready to merge. Same signal as the Needs cell's
+                           "Ready to merge" badge — the two cannot disagree. #}
+                        <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle"
+                              title="SAM already holds this person's email on an active account — ready to merge">mergeable</span>
+                        {% elif row.is_reconciled is none %}
                         <span class="text-muted" title="XRAS was not asked">—</span>
                         {% elif row.is_reconciled and row.placeholder %}
                         {# WARNING: A CONTRADICTION, not a good state. Reconciliation

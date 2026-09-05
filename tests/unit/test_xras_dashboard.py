@@ -745,6 +745,71 @@ class TestActivityCardGating:
             in resp.data
 
 
+@pytest.fixture
+def manage_not_admin_client(auth_client, monkeypatch):
+    """`benkirk` with MANAGE_XRAS but *without* ADMIN_XRAS — the bar the bulk
+    dismiss sits above (the Part C pattern)."""
+    from webapp.utils import rbac
+
+    real = rbac.get_user_permissions
+
+    def _without_admin_xras(user):
+        return {p for p in real(user) if p is not Permission.ADMIN_XRAS}
+
+    monkeypatch.setattr(rbac, 'get_user_permissions', _without_admin_xras)
+    return auth_client
+
+
+class TestBulkDismissNotifyOnlyIsAdminOnly:
+    """The bulk 'dismiss notify-only' lever is ADMIN_XRAS — a higher bar than the
+    per-row Dismiss (MANAGE_XRAS), because it clears many projects at once."""
+
+    PATH = '/allocations/xras_dismiss_notify_only'
+
+    def test_a_manage_only_operator_is_forbidden(self, manage_not_admin_client):
+        """MANAGE_XRAS alone is not enough — the whole point of the gate.
+        (`view_only_client` is no negative here: it strips MANAGE but KEEPS
+        ADMIN_XRAS, so it is authorized.)"""
+        assert manage_not_admin_client.post(self.PATH).status_code == 403
+
+    def test_a_no_xras_operator_is_forbidden(self, non_admin_client):
+        assert non_admin_client.post(self.PATH).status_code == 403
+
+    def test_requires_login(self, client):
+        assert client.post(self.PATH).status_code in (302, 401)
+
+    def test_an_admin_gets_a_reload_trigger(self, auth_client):
+        """Empty DB -> zero targets, but the route still succeeds and fires the
+        card reload; '0' is a valid, distinguishable outcome."""
+        resp = auth_client.post(self.PATH)
+        assert resp.status_code == 200
+        assert 'refreshXrasTab' in resp.headers.get('HX-Trigger', '')
+
+    def test_the_button_renders_for_an_admin_with_targets(self, auth_client,
+                                                          monkeypatch):
+        from webapp.dashboards.allocations.xras import card_routes
+        monkeypatch.setattr(card_routes, 'notify_only_project_ids',
+                            lambda rows: [1, 2, 3])
+        body = auth_client.get('/allocations/xras_pending_fragment').get_data(
+            as_text=True)
+        assert 'xras_dismiss_notify_only' in body
+        assert 'Dismiss 3 notify-only' in body
+
+    def test_the_button_is_hidden_from_a_manage_only_operator(
+            self, manage_not_admin_client, monkeypatch):
+        from webapp.dashboards.allocations.xras import card_routes
+        monkeypatch.setattr(card_routes, 'notify_only_project_ids',
+                            lambda rows: [1, 2, 3])
+        body = manage_not_admin_client.get(
+            '/allocations/xras_pending_fragment').get_data(as_text=True)
+        assert 'xras_dismiss_notify_only' not in body
+
+    def test_the_button_is_absent_with_no_targets(self, auth_client):
+        body = auth_client.get('/allocations/xras_pending_fragment').get_data(
+            as_text=True)
+        assert 'xras_dismiss_notify_only' not in body
+
+
 class TestStatusVocabularyIsRenderable:
     """Every status the table can hold must have a badge, a label and a tooltip.
 
