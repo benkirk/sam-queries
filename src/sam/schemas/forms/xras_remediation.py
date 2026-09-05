@@ -27,7 +27,7 @@ from . import HtmxFormSchema
 __all__ = ['XrasMergeForm', 'XrasRemediationReasonForm', 'XrasRoleForm',
            'XrasResourceAmountForm', 'XrasActionDatesForm',
            'XrasRequestAttributesForm', 'XrasActionFieldsForm',
-           'XrasAddActionForm']
+           'XrasAddActionForm', 'XrasRequestOverrideForm']
 
 #: The action types the NCAR process uses, for the add-action picker. A free
 #: text field would let a typo 400 (or worse, create a nonsense action), so the
@@ -265,4 +265,42 @@ class XrasAddActionForm(HtmxFormSchema):
             raise ValidationError({'action_type': [
                 f"Must be one of: {', '.join(XRAS_ACTION_TYPES)}."]})
         data['action_type'] = chosen
+        return data
+
+
+#: ``xras_request_override.comment`` is VARCHAR(255) (characters, utf8mb4); a UI
+#: cap below the column width keeps a save from truncating mid-string.
+_OVERRIDE_COMMENT_MAX = 250
+
+
+class XrasRequestOverrideForm(HtmxFormSchema):
+    """Set one per-request operator override from the readiness modal.
+
+    ``kind`` picks the blocker to waive (validated against the model's own
+    vocabulary so the two cannot drift); ``mnemonic_code_id`` is required for a
+    mnemonic override and rejected otherwise — the model enforces the same rule,
+    this only turns it into an inline field error. ``request_number`` is the
+    denormalized display token; the consult key ``request_id`` comes from the URL.
+    """
+
+    kind = f.Str(required=True)
+    mnemonic_code_id = f.Int(load_default=None)
+    request_number = f.Str(load_default=None)
+    comment = f.Str(load_default=None, validate=v.Length(max=_OVERRIDE_COMMENT_MAX))
+
+    @post_load
+    def _check(self, data, **kwargs):
+        from sam.integration.xras import XRAS_REQUEST_OVERRIDE_KINDS
+        kind = _clean(data.get('kind'))
+        if kind not in XRAS_REQUEST_OVERRIDE_KINDS:
+            raise ValidationError({'kind': [
+                f"Must be one of: {', '.join(XRAS_REQUEST_OVERRIDE_KINDS)}."]})
+        if kind == 'mnemonic' and data.get('mnemonic_code_id') is None:
+            raise ValidationError({'mnemonic_code_id': [
+                'Pick a mnemonic code.']})
+        if kind != 'mnemonic':
+            data['mnemonic_code_id'] = None
+        data['kind'] = kind
+        data['comment'] = _clean(data.get('comment')) or None
+        data['request_number'] = _clean(data.get('request_number')) or None
         return data

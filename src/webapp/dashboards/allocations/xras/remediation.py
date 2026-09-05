@@ -27,10 +27,15 @@ is an empty modal with no explanation. The degraded body says what happened.
 
 from __future__ import annotations
 
+import json
+
 from flask import current_app, render_template, request, url_for
 from flask_login import current_user, login_required
+from marshmallow import ValidationError
 
+from sam.core.organizations import MnemonicCode
 from sam.core.users import User
+from sam.integration.xras import XrasRequestOverride, lookup_request_override
 from sam.integration.xras_api import (
     XrasSourceUnavailable,
     XrasWriteNotConfigured,
@@ -39,7 +44,9 @@ from sam.integration.xras_api import (
     xras_api_configured,
     xras_write_configured,
 )
+from sam.manage import management_transaction
 from sam.manage import xras_remediation as remediation
+from sam.queries.mnemonic_console import search_mnemonic_codes
 from sam.queries.xras_requests import (BLOCKER_LABELS, _as_date,
                                        is_pending_work, row_blockers)
 from sam.schemas.forms import (
@@ -49,14 +56,16 @@ from sam.schemas.forms import (
     XrasMergeForm,
     XrasRemediationReasonForm,
     XrasRequestAttributesForm,
+    XrasRequestOverrideForm,
     XrasResourceAmountForm,
     XrasRoleForm,
 )
 from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
 from webapp.extensions import db
+from webapp.utils.fk_validation import FKValidationError, validate_fk_existence
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import (htmx_modal_not_found, htmx_success_message,
-                               read_flag, read_sort)
+                               read_flag, read_sort, register_typeahead)
 from webapp.utils.rbac import Permission, require_permission
 
 from .. import bp
@@ -65,7 +74,7 @@ from ._shared import (
     _live_family, _live_request, _parse_activity_window, _read_client,
     _role_options, _session_factory, scope_rows, sort_rows,
 )
-from .modals import _render_detail
+from .modals import _READINESS_FORM, _readiness_context, _render_detail
 
 #: Facet form and swap target — mirrors the sibling cards' pair. Both names are
 #: also written into ``xras.html``; a mismatch renders chips that silently do
@@ -325,6 +334,81 @@ def xras_recheck_visible():
         f'{totals["failed"]} would fail, {totals["manual"]} would park, '
         f'{totals["incomplete"]} incomplete.',
         detail=detail)
+
+
+# ---------------------------------------------------------------------------
+# per-request operator overrides (mnemonic pick / ignore-contract)
+#
+# A SAM-internal, reversible decision the ingest consults on the next push
+# (resolve_mnemonic_code / plan_contracts) — NOT an outbound XRAS write, so it
+# runs in management_transaction and does not gate on the outgoing write lever.
+# ---------------------------------------------------------------------------
+
+def _readiness_response(request_number, *, error=None):
+    """Re-render the readiness modal body and reload the card behind it."""
+    context = _readiness_context(request_number) if request_number else None
+    if context is None:
+        return htmx_modal_not_found('Request')
+    context['override_error'] = error
+    response = current_app.make_response(render_template(_READINESS_FORM, **context))
+    response.headers['HX-Trigger'] = json.dumps({'refreshXrasTab': {}})
+    return response
+
+
+@bp.route('/xras_set_override/<int:request_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_set_override(request_id: int):
+    """Set a mnemonic / ignore-contract override for one request, then re-check."""
+    request_number = (request.form.get('request_number') or '').strip() or None
+    try:
+        data = XrasRequestOverrideForm().load(request.form)
+    except ValidationError as exc:
+        flat = XrasRequestOverrideForm.flatten_errors(exc.messages)
+        return _readiness_response(request_number, error='; '.join(flat))
+    request_number = data.get('request_number') or request_number
+    try:
+        validate_fk_existence(
+            db.session, (MnemonicCode, data.get('mnemonic_code_id'), 'mnemonic code'))
+    except FKValidationError as exc:
+        return _readiness_response(request_number, error='; '.join(exc.errors))
+    with management_transaction(db.session):
+        XrasRequestOverride.set(
+            db.session, request_id=request_id, kind=data['kind'],
+            created_by=current_user.username,
+            mnemonic_code_id=data.get('mnemonic_code_id'),
+            request_number=request_number, comment=data.get('comment'))
+    if request_number:
+        remediation.recheck_readiness(request_number, session=db.session)
+    return _readiness_response(request_number)
+
+
+@bp.route('/xras_clear_override/<int:request_id>/<kind>', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_clear_override(request_id: int, kind: str):
+    """Deactivate one override and re-check — the request re-blocks on next push."""
+    request_number = (request.form.get('request_number') or '').strip() or None
+    override = lookup_request_override(db.session, request_id, kind)
+    if override is not None:
+        with management_transaction(db.session):
+            override.clear()
+    if request_number:
+        remediation.recheck_readiness(request_number, session=db.session)
+    return _readiness_response(request_number)
+
+
+def _search_mnemonic_codes(q, active_only):
+    return search_mnemonic_codes(db.session, q)
+
+
+register_typeahead(
+    bp, rule='/htmx/search-mnemonic-codes',
+    endpoint='htmx_search_mnemonic_codes',
+    permission=Permission.MANAGE_XRAS,
+    search=_search_mnemonic_codes,
+    template='dashboards/allocations/partials/mnemonic_code_search_results_fk_htmx.html',
+    ctx_key='codes', min_len=1)
 
 
 def _with_create_links(summary: dict) -> dict:

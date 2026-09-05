@@ -1,0 +1,15 @@
+{# htmx: mnemonic-code search results for the FK picker in the readiness modal.
+   Matches by code or the linked org/institution name; emits mnemonic_code_id. #}
+{% if codes %}
+{% for c in codes %}
+<div class="list-group-item list-group-item-action p-2 fk-search-result"
+     style="cursor:pointer;"
+     data-fk-id="{{ c.mnemonic_code_id }}"
+     data-fk-label="{{ c.code }}">
+    <span class="font-monospace">{{ c.code }}</span>
+    <span class="small text-muted">— {{ c.description }}</span>
+</div>
+{% endfor %}
+{% else %}
+<div class="list-group-item text-muted small py-2">No matching mnemonic codes</div>
+{% endif %}

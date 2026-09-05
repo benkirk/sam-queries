@@ -466,6 +466,7 @@ UTF8MB4_COLUMNS = {
     ('xras_remediation_event', 'comment'),
     ('xras_remediation_event', 'before_state'),
     ('xras_remediation_event', 'after_state'),
+    ('xras_request_override',  'comment'),
     ('notification_log',      'recipient_name'),
     ('notification_log',      'subject'),
     ('notification_log',      'error'),
@@ -494,7 +495,8 @@ class TestCharsetSplit:
               FROM information_schema.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE()
                AND TABLE_NAME IN ('xras_action_log', 'xras_activation_event',
-                                  'xras_remediation_event', 'notification_log')
+                                  'xras_remediation_event', 'xras_request_override',
+                                  'notification_log')
                AND CHARACTER_SET_NAME IS NOT NULL
         """)).all()
 
@@ -516,13 +518,18 @@ class TestCharsetSplit:
                   # and carries XRAS usernames that index lookups key on.
                   ('xras_remediation_event', 'request_number'),
                   ('xras_remediation_event', 'username'),
-                  ('xras_remediation_event', 'created_by')]
+                  ('xras_remediation_event', 'created_by'),
+                  # The override table joins the action log on request_number and
+                  # keys the mnemonic FK / audit read on these identifiers.
+                  ('xras_request_override', 'request_number'),
+                  ('xras_request_override', 'kind'),
+                  ('xras_request_override', 'created_by')]
         rows = dict(((t, c), cs) for t, c, cs in session.execute(text("""
             SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_SET_NAME
               FROM information_schema.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE()
                AND TABLE_NAME IN ('xras_action_log', 'notification_log',
-                                  'xras_remediation_event')
+                                  'xras_remediation_event', 'xras_request_override')
         """)).all())
         for key in joined:
             assert rows.get(key) == 'utf8mb3', (
@@ -622,6 +629,34 @@ class TestCriticalSchemas:
         # API cannot settle. NOT NULL with a DEFAULT so the pre-existing rows
         # became 'manual', which is what they are.
         assert not db_cols['source']['nullable']
+
+    def test_xras_request_override_schema(self, session):
+        """The per-request operator override store, guarded like its siblings.
+
+        Composite PK ``(request_id, kind)`` — at most one active override of each
+        kind per request — and the FK to ``mnemonic_code`` is the point: the
+        mnemonic pick is a real SAM row, not a free-text code, so a projcode
+        minted from it cannot name a code that does not exist.
+        """
+        table_name = 'xras_request_override'
+        db_cols = get_db_columns(session, table_name)
+        expected = {'request_id', 'kind', 'request_number', 'mnemonic_code_id',
+                    'source', 'comment', 'created_by', 'active', 'creation_time',
+                    'modified_time'}
+        actual = set(db_cols.keys())
+        assert actual == expected, (
+            f"XrasRequestOverride schema mismatch!\n"
+            f"  Expected: {expected}\n"
+            f"  Actual:   {actual}"
+        )
+        db_pks = sorted(col for col, info in db_cols.items() if 'PRI' in info['key'])
+        assert db_pks == ['kind', 'request_id'], f"PK mismatch: {db_pks}"
+        fk = session.execute(text("""
+            SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'xras_request_override'
+               AND REFERENCED_TABLE_NAME = 'mnemonic_code'
+        """)).scalar()
+        assert fk == 1, "expected the mnemonic_code FK"
 
 
 # ============================================================================

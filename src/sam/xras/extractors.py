@@ -37,7 +37,7 @@ from typing import Dict, List, Optional
 
 from sam.accounting.allocations import AllocationType
 from sam.core.organizations import MnemonicCode, Organization
-from sam.integration.xras import XrasOpportunityAllocationType
+from sam.integration.xras import XrasOpportunityAllocationType, lookup_request_override
 from sam.core.users import User
 from sam.projects.areas import AreaOfInterest
 from sam.projects.contracts import Contract
@@ -603,6 +603,15 @@ def resolve_mnemonic_code(session, action, errs: ActionErrors, *,
     dead: ``XrasAction.getMnemonicCode()`` is a hardcoded ``return null``. It is the
     AMIE actions, which share the base class, that supply one. Nothing to port.
     """
+    # Operator escape hatch: a per-request mnemonic override short-circuits all
+    # resolution below (including the no-affiliation misses). Ignored if the
+    # picked code has since been retired — falls through to normal resolution.
+    override = lookup_request_override(session, get_field(action, 'requestId'), 'mnemonic')
+    if override is not None:
+        row = session.get(MnemonicCode, override.mnemonic_code_id)
+        if row is not None and row.is_active:
+            return row
+
     if not pi_username:
         errs.report(e.no_affiliation_for_pi(pi_username or ''))
         return None

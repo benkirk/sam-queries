@@ -230,6 +230,7 @@ class TestAccessControl:
         '/allocations/xras_dates_form/EXAM0001/7',
         '/allocations/xras_attributes_form/EXAM0001',
         '/allocations/xras_action_fields_form/EXAM0001/7',
+        '/allocations/htmx/search-mnemonic-codes?q=ra',
     ])
     def test_every_modal_is_gated(self, view_only_client, path):
         assert view_only_client.get(path).status_code == 403
@@ -248,9 +249,16 @@ class TestAccessControl:
         '/allocations/xras_action_fields_edit/EXAM0001/7',
         '/allocations/xras_recheck_request/EXAM0001',
         '/allocations/xras_recheck_visible',
+        '/allocations/xras_set_override/555',
+        '/allocations/xras_clear_override/555/mnemonic',
     ])
     def test_every_write_is_gated(self, view_only_client, path):
         assert view_only_client.post(path).status_code == 403
+
+    def test_the_mnemonic_code_typeahead_returns_rows(self, auth_client):
+        resp = auth_client.get('/allocations/htmx/search-mnemonic-codes?q=a')
+        assert resp.status_code == 200
+        assert b'fk-search-result' in resp.data or b'No matching' in resp.data
 
     def test_the_page_shell_hides_the_card_from_a_view_only_operator(
             self, view_only_client):

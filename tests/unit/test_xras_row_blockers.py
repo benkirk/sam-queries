@@ -1,7 +1,8 @@
 """`row_blockers` — the per-row blocker classifier behind the Remediations Blocker facet."""
 
 from sam.queries.xras_requests import BLOCKER_LABELS, row_blockers
-from sam.xras.errors import MNEMONIC_EXTERNAL_PREFIX, MNEMONIC_INTERNAL_PREFIX
+from sam.xras.errors import (MNEMONIC_EXTERNAL_PREFIX, MNEMONIC_INTERNAL_PREFIX,
+                             no_affiliation_for_pi, no_current_affiliation_for_pi)
 
 
 def _action(*, messages=(), unresolved_grants=None):
@@ -27,6 +28,18 @@ def test_mnemonic_external_prefix_is_a_mnemonic_blocker():
 def test_an_unrelated_422_is_not_a_mnemonic_blocker():
     row = {'actions': [_action(messages=['some other validation failure'])]}
     assert row_blockers(row) == set()
+
+
+def test_no_current_affiliation_is_a_mnemonic_blocker():
+    """akeesee/NCAR4287: no affiliation carries no MNEMONIC prefix, but a code
+    override is exactly its fix — so the picker must be reachable."""
+    row = {'actions': [_action(messages=[no_current_affiliation_for_pi('akeesee')])]}
+    assert row_blockers(row) == {'mnemonic'}
+
+
+def test_no_affiliation_data_is_a_mnemonic_blocker():
+    row = {'actions': [_action(messages=[no_affiliation_for_pi('someone')])]}
+    assert row_blockers(row) == {'mnemonic'}
 
 
 def test_unresolved_grants_is_a_contract_blocker():

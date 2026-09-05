@@ -23,6 +23,7 @@ from sam.integration.xras_api import (
     xras_write_configured,
 )
 from sam.queries.xras_accounts import is_placeholder, iter_roster_entries
+from sam.integration.xras import lookup_request_override
 from sam.queries.xras_requests import (
     _as_date,
     _text,
@@ -30,6 +31,7 @@ from sam.queries.xras_requests import (
     person_roles_from_payload,
     request_family,
     request_index_entry,
+    row_blockers,
 )
 from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
 from webapp.extensions import db
@@ -342,8 +344,14 @@ def _readiness_context(request_number):
     actuals = _actual_log_outcomes(a.get('action_id') for a in actions)
     for action in actions:
         action['actual'] = actuals.get(action.get('action_id'))
-    return {'request_number': request_number, 'actions': actions,
-            'rollup': entry.get('preflight_rollup')}
+    request_id = entry.get('request_id')
+    blockers = row_blockers(entry)
+    overrides = {kind: lookup_request_override(db.session, request_id, kind)
+                 for kind in ('mnemonic', 'ignore_contract')}
+    return {'request_number': request_number, 'request_id': request_id,
+            'actions': actions, 'rollup': entry.get('preflight_rollup'),
+            'blockers': blockers, 'overrides': overrides,
+            'write_enabled': xras_write_configured()}
 
 
 @bp.route('/xras_readiness_detail/<path:request_number>')

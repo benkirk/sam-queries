@@ -396,6 +396,18 @@ def mnemonic_internal_failed(username=None, organization=None, lab=None) -> str:
             f'{where} has no mnemonic link')
 
 
+#: Stable substrings of the two no-affiliation messages below. A PI with no
+#: resolvable affiliation is mnemonic-unresolvable (no projcode can be minted),
+#: so ``row_blockers`` treats these as the mnemonic blocker a per-request code
+#: override fixes — even though they carry no MNEMONIC_*_PREFIX (they precede the
+#: org/institution resolution the prefixes name). Guarded by
+#: ``test_xras_row_blockers`` against the real builders below.
+NO_AFFILIATION_MARKERS = (
+    'has no current institution or organization',
+    'Could not produce affiliation data for PI',
+)
+
+
 def no_affiliation_for_pi(username: str) -> str:
     """`MnemonicCodeExtractor:56`."""
     return f'Could not produce affiliation data for PI {username}'
