@@ -230,7 +230,6 @@ class TestAccessControl:
         '/allocations/xras_dates_form/EXAM0001/7',
         '/allocations/xras_attributes_form/EXAM0001',
         '/allocations/xras_action_fields_form/EXAM0001/7',
-        '/allocations/htmx/search-mnemonic-codes?q=ra',
     ])
     def test_every_modal_is_gated(self, view_only_client, path):
         assert view_only_client.get(path).status_code == 403
@@ -249,8 +248,9 @@ class TestAccessControl:
         '/allocations/xras_action_fields_edit/EXAM0001/7',
         '/allocations/xras_recheck_request/EXAM0001',
         '/allocations/xras_recheck_visible',
-        '/allocations/xras_set_override',
-        '/allocations/xras_clear_override/mnemonic',
+        # xras_set_override / xras_clear_override are ADMIN_XRAS, not MANAGE — see
+        # TestOverridesRequireAdmin. view_only_client keeps ADMIN, so it is NOT
+        # blocked from them and cannot assert 403 here.
     ])
     def test_every_write_is_gated(self, view_only_client, path):
         assert view_only_client.post(path).status_code == 403
@@ -1701,6 +1701,53 @@ class TestTheEditors:
             '/allocations/xras_attributes_edit/EXAM0001',
             data={'title': 'A new title'}).get_data(as_text=True)
         assert 'switched off' in body
+
+
+# per-request overrides ride ABOVE MANAGE_XRAS (create/clear = ADMIN_XRAS)
+
+class TestOverridesRequireAdmin:
+    """MANAGE_XRAS sees overrides; only ADMIN_XRAS creates or clears them."""
+
+    ADMIN_ONLY = [
+        ('post', '/allocations/xras_set_override'),
+        ('post', '/allocations/xras_clear_override/mnemonic'),
+        ('get', '/allocations/htmx/search-mnemonic-codes?q=ra'),
+    ]
+
+    @pytest.mark.parametrize('method,path', ADMIN_ONLY)
+    def test_a_manage_only_operator_is_forbidden(self, manage_not_admin_client,
+                                                 method, path):
+        resp = getattr(manage_not_admin_client, method)(path)
+        assert resp.status_code == 403
+
+    def test_the_controls_show_provenance_but_gate_edit_on_admin(self, app):
+        """The shared partial renders provenance to everyone, but the set/clear
+        forms only when can_edit_overrides."""
+        from flask import render_template
+
+        class _MC:
+            code = 'NHA'
+
+        class _OV:
+            created_by = 'op'
+            comment = 'why'
+            mnemonic_code = _MC()
+
+        template = 'dashboards/allocations/partials/_xras_override_controls.html'
+        ctx = dict(request_id=1, request_number='NCAR0001', blockers={'contract'},
+                   overrides={'mnemonic': _OV(), 'ignore_contract': None},
+                   override_return_to='readiness')
+        with app.test_request_context():
+            admin = render_template(template, can_edit_overrides=True, **ctx)
+            viewer = render_template(template, can_edit_overrides=False, **ctx)
+
+        # Provenance of the active mnemonic override is visible to both.
+        assert 'Mnemonic set to' in admin and 'NHA' in admin
+        assert 'Mnemonic set to' in viewer and 'NHA' in viewer
+        # The editable parts — the contract set form and the mnemonic Clear —
+        # render only for an editor.
+        assert 'Ignore contract blocker' in admin and 'Ignore contract blocker' not in viewer
+        assert 'Clear' in admin and 'Clear' not in viewer
 
 
 # the destructive lifecycle (Part C, ADMIN_XRAS)

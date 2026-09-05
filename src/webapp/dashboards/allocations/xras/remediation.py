@@ -378,9 +378,13 @@ def _form_request_id():
 
 @bp.route('/xras_set_override', methods=['POST'])
 @login_required
-@require_permission(Permission.MANAGE_XRAS)
+@require_permission(Permission.ADMIN_XRAS)
 def xras_set_override():
     """Set a mnemonic / ignore-contract override for one request, then re-check.
+
+    ADMIN_XRAS, not MANAGE: an override bypasses ingest validation to change what
+    gets minted in production — the same bar as the Part C destructive verbs.
+    MANAGE_XRAS still sees an override's provenance in the modals.
 
     Keyed on ``request_number`` (stable), NOT the volatile XRAS ``requestId``.
     """
@@ -412,9 +416,13 @@ def xras_set_override():
 
 @bp.route('/xras_clear_override/<kind>', methods=['POST'])
 @login_required
-@require_permission(Permission.MANAGE_XRAS)
+@require_permission(Permission.ADMIN_XRAS)
 def xras_clear_override(kind: str):
-    """Deactivate one override and re-check — the request re-blocks on next push."""
+    """Deactivate one override and re-check — the request re-blocks on next push.
+
+    ADMIN_XRAS, symmetric with set: clearing re-blocks a push, so the privilege
+    that created an override is the one that removes it.
+    """
     request_number = (request.form.get('request_number') or '').strip() or None
     return_to = request.form.get('return_to') or 'readiness'
     if request_number:
@@ -433,7 +441,7 @@ def _search_mnemonic_codes(q, active_only):
 register_typeahead(
     bp, rule='/htmx/search-mnemonic-codes',
     endpoint='htmx_search_mnemonic_codes',
-    permission=Permission.MANAGE_XRAS,
+    permission=Permission.ADMIN_XRAS,   # backs the ADMIN-only set form's picker
     search=_search_mnemonic_codes,
     template='dashboards/allocations/partials/mnemonic_code_search_results_fk_htmx.html',
     ctx_key='codes', min_len=1)
