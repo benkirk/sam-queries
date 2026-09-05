@@ -1,0 +1,90 @@
+{# Operator overrides for one XRAS request — shared by the readiness modal and
+   the full-request detail modal, so the two can never drift. Per-request escape
+   hatches the ingest consults on the next push. In-modal controls only
+   hx-target the body, no data-bs-toggle (the #464 self-close rule). request_id
+   keys the override; request_number is carried for the re-check and display;
+   override_return_to ('readiness'|'detail') tells the route which modal to
+   re-render into.
+
+   Expects: request_id, request_number, blockers, overrides (dict with
+   .mnemonic / .ignore_contract), can_edit_overrides (ADMIN_XRAS — set/clear;
+   MANAGE_XRAS sees provenance only), optional override_error, override_return_to. #}
+{% import 'dashboards/fragments/form_fields.html' as ff %}
+{% set ov_mn = overrides.mnemonic if overrides else None %}
+{% set ov_ct = overrides.ignore_contract if overrides else None %}
+{% set _rt = override_return_to or 'readiness' %}
+{# Show the section when there is an active override to display (any viewer) OR an
+   editor can set one for a current blocker — never an empty heading. #}
+{% if request_id and (ov_mn or ov_ct or (can_edit_overrides and blockers)) %}
+<div class="border rounded p-2 mt-3">
+    <div class="text-uppercase text-muted small mb-2">Operator overrides</div>
+    {% if override_error %}
+    <div class="alert alert-danger py-1 px-2 small mb-2">{{ override_error }}</div>
+    {% endif %}
+
+    {# --- Mnemonic --- #}
+    {% if ov_mn %}
+    <div class="small mb-2">
+        Mnemonic set to <span class="font-monospace">{{ ov_mn.mnemonic_code.code }}</span>
+        by <span class="font-monospace">{{ ov_mn.created_by }}</span>
+        {%- if ov_mn.comment %} — {{ ov_mn.comment }}{% endif %}
+        {% if can_edit_overrides %}
+        <form class="d-inline"
+              hx-post="{{ url_for('allocations_dashboard.xras_clear_override', kind='mnemonic') }}"
+              hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+            <input type="hidden" name="request_number" value="{{ request_number }}">
+            <input type="hidden" name="return_to" value="{{ _rt }}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary ms-1">Clear</button>
+        </form>
+        {% endif %}
+    </div>
+    {% elif can_edit_overrides and 'mnemonic' in blockers %}
+    <form class="mb-3"
+          hx-post="{{ url_for('allocations_dashboard.xras_set_override') }}"
+          hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+        <input type="hidden" name="kind" value="mnemonic">
+        <input type="hidden" name="request_number" value="{{ request_number }}">
+        <input type="hidden" name="request_id" value="{{ request_id or '' }}">
+        <input type="hidden" name="return_to" value="{{ _rt }}">
+        {{ ff.fk_search_field('mnemonic_code_id', 'Set mnemonic code',
+             url_for('allocations_dashboard.htmx_search_mnemonic_codes'),
+             placeholder='Search code or org / institution name…',
+             required=True, wrapper_class='mb-2') }}
+        <input type="text" name="comment" class="form-control form-control-sm mb-2"
+               maxlength="250" placeholder="Reason (optional)">
+        <button type="submit" class="btn btn-sm btn-primary">Set mnemonic</button>
+        <div class="form-text">Bypasses org/institution resolution for this request —
+            prefer mapping the org in the Mnemonic Codes console when it should have a code.</div>
+    </form>
+    {% endif %}
+
+    {# --- Contract --- #}
+    {% if ov_ct %}
+    <div class="small mb-1">
+        Contract blocker ignored by <span class="font-monospace">{{ ov_ct.created_by }}</span>
+        {%- if ov_ct.comment %} — {{ ov_ct.comment }}{% endif %}
+        {% if can_edit_overrides %}
+        <form class="d-inline"
+              hx-post="{{ url_for('allocations_dashboard.xras_clear_override', kind='ignore_contract') }}"
+              hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+            <input type="hidden" name="request_number" value="{{ request_number }}">
+            <input type="hidden" name="return_to" value="{{ _rt }}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary ms-1">Clear</button>
+        </form>
+        {% endif %}
+    </div>
+    {% elif can_edit_overrides and 'contract' in blockers %}
+    <form hx-post="{{ url_for('allocations_dashboard.xras_set_override') }}"
+          hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+        <input type="hidden" name="kind" value="ignore_contract">
+        <input type="hidden" name="request_number" value="{{ request_number }}">
+        <input type="hidden" name="request_id" value="{{ request_id or '' }}">
+        <input type="hidden" name="return_to" value="{{ _rt }}">
+        <input type="text" name="comment" class="form-control form-control-sm mb-2"
+               maxlength="250" placeholder="Reason (optional)">
+        <button type="submit" class="btn btn-sm btn-warning">Ignore contract blocker</button>
+        <div class="form-text">Creates the project with the erroneous grant unlinked.</div>
+    </form>
+    {% endif %}
+</div>
+{% endif %}

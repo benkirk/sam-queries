@@ -23,6 +23,7 @@ from sam.integration.xras_api import (
     xras_write_configured,
 )
 from sam.queries.xras_accounts import is_placeholder, iter_roster_entries
+from sam.integration.xras import lookup_request_override
 from sam.queries.xras_requests import (
     _as_date,
     _text,
@@ -30,6 +31,7 @@ from sam.queries.xras_requests import (
     person_roles_from_payload,
     request_family,
     request_index_entry,
+    row_blockers,
 )
 from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
 from webapp.extensions import db
@@ -240,10 +242,18 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
         action['actual'] = actuals.get(action['action_id'])
     xa_user, is_pi, placeholder = _impersonation(entry, live=payload)
 
+    request_id = (row or {}).get('request_id')
     return {
         'request_number': request_number,
         'payload': payload,
         'row': row,
+        # Per-request operator overrides — same shared controls as the readiness
+        # modal (row_blockers already treats a no-affiliation failure as mnemonic).
+        'request_id': request_id,
+        'blockers': row_blockers(row) if row else set(),
+        'overrides': {kind: lookup_request_override(db.session, request_number, kind)
+                      for kind in ('mnemonic', 'ignore_contract')},
+        'can_edit_overrides': has_permission(current_user, Permission.ADMIN_XRAS),
         # The whole project lifecycle (all request lines + counts), for the
         # danger-zone delete confirm and any family-level display.
         'family': family,
@@ -342,8 +352,15 @@ def _readiness_context(request_number):
     actuals = _actual_log_outcomes(a.get('action_id') for a in actions)
     for action in actions:
         action['actual'] = actuals.get(action.get('action_id'))
-    return {'request_number': request_number, 'actions': actions,
-            'rollup': entry.get('preflight_rollup')}
+    request_id = entry.get('request_id')
+    blockers = row_blockers(entry)
+    overrides = {kind: lookup_request_override(db.session, request_number, kind)
+                 for kind in ('mnemonic', 'ignore_contract')}
+    return {'request_number': request_number, 'request_id': request_id,
+            'actions': actions, 'rollup': entry.get('preflight_rollup'),
+            'blockers': blockers, 'overrides': overrides,
+            'can_edit_overrides': has_permission(current_user, Permission.ADMIN_XRAS),
+            'write_enabled': xras_write_configured()}
 
 
 @bp.route('/xras_readiness_detail/<path:request_number>')

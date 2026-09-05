@@ -1491,6 +1491,13 @@
     ]
   ],
   [
+    "allocations_dashboard.htmx_search_mnemonic_codes",
+    "/allocations/htmx/search-mnemonic-codes",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.index",
     "/allocations/",
     [
@@ -1614,6 +1621,13 @@
     "/allocations/xras_attributes_form/<path:request_number>",
     [
       "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_clear_override",
+    "/allocations/xras_clear_override/<kind>",
+    [
+      "POST"
     ]
   ],
   [
@@ -1822,6 +1836,13 @@
   [
     "allocations_dashboard.xras_role_remove",
     "/allocations/xras_role_remove/<path:request_number>/<int:role_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_set_override",
+    "/allocations/xras_set_override",
     [
       "POST"
     ]

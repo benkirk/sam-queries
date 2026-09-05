@@ -365,6 +365,10 @@
 </div>{# /action row #}
 {% endfor %}
 
+{# per-request operator overrides — same shared controls as the readiness modal #}
+{% set override_return_to = 'detail' %}
+{% include 'dashboards/allocations/partials/_xras_override_controls.html' %}
+
 {# fields of science #}
 {% if payload.fos %}
 <div class="mb-3">

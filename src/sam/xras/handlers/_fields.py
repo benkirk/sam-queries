@@ -24,7 +24,7 @@ from datetime import datetime
 from typing import List, Optional, Tuple
 
 from sam.base import normalize_end_date
-from sam.integration.xras import XrasResourceRepositoryKeyResource
+from sam.integration.xras import XrasResourceRepositoryKeyResource, lookup_request_override
 from sam.resources.resources import Resource
 
 from .. import errors as e
@@ -191,6 +191,11 @@ def _grant_without_number(number: str, grant) -> str:
     return f'Supporting grant {what}{where} has no award number; no contract linked'
 
 
+def _grant_contract_ignored(number: str) -> str:
+    """The warning for a contract miss an operator override chose to ignore."""
+    return f'Contract "{number}" not found; blocker ignored by operator, grant unlinked'
+
+
 _GRANT_DETAIL_KEYS = {'fundingAgency': 'agency', 'title': 'title', 'piName': 'pi_name',
                       'beginDate': 'begin_date', 'endDate': 'end_date',
                       'isPending': 'is_pending'}
@@ -214,6 +219,14 @@ def plan_contracts(session, action, errs: ActionErrors) -> Tuple[List, Tuple[str
     ``project_contract`` is UNIQUE per ``(project, contract)``, so legacy's second
     insert was an unhandled ``IntegrityError``.
     """
+    # Operator escape hatch: an ignore_contract override for this request waives
+    # the "Cannot find contract" 422. Misses then route to a warning, and their
+    # reports land in a scratch bag that never reaches the action's errors — the
+    # project is created with the erroneous grant simply unlinked.
+    ignore_missing = lookup_request_override(
+        session, get_field(action, 'requestNumber'), 'ignore_contract') is not None
+    report_to = ActionErrors() if ignore_missing else errs
+
     contracts, warnings, unresolved, seen = [], [], [], set()
     for grant in get_field(action, 'grants') or ():
         number = str(get_field(grant, 'grantNumber') or '').strip()
@@ -221,14 +234,17 @@ def plan_contracts(session, action, errs: ActionErrors) -> Tuple[List, Tuple[str
             warnings.append(_grant_without_number(number, grant))
             continue
         failed: List[dict] = []
-        contract = resolve_contract(session, number, errs, unresolved=failed)
+        contract = resolve_contract(session, number, report_to, unresolved=failed)
         # Wire detail for the create form. A literal tuple of names: the
         # vocabulary gate (test_xras_wire_vocabulary) resolves them from the loop.
         for entry in failed:
             for wire in ('fundingAgency', 'title', 'piName', 'beginDate', 'endDate',
                          'isPending'):
                 entry[_GRANT_DETAIL_KEYS[wire]] = get_field(grant, wire)
-            unresolved.append(entry)
+            if ignore_missing:
+                warnings.append(_grant_contract_ignored(number))
+            else:
+                unresolved.append(entry)
         if contract is not None and contract.contract_id not in seen:
             seen.add(contract.contract_id)
             contracts.append(contract)

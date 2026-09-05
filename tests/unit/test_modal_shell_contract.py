@@ -304,6 +304,13 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # shared shell's footer target the body in place, no toggle.
     'dashboards/allocations/partials/xras_readiness_modal.html': [
         'auditDetailsModalBody'],
+    # The shared operator-overrides controls, included by BOTH the readiness
+    # modal and the read-only detail modal above — both reached only from
+    # xras.html and both swapped into #auditDetailsModalBody. Its set/clear forms
+    # target that body in place (a `return_to` field routes the re-render back to
+    # whichever modal invoked them), no data-bs-toggle.
+    'dashboards/allocations/partials/_xras_override_controls.html': [
+        'auditDetailsModalBody'],
     # The XRAS User detail modal — the person-side analogue of the request
     # detail. Swapped into the same body from a roster username (plain hx-get)
     # or the Accounts-Needed card (data-bs-toggle from the closed modal); its
