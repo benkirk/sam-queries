@@ -242,10 +242,17 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
         action['actual'] = actuals.get(action['action_id'])
     xa_user, is_pi, placeholder = _impersonation(entry, live=payload)
 
+    request_id = (row or {}).get('request_id')
     return {
         'request_number': request_number,
         'payload': payload,
         'row': row,
+        # Per-request operator overrides — same shared controls as the readiness
+        # modal (row_blockers already treats a no-affiliation failure as mnemonic).
+        'request_id': request_id,
+        'blockers': row_blockers(row) if row else set(),
+        'overrides': {kind: lookup_request_override(db.session, request_number, kind)
+                      for kind in ('mnemonic', 'ignore_contract')},
         # The whole project lifecycle (all request lines + counts), for the
         # danger-zone delete confirm and any family-level display.
         'family': family,
@@ -346,7 +353,7 @@ def _readiness_context(request_number):
         action['actual'] = actuals.get(action.get('action_id'))
     request_id = entry.get('request_id')
     blockers = row_blockers(entry)
-    overrides = {kind: lookup_request_override(db.session, request_id, kind)
+    overrides = {kind: lookup_request_override(db.session, request_number, kind)
                  for kind in ('mnemonic', 'ignore_contract')}
     return {'request_number': request_number, 'request_id': request_id,
             'actions': actions, 'rollup': entry.get('preflight_rollup'),

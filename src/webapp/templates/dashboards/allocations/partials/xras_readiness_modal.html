@@ -32,79 +32,8 @@
 </div>
 {% endfor %}
 
-{# Operator overrides — per-request escape hatches the ingest consults on the
-   next push. In-modal controls only hx-target the body, no data-bs-toggle
-   (the #464 self-close rule). request_id keys the override; request_number is
-   carried for the re-check and display. #}
-{% set ov_mn = overrides.mnemonic if overrides else None %}
-{% set ov_ct = overrides.ignore_contract if overrides else None %}
-{% if request_id and (blockers or ov_mn or ov_ct) %}
-<div class="border rounded p-2 mt-3">
-    <div class="text-uppercase text-muted small mb-2">Operator overrides</div>
-    {% if override_error %}
-    <div class="alert alert-danger py-1 px-2 small mb-2">{{ override_error }}</div>
-    {% endif %}
-
-    {# --- Mnemonic --- #}
-    {% if ov_mn %}
-    <div class="small mb-2">
-        Mnemonic set to <span class="font-monospace">{{ ov_mn.mnemonic_code.code }}</span>
-        by <span class="font-monospace">{{ ov_mn.created_by }}</span>
-        {%- if ov_mn.comment %} — {{ ov_mn.comment }}{% endif %}
-        <form class="d-inline"
-              hx-post="{{ url_for('allocations_dashboard.xras_clear_override',
-                                  request_id=request_id, kind='mnemonic') }}"
-              hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
-            <input type="hidden" name="request_number" value="{{ request_number }}">
-            <button type="submit" class="btn btn-sm btn-outline-secondary ms-1">Clear</button>
-        </form>
-    </div>
-    {% elif 'mnemonic' in blockers %}
-    <form class="mb-3"
-          hx-post="{{ url_for('allocations_dashboard.xras_set_override',
-                              request_id=request_id) }}"
-          hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
-        <input type="hidden" name="kind" value="mnemonic">
-        <input type="hidden" name="request_number" value="{{ request_number }}">
-        {{ ff.fk_search_field('mnemonic_code_id', 'Set mnemonic code',
-             url_for('allocations_dashboard.htmx_search_mnemonic_codes'),
-             placeholder='Search code or org / institution name…',
-             required=True, wrapper_class='mb-2') }}
-        <input type="text" name="comment" class="form-control form-control-sm mb-2"
-               maxlength="250" placeholder="Reason (optional)">
-        <button type="submit" class="btn btn-sm btn-primary">Set mnemonic</button>
-        <div class="form-text">Bypasses org/institution resolution for this request —
-            prefer mapping the org in the Mnemonic Codes console when it should have a code.</div>
-    </form>
-    {% endif %}
-
-    {# --- Contract --- #}
-    {% if ov_ct %}
-    <div class="small mb-1">
-        Contract blocker ignored by <span class="font-monospace">{{ ov_ct.created_by }}</span>
-        {%- if ov_ct.comment %} — {{ ov_ct.comment }}{% endif %}
-        <form class="d-inline"
-              hx-post="{{ url_for('allocations_dashboard.xras_clear_override',
-                                  request_id=request_id, kind='ignore_contract') }}"
-              hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
-            <input type="hidden" name="request_number" value="{{ request_number }}">
-            <button type="submit" class="btn btn-sm btn-outline-secondary ms-1">Clear</button>
-        </form>
-    </div>
-    {% elif 'contract' in blockers %}
-    <form hx-post="{{ url_for('allocations_dashboard.xras_set_override',
-                             request_id=request_id) }}"
-          hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
-        <input type="hidden" name="kind" value="ignore_contract">
-        <input type="hidden" name="request_number" value="{{ request_number }}">
-        <input type="text" name="comment" class="form-control form-control-sm mb-2"
-               maxlength="250" placeholder="Reason (optional)">
-        <button type="submit" class="btn btn-sm btn-warning">Ignore contract blocker</button>
-        <div class="form-text">Creates the project with the erroneous grant unlinked.</div>
-    </form>
-    {% endif %}
-</div>
-{% endif %}
+{% set override_return_to = 'readiness' %}
+{% include 'dashboards/allocations/partials/_xras_override_controls.html' %}
 
 {# Plain hx-get into the open body (no data-bs-toggle — the #464 self-close
    rule): steps up to the full request without stacking a second modal. #}

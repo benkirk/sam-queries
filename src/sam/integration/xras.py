@@ -154,11 +154,17 @@ class XrasRequestOverride(Base, SessionMixin, ActiveFlagMixin):
     ``handlers`` while resolving a New action — never written by anything that
     talks to the XRAS API.
 
-    Keyed on the XRAS ``request_id`` (the stable per-request-line id on every
-    action payload) plus ``kind``, so at most one active override of each kind
-    exists per request. Clearing sets ``active`` False and keeps the row as the
-    trail; re-setting flips it back. ``request_number`` is a denormalized display
-    token (``NCAR4287``); the consult key is ``request_id``.
+    Keyed on ``request_number`` (the ``NCAR####`` / projcode token the whole
+    subsystem keys on — the card, the reports and the recheck all use it) plus
+    ``kind``, so at most one active override of each kind exists per request.
+    Clearing sets ``active`` False and keeps the row as the trail; re-setting
+    flips it back.
+
+    WARNING: **Not ``request_id``.** The XRAS ``requestId`` is per-request-line and
+    volatile — a re-issue mints a new one, orphaning an id-keyed override, and a
+    request family exposes several ids for one ``request_number``. ``request_id``
+    is kept only as an informational column. The consult reads
+    ``get_field(action, 'requestNumber')``, which every action carries.
 
     An override is a blunt escape hatch scoped to one request — the durable fix
     for a mnemonic gap stays the Mnemonic Codes console (map the org). It is
@@ -167,18 +173,18 @@ class XrasRequestOverride(Base, SessionMixin, ActiveFlagMixin):
     __tablename__ = 'xras_request_override'
 
     __table_args__ = (
-        PrimaryKeyConstraint('request_id', 'kind', name='pk_xras_request_override'),
-        Index('xras_request_override_number', 'request_number'),
+        PrimaryKeyConstraint('request_number', 'kind', name='pk_xras_request_override'),
+        Index('xras_request_override_reqid', 'request_id'),
     )
 
-    #: The XRAS ``requestId`` — the consult key, present on every action payload.
-    request_id = Column(Integer, nullable=False)
+    #: The ``NCAR####`` / projcode token — the stable consult key.
+    request_number = Column(String(128), nullable=False)
 
     #: One of :data:`XRAS_REQUEST_OVERRIDE_KINDS`.
     kind = Column(String(24), nullable=False)
 
-    #: Denormalized display token (``NCAR4287``); not the key — see the docstring.
-    request_number = Column(String(128))
+    #: The XRAS ``requestId`` at set time — informational only, NOT the key.
+    request_id = Column(Integer)
 
     #: Set for ``kind='mnemonic'``, NULL for ``ignore_contract``.
     mnemonic_code_id = Column(Integer,
@@ -201,9 +207,9 @@ class XrasRequestOverride(Base, SessionMixin, ActiveFlagMixin):
     mnemonic_code = relationship('MnemonicCode', back_populates='request_overrides')
 
     @classmethod
-    def set(cls, session, *, request_id, kind, created_by,
-            mnemonic_code_id=None, request_number=None, comment=None):
-        """Set (or re-set) the active override for ``(request_id, kind)``.
+    def set(cls, session, *, request_number, kind, created_by,
+            mnemonic_code_id=None, request_id=None, comment=None):
+        """Set (or re-set) the active override for ``(request_number, kind)``.
 
         Upserts the one row for the key and returns it. ``mnemonic_code_id`` is
         required for ``kind='mnemonic'`` and rejected for any other kind.
@@ -220,13 +226,14 @@ class XrasRequestOverride(Base, SessionMixin, ActiveFlagMixin):
         if kind != 'mnemonic' and mnemonic_code_id is not None:
             raise ValueError(f"kind={kind!r} override must not carry a mnemonic_code_id")
 
-        row = session.get(cls, {'request_id': request_id, 'kind': kind})
+        row = session.get(cls, {'request_number': request_number, 'kind': kind})
         if row is None:
-            row = cls(request_id=request_id, kind=kind, creation_time=datetime.now())
+            row = cls(request_number=request_number, kind=kind,
+                      creation_time=datetime.now())
             session.add(row)
         row.created_by = str(created_by)[:35]
         row.mnemonic_code_id = mnemonic_code_id
-        row.request_number = request_number
+        row.request_id = request_id
         row.comment = comment
         row.active = True
         session.flush()
@@ -241,24 +248,24 @@ class XrasRequestOverride(Base, SessionMixin, ActiveFlagMixin):
     def __str__(self):
         target = (f"code {self.mnemonic_code_id}" if self.kind == 'mnemonic'
                   else 'waive contract')
-        return (f"XRAS request {self.request_id} override "
+        return (f"XRAS request {self.request_number} override "
                 f"{self.kind} -> {target}")
 
     def __repr__(self):
-        return (f"<XrasRequestOverride(request_id={self.request_id}, "
+        return (f"<XrasRequestOverride(request_number={self.request_number!r}, "
                 f"kind={self.kind!r}, active={self.active})>")
 
 
-def lookup_request_override(session, request_id, kind):
-    """The active override of *kind* for *request_id*, or None.
+def lookup_request_override(session, request_number, kind):
+    """The active override of *kind* for *request_number*, or None.
 
     The consult primitive shared by ``resolve_mnemonic_code`` (mnemonic) and
     ``plan_contracts`` (ignore_contract).
     """
-    if request_id is None:
+    if not request_number:
         return None
     return (session.query(XrasRequestOverride)
-            .filter(XrasRequestOverride.request_id == request_id)
+            .filter(XrasRequestOverride.request_number == request_number)
             .filter(XrasRequestOverride.kind == kind)
             .filter(XrasRequestOverride.is_active)
             .first())

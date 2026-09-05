@@ -249,8 +249,8 @@ class TestAccessControl:
         '/allocations/xras_action_fields_edit/EXAM0001/7',
         '/allocations/xras_recheck_request/EXAM0001',
         '/allocations/xras_recheck_visible',
-        '/allocations/xras_set_override/555',
-        '/allocations/xras_clear_override/555/mnemonic',
+        '/allocations/xras_set_override',
+        '/allocations/xras_clear_override/mnemonic',
     ])
     def test_every_write_is_gated(self, view_only_client, path):
         assert view_only_client.post(path).status_code == 403

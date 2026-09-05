@@ -224,7 +224,7 @@ def plan_contracts(session, action, errs: ActionErrors) -> Tuple[List, Tuple[str
     # reports land in a scratch bag that never reaches the action's errors — the
     # project is created with the erroneous grant simply unlinked.
     ignore_missing = lookup_request_override(
-        session, get_field(action, 'requestId'), 'ignore_contract') is not None
+        session, get_field(action, 'requestNumber'), 'ignore_contract') is not None
     report_to = ActionErrors() if ignore_missing else errs
 
     contracts, warnings, unresolved, seen = [], [], [], set()

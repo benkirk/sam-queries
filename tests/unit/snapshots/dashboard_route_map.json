@@ -1625,7 +1625,7 @@
   ],
   [
     "allocations_dashboard.xras_clear_override",
-    "/allocations/xras_clear_override/<int:request_id>/<kind>",
+    "/allocations/xras_clear_override/<kind>",
     [
       "POST"
     ]
@@ -1842,7 +1842,7 @@
   ],
   [
     "allocations_dashboard.xras_set_override",
-    "/allocations/xras_set_override/<int:request_id>",
+    "/allocations/xras_set_override",
     [
       "POST"
     ]

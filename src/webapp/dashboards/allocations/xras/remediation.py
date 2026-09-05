@@ -355,47 +355,75 @@ def _readiness_response(request_number, *, error=None):
     return response
 
 
-@bp.route('/xras_set_override/<int:request_id>', methods=['POST'])
+def _override_rerender(request_number, return_to, *, error=None, ok=None):
+    """Re-render whichever modal the override was invoked from.
+
+    The controls live in a shared partial in both the readiness modal and the
+    full-request detail modal; ``return_to`` (a hidden form field) says which one
+    to swap back so the operator stays where they were.
+    """
+    if return_to == 'detail':
+        return _render_detail(request_number, flash=ok, flash_error=error)
+    return _readiness_response(request_number, error=error)
+
+
+def _form_request_id():
+    """The informational ``request_id`` off the form, or None — never the key."""
+    raw = (request.form.get('request_id') or '').strip()
+    try:
+        return int(raw) if raw else None
+    except ValueError:
+        return None
+
+
+@bp.route('/xras_set_override', methods=['POST'])
 @login_required
 @require_permission(Permission.MANAGE_XRAS)
-def xras_set_override(request_id: int):
-    """Set a mnemonic / ignore-contract override for one request, then re-check."""
+def xras_set_override():
+    """Set a mnemonic / ignore-contract override for one request, then re-check.
+
+    Keyed on ``request_number`` (stable), NOT the volatile XRAS ``requestId``.
+    """
     request_number = (request.form.get('request_number') or '').strip() or None
+    return_to = request.form.get('return_to') or 'readiness'
+    if not request_number:
+        return _override_rerender(None, return_to, error='Missing request number.')
     try:
         data = XrasRequestOverrideForm().load(request.form)
     except ValidationError as exc:
         flat = XrasRequestOverrideForm.flatten_errors(exc.messages)
-        return _readiness_response(request_number, error='; '.join(flat))
-    request_number = data.get('request_number') or request_number
+        return _override_rerender(request_number, return_to, error='; '.join(flat))
     try:
         validate_fk_existence(
             db.session, (MnemonicCode, data.get('mnemonic_code_id'), 'mnemonic code'))
     except FKValidationError as exc:
-        return _readiness_response(request_number, error='; '.join(exc.errors))
+        return _override_rerender(request_number, return_to, error='; '.join(exc.errors))
     with management_transaction(db.session):
         XrasRequestOverride.set(
-            db.session, request_id=request_id, kind=data['kind'],
+            db.session, request_number=request_number, kind=data['kind'],
             created_by=current_user.username,
             mnemonic_code_id=data.get('mnemonic_code_id'),
-            request_number=request_number, comment=data.get('comment'))
-    if request_number:
-        remediation.recheck_readiness(request_number, session=db.session)
-    return _readiness_response(request_number)
+            request_id=_form_request_id(), comment=data.get('comment'))
+    remediation.recheck_readiness(request_number, session=db.session)
+    ok = ('Mnemonic override set.' if data['kind'] == 'mnemonic'
+          else 'Contract blocker ignored.')
+    return _override_rerender(request_number, return_to, ok=ok)
 
 
-@bp.route('/xras_clear_override/<int:request_id>/<kind>', methods=['POST'])
+@bp.route('/xras_clear_override/<kind>', methods=['POST'])
 @login_required
 @require_permission(Permission.MANAGE_XRAS)
-def xras_clear_override(request_id: int, kind: str):
+def xras_clear_override(kind: str):
     """Deactivate one override and re-check — the request re-blocks on next push."""
     request_number = (request.form.get('request_number') or '').strip() or None
-    override = lookup_request_override(db.session, request_id, kind)
-    if override is not None:
-        with management_transaction(db.session):
-            override.clear()
+    return_to = request.form.get('return_to') or 'readiness'
     if request_number:
+        override = lookup_request_override(db.session, request_number, kind)
+        if override is not None:
+            with management_transaction(db.session):
+                override.clear()
         remediation.recheck_readiness(request_number, session=db.session)
-    return _readiness_response(request_number)
+    return _override_rerender(request_number, return_to, ok='Override cleared.')
 
 
 def _search_mnemonic_codes(q, active_only):

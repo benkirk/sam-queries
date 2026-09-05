@@ -633,8 +633,9 @@ class TestCriticalSchemas:
     def test_xras_request_override_schema(self, session):
         """The per-request operator override store, guarded like its siblings.
 
-        Composite PK ``(request_id, kind)`` — at most one active override of each
-        kind per request — and the FK to ``mnemonic_code`` is the point: the
+        Composite PK ``(request_number, kind)`` — the stable NCAR####/projcode
+        token, NOT the volatile XRAS request_id — at most one active override of
+        each kind per request; and the FK to ``mnemonic_code`` is the point: the
         mnemonic pick is a real SAM row, not a free-text code, so a projcode
         minted from it cannot name a code that does not exist.
         """
@@ -650,7 +651,7 @@ class TestCriticalSchemas:
             f"  Actual:   {actual}"
         )
         db_pks = sorted(col for col, info in db_cols.items() if 'PRI' in info['key'])
-        assert db_pks == ['kind', 'request_id'], f"PK mismatch: {db_pks}"
+        assert db_pks == ['kind', 'request_number'], f"PK mismatch: {db_pks}"
         fk = session.execute(text("""
             SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'xras_request_override'

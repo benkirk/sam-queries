@@ -606,7 +606,7 @@ def resolve_mnemonic_code(session, action, errs: ActionErrors, *,
     # Operator escape hatch: a per-request mnemonic override short-circuits all
     # resolution below (including the no-affiliation misses). Ignored if the
     # picked code has since been retired — falls through to normal resolution.
-    override = lookup_request_override(session, get_field(action, 'requestId'), 'mnemonic')
+    override = lookup_request_override(session, get_field(action, 'requestNumber'), 'mnemonic')
     if override is not None:
         row = session.get(MnemonicCode, override.mnemonic_code_id)
         if row is not None and row.is_active:
