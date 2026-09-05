@@ -68,6 +68,22 @@ settings:
     - pattern: "role_api_credentials"
       mode: empty
 
+    # XRAS operational + audit tables carry real PII the column-based
+    # anonymizer CANNOT reach, because it lives inside TEXT/JSON, not a named
+    # column: xras_action_log.raw_payload is the verbatim wire body (PI names,
+    # emails, phones, grant-officer contacts), xras_activation_event.notified_to
+    # is a recipient email, and xras_remediation_event.before/after_state are
+    # person-detail JSON captures. None is needed for local dev or tests — they
+    # seed their own via scrubbed fixtures / factories, and test_xras_accounts_query
+    # asserts the action log starts empty — so empty them rather than clone
+    # identity a JSON scrub would otherwise have to chase key by key.
+    - pattern: "xras_action_log"
+      mode: empty
+    - pattern: "xras_activation_event"
+      mode: empty
+    - pattern: "xras_remediation_event"
+      mode: empty
+
     # Specific overrides first
     - pattern: "comp_charge_summary"
       mode: recent

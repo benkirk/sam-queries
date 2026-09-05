@@ -92,6 +92,30 @@ class AnonymizationVerifier:
             print(f"  Examples: {real_emails}")
             return 1
 
+    def check_xras_payload_tables_empty(self, session: Session) -> int:
+        """XRAS payload/audit tables must be empty in the obfuscated DB.
+
+        Their PII lives inside TEXT/JSON, not a named column, so the
+        column-based anonymizer never reaches it: xras_action_log.raw_payload is
+        the verbatim wire body (names, emails, phones), and the two event tables
+        carry recipient emails / person-detail JSON. config.yaml empties them;
+        this guard fails if any leaks back (a removed strategy, a new payload
+        table) — the gap that let real emails into the LFS blob unnoticed.
+        """
+        print("\n[*] Checking XRAS payload tables are empty...")
+        issues = 0
+        for t in ('xras_action_log', 'xras_activation_event',
+                  'xras_remediation_event'):
+            n = session.execute(text(f"SELECT COUNT(*) AS c FROM {t}")).scalar()
+            if n:
+                print(f"  ⚠️  {t} has {n} rows — raw payloads carry real PII the "
+                      f"anonymizer cannot reach inside TEXT/JSON. Empty it in "
+                      f"config.yaml table_strategies.")
+                issues += 1
+            else:
+                print(f"  ✓ {t} empty")
+        return issues
+
     def check_username_patterns(self, session: Session) -> int:
         """Check for username patterns indicating anonymization."""
         print("\n[*] Checking username patterns...")
@@ -249,6 +273,7 @@ class AnonymizationVerifier:
         with Session(self.engine) as session:
             total_issues += self.check_username_patterns(session)
             total_issues += self.check_email_domains(session)
+            total_issues += self.check_xras_payload_tables_empty(session)
             total_issues += self.check_phone_patterns(session)
             total_issues += self.check_contract_numbers(session)
             total_issues += self.check_upid_ranges(session)
