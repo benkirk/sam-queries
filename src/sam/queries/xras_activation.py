@@ -26,7 +26,7 @@ the split.
 """
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -379,6 +379,29 @@ def needs_attention(row: Mapping[str, Any], *, now: datetime,
         return True
     received = row.get('received_time')
     return received is not None and received >= now - timedelta(days=recent_days)
+
+
+def notify_only_project_ids(rows: Iterable[Mapping[str, Any]]) -> List[int]:
+    """Projects whose queue rows only await a notification, none needing activation.
+
+    Selected per PROJECT, not per action row: a dismissal is project-scoped and
+    supersedes the latest action, and `needs_activation` rides only on that
+    latest action — so a project holding an older notify-only action AND a latest
+    needs-activation action must be excluded, or dismissing it would suppress the
+    activation too. A project qualifies iff it has a live notify-only row
+    (notifiable, not notified, not dismissed) and no row needs activation.
+    """
+    state: dict[int, dict[str, bool]] = {}
+    for row in rows:
+        s = state.setdefault(row['project_id'],
+                             {'notify_only': False, 'needs_activation': False})
+        if row.get('needs_activation'):
+            s['needs_activation'] = True
+        if (row.get('notifiable') and not row.get('notified')
+                and not row.get('needs_activation') and not row.get('dismissed')):
+            s['notify_only'] = True
+    return sorted(pid for pid, s in state.items()
+                  if s['notify_only'] and not s['needs_activation'])
 
 
 def get_latest_xras_action_id(
