@@ -350,6 +350,81 @@ class TestRenewStandalone:
         assert (txns[0].transaction_comment or '').startswith("[RENEW]")
 
 
+class TestRenewPreservesZeroAmount:
+    """A 0-amount source (e.g. a spent-down reserve) renews forward as 0.
+
+    Regression for the NCGD0006 renew failure: a legit 0-amount sub-project
+    (NCGD0013 Derecho reserve) aborted the whole tree renew because
+    Allocation.create rejects amount <= 0. Renew opts into allow_zero to
+    mirror the row; interactive creation stays strict.
+    """
+
+    def test_allocation_create_rejects_zero_by_default(
+        self, session, standalone_project, derecho,
+    ):
+        with pytest.raises(ValueError):
+            Allocation.create(
+                session,
+                project_id=standalone_project.project_id,
+                resource_id=derecho.resource_id,
+                amount=0.0,
+                start_date=SRC_START,
+                end_date=SRC_END,
+            )
+
+    def test_allocation_create_allows_zero_with_flag(
+        self, session, standalone_project, derecho,
+    ):
+        alloc = Allocation.create(
+            session,
+            project_id=standalone_project.project_id,
+            resource_id=derecho.resource_id,
+            amount=0.0,
+            start_date=SRC_START,
+            end_date=SRC_END,
+            allow_zero=True,
+        )
+        assert alloc.amount == 0.0
+
+    def test_zero_amount_child_is_mirrored_forward(
+        self, session, tree_root_with_children, derecho, acting_user,
+    ):
+        descendants = _active_descendants(tree_root_with_children)
+        _root_alloc, child_allocs = _seed_divergent_tree(
+            session, tree_root_with_children, derecho,
+        )
+        # Force one child's source to a legit 0 reserve.
+        zero_proj = descendants[0]
+        zchild, _ = child_allocs[zero_proj.project_id]
+        zchild.amount = 0.0
+        session.flush()
+        session.expire_all()
+
+        created = renew_project_allocations(
+            session,
+            root_project_id=tree_root_with_children.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+        )
+
+        assert len(created) == 1  # renew did not abort
+        renewed_zero = _find_test_alloc(
+            session, zero_proj, derecho.resource_id, NEW_START,
+        )
+        assert renewed_zero is not None, "0-amount reserve dropped from renewal"
+        assert renewed_zero.amount == 0.0
+        # A nonzero sibling still renews with its own amount.
+        other_proj = descendants[1]
+        renewed_other = _find_test_alloc(
+            session, other_proj, derecho.resource_id, NEW_START,
+        )
+        assert renewed_other is not None
+        assert renewed_other.amount > 0
+
+
 class TestRenewInheritingTree:
 
     def test_creates_new_root_plus_inheriting_children(
