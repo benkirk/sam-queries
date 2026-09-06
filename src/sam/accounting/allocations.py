@@ -165,6 +165,7 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin, SessionMixin):
         end_date: 'Optional[datetime]' = None,
         description: 'Optional[str]' = None,
         parent_allocation_id: 'Optional[int]' = None,
+        allow_zero: bool = False,
     ) -> 'Allocation':
         """Create a new allocation for a project + resource pair.
 
@@ -181,18 +182,21 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin, SessionMixin):
             session:     SQLAlchemy session.
             project_id:  FK to Project.
             resource_id: FK to Resource.
-            amount:      Allocation amount (must be > 0).
+            amount:      Allocation amount (> 0, or >= 0 when allow_zero).
             start_date:  Start of allocation period.
             end_date:    End of allocation period (None = open-ended).
             description: Optional human-readable note.
+            allow_zero:  Permit a 0 amount. Renew copies existing 0-amount
+                         sub-project rows forward; interactive creation stays > 0.
 
         Returns:
             Newly created and flushed Allocation instance.
         """
         from sam.accounting.accounts import Account
 
-        if amount <= 0:
-            raise ValueError(f"Amount must be > 0, got {amount}")
+        if amount < 0 or (amount == 0 and not allow_zero):
+            floor = ">= 0" if allow_zero else "> 0"
+            raise ValueError(f"Amount must be {floor}, got {amount}")
 
         account = Account.get_or_create(
             session, project_id=project_id, resource_id=resource_id
