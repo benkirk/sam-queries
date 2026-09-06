@@ -354,6 +354,7 @@ def renew_project_allocations(
             start_date=new_start,
             end_date=new_end,
             description=source_root.description,
+            allow_zero=True,  # mirror a 0-amount source (e.g. a 0 reserve)
         )
         log_allocation_transaction(
             session,
@@ -419,6 +420,7 @@ def renew_project_allocations(
                 end_date=new_end,
                 description=source_child.description,
                 parent_allocation_id=new_parent_id,
+                allow_zero=True,  # mirror a 0-amount source (e.g. a 0 reserve)
             )
             log_allocation_transaction(
                 session,
