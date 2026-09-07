@@ -53,7 +53,8 @@
                       class="form-control notify-template-source">{{ source }}</textarea>
             <details class="mt-2">
                 <summary class="small text-muted">
-                    Variables available to this template ({{ variables | length }})
+                    {% set top_level = variables | rejectattr('parent') | list %}
+                    Variables available to this template ({{ top_level | length | fmt_plural('variable', 'variables') }})
                 </summary>
                 <table class="table table-sm small mt-2 mb-0 notify-vars-table">
                     <thead>
