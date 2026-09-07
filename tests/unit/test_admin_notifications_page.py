@@ -15,6 +15,7 @@ LOG = '/admin/htmx/notifications/log'
 DETAIL = '/admin/htmx/notifications/1'
 EDITOR = '/admin/htmx/notifications/templates/expiration-UNIV.txt'
 PREVIEW = '/admin/htmx/notifications/templates/expiration-UNIV.txt/preview'
+RESET = '/admin/htmx/notifications/templates/expiration-UNIV.txt/reset'
 
 
 @pytest.fixture
@@ -45,8 +46,9 @@ class TestThePermissionBoundary:
     def test_view_system_config_alone_is_refused(self, config_only_client, path):
         assert config_only_client.get(path).status_code == 403
 
-    def test_view_system_config_alone_cannot_preview(self, config_only_client):
-        assert config_only_client.post(PREVIEW, data={'body': 'x'}).status_code == 403
+    @pytest.mark.parametrize('path', [PREVIEW, EDITOR, RESET])
+    def test_view_system_config_alone_cannot_post(self, config_only_client, path):
+        assert config_only_client.post(path, data={'body': 'x'}).status_code == 403
 
     @pytest.mark.parametrize('path', [PAGE, LOG, DETAIL, EDITOR])
     def test_anonymous_is_refused(self, client, path):
@@ -197,8 +199,11 @@ class TestTheEditorFragment:
         assert 'kind=expiration' in html
         assert 'hx-swap-oob="true"' in html
 
-    def test_the_source_is_read_only_for_now(self, auth_client):
-        assert 'readonly' in auth_client.get(EDITOR).data.decode()
+    def test_the_source_is_editable_and_the_default_has_no_reset(self, auth_client):
+        html = auth_client.get(EDITOR).data.decode()
+        assert 'readonly' not in html
+        assert 'Reset to default' not in html
+        assert 'Save' in html
 
 
 class TestThePreviewFragment:
@@ -250,3 +255,82 @@ class TestThePreviewFragment:
         resp = auth_client.post(PREVIEW.replace('expiration-UNIV', 'nope'),
                                 data={'body': 'x'})
         assert resp.status_code == 404
+
+
+class TestSave:
+    """HTTP-layer coverage is auth, validation and the compile gate; the one
+    happy path below cleans up after itself because route writes COMMIT."""
+
+    def _override(self, app, name):
+        from webapp.extensions import db
+        from sam import NotificationTemplateOverride
+        with app.app_context():
+            return NotificationTemplateOverride.get_by_name(db.session, name)
+
+    def test_an_empty_body_is_refused(self, auth_client):
+        resp = auth_client.post(EDITOR, data={'body': ''})
+        assert resp.status_code == 200
+        assert b'alert-danger' in resp.data
+        assert b'hx-swap-oob' in resp.data, 'the editor re-renders in place'
+
+    def test_a_body_that_does_not_compile_is_refused(self, auth_client, app):
+        resp = auth_client.post(EDITOR, data={'body': '{% if %}'})
+        assert b'does not render' in resp.data
+        assert b'TemplateSyntaxError' in resp.data
+        assert b'{% if %}' in resp.data, 'the rejected text stays in the editor'
+        assert self._override(app, 'expiration-UNIV.txt') is None
+
+    def test_an_ssti_body_is_refused(self, auth_client, app):
+        resp = auth_client.post(EDITOR, data={'body': "{{ ''.__class__.__mro__ }}"})
+        assert b'does not render' in resp.data and b'SecurityError' in resp.data
+        assert self._override(app, 'expiration-UNIV.txt') is None
+
+    def test_an_unknown_name_is_404(self, auth_client):
+        assert auth_client.post(EDITOR.replace('expiration-UNIV', 'nope'),
+                                data={'body': 'x'}).status_code == 404
+        assert auth_client.post(RESET.replace('expiration-UNIV', 'nope')).status_code == 404
+
+    def test_reset_of_a_default_is_a_harmless_no_op(self, auth_client):
+        resp = auth_client.post(RESET)
+        assert resp.status_code == 200
+        assert b'Restored the shipped default' in resp.data
+
+    def test_save_then_reset_round_trip(self, auth_client, app):
+        """On task_summary.txt, which no other test renders through a real
+        session, and torn down in `finally` whatever happens."""
+        from webapp.extensions import db
+        from sam import NotificationTemplateOverride
+        name = 'task_summary.txt'
+        save = f'/admin/htmx/notifications/templates/{name}'
+        body = 'CUSTOM {{ task_name }} {{ headlin }}'
+        try:
+            resp = auth_client.post(save, data={'body': body})
+            html = resp.data.decode()
+            assert 'Template saved' in html
+            assert 'headlin' in html and 'Unknown variable' in html
+            assert 'Reset to default' in html
+            assert 'customized by' in html
+            row = self._override(app, name)
+            assert row is not None and row.body == body
+            # The editor now shows the override, and a fresh renderer with a
+            # session factory renders it.
+            assert body in auth_client.get(save).data.decode()
+            from sqlalchemy.orm import Session
+            from sam.notify import Message, Recipient, TemplateRenderer
+            with app.app_context():
+                renderer = TemplateRenderer(session_factory=lambda: Session(db.engine))
+                text = renderer.render(Message(
+                    kind='task_summary', subject='s',
+                    recipient=Recipient('ops@example.edu', role='admin'),
+                    context={'task_name': 'expiration_notices'})).text
+            assert text.startswith('CUSTOM expiration_notices')
+
+            resp = auth_client.post(f'{save}/reset')
+            assert b'Restored the shipped default' in resp.data
+            assert self._override(app, name) is None
+        finally:
+            with app.app_context():
+                stray = NotificationTemplateOverride.get_by_name(db.session, name)
+                if stray is not None:
+                    db.session.delete(stray)
+                    db.session.commit()

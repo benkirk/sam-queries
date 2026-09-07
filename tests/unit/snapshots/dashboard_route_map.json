@@ -1302,6 +1302,20 @@
     ]
   ],
   [
+    "admin_dashboard.notification_template_reset",
+    "/admin/htmx/notifications/templates/<name>/reset",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.notification_template_save",
+    "/admin/htmx/notifications/templates/<name>",
+    [
+      "POST"
+    ]
+  ],
+  [
     "admin_dashboard.notifications",
     "/admin/htmx/notifications",
     [

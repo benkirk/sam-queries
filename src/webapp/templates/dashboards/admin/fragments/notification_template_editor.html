@@ -4,8 +4,10 @@
 
   Context: row (name/stem/fmt/kind/label/facility/customized), source,
            variables (sam.notify.samples.palette rows), template_rows,
-           selected_name, roles, preview_url, log_url
+           selected_name, roles, preview_url, save_url, reset_url, log_url;
+           optional errors (save failed), notice (saved/reset), warnings
 #}
+{% from 'dashboards/fragments/form_fields.html' import form_errors_panel with context %}
 {% with oob=True %}
 {% include 'dashboards/admin/fragments/notification_template_picker.html' %}
 {% endwith %}
@@ -22,7 +24,7 @@
             {% if row.customized %}
             <span class="badge text-bg-warning">
                 customized by {{ row.customized.modified_by }}
-                {{ row.customized.modified_time | fmt_ago }}
+                {{ row.customized.modified_time | fmt_age }} ago
             </span>
             {% else %}
             <span class="badge text-bg-secondary">shipped default</span>
@@ -31,11 +33,22 @@
         </div>
     </div>
     <div class="card-body">
-        <form hx-post="{{ preview_url }}"
-              hx-target="#templatePreviewPane"
+        {% if notice %}
+        <div class="alert alert-success py-2">
+            <i class="fa-solid fa-check me-1"></i> {{ notice }}
+            {% if warnings %}
+            Unknown variable{{ 's' if warnings | length > 1 }}
+            {% for w in warnings %}<code>{{ w }}</code>{{ ', ' if not loop.last }}{% endfor %}
+            will render as nothing.
+            {% endif %}
+        </div>
+        {% endif %}
+        {{ form_errors_panel() }}
+        <form hx-post="{{ save_url }}"
+              hx-target="#templateEditorContainer"
               hx-swap="innerHTML">
             <label class="form-label small mb-1" for="templateBody">Template source</label>
-            <textarea id="templateBody" name="body" rows="22" spellcheck="false" readonly
+            <textarea id="templateBody" name="body" rows="22" spellcheck="false"
                       class="form-control notify-template-source">{{ source }}</textarea>
             <details class="mt-2">
                 <summary class="small text-muted">
@@ -69,10 +82,30 @@
                 <select id="previewRole" name="role" class="form-select form-select-sm w-auto">
                     {% for r in roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
                 </select>
-                <button type="submit" class="btn btn-sm btn-outline-primary">
+                <button type="button" class="btn btn-sm btn-outline-primary"
+                        hx-post="{{ preview_url }}" hx-target="#templatePreviewPane"
+                        hx-swap="innerHTML">
                     <i class="fa-solid fa-eye"></i> Preview
                 </button>
+                <span class="ms-auto d-flex gap-2">
+                    {% if row.customized %}
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                            hx-post="{{ reset_url }}" hx-target="#templateEditorContainer"
+                            hx-swap="innerHTML"
+                            hx-confirm="Discard the customized text and restore the shipped default?">
+                        <i class="fa-solid fa-rotate-left"></i> Reset to default
+                    </button>
+                    {% endif %}
+                    <button type="submit" class="btn btn-sm btn-primary">
+                        <i class="fa-solid fa-floppy-disk"></i> Save
+                    </button>
+                </span>
             </div>
+            <p class="small text-muted mt-2 mb-0">
+                Saving replaces the shipped text for every mail of this kind
+                from the next send on. Save is refused if the template does
+                not compile; a wrong variable name only warns.
+            </p>
         </form>
     </div>
     <div class="card-header py-2 border-top">

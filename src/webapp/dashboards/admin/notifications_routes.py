@@ -23,20 +23,26 @@ See ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 8.
 import logging
 
 from flask import abort, render_template, request, url_for
-from flask_login import login_required
+from flask_login import current_user, login_required
+from sqlalchemy.orm import Session
 
 from sam.notify import NOTIFICATION_KINDS, NOTIFICATION_STATUSES, NotifyConfig
 from sam.notify.models import NotificationLog
 from sam.notify.render import TemplateRenderer, shipped_template_names
 from sam.notify.samples import palette, preview_context
+from sam.notify.template_store import NotificationTemplateOverride
+from sam.manage import management_transaction
+from sam.schemas.forms import NotificationTemplateForm
 from sam.queries.notifications import (
     count_recent_notifications,
     facet_notifications,
     get_recent_notifications,
+    get_template_overrides,
     summarize_notifications,
 )
 from webapp.extensions import db
 from webapp.utils.faceted_log import build_facet_strip, parse_window
+from webapp.utils.form_handler import FlattenedFieldErrors, FormError, HtmxFormHandler
 from webapp.utils.htmx import htmx_modal_not_found, read_tab
 from webapp.utils.rbac import require_permission, Permission
 
@@ -57,8 +63,14 @@ _PREVIEW_ROLES = ('lead', 'admin', 'user')
 _EDITOR_TEMPLATE = 'dashboards/admin/fragments/notification_template_editor.html'
 
 
+def _renderer() -> TemplateRenderer:
+    """A renderer that sees the saved overrides, on its own short session."""
+    return TemplateRenderer(session_factory=lambda: Session(db.engine))
+
+
 def _template_rows():
     """One row per shipped template file, with the kind and facility it serves."""
+    overrides = get_template_overrides(db.session)
     rows = []
     for name in shipped_template_names():
         stem, fmt = name.rsplit('.', 1)
@@ -71,7 +83,7 @@ def _template_rows():
             'name': name, 'stem': stem, 'fmt': fmt, 'kind': kind.key,
             'label': kind.label,
             'facility': stem[len(kind.template_base) + 1:] or None,
-            'customized': None,
+            'customized': overrides.get(name),
         })
     return rows
 
@@ -188,25 +200,109 @@ def notification_detail(log_id: int):
         'dashboards/admin/fragments/notification_detail_modal.html', row=row)
 
 
+def _editor_context(name: str, *, source=None, **extra):
+    """Everything the editor fragment renders; ``source`` defaults to the live body."""
+    rows = _template_rows()
+    row = next(r for r in rows if r['name'] == name)
+    return {
+        'row': row,
+        'source': _renderer().source(name) if source is None else source,
+        'variables': palette(row['kind'], row['facility']),
+        'template_rows': rows, 'selected_name': name,
+        'roles': _PREVIEW_ROLES,
+        'preview_url': url_for('admin_dashboard.notification_template_preview',
+                               name=name),
+        'save_url': url_for('admin_dashboard.notification_template_save',
+                            name=name),
+        'reset_url': url_for('admin_dashboard.notification_template_reset',
+                             name=name),
+        'log_url': url_for('admin_dashboard.notifications', tab='log',
+                           kind=row['kind']),
+        **extra,
+    }
+
+
+def _undeclared(row, body: str) -> list:
+    """Names the body reads that no builder supplies; never raises."""
+    try:
+        return sorted(_renderer().undeclared_names(
+            body, preview_context(row['kind'], row['facility'])))
+    except Exception:
+        return []
+
+
 @bp.route('/htmx/notifications/templates/<name>', methods=['GET'])
 @login_required
 @require_permission(Permission.SYSTEM_ADMIN)
 def notification_template_editor(name: str):
     """HTMX fragment: one template's source, its variables, and a preview pane."""
+    _template_row_or_404(name)
+    return render_template(_EDITOR_TEMPLATE, **_editor_context(name))
+
+
+class _SaveTemplateHandler(FlattenedFieldErrors, HtmxFormHandler):
+    """Save an edited body as the override for one shipped template."""
+
+    schema_cls = NotificationTemplateForm
+    template = _EDITOR_TEMPLATE
+    error_prefix = 'Error saving template'
+
+    def clean(self, data):
+        # Render-on-save, not merely compile: a sandbox refusal is a runtime
+        # error. A body that cannot render must never reach a real send,
+        # where it would fail per recipient in the ledger.
+        try:
+            _renderer().render_source(
+                self.row['name'], data['body'],
+                preview_context(self.row['kind'], self.row['facility']))
+        except Exception as exc:
+            raise FormError(f'The template does not render: '
+                            f'{type(exc).__name__}: {exc}')
+        return data
+
+    def perform(self, data):
+        name = self.row['name']
+        existing = NotificationTemplateOverride.get_by_name(db.session, name)
+        if existing is None:
+            NotificationTemplateOverride.create(
+                db.session, name=name, body=data['body'],
+                modified_by=current_user.username)
+        else:
+            existing.update(body=data['body'], modified_by=current_user.username)
+        return data['body']
+
+    def context(self):
+        return _editor_context(self.row['name'],
+                               source=request.form.get('body', ''))
+
+    def on_success(self, body):
+        return render_template(
+            self.template,
+            **_editor_context(self.row['name'], notice='Template saved.',
+                              warnings=_undeclared(self.row, body)))
+
+
+@bp.route('/htmx/notifications/templates/<name>', methods=['POST'])
+@login_required
+@require_permission(Permission.SYSTEM_ADMIN)
+def notification_template_save(name: str):
     row = _template_row_or_404(name)
-    renderer = TemplateRenderer()
-    source = renderer.env.loader.get_source(renderer.env, name)[0]
+    return _SaveTemplateHandler(row=row).handle()
+
+
+@bp.route('/htmx/notifications/templates/<name>/reset', methods=['POST'])
+@login_required
+@require_permission(Permission.SYSTEM_ADMIN)
+def notification_template_reset(name: str):
+    """Delete the override; the shipped file is the baseline and comes back."""
+    _template_row_or_404(name)
+    with management_transaction(db.session):
+        existing = NotificationTemplateOverride.get_by_name(db.session, name)
+        if existing is not None:
+            db.session.delete(existing)
     return render_template(
         _EDITOR_TEMPLATE,
-        row=row, source=source,
-        variables=palette(row['kind'], row['facility']),
-        template_rows=_template_rows(), selected_name=name,
-        roles=_PREVIEW_ROLES,
-        preview_url=url_for('admin_dashboard.notification_template_preview',
-                            name=name),
-        log_url=url_for('admin_dashboard.notifications', tab='log',
-                        kind=row['kind']),
-    )
+        **_editor_context(name, notice='Restored the shipped default.'))
 
 
 @bp.route('/htmx/notifications/templates/<name>/preview', methods=['POST'])
@@ -224,7 +320,7 @@ def notification_template_preview(name: str):
     if role not in _PREVIEW_ROLES:
         role = _PREVIEW_ROLES[0]
     context = preview_context(row['kind'], row['facility'], role)
-    renderer = TemplateRenderer()
+    renderer = _renderer()
     result = {'row': row, 'error': None, 'warnings': [], 'text': None, 'html': None}
     try:
         result['warnings'] = sorted(renderer.undeclared_names(body, context))

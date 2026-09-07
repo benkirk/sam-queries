@@ -226,6 +226,9 @@ from .adjustments import (
 from .admin import (
     ClearRateLimitForm,
 )
+from .notifications import (
+    NotificationTemplateForm,
+)
 from .status import (
     CreateOutageForm,
     EditOutageForm,
@@ -334,6 +337,7 @@ __all__ = [
     'CreateChargeAdjustmentForm',
     # Admin
     'ClearRateLimitForm',
+    'NotificationTemplateForm',
     # Status
     'CreateOutageForm',
     'EditOutageForm',
