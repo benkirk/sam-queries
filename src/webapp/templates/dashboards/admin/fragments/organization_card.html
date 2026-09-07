@@ -11,33 +11,36 @@
   it is a lookup table, not contract data in the same sense.
 #}
 <div class="card-body p-0">
+    {# Sub-tabs are deep-linked via ?tab= (data-tab-url-param); the route reads
+       it and stamps the active pane, and nav-view-persistence.js mirrors a tab
+       click back into the URL. active_tab defaults to 'organizations'. #}
     <!-- Tab navigation -->
-    <ul class="nav nav-tabs" id="organizationsTabs" role="tablist">
+    <ul class="nav nav-tabs" id="organizationsTabs" role="tablist" data-tab-url-param="tab">
         <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="orgs-tab" data-bs-toggle="tab"
-                    data-bs-target="#orgs-pane" type="button" role="tab"
-                    aria-controls="orgs-pane" aria-selected="true">
+            <button class="nav-link {{ 'active' if active_tab == 'organizations' }}" id="orgs-tab" data-bs-toggle="tab"
+                    data-bs-target="#orgs-pane" type="button" role="tab" data-tab-param-value="organizations"
+                    aria-controls="orgs-pane" aria-selected="{{ 'true' if active_tab == 'organizations' else 'false' }}">
                 <i class="fas fa-sitemap me-1"></i> Organizations
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="institutions-tab" data-bs-toggle="tab"
-                    data-bs-target="#institutions-pane" type="button" role="tab"
-                    aria-controls="institutions-pane" aria-selected="false">
+            <button class="nav-link {{ 'active' if active_tab == 'institutions' }}" id="institutions-tab" data-bs-toggle="tab"
+                    data-bs-target="#institutions-pane" type="button" role="tab" data-tab-param-value="institutions"
+                    aria-controls="institutions-pane" aria-selected="{{ 'true' if active_tab == 'institutions' else 'false' }}">
                 <i class="fas fa-university me-1"></i> Institutions
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="areas-tab" data-bs-toggle="tab"
-                    data-bs-target="#areas-pane" type="button" role="tab"
-                    aria-controls="areas-pane" aria-selected="false">
+            <button class="nav-link {{ 'active' if active_tab == 'areas' }}" id="areas-tab" data-bs-toggle="tab"
+                    data-bs-target="#areas-pane" type="button" role="tab" data-tab-param-value="areas"
+                    aria-controls="areas-pane" aria-selected="{{ 'true' if active_tab == 'areas' else 'false' }}">
                 <i class="fas fa-flask me-1"></i> Areas
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="nsf-programs-tab" data-bs-toggle="tab"
-                    data-bs-target="#nsf-programs-pane" type="button" role="tab"
-                    aria-controls="nsf-programs-pane" aria-selected="false">
+            <button class="nav-link {{ 'active' if active_tab == 'nsf-programs' }}" id="nsf-programs-tab" data-bs-toggle="tab"
+                    data-bs-target="#nsf-programs-pane" type="button" role="tab" data-tab-param-value="nsf-programs"
+                    aria-controls="nsf-programs-pane" aria-selected="{{ 'true' if active_tab == 'nsf-programs' else 'false' }}">
                 <i class="fas fa-award me-1"></i> NSF Programs
             </button>
         </li>
@@ -46,7 +49,7 @@
     <div class="tab-content" id="organizationsTabsContent">
 
         <!-- Organizations tab -->
-        <div class="tab-pane fade show active" id="orgs-pane" role="tabpanel"
+        <div class="tab-pane fade {{ 'show active' if active_tab == 'organizations' }}" id="orgs-pane" role="tabpanel"
              aria-labelledby="orgs-tab">
             <div class="table-responsive">
                 <table class="table table-sm mb-0" id="orgs-tree-table">
@@ -139,7 +142,7 @@
         </div>
 
         <!-- Institutions tab (lazy-loaded HTMX fragment) -->
-        <div class="tab-pane fade" id="institutions-pane" role="tabpanel"
+        <div class="tab-pane fade {{ 'show active' if active_tab == 'institutions' }}" id="institutions-pane" role="tabpanel"
              aria-labelledby="institutions-tab"
              hx-get="{{ url_for('admin_dashboard.htmx_institutions_fragment',
                                 active_only=(1 if active_only else 0)) }}"
@@ -152,7 +155,7 @@
         </div>
 
         <!-- Areas tab (groups collapsed, AOIs expand on click) -->
-        <div class="tab-pane fade" id="areas-pane" role="tabpanel"
+        <div class="tab-pane fade {{ 'show active' if active_tab == 'areas' }}" id="areas-pane" role="tabpanel"
              aria-labelledby="areas-tab">
             <div class="table-responsive">
                 <table class="table table-sm mb-0">
@@ -257,7 +260,7 @@
 
 
         <!-- NSF Programs tab -->
-        <div class="tab-pane fade" id="nsf-programs-pane" role="tabpanel"
+        <div class="tab-pane fade {{ 'show active' if active_tab == 'nsf-programs' }}" id="nsf-programs-pane" role="tabpanel"
              aria-labelledby="nsf-programs-tab">
             <div class="table-responsive">
                 <table class="table table-hover table-sm mb-0">

@@ -49,7 +49,15 @@
 <div class="row">
     <div class="col-12">
         <div id="userCardContainer"
-             data-reload-url="{{ url_for('admin_dashboard.user_card', username='') }}"></div>
+             data-reload-url="{{ url_for('admin_dashboard.user_card', username='') }}"
+             {% if auto_load_username %}
+             hx-get="{{ url_for('admin_dashboard.user_card', username=auto_load_username) }}"
+             hx-trigger="load"
+             hx-swap="innerHTML"
+             {# One-shot scroll to the card a ?username= link asked for
+                (dashboard-init.js); later reloads of this container don't. #}
+             data-reveal-on-load
+             {% endif %}></div>
     </div>
 </div>
 
@@ -57,7 +65,13 @@
 <div class="row">
     <div class="col-12">
         <div id="groupCardContainer"
-             data-reload-url="{{ url_for('admin_dashboard.group_card', group_name='') }}"></div>
+             data-reload-url="{{ url_for('admin_dashboard.group_card', group_name='') }}"
+             {% if auto_load_groupname %}
+             hx-get="{{ url_for('admin_dashboard.group_card', group_name=auto_load_groupname) }}"
+             hx-trigger="load"
+             hx-swap="innerHTML"
+             data-reveal-on-load
+             {% endif %}></div>
     </div>
 </div>
 

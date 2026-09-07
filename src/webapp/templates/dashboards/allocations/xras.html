@@ -57,19 +57,22 @@
         <div class="card-body">
 
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-    {# role="tablist" + an id is all nav-view-persistence.js needs to remember
-       the operator's pane across reloads under "tab:xrasWorklistTabs". No
-       data-tab-url-param: these panes are not deep-linked, and the two
-       channels cannot coexist. #}
-    <ul class="nav nav-tabs border-0" role="tablist" id="xrasWorklistTabs">
+    {# These two panes are deep-linked via ?view= (data-tab-url-param): the
+       route reads it, stamps the active pane, and nav-view-persistence.js
+       mirrors a tab click back into the URL — replacing the "tab:xrasWorklistTabs"
+       localStorage channel (a tablist uses one channel or the other, never
+       both). The sibling Remediations and Logs cards are reached by the same
+       ?view= via a data-deeplink scroll handler, since they are cards, not tabs.
+       activity is the default; accounts wins only when explicitly asked. #}
+    <ul class="nav nav-tabs border-0" role="tablist" id="xrasWorklistTabs" data-tab-url-param="view">
         <li class="nav-item" role="presentation">
-            <button class="nav-link active" data-bs-toggle="tab"
-                    data-bs-target="#xras-pane-activity" type="button"
+            <button class="nav-link {{ 'active' if xras_view != 'accounts' }}" data-bs-toggle="tab"
+                    data-bs-target="#xras-pane-activity" type="button" data-tab-param-value="activity"
                     role="tab">Pending Activations &amp; Notifications</button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" data-bs-toggle="tab"
-                    data-bs-target="#xras-pane-accounts" type="button"
+            <button class="nav-link {{ 'active' if xras_view == 'accounts' }}" data-bs-toggle="tab"
+                    data-bs-target="#xras-pane-accounts" type="button" data-tab-param-value="accounts"
                     role="tab">Pending Users</button>
         </li>
     </ul>
@@ -132,7 +135,7 @@
 {% endif %}
 
 <div class="tab-content mb-3">
-    <div class="tab-pane fade show active" id="xras-pane-activity" role="tabpanel">
+    <div class="tab-pane fade {{ 'show active' if xras_view != 'accounts' }}" id="xras-pane-activity" role="tabpanel">
         <div id="alloc-xras-pending"
              hx-get="{{ url_for('allocations_dashboard.xras_pending_fragment') }}"
              hx-trigger="load, refreshXrasTab from:body, submit from:#xras-window-filters, submit from:#xras-activity-filters"
@@ -142,7 +145,7 @@
 
     {# Pending Users: both feeds unioned. The fragment owns the degraded-half
        note for when Feed B is unconfigured, unpublished, or unreadable. #}
-    <div class="tab-pane fade" id="xras-pane-accounts" role="tabpanel">
+    <div class="tab-pane fade {{ 'show active' if xras_view == 'accounts' }}" id="xras-pane-accounts" role="tabpanel">
         <div id="alloc-xras-accounts"
              hx-get="{{ url_for('allocations_dashboard.xras_accounts_fragment') }}"
              hx-trigger="load, refreshXrasTab from:body, submit from:#xras-window-filters, submit from:#xras-accounts-filters"
@@ -167,6 +170,7 @@
    the whole page, its own facet form moves only this card. Wiring just the
    window is the easy mistake and it makes every chip here silently inert. #}
 <div id="alloc-xras-remediations"
+     data-deeplink="remediations"
      hx-get="{{ url_for('allocations_dashboard.xras_remediations_fragment') }}"
      hx-trigger="load, refreshXrasTab from:body, submit from:#xras-window-filters, submit from:#xras-remediation-filters"
      hx-include="#xras-window-filters, #xras-remediation-filters"
@@ -181,7 +185,7 @@
    The API action log and its filter sidebar. Own collapse toggle; runs off its
    own #xras-filters form (not the shared window above), so collapsing either
    card touches no wiring. #}
-<div class="card mb-3">
+<div class="card mb-3" data-deeplink="logs">
     <div class="card-header d-flex align-items-center gap-2 cursor-pointer" role="button"
          {{ collapse_toggle('xras-section-logs', expanded=true) }}>
         <i class="fas fa-chevron-right small text-muted collapse-icon"></i>
