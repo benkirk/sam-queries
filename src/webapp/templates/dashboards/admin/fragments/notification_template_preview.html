@@ -3,8 +3,21 @@
   sandboxed srcdoc iframe (no scripts; the page CSP allows its inline
   <style>). Errors and unknown-variable warnings render here too, at 200.
 
-  Context: row, error, warnings, text, html
+  Context: row, error, warnings, text, html, subject, audience (a real
+           project's recipient, or None for sample data), role, info
 #}
+{% if subject %}
+<p class="small text-muted mb-2">
+    <i class="fa-solid {{ 'fa-user' if audience else 'fa-flask' }} me-1"></i>
+    {% if audience %}{{ audience }}{% else %}Sample data, as {{ role }}{% endif %}
+    · Subject: <span class="fw-semibold">{{ subject }}</span>
+</p>
+{% endif %}
+{% if info %}
+<div class="alert alert-info mb-2">
+    <i class="fa-solid fa-circle-info me-1"></i> {{ info }}
+</div>
+{% endif %}
 {% if error %}
 <div class="alert alert-danger mb-2">
     <i class="fa-solid fa-triangle-exclamation me-1"></i>

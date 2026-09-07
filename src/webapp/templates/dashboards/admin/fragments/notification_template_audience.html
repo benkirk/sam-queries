@@ -1,0 +1,18 @@
+{#
+  The "preview as" control. Sample mode offers a role; once a project is
+  picked, the real people the builders would address. Both selects share an
+  id so the label outside this fragment keeps pointing at the live one.
+
+  Context: roles, project, messages (sam.notify Message list), error
+#}
+{% if messages %}
+<select id="previewAudienceSelect" name="recipient" class="form-select form-select-sm">
+    {% for m in messages %}
+    <option value="{{ m.recipient.address }}">{{ m.recipient.name or m.recipient.address }} ({{ m.recipient.role }})</option>
+    {% endfor %}
+</select>
+{% else %}
+<select id="previewAudienceSelect" name="role" class="form-select form-select-sm w-auto">
+    {% for r in roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+</select>
+{% endif %}

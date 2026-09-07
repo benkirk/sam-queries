@@ -1015,6 +1015,13 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_project_search_for_preview",
+    "/admin/htmx/notifications/templates/project-search",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_project_update",
     "/admin/htmx/project-update/<projcode>",
     [
@@ -1283,6 +1290,13 @@
   [
     "admin_dashboard.notification_detail",
     "/admin/htmx/notifications/<int:log_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.notification_template_audience",
+    "/admin/htmx/notifications/templates/<name>/recipients",
     [
       "GET"
     ]

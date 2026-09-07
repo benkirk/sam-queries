@@ -22,7 +22,7 @@ See ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 8.
 
 import logging
 
-from flask import abort, render_template, request, url_for
+from flask import abort, make_response, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy.orm import Session
 
@@ -32,6 +32,9 @@ from sam.notify.render import TemplateRenderer, shipped_template_names
 from sam.notify.samples import palette, preview_context
 from sam.notify.template_store import NotificationTemplateOverride
 from sam.manage import management_transaction
+from sam import Project
+from sam.queries.notification_previews import is_project_kind, messages_for_project
+from sam.queries.projects import search_projects_by_code_or_title
 from sam.schemas.forms import NotificationTemplateForm
 from sam.queries.notifications import (
     count_recent_notifications,
@@ -43,7 +46,7 @@ from sam.queries.notifications import (
 from webapp.extensions import db
 from webapp.utils.faceted_log import build_facet_strip, parse_window
 from webapp.utils.form_handler import FlattenedFieldErrors, FormError, HtmxFormHandler
-from webapp.utils.htmx import htmx_modal_not_found, read_tab
+from webapp.utils.htmx import htmx_modal_not_found, read_tab, register_typeahead
 from webapp.utils.rbac import require_permission, Permission
 
 from .blueprint import bp
@@ -218,8 +221,37 @@ def _editor_context(name: str, *, source=None, **extra):
                              name=name),
         'log_url': url_for('admin_dashboard.notifications', tab='log',
                            kind=row['kind']),
+        'project_kind': is_project_kind(row['kind']),
+        'project_search_url': url_for(
+            'admin_dashboard.htmx_project_search_for_preview'),
+        'audience_url': url_for('admin_dashboard.notification_template_audience',
+                                name=name),
         **extra,
     }
+
+
+def _project_audience(row, args):
+    """``(project, messages, error)`` for a ``project_id`` in a request mapping.
+
+    No ``project_id`` means sample mode: ``(None, [], None)``. A project that
+    yields no message explains why in ``error``; the preview shows it in
+    the pane rather than failing the request.
+    """
+    raw = (args.get('project_id') or '').strip()
+    if not raw:
+        return None, [], None
+    if not is_project_kind(row['kind']):
+        return None, [], 'This template is not about a project.'
+    project = db.session.get(Project, int(raw)) if raw.isdigit() else None
+    if project is None:
+        return None, [], 'Unknown project.'
+    messages = messages_for_project(db.session, row['kind'], project,
+                                    requested_by=current_user.username)
+    if not messages:
+        why = ('no allocation with an end date' if row['kind'] == 'expiration'
+               else 'no lead or admin with an email address')
+        return project, [], f'{project.projcode} has {why}, so nothing would be sent.'
+    return project, messages, None
 
 
 def _undeclared(row, body: str) -> list:
@@ -319,9 +351,28 @@ def notification_template_preview(name: str):
     role = request.form.get('role')
     if role not in _PREVIEW_ROLES:
         role = _PREVIEW_ROLES[0]
-    context = preview_context(row['kind'], row['facility'], role)
     renderer = _renderer()
-    result = {'row': row, 'error': None, 'warnings': [], 'text': None, 'html': None}
+    result = {'row': row, 'error': None, 'warnings': [], 'text': None,
+              'html': None, 'audience': None, 'subject': None, 'role': role,
+              'info': None}
+    project, messages, info = _project_audience(row, request.form)
+    if info:
+        result['info'] = info
+        return render_template(
+            'dashboards/admin/fragments/notification_template_preview.html',
+            **result)
+    if messages:
+        wanted = request.form.get('recipient')
+        message = next((m for m in messages if m.recipient.address == wanted),
+                       messages[0])
+        context = renderer.context_for(message)
+        result['subject'] = message.subject
+        result['audience'] = (f'{project.projcode}, as it would reach '
+                              f'{message.recipient.name or message.recipient.address} '
+                              f'({message.recipient.role})')
+    else:
+        context = preview_context(row['kind'], row['facility'], role)
+        result['subject'] = context['subject']
     try:
         result['warnings'] = sorted(renderer.undeclared_names(body, context))
         rendered = renderer.render_source(name, body, context)
@@ -332,3 +383,40 @@ def notification_template_preview(name: str):
     return render_template(
         'dashboards/admin/fragments/notification_template_preview.html',
         **result)
+
+
+@bp.route('/htmx/notifications/templates/<name>/recipients', methods=['GET'])
+@login_required
+@require_permission(Permission.SYSTEM_ADMIN)
+def notification_template_audience(name: str):
+    """HTMX fragment: the "preview as" control, real people once a project is picked.
+
+    The response triggers ``reloadTemplatePreview`` so the pane re-renders
+    only after the recipient select exists.
+    """
+    row = _template_row_or_404(name)
+    project, messages, error = _project_audience(row, request.args)
+    resp = make_response(render_template(
+        'dashboards/admin/fragments/notification_template_audience.html',
+        row=row, roles=_PREVIEW_ROLES, project=project, messages=messages,
+        error=error))
+    resp.headers['HX-Trigger'] = 'reloadTemplatePreview'
+    return resp
+
+
+def _search_projects_for_preview(q, active_only):
+    return search_projects_by_code_or_title(db.session, q, active=True)[:10]
+
+
+# Same search and results template as the parent-project picker, gated on
+# this surface's own permission.
+register_typeahead(
+    bp,
+    rule='/htmx/notifications/templates/project-search',
+    endpoint='htmx_project_search_for_preview',
+    permission=Permission.SYSTEM_ADMIN,
+    search=_search_projects_for_preview,
+    template='dashboards/admin/fragments/project_search_results_fk_htmx.html',
+    ctx_key='projects',
+    min_len=1,
+)

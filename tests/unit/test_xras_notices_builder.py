@@ -322,3 +322,37 @@ class TestTheSampleContextMatchesTheBuilder:
             assert bool(message.context[name]) == bool(sample[name])
             if sample[name]:
                 assert set(message.context[name][0]) == set(sample[name][0])
+
+
+class TestAForcedKind:
+    """The template editor previews ITS template against a real project."""
+
+    @pytest.fixture
+    def key(self, session):
+        return make_xras_key_mapping(session).xras_key
+
+    def _payload(self, key):
+        return json.dumps({'resources': [
+            {'resourceRepositoryKey': key, 'awardedAmount': '50000'}]})
+
+    def test_kind_overrides_the_actions_service(self, session, project, key):
+        action = make_xras_action(
+            session, status='processed', action_type='New', service='add',
+            request_number=project.projcode, projcode_result=project.projcode,
+            payload=self._payload(key))
+        (message,) = build_xras_messages(session, project, PEOPLE, action=action,
+                                         kind='xras_extension', requested_by='t')
+        assert message.kind == 'xras_extension'
+        assert message.dedup_key.startswith('xras_extension:')
+
+    def test_increments_come_only_from_a_matching_action(self, session, project, key):
+        action = make_xras_action(
+            session, status='processed', action_type='Adjustment', service='adjust',
+            request_number=project.projcode, projcode_result=project.projcode,
+            payload=self._payload(key))
+        (forced,) = build_xras_messages(session, project, PEOPLE, action=action,
+                                        kind='xras_supplement', requested_by='t')
+        assert forced.context['added'] == []
+        (own,) = build_xras_messages(session, project, PEOPLE, action=action,
+                                     requested_by='t')
+        assert own.kind == 'xras_adjustment' and own.context['changes']

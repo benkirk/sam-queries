@@ -4,10 +4,11 @@
 
   Context: row (name/stem/fmt/kind/label/facility/customized), source,
            variables (sam.notify.samples.palette rows), template_rows,
-           selected_name, roles, preview_url, save_url, reset_url, log_url;
+           selected_name, roles, preview_url, save_url, reset_url, log_url,
+           project_kind, project_search_url, audience_url;
            optional errors (save failed), notice (saved/reset), warnings
 #}
-{% from 'dashboards/fragments/form_fields.html' import form_errors_panel with context %}
+{% from 'dashboards/fragments/form_fields.html' import form_errors_panel, fk_search_field with context %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% with oob=True %}
 {% include 'dashboards/admin/fragments/notification_template_picker.html' %}
@@ -45,7 +46,8 @@
         </div>
         {% endif %}
         {{ form_errors_panel() }}
-        <form hx-post="{{ save_url }}"
+        <form id="templateForm"
+              hx-post="{{ save_url }}"
               hx-target="#templateEditorContainer"
               hx-swap="innerHTML">
             <label class="form-label small mb-1" for="templateBody">Template source</label>
@@ -99,15 +101,6 @@
                 </p>
             </details>
             <div class="d-flex align-items-center gap-2 mt-2 flex-wrap">
-                <label class="small mb-0" for="previewRole">Preview as</label>
-                <select id="previewRole" name="role" class="form-select form-select-sm w-auto">
-                    {% for r in roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
-                </select>
-                <button type="button" class="btn btn-sm btn-outline-primary"
-                        hx-post="{{ preview_url }}" hx-target="#templatePreviewPane"
-                        hx-swap="innerHTML">
-                    <i class="fa-solid fa-eye"></i> Preview
-                </button>
                 <span class="ms-auto d-flex gap-2">
                     {% if row.customized %}
                     <button type="button" class="btn btn-sm btn-outline-secondary"
@@ -128,15 +121,48 @@
                 not compile; a wrong variable name only warns.
             </p>
         </form>
+        {# Outside the form: the picker's own search box (name="q") must not
+           ride a save. The pane and the Preview button include both. #}
+        <div id="previewControls" class="d-flex align-items-end gap-3 flex-wrap mt-3">
+            {% if project_kind %}
+            <div class="flex-grow-1">
+                {{ fk_search_field('project_id', 'Preview for',
+                                   search_url=project_search_url,
+                                   optional_text='(a real project, or leave empty for sample data)',
+                                   placeholder='Project code or title…',
+                                   badge_class='bg-secondary text-light py-1 px-2 font-monospace',
+                                   search_class='form-control form-control-sm',
+                                   id_prefix='previewProject',
+                                   wrapper_class='mb-0') }}
+            </div>
+            {% endif %}
+            <div>
+                <label class="form-label small mb-1" for="previewAudienceSelect">Preview as</label>
+                <div id="previewAudience"
+                     {% if project_kind %}
+                     hx-get="{{ audience_url }}"
+                     hx-trigger="fk:selected from:#previewControls, fk:cleared from:#previewControls"
+                     hx-include="#previewProject_id"
+                     hx-swap="innerHTML"
+                     {% endif %}>
+                    {% include 'dashboards/admin/fragments/notification_template_audience.html' %}
+                </div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-primary"
+                    hx-post="{{ preview_url }}" hx-target="#templatePreviewPane"
+                    hx-include="#templateForm, #previewControls"
+                    hx-swap="innerHTML">
+                <i class="fa-solid fa-eye"></i> Preview
+            </button>
+        </div>
     </div>
     <div class="card-header py-2 border-top">
         <strong>Preview</strong>
-        <span class="text-muted small">rendered against sample data</span>
     </div>
     <div class="card-body" id="templatePreviewPane"
          hx-post="{{ preview_url }}"
-         hx-include="#templateBody, #previewRole"
-         hx-trigger="load"
+         hx-include="#templateForm, #previewControls"
+         hx-trigger="load, reloadTemplatePreview from:body, change from:#previewAudience"
          hx-swap="innerHTML">
         <div class="text-muted small">
             <i class="fa-solid fa-circle-notch fa-spin"></i> Rendering…

@@ -103,6 +103,28 @@ templates repeated the same `<head>/<style>` scaffold; that debt is gone.
    `notification_template_override.modified_time` against
    `notification_log.creation_time`.
 
+## Follow-up: "Preview for" a real project (same PR)
+
+The editor's "Preview as" role select gained a "Preview for" project picker
+(`fk_search_field` on a SYSTEM_ADMIN typeahead that reuses the
+parent-project search and results template). Once a project is picked, the
+audience fragment (`GET .../templates/<name>/recipients`) replaces the role
+select with the real people the builders would address, and the pane
+re-renders the real message: `sam/queries/notification_previews.py`
+builds the expiration 4-tuples from `project.accounts` (no per-project
+window query exists, and the window ones drop inactive or open-ended
+projects) and calls `build_xras_messages(..., kind=)` — a new keyword that
+forces the template's own kind; increments are taken from the latest
+action only when its service maps to that kind, so a forced supplement
+never shows an adjustment's amounts as "added". Real and possibly empty,
+never fixture numbers: the pane explains when nothing would be sent.
+
+Mechanics worth keeping: `fk-picker.js` fires `fk:selected` /
+`fk:cleared` (never `change`), so the audience div listens for those; its
+response carries `HX-Trigger: reloadTemplatePreview`, which the pane
+listens for, so the re-render always follows the recipient select. The
+picker lives outside the save form because its search box posts as `q`.
+
 ## Deferred
 
 CodeMirror highlighting (one sha384-pinned asset via

@@ -16,6 +16,8 @@ DETAIL = '/admin/htmx/notifications/1'
 EDITOR = '/admin/htmx/notifications/templates/expiration-UNIV.txt'
 PREVIEW = '/admin/htmx/notifications/templates/expiration-UNIV.txt/preview'
 RESET = '/admin/htmx/notifications/templates/expiration-UNIV.txt/reset'
+AUDIENCE = '/admin/htmx/notifications/templates/expiration-UNIV.txt/recipients'
+TYPEAHEAD = '/admin/htmx/notifications/templates/project-search?q=SC'
 
 
 @pytest.fixture
@@ -42,7 +44,7 @@ class TestThePermissionBoundary:
     """One tier apart, deliberately — and the gate is on the ROUTE, so a
     view-source cannot reveal what the page chose not to draw."""
 
-    @pytest.mark.parametrize('path', [PAGE, LOG, DETAIL, EDITOR])
+    @pytest.mark.parametrize('path', [PAGE, LOG, DETAIL, EDITOR, AUDIENCE, TYPEAHEAD])
     def test_view_system_config_alone_is_refused(self, config_only_client, path):
         assert config_only_client.get(path).status_code == 403
 
@@ -334,3 +336,58 @@ class TestSave:
                 if stray is not None:
                     db.session.delete(stray)
                     db.session.commit()
+
+
+class TestPreviewForAProject:
+    """Real data replaces the samples once a project is picked."""
+
+    def test_the_editor_offers_the_picker_for_project_kinds_only(self, auth_client):
+        html = auth_client.get(EDITOR).data.decode()
+        assert 'previewProject_id' in html and 'Preview for' in html
+        task = auth_client.get(EDITOR.replace('expiration-UNIV', 'task_summary')).data.decode()
+        assert 'previewProject_id' not in task
+
+    def test_the_typeahead_finds_projects(self, auth_client, active_project):
+        html = auth_client.get(
+            f'/admin/htmx/notifications/templates/project-search?q={active_project.projcode}'
+        ).data.decode()
+        assert f'data-fk-id="{active_project.project_id}"' in html
+
+    def test_audience_without_a_project_is_the_role_select(self, auth_client):
+        resp = auth_client.get(AUDIENCE)
+        assert b'name="role"' in resp.data and b'name="recipient"' not in resp.data
+        assert resp.headers.get('HX-Trigger') == 'reloadTemplatePreview'
+
+    def test_audience_with_a_project_is_real_people_or_an_explanation(
+            self, auth_client, active_project):
+        resp = auth_client.get(f'{AUDIENCE}?project_id={active_project.project_id}')
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert 'name="recipient"' in html or 'name="role"' in html
+
+    def test_preview_for_a_project_renders_its_code_or_explains(
+            self, auth_client, active_project):
+        resp = auth_client.post(PREVIEW, data={
+            'body': 'Hello {{ project_code }} {{ recipient_role }}',
+            'project_id': str(active_project.project_id)})
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert (f'Hello {active_project.projcode}' in html
+                or 'nothing would be sent' in html)
+        if 'nothing would be sent' not in html:
+            assert 'as it would reach' in html and 'Subject:' in html
+
+    def test_an_unknown_project_answers_in_the_pane(self, auth_client):
+        resp = auth_client.post(PREVIEW, data={'body': 'x', 'project_id': '999999999'})
+        assert resp.status_code == 200 and b'Unknown project' in resp.data
+
+    def test_a_task_kind_ignores_the_project(self, auth_client, active_project):
+        resp = auth_client.post(
+            PREVIEW.replace('expiration-UNIV', 'task_summary'),
+            data={'body': '{{ task_name }}', 'project_id': str(active_project.project_id)})
+        assert resp.status_code == 200
+        assert b'not about a project' in resp.data
+
+    def test_sample_mode_names_the_role_and_subject(self, auth_client):
+        html = auth_client.post(PREVIEW, data={'body': 'x', 'role': 'user'}).data.decode()
+        assert 'Sample data, as user' in html and 'Subject:' in html
