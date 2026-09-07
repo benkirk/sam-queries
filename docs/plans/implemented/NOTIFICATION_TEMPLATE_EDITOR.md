@@ -93,11 +93,16 @@ templates repeated the same `<head>/<style>` scaffold; that debt is gone.
 
 ## Production rollout
 
-1. Apply `scripts/create_notification_template_override.sql` as
-   `hpc-writer` on the UCAR VPN (the operator's step, before the deploy).
-   Until then the loader logs one warning per renderer and renders the
-   shipped files; nothing is withheld.
-2. Deploy. The table is empty, so every mail renders exactly as before.
+1. Apply, as `hpc-writer` on the UCAR VPN (the operator's step, before the
+   deploy), `scripts/create_notification_template_override.sql`,
+   `scripts/create_notification_addressing.sql` and
+   `scripts/alter_notification_log_copies.sql`. Until then the loader and
+   the addressing store each log one warning per `Notifier` and fall back
+   to the shipped files and the env defaults; nothing is withheld. The
+   ledger write, however, names the `copies` column, so the ALTER must land
+   before the deploy.
+2. Deploy. Both tables are empty, so every mail renders and is addressed
+   exactly as before.
 3. The ledger's `template` column still records the file name only.
    Whether an override was live at send time is answerable from
    `notification_template_override.modified_time` against
@@ -124,6 +129,46 @@ Mechanics worth keeping: `fk-picker.js` fires `fk:selected` /
 response carries `HX-Trigger: reloadTemplatePreview`, which the pane
 listens for, so the re-render always follows the recipient select. The
 picker lives outside the save form because its search box posts as `q`.
+
+## Follow-up: operator-added cc/bcc (same PR)
+
+Copies per message family were a chart edit (`NOTIFY_<FAMILY>_{CC,BCC}` in
+`helm/values.yaml`, only `xras` set). The Addressing tab lets an operator
+add to them without a deploy.
+
+- **One table, `notification_addressing`**, one address per row:
+  `scope`, `field` (cc|bcc), `address`, who/when,
+  `UNIQUE(scope, field, address)`. The scope vocabulary is
+  `addressing_scopes(family)` in `kinds.py`: the family key, each kind
+  key, and `{kind}-{facility}` for facility-aware kinds. That last stem is
+  the same one the template resolver tries, and it is what makes a
+  WNA-only expiration copy one row.
+- **Additive.** Effective cc = (builder-set value or env family default)
+  plus the rows for the family, the kind, and the facility variant, in that
+  order, deduped case-insensitively; bcc likewise. From/Reply-To stay
+  env-only. Deployment defaults are shown on the card but are not rows,
+  so they cannot be removed from the UI; an operator row is removed by
+  deleting it.
+- **Read once per `Notifier`** (`AddressingStore`, `sam/notify/addressing.py`)
+  through the ledger's session factory, mirroring `OverrideLoader`. No
+  factory means no query. Any failure logs one warning and adds nothing:
+  the ledger, not this read, decides fail-closed for a dead database.
+- **`Message.copies()`** now owns the redirect rule (empty when
+  `intended_recipient` is set); the SMTP and console transports and the
+  ledger all read it. **`notification_log.copies`** records what left as
+  `cc:a@x,b@y;bcc:c@z` (NULL when nothing did, which includes every
+  redirected row); the detail modal shows it.
+- **Families are a registry**: `NotificationFamily(key, label,
+  about_project)` in `kinds.py`. `about_project` is what the template
+  editor's "Preview for" reads; the tab uses the labels.
+- The template editor's preview pane prints the effective
+  From/Reply-To/Cc/Bcc for the template's kind, so an operator can see a
+  row take effect without sending.
+
+Traps: the add form's macros must be imported `with context`, or the
+inline errors render empty at 200 and look like a dead button. The card
+reloads on `reloadAddressingCard`, which both the add (through
+`handle_htmx_form_post`) and the delete response fire.
 
 ## Deferred
 
