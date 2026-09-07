@@ -21,7 +21,7 @@
 <div class="card mb-3">
     <div class="card-header">
         <h5 class="mb-0">
-            <i class="fas fa-users"></i>
+            <i class="fa-solid fa-users"></i>
             {{ group.group_name }}
             <span class="badge bg-secondary ms-2">gid {{ group.unix_gid }}</span>
             {% if not group.is_active %}
@@ -36,7 +36,7 @@
             <div class="col-lg-6">
                 <div class="project-stats-box mb-0"
                      style="grid-template-columns: auto minmax(0, 1fr); align-content: start;">
-                    <h6><i class="fas fa-info-circle"></i> Group Information</h6>
+                    <h6><i class="fa-solid fa-circle-info"></i> Group Information</h6>
 
                     <div class="stat-item">
                         <span class="stat-label">Name:</span>
@@ -93,7 +93,7 @@
             <div class="col-lg-6">
                 <div class="project-stats-box mb-0" style="align-content: start;">
                     <h6>
-                        <i class="fas fa-user-tag"></i> Primary-GID Users
+                        <i class="fa-solid fa-user-tag"></i> Primary-GID Users
                         <span class="badge bg-secondary ms-1">{{ primary_gid_users | length }}</span>
                     </h6>
                     {% if primary_gid_users %}
@@ -118,7 +118,7 @@
         {# Members by branch (tabbed) #}
         {% if branches %}
         <hr class="my-4">
-        <h6><i class="fas fa-users"></i> Members by Access Branch</h6>
+        <h6><i class="fa-solid fa-users"></i> Members by Access Branch</h6>
         <ul class="nav nav-tabs" role="tablist">
             {% for b in branches %}
             <li class="nav-item" role="presentation">

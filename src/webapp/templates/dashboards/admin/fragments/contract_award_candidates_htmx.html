@@ -17,13 +17,13 @@
 #}
 {% if search_error %}
 <div class="alert alert-warning mb-0">
-    <i class="fas fa-triangle-exclamation me-1"></i>{{ search_error }}
+    <i class="fa-solid fa-triangle-exclamation me-1"></i>{{ search_error }}
 </div>
 {% elif results %}
 
 {% if partial_errors %}
 <div class="alert alert-warning py-2">
-    <i class="fas fa-triangle-exclamation me-1"></i>
+    <i class="fa-solid fa-triangle-exclamation me-1"></i>
     {% for error in partial_errors %}{{ error.provenance }} could not be reached.
     {% endfor %}These results are partial.
 </div>
@@ -46,7 +46,7 @@
                     </div>
                     {% if row.in_sam %}
                     <span class="badge bg-secondary flex-shrink-0">
-                        <i class="fas fa-check me-1"></i>already in SAM
+                        <i class="fa-solid fa-check me-1"></i>already in SAM
                     </span>
                     {% endif %}
                 </div>
@@ -87,7 +87,7 @@
                 {% if award.url %}
                 <a href="{{ award.url }}" target="_blank" rel="noopener noreferrer"
                    class="small">
-                    View award <i class="fas fa-arrow-up-right-from-square ms-1"></i>
+                    View award <i class="fa-solid fa-arrow-up-right-from-square ms-1"></i>
                 </a>
                 {% else %}<span></span>{% endif %}
 
@@ -108,7 +108,7 @@
                         hx-target="#createContractFormContainer"
                         hx-swap="innerHTML"
                         hx-trigger="click">
-                    <i class="fas fa-plus me-1"></i> Create contract
+                    <i class="fa-solid fa-plus me-1"></i> Create contract
                 </button>
                 {% endif %}
             </div>

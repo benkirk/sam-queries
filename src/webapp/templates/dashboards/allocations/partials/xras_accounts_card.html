@@ -187,7 +187,7 @@
            action anyone here can take. Saying so once beats implying
            otherwise 26 times. #}
         <div class="small text-muted mt-2">
-            <i class="fas fa-circle-info"></i>
+            <i class="fa-solid fa-circle-info"></i>
             Accounts are mirrored into SAM from the enterprise directory —
             SAM cannot create or reactivate one. These rows are handed to the
             team that does, and clear on their own once the next sync lands.
@@ -199,7 +199,7 @@
            unavailable the card says which state it is in rather than pretending
            it saw everything. #}
         <div class="small text-muted mt-1">
-            <i class="fas fa-circle-info"></i>
+            <i class="fa-solid fa-circle-info"></i>
             {% if feed_reason == 'unconfigured' %}
             The pending-request look-ahead is off
             (<code>XRAS_OUTGOING_ENABLED</code>); showing received pushes only.
@@ -216,14 +216,14 @@
         {# The designed unconfigured/degraded state. The worklist above is
            complete — only XRAS-sourced detail is missing. #}
         <div class="small text-muted mt-2">
-            <i class="fas fa-circle-info"></i>
+            <i class="fa-solid fa-circle-info"></i>
             Person detail and reconciliation status are unavailable
             (the XRAS API is not configured or could not be reached).
             The worklist itself is derived from the action log and is complete.
         </div>
         {% elif enrichment.budget_exhausted %}
         <div class="small text-muted mt-2">
-            <i class="fas fa-circle-info"></i>
+            <i class="fa-solid fa-circle-info"></i>
             Person detail shown for the first {{ enrichment.looked_up | fmt_number }}
             rows; narrow the filters to look up the rest.
         </div>
@@ -279,7 +279,7 @@
                            `.collapse-icon` still rotates, since it rotates off
                            the `aria-expanded` on its ANCESTOR trigger, and the
                            span is now that ancestor. #}
-                        <span class="cursor-pointer" {{ collapse_toggle(body_id) }}><i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i></span>
+                        <span class="cursor-pointer" {{ collapse_toggle(body_id) }}><i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i></span>
                         {% if row.classification == 'absent' %}
                         {# No SAM row to open. `classify_accounts` looked: this
                            username matched no `users` row at all, which is the
@@ -366,7 +366,7 @@
                         {% endfor %}
                     </td>
 
-                    {# WARNING: text badges only, never an <i class="fas">. A summary
+                    {# WARNING: text badges only, never an icon (<i class="fa-solid">). A summary
                        row must carry no icon that reads as an action; the source
                        is a fact about the row, so it is spelled out. #}
                     <td class="cursor-pointer text-nowrap" {{ collapse_toggle(body_id) }}>
@@ -499,7 +499,7 @@
                            data-bs-target off the row. Same modal as the
                            Remediations card, keyed on the username. #}
                         <div class="alert alert-warning d-flex align-items-center gap-2 py-2">
-                            <i class="fas fa-triangle-exclamation"></i>
+                            <i class="fa-solid fa-triangle-exclamation"></i>
                             <div class="small flex-grow-1">
                                 {% if row.is_reconciled %}
                                 XRAS marks this placeholder as identified but it

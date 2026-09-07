@@ -31,7 +31,7 @@
      hx-trigger="shown.bs.collapse from:closest tr.collapse once"
      hx-swap="innerHTML">
   <p class="text-muted small mb-0">
-    <i class="fas fa-spinner fa-spin me-1"></i>
+    <i class="fa-solid fa-spinner fa-spin me-1"></i>
     Loading {{ uname }}'s directories…
   </p>
 </div>
@@ -67,7 +67,7 @@
                 hx-target="#{{ target_id }}"
                 hx-include="#disk-scans-metric-params-{{ target_id }}"
                 hx-swap="innerHTML">
-          <i class="fas fa-hard-drive me-1"></i> Data
+          <i class="fa-solid fa-hard-drive me-1"></i> Data
         </button>
         <button type="button"
                 class="btn btn-outline-secondary {% if _by_files %}active{% endif %}"
@@ -75,7 +75,7 @@
                 hx-target="#{{ target_id }}"
                 hx-include="#disk-scans-metric-params-{{ target_id }}"
                 hx-swap="innerHTML">
-          <i class="fas fa-hashtag me-1"></i> Files
+          <i class="fa-solid fa-hashtag me-1"></i> Files
         </button>
       </div>
     {% endif %}
@@ -119,7 +119,7 @@
        (total bytes / file count), not from per-file stats — the scan does not
        track individual files. Make that approximation explicit. #}
     <p class="text-muted small fst-italic mb-2">
-      <i class="fas fa-circle-info me-1"></i>
+      <i class="fa-solid fa-circle-info me-1"></i>
       Note: results are approximate, computed as average file sizes per
       directory (individual files are not tracked).
     </p>
@@ -129,7 +129,7 @@
        not track individual files (so a directory's cold data counts as recently
        accessed if any of its contents was). #}
     <p class="text-muted small fst-italic mb-2">
-      <i class="fas fa-circle-info me-1"></i>
+      <i class="fa-solid fa-circle-info me-1"></i>
       Note: results are computed by directory and grouped by most recent access
       (individual files are not tracked).
     </p>
@@ -191,7 +191,7 @@
                 title="{{ 'Show directories in this band' if _direct else 'Show top users in this bucket' }}"{% endif %}>
             <td class="text-center p-0">
               {% if _expandable %}
-                <i class="fas fa-chevron-right small collapse-icon text-muted"></i>
+                <i class="fa-solid fa-chevron-right small collapse-icon text-muted"></i>
               {% endif %}
             </td>
             <td>{{ label }}</td>
@@ -243,7 +243,7 @@
                             title="Show this user's directories in this band"{% endif %}>
                         <td class="text-end text-muted">{{ loop.index }}</td>
                         <td class="font-monospace">
-                          {%- if _band_window %}<i class="fas fa-chevron-right small collapse-icon text-muted me-1"></i>{% endif -%}
+                          {%- if _band_window %}<i class="fa-solid fa-chevron-right small collapse-icon text-muted me-1"></i>{% endif -%}
                           {{ _uname }}
                         </td>
                         <td class="text-end font-monospace">{{ stats.get('data', 0) | fmt_size }}</td>

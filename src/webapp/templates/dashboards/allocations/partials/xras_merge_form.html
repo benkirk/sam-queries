@@ -83,7 +83,7 @@
         <div class="form-label">Merging into</div>
         <input type="hidden" name="candidate" value="{{ candidate.username }}">
         <div class="xras-candidate list-group-item d-flex gap-2 align-items-start rounded mb-1">
-            <i class="fas fa-arrow-right-to-bracket mt-1 flex-shrink-0 text-success-emphasis" aria-hidden="true"></i>
+            <i class="fa-solid fa-arrow-right-to-bracket mt-1 flex-shrink-0 text-success-emphasis" aria-hidden="true"></i>
             <span class="flex-grow-1">
                 <span class="font-monospace">{{ candidate.username }}</span>
                 {% if candidate.rank == 0 %}
@@ -173,7 +173,7 @@
                 <span class="small text-muted">no SAM account — the person will still need one created</span>
                 {% endif %}
             </span>
-            <i class="fas fa-circle-check xras-candidate-check mt-1" aria-hidden="true"></i>
+            <i class="fa-solid fa-circle-check xras-candidate-check mt-1" aria-hidden="true"></i>
         </label>
         {% else %}
         <div class="alert alert-warning py-2 small mb-2">
@@ -202,7 +202,7 @@
         </button>
         <button type="submit" class="btn btn-danger"
                 {% if not write_enabled %}disabled title="XRAS writes are switched off for this deployment (XRAS_WRITE_ENABLED)."{% endif %}>
-            <i class="fas fa-code-merge"></i> Merge and delete placeholder
+            <i class="fa-solid fa-code-merge"></i> Merge and delete placeholder
         </button>
     </div>
 </form>

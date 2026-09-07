@@ -19,7 +19,7 @@
 {% block content %}
 <div class="row mb-4">
     <div class="col-12">
-        <h1><i class="fas fa-user-shield"></i> Admin Dashboard</h1>
+        <h1><i class="fa-solid fa-user-shield"></i> Admin Dashboard</h1>
         <p class="text-muted">Administrative tools for managing users and projects</p>
     </div>
 </div>
@@ -28,15 +28,15 @@
    /admin/projects/directories — the sub-strip on those pages
    disambiguates. #}
 {{ page_tabs([
-    {'endpoint': 'admin_dashboard.projects', 'label': 'Projects', 'icon': 'fas fa-folder-open',
+    {'endpoint': 'admin_dashboard.projects', 'label': 'Projects', 'icon': 'fa-solid fa-folder-open',
      'active_endpoints': ['admin_dashboard.projects_directories']},
-    {'endpoint': 'admin_dashboard.users_groups',  'label': 'Users & Groups', 'icon': 'fas fa-users'},
-    {'endpoint': 'admin_dashboard.resources',     'label': 'Resources', 'icon': 'fas fa-server'},
-    {'endpoint': 'admin_dashboard.organizations', 'label': 'Organizations', 'icon': 'fas fa-sitemap',
+    {'endpoint': 'admin_dashboard.users_groups',  'label': 'Users & Groups', 'icon': 'fa-solid fa-users'},
+    {'endpoint': 'admin_dashboard.resources',     'label': 'Resources', 'icon': 'fa-solid fa-server'},
+    {'endpoint': 'admin_dashboard.organizations', 'label': 'Organizations', 'icon': 'fa-solid fa-sitemap',
      'active_endpoints': ['admin_dashboard.organizations_mnemonics']},
-    {'endpoint': 'admin_dashboard.contracts',     'label': 'Contracts', 'icon': 'fas fa-file-signature'},
-    {'endpoint': 'admin_dashboard.facilities',    'label': 'Facilities & Allocations', 'icon': 'fas fa-building'},
-    {'endpoint': 'admin_dashboard.configuration', 'label': 'Configuration', 'icon': 'fas fa-sliders-h',
+    {'endpoint': 'admin_dashboard.contracts',     'label': 'Contracts', 'icon': 'fa-solid fa-file-signature'},
+    {'endpoint': 'admin_dashboard.facilities',    'label': 'Facilities & Allocations', 'icon': 'fa-solid fa-building'},
+    {'endpoint': 'admin_dashboard.configuration', 'label': 'Configuration', 'icon': 'fa-solid fa-sliders',
      'visible': has_permission(Permission.VIEW_SYSTEM_CONFIG)},
 ]) }}
 

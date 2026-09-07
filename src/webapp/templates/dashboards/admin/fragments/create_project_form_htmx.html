@@ -57,14 +57,14 @@
                        data-action-change="projcode-mode"
                        {% if not form or form.get('projcode_mode', 'auto') == 'auto' %}checked{% endif %}>
                 <label class="btn btn-outline-secondary" for="projcodeModeAuto">
-                    <i class="fas fa-magic me-1"></i> Auto-generate
+                    <i class="fa-solid fa-wand-magic me-1"></i> Auto-generate
                 </label>
                 <input type="radio" class="btn-check" name="projcode_mode"
                        id="projcodeModeManual" value="manual" autocomplete="off"
                        data-action-change="projcode-mode"
                        {% if form and form.get('projcode_mode') == 'manual' %}checked{% endif %}>
                 <label class="btn btn-outline-secondary" for="projcodeModeManual">
-                    <i class="fas fa-keyboard me-1"></i> Manual
+                    <i class="fa-solid fa-keyboard me-1"></i> Manual
                 </label>
             </div>
 
@@ -216,7 +216,7 @@
                 <div>
                     <span class="badge {{ gid_pool_badge.css_class }}"
                           id="createProjectGidPoolBadge">
-                        <i class="fas {{ gid_pool_badge.icon }}"></i>
+                        <i class="fa-solid {{ gid_pool_badge.icon }}"></i>
                         {{ gid_pool_badge.label }}
                     </span>
                 </div>

@@ -80,7 +80,7 @@
                 <td style="white-space:nowrap;"
                     title="{{ r.received_time | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}">
                     {% if r.source_action_id %}
-                    <i class="fas fa-redo text-muted me-1"
+                    <i class="fa-solid fa-arrow-rotate-right text-muted me-1"
                        title="Re-check of action #{{ r.source_action_id }}"></i>
                     {% endif %}
                     {{ r.received_time | fmt_date }}
@@ -118,7 +118,7 @@
                            has no such request — but keep the warning cue. #}
                         <span class="text-warning-emphasis"
                               title="Not a SAM project, and not a recognised XRAS request number — the project may have been deleted or renamed">
-                            <i class="fas fa-triangle-exclamation small me-1"></i>{{ r.request_number }}
+                            <i class="fa-solid fa-triangle-exclamation small me-1"></i>{{ r.request_number }}
                         </span>
                         {% endif %}
                     </button>
@@ -148,7 +148,7 @@
                     {% else %}
                     <span class="text-warning-emphasis"
                           title="Not a SAM project, and not a recognised XRAS request number — the project may have been deleted or renamed">
-                        <i class="fas fa-triangle-exclamation small me-1"></i>{{ r.request_number }}
+                        <i class="fa-solid fa-triangle-exclamation small me-1"></i>{{ r.request_number }}
                     </span>
                     {% endif %}
                     {% endif %}
@@ -163,7 +163,7 @@
                     {% if r.recheck_count %}
                     <span class="badge bg-secondary ms-1"
                           title="Re-checked {{ r.recheck_count }} time{{ '' if r.recheck_count == 1 else 's' }}">
-                        <i class="fas fa-redo"></i> {{ r.recheck_count }}
+                        <i class="fa-solid fa-arrow-rotate-right"></i> {{ r.recheck_count }}
                     </span>
                     {% endif %}
                 </td>
@@ -187,7 +187,7 @@
                 {# THE toggle cell — the only one. See the header note. #}
                 {% if r.errors %}
                 <td class="cursor-pointer small" {{ collapse_toggle(errors_id) }}>
-                    <i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i>
+                    <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
                     {# text-danger-emphasis, NOT text-danger: the latter is the
                        saturated brand red, which measures 3.35:1 against the dark
                        card (--surface-card #1b2733) and fails WCAG AA. The
@@ -211,7 +211,7 @@
                             hx-get="{{ url_for('allocations_dashboard.xras_action_details', action_id=r.action_log_id) }}"
                             hx-target="#auditDetailsModalBody"
                             hx-swap="innerHTML">
-                        <i class="fas fa-info-circle"></i>
+                        <i class="fa-solid fa-circle-info"></i>
                     </button>
                     {# Re-check is offered only where the question means something.
                        A `processed` row already changed the data it would run
@@ -227,7 +227,7 @@
                             hx-post="{{ url_for('allocations_dashboard.xras_recheck', action_id=r.action_log_id) }}"
                             hx-confirm="Re-check action #{{ r.action_log_id }} against today's code and data?&#10;&#10;Nothing is applied and XRAS is not contacted — this only answers whether a resend would succeed. A new linked audit row records the verdict."
                             hx-swap="none">
-                        <i class="fas fa-clipboard-check"></i>
+                        <i class="fa-solid fa-clipboard-check"></i>
                     </button>
                     {% endif %}
                 </td>
@@ -248,7 +248,7 @@
             {% else %}
             <tr>
                 <td colspan="7" class="text-center text-muted py-4">
-                    <i class="fas fa-inbox"></i>
+                    <i class="fa-solid fa-inbox"></i>
                     No XRAS actions match the current filter.
                 </td>
             </tr>

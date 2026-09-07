@@ -9,7 +9,7 @@
     <!-- Summary Header -->
     <div class="mb-3">
         <h5 class="text-muted">
-            <i class="fas fa-folder-open"></i>
+            <i class="fa-solid fa-folder-open"></i>
             <span id="project-count">{{ dashboard_data.total_projects }} Project{{ 's' if dashboard_data.total_projects != 1 else '' }}</span>
         </h5>
     </div>
@@ -29,7 +29,7 @@
             {% endfor %}
         {% else %}
             <div class="alert alert-info">
-                <i class="fas fa-info-circle"></i>
+                <i class="fa-solid fa-circle-info"></i>
                 You are not currently a member of any active projects.
             </div>
         {% endif %}

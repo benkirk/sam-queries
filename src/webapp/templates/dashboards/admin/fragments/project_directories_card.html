@@ -16,7 +16,7 @@
     <div class="card-header d-flex flex-wrap align-items-center justify-content-between">
         <div>
             <h5 class="mb-0 d-inline-block">
-                <i class="fas fa-folder-tree"></i> Project Directories
+                <i class="fa-solid fa-folder-tree"></i> Project Directories
             </h5>
             <span class="text-muted small ms-2">
                 Filesystem directories linked to projects, grouped by resource.
@@ -45,7 +45,7 @@
                     hx-get="{{ url_for('admin_dashboard.htmx_admin_project_directory_new_form') }}"
                     hx-target="#addProjectDirectoryFormContainer"
                     hx-trigger="click">
-                <i class="fas fa-plus"></i> New
+                <i class="fa-solid fa-plus"></i> New
             </button>
             {% endif %}
             {% if has_permission(Permission.DELETE_PROJECTS) %}
@@ -56,7 +56,7 @@
                     hx-target="#bulkDeactivateProjectDirectoriesFormContainer"
                     hx-trigger="click"
                     title="Bulk-deactivate directories under a path prefix">
-                <i class="fas fa-broom"></i> Bulk deactivate
+                <i class="fa-solid fa-broom"></i> Bulk deactivate
             </button>
             {% endif %}
         </div>
@@ -83,7 +83,7 @@
                     data-bs-target="#{{ group_id }}"
                     aria-expanded="false">
                     <td>
-                        <i class="fas fa-chevron-right small text-muted me-1 pd-res-collapse-icon"
+                        <i class="fa-solid fa-chevron-right small text-muted me-1 pd-res-collapse-icon"
                            style="transition: transform 0.2s;"></i>
                         {% if resource %}
                             {{ resource.resource_name }}
@@ -92,7 +92,7 @@
                             {% endif %}
                         {% else %}
                             <span class="text-warning">
-                                <i class="fas fa-exclamation-triangle"></i> No Resource Identified
+                                <i class="fa-solid fa-triangle-exclamation"></i> No Resource Identified
                             </span>
                         {% endif %}
                     </td>
@@ -102,7 +102,7 @@
                         {% if _orphans %}
                         <span class="badge bg-warning text-dark ms-2"
                               title="Active directories whose project is inactive">
-                            <i class="fas fa-unlink"></i> {{ _orphans }} orphaned
+                            <i class="fa-solid fa-link-slash"></i> {{ _orphans }} orphaned
                         </span>
                         {% endif %}
                     </td>
@@ -116,7 +116,7 @@
                     {% if _orphan %}title="Active directory linked to an inactive project"{% endif %}>
                     <td class="ps-4 font-monospace small">
                         {% if _orphan %}
-                        <i class="fas fa-unlink text-warning me-1"
+                        <i class="fa-solid fa-link-slash text-warning me-1"
                            title="Orphaned: project is inactive"></i>
                         {% endif %}
                         {{ pd.directory_name }}
@@ -157,7 +157,7 @@
                                 data-confirm-variant="warning"
                                 data-confirm-label="Deactivate"
                                 data-stop-propagation>
-                            <i class="fas fa-trash-alt"></i>
+                            <i class="fa-solid fa-trash-can"></i>
                         </button>
                         {% endif %}
                     </td>

@@ -31,7 +31,7 @@
    the pre-deploy smoke going out 64s before the project was activated. #}
 {% if project_inactive %}
 <div class="alert alert-danger d-flex align-items-start gap-2">
-    <i class="fas fa-triangle-exclamation mt-1"></i>
+    <i class="fa-solid fa-triangle-exclamation mt-1"></i>
     <div>
         <strong>{{ project.projcode }} is not active yet.</strong>
         <div>
@@ -44,7 +44,7 @@
 
 {% if not notify_enabled %}
 <div class="alert alert-warning d-flex align-items-start gap-2">
-    <i class="fas fa-triangle-exclamation mt-1"></i>
+    <i class="fa-solid fa-triangle-exclamation mt-1"></i>
     <div>
         <strong>Email delivery is not enabled on this deployment.</strong>
         <div>
@@ -57,7 +57,7 @@
 {# The failure mode this line exists to prevent: a staging box quietly
    swallowing mail while the UI reports success. #}
 <div class="alert alert-warning d-flex align-items-start gap-2">
-    <i class="fas fa-shuffle mt-1"></i>
+    <i class="fa-solid fa-shuffle mt-1"></i>
     <div>
         <strong>All mail on this deployment is redirected.</strong>
         <div>
@@ -80,7 +80,7 @@
 </ul>
 {% else %}
 <p class="text-danger-emphasis">
-    <i class="fas fa-circle-exclamation"></i>
+    <i class="fa-solid fa-circle-exclamation"></i>
     No lead or admin email address is on file for this project — there is
     nobody to send to.
 </p>
@@ -191,7 +191,7 @@
    overrides the duplicate check and nothing else. NOTIFY_ENABLED still fails
    closed above. #}
 <div class="alert alert-info d-flex align-items-start gap-2">
-    <i class="fas fa-clock-rotate-left mt-1"></i>
+    <i class="fa-solid fa-clock-rotate-left mt-1"></i>
     <div class="flex-grow-1">
         <strong>
             {% if already_notified | length == people | length %}
@@ -237,7 +237,7 @@
             hx-target="#auditDetailsModalBody"
             hx-swap="innerHTML"
             {% if not people %}disabled{% endif %}>
-        <i class="fas fa-paper-plane"></i>
+        <i class="fa-solid fa-paper-plane"></i>
         Send{% if people %} to {{ people | length }}{% endif %}
     </button>
 </div>

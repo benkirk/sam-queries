@@ -30,7 +30,7 @@
                                    metric=opt) }}"
                 hx-target="#disk-usage-chart-wrapper"
                 hx-swap="innerHTML">
-            {% if opt == 'bytes' %}<i class="fas fa-hdd me-1"></i>{% else %}<i class="fas fa-copy me-1"></i>{% endif %}
+            {% if opt == 'bytes' %}<i class="fa-solid fa-hard-drive me-1"></i>{% else %}<i class="fa-solid fa-copy me-1"></i>{% endif %}
             {{ _LABELS[opt] }}
         </button>
     </li>

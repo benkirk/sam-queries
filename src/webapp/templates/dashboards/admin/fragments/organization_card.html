@@ -20,28 +20,28 @@
             <button class="nav-link {{ 'active' if active_tab == 'organizations' }}" id="orgs-tab" data-bs-toggle="tab"
                     data-bs-target="#orgs-pane" type="button" role="tab" data-tab-param-value="organizations"
                     aria-controls="orgs-pane" aria-selected="{{ 'true' if active_tab == 'organizations' else 'false' }}">
-                <i class="fas fa-sitemap me-1"></i> Organizations
+                <i class="fa-solid fa-sitemap me-1"></i> Organizations
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link {{ 'active' if active_tab == 'institutions' }}" id="institutions-tab" data-bs-toggle="tab"
                     data-bs-target="#institutions-pane" type="button" role="tab" data-tab-param-value="institutions"
                     aria-controls="institutions-pane" aria-selected="{{ 'true' if active_tab == 'institutions' else 'false' }}">
-                <i class="fas fa-university me-1"></i> Institutions
+                <i class="fa-solid fa-building-columns me-1"></i> Institutions
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link {{ 'active' if active_tab == 'areas' }}" id="areas-tab" data-bs-toggle="tab"
                     data-bs-target="#areas-pane" type="button" role="tab" data-tab-param-value="areas"
                     aria-controls="areas-pane" aria-selected="{{ 'true' if active_tab == 'areas' else 'false' }}">
-                <i class="fas fa-flask me-1"></i> Areas
+                <i class="fa-solid fa-flask me-1"></i> Areas
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link {{ 'active' if active_tab == 'nsf-programs' }}" id="nsf-programs-tab" data-bs-toggle="tab"
                     data-bs-target="#nsf-programs-pane" type="button" role="tab" data-tab-param-value="nsf-programs"
                     aria-controls="nsf-programs-pane" aria-selected="{{ 'true' if active_tab == 'nsf-programs' else 'false' }}">
-                <i class="fas fa-award me-1"></i> NSF Programs
+                <i class="fa-solid fa-award me-1"></i> NSF Programs
             </button>
         </li>
     </ul>
@@ -69,12 +69,12 @@
                             class="{% if depth > 0 %}org-tree-collapsed {% endif %}{% if not org.active %}opacity-50{% endif %}">
                             <td style="padding-left: {{ (depth * 1.4 + 0.4) }}rem; white-space: nowrap;">
                                 {% if has_children %}
-                                <i class="fas fa-chevron-right small text-muted me-1 org-tree-chevron"
+                                <i class="fa-solid fa-chevron-right small text-muted me-1 org-tree-chevron"
                                    style="cursor:pointer; transition: transform 0.15s;"
                                    data-action="org-toggle-children"
                                    data-org-id="{{ org.organization_id }}"></i>
                                 {% else %}
-                                <i class="fas fa-circle small me-1" style="font-size:0.35em; color:var(--text-tertiary); vertical-align:middle;"></i>
+                                <i class="fa-solid fa-circle small me-1" style="font-size:0.35em; color:var(--text-tertiary); vertical-align:middle;"></i>
                                 {% endif %}
                                 <span class="badge bg-body-tertiary text-body-emphasis border">{{ org.acronym }}</span>
                                 <span class="ms-1">{{ org.name }}</span>
@@ -96,11 +96,11 @@
                                         hx-trigger="click"
                                         title="No mnemonic match — click to create one">
                                     <span class="badge bg-warning text-dark font-monospace">
-                                        <i class="fas fa-exclamation-triangle"></i>
+                                        <i class="fa-solid fa-triangle-exclamation"></i>
                                     </span>
                                 </button>
                                 {% else %}
-                                <span class="badge bg-secondary font-monospace text-white-50" title="No mnemonic match — project routing may fail"><i class="fas fa-exclamation-triangle"></i></span>
+                                <span class="badge bg-secondary font-monospace text-white-50" title="No mnemonic match — project routing may fail"><i class="fa-solid fa-triangle-exclamation"></i></span>
                                 {% endif %}
                             </td>
                             <td>{{ org.users|length }}</td>
@@ -135,7 +135,7 @@
                         hx-get="{{ url_for('admin_dashboard.htmx_organization_create_form') }}"
                         hx-target="#createOrganizationFormContainer"
                         hx-trigger="click">
-                    <i class="fas fa-plus"></i> Create Organization
+                    <i class="fa-solid fa-plus"></i> Create Organization
                 </button>
                 {% endif %}
             </div>
@@ -150,7 +150,7 @@
              hx-target="this"
              hx-swap="innerHTML">
             <div class="text-muted small py-3 px-3">
-                <i class="fas fa-spinner fa-spin me-1"></i>Loading institutions…
+                <i class="fa-solid fa-spinner fa-spin me-1"></i>Loading institutions…
             </div>
         </div>
 
@@ -177,7 +177,7 @@
                     <tbody>
                         <tr class="table-subtle fw-semibold{% if not g.active %} opacity-50{% endif %}">
                             <td class="cursor-pointer" {{ collapse_toggle(g_toggle) }}>
-                                <i class="fas fa-chevron-right small text-muted me-1 collapse-icon"
+                                <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"
                                    style="transition: transform 0.2s;"></i>
                                 {{ g.name }}
                             </td>
@@ -243,7 +243,7 @@
                             hx-get="{{ url_for('admin_dashboard.htmx_aoi_group_create_form') }}"
                             hx-target="#createAoiGroupFormContainer"
                             hx-trigger="click">
-                        <i class="fas fa-plus"></i> Create Group
+                        <i class="fa-solid fa-plus"></i> Create Group
                     </button>
                     <button class="btn  btn-primary"
                             data-bs-toggle="modal"
@@ -251,7 +251,7 @@
                             hx-get="{{ url_for('admin_dashboard.htmx_aoi_create_form') }}"
                             hx-target="#createAoiFormContainer"
                             hx-trigger="click">
-                        <i class="fas fa-plus"></i> Create Area
+                        <i class="fa-solid fa-plus"></i> Create Area
                     </button>
                 </div>
                 {% endif %}
@@ -314,7 +314,7 @@
                         hx-get="{{ url_for('admin_dashboard.htmx_nsf_program_create_form') }}"
                         hx-target="#createNsfProgramFormContainer"
                         hx-trigger="click">
-                    <i class="fas fa-plus"></i> Create NSF Program
+                    <i class="fa-solid fa-plus"></i> Create NSF Program
                 </button>
                 {% endif %}
             </div>

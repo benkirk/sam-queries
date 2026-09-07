@@ -60,7 +60,7 @@
                 title="Re-check every 'not checked' request currently in view. Nothing is applied."
                 hx-post="{{ url_for('allocations_dashboard.xras_recheck_visible') }}"
                 hx-include="#xras-window-filters, #{{ form_id }}"
-                hx-swap="none"><i class="fas fa-rotate me-1"></i>Check {{ not_checked_count | fmt_number }}</button>
+                hx-swap="none"><i class="fa-solid fa-rotate me-1"></i>Check {{ not_checked_count | fmt_number }}</button>
         {% endif %}
         <span class="{{ 'ms-auto' if not not_checked_count }} small text-muted"
               title="This card renders what the xras_sweep task last published; it is not fetched live. Rows you have just acted on are refreshed individually and marked.">
@@ -111,7 +111,7 @@
         {# One warning, said once, at the top — not repeated on every button,
            where it would become wallpaper and stop being read. #}
         <div class="alert alert-warning d-flex gap-2 py-2 mb-3">
-            <i class="fas fa-triangle-exclamation mt-1"></i>
+            <i class="fa-solid fa-triangle-exclamation mt-1"></i>
             <div class="small">
                 <strong>These actions change production XRAS.</strong>
                 Each one is confirmed, verified by re-reading XRAS afterwards,
@@ -132,7 +132,7 @@
         {% if mnemonic_summary and (mnemonic_summary.targets or mnemonic_summary.unresolved or mnemonic_summary.resolvable) %}
         {% set _mtargets = mnemonic_summary.targets %}
         <div class="alert alert-info d-flex gap-2 py-2 mb-3">
-            <i class="fas fa-link-slash mt-1"></i>
+            <i class="fa-solid fa-link-slash mt-1"></i>
             <div class="small">
                 {% if _mtargets %}
                 <strong>{{ mnemonic_summary.actions_seen | fmt_plural('failing push', 'failing pushes') }}
@@ -174,7 +174,7 @@
         {% if contract_summary and (contract_summary.targets or contract_summary.variants) %}
         {% set _ctargets = contract_summary.targets %}
         <div class="alert alert-info d-flex gap-2 py-2 mb-3" id="xras-contract-strip">
-            <i class="fas fa-file-contract mt-1"></i>
+            <i class="fa-solid fa-file-contract mt-1"></i>
             <div class="small">
                 {% if _ctargets %}
                 <strong>{{ contract_summary.actions_seen | fmt_plural('failing push', 'failing pushes') }}
@@ -212,7 +212,7 @@
         {% if identity_summary and (identity_summary.targets or identity_summary.reactivations or identity_summary.needs_account) %}
         {% set _itargets = identity_summary.targets %}
         <div class="alert alert-info d-flex gap-2 py-2 mb-3" id="xras-identity-strip">
-            <i class="fas fa-user-check mt-1"></i>
+            <i class="fa-solid fa-user-check mt-1"></i>
             <div class="small">
                 {% if _itargets %}
                 <strong>{{ _itargets | length | fmt_plural('placeholder') }}
@@ -417,7 +417,7 @@
                    modal — the header just carries the name. #}
                 <tr class="table-subtle fw-semibold">
                     <td colspan="8">
-                        <span class="cursor-pointer" {{ collapse_toggle(gid, expanded=true) }}><i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i></span>
+                        <span class="cursor-pointer" {{ collapse_toggle(gid, expanded=true) }}><i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i></span>
                         {% if configured and group.opportunity_id %}
                         <a href="#" class="text-decoration-none fw-semibold" title="View this opportunity"
                            data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
@@ -456,7 +456,7 @@
                         {# The tell that this row was patched after a write
                            rather than swept — so an operator can see their own
                            change landed instead of wondering. #}
-                        <i class="fas fa-circle-check text-success ms-1"
+                        <i class="fa-solid fa-circle-check text-success ms-1"
                            title="Updated just now, after your change — newer than the sweep."></i>
                         {% endif %}
                     </td>
@@ -510,17 +510,17 @@
                         <span class="d-inline-flex align-items-center gap-1 text-nowrap"
                               aria-label="Blocked by: {{ row.blockers | join(', ') }}">
                             {% if 'mnemonic' in row.blockers %}
-                            <i class="fas fa-link-slash text-danger-emphasis"
+                            <i class="fa-solid fa-link-slash text-danger-emphasis"
                                title="Missing organization/institution mnemonic — filter by Blocker → Mnemonic"
                                aria-label="mnemonic blocker"></i>
                             {% endif %}
                             {% if 'contract' in row.blockers %}
-                            <i class="fas fa-file-contract text-danger-emphasis"
+                            <i class="fa-solid fa-file-contract text-danger-emphasis"
                                title="Cites a contract SAM does not hold — filter by Blocker → Contract"
                                aria-label="contract blocker"></i>
                             {% endif %}
                             {% if 'account' in row.blockers %}
-                            <i class="fas fa-user text-danger-emphasis"
+                            <i class="fa-solid fa-user text-danger-emphasis"
                                title="A roster member is an ARC placeholder that XRAS has already flagged reconciled — a contradiction. XRAS keeps sending the throwaway username and the handoff stays blocked."
                                aria-label="account/placeholder blocker"></i>
                             {% endif %}
@@ -553,7 +553,7 @@
                            checked verdict) IS the modal link — same click target
                            as the old badge. #}
                         {% if row.preflight_rollup == 'incomplete' %}
-                        <i class="fas fa-circle-question text-secondary-emphasis"
+                        <i class="fa-solid fa-circle-question text-secondary-emphasis"
                            title="Incomplete — SAM can't preflight this action type yet, so its readiness is unknown. Open the request for the gap."
                            aria-label="readiness: incomplete"></i>
                         {% elif row.preflight_rollup %}
@@ -563,7 +563,7 @@
                                               request_number=row.request_number) }}"
                            hx-target="#auditDetailsModalBody"
                            hx-swap="innerHTML"
-                           aria-label="readiness verdict — open the reasons">{% if row.preflight_rollup == 'failed' %}<i class="fas fa-triangle-exclamation text-danger-emphasis" title="Would fail — click for the reasons a push would return"></i>{% elif row.preflight_rollup == 'manual' %}<i class="fas fa-circle-pause text-warning-emphasis" title="Would park — a push needs manual handling; click for details"></i>{% elif row.preflight_rollup == 'rechecked' %}<i class="fas fa-circle-check text-success-emphasis" title="Would land — a push would apply cleanly; click for details"></i>{% endif %}</a>
+                           aria-label="readiness verdict — open the reasons">{% if row.preflight_rollup == 'failed' %}<i class="fa-solid fa-triangle-exclamation text-danger-emphasis" title="Would fail — click for the reasons a push would return"></i>{% elif row.preflight_rollup == 'manual' %}<i class="fa-solid fa-circle-pause text-warning-emphasis" title="Would park — a push needs manual handling; click for details"></i>{% elif row.preflight_rollup == 'rechecked' %}<i class="fa-solid fa-circle-check text-success-emphasis" title="Would land — a push would apply cleanly; click for details"></i>{% endif %}</a>
                         {% else %}
                         {# hx-swap="none": the recheck route fires refreshXrasTab
                            (reloads this card with the fresh verdict) + a toast,
@@ -575,7 +575,7 @@
                                 aria-label="not checked — click to check now"
                                 hx-post="{{ url_for('allocations_dashboard.xras_recheck_request',
                                                     request_number=row.request_number) }}"
-                                hx-swap="none"><i class="fas fa-rotate"></i></button>
+                                hx-swap="none"><i class="fa-solid fa-rotate"></i></button>
                         {% endif %}
                         {# WARNING: The badge IS the link, and only in the `project`
                            branch — because `pending_push == False` is not a

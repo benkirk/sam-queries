@@ -149,7 +149,7 @@
 
   {% if dimension == 'memory_wasted' and machine == 'derecho' %}
     <p class="text-muted small mb-2">
-      <i class="fas fa-circle-info me-1"></i>
+      <i class="fa-solid fa-circle-info me-1"></i>
       Derecho schedules whole nodes: every job is assigned all of each
       node's memory (~235&nbsp;GB) regardless of what it requested, so
       large "wasted" values here are an artifact of node-exclusive
@@ -163,7 +163,7 @@
        'uncharged' QoS, so work can be real and its charges exactly zero.
        Said here because an empty bar otherwise reads as missing data. #}
     <p class="text-muted small mb-2">
-      <i class="fas fa-circle-info me-1"></i>
+      <i class="fa-solid fa-circle-info me-1"></i>
       Charges are hours weighted by each job's QoS factor. Uncharged QoS
       classes have a factor of 0, so a bucket can show jobs and CPU-hours
       while contributing no charges.
@@ -172,7 +172,7 @@
 
   {% if hist.null_count and hist.null_count > 0 %}
     <p class="text-muted small mb-2">
-      <i class="fas fa-circle-info me-1"></i>
+      <i class="fa-solid fa-circle-info me-1"></i>
       {{ hist.null_count | fmt_number }} job{{ '' if hist.null_count == 1 else 's' }}
       in this range have {{ _missing_because(dimension) }} and are excluded.
     </p>
@@ -194,7 +194,7 @@
        hx-trigger="shown.bs.collapse from:closest tr.collapse once"
        hx-swap="innerHTML">
     <p class="text-muted small mb-0">
-      <i class="fas fa-spinner fa-spin me-1"></i>
+      <i class="fa-solid fa-spinner fa-spin me-1"></i>
       Loading {{ owner }}'s jobs in the {{ band_label }} band…
     </p>
   </div>
@@ -242,7 +242,7 @@
                               if _okey == 'account'
                               else 'Show top users in this band') }}">
             <td>
-              <i class="fas fa-chevron-right collapse-icon small me-1"></i>
+              <i class="fa-solid fa-chevron-right collapse-icon small me-1"></i>
               <code>{{ b.label }}</code>
             </td>
             <td class="text-end">{{ b.job_count | fmt_number }}</td>
@@ -292,7 +292,7 @@
                                       data-bs-target="#{{ _urid }}-row"
                                       aria-expanded="false"
                                       aria-controls="{{ _urid }}-row">
-                                <i class="fas fa-chevron-right collapse-icon small"></i>
+                                <i class="fa-solid fa-chevron-right collapse-icon small"></i>
                               </button>
                               {% if _okey == 'account' and can_view_projects | default(false) %}
                               <button class="btn btn-link p-0" type="button"
@@ -384,7 +384,7 @@
                       type="button" data-bs-toggle="collapse"
                       data-bs-target="#{{ _rid }}-row"
                       aria-expanded="false" aria-controls="{{ _rid }}-row">
-                <i class="fas fa-chevron-right collapse-icon small"></i>
+                <i class="fa-solid fa-chevron-right collapse-icon small"></i>
               </button>
               {% endif %}
               <code>{{ b.label }}</code>
@@ -404,7 +404,7 @@
                    hx-trigger="shown.bs.collapse from:closest tr.collapse once"
                    hx-swap="innerHTML">
                 <p class="text-muted small mb-0">
-                  <i class="fas fa-spinner fa-spin me-1"></i>
+                  <i class="fa-solid fa-spinner fa-spin me-1"></i>
                   Loading jobs in the {{ b.label }} band…
                 </p>
               </div>

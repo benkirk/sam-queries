@@ -23,7 +23,7 @@
     <span class="d-flex align-items-center gap-2 text-muted" style="cursor: default;" title="No {{ resource_name }} usage">
     {% endif %}
         {% if is_selected %}
-        <i class="fas fa-arrow-right text-warning me-1 flex-shrink-0"></i>
+        <i class="fa-solid fa-arrow-right text-warning me-1 flex-shrink-0"></i>
         {% endif %}
         <strong>{{ node.projcode }}</strong>
         {% if node.title %}
@@ -32,7 +32,7 @@
         {% if node.fileset_paths %}
         <span class="text-muted small font-monospace"
               style="max-width: 70ch; white-space: normal; word-break: break-word;">
-            <i class="fas fa-folder-open me-1"></i>{{ node.fileset_paths | join(', ') }}
+            <i class="fa-solid fa-folder-open me-1"></i>{{ node.fileset_paths | join(', ') }}
         </span>
         {% endif %}
         {% if node.current_bytes %}
@@ -83,7 +83,7 @@
 {% block content %}
 <div class="page-header">
     <h1>
-        <i class="fas fa-hdd"></i> Disk Usage Details
+        <i class="fa-solid fa-hard-drive"></i> Disk Usage Details
     </h1>
     <p class="text-muted">
         Project: <strong>{{ projcode }}</strong>
@@ -111,9 +111,9 @@
          data-bs-toggle="collapse" data-bs-target="#collapseDiskCapacity"
          aria-expanded="true">
         <h5 class="mb-0">
-            <i class="fas fa-info-circle"></i> Capacity Summary
+            <i class="fa-solid fa-circle-info"></i> Capacity Summary
             {% set _remaining = capacity.allocated_tib - capacity.used_tib %}
-            <i class="fas fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
         </h5>
     </div>
     <div id="collapseDiskCapacity" class="collapse show">
@@ -176,7 +176,7 @@
          data-bs-toggle="collapse" data-bs-target="#collapseDiskFilesets"
          aria-expanded="true">
         <h5 class="mb-0">
-            <i class="fas fa-folder-open"></i> Filesets
+            <i class="fa-solid fa-folder-open"></i> Filesets
             <small class="text-muted fw-normal ms-2">
                 {{ scope_node.directories | length }} active fileset{{ '' if scope_node.directories|length == 1 else 's' }}
                 on {{ resource_name }}
@@ -189,7 +189,7 @@
                 <span class="text-muted">— click a row to scope chart + table</span>
                 {% endif %}
             </small>
-            <i class="fas fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
         </h5>
     </div>
     <div id="collapseDiskFilesets" class="collapse show">
@@ -221,7 +221,7 @@
                             {% endif %}
                             <td>
                                 {% if is_active %}
-                                <i class="fas fa-arrow-right text-warning me-1"></i>
+                                <i class="fa-solid fa-arrow-right text-warning me-1"></i>
                                 {% endif %}
                                 <code>{{ d.name }}</code>
                             </td>
@@ -245,9 +245,9 @@
          data-bs-toggle="collapse" data-bs-target="#collapseDiskTree"
          aria-expanded="true">
         <h5 class="mb-0">
-            <i class="fas fa-sitemap"></i> Project Hierarchy
+            <i class="fa-solid fa-sitemap"></i> Project Hierarchy
             <small class="text-muted fw-normal ms-2">Click a project to scope the chart and table below</small>
-            <i class="fas fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
         </h5>
     </div>
     <div id="collapseDiskTree" class="collapse show">
@@ -280,14 +280,14 @@
          data-bs-toggle="collapse" data-bs-target="#collapseDiskUsage"
          aria-expanded="true">
         <h5 class="mb-0">
-            <i class="fas fa-chart-area"></i> Usage Over Time
+            <i class="fa-solid fa-chart-area"></i> Usage Over Time
             <small class="text-muted fw-normal ms-2">
                 top 10 users + Others, {{ start_date }} → {{ end_date }}
             </small>
             {% if has_children and scope != projcode %}
             <small class="text-muted fw-normal ms-2">{{ scope }}</small>
             {% endif %}
-            <i class="fas fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
         </h5>
     </div>
     <div id="collapseDiskUsage" class="collapse show">
@@ -312,7 +312,7 @@
                  hx-swap="innerHTML"
                  data-chart-persist-shared="metric:disk-usage">
                 <div class="text-center text-muted py-5">
-                    <i class="fas fa-spinner fa-spin"></i> Loading chart…
+                    <i class="fa-solid fa-spinner fa-spin"></i> Loading chart…
                 </div>
             </div>
         </div>
@@ -330,14 +330,14 @@
          data-bs-toggle="collapse" data-bs-target="#collapseDiskUsers"
          aria-expanded="true">
         <h5 class="mb-0">
-            <i class="fas fa-users"></i> Per-User Occupancy
+            <i class="fa-solid fa-users"></i> Per-User Occupancy
             {% if capacity.activity_date %}
             <small class="text-muted fw-normal ms-2">snapshot {{ capacity.activity_date | fmt_date }}</small>
             {% endif %}
             {% if has_children and scope != projcode %}
             <small class="text-muted fw-normal ms-2">{{ scope }}</small>
             {% endif %}
-            <i class="fas fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
         </h5>
     </div>
     <div id="collapseDiskUsers" class="collapse show">
@@ -388,7 +388,7 @@
          data-bs-toggle="collapse" data-bs-target="#collapseDiskScans"
          aria-expanded="false">
         <h5 class="mb-0">
-            <i class="fas fa-magnifying-glass-chart"></i> Filesystem Scans
+            <i class="fa-solid fa-magnifying-glass-chart"></i> Filesystem Scans
             {% if scan_info and scan_info.reference %}
             {# Scan-freshness badge — mirrors the suppressed Per-User
                Occupancy "snapshot <date>". When the project spans multiple
@@ -398,7 +398,7 @@
                    {%- if scan_info.scan_dates | length > 1 %}
                    title="{% for c, d in scan_info.scan_dates.items() %}{{ c }}: {{ d | fmt_date }}{% if not loop.last %} · {% endif %}{% endfor %}"
                    {%- endif %}>
-                <i class="far fa-calendar-check"></i> scanned {{ scan_info.reference | fmt_date }}
+                <i class="fa-regular fa-calendar-check"></i> scanned {{ scan_info.reference | fmt_date }}
             </small>
             {% endif %}
             <small class="text-muted fw-normal ms-2">
@@ -406,7 +406,7 @@
                 {% if fileset %}— scoped to <code>{{ fileset }}</code>
                 {% elif scope != projcode %}under <code>{{ scope }}</code>{% endif %}
             </small>
-            <i class="fas fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
         </h5>
     </div>
     <div id="collapseDiskScans" class="collapse">

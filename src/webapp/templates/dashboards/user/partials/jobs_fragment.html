@@ -73,9 +73,9 @@
        hx-swap="innerHTML">
       {{ label }}
       {%- if is_active -%}
-        {%- if sort['sort_dir'] == 'asc' %} <i class="fas fa-caret-up ms-1"></i>
-        {%- else %} <i class="fas fa-caret-down ms-1"></i>{% endif -%}
-      {%- else %} <i class="fas fa-sort text-muted small ms-1"></i>{%- endif -%}
+        {%- if sort['sort_dir'] == 'asc' %} <i class="fa-solid fa-caret-up ms-1"></i>
+        {%- else %} <i class="fa-solid fa-caret-down ms-1"></i>{% endif -%}
+      {%- else %} <i class="fa-solid fa-sort text-muted small ms-1"></i>{%- endif -%}
     </a>
   {%- else -%}
     {{ label }}
@@ -202,7 +202,7 @@
                         data-bs-target="#{{ rowid }}"
                         aria-expanded="false" aria-controls="{{ rowid }}"
                         title="Show details">
-                  <i class="fas fa-chevron-right small collapse-icon"></i>
+                  <i class="fa-solid fa-chevron-right small collapse-icon"></i>
                 </button>
               </td>
               {% for col in visible_cols %}

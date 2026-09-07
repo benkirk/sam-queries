@@ -21,21 +21,21 @@
             <button class="nav-link {{ 'active' if active_tab == 'resources' }}" id="resources-tab" data-bs-toggle="tab"
                     data-bs-target="#resources-pane" type="button" role="tab" data-tab-param-value="resources"
                     aria-controls="resources-pane" aria-selected="{{ 'true' if active_tab == 'resources' else 'false' }}">
-                <i class="fas fa-server me-1"></i> Resources
+                <i class="fa-solid fa-server me-1"></i> Resources
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link {{ 'active' if active_tab == 'machines' }}" id="machines-tab" data-bs-toggle="tab"
                     data-bs-target="#machines-pane" type="button" role="tab" data-tab-param-value="machines"
                     aria-controls="machines-pane" aria-selected="{{ 'true' if active_tab == 'machines' else 'false' }}">
-                <i class="fas fa-microchip me-1"></i> Machines
+                <i class="fa-solid fa-microchip me-1"></i> Machines
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link {{ 'active' if active_tab == 'queues' }}" id="queues-tab" data-bs-toggle="tab"
                     data-bs-target="#queues-pane" type="button" role="tab" data-tab-param-value="queues"
                     aria-controls="queues-pane" aria-selected="{{ 'true' if active_tab == 'queues' else 'false' }}">
-                <i class="fas fa-list-ol me-1"></i> Queues
+                <i class="fa-solid fa-list-ol me-1"></i> Queues
             </button>
         </li>
     </ul>
@@ -67,7 +67,7 @@
                     <tbody>
                         <tr class="table-subtle fw-semibold">
                             <td class="cursor-pointer" {{ collapse_toggle(rt_toggle) }}>
-                                <i class="fas fa-chevron-right small text-muted me-1 res-type-collapse-icon"
+                                <i class="fa-solid fa-chevron-right small text-muted me-1 res-type-collapse-icon"
                                    style="transition: transform 0.2s;"></i>
                                 {{ rt.resource_type }}
                             </td>
@@ -101,7 +101,7 @@
                         {% set fs_cursor = ' cursor-pointer' if is_hpc_dav else '' %}
                         <tr class="table-secondary{% if not r.is_active %} opacity-50{% endif %}">
                             <td class="ps-4 fw-semibold{{ fs_cursor }}" {{ fs_attrs }}>
-                                {% if is_hpc_dav %}<i class="fas fa-chevron-right small text-muted me-1 facility-resource-collapse-icon"
+                                {% if is_hpc_dav %}<i class="fa-solid fa-chevron-right small text-muted me-1 facility-resource-collapse-icon"
                                    style="transition: transform 0.2s;"></i>{% endif %}
                                 {{ r.resource_name }}
                             </td>
@@ -131,7 +131,7 @@
                                 <div class="collapse" id="res-fs-{{ r.resource_id }}">
                                     <div class="ps-5 pt-1 pb-2">
                                         <div class="text-muted small mb-1">
-                                            <i class="fas fa-balance-scale me-1"></i>
+                                            <i class="fa-solid fa-scale-balanced me-1"></i>
                                             Fair-share by facility for {{ r.resource_name }}
                                             <span class="fst-italic">(overrides the facility default; unset to restore it)</span>
                                         </div>
@@ -228,7 +228,7 @@
                             hx-get="{{ url_for('admin_dashboard.htmx_resource_type_create_form') }}"
                             hx-target="#createResourceTypeFormContainer"
                             hx-trigger="click">
-                        <i class="fas fa-plus"></i> Create Type
+                        <i class="fa-solid fa-plus"></i> Create Type
                     </button>
                     <button class="btn btn-primary"
                             data-bs-toggle="modal"
@@ -236,7 +236,7 @@
                             hx-get="{{ url_for('admin_dashboard.htmx_resource_create_form') }}"
                             hx-target="#createResourceFormContainer"
                             hx-trigger="click">
-                        <i class="fas fa-plus"></i> Create Resource
+                        <i class="fa-solid fa-plus"></i> Create Resource
                     </button>
                 </div>
                 {% endif %}
@@ -315,7 +315,7 @@
                         hx-get="{{ url_for('admin_dashboard.htmx_machine_create_form') }}"
                         hx-target="#createMachineFormContainer"
                         hx-trigger="click">
-                    <i class="fas fa-plus"></i> Create Machine
+                    <i class="fa-solid fa-plus"></i> Create Machine
                 </button>
                 {% endif %}
             </div>
@@ -345,7 +345,7 @@
                     <tbody>
                         <tr class="table-subtle fw-semibold">
                             <td class="cursor-pointer" {{ collapse_toggle(q_toggle) }}>
-                                <i class="fas fa-chevron-right small text-muted me-1 queue-res-collapse-icon"
+                                <i class="fa-solid fa-chevron-right small text-muted me-1 queue-res-collapse-icon"
                                    style="transition: transform 0.2s;"></i>
                                 {{ r.resource_name }}
                             </td>
@@ -364,7 +364,7 @@
                                         hx-target="#queueCleanupFormContainer"
                                         hx-trigger="click"
                                         title="Find and expire queues unused for N days">
-                                    <i class="fas fa-broom"></i> Cleanup…
+                                    <i class="fa-solid fa-broom"></i> Cleanup…
                                 </button>
                                 {% endif %}
                             </td>
@@ -420,7 +420,7 @@
                         hx-get="{{ url_for('admin_dashboard.htmx_queue_create_form') }}"
                         hx-target="#createQueueFormContainer"
                         hx-trigger="click">
-                    <i class="fas fa-plus"></i> Create Queue
+                    <i class="fa-solid fa-plus"></i> Create Queue
                 </button>
                 {% endif %}
             </div>
@@ -428,7 +428,7 @@
             {# Wallclock Exemptions #}
             <div class="border-top mt-2 pt-2 px-3 pb-1 d-flex align-items-center justify-content-between">
                 <div class="d-flex align-items-center">
-                    <i class="fas fa-clock me-2 text-muted"></i>
+                    <i class="fa-solid fa-clock me-2 text-muted"></i>
                     <span class="fw-semibold">Wallclock Exemptions</span>
                     <span class="text-muted small ms-2">
                         per-user overrides of queue wallclock limits
@@ -441,7 +441,7 @@
                         hx-get="{{ url_for('admin_dashboard.htmx_admin_exemption_form') }}"
                         hx-target="#addExemptionFormContainer"
                         hx-trigger="click">
-                    <i class="fas fa-plus"></i> New
+                    <i class="fa-solid fa-plus"></i> New
                 </button>
                 {% endif %}
             </div>
@@ -475,7 +475,7 @@
                             data-bs-target="#exemption-res-{{ rid }}"
                             aria-expanded="false">
                             <td>
-                                <i class="fas fa-chevron-right small text-muted me-1 exemption-res-collapse-icon"
+                                <i class="fa-solid fa-chevron-right small text-muted me-1 exemption-res-collapse-icon"
                                    style="transition: transform 0.2s;"></i>
                                 {{ group['resource'].resource_name }}
                             </td>
@@ -514,7 +514,7 @@
                                         data-confirm-variant="warning"
                                         data-confirm-label="Deactivate"
                                         data-stop-propagation>
-                                    <i class="fas fa-ban"></i>
+                                    <i class="fa-solid fa-ban"></i>
                                 </button>
                                 {% endif %}
                             </td>

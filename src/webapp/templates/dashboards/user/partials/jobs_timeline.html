@@ -107,7 +107,7 @@
        'uncharged' QoS, so work can be real and its charges exactly zero.
        Said here because an empty bar otherwise reads as missing data. #}
     <p class="text-muted small mb-2">
-      <i class="fas fa-circle-info me-1"></i>
+      <i class="fa-solid fa-circle-info me-1"></i>
       Charges are hours weighted by each job's QoS factor. Uncharged QoS
       classes have a factor of 0, so bands can show jobs and CPU-hours while
       contributing no charges.
@@ -116,7 +116,7 @@
 
   {% if ts.null_count %}
     <p class="text-muted small mb-2">
-      <i class="fas fa-circle-info me-1"></i>
+      <i class="fa-solid fa-circle-info me-1"></i>
       {{ ts.null_count | fmt_number }} job{{ '' if ts.null_count == 1 else 's' }}
       have no recorded end time and belong to no period.
     </p>
@@ -131,7 +131,7 @@
        hx-trigger="shown.bs.collapse from:closest tr.collapse once"
        hx-swap="innerHTML">
     <p class="text-muted small mb-0">
-      <i class="fas fa-spinner fa-spin me-1"></i>
+      <i class="fa-solid fa-spinner fa-spin me-1"></i>
       Loading {{ owner }}'s jobs in {{ band_label }}…
     </p>
   </div>
@@ -173,7 +173,7 @@
               aria-expanded="false" aria-controls="{{ _rid }}-row"
               title="Show top {{ entity.label | lower }}s in this period">
             <td>
-              <i class="fas fa-chevron-right collapse-icon small me-1"></i>
+              <i class="fa-solid fa-chevron-right collapse-icon small me-1"></i>
               <code>{{ b.label }}</code>
             </td>
             <td class="text-end">{{ b.job_count | fmt_number }}</td>
@@ -220,7 +220,7 @@
                                     data-bs-target="#{{ _urid }}-row"
                                     aria-expanded="false"
                                     aria-controls="{{ _urid }}-row">
-                              <i class="fas fa-chevron-right collapse-icon small"></i>
+                              <i class="fa-solid fa-chevron-right collapse-icon small"></i>
                             </button>
                             <span class="font-monospace">{{ owner }}</span>
                           </td>
@@ -288,7 +288,7 @@
                       type="button" data-bs-toggle="collapse"
                       data-bs-target="#{{ _rid }}-row"
                       aria-expanded="false" aria-controls="{{ _rid }}-row">
-                <i class="fas fa-chevron-right collapse-icon small"></i>
+                <i class="fa-solid fa-chevron-right collapse-icon small"></i>
               </button>
               {% endif %}
               <code>{{ b.label }}</code>
@@ -306,7 +306,7 @@
                    hx-trigger="shown.bs.collapse from:closest tr.collapse once"
                    hx-swap="innerHTML">
                 <p class="text-muted small mb-0">
-                  <i class="fas fa-spinner fa-spin me-1"></i>
+                  <i class="fa-solid fa-spinner fa-spin me-1"></i>
                   Loading jobs in {{ b.label }}…
                 </p>
               </div>

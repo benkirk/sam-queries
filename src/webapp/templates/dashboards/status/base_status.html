@@ -19,15 +19,15 @@
 
 <!-- Page Header -->
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1><i class="fas fa-server"></i> System Status Dashboard</h1>
+    <h1><i class="fa-solid fa-server"></i> System Status Dashboard</h1>
     <div class="d-flex align-items-center flex-column gap-2">
         {% if has_permission(Permission.EDIT_SYSTEM_STATUS) %}
         <button class="btn  btn-outline-danger" data-bs-toggle="modal" data-bs-target="#createOutageModal">
-            <i class="fas fa-exclamation-circle"></i> Report Outage
+            <i class="fa-solid fa-circle-exclamation"></i> Report Outage
         </button>
         {% endif %}
         <div class="last-updated">
-            <i class="fas fa-clock"></i> Auto-refresh every 5 minutes
+            <i class="fa-solid fa-clock"></i> Auto-refresh every 5 minutes
         </div>
     </div>
 </div>
@@ -35,7 +35,7 @@
 <!-- Active Outages Banner -->
 {% if outages %}
 <div class="alert alert-warning mb-4">
-    <h5><i class="fas fa-exclamation-triangle"></i> Active System Issues ({{ outages|length }})</h5>
+    <h5><i class="fa-solid fa-triangle-exclamation"></i> Active System Issues ({{ outages|length }})</h5>
     {% for outage in outages %}
     <div class="outage-card card severity-{{ outage.severity }}">
         <div class="card-body">
@@ -66,7 +66,7 @@
                                 data-description="{{ outage.description }}"
                                 {% if outage.estimated_resolution %}data-estimated-resolution="{{ outage.estimated_resolution.isoformat() }}Z"{% endif %}
                                 data-outage-title="{{ outage.title }}">
-                            <i class="fas fa-edit"></i>
+                            <i class="fa-solid fa-pen-to-square"></i>
                         </button>
                         <button class="btn btn-primary "
                                 title="Mark resolved"
@@ -75,7 +75,7 @@
                                 data-confirm-title="Resolve outage"
                                 data-confirm-variant="info"
                                 data-confirm-label="Mark resolved">
-                            <i class="fas fa-check"></i>
+                            <i class="fa-solid fa-check"></i>
                         </button>
                         <button class="btn btn-outline-danger "
                                 title="Delete outage"
@@ -83,7 +83,7 @@
                                 hx-confirm="Delete outage: {{ outage.title }}?"
                                 data-confirm-title="Delete outage"
                                 data-confirm-label="Delete">
-                            <i class="fas fa-trash"></i>
+                            <i class="fa-solid fa-trash"></i>
                         </button>
                     </div>
                     {% endif %}
@@ -98,7 +98,7 @@
             {% if outage.estimated_resolution %}
             <div class="text-muted small mt-1">
                 {# Same naive-UTC convention as outage.start_time above. #}
-                <i class="fas fa-clock"></i> Estimated resolution: {{ outage.estimated_resolution | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }}
+                <i class="fa-solid fa-clock"></i> Estimated resolution: {{ outage.estimated_resolution | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }}
             </div>
             {% endif %}
         </div>
@@ -113,18 +113,18 @@
    ordering Events last is what keeps it rightmost for every audience —
    staff and unprivileged alike. Keep it at the end when adding tabs. #}
 {{ page_tabs([
-    {'endpoint': 'status_dashboard.derecho',    'label': 'Derecho',    'icon': 'fas fa-server'},
-    {'endpoint': 'status_dashboard.casper',     'label': 'Casper',     'icon': 'fas fa-hdd'},
-    {'endpoint': 'status_dashboard.jupyterhub', 'label': 'JupyterHub', 'icon': 'fas fa-book'},
+    {'endpoint': 'status_dashboard.derecho',    'label': 'Derecho',    'icon': 'fa-solid fa-server'},
+    {'endpoint': 'status_dashboard.casper',     'label': 'Casper',     'icon': 'fa-solid fa-hard-drive'},
+    {'endpoint': 'status_dashboard.jupyterhub', 'label': 'JupyterHub', 'icon': 'fa-solid fa-book'},
     {'endpoint': 'status_dashboard.filesystem_scans', 'label': 'Filesystem Scans',
-     'icon': 'fas fa-magnifying-glass-chart',
+     'icon': 'fa-solid fa-magnifying-glass-chart',
      'visible': true if (fs_scan_resources and has_permission(Permission.VIEW_ALL_FILESYSTEM_DATA)) else false},
     {'endpoint': 'status_dashboard.job_history', 'label': 'Job History',
-     'icon': 'fas fa-list-check',
+     'icon': 'fa-solid fa-list-check',
      'visible': true if (job_history_machines and has_permission(Permission.VIEW_ALL_JOB_DATA)) else false},
     {'endpoint': 'status_dashboard.events',
      'label': events_label,
-     'icon': 'fas fa-calendar-alt',
+     'icon': 'fa-solid fa-calendar-days',
      'visible': true if (reservations or google_calendar_embed_url) else false},
 ], class='mb-4') }}
 

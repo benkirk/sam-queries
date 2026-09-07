@@ -32,11 +32,11 @@ def _card(html, title='Scheduled tasks'):
     Deliberately NOT `html[html.index(title):][:3000]`: a fixed character
     window silently absorbs whichever card happens to follow, so the tile
     order on the Configuration tab becomes load-bearing for assertions that
-    have nothing to do with it. Every card opens with an `<h5><i class="fas`,
+    have nothing to do with it. Every card opens with an `<h5><i class="fa-solid`,
     which is the boundary.
     """
     section = html[html.index(title):]
-    nxt = section.find('<h5><i class="fas')
+    nxt = section.find('<h5><i class="fa-solid')
     return section if nxt == -1 else section[:nxt]
 
 

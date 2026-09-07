@@ -79,8 +79,23 @@ Label each candidate:
   stop for a human decision.
 
 A Font Awesome major is always high-risk: majors rename or retire icon glyph
-classes, so grep template `fa-*` usage (`rg -o 'fa-[a-z0-9-]+' src/webapp/templates`)
-against the release's deprecation list first.
+classes and can change the default metrics (FA7 made icons fixed-width by
+default — measure action-cell wrap before/after). If a major is approved and the
+plan is to modernize class names rather than lean on shims:
+
+- **Build the old→new map from the release's own metadata, never by hand.**
+  The web zip ships an `icons.json` metadata file; each canonical icon lists its
+  `aliases.names` and its `free` styles. Invert it to alias→canonical over the
+  names we actually use, and confirm every target is in the **free** set at the
+  style we use it. An icon that is neither canonical nor an alias is Pro (already
+  rendering blank) — pick a free replacement.
+- **Discover files by the prefix token, not just `fa-`.** A template can carry
+  `class="fas {{ row.icon }}"` with the glyph in a Jinja variable and *no literal
+  `fa-`* — a `grep -l 'fa-'` file list misses it. Discover on `fas|far|fab` too,
+  and handle the `prefix {{ … }}` / `{% … %}` form in the rewrite.
+- **Sweep `tests/` as well as `src/webapp/`.** Tests assert on rendered icon
+  markup (`assert 'fa-edit' in html`, `find('<h5><i class="fas')`); the rewrite
+  touches app code, so update the matching test expectations in the same change.
 
 ## 5. Apply a bump (mechanics live in the README)
 
@@ -199,6 +214,11 @@ The grep in step 3 catches any added since; this table is the starting set.
   the cache-header rule exists for exactly these (`CLAUDE.md` §11), and their
   presence is gated (`tests/unit/test_vendor_assets.py`). A **major** can rename
   or retire icon classes — grep template `fa-*` usage before bumping (step 4).
+  Also: the webfont **family name is versioned** (`'Font Awesome 6 Free'` →
+  `'Font Awesome 7 Free'`), and two `static/css/dashboard.css` pseudo-element
+  rules hardcode it (navbar caret `\f107`, collapse chevron `\f078`). Grep the
+  versioned family string on any FA major or those glyphs silently vanish; FA7
+  also dropped ttf, shipping woff2-only.
 - **CSP.** The policy is nonce-free by design, so any inline `<script>` /
   `<style>` / `on*` / `hx-on:` is blocked; the htmx-config hardening meta tag is
   mandatory (`docs/plans/implemented/CSP.md`). A vendored bump must keep

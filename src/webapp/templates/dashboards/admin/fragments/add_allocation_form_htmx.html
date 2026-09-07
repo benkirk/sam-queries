@@ -41,7 +41,7 @@
 
   {% if not available_resources %}
   <div class="alert alert-info mb-3">
-    <i class="fas fa-info-circle"></i>
+    <i class="fa-solid fa-circle-info"></i>
     All active resources are already linked to this project.
     To add a sub-project allocation, first create the sub-project.
   </div>
@@ -109,7 +109,7 @@
              name="apply_to_subprojects"
              {% if form and form.get('apply_to_subprojects') == 'on' %}checked{% endif %}>
       <label class="form-check-label fw-semibold" for="applyToSubprojects">
-        <i class="fas fa-sitemap me-1 text-info"></i>
+        <i class="fa-solid fa-sitemap me-1 text-info"></i>
         Apply to sub-projects
         <span class="badge bg-info text-dark ms-1">
           {{ child_count }} active sub-project{{ 's' if child_count != 1 else '' }}
@@ -127,7 +127,7 @@
   </div>
   {% else %}
   <div class="alert alert-info py-2 mb-0 small">
-    <i class="fas fa-info-circle"></i>
+    <i class="fa-solid fa-circle-info"></i>
     To allocate to a sub-project, add the parent allocation here first,
     then return to add the sub-project's own allocation directly.
   </div>

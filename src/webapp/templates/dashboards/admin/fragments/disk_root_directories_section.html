@@ -11,7 +11,7 @@
 
 <div class="border-top mt-2 pt-2 px-3 pb-1 d-flex align-items-center justify-content-between">
     <div class="d-flex align-items-center">
-        <i class="fas fa-folder-tree me-2 text-muted"></i>
+        <i class="fa-solid fa-folder-tree me-2 text-muted"></i>
         <span class="fw-semibold">Disk Resource Root Directories</span>
         <span class="text-muted small ms-2">
             prefix mappings used to associate project directories with disk resources
@@ -24,7 +24,7 @@
             hx-get="{{ url_for('admin_dashboard.htmx_admin_disk_root_new_form') }}"
             hx-target="#addDiskRootFormContainer"
             hx-trigger="click">
-        <i class="fas fa-plus"></i> New
+        <i class="fa-solid fa-plus"></i> New
     </button>
     {% endif %}
 </div>
@@ -50,7 +50,7 @@
                 data-bs-target="#disk-root-res-{{ r.resource_id }}"
                 aria-expanded="false">
                 <td>
-                    <i class="fas fa-chevron-right small text-muted me-1 disk-root-collapse-icon"
+                    <i class="fa-solid fa-chevron-right small text-muted me-1 disk-root-collapse-icon"
                        style="transition: transform 0.2s;"></i>
                     {{ r.resource_name }}
                 </td>
@@ -68,7 +68,7 @@
                 <td>
                     {% if dr.charging_exempt %}
                     <span class="badge bg-warning text-dark">
-                        <i class="fas fa-shield-alt"></i> exempt
+                        <i class="fa-solid fa-shield-halved"></i> exempt
                     </span>
                     {% else %}
                     <span class="text-muted small">—</span>
@@ -77,11 +77,11 @@
                 <td>
                     {% if dr.is_active %}
                     <span class="badge bg-success">
-                        <i class="fas fa-check"></i> active
+                        <i class="fa-solid fa-check"></i> active
                     </span>
                     {% else %}
                     <span class="badge bg-secondary">
-                        <i class="fas fa-ban"></i> inactive
+                        <i class="fa-solid fa-ban"></i> inactive
                     </span>
                     {% endif %}
                 </td>
@@ -97,9 +97,9 @@
                             data-confirm-label="{% if dr.is_active %}Deactivate{% else %}Activate{% endif %}"
                             data-stop-propagation>
                         {% if dr.is_active %}
-                        <i class="fas fa-toggle-on"></i>
+                        <i class="fa-solid fa-toggle-on"></i>
                         {% else %}
-                        <i class="fas fa-toggle-off"></i>
+                        <i class="fa-solid fa-toggle-off"></i>
                         {% endif %}
                     </button>
                     {% endif %}

@@ -40,9 +40,11 @@ VENDOR_ASSETS = {
         'sha384': 'sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB',
     },
     'fontawesome-css': {
+        # FA7 ships woff2-only webfonts (no ttf); family name is
+        # "Font Awesome 7 Free" (see static/css/dashboard.css pseudo-elements).
         'kind': 'css',
-        'path': 'vendor/fontawesome-6.7.2/css/all.min.css',
-        'sha384': 'sha384-nRgPTkuX86pH8yjPJUAFuASXQSSl2/bBUiNV47vSYpKFxHJhbcrGnmlYpYJMeD7a',
+        'path': 'vendor/fontawesome-7.3.1/css/all.min.css',
+        'sha384': 'sha384-qrALq7+6jBOZIQsNnT6xGkMDru64qD6uTlDra39xrt2SoXl4pO3FX6Roz/RpR/BS',
     },
     # ---- JS ----
     'jquery': {

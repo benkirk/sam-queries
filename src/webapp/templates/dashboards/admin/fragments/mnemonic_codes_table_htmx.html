@@ -17,7 +17,7 @@
     <input type="hidden" name="sort_dir" value="{{ sort.sort_dir }}">
     <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
       <div class="input-group input-group-sm" style="max-width: 22rem;">
-        <span class="input-group-text"><i class="fas fa-search"></i></span>
+        <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
         <input id="mnemonicSearch" name="q" value="{{ q }}" class="form-control"
                type="search" placeholder="Search code or description"
                autocomplete="off" aria-label="Search mnemonic codes">
@@ -32,7 +32,7 @@
       {{ facet_row('Show',
           [{'value': 'all', 'label': 'All', 'count': counts.all},
            {'value': 'linked', 'label': 'Linked', 'count': counts.linked, 'icon': 'fa-link'},
-           {'value': 'orphaned', 'label': 'Orphaned', 'count': counts.orphaned, 'icon': 'fa-unlink'},
+           {'value': 'orphaned', 'label': 'Orphaned', 'count': counts.orphaned, 'icon': 'fa-link-slash'},
            {'value': 'unused', 'label': 'Unused', 'count': counts.unused, 'icon': 'fa-circle'}],
           'mnemonicFilterForm', 'filter', active=[facet]) }}
     </div>
@@ -64,11 +64,11 @@
             <span class="text-muted">—</span>
             {% elif r.orphaned %}
             <span class="badge bg-warning-subtle text-warning-emphasis border">
-              <i class="fas fa-unlink me-1"></i>Orphaned</span>
+              <i class="fa-solid fa-link-slash me-1"></i>Orphaned</span>
             {% else %}
             {% for link in r.links_to[:2] %}
             <span class="d-inline-flex align-items-center me-2" title="{{ link.kind }}">
-              <i class="fas {{ 'fa-sitemap' if link.kind == 'organization' else 'fa-university' }} text-muted me-1"></i>{{ link.name }}</span>
+              <i class="fa-solid {{ 'fa-sitemap' if link.kind == 'organization' else 'fa-building-columns' }} text-muted me-1"></i>{{ link.name }}</span>
             {% endfor %}
             {% if r.links_to | length > 2 %}
             <span class="text-muted small">+{{ (r.links_to | length - 2) | fmt_number }} more</span>
@@ -99,7 +99,7 @@
                     hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_code_reassign_form', mnemonic_code_id=r.id) }}"
                     hx-target="#reassignMnemonicCodeFormContainer" hx-trigger="click"
                     title="Reassign to a new owner (system admin)">
-              <i class="fas fa-right-left"></i>
+              <i class="fa-solid fa-right-left"></i>
             </button>
             {% endif %}
           </td>
