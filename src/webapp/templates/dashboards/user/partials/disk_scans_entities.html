@@ -35,7 +35,7 @@
               hx-target="#{{ target_id }}"
               hx-include="#disk-scans-ent-params-{{ target_id }}"
               hx-swap="innerHTML">
-        <i class="fas fa-user me-1"></i> By user
+        <i class="fa-solid fa-user me-1"></i> By user
       </button>
       <button type="button"
               class="btn btn-outline-secondary {% if not _is_owner %}active{% endif %}"
@@ -43,7 +43,7 @@
               hx-target="#{{ target_id }}"
               hx-include="#disk-scans-ent-params-{{ target_id }}"
               hx-swap="innerHTML">
-        <i class="fas fa-users me-1"></i> By group
+        <i class="fa-solid fa-users me-1"></i> By group
       </button>
     </div>
     {{ scans_scope_note(fileset) }}
@@ -115,7 +115,7 @@
                         type="button" data-bs-toggle="collapse"
                         data-bs-target="#{{ _rid }}-row"
                         aria-expanded="false" aria-controls="{{ _rid }}-row">
-                  <i class="fas fa-chevron-right collapse-icon small"></i>
+                  <i class="fa-solid fa-chevron-right collapse-icon small"></i>
                 </button>
                 {% endif %}
                 {% if name %}<code>{{ name }}</code>
@@ -140,7 +140,7 @@
                      hx-trigger="shown.bs.collapse from:closest tr.collapse once"
                      hx-swap="innerHTML">
                   <p class="text-muted small mb-0">
-                    <i class="fas fa-spinner fa-spin me-1"></i>
+                    <i class="fa-solid fa-spinner fa-spin me-1"></i>
                     Loading {{ name or (_ent.id_label ~ ' ' ~ eid) }}'s directories…
                   </p>
                 </div>

@@ -25,11 +25,11 @@
 <div class="mb-3">
   {% if active_at > now_str %}
   <span class="badge bg-info text-dark">
-    <i class="fas fa-calendar-day me-1"></i>Future view: {{ active_at }}
+    <i class="fa-solid fa-calendar-day me-1"></i>Future view: {{ active_at }}
   </span>
   {% else %}
   <span class="badge bg-info text-dark">
-    <i class="fas fa-history me-1"></i>Historical view: {{ active_at }}
+    <i class="fa-solid fa-clock-rotate-left me-1"></i>Historical view: {{ active_at }}
   </span>
   {% endif %}
 </div>
@@ -37,7 +37,7 @@
 
 {% if not resources_by_tab %}
 <div class="alert alert-info">
-  <i class="fas fa-info-circle"></i>
+  <i class="fa-solid fa-circle-info"></i>
   No allocations found for this project or its sub-projects.
   Use the <strong>Add Allocation</strong> button above to create the first one.
 </div>
@@ -61,7 +61,7 @@
             type="button" role="tab"
             aria-controls="alloc-pane-{{ tab_idx }}"
             aria-selected="{{ 'true' if loop.first else 'false' }}">
-      <i class="fas fa-server me-1 small"></i>{{ tab_label }}
+      <i class="fa-solid fa-server me-1 small"></i>{{ tab_label }}
       <span class="badge bg-secondary ms-1">{{ tab_data.names | length }}</span>
     </button>
   </li>
@@ -128,7 +128,7 @@
 
           {# Col 1: resource name #}
           <td class="fw-semibold py-2" style="vertical-align:middle;">
-            <i class="fas fa-server text-primary me-2"></i>{{ resource_name }}
+            <i class="fa-solid fa-server text-primary me-2"></i>{{ resource_name }}
           </td>
 
           {# Cols 2+3: progress bar with % overlaid on the bar #}
@@ -169,7 +169,7 @@
                     data-bs-toggle="modal"
                     data-bs-target="#editAllocationModal"
                     title="Edit allocation" aria-label="Edit allocation">
-              <i class="fas fa-pencil-alt"></i>
+              <i class="fa-solid fa-pencil"></i>
             </button>
             {% elif root_alloc and root_alloc.is_inheriting %}
             {{ shared_badge() }}
@@ -190,8 +190,8 @@
 
           {# Col 1: resource name + caret #}
           <td class="fw-semibold py-2" style="vertical-align:middle;">
-            <i class="fas fa-chevron-right alloc-caret me-2 small text-muted"></i>
-            <i class="fas fa-server text-primary me-1"></i>
+            <i class="fa-solid fa-chevron-right alloc-caret me-2 small text-muted"></i>
+            <i class="fa-solid fa-server text-primary me-1"></i>
             {{ resource_name }}
           </td>
 

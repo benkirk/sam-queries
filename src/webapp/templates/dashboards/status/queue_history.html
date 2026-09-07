@@ -18,14 +18,14 @@
 {% block content %}
 <!-- Page Header -->
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1><i class="fas fa-list"></i> {{ queue_name }} Queue History ({{ system|upper }})</h1>
+    <h1><i class="fa-solid fa-list"></i> {{ queue_name }} Queue History ({{ system|upper }})</h1>
 </div>
 
 <!-- Current Status Card -->
 {% if latest_status %}
 <div class="card mb-4">
     <div class="card-header">
-        <h5 class="mb-0"><i class="fas fa-clock"></i> Current Status</h5>
+        <h5 class="mb-0"><i class="fa-solid fa-clock"></i> Current Status</h5>
         <small class="text-muted">Last Updated: {{ latest_status.timestamp | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }}</small>
     </div>
     <div class="card-body">
@@ -76,7 +76,7 @@
 <!-- Historical Chart -->
 <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="fas fa-chart-line"></i> Historical Trends</h5>
+        <h5 class="mb-0"><i class="fa-solid fa-chart-line"></i> Historical Trends</h5>
     </div>
     <div class="card-body">
 
@@ -90,7 +90,7 @@
         </div>
         {% else %}
         <div class="text-center text-muted py-4">
-            <i class="fas fa-chart-line fa-3x mb-3"></i>
+            <i class="fa-solid fa-chart-line fa-3x mb-3"></i>
             <p>No historical data available for the selected time period.</p>
         </div>
         {% endif %}
@@ -104,7 +104,7 @@
 <div class="card mb-4">
     <div class="card-header">
         <h5 class="mb-0">
-            <i class="fas fa-chart-area"></i> User / project load over time
+            <i class="fa-solid fa-chart-area"></i> User / project load over time
             <small class="text-muted fw-normal ms-2">
                 top 15 + Others, {{ start_date | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M') }}
                 → {{ end_date | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }}
@@ -127,7 +127,7 @@
              data-chart-persist-keys="state rank_by"
              data-chart-persist-shared="group_by metric:queue">
             <div class="text-center text-muted py-5">
-                <i class="fas fa-spinner fa-spin"></i> Loading chart…
+                <i class="fa-solid fa-spinner fa-spin"></i> Loading chart…
             </div>
         </div>
     </div>
@@ -141,7 +141,7 @@
 <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0">
-            <i class="fas fa-users"></i> Per-user / per-project
+            <i class="fa-solid fa-users"></i> Per-user / per-project
             {% if user_proj_rows %}
             <small class="text-muted fw-normal ms-2">
                 snapshot at {{ user_proj_rows[0].timestamp | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }}

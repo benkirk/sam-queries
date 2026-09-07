@@ -10,7 +10,7 @@
     <div class="col-md-6">
         <div class="card inner-card">
             <div class="card-header mb-4">
-                <h5><i class="fas fa-users"></i> Search Users</h5>
+                <h5><i class="fa-solid fa-users"></i> Search Users</h5>
             </div>
             <div class="card-body">
                 {{ active_toggle_search(
@@ -29,7 +29,7 @@
     <div class="col-md-6">
         <div class="card inner-card">
             <div class="card-header mb-4">
-                <h5><i class="fas fa-users-cog"></i> Search Groups</h5>
+                <h5><i class="fa-solid fa-users-gear"></i> Search Groups</h5>
             </div>
             <div class="card-body">
                 {{ active_toggle_search(
@@ -49,7 +49,15 @@
 <div class="row">
     <div class="col-12">
         <div id="userCardContainer"
-             data-reload-url="{{ url_for('admin_dashboard.user_card', username='') }}"></div>
+             data-reload-url="{{ url_for('admin_dashboard.user_card', username='') }}"
+             {% if auto_load_username %}
+             hx-get="{{ url_for('admin_dashboard.user_card', username=auto_load_username) }}"
+             hx-trigger="load"
+             hx-swap="innerHTML"
+             {# One-shot scroll to the card a ?username= link asked for
+                (dashboard-init.js); later reloads of this container don't. #}
+             data-reveal-on-load
+             {% endif %}></div>
     </div>
 </div>
 
@@ -57,7 +65,13 @@
 <div class="row">
     <div class="col-12">
         <div id="groupCardContainer"
-             data-reload-url="{{ url_for('admin_dashboard.group_card', group_name='') }}"></div>
+             data-reload-url="{{ url_for('admin_dashboard.group_card', group_name='') }}"
+             {% if auto_load_groupname %}
+             hx-get="{{ url_for('admin_dashboard.group_card', group_name=auto_load_groupname) }}"
+             hx-trigger="load"
+             hx-swap="innerHTML"
+             data-reveal-on-load
+             {% endif %}></div>
     </div>
 </div>
 

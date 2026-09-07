@@ -14,7 +14,7 @@
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0 flex-grow-1">
-            <i class="fas fa-hashtag"></i> Mnemonic Codes
+            <i class="fa-solid fa-hashtag"></i> Mnemonic Codes
         </h5>
         {% if has_permission(Permission.CREATE_ORG_METADATA) %}
         <button type="button" class="btn btn-primary btn-sm"
@@ -23,7 +23,7 @@
                 hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_code_create_form') }}"
                 hx-target="#createMnemonicCodeFormContainer"
                 hx-trigger="click">
-            <i class="fas fa-plus"></i> New Mnemonic Code
+            <i class="fa-solid fa-plus"></i> New Mnemonic Code
         </button>
         {% endif %}
     </div>
@@ -32,7 +32,7 @@
          hx-trigger="load once, reloadMnemonicCodesCard from:body, reloadOrganizationsCard from:body"
          hx-swap="innerHTML">
         <div class="card-body text-center text-muted py-4" role="status">
-            <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
+            <i class="fa-solid fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
             <p class="mt-2">Loading...</p>
         </div>
     </div>

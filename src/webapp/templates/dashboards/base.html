@@ -74,7 +74,7 @@
                                 <div class="nav-item dropdown">
                                     <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button"
                                        data-bs-toggle="dropdown" aria-expanded="false">
-                                        <i class="fas fa-user-circle"></i> {{ current_user.display_name }}
+                                        <i class="fa-solid fa-circle-user"></i> {{ current_user.display_name }}
                                     </a>
                                     <div class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
                                         <div class="dropdown-header">
@@ -141,10 +141,10 @@
     {% if session.impersonator_id %}
     <div class="impersonation-banner alert alert-warning text-center mb-0">
         <div class="container d-flex justify-content-center align-items-center">
-            <i class="fas fa-user-secret me-2"></i>
+            <i class="fa-solid fa-user-secret me-2"></i>
             <strong>You are currently impersonating {{ current_user.display_name }} ({{ current_user.username }}).</strong>
             <a href="{{ url_for('admin_dashboard.stop_impersonating') }}" class="btn  btn-outline-dark ms-3">
-                <i class="fas fa-times"></i> Stop Impersonating
+                <i class="fa-solid fa-xmark"></i> Stop Impersonating
             </a>
         </div>
     </div>
@@ -225,7 +225,7 @@
     {{ confirm_modal() }}
 
     <!-- Scripts -->
-    {{ vendor_js(['jquery', 'bootstrap-js', 'htmx']) }}
+    {{ vendor_js(['bootstrap-js', 'htmx']) }}
     <script src="{{ url_for('static', filename='js/actions.js') }}"></script>
     <script src="{{ url_for('static', filename='js/pickers.js') }}"></script>
     <script src="{{ url_for('static', filename='js/dashboard-init.js') }}"></script>

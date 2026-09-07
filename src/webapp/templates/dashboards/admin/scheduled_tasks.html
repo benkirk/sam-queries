@@ -27,7 +27,7 @@
 <div class="row mb-3">
     <div class="col-12 d-flex justify-content-between align-items-end">
         <div>
-            <h2 class="mb-1"><i class="fas fa-clock"></i> Scheduled tasks</h2>
+            <h2 class="mb-1"><i class="fa-solid fa-clock"></i> Scheduled tasks</h2>
             <p class="text-muted mb-0">
                 Every dispatch of every task, from the <code>task_run</code>
                 ledger. The dispatcher wakes hourly; a task runs when its own
@@ -37,9 +37,6 @@
                 record of occurrences, not a heartbeat for the CronJob.
             </p>
         </div>
-        <a class="btn btn-outline-secondary" href="{{ url_for('admin_dashboard.projects') }}">
-            <i class="fas fa-chevron-left"></i> Back to Admin
-        </a>
     </div>
 </div>
 
@@ -48,7 +45,7 @@
    applied. The Configuration card degrades for this; so must the page it
    links to, or the card's own `Details »` is a 500. #}
 <div class="alert alert-info">
-    <i class="fas fa-circle-info me-1"></i>
+    <i class="fa-solid fa-circle-info me-1"></i>
     <strong>Run history is unavailable.</strong>
     The <code>task_run</code> table is not present on this database — it
     arrives with Alembic <code>0006</code>. The dispatcher writes its ledger
@@ -58,7 +55,7 @@
 
 {% if summary.stale_running %}
 <div class="alert alert-warning">
-    <i class="fas fa-triangle-exclamation me-1"></i>
+    <i class="fa-solid fa-triangle-exclamation me-1"></i>
     <strong>{{ summary.stale_running | fmt_number }}</strong> run(s) are stuck
     in <code>running</code> past their lease — a runner claimed the slot and
     died before writing an outcome. Those rows are now reclaimable: the next
@@ -120,7 +117,7 @@
                     </div>
                     <div class="col-6 col-md-4 d-flex gap-2">
                         <button type="submit" class="btn btn-sm btn-primary">
-                            <i class="fas fa-filter"></i> Apply
+                            <i class="fa-solid fa-filter"></i> Apply
                         </button>
                     </div>
 
@@ -145,7 +142,7 @@
      hx-trigger="load"
      hx-swap="innerHTML">
     <div class="text-muted small p-3">
-        <i class="fas fa-circle-notch fa-spin"></i> Loading run history…
+        <i class="fa-solid fa-circle-notch fa-spin"></i> Loading run history…
     </div>
 </div>
 

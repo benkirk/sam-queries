@@ -22,7 +22,7 @@
 <div class="card mb-3">
     <div class="card-header">
         <h5 class="mb-0">
-            <i class="fas fa-file-signature"></i>
+            <i class="fa-solid fa-file-signature"></i>
             <span class="font-monospace">{{ contract.contract_number }}</span>
             {% if contract.contract_source %}
             <span class="badge bg-body-tertiary text-body-emphasis border ms-2">{{ contract.contract_source.contract_source }}</span>
@@ -42,7 +42,7 @@
             <div class="col-lg-6">
                 <div class="project-stats-box mb-0"
                      style="grid-template-columns: auto minmax(0, 1fr); align-content: start;">
-                    <h6><i class="fas fa-info-circle"></i> Contract Information</h6>
+                    <h6><i class="fa-solid fa-circle-info"></i> Contract Information</h6>
 
                     <div class="stat-item stat-item-block">
                         <span class="stat-label d-block mb-1">Title:</span>
@@ -67,7 +67,7 @@
                         <span class="stat-value text-detail">
                             {% if contract.url %}
                             <a href="{{ contract.url }}" target="_blank" rel="noopener noreferrer">
-                                {{ contract.url }} <i class="fas fa-external-link-alt fa-xs"></i>
+                                {{ contract.url }} <i class="fa-solid fa-up-right-from-square fa-xs"></i>
                             </a>
                             {% else %}
                             <span class="text-muted">—</span>
@@ -81,7 +81,7 @@
             <div class="col-lg-6">
                 <div class="project-stats-box mb-0"
                      style="grid-template-columns: auto minmax(0, 1fr); align-content: start;">
-                    <h6><i class="fas fa-user-tie"></i> People &amp; Program</h6>
+                    <h6><i class="fa-solid fa-user-tie"></i> People &amp; Program</h6>
 
                     <div class="stat-item">
                         <span class="stat-label">PI:</span>
@@ -116,7 +116,7 @@
          so "Linked" is the join row's creation_time and nothing more. #}
     <div class="card-body border-top">
         <h6 class="mb-2">
-            <i class="fas fa-folder-open"></i> Linked Projects
+            <i class="fa-solid fa-folder-open"></i> Linked Projects
             <span class="badge bg-secondary ms-1">{{ linked_projects | length }}</span>
         </h6>
         {% if linked_projects %}

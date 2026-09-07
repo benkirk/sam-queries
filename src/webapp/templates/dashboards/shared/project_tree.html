@@ -70,7 +70,7 @@
 
     {# Left: identity #}
     <span class="flex-grow-1 text-truncate" style="min-width:0;">
-      {%- if is_current %}<i class="fas fa-arrow-right text-warning me-1"></i>{% endif -%}
+      {%- if is_current %}<i class="fa-solid fa-arrow-right text-warning me-1"></i>{% endif -%}
       {%- if can_view -%}
       <button class="btn btn-link p-0"
               title="View project details"
@@ -111,7 +111,7 @@
                 data-bs-toggle="modal"
                 data-bs-target="#editAllocationModal"
                 title="Edit allocation" aria-label="Edit allocation">
-          <i class="fas fa-pencil-alt"></i>
+          <i class="fa-solid fa-pencil"></i>
         </button>
         {%- endif -%}
       </div>
@@ -204,7 +204,7 @@
       {%- if depth > 0 %} border-left: 2px solid var(--border-default);{% endif %}
       white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
       vertical-align:middle;">
-    {%- if is_current %}<i class="fas fa-arrow-right text-warning me-1"></i>{% endif -%}
+    {%- if is_current %}<i class="fa-solid fa-arrow-right text-warning me-1"></i>{% endif -%}
     {%- if can_view -%}
     <button class="btn btn-link p-0"
             title="View project details"
@@ -277,7 +277,7 @@
             data-bs-toggle="modal"
             data-bs-target="#editAllocationModal"
             title="Edit allocation" aria-label="Edit allocation">
-      <i class="fas fa-pencil-alt"></i>
+      <i class="fa-solid fa-pencil"></i>
     </button>
     {%- endif -%}
     {#- Allocate-down lives on any parent node with carve-out children.
@@ -297,7 +297,7 @@
             data-bs-target="#allocateDownModal"
             title="Allocate unallocated remainder to a sub-project"
             aria-label="Allocate unallocated remainder to a sub-project">
-      <i class="fas fa-level-down-alt"></i>
+      <i class="fa-solid fa-turn-down"></i>
     </button>
       {%- elif res.carve_residual.raw_residual < 0 -%}
     <span class="badge bg-danger bg-opacity-25 text-danger border small ms-1"
@@ -318,7 +318,7 @@
             data-bs-toggle="modal"
             data-bs-target="#exchangeAllocationModal"
             title="Exchange allocation between sub-projects">
-      <i class="fas fa-exchange-alt"></i>
+      <i class="fa-solid fa-right-left"></i>
     </button>
     {%- endif -%}
   </td>

@@ -4,7 +4,7 @@
    most needs to know what was searched. #}
 {% if summary %}
 <p class="text-muted small mb-3 expirations-summary">
-    <i class="fas fa-filter"></i> {{ summary|safe }}
+    <i class="fa-solid fa-filter"></i> {{ summary|safe }}
 </p>
 {% endif %}
 
@@ -19,7 +19,7 @@
                 hx-confirm="Deactivate {{ projects_data|length }} expired project{{ 's' if projects_data|length != 1 else '' }}? This cannot be undone from this view."
                 data-confirm-title="Deactivate expired projects"
                 data-confirm-label="Deactivate {{ projects_data|length }}">
-            <i class="fas fa-ban"></i> Deactivate Expired
+            <i class="fa-solid fa-ban"></i> Deactivate Expired
         </button>
     </div>
     {% endif %}
@@ -44,7 +44,7 @@
     </div>
 {% else %}
     <div class="alert alert-info">
-        <i class="fas fa-info-circle"></i>
+        <i class="fa-solid fa-circle-info"></i>
         No {{ view_type }} expirations found with current filters.
     </div>
 {% endif %}

@@ -48,14 +48,14 @@
                        data-action-change="contract-mode"
                        {% if not form or form.get('contract_mode', 'manual') == 'manual' %}checked{% endif %}>
                 <label class="btn btn-outline-secondary" for="contractModeManual">
-                    <i class="fas fa-keyboard me-1"></i> Enter manually
+                    <i class="fa-solid fa-keyboard me-1"></i> Enter manually
                 </label>
                 <input type="radio" class="btn-check" name="contract_mode"
                        id="contractModeLookup" value="lookup" autocomplete="off"
                        data-action-change="contract-mode"
                        {% if form and form.get('contract_mode') == 'lookup' %}checked{% endif %}>
                 <label class="btn btn-outline-secondary" for="contractModeLookup">
-                    <i class="fas fa-cloud-arrow-down me-1"></i> Look up award
+                    <i class="fa-solid fa-cloud-arrow-down me-1"></i> Look up award
                 </label>
             </div>
 
@@ -74,7 +74,7 @@
                    keyboard path works without reaching for the mouse. #}
                 <div class="input-group input-group-sm mb-2">
                     <span class="input-group-text">
-                        <i class="fas fa-magnifying-glass"></i>
+                        <i class="fa-solid fa-magnifying-glass"></i>
                     </span>
                     {# Enter is bound in form-helpers.js, not with an htmx
                        `keyup[key=='Enter']` filter: htmx compiles filters with
@@ -102,7 +102,7 @@
                 </div>
                 <span id="createContractSearchSpinner"
                       class="htmx-indicator text-muted small d-block mb-2">
-                    <i class="fas fa-spinner fa-spin me-1"></i>Searching NSF and USAspending…
+                    <i class="fa-solid fa-spinner fa-spin me-1"></i>Searching NSF and USAspending…
                 </span>
                 <div id="createContractAwardResults" class="list-group mb-2"></div>
 
@@ -120,11 +120,11 @@
                         hx-include="closest form"
                         {% if seeded and lookup %}hx-trigger="load, click"{% endif %}
                         hx-indicator="#createContractLookupSpinner">
-                    <i class="fas fa-cloud-arrow-down me-1"></i> Fetch award
+                    <i class="fa-solid fa-cloud-arrow-down me-1"></i> Fetch award
                 </button>
                 <span id="createContractLookupSpinner"
                       class="htmx-indicator ms-2 text-muted small">
-                    <i class="fas fa-spinner fa-spin me-1"></i>Contacting the funding source…
+                    <i class="fa-solid fa-spinner fa-spin me-1"></i>Contacting the funding source…
                 </span>
                 <div class="form-text">
                     Search above if you do not know the number, or type it into

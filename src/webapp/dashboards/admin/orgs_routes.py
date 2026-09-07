@@ -26,6 +26,7 @@ from webapp.utils.htmx import (
     htmx_success_message,
     modal_triggers,
     read_active_only,
+    read_tab,
     register_typeahead,
 )
 from webapp.extensions import db, cache, user_aware_cache_key
@@ -58,7 +59,7 @@ from sam.schemas.forms.orgs import (
     EditAoiForm, CreateAoiForm,
 )
 
-from .blueprint import bp
+from .blueprint import bp, _ORGANIZATIONS_TABS
 from .crud import CrudSpec, register_crud
 
 
@@ -166,6 +167,7 @@ def htmx_organizations_card():
         # is user-aware.
         can_view_users=has_permission_any_facility(
             current_user, Permission.VIEW_USERS),
+        active_tab=read_tab('tab', _ORGANIZATIONS_TABS, 'organizations'),
     )
 
 

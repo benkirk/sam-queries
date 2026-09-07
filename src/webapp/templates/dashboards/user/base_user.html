@@ -16,11 +16,11 @@
 
 {% set accounts_label = user.username ~ "'s Accounts" if impersonator_id else 'My Accounts' %}
 {{ page_tabs([
-    {'endpoint': 'user_dashboard.accounts', 'label': accounts_label, 'icon': 'fas fa-file-invoice-dollar'},
-    {'endpoint': 'user_dashboard.info',     'label': 'User Information', 'icon': 'fas fa-user-circle'},
-    {'endpoint': 'user_dashboard.my_data',  'label': 'My Data', 'icon': 'fas fa-hard-drive',
+    {'endpoint': 'user_dashboard.accounts', 'label': accounts_label, 'icon': 'fa-solid fa-file-invoice-dollar'},
+    {'endpoint': 'user_dashboard.info',     'label': 'User Information', 'icon': 'fa-solid fa-circle-user'},
+    {'endpoint': 'user_dashboard.my_data',  'label': 'My Data', 'icon': 'fa-solid fa-hard-drive',
      'visible': my_data_available},
-    {'endpoint': 'user_dashboard.my_jobs',  'label': 'My Jobs', 'icon': 'fas fa-list-check',
+    {'endpoint': 'user_dashboard.my_jobs',  'label': 'My Jobs', 'icon': 'fa-solid fa-list-check',
      'visible': my_jobs_available},
 ]) }}
 

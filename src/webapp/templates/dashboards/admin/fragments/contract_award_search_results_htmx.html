@@ -20,7 +20,7 @@
 #}
 {% if search_error %}
 <div class="list-group-item small text-warning-emphasis bg-warning-subtle">
-    <i class="fas fa-triangle-exclamation me-1"></i>{{ search_error }}
+    <i class="fa-solid fa-triangle-exclamation me-1"></i>{{ search_error }}
 </div>
 {% elif results %}
 {% for row in results %}
@@ -38,7 +38,7 @@
                 {% if row.in_sam %}
                 <span class="badge bg-secondary ms-1"
                       title="SAM already has a contract with this number">
-                    <i class="fas fa-check me-1"></i>already in SAM
+                    <i class="fa-solid fa-check me-1"></i>already in SAM
                 </span>
                 {% endif %}
             </div>
@@ -75,7 +75,7 @@
 {% endfor %}
 {% if partial_errors %}
 <div class="list-group-item small text-warning-emphasis bg-warning-subtle">
-    <i class="fas fa-triangle-exclamation me-1"></i>
+    <i class="fa-solid fa-triangle-exclamation me-1"></i>
     {% for error in partial_errors %}{{ error.provenance }} could not be reached.
     {% endfor %}These results are partial.
 </div>

@@ -31,13 +31,13 @@
     {% endif %}
     {% if r.source_action_id %}
     <span class="badge bg-info text-dark" title="This row is a re-check">
-        <i class="fas fa-redo me-1"></i>re-check of #{{ r.source_action_id }}
+        <i class="fa-solid fa-arrow-rotate-right me-1"></i>re-check of #{{ r.source_action_id }}
     </span>
     {% endif %}
 </div>
 
 <div class="project-stats-box" style="grid-template-columns: auto minmax(0, 1fr);">
-    <h6><i class="fas fa-info-circle"></i> Action Information</h6>
+    <h6><i class="fa-solid fa-circle-info"></i> Action Information</h6>
 
     <div class="stat-item">
         <span class="stat-label">Received:</span>
@@ -166,7 +166,7 @@
     <div class="stat-item stat-item-block">
         <span class="stat-label d-block mb-1">Raw payload:</span>
         <span class="stat-value text-muted small" style="font-weight:normal;">
-            <i class="fas fa-lock me-1"></i>
+            <i class="fa-solid fa-lock me-1"></i>
             Hidden — the payload carries participant names, emails and phone
             numbers. Requires the XRAS management permission.
         </span>

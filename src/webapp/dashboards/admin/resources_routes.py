@@ -15,6 +15,7 @@ from webapp.utils.htmx import (
     htmx_success_message,
     modal_triggers,
     read_active_only,
+    read_tab,
     register_typeahead,
 )
 from webapp.extensions import db
@@ -35,7 +36,7 @@ from sam.schemas.forms.resources import (
     CreateDiskResourceRootDirectoryForm, EditDiskResourceRootDirectoryForm,
 )
 
-from .blueprint import bp
+from .blueprint import bp, _RESOURCES_TABS
 from .crud import CrudSpec, register_crud
 
 
@@ -140,6 +141,7 @@ def htmx_resources_card():
         is_admin=True,
         now=now,
         active_only=active_only,
+        active_tab=read_tab('tab', _RESOURCES_TABS, 'resources'),
     )
 
 

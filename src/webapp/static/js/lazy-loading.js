@@ -8,8 +8,7 @@
  * Marks it as loaded to prevent duplicate fetches.
  */
 function loadLazyContainer(container) {
-    const $container = $(container);
-    const url = $container.data('load-url');
+    const url = container.dataset.loadUrl;
 
     fetch(url)
         .then(response => {
@@ -17,8 +16,8 @@ function loadLazyContainer(container) {
             return response.text();
         })
         .then(html => {
-            $container.html(html);
-            $container.attr('data-loaded', 'true');
+            container.innerHTML = html;
+            container.setAttribute('data-loaded', 'true');
             // Let htmx discover hx-* attributes on newly injected content
             if (window.htmx) htmx.process(container);
             // Bind sortable headers — this fetch path fires neither
@@ -27,15 +26,18 @@ function loadLazyContainer(container) {
         })
         .catch(error => {
             console.error('Error loading content:', error);
-            $container.html('<p class="text-danger mb-0">Failed to load content</p>');
+            container.innerHTML = '<p class="text-danger mb-0">Failed to load content</p>';
         });
 }
 
-// Trigger lazy loading when a collapsible section expands
-$(document).on('show.bs.collapse', function(event) {
-    const container = $(event.target).find('[data-load-url]:not([data-loaded="true"])').first();
-    if (container.length > 0) {
-        loadLazyContainer(container[0]);
+// Trigger lazy loading when a collapsible section expands. Bootstrap 5
+// dispatches a native, bubbling show.bs.collapse event, so one document-level
+// listener catches every collapse via delegation.
+document.addEventListener('show.bs.collapse', function(event) {
+    const container = event.target.querySelector(
+        '[data-load-url]:not([data-loaded="true"])');
+    if (container) {
+        loadLazyContainer(container);
     }
 });
 
@@ -46,10 +48,10 @@ $(document).on('show.bs.collapse', function(event) {
  * loaded into an admin panel).
  */
 function initLazyLoading() {
-    $('[data-load-url]:not([data-loaded="true"])').each(function() {
+    document.querySelectorAll('[data-load-url]:not([data-loaded="true"])').forEach(function(el) {
         // Skip containers that are inside a collapsed (hidden) ancestor
-        if ($(this).closest('.collapse:not(.show)').length === 0) {
-            loadLazyContainer(this);
+        if (!el.closest('.collapse:not(.show)')) {
+            loadLazyContainer(el);
         }
     });
 }

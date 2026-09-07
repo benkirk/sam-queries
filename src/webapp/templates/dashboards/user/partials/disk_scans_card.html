@@ -60,7 +60,7 @@
                 hx-target="#{{ cid }}-directories"
                 hx-swap="innerHTML"
                 hx-trigger="{{ load_trigger }}">
-            <i class="fas fa-folder-tree me-1"></i> Large directories
+            <i class="fa-solid fa-folder-tree me-1"></i> Large directories
         </button>
     </li>
     {% if mode != 'user' %}
@@ -73,7 +73,7 @@
                 hx-swap="innerHTML"
                 hx-trigger="shown.bs.tab once"
                 data-chart-persist-shared="kind:disk-scan">
-            <i class="fas fa-users me-1"></i> User / group counts
+            <i class="fa-solid fa-users me-1"></i> User / group counts
         </button>
     </li>
     {% endif %}
@@ -86,7 +86,7 @@
                 hx-swap="innerHTML"
                 hx-trigger="shown.bs.tab once"
                 data-chart-persist-shared="metric:disk-scan log:disk-scan">
-            <i class="fas fa-clock-rotate-left me-1"></i> Access history
+            <i class="fa-solid fa-clock-rotate-left me-1"></i> Access history
         </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -98,7 +98,7 @@
                 hx-swap="innerHTML"
                 hx-trigger="shown.bs.tab once"
                 data-chart-persist-shared="metric:disk-scan log:disk-scan">
-            <i class="fas fa-ruler me-1"></i> File sizes
+            <i class="fa-solid fa-ruler me-1"></i> File sizes
         </button>
     </li>
 </ul>
@@ -109,12 +109,12 @@
             <a class="btn btn-sm btn-outline-primary"
                href="{{ _full_url }}"
                target="_blank" rel="noopener">
-                Open full view <i class="fas fa-up-right-from-square ms-1"></i>
+                Open full view <i class="fa-solid fa-up-right-from-square ms-1"></i>
             </a>
         </div>
         <div id="{{ cid }}-directories">
             <p class="text-muted small mb-0">
-                <i class="fas fa-spinner fa-spin me-1"></i> Loading directories…
+                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading directories…
             </p>
         </div>
     </div>
@@ -122,7 +122,7 @@
     <div class="tab-pane fade" id="tab-{{ cid }}-ent" role="tabpanel">
         <div id="{{ cid }}-entities" data-chart-persist-shared="kind:disk-scan">
             <p class="text-muted small mb-0">
-                <i class="fas fa-spinner fa-spin me-1"></i> Loading…
+                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading…
             </p>
         </div>
     </div>
@@ -130,14 +130,14 @@
     <div class="tab-pane fade" id="tab-{{ cid }}-acc" role="tabpanel">
         <div id="{{ cid }}-access" data-chart-persist-shared="metric:disk-scan log:disk-scan">
             <p class="text-muted small mb-0">
-                <i class="fas fa-spinner fa-spin me-1"></i> Loading access history…
+                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading access history…
             </p>
         </div>
     </div>
     <div class="tab-pane fade" id="tab-{{ cid }}-files" role="tabpanel">
         <div id="{{ cid }}-files" data-chart-persist-shared="metric:disk-scan log:disk-scan">
             <p class="text-muted small mb-0">
-                <i class="fas fa-spinner fa-spin me-1"></i> Loading file sizes…
+                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading file sizes…
             </p>
         </div>
     </div>

@@ -31,7 +31,7 @@
             <tbody>
                 <tr class="table-subtle fw-semibold{% if not f.active %} opacity-50{% endif %}">
                     <td class="cursor-pointer" {{ collapse_toggle(f_toggle) }}>
-                        <i class="fas fa-chevron-right small text-muted me-1 facility-collapse-icon"
+                        <i class="fa-solid fa-chevron-right small text-muted me-1 facility-collapse-icon"
                            style="transition: transform 0.2s;"></i>
                         {{ f.facility_name }}
                     </td>
@@ -68,7 +68,7 @@
                 {# Panel header row #}
                 <tr class="table-secondary{% if not p.active %} opacity-50{% endif %}">
                     <td class="ps-4 fw-semibold">
-                        <i class="fas fa-users-cog small text-muted me-1"></i>
+                        <i class="fa-solid fa-users-gear small text-muted me-1"></i>
                         {{ p.panel_name }}
                     </td>
                     <td>—</td>
@@ -161,7 +161,7 @@
                     hx-get="{{ url_for('admin_dashboard.htmx_facility_create_form') }}"
                     hx-target="#createFacilityFormContainer"
                     hx-trigger="click">
-                <i class="fas fa-plus"></i> Create Facility
+                <i class="fa-solid fa-plus"></i> Create Facility
             </button>
             <button class="btn btn-primary"
                     data-bs-toggle="modal"
@@ -169,7 +169,7 @@
                     hx-get="{{ url_for('admin_dashboard.htmx_panel_create_form') }}"
                     hx-target="#createPanelFormContainer"
                     hx-trigger="click">
-                <i class="fas fa-plus"></i> Create Panel
+                <i class="fa-solid fa-plus"></i> Create Panel
             </button>
             <button class="btn btn-primary"
                     data-bs-toggle="modal"
@@ -177,7 +177,7 @@
                     hx-get="{{ url_for('admin_dashboard.htmx_allocation_type_create_form') }}"
                     hx-target="#createAllocationTypeFormContainer"
                     hx-trigger="click">
-                <i class="fas fa-plus"></i> Create Allocation Type
+                <i class="fa-solid fa-plus"></i> Create Allocation Type
             </button>
         </div>
         {% endif %}

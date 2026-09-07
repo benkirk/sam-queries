@@ -31,20 +31,20 @@
                data-match="#{{ p }}MatchBlock" data-custom="#{{ p }}CustomBlock"
                {% if start_mode == 'match' %}checked{% endif %}>
         <label class="btn btn-outline-secondary" for="{{ p }}ModeMatch">
-            <i class="fas fa-magnifying-glass me-1"></i> Match an entity
+            <i class="fa-solid fa-magnifying-glass me-1"></i> Match an entity
         </label>
         <input type="radio" class="btn-check" name="{{ p }}_desc_mode" id="{{ p }}ModeCustom"
                value="custom" autocomplete="off" data-action-change="mc-desc-mode"
                data-match="#{{ p }}MatchBlock" data-custom="#{{ p }}CustomBlock"
                {% if start_mode == 'custom' %}checked{% endif %}>
         <label class="btn btn-outline-secondary" for="{{ p }}ModeCustom">
-            <i class="fas fa-keyboard me-1"></i> Custom text
+            <i class="fa-solid fa-keyboard me-1"></i> Custom text
         </label>
     </div>
 
     <div id="{{ p }}MatchBlock"{% if start_mode != 'match' %} style="display:none"{% endif %}>
         <div class="input-group input-group-sm mb-1">
-            <span class="input-group-text"><i class="fas fa-search"></i></span>
+            <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
             <input type="text" class="form-control" name="q" id="{{ p }}TargetSearch"
                    autocomplete="off" placeholder="Search organizations and institutions"
                    hx-get="{{ url_for('admin_dashboard.htmx_search_mnemonic_targets') }}"

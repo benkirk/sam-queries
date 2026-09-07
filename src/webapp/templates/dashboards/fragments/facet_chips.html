@@ -65,7 +65,7 @@
         {{ status_badge(row.value, tooltip=False) }}
         {% else %}
         {# Optional leading icon (see `row.icon`) makes the strip its own legend. #}
-        {% if row.icon %}<i class="fas {{ row.icon }} me-1" aria-hidden="true"></i>{% endif %}
+        {% if row.icon %}<i class="fa-solid {{ row.icon }} me-1" aria-hidden="true"></i>{% endif %}
         <span class="facet-chip-value">{{ row.label or row.value }}</span>
         {% endif %}
         <span class="facet-chip-count">{{ row.count | fmt_number }}</span>

@@ -1533,7 +1533,7 @@ class _UserEditAllocationHandler(HtmxFormHandler):
         # reloads the card/details modal in place (modals.js).
         response = make_response('''
         <div class="modal-body text-center text-success py-4">
-            <i class="fas fa-check-circle fa-2x"></i>
+            <i class="fa-solid fa-circle-check fa-2x"></i>
             <p class="mt-2 mb-0">Allocation updated successfully</p>
         </div>
         <div class="modal-footer">

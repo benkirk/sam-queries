@@ -63,7 +63,7 @@
     {% endif %}
     {% if payload.publicURL %}
     <a class="small ms-auto" href="{{ payload.publicURL }}" target="_blank" rel="noopener">
-        Open in XRAS <i class="fas fa-arrow-up-right-from-square"></i>
+        Open in XRAS <i class="fa-solid fa-arrow-up-right-from-square"></i>
     </a>
     {% endif %}
     {# Re-run the never-writes preflight for this request now and patch the
@@ -103,7 +103,7 @@
             hx-get="{{ url_for('allocations_dashboard.xras_attributes_form',
                                request_number=request_number) }}"
             hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
-        <i class="fas fa-pencil"></i></button>
+        <i class="fa-solid fa-pencil"></i></button>
 </div>
 {% if payload.abstract %}
 <details class="mb-3">
@@ -131,7 +131,7 @@
         <a class="flex-grow-1 d-flex align-items-center flex-wrap gap-2 text-reset text-decoration-none"
            data-bs-toggle="collapse" href="#xras-action-{{ action.action_id }}"
            role="button" aria-expanded="{{ 'true' if action.is_latest else 'false' }}">
-            <i class="fas fa-chevron-down small text-muted"></i>
+            <i class="fa-solid fa-chevron-down small text-muted"></i>
             <span class="font-monospace">{{ action.action_id }}</span>
             {%- if action.action_type %}<span>{{ action.action_type }}</span>{% endif %}
             {%- if action.action_status %}
@@ -210,7 +210,7 @@
                                                        action_id=action.action_id,
                                                        resource_id=r.resource_id) }}?stage=Requested"
                                     hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
-                                <i class="fas fa-pencil"></i></button>
+                                <i class="fa-solid fa-pencil"></i></button>
                             <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" {{ write_disabled }}
                                     title="{% if not write_enabled %}{{ why_off }}{% else %}Remove the requested line{% endif %}"
                                     hx-post="{{ url_for('allocations_dashboard.xras_resource_remove',
@@ -221,7 +221,7 @@
                                     hx-confirm="Remove the requested line for {{ r.name }} from {{ request_number }} in XRAS?"
                                     data-confirm-title="Remove requested resource"
                                     data-confirm-ok="Remove" data-confirm-variant="danger">
-                                <i class="fas fa-trash"></i></button>
+                                <i class="fa-solid fa-trash"></i></button>
                         </span>
                         {% elif r.resource_id is not none and stage == 'Approved' and action.is_latest %}
                             {% if admin_context_available %}
@@ -232,11 +232,11 @@
                                                        action_id=action.action_id,
                                                        resource_id=r.resource_id) }}?stage=Approved"
                                     hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
-                                <i class="fas fa-pencil"></i></button>
+                                <i class="fa-solid fa-pencil"></i></button>
                             {% else %}
                             <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" disabled
                                     title="Edit award… — editing the awarded amount needs an elevated XRAS key (admin/review context), which this deployment does not have yet.">
-                                <i class="fas fa-lock"></i></button>
+                                <i class="fa-solid fa-lock"></i></button>
                             {% endif %}
                         {% endif %}
                     </span>
@@ -271,7 +271,7 @@
                                    request_number=request_number,
                                    action_id=action.action_id) }}"
                 hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
-            <i class="fas fa-calendar-plus"></i></button>
+            <i class="fa-solid fa-calendar-plus"></i></button>
         {% endif %}
         {% if action.dates %}
         <table class="table table-sm mb-0 mt-1">
@@ -292,7 +292,7 @@
                                                    request_number=request_number,
                                                    action_id=action.action_id) }}?allocation_date_id={{ d.allocation_date_id }}"
                                 hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
-                            <i class="fas fa-pencil"></i></button>
+                            <i class="fa-solid fa-pencil"></i></button>
                         <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" {{ write_disabled }}
                                 title="{% if not write_enabled %}{{ why_off }}{% else %}Remove this date range{% endif %}"
                                 aria-label="Remove this date range"
@@ -304,7 +304,7 @@
                                 hx-confirm="Remove this allocation-date range from {{ request_number }} in XRAS?"
                                 data-confirm-title="Remove allocation dates"
                                 data-confirm-ok="Remove" data-confirm-variant="danger">
-                            <i class="fas fa-trash"></i></button>
+                            <i class="fa-solid fa-trash"></i></button>
                         </span>
                     {% endif %}
                     </td>
@@ -343,7 +343,7 @@
                                    request_number=request_number,
                                    action_id=action.action_id) }}"
                 hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
-            <i class="fas fa-pencil"></i></button>
+            <i class="fa-solid fa-pencil"></i></button>
         {% endif %}
     </div>
 
@@ -379,7 +379,7 @@
             {# A reports payload spells fos as ids only — resolve to the name via
                the cached FoS catalog (fos_names), falling back to the id. #}
             {{ fos_names.get(f.fosTypeId) or f.fosName or f.fosAbbr or ('FoS ' ~ (f.fosNum or f.fosTypeId)) }}
-            {%- if f.isPrimary %} <i class="fas fa-star text-warning small" title="Primary"></i>{% endif %}
+            {%- if f.isPrimary %} <i class="fa-solid fa-star text-warning small" title="Primary"></i>{% endif %}
         </span>
         {% endfor %}
     </div>
@@ -421,7 +421,7 @@
 {% if is_xras_admin %}
 <div class="card border-danger-subtle mt-3">
     <div class="card-header bg-danger-subtle text-danger-emphasis py-1 small fw-semibold">
-        <i class="fas fa-triangle-exclamation"></i> Destructive — XRAS admin only
+        <i class="fa-solid fa-triangle-exclamation"></i> Destructive — XRAS admin only
     </div>
     <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
         <button type="button" class="btn btn-sm btn-outline-secondary" {{ write_disabled }}

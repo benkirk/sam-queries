@@ -153,6 +153,48 @@
 
     document.addEventListener('shown.bs.tab', syncTabParam);
 
+    // Deep-link scroll: ?view=<key> -> [data-deeplink="<key>"]
+    //
+    // For sibling elements that are CARDS, not tabs (the XRAS Remediations and
+    // Logs cards): a shared ?view= reveals them without the tab channel. The
+    // two-tab worklist above handles ?view=activity|accounts via
+    // data-tab-url-param; a value naming a data-deeplink element scrolls to it
+    // instead. These cards load via HTMX after DOMContentLoaded, and the panes
+    // ABOVE them settle asynchronously and shift layout — so re-reveal on each
+    // settle for a short window until the final position is stable (revealCard
+    // no-ops once the target is on screen, so this can't jitter forever).
+
+    var deeplinkKey = null;
+    var deeplinkUntil = 0;
+
+    function revealDeeplinkTarget() {
+        if (!deeplinkKey) return;
+        var el = document.querySelector('[data-deeplink="' + deeplinkKey + '"]');
+        if (!el) return;
+        // Open any enclosing or contained collapse so the target is visible.
+        [el.closest('.collapse'), el.querySelector('.collapse')].forEach(function (c) {
+            if (c && !c.classList.contains('show')) {
+                try { new bootstrap.Collapse(c, { toggle: false }).show(); } catch (_) {}
+            }
+        });
+        if (window.revealCard) window.revealCard(el);
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        var raw;
+        try { raw = new URL(window.location.href).searchParams.get('view'); } catch (_) { return; }
+        if (!raw) return;
+        // Restrict to a safe attribute-selector token; the keys are plain words.
+        if (!/^[a-z0-9_-]+$/i.test(raw)) return;
+        deeplinkKey = raw;
+        deeplinkUntil = Date.now() + 1500;
+        revealDeeplinkTarget();
+    });
+
+    document.addEventListener('htmx:afterSettle', function () {
+        if (deeplinkKey && Date.now() <= deeplinkUntil) revealDeeplinkTarget();
+    });
+
     // Collapse (expanded row) persistence
 
     var COLLAPSE_PREFIX = 'collapse:';

@@ -70,10 +70,10 @@
                            third of the table and crush Title. #}
                         <td colspan="7" class="{{ cs_cursor }}" {{ cs_attrs }}>
                             {% if cs_contracts %}
-                            <i class="fas fa-chevron-right small text-muted me-1 contract-collapse-icon"
+                            <i class="fa-solid fa-chevron-right small text-muted me-1 contract-collapse-icon"
                                style="transition: transform 0.2s;"></i>
                             {% else %}
-                            <i class="fas fa-chevron-right small me-1 invisible"></i>
+                            <i class="fa-solid fa-chevron-right small me-1 invisible"></i>
                             {% endif %}
                             {{ cs.contract_source }}
                             <span class="text-muted small fw-normal ms-2">
@@ -191,7 +191,7 @@
                         hx-get="{{ url_for('admin_dashboard.htmx_contract_source_create_form') }}"
                         hx-target="#createContractSourceFormContainer"
                         hx-trigger="click">
-                    <i class="fas fa-plus"></i> Create Source
+                    <i class="fa-solid fa-plus"></i> Create Source
                 </button>
                 <button class="btn  btn-primary"
                         data-bs-toggle="modal"
@@ -199,7 +199,7 @@
                         hx-get="{{ url_for('admin_dashboard.htmx_contract_create_form') }}"
                         hx-target="#createContractFormContainer"
                         hx-trigger="click">
-                    <i class="fas fa-plus"></i> Create Contract
+                    <i class="fa-solid fa-plus"></i> Create Contract
                 </button>
             </div>
             {% endif %}

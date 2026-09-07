@@ -15,7 +15,7 @@
 {% endif %}
 
 <h5 class="text-muted mb-3">
-  <i class="fas fa-link me-1"></i> Linked Elements
+  <i class="fa-solid fa-link me-1"></i> Linked Elements
 </h5>
 
 <div class="d-flex flex-column gap-3">
@@ -25,13 +25,13 @@
   <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center py-2">
       <span class="fw-semibold">
-        <i class="fas fa-building me-1 text-primary"></i> Organizations
+        <i class="fa-solid fa-building me-1 text-primary"></i> Organizations
       </span>
       {% if can_edit_governance %}
       <button class="btn  btn-primary"
               type="button"
               data-action="le-toggle" data-target-id="addOrgForm">
-        <i class="fas fa-plus"></i> Add
+        <i class="fa-solid fa-plus"></i> Add
       </button>
       {% endif %}
     </div>
@@ -54,7 +54,7 @@
                                  id_prefix='linkedOrg') }}
             </div>
             <button type="submit" class="btn  btn-primary">
-              <i class="fas fa-check"></i> Link
+              <i class="fa-solid fa-check"></i> Link
             </button>
             <button type="button" class="btn btn-outline-secondary"
                     data-action="le-toggle" data-target-id="addOrgForm">
@@ -95,7 +95,7 @@
                       hx-target="#linkedElementsContainer"
                       hx-swap="innerHTML"
                       hx-confirm="Remove the link to {{ po.organization.name }}?">
-                <i class="fas fa-times"></i>
+                <i class="fa-solid fa-xmark"></i>
               </button>
               {% endif %}
             </td>
@@ -115,13 +115,13 @@
   <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center py-2">
       <span class="fw-semibold">
-        <i class="fas fa-file-contract me-1 text-warning"></i> Contracts
+        <i class="fa-solid fa-file-contract me-1 text-warning"></i> Contracts
       </span>
       {% if can_edit_governance %}
       <button class="btn  btn-primary"
               type="button"
               data-action="le-toggle" data-target-id="addContractForm">
-        <i class="fas fa-plus"></i> Add
+        <i class="fa-solid fa-plus"></i> Add
       </button>
       {% endif %}
     </div>
@@ -144,7 +144,7 @@
                                  id_prefix='linkedContract') }}
             </div>
             <button type="submit" class="btn  btn-primary">
-              <i class="fas fa-check"></i> Link
+              <i class="fa-solid fa-check"></i> Link
             </button>
             <button type="button" class="btn btn-outline-secondary"
                     data-action="le-toggle" data-target-id="addContractForm">
@@ -204,7 +204,7 @@
                       hx-target="#linkedElementsContainer"
                       hx-swap="innerHTML"
                       hx-confirm="Remove link to contract {{ pc.contract.contract_number }}? If this is the only project using this contract it will also be deactivated.">
-                <i class="fas fa-times"></i>
+                <i class="fa-solid fa-xmark"></i>
               </button>
               {% endif %}
             </td>
@@ -223,13 +223,13 @@
   <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center py-2">
       <span class="fw-semibold">
-        <i class="fas fa-folder me-1 text-body-secondary"></i> Directories
+        <i class="fa-solid fa-folder me-1 text-body-secondary"></i> Directories
       </span>
       {% if can_edit_governance %}
       <button class="btn  btn-primary"
               type="button"
               data-action="le-toggle" data-target-id="addDirForm">
-        <i class="fas fa-plus"></i> Add
+        <i class="fa-solid fa-plus"></i> Add
       </button>
       {% endif %}
     </div>
@@ -262,7 +262,7 @@
                    autocomplete="off"
                    data-path-preview-suffix>
             <button type="submit" class="btn btn-primary">
-              <i class="fas fa-check"></i> Add
+              <i class="fa-solid fa-check"></i> Add
             </button>
             <button type="button" class="btn btn-outline-secondary"
                     data-action="le-toggle" data-target-id="addDirForm">
@@ -279,7 +279,7 @@
         </form>
         {% else %}
         <div class="text-muted small">
-          <i class="fas fa-exclamation-triangle text-warning"></i>
+          <i class="fa-solid fa-triangle-exclamation text-warning"></i>
           No registered disk root directories.
           Configure them under <strong>Admin &rarr; Resources</strong> first.
         </div>
@@ -314,7 +314,7 @@
                       hx-get="{{ url_for('admin_dashboard.htmx_admin_project_directory_edit_form', pd_id=pd.project_directory_id) }}"
                       hx-target="#editProjectDirectoryFormContainer"
                       hx-trigger="click">
-                <i class="fas fa-edit"></i>
+                <i class="fa-solid fa-pen-to-square"></i>
               </button>
               <button class="btn btn-sm btn-outline-danger ms-1"
                       title="Remove directory"
@@ -322,7 +322,7 @@
                       hx-target="#linkedElementsContainer"
                       hx-swap="innerHTML"
                       hx-confirm="Remove directory {{ pd.directory_name }}?">
-                <i class="fas fa-times"></i>
+                <i class="fa-solid fa-xmark"></i>
               </button>
               {% endif %}
             </td>

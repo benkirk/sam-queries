@@ -36,31 +36,28 @@ VENDOR_ASSETS = {
     },
     'bootstrap-css': {
         'kind': 'css',
-        'path': 'vendor/bootstrap-5.3.3/bootstrap.min.css',
-        'sha384': 'sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH',
+        'path': 'vendor/bootstrap-5.3.8/bootstrap.min.css',
+        'sha384': 'sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB',
     },
     'fontawesome-css': {
+        # FA7 ships woff2-only webfonts (no ttf); family name is
+        # "Font Awesome 7 Free" (see static/css/dashboard.css pseudo-elements).
         'kind': 'css',
-        'path': 'vendor/fontawesome-6.5.2/css/all.min.css',
-        'sha384': 'sha384-PPIZEGYM1v8zp5Py7UjFb79S58UeqCL9pYVnVPURKEqvioPROaVAJKKLzvH2rDnI',
+        'path': 'vendor/fontawesome-7.3.1/css/all.min.css',
+        'sha384': 'sha384-qrALq7+6jBOZIQsNnT6xGkMDru64qD6uTlDra39xrt2SoXl4pO3FX6Roz/RpR/BS',
     },
     # ---- JS ----
-    'jquery': {
-        'kind': 'js',
-        'path': 'vendor/jquery/jquery-3.6.0.min.js',
-        'sha384': 'sha384-vtXRMe3mGCbOeY7l30aIg8H9p3GdeSe4IFlP6G8JMa7o7lXvnz3GFKzPxzJdPfGK',
-    },
     'bootstrap-js': {
         'kind': 'js',
-        'path': 'vendor/bootstrap-5.3.3/bootstrap.bundle.min.js',
-        'sha384': 'sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz',
+        'path': 'vendor/bootstrap-5.3.8/bootstrap.bundle.min.js',
+        'sha384': 'sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI',
     },
     'htmx': {
-        # unpkg's https://unpkg.com/htmx.org@2.0.4 302s to dist/htmx.min.js;
+        # unpkg's https://unpkg.com/htmx.org@2.0.10 302s to dist/htmx.min.js;
         # this is that final response body.
         'kind': 'js',
-        'path': 'vendor/htmx/htmx-2.0.4.min.js',
-        'sha384': 'sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+',
+        'path': 'vendor/htmx/htmx-2.0.10.min.js',
+        'sha384': 'sha384-H5SrcfygHmAuTDZphMHqBJLc3FhssKjG7w/CeCpFReSfwBWDTKpkzPP8c+cLsK+V',
     },
 }
 

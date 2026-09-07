@@ -50,7 +50,7 @@
                 <td data-sort-value="{{ user.username }}">
                     <code>{{ user.username }}</code>
                     {% if not single_triple %}
-                    <i class="fas fa-chevron-right ms-1 small text-muted collapse-icon"></i>
+                    <i class="fa-solid fa-chevron-right ms-1 small text-muted collapse-icon"></i>
                     {% endif %}
                     {% if jobs_machine and single_triple %}
                         {{ jobs_button(uid ~ '-jobs') }}
@@ -86,7 +86,7 @@
                 hx-trigger="shown.bs.collapse once"
                 hx-swap="innerHTML">
                 <td colspan="4" class="text-muted small ps-4">
-                    <i class="fas fa-spinner fa-spin me-1"></i> Loading breakdown…
+                    <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading breakdown…
                 </td>
             </tr>
             {% endif %}
@@ -139,7 +139,7 @@
         {% set m_charges = month_days | sum(attribute='charges') %}
         <tbody>
             <tr class="table-primary cursor-pointer fw-semibold" data-bs-toggle="collapse" data-bs-target="#month-days-{{ mid }}" aria-expanded="false">
-                <td>{{ month_key }} <i class="fas fa-chevron-right ms-1 small text-muted collapse-icon"></i></td>
+                <td>{{ month_key }} <i class="fa-solid fa-chevron-right ms-1 small text-muted collapse-icon"></i></td>
                 <td class="text-end">{{ monthly_user_counts.get(month_key, 0) | fmt_number }}</td>
                 <td class="text-end">{{ m_jobs | fmt_number }}</td>
                 <td class="text-end">{{ m_core_hours | fmt_number }}</td>
@@ -153,7 +153,7 @@
                 data-date="{{ day.date }}" data-month-target="#month-days-{{ mid }}">
                 <td class="ps-3">
                     {{ day.date }}
-                    <i class="fas fa-chevron-right ms-1 small text-muted collapse-icon"></i>
+                    <i class="fa-solid fa-chevron-right ms-1 small text-muted collapse-icon"></i>
                 </td>
                 <td class="text-end">{{ day.user_count }}</td>
                 <td class="text-end">{{ day.jobs | fmt_number }}</td>
@@ -177,7 +177,7 @@
                 hx-trigger="shown.bs.collapse once"
                 hx-swap="innerHTML">
                 <td colspan="5" class="text-muted small ps-5">
-                    <i class="fas fa-spinner fa-spin me-1"></i> Loading day breakdown…
+                    <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading day breakdown…
                 </td>
             </tr>
             {% endfor %}
@@ -192,7 +192,7 @@
                 data-date="{{ day.date }}">
                 <td>
                     {{ day.date }}
-                    <i class="fas fa-chevron-right ms-1 small text-muted collapse-icon"></i>
+                    <i class="fa-solid fa-chevron-right ms-1 small text-muted collapse-icon"></i>
                 </td>
                 <td class="text-end">{{ day.user_count }}</td>
                 <td class="text-end">{{ day.jobs | fmt_number }}</td>
@@ -209,7 +209,7 @@
                 hx-trigger="shown.bs.collapse once"
                 hx-swap="innerHTML">
                 <td colspan="5" class="text-muted small ps-4">
-                    <i class="fas fa-spinner fa-spin me-1"></i> Loading day breakdown…
+                    <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading day breakdown…
                 </td>
             </tr>
         </tbody>
@@ -254,7 +254,7 @@
 {% block content %}
 <div class="page-header">
     <h1>
-        <i class="fas fa-chart-line"></i> Resource Usage Details
+        <i class="fa-solid fa-chart-line"></i> Resource Usage Details
     </h1>
     <p class="text-muted">
         Project: <strong>{{ projcode }}</strong> | Resource: <strong>{{ resource_name }}</strong>
@@ -268,7 +268,7 @@
 <div class="card mb-4">
     <div class="card-header">
         <h5 class="mb-0">
-            <i class="fas fa-info-circle"></i> Resource Summary
+            <i class="fa-solid fa-circle-info"></i> Resource Summary
         </h5>
     </div>
     <div class="card-body">
@@ -316,7 +316,7 @@
                                     hx-get="{{ url_for('user_dashboard.htmx_edit_allocation_form', allocation_id=summary.allocation_id) }}?projcode={{ projcode }}"
                                     hx-target="#editAllocationFormContainer"
                                     hx-swap="innerHTML">
-                                <i class="fas fa-edit"></i>
+                                <i class="fa-solid fa-pen-to-square"></i>
                             </button>
                             {% elif summary.allocation_id and summary.is_inheriting %}
                             <span class="badge bg-secondary"
@@ -344,8 +344,8 @@
 <div class="card mb-4">
     <div class="card-header cursor-pointer collapsed" data-bs-toggle="collapse" data-bs-target="#collapseAllocationHistory" aria-expanded="false">
         <h5 class="mb-0">
-            <i class="fas fa-history"></i> Allocation History
-            <i class="fas fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-clock-rotate-left"></i> Allocation History
+            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
         </h5>
     </div>
     <div id="collapseAllocationHistory" class="collapse">
@@ -381,7 +381,7 @@
     <span class="d-flex align-items-center gap-2 text-muted" style="cursor: default;" title="No {{ resource_name }} usage">
     {% endif %}
         {% if is_selected %}
-        <i class="fas fa-arrow-right text-warning me-1 flex-shrink-0"></i>
+        <i class="fa-solid fa-arrow-right text-warning me-1 flex-shrink-0"></i>
         {% endif %}
         <strong>{{ node.projcode }}</strong>
         {% if node.title %}
@@ -417,9 +417,9 @@
 <div class="card mb-4">
     <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseTree" aria-expanded="true">
         <h5 class="mb-0">
-            <i class="fas fa-sitemap"></i> Project Hierarchy
+            <i class="fa-solid fa-sitemap"></i> Project Hierarchy
             <small class="text-muted fw-normal ms-2">Click a project to scope the usage card below — badges show charges in the selected window</small>
-            <i class="fas fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
         </h5>
     </div>
     <div id="collapseTree" class="collapse show">
@@ -480,7 +480,7 @@ tab-pane fade{{ ' show active' if key == usage_tab }}
                 <button class="{{ _tabcls('history') }}" id="usage-history-tab"
                         data-bs-toggle="tab" data-bs-target="#tab-usage-history"
                         type="button" role="tab" data-tab-param-value="history">
-                    <i class="fas fa-chart-area me-1"></i> History
+                    <i class="fa-solid fa-chart-area me-1"></i> History
                 </button>
             </li>
             {% if show_by_user %}
@@ -488,7 +488,7 @@ tab-pane fade{{ ' show active' if key == usage_tab }}
                 <button class="{{ _tabcls('byuser') }}" id="usage-byuser-tab"
                         data-bs-toggle="tab" data-bs-target="#tab-usage-byuser"
                         type="button" role="tab" data-tab-param-value="byuser">
-                    <i class="fas fa-users me-1"></i> By User
+                    <i class="fa-solid fa-users me-1"></i> By User
                 </button>
             </li>
             {% endif %}
@@ -542,7 +542,7 @@ tab-pane fade{{ ' show active' if key == usage_tab }}
                      hx-swap="innerHTML"
                      data-chart-persist-shared="metric:usage">
                     <div class="text-center text-muted py-5">
-                        <i class="fas fa-spinner fa-spin"></i> Loading chart…
+                        <i class="fa-solid fa-spinner fa-spin"></i> Loading chart…
                     </div>
                 </div>
                 {{ daily_breakdown_table(daily_breakdown, 'charges-table', date_span_days) }}
@@ -568,7 +568,7 @@ tab-pane fade{{ ' show active' if key == usage_tab }}
                      hx-swap="innerHTML"
                      data-chart-persist-shared="metric:usage">
                     <div class="text-center text-muted py-5">
-                        <i class="fas fa-spinner fa-spin"></i> Loading chart…
+                        <i class="fa-solid fa-spinner fa-spin"></i> Loading chart…
                     </div>
                 </div>
                 {{ user_breakdown_table(user_breakdown, 'users-table') }}
@@ -589,11 +589,11 @@ tab-pane fade{{ ' show active' if key == usage_tab }}
 <div class="card mb-4">
     <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseJobsHist" aria-expanded="false">
         <h5 class="mb-0">
-            <i class="fas fa-list-check"></i> Job History
+            <i class="fa-solid fa-list-check"></i> Job History
             {% if has_children and scope != projcode %}
             <small class="text-muted fw-normal ms-2">{{ scope }}</small>
             {% endif %}
-            <i class="fas fa-chevron-down float-end transition-smooth"></i>
+            <i class="fa-solid fa-chevron-down float-end transition-smooth"></i>
         </h5>
     </div>
     <div id="collapseJobsHist" class="collapse">

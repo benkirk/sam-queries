@@ -20,7 +20,7 @@ hx-target="#userDetailsModalBody" hx-swap="innerHTML"
             hx-get="{{ url_for('project_members.htmx_add_member_form', projcode=projcode) }}"
             hx-target="#addMemberFormContainer"
             hx-swap="innerHTML">
-        <i class="fas fa-user-plus"></i> Add Member
+        <i class="fa-solid fa-user-plus"></i> Add Member
     </button>
     {% endif %}
 </div>
@@ -78,7 +78,7 @@ hx-target="#userDetailsModalBody" hx-swap="innerHTML"
                                 data-confirm-variant="warning"
                                 data-confirm-label="Grant access"
                                 data-confirm-body="#confirm-grant-{{ member.username }}">
-                            <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+                            <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
                             <span class="visually-hidden">Partial access: no access to {{ missing_str }}. Grant access.</span>
                         </button>
                         <template id="confirm-grant-{{ member.username }}">
@@ -90,7 +90,7 @@ hx-target="#userDetailsModalBody" hx-swap="innerHTML"
                         <span class="text-warning ms-1" tabindex="0"
                               data-bs-toggle="tooltip"
                               data-bs-title="No access to {{ missing_str }}">
-                            <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+                            <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
                             <span class="visually-hidden">Partial access: no access to {{ missing_str }}.</span>
                         </span>
                         {% endif %}
@@ -110,11 +110,11 @@ hx-target="#userDetailsModalBody" hx-swap="innerHTML"
                     {% if can_view_users %}class="cursor-pointer" {{ user_modal_attrs(member.username) }}{% endif %}>
                     {% if member.role == 'Lead' %}
                         <span class="badge bg-primary">
-                            <i class="fas fa-star"></i> Lead
+                            <i class="fa-solid fa-star"></i> Lead
                         </span>
                     {% elif member.role == 'Admin' %}
                         <span class="badge bg-info text-dark">
-                            <i class="fas fa-user-shield"></i> Admin
+                            <i class="fa-solid fa-user-shield"></i> Admin
                         </span>
                     {% endif %}
                 </td>
@@ -123,7 +123,7 @@ hx-target="#userDetailsModalBody" hx-swap="innerHTML"
                     {% if member.role == 'Lead' %}
                         {# Cannot modify the lead #}
                         <span class="text-muted small" title="Project lead cannot be removed">
-                            <i class="fas fa-lock"></i>
+                            <i class="fa-solid fa-lock"></i>
                         </span>
                     {% elif member.role == 'Admin' %}
                         {# Admin actions - only lead can change admin #}
@@ -138,7 +138,7 @@ hx-target="#userDetailsModalBody" hx-swap="innerHTML"
                                 data-confirm-title="Change admin role"
                                 data-confirm-variant="warning"
                                 data-confirm-label="Remove admin role">
-                            <i class="fas fa-user-minus"></i>
+                            <i class="fa-solid fa-user-minus"></i>
                         </button>
                         {% endif %}
                         <button class="btn btn-sm btn-outline-danger"
@@ -147,7 +147,7 @@ hx-target="#userDetailsModalBody" hx-swap="innerHTML"
                                 hx-target="#htmx-members-{{ projcode }}"
                                 hx-swap="innerHTML"
                                 hx-confirm="Remove {{ member.display_name }} ({{ member.username }}) from this project? This will remove them from all resources.">
-                            <i class="fas fa-times"></i>
+                            <i class="fa-solid fa-xmark"></i>
                         </button>
                     {% else %}
                         {# Regular member actions #}
@@ -163,7 +163,7 @@ hx-target="#userDetailsModalBody" hx-swap="innerHTML"
                                 data-confirm-variant="warning"
                                 data-confirm-label="Make admin"
                                 data-confirm-body="#confirm-admin-{{ member.username }}">
-                            <i class="fas fa-user-shield"></i>
+                            <i class="fa-solid fa-user-shield"></i>
                         </button>
                         <template id="confirm-admin-{{ member.username }}">
                             <p>Make <strong>{{ member.display_name }}</strong> the project admin?</p>
@@ -176,7 +176,7 @@ hx-target="#userDetailsModalBody" hx-swap="innerHTML"
                                 hx-target="#htmx-members-{{ projcode }}"
                                 hx-swap="innerHTML"
                                 hx-confirm="Remove {{ member.display_name }} ({{ member.username }}) from this project? This will remove them from all resources.">
-                            <i class="fas fa-times"></i>
+                            <i class="fa-solid fa-xmark"></i>
                         </button>
                     {% endif %}
                 </td>

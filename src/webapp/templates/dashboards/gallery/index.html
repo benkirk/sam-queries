@@ -102,7 +102,7 @@
   {% endcall %}
   {% call specimen('collapse.collapse_toggle', 'attributes-only toggle; the chevron rotates via CSS') %}
     <button type="button" class="btn btn-outline-secondary btn-sm" {{ collapse.collapse_toggle('galleryCollapseDemo') }}>
-      <i class="fas fa-chevron-right small collapse-icon me-1"></i> Toggle details
+      <i class="fa-solid fa-chevron-right small collapse-icon me-1"></i> Toggle details
     </button>
     <div id="galleryCollapseDemo" class="collapse mt-2">
       <div class="card card-body">Revealed content.</div>
@@ -292,6 +292,32 @@
       <thead>{{ user_rows.user_table_head() }}</thead>
       <tbody>{{ user_rows.render_user_rows(sample_users, can_view_users=True) }}</tbody>
     </table>
+  {% endcall %}
+</section>
+
+{# ── Icons ───────────────────────────────────────────────────────────── #}
+<section id="icons" class="mb-5">
+  <h2 class="h4 border-bottom pb-1 mb-3">Icons</h2>
+  {% call specimen('used fa-* glyphs', 'auto-derived from templates/js/py — an empty cell is a renamed/removed glyph') %}
+    <p class="text-muted small mb-2">{{ used_icons | length }} distinct glyphs in use. On a Font Awesome bump, scan for a blank box.</p>
+    <div class="d-flex flex-wrap gap-2">
+      {% for name in used_icons %}
+      <span class="border rounded px-2 py-1 d-flex align-items-center gap-2">
+        <i class="fa-solid {{ name }}" aria-hidden="true"></i>
+        <code class="small text-muted">{{ name }}</code>
+      </span>
+      {% endfor %}
+    </div>
+  {% endcall %}
+  {% call specimen('special usages', 'the non-obvious FA surfaces a bump must re-check') %}
+    <div class="d-flex flex-column gap-2">
+      <div><i class="fa-solid fa-spinner fa-spin me-2" aria-hidden="true"></i><code>fa-spin</code> — the htmx loading spinner</div>
+      <div><i class="fa-regular fa-calendar-check me-2" aria-hidden="true"></i><code>fa-regular</code> — the one regular-style icon (confirms the regular webfont loads)</div>
+      <p class="text-muted small mb-0">Pseudo-element glyphs hardcode the versioned family name in
+         <code>dashboard.css</code>: the navbar caret (<code>\f107</code>) and the collapse chevron
+         (<code>\f078</code>). They only render on the live navbar / a collapsible card — check those
+         on a real page after a Font Awesome major.</p>
+    </div>
   {% endcall %}
 </section>
 
