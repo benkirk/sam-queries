@@ -17,6 +17,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from querykit import LogSpec, count_rows, facet_counts, page_rows
+from sam.notify.addressing_store import NotificationAddressing
 from sam.notify.models import NotificationLog
 from sam.notify.template_store import NotificationTemplateOverride
 
@@ -280,3 +281,12 @@ def get_template_overrides(session: Session) -> Dict[str, NotificationTemplateOv
 def get_template_override(session: Session,
                           name: str) -> Optional[NotificationTemplateOverride]:
     return NotificationTemplateOverride.get_by_name(session, name)
+
+
+# --------------------------------------------------------------- addressing
+def get_addressing_rows(session: Session) -> List[NotificationAddressing]:
+    """Every operator-added copy, ordered for display."""
+    return list(session.execute(
+        select(NotificationAddressing).order_by(
+            NotificationAddressing.scope, NotificationAddressing.field,
+            NotificationAddressing.address)).scalars())

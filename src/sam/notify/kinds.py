@@ -224,6 +224,14 @@ def addressing_scopes(family: str) -> List[str]:
     return scopes
 
 
+def scope_family(scope: str) -> str:
+    """The family an addressing scope belongs to; raises ``ValueError`` if none."""
+    for family in FAMILIES:
+        if scope in addressing_scopes(family):
+            return family
+    raise ValueError(f'unknown addressing scope {scope!r}')
+
+
 def message_scopes(kind: str, facility=None) -> List[str]:
     """The scopes one message matches: family, kind, and its facility variant."""
     k = get_kind(kind)

@@ -11,9 +11,10 @@ test then passes or fails depending on which worker got there first. Same
 hazard the XRAS factory documents.
 """
 
+import uuid
 from datetime import datetime, timedelta
 
-from sam import NotificationLog, NotificationTemplateOverride
+from sam import NotificationAddressing, NotificationLog, NotificationTemplateOverride
 
 
 def make_notification_log(session, *, kind='expiration', channel='email',
@@ -77,3 +78,14 @@ def make_template_override(session, *, name, body='OVERRIDE {{ project_code }}',
     xdist workers share the database."""
     return NotificationTemplateOverride.create(session, name=name, body=body,
                                                modified_by=modified_by)
+
+
+def make_addressing_row(session, *, scope='xras', field='cc', address=None,
+                        created_by='benkirk'):
+    """One operator-added copy. `address` defaults to a per-call unique
+    mailbox: (scope, field, address) is UNIQUE and xdist workers share the
+    database."""
+    if address is None:
+        address = f'copy-{uuid.uuid4().hex[:10]}@example.edu'
+    return NotificationAddressing.create(session, scope=scope, field=field,
+                                         address=address, created_by=created_by)

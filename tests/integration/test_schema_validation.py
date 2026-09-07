@@ -686,6 +686,34 @@ class TestCriticalSchemas:
         assert default is None, (
             'modified_time is stamped from the app clock, not CURRENT_TIMESTAMP')
 
+    def test_notification_addressing_schema(self, session):
+        """Operator-added copies: one address per row, unique per scope+field."""
+        db_cols = get_db_columns(session, 'notification_addressing')
+        expected = {'notification_addressing_id', 'scope', 'field', 'address',
+                    'created_by', 'creation_time'}
+        assert set(db_cols.keys()) == expected, set(db_cols.keys()) ^ expected
+        assert db_cols['notification_addressing_id']['key'] == 'PRI'
+        unique = session.execute(text("""
+            SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX)
+              FROM information_schema.STATISTICS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = 'notification_addressing'
+               AND INDEX_NAME = 'notification_addressing_entry'
+               AND NON_UNIQUE = 0
+        """)).scalar()
+        assert unique == 'scope,field,address'
+        default = session.execute(text("""
+            SELECT COLUMN_DEFAULT FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = 'notification_addressing'
+               AND COLUMN_NAME = 'creation_time'
+        """)).scalar()
+        assert default is None
+
+    def test_notification_log_records_copies(self, session):
+        db_cols = get_db_columns(session, 'notification_log')
+        assert db_cols['copies']['type'].lower() == 'varchar(512)'
+
 
 # ============================================================================
 # Index alignment — prevents PR #209-style drift (DiskActivity unique index)
