@@ -8,6 +8,7 @@ Organized scripts for SAM Queries project setup, maintenance, and utilities.
 scripts/
 ├── README.md                    # This file
 ├── cirrus_healthcheck.sh        # CIRRUS/k8s health probe (samuel release)
+├── cirrus_watch.sh              # CIRRUS/k8s recurring delta watch tick (report-only)
 ├── cirrus_weblog_audit.sh       # CIRRUS/k8s traffic + rate-limit + abuse audit
 ├── zap_probe_docker.sh          # Dockerized OWASP ZAP scan of the webapp
 ├── apis/                        # Public-API worked examples / smoke tests
@@ -53,6 +54,20 @@ flags.
   place the dispatcher's liveness is observable — `task_run` records
   *occurrences*, not wake-ups, so a healthy hourly dispatcher writes one row a
   day and the row count cannot distinguish that from a dead one.
+
+- **`cirrus_watch.sh`** — "what changed since I last looked?" A recurring,
+  read-only *delta* tick meant to run every ~30 min from a scheduler: new XRAS
+  `xras_action_log` rows, web status mix + latency percentiles + slow (>5s)
+  requests, pod image-sha/restart changes, the Redis evicted-keys delta, and the
+  `samuel-tasks` CronJob's liveness — each diffed against a small state file so a
+  quiet tick is one line and only real changes surface. It **reports** CronJob
+  problems (and prints the manual remedy) but never touches the remote CronJob.
+  The `watch-prod` skill carries the classification scheme and flag thresholds.
+
+  ```bash
+  scripts/cirrus_watch.sh                       # one tick; report deltas
+  scripts/cirrus_watch.sh --reset-baseline      # seed a fresh baseline, no report
+  ```
 
 - **`cirrus_weblog_audit.sh`** — "who's hitting the public site, and is anything
   abusive getting through?" Harvests the webapp's stdout (and the Redis
