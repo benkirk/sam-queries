@@ -1,0 +1,28 @@
+{#
+  The template list. Included in the Templates pane, and again (out-of-band)
+  by every editor response so the active row follows the selection.
+
+  Context: template_rows, selected_name, oob (bool)
+#}
+<div class="list-group list-group-flush" id="templatePicker"{% if oob %} hx-swap-oob="true"{% endif %}>
+    {% set ns = namespace(kind=None) %}
+    {% for row in template_rows %}
+    {% if row.kind != ns.kind %}
+    {% set ns.kind = row.kind %}
+    <div class="list-group-item small fw-semibold py-1 text-muted">{{ row.label }}</div>
+    {% endif %}
+    <a href="{{ url_for('admin_dashboard.notifications', tab='templates', name=row.name) }}"
+       class="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-1{{ ' active' if row.name == selected_name }}"
+       hx-get="{{ url_for('admin_dashboard.notification_template_editor', name=row.name) }}"
+       hx-target="#templateEditorContainer"
+       hx-swap="innerHTML"
+       hx-push-url="{{ url_for('admin_dashboard.notifications', tab='templates', name=row.name) }}">
+        <span class="font-monospace small">{{ row.name }}</span>
+        {% if row.customized %}
+        <span class="badge text-bg-warning">customized</span>
+        {% else %}
+        <span class="badge text-bg-secondary">default</span>
+        {% endif %}
+    </a>
+    {% endfor %}
+</div>

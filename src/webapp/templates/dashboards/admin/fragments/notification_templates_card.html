@@ -1,0 +1,39 @@
+{#
+  The Templates pane: picker on the left, editor on the right. The editor
+  loads lazily when the URL names a template (?tab=templates&name=...).
+
+  Context: template_rows, selected_name
+#}
+<div class="row g-3">
+    <div class="col-12 col-lg-3">
+        <div class="card">
+            <div class="card-header py-2"><strong>Templates</strong></div>
+            {% include 'dashboards/admin/fragments/notification_template_picker.html' %}
+        </div>
+        <p class="small text-muted mt-2 mb-0">
+            Each notification kind ships a plain-text body and an HTML body.
+            The HTML frame and footer are shared and not editable here.
+        </p>
+    </div>
+    <div class="col-12 col-lg-9">
+        <div id="templateEditorContainer"
+             {% if selected_name %}
+             hx-get="{{ url_for('admin_dashboard.notification_template_editor', name=selected_name) }}"
+             hx-trigger="load"
+             hx-swap="innerHTML"
+             {% endif %}>
+            {% if selected_name %}
+            <div class="text-muted small p-3">
+                <i class="fa-solid fa-circle-notch fa-spin"></i> Loading template…
+            </div>
+            {% else %}
+            <div class="card">
+                <div class="card-body text-muted">
+                    <i class="fa-solid fa-hand-pointer me-1"></i>
+                    Pick a template to view its source and a rendered preview.
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>

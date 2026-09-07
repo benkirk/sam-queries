@@ -13,6 +13,8 @@ from webapp.utils.rbac import Permission
 PAGE = '/admin/htmx/notifications'
 LOG = '/admin/htmx/notifications/log'
 DETAIL = '/admin/htmx/notifications/1'
+EDITOR = '/admin/htmx/notifications/templates/expiration-UNIV.txt'
+PREVIEW = '/admin/htmx/notifications/templates/expiration-UNIV.txt/preview'
 
 
 @pytest.fixture
@@ -39,11 +41,14 @@ class TestThePermissionBoundary:
     """One tier apart, deliberately — and the gate is on the ROUTE, so a
     view-source cannot reveal what the page chose not to draw."""
 
-    @pytest.mark.parametrize('path', [PAGE, LOG, DETAIL])
+    @pytest.mark.parametrize('path', [PAGE, LOG, DETAIL, EDITOR])
     def test_view_system_config_alone_is_refused(self, config_only_client, path):
         assert config_only_client.get(path).status_code == 403
 
-    @pytest.mark.parametrize('path', [PAGE, LOG, DETAIL])
+    def test_view_system_config_alone_cannot_preview(self, config_only_client):
+        assert config_only_client.post(PREVIEW, data={'body': 'x'}).status_code == 403
+
+    @pytest.mark.parametrize('path', [PAGE, LOG, DETAIL, EDITOR])
     def test_anonymous_is_refused(self, client, path):
         assert client.get(path).status_code in (302, 401, 403)
 
@@ -54,7 +59,7 @@ class TestThePermissionBoundary:
         assert resp.status_code == 200
         assert b'Notifications' in resp.data
 
-    @pytest.mark.parametrize('path', [PAGE, LOG])
+    @pytest.mark.parametrize('path', [PAGE, LOG, EDITOR])
     def test_system_admin_gets_in(self, auth_client, path):
         assert auth_client.get(path).status_code == 200
 
@@ -144,3 +149,104 @@ class TestNoCliEquivalent:
 
         result = CliRunner().invoke(cli, ['--help'])
         assert 'notifications' not in result.output
+
+
+class TestTheTemplatesTab:
+
+    def test_the_log_is_the_default_tab_and_unknown_tabs_fall_back(self, auth_client):
+        for query in ('', '?tab=nope'):
+            html = auth_client.get(PAGE + query).data.decode()
+            assert 'id="log-pane"' in html and 'show active" id="log-pane"' in html
+
+    def test_it_lists_every_shipped_template(self, auth_client):
+        from sam.notify.render import shipped_template_names
+        html = auth_client.get(f'{PAGE}?tab=templates').data.decode()
+        assert 'show active" id="templates-pane"' in html
+        for name in shipped_template_names():
+            assert name in html
+        assert '_email_base.html' not in html
+
+    def test_a_named_template_lazy_loads_its_editor(self, auth_client):
+        html = auth_client.get(f'{PAGE}?tab=templates&name=xras_update.html').data.decode()
+        assert 'hx-trigger="load"' in html
+        assert '/templates/xras_update.html"' in html
+
+    def test_an_unknown_name_is_404(self, auth_client):
+        assert auth_client.get(f'{PAGE}?tab=templates&name=nope.txt').status_code == 404
+        assert auth_client.get(EDITOR.replace('expiration-UNIV', 'nope')).status_code == 404
+
+    def test_a_kind_deep_link_preselects_the_log_facet(self, auth_client):
+        html = auth_client.get(f'{PAGE}?tab=log&kind=expiration').data.decode()
+        assert 'value="expiration" selected' in html
+        assert 'notifications/log?kind=expiration' in html
+
+    def test_an_unknown_kind_is_ignored(self, auth_client):
+        assert auth_client.get(f'{PAGE}?kind=nope').status_code == 200
+
+
+class TestTheEditorFragment:
+
+    def test_it_shows_the_shipped_source_and_the_palette(self, auth_client):
+        from sam.notify.render import TEMPLATE_DIR
+        html = auth_client.get(EDITOR).data.decode()
+        assert 'Dear {{ recipient_name }}' in html
+        assert (TEMPLATE_DIR / 'expiration-UNIV.txt').read_text().count('\n') > 10
+        for name in ('project_code', 'grace_expiration', 'resources.resource_name'):
+            assert name in html
+        assert 'shipped default' in html
+        assert 'kind=expiration' in html
+        assert 'hx-swap-oob="true"' in html
+
+    def test_the_source_is_read_only_for_now(self, auth_client):
+        assert 'readonly' in auth_client.get(EDITOR).data.decode()
+
+
+class TestThePreviewFragment:
+
+    def test_text_renders_in_a_pre(self, auth_client):
+        resp = auth_client.post(PREVIEW, data={'body': 'Hello {{ project_code }}'})
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert '<pre' in html and 'Hello SCSG0001' in html
+        assert 'srcdoc' not in html
+
+    def test_html_renders_in_a_sandboxed_iframe(self, auth_client):
+        body = ('{% extends "_email_base.html" %}{% block content %}'
+                '<p>Hi {{ recipient_name }}</p>{% endblock %}')
+        html = auth_client.post(PREVIEW.replace('.txt', '.html'),
+                                data={'body': body}).data.decode()
+        assert '<iframe' in html and 'sandbox' in html and 'srcdoc="' in html
+        assert '<style' not in html, 'the email CSS must be escaped inside srcdoc'
+        assert '&lt;style&gt;' in html
+
+    def test_the_role_selects_the_recipient(self, auth_client):
+        html = auth_client.post(PREVIEW, data={'body': '{{ recipient_role }}',
+                                               'role': 'user'}).data.decode()
+        assert '>user<' in html
+
+    def test_a_syntax_error_answers_in_the_pane_at_200(self, auth_client):
+        resp = auth_client.post(PREVIEW, data={'body': '{% if %}'})
+        assert resp.status_code == 200
+        assert b'does not render' in resp.data
+        assert b'TemplateSyntaxError' in resp.data
+
+    def test_an_ssti_probe_answers_in_the_pane_at_200(self, auth_client):
+        resp = auth_client.post(PREVIEW, data={'body': "{{ ''.__class__.__mro__ }}"})
+        assert resp.status_code == 200
+        assert b'SecurityError' in resp.data
+
+    def test_an_unknown_variable_is_warned_about(self, auth_client):
+        html = auth_client.post(PREVIEW, data={'body': '{{ projekt_code }}'}).data.decode()
+        assert 'Unknown variable' in html and 'projekt_code' in html
+
+    def test_a_shipped_body_warns_about_nothing(self, auth_client):
+        from sam.notify.render import TEMPLATE_DIR
+        body = (TEMPLATE_DIR / 'expiration-UNIV.txt').read_text()
+        html = auth_client.post(PREVIEW, data={'body': body}).data.decode()
+        assert 'Unknown variable' not in html
+        assert 'SCSG0001' in html
+
+    def test_an_unknown_template_name_is_404(self, auth_client):
+        resp = auth_client.post(PREVIEW.replace('expiration-UNIV', 'nope'),
+                                data={'body': 'x'})
+        assert resp.status_code == 404

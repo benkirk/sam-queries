@@ -22,11 +22,13 @@ See ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 8.
 
 import logging
 
-from flask import render_template, request, url_for
+from flask import abort, render_template, request, url_for
 from flask_login import login_required
 
 from sam.notify import NOTIFICATION_KINDS, NOTIFICATION_STATUSES, NotifyConfig
 from sam.notify.models import NotificationLog
+from sam.notify.render import TemplateRenderer, shipped_template_names
+from sam.notify.samples import palette, preview_context
 from sam.queries.notifications import (
     count_recent_notifications,
     facet_notifications,
@@ -35,7 +37,7 @@ from sam.queries.notifications import (
 )
 from webapp.extensions import db
 from webapp.utils.faceted_log import build_facet_strip, parse_window
-from webapp.utils.htmx import htmx_modal_not_found
+from webapp.utils.htmx import htmx_modal_not_found, read_tab
 from webapp.utils.rbac import require_permission, Permission
 
 from .blueprint import bp
@@ -49,6 +51,36 @@ _FRAGMENT_TARGET = 'notificationsTableContainer'
 #: Same default window as the XRAS action-log page.
 _DEFAULT_DAYS = 30
 _PER_PAGE = 50
+
+_TABS = ('log', 'templates')
+_PREVIEW_ROLES = ('lead', 'admin', 'user')
+_EDITOR_TEMPLATE = 'dashboards/admin/fragments/notification_template_editor.html'
+
+
+def _template_rows():
+    """One row per shipped template file, with the kind and facility it serves."""
+    rows = []
+    for name in shipped_template_names():
+        stem, fmt = name.rsplit('.', 1)
+        kind = next((k for k in NOTIFICATION_KINDS.values()
+                     if stem == k.template_base
+                     or stem.startswith(k.template_base + '-')), None)
+        if kind is None:
+            continue
+        rows.append({
+            'name': name, 'stem': stem, 'fmt': fmt, 'kind': kind.key,
+            'label': kind.label,
+            'facility': stem[len(kind.template_base) + 1:] or None,
+            'customized': None,
+        })
+    return rows
+
+
+def _template_row_or_404(name):
+    for row in _template_rows():
+        if row['name'] == name:
+            return row
+    abort(404)
 
 
 def _parse_filters(args):
@@ -73,8 +105,16 @@ def _parse_filters(args):
 @login_required
 @require_permission(Permission.SYSTEM_ADMIN)
 def notifications():
-    """The delivery-log page shell."""
+    """The page shell: the delivery log and the template editor, as tabs."""
     config = NotifyConfig.from_environment()
+    template_rows = _template_rows()
+    selected_name = request.args.get('name') or None
+    if selected_name and selected_name not in {r['name'] for r in template_rows}:
+        abort(404)
+    # `?kind=` is the editor's deep link into the log, pre-filtered.
+    preselect_kind = request.args.get('kind') or None
+    if preselect_kind not in NOTIFICATION_KINDS:
+        preselect_kind = None
     return render_template(
         'dashboards/admin/notifications.html',
         summary=summarize_notifications(
@@ -83,9 +123,15 @@ def notifications():
         form_id=_FORM_ID,
         target_id=_FRAGMENT_TARGET,
         fragment_url=url_for('admin_dashboard.notifications_log'),
+        initial_log_url=url_for('admin_dashboard.notifications_log',
+                                kind=preselect_kind),
+        preselect_kind=preselect_kind,
         all_statuses=list(NOTIFICATION_STATUSES),
         all_kinds=sorted(NOTIFICATION_KINDS),
         default_days=_DEFAULT_DAYS,
+        active_tab=read_tab('tab', _TABS, 'log'),
+        template_rows=template_rows,
+        selected_name=selected_name,
     )
 
 
@@ -140,3 +186,53 @@ def notification_detail(log_id: int):
         return htmx_modal_not_found('Notification')
     return render_template(
         'dashboards/admin/fragments/notification_detail_modal.html', row=row)
+
+
+@bp.route('/htmx/notifications/templates/<name>', methods=['GET'])
+@login_required
+@require_permission(Permission.SYSTEM_ADMIN)
+def notification_template_editor(name: str):
+    """HTMX fragment: one template's source, its variables, and a preview pane."""
+    row = _template_row_or_404(name)
+    renderer = TemplateRenderer()
+    source = renderer.env.loader.get_source(renderer.env, name)[0]
+    return render_template(
+        _EDITOR_TEMPLATE,
+        row=row, source=source,
+        variables=palette(row['kind'], row['facility']),
+        template_rows=_template_rows(), selected_name=name,
+        roles=_PREVIEW_ROLES,
+        preview_url=url_for('admin_dashboard.notification_template_preview',
+                            name=name),
+        log_url=url_for('admin_dashboard.notifications', tab='log',
+                        kind=row['kind']),
+    )
+
+
+@bp.route('/htmx/notifications/templates/<name>/preview', methods=['POST'])
+@login_required
+@require_permission(Permission.SYSTEM_ADMIN)
+def notification_template_preview(name: str):
+    """HTMX fragment: the posted body rendered against sample data.
+
+    Always 200: htmx does not swap a 4xx/5xx, so a broken template must
+    answer inside the pane, as an error panel, not as a dead button.
+    """
+    row = _template_row_or_404(name)
+    body = request.form.get('body', '')
+    role = request.form.get('role')
+    if role not in _PREVIEW_ROLES:
+        role = _PREVIEW_ROLES[0]
+    context = preview_context(row['kind'], row['facility'], role)
+    renderer = TemplateRenderer()
+    result = {'row': row, 'error': None, 'warnings': [], 'text': None, 'html': None}
+    try:
+        result['warnings'] = sorted(renderer.undeclared_names(body, context))
+        rendered = renderer.render_source(name, body, context)
+    except Exception as exc:        # a template bug, whatever its type
+        result['error'] = f'{type(exc).__name__}: {exc}'
+    else:
+        result['text' if row['fmt'] == 'txt' else 'html'] = rendered
+    return render_template(
+        'dashboards/admin/fragments/notification_template_preview.html',
+        **result)

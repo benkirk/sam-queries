@@ -1,0 +1,91 @@
+{#
+  One template: its source, the variables it may use, and a preview that
+  renders the textarea's current contents against sample data.
+
+  Context: row (name/stem/fmt/kind/label/facility/customized), source,
+           variables (sam.notify.samples.palette rows), template_rows,
+           selected_name, roles, preview_url, log_url
+#}
+{% with oob=True %}
+{% include 'dashboards/admin/fragments/notification_template_picker.html' %}
+{% endwith %}
+<div class="card">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <strong class="font-monospace">{{ row.name }}</strong>
+            <span class="text-muted small">
+                — {{ row.label }}{% if row.facility %} · {{ row.facility }}{% endif %}
+                · {{ 'HTML' if row.fmt == 'html' else 'plain text' }}
+            </span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            {% if row.customized %}
+            <span class="badge text-bg-warning">
+                customized by {{ row.customized.modified_by }}
+                {{ row.customized.modified_time | fmt_ago }}
+            </span>
+            {% else %}
+            <span class="badge text-bg-secondary">shipped default</span>
+            {% endif %}
+            <a class="small text-decoration-none" href="{{ log_url }}">Recent deliveries &raquo;</a>
+        </div>
+    </div>
+    <div class="card-body">
+        <form hx-post="{{ preview_url }}"
+              hx-target="#templatePreviewPane"
+              hx-swap="innerHTML">
+            <label class="form-label small mb-1" for="templateBody">Template source</label>
+            <textarea id="templateBody" name="body" rows="22" spellcheck="false" readonly
+                      class="form-control notify-template-source">{{ source }}</textarea>
+            <details class="mt-2">
+                <summary class="small text-muted">
+                    Variables available to this template ({{ variables | length }})
+                </summary>
+                <div class="table-responsive">
+                    <table class="table table-sm small mt-2 mb-0">
+                        <thead>
+                            <tr><th>Name</th><th>Type</th><th>Example</th><th>Meaning</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for v in variables %}
+                            <tr>
+                                <td class="font-monospace text-nowrap">{{ v.name }}</td>
+                                <td class="text-nowrap">{{ v.shape }}</td>
+                                <td class="font-monospace">{{ '' if v.example is none else v.example }}</td>
+                                <td>{{ v.note }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <p class="small text-muted mb-0 mt-1">
+                    Write <code>{{ '{{ name }}' }}</code> to insert a value and
+                    <code>{{ '{% for r in resources %}' }} … {{ '{% endfor %}' }}</code>
+                    to repeat over a list. An unknown name renders as nothing.
+                </p>
+            </details>
+            <div class="d-flex align-items-center gap-2 mt-2 flex-wrap">
+                <label class="small mb-0" for="previewRole">Preview as</label>
+                <select id="previewRole" name="role" class="form-select form-select-sm w-auto">
+                    {% for r in roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+                </select>
+                <button type="submit" class="btn btn-sm btn-outline-primary">
+                    <i class="fa-solid fa-eye"></i> Preview
+                </button>
+            </div>
+        </form>
+    </div>
+    <div class="card-header py-2 border-top">
+        <strong>Preview</strong>
+        <span class="text-muted small">rendered against sample data</span>
+    </div>
+    <div class="card-body" id="templatePreviewPane"
+         hx-post="{{ preview_url }}"
+         hx-include="#templateBody, #previewRole"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <div class="text-muted small">
+            <i class="fa-solid fa-circle-notch fa-spin"></i> Rendering…
+        </div>
+    </div>
+</div>

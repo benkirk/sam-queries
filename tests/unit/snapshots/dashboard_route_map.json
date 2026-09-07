@@ -1288,6 +1288,20 @@
     ]
   ],
   [
+    "admin_dashboard.notification_template_editor",
+    "/admin/htmx/notifications/templates/<name>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.notification_template_preview",
+    "/admin/htmx/notifications/templates/<name>/preview",
+    [
+      "POST"
+    ]
+  ],
+  [
     "admin_dashboard.notifications",
     "/admin/htmx/notifications",
     [
