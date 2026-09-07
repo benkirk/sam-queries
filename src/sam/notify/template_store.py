@@ -66,6 +66,9 @@ class NotificationTemplateOverride(Base, SessionMixin):
         self.session.flush()
         return self
 
+    def __str__(self) -> str:
+        return self.name
+
     def __repr__(self) -> str:
         return (f'<NotificationTemplateOverride {self.name} '
                 f'by {self.modified_by} at {self.modified_time}>')
