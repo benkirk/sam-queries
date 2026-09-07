@@ -22,10 +22,10 @@ instead of by the browser (see "How integrity is enforced" below).
 
 | Asset | Version | Entry point (registered) | Kind |
 |---|---|---|---|
-| Bootstrap | 5.3.3 | `bootstrap-5.3.3/bootstrap.min.css`, `…/bootstrap.bundle.min.js` | css + js |
-| jQuery | 3.6.0 | `jquery/jquery-3.6.0.min.js` | js |
-| htmx | 2.0.4 | `htmx/htmx-2.0.4.min.js` | js |
-| Font Awesome | 6.5.2 | `fontawesome-6.5.2/css/all.min.css` (+ `webfonts/`) | css |
+| Bootstrap | 5.3.8 | `bootstrap-5.3.8/bootstrap.min.css`, `…/bootstrap.bundle.min.js` | css + js |
+| jQuery | 3.7.1 | `jquery/jquery-3.7.1.min.js` | js |
+| htmx | 2.0.10 | `htmx/htmx-2.0.10.min.js` | js |
+| Font Awesome | 6.7.2 | `fontawesome-6.7.2/css/all.min.css` (+ `webfonts/`) | css |
 | Poppins | Google Fonts v24 | `poppins/poppins.css` (+ 15 `*.woff2`) | css |
 
 These are **registered** — and described in machine-readable form — in
