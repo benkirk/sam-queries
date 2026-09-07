@@ -14,19 +14,17 @@ from sqlalchemy.orm import Session
 
 from sam.integration.xras_api.comments import approver_comment_for_action
 from sam.notify.base import Message
-from sam.notify.kinds import get_kind
+from sam.notify.kinds import get_family, get_kind
 from sam.queries.expiration_notices import MILESTONES, build_expiration_messages
 from sam.queries.xras_activation import (
     get_latest_xras_action_id, get_xras_pending_recipients,
 )
 from sam.queries.xras_notices import build_xras_messages, load_xras_action
 
-PROJECT_FAMILIES = ('expiration', 'xras')
-
 
 def is_project_kind(kind: str) -> bool:
     """Whether a kind is about a project (so a real one can be previewed)."""
-    return get_kind(kind).family in PROJECT_FAMILIES
+    return get_family(get_kind(kind).family).about_project
 
 
 def expiring_rows_for_project(project, *,
