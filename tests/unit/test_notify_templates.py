@@ -18,6 +18,7 @@ from sam.notify import (
     DEFAULT_FACILITY_TEMPLATE, Message, NOTIFICATION_KINDS, Recipient,
     TEMPLATE_DIR, TemplateRenderer,
 )
+from sam.notify.render import shipped_template_names
 
 
 @pytest.fixture(scope='module')
@@ -112,11 +113,23 @@ class TestNoOrphans:
                 if stem:
                     reachable.update({f'{stem}.txt', f'{stem}.html'})
 
-        on_disk = {p.name for p in TEMPLATE_DIR.iterdir() if p.is_file()}
+        on_disk = set(shipped_template_names())
         orphans = on_disk - reachable
         assert not orphans, (
             f'templates nothing can reach: {sorted(orphans)} — either wire a '
             f'kind/facility to them or delete them')
+
+    def test_every_partial_is_extended_or_included(self, renderer):
+        """An underscore file is layout, so some shipped template must use it."""
+        import jinja2.meta
+        partials = {p.name for p in TEMPLATE_DIR.iterdir()
+                    if p.is_file() and p.name.startswith('_')}
+        referenced = set()
+        for name in shipped_template_names():
+            source = renderer.env.loader.get_source(renderer.env, name)[0]
+            referenced.update(
+                jinja2.meta.find_referenced_templates(renderer.env.parse(source)))
+        assert partials and partials <= referenced, sorted(partials - referenced)
 
     def test_the_generic_symlinks_are_gone(self):
         """They meant "UNIV" and said so only in the filesystem, which does

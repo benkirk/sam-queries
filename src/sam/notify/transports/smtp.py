@@ -136,14 +136,8 @@ class SmtpTransport(Transport):
 
     @staticmethod
     def copies(message: Message) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
-        """``(cc, bcc)`` for this message -- empty on a redirect.
-
-        A redirected message is a staging run: the copies name real mailboxes
-        and must not leave with it.
-        """
-        if message.intended_recipient:
-            return ((), ())
-        return (tuple(message.cc), tuple(message.bcc))
+        """``(cc, bcc)`` for this message -- the message's own redirect rule."""
+        return message.copies()
 
     def envelope_recipients(self, message: Message) -> List[str]:
         """The addressee, the message's cc and bcc, then the configured Bcc."""

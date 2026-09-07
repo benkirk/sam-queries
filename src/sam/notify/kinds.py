@@ -19,9 +19,40 @@ See ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 1 and § 6.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Mapping
+from typing import Dict, List, Mapping
 
 from sam.notify.base import Channel
+
+
+@dataclass(frozen=True)
+class NotificationFamily:
+    """One addressing class: the unit ``NOTIFY_<FAMILY>_*`` and the
+    ``notification_addressing`` rows are keyed on.
+
+    Args:
+        key: the env-name fragment, ``[a-z_]`` only.
+        label: human text for the admin surfaces.
+        about_project: whether its kinds concern one project, so the
+            template editor can preview a real one.
+    """
+
+    key: str
+    label: str
+    about_project: bool = True
+
+
+FAMILIES: Mapping[str, NotificationFamily] = {
+    f.key: f for f in (
+        NotificationFamily('expiration', 'Allocation expiration notices'),
+        NotificationFamily('xras', 'XRAS handoff notices'),
+        NotificationFamily('task', 'Scheduled task summaries', about_project=False),
+    )
+}
+
+#: The facility variants a facility-aware kind can address separately; the
+#: stems the template resolver tries, so ``expiration-WNA`` names both the
+#: WNA letter and a WNA-only copy list.
+FACILITY_VARIANTS = ('UNIV', 'WNA')
 
 
 @dataclass(frozen=True)
@@ -38,9 +69,9 @@ class NotificationKind:
         default_subscribed: what an absent preference means. See above.
         facility_aware: whether the facility variants are meaningful. A kind
             that is not facility-aware always renders the default variant.
-        family: the addressing class. ``NotifyConfig.addressing(family)``
-            reads ``NOTIFY_<FAMILY>_{CC,BCC,FROM,REPLY_TO}``, so keep it
-            ``[a-z_]`` -- it is an env-name fragment.
+        family: the addressing class, a :data:`FAMILIES` key.
+            ``NotifyConfig.addressing(family)`` reads
+            ``NOTIFY_<FAMILY>_{CC,BCC,FROM,REPLY_TO}`` from it.
     """
 
     key: str
@@ -159,8 +190,57 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
 
 
 def families() -> tuple[str, ...]:
-    """Every addressing family a kind declares, sorted."""
-    return tuple(sorted({k.family for k in NOTIFICATION_KINDS.values() if k.family}))
+    """Every addressing family, sorted."""
+    return tuple(sorted(FAMILIES))
+
+
+def get_family(key: str) -> NotificationFamily:
+    """Look up a family, or raise with the full vocabulary in the message."""
+    try:
+        return FAMILIES[key]
+    except KeyError:
+        raise ValueError(
+            f'unknown notification family {key!r}; expected one of '
+            f'{", ".join(sorted(FAMILIES))}') from None
+
+
+def kinds_in_family(family: str) -> List[NotificationKind]:
+    """The kinds of one family, in registration order."""
+    return [k for k in NOTIFICATION_KINDS.values() if k.family == family]
+
+
+def addressing_scopes(family: str) -> List[str]:
+    """The ``notification_addressing.scope`` vocabulary for one family.
+
+    The family key, then each kind key, then ``{kind}-{facility}`` for every
+    facility-aware kind: the stems a message is matched against.
+    """
+    get_family(family)
+    scopes = [family]
+    for kind in kinds_in_family(family):
+        scopes.append(kind.key)
+        if kind.facility_aware:
+            scopes.extend(f'{kind.key}-{facility}' for facility in FACILITY_VARIANTS)
+    # dict.fromkeys: order-preserving dedupe; the `expiration` family and
+    # kind share a key.
+    return list(dict.fromkeys(scopes))
+
+
+def scope_family(scope: str) -> str:
+    """The family an addressing scope belongs to; raises ``ValueError`` if none."""
+    for family in FAMILIES:
+        if scope in addressing_scopes(family):
+            return family
+    raise ValueError(f'unknown addressing scope {scope!r}')
+
+
+def message_scopes(kind: str, facility=None) -> List[str]:
+    """The scopes one message matches: family, kind, and its facility variant."""
+    k = get_kind(kind)
+    scopes = [k.family, k.key]
+    if k.facility_aware and facility:
+        scopes.append(f'{k.key}-{facility}')
+    return list(dict.fromkeys(scopes))
 
 
 def get_kind(key: str) -> NotificationKind:

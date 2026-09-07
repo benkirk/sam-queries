@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h3 {
+            color: #0275d8;
+            margin-top: 25px;
+            margin-bottom: 10px;
+        }
+        .headline {
+            background-color: #f5f5f5;
+            border-left: 4px solid #5cb85c;
+            padding: 10px 15px;
+            margin: 15px 0;
+        }
+        /* An aborted run is the one message that must not read like the
+           other 51 a year. Same shape, unmistakably different color. */
+        .headline.aborted {
+            background-color: #f8e6e6;
+            border-left-color: #d9534f;
+        }
+        table.counts,
+        table.rows {
+            border-collapse: collapse;
+            margin: 15px 0;
+            width: 100%;
+        }
+        table.counts th,
+        table.counts td,
+        table.rows th,
+        table.rows td {
+            border-bottom: 1px solid #ddd;
+            padding: 6px 10px;
+            text-align: left;
+        }
+        table.counts th,
+        table.rows th {
+            background-color: #f5f5f5;
+        }
+        td.num {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .failed {
+            color: #a94442;
+        }
+
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            font-size: 0.9em;
+            color: #666;
+        }
+        /* The contact line lives in the footer; a default-blue mailto would
+           pull the eye straight past the message body to the fine print. */
+        .footer a {
+            color: inherit;
+        }
+        .footer p {
+            margin: 0 0 6px;
+        }
+    </style>
+</head>
+<body>
+    <div class="headline">
+        <strong>expiration_notices</strong> — 11 sent, 1 FAILED
+        
+    </div>
+
+    <table class="counts">
+        <tr><th>Occurrence</th><td>2026-09-07T15:00:00</td></tr>
+        <tr><th>Window</th><td>2026-09-07T00:00:00 to 2026-10-17T00:00:00</td></tr>
+        <tr><th>Milestones</th><td>expiring</td></tr>
+    </table>
+
+    <h3>Counts</h3>
+    <table class="counts">
+        <tr><th>Selected</th><td class="num">40</td>
+            <td>allocations matching the window</td></tr>
+        <tr><th>Already notified</th><td class="num">28</td><td></td></tr>
+        <tr><th>Audience</th><td class="num">12</td>
+            <td>messages this run intended to send</td></tr>
+        <tr><th>Sent</th><td class="num">11</td><td></td></tr>
+        <tr><th>Failed</th>
+            <td class="num failed">1</td><td></td></tr>
+        <tr><th>Projects</th><td class="num">5</td><td></td></tr>
+    </table>
+
+    
+    <h3>Recipients by project</h3>
+    <table class="rows">
+        <tr><th>Project</th><th>Recipients</th></tr>
+        
+        <tr><td>SCSG0001</td><td class="num">3</td></tr>
+        
+        <tr><td>UCUB0001</td><td class="num">2</td></tr>
+        
+    </table>
+    
+
+    
+    <h3 class="failed">Failures</h3>
+    <table class="rows">
+        <tr><th>Recipient</th><th>Detail</th></tr>
+        
+        <tr><td>bounced@example.edu</td><td>550 5.1.1 mailbox unavailable</td></tr>
+        
+    </table>
+    
+
+
+    <div class="footer">
+        <p>Automated summary from the NSF NCAR Systems Accounting Manager task
+            dispatcher. It is sent once per run of expiration_notices, whatever the
+            outcome — a quiet week reporting zero is the expected result roughly
+            40 weeks a year, and is only distinguishable from a broken query by
+            the Selected count above.</p>
+        <p>Questions: <a href="mailto:help@ucar.edu">help@ucar.edu</a>.</p>
+
+    </div>
+</body>
+</html>

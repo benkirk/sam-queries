@@ -1,0 +1,171 @@
+{#
+  One template: its source, the variables it may use, and a preview that
+  renders the textarea's current contents against sample data.
+
+  Context: row (name/stem/fmt/kind/label/facility/customized), source,
+           variables (sam.notify.samples.palette rows), template_rows,
+           selected_name, roles, preview_url, save_url, reset_url, log_url,
+           project_kind, project_search_url, audience_url;
+           optional errors (save failed), notice (saved/reset), warnings
+#}
+{% from 'dashboards/fragments/form_fields.html' import form_errors_panel, fk_search_field with context %}
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% with oob=True %}
+{% include 'dashboards/admin/fragments/notification_template_picker.html' %}
+{% endwith %}
+<div class="card">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <strong class="font-monospace">{{ row.name }}</strong>
+            <span class="text-muted small">
+                — {{ row.label }}{% if row.facility %} · {{ row.facility }}{% endif %}
+                · {{ 'HTML' if row.fmt == 'html' else 'plain text' }}
+            </span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            {% if row.customized %}
+            <span class="badge text-bg-warning">
+                customized by {{ row.customized.modified_by }}
+                {{ row.customized.modified_time | fmt_age }} ago
+            </span>
+            {% else %}
+            <span class="badge text-bg-secondary">shipped default</span>
+            {% endif %}
+            <a class="small text-decoration-none" href="{{ log_url }}">Recent deliveries &raquo;</a>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if notice %}
+        <div class="alert alert-success py-2">
+            <i class="fa-solid fa-check me-1"></i> {{ notice }}
+            {% if warnings %}
+            Unknown variable{{ 's' if warnings | length > 1 }}
+            {% for w in warnings %}<code>{{ w }}</code>{{ ', ' if not loop.last }}{% endfor %}
+            will render as nothing.
+            {% endif %}
+        </div>
+        {% endif %}
+        {{ form_errors_panel() }}
+        <form id="templateForm"
+              hx-post="{{ save_url }}"
+              hx-target="#templateEditorContainer"
+              hx-swap="innerHTML">
+            <label class="form-label small mb-1" for="templateBody">Template source</label>
+            <textarea id="templateBody" name="body" rows="22" spellcheck="false"
+                      class="form-control notify-template-source">{{ source }}</textarea>
+            <details class="mt-2">
+                <summary class="small text-muted">
+                    {% set top_level = variables | rejectattr('parent') | list %}
+                    Variables available to this template ({{ top_level | length | fmt_plural('variable', 'variables') }})
+                </summary>
+                <table class="table table-sm small mt-2 mb-0 notify-vars-table">
+                    <thead>
+                        <tr><th>Name</th><th>Type</th><th>Example</th><th>Meaning</th></tr>
+                    </thead>
+                    {# A list's item fields sit in their own collapsed tbody
+                       under the list row, which is the toggle (no buttons in
+                       these rows, so the <tr> may carry it). #}
+                    {% for v in variables if v.parent is none %}
+                    {% set gid = 'var-' ~ v.name | replace('.', '-') %}
+                    <tbody>
+                        <tr{% if v.children %} class="cursor-pointer" {{ collapse_toggle(gid) }}{% endif %}>
+                            <td class="font-monospace">
+                                {% if v.children %}
+                                <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
+                                {% endif %}
+                                {{ v.name }}
+                            </td>
+                            <td>{{ v.shape }}{% if v.children %} <span class="text-muted">({{ v.children }} fields)</span>{% endif %}</td>
+                            <td class="font-monospace">{{ '' if v.example is none else v.example }}</td>
+                            <td>{{ v.note }}</td>
+                        </tr>
+                    </tbody>
+                    {% if v.children %}
+                    <tbody class="collapse" id="{{ gid }}">
+                        {% for c in variables if c.parent == v.name %}
+                        <tr>
+                            <td class="font-monospace ps-4">{{ c.name }}</td>
+                            <td>{{ c.shape }}</td>
+                            <td class="font-monospace">{{ '' if c.example is none else c.example }}</td>
+                            <td>{{ c.note }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    {% endif %}
+                    {% endfor %}
+                </table>
+                <p class="small text-muted mb-0 mt-1">
+                    Write <code>{{ '{{ name }}' }}</code> to insert a value and
+                    <code>{{ '{% for r in resources %}' }} … {{ '{% endfor %}' }}</code>
+                    to repeat over a list. An unknown name renders as nothing.
+                </p>
+            </details>
+            <div class="d-flex align-items-center gap-2 mt-2 flex-wrap">
+                <span class="ms-auto d-flex gap-2">
+                    {% if row.customized %}
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                            hx-post="{{ reset_url }}" hx-target="#templateEditorContainer"
+                            hx-swap="innerHTML"
+                            hx-confirm="Discard the customized text and restore the shipped default?">
+                        <i class="fa-solid fa-rotate-left"></i> Reset to default
+                    </button>
+                    {% endif %}
+                    <button type="submit" class="btn btn-sm btn-primary">
+                        <i class="fa-solid fa-floppy-disk"></i> Save
+                    </button>
+                </span>
+            </div>
+            <p class="small text-muted mt-2 mb-0">
+                Saving replaces the shipped text for every mail of this kind
+                from the next send on. Save is refused if the template does
+                not compile; a wrong variable name only warns.
+            </p>
+        </form>
+        {# Outside the form: the picker's own search box (name="q") must not
+           ride a save. The pane and the Preview button include both. #}
+        <div id="previewControls" class="d-flex align-items-end gap-3 flex-wrap mt-3">
+            {% if project_kind %}
+            <div class="flex-grow-1">
+                {{ fk_search_field('project_id', 'Preview for',
+                                   search_url=project_search_url,
+                                   optional_text='(a real project, or leave empty for sample data)',
+                                   placeholder='Project code or title…',
+                                   badge_class='bg-secondary text-light py-1 px-2 font-monospace',
+                                   search_class='form-control form-control-sm',
+                                   id_prefix='previewProject',
+                                   wrapper_class='mb-0') }}
+            </div>
+            {% endif %}
+            <div>
+                <label class="form-label small mb-1" for="previewAudienceSelect">Preview as</label>
+                <div id="previewAudience"
+                     {% if project_kind %}
+                     hx-get="{{ audience_url }}"
+                     hx-trigger="fk:selected from:#previewControls, fk:cleared from:#previewControls"
+                     hx-include="#previewProject_id"
+                     hx-swap="innerHTML"
+                     {% endif %}>
+                    {% include 'dashboards/admin/fragments/notification_template_audience.html' %}
+                </div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-primary"
+                    hx-post="{{ preview_url }}" hx-target="#templatePreviewPane"
+                    hx-include="#templateForm, #previewControls"
+                    hx-swap="innerHTML">
+                <i class="fa-solid fa-eye"></i> Preview
+            </button>
+        </div>
+    </div>
+    <div class="card-header py-2 border-top">
+        <strong>Preview</strong>
+    </div>
+    <div class="card-body" id="templatePreviewPane"
+         hx-post="{{ preview_url }}"
+         hx-include="#templateForm, #previewControls"
+         hx-trigger="load, reloadTemplatePreview from:body, change from:#previewAudience"
+         hx-swap="innerHTML">
+        <div class="text-muted small">
+            <i class="fa-solid fa-circle-notch fa-spin"></i> Rendering…
+        </div>
+    </div>
+</div>

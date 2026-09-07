@@ -56,6 +56,12 @@
         {% else %}<span class="text-muted">—</span>{% endif %}
     </dd>
 
+    <dt>Copies</dt>
+    <dd>
+        {% if row.copies %}<code class="user-select-all small">{{ row.copies }}</code>
+        {% else %}<span class="text-muted">— (none left with it)</span>{% endif %}
+    </dd>
+
     <dt>Project</dt>
     <dd>
         {% if row.projcode %}<code>{{ row.projcode }}</code>

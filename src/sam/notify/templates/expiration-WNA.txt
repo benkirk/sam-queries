@@ -1,6 +1,6 @@
 Dear {{ recipient_name }},
 
-NCAR/Wyoming Computing Project Project {{ project_code }}
+NCAR/Wyoming Computing Project {{ project_code }}
 "{{ project_title }}"
 is expiring on {{ latest_expiration }}.
 

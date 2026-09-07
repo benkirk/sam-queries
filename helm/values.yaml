@@ -216,6 +216,9 @@ webapp:
     # family is NotificationKind.family (sam/notify/kinds.py: xras,
     # expiration, task). Comma lists for CC/BCC; empty means off. A FROM
     # override must stay a ucar.edu address for the SPF note above to hold.
+    # These are the deployment defaults only: operators add cc/bcc rows in
+    # Admin > Notifications > Addressing (table notification_addressing),
+    # which every Notifier reads from the database, the CronJob included.
     NOTIFY_XRAS_CC: "alloc@ucar.edu"
     NOTIFY_XRAS_BCC: ""
     NOTIFY_XRAS_FROM: ""

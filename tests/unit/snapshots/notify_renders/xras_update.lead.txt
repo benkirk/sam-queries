@@ -1,0 +1,19 @@
+Dear Jane Lead,
+
+Your project SCSG0001 - "Sample Project Title" has been renewed on
+NSF NCAR computing resources.
+
+Allocations for the new period:
+
+  - Casper: 50,000 hours through 2027-09-30
+  - Derecho: 1.15M hours through 2027-09-30
+
+Your project code and its members are unchanged.
+
+  - Documentation: https://ncar-hpc-docs.readthedocs.io/
+  - Manage your project and its members at https://sam.hpc.ucar.edu/
+
+--
+This is an automated notification from the NSF NCAR Systems Accounting Manager.
+If you believe you received this message in error, please contact
+help@ucar.edu.

@@ -1,7 +1,6 @@
 """``NotificationLog`` — the delivery ledger.
 
-This is an actual database TABLE (not a view). DDL and the full rationale:
-``containers/sam-sql-dev/initdb.d/zz-92-notification_log.sql`` and
+This is an actual database TABLE (not a view). The full rationale:
 ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 5.
 
 It lives under ``sam/notify/`` rather than in a domain module because it is
@@ -98,6 +97,10 @@ class NotificationLog(Base, SessionMixin):
     #: Bodies are not stored, so there is nothing else to answer "which
     #: letter did this PI actually get".
     template = Column(String(64))
+    #: The cc/bcc that left with it, ``cc:a@x,b@y;bcc:c@z``, from
+    #: :meth:`Message.copies_summary`. ``None`` when nothing was copied,
+    #: which includes every redirected row.
+    copies = Column(String(512))
 
     entity_type = Column(String(32))
     entity_id = Column(Integer)
@@ -125,7 +128,7 @@ class NotificationLog(Base, SessionMixin):
     @classmethod
     def create(cls, session, *, kind, channel, transport, status, recipient,
                requested_by, intended_recipient=None, recipient_name=None,
-               recipient_role=None, subject=None, template=None,
+               recipient_role=None, subject=None, template=None, copies=None,
                entity_type=None, entity_id=None, projcode=None,
                dedup_key=None, error=None, when=None):
         """Append one attempt.
@@ -163,6 +166,7 @@ class NotificationLog(Base, SessionMixin):
             recipient_role=_clip(recipient_role, 16),
             subject=_clip(subject, _SUBJECT_MAX),
             template=_clip(template, 64),
+            copies=_clip(copies, 512),
             entity_type=_clip(entity_type, 32),
             entity_id=entity_id,
             projcode=_clip(projcode, 30),

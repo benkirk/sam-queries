@@ -196,3 +196,19 @@ class TestDeterminism:
         """The quiet week. Must not raise, and must not open anything."""
         assert build_expiration_messages([], requested_by='pytest',
                                          milestone=MILESTONES[0]) == []
+
+
+class TestTheSampleContextMatchesTheBuilder:
+    """`sam.notify.samples` is the editor's palette and preview input; if the
+    builder grows or drops a key, the sample must follow."""
+
+    def test_the_key_sets_agree(self, expiring):
+        from sam.notify.samples import sample_context
+        message = _build(expiring)[0]
+        assert set(message.context) == set(sample_context('expiration'))
+
+    def test_the_resource_item_keys_agree(self, expiring):
+        from sam.notify.samples import sample_context
+        message = _build(expiring)[0]
+        assert (set(message.context['resources'][0])
+                == set(sample_context('expiration')['resources'][0]))

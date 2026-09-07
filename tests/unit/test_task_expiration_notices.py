@@ -689,3 +689,23 @@ class TestItWritesNothingToStdout:
         _expiring(session, days=35)
         mod.expiration_notices(ctx())
         assert capsys.readouterr().out == ''
+
+
+class TestTheSampleContextMatchesTheSummary:
+    """`sam.notify.samples` is the editor's palette and preview input for the
+    run summary; a normal run's context is the reference shape."""
+
+    @pytest.fixture(autouse=True)
+    def _to(self, monkeypatch):
+        monkeypatch.setenv('SAM_TASKS_SUMMARY_TO', 'ops@example.edu')
+
+    def test_the_key_sets_agree(self, session, wire, ctx, transport):
+        from sam.notify.samples import sample_context
+        _expiring(session, days=35)
+        mod.expiration_notices(ctx())
+        summary, = [m for m, _ in transport.delivered if m.kind == 'task_summary']
+        assert set(summary.context) == set(sample_context('task_summary'))
+        for name in ('per_project', 'failures'):
+            sample_items = sample_context('task_summary')[name]
+            if summary.context[name]:
+                assert set(summary.context[name][0]) == set(sample_items[0])
