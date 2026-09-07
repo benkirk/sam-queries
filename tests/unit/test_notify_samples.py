@@ -95,3 +95,16 @@ class TestTheNotes:
         assert set(names) == _dotted_names(preview_context(kind))
         assert all(row['note'] for row in rows)
         assert all(row['shape'] for row in rows)
+
+    @pytest.mark.parametrize('kind', KINDS)
+    def test_the_palette_is_alphabetical_with_children_under_their_parent(self, kind):
+        rows = palette(kind)
+        top = [r for r in rows if r['parent'] is None]
+        assert [r['name'] for r in top] == sorted(r['name'] for r in top)
+        for i, row in enumerate(rows):
+            if row['children']:
+                block = rows[i + 1:i + 1 + row['children']]
+                assert all(r['parent'] == row['name'] for r in block)
+                assert [r['name'] for r in block] == sorted(r['name'] for r in block)
+            elif row['parent'] is None:
+                assert i + 1 == len(rows) or rows[i + 1]['parent'] is None

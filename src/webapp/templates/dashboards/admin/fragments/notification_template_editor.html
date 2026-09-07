@@ -8,6 +8,7 @@
            optional errors (save failed), notice (saved/reset), warnings
 #}
 {% from 'dashboards/fragments/form_fields.html' import form_errors_panel with context %}
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% with oob=True %}
 {% include 'dashboards/admin/fragments/notification_template_picker.html' %}
 {% endwith %}
@@ -58,16 +59,37 @@
                     <thead>
                         <tr><th>Name</th><th>Type</th><th>Example</th><th>Meaning</th></tr>
                     </thead>
+                    {# A list's item fields sit in their own collapsed tbody
+                       under the list row, which is the toggle (no buttons in
+                       these rows, so the <tr> may carry it). #}
+                    {% for v in variables if v.parent is none %}
+                    {% set gid = 'var-' ~ v.name | replace('.', '-') %}
                     <tbody>
-                        {% for v in variables %}
-                        <tr>
-                            <td class="font-monospace">{{ v.name }}</td>
-                            <td>{{ v.shape }}</td>
+                        <tr{% if v.children %} class="cursor-pointer" {{ collapse_toggle(gid) }}{% endif %}>
+                            <td class="font-monospace">
+                                {% if v.children %}
+                                <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
+                                {% endif %}
+                                {{ v.name }}
+                            </td>
+                            <td>{{ v.shape }}{% if v.children %} <span class="text-muted">({{ v.children }} fields)</span>{% endif %}</td>
                             <td class="font-monospace">{{ '' if v.example is none else v.example }}</td>
                             <td>{{ v.note }}</td>
                         </tr>
+                    </tbody>
+                    {% if v.children %}
+                    <tbody class="collapse" id="{{ gid }}">
+                        {% for c in variables if c.parent == v.name %}
+                        <tr>
+                            <td class="font-monospace ps-4">{{ c.name }}</td>
+                            <td>{{ c.shape }}</td>
+                            <td class="font-monospace">{{ '' if c.example is none else c.example }}</td>
+                            <td>{{ c.note }}</td>
+                        </tr>
                         {% endfor %}
                     </tbody>
+                    {% endif %}
+                    {% endfor %}
                 </table>
                 <p class="small text-muted mb-0 mt-1">
                     Write <code>{{ '{{ name }}' }}</code> to insert a value and

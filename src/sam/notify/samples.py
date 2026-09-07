@@ -210,16 +210,24 @@ def _shape(value: Any) -> str:
 
 
 def palette(kind: str, facility: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Rows of ``{name, shape, example, note}`` for the editor's variable table."""
+    """Rows of ``{name, shape, example, note, parent, children}`` for the editor.
+
+    Alphabetical at the top level; a list's item fields follow it directly,
+    alphabetical too, with ``parent`` set so the table can fold them.
+    """
     rows = []
-    for name, value in preview_context(kind, facility).items():
+    for name, value in sorted(preview_context(kind, facility).items()):
+        fields = (sorted(value[0].items())
+                  if isinstance(value, list) and value and isinstance(value[0], dict)
+                  else [])
         rows.append({'name': name, 'shape': _shape(value),
                      'example': '' if isinstance(value, list) else value,
-                     'note': VARIABLE_NOTES.get(name, '')})
-        if isinstance(value, list) and value and isinstance(value[0], dict):
-            for field, example in value[0].items():
-                dotted = f'{name}.{field}'
-                rows.append({'name': dotted, 'shape': _shape(example),
-                             'example': example,
-                             'note': VARIABLE_NOTES.get(dotted, '')})
+                     'note': VARIABLE_NOTES.get(name, ''),
+                     'parent': None, 'children': len(fields)})
+        for field, example in fields:
+            dotted = f'{name}.{field}'
+            rows.append({'name': dotted, 'shape': _shape(example),
+                         'example': example,
+                         'note': VARIABLE_NOTES.get(dotted, ''),
+                         'parent': name, 'children': 0})
     return rows
