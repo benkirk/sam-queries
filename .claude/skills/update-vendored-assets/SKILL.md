@@ -2,7 +2,7 @@
 name: update-vendored-assets
 description: >-
   Checking for, assessing, and applying updates to the webapp's vendored
-  front-end assets (Bootstrap, jQuery, htmx, Font Awesome, Poppins). Load
+  front-end assets (Bootstrap, htmx, Font Awesome, Poppins). Load
   before bumping a vendored library to read the changelog against our real
   usage and documented workarounds — so a bump that fixes a bug we work around
   or breaks one we rely on is caught on purpose, not by luck — then apply it
@@ -28,8 +28,10 @@ exists — do them even for a "trivial" patch bump.
 Read `VENDOR_ASSETS` in `src/webapp/vendor_assets.py` for the current
 key → version → path set. That dict is the source of truth; a filename or a
 header banner can lie, the registry cannot. The libraries: `bootstrap-css` /
-`bootstrap-js`, `jquery`, `htmx`, `fontawesome-css`, `poppins`. We vendor
-**Font Awesome Free** (not Pro) — assess only the Free tier.
+`bootstrap-js`, `htmx`, `fontawesome-css`, `poppins`. We vendor
+**Font Awesome Free** (not Pro) — assess only the Free tier. (jQuery was
+vendored through 3.7.1 but removed entirely once its sole consumer was
+rewritten in vanilla JS — there is no jQuery to bump.)
 
 ## 2. Check upstream for newer releases
 
@@ -42,7 +44,6 @@ sources (use WebFetch / WebSearch):
 |---|---|
 | Bootstrap | GitHub releases `twbs/bootstrap`; blog at getbootstrap.com |
 | htmx | GitHub releases `bigskysoftware/htmx`; htmx.org/posts |
-| jQuery | GitHub releases `jquery/jquery`; jquery.com blog (maintenance mode — a bump is security-driven, not feature-driven) |
 | Font Awesome | `FortAwesome/Font-Awesome` releases / `CHANGELOG.md` — **Free tier** |
 | Poppins | Google Fonts version (special case — see step 6) |
 
@@ -223,6 +224,7 @@ The grep in step 3 catches any added since; this table is the starting set.
   `<style>` / `on*` / `hx-on:` is blocked; the htmx-config hardening meta tag is
   mandatory (`docs/plans/implemented/CSP.md`). A vendored bump must keep
   `script-src 'self'` with no new origin (step 8).
-- **jQuery.** No version-specific workaround on record — treat a bump as
-  security-driven maintenance, and confirm Bootstrap's JS bundle (which does not
-  depend on jQuery in 5.x) and any `$`-using static JS still load.
+- **jQuery — removed.** No longer vendored. Its sole consumer
+  (`static/js/lazy-loading.js`) was rewritten in vanilla JS and the asset
+  dropped, since Bootstrap 5's bundle does not depend on jQuery. If a new
+  library ever wants it back, that is a fresh vendoring decision, not a bump.
