@@ -47,11 +47,6 @@ VENDOR_ASSETS = {
         'sha384': 'sha384-qrALq7+6jBOZIQsNnT6xGkMDru64qD6uTlDra39xrt2SoXl4pO3FX6Roz/RpR/BS',
     },
     # ---- JS ----
-    'jquery': {
-        'kind': 'js',
-        'path': 'vendor/jquery/jquery-3.7.1.min.js',
-        'sha384': 'sha384-1H217gwSVyLSIfaLxHbE7dRb3v4mYCKbpQvzx0cegeju1MVsGrX5xXxAvs/HgeFs',
-    },
     'bootstrap-js': {
         'kind': 'js',
         'path': 'vendor/bootstrap-5.3.8/bootstrap.bundle.min.js',

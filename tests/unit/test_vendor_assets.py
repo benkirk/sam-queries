@@ -81,7 +81,7 @@ class TestRenderedTemplates:
     def test_login_page_serves_local_assets(self, client):
         html = client.get('/auth/login').get_data(as_text=True)
         for name in ('poppins', 'bootstrap-css', 'fontawesome-css',
-                     'jquery', 'bootstrap-js'):
+                     'bootstrap-js'):
             assert f"/static/{VENDOR_ASSETS[name]['path']}" in html, name
 
     def test_login_page_has_no_cdn_references(self, client):

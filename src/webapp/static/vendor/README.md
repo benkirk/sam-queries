@@ -23,7 +23,6 @@ instead of by the browser (see "How integrity is enforced" below).
 | Asset | Version | Entry point (registered) | Kind |
 |---|---|---|---|
 | Bootstrap | 5.3.8 | `bootstrap-5.3.8/bootstrap.min.css`, `…/bootstrap.bundle.min.js` | css + js |
-| jQuery | 3.7.1 | `jquery/jquery-3.7.1.min.js` | js |
 | htmx | 2.0.10 | `htmx/htmx-2.0.10.min.js` | js |
 | Font Awesome | 7.3.1 | `fontawesome-7.3.1/css/all.min.css` (+ `webfonts/`, woff2-only) | css |
 | Poppins | Google Fonts v24 | `poppins/poppins.css` (+ 15 `*.woff2`) | css |
