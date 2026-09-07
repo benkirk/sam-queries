@@ -470,6 +470,7 @@ UTF8MB4_COLUMNS = {
     ('notification_log',      'recipient_name'),
     ('notification_log',      'subject'),
     ('notification_log',      'error'),
+    ('notification_template_override', 'body'),
 }
 
 
@@ -496,7 +497,8 @@ class TestCharsetSplit:
              WHERE TABLE_SCHEMA = DATABASE()
                AND TABLE_NAME IN ('xras_action_log', 'xras_activation_event',
                                   'xras_remediation_event', 'xras_request_override',
-                                  'notification_log')
+                                  'notification_log',
+                                  'notification_template_override')
                AND CHARACTER_SET_NAME IS NOT NULL
         """)).all()
 
@@ -658,6 +660,31 @@ class TestCriticalSchemas:
                AND REFERENCED_TABLE_NAME = 'mnemonic_code'
         """)).scalar()
         assert fk == 1, "expected the mnemonic_code FK"
+
+    def test_notification_template_override_schema(self, session):
+        """The operator template store: one row per template file name."""
+        table_name = 'notification_template_override'
+        db_cols = get_db_columns(session, table_name)
+        expected = {'notification_template_override_id', 'name', 'body',
+                    'modified_by', 'modified_time'}
+        assert set(db_cols.keys()) == expected, set(db_cols.keys()) ^ expected
+        assert db_cols['notification_template_override_id']['key'] == 'PRI'
+        unique = session.execute(text("""
+            SELECT COUNT(*) FROM information_schema.STATISTICS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = 'notification_template_override'
+               AND INDEX_NAME = 'notification_template_override_name'
+               AND NON_UNIQUE = 0
+        """)).scalar()
+        assert unique == 1, 'expected the UNIQUE(name) index'
+        default = session.execute(text("""
+            SELECT COLUMN_DEFAULT FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = 'notification_template_override'
+               AND COLUMN_NAME = 'modified_time'
+        """)).scalar()
+        assert default is None, (
+            'modified_time is stamped from the app clock, not CURRENT_TIMESTAMP')
 
 
 # ============================================================================

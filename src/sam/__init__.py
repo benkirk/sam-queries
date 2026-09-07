@@ -215,6 +215,7 @@ from .integration.xras_views import (
 # `config` module, which `python3 src/webapp/run.py` shadows with
 # webapp/config.py. See the sam/notify/__init__.py docstring.
 from .notify.models import NotificationLog
+from .notify.template_store import NotificationTemplateOverride
 
 from .security.roles import Role, RoleUser, ApiCredentials, RoleApiCredentials
 from .security.access import AccessBranch, AccessBranchResource
@@ -286,6 +287,7 @@ __all__ = [
     'XrasAllocationView', 'XrasHpcAllocationAmountView', 'XrasRequestView',
     # Notifications
     'NotificationLog',
+    'NotificationTemplateOverride',
     # Security
     'Role', 'RoleUser', 'ApiCredentials', 'RoleApiCredentials',
     'AccessBranch', 'AccessBranchResource',

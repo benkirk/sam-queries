@@ -13,7 +13,7 @@ hazard the XRAS factory documents.
 
 from datetime import datetime, timedelta
 
-from sam import NotificationLog
+from sam import NotificationLog, NotificationTemplateOverride
 
 
 def make_notification_log(session, *, kind='expiration', channel='email',
@@ -68,3 +68,11 @@ def make_notification_log(session, *, kind='expiration', channel='email',
         row.dedup_key = f'{kind}:FACTORY{pk}:{pk}:{row.recipient}'
     session.flush()
     return row
+
+
+def make_template_override(session, *, name, body='OVERRIDE {{ project_code }}',
+                           modified_by='benkirk'):
+    """One override row. Pass a name unique to the test: `name` is UNIQUE and
+    xdist workers share the database."""
+    return NotificationTemplateOverride.create(session, name=name, body=body,
+                                               modified_by=modified_by)

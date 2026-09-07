@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from querykit import LogSpec, count_rows, facet_counts, page_rows
 from sam.notify.models import NotificationLog
+from sam.notify.template_store import NotificationTemplateOverride
 
 #: The status values the admin card renders as named rows, in card order.
 #: A status outside this list still appears in ``by_status`` — the card just
@@ -267,3 +268,15 @@ SPEC = LogSpec(
                   'channel': 'channels'},
     build_filters=_filters,
 )
+
+
+# ---------------------------------------------------------------- overrides
+def get_template_overrides(session: Session) -> Dict[str, NotificationTemplateOverride]:
+    """Every operator override, keyed by template file name."""
+    rows = session.execute(select(NotificationTemplateOverride)).scalars()
+    return {row.name: row for row in rows}
+
+
+def get_template_override(session: Session,
+                          name: str) -> Optional[NotificationTemplateOverride]:
+    return NotificationTemplateOverride.get_by_name(session, name)
