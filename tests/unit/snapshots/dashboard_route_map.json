@@ -1288,6 +1288,27 @@
     ]
   ],
   [
+    "admin_dashboard.notification_addressing_add",
+    "/admin/htmx/notifications/addressing/<family>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.notification_addressing_card",
+    "/admin/htmx/notifications/addressing",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.notification_addressing_delete",
+    "/admin/htmx/notifications/addressing/<int:row_id>",
+    [
+      "DELETE"
+    ]
+  ],
+  [
     "admin_dashboard.notification_detail",
     "/admin/htmx/notifications/<int:log_id>",
     [

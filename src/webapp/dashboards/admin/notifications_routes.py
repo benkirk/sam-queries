@@ -27,6 +27,11 @@ from flask_login import current_user, login_required
 from sqlalchemy.orm import Session
 
 from sam.notify import NOTIFICATION_KINDS, NOTIFICATION_STATUSES, NotifyConfig
+from sam.notify.addressing_store import NotificationAddressing
+from sam.notify.kinds import (
+    FAMILIES, addressing_scopes, get_family, get_kind, kinds_in_family,
+    scope_family,
+)
 from sam.notify.models import NotificationLog
 from sam.notify.render import TemplateRenderer, shipped_template_names
 from sam.notify.samples import palette, preview_context
@@ -35,10 +40,11 @@ from sam.manage import management_transaction
 from sam import Project
 from sam.queries.notification_previews import is_project_kind, messages_for_project
 from sam.queries.projects import search_projects_by_code_or_title
-from sam.schemas.forms import NotificationTemplateForm
+from sam.schemas.forms import AddAddressingForm, NotificationTemplateForm
 from sam.queries.notifications import (
     count_recent_notifications,
     facet_notifications,
+    get_addressing_rows,
     get_recent_notifications,
     get_template_overrides,
     summarize_notifications,
@@ -46,7 +52,9 @@ from sam.queries.notifications import (
 from webapp.extensions import db
 from webapp.utils.faceted_log import build_facet_strip, parse_window
 from webapp.utils.form_handler import FlattenedFieldErrors, FormError, HtmxFormHandler
-from webapp.utils.htmx import htmx_modal_not_found, read_tab, register_typeahead
+from webapp.utils.htmx import (
+    handle_htmx_form_post, htmx_modal_not_found, read_tab, register_typeahead,
+)
 from webapp.utils.notify import get_notifier
 from webapp.utils.rbac import require_permission, Permission
 
@@ -62,7 +70,7 @@ _FRAGMENT_TARGET = 'notificationsTableContainer'
 _DEFAULT_DAYS = 30
 _PER_PAGE = 50
 
-_TABS = ('log', 'templates')
+_TABS = ('log', 'templates', 'addressing')
 _PREVIEW_ROLES = ('lead', 'admin', 'user')
 _EDITOR_TEMPLATE = 'dashboards/admin/fragments/notification_template_editor.html'
 
@@ -121,7 +129,7 @@ def _parse_filters(args):
 @login_required
 @require_permission(Permission.SYSTEM_ADMIN)
 def notifications():
-    """The page shell: the delivery log and the template editor, as tabs."""
+    """The page shell: the delivery log, the template editor and addressing, as tabs."""
     config = NotifyConfig.from_environment()
     template_rows = _template_rows()
     selected_name = request.args.get('name') or None
@@ -423,3 +431,96 @@ register_typeahead(
     ctx_key='projects',
     min_len=1,
 )
+
+
+# ------------------------------------------------------------- addressing
+_ADDRESSING_FORM = 'dashboards/admin/fragments/notification_addressing_form.html'
+
+
+def scope_label(scope: str) -> str:
+    """Human text for an addressing scope: the family, a kind, or a facility variant."""
+    if scope in FAMILIES:
+        return f'All {FAMILIES[scope].label.lower()}'
+    stem, _, facility = scope.partition('-')
+    label = get_kind(stem).label
+    return f'{label} — {facility}' if facility else label
+
+
+def _addressing_cards():
+    """One dict per family: env defaults, operator rows, and the add-form choices."""
+    rows = get_addressing_rows(db.session)
+    cards = []
+    for key in sorted(FAMILIES):
+        family = get_family(key)
+        env = NotifyConfig.addressing(key)
+        cards.append({
+            'key': key, 'label': family.label,
+            'kinds': [k.label for k in kinds_in_family(key)],
+            'env': env.as_dict(),
+            'env_rows': [('cc', a) for a in env.cc] + [('bcc', a) for a in env.bcc],
+            'rows': [r for r in rows if r.family == key],
+            'scopes': [(s, scope_label(s)) for s in addressing_scopes(key)],
+            'post_url': url_for('admin_dashboard.notification_addressing_add',
+                                family=key),
+        })
+    return cards
+
+
+@bp.route('/htmx/notifications/addressing', methods=['GET'])
+@login_required
+@require_permission(Permission.SYSTEM_ADMIN)
+def notification_addressing_card():
+    """HTMX fragment: per-family copy lists, deployment defaults first."""
+    return render_template(
+        'dashboards/admin/fragments/notification_addressing_card.html',
+        cards=_addressing_cards(), scope_label=scope_label)
+
+
+def _family_or_404(family: str):
+    if family not in FAMILIES:
+        abort(404)
+    return next(c for c in _addressing_cards() if c['key'] == family)
+
+
+@bp.route('/htmx/notifications/addressing/<family>', methods=['POST'])
+@login_required
+@require_permission(Permission.SYSTEM_ADMIN)
+def notification_addressing_add(family: str):
+    """Add one cc/bcc address for a scope of this family."""
+    card = _family_or_404(family)
+
+    def do_add(data):
+        if scope_family(data['scope']) != family:
+            raise ValueError(f"{data['scope']} is not a {card['label']} scope")
+        if NotificationAddressing.get_by_entry(db.session, **data):
+            raise ValueError(f"{data['address']} is already a {data['field']} "
+                             f"for {scope_label(data['scope'])}")
+        return NotificationAddressing.create(
+            db.session, created_by=current_user.username, **data)
+
+    return handle_htmx_form_post(
+        schema_cls=AddAddressingForm,
+        template=_ADDRESSING_FORM,
+        do_action=do_add,
+        success_triggers={'reloadAddressingCard': {}},
+        success_message='Address added.',
+        success_detail=lambda row: f'{row.field}: {row.address} '
+                                   f'for {scope_label(row.scope)}',
+        error_prefix='Not added',
+        extra_context={'card': card},
+    )
+
+
+@bp.route('/htmx/notifications/addressing/<int:row_id>', methods=['DELETE'])
+@login_required
+@require_permission(Permission.SYSTEM_ADMIN)
+def notification_addressing_delete(row_id: int):
+    """Remove one operator-added copy; deployment defaults are not rows."""
+    row = db.session.get(NotificationAddressing, row_id)
+    if row is None:
+        return '', 404
+    with management_transaction(db.session):
+        db.session.delete(row)
+    response = make_response('')
+    response.headers['HX-Trigger'] = 'reloadAddressingCard'
+    return response

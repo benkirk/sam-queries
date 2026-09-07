@@ -1,0 +1,80 @@
+{% from 'dashboards/fragments/action_buttons.html' import delete_row_button %}
+{#
+  The Addressing pane: one card per notification family. Deployment
+  defaults (NOTIFY_<FAMILY>_*) come first and are read-only; operator rows
+  follow and can be removed. Every copy is additive.
+
+  Context: cards (see _addressing_cards in notifications_routes.py)
+#}
+<p class="small text-muted">
+    Extra recipients for every message of a family, one of its kinds, or one
+    facility's variant. Deployment defaults come from the chart; addresses
+    added here live in the database and reach the scheduled tasks too. A
+    redirected (staging) run drops every copy.
+</p>
+{% for card in cards %}
+<div class="card mb-3" id="addressing-{{ card.key }}">
+    <div class="card-header py-2 d-flex flex-wrap align-items-center gap-2">
+        <strong>{{ card.label }}</strong>
+        <span class="text-muted small">
+            {% for label in card.kinds %}<span class="badge bg-light text-dark">{{ label }}</span> {% endfor %}
+        </span>
+        {% if card.env['from'] or card.env.reply_to %}
+        <span class="ms-auto small text-muted">
+            {% if card.env['from'] %}From <code>{{ card.env['from'] }}</code>{% endif %}
+            {% if card.env.reply_to %}Reply-To <code>{{ card.env.reply_to }}</code>{% endif %}
+        </span>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+        <table class="table table-sm align-middle mb-3">
+            <thead>
+                <tr>
+                    <th>Copy</th>
+                    <th>Address</th>
+                    <th>Applies to</th>
+                    <th>Added</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for field, address in card.env_rows %}
+                <tr>
+                    <td><span class="badge bg-secondary">{{ field }}</span></td>
+                    <td><code>{{ address }}</code></td>
+                    <td>All {{ card.label | lower }}</td>
+                    <td class="text-muted small">
+                        <span class="badge bg-light text-dark">deployment default</span>
+                    </td>
+                    <td class="text-end text-nowrap"></td>
+                </tr>
+                {% endfor %}
+                {% for row in card.rows %}
+                <tr>
+                    <td><span class="badge bg-secondary">{{ row.field }}</span></td>
+                    <td><code>{{ row.address }}</code></td>
+                    <td>{{ scope_label(row.scope) }}</td>
+                    <td class="text-muted small">
+                        {{ row.created_by }} · {{ row.creation_time | fmt_date }}
+                    </td>
+                    <td class="text-end text-nowrap">
+                        {{ delete_row_button(
+                            url_for('admin_dashboard.notification_addressing_delete',
+                                    row_id=row.notification_addressing_id),
+                            'Remove ' ~ row.address ~ ' as ' ~ row.field ~ ' for '
+                            ~ scope_label(row.scope) ~ '?',
+                            title='Remove') }}
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not card.env_rows and not card.rows %}
+                <tr><td colspan="5" class="text-muted">No copies. Each message goes to its recipient only.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+        </div>
+        {% include 'dashboards/admin/fragments/notification_addressing_form.html' %}
+    </div>
+</div>
+{% endfor %}

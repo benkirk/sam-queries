@@ -82,6 +82,14 @@
             <i class="fa-solid fa-file-pen me-1"></i> Templates
         </button>
     </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link{{ ' active' if active_tab == 'addressing' }}" id="addressing-tab"
+                data-bs-toggle="tab" data-bs-target="#addressing-pane" type="button" role="tab"
+                data-tab-param-value="addressing" aria-controls="addressing-pane"
+                aria-selected="{{ 'true' if active_tab == 'addressing' else 'false' }}">
+            <i class="fa-solid fa-envelope-circle-check me-1"></i> Addressing
+        </button>
+    </li>
 </ul>
 
 <div class="tab-content" id="notificationsTabsContent">
@@ -171,6 +179,17 @@
      role="tabpanel" aria-labelledby="templates-tab">
 {% include 'dashboards/admin/fragments/notification_templates_card.html' %}
 </div>{# /templates-pane #}
+<div class="tab-pane fade{{ ' show active' if active_tab == 'addressing' }}" id="addressing-pane"
+     role="tabpanel" aria-labelledby="addressing-tab">
+    <div id="addressingCard"
+         hx-get="{{ url_for('admin_dashboard.notification_addressing_card') }}"
+         hx-trigger="load, reloadAddressingCard from:body"
+         hx-swap="innerHTML">
+        <div class="text-muted small p-3">
+            <i class="fa-solid fa-circle-notch fa-spin"></i> Loading addressing…
+        </div>
+    </div>
+</div>{# /addressing-pane #}
 </div>{# /tab-content #}
 
 {% include 'dashboards/allocations/partials/audit_details_modal.html' %}

@@ -18,6 +18,8 @@ PREVIEW = '/admin/htmx/notifications/templates/expiration-UNIV.txt/preview'
 RESET = '/admin/htmx/notifications/templates/expiration-UNIV.txt/reset'
 AUDIENCE = '/admin/htmx/notifications/templates/expiration-UNIV.txt/recipients'
 TYPEAHEAD = '/admin/htmx/notifications/templates/project-search?q=SC'
+ADDRESSING = '/admin/htmx/notifications/addressing'
+ADDRESSING_ADD = '/admin/htmx/notifications/addressing/xras'
 
 
 @pytest.fixture
@@ -44,15 +46,19 @@ class TestThePermissionBoundary:
     """One tier apart, deliberately — and the gate is on the ROUTE, so a
     view-source cannot reveal what the page chose not to draw."""
 
-    @pytest.mark.parametrize('path', [PAGE, LOG, DETAIL, EDITOR, AUDIENCE, TYPEAHEAD])
+    @pytest.mark.parametrize('path', [PAGE, LOG, DETAIL, EDITOR, AUDIENCE, TYPEAHEAD,
+                                      ADDRESSING])
     def test_view_system_config_alone_is_refused(self, config_only_client, path):
         assert config_only_client.get(path).status_code == 403
 
-    @pytest.mark.parametrize('path', [PREVIEW, EDITOR, RESET])
+    @pytest.mark.parametrize('path', [PREVIEW, EDITOR, RESET, ADDRESSING_ADD])
     def test_view_system_config_alone_cannot_post(self, config_only_client, path):
         assert config_only_client.post(path, data={'body': 'x'}).status_code == 403
 
-    @pytest.mark.parametrize('path', [PAGE, LOG, DETAIL, EDITOR])
+    def test_view_system_config_alone_cannot_delete_a_copy(self, config_only_client):
+        assert config_only_client.delete(f'{ADDRESSING}/1').status_code == 403
+
+    @pytest.mark.parametrize('path', [PAGE, LOG, DETAIL, EDITOR, ADDRESSING])
     def test_anonymous_is_refused(self, client, path):
         assert client.get(path).status_code in (302, 401, 403)
 
@@ -63,7 +69,7 @@ class TestThePermissionBoundary:
         assert resp.status_code == 200
         assert b'Notifications' in resp.data
 
-    @pytest.mark.parametrize('path', [PAGE, LOG, EDITOR])
+    @pytest.mark.parametrize('path', [PAGE, LOG, EDITOR, ADDRESSING])
     def test_system_admin_gets_in(self, auth_client, path):
         assert auth_client.get(path).status_code == 200
 
@@ -431,3 +437,90 @@ class TestPreviewForAProject:
     def test_sample_mode_names_the_role_and_subject(self, auth_client):
         html = auth_client.post(PREVIEW, data={'body': 'x', 'role': 'user'}).data.decode()
         assert 'Sample data, as user' in html and 'Subject:' in html
+
+
+class TestTheAddressingTab:
+    """Operator cc/bcc rows: deployment defaults shown read-only, additions
+    validated inline. The add route commits, so the one happy-path test
+    removes its row through the delete route and again in `finally`."""
+
+    def test_the_page_carries_the_tab_and_the_deep_link_selects_it(self, auth_client):
+        html = auth_client.get(f'{PAGE}?tab=addressing').data.decode()
+        assert 'id="addressing-tab"' in html
+        assert 'id="addressing-pane"' in html
+        assert 'hx-get="/admin/htmx/notifications/addressing"' in html
+        assert 'class="nav-link active" id="addressing-tab"' in html
+
+    def test_every_family_gets_a_card_with_its_scopes(self, auth_client):
+        html = auth_client.get(ADDRESSING).data.decode()
+        for key in ('expiration', 'xras', 'task'):
+            assert f'id="addressing-{key}"' in html
+        assert 'value="expiration-WNA"' in html
+        assert 'value="xras_supplement"' in html
+        assert 'value="xras_update-WNA"' not in html
+
+    def test_a_deployment_default_is_shown_and_not_removable(self, auth_client, app,
+                                                             monkeypatch):
+        monkeypatch.setitem(app.config, 'NOTIFY_XRAS_CC', 'alloc@example.edu')
+        monkeypatch.setitem(app.config, 'NOTIFY_XRAS_REPLY_TO', 'reply@example.edu')
+        html = auth_client.get(ADDRESSING).data.decode()
+        assert 'alloc@example.edu' in html and 'deployment default' in html
+        assert 'Reply-To <code>reply@example.edu</code>' in html
+        assert 'hx-delete' not in html
+
+    def test_an_unknown_family_is_404(self, auth_client):
+        resp = auth_client.post(f'{ADDRESSING}/nope',
+                                data={'address': 'a@x.edu', 'field': 'cc', 'scope': 'xras'})
+        assert resp.status_code == 404
+
+    def test_a_bad_address_is_refused_inline(self, auth_client):
+        resp = auth_client.post(ADDRESSING_ADD, data={
+            'address': 'not-an-address', 'field': 'cc', 'scope': 'xras'})
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert 'is-invalid' in html and '<form' in html
+
+    def test_a_scope_of_another_family_is_refused(self, auth_client):
+        resp = auth_client.post(ADDRESSING_ADD, data={
+            'address': 'ops@example.edu', 'field': 'cc', 'scope': 'expiration-WNA'})
+        assert resp.status_code == 200
+        assert b'is not a' in resp.data
+
+    def test_add_duplicate_and_remove(self, auth_client, app):
+        import uuid
+        from sam import NotificationAddressing
+        from webapp.extensions import db
+        address = f'page-{uuid.uuid4().hex[:8]}@example.edu'
+        data = {'address': address.upper(), 'field': 'bcc', 'scope': 'xras_supplement'}
+
+        def _row():
+            with app.app_context():
+                return NotificationAddressing.get_by_entry(
+                    db.session, scope='xras_supplement', field='bcc', address=address)
+        try:
+            resp = auth_client.post(ADDRESSING_ADD, data=data)
+            assert resp.status_code == 200
+            assert 'reloadAddressingCard' in resp.headers.get('HX-Trigger', '')
+            row = _row()
+            assert row is not None and row.address == address
+            assert row.created_by == 'benkirk'
+
+            again = auth_client.post(ADDRESSING_ADD, data=data)
+            assert again.status_code == 200 and b'already a bcc' in again.data
+
+            card = auth_client.get(ADDRESSING).data.decode()
+            assert address in card and 'XRAS allocation supplement' in card
+
+            gone = auth_client.delete(f'{ADDRESSING}/{row.notification_addressing_id}')
+            assert gone.status_code == 200
+            assert gone.headers.get('HX-Trigger') == 'reloadAddressingCard'
+            assert _row() is None
+            assert auth_client.delete(
+                f'{ADDRESSING}/{row.notification_addressing_id}').status_code == 404
+        finally:
+            with app.app_context():
+                row = NotificationAddressing.get_by_entry(
+                    db.session, scope='xras_supplement', field='bcc', address=address)
+                if row is not None:
+                    db.session.delete(row)
+                    db.session.commit()
