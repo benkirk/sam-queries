@@ -1,0 +1,24 @@
+Dear Jane Lead,
+
+Additional allocation has been added to your project SCSG0001 -
+"Sample Project Title" on NSF NCAR computing resources.
+
+Added by this request:
+
+  - Derecho: 150,000 hours
+
+
+Your project now holds:
+
+  - Casper: 50,000 hours through 2027-09-30
+  - Derecho: 1.15M hours through 2027-09-30
+
+The additional time is available now; no change to how you submit work.
+
+  - Documentation: https://ncar-hpc-docs.readthedocs.io/
+  - Manage your project and its members at https://sam.hpc.ucar.edu/
+
+--
+This is an automated notification from the NSF NCAR Systems Accounting Manager.
+If you believe you received this message in error, please contact
+help@ucar.edu.
