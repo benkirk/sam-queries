@@ -8,7 +8,9 @@ snapshots the context at import time, so a `{% with %}` in the template would
 not reach those macros.
 """
 
+import re
 from datetime import datetime
+from pathlib import Path
 
 # Section index for the in-page nav (kept in step with index.html by hand).
 SECTIONS = [
@@ -24,8 +26,48 @@ SECTIONS = [
     {'id': 'filters', 'title': 'Filter panels (layout-aware)'},
     {'id': 'people', 'title': 'People & contracts'},
     {'id': 'openers', 'title': 'Inert modal openers'},
+    {'id': 'icons', 'title': 'Icons'},
     {'id': 'skipped', 'title': 'Needs live context (note-and-skip)'},
 ]
+
+_WEBAPP = Path(__file__).resolve().parents[2]
+
+# FA class tokens that are styles/utilities, not glyph names.
+_FA_NONGLYPH = {
+    'fa', 'fas', 'far', 'fab', 'fa-solid', 'fa-regular', 'fa-brands',
+    'fa-fw', 'fa-ul', 'fa-li', 'fa-border', 'fa-pull-left', 'fa-pull-right',
+    'fa-spin', 'fa-pulse', 'fa-spin-pulse', 'fa-spin-reverse', 'fa-beat',
+    'fa-fade', 'fa-beat-fade', 'fa-bounce', 'fa-flip', 'fa-shake', 'fa-inverse',
+    'fa-stack', 'fa-stack-1x', 'fa-stack-2x', 'fa-width-auto',
+    'fa-2xs', 'fa-xs', 'fa-sm', 'fa-lg', 'fa-xl', 'fa-2xl',
+    'fa-rotate-90', 'fa-rotate-180', 'fa-rotate-270',
+    'fa-flip-horizontal', 'fa-flip-vertical', 'fa-flip-both',
+    # Truncation artifact: `fa-caret-{{ 'up'/'down' }}` (sort_link.html) is
+    # captured as a bare `fa-caret`, which is not a real glyph.
+    'fa-caret',
+} | {f'fa-{n}x' for n in range(1, 11)}
+
+_FA_TOKEN = re.compile(r'fa-[a-z0-9]+(?:-[a-z0-9]+)*')
+
+
+def used_fa_icons():
+    """Sorted, deduped fa-* glyph names referenced across templates/js/py.
+
+    Dev-only: scanned live (the gallery does not cache) so the icon-inventory
+    panel always mirrors the tree — a blank cell on a Font Awesome bump is a
+    renamed/removed glyph.
+    """
+    seen = set()
+    for pattern in ('templates/**/*.html', 'static/js/**/*.js', '**/*.py'):
+        for f in _WEBAPP.glob(pattern):
+            if 'vendor/' in f.as_posix() or f.name.endswith('.min.js'):
+                continue
+            try:
+                text = f.read_text(encoding='utf-8')
+            except OSError:
+                continue
+            seen.update(t for t in _FA_TOKEN.findall(text) if t not in _FA_NONGLYPH)
+    return sorted(seen)
 
 # Full status vocabulary + one unknown to show the bg-secondary fallback.
 STATUS_STATES = [
@@ -95,6 +137,7 @@ def gallery_context():
     """Everything the gallery template renders against."""
     return {
         'sections': SECTIONS,
+        'used_icons': used_fa_icons(),
 
         # with-context snapshot vars (form_fields.html, sort_link.html)
         'form': {},
