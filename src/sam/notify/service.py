@@ -68,7 +68,10 @@ class Notifier:
                  renderer: Optional[TemplateRenderer] = None,
                  ledger=None) -> None:
         self.config = config or NotifyConfig.from_environment()
-        self.renderer = renderer or TemplateRenderer()
+        # The ledger's factory doubles as the override reader, so every
+        # caller with a ledger renders operator edits with no extra wiring.
+        self.renderer = renderer or TemplateRenderer(
+            session_factory=getattr(ledger, 'session_factory', None))
         self._transport = transport
         self.ledger = ledger
 

@@ -676,3 +676,21 @@ class TestWithALedger:
                             transport=NullTransport(),
                             ledger=NotificationLedger(broken, config=NotifyConfig()))
         assert notifier.send(_message()).status == 'suppressed'
+
+
+class TestTheRendererSeesTheLedgersDatabase:
+    """`Notifier(ledger=L)` reads overrides through L's session factory, so
+    every caller that records deliveries renders operator edits unasked."""
+
+    def test_the_factory_is_taken_from_the_ledger(self):
+        from types import SimpleNamespace
+        from sam.notify import Notifier
+        factory = object()
+        notifier = Notifier(ledger=SimpleNamespace(session_factory=factory),
+                            transport=NullTransport())
+        assert notifier.renderer.loader.session_factory is factory
+
+    def test_no_ledger_means_no_factory(self):
+        from sam.notify import Notifier
+        notifier = Notifier(ledger=None, transport=NullTransport())
+        assert notifier.renderer.loader.session_factory is None

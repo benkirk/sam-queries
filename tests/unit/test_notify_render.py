@@ -200,3 +200,100 @@ class TestRenderSource:
         source = ('{% for r in resources %}{{ r.name }}{% endfor %}'
                   '{{ project_code }}{{ typo }}{{ local_tz_label() }}')
         assert renderer.undeclared_names(source, {'resources', 'project_code'}) == {'typo'}
+
+
+class _FakeSession:
+    """Stands in for a SQLAlchemy session: returns canned override rows."""
+
+    def __init__(self, rows, raise_with=None):
+        self._rows = rows
+        self._raise = raise_with
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, _stmt):
+        if self._raise is not None:
+            raise self._raise
+        rows = self._rows
+
+        class _Result:
+            @staticmethod
+            def scalars():
+                return iter(rows)
+        return _Result()
+
+
+class _Row:
+    def __init__(self, name, body):
+        self.name, self.body = name, body
+
+
+class _CountingFactory:
+    def __init__(self, rows=(), raise_with=None):
+        self.rows, self.raise_with, self.calls = list(rows), raise_with, 0
+
+    def __call__(self):
+        self.calls += 1
+        return _FakeSession(self.rows, self.raise_with)
+
+
+class TestOverrides:
+    """The DB-first loader: one query per renderer, files as the fallback."""
+
+    def test_no_factory_means_no_query_and_the_file_renders(self, template_dir):
+        renderer = TemplateRenderer(template_dir)
+        assert renderer.override_names == []
+        assert 'SCSG0001' in renderer.render(_message()).text
+
+    def test_a_row_wins_over_the_file(self, template_dir):
+        factory = _CountingFactory([_Row('expiration-UNIV.txt', 'DB {{ project_code }}')])
+        renderer = TemplateRenderer(template_dir, session_factory=factory)
+        rendered = renderer.render(_message())
+        assert rendered.text == 'DB SCSG0001'
+        assert rendered.template_text == 'expiration-UNIV.txt'
+        assert renderer.override_names == ['expiration-UNIV.txt']
+        assert renderer.source('expiration-UNIV.txt') == 'DB {{ project_code }}'
+
+    def test_many_renders_cost_exactly_one_query(self, template_dir):
+        factory = _CountingFactory([_Row('expiration-UNIV.txt', 'DB')])
+        renderer = TemplateRenderer(template_dir, session_factory=factory)
+        for _ in range(5):
+            renderer.render(_message())
+            renderer.render(_message(facility='WNA'))
+        assert factory.calls == 1
+
+    def test_a_database_failure_falls_back_to_the_files_with_one_warning(
+            self, template_dir, caplog):
+        from sqlalchemy.exc import ProgrammingError
+        factory = _CountingFactory(raise_with=ProgrammingError(
+            'SELECT ...', {}, Exception("Table 'sam.notification_template_override' doesn't exist")))
+        renderer = TemplateRenderer(template_dir, session_factory=factory)
+        with caplog.at_level('WARNING', logger='sam.notify.render'):
+            for _ in range(3):
+                assert 'SCSG0001' in renderer.render(_message()).text
+        assert factory.calls == 1
+        assert sum('overrides unavailable' in r.message for r in caplog.records) == 1
+
+    def test_a_non_database_error_is_not_swallowed(self, template_dir):
+        factory = _CountingFactory(raise_with=RuntimeError('bug'))
+        renderer = TemplateRenderer(template_dir, session_factory=factory)
+        with pytest.raises(RuntimeError):
+            renderer.render(_message())
+
+    def test_an_overridden_child_still_extends_the_shipped_base(self):
+        body = ('{% extends "_email_base.html" %}'
+                '{% block content %}CUSTOM {{ project_code }}{% endblock %}')
+        factory = _CountingFactory([_Row('expiration-UNIV.html', body)])
+        renderer = TemplateRenderer(session_factory=factory)
+        html = renderer.render(_message()).html
+        assert 'CUSTOM SCSG0001' in html and '<!DOCTYPE html>' in html
+
+    def test_a_real_session_with_no_rows_renders_the_files(self, session):
+        from sqlalchemy.orm import Session
+        engine = session.get_bind()
+        renderer = TemplateRenderer(session_factory=lambda: Session(engine))
+        assert 'SCSG0001' in renderer.render(_message()).text
