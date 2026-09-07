@@ -32,7 +32,7 @@
 
   <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
     <h3 class="mb-0">
-      <i class="fas fa-list-check me-2"></i>
+      <i class="fa-solid fa-list-check me-2"></i>
       {% if mode == 'machine' %}
         {{ machine | capitalize }}
         <small class="text-muted fw-normal">— all jobs</small>
@@ -46,12 +46,12 @@
     </h3>
     {% if mode == 'machine' %}
       <span class="badge bg-warning-subtle text-warning-emphasis border">
-        <i class="fas fa-shield-halved me-1"></i> Machine-wide (operator view)
+        <i class="fa-solid fa-shield-halved me-1"></i> Machine-wide (operator view)
       </span>
     {% elif mode == 'project' and scope %}
       <span class="badge bg-secondary-subtle text-secondary-emphasis border"
             title="Re-rooted to a subtree of {{ project.projcode }}">
-        <i class="fas fa-diagram-project me-1"></i> scope: {{ scope }}
+        <i class="fa-solid fa-diagram-project me-1"></i> scope: {{ scope }}
       </span>
     {% endif %}
   </div>

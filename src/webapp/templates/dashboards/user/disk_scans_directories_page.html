@@ -21,7 +21,7 @@
 
   <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
     <h3 class="mb-0">
-      <i class="fas fa-folder-tree me-2"></i>
+      <i class="fa-solid fa-folder-tree me-2"></i>
       {% if mode == 'resource' %}
         {{ resource_name }}
         <small class="text-muted fw-normal">— all directories</small>
@@ -35,7 +35,7 @@
     </h3>
     {% if mode == 'resource' %}
       <span class="badge bg-warning-subtle text-warning-emphasis border">
-        <i class="fas fa-shield-halved me-1"></i> Resource-wide (operator view)
+        <i class="fa-solid fa-shield-halved me-1"></i> Resource-wide (operator view)
       </span>
     {% endif %}
   </div>
@@ -50,7 +50,7 @@
     <div class="alert alert-light border py-2 px-3 mb-3 small">
       <div class="d-flex align-items-center flex-wrap gap-2">
         <span class="text-muted">
-          <i class="fas fa-folder-open me-1"></i>
+          <i class="fa-solid fa-folder-open me-1"></i>
           <strong>Scope</strong> —
           {{ scope_dir_count }} director{{ 'y' if scope_dir_count == 1 else 'ies' }}
           {% if scope_groups | length > 1 %}across {{ scope_groups | length }} projects{% endif %}
@@ -59,7 +59,7 @@
           <button class="btn btn-sm btn-link p-0 text-decoration-none" type="button"
                   data-bs-toggle="collapse" data-bs-target="#scope-dirs-{{ target_id }}"
                   aria-expanded="false" aria-controls="scope-dirs-{{ target_id }}">
-            <i class="fas fa-chevron-right small collapse-icon me-1"></i>show directories
+            <i class="fa-solid fa-chevron-right small collapse-icon me-1"></i>show directories
           </button>
         {% endif %}
       </div>
@@ -105,7 +105,7 @@
            hx-trigger="load"
            hx-swap="innerHTML">
         <p class="text-muted small mb-0 p-2">
-          <i class="fas fa-spinner fa-spin me-1"></i> Loading directories…
+          <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading directories…
         </p>
       </div>
     </div>

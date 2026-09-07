@@ -20,7 +20,7 @@
 </h5>
 
 <div class="alert {{ 'alert-warning' if failed else 'alert-success' }} d-flex align-items-start gap-2">
-    <i class="fas {{ 'fa-triangle-exclamation' if failed else 'fa-circle-check' }} mt-1"></i>
+    <i class="fa-solid {{ 'fa-triangle-exclamation' if failed else 'fa-circle-check' }} mt-1"></i>
     <div>
         {% if failed %}
         <strong>Partially sent.</strong>
@@ -37,7 +37,7 @@
 <ul class="list-unstyled mb-3">
     {% for result in summary.sent %}
     <li class="mb-1">
-        <i class="fas fa-check text-success"></i>
+        <i class="fa-solid fa-check text-success"></i>
         <code class="user-select-all">{{ result.recipient }}</code>
     </li>
     {% endfor %}

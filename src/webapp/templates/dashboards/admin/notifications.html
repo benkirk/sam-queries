@@ -26,7 +26,7 @@
 <div class="row mb-3">
     <div class="col-12 d-flex justify-content-between align-items-end">
         <div>
-            <h2 class="mb-1"><i class="fas fa-envelope"></i> Notifications</h2>
+            <h2 class="mb-1"><i class="fa-solid fa-envelope"></i> Notifications</h2>
             <p class="text-muted mb-0">
                 Every delivery attempt, for every channel. Transport:
                 <code>{{ config.transport or '—' }}</code> ·
@@ -40,7 +40,7 @@
 
 {% if config.redirect_to %}
 <div class="alert alert-warning">
-    <i class="fas fa-shuffle me-1"></i>
+    <i class="fa-solid fa-shuffle me-1"></i>
     <strong>All mail on this deployment is redirected to
     <code>{{ config.redirect_to }}</code>.</strong>
     Rows below marked <em>redirected</em> reached that address, not the
@@ -50,7 +50,7 @@
 
 {% if summary.queued_stuck %}
 <div class="alert alert-warning">
-    <i class="fas fa-triangle-exclamation me-1"></i>
+    <i class="fa-solid fa-triangle-exclamation me-1"></i>
     <strong>{{ summary.queued_stuck | fmt_number }}</strong> attempt(s) are
     stuck in <code>queued</code> — a process died between writing the attempt
     and writing its outcome. Those rows have aged past
@@ -107,7 +107,7 @@
                     </div>
                     <div class="col-6 col-md-4 d-flex gap-2">
                         <button type="submit" class="btn btn-sm btn-primary">
-                            <i class="fas fa-filter"></i> Apply
+                            <i class="fa-solid fa-filter"></i> Apply
                         </button>
                     </div>
 
@@ -132,7 +132,7 @@
      hx-trigger="load"
      hx-swap="innerHTML">
     <div class="text-muted small p-3">
-        <i class="fas fa-circle-notch fa-spin"></i> Loading delivery log…
+        <i class="fa-solid fa-circle-notch fa-spin"></i> Loading delivery log…
     </div>
 </div>
 

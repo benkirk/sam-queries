@@ -11,10 +11,10 @@
 {% if casper_status %}
 {{ stale.stale_banner('Casper', staleness) }}
 <div class="card mb-3">
-    {{ header.system_header('<i class="fas fa-hdd"></i> Casper System Status', casper_status.timestamp) }}
+    {{ header.system_header('<i class="fa-solid fa-hard-drive"></i> Casper System Status', casper_status.timestamp) }}
     <div class="card-body">
         <!-- Login Nodes -->
-        <h6 class="mb-3"><i class="fas fa-desktop"></i> Login Nodes</h6>
+        <h6 class="mb-3"><i class="fa-solid fa-desktop"></i> Login Nodes</h6>
         {% if casper_login_nodes %}
         {{ login.login_nodes_table(casper_login_nodes, has_node_type=false) }}
         {% else %}
@@ -35,14 +35,14 @@
         {% endif %}
 
         <!-- Compute Nodes by Type -->
-        <h6 class="mb-3"><i class="fas fa-server"></i> Compute Nodes</h6>
+        <h6 class="mb-3"><i class="fa-solid fa-server"></i> Compute Nodes</h6>
         <div class="row mb-4">
             <div class="col-md-4">
                 <div class="metric-card">
                     <h6>
                         <a href="{{ url_for('status_dashboard.partition_history', system='casper', partition='cpu') }}"
                            class="text-body-emphasis text-decoration-none">
-                            <i class="fas fa-microchip"></i> CPU Nodes <i class="fas fa-chart-line ms-1"></i>
+                            <i class="fa-solid fa-microchip"></i> CPU Nodes <i class="fa-solid fa-chart-line ms-1"></i>
                         </a>
                     </h6>
                     <div class="value">{{ casper_status.cpu_nodes_available }} / {{ casper_status.cpu_nodes_total }} Available</div>
@@ -59,7 +59,7 @@
                     <h6>
                         <a href="{{ url_for('status_dashboard.partition_history', system='casper', partition='gpu') }}"
                            class="text-body-emphasis text-decoration-none">
-                            <i class="fas fa-server"></i> GPU Nodes <i class="fas fa-chart-line ms-1"></i>
+                            <i class="fa-solid fa-server"></i> GPU Nodes <i class="fa-solid fa-chart-line ms-1"></i>
                         </a>
                     </h6>
                     <div class="value">{{ casper_status.gpu_nodes_available }} / {{ casper_status.gpu_nodes_total }} Available</div>
@@ -76,7 +76,7 @@
                     <h6>
                         <a href="{{ url_for('status_dashboard.partition_history', system='casper', partition='viz') }}"
                            class="text-body-emphasis text-decoration-none">
-                            <i class="fas fa-desktop"></i> VIZ Nodes <i class="fas fa-chart-line ms-1"></i>
+                            <i class="fa-solid fa-desktop"></i> VIZ Nodes <i class="fa-solid fa-chart-line ms-1"></i>
                         </a>
                     </h6>
                     <div class="value">{{ casper_status.viz_nodes_available }} / {{ casper_status.viz_nodes_total }} Available</div>
@@ -91,16 +91,16 @@
         </div>
 
         <!-- Utilization -->
-        <h6 class="mb-3"><i class="fas fa-chart-bar"></i> Resource Utilization</h6>
+        <h6 class="mb-3"><i class="fa-solid fa-chart-bar"></i> Resource Utilization</h6>
         {{ util.utilization_metrics(casper_status, show_gpus=true, show_viz=true) }}
 
         <!-- Jobs -->
-        <h6 class="mb-3"><i class="fas fa-tasks"></i> Job Statistics</h6>
+        <h6 class="mb-3"><i class="fa-solid fa-list-check"></i> Job Statistics</h6>
         {{ jobs.job_statistics(casper_status) }}
 
         <!-- Queues -->
         {% if casper_queues %}
-        <h6 class="mb-3"><i class="fas fa-list"></i> Queue Status</h6>
+        <h6 class="mb-3"><i class="fa-solid fa-list"></i> Queue Status</h6>
         {{ queues.queue_table(casper_queues, show_gpus=true, system='casper', hours=selected_hours) }}
         {% endif %}
 
@@ -113,13 +113,13 @@
         <!-- Reservations -->
         {% set casper_reservations = reservations|selectattr('system_name', 'equalto', 'casper')|list %}
         {% if casper_reservations %}
-        <h6 class="mb-3 mt-4"><i class="fas fa-calendar-alt"></i> Maintenance &amp; Reservations</h6>
+        <h6 class="mb-3 mt-4"><i class="fa-solid fa-calendar-days"></i> Maintenance &amp; Reservations</h6>
         {% for res in casper_reservations %}
         <div class="alert alert-warning mb-3" role="alert">
             <div class="d-flex justify-content-between align-items-start">
                 <div>
                     <h6 class="alert-heading mb-2">
-                        <i class="fas fa-wrench"></i> {{ res.reservation_name }}
+                        <i class="fa-solid fa-wrench"></i> {{ res.reservation_name }}
                     </h6>
                     {% if res.description %}
                     <p class="mb-2">{{ res.description }}</p>
@@ -142,13 +142,13 @@
 
         <!-- Node Types -->
         {% if casper_node_types %}
-        <h6 class="mb-3"><i class="fas fa-server"></i> Node Type Status</h6>
+        <h6 class="mb-3"><i class="fa-solid fa-server"></i> Node Type Status</h6>
         {{ nodetypes.nodetype_table(casper_node_types, 'casper', hours=selected_hours) }}
         {% endif %}
 
         <!-- Filesystems -->
         {% if casper_filesystems %}
-        <h6 class="mb-3 mt-4"><i class="fas fa-database"></i> Filesystem Status</h6>
+        <h6 class="mb-3 mt-4"><i class="fa-solid fa-database"></i> Filesystem Status</h6>
         {{ fs.filesystem_table(casper_filesystems, 'casper') }}
         {% endif %}
     </div>

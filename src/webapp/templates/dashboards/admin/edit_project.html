@@ -24,7 +24,7 @@
   {{ breadcrumb(_crumbs, classes='mb-0') }}
   {% if not can_access_admin %}
   <a href="{{ url_for('user_dashboard.index') }}" class="btn btn-outline-secondary ms-auto">
-    <i class="fas fa-arrow-left"></i> Back to Dashboard
+    <i class="fa-solid fa-arrow-left"></i> Back to Dashboard
   </a>
   {% endif %}
 </div>
@@ -32,11 +32,11 @@
 <!-- Page header -->
 <div class="d-flex align-items-start gap-3 mb-4">
   <h3 class="mb-0">
-    <i class="fas fa-folder-open text-warning me-2"></i>
+    <i class="fa-solid fa-folder-open text-warning me-2"></i>
     <code>{{ project.projcode }}</code>
     <span class="ms-2 fw-normal text-muted">{{ project.title }}</span>
     {% if not project.active %}
-    <span class="badge bg-secondary fs-6 ms-2 align-middle"><i class="fas fa-ban"></i> Inactive</span>
+    <span class="badge bg-secondary fs-6 ms-2 align-middle"><i class="fa-solid fa-ban"></i> Inactive</span>
     {% endif %}
   </h3>
 </div>
@@ -47,7 +47,7 @@
     <button class="nav-link active" id="details-tab"
             data-bs-toggle="tab" data-bs-target="#tab-details"
             type="button" role="tab">
-      <i class="fas fa-edit me-1"></i> Details
+      <i class="fa-solid fa-pen-to-square me-1"></i> Details
     </button>
   </li>
   <li class="nav-item" role="presentation">
@@ -57,7 +57,7 @@
             hx-get="{{ url_for('admin_dashboard.htmx_project_allocation_tree', projcode=project.projcode) }}"
             hx-target="#allocationTreeContainer"
             hx-trigger="shown.bs.tab once">
-      <i class="fas fa-server me-1"></i> Allocations
+      <i class="fa-solid fa-server me-1"></i> Allocations
     </button>
   </li>
   <li class="nav-item" role="presentation">
@@ -67,7 +67,7 @@
             hx-get="{{ url_for('project_members.members_fragment', projcode=project.projcode) }}"
             hx-target="#htmx-members-{{ project.projcode }}"
             hx-trigger="shown.bs.tab once">
-      <i class="fas fa-users me-1"></i> Members
+      <i class="fa-solid fa-users me-1"></i> Members
     </button>
   </li>
 </ul>
@@ -87,7 +87,7 @@
          hx-trigger="load"
          hx-swap="innerHTML">
       <div class="text-center text-muted py-3">
-        <i class="fas fa-spinner fa-spin"></i> Loading linked elements…
+        <i class="fa-solid fa-spinner fa-spin"></i> Loading linked elements…
       </div>
     </div>
   </div>
@@ -121,7 +121,7 @@
                 hx-trigger="click"
                 data-bs-toggle="modal"
                 data-bs-target="#extendAllocationsModal">
-          <i class="fas fa-calendar-plus"></i> Extend
+          <i class="fa-solid fa-calendar-plus"></i> Extend
         </button>
         <button class="btn  btn-primary"
                 hx-get="{{ url_for('admin_dashboard.htmx_renew_allocations_form', projcode=project.projcode) }}"
@@ -130,7 +130,7 @@
                 hx-trigger="click"
                 data-bs-toggle="modal"
                 data-bs-target="#renewAllocationsModal">
-          <i class="fas fa-sync-alt"></i> Renew
+          <i class="fa-solid fa-rotate"></i> Renew
         </button>
         <button class="btn  btn-primary"
                 hx-get="{{ url_for('admin_dashboard.htmx_add_allocation_form', projcode=project.projcode) }}"
@@ -138,7 +138,7 @@
                 hx-trigger="click"
                 data-bs-toggle="modal"
                 data-bs-target="#addAllocationModal">
-          <i class="fas fa-plus-circle"></i> Add Allocation
+          <i class="fa-solid fa-circle-plus"></i> Add Allocation
         </button>
       </div>
     </div>
@@ -146,7 +146,7 @@
     <div id="allocationTreeContainer"
          data-tree-url="{{ url_for('admin_dashboard.htmx_project_allocation_tree', projcode=project.projcode) }}">
       <div class="text-center text-muted py-4">
-        <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
+        <i class="fa-solid fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
         <p class="mt-2">Loading allocations…</p>
       </div>
     </div>
@@ -159,7 +159,7 @@
        target that exact selector, shared with user/partials/project_card.html. #}
     <div id="htmx-members-{{ project.projcode }}">
       <div class="text-center text-muted py-4">
-        <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
+        <i class="fa-solid fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
         <p class="mt-2">Loading members…</p>
       </div>
     </div>
@@ -179,10 +179,10 @@
        data-bs-toggle="collapse" data-bs-target="#accessGridCollapse"
        aria-expanded="false" aria-controls="accessGridCollapse">
     <span class="fw-semibold">
-      <i class="fas fa-user-shield text-primary me-1"></i> User / Resource Access
+      <i class="fa-solid fa-user-shield text-primary me-1"></i> User / Resource Access
       <span class="text-muted small fw-normal ms-1">— operator remediation for partial-access errors</span>
     </span>
-    <i class="fas fa-chevron-down text-muted access-grid-chevron"></i>
+    <i class="fa-solid fa-chevron-down text-muted access-grid-chevron"></i>
   </div>
   <div class="collapse" id="accessGridCollapse">
     <div id="accessGridContainer"
@@ -190,7 +190,7 @@
          hx-trigger="shown.bs.collapse from:#accessGridCollapse once"
          hx-swap="innerHTML">
       <div class="text-center text-muted py-4">
-        <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
+        <i class="fa-solid fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
         <p class="mt-2">Loading user/resource access…</p>
       </div>
     </div>
@@ -205,12 +205,12 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header bg-success text-white">
-        <h5 class="modal-title"><i class="fas fa-plus-circle"></i> Add Allocation</h5>
+        <h5 class="modal-title"><i class="fa-solid fa-circle-plus"></i> Add Allocation</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <div id="addAllocationFormContainer">
         <div class="modal-body text-center text-muted py-3">
-          <i class="fas fa-spinner fa-spin fa-2x"></i>
+          <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
           <p class="mt-2">Loading…</p>
         </div>
       </div>
@@ -223,12 +223,12 @@
   <div class="modal-dialog modal-lg modal-fullscreen-sm-down">
     <div class="modal-content">
       <div class="modal-header bg-warning text-dark">
-        <h5 class="modal-title"><i class="fas fa-calendar-plus"></i> Extend Allocations</h5>
+        <h5 class="modal-title"><i class="fa-solid fa-calendar-plus"></i> Extend Allocations</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div id="extendAllocationsFormContainer">
         <div class="modal-body text-center text-muted py-3">
-          <i class="fas fa-spinner fa-spin fa-2x"></i>
+          <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
           <p class="mt-2">Loading…</p>
         </div>
       </div>
@@ -241,12 +241,12 @@
   <div class="modal-dialog modal-lg modal-fullscreen-sm-down">
     <div class="modal-content">
       <div class="modal-header bg-primary text-white">
-        <h5 class="modal-title"><i class="fas fa-sync-alt"></i> Renew Allocations</h5>
+        <h5 class="modal-title"><i class="fa-solid fa-rotate"></i> Renew Allocations</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <div id="renewAllocationsFormContainer">
         <div class="modal-body text-center text-muted py-3">
-          <i class="fas fa-spinner fa-spin fa-2x"></i>
+          <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
           <p class="mt-2">Loading…</p>
         </div>
       </div>
@@ -259,12 +259,12 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header bg-info text-white">
-        <h5 class="modal-title"><i class="fas fa-exchange-alt"></i> Exchange Allocation</h5>
+        <h5 class="modal-title"><i class="fa-solid fa-right-left"></i> Exchange Allocation</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <div id="exchangeAllocationFormContainer">
         <div class="modal-body text-center text-muted py-3">
-          <i class="fas fa-spinner fa-spin fa-2x"></i>
+          <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
           <p class="mt-2">Loading…</p>
         </div>
       </div>
@@ -277,12 +277,12 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header bg-success text-white">
-        <h5 class="modal-title"><i class="fas fa-level-down-alt"></i> Allocate to Sub-project</h5>
+        <h5 class="modal-title"><i class="fa-solid fa-turn-down"></i> Allocate to Sub-project</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <div id="allocateDownFormContainer">
         <div class="modal-body text-center text-muted py-3">
-          <i class="fas fa-spinner fa-spin fa-2x"></i>
+          <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
           <p class="mt-2">Loading…</p>
         </div>
       </div>

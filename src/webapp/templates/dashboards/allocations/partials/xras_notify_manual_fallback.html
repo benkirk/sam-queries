@@ -28,7 +28,7 @@
 {% set failed = summary.failed | length %}
 
 <div class="alert alert-warning d-flex align-items-start gap-2">
-    <i class="fas fa-triangle-exclamation mt-1"></i>
+    <i class="fa-solid fa-triangle-exclamation mt-1"></i>
     <div>
         {% if suppressed and not failed %}
         <strong>Everyone here has already been notified about this request.</strong>
@@ -59,7 +59,7 @@
 </ul>
 {% else %}
 <p class="text-danger-emphasis">
-    <i class="fas fa-circle-exclamation"></i>
+    <i class="fa-solid fa-circle-exclamation"></i>
     No lead or admin email address is on file for this project — you will need to
     find a recipient another way.
 </p>

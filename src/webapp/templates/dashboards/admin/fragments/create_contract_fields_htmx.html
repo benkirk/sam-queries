@@ -33,7 +33,7 @@
 {% macro person_hint(picker_prefix, person) %}
 {% if person %}
 <div class="form-text mt-1 mb-3">
-    <i class="fas fa-user-slash me-1"></i>Award source names
+    <i class="fa-solid fa-user-slash me-1"></i>Award source names
     <strong>{{ person.name or person.email }}</strong>
     {%- if person.name and person.email %}
     <span class="text-muted">&lt;{{ person.email }}&gt;</span>
@@ -50,18 +50,18 @@
 
 {% if lookup_error %}
 <div class="alert alert-warning py-2 small" role="alert">
-    <i class="fas fa-circle-info me-1"></i>{{ lookup_error }}
+    <i class="fa-solid fa-circle-info me-1"></i>{{ lookup_error }}
 </div>
 {% endif %}
 
 {% if provenance %}
 <div class="alert alert-info py-2 small" role="alert">
-    <i class="fas fa-wand-magic-sparkles me-1"></i>
+    <i class="fa-solid fa-wand-magic-sparkles me-1"></i>
     Prefilled from <strong>{{ provenance }}</strong>. Review before saving —
     these values are a starting point, not the record.
     {% if unavailable_labels %}
     <div class="mt-1">
-        <i class="fas fa-circle-exclamation me-1"></i>{{ provenance }} cannot supply
+        <i class="fa-solid fa-circle-exclamation me-1"></i>{{ provenance }} cannot supply
         {{ unavailable_labels | join(' or ') }} —
         enter {{ 'these' if unavailable_labels | length > 1 else 'this' }} manually.
     </div>

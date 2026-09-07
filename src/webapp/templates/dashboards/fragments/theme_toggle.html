@@ -30,7 +30,7 @@
         aria-label="{{ label }}"
         title="{{ label }}"
         aria-pressed="{{ 'true' if theme == 'dark' else 'false' }}">
-    <i class="fas {{ 'fa-moon' if next == 'dark' else 'fa-sun' }}" data-theme-icon aria-hidden="true"></i>
+    <i class="fa-solid {{ 'fa-moon' if next == 'dark' else 'fa-sun' }}" data-theme-icon aria-hidden="true"></i>
     {%- if labelled %}
     <span data-theme-label>{{ 'Dark mode' if next == 'dark' else 'Light mode' }}</span>
     {%- endif %}

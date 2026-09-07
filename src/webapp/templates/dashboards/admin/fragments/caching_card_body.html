@@ -19,7 +19,7 @@
 
 {% if cleared is defined and cleared %}
     <div class="alert alert-success alert-dismissible fade show py-2 small mb-3" role="alert">
-        <i class="fas fa-check-circle me-1"></i>
+        <i class="fa-solid fa-circle-check me-1"></i>
         Cleared:
         {% for category, count in cleared.items() %}
             <strong>{{ category }}</strong> {{ count }}{% if not loop.last %} · {% endif %}

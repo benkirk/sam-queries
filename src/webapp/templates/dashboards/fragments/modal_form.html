@@ -52,7 +52,7 @@
         {% if errors %}
         <div class="alert alert-danger mt-2 mb-0">
             {% for error in errors %}
-            <p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
+            <p class="mb-0"><i class="fa-solid fa-circle-exclamation"></i> {{ error }}</p>
             {% endfor %}
         </div>
         {% endif %}
@@ -63,14 +63,14 @@
                 data-bs-dismiss="modal">Cancel</button>
         {% if disabled %}
         <button type="button" class="btn btn-secondary" disabled>
-            <i class="fas fa-ban"></i> Disabled
+            <i class="fa-solid fa-ban"></i> Disabled
         </button>
         {% else %}
         <button type="submit" class="btn {{ _btn_class }}"
                 {% if submit_disabled %}disabled{% endif %}
                 {% if submit_disabled and submit_disabled_title %}title="{{ submit_disabled_title }}"{% endif %}>
 
-            <i class="fas fa-{{ submit_icon }}"></i> {{ submit_text }}
+            <i class="fa-solid fa-{{ submit_icon }}"></i> {{ submit_text }}
         </button>
         {% endif %}
     </div>

@@ -28,7 +28,7 @@
             {% if can_act_on_project(Permission.EDIT_PROJECTS, project) %}
             <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=project.projcode) }}"
                class="btn btn-primary flex-shrink-0">
-                <i class="fas fa-edit"></i> Manage Project
+                <i class="fa-solid fa-pen-to-square"></i> Manage Project
             </a>
             {% endif %}
         </div>
@@ -47,10 +47,10 @@
         {% if project_data.has_children or project.parent_id %}
         <div class="mt-3">
             <h6 class="mb-2">
-                <i class="fas fa-sitemap"></i> Project Hierarchy
+                <i class="fa-solid fa-sitemap"></i> Project Hierarchy
                 <button class="btn  btn-link" data-bs-toggle="collapse"
                         data-bs-target="#tree-modal" aria-expanded="false">
-                    <i class="fas fa-chevron-down"></i>
+                    <i class="fa-solid fa-chevron-down"></i>
                 </button>
             </h6>
             <div id="tree-modal" class="collapse">

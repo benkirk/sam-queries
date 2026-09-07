@@ -222,7 +222,7 @@ tab-pane fade{{ ' show active' if key == active_tab }}
                 hx-target="#{{ cid }}-jobs"
                 hx-swap="innerHTML"
                 hx-trigger="{{ _trig('jobs') }}"{{ _persist(days_persist_id) }}>
-            <i class="fas fa-list me-1"></i> Jobs
+            <i class="fa-solid fa-list me-1"></i> Jobs
         </button>
     </li>
     {% if _user_url %}
@@ -235,7 +235,7 @@ tab-pane fade{{ ' show active' if key == active_tab }}
                 hx-target="#{{ cid }}-byuser"
                 hx-swap="innerHTML"
                 hx-trigger="{{ _trig('byuser') }}"{{ _persist(days_persist_id) }}{{ _lens() }}>
-            <i class="fas fa-users me-1"></i> By User
+            <i class="fa-solid fa-users me-1"></i> By User
         </button>
     </li>
     {% endif %}
@@ -249,7 +249,7 @@ tab-pane fade{{ ' show active' if key == active_tab }}
                 hx-target="#{{ cid }}-byproj"
                 hx-swap="innerHTML"
                 hx-trigger="{{ _trig('byproj') }}"{{ _persist(days_persist_id) }}{{ _lens() }}>
-            <i class="fas fa-diagram-project me-1"></i> By Project
+            <i class="fa-solid fa-diagram-project me-1"></i> By Project
         </button>
     </li>
     {% endif %}
@@ -262,7 +262,7 @@ tab-pane fade{{ ' show active' if key == active_tab }}
                 hx-target="#{{ cid }}-wait"
                 hx-swap="innerHTML"
                 hx-trigger="{{ _trig('wait') }}"{{ _persist(days_persist_id) }}{{ _lens() }}>
-            <i class="fas fa-hourglass-half me-1"></i> Wait Times
+            <i class="fa-solid fa-hourglass-half me-1"></i> Wait Times
         </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -274,7 +274,7 @@ tab-pane fade{{ ' show active' if key == active_tab }}
                 hx-target="#{{ cid }}-sizes"
                 hx-swap="innerHTML"
                 hx-trigger="{{ _trig('sizes') }}"{{ _persist(days_persist_id) }}{{ _lens() }}>
-            <i class="fas fa-layer-group me-1"></i> Job Sizes
+            <i class="fa-solid fa-layer-group me-1"></i> Job Sizes
         </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -286,7 +286,7 @@ tab-pane fade{{ ' show active' if key == active_tab }}
                 hx-target="#{{ cid }}-durations"
                 hx-swap="innerHTML"
                 hx-trigger="{{ _trig('durations') }}"{{ _persist(days_persist_id) }}{{ _lens() }}>
-            <i class="fas fa-stopwatch me-1"></i> Durations
+            <i class="fa-solid fa-stopwatch me-1"></i> Durations
         </button>
     </li>
     {# Period pills ride the tab strip (ms-auto right-aligns them) so the
@@ -319,7 +319,7 @@ tab-pane fade{{ ' show active' if key == active_tab }}
             <a class="btn btn-sm btn-outline-primary"
                href="{{ _full_url }}" data-jobs-explore-link
                target="_blank" rel="noopener">
-                Open full view <i class="fas fa-up-right-from-square ms-1"></i>
+                Open full view <i class="fa-solid fa-up-right-from-square ms-1"></i>
             </a>
         </div>
         {% endif %}
@@ -352,7 +352,7 @@ tab-pane fade{{ ' show active' if key == active_tab }}
                     data-bs-target="#{{ cid }}-timeline-wrap"
                     aria-expanded="{{ 'true' if timeline_open else 'false' }}"
                     aria-controls="{{ cid }}-timeline-wrap">
-                <i class="fas fa-chart-column me-1"></i> Activity over time
+                <i class="fa-solid fa-chart-column me-1"></i> Activity over time
             </button>
             {# `.collapse[id]` is persisted automatically under
                "collapse:<id>" by nav-view-persistence — no per-chart
@@ -370,7 +370,7 @@ tab-pane fade{{ ' show active' if key == active_tab }}
                      hx-trigger="{{ _trig('jobs') if timeline_open else 'shown.bs.collapse from:closest .collapse once' }}"
                      hx-swap="innerHTML">
                     <p class="text-muted small mb-0">
-                        <i class="fas fa-spinner fa-spin me-1"></i> Loading timeline…
+                        <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading timeline…
                     </p>
                 </div>
             </div>
@@ -378,7 +378,7 @@ tab-pane fade{{ ' show active' if key == active_tab }}
         {% endif %}
         <div id="{{ cid }}-jobs">
             <p class="text-muted small mb-0">
-                <i class="fas fa-spinner fa-spin me-1"></i> Loading jobs…
+                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading jobs…
             </p>
         </div>
     </div>
@@ -386,7 +386,7 @@ tab-pane fade{{ ' show active' if key == active_tab }}
     <div class="{{ _panecls('byuser') }}" id="tab-{{ cid }}-byuser" role="tabpanel">
         <div id="{{ cid }}-byuser"{{ _lens() }}>
             <p class="text-muted small mb-0">
-                <i class="fas fa-spinner fa-spin me-1"></i> Loading…
+                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading…
             </p>
         </div>
     </div>
@@ -395,7 +395,7 @@ tab-pane fade{{ ' show active' if key == active_tab }}
     <div class="{{ _panecls('byproj') }}" id="tab-{{ cid }}-byproj" role="tabpanel">
         <div id="{{ cid }}-byproj"{{ _lens() }}>
             <p class="text-muted small mb-0">
-                <i class="fas fa-spinner fa-spin me-1"></i> Loading…
+                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading…
             </p>
         </div>
     </div>
@@ -403,21 +403,21 @@ tab-pane fade{{ ' show active' if key == active_tab }}
     <div class="{{ _panecls('wait') }}" id="tab-{{ cid }}-wait" role="tabpanel">
         <div id="{{ cid }}-wait"{{ _lens() }}>
             <p class="text-muted small mb-0">
-                <i class="fas fa-spinner fa-spin me-1"></i> Loading wait times…
+                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading wait times…
             </p>
         </div>
     </div>
     <div class="{{ _panecls('sizes') }}" id="tab-{{ cid }}-sizes" role="tabpanel">
         <div id="{{ cid }}-sizes"{{ _lens() }}>
             <p class="text-muted small mb-0">
-                <i class="fas fa-spinner fa-spin me-1"></i> Loading job sizes…
+                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading job sizes…
             </p>
         </div>
     </div>
     <div class="{{ _panecls('durations') }}" id="tab-{{ cid }}-durations" role="tabpanel">
         <div id="{{ cid }}-durations"{{ _lens() }}>
             <p class="text-muted small mb-0">
-                <i class="fas fa-spinner fa-spin me-1"></i> Loading durations…
+                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading durations…
             </p>
         </div>
     </div>

@@ -55,7 +55,7 @@
 <button type="button"
         class="btn btn-sm btn-outline-primary"
         data-action="drp-toggle-custom">
-    <i class="fas fa-calendar-alt"></i> Custom
+    <i class="fa-solid fa-calendar-days"></i> Custom
 </button>
 {% endmacro %}
 
@@ -99,7 +99,7 @@
                value="{{ end_date }}"
                class="form-control form-control-sm" style="width:140px">
         <button type="submit" class="btn btn-sm btn-primary" data-scroll-preserve>
-            <i class="fas fa-check"></i> Apply
+            <i class="fa-solid fa-check"></i> Apply
         </button>
     </div>
 
@@ -134,7 +134,7 @@
     <script type="application/json" class="drp-hidden">{{ hidden_fields | tojson }}</script>
     <div class="card-body py-2">
         <div class="d-flex align-items-center flex-wrap gap-2">
-            <i class="fas fa-calendar text-muted"></i>
+            <i class="fa-solid fa-calendar text-muted"></i>
             {{ drp_pills(epoch_date=epoch_date, presets=presets) }}
             {{ drp_custom(action=action, start_date=start_date,
                           end_date=end_date, hidden_fields=hidden_fields) }}

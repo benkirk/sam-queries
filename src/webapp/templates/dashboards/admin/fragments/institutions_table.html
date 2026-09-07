@@ -61,7 +61,7 @@
         <tbody>
             <tr class="table-subtle fw-semibold">
                 <td class="cursor-pointer" {{ collapse_toggle(it_toggle) }}>
-                    <i class="fas fa-chevron-right small text-muted me-1 inst-type-collapse-icon"
+                    <i class="fa-solid fa-chevron-right small text-muted me-1 inst-type-collapse-icon"
                        style="transition: transform 0.2s;"></i>
                     {{ it.type }}
                 </td>
@@ -98,10 +98,10 @@
                 {% if _expandable %}data-inst-target="inst-users-{{ inst.institution_id }}"{% endif %}>
                 <td class="ps-4">
                     {% if _expandable %}
-                    <i class="fas fa-chevron-right small text-muted me-1 inst-expand-icon"
+                    <i class="fa-solid fa-chevron-right small text-muted me-1 inst-expand-icon"
                        style="transition: transform 0.2s;"></i>
                     {% else %}
-                    <i class="fas fa-circle small me-1" style="font-size:0.35em; color:var(--text-tertiary); vertical-align:middle;"></i>
+                    <i class="fa-solid fa-circle small me-1" style="font-size:0.35em; color:var(--text-tertiary); vertical-align:middle;"></i>
                     {% endif %}
                     {{ inst.name }}
                     {% if inst.acronym %}
@@ -126,11 +126,11 @@
                             hx-trigger="click"
                             title="No mnemonic match — click to create one">
                         <span class="badge bg-warning text-dark font-monospace">
-                            <i class="fas fa-exclamation-triangle"></i>
+                            <i class="fa-solid fa-triangle-exclamation"></i>
                         </span>
                     </button>
                     {% else %}
-                    <span class="badge bg-secondary font-monospace text-white-50" title="No mnemonic match — project routing may fail"><i class="fas fa-exclamation-triangle"></i></span>
+                    <span class="badge bg-secondary font-monospace text-white-50" title="No mnemonic match — project routing may fail"><i class="fa-solid fa-triangle-exclamation"></i></span>
                     {% endif %}
                 </td>
                 {% if show_users_projects %}
@@ -165,7 +165,7 @@
                            hx-target="#userDetailsModalBody"
                            hx-swap="innerHTML"
                            {% if not is_active %}title="Inactive user"{% endif %}>
-                            <i class="fas fa-user fa-xs me-1 text-muted"></i>{{ username }}
+                            <i class="fa-solid fa-user fa-xs me-1 text-muted"></i>{{ username }}
                         </a>
                         {% else %}
                         <span class="text-muted fst-italic">(none)</span>
@@ -182,7 +182,7 @@
                            hx-target="#projectDetailsModalBody"
                            hx-swap="innerHTML"
                            {% if not is_active %}title="Inactive project"{% endif %}>
-                            <i class="fas fa-folder-open fa-xs me-1 text-muted"></i>{{ projcode }}
+                            <i class="fa-solid fa-folder-open fa-xs me-1 text-muted"></i>{{ projcode }}
                         </a>
                         {% else %}
                         <span class="text-muted fst-italic">(none)</span>
@@ -226,7 +226,7 @@
                 hx-get="{{ url_for('admin_dashboard.htmx_institution_type_create_form') }}"
                 hx-target="#createInstitutionTypeFormContainer"
                 hx-trigger="click">
-            <i class="fas fa-plus"></i> Create Type
+            <i class="fa-solid fa-plus"></i> Create Type
         </button>
         <button class="btn  btn-primary"
                 data-bs-toggle="modal"
@@ -234,7 +234,7 @@
                 hx-get="{{ url_for('admin_dashboard.htmx_institution_create_form') }}"
                 hx-target="#createInstitutionFormContainer"
                 hx-trigger="click">
-            <i class="fas fa-plus"></i> Create Institution
+            <i class="fa-solid fa-plus"></i> Create Institution
         </button>
         <button class="btn  btn-primary"
                 data-bs-toggle="modal"
@@ -242,7 +242,7 @@
                 hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_code_create_form') }}"
                 hx-target="#createMnemonicCodeFormContainer"
                 hx-trigger="click">
-            <i class="fas fa-plus"></i> Create Mnemonic Code
+            <i class="fa-solid fa-plus"></i> Create Mnemonic Code
         </button>
     </div>
     {% endif %}

@@ -23,7 +23,7 @@
 <div class="card-body">
 
     <p class="text-muted small mb-4">
-        <i class="fas fa-info-circle"></i>
+        <i class="fa-solid fa-circle-info"></i>
         Read-only snapshot of the running webapp's configuration. Values reflect
         process-startup state — restart the webapp to refresh.
         Captured {{ state.gathered_at | fmt_date }} {{ state.gathered_at.strftime('%H:%M:%S') }}.
@@ -35,7 +35,7 @@
         <div class="col-12 col-xl-6">
             <div class="card inner-card h-100">
                 <div class="card-header mb-4">
-                    <h5><i class="fas fa-cube me-1"></i> Application</h5>
+                    <h5><i class="fa-solid fa-cube me-1"></i> Application</h5>
                 </div>
                 <div class="card-body">
                     <dl class="config-stats mb-0 small">
@@ -63,7 +63,7 @@
         <div class="col-12 col-xl-6">
             <div class="card inner-card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5><i class="fas fa-server me-1"></i> Server Information</h5>
+                    <h5><i class="fa-solid fa-server me-1"></i> Server Information</h5>
                     <button type="button"
                             class="btn btn-sm btn-outline-secondary py-0 px-2"
                             hx-get="{{ url_for('admin_dashboard.htmx_server_card') }}"
@@ -71,7 +71,7 @@
                             hx-swap="innerHTML"
                             hx-indicator="#server-card-spinner"
                             title="Re-poll a worker (likely a different one)">
-                        <i class="fas fa-sync-alt"></i>
+                        <i class="fa-solid fa-rotate"></i>
                         <span class="d-none d-sm-inline ms-1">Refresh</span>
                         <span id="server-card-spinner" class="htmx-indicator spinner-border spinner-border-sm ms-1"
                               role="status" aria-hidden="true"></span>
@@ -89,7 +89,7 @@
         <div class="col-12 col-xl-6">
             <div class="card inner-card h-100">
                 <div class="card-header mb-4">
-                    <h5><i class="fas fa-lock me-1"></i> Authentication</h5>
+                    <h5><i class="fa-solid fa-lock me-1"></i> Authentication</h5>
                 </div>
                 <div class="card-body">
                     <dl class="config-stats mb-0 small">
@@ -134,7 +134,7 @@
         <div class="col-12 col-xl-6">
             <div class="card inner-card h-100">
                 <div class="card-header mb-4 d-flex justify-content-between align-items-center">
-                    <h5><i class="fas fa-traffic-light me-1"></i> Rate limiting</h5>
+                    <h5><i class="fa-solid fa-traffic-light me-1"></i> Rate limiting</h5>
                     {# Ungated on purpose, unlike Notifications above: this page is
                        VIEW_SYSTEM_CONFIG, the same tier as the card, so the link
                        cannot 403. #}
@@ -189,7 +189,7 @@
         <div class="col-12 col-xl-6">
             <div class="card inner-card h-100">
                 <div class="card-header mb-4 d-flex justify-content-between align-items-center">
-                    <h5><i class="fas fa-envelope me-1"></i> Notifications</h5>
+                    <h5><i class="fa-solid fa-envelope me-1"></i> Notifications</h5>
                     {# The card is VIEW_SYSTEM_CONFIG but the activity log is
                        SYSTEM_ADMIN, because every row of it names a real person's
                        email address. Gated to match, so operators are not offered a
@@ -204,7 +204,7 @@
                 <div class="card-body">
                     {% if state.notifications.unavailable %}
                     <p class="text-muted small mb-0">
-                        <i class="fas fa-circle-info"></i>
+                        <i class="fa-solid fa-circle-info"></i>
                         Delivery statistics are unavailable — the
                         <code>notification_log</code> table is not present on
                         this database.
@@ -229,7 +229,7 @@
                     {# A staging box quietly swallowing mail is the failure
                        mode this line exists to prevent. #}
                     <div class="alert alert-warning py-2 px-3 small mb-3">
-                        <i class="fas fa-shuffle me-1"></i>
+                        <i class="fa-solid fa-shuffle me-1"></i>
                         <strong>Redirecting to</strong>
                         <code>{{ state.notifications.redirect_to }}</code>
                         — no message reaches its intended recipient.
@@ -255,7 +255,7 @@
                        their own retry at the same horizon this counts from,
                        so this line is how an operator learns it happened. #}
                     <div class="alert alert-warning py-2 px-3 small mt-3 mb-0">
-                        <i class="fas fa-triangle-exclamation me-1"></i>
+                        <i class="fa-solid fa-triangle-exclamation me-1"></i>
                         <strong>{{ state.notifications.queued_stuck | fmt_number }}</strong>
                         delivery attempt(s) stuck in <code>queued</code> — a
                         process died mid-send.
@@ -273,7 +273,7 @@
         <div class="col-12 col-xl-6">
             <div class="card inner-card h-100">
                 <div class="card-header mb-4 d-flex justify-content-between align-items-center">
-                    <h5><i class="fas fa-clock me-1"></i> Scheduled tasks</h5>
+                    <h5><i class="fa-solid fa-clock me-1"></i> Scheduled tasks</h5>
                     {# Ungated on purpose, unlike Notifications above: the run
                        history page is VIEW_SYSTEM_CONFIG, the same tier as this
                        card, so the link cannot 403. Only the detail modal sits
@@ -295,7 +295,7 @@
                 <div class="card-body">
                     {% if state.scheduled_tasks.unavailable %}
                     <p class="text-muted small mb-0">
-                        <i class="fas fa-circle-info"></i>
+                        <i class="fa-solid fa-circle-info"></i>
                         Run history is unavailable — the
                         <code>task_run</code> table is not present on this
                         database (it arrives with Alembic <code>0006</code>).
@@ -307,7 +307,7 @@
                        waking hourly and deliberately doing nothing looks
                        exactly like a healthy one. It ships non-empty. #}
                     <div class="alert alert-warning py-2 px-3 small mb-3">
-                        <i class="fas fa-ban me-1"></i>
+                        <i class="fa-solid fa-ban me-1"></i>
                         <strong>Disabled:</strong>
                         {% for name in state.scheduled_tasks.disabled %}
                         <code>{{ name }}</code>{{ '' if loop.last else ', ' }}
@@ -353,7 +353,7 @@
                        writing an outcome. Those rows become reclaimable at the
                        same lease horizon this counts from. #}
                     <div class="alert alert-warning py-2 px-3 small mt-3 mb-0">
-                        <i class="fas fa-triangle-exclamation me-1"></i>
+                        <i class="fa-solid fa-triangle-exclamation me-1"></i>
                         <strong>{{ state.scheduled_tasks.stale_running | fmt_number }}</strong>
                         run(s) stuck in <code>running</code> past the lease — a
                         runner died mid-task.
@@ -368,7 +368,7 @@
         <div class="col-12 col-xl-6">
             <div class="card inner-card h-100">
                 <div class="card-header mb-4">
-                    <h5><i class="fas fa-database me-1"></i> Database</h5>
+                    <h5><i class="fa-solid fa-database me-1"></i> Database</h5>
                 </div>
                 <div class="card-body">
                     {% for db_info in state.databases %}
@@ -439,7 +439,7 @@
         <div class="col-12 col-xl-6">
             <div class="card inner-card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-bolt me-1"></i> Caching</h5>
+                    <h5 class="mb-0"><i class="fa-solid fa-bolt me-1"></i> Caching</h5>
                     {# Clearing is write-shaped, so it's gated one tier above the
                        read-only card (SYSTEM_ADMIN vs VIEW_SYSTEM_CONFIG). #}
                     {% if has_permission(Permission.SYSTEM_ADMIN) %}
@@ -452,7 +452,7 @@
                                     class="btn btn-sm btn-outline-danger py-0 px-2 dropdown-toggle"
                                     data-bs-toggle="dropdown" aria-expanded="false"
                                     title="Invalidate caches">
-                                <i class="fas fa-trash-alt"></i>
+                                <i class="fa-solid fa-trash-can"></i>
                                 <span class="d-none d-sm-inline ms-1">Clear…</span>
                             </button>
                             {% set _clear_url = url_for('admin_dashboard.htmx_clear_cache') %}
@@ -463,7 +463,7 @@
                                             hx-target="#caching-card-body" hx-swap="innerHTML"
                                             hx-indicator="#caching-card-spinner"
                                             hx-confirm="Clear ALL caches?">
-                                        <i class="fas fa-broom me-2 text-danger"></i>All caches
+                                        <i class="fa-solid fa-broom me-2 text-danger"></i>All caches
                                     </button>
                                 </li>
                                 <li><hr class="dropdown-divider"></li>
@@ -501,7 +501,7 @@
         <div class="col-12">
             <div class="card inner-card h-100">
                 <div class="card-header mb-4">
-                    <h5><i class="fas fa-clipboard-list me-1"></i> Audit &amp; Logging</h5>
+                    <h5><i class="fa-solid fa-clipboard-list me-1"></i> Audit &amp; Logging</h5>
                 </div>
                 <div class="card-body">
                     <dl class="config-stats mb-3 small">
@@ -514,12 +514,12 @@
                     <hr class="my-3">
 
                     <h6 class="mb-2">
-                        <i class="fas fa-history me-1"></i> Recent audit entries
+                        <i class="fa-solid fa-clock-rotate-left me-1"></i> Recent audit entries
                         {% if state.audit_tail %}<small class="text-muted fw-normal ms-1">(last {{ state.audit_tail | length }})</small>{% endif %}
                     </h6>
                     {% if state.audit_tail is none %}
                         <p class="text-muted small mb-0 h-100">
-                            <i class="fas fa-inbox"></i> Audit log not readable
+                            <i class="fa-solid fa-inbox"></i> Audit log not readable
                             ({% if state.audit_logging.audit_log_path %}
                                 missing or permission denied
                             {% else %}
@@ -528,7 +528,7 @@
                         </p>
                     {% elif state.audit_tail | length == 0 %}
                         <p class="text-muted small mb-0">
-                            <i class="fas fa-inbox"></i> Audit log is empty.
+                            <i class="fa-solid fa-inbox"></i> Audit log is empty.
                         </p>
                     {% else %}
                         <pre class="small text-muted mb-0"

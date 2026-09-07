@@ -7,7 +7,7 @@
 <div class="form-text mt-1">
     {% if org %}
     <div>
-        <i class="fas fa-sitemap me-1"></i>Lead's organization:
+        <i class="fa-solid fa-sitemap me-1"></i>Lead's organization:
         <strong>{{ org.acronym or org.name }}</strong>
         {% if org.acronym %}<span class="text-muted">— {{ org.name }}</span>{% endif %}
         <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline"
@@ -20,13 +20,13 @@
     {% endif %}
     {% if institution %}
     <div>
-        <i class="fas fa-university me-1"></i>Lead's institution:
+        <i class="fa-solid fa-building-columns me-1"></i>Lead's institution:
         <strong>{{ institution.name }}</strong>
     </div>
     {% endif %}
     {% if suggestion %}
     <div>
-        <i class="fas fa-magic me-1"></i>Suggested mnemonic:
+        <i class="fa-solid fa-wand-magic me-1"></i>Suggested mnemonic:
         <strong class="font-monospace">{{ suggestion.code }}</strong>
         <span class="text-muted">— {{ suggestion.description }}</span>
         <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline"

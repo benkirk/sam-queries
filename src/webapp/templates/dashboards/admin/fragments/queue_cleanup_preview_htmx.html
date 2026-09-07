@@ -51,7 +51,7 @@
 
         {% if never %}
         <div class="alert alert-warning py-2">
-            <i class="fas fa-exclamation-triangle"></i>
+            <i class="fa-solid fa-triangle-exclamation"></i>
             {{ never|length }} of these have <strong>never</strong> been charged.
             That is also what a healthy <em>routing</em> queue looks like, so
             they are left unchecked — tick them only if you know they're dead.
@@ -126,14 +126,14 @@
 
         {% if not pbs_data_available %}
         <div class="text-muted small mt-1">
-            <i class="fas fa-info-circle"></i>
+            <i class="fa-solid fa-circle-info"></i>
             No PBS snapshot data covers this resource — the system-status
             cross-check was skipped.
         </div>
         {% endif %}
 
         <div class="alert alert-danger mt-2 mb-0">
-            <i class="fas fa-exclamation-triangle"></i>
+            <i class="fa-solid fa-triangle-exclamation"></i>
             Expiring a queue sets its end date to today. Charges already
             recorded against it are untouched, but it stops being served to the
             scheduler via the queue API.
@@ -148,7 +148,7 @@
 
         {% if errors %}
         <div class="alert alert-danger mt-2 mb-0">
-            {% for e in errors %}<p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ e }}</p>{% endfor %}
+            {% for e in errors %}<p class="mb-0"><i class="fa-solid fa-circle-exclamation"></i> {{ e }}</p>{% endfor %}
         </div>
         {% endif %}
     </div>
@@ -158,11 +158,11 @@
                 hx-get="{{ url_for('admin_dashboard.htmx_queue_cleanup_form', resource_id=resource.resource_id) }}"
                 hx-target="#queueCleanupFormContainer"
                 hx-swap="innerHTML">
-            <i class="fas fa-arrow-left"></i> Back
+            <i class="fa-solid fa-arrow-left"></i> Back
         </button>
         {% if candidates %}
         <button type="submit" class="btn btn-outline-primary" id="queueCleanupSubmit">
-            <i class="fas fa-broom"></i>
+            <i class="fa-solid fa-broom"></i>
             Expire <span data-cleanup-count>0</span> queue(s)
         </button>
         {% endif %}

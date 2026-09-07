@@ -70,7 +70,7 @@
                     {# The whole point of keeping `redirected` distinct: this
                        row reached `recipient`, but it was FOR someone else. #}
                     <div class="text-muted small" title="Intended recipient">
-                        <i class="fas fa-arrow-right-arrow-left"></i>
+                        <i class="fa-solid fa-arrow-right-arrow-left"></i>
                         for {{ r.intended_recipient }}
                     </div>
                     {% endif %}
@@ -91,7 +91,7 @@
                             hx-target="#auditDetailsModalBody"
                             hx-swap="innerHTML"
                             data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
-                        <i class="fas fa-magnifying-glass"></i>
+                        <i class="fa-solid fa-magnifying-glass"></i>
                     </button>
                 </td>
             </tr>

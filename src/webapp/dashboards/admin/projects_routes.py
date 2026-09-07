@@ -1211,7 +1211,7 @@ def htmx_exchange_allocation_form(project, resource_id):
         return (
             '<div class="modal-body">'
             '<div class="alert alert-info">'
-            '<i class="fas fa-info-circle"></i> '
+            '<i class="fa-solid fa-circle-info"></i> '
             'Exchange requires at least two standalone sub-project allocations '
             'for this resource within the allocation tree. Shared (linked) '
             'allocations do not count.'
@@ -1365,7 +1365,7 @@ def htmx_allocate_down_form(allocation):
         return (
             '<div class="modal-body">'
             '<div class="alert alert-info">'
-            '<i class="fas fa-info-circle"></i> '
+            '<i class="fa-solid fa-circle-info"></i> '
             'This is a shared allocation — it mirrors its parent and has no '
             'unallocated remainder of its own. Allocate from the parent '
             'allocation instead.'
@@ -1379,7 +1379,7 @@ def htmx_allocate_down_form(allocation):
         return (
             '<div class="modal-body">'
             '<div class="alert alert-warning">'
-            '<i class="fas fa-exclamation-triangle"></i> '
+            '<i class="fa-solid fa-triangle-exclamation"></i> '
             f'Sub-project carve-outs ({frontier.carve_total:g}) exceed this '
             f'allocation ({float(allocation.amount):g}). Resolve the deficit '
             'before allocating further — see '
@@ -1390,7 +1390,7 @@ def htmx_allocate_down_form(allocation):
         return (
             '<div class="modal-body">'
             '<div class="alert alert-info">'
-            '<i class="fas fa-info-circle"></i> '
+            '<i class="fa-solid fa-circle-info"></i> '
             'Nothing to allocate: this allocation has no unallocated remainder '
             'available for its sub-projects.'
             '</div></div>'

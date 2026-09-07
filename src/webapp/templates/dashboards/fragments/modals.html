@@ -48,7 +48,7 @@
         <div class="modal-content">
             <div class="modal-header bg-danger text-white" id="samConfirmModalHeader">
                 <h5 class="modal-title" id="samConfirmModalLabel">
-                    <i class="fas fa-exclamation-triangle" id="samConfirmModalIcon"></i>
+                    <i class="fa-solid fa-triangle-exclamation" id="samConfirmModalIcon"></i>
                     <span id="samConfirmModalTitle">Confirm action</span>
                 </h5>
                 <button type="button" class="btn-close btn-close-white" id="samConfirmModalClose"
@@ -84,14 +84,14 @@
         <div class="modal-content">
             <div class="modal-header {{ _header_class }}">
                 <h5 class="modal-title" id="{{ modal_id }}Label">
-                    <i class="fas fa-{{ icon }}"></i> {{ title }}
+                    <i class="fa-solid fa-{{ icon }}"></i> {{ title }}
                 </h5>
                 <button type="button" class="{{ _close_class }}"
                         data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div id="{{ container_id }}">
                 <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
+                    <i class="fa-solid fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
                     <p class="mt-2">Loading…</p>
                 </div>
             </div>

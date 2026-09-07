@@ -206,9 +206,9 @@ document.body.addEventListener('reloadUserCard', function(evt) {
 
 (function() {
     var VARIANTS = {
-        danger:  { header: 'bg-danger text-white',  close: 'btn-close-white', icon: 'fa-exclamation-triangle', btn: 'btn-danger' },
-        warning: { header: 'bg-warning',            close: '',                icon: 'fa-exclamation-circle',   btn: 'btn-warning' },
-        info:    { header: 'bg-info text-white',    close: 'btn-close-white', icon: 'fa-info-circle',          btn: 'btn-primary' }
+        danger:  { header: 'bg-danger text-white',  close: 'btn-close-white', icon: 'fa-triangle-exclamation', btn: 'btn-danger' },
+        warning: { header: 'bg-warning',            close: '',                icon: 'fa-circle-exclamation',   btn: 'btn-warning' },
+        info:    { header: 'bg-info text-white',    close: 'btn-close-white', icon: 'fa-circle-info',          btn: 'btn-primary' }
     };
     var ALL_HEADER_CLASSES = 'bg-danger bg-warning bg-info text-white';
     // Include the outline variants so a stray base class (e.g. btn-outline-primary)
@@ -216,7 +216,7 @@ document.body.addEventListener('reloadUserCard', function(evt) {
     // outline (colored text) + solid (colored bg) combine into e.g. blue-on-blue.
     var ALL_BTN_CLASSES = 'btn-danger btn-warning btn-primary btn-info '
                         + 'btn-outline-danger btn-outline-warning btn-outline-primary btn-outline-info';
-    var ALL_ICON_CLASSES = 'fa-exclamation-triangle fa-exclamation-circle fa-info-circle';
+    var ALL_ICON_CLASSES = 'fa-triangle-exclamation fa-circle-exclamation fa-circle-info';
 
     function _openSamConfirm(opts) {
         var modalEl = document.getElementById('samConfirmModal');

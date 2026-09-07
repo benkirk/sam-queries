@@ -6,7 +6,7 @@
 {# Macro: Project Information Section #}
 {% macro render_project_info(project) %}
 <div class="project-stats-box mb-3">
-    <h6><i class="fas fa-info-circle"></i> Project Information</h6>
+    <h6><i class="fa-solid fa-circle-info"></i> Project Information</h6>
     <div class="stat-item">
         <span class="stat-label">Status:</span>
         <span class="stat-value">
@@ -69,7 +69,7 @@
                 {%- endif %}
                 {% if ancestors %}
                 <div class="text-muted small ms-1">
-                    {%- for a in ancestors %}<i class="fas fa-angle-left mx-1 opacity-50" aria-hidden="true"></i><span title="{{ a.name }}">{{ a.acronym }}</span>{% endfor %}
+                    {%- for a in ancestors %}<i class="fa-solid fa-angle-left mx-1 opacity-50" aria-hidden="true"></i><span title="{{ a.name }}">{{ a.acronym }}</span>{% endfor %}
                 </div>
                 {% endif %}
             </div>
@@ -130,7 +130,7 @@
       <div class="stat-value text-body-emphasis text-detail">
         {% for dir in project.active_directories %}
             <div class="mb-1">
-                <span class="fas fa-folder text-warning me-1"></span>
+                <span class="fa-solid fa-folder text-warning me-1"></span>
                 <span><code>{{ dir }}</code></span>
             </div>
         {% endfor %}
@@ -144,7 +144,7 @@
 {% macro render_project_resources(project, resources, usage_warning_threshold, usage_critical_threshold, show_clickable_rows=true, can_edit_allocations=false, admin_origin=false) %}
 {% if resources %}
 <div class="mt-3">
-    <h6 class="mb-2"><i class="fas fa-server"></i> Resources:</h6>
+    <h6 class="mb-2"><i class="fa-solid fa-server"></i> Resources:</h6>
     <div class="table-responsive">
         <table class="table table-sm table-bordered table-hover">
             <thead class="thead-light">
@@ -261,7 +261,7 @@
                                         hx-target="#editAllocationFormContainer"
                                         hx-swap="innerHTML"
                                         data-stop-propagation>
-                                    <i class="fas fa-edit"></i>
+                                    <i class="fa-solid fa-pen-to-square"></i>
                                 </button>
                                 {% elif resource.allocation_id and resource.is_inheriting %}
                                 <span class="badge bg-secondary"
@@ -286,9 +286,9 @@
 {% macro render_project_members(project, unique_id='modal') %}
 <div class="mt-3">
     <h6 class="mb-2">
-        <i class="fas fa-users"></i> Project Members
+        <i class="fa-solid fa-users"></i> Project Members
         <button class="btn  btn-link" data-bs-toggle="collapse" data-bs-target="#members-{{ unique_id }}" aria-expanded="false">
-            <i class="fas fa-chevron-down"></i>
+            <i class="fa-solid fa-chevron-down"></i>
         </button>
     </h6>
     <div id="members-{{ unique_id }}" class="collapse">
@@ -331,7 +331,7 @@
             <div class="d-flex justify-content-between align-items-center">
                 <div>
                     <h5 class="mb-0">
-                        <i class="fas fa-folder-open text-primary"></i>
+                        <i class="fa-solid fa-folder-open text-primary"></i>
                         <strong>{{ project.projcode }}</strong> - {{ project.title or 'Untitled Project' }}
 
                         {# Expiration badges - calculated from resources #}
@@ -341,31 +341,31 @@
                             {% if days <= 0 %}
                                 {# Expired #}
                                 <span class="badge bg-secondary ms-2" title="Expired {{ days|abs }} days ago ({{ resource_list }})">
-                                    <i class="fas fa-times-circle"></i>
+                                    <i class="fa-solid fa-circle-xmark"></i>
                                     {{ days|abs }}d ago{% if count > 1 %} ({{ count }}){% endif %}
                                 </span>
                             {% elif days <= 7 %}
                                 {# Critical: 7 days or less #}
                                 <span class="badge bg-danger ms-2" title="Expires in {{ days }} days ({{ resource_list }})">
-                                    <i class="fas fa-exclamation-circle"></i>
+                                    <i class="fa-solid fa-circle-exclamation"></i>
                                     {{ days }}d{% if count > 1 %} ({{ count }}){% endif %}
                                 </span>
                             {% elif days <= 14 %}
                                 {# Warning: 8-14 days #}
                                 <span class="badge bg-warning text-dark ms-2" title="Expires in {{ days }} days ({{ resource_list }})">
-                                    <i class="fas fa-exclamation-triangle"></i>
+                                    <i class="fa-solid fa-triangle-exclamation"></i>
                                     {{ days }}d{% if count > 1 %} ({{ count }}){% endif %}
                                 </span>
                             {% elif days <= 30 %}
                                 {# Info: 15-30 days #}
                                 <span class="badge bg-info text-dark ms-2" title="Expires in {{ days }} days ({{ resource_list }})">
-                                    <i class="fas fa-calendar"></i>
+                                    <i class="fa-solid fa-calendar"></i>
                                     {{ days }}d{% if count > 1 %} ({{ count }}){% endif %}
                                 </span>
                             {% else %}
                                 {# Light info: 31-60 days #}
                                 <span class="badge bg-body-tertiary text-body-emphasis ms-2" title="Expires in {{ days }} days ({{ resource_list }})">
-                                    <i class="fas fa-calendar"></i>
+                                    <i class="fa-solid fa-calendar"></i>
                                     {{ days }}d{% if count > 1 %} ({{ count }}){% endif %}
                                 </span>
                             {% endif %}
@@ -375,19 +375,19 @@
                 <div class="d-flex align-items-center gap-1">
                     {# Show user's role on this project #}
                     {% if project.lead and project.lead.user_id == user.user_id %}
-                        <span class="badge bg-primary"><i class="fas fa-star"></i> Lead</span>
+                        <span class="badge bg-primary"><i class="fa-solid fa-star"></i> Lead</span>
                     {% elif project.admin and project.admin.user_id == user.user_id %}
-                        <span class="badge bg-info text-dark"><i class="fas fa-user-shield"></i> Admin</span>
+                        <span class="badge bg-info text-dark"><i class="fa-solid fa-user-shield"></i> Admin</span>
                     {% endif %}
                     {# Show usage warning if any resource exceeds thresholds #}
                     {% set max_usage = resources | map(attribute='percent_used') | max | default(0) %}
                     {% if max_usage >= usage_critical_threshold %}
                         <span class="badge bg-danger" title="Resource usage above {{ usage_critical_threshold }}%">
-                            <i class="fas fa-exclamation-circle"></i> {{ max_usage | round(0) | int }}% used
+                            <i class="fa-solid fa-circle-exclamation"></i> {{ max_usage | round(0) | int }}% used
                         </span>
                     {% elif max_usage >= usage_warning_threshold %}
                         <span class="badge bg-warning text-dark" title="Resource usage above {{ usage_warning_threshold }}%">
-                            <i class="fas fa-exclamation-triangle"></i> {{ max_usage | round(0) | int }}% used
+                            <i class="fa-solid fa-triangle-exclamation"></i> {{ max_usage | round(0) | int }}% used
                         </span>
                     {% endif %}
                     {# Expiration-notice state. Gated on the KEY, not on its
@@ -412,13 +412,13 @@
                         {% if notice.notified %}
                             <span class="badge bg-success-subtle text-success-emphasis"
                                   title="Last expiration notice {{ notice.notified_time | fmt_date }} — delivered to {{ notice.delivered_count }} recipient(s)">
-                                <i class="fas fa-envelope"></i>
+                                <i class="fa-solid fa-envelope"></i>
                                 Notified {{ notice.notified_age | fmt_ago }} ago
                             </span>
                         {% else %}
                             <span class="badge bg-secondary-subtle text-secondary-emphasis"
                                   title="No expiration notice has been delivered for this project">
-                                <i class="fas fa-envelope-open"></i> Not notified
+                                <i class="fa-solid fa-envelope-open"></i> Not notified
                             </span>
                         {% endif %}
                         {% if notice.failed_count %}
@@ -428,7 +428,7 @@
                             </span>
                         {% endif %}
                     {% endif %}
-                    <i class="fas fa-chevron-down accordion-chevron ms-3" aria-hidden="true"></i>
+                    <i class="fa-solid fa-chevron-down accordion-chevron ms-3" aria-hidden="true"></i>
                 </div>
             </div>
         </div>
@@ -443,7 +443,7 @@
                 <div class="d-flex justify-content-end mb-2">
                     <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=project.projcode) }}"
                        class="btn  btn-primary">
-                        <i class="fas fa-edit"></i> Manage Project
+                        <i class="fa-solid fa-pen-to-square"></i> Manage Project
                     </a>
                 </div>
                 {% endif %}
@@ -461,7 +461,7 @@
                 {% if project_data.has_children or project.parent_id %}
                 <div class="mt-3">
                     <h6 class="mb-2 d-flex align-items-center">
-                        <span><i class="fas fa-sitemap me-1"></i> Project Hierarchy</span>
+                        <span><i class="fa-solid fa-sitemap me-1"></i> Project Hierarchy</span>
                         <div class="ms-auto d-flex align-items-center gap-2">
                             <div class="form-check form-switch mb-0">
                                 <input class="form-check-input" type="checkbox"
@@ -472,7 +472,7 @@
                             </div>
                             <button class="btn  btn-link p-0" data-bs-toggle="collapse"
                                     data-bs-target="#tree-{{ card_id }}" aria-expanded="false">
-                                <i class="fas fa-chevron-down"></i>
+                                <i class="fa-solid fa-chevron-down"></i>
                             </button>
                         </div>
                     </h6>

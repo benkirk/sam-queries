@@ -149,9 +149,9 @@
                 {% if blocked %}disabled
                 title="{% if not write_enabled %}XRAS writes are switched off for this deployment (XRAS_WRITE_ENABLED).{% elif not xa_user %}This request has no role-holder for SAM to act as.{% else %}XRAS validation must pass first.{% endif %}"{% endif %}>
             {% if withdrawing %}
-            <i class="fas fa-rotate-left"></i> Withdraw (de-approve to a draft)
+            <i class="fa-solid fa-rotate-left"></i> Withdraw (de-approve to a draft)
             {% else %}
-            <i class="fas fa-paper-plane"></i> Re-submit for review
+            <i class="fa-solid fa-paper-plane"></i> Re-submit for review
             {% endif %}
         </button>
     </div>
