@@ -203,9 +203,7 @@ def _shape(value: Any) -> str:
     if isinstance(value, list):
         if not value:
             return 'list (empty for this kind)'
-        if isinstance(value[0], dict):
-            return 'list of {' + ', '.join(value[0]) + '}'
-        return 'list of text'
+        return 'list' if isinstance(value[0], dict) else 'list of text'
     if value is None:
         return 'text or empty'
     return 'text'

@@ -1,6 +1,6 @@
 Dear Sam User,
 
-NCAR/Wyoming Computing Project Project SCSG0001
+NCAR/Wyoming Computing Project SCSG0001
 "Sample Project Title"
 is expiring on 2026-09-30.
 

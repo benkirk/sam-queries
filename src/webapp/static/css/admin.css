@@ -136,3 +136,18 @@
     border-radius: 0.25rem;
     background: var(--surface-email);
 }
+
+/* Fixed column shares so a long example or note wraps inside its cell
+   rather than pushing the last columns out of the card. */
+.notify-vars-table {
+    table-layout: fixed;
+}
+
+.notify-vars-table td,
+.notify-vars-table th {
+    overflow-wrap: anywhere;
+}
+
+.notify-vars-table th:nth-child(1) { width: 26%; }
+.notify-vars-table th:nth-child(2) { width: 12%; }
+.notify-vars-table th:nth-child(3) { width: 22%; }

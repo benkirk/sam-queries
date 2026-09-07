@@ -54,23 +54,21 @@
                 <summary class="small text-muted">
                     Variables available to this template ({{ variables | length }})
                 </summary>
-                <div class="table-responsive">
-                    <table class="table table-sm small mt-2 mb-0">
-                        <thead>
-                            <tr><th>Name</th><th>Type</th><th>Example</th><th>Meaning</th></tr>
-                        </thead>
-                        <tbody>
-                            {% for v in variables %}
-                            <tr>
-                                <td class="font-monospace text-nowrap">{{ v.name }}</td>
-                                <td class="text-nowrap">{{ v.shape }}</td>
-                                <td class="font-monospace">{{ '' if v.example is none else v.example }}</td>
-                                <td>{{ v.note }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+                <table class="table table-sm small mt-2 mb-0 notify-vars-table">
+                    <thead>
+                        <tr><th>Name</th><th>Type</th><th>Example</th><th>Meaning</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for v in variables %}
+                        <tr>
+                            <td class="font-monospace">{{ v.name }}</td>
+                            <td>{{ v.shape }}</td>
+                            <td class="font-monospace">{{ '' if v.example is none else v.example }}</td>
+                            <td>{{ v.note }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
                 <p class="small text-muted mb-0 mt-1">
                     Write <code>{{ '{{ name }}' }}</code> to insert a value and
                     <code>{{ '{% for r in resources %}' }} … {{ '{% endfor %}' }}</code>
