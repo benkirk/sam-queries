@@ -456,6 +456,7 @@ class TestTheAddressingTab:
         for key in ('expiration', 'xras', 'task'):
             assert f'id="addressing-{key}"' in html
         assert 'value="expiration-WNA"' in html
+        assert html.count('value="expiration"') == 1
         assert 'value="xras_supplement"' in html
         assert 'value="xras_update-WNA"' not in html
 
@@ -463,10 +464,15 @@ class TestTheAddressingTab:
                                                              monkeypatch):
         monkeypatch.setitem(app.config, 'NOTIFY_XRAS_CC', 'alloc@example.edu')
         monkeypatch.setitem(app.config, 'NOTIFY_XRAS_REPLY_TO', 'reply@example.edu')
+        import re
         html = auth_client.get(ADDRESSING).data.decode()
-        assert 'alloc@example.edu' in html and 'deployment default' in html
         assert 'Reply-To <code>reply@example.edu</code>' in html
-        assert 'hx-delete' not in html
+        # Scoped to the default's own row: another xdist worker may have a
+        # committed operator row (with a Remove button) on this card.
+        (row,) = [tr for tr in re.findall(r'<tr>.*?</tr>', html, re.S)
+                  if 'alloc@example.edu' in tr]
+        assert 'deployment default' in row
+        assert 'hx-delete' not in row
 
     def test_an_unknown_family_is_404(self, auth_client):
         resp = auth_client.post(f'{ADDRESSING}/nope',

@@ -221,7 +221,9 @@ def addressing_scopes(family: str) -> List[str]:
         scopes.append(kind.key)
         if kind.facility_aware:
             scopes.extend(f'{kind.key}-{facility}' for facility in FACILITY_VARIANTS)
-    return scopes
+    # dict.fromkeys: order-preserving dedupe; the `expiration` family and
+    # kind share a key.
+    return list(dict.fromkeys(scopes))
 
 
 def scope_family(scope: str) -> str:
@@ -238,7 +240,7 @@ def message_scopes(kind: str, facility=None) -> List[str]:
     scopes = [k.family, k.key]
     if k.facility_aware and facility:
         scopes.append(f'{k.key}-{facility}')
-    return scopes
+    return list(dict.fromkeys(scopes))
 
 
 def get_kind(key: str) -> NotificationKind:

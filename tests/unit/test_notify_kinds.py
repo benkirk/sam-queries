@@ -39,7 +39,14 @@ class TestAddressingScopes:
 
     def test_expiration_offers_family_kind_and_facility_scopes(self):
         assert addressing_scopes('expiration') == [
-            'expiration', 'expiration', 'expiration-UNIV', 'expiration-WNA']
+            'expiration', 'expiration-UNIV', 'expiration-WNA']
+
+    def test_no_family_lists_a_scope_twice(self):
+        """The `expiration` family and kind share a key; the select must not
+        show it twice."""
+        for family in FAMILIES:
+            scopes = addressing_scopes(family)
+            assert len(scopes) == len(set(scopes)), scopes
 
     def test_xras_offers_no_facility_scopes(self):
         scopes = addressing_scopes('xras')
@@ -58,7 +65,6 @@ class TestAddressingScopes:
                 assert set(message_scopes(kind.key, facility)) <= set(offered)
 
     def test_a_facility_message_matches_its_variant_only_when_aware(self):
-        assert message_scopes('expiration', 'WNA') == [
-            'expiration', 'expiration', 'expiration-WNA']
+        assert message_scopes('expiration', 'WNA') == ['expiration', 'expiration-WNA']
         assert message_scopes('xras_update', 'WNA') == ['xras', 'xras_update']
-        assert message_scopes('expiration') == ['expiration', 'expiration']
+        assert message_scopes('expiration') == ['expiration']
