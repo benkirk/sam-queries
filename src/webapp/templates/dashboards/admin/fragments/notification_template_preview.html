@@ -4,13 +4,24 @@
   <style>). Errors and unknown-variable warnings render here too, at 200.
 
   Context: row, error, warnings, text, html, subject, audience (a real
-           project's recipient, or None for sample data), role, info
+           project's recipient, or None for sample data), role, info,
+           addressing (Addressing.as_dict(): from, reply_to, cc, bcc)
 #}
 {% if subject %}
 <p class="small text-muted mb-2">
     <i class="fa-solid {{ 'fa-user' if audience else 'fa-flask' }} me-1"></i>
     {% if audience %}{{ audience }}{% else %}Sample data, as {{ role }}{% endif %}
     · Subject: <span class="fw-semibold">{{ subject }}</span>
+</p>
+{% endif %}
+{% if addressing and (addressing['from'] or addressing.reply_to or addressing.cc or addressing.bcc) %}
+<p class="small text-muted mb-2 notify-preview-addressing">
+    <i class="fa-solid fa-envelope-circle-check me-1"></i>
+    {%- for label, key in [('From', 'from'), ('Reply-To', 'reply_to'), ('Cc', 'cc'), ('Bcc', 'bcc')] %}
+    {%- if addressing[key] %}
+    <span class="me-3">{{ label }}: <code>{{ addressing[key] }}</code></span>
+    {%- endif %}
+    {%- endfor %}
 </p>
 {% endif %}
 {% if info %}

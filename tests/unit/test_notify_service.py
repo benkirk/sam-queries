@@ -708,3 +708,194 @@ class TestTheRendererSeesTheLedgersDatabase:
         from sam.notify import Notifier
         notifier = Notifier(ledger=None, transport=NullTransport())
         assert notifier.renderer.loader.session_factory is None
+
+
+class _FakeAddressingSession:
+    def __init__(self, rows, raise_with=None):
+        self._rows, self._raise = rows, raise_with
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, _stmt):
+        if self._raise is not None:
+            raise self._raise
+        rows = self._rows
+
+        class _Result:
+            @staticmethod
+            def scalars():
+                return iter(rows)
+        return _Result()
+
+
+class _AddressingRow:
+    def __init__(self, scope, field, address):
+        self.scope, self.field, self.address = scope, field, address
+
+
+class _AddressingFactory:
+    def __init__(self, rows=(), raise_with=None):
+        self.rows, self.raise_with, self.calls = list(rows), raise_with, 0
+
+    def __call__(self):
+        self.calls += 1
+        return _FakeAddressingSession(self.rows, self.raise_with)
+
+
+class TestOperatorAddressing:
+    """`notification_addressing` rows add to the env defaults at send time."""
+
+    @pytest.fixture
+    def xras_renderer(self, tmp_path):
+        (tmp_path / 'xras_extension.txt').write_text('Extended.')
+        (tmp_path / 'xras_supplement.txt').write_text('More.')
+        (tmp_path / 'expiration-UNIV.txt').write_text('Expiring.')
+        (tmp_path / 'expiration-WNA.txt').write_text('Expiring, WNA.')
+        return TemplateRenderer(template_dir=tmp_path)
+
+    @pytest.fixture(autouse=True)
+    def _clean_env(self, monkeypatch):
+        for family in ('XRAS', 'EXPIRATION'):
+            for suffix in ('CC', 'BCC', 'FROM', 'REPLY_TO'):
+                monkeypatch.delenv(f'NOTIFY_{family}_{suffix}', raising=False)
+
+    def _notifier(self, renderer, rows=(), raise_with=None, **config_kwargs):
+        from sam.notify import AddressingStore
+        transport = NullTransport()
+        notifier = _notifier(renderer, transport, **config_kwargs)
+        factory = _AddressingFactory([_AddressingRow(*r) for r in rows], raise_with)
+        notifier.addressing_store = AddressingStore(factory)
+        return notifier, transport, factory
+
+    def _sent(self, notifier, transport, message):
+        notifier.send(message)
+        sent, _ = transport.delivered[-1]
+        return sent
+
+    def test_the_store_comes_from_the_ledgers_factory(self, renderer):
+        from types import SimpleNamespace
+        factory = object()
+        notifier = Notifier(config=NotifyConfig(), renderer=renderer,
+                            ledger=SimpleNamespace(session_factory=factory))
+        assert notifier.addressing_store.session_factory is factory
+        assert Notifier(config=NotifyConfig(), renderer=renderer
+                        ).addressing_store.session_factory is None
+
+    def test_no_factory_means_no_query_and_nothing_changes(self, xras_renderer,
+                                                          monkeypatch):
+        monkeypatch.setenv('NOTIFY_XRAS_CC', 'alloc@x.edu')
+        transport = NullTransport()
+        notifier = _notifier(xras_renderer, transport)
+        assert notifier.addressing_store.session_factory is None
+        sent = self._sent(notifier, transport,
+                          _message(kind='xras_extension', facility=None))
+        assert (sent.cc, sent.bcc) == (('alloc@x.edu',), ())
+
+    def test_zero_rows_is_byte_identical_to_today(self, xras_renderer):
+        notifier, transport, factory = self._notifier(xras_renderer)
+        message = _message(kind='xras_extension', facility=None)
+        assert self._sent(notifier, transport, message) is message
+        assert factory.calls == 1
+
+    def test_family_kind_and_facility_rows_all_add_in_that_order(
+            self, xras_renderer, monkeypatch):
+        monkeypatch.setenv('NOTIFY_EXPIRATION_CC', 'env@x.edu')
+        notifier, transport, _ = self._notifier(xras_renderer, rows=[
+            ('expiration-WNA', 'cc', 'wna@x.edu'),
+            ('expiration', 'bcc', 'audit@x.edu'),
+            ('expiration', 'cc', 'family@x.edu'),
+            ('xras', 'cc', 'other-family@x.edu'),
+        ])
+        sent = self._sent(notifier, transport, _message(facility='WNA'))
+        assert sent.cc == ('env@x.edu', 'family@x.edu', 'wna@x.edu')
+        assert sent.bcc == ('audit@x.edu',)
+
+    def test_a_facility_row_does_not_reach_another_facility(self, xras_renderer):
+        notifier, transport, _ = self._notifier(
+            xras_renderer, rows=[('expiration-WNA', 'cc', 'wna@x.edu')])
+        assert self._sent(notifier, transport, _message(facility='UNIV')).cc == ()
+        assert self._sent(notifier, transport, _message(facility='WNA')).cc == \
+            ('wna@x.edu',)
+
+    def test_a_kind_row_reaches_only_that_kind(self, xras_renderer):
+        notifier, transport, _ = self._notifier(
+            xras_renderer, rows=[('xras_supplement', 'cc', 'supp@x.edu')])
+        assert self._sent(notifier, transport, _message(
+            kind='xras_supplement', facility=None)).cc == ('supp@x.edu',)
+        assert self._sent(notifier, transport, _message(
+            kind='xras_extension', facility=None)).cc == ()
+
+    def test_a_builder_set_copy_replaces_env_but_rows_still_add(
+            self, xras_renderer, monkeypatch):
+        monkeypatch.setenv('NOTIFY_XRAS_CC', 'env@x.edu')
+        notifier, transport, _ = self._notifier(
+            xras_renderer, rows=[('xras', 'cc', 'ops@x.edu')])
+        sent = self._sent(notifier, transport, _message(
+            kind='xras_extension', facility=None, cc=('builder@x.edu',)))
+        assert sent.cc == ('builder@x.edu', 'ops@x.edu')
+
+    def test_duplicates_collapse_case_insensitively(self, xras_renderer, monkeypatch):
+        monkeypatch.setenv('NOTIFY_XRAS_CC', 'Alloc@x.edu')
+        notifier, transport, _ = self._notifier(xras_renderer, rows=[
+            ('xras', 'cc', 'alloc@x.edu'), ('xras_extension', 'cc', 'alloc@x.edu'),
+            ('xras', 'bcc', 'alloc@x.edu'),
+        ])
+        sent = self._sent(notifier, transport,
+                          _message(kind='xras_extension', facility=None))
+        assert sent.cc == ('Alloc@x.edu',)
+        assert sent.bcc == ('alloc@x.edu',)      # cc and bcc are separate lists
+
+    def test_sender_and_reply_to_stay_env_only(self, xras_renderer, monkeypatch):
+        monkeypatch.setenv('NOTIFY_XRAS_REPLY_TO', 'alloc@x.edu')
+        notifier, transport, _ = self._notifier(
+            xras_renderer, rows=[('xras', 'cc', 'ops@x.edu')])
+        sent = self._sent(notifier, transport,
+                          _message(kind='xras_extension', facility=None))
+        assert (sent.sender, sent.reply_to) == (None, 'alloc@x.edu')
+
+    def test_many_sends_cost_one_query(self, xras_renderer):
+        notifier, transport, factory = self._notifier(
+            xras_renderer, rows=[('xras', 'cc', 'ops@x.edu')])
+        for _ in range(4):
+            self._sent(notifier, transport,
+                       _message(kind='xras_extension', facility=None))
+        assert factory.calls == 1
+
+    def test_a_database_failure_falls_back_to_env_with_one_warning(
+            self, xras_renderer, monkeypatch, caplog):
+        from sqlalchemy.exc import OperationalError
+        monkeypatch.setenv('NOTIFY_XRAS_CC', 'env@x.edu')
+        notifier, transport, _ = self._notifier(
+            xras_renderer, raise_with=OperationalError('SELECT', {}, Exception('gone')))
+        with caplog.at_level('WARNING', logger='sam.notify.addressing'):
+            sent = self._sent(notifier, transport,
+                              _message(kind='xras_extension', facility=None))
+            self._sent(notifier, transport,
+                       _message(kind='xras_extension', facility=None))
+        assert sent.cc == ('env@x.edu',)
+        assert sum('operator addressing unavailable' in r.message
+                   for r in caplog.records) == 1
+
+    def test_a_redirect_still_leaves_with_no_copies(self, xras_renderer):
+        notifier, transport, _ = self._notifier(
+            xras_renderer, rows=[('xras', 'cc', 'ops@x.edu')],
+            redirect_to='me@x.edu')
+        sent = self._sent(notifier, transport,
+                          _message(kind='xras_extension', facility=None))
+        assert sent.cc == ('ops@x.edu',) and sent.copies() == ((), ())
+
+    def test_addressing_for_is_what_the_preview_shows(self, xras_renderer,
+                                                      monkeypatch):
+        monkeypatch.setenv('NOTIFY_XRAS_CC', 'env@x.edu')
+        monkeypatch.setenv('NOTIFY_XRAS_REPLY_TO', 'alloc@x.edu')
+        notifier, _, _ = self._notifier(xras_renderer, rows=[
+            ('xras', 'bcc', 'audit@x.edu'), ('xras_supplement', 'cc', 'supp@x.edu')])
+        assert notifier.addressing_for('xras_supplement').as_dict() == {
+            'cc': 'env@x.edu, supp@x.edu', 'bcc': 'audit@x.edu',
+            'from': None, 'reply_to': 'alloc@x.edu'}
+        assert notifier.addressing_for('xras_extension').cc == ('env@x.edu',)
+        assert notifier.addressing_for('expiration', 'WNA').is_empty

@@ -58,6 +58,7 @@ _LAZY_EXPORTS = {
     'kinds_in_family':            'sam.notify.kinds',
     'message_scopes':             'sam.notify.kinds',
     'scope_family':               'sam.notify.kinds',
+    'AddressingStore':            'sam.notify.addressing',
     'FIELDS':                     'sam.notify.addressing_store',
     'NotificationAddressing':     'sam.notify.addressing_store',
     'normalize_address':          'sam.notify.addressing_store',
@@ -105,6 +106,7 @@ def __dir__():
 
 
 __all__ = [
+    'AddressingStore',
     'Channel',
     'ConsoleTransport',
     'DEDUP_CHUNK',

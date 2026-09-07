@@ -47,6 +47,7 @@ from webapp.extensions import db
 from webapp.utils.faceted_log import build_facet_strip, parse_window
 from webapp.utils.form_handler import FlattenedFieldErrors, FormError, HtmxFormHandler
 from webapp.utils.htmx import htmx_modal_not_found, read_tab, register_typeahead
+from webapp.utils.notify import get_notifier
 from webapp.utils.rbac import require_permission, Permission
 
 from .blueprint import bp
@@ -354,7 +355,9 @@ def notification_template_preview(name: str):
     renderer = _renderer()
     result = {'row': row, 'error': None, 'warnings': [], 'text': None,
               'html': None, 'audience': None, 'subject': None, 'role': role,
-              'info': None}
+              'info': None,
+              'addressing': get_notifier().addressing_for(
+                  row['kind'], row['facility']).as_dict()}
     project, messages, info = _project_audience(row, request.form)
     if info:
         result['info'] = info

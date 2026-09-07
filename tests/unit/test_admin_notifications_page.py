@@ -357,6 +357,27 @@ class TestSave:
                     db.session.commit()
 
 
+class TestPreviewAddressingLine:
+    """The pane says what the copy will carry: env defaults plus operator rows."""
+
+    XRAS = '/admin/htmx/notifications/templates/xras_update.txt/preview'
+
+    def test_the_effective_addressing_is_shown(self, auth_client, app, monkeypatch):
+        monkeypatch.setitem(app.config, 'NOTIFY_XRAS_CC', 'alloc@example.edu')
+        monkeypatch.setitem(app.config, 'NOTIFY_XRAS_REPLY_TO', 'reply@example.edu')
+        html = auth_client.post(self.XRAS, data={'body': 'x'}).data.decode()
+        assert 'notify-preview-addressing' in html
+        assert 'Cc: <code>alloc@example.edu</code>' in html
+        assert 'Reply-To: <code>reply@example.edu</code>' in html
+
+    def test_nothing_configured_shows_no_line(self, auth_client, app, monkeypatch):
+        for key in ('NOTIFY_XRAS_CC', 'NOTIFY_XRAS_BCC', 'NOTIFY_XRAS_FROM',
+                    'NOTIFY_XRAS_REPLY_TO'):
+            monkeypatch.setitem(app.config, key, '')
+        html = auth_client.post(self.XRAS, data={'body': 'x'}).data.decode()
+        assert 'notify-preview-addressing' not in html
+
+
 class TestPreviewForAProject:
     """Real data replaces the samples once a project is picked."""
 
