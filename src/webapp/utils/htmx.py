@@ -89,6 +89,20 @@ def read_theme(default: str = 'light') -> str:
     return raw if raw in _THEMES else default
 
 
+def read_tab(param, allowed, default):
+    """Which sub-tab a deep-link asked for — the server-driven tab channel.
+
+    The counterpart to the ``data-tab-url-param`` markup in
+    ``nav-view-persistence.js``: a tablist opts out of localStorage and the
+    route reads ``?<param>=`` to decide the active pane, so the URL is
+    shareable/bookmarkable. Lenient like ``read_layout`` — an unknown or absent
+    value falls back to ``default``, never a 400, since a stale or hand-typed
+    tab must not break a page. ``allowed`` is the declared value set.
+    """
+    raw = (request.args.get(param) or '').strip().lower()
+    return raw if raw in allowed else default
+
+
 #: Values a checkbox / switch may arrive as. Templates emit ``1`` (see the
 #: ``active_toggle_search`` macro, the admin card toggles and the charts'
 #: log-scale switches) but the set is deliberately permissive: a checkbox

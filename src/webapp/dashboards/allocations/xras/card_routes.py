@@ -60,7 +60,7 @@ from ._shared import (
     _parse_activity_window, _parse_xras_filters,
     _request_facets, _submitted_since, sort_rows,
 )
-from webapp.utils.htmx import read_flag, read_sort
+from webapp.utils.htmx import read_flag, read_sort, read_tab
 
 
 #: Pending Users' sortable non-facet columns -> row key. Needs / Role / Source /
@@ -107,6 +107,13 @@ def _xras_action_types():
     return sorted(set(XRAS_ACTION_TYPES) | set(get_observed_action_types(db.session)))
 
 
+#: Deep-link targets (?view=) for the XRAS page. The two tab panes plus the two
+#: sibling cards (remediations/logs) — not a uniform tablist, so the two cards
+#: are reached by a scroll-into-view handler (data-deeplink), not the tab
+#: channel. First entry is the default.
+_XRAS_VIEWS = ('activity', 'accounts', 'remediations', 'logs')
+
+
 @bp.route('/xras')
 @login_required
 @require_permission(Permission.VIEW_XRAS)
@@ -120,6 +127,8 @@ def xras():
         'dashboards/allocations/xras.html',
         xras_start_date=start_str,
         xras_end_date=end_str,
+        # Which worklist tab / card a ?view= deep-link opened on (see xras.html).
+        xras_view=read_tab('view', _XRAS_VIEWS, 'activity'),
         # The worklist tabs share ONE window control, rendered in the shell so
         # only one start_date/end_date pair exists (see the template).
         window=_parse_activity_window(request.args),

@@ -14,7 +14,7 @@ Domain-specific routes are split into sub-modules imported at the bottom:
 from flask import Blueprint, render_template, request, flash, redirect, url_for, session, Response, abort
 from markupsafe import escape
 from webapp.utils.htmx import (htmx_success, htmx_success_message, htmx_not_found,
-                               read_active_only, register_typeahead)
+                               read_active_only, read_tab, register_typeahead)
 from flask_login import login_required, current_user, login_user
 from datetime import datetime, timedelta
 from webapp.api.helpers import parse_input_end_date
@@ -65,6 +65,13 @@ UPCOMING_PRESETS = {
     '31days': 31,
     '60days': 60
 }
+
+# Deep-link sub-tab vocabularies (?tab=) for the Resources / Organizations
+# cards — the values map to the pane ids in resources_card.html /
+# organization_card.html. Shared with the fragment routes so the page shell and
+# the fragment agree on which pane is active. First entry is the default.
+_RESOURCES_TABS = ('resources', 'machines', 'queues')
+_ORGANIZATIONS_TABS = ('organizations', 'institutions', 'areas', 'nsf-programs')
 
 
 @bp.route('/')
@@ -138,7 +145,17 @@ def projects_directories():
 @require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)
 def users_groups():
     """Admin Users & Groups page — search users/groups, card display areas."""
-    return render_template('dashboards/admin/users_groups.html', user=current_user)
+    # Optional re-hydration, mirroring /admin/projects?projcode=: a shareable
+    # link like ?username=benkirk / ?groupname=ncar auto-renders that card via
+    # HTMX on load. The card routes and reveal JS are unchanged.
+    auto_load_username = (request.args.get('username') or '').strip() or None
+    auto_load_groupname = (request.args.get('groupname') or '').strip() or None
+    return render_template(
+        'dashboards/admin/users_groups.html',
+        user=current_user,
+        auto_load_username=auto_load_username,
+        auto_load_groupname=auto_load_groupname,
+    )
 
 
 @bp.route('/resources')
@@ -146,7 +163,9 @@ def users_groups():
 @require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)
 def resources():
     """Admin Resources page (htmx-loaded card)."""
-    return render_template('dashboards/admin/resources.html', user=current_user)
+    active_tab = read_tab('tab', _RESOURCES_TABS, 'resources')
+    return render_template('dashboards/admin/resources.html',
+                           user=current_user, active_tab=active_tab)
 
 
 @bp.route('/organizations')
@@ -154,7 +173,9 @@ def resources():
 @require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)
 def organizations():
     """Admin Organizations page (htmx-loaded card)."""
-    return render_template('dashboards/admin/organizations.html', user=current_user)
+    active_tab = read_tab('tab', _ORGANIZATIONS_TABS, 'organizations')
+    return render_template('dashboards/admin/organizations.html',
+                           user=current_user, active_tab=active_tab)
 
 
 @bp.route('/organizations/mnemonics')

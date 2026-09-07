@@ -12,26 +12,29 @@
   Exemptions group row has no buttons, so it keeps the simpler <tr> trigger.
 #}
 <div class="card-body p-0">
+    {# Sub-tabs are deep-linked via ?tab= (data-tab-url-param); the route reads
+       it and stamps the active pane, and nav-view-persistence.js mirrors a tab
+       click back into the URL. active_tab defaults to 'resources'. #}
     <!-- Tab navigation -->
-    <ul class="nav nav-tabs" id="resourcesTabs" role="tablist">
+    <ul class="nav nav-tabs" id="resourcesTabs" role="tablist" data-tab-url-param="tab">
         <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="resources-tab" data-bs-toggle="tab"
-                    data-bs-target="#resources-pane" type="button" role="tab"
-                    aria-controls="resources-pane" aria-selected="true">
+            <button class="nav-link {{ 'active' if active_tab == 'resources' }}" id="resources-tab" data-bs-toggle="tab"
+                    data-bs-target="#resources-pane" type="button" role="tab" data-tab-param-value="resources"
+                    aria-controls="resources-pane" aria-selected="{{ 'true' if active_tab == 'resources' else 'false' }}">
                 <i class="fas fa-server me-1"></i> Resources
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="machines-tab" data-bs-toggle="tab"
-                    data-bs-target="#machines-pane" type="button" role="tab"
-                    aria-controls="machines-pane" aria-selected="false">
+            <button class="nav-link {{ 'active' if active_tab == 'machines' }}" id="machines-tab" data-bs-toggle="tab"
+                    data-bs-target="#machines-pane" type="button" role="tab" data-tab-param-value="machines"
+                    aria-controls="machines-pane" aria-selected="{{ 'true' if active_tab == 'machines' else 'false' }}">
                 <i class="fas fa-microchip me-1"></i> Machines
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="queues-tab" data-bs-toggle="tab"
-                    data-bs-target="#queues-pane" type="button" role="tab"
-                    aria-controls="queues-pane" aria-selected="false">
+            <button class="nav-link {{ 'active' if active_tab == 'queues' }}" id="queues-tab" data-bs-toggle="tab"
+                    data-bs-target="#queues-pane" type="button" role="tab" data-tab-param-value="queues"
+                    aria-controls="queues-pane" aria-selected="{{ 'true' if active_tab == 'queues' else 'false' }}">
                 <i class="fas fa-list-ol me-1"></i> Queues
             </button>
         </li>
@@ -40,7 +43,7 @@
     <div class="tab-content" id="resourcesTabsContent">
 
         <!-- Resources tab (types collapsed, resources expand on click) -->
-        <div class="tab-pane fade show active" id="resources-pane" role="tabpanel"
+        <div class="tab-pane fade {{ 'show active' if active_tab == 'resources' }}" id="resources-pane" role="tabpanel"
              aria-labelledby="resources-tab">
             <div class="table-responsive">
                 <table class="table table-sm mb-0">
@@ -243,7 +246,7 @@
         </div>
 
         <!-- Machines tab -->
-        <div class="tab-pane fade" id="machines-pane" role="tabpanel"
+        <div class="tab-pane fade {{ 'show active' if active_tab == 'machines' }}" id="machines-pane" role="tabpanel"
              aria-labelledby="machines-tab">
             <div class="table-responsive">
                 <table class="table table-hover table-sm mb-0">
@@ -319,7 +322,7 @@
         </div>
 
         <!-- Queues tab (resources collapsed, queues expand on click) -->
-        <div class="tab-pane fade" id="queues-pane" role="tabpanel"
+        <div class="tab-pane fade {{ 'show active' if active_tab == 'queues' }}" id="queues-pane" role="tabpanel"
              aria-labelledby="queues-tab">
             <div class="table-responsive">
                 <table class="table table-sm mb-0">

@@ -10,24 +10,20 @@
 {% endblock %}
 
 {% block content %}
-<!-- Breadcrumb + Back button -->
+<!-- Breadcrumb -->
 <div class="d-flex align-items-center mb-3">
   {% set _crumbs = [] %}
   {% if can_access_admin %}
+    {# Pass projcode so the admin index re-renders this project's card on
+       return — otherwise the crumb lands on a blank search page. #}
     {% set _ = _crumbs.append({'label': 'Admin',
-                               'attrs': {'href': url_for('admin_dashboard.projects')}}) %}
+                               'attrs': {'href': url_for('admin_dashboard.projects', projcode=project.projcode)}}) %}
   {% endif %}
   {% set _ = _crumbs.append({'label': 'Manage Project', 'active': True}) %}
   {% set _ = _crumbs.append({'label': project.projcode, 'active': True}) %}
   {{ breadcrumb(_crumbs, classes='mb-0') }}
-  {% if can_access_admin %}
-  {# Pass projcode so the admin index re-renders this project's card on
-     return — otherwise the user lands on a blank search page. #}
-  <a href="{{ url_for('admin_dashboard.projects', projcode=project.projcode) }}" class="btn btn-outline-secondary  ms-auto">
-    <i class="fas fa-arrow-left"></i> Back to Admin
-  </a>
-  {% else %}
-  <a href="{{ url_for('user_dashboard.index') }}" class="btn btn-outline-secondary  ms-auto">
+  {% if not can_access_admin %}
+  <a href="{{ url_for('user_dashboard.index') }}" class="btn btn-outline-secondary ms-auto">
     <i class="fas fa-arrow-left"></i> Back to Dashboard
   </a>
   {% endif %}

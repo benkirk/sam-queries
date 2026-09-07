@@ -9,18 +9,21 @@
             <i class="fas fa-sitemap"></i> Organizations
         </h5>
         <div class="form-check form-switch ms-3 mb-0">
+            {# Carries the active sub-tab (?tab=) across an active-only refetch;
+               nav-view-persistence.js keeps it in step on a tab click. #}
+            <input type="hidden" id="organizationsTabParam" name="tab" value="{{ active_tab }}">
             <input class="form-check-input" type="checkbox" id="organizationsCardActiveOnly"
                    name="active_only" value="1" checked
                    hx-get="{{ url_for('admin_dashboard.htmx_organizations_card') }}"
                    hx-trigger="change"
-                   hx-include="this"
+                   hx-include="this, #organizationsTabParam"
                    hx-target="#organizationsSection"
                    hx-swap="innerHTML">
             <label class="form-check-label small text-muted fw-normal" for="organizationsCardActiveOnly">Active only</label>
         </div>
     </div>
     <div id="organizationsSection"
-         hx-get="{{ url_for('admin_dashboard.htmx_organizations_card') }}?active_only=1"
+         hx-get="{{ url_for('admin_dashboard.htmx_organizations_card') }}?active_only=1&tab={{ active_tab }}"
          hx-trigger="load once"
          hx-swap="innerHTML">
         <div class="card-body text-center text-muted py-4" role="status">
