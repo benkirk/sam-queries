@@ -243,7 +243,7 @@ body {
 
     .navbar .dropdown-toggle::after {
         content: '\f107';
-        font-family: 'Font Awesome 6 Free';
+        font-family: 'Font Awesome 7 Free';
         font-weight: 900;
         border: 0;
         font-size: 0.75rem;
@@ -2184,7 +2184,7 @@ tr.tree-node-current {
 
 .collapse-toggle::after {
     content: '\f078';
-    font-family: 'Font Awesome 6 Free';
+    font-family: 'Font Awesome 7 Free';
     font-weight: 900;
     float: right;
     transition: transform var(--transition-base);
