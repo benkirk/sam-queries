@@ -21,7 +21,7 @@ def make_notification_log(session, *, kind='expiration', channel='email',
                           recipient=None, requested_by='benkirk',
                           intended_recipient=None, recipient_name='A PI',
                           recipient_role='lead', subject=None, template=None,
-                          entity_type=None, entity_id=None, projcode=None,
+                          copies=None, entity_type=None, entity_id=None, projcode=None,
                           dedup_key=None, error=None, when=None, age=None):
     """One ledger row, optionally back-dated.
 
@@ -53,6 +53,7 @@ def make_notification_log(session, *, kind='expiration', channel='email',
         recipient_role=recipient_role,
         subject=subject if subject is not None else f'{kind} notice',
         template=template,
+        copies=copies,
         entity_type=entity_type,
         entity_id=entity_id,
         projcode=projcode,

@@ -537,6 +537,20 @@ class TestTransportSelection:
         notifier.send(_message())
         assert 'Dear A PI' in capsys.readouterr().out
 
+    def test_console_transport_prints_copies_except_on_a_redirect(self, renderer,
+                                                                  capsys):
+        notifier = Notifier(config=NotifyConfig(enabled=True, transport='console'),
+                            renderer=renderer)
+        notifier.send(_message(cc=('alloc@x.edu',), bcc=('ops@x.edu',)))
+        out = capsys.readouterr().out
+        assert 'cc:        alloc@x.edu' in out and 'bcc:       ops@x.edu' in out
+        notifier = Notifier(config=NotifyConfig(enabled=True, transport='console',
+                                                redirect_to='me@x.edu'),
+                            renderer=renderer)
+        notifier.send(_message(cc=('alloc@x.edu',), bcc=('ops@x.edu',)))
+        out = capsys.readouterr().out
+        assert 'alloc@x.edu' not in out and 'ops@x.edu' not in out
+
 
 class TestWithALedger:
     """The guard matrix wired to real rows.

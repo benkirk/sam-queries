@@ -50,10 +50,11 @@ class ConsoleTransport(Transport):
         out.write(f'to:        {message.recipient.address}\n')
         if message.reply_to:
             out.write(f'reply-to:  {message.reply_to}\n')
-        if message.cc and not message.intended_recipient:
-            out.write(f'cc:        {", ".join(message.cc)}\n')
-        if message.bcc and not message.intended_recipient:
-            out.write(f'bcc:       {", ".join(message.bcc)}\n')
+        cc, bcc = message.copies()
+        if cc:
+            out.write(f'cc:        {", ".join(cc)}\n')
+        if bcc:
+            out.write(f'bcc:       {", ".join(bcc)}\n')
         if message.intended_recipient:
             out.write(f'intended:  {message.intended_recipient}\n')
         out.write(f'subject:   {rendered.subject}\n')

@@ -89,6 +89,25 @@ class TestThePage:
         assert b'sink@example.edu' in resp.data
 
 
+class TestTheDetailModal:
+    """Rendered directly: the route reads committed rows only."""
+
+    def _render(self, app, session, **kwargs):
+        from flask import render_template
+        from factories.notify import make_notification_log
+        row = make_notification_log(session, **kwargs)
+        with app.test_request_context():
+            return render_template(
+                'dashboards/admin/fragments/notification_detail_modal.html', row=row)
+
+    def test_the_copies_that_left_are_shown(self, app, session):
+        html = self._render(app, session, copies='cc:alloc@x.edu;bcc:ops@x.edu')
+        assert 'cc:alloc@x.edu;bcc:ops@x.edu' in html
+
+    def test_no_copies_says_so(self, app, session):
+        assert 'none left with it' in self._render(app, session)
+
+
 class TestTheLogFragment:
 
     def test_it_renders_the_facet_strip(self, auth_client):

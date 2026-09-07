@@ -109,7 +109,7 @@ class Message:
     intended_recipient: Optional[str] = None
     #: Copies a builder adds per message (the XRAS handoff mails copy a shared
     #: mailbox). ``cc`` is a header and an envelope recipient; ``bcc`` is
-    #: envelope-only. Both are dropped on a redirect.
+    #: envelope-only. Both are dropped on a redirect -- see :meth:`copies`.
     cc: Tuple[str, ...] = ()
     bcc: Tuple[str, ...] = ()
     #: ``None`` keeps the configured From; ``reply_to`` adds a header.
@@ -123,6 +123,24 @@ class Message:
     @property
     def entity_id(self) -> Optional[int]:
         return self.entity[1] if self.entity else None
+
+    def copies(self) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
+        """``(cc, bcc)`` that may leave with this message: empty on a redirect.
+
+        A redirected message is a staging run; the copies name real mailboxes
+        and must not leave with it. Every transport and the ledger read this,
+        never the fields.
+        """
+        if self.intended_recipient:
+            return ((), ())
+        return (tuple(self.cc), tuple(self.bcc))
+
+    def copies_summary(self) -> Optional[str]:
+        """The copies as ``cc:a@x,b@y;bcc:c@z`` for the ledger, or ``None``."""
+        parts = [f'{label}:{",".join(addresses)}'
+                 for label, addresses in zip(('cc', 'bcc'), self.copies())
+                 if addresses]
+        return ';'.join(parts) or None
 
 
 @dataclass(frozen=True)
