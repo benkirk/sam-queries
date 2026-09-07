@@ -289,3 +289,36 @@ class TestTheApproverComment:
         assert self.NOTE not in (rendered.text or '')
         assert self.NOTE not in (rendered.html or '')
 
+
+
+class TestTheSampleContextMatchesTheBuilder:
+    """`sam.notify.samples` is the editor's palette and preview input; if the
+    builder grows or drops a key, the sample must follow."""
+
+    _SERVICES = {
+        'xras_activation': ('add', 'New'),
+        'xras_supplement': ('supplement', 'Supplement'),
+        'xras_extension': ('extend', 'Extension'),
+        'xras_update': ('update', 'Renewal'),
+        'xras_adjustment': ('adjust', 'Adjustment'),
+    }
+
+    @pytest.fixture
+    def key(self, session):
+        return make_xras_key_mapping(session).xras_key
+
+    @pytest.mark.parametrize('kind', sorted(_SERVICES))
+    def test_the_key_sets_agree(self, session, project, key, kind):
+        from sam.notify.samples import sample_context
+        service, action_type = self._SERVICES[kind]
+        payload = json.dumps({'resources': [
+            {'resourceRepositoryKey': key, 'awardedAmount': '50000'}]})
+        _action, (message,) = _built(session, project, service=service,
+                                     action_type=action_type, payload=payload)
+        assert message.kind == kind
+        sample = sample_context(kind)
+        assert set(message.context) == set(sample)
+        for name in ('added', 'changes'):
+            assert bool(message.context[name]) == bool(sample[name])
+            if sample[name]:
+                assert set(message.context[name][0]) == set(sample[name][0])
