@@ -8,7 +8,7 @@ user accounts, project tracking, and charging for Derecho, Casper, and other
 computational resources.
 
 **Tech Stack**: SQLAlchemy 2.0, MySQL/MariaDB, Python 3.13, Flask + htmx
-(vendored Bootstrap 5.3.3), marshmallow, pytest
+(vendored Bootstrap 5.3.8), marshmallow, pytest
 
 ---
 

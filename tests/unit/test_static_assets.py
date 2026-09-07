@@ -23,7 +23,7 @@ from webapp.utils.static_assets import (
 # An app-owned asset and a vendored one: both must behave identically, because
 # the rule keys on `?v=` and not on the path.
 APP_ASSET = 'js/form-helpers.js'
-VENDOR_ASSET = 'vendor/htmx/htmx-2.0.4.min.js'
+VENDOR_ASSET = 'vendor/htmx/htmx-2.0.10.min.js'
 
 TEMPLATE_ROOT = Path(__file__).resolve().parents[2] / 'src' / 'webapp' / 'templates'
 
