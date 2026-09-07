@@ -46,6 +46,17 @@ class TemplateError(NotifyError):
     """No text template could be resolved for a message."""
 
 
+def shipped_template_names(template_dir: Optional[Path] = None) -> list[str]:
+    """Every operator-facing template file name, sorted.
+
+    Underscore-prefixed files (`_email_base.html`) are developer-owned layout
+    partials, never rendered on their own and never offered for editing.
+    """
+    directory = Path(template_dir) if template_dir else TEMPLATE_DIR
+    return sorted(p.name for p in directory.iterdir()
+                  if p.is_file() and not p.name.startswith('_'))
+
+
 class TemplateRenderer:
     """Renders a :class:`~sam.notify.base.Message` into text and optional HTML.
 

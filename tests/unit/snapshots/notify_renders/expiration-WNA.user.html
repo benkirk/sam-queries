@@ -28,12 +28,21 @@
             padding: 10px 15px;
             margin: 15px 0;
         }
+
         .footer {
             margin-top: 30px;
             padding-top: 20px;
             border-top: 1px solid #ddd;
             font-size: 0.9em;
             color: #666;
+        }
+        /* The contact line lives in the footer; a default-blue mailto would
+           pull the eye straight past the message body to the fine print. */
+        .footer a {
+            color: inherit;
+        }
+        .footer p {
+            margin: 0 0 6px;
         }
     </style>
 </head>
@@ -61,6 +70,7 @@
     <h3>Project Extensions</h3>
     <p>Your project lead (<strong>Jane Lead</strong> / <a href="mailto:jane.lead@example.edu">jane.lead@example.edu</a>) can request an extension if required.</p>
     
+
 
     <div class="footer">
         <p>This is an automated notification from the NSF NCAR Systems Accounting Manager.</p>
