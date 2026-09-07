@@ -25,7 +25,9 @@ from pathlib import Path
 from typing import Optional
 
 import jinja2
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+import jinja2.meta
+from jinja2 import ChoiceLoader, DictLoader, FileSystemLoader, select_autoescape
+from jinja2.sandbox import ImmutableSandboxedEnvironment
 
 from sam import fmt
 from sam.notify.base import Message, NotifyError, RenderedMessage
@@ -67,7 +69,10 @@ class TemplateRenderer:
 
     def __init__(self, template_dir: Optional[Path] = None) -> None:
         self.template_dir = Path(template_dir) if template_dir else TEMPLATE_DIR
-        self.env = Environment(
+        # Sandboxed because operators will edit these bodies: attribute
+        # and dunder access that SSTI needs is refused; registered filters
+        # run as trusted Python and are unaffected.
+        self.env = ImmutableSandboxedEnvironment(
             loader=FileSystemLoader(str(self.template_dir)),
             # Autoescape the HTML variant only. The text variant must stay
             # literal: a project title containing '&' belongs in a plain-text
@@ -141,15 +146,7 @@ class TemplateRenderer:
                 f'{", ".join(self.candidates(message, "txt"))} under '
                 f'{self.template_dir}')
         text_name = f'{stem}.txt'
-
-        context = dict(message.context)
-        # The caller's subject wins, but templates get it too so a body can
-        # echo it without the caller passing it twice.
-        context.setdefault('subject', message.subject)
-        context.setdefault('recipient', message.recipient.address)
-        context.setdefault('recipient_name', message.recipient.name)
-        context.setdefault('recipient_role', message.recipient.role)
-
+        context = self.context_for(message)
         text = self.env.get_template(text_name).render(**context)
 
         # Same variant as the text, never a different facility's — see
@@ -168,3 +165,39 @@ class TemplateRenderer:
             template_text=text_name,
             template_html=html_name if html is not None else None,
         )
+
+    @staticmethod
+    def context_for(message: Message) -> dict:
+        """The message context plus the four keys every template receives."""
+        context = dict(message.context)
+        # The caller's subject wins, but templates get it too so a body can
+        # echo it without the caller passing it twice.
+        context.setdefault('subject', message.subject)
+        context.setdefault('recipient', message.recipient.address)
+        context.setdefault('recipient_name', message.recipient.name)
+        context.setdefault('recipient_role', message.recipient.role)
+        return context
+
+    # -------------------------------------------------------------- editing
+    def _overlay(self, name: str, source: str):
+        """An environment where ``name`` resolves to ``source``, all else as usual.
+
+        WARNING: not ``from_string``: autoescape is decided by the template
+        *name*, and a nameless string renders an ``.html`` body unescaped.
+        The overlay copies the cache, so a preview never pollutes it.
+        """
+        return self.env.overlay(
+            loader=ChoiceLoader([DictLoader({name: source}), self.env.loader]))
+
+    def render_source(self, name: str, source: str, context: dict) -> str:
+        """Render an unsaved body as if it were the template called ``name``."""
+        return self._overlay(name, source).get_template(name).render(**context)
+
+    def compile_source(self, name: str, source: str) -> None:
+        """Raise ``TemplateSyntaxError`` (or a sandbox error) if ``source`` is unusable."""
+        self._overlay(name, source).get_template(name)
+
+    def undeclared_names(self, source: str, known) -> set[str]:
+        """Top-level names ``source`` reads that are not in ``known`` or the globals."""
+        found = jinja2.meta.find_undeclared_variables(self.env.parse(source))
+        return set(found) - set(known) - set(self.env.globals)

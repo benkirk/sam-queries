@@ -136,3 +136,67 @@ class TestKindValidation:
     def test_an_unknown_kind_raises_before_touching_the_filesystem(self, renderer):
         with pytest.raises(ValueError, match='unknown notification kind'):
             renderer.render(_message(kind='not_a_kind'))
+
+
+class TestSandbox:
+    """Operators will edit these bodies, so the environment is sandboxed."""
+
+    @pytest.fixture
+    def renderer(self):
+        return TemplateRenderer()
+
+    @pytest.mark.parametrize('probe', [
+        "{{ ''.__class__.__mro__ }}",
+        "{{ cycler.__init__.__globals__ }}",
+        "{{ recipient_name.__class__.__name__ }}",
+    ])
+    def test_dunder_access_is_refused(self, renderer, probe):
+        from jinja2.sandbox import SecurityError
+        with pytest.raises(SecurityError):
+            renderer.render_source('probe.txt', probe, {'recipient_name': 'x'})
+
+    def test_the_printf_format_filter_still_works(self, renderer):
+        out = renderer.render_source('f.txt', "{{ '%-6s' | format(code) }}|",
+                                     {'code': 'ab'})
+        assert out == 'ab    |'
+
+    def test_fmt_filters_still_work(self, renderer):
+        out = renderer.render_source('f.txt', '{{ n | fmt_number }}', {'n': 1234})
+        assert out == '1,234'
+
+
+class TestRenderSource:
+
+    @pytest.fixture
+    def renderer(self):
+        return TemplateRenderer()
+
+    def test_an_html_name_escapes_and_a_txt_name_does_not(self, renderer):
+        assert renderer.render_source('x.html', '{{ v }}', {'v': '<b>'}) == '&lt;b&gt;'
+        assert renderer.render_source('x.txt', '{{ v }}', {'v': '<b>'}) == '<b>'
+
+    def test_a_child_resolves_the_shipped_base(self, renderer):
+        out = renderer.render_source(
+            'x.html',
+            '{% extends "_email_base.html" %}{% block content %}BODY{% endblock %}',
+            {})
+        assert '<!DOCTYPE html>' in out and 'BODY' in out
+        assert 'automated notification' in out
+
+    def test_it_shadows_only_the_named_template(self, renderer):
+        """The overlay must not replace the real file for later renders."""
+        renderer.render_source('expiration-UNIV.txt', 'OVERRIDDEN', {})
+        message = Message(kind='expiration', facility='UNIV', subject='s',
+                          recipient=Recipient('pi@x.edu', name='A PI', role='lead'))
+        assert 'OVERRIDDEN' not in renderer.render(message).text
+
+    def test_compile_source_raises_on_bad_syntax(self, renderer):
+        from jinja2 import TemplateSyntaxError
+        with pytest.raises(TemplateSyntaxError):
+            renderer.compile_source('x.txt', '{% if %}')
+        renderer.compile_source('x.txt', '{{ ok }}')
+
+    def test_undeclared_names_ignores_known_names_loop_vars_and_globals(self, renderer):
+        source = ('{% for r in resources %}{{ r.name }}{% endfor %}'
+                  '{{ project_code }}{{ typo }}{{ local_tz_label() }}')
+        assert renderer.undeclared_names(source, {'resources', 'project_code'}) == {'typo'}
