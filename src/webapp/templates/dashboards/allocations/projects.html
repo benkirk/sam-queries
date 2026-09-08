@@ -138,6 +138,12 @@
                               selected_resources, width='240px', id='resources') }}
 
         <button type="submit" class="btn btn-outline-white align-self-end">Update</button>
+        {# formaction submits the current filter selections to the export route,
+           so the download matches what is on screen. No JS needed. #}
+        <button type="submit" class="btn btn-outline-white align-self-end"
+                formaction="{{ url_for('allocations_dashboard.projects_export') }}">
+            <i class="fa-solid fa-file-excel me-1"></i>Download (.xlsx)
+        </button>
     </form>
     </div>
 </div>

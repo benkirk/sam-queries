@@ -1749,6 +1749,29 @@ class TestOverridesRequireAdmin:
         assert 'Ignore contract blocker' in admin and 'Ignore contract blocker' not in viewer
         assert 'Clear' in admin and 'Clear' not in viewer
 
+    def test_admin_can_set_the_mnemonic_on_a_would_land_request(self, app):
+        """The mnemonic override is offered on EVERY request an ADMIN opens, not
+        only a blocked one — so a valid-but-wrong code (wchapman/NCAR4323) can be
+        corrected before a projcode is minted. A non-editor still sees no box."""
+        from flask import render_template
+
+        template = 'dashboards/allocations/partials/_xras_override_controls.html'
+        # No blocker, no existing override — the passing ("would land") case.
+        ctx = dict(request_id=1, request_number='NCAR0001', blockers=set(),
+                   overrides={'mnemonic': None, 'ignore_contract': None},
+                   override_return_to='readiness')
+        with app.test_request_context():
+            admin = render_template(template, can_edit_overrides=True, **ctx)
+            viewer = render_template(template, can_edit_overrides=False, **ctx)
+
+        # ADMIN gets the picker plus the proactive framing; the contract form,
+        # which stays blocker-gated, does NOT appear with no contract blocker.
+        assert 'Set mnemonic' in admin
+        assert 'override what' in admin.lower()          # the would-land framing
+        assert 'Ignore contract blocker' not in admin
+        # A non-editor sees no override box at all (no empty heading).
+        assert 'Operator overrides' not in viewer and 'Set mnemonic' not in viewer
+
 
 # the destructive lifecycle (Part C, ADMIN_XRAS)
 

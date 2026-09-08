@@ -50,13 +50,34 @@ Steady state is one line. Raise it only on a real signal:
 - **a NEW slow (>5s) endpoint.**
 
 **Known-slow — do NOT re-flag:** `directory_access` ~6.9s, `fstree/Casper`
-~1.7s. These are documented and expected; flag them only on a *material,
-sustained* worsening (e.g. `fstree/Casper` running >5s across several
-consecutive ticks, not one spike). The script prints a `known-slow` reminder
-under the slow line for exactly this reason.
+~3s DB plus an app-side tail that amplifies under load (measured; the old "~1.7s"
+was optimistic). Both are **under active investigation** —
+`docs/plans/FSTREE_LATENCY_INVESTIGATION.md` — so don't re-diagnose from scratch;
+flag only a *material, sustained* worsening (running >5s across several
+consecutive ticks, not one spike). The script prints this reminder under the slow
+line for exactly this reason.
 
 Also flag a **pod restart** or an **image-sha change** (a deploy) — the script
 warns on both, comparing the sha to the last tick.
+
+**The `load:` line + `split` (attribution).** Each tick prints a
+`load:` line — `dbload:` (`threads_running` / `conns` / `slow_q` Δ from the
+read-only `hpc-reader` `SHOW GLOBAL STATUS`) and `podcpu:` (`kubectl top`,
+sum/max millicores across the webapp pods). On a slow (>5s) window the script also
+prints a `↳ split` computed from the per-request `db=`/`cpu=` figures the app logs:
+`total ~= cpu (compute/GIL) + db (DB wait) + rest (GIL/pool wait)`. Read it:
+
+- **large `db` share** → DB-bound (the query itself).
+- **large `cpu` share** → app compute — matplotlib render / Python aggregation
+  (the GIL-bound path); fix is warming / render-trim.
+- **`total` ≫ `db + cpu`** → the request was *waiting* (GIL contention or pool
+  checkout), not computing → the sizing lever (workers/pool/HPA).
+
+⚠️ `db=`/`cpu=` on the `↳ split` are **per-request accurate**; `dbload:`/`podcpu:`
+are **point-in-time snapshots at tick time** and may not coincide with the slow
+request's moment — trust the `split` for attribution, treat the snapshots as
+ambient context. (`db=`/`cpu=` overlap slightly — result-parsing CPU counts in
+both — so the split is approximate.)
 
 ## 3. The XRAS action_log line
 

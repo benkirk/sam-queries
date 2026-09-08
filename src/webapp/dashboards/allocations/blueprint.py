@@ -7,9 +7,10 @@ grouped hierarchically by Resource -> Facility -> Allocation Type -> Projects.
 
 
 from flask import (
-    render_template, request, flash, redirect, url_for, jsonify,
+    render_template, request, flash, redirect, url_for, jsonify, Response,
 )
 from flask_login import login_required, current_user
+from sqlalchemy.orm import joinedload
 from datetime import datetime, timedelta
 from typing import List, Dict
 
@@ -34,6 +35,7 @@ from sam.queries.charges import (
 )
 from sam.queries.usage_cache import cached_allocation_usage, purge_usage_cache, usage_cache_info
 from sam.queries.lookups import find_project_by_code
+from sam.export import Column, build_workbook
 from sam.schemas.forms import CreateChargeAdjustmentForm
 from flask import abort
 from webapp.utils.rbac import (
@@ -760,6 +762,114 @@ def projects_fragment():
         active_at_dt=active_at,
         resource_type=resource_type,
     )
+
+
+# Per-project detail columns for the xlsx export (one sheet per resource).
+_EXPORT_COLUMNS = [
+    Column('facility', 'Facility', 14, 'text'),
+    Column('allocation_type', 'Allocation Type', 18, 'text'),
+    Column('projcode', 'Project', 12, 'text'),
+    Column('title', 'Title', 44, 'text'),
+    Column('pi', 'PI', 22, 'text'),
+    Column('total_allocated', 'Allocated', 16, 'num'),
+    Column('total_used', 'Used', 16, 'num'),
+    Column('remaining', 'Remaining', 16, 'num'),
+    Column('percent_used', '% Used', 10, 'pct'),
+    Column('start_date', 'Start', 12, 'date'),
+    Column('end_date', 'End', 12, 'date'),
+]
+
+
+@bp.route('/projects/export')
+@login_required
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
+def projects_export():
+    """Download the projects allocation view as xlsx: one sheet per resource."""
+    active_at_str = request.args.get('active_at')
+    if active_at_str:
+        try:
+            active_at = datetime.strptime(active_at_str, '%Y-%m-%d')
+        except ValueError:
+            active_at = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    else:
+        active_at = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Facility scope enforced at the source, exactly as projects() does: a
+    # forged out-of-scope facility falls back to the user's full allowed set.
+    allowed_facility_names = _allowed_facility_names(current_user, Permission.VIEW_PROJECTS)
+    selected_facilities = apply_facility_scope(
+        request.args.getlist('facilities'), Permission.VIEW_PROJECTS,
+        default=allowed_facility_names,
+    )
+    effective_facilities = (
+        allowed_facility_names if selected_facilities is None
+        else list(selected_facilities)
+    )
+
+    all_resources = [
+        r.resource_name for r in db.session.query(Resource.resource_name)
+        .filter(Resource.is_active).order_by(Resource.resource_name).all()
+    ]
+    selected_resources = request.args.getlist('resources')
+    if not selected_resources:
+        selected_resources = [r for r in all_resources if r not in HIDDEN_RESOURCES]
+
+    # Enumerate the (resource, facility, type) combos in scope, then fetch
+    # per-project detail per combo — the same cached call the detail fragment
+    # makes, so a full export equals expanding every row on the page.
+    summary_data = get_allocation_summary(
+        session=db.session, resource_name=selected_resources,
+        facility_name=None, allocation_type=None, projcode="TOTAL",
+        active_only=True, active_at=active_at, root_only=True,
+    )
+    summary_data = filter_rows_by_facility(summary_data, effective_facilities)
+
+    rows_by_resource: Dict[str, List[Dict]] = {}
+    for combo in summary_data:
+        detail = cached_allocation_usage(
+            session=db.session, resource_name=combo['resource'],
+            facility_name=combo['facility'], allocation_type=combo['allocation_type'],
+            projcode=None, active_only=True, active_at=active_at,
+        )
+        rows_by_resource.setdefault(combo['resource'], []).extend(detail or [])
+
+    _enrich_project_info(rows_by_resource)
+
+    sheets = []
+    for resource in selected_resources:
+        rows = rows_by_resource.get(resource)
+        if not rows:
+            continue
+        for row in rows:
+            row['remaining'] = (row.get('total_allocated') or 0.0) - (row.get('total_used') or 0.0)
+        rows.sort(key=lambda p: (
+            p.get('facility') or '', p.get('allocation_type') or '', -(p.get('total_used') or 0.0)))
+        sheets.append((resource, _EXPORT_COLUMNS, rows))
+    if not sheets:
+        sheets = [('Allocations', _EXPORT_COLUMNS, [])]
+
+    filename = f'allocations_{active_at.strftime("%Y-%m-%d")}.xlsx'
+    return Response(
+        build_workbook(sheets),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': f'attachment; filename={filename}'},
+    )
+
+
+def _enrich_project_info(rows_by_resource: Dict[str, List[Dict]]) -> None:
+    """Attach project title + PI name in one query (joinedload lead, no N+1)."""
+    codes = {row['projcode'] for rows in rows_by_resource.values()
+             for row in rows if row.get('projcode')}
+    if not codes:
+        return
+    info = {
+        p.projcode: (p.title, p.lead.display_name if p.lead else None)
+        for p in db.session.query(Project).options(joinedload(Project.lead))
+        .filter(Project.projcode.in_(codes)).all()
+    }
+    for rows in rows_by_resource.values():
+        for row in rows:
+            row['title'], row['pi'] = info.get(row.get('projcode'), (None, None))
 
 
 def _parse_audit_filters(request_args, sort_whitelist):
