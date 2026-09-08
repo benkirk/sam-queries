@@ -174,15 +174,17 @@ else
               | sort | uniq -c | sort -rn | head -1 | sed 's/^ *//')
         echo "  slow(>5s): $NSLOW  top: $TOP"
         note "known-slow (under investigation — docs/plans/FSTREE_LATENCY_INVESTIGATION.md): directory_access ~6.9s, fstree/Casper ~3s DB + app tail under load"
-        # db=/cpu=/q= (appended to the Slow-request line by the app) split the wall
-        # time: total ~= cpu (compute/GIL) + db (DB wait) + rest (GIL/pool wait).
-        # Per-request accurate; absent on pre-deploy old-format lines.
-        printf '%s\n' "$SLOW" | awk '
-            { if (match($0,/Slow request: [0-9.]+/)) { tot+=substr($0,RSTART+14)+0; n++ }
-              if (match($0,/db=[0-9.]+/))            { db+=substr($0,RSTART+3)+0;  dbn++ }
-              if (match($0,/cpu=[0-9.]+/))           { cpu+=substr($0,RSTART+4)+0; cn++ } }
-            END{ if (dbn>0) printf "  ↳ split: db≈%.0fms cpu≈%.0fms / total≈%.0fms  (%.0f%% DB, %.0f%% CPU, rest wait)\n",
-                     db/dbn, (cn?cpu/cn:0), tot/n, (tot>0?100*db/tot:0), (tot>0&&cn?100*(cpu/cn)/(tot/n):0) }'
+        # Per-endpoint split from the app's db=/cpu= (total ~= cpu compute/GIL +
+        # db DB-wait + rest GIL/pool-wait). Tab-keyed so a decoded space in the
+        # path ("Casper GPU") doesn't split the key; -n/p drops pre-deploy lines.
+        SPLIT=$(printf '%s\n' "$SLOW" \
+            | sed -n -E 's/.*Slow request: ([0-9.]+) ms  (.*)  \(db=([0-9.]+)ms cpu=([0-9.]+)ms.*/\1\t\2\t\3\t\4/p' \
+            | awk -F'\t' '{ c[$2]++; t[$2]+=$1; d[$2]+=$3; p[$2]+=$4 }
+                END{ for (k in c) printf "%.0f\t  ↳ %s: db≈%.0fms cpu≈%.0fms / total≈%.0fms (%dx, %.0f%% DB, %.0f%% CPU)\n",
+                         t[k], k, d[k]/c[k], p[k]/c[k], t[k]/c[k], c[k],
+                         (t[k]>0?100*d[k]/t[k]:0), (t[k]>0?100*p[k]/t[k]:0) }' \
+            | sort -rn | head -4 | cut -f2-)
+        [[ -n "$SPLIT" ]] && printf '%s\n' "$SPLIT"
     fi
 fi
 
