@@ -1,6 +1,9 @@
 # fstree / pace-chart latency investigation
 
-Status: **open** — instruments landed (this PR); conclusion pending in-prod data.
+Status: **instruments live in prod** (#531, merged to staging→main). Live
+per-request data collected 2026-09-08. **Verdict: the cold-miss tail is DB-bound
+(~86%), not app-tier/GIL.** Provisional call: **accept-as-is is viable while it
+holds ~4s cold; warming / read-model are the levers if it regresses.**
 
 ## Problem
 
@@ -10,7 +13,33 @@ ticks under load. These are known-expensive endpoints, but the size of the tail
 and its appearance under traffic bursts warranted attribution: is the time in the
 **database** (sam-sql) or in the **app tier** (sam.hpc)?
 
-## Findings so far
+## Verdict from live instruments (2026-09-08) — DB-bound
+
+Once #531 shipped, the per-request `db=`/`cpu=` split settled the attribution.
+Live prod (fresh pods, cold caches):
+
+| fstree variant | cold-miss total | db | cpu |
+|---|---|---|---|
+| Derecho / Casper (base) | ~3.5–4.3s | ~3.3s (**~86%**) | ~0.6s |
+| GPU variants, Gust | <0.8s | small | small |
+| warm hits (all) | 70–180ms | 0–90ms | ~70ms |
+
+The cold miss is **~86% database** — the live charge rollup over the allocation
+tree — with only ~0.6s of Python/CPU. This **overturns the app-tier / GIL
+hypothesis** in the section below (inferred from a VPN-inflated upper bound before
+the instruments existed). The GIL/render frame is real for **pace-chart** (whose
+same split reads CPU-heavy), not for fstree.
+
+**The overnight ~9s creep** is this same cold miss with its **db step swollen
+under diurnal load** on the shared MySQL VM (another team's box) — the ~3.3s DB
+portion stretches when the VM is busy. The variability is DB-side, not ours.
+
+**Cache sharing confirmed:** the fstree cache is shared across pods (RedisCache,
+`flask_cache_` prefix, URL-keyed), so with many PBS pollers only the *first* after
+each TTL expiry pays the miss. But the poll cadence (~5 min) ≈ the TTL, so that
+first-miss recurs ~every cycle.
+
+## Findings before the instruments (historical; hypothesis above overturns this)
 
 **The database is healthy; the query is genuinely ~3s.** A read-only probe ran
 the real `get_fstree_data('Casper')` code path against sam-sql (`hpc-reader`,
@@ -36,11 +65,10 @@ is DB, and **~6–7s is app-tier**.
 | mem limit | 12G (still sized for the retired 33-process model) |
 
 With 30 connections per worker for only 8 threads, **connection-pool exhaustion
-is unlikely** to be the cause. The stronger remaining hypothesis is **GIL/CPU
-contention** during the Python-heavy phases (fstree's multi-query aggregation,
-pace-chart's matplotlib render) when a worker's 8 threads overlap under load. The
-one "pods idle at 2–4 millicores" reading was taken at a quiet moment, **not**
-during a slow window, so it is not yet evidence.
+is unlikely** to be the cause. The working hypothesis here was **GIL/CPU
+contention** during the Python-heavy phases — **now overturned for fstree** by the
+live `db=`/`cpu=` split (see the verdict at the top: the tail is DB, ~0.6s CPU).
+It remains the right frame for pace-chart's CPU-heavy render.
 
 ## What the instruments in this PR add
 
@@ -55,7 +83,10 @@ during a slow window, so it is not yet evidence.
   `dbload:`/`podcpu:` are tick-time snapshots (ambient context); the per-request
   `↳ split` is the trustworthy attribution.
 
-## Data-collection plan (once this PR is live in prod)
+## Data-collection plan (DONE — answered by the verdict at top)
+
+The steps below were the plan; the live `db=`/`cpu=` split (verdict section)
+executed step 1 and settled the attribution as DB-bound. Retained as the method.
 
 1. Watch a slow window; read the slow-request `↳ db split` note — it gives
    `db≈Xms / total≈Yms`. If `total ≫ db`, the gap is app-side.
@@ -69,52 +100,60 @@ during a slow window, so it is not yet evidence.
    connection until checkout, so nothing is shared at fork; verify via per-pod
    `checked_out` on the pool card.
 
-## Recommendation (to be filled from the data above)
+## Recommendation
 
-Candidate levers, in the order the data should be consulted before choosing:
+The tail is DB-bound and currently holds ~4s cold; **accept-as-is is a legitimate
+call** while it stays there — the shared cache means only one poller per cycle
+waits, nobody is erroring. Revisit only on a sustained regression (cold misses
+>5s across many cycles, or the 9s creep becoming routine). The lever is **not**
+gunicorn sizing (the request is waiting on the DB, not queued on workers) — it is
+to move the rollup **off the request path**, two rungs:
 
-- **query/render cost** — reduce the fstree date-group fan-out or the pace-chart
-  cold-cache cost (a real ~3s DB cost is worth trimming regardless).
-- **worker/thread mix** — if GIL-bound, more processes (fewer threads) or more
-  pods helps; if I/O-bound, the current gthread mix is right.
-- **explicit `pool_timeout`** — only if the pool card shows saturation.
-- **HPA** — none exists today; 2 static pods may be the real ceiling under bursts.
+### The two levers: warming vs read-model
 
-Any of these is a **separate deploy PR** (deploy mechanics are owned separately),
-made on the data, not on this investigation alone.
+- **Warming (cheapest, reversible).** A scheduled job recomputes the existing
+  Redis entry just before its TTL, so live requests never hit a cold miss. Same
+  code, same cache; the ~3.3s work moves to a task pod. It **reshapes who waits,
+  it does not reduce DB work** — the query still runs each interval.
+- **Read-model (durable).** Project the rollup into a table we own (ideally the
+  CNPG Postgres), read by a trivial indexed `SELECT`: compute-once-read-many, so
+  it **is** strictly less DB load. Rung 2 = scheduled ETL into CNPG (consumers
+  already tolerate ~5-min staleness); rung 3 = the full CNPG cutover. **Avoid**
+  live MySQL→PG CDC — a stateful mirror is the fragile option.
 
-## Candidate simple fixes (ranked; select on the data above)
+Selection: goal is user latency → warming suffices. Goal is to spare the shared
+MySQL VM itself → **read-model**, since warming adds steady load.
 
-Both hot paths are **already cached** — the problem is *cold misses*, not missing
-caches — and neither the Python charge rollup nor the pure-Python SVG writer can
-"release the GIL" simply. So the simple wins **run the GIL-bound work less, or off
-the request threads**, rather than release it. Do NONE of these until the
-instruments above confirm the bucket.
+### Cadence / contention caveat (before building warming)
 
-1. **Cache warming on a task pod (primary; fixes both).** A scheduled task on the
-   existing `samuel-tasks` CronJob recomputes ahead of need into shared Redis:
-   fstree per-resource just under the ~5-min PBS poll; charts over the popular
-   `resource x sort_by x layout x theme` set, especially just after midnight (the
-   `active_at` key roll). This moves the ~3s / ~570ms GIL-bound work off the webapp
-   request threads onto a task pod, and requests hit warm. No chart/fstree warming
-   exists today; `sam-admin cache --refresh` only clears. Effort: moderate — a new
-   `src/scheduling/tasks/` task + helm wiring + `SAM_TASKS_DISABLED` guard.
-2. **Raise the fstree TTL above the poll cadence** — one line, `timeout=900` at
-   `src/webapp/api/v1/fstree_access.py:54`. Byte-safe (response bytes unchanged).
-   Tradeoff: fairshare data up to 15 min stale — a domain call for the SSG owner.
-3. **Drop `bbox_inches='tight'`** at `src/webapp/dashboards/charts/base.py:53`
-   (use `tight_layout`/`constrained_layout` at figure build instead) — removes an
-   entire extra pure-Python renderer pass across all 16 charts. Needs a
-   `CHART_FINGERPRINT_REGEN=1` regen + a visual check (it changes crop/bbox).
+The `samuel-tasks` dispatcher fires ~hourly and the schedule vocabulary has no
+minute-granularity type; warming wants a ~2–4 min interval. So: (a) add a
+short-interval `Schedule` + fire a dispatcher every minute, **or** a dedicated
+fast warm CronJob (`*/2`) separate from the hourly suite (smaller blast radius);
+(b) `concurrencyPolicy: Forbid` + a short `expected_runtime` lease so a slow run
+cannot overlap (the ledger's `UNIQUE(task_name, occurrence_key)` already dedups a
+double-dispatch); (c) Job churn — a per-minute dispatcher is ~1,440 pods/day, so
+tighten history limits or prefer the dedicated CronJob. And warming *faster* than
+the current effective miss rate adds net DB load — another nudge toward
+read-model if the DB is the constraint.
 
-Deeper, NOT simple (recorded for completeness; warming likely makes them
-unnecessary): render in a `ProcessPoolExecutor` (separate GILs), and push the
-fstree charge rollup into SQL (it does a live MPTT rollup, not a pre-aggregated
-summary table).
+Any chosen fix is a **separate deploy PR** (deploy mechanics owned separately).
 
-Selection gate: high pod CPU during a slow window -> warming / render-trim
-(1 + 3); DB-heavy `db split` -> the SQL-rollup route; pool saturation on the admin
-card -> pool/worker sizing. Each chosen fix is its own PR.
+## Tactical options (smaller than the two levers above)
+
+- **Raise the fstree TTL above the poll cadence** — one line, `timeout=900` at
+  `src/webapp/api/v1/fstree_access.py:54`. Byte-safe. Tradeoff: fairshare up to
+  15 min stale — an SSG-owner call. Narrows the miss rate cheaply, but the first
+  poll each TTL still pays full cost: a stopgap, not a fix.
+- **Push the fstree rollup into SQL** — it does a live MPTT rollup over the tree,
+  not a pre-aggregated summary table; this is the DB-side form of the read-model
+  and the highest-leverage query change now that the tail is confirmed DB-bound.
+- **Drop `bbox_inches='tight'`** (`src/webapp/dashboards/charts/base.py:53`) —
+  **demoted**: fstree's CPU is trivial and pace-chart's is ~0.6s, so render-trim
+  is not material for this problem. Keep only as a general chart-cost cleanup
+  (needs `CHART_FINGERPRINT_REGEN=1` + a visual check).
+
+Each chosen fix is its own PR.
 
 ## Related
 
