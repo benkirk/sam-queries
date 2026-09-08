@@ -60,6 +60,7 @@ def dashboard_page_routes():
         '/admin/impersonate', '/admin/stop-impersonating',
         # File download, not an HTML page.
         '/admin/expirations/export',
+        '/allocations/projects/export',
         # JSON diagnostic endpoint.
         '/allocations/cache/status',
     }
