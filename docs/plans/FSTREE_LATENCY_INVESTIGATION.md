@@ -80,6 +80,39 @@ Candidate levers, in the order the data should be consulted before choosing:
 Any of these is a **separate deploy PR** (deploy mechanics are owned separately),
 made on the data, not on this investigation alone.
 
+## Candidate simple fixes (ranked; select on the data above)
+
+Both hot paths are **already cached** — the problem is *cold misses*, not missing
+caches — and neither the Python charge rollup nor the pure-Python SVG writer can
+"release the GIL" simply. So the simple wins **run the GIL-bound work less, or off
+the request threads**, rather than release it. Do NONE of these until the
+instruments above confirm the bucket.
+
+1. **Cache warming on a task pod (primary; fixes both).** A scheduled task on the
+   existing `samuel-tasks` CronJob recomputes ahead of need into shared Redis:
+   fstree per-resource just under the ~5-min PBS poll; charts over the popular
+   `resource x sort_by x layout x theme` set, especially just after midnight (the
+   `active_at` key roll). This moves the ~3s / ~570ms GIL-bound work off the webapp
+   request threads onto a task pod, and requests hit warm. No chart/fstree warming
+   exists today; `sam-admin cache --refresh` only clears. Effort: moderate — a new
+   `src/scheduling/tasks/` task + helm wiring + `SAM_TASKS_DISABLED` guard.
+2. **Raise the fstree TTL above the poll cadence** — one line, `timeout=900` at
+   `src/webapp/api/v1/fstree_access.py:54`. Byte-safe (response bytes unchanged).
+   Tradeoff: fairshare data up to 15 min stale — a domain call for the SSG owner.
+3. **Drop `bbox_inches='tight'`** at `src/webapp/dashboards/charts/base.py:53`
+   (use `tight_layout`/`constrained_layout` at figure build instead) — removes an
+   entire extra pure-Python renderer pass across all 16 charts. Needs a
+   `CHART_FINGERPRINT_REGEN=1` regen + a visual check (it changes crop/bbox).
+
+Deeper, NOT simple (recorded for completeness; warming likely makes them
+unnecessary): render in a `ProcessPoolExecutor` (separate GILs), and push the
+fstree charge rollup into SQL (it does a live MPTT rollup, not a pre-aggregated
+summary table).
+
+Selection gate: high pod CPU during a slow window -> warming / render-trim
+(1 + 3); DB-heavy `db split` -> the SQL-rollup route; pool saturation on the admin
+card -> pool/worker sizing. Each chosen fix is its own PR.
+
 ## Related
 
 - `docs/plans/implemented/K8S_DEPLOYMENT_HARDENING.md` — the gthread sizing model
