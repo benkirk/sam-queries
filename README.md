@@ -552,6 +552,7 @@ sam-queries/
 │   │   ├── queries/             # Common query functions
 │   │   ├── schemas/             # Marshmallow schemas (serialization + forms/)
 │   │   ├── manage/              # Multi-entity write ops + management_transaction
+│   │   ├── export/             # Write-only xlsx workbook builder (Flask-free)
 │   │   ├── core/                # Users, organizations, institutions
 │   │   ├── projects/            # Projects, contracts, areas
 │   │   ├── resources/           # Resources, machines, facilities

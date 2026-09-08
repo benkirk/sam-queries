@@ -1575,6 +1575,13 @@
     ]
   ],
   [
+    "allocations_dashboard.projects_export",
+    "/allocations/projects/export",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.projects_fragment",
     "/allocations/htmx/project_table",
     [
