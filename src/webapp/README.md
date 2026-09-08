@@ -86,7 +86,7 @@ src/webapp/
 ├── caching/                    # Caching facade + adapters (Redis/Flask/chart)
 ├── dashboards/                 # htmx dashboard blueprints
 │   ├── admin/                  # Admin dashboard (projects, orgs, resources, …)
-│   ├── allocations/            # Allocations dashboard
+│   ├── allocations/            # Allocations dashboard (+ /projects/export xlsx via sam.export)
 │   ├── status/                 # System-status dashboard
 │   ├── user/                   # User dashboard
 │   ├── charts.py               # Matplotlib SVG chart generators

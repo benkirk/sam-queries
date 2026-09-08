@@ -52,6 +52,9 @@ dependencies = [
     "rich",
     "sqlalchemy",
     "tqdm",
+    # Pure-Python, zero transitive deps. Write-only xlsx generation for the
+    # dashboard spreadsheet exports (sam.export). NOT pandas/openpyxl.
+    "xlsxwriter",
 ]
 
 [project.scripts]

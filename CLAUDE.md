@@ -83,6 +83,7 @@ sam-queries/
 │   ├── manage/              # Multi-entity write ops + management_transaction
 │   ├── schemas/             # Marshmallow serialization schemas (3-tier)
 │   │   └── forms/           # HTMX/API form-validation schemas (per domain)
+│   ├── export/              # Write-only xlsx workbook builder (Flask-free)
 │   └── caching/, session/, fmt.py, enums.py, geography.py, plugins.py
 ├── src/system_status/    # Separate status DB (own bind, Alembic-managed)
 ├── src/scheduling/       # Ledger-backed task dispatcher (schedules, registry,
