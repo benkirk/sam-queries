@@ -65,7 +65,7 @@ build_kctl
 # --- load prior state -------------------------------------------------------
 # Each field is carried forward independently so a partial-unreachable tick
 # (e.g. kubectl down but DB up) never zeroes the others.
-LASTID=0; LASTSHA=""; LASTEVICTED=""; LASTHITS=""; LASTMISSES=""
+LASTID=0; LASTSHA=""; LASTEVICTED=""; LASTHITS=""; LASTMISSES=""; LASTSLOWQ=""
 mkdir -p "$(dirname -- "$STATE")"
 # First run (no state) or an explicit reset seeds a baseline silently rather
 # than reporting every historical row as "new".
@@ -174,8 +174,34 @@ else
               | sort | uniq -c | sort -rn | head -1 | sed 's/^ *//')
         echo "  slow(>5s): $NSLOW  top: $TOP"
         note "known-slow (do NOT re-flag): directory_access ~6.9s, fstree/Casper ~1.7s"
+        # db=/q= (appended to the Slow-request line by the app) splits DB time
+        # from the rest (app CPU / queueing). Absent on pre-deploy old-format lines.
+        printf '%s\n' "$SLOW" | awk '
+            { if (match($0,/Slow request: [0-9.]+/)) { tot+=substr($0,RSTART+14)+0; n++ }
+              if (match($0,/db=[0-9.]+/))            { db+=substr($0,RSTART+3)+0;  dbn++ } }
+            END{ if (dbn>0) printf "  ↳ db split: db≈%.0fms / total≈%.0fms  (%.0f%% DB, rest app/queueing)\n",
+                     db/dbn, tot/n, (tot>0?100*db/tot:0) }'
     fi
 fi
+
+# --- 2b. load context (DB tier + app-pod CPU) -------------------------------
+# The discriminator for a slow expensive endpoint: DB-bound vs app queueing.
+# Fail-soft: a missing metric prints n/a, never aborts the tick.
+CUR_SLOWQ=$(q "SHOW GLOBAL STATUS WHERE Variable_name='Slow_queries'" | awk '{print $2}')
+TR=$(q "SHOW GLOBAL STATUS WHERE Variable_name='Threads_running'" | awk '{print $2}')
+TC=$(q "SHOW GLOBAL STATUS WHERE Variable_name='Threads_connected'" | awk '{print $2}')
+if [[ -n "$TR" ]]; then
+    SQD="n/a"
+    [[ -n "$CUR_SLOWQ" && -n "$LASTSLOWQ" ]] && SQD=$((CUR_SLOWQ-LASTSLOWQ))
+    DBLOAD="dbload: threads_running=$TR conns=$TC slow_q(Δ)=$SQD"
+else
+    DBLOAD="dbload: n/a"
+fi
+PODCPU=$("${KCTL_NS[@]}" top pods -l "app=${WEBAPP_NAME}" --no-headers 2>/dev/null \
+         | awk '{c=$2; sub(/m$/,"",c); s+=c+0; if(c+0>mx)mx=c+0}
+                END{ if(NR) printf "podcpu: sum=%dm max=%dm (%d pods)", s, mx, NR; else print "podcpu: n/a" }')
+[[ -z "$PODCPU" ]] && PODCPU="podcpu: n/a"
+echo "  $DBLOAD | $PODCPU"
 
 # --- 3. pod health ----------------------------------------------------------
 PODS=$("${KCTL_NS[@]}" --request-timeout=10s get pods -l "app=${WEBAPP_NAME}" \
@@ -263,6 +289,7 @@ NEW_LASTID="$MAXID"; [[ -z "$NEW_LASTID" || "$NEW_LASTID" == 0 ]] && NEW_LASTID=
     echo "LASTEVICTED=${CUR_EVICTED:-$LASTEVICTED}"
     echo "LASTHITS=${CUR_HITS:-$LASTHITS}"
     echo "LASTMISSES=${CUR_MISSES:-$LASTMISSES}"
+    echo "LASTSLOWQ=${CUR_SLOWQ:-$LASTSLOWQ}"
 } > "$STATE"
 
 # --- verdict (compact; exit 0 quiet / 1 warn / 2 fail) ----------------------

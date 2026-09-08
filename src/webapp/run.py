@@ -177,6 +177,10 @@ def create_app(*, config_overrides: dict | None = None):
     # Initialize db with app
     db.init_app(app)
 
+    # Per-request DB-time accumulation (db=/q= on the request log line).
+    from webapp.request_timing import init_request_timing
+    init_request_timing(app, db)
+
     # CSRF protection (Flask-WTF). HTMX requests carry the token via the
     # hx-headers attribute on <body> in dashboards/base.html; plain forms
     # embed a hidden csrf_token input. Basic-auth M2M routes are exempted
@@ -248,6 +252,8 @@ def create_app(*, config_overrides: dict | None = None):
         from flask import g, request
         g.request_id    = request.headers.get('X-Request-ID', str(uuid.uuid4()))
         g.request_start = time.monotonic()
+        g.db_ms         = 0.0
+        g.db_queries    = 0
 
     @app.after_request
     def _log_request(response):
@@ -265,14 +271,17 @@ def create_app(*, config_overrides: dict | None = None):
         )
         if not is_health_probe:
             app.logger.info(
-                '%s %s → %s  (%.1f ms)  rid=%s',
+                '%s %s → %s  (%.1f ms  db=%.1fms q=%d)  rid=%s',
                 request.method, request.path, response.status_code,
-                elapsed_ms, request_id,
+                elapsed_ms, g.get('db_ms', 0.0), g.get('db_queries', 0), request_id,
             )
         if elapsed_ms > 5000:
+            # db=/q= appended at the END so the watch's method/path parse
+            # (cirrus_watch.sh) is preserved while the DB split stays available.
             app.logger.warning(
-                'Slow request: %.1f ms  %s %s',
+                'Slow request: %.1f ms  %s %s  (db=%.1fms q=%d)',
                 elapsed_ms, request.method, request.path,
+                g.get('db_ms', 0.0), g.get('db_queries', 0),
             )
         return response
     # =========================================================================
