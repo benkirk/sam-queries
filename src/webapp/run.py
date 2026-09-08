@@ -252,6 +252,7 @@ def create_app(*, config_overrides: dict | None = None):
         from flask import g, request
         g.request_id    = request.headers.get('X-Request-ID', str(uuid.uuid4()))
         g.request_start = time.monotonic()
+        g.cpu_start     = time.thread_time()   # per-thread CPU; gthread = 1 thread/request
         g.db_ms         = 0.0
         g.db_queries    = 0
 
@@ -262,6 +263,8 @@ def create_app(*, config_overrides: dict | None = None):
         # request before _set_request_id runs — fall back gracefully.
         start = g.get('request_start')
         elapsed_ms = round((time.monotonic() - start) * 1000, 1) if start else 0.0
+        cpu_start = g.get('cpu_start')
+        cpu_ms = round((time.thread_time() - cpu_start) * 1000, 1) if cpu_start is not None else 0.0
         request_id = g.get('request_id', request.headers.get('X-Request-ID', '-'))
         response.headers['X-Request-ID'] = request_id
         # Healthcheck probes fire every 10s — log only when they fail.
@@ -271,17 +274,18 @@ def create_app(*, config_overrides: dict | None = None):
         )
         if not is_health_probe:
             app.logger.info(
-                '%s %s → %s  (%.1f ms  db=%.1fms q=%d)  rid=%s',
+                '%s %s → %s  (%.1f ms  db=%.1fms cpu=%.1fms q=%d)  rid=%s',
                 request.method, request.path, response.status_code,
-                elapsed_ms, g.get('db_ms', 0.0), g.get('db_queries', 0), request_id,
+                elapsed_ms, g.get('db_ms', 0.0), cpu_ms, g.get('db_queries', 0), request_id,
             )
         if elapsed_ms > 5000:
-            # db=/q= appended at the END so the watch's method/path parse
-            # (cirrus_watch.sh) is preserved while the DB split stays available.
+            # db=/cpu=/q= appended at the END so the watch's method/path parse
+            # (cirrus_watch.sh) is preserved while the split stays available.
+            # total ~= cpu (compute) + db (DB wait) + rest (GIL/pool wait).
             app.logger.warning(
-                'Slow request: %.1f ms  %s %s  (db=%.1fms q=%d)',
+                'Slow request: %.1f ms  %s %s  (db=%.1fms cpu=%.1fms q=%d)',
                 elapsed_ms, request.method, request.path,
-                g.get('db_ms', 0.0), g.get('db_queries', 0),
+                g.get('db_ms', 0.0), cpu_ms, g.get('db_queries', 0),
             )
         return response
     # =========================================================================

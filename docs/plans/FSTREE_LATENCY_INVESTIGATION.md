@@ -44,13 +44,16 @@ during a slow window, so it is not yet evidence.
 
 ## What the instruments in this PR add
 
-- **Per-request `db=Xms q=N`** on the app log line (`webapp/request_timing.py`) —
-  the DB-vs-app split on every request, including the exact fstree/pace-chart
-  requests. `db=/q=` is also appended to the `Slow request:` warning line.
+- **Per-request `db=Xms cpu=Yms q=N`** on the app log line
+  (`webapp/request_timing.py` + `run.py`) — partitions every request:
+  `total ~= cpu (compute/GIL, via time.thread_time) + db (DB wait) + rest
+  (GIL/pool wait)`. Per-request accurate. Also appended to the `Slow request:`
+  warning line.
 - **Watch `load:` line** (`scripts/cirrus_watch.sh`) — `dbload:` (Threads_running,
-  Threads_connected, Slow_queries Δ) + `podcpu:` (sum/max millicores). The
-  pod-CPU-during-window signal that was missing, plus a `db split` note computed
-  from the slow-request lines.
+  Threads_connected, Slow_queries Δ) + `podcpu:` (sum/max millicores), plus a
+  `↳ split` note (db/cpu/total) computed from the slow-request lines. The
+  `dbload:`/`podcpu:` are tick-time snapshots (ambient context); the per-request
+  `↳ split` is the trustworthy attribution.
 
 ## Data-collection plan (once this PR is live in prod)
 

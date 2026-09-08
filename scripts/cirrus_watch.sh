@@ -173,14 +173,16 @@ else
         TOP=$(printf '%s\n' "$SLOW" | sed -E 's/.*Slow request: //' | awk '{$1=$1;print $3,$4}' \
               | sort | uniq -c | sort -rn | head -1 | sed 's/^ *//')
         echo "  slow(>5s): $NSLOW  top: $TOP"
-        note "known-slow (do NOT re-flag): directory_access ~6.9s, fstree/Casper ~1.7s"
-        # db=/q= (appended to the Slow-request line by the app) splits DB time
-        # from the rest (app CPU / queueing). Absent on pre-deploy old-format lines.
+        note "known-slow (under investigation — docs/plans/FSTREE_LATENCY_INVESTIGATION.md): directory_access ~6.9s, fstree/Casper ~3s DB + app tail under load"
+        # db=/cpu=/q= (appended to the Slow-request line by the app) split the wall
+        # time: total ~= cpu (compute/GIL) + db (DB wait) + rest (GIL/pool wait).
+        # Per-request accurate; absent on pre-deploy old-format lines.
         printf '%s\n' "$SLOW" | awk '
             { if (match($0,/Slow request: [0-9.]+/)) { tot+=substr($0,RSTART+14)+0; n++ }
-              if (match($0,/db=[0-9.]+/))            { db+=substr($0,RSTART+3)+0;  dbn++ } }
-            END{ if (dbn>0) printf "  ↳ db split: db≈%.0fms / total≈%.0fms  (%.0f%% DB, rest app/queueing)\n",
-                     db/dbn, tot/n, (tot>0?100*db/tot:0) }'
+              if (match($0,/db=[0-9.]+/))            { db+=substr($0,RSTART+3)+0;  dbn++ }
+              if (match($0,/cpu=[0-9.]+/))           { cpu+=substr($0,RSTART+4)+0; cn++ } }
+            END{ if (dbn>0) printf "  ↳ split: db≈%.0fms cpu≈%.0fms / total≈%.0fms  (%.0f%% DB, %.0f%% CPU, rest wait)\n",
+                     db/dbn, (cn?cpu/cn:0), tot/n, (tot>0?100*db/tot:0), (tot>0&&cn?100*(cpu/cn)/(tot/n):0) }'
     fi
 fi
 

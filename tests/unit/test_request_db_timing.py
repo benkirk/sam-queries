@@ -33,7 +33,7 @@ class TestRequestDbTiming:
         assert resp.status_code == 200
         line = next((m for m in cap.messages if '/allocations/projects' in m), None)
         assert line is not None, f'no request log line captured: {cap.messages}'
-        assert 'db=' in line and 'q=' in line, line
+        assert 'db=' in line and 'cpu=' in line and 'q=' in line, line
         # The projects page issues real queries.
         q = re.search(r'q=(\d+)', line)
         assert q and int(q.group(1)) >= 1, line
