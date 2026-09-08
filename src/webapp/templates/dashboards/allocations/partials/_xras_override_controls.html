@@ -14,8 +14,11 @@
 {% set ov_ct = overrides.ignore_contract if overrides else None %}
 {% set _rt = override_return_to or 'readiness' %}
 {# Show the section when there is an active override to display (any viewer) OR an
-   editor can set one for a current blocker — never an empty heading. #}
-{% if request_id and (ov_mn or ov_ct or (can_edit_overrides and blockers)) %}
+   editor can set one — the mnemonic override is offered on every request, not only
+   a blocked one, so an ADMIN can correct a valid-but-wrong code before a projcode
+   is minted. Gate on request_number (the durable override key; request_id is
+   volatile/nullable) — never an empty heading. #}
+{% if request_number and (ov_mn or ov_ct or can_edit_overrides) %}
 <div class="border rounded p-2 mt-3">
     <div class="text-uppercase text-muted small mb-2">Operator overrides</div>
     {% if override_error %}
@@ -38,7 +41,7 @@
         </form>
         {% endif %}
     </div>
-    {% elif can_edit_overrides and 'mnemonic' in blockers %}
+    {% elif can_edit_overrides %}
     <form class="mb-3"
           hx-post="{{ url_for('allocations_dashboard.xras_set_override') }}"
           hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
@@ -46,6 +49,10 @@
         <input type="hidden" name="request_number" value="{{ request_number }}">
         <input type="hidden" name="request_id" value="{{ request_id or '' }}">
         <input type="hidden" name="return_to" value="{{ _rt }}">
+        {% if 'mnemonic' not in blockers %}
+        <div class="form-text mb-1">This request would land under the code shown
+            above — set a code here to override what SAM's resolver picked.</div>
+        {% endif %}
         {{ ff.fk_search_field('mnemonic_code_id', 'Set mnemonic code',
              url_for('allocations_dashboard.htmx_search_mnemonic_codes'),
              placeholder='Search code or org / institution name…',
