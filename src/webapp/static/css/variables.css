@@ -114,6 +114,7 @@
        why these are named for their role and not their brightness. */
     --surface-page:      #f6f7f6;   /* body — NSF NCAR warm off-white */
     --surface-card:      #ffffff;   /* cards, modals */
+    --surface-email:     #ffffff;   /* email previews: mail clients paint on white */
     --surface-raised:    #ffffff;   /* tabs, chips, inputs */
 
     /* The navbar band. Kept as its own token rather than folded into
@@ -309,6 +310,7 @@
        test_dark_card_matches_chart_blend_target pins the pair. */
     --surface-page:      #14181d;
     --surface-card:      #1b2733;
+    --surface-email:     #ffffff;   /* deliberately theme-invariant */
     --surface-raised:    #222c38;
     /* The header band goes dark with everything else. This is only safe
        because `base.html` / `login.html` swap in `img/logo-ncar-reversed.png`

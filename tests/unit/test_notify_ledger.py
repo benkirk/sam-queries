@@ -85,6 +85,25 @@ class TestRecord:
         assert (row.recipient, row.intended_recipient) == \
             ('me@x.edu', 'pi@x.edu')
 
+    def test_the_copies_that_left_are_recorded(self, ledger, session):
+        row = session.get(NotificationLog, ledger.record(
+            _message(cc=('alloc@x.edu', 'ops@x.edu'), bcc=('audit@x.edu',)),
+            status='sent', transport='smtp'))
+        assert row.copies == 'cc:alloc@x.edu,ops@x.edu;bcc:audit@x.edu'
+
+    def test_no_copies_records_null_not_an_empty_string(self, ledger, session):
+        row = session.get(NotificationLog, ledger.record(
+            _message(), status='sent', transport='smtp'))
+        assert row.copies is None
+
+    def test_a_redirect_records_no_copies(self, ledger, session):
+        """The transports drop them, so the ledger must not claim they left."""
+        row = session.get(NotificationLog, ledger.record(
+            _message('me@x.edu', intended_recipient='pi@x.edu',
+                     cc=('alloc@x.edu',)),
+            status='redirected', transport='smtp'))
+        assert row.copies is None
+
     def test_detail_lands_in_the_error_column(self, ledger, session):
         row = session.get(NotificationLog, ledger.record(
             _message(), status='failed', transport='smtp',

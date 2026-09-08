@@ -7,13 +7,19 @@
   person's email address. The gate is on the ROUTE, not here, so a
   view-source cannot reveal what the page chose not to draw.
 
+  Two tabs, deep-linked via ?tab= (data-tab-url-param): the delivery log
+  and the template editor (fragments/notification_templates_card.html).
+
   Context:
     summary       sam.queries.notifications.summarize_notifications(...)
     config        NotifyConfig.summary()
     form_id       the filter form the facet chips write into
     target_id     the swap target for the table fragment
     fragment_url  GET .../notifications/log
-    all_statuses / all_kinds / default_days
+    initial_log_url  fragment_url, plus ?kind= when the editor deep-linked here
+    preselect_kind / all_statuses / all_kinds / default_days
+    active_tab    'log' | 'templates'
+    template_rows / selected_name   for the Templates pane
 #}
 
 {% block extra_css %}
@@ -58,6 +64,37 @@
     retry: sending again will go through.
 </div>
 {% endif %}
+
+<ul class="nav nav-tabs mb-3" id="notificationsTabs" role="tablist" data-tab-url-param="tab">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link{{ ' active' if active_tab == 'log' }}" id="log-tab"
+                data-bs-toggle="tab" data-bs-target="#log-pane" type="button" role="tab"
+                data-tab-param-value="log" aria-controls="log-pane"
+                aria-selected="{{ 'true' if active_tab == 'log' else 'false' }}">
+            <i class="fa-solid fa-list me-1"></i> Delivery log
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link{{ ' active' if active_tab == 'templates' }}" id="templates-tab"
+                data-bs-toggle="tab" data-bs-target="#templates-pane" type="button" role="tab"
+                data-tab-param-value="templates" aria-controls="templates-pane"
+                aria-selected="{{ 'true' if active_tab == 'templates' else 'false' }}">
+            <i class="fa-solid fa-file-pen me-1"></i> Templates
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link{{ ' active' if active_tab == 'addressing' }}" id="addressing-tab"
+                data-bs-toggle="tab" data-bs-target="#addressing-pane" type="button" role="tab"
+                data-tab-param-value="addressing" aria-controls="addressing-pane"
+                aria-selected="{{ 'true' if active_tab == 'addressing' else 'false' }}">
+            <i class="fa-solid fa-envelope-circle-check me-1"></i> Addressing
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content" id="notificationsTabsContent">
+<div class="tab-pane fade{{ ' show active' if active_tab == 'log' }}" id="log-pane"
+     role="tabpanel" aria-labelledby="log-tab">
 
 <div class="row g-3 mb-3">
     <div class="col-12 col-xl-4">
@@ -116,7 +153,7 @@
                         {% for s in all_statuses %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
                     </select>
                     <select name="kind" multiple hidden>
-                        {% for k in all_kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
+                        {% for k in all_kinds %}<option value="{{ k }}"{{ ' selected' if k == preselect_kind }}>{{ k }}</option>{% endfor %}
                     </select>
                     <select name="channel" multiple hidden>
                         <option value="email">email</option>
@@ -128,13 +165,32 @@
 </div>
 
 <div id="{{ target_id }}"
-     hx-get="{{ fragment_url }}"
+     hx-get="{{ initial_log_url }}"
      hx-trigger="load"
      hx-swap="innerHTML">
     <div class="text-muted small p-3">
         <i class="fa-solid fa-circle-notch fa-spin"></i> Loading delivery log…
     </div>
 </div>
+
+</div>{# /log-pane #}
+
+<div class="tab-pane fade{{ ' show active' if active_tab == 'templates' }}" id="templates-pane"
+     role="tabpanel" aria-labelledby="templates-tab">
+{% include 'dashboards/admin/fragments/notification_templates_card.html' %}
+</div>{# /templates-pane #}
+<div class="tab-pane fade{{ ' show active' if active_tab == 'addressing' }}" id="addressing-pane"
+     role="tabpanel" aria-labelledby="addressing-tab">
+    <div id="addressingCard"
+         hx-get="{{ url_for('admin_dashboard.notification_addressing_card') }}"
+         hx-trigger="load, reloadAddressingCard from:body"
+         hx-swap="innerHTML">
+        <div class="text-muted small p-3">
+            <i class="fa-solid fa-circle-notch fa-spin"></i> Loading addressing…
+        </div>
+    </div>
+</div>{# /addressing-pane #}
+</div>{# /tab-content #}
 
 {% include 'dashboards/allocations/partials/audit_details_modal.html' %}
 {% endblock %}

@@ -11,9 +11,10 @@ test then passes or fails depending on which worker got there first. Same
 hazard the XRAS factory documents.
 """
 
+import uuid
 from datetime import datetime, timedelta
 
-from sam import NotificationLog
+from sam import NotificationAddressing, NotificationLog, NotificationTemplateOverride
 
 
 def make_notification_log(session, *, kind='expiration', channel='email',
@@ -21,7 +22,7 @@ def make_notification_log(session, *, kind='expiration', channel='email',
                           recipient=None, requested_by='benkirk',
                           intended_recipient=None, recipient_name='A PI',
                           recipient_role='lead', subject=None, template=None,
-                          entity_type=None, entity_id=None, projcode=None,
+                          copies=None, entity_type=None, entity_id=None, projcode=None,
                           dedup_key=None, error=None, when=None, age=None):
     """One ledger row, optionally back-dated.
 
@@ -53,6 +54,7 @@ def make_notification_log(session, *, kind='expiration', channel='email',
         recipient_role=recipient_role,
         subject=subject if subject is not None else f'{kind} notice',
         template=template,
+        copies=copies,
         entity_type=entity_type,
         entity_id=entity_id,
         projcode=projcode,
@@ -68,3 +70,22 @@ def make_notification_log(session, *, kind='expiration', channel='email',
         row.dedup_key = f'{kind}:FACTORY{pk}:{pk}:{row.recipient}'
     session.flush()
     return row
+
+
+def make_template_override(session, *, name, body='OVERRIDE {{ project_code }}',
+                           modified_by='benkirk'):
+    """One override row. Pass a name unique to the test: `name` is UNIQUE and
+    xdist workers share the database."""
+    return NotificationTemplateOverride.create(session, name=name, body=body,
+                                               modified_by=modified_by)
+
+
+def make_addressing_row(session, *, scope='xras', field='cc', address=None,
+                        created_by='benkirk'):
+    """One operator-added copy. `address` defaults to a per-call unique
+    mailbox: (scope, field, address) is UNIQUE and xdist workers share the
+    database."""
+    if address is None:
+        address = f'copy-{uuid.uuid4().hex[:10]}@example.edu'
+    return NotificationAddressing.create(session, scope=scope, field=field,
+                                         address=address, created_by=created_by)

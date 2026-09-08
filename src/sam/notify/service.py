@@ -29,7 +29,8 @@ from sam.notify.base import (
     DeliveryResult, Message, Recipient, RenderedMessage, Transport,
     TransportError,
 )
-from sam.notify.config import NotifyConfig
+from sam.notify.addressing import AddressingStore
+from sam.notify.config import Addressing, NotifyConfig
 from sam.notify.kinds import get_kind
 from sam.notify.ledger import LedgerError
 from sam.notify.registry import build_transport
@@ -68,7 +69,11 @@ class Notifier:
                  renderer: Optional[TemplateRenderer] = None,
                  ledger=None) -> None:
         self.config = config or NotifyConfig.from_environment()
-        self.renderer = renderer or TemplateRenderer()
+        # The ledger's factory doubles as the reader for operator template
+        # edits and copy lists, so every caller with a ledger sees them.
+        factory = getattr(ledger, 'session_factory', None)
+        self.renderer = renderer or TemplateRenderer(session_factory=factory)
+        self.addressing_store = AddressingStore(factory)
         self._transport = transport
         self.ledger = ledger
 
@@ -281,18 +286,22 @@ class Notifier:
         )
 
     # --------------------------------------------------------------- deliver
+    def addressing_for(self, kind: str, facility: Optional[str] = None) -> Addressing:
+        """What a message of this kind leaves with: env defaults plus operator rows."""
+        return self.addressing_store.effective(
+            self.config.addressing(get_kind(kind).family), kind, facility)
+
     def _addressed(self, message: Message) -> Message:
-        """Fill empty cc/bcc/sender/reply_to from the kind's family config."""
-        addressing = self.config.addressing(get_kind(message.kind).family)
-        if addressing.is_empty:
+        """Fill cc/bcc/sender/reply_to: family env defaults, then operator rows."""
+        effective = self.addressing_store.effective(
+            self.config.addressing(get_kind(message.kind).family),
+            message.kind, message.facility,
+            cc=message.cc, bcc=message.bcc,
+            sender=message.sender, reply_to=message.reply_to)
+        if effective.is_empty:
             return message
-        return replace(
-            message,
-            cc=message.cc or addressing.cc,
-            bcc=message.bcc or addressing.bcc,
-            sender=message.sender or addressing.sender,
-            reply_to=message.reply_to or addressing.reply_to,
-        )
+        return replace(message, cc=effective.cc, bcc=effective.bcc,
+                       sender=effective.sender, reply_to=effective.reply_to)
 
     def _deliver_one(self, message: Message,
                      transport: Transport) -> DeliveryResult:

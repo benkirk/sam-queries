@@ -221,6 +221,20 @@ class TestPerMessageAddressing:
         to_addrs, _ = self._headers(smtp)
         assert to_addrs == ['pi@x.edu', 'alloc@x.edu', 'ops@x.edu']
 
+    def test_the_message_owns_the_redirect_rule(self):
+        """One rule for every transport and the ledger: `Message.copies()`."""
+        message = _message('pi@x.edu', cc=('alloc@x.edu',), bcc=('ops@x.edu',))
+        assert message.copies() == (('alloc@x.edu',), ('ops@x.edu',))
+        assert message.copies_summary() == 'cc:alloc@x.edu;bcc:ops@x.edu'
+        assert _message('pi@x.edu', bcc=('ops@x.edu',)).copies_summary() == \
+            'bcc:ops@x.edu'
+        assert _message('pi@x.edu').copies_summary() is None
+        redirected = _message('me@x.edu', intended_recipient='pi@x.edu',
+                              cc=('alloc@x.edu',))
+        assert redirected.copies() == ((), ())
+        assert redirected.copies_summary() is None
+        assert SmtpTransport.copies(redirected) == ((), ())
+
     def test_copies_are_dropped_on_a_redirect(self, smtp):
         """A staging run must never copy the real shared mailbox."""
         transport = SmtpTransport(_config())

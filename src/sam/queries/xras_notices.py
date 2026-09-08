@@ -139,7 +139,8 @@ def action_increments(session: Session, action, *,
 
 def build_xras_messages(session: Session, project,
                         people: Sequence[Mapping[str, str]], *,
-                        action=None, requested_by: str,
+                        action=None, kind: Optional[str] = None,
+                        requested_by: str,
                         approver_comment: Optional[str] = None) -> List[Message]:
     """Build one :class:`~sam.notify.Message` per recipient for one XRAS action.
 
@@ -159,6 +160,12 @@ def build_xras_messages(session: Session, project,
     is what the Notify button did before it became action-aware and what a
     caller with only a project id still gets.
 
+    ``kind`` forces the notice kind regardless of the action's service (the
+    template editor previews *its* template against a real project). The
+    increments are then taken from the action only when its service maps
+    to that same kind, so a forced supplement never presents an
+    adjustment's amounts as "added".
+
     ``requested_by`` is what lands in ``notification_log.requested_by``, which
     the admin card renders as "who asked". The route passes
     ``current_user.username``; the task passes ``task:xras_notices``. Required
@@ -170,8 +177,10 @@ def build_xras_messages(session: Session, project,
             session, get_latest_xras_action_id(session, project.project_id))
 
     action_id = action.xras_action_log_id if action is not None else None
-    kind = XRAS_SERVICE_KINDS.get((action.service or '') if action else '',
-                                  'xras_activation')
+    action_kind = XRAS_SERVICE_KINDS.get((action.service or '') if action else '',
+                                         'xras_activation')
+    kind = kind or action_kind
+    increments_action = action if action_kind == kind else None
 
     usage = project.get_detailed_allocation_usage()
     resources = [{
@@ -192,12 +201,12 @@ def build_xras_messages(session: Session, project,
         # Only one template reads each of these, but every kind carries both —
         # a template that renders an undefined name renders nothing, silently,
         # so the cheapest guard is for the key to always exist.
-        'added': (action_increments(session, action)
+        'added': (action_increments(session, increments_action)
                   if kind == 'xras_supplement' else []),
         # Signed, and separate from `added` on purpose: `added` is a promise
         # that every number in it is an increase, which the supplement wording
         # leans on. An adjustment makes no such promise.
-        'changes': (action_increments(session, action, signed=True)
+        'changes': (action_increments(session, increments_action, signed=True)
                     if kind == 'xras_adjustment' else []),
         'action_type': action.action_type if action else None,
         'approver_comment': approver_comment,

@@ -1132,6 +1132,26 @@ class SAMAnonymizer:
         print(f"[✓] Purged {total:,} notification_log records")
         return total
 
+    def purge_operator_table(self, session: Session, table_name: str,
+                             what: str) -> int:
+        """
+        Empty one operator-configuration table wholesale.
+
+        ``notification_addressing`` rows are real mailboxes an operator added as
+        cc/bcc; ``notification_template_override`` bodies are operator prose that
+        may name people. Neither is reference data: dev and CI must render the
+        shipped templates and the env defaults, and the tests that need rows
+        create their own (``tests/factories/notify.py``). No FKs either way.
+        """
+        print(f"\n[*] Purging {table_name} table...")
+        total = session.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar()
+        print(f"  Found {total:,} {what}")
+        if not self.dry_run:
+            session.execute(text(f"DELETE FROM {table_name}"))
+            session.commit()
+        print(f"[✓] Purged {total:,} {table_name} records")
+        return total
+
     def anonymize_all(self) -> Dict[str, int]:
         """
         Execute full anonymization workflow.
@@ -1222,6 +1242,16 @@ class SAMAnonymizer:
                     self.purge_notification_log(session)
                 else:
                     print("\n[!] notification_log not present in source — skipping")
+
+                # Operator configuration written from Admin > Notifications:
+                # addresses and edited template bodies. Same tolerance.
+                for table_name, what in (
+                        ('notification_addressing', 'operator cc/bcc rows (real mailboxes)'),
+                        ('notification_template_override', 'edited template bodies')):
+                    if self._table_exists(session, table_name):
+                        self.purge_operator_table(session, table_name, what)
+                    else:
+                        print(f"\n[!] {table_name} not present in source — skipping")
 
                 if not self.dry_run:
                     print("\n[*] Committing all changes...")

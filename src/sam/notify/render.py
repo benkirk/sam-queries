@@ -25,11 +25,16 @@ from pathlib import Path
 from typing import Optional
 
 import jinja2
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+import jinja2.meta
+from jinja2 import ChoiceLoader, DictLoader, FileSystemLoader, select_autoescape
+from jinja2.sandbox import ImmutableSandboxedEnvironment
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from sam import fmt
 from sam.notify.base import Message, NotifyError, RenderedMessage
 from sam.notify.kinds import get_kind
+from sam.notify.template_store import NotificationTemplateOverride
 
 logger = logging.getLogger(__name__)
 
@@ -46,18 +51,81 @@ class TemplateError(NotifyError):
     """No text template could be resolved for a message."""
 
 
+def shipped_template_names(template_dir: Optional[Path] = None) -> list[str]:
+    """Every operator-facing template file name, sorted.
+
+    Underscore-prefixed files (`_email_base.html`) are developer-owned layout
+    partials, never rendered on their own and never offered for editing.
+    """
+    directory = Path(template_dir) if template_dir else TEMPLATE_DIR
+    return sorted(p.name for p in directory.iterdir()
+                  if p.is_file() and not p.name.startswith('_'))
+
+
+class OverrideLoader(jinja2.BaseLoader):
+    """Operator overrides from ``notification_template_override``, else the files.
+
+    Overrides are read ONCE per loader, on first use, in a single query.
+    Every consumer builds a fresh renderer per request or per task run, so a
+    saved edit is live on the next one and there is no cache to invalidate.
+    No ``session_factory`` means no query at all.
+    """
+
+    def __init__(self, template_dir: Path, session_factory=None) -> None:
+        self.fs = FileSystemLoader(str(template_dir))
+        self.session_factory = session_factory
+        self._overrides: Optional[dict[str, str]] = None
+
+    @property
+    def overrides(self) -> dict[str, str]:
+        if self._overrides is None:
+            self._overrides = self._load()
+        return self._overrides
+
+    def _load(self) -> dict[str, str]:
+        if self.session_factory is None:
+            return {}
+        try:
+            with self.session_factory() as session:
+                rows = session.execute(select(NotificationTemplateOverride)).scalars()
+                return {row.name: row.body for row in rows}
+        except SQLAlchemyError as exc:
+            # Fail open: a missing table (DDL not applied yet) or a database
+            # outage must not stop mail. The shipped files render instead.
+            logger.warning('notify: template overrides unavailable, rendering '
+                           'the shipped files: %s', exc)
+            return {}
+
+    def get_source(self, environment, template):
+        body = self.overrides.get(template)
+        if body is not None:
+            return body, None, lambda: True
+        return self.fs.get_source(environment, template)
+
+    def list_templates(self):
+        return sorted(set(self.fs.list_templates()) | set(self.overrides))
+
+
 class TemplateRenderer:
     """Renders a :class:`~sam.notify.base.Message` into text and optional HTML.
 
     Args:
         template_dir: overrides :data:`TEMPLATE_DIR`. Tests pass a tmp_path;
             nothing in production does.
+        session_factory: a callable returning a SQLAlchemy ``Session``, used
+            once to read operator overrides. ``None`` renders the shipped
+            files only.
     """
 
-    def __init__(self, template_dir: Optional[Path] = None) -> None:
+    def __init__(self, template_dir: Optional[Path] = None,
+                 session_factory=None) -> None:
         self.template_dir = Path(template_dir) if template_dir else TEMPLATE_DIR
-        self.env = Environment(
-            loader=FileSystemLoader(str(self.template_dir)),
+        self.loader = OverrideLoader(self.template_dir, session_factory)
+        # Sandboxed because operators edit these bodies: the attribute and
+        # dunder access SSTI needs is refused; registered filters run as
+        # trusted Python and are unaffected.
+        self.env = ImmutableSandboxedEnvironment(
+            loader=self.loader,
             # Autoescape the HTML variant only. The text variant must stay
             # literal: a project title containing '&' belongs in a plain-text
             # mail as '&', not '&amp;'.
@@ -65,6 +133,15 @@ class TemplateRenderer:
                                          default_for_string=False),
         )
         fmt.register_jinja_filters(self.env)
+
+    @property
+    def override_names(self) -> list[str]:
+        """Template names an operator has customized."""
+        return sorted(self.loader.overrides)
+
+    def source(self, name: str) -> str:
+        """The body ``name`` renders from: the override if any, else the file."""
+        return self.loader.get_source(self.env, name)[0]
 
     # ------------------------------------------------------------ resolution
     def variants(self, message: Message) -> list[str]:
@@ -130,15 +207,7 @@ class TemplateRenderer:
                 f'{", ".join(self.candidates(message, "txt"))} under '
                 f'{self.template_dir}')
         text_name = f'{stem}.txt'
-
-        context = dict(message.context)
-        # The caller's subject wins, but templates get it too so a body can
-        # echo it without the caller passing it twice.
-        context.setdefault('subject', message.subject)
-        context.setdefault('recipient', message.recipient.address)
-        context.setdefault('recipient_name', message.recipient.name)
-        context.setdefault('recipient_role', message.recipient.role)
-
+        context = self.context_for(message)
         text = self.env.get_template(text_name).render(**context)
 
         # Same variant as the text, never a different facility's — see
@@ -157,3 +226,39 @@ class TemplateRenderer:
             template_text=text_name,
             template_html=html_name if html is not None else None,
         )
+
+    @staticmethod
+    def context_for(message: Message) -> dict:
+        """The message context plus the four keys every template receives."""
+        context = dict(message.context)
+        # The caller's subject wins, but templates get it too so a body can
+        # echo it without the caller passing it twice.
+        context.setdefault('subject', message.subject)
+        context.setdefault('recipient', message.recipient.address)
+        context.setdefault('recipient_name', message.recipient.name)
+        context.setdefault('recipient_role', message.recipient.role)
+        return context
+
+    # -------------------------------------------------------------- editing
+    def _overlay(self, name: str, source: str):
+        """An environment where ``name`` resolves to ``source``, all else as usual.
+
+        WARNING: not ``from_string``: autoescape is decided by the template
+        *name*, and a nameless string renders an ``.html`` body unescaped.
+        The overlay copies the cache, so a preview never pollutes it.
+        """
+        return self.env.overlay(
+            loader=ChoiceLoader([DictLoader({name: source}), self.env.loader]))
+
+    def render_source(self, name: str, source: str, context: dict) -> str:
+        """Render an unsaved body as if it were the template called ``name``."""
+        return self._overlay(name, source).get_template(name).render(**context)
+
+    def compile_source(self, name: str, source: str) -> None:
+        """Raise ``TemplateSyntaxError`` (or a sandbox error) if ``source`` is unusable."""
+        self._overlay(name, source).get_template(name)
+
+    def undeclared_names(self, source: str, known) -> set[str]:
+        """Top-level names ``source`` reads that are not in ``known`` or the globals."""
+        found = jinja2.meta.find_undeclared_variables(self.env.parse(source))
+        return set(found) - set(known) - set(self.env.globals)

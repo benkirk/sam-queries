@@ -1,21 +1,6 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 700px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        h3 {
-            color: #0275d8;
-            margin-top: 25px;
-            margin-bottom: 10px;
-        }
+{% extends "_email_base.html" %}
+
+{% block extra_styles %}
         .project-info {
             background-color: #f5f5f5;
             border-left: 4px solid #d9534f;
@@ -28,16 +13,9 @@
             padding: 10px 15px;
             margin: 15px 0;
         }
-        .footer {
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #ddd;
-            font-size: 0.9em;
-            color: #666;
-        }
-    </style>
-</head>
-<body>
+{% endblock %}
+
+{% block content %}
     <p>Dear {{ recipient_name }},</p>
 
     <div class="project-info">
@@ -70,9 +48,4 @@
     {% else -%}
     <p>Your project lead (<strong>{{ project_lead }}</strong> / <a href="mailto:{{ project_lead_email }}">{{ project_lead_email }}</a>) can request an extension if warranted under certain circumstances.</p>
     {% endif %}
-
-    <div class="footer">
-        <p>This is an automated notification from the NSF NCAR Systems Accounting Manager.</p>
-    </div>
-</body>
-</html>
+{% endblock %}

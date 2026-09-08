@@ -13,6 +13,13 @@ from webapp.utils.rbac import Permission
 PAGE = '/admin/htmx/notifications'
 LOG = '/admin/htmx/notifications/log'
 DETAIL = '/admin/htmx/notifications/1'
+EDITOR = '/admin/htmx/notifications/templates/expiration-UNIV.txt'
+PREVIEW = '/admin/htmx/notifications/templates/expiration-UNIV.txt/preview'
+RESET = '/admin/htmx/notifications/templates/expiration-UNIV.txt/reset'
+AUDIENCE = '/admin/htmx/notifications/templates/expiration-UNIV.txt/recipients'
+TYPEAHEAD = '/admin/htmx/notifications/templates/project-search?q=SC'
+ADDRESSING = '/admin/htmx/notifications/addressing'
+ADDRESSING_ADD = '/admin/htmx/notifications/addressing/xras'
 
 
 @pytest.fixture
@@ -39,11 +46,19 @@ class TestThePermissionBoundary:
     """One tier apart, deliberately — and the gate is on the ROUTE, so a
     view-source cannot reveal what the page chose not to draw."""
 
-    @pytest.mark.parametrize('path', [PAGE, LOG, DETAIL])
+    @pytest.mark.parametrize('path', [PAGE, LOG, DETAIL, EDITOR, AUDIENCE, TYPEAHEAD,
+                                      ADDRESSING])
     def test_view_system_config_alone_is_refused(self, config_only_client, path):
         assert config_only_client.get(path).status_code == 403
 
-    @pytest.mark.parametrize('path', [PAGE, LOG, DETAIL])
+    @pytest.mark.parametrize('path', [PREVIEW, EDITOR, RESET, ADDRESSING_ADD])
+    def test_view_system_config_alone_cannot_post(self, config_only_client, path):
+        assert config_only_client.post(path, data={'body': 'x'}).status_code == 403
+
+    def test_view_system_config_alone_cannot_delete_a_copy(self, config_only_client):
+        assert config_only_client.delete(f'{ADDRESSING}/1').status_code == 403
+
+    @pytest.mark.parametrize('path', [PAGE, LOG, DETAIL, EDITOR, ADDRESSING])
     def test_anonymous_is_refused(self, client, path):
         assert client.get(path).status_code in (302, 401, 403)
 
@@ -54,7 +69,7 @@ class TestThePermissionBoundary:
         assert resp.status_code == 200
         assert b'Notifications' in resp.data
 
-    @pytest.mark.parametrize('path', [PAGE, LOG])
+    @pytest.mark.parametrize('path', [PAGE, LOG, EDITOR, ADDRESSING])
     def test_system_admin_gets_in(self, auth_client, path):
         assert auth_client.get(path).status_code == 200
 
@@ -78,6 +93,25 @@ class TestThePage:
         monkeypatch.setitem(app.config, 'NOTIFY_REDIRECT_TO', 'sink@example.edu')
         resp = auth_client.get(PAGE)
         assert b'sink@example.edu' in resp.data
+
+
+class TestTheDetailModal:
+    """Rendered directly: the route reads committed rows only."""
+
+    def _render(self, app, session, **kwargs):
+        from flask import render_template
+        from factories.notify import make_notification_log
+        row = make_notification_log(session, **kwargs)
+        with app.test_request_context():
+            return render_template(
+                'dashboards/admin/fragments/notification_detail_modal.html', row=row)
+
+    def test_the_copies_that_left_are_shown(self, app, session):
+        html = self._render(app, session, copies='cc:alloc@x.edu;bcc:ops@x.edu')
+        assert 'cc:alloc@x.edu;bcc:ops@x.edu' in html
+
+    def test_no_copies_says_so(self, app, session):
+        assert 'none left with it' in self._render(app, session)
 
 
 class TestTheLogFragment:
@@ -144,3 +178,355 @@ class TestNoCliEquivalent:
 
         result = CliRunner().invoke(cli, ['--help'])
         assert 'notifications' not in result.output
+
+
+class TestTheTemplatesTab:
+
+    def test_the_log_is_the_default_tab_and_unknown_tabs_fall_back(self, auth_client):
+        for query in ('', '?tab=nope'):
+            html = auth_client.get(PAGE + query).data.decode()
+            assert 'id="log-pane"' in html and 'show active" id="log-pane"' in html
+
+    def test_it_lists_every_shipped_template(self, auth_client):
+        from sam.notify.render import shipped_template_names
+        html = auth_client.get(f'{PAGE}?tab=templates').data.decode()
+        assert 'show active" id="templates-pane"' in html
+        for name in shipped_template_names():
+            assert name in html
+        assert '_email_base.html' not in html
+
+    def test_a_named_template_lazy_loads_its_editor(self, auth_client):
+        html = auth_client.get(f'{PAGE}?tab=templates&name=xras_update.html').data.decode()
+        assert 'hx-trigger="load"' in html
+        assert '/templates/xras_update.html"' in html
+
+    def test_an_unknown_name_is_404(self, auth_client):
+        assert auth_client.get(f'{PAGE}?tab=templates&name=nope.txt').status_code == 404
+        assert auth_client.get(EDITOR.replace('expiration-UNIV', 'nope')).status_code == 404
+
+    def test_a_kind_deep_link_preselects_the_log_facet(self, auth_client):
+        html = auth_client.get(f'{PAGE}?tab=log&kind=expiration').data.decode()
+        assert 'value="expiration" selected' in html
+        assert 'notifications/log?kind=expiration' in html
+
+    def test_an_unknown_kind_is_ignored(self, auth_client):
+        assert auth_client.get(f'{PAGE}?kind=nope').status_code == 200
+
+
+class TestTheEditorFragment:
+
+    def test_it_shows_the_shipped_source_and_the_palette(self, auth_client):
+        from sam.notify.render import TEMPLATE_DIR
+        html = auth_client.get(EDITOR).data.decode()
+        assert 'Dear {{ recipient_name }}' in html
+        assert (TEMPLATE_DIR / 'expiration-UNIV.txt').read_text().count('\n') > 10
+        for name in ('project_code', 'grace_expiration', 'resources.resource_name'):
+            assert name in html
+        assert 'shipped default' in html
+        assert 'kind=expiration' in html
+        assert 'hx-swap-oob="true"' in html
+
+    def test_the_source_is_editable_and_the_default_has_no_reset(self, auth_client):
+        html = auth_client.get(EDITOR).data.decode()
+        assert 'readonly' not in html
+        assert 'Reset to default' not in html
+        assert 'Save' in html
+
+
+class TestThePreviewFragment:
+
+    def test_text_renders_in_a_pre(self, auth_client):
+        resp = auth_client.post(PREVIEW, data={'body': 'Hello {{ project_code }}'})
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert '<pre' in html and 'Hello SCSG0001' in html
+        assert 'srcdoc' not in html
+
+    def test_html_renders_in_a_sandboxed_iframe(self, auth_client):
+        body = ('{% extends "_email_base.html" %}{% block content %}'
+                '<p>Hi {{ recipient_name }}</p>{% endblock %}')
+        html = auth_client.post(PREVIEW.replace('.txt', '.html'),
+                                data={'body': body}).data.decode()
+        assert '<iframe' in html and 'sandbox' in html and 'srcdoc="' in html
+        assert '<style' not in html, 'the email CSS must be escaped inside srcdoc'
+        assert '&lt;style&gt;' in html
+
+    def test_the_role_selects_the_recipient(self, auth_client):
+        html = auth_client.post(PREVIEW, data={'body': '{{ recipient_role }}',
+                                               'role': 'user'}).data.decode()
+        assert '>user<' in html
+
+    def test_a_syntax_error_answers_in_the_pane_at_200(self, auth_client):
+        resp = auth_client.post(PREVIEW, data={'body': '{% if %}'})
+        assert resp.status_code == 200
+        assert b'does not render' in resp.data
+        assert b'TemplateSyntaxError' in resp.data
+
+    def test_an_ssti_probe_answers_in_the_pane_at_200(self, auth_client):
+        resp = auth_client.post(PREVIEW, data={'body': "{{ ''.__class__.__mro__ }}"})
+        assert resp.status_code == 200
+        assert b'SecurityError' in resp.data
+
+    def test_an_unknown_variable_is_warned_about(self, auth_client):
+        html = auth_client.post(PREVIEW, data={'body': '{{ projekt_code }}'}).data.decode()
+        assert 'Unknown variable' in html and 'projekt_code' in html
+
+    def test_a_shipped_body_warns_about_nothing(self, auth_client):
+        from sam.notify.render import TEMPLATE_DIR
+        body = (TEMPLATE_DIR / 'expiration-UNIV.txt').read_text()
+        html = auth_client.post(PREVIEW, data={'body': body}).data.decode()
+        assert 'Unknown variable' not in html
+        assert 'SCSG0001' in html
+
+    def test_an_unknown_template_name_is_404(self, auth_client):
+        resp = auth_client.post(PREVIEW.replace('expiration-UNIV', 'nope'),
+                                data={'body': 'x'})
+        assert resp.status_code == 404
+
+
+class TestSave:
+    """HTTP-layer coverage is auth, validation and the compile gate; the one
+    happy path below cleans up after itself because route writes COMMIT."""
+
+    def _override(self, app, name):
+        from webapp.extensions import db
+        from sam import NotificationTemplateOverride
+        with app.app_context():
+            return NotificationTemplateOverride.get_by_name(db.session, name)
+
+    def test_an_empty_body_is_refused(self, auth_client):
+        resp = auth_client.post(EDITOR, data={'body': ''})
+        assert resp.status_code == 200
+        assert b'alert-danger' in resp.data
+        assert b'hx-swap-oob' in resp.data, 'the editor re-renders in place'
+
+    def test_a_body_that_does_not_compile_is_refused(self, auth_client, app):
+        resp = auth_client.post(EDITOR, data={'body': '{% if %}'})
+        assert b'does not render' in resp.data
+        assert b'TemplateSyntaxError' in resp.data
+        assert b'{% if %}' in resp.data, 'the rejected text stays in the editor'
+        assert self._override(app, 'expiration-UNIV.txt') is None
+
+    def test_an_ssti_body_is_refused(self, auth_client, app):
+        resp = auth_client.post(EDITOR, data={'body': "{{ ''.__class__.__mro__ }}"})
+        assert b'does not render' in resp.data and b'SecurityError' in resp.data
+        assert self._override(app, 'expiration-UNIV.txt') is None
+
+    def test_an_unknown_name_is_404(self, auth_client):
+        assert auth_client.post(EDITOR.replace('expiration-UNIV', 'nope'),
+                                data={'body': 'x'}).status_code == 404
+        assert auth_client.post(RESET.replace('expiration-UNIV', 'nope')).status_code == 404
+
+    def test_reset_of_a_default_is_a_harmless_no_op(self, auth_client):
+        resp = auth_client.post(RESET)
+        assert resp.status_code == 200
+        assert b'Restored the shipped default' in resp.data
+
+    def test_save_then_reset_round_trip(self, auth_client, app):
+        """On task_summary.txt, which no other test renders through a real
+        session, and torn down in `finally` whatever happens."""
+        from webapp.extensions import db
+        from sam import NotificationTemplateOverride
+        name = 'task_summary.txt'
+        save = f'/admin/htmx/notifications/templates/{name}'
+        body = 'CUSTOM {{ task_name }} {{ headlin }}'
+        try:
+            resp = auth_client.post(save, data={'body': body})
+            html = resp.data.decode()
+            assert 'Template saved' in html
+            assert 'headlin' in html and 'Unknown variable' in html
+            assert 'Reset to default' in html
+            assert 'customized by' in html
+            row = self._override(app, name)
+            assert row is not None and row.body == body
+            # The editor now shows the override, and a fresh renderer with a
+            # session factory renders it.
+            assert body in auth_client.get(save).data.decode()
+            from sqlalchemy.orm import Session
+            from sam.notify import Message, Recipient, TemplateRenderer
+            with app.app_context():
+                renderer = TemplateRenderer(session_factory=lambda: Session(db.engine))
+                text = renderer.render(Message(
+                    kind='task_summary', subject='s',
+                    recipient=Recipient('ops@example.edu', role='admin'),
+                    context={'task_name': 'expiration_notices'})).text
+            assert text.startswith('CUSTOM expiration_notices')
+
+            resp = auth_client.post(f'{save}/reset')
+            assert b'Restored the shipped default' in resp.data
+            assert self._override(app, name) is None
+        finally:
+            with app.app_context():
+                stray = NotificationTemplateOverride.get_by_name(db.session, name)
+                if stray is not None:
+                    db.session.delete(stray)
+                    db.session.commit()
+
+
+class TestPreviewAddressingLine:
+    """The pane says what the copy will carry: env defaults plus operator rows."""
+
+    XRAS = '/admin/htmx/notifications/templates/xras_update.txt/preview'
+
+    def test_the_effective_addressing_is_shown(self, auth_client, app, monkeypatch):
+        monkeypatch.setitem(app.config, 'NOTIFY_XRAS_CC', 'alloc@example.edu')
+        monkeypatch.setitem(app.config, 'NOTIFY_XRAS_REPLY_TO', 'reply@example.edu')
+        html = auth_client.post(self.XRAS, data={'body': 'x'}).data.decode()
+        assert 'notify-preview-addressing' in html
+        assert 'Cc: <code>alloc@example.edu</code>' in html
+        assert 'Reply-To: <code>reply@example.edu</code>' in html
+
+    def test_nothing_configured_shows_no_line(self, auth_client, app, monkeypatch):
+        for key in ('NOTIFY_XRAS_CC', 'NOTIFY_XRAS_BCC', 'NOTIFY_XRAS_FROM',
+                    'NOTIFY_XRAS_REPLY_TO'):
+            monkeypatch.setitem(app.config, key, '')
+        html = auth_client.post(self.XRAS, data={'body': 'x'}).data.decode()
+        assert 'notify-preview-addressing' not in html
+
+
+class TestPreviewForAProject:
+    """Real data replaces the samples once a project is picked."""
+
+    def test_the_editor_offers_the_picker_for_project_kinds_only(self, auth_client):
+        html = auth_client.get(EDITOR).data.decode()
+        assert 'previewProject_id' in html and 'Preview for' in html
+        task = auth_client.get(EDITOR.replace('expiration-UNIV', 'task_summary')).data.decode()
+        assert 'previewProject_id' not in task
+
+    def test_the_typeahead_finds_projects(self, auth_client, active_project):
+        html = auth_client.get(
+            f'/admin/htmx/notifications/templates/project-search?q={active_project.projcode}'
+        ).data.decode()
+        assert f'data-fk-id="{active_project.project_id}"' in html
+
+    def test_audience_without_a_project_is_the_role_select(self, auth_client):
+        resp = auth_client.get(AUDIENCE)
+        assert b'name="role"' in resp.data and b'name="recipient"' not in resp.data
+        assert resp.headers.get('HX-Trigger') == 'reloadTemplatePreview'
+
+    def test_audience_with_a_project_is_real_people_or_an_explanation(
+            self, auth_client, active_project):
+        resp = auth_client.get(f'{AUDIENCE}?project_id={active_project.project_id}')
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert 'name="recipient"' in html or 'name="role"' in html
+
+    def test_preview_for_a_project_renders_its_code_or_explains(
+            self, auth_client, active_project):
+        resp = auth_client.post(PREVIEW, data={
+            'body': 'Hello {{ project_code }} {{ recipient_role }}',
+            'project_id': str(active_project.project_id)})
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert (f'Hello {active_project.projcode}' in html
+                or 'nothing would be sent' in html)
+        if 'nothing would be sent' not in html:
+            assert 'as it would reach' in html and 'Subject:' in html
+
+    def test_an_unknown_project_answers_in_the_pane(self, auth_client):
+        resp = auth_client.post(PREVIEW, data={'body': 'x', 'project_id': '999999999'})
+        assert resp.status_code == 200 and b'Unknown project' in resp.data
+
+    def test_a_task_kind_ignores_the_project(self, auth_client, active_project):
+        resp = auth_client.post(
+            PREVIEW.replace('expiration-UNIV', 'task_summary'),
+            data={'body': '{{ task_name }}', 'project_id': str(active_project.project_id)})
+        assert resp.status_code == 200
+        assert b'not about a project' in resp.data
+
+    def test_sample_mode_names_the_role_and_subject(self, auth_client):
+        html = auth_client.post(PREVIEW, data={'body': 'x', 'role': 'user'}).data.decode()
+        assert 'Sample data, as user' in html and 'Subject:' in html
+
+
+class TestTheAddressingTab:
+    """Operator cc/bcc rows: deployment defaults shown read-only, additions
+    validated inline. The add route commits, so the one happy-path test
+    removes its row through the delete route and again in `finally`."""
+
+    def test_the_page_carries_the_tab_and_the_deep_link_selects_it(self, auth_client):
+        html = auth_client.get(f'{PAGE}?tab=addressing').data.decode()
+        assert 'id="addressing-tab"' in html
+        assert 'id="addressing-pane"' in html
+        assert 'hx-get="/admin/htmx/notifications/addressing"' in html
+        assert 'class="nav-link active" id="addressing-tab"' in html
+
+    def test_every_family_gets_a_card_with_its_scopes(self, auth_client):
+        html = auth_client.get(ADDRESSING).data.decode()
+        for key in ('expiration', 'xras', 'task'):
+            assert f'id="addressing-{key}"' in html
+        assert 'value="expiration-WNA"' in html
+        assert html.count('value="expiration"') == 1
+        assert 'value="xras_supplement"' in html
+        assert 'value="xras_update-WNA"' not in html
+
+    def test_a_deployment_default_is_shown_and_not_removable(self, auth_client, app,
+                                                             monkeypatch):
+        monkeypatch.setitem(app.config, 'NOTIFY_XRAS_CC', 'alloc@example.edu')
+        monkeypatch.setitem(app.config, 'NOTIFY_XRAS_REPLY_TO', 'reply@example.edu')
+        import re
+        html = auth_client.get(ADDRESSING).data.decode()
+        assert 'Reply-To <code>reply@example.edu</code>' in html
+        # Scoped to the default's own row: another xdist worker may have a
+        # committed operator row (with a Remove button) on this card.
+        (row,) = [tr for tr in re.findall(r'<tr>.*?</tr>', html, re.S)
+                  if 'alloc@example.edu' in tr]
+        assert 'deployment default' in row
+        assert 'hx-delete' not in row
+
+    def test_an_unknown_family_is_404(self, auth_client):
+        resp = auth_client.post(f'{ADDRESSING}/nope',
+                                data={'address': 'a@x.edu', 'field': 'cc', 'scope': 'xras'})
+        assert resp.status_code == 404
+
+    def test_a_bad_address_is_refused_inline(self, auth_client):
+        resp = auth_client.post(ADDRESSING_ADD, data={
+            'address': 'not-an-address', 'field': 'cc', 'scope': 'xras'})
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert 'is-invalid' in html and '<form' in html
+
+    def test_a_scope_of_another_family_is_refused(self, auth_client):
+        resp = auth_client.post(ADDRESSING_ADD, data={
+            'address': 'ops@example.edu', 'field': 'cc', 'scope': 'expiration-WNA'})
+        assert resp.status_code == 200
+        assert b'is not a' in resp.data
+
+    def test_add_duplicate_and_remove(self, auth_client, app):
+        import uuid
+        from sam import NotificationAddressing
+        from webapp.extensions import db
+        address = f'page-{uuid.uuid4().hex[:8]}@example.edu'
+        data = {'address': address.upper(), 'field': 'bcc', 'scope': 'xras_supplement'}
+
+        def _row():
+            with app.app_context():
+                return NotificationAddressing.get_by_entry(
+                    db.session, scope='xras_supplement', field='bcc', address=address)
+        try:
+            resp = auth_client.post(ADDRESSING_ADD, data=data)
+            assert resp.status_code == 200
+            assert 'reloadAddressingCard' in resp.headers.get('HX-Trigger', '')
+            row = _row()
+            assert row is not None and row.address == address
+            assert row.created_by == 'benkirk'
+
+            again = auth_client.post(ADDRESSING_ADD, data=data)
+            assert again.status_code == 200 and b'already a bcc' in again.data
+
+            card = auth_client.get(ADDRESSING).data.decode()
+            assert address in card and 'XRAS allocation supplement' in card
+
+            gone = auth_client.delete(f'{ADDRESSING}/{row.notification_addressing_id}')
+            assert gone.status_code == 200
+            assert gone.headers.get('HX-Trigger') == 'reloadAddressingCard'
+            assert _row() is None
+            assert auth_client.delete(
+                f'{ADDRESSING}/{row.notification_addressing_id}').status_code == 404
+        finally:
+            with app.app_context():
+                row = NotificationAddressing.get_by_entry(
+                    db.session, scope='xras_supplement', field='bcc', address=address)
+                if row is not None:
+                    db.session.delete(row)
+                    db.session.commit()

@@ -20,7 +20,7 @@ from .core import (
     make_user_institution,
     make_user_organization,
 )
-from .notify import make_notification_log
+from .notify import make_notification_log, make_template_override
 from .operational import make_wallclock_exemption
 from .xras import (
     make_xras_action,
@@ -63,6 +63,7 @@ __all__ = [
     "reset_seq",
     "make_adhoc_group",
     "make_notification_log",
+    "make_template_override",
     "make_gid_allocation",
     "make_institution",
     "make_mnemonic_code",

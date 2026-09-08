@@ -1,0 +1,55 @@
+{#
+  The preview pane body: a text render in a <pre>, or an HTML render inside a
+  sandboxed srcdoc iframe (no scripts; the page CSP allows its inline
+  <style>). Errors and unknown-variable warnings render here too, at 200.
+
+  Context: row, error, warnings, text, html, subject, audience (a real
+           project's recipient, or None for sample data), role, info,
+           addressing (Addressing.as_dict(): from, reply_to, cc, bcc)
+#}
+{% if subject %}
+<p class="small text-muted mb-2">
+    <i class="fa-solid {{ 'fa-user' if audience else 'fa-flask' }} me-1"></i>
+    {% if audience %}{{ audience }}{% else %}Sample data, as {{ role }}{% endif %}
+    · Subject: <span class="fw-semibold">{{ subject }}</span>
+</p>
+{% endif %}
+{% if addressing and (addressing['from'] or addressing.reply_to or addressing.cc or addressing.bcc) %}
+<p class="small text-muted mb-2 notify-preview-addressing">
+    <i class="fa-solid fa-envelope-circle-check me-1"></i>
+    {%- for label, key in [('From', 'from'), ('Reply-To', 'reply_to'), ('Cc', 'cc'), ('Bcc', 'bcc')] %}
+    {%- if addressing[key] %}
+    <span class="me-3">{{ label }}: <code>{{ addressing[key] }}</code></span>
+    {%- endif %}
+    {%- endfor %}
+</p>
+{% endif %}
+{% if info %}
+<div class="alert alert-info mb-2">
+    <i class="fa-solid fa-circle-info me-1"></i> {{ info }}
+</div>
+{% endif %}
+{% if error %}
+<div class="alert alert-danger mb-2">
+    <i class="fa-solid fa-triangle-exclamation me-1"></i>
+    <strong>This template does not render.</strong>
+    <code>{{ error }}</code>
+</div>
+{% endif %}
+{% if warnings %}
+<div class="alert alert-warning small mb-2">
+    <i class="fa-solid fa-circle-question me-1"></i>
+    Unknown variable{{ 's' if warnings | length > 1 }}:
+    {% for w in warnings %}<code>{{ w }}</code>{{ ', ' if not loop.last }}{% endfor %}
+    — not in this template's variable list, so each renders as nothing.
+    A misspelled field inside a loop (<code>r.resource_nam</code>) is not
+    detected and also renders as nothing.
+</div>
+{% endif %}
+{% if text is not none %}
+<pre class="notify-preview-text mb-0">{{ text }}</pre>
+{% endif %}
+{% if html is not none %}
+<iframe class="notify-preview-frame" sandbox srcdoc="{{ html }}"
+        title="Rendered HTML preview"></iframe>
+{% endif %}

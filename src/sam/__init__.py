@@ -214,7 +214,9 @@ from .integration.xras_views import (
 # import graph of every ORM consumer — and sam.fmt imports the top-level
 # `config` module, which `python3 src/webapp/run.py` shadows with
 # webapp/config.py. See the sam/notify/__init__.py docstring.
+from .notify.addressing_store import NotificationAddressing
 from .notify.models import NotificationLog
+from .notify.template_store import NotificationTemplateOverride
 
 from .security.roles import Role, RoleUser, ApiCredentials, RoleApiCredentials
 from .security.access import AccessBranch, AccessBranchResource
@@ -285,7 +287,9 @@ __all__ = [
     'XrasUserView', 'XrasRoleView', 'XrasActionView',
     'XrasAllocationView', 'XrasHpcAllocationAmountView', 'XrasRequestView',
     # Notifications
+    'NotificationAddressing',
     'NotificationLog',
+    'NotificationTemplateOverride',
     # Security
     'Role', 'RoleUser', 'ApiCredentials', 'RoleApiCredentials',
     'AccessBranch', 'AccessBranchResource',

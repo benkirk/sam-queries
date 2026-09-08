@@ -1,0 +1,35 @@
+{% from 'dashboards/fragments/form_fields.html' import text_field, select_field, form_errors_panel with context %}
+{#
+  The inline "add a copy" form for one family. Swaps itself: a validation
+  error re-renders it in place, a success replaces it with the checkmark and
+  fires reloadAddressingCard, which redraws the whole card.
+
+  Context: card (see _addressing_cards), and on re-render errors,
+           field_errors, form
+#}
+<form hx-post="{{ card.post_url }}" hx-target="this" hx-swap="outerHTML"
+      class="notify-addressing-form" novalidate>
+    <div class="row g-2 align-items-end">
+        <div class="col-12 col-md-5">
+            {{ text_field('address', 'Add an address', required=True, type='email',
+                          placeholder='someone@ucar.edu', maxlength=255,
+                          id='addressing-' ~ card.key ~ '-address') }}
+        </div>
+        <div class="col-6 col-md-2">
+            {{ select_field('field', 'As', options=[('cc', 'Cc'), ('bcc', 'Bcc')],
+                            required=True, optional_text='',
+                            id='addressing-' ~ card.key ~ '-field') }}
+        </div>
+        <div class="col-6 col-md-3">
+            {{ select_field('scope', 'For', options=card.scopes, required=True,
+                            optional_text='',
+                            id='addressing-' ~ card.key ~ '-scope') }}
+        </div>
+        <div class="col-12 col-md-2 mb-3">
+            <button type="submit" class="btn btn-primary w-100">
+                <i class="fa-solid fa-plus me-1"></i> Add
+            </button>
+        </div>
+    </div>
+    {{ form_errors_panel() }}
+</form>

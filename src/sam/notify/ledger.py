@@ -105,6 +105,7 @@ class NotificationLedger:
                     recipient_role=message.recipient.role,
                     subject=message.subject,
                     template=rendered.template_text if rendered else None,
+                    copies=message.copies_summary(),
                     entity_type=message.entity_type,
                     entity_id=message.entity_id,
                     projcode=message.projcode,
