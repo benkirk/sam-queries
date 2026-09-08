@@ -10,6 +10,7 @@ from flask import (
     render_template, request, flash, redirect, url_for, jsonify, Response,
 )
 from flask_login import login_required, current_user
+from sqlalchemy.orm import joinedload
 from datetime import datetime, timedelta
 from typing import List, Dict
 
@@ -769,6 +770,7 @@ _EXPORT_COLUMNS = [
     Column('allocation_type', 'Allocation Type', 18, 'text'),
     Column('projcode', 'Project', 12, 'text'),
     Column('title', 'Title', 44, 'text'),
+    Column('pi', 'PI', 22, 'text'),
     Column('total_allocated', 'Allocated', 16, 'num'),
     Column('total_used', 'Used', 16, 'num'),
     Column('remaining', 'Remaining', 16, 'num'),
@@ -831,7 +833,7 @@ def projects_export():
         )
         rows_by_resource.setdefault(combo['resource'], []).extend(detail or [])
 
-    _enrich_titles(rows_by_resource)
+    _enrich_project_info(rows_by_resource)
 
     sheets = []
     for resource in selected_resources:
@@ -854,19 +856,20 @@ def projects_export():
     )
 
 
-def _enrich_titles(rows_by_resource: Dict[str, List[Dict]]) -> None:
-    """Attach project titles in one query (no per-row find_project_by_code N+1)."""
+def _enrich_project_info(rows_by_resource: Dict[str, List[Dict]]) -> None:
+    """Attach project title + PI name in one query (joinedload lead, no N+1)."""
     codes = {row['projcode'] for rows in rows_by_resource.values()
              for row in rows if row.get('projcode')}
     if not codes:
         return
-    titles = dict(
-        db.session.query(Project.projcode, Project.title)
+    info = {
+        p.projcode: (p.title, p.lead.display_name if p.lead else None)
+        for p in db.session.query(Project).options(joinedload(Project.lead))
         .filter(Project.projcode.in_(codes)).all()
-    )
+    }
     for rows in rows_by_resource.values():
         for row in rows:
-            row['title'] = titles.get(row.get('projcode'))
+            row['title'], row['pi'] = info.get(row.get('projcode'), (None, None))
 
 
 def _parse_audit_filters(request_args, sort_whitelist):
