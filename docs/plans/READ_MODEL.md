@@ -58,9 +58,10 @@ every consumer already runs a cheap skeleton query that yields the rest.
 - Values: `allocated`; `self_used` (own subtree, incl. adjustments), `used`
   (pool subtree for an inheriting allocation, else `self_used`), `remaining`,
   `percent_used`, `self_percent_used`, `charges_by_type` {comp,dav,disk,archive}
-  (JSON), `adjustments`; disk point-in-time `current_used_bytes` +
-  `activity_date`; `rolling_windows` (JSON `{30: {...}, 90: {...}}`, NULL unless the
-  account carries a threshold — mirrors both consumers' gate).
+  (JSON), `adjustments`; disk point-in-time `activity_date` (the TiB figure is
+  `used`; bytes derive from it where an API wants them); `rolling_windows`
+  (JSON `{30: {...}, 90: {...}}`, NULL unless the account carries a threshold —
+  mirrors both consumers' gate).
 - Lifecycle: `start_date`, `end_date`, `is_current`.
 - Watermark: `refreshed_at` (freshness gate + drift audit).
 

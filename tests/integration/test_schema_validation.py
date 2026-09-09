@@ -661,6 +661,41 @@ class TestCriticalSchemas:
         """)).scalar()
         assert fk == 1, "expected the mnemonic_code FK"
 
+    def test_account_allocation_state_schema(self, session):
+        """The allocation/usage read-model, created from its DDL script.
+
+        PK ``allocation_id`` (an account may show more than one allocation:
+        the current one and one that ended within 90 days) and NO foreign
+        keys — a rebuilt-hourly projection whose dangling rows are harmless.
+        """
+        table_name = 'account_allocation_state'
+        db_cols = get_db_columns(session, table_name)
+        expected = {
+            'allocation_id', 'account_id', 'project_id', 'projcode',
+            'resource_id', 'resource_name', 'resource_type', 'facility_name',
+            'allocation_type', 'parent_allocation_id', 'is_inheriting',
+            'root_projcode', 'allocated', 'self_used', 'used', 'remaining',
+            'percent_used', 'self_percent_used', 'charges_by_type',
+            'adjustments', 'activity_date', 'rolling_windows', 'start_date',
+            'end_date', 'is_current', 'refreshed_at',
+        }
+        actual = set(db_cols.keys())
+        assert actual == expected, (
+            f"AccountAllocationState schema mismatch!\n"
+            f"  Expected: {expected}\n"
+            f"  Actual:   {actual}"
+        )
+        db_pks = sorted(col for col, info in db_cols.items() if 'PRI' in info['key'])
+        assert db_pks == ['allocation_id'], f"PK mismatch: {db_pks}"
+        assert not db_cols['charges_by_type']['nullable']
+        assert not db_cols['refreshed_at']['nullable']
+        fk = session.execute(text("""
+            SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'account_allocation_state'
+               AND REFERENCED_TABLE_NAME IS NOT NULL
+        """)).scalar()
+        assert fk == 0, "the read-model carries no foreign keys by design"
+
     def test_notification_template_override_schema(self, session):
         """The operator template store: one row per template file name."""
         table_name = 'notification_template_override'
