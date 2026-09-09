@@ -103,5 +103,9 @@ class AccountAllocationState(Base, SessionMixin):
         return session.query(func.min(cls.refreshed_at)).scalar()
 
     def __repr__(self):
-        return (f"<AccountAllocationState allocation={self.allocation_id} "
-                f"{self.projcode}/{self.resource_name} used={self.used:.1f}>")
+        return (f"<AccountAllocationState(allocation_id={self.allocation_id}, "
+                f"projcode={self.projcode!r}, resource={self.resource_name!r})>")
+
+    def __str__(self):
+        return (f"{self.projcode}/{self.resource_name} "
+                f"({self.used:,.1f} of {self.allocated:,.1f} used)")
