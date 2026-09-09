@@ -172,10 +172,14 @@ Table name: **`account_allocation_state`**.
 batched builder above, so the baseline **cannot drift** and the whole table is
 reconciled each hour. The runner owns the commit (tasks never commit — see
 `deactivate_expired.py`), so readers see either the previous full set or the new
-one, never a half-written table. `refreshed_at` is taken **before** the projection
-starts (conservative: a charge that lands mid-run is at worst re-included next
-hour, never claimed early). Size `expected_runtime` so the lease exceeds the
-CronJob deadline (the documented double-run trap).
+one, never a half-written table. `refreshed_at` is the **database clock**
+(`SELECT NOW()`), taken **before** the projection starts (conservative: a change
+that lands mid-run is at worst re-included next hour, never claimed early). The
+DB clock, not the app clock, because the gate compares it with `ON UPDATE
+CURRENT_TIMESTAMP` stamps: in prod the two agree, in the local containers the
+MySQL server runs UTC and an app-clock watermark would sit six hours behind
+every stamp. Size `expected_runtime` so the lease exceeds the CronJob deadline
+(the documented double-run trap).
 
 **Freshness gate (read side).** A reader uses table rows for a scope only when
 

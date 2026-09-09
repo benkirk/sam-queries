@@ -28,19 +28,21 @@ SCHEDULE = Hourly(minute=0)
       description='Rebuild the allocation/usage read-model (account_allocation_state)')
 def refresh_allocation_state(ctx) -> TaskResult:
     """Project every candidate allocation and make the table equal to it."""
-    from sam.queries.allocation_state import project_allocation_state
+    from sam.queries.allocation_state import db_now, project_allocation_state
     from sam.summaries.allocation_state import AccountAllocationState
 
-    # The wall clock, deliberately -- the one task that must NOT compute from
-    # ctx.occurrence. The rows describe the database as it is being read, and
-    # `refreshed_at` is compared against SAM's naive-Mountain app-clock
-    # timestamps by the freshness gate. Taken BEFORE the projection so a
-    # charge landing mid-run is never claimed early. Whole seconds: DATETIME.
-    refreshed_at = datetime.now().replace(microsecond=0)
+    # Clocks, deliberately -- the one task that must NOT compute from
+    # ctx.occurrence: the rows describe the database as it is being read.
+    # `refreshed_at` is the DATABASE clock because the freshness gate compares
+    # it with ON UPDATE stamps; `now` is the app clock SAM dates live in.
+    # Both taken BEFORE the projection so a change landing mid-run is never
+    # claimed early.
     started = time.monotonic()
-
     session = ctx.sam_session
-    rows = project_allocation_state(session, now=refreshed_at)
+    refreshed_at = db_now(session)
+    now = datetime.now()
+
+    rows = project_allocation_state(session, now=now)
     if not rows:
         exc = RuntimeError('projection produced no rows; table left untouched')
         exc.task_detail = {'refreshed_at': refreshed_at.isoformat(), 'rows': 0}
