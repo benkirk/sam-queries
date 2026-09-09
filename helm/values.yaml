@@ -175,7 +175,7 @@ webapp:
   env:
     DISABLE_AUTH: "0"                     # Explicitly disabled — must remain 0 in production
     FLASK_ADMIN_ENABLED: "0"              # Flask-Admin /database browser stays unmounted on the public deploy
-    READ_MODEL_ENABLED: "0"               # allocation read-model readers; flip after refresh_allocation_state soaks (docs/plans/READ_MODEL.md)
+    READ_MODEL_ENABLED: "1"               # serve allocation usage from account_allocation_state when fresh; "0" = live path (docs/plans/READ_MODEL.md)
     FLASK_DEBUG: "0"
     FLASK_CONFIG: "production"            # Selects ProductionConfig (DEBUG=False, SESSION_COOKIE_SECURE=True)
     AUDIT_ENABLED: "1"
