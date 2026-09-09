@@ -28,7 +28,7 @@ from sam.accounting.allocations import Allocation
 from sam.accounting.adjustments import ChargeAdjustment
 from sam.summaries.comp_summaries import CompChargeSummary
 from sam.summaries.dav_summaries import DavChargeSummary
-from sam.summaries.disk_summaries import DiskChargeSummary
+from sam.summaries.disk_summaries import BYTES_PER_TIB, DiskChargeSummary
 from sam.summaries.archive_summaries import ArchiveChargeSummary
 
 
@@ -291,11 +291,8 @@ class AllocationWithUsageSchema(AllocationSchema):
         include_adjustments = self.context.get('include_adjustments', True)
         if not session:
             return None, None
-        # A row's `used` on a DISK allocation is the snapshot override, not
-        # the pool's TiB-year charges this returns, so DISK stays live here.
         row = self.context.get('state')
-        if row is not None and include_adjustments and row.root_projcode is not None \
-                and row.resource_type != 'DISK':
+        if row is not None and include_adjustments and row.root_projcode is not None:
             return row.used, row.root_projcode
         root_alloc = obj.root
         root_account = root_alloc.account
@@ -324,8 +321,13 @@ class AllocationWithUsageSchema(AllocationSchema):
         """Total used amount. For inheriting allocations, this is the
         root project's full subtree consumption (the actual shared pool
         usage). For standalone allocations, this is the single-account
-        charges + adjustments.
+        charges + adjustments. For DISK it is the subtree's occupancy at
+        the latest snapshot (TiB against a TiB allocation), as on every
+        other surface; the TiB-year integral stays in `charges_by_type`.
         """
+        cap = self._disk_capacity(obj)
+        if cap is not None:
+            return cap['used_tib']
         tree_used, _ = self._calculate_tree_usage(obj)
         if tree_used is not None:
             return tree_used
@@ -376,11 +378,12 @@ class AllocationWithUsageSchema(AllocationSchema):
         _, root_projcode = self._calculate_tree_usage(obj)
         return root_projcode
 
-    def _current_disk_usage(self, obj):
-        """Latest disk snapshot occupancy for this allocation's account.
+    def _disk_capacity(self, obj):
+        """Subtree snapshot occupancy for a DISK allocation, else None.
 
-        Returns the CurrentDiskUsage dataclass, or None for non-disk
-        resources / accounts with no disk_charge_summary rows.
+        The same `bulk_get_subtree_disk_capacity` figure the dashboards use;
+        a read-model row supplies it directly. Memoized per schema instance
+        because every Method field calls it.
         """
         account = self.context.get('account')
         session = self.context.get('session')
@@ -390,28 +393,44 @@ class AllocationWithUsageSchema(AllocationSchema):
             return None
         if account.resource.resource_type.resource_type != 'DISK':
             return None
-        return account.current_disk_usage(session)
+        row = self.context.get('state')
+        if row is not None:
+            return {'used_tib': row.used,
+                    'used_bytes': int(round(row.used * BYTES_PER_TIB)),
+                    'activity_date': row.activity_date}
+        memo = self.__dict__.setdefault('_disk_caps', {})
+        key = (account.project_id, account.resource.resource_name)
+        if key not in memo:
+            from sam.queries.disk_usage import bulk_get_subtree_disk_capacity
+            memo[key] = bulk_get_subtree_disk_capacity(
+                session, [(account.project, account.resource.resource_name)]).get(key)
+        return memo[key]
+
+    def _current_snapshot(self, obj):
+        """The disk capacity dict when a snapshot exists somewhere in the subtree."""
+        cap = self._disk_capacity(obj)
+        return cap if cap is not None and cap['activity_date'] is not None else None
 
     def get_current_used_bytes(self, obj):
-        u = self._current_disk_usage(obj)
-        return u.bytes if u is not None else None
+        cap = self._current_snapshot(obj)
+        return cap['used_bytes'] if cap is not None else None
 
     def get_current_used_tib(self, obj):
-        u = self._current_disk_usage(obj)
-        return u.used_tib if u is not None else None
+        cap = self._current_snapshot(obj)
+        return cap['used_tib'] if cap is not None else None
 
     def get_current_snapshot_date(self, obj):
-        u = self._current_disk_usage(obj)
-        return u.activity_date if u is not None else None
+        cap = self._current_snapshot(obj)
+        return cap['activity_date'] if cap is not None else None
 
     def get_current_pct_used(self, obj):
-        u = self._current_disk_usage(obj)
-        if u is None:
+        cap = self._current_snapshot(obj)
+        if cap is None:
             return None
         allocated = float(obj.amount) if obj.amount else 0.0
         if allocated <= 0:
             return 0.0
-        return (u.used_tib / allocated) * 100.0
+        return (cap['used_tib'] / allocated) * 100.0
 
 
 class AccountSchema(BaseSchema):

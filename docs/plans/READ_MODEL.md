@@ -260,6 +260,16 @@ readers on. Seams:
   pass for inheriting allocations but never the parent's own subtree. Fixed in
   this PR: a non-leaf project's usage is its subtree's, matching every other
   surface, pinned by value against `get_detailed_allocation_usage`.
+  **Same story for DISK:** the schema's `used` was the TiB-year integral
+  (since #54) against a TiB capacity allocation, and the `current_used_*`
+  fields (#204) were scoped to the account's own directory (NMMM0003 read
+  `None` where the subtree holds 12,498 TiB; CESM0002 "28.5%" where the
+  dashboards say 79%). Now a DISK allocation's `used`/`remaining`/`percent_used`
+  and `current_*` are the subtree's latest-snapshot occupancy from
+  `bulk_get_subtree_disk_capacity`, the figure every other surface reports; the
+  integral stays under `charges_by_type['disk']`. ARCHIVE is untouched: zero
+  active allocations and an empty summary table. The two DISK exceptions the
+  read-model branch carried to preserve the old arithmetic are gone.
 
 ## Anti-drift
 

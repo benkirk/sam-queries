@@ -312,7 +312,7 @@ class TestSchemaIntegration:
             if account.deleted or not account.resource:
                 continue
             expected = detailed.get(account.resource.resource_name)
-            if expected is None or expected['resource_type'] == 'DISK':
+            if expected is None:
                 continue
             for alloc in account.allocations:
                 if not (alloc.is_active_at(now) and not alloc.deleted):
@@ -325,7 +325,7 @@ class TestSchemaIntegration:
                     account.resource.resource_name
                 assert result['adjustments'] == pytest.approx(expected.get('adjustments', 0.0))
                 checked += 1
-        assert checked, "subtree_project has no active non-disk allocation"
+        assert checked, "subtree_project has no active allocation"
 
     def test_project_allocation_usage_matches_cli(self, session, real_project):
         """
