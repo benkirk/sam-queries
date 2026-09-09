@@ -247,7 +247,7 @@ Scheduled tasks, by environment:
 |---|---|---|
 | Local Docker Compose (`webdev`) | n/a — no chart | Run by hand: `sam-admin tasks --run-due` |
 | Local k8s (Docker Desktop) | `false` | Nothing should silently DELETE local data |
-| CIRRUS k8s (this chart) | `true`, kill-switched | Staged enable; the switch names what is not yet live. `SAM_TASKS_DISABLED=xras_notices,refresh_allocation_state` |
+| CIRRUS k8s (this chart) | `true`, kill-switched | Staged enable; the switch names what is not yet live. `SAM_TASKS_DISABLED=xras_notices` |
 
 When the per-environment Entra app strategy is adopted (separate `sam-production`
 and `sam-staging` Entra apps), only the OpenBao / SSM values change — the chart
@@ -328,10 +328,9 @@ of task names to skip, flippable in `values.yaml` with no code deploy. It ships
 **non-empty** because tasks are enabled in stages: each one stays named here
 until it has been reviewed on its own, so the dispatcher wakes hourly and the
 untried task writes a `skipped` row instead of running. Today
-`cleanup_status_snapshots`, `deactivate_expired_projects`, `xras_sweep` and
-`expiration_notices` are live; `xras_notices` and `refresh_allocation_state`
-(whose table needs the prod DDL first) are switched off. Enabling one is a
-separate, reviewable one-line commit.
+`cleanup_status_snapshots`, `deactivate_expired_projects`, `xras_sweep`,
+`expiration_notices` and `refresh_allocation_state` are live; `xras_notices`
+is switched off. Enabling one is a separate, reviewable one-line commit.
 
 ⚠️ **It is an enumeration, and it is fail-OPEN.** `disabled_tasks()` in
 `src/scheduling/runner.py` is a case-sensitive exact match against registry

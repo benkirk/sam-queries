@@ -91,14 +91,6 @@ class TestRegistration:
         assert match
         assert lease_for(TASKS[NAME].expected_runtime).total_seconds() > int(match.group(1))
 
-    def test_it_ships_switched_off(self):
-        """`SAM_TASKS_DISABLED` is fail-open; the table does not exist in prod
-        until the DDL is applied. Delete this test in the commit that clears
-        the switch."""
-        line, = [ln for ln in VALUES.read_text().splitlines()
-                 if ln.strip().startswith('SAM_TASKS_DISABLED:')]
-        assert NAME in line, line
-
 
 # ------------------------------------------------------------------ projection
 

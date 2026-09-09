@@ -552,9 +552,9 @@ tasks:
     #                                         overwriting. Ingestion does not depend
     #                                         on this task or on api.xras.org.)
     #           expiration_notices           (mails external PIs; Mon 09:00 MT)
+    #           refresh_allocation_state     (writes account_allocation_state hourly;
+    #                                         served only when READ_MODEL_ENABLED=1)
     # Disabled: xras_notices                 (mails external PIs)
-    #           refresh_allocation_state     (writes account_allocation_state; needs
-    #                                         the prod DDL first -- docs/plans/READ_MODEL.md)
     #
     # WARNING: this is an ENUMERATION and it is fail-OPEN. `disabled_tasks()` in
     # src/scheduling/runner.py is a case-sensitive exact match against registry
@@ -568,4 +568,4 @@ tasks:
     # so re-enabling one mid-slot does not backfill: the first real run is the next
     # occurrence. The switch is checked ahead of `only`/`force`, so
     # `sam-admin tasks --run X --force` cannot override it.
-    SAM_TASKS_DISABLED: "xras_notices,refresh_allocation_state"
+    SAM_TASKS_DISABLED: "xras_notices"
