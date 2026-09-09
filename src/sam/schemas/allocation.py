@@ -157,11 +157,14 @@ class AllocationWithUsageSchema(AllocationSchema):
             return {}, 0.0, 0.0
 
         # Read-model short-circuit: a row the route resolved through the
-        # freshness gate (leaf projects only -- the row is a subtree rollup,
-        # this schema is account-scoped). Adjustments are stored separately.
+        # freshness gate. Adjustments are stored separately.
         row = self.context.get('state')
         if row is not None:
-            charges = dict(row.charges_by_type)
+            charges = {k: float(v) for k, v in row.charges_by_type.items()}
+            # Same shape as the live sums: disk/archive always carry their
+            # key, comp/dav only when non-zero.
+            if row.resource_type in ('DISK', 'ARCHIVE'):
+                charges.setdefault(row.resource_type.lower(), 0.0)
             adjustments = row.adjustments if include_adjustments else 0.0
             return charges, adjustments, sum(charges.values()) + adjustments
 
@@ -174,6 +177,20 @@ class AllocationWithUsageSchema(AllocationSchema):
         resource_type = None
         if account.resource and account.resource.resource_type:
             resource_type = account.resource.resource_type.resource_type
+
+        # A parent project's usage is its subtree's, as on every other surface
+        # (dashboards, sam-search, fstree). The account-only sum below is for
+        # leaves, where the subtree is the account.
+        project = account.project
+        if project is not None and not project.is_leaf() and \
+                project.tree_root and project.tree_left and project.tree_right:
+            charges = project.get_subtree_charges(
+                account.resource_id, resource_type, start_date, end_date)
+            adjustments = 0.0
+            if include_adjustments:
+                adjustments = float(project.get_subtree_adjustments(
+                    account.resource_id, start_date, end_date) or 0.0)
+            return charges, adjustments, sum(charges.values()) + adjustments
 
         # Calculate charges by type based on resource type
         charges = self._get_charges_by_resource_type(
@@ -274,8 +291,11 @@ class AllocationWithUsageSchema(AllocationSchema):
         include_adjustments = self.context.get('include_adjustments', True)
         if not session:
             return None, None
+        # A row's `used` on a DISK allocation is the snapshot override, not
+        # the pool's TiB-year charges this returns, so DISK stays live here.
         row = self.context.get('state')
-        if row is not None and include_adjustments and row.root_projcode is not None:
+        if row is not None and include_adjustments and row.root_projcode is not None \
+                and row.resource_type != 'DISK':
             return row.used, row.root_projcode
         root_alloc = obj.root
         root_account = root_alloc.account

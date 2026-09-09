@@ -249,10 +249,17 @@ readers on. Seams:
   is legacy-frozen (Flask cache TTL 300 s via `CACHE_DEFAULT_TIMEOUT`, poll ≈ TTL);
   gates: `tests/api/test_fstree_access.py`, `tests/unit/test_fstree_queries.py`.
 - `AllocationWithUsageSchema`: an optional `state` row in context replaces the
-  account-scoped sums and the root-subtree pass; `read_model_rows_for` hands it
-  to the two API routes for **leaf projects only** — the schema sums the
-  account, the row the subtree, and the two agree only when the subtree is the
-  account.
+  usage sums and the root-subtree pass; `read_model_rows_for` hands it to the
+  two API routes. **This exposed a baseline bug:** the schema summed only the
+  project's own account, so a parent project read near-zero usage on
+  `/api/v1/projects/<code>/allocations` and `/charges/summary` while sam-search,
+  the dashboards and fstree rolled up the subtree (NCGD0006 Derecho: API 0 of
+  54M, everything else 49M; 40 of 47 parent HPC/DAV allocations on the dev
+  snapshot). The schema and routes date from #17 (2025-11-13), before the
+  subtree model landed in #67 (2025-12-10); #191 taught the schema the root
+  pass for inheriting allocations but never the parent's own subtree. Fixed in
+  this PR: a non-leaf project's usage is its subtree's, matching every other
+  surface, pinned by value against `get_detailed_allocation_usage`.
 
 ## Anti-drift
 

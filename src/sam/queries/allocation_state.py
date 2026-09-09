@@ -270,11 +270,5 @@ def fresh_state(session: Session, *, resource_ids=None, project_ids=None,
 
 def read_model_rows_for(session: Session, project: Project) -> Dict[int, AccountAllocationState]:
     """Rows by allocation_id for an API route serializing one project's
-    accounts through ``AllocationWithUsageSchema``; empty means live.
-
-    Leaf projects only: the schema sums the account, the row the subtree,
-    and the two agree only when the subtree is the account.
-    """
-    if not project.is_leaf():
-        return {}
+    accounts through ``AllocationWithUsageSchema``; empty means live."""
     return fresh_state(session, project_ids=[project.project_id]).rows or {}

@@ -274,6 +274,43 @@ class TestApiSchema:
         assert dump(rows[alloc.allocation_id]) == live
 
 
+    @pytest.mark.parametrize('fixture', ['subtree_project', 'inheriting_project'])
+    def test_parent_project_on_equals_off(self, request, session, flag, fixture):
+        """The row is a subtree rollup and so, now, is the schema."""
+        from sam.accounting.accounts import Account
+        from sam.queries.allocation_state import read_model_rows_for
+        from sam.schemas.allocation import AllocationWithUsageSchema
+        project, = _projects_of(request, fixture)
+        now = datetime.now()
+
+        def dumps(rows):
+            out = {}
+            for account in session.query(Account).filter(
+                    Account.project_id == project.project_id, Account.is_active):
+                for alloc in account.allocations:
+                    if alloc.is_active_at(now) and not alloc.deleted:
+                        schema = AllocationWithUsageSchema()
+                        schema.context = {'account': account, 'session': session,
+                                          'include_adjustments': True,
+                                          'state': rows.get(alloc.allocation_id)}
+                        out[alloc.allocation_id] = schema.dump(alloc)
+            return out
+
+        live = dumps({})
+        _feed(session, [project])
+        flag(True)
+        rows = read_model_rows_for(session, project)
+        assert rows
+        served = dumps(rows)
+        assert served.keys() == live.keys()
+        for aid in live:
+            for k, v in live[aid].items():
+                if isinstance(v, float):
+                    assert v == pytest.approx(served[aid][k]), (aid, k)
+                else:
+                    assert v == served[aid][k], (aid, k)
+
+
 class TestDeepDive:
 
     def test_the_allocation_tree_fragment_renders(self, auth_client, subtree_project):
