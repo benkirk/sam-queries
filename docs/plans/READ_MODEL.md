@@ -1,7 +1,8 @@
 # Allocation/usage read-model — design & implementation handoff
 
-Status: **design approved, not yet built.** This doc is the handoff for a future
-implementation. It captures the grain, placement, refresh strategy, and a phased
+Status: **design approved 2026-09-08, refined 2026-09-09 against the code, being
+built** on branch `allocation_read_model` (PR #534, base `staging`) as ordered
+commits. This doc captures the grain, placement, refresh strategy, and the phased
 rollout, with the file references a builder needs. Companion:
 `docs/plans/FSTREE_LATENCY_INVESTIGATION.md` (the DB-bound finding that motivates
 this).
@@ -27,43 +28,47 @@ This is the durable lever.
 ## The idea
 
 One denormalized **read-model** table holding the current rolled-up state of every
-active account, built by an **hourly** authoritative pass and kept sub-hour-fresh by
-**refresh-on-miss** on the serve path, that the slow paths **consult if present and
-fresh, else fall back to the live computation** — the slow paths are never removed,
-only short-circuited. Because both the hourly feeder and the miss-path run the
-*same* batched computation the live path uses, the table **cannot drift** from the
-live answer.
+allocation the dashboards would show, built by an **hourly** authoritative pass,
+that the slow paths **consult if present and fresh, else fall back to the live
+computation** — the slow paths are never removed, only short-circuited. The hourly
+feeder runs the *same* batched computation the live path uses, so the table
+**cannot drift** from the live answer.
 
-## Grain — one row per `account` = (project, resource, active allocation)
+## Grain — one row per allocation the dashboards would show
 
 All consumers bottom out at the `account` leaf; they differ only in consumer-side
 passes (tree reconstruction, TOTAL aggregation, fstree's status cascade, phantom
-lifecycle rows). The table stays **flat at leaf grain** with the hierarchy columns
-consumers need to reassemble.
+lifecycle rows). The table stays **flat at leaf grain**, keyed by `allocation_id`.
 
-**Columns**
+**Why `allocation_id`, not `account_id`.** The local snapshot has 4,280 active
+allocations and zero accounts with two active allocations, but the schema does not
+prevent a second one, and the dashboards also show an allocation that ended within
+the last 90 days (`Project.get_detailed_allocation_usage`, `projects.py:791-815`).
+So a row is one allocation that is **active at run time or ended ≤ 90 days ago**,
+with `is_current` marking the active ones (fstree filters on it); `account_id` is
+an ordinary index.
 
-- Anchors/keys: `account_id` (UNIQUE natural key — the existing summary tables lack
-  one and accrue dup rows; this table will not), `allocation_id`, `projcode`,
-  `resource_id` + `resource_name` + `resource_type`, `facility_name`,
+**Columns (slim on purpose).** Only what is expensive to compute stays in the row;
+every consumer already runs a cheap skeleton query that yields the rest.
+
+- Keys: `allocation_id` (PK), `account_id`, `project_id`, `projcode`,
+  `resource_id`, `resource_name`, `resource_type`, `facility_name`,
   `allocation_type`.
-- Hierarchy (tree/aggregation/cascade): `parent_projcode`, `is_root`, project MPTT
-  `tree_root`/`tree_left`/`tree_right`, `is_inheriting`, `parent_allocation_id`,
-  `root_projcode`.
-- Values: `allocated` (raw amount); self `self_used`, `self_percent_used`,
-  `charges_by_type` {comp,dav,disk,archive} (JSON), `adjustments`; subtree-rolled
-  `used`, `remaining`, `percent_used` (= fstree `adjustedUsage`/`balance`); disk
-  point-in-time `current_used_bytes`/`tib`, `snapshot_date`, `current_pct_used`;
-  trailing-window `rolling_30`/`rolling_90` (self + pool); `cutoff_threshold`,
-  `first_threshold`/`second_threshold`, raw `status`/`account_status` (consumers
-  cascade); fairshare (tree-level, denormalized) `facility_fair_share_percentage`,
-  `allocation_type_fair_share_percentage`; lifecycle `start_date`, `end_date`,
-  `is_open_ended`, `project_active`, `account_active`.
-- Watermark: `refreshed_at` per row (freshness gate + drift audit).
+- Hierarchy: `parent_allocation_id`, `is_inheriting`, `root_projcode`.
+- Values: `allocated`; `self_used` (own subtree, incl. adjustments), `used`
+  (pool subtree for an inheriting allocation, else `self_used`), `remaining`,
+  `percent_used`, `self_percent_used`, `charges_by_type` {comp,dav,disk,archive}
+  (JSON), `adjustments`; disk point-in-time `current_used_bytes` +
+  `activity_date`; `rolling_windows` (JSON `{30: {...}, 90: {...}}`, NULL unless the
+  account carries a threshold — mirrors both consumers' gate).
+- Lifecycle: `start_date`, `end_date`, `is_current`.
+- Watermark: `refreshed_at` (freshness gate + drift audit).
 
-The `rolling_30`/`rolling_90` columns are load-bearing twice: fstree's threshold
-breakdown and `get_project_rolling_usage`'s runway/threshold math both read them,
-so the two fixed windows earn their place.
+**Dropped from the row, deliberately**: fair-share percentages, cutoff/first/second
+thresholds, project/account active flags, MPTT coordinates. fstree's skeleton query
+already selects all of them; the dashboards hold the ORM objects; the allocations
+table gets them from `get_allocation_summary` (2 queries). Denormalizing them would
+add staleness with no saving.
 
 **Roster stays a live join, NOT in this table.** fstree's `users[]` is per account
 but cheap (a join on `account_user`) and not the bottleneck; keeping it live also
@@ -71,25 +76,39 @@ means **membership changes never dirty the read-model**.
 
 **Divergences are consumer-side passes over this one grain**, documented so nobody
 forces them into the schema: tree reconstruction, `accountStatus` parent→child
-cascade (`fstree_access.py`), TOTAL roll-ups (filter `is_root`), and fstree's
-zero-valued "Expired"/"No Account" phantom rows (a fstree-only overlay query, or a
-`lifecycle_status` column).
+cascade (`fstree_access.py`), TOTAL roll-ups (`_aggregate_usage_to_total`), and
+fstree's zero-valued "Expired"/"No Account" phantom rows (its lifecycle query).
+
+## Projection source — the dashboards' batched builder
+
+`_build_user_projects_resources_batched(session, projects)`
+(`src/sam/queries/dashboard.py`) already yields one `DashboardResource` per
+(project, account) with every value column above. It handles the leaf/subtree
+split, the inheriting root pass, the disk snapshot override and the
+threshold-gated rolling windows, and it is equivalence-tested against the
+per-project path (`test_user_dashboard_batched_matches_per_project`). The feeder
+calls it over every candidate project and writes rows; the other readers
+(`get_allocation_summary_with_usage`, fstree) look rows up by `allocation_id` /
+`account_id`. One projection, three readers.
 
 ## Coverage (breadth)
 
-A `make perf` census confirms this single grain (+ the two window columns)
-short-circuits **9 of 10 function-level perf baselines and 4 route baselines** —
-the whole allocation/usage core, not just the three motivating endpoints:
+A `make perf` census confirms this grain short-circuits the whole allocation/usage
+core, not just the three motivating endpoints:
 
 - **Covered** (all funnel through `get_detailed_allocation_usage` /
   `batch_get_subtree_charges` / `get_allocation_summary_with_usage`): user dashboard
   (`get_user_dashboard_data`), project + projects dashboard
   (`get_project_dashboard_data` / `get_projects_dashboard_data` → admin project
-  card, admin expirations), `get_detailed_allocation_usage`, `get_allocation_summary
-  [_with_usage][_all_resources]` (the ~52k-query cache hotspot, biggest win),
-  `/allocations/projects`, fstree, `/api/v1/projects/<code>/charges/summary`,
-  `/api/v1/projects/<code>/allocations`, the project deep-dive, and (via the window
-  columns) `get_project_rolling_usage`.
+  card, admin expirations), `get_allocation_summary_with_usage` (the ~52k-query
+  cache hotspot, biggest win), `/allocations/projects` + its fragment, pace chart,
+  usage modal and xlsx export (all via `cached_allocation_usage`), fstree, the
+  project deep-dive, and the rolling windows for threshold accounts.
+- **A third seam, separate from `usage_cache`**:
+  `/api/v1/projects/<code>/allocations` and `/charges/summary` dump
+  `AllocationWithUsageSchema`, which recomputes per account, uncached
+  (`src/sam/schemas/allocation.py`). It is short-circuited by handing the schema a
+  precomputed `usage` in its context.
 - **Deferred to companion tables (NOT a wider row, NOT part of this work):**
   per-day, per-user, per-user×queue, per-month time series — the
   `sam/queries/charges.py` drilldowns behind the resource-details pages and the
@@ -107,8 +126,8 @@ the whole allocation/usage core, not just the three motivating endpoints:
 
 Prod caught `GET /user/resource-details/<projcode>?resource=<hpc/dav>` at ~5.4s,
 97% DB, on a deep long-lived project (P93300041 — compute/DAV/archive, no disk; ~46
-allocations over 10 resources incl. retired machines). This is worth calling out
-because the read-model **does not, by itself, make this page's first load fast.**
+allocations over 10 resources incl. retired machines). The read-model **does not,
+by itself, make this page's first load fast.**
 
 The base route (`src/webapp/dashboards/user/blueprint.py`, `resource_details()`)
 requires `?resource=` and branches on that resource's type (DISK vs HPC/DAV). On the
@@ -136,107 +155,100 @@ Create the table in the **prod SAM MySQL** (operator has `CREATE`), with a
 - Consumers run against SAM MySQL and must join read-model rows to *live* SAM
   entities (titles, PI, roster, permission checks). Same-DB = a plain local
   `SELECT`; CNPG would force a second bind + cross-DB joins now.
-- It still **spares MySQL**: the expensive MPTT rollup runs once per refresh
-  (feeder) instead of once per cold miss (many pollers × resources × TTL cycles);
-  the read side becomes trivial indexed `SELECT`s. Net MySQL load drops even with
-  the table on MySQL.
+- It still **spares MySQL**: the expensive MPTT rollup runs once per hour (feeder)
+  instead of once per cold miss (many pollers × resources × TTL cycles); the read
+  side becomes trivial indexed `SELECT`s. Net MySQL load drops even with the table
+  on MySQL.
 - CNPG becomes its home at the eventual full-Postgres cutover — not now (avoids a
   fragile live MySQL→PG mirror).
 
-Working table name: **`account_allocation_state`** (negotiable).
+Table name: **`account_allocation_state`**.
 
-## Refresh: hourly baseline (push) + refresh-on-miss (pull, cache-aside)
+## Refresh: hourly baseline (push) + a freshness gate on read
 
-**Hourly full push** (`Hourly()` schedule) is the authoritative writer. It
-re-projects **all** active accounts into the table via the **same batched
-computation the slow path uses** (`get_allocation_summary_with_usage` /
-`Project.batch_get_subtree_charges` / `bulk_get_subtree_disk_capacity`) — so the
-baseline **cannot drift** (the feeder *is* the expensive path) and the whole table
-is reconciled each hour. **The hourly task is the SOLE writer of the table.** Writes
-use the `upsert + management_transaction` idiom (`src/sam/manage/summaries.py`
-shape); the scheduler runner owns the commit. Size `expected_runtime` so the lease
-exceeds the CronJob deadline (the documented double-run trap).
+**Hourly full push** (`Hourly()` schedule, task `refresh_allocation_state`) is the
+**sole writer** of the table. It re-projects every candidate allocation via the
+batched builder above, so the baseline **cannot drift** and the whole table is
+reconciled each hour. The runner owns the commit (tasks never commit — see
+`deactivate_expired.py`), so readers see either the previous full set or the new
+one, never a half-written table. `refreshed_at` is taken **before** the projection
+starts (conservative: a charge that lands mid-run is at worst re-included next
+hour, never claimed early). Size `expected_runtime` so the lease exceeds the
+CronJob deadline (the documented double-run trap).
 
-**Refresh-on-miss (pull), cache-aside** handles the sub-hour freshness — replacing
-what an earlier draft did with a `*/5` background CronJob. The serve path is the
-**existing** `src/sam/queries/usage_cache.py` read-through (`BucketedTTLCache`,
-shared Redis) with a ~5-min TTL; on a miss the **caller** computes and caches the
-VALUE, and does **not** write the table (so the hourly task stays the sole writer —
-no write-on-GET, no row locking, no write concurrency):
+**Freshness gate (read side).** A reader uses table rows for a scope only when
 
-- **Cheap incremental:** read the hour-old baseline rows for the scope + apply
-  **today's delta** — one day of `comp_charge_summary` for the scope's changed
-  accounts (found via the freshness stamp below). The bet: baseline read + today's
-  slice ≪ the full-window MPTT rollup; verify it in the build.
-- **Structural check:** if `allocation_transaction.creation_time` /
-  `project.modified_time` for the scope changed since the baseline, **re-roll that
-  scope fully** (rare); an unknown/new scope → **full live fallback** (self-heal).
-  This keeps "respond quickly when a project/allocation changes" true; membership
-  needs no signal (roster is a live join). Disk/archive change daily.
-- **Single-flight:** a short dogpile lock so a herd of PBS pollers missing together
-  (poll cadence ≈ TTL) does not launch N recomputes — or accept N *cheap* concurrent
-  recomputes; confirm `BucketedTTLCache` behavior in the build.
+1. `READ_MODEL_ENABLED` is on,
+2. the request is for *now* (any `active_at` other than today → live path),
+3. the scope has rows and the oldest `refreshed_at` is within `READ_MODEL_MAX_AGE`
+   (default 7200 s — one missed hourly run is tolerated), and
+4. the scope's **structural watermark** is not newer than `refreshed_at`, where the
+   watermark is `MAX()` over the scope of `allocation.creation_time`,
+   `allocation.modified_time`, `allocation_transaction.creation_time`,
+   `account.modified_time`, `project.modified_time`, and the `charge_adjustment`
+   date columns.
 
-**Why pull beats the `*/5` push:** no new minute-granularity schedule, no ~1,440
-task pods/day, no extra `SAM_TASKS_DISABLED` wiring; it is demand-driven (no work
-for scopes nobody views); and after a deploy the baseline table survives in MySQL,
-so a cold Redis pays baseline+delta, not the full rollup.
+Otherwise the reader runs the existing live computation for that scope. So an
+allocation edit, renewal, relink, threshold change, or adjustment makes its scope
+fall back to live *immediately* (the "respond quickly when a project/allocation
+changes" requirement) and the next hourly pass picks it up; sibling scopes stay on
+the read-model. Membership needs no signal (roster is a live join). The gate costs
+a handful of `MAX()` scans over ≤50k-row tables — milliseconds. Charge accrual lags
+by at most ~1 h on the read-model path.
 
-**Delta-accrual** (worth measuring): the incremental naturally stores/uses
-`used_prior` (through yesterday, stable) + `used_today`, so the miss cost is "today's
-charges for the scope," and the hourly pass folds yesterday into the baseline.
+**What was considered and dropped (2026-09-09).** An earlier draft added a
+`comp_charge_summary_status` revival as a per-row change stamp plus a
+"baseline + today's delta" incremental on cache miss. The code and data argue
+against both: a status row per summary row is a second table the size of
+`comp_charge_summary` (502k rows locally), `upsert_comp_charge_summary` cannot
+distinguish an update from a no-op re-post, the status `modified` stamp only bumps
+on a dirty ORM flush, and the delta is a second algorithm (comp/dav window, disk
+snapshot re-read, dated adjustments, the rolling-window back edge at midnight, the
+inheriting root pass) — precisely the drift the sole-writer design exists to avoid.
+Nothing measured says hourly charge staleness matters. **If it does** (PBS
+enforcement near a cutoff), the cheapest follow-on is a delta commit that calls
+the *same* `batch_get_subtree_charges` with `start_date = today` for comp/dav and
+adds it to the baseline — added only on a measurement, never pre-emptively.
 
-## Freshness stamp — revive `comp_charge_summary_status`
-
-The comp ingest must record when a summary row changed so the miss-path incremental
-can key on it. **Decision: repurpose `comp_charge_summary_status`** (it already carries a
-`modified` DateTime with `onupdate`), rather than add a `comp_charge_summary`
-column. That table is currently a dormant in-flight lock (a legacy migration
-reshaped it; ~438 stale rows; keyed `UNIQUE(command_id, charge_summary_id)`), so
-reviving it safely means:
-
-- **Stable `command_id` per feed** (one constant, e.g. `'read_model'`), NOT a fresh
-  id per run. With the unique key that yields exactly one status row per summary
-  row, bumped in place — bounded growth even though the current day is rewritten
-  every couple minutes.
-- **Write the status row from the ingest only when the summary actually changed** —
-  `upsert_comp_charge_summary` returns `created`/`updated`; on either, upsert the
-  status row and set `modified = now()`. An idempotent re-post that changes nothing
-  writes no status row, so `modified` means "charges changed." This is the one new
-  write in `src/cli/accounting/commands.py` (which today deliberately skips the
-  table) and `src/sam/manage/summaries.py`.
-- **The miss-path reads** `MAX(modified) per account_id > watermark` via a
-  `summary → status` join to find the scope's changed accounts.
-- **One-time cleanup** of the stale lock rows / abandoned `command_id` when the new
-  convention lands (a small script).
-- Likely **no DDL** (the column exists) — confirm the type/index and add a schema
-  pin.
-
-The rejected alternative — a new `comp_charge_summary.modified_time` column — is
-simpler; revisit only if the status-table revival proves awkward.
+**Single-flight.** `BucketedTTLCache.get_or_compute` runs the compute outside the
+adapter lock and, under Redis, the lock is a no-op (`sam/caching/redis_ttl.py`) — N
+concurrent misses recompute N times today. The read-model makes a miss cheap, so
+this stays as-is; add a dogpile lock only if a herd is observed.
 
 ## Read-side short-circuit (additive, flag-gated, self-healing)
 
-Each consumer gains a branch: **if `account_allocation_state` has rows for this
-scope with `refreshed_at` within tolerance → assemble from them; else run the
-existing live path.** A missing/stale/absent table never breaks a page (the
-`xras_sweep` self-heal precedent). Gate on `READ_MODEL_ENABLED` (default off): ship
-the feeder first, validate, then flip readers on. Seams:
+Each consumer gains one branch: **if `fresh_state(...)` returns rows for this scope
+→ assemble from them; else run the existing live path.** A missing/stale/absent
+table never breaks a page (the `xras_sweep` self-heal precedent). Gate on
+`READ_MODEL_ENABLED` (default off): ship the feeder first, validate, then flip
+readers on. Seams:
 
-- `src/sam/queries/usage_cache.py` (`cached_allocation_usage` → allocations
-  dashboard + the `/charges/summary` and `/projects/<code>/allocations` APIs),
-- `src/sam/queries/dashboard.py` (`get_user_dashboard_data` /
-  `get_project_dashboard_data` / `get_projects_dashboard_data`, and the deep-dive
-  `_build_project_resources_data`),
-- `src/webapp/api/v1/fstree_access.py` (`_fstree_data`) — fstree's response shape is
-  legacy-frozen; assert the `tests/api/test_allocations_endpoint.py` contract holds.
+- `src/sam/queries/allocations.py` (`get_allocation_summary_with_usage`): build
+  `all_charges` and the disk caps from rows instead of `batch_get_*_charges` +
+  `bulk_get_subtree_disk_capacity`. Covers everything behind
+  `cached_allocation_usage` (`usage_cache.py`, TTL default **3600 s** via
+  `ALLOCATION_USAGE_CACHE_TTL`).
+- `src/sam/queries/dashboard.py` (`_build_user_projects_resources_batched`): phases
+  4/5 and the disk override read from rows. `_build_project_resources_data`
+  delegates to the batched builder for `[project]`, so the project card, edit page,
+  project-details modal and the deep-dive inherit the branch. The deep-dive's
+  per-node loop (`projects_routes.py`, `htmx_project_allocation_tree`) becomes one
+  `get_projects_dashboard_data(nodes)` call — a win with the flag off too.
+- `src/sam/queries/fstree_access.py` (`get_fstree_data`): the charge rollup and
+  the threshold-window queries read `self_used` / `rolling_windows` from rows;
+  skeleton, lifecycle, roster and cascade are untouched. fstree's response shape
+  is legacy-frozen (Flask cache TTL 300 s via `CACHE_DEFAULT_TIMEOUT`, poll ≈ TTL);
+  gates: `tests/api/test_fstree_access.py`, `tests/unit/test_fstree_queries.py`.
+- `AllocationWithUsageSchema`: optional precomputed `usage` in context, supplied by
+  the two API routes when `fresh_state` has the project.
 
 ## Anti-drift
 
 The hourly full pass is a full reconciliation. A **parity test** compares
 read-model rows against the live computation for sampled projects (the feeder and
 the live path share code, so equality is the invariant). The `task_run` ledger is
-the feeder's success watermark.
+the feeder's success watermark. Perf baselines are **ceilings**: a drop is not
+flagged by CI, so the covered names are re-measured and lowered explicitly.
 
 ## Phased implementation (ordered commits on one living PR, base `staging`)
 
@@ -245,77 +257,93 @@ stage boundary so a CIRRUS dispatch is always from a green, behavior-neutral sta
 Every stage is ship-dark / flag-gated — no prod behavior changes until the flags
 flip.
 
-0. **This design doc.**
-1. **Table + model + feeder, dark.** `scripts/sql/create_account_allocation_state.sql`
-   (utf8mb3 identifiers, UNIQUE `account_id`, indexes for the read patterns:
-   resource / facility+type / projcode / `tree_root,tree_left`); ORM model in
-   `src/sam/summaries/` + register in `src/sam/__init__.py`; regen the CI LFS blob
-   (`containers/sam-sql-dev/backups/*.sql.xz` via `make bootstrap`, recommit) +
-   schema-validation pins (`tests/integration/test_schema_validation.py`); the
-   projection function (reuse the batched path); the **Hourly** feeder in
-   `src/scheduling/tasks/` + `tasks/__init__.py` + `helm/templates/cronjob-tasks.yaml`
-   env + `SAM_TASKS_DISABLED` rollout. Readers untouched.
-2. **Freshness stamp + refresh-on-miss incremental.** Revive
-   `comp_charge_summary_status` (stable `command_id`, write on `created`/`updated`,
-   `MAX(modified)` read; stale-row cleanup; schema pin), then make the
-   `usage_cache.py` read-through's miss-path do **baseline + today's delta** (with
-   the structural-change re-roll, unknown-scope live fallback, and single-flight)
-   instead of the full rollup. **No `*/5` CronJob.**
-3. **Short-circuit readers** (flag-gated, self-healing) — route the seams above
-   through the read-model/cache path; flip `READ_MODEL_ENABLED` after validation.
-4. **(Deferred, separate PR)** CNPG migration at the full-Postgres cutover.
+0. **Design doc** (this file; refined 2026-09-09).
+1. **Table + model + test-DB bootstrap, dark.**
+   `scripts/sql/create_account_allocation_state.sql` (utf8mb3 identifiers, PK
+   `allocation_id`, indexes for the read patterns: `account_id`,
+   `(resource_id, is_current)`, `projcode`, `(facility_name, allocation_type)`);
+   ORM model in `src/sam/summaries/` + register in `src/sam/__init__.py`; a
+   session-scoped `tests/conftest.py` hook that applies the script's `CREATE`
+   statements to the test DB (see Traps — this is how the table reaches CI before
+   the prod DDL); schema-validation pin (`tests/integration/test_schema_validation.py`).
+2. **Projection + Hourly feeder, ships disabled.** `project_allocation_state()`
+   over the batched builder; the task in `src/scheduling/tasks/` +
+   `tasks/__init__.py`; its name added to `SAM_TASKS_DISABLED` in
+   `helm/values.yaml` in the same commit. Readers untouched.
+3. **Freshness gate** (`fresh_state()`, `READ_MODEL_ENABLED`, `READ_MODEL_MAX_AGE`),
+   unit-tested per fallback reason. No consumer wired yet.
+4. **Short-circuit readers** (flag-gated, self-healing) — the seams above, each
+   tested flag-on == flag-off and table-emptied → live; perf baselines lowered.
+5. **(Deferred, separate PR)** delta accrual on measured need; the resource-details
+   lazy-fragment follow-on; CNPG migration at the full-Postgres cutover.
 
 **CIRRUS checkpoints** (dispatch `build-images-cirrus-deploy` at stage boundaries):
-after stage 1 (hourly feeder populates dark — table fills, no behavior change),
-stage 2 (stamp + miss-path incremental behind the flag — delta cost), stage 3
-(readers — flip `READ_MODEL_ENABLED` on the cluster to validate).
+after stage 2 (task registers, disabled; the table does **not** exist in prod yet),
+and after stage 4 — **apply the prod DDL only here**, once the schema has converged:
+enable the task, soak dark for a day (ledger `detail`, row counts), then flip
+`READ_MODEL_ENABLED` on the cluster and regenerate the CI LFS blob.
 
 ## Critical files to reuse
-- Projection source of truth: `src/sam/queries/allocations.py`
-  (`get_allocation_summary_with_usage`), `src/sam/projects/projects.py`
-  (`batch_get_subtree_charges`, `get_detailed_allocation_usage`),
-  `src/sam/queries/disk_usage.py` (`bulk_get_subtree_disk_capacity`).
-- Write idiom: `src/sam/manage/summaries.py`, `src/sam/manage/transaction.py`.
+- Projection: `src/sam/queries/dashboard.py`
+  (`_build_user_projects_resources_batched`, `DashboardResource`), which wraps
+  `src/sam/projects/projects.py` (`batch_get_subtree_charges`,
+  `batch_get_account_charges`) and `src/sam/queries/disk_usage.py`
+  (`bulk_get_subtree_disk_capacity`).
+- Readers: `src/sam/queries/allocations.py` (`get_allocation_summary_with_usage`,
+  `_fetch_all_allocations`), `src/sam/queries/fstree_access.py`,
+  `src/sam/queries/usage_cache.py`, `src/sam/schemas/allocation.py`.
 - Task / schedule / registration: `src/scheduling/tasks/deactivate_expired.py`,
-  `src/scheduling/schedules.py` (`Hourly`, `CronExpr`), `src/scheduling/registry.py`.
+  `src/scheduling/schedules.py` (`Hourly`), `src/scheduling/registry.py`,
+  `src/scheduling/ledger.py` (`lease_for`).
 - New-table + ORM registration precedent: `scripts/sql/create_xras_request_override.sql`,
   `src/sam/integration/xras.py` (model + upsert classmethods), `src/sam/__init__.py`.
+- Config seam usable outside Flask: `src/sam/notify/config.py` (`_raw`,
+  `_config_bool`), `src/sam/caching/buckets.py` (`_config_int`).
 - Short-circuit / self-heal precedent: `src/scheduling/tasks/xras_sweep.py`.
-- Summary tables + status: `src/sam/summaries/comp_summaries.py`
-  (`CompChargeSummary`, `CompChargeSummaryStatus`), `dav_summaries.py`,
-  `disk_summaries.py`, `archive_summaries.py`.
 
 ## Verification (per phase, on build)
-- **Feeder:** `sam-admin tasks --run <feeder> --force` in webdev; confirm rows
-  populate; parity — read-model rows equal the live
-  `get_allocation_summary_with_usage` for sampled projects/resources.
-- **Fast pass:** change an allocation locally, confirm the row updates within a
-  fast-cadence window (not the hourly one).
+- **Feeder:** `sam-admin tasks --run refresh_allocation_state --force` in webdev;
+  ~4.3k rows populate; parity — rows equal `get_projects_dashboard_data` for the
+  `subtree_project` and `inheriting_project` fixtures; a second run is idempotent
+  and deletes rows that left the candidate set.
+- **Gate:** each fallback reason has a test; editing an allocation stales its scope
+  and no other.
 - **Readers:** with the flag on, fstree/allocations/deep-dive render identically
-  (fstree byte-shape gate `tests/api/test_allocations_endpoint.py`); with the table
-  emptied, pages still render via the live fallback (self-heal).
-- Full suite + `test_schema_validation.py` + `test_docs.py`; re-run `make perf` and
-  confirm the covered baselines drop.
+  (fstree gates above); with the table emptied, pages still render via the live
+  fallback (self-heal).
+- Full suite + `test_schema_validation.py` + `test_docs.py`; `make helm-test`; re-run
+  `make perf` with the flag on and a populated table and lower the covered baselines
+  (`get_fstree_data`, `get_allocation_summary_with_usage[_all_resources]`,
+  `get_user_dashboard_data`, `get_project_dashboard_data`, `fstree_api_route`,
+  `allocations_index_route`, `user_dashboard_route`,
+  `admin_expirations_expired_route`). Note the autouse `_reset_usage_cache`
+  fixture in `tests/perf/conftest.py`.
 
 ## Traps (from the scaffolding survey)
-- **CI test DB is an LFS blob** — a new table reaches CI only after the blob is
-  regenerated (`make bootstrap`) and recommitted; the DDL script alone only reaches
-  prod out-of-band.
-- **Task pods inherit nothing from `webapp.env`** — any env the feeder reads
-  (a flag, `CACHE_REDIS_URL`) must be hand-added to
-  `helm/templates/cronjob-tasks.yaml`; `SAM_DB_*` is already wired.
+- **The CI test DB is cloned from prod, and nothing applies `scripts/sql/*.sql`
+  automatically** (`containers/sam-sql-dev/Dockerfile` says so on purpose). A new
+  table cannot reach the LFS blob before the prod DDL exists. Until then the
+  `tests/conftest.py` bootstrap executes the DDL script's `CREATE TABLE IF NOT
+  EXISTS` against the test DB under `serial_file_lock`, so schema-validation compares
+  the ORM against a *script-created* table — the convergence check we want. Once
+  the prod DDL lands and the blob is regenerated, the hook is a no-op.
+- **Task pods inherit nothing from `webapp.env`** — any env the feeder reads must be
+  hand-added to `helm/templates/cronjob-tasks.yaml`; `SAM_DB_*` is already wired and
+  the feeder needs nothing else.
 - **`SAM_TASKS_DISABLED` is fail-open** — a new task goes live on the next wake
   unless its name is added to `helm/values.yaml` in the same change.
-- **Lease vs `activeDeadlineSeconds`** — the lease must exceed the CronJob deadline
-  or a killed run is reclaimed mid-flight.
+- **Lease vs `activeDeadlineSeconds`** — `lease = max(3 × expected_runtime, 900 s)`
+  must exceed the CronJob's 3000 s, so `expected_runtime` > 1000 s.
 - **fstree response bytes are legacy-frozen** — the read-model path must reproduce
-  the shape exactly (the endpoint contract test guards it).
-- **comp status growth** — the stable-`command_id` convention is what keeps the
-  revived status table to one row per summary; a per-run id would grow it without
-  bound.
+  the shape exactly (`tests/api/test_fstree_access.py` guards it).
+- **`usage_cache` key is day-granular on `active_at`** and the gate only serves
+  "today"; historical as-of views always run live.
+- **Baselines are ceilings** — lowering the real count never fails CI; lower the
+  numbers in `tests/perf/baselines.json` on purpose.
 
 ## Out of scope
 - CNPG placement now (SAM MySQL first).
 - Roster / permission / carve-out / exchange live computations (stay live).
 - Replacing the slow paths (they remain as the fallback).
 - The per-day / per-user companion tables and the disk per-directory subtree.
+- Any change to the comp ingest or `comp_charge_summary_status`.
