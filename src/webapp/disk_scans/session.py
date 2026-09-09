@@ -119,6 +119,7 @@ class FsScansExtension(PluginExtension):
         def _warm_one(collection: str):
             try:
                 engine = mod.get_engine(collection, database=database)
+                self.instrument_engine(engine)
                 # The plugin owns ``connect_args`` inside its ``get_engine``,
                 # so we attach a post-creation ``connect`` listener rather than
                 # threading our own connect_args through.
