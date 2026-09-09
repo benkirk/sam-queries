@@ -3,8 +3,8 @@
         "Query-count baselines for performance regression tests.",
         "",
         "Each key is a test function name (without the test_ prefix).",
-        "  queries  \u2014 maximum allowed query count (fail above this)",
-        "  notes    \u2014 why this number, when it was last measured",
+        "  queries  — maximum allowed query count (fail above this)",
+        "  notes    — why this number, when it was last measured",
         "",
         "Re-baseline workflow:",
         "  1. Run:  pytest -m perf -n 0 -v",
@@ -19,82 +19,118 @@
     ],
     "get_user_dashboard_data": {
         "queries": 35,
-        "notes": "measured 26 (multi-project user) \u2014 primary target of ORM perf push"
+        "notes": "measured 26 (multi-project user) — primary target of ORM perf push"
     },
     "get_project_dashboard_data": {
         "queries": 55,
-        "notes": "measured 45 \u2014 single-project path, many eager loads"
+        "notes": "measured 45 — single-project path, many eager loads"
     },
     "get_resource_detail_data": {
         "queries": 15,
-        "notes": "measured 8 \u2014 exercises joinedload collapsing"
+        "notes": "measured 8 — exercises joinedload collapsing"
     },
     "get_fstree_data": {
         "queries": 10,
-        "notes": "measured 3 \u2014 most expensive by wall time, few queries"
+        "notes": "measured 3 — most expensive by wall time, few queries"
     },
     "get_allocation_summary": {
         "queries": 10,
-        "notes": "measured 2 \u2014 heavy aggregation in single SQL"
+        "notes": "measured 2 — heavy aggregation in single SQL"
     },
     "get_allocation_summary_with_usage": {
         "queries": 10,
-        "notes": "measured 2 \u2014 aggregation plus charge joins"
+        "notes": "measured 2 — aggregation plus charge joins"
     },
     "get_detailed_allocation_usage": {
         "queries": 50,
-        "notes": "measured 37 \u2014 Project instance method, varies with allocation count"
+        "notes": "measured 37 — Project instance method, varies with allocation count"
     },
     "get_project_rolling_usage": {
         "queries": 20,
-        "notes": "measured 11 \u2014 rolling window charge data"
+        "notes": "measured 11 — rolling window charge data"
     },
     "get_allocation_summary_with_usage_all_resources": {
         "queries": 65,
-        "notes": "measured 44 (18 resources, 4189 rows) \u2014 was 52,923 before Issue 1 fix"
+        "notes": "measured 44 (18 resources, 4189 rows) — was 52,923 before Issue 1 fix"
     },
     "user_dashboard_route": {
         "queries": 100,
-        "notes": "measured 70 \u2014 full GET /user/ including template render (benkirk). Count scales with benkirk's sampled project/allocation count, which varies per obfuscated-snapshot refresh (was measured 45 / baseline 65 before the 2026-07-11 refresh); extra headroom absorbs that variance without masking a real N+1 (which runs into the hundreds+)."
+        "notes": "measured 70 — full GET /user/ including template render (benkirk). Count scales with benkirk's sampled project/allocation count, which varies per obfuscated-snapshot refresh (was measured 45 / baseline 65 before the 2026-07-11 refresh); extra headroom absorbs that variance without masking a real N+1 (which runs into the hundreds+)."
     },
     "allocations_index_route": {
         "queries": 80,
-        "notes": "measured 55 \u2014 full GET /allocations/; was 52,923 before Issue 1 fix. show_usage toggle removed 2026-04-19 \u2014 usage pipeline now always runs (previously gated; measured 13 when gated off, 54 when gated on)."
+        "notes": "measured 55 — full GET /allocations/; was 52,923 before Issue 1 fix. show_usage toggle removed 2026-04-19 — usage pipeline now always runs (previously gated; measured 13 when gated off, 54 when gated on)."
     },
     "admin_orgs_card_route": {
         "queries": 40,
-        "notes": "measured 20 \u2014 full GET /admin/htmx/organizations-card. Was measured 311 / baseline 450 until the Contracts tab moved to /admin/contracts (see admin_contracts_table_route); the 2,225-contract render was almost all of it."
+        "notes": "measured 20 — full GET /admin/htmx/organizations-card. Was measured 311 / baseline 450 until the Contracts tab moved to /admin/contracts (see admin_contracts_table_route); the 2,225-contract render was almost all of it."
     },
     "admin_institutions_default_route": {
         "queries": 25,
-        "notes": "measured 13 \u2014 full GET /admin/htmx/institutions-fragment (U&P off)"
+        "notes": "measured 13 — full GET /admin/htmx/institutions-fragment (U&P off)"
     },
     "admin_institutions_users_projects_route": {
         "queries": 200,
-        "notes": "measured 130 \u2014 full GET /admin/htmx/institutions-fragment?show_users_projects=1; selectinload chunks \u00d7 1367 institutions \u00d7 users \u00d7 (led_projects + admin_projects)"
+        "notes": "measured 130 — full GET /admin/htmx/institutions-fragment?show_users_projects=1; selectinload chunks × 1367 institutions × users × (led_projects + admin_projects)"
     },
     "get_institutions_with_members_include_projects": {
         "queries": 180,
-        "notes": "measured 119 \u2014 function-level with include_projects=True; selectinload chunking across 1367 institutions"
+        "notes": "measured 119 — function-level with include_projects=True; selectinload chunking across 1367 institutions"
     },
     "fstree_api_route": {
         "queries": 65,
-        "notes": "measured 44 \u2014 full GET /api/v1/fstree_access/ (all resources); cached 5min in prod"
+        "notes": "measured 44 — full GET /api/v1/fstree_access/ (all resources); cached 5min in prod"
     },
     "resource_details_disk_route": {
         "queries": 50,
-        "notes": "measured 34 (test snapshot, smallest disk-root subtree) post bulk_current_disk_usage refactor. Flat regardless of subtree size \u2014 was 83 on prod (NMMM0003, 21-node subtree) and scaled with node_count_with_account before the fix. ~50% headroom for snapshot variance."
+        "notes": "measured 34 (test snapshot, smallest disk-root subtree) post bulk_current_disk_usage refactor. Flat regardless of subtree size — was 83 on prod (NMMM0003, 21-node subtree) and scaled with node_count_with_account before the fix. ~50% headroom for snapshot variance."
     },
     "project_detail_api_route": {
         "queries": 45,
-        "notes": "measured 33 \u2014 full GET /api/v1/projects/<projcode> for the most-contract-bearing project (7 contracts). ProjectSchema.contracts serializes via ContractSummarySchema, which flattens 4 relationships per contract; _warm_contract_graph() preloads them. Discarding that helper's return value re-breaks it (weak-ref identity map) and measures 93 \u2014 this baseline is what catches that."
+        "notes": "measured 33 — full GET /api/v1/projects/<projcode> for the most-contract-bearing project (7 contracts). ProjectSchema.contracts serializes via ContractSummarySchema, which flattens 4 relationships per contract; _warm_contract_graph() preloads them. Discarding that helper's return value re-breaks it (weak-ref identity map) and measures 93 — this baseline is what catches that."
     },
     "admin_contracts_table_route": {
         "queries": 45,
-        "notes": "measured 25 \u2014 full GET /admin/htmx/contracts-table?active_only=1. Where the contract load lives since it moved off the organizations card; guards the selectinload/lazyload set in get_contracts_with_pi."
+        "notes": "measured 25 — full GET /admin/htmx/contracts-table?active_only=1. Where the contract load lives since it moved off the organizations card; guards the selectinload/lazyload set in get_contracts_with_pi."
     },
     "admin_expirations_expired_route": {
         "queries": 40,
-        "notes": "measured 21 \u2014 full GET /admin/expirations?view=expired. Batched via get_projects_dashboard_data; count is near-flat in project count (selectinload chunks), so the old per-project path (~45 queries \u00d7 N expired projects) regressing back runs into the hundreds+. Extra headroom absorbs expired-set size variance across snapshot refreshes."
+        "notes": "measured 21 — full GET /admin/expirations?view=expired. Batched via get_projects_dashboard_data; count is near-flat in project count (selectinload chunks), so the old per-project path (~45 queries × N expired projects) regressing back runs into the hundreds+. Extra headroom absorbs expired-set size variance across snapshot refreshes."
+    },
+    "get_user_dashboard_data_read_model": {
+        "queries": 30,
+        "notes": "measured 19 (2026-09-09); counts barely move vs live -- cheap indexed reads replace the rollups, the win is wall time (test_dashboard_latency, docs/plans/READ_MODEL.md)"
+    },
+    "get_project_dashboard_data_read_model": {
+        "queries": 30,
+        "notes": "measured 20 (2026-09-09); counts barely move vs live -- cheap indexed reads replace the rollups, the win is wall time (test_dashboard_latency, docs/plans/READ_MODEL.md)"
+    },
+    "get_fstree_data_read_model": {
+        "queries": 10,
+        "notes": "measured 5 (2026-09-09): skeleton, rows, gate, roster; counts barely move vs live -- cheap indexed reads replace the rollups, the win is wall time (test_dashboard_latency, docs/plans/READ_MODEL.md)"
+    },
+    "get_allocation_summary_with_usage_read_model": {
+        "queries": 10,
+        "notes": "measured 6 (2026-09-09); counts barely move vs live -- cheap indexed reads replace the rollups, the win is wall time (test_dashboard_latency, docs/plans/READ_MODEL.md)"
+    },
+    "get_allocation_summary_with_usage_all_resources_read_model": {
+        "queries": 20,
+        "notes": "measured 10 (2026-09-09) vs 44 live; counts barely move vs live -- cheap indexed reads replace the rollups, the win is wall time (test_dashboard_latency, docs/plans/READ_MODEL.md)"
+    },
+    "user_dashboard_route_read_model": {
+        "queries": 50,
+        "notes": "measured 32 (2026-09-09); counts barely move vs live -- cheap indexed reads replace the rollups, the win is wall time (test_dashboard_latency, docs/plans/READ_MODEL.md)"
+    },
+    "allocations_index_route_read_model": {
+        "queries": 40,
+        "notes": "measured 25 (2026-09-09) vs 55 live; counts barely move vs live -- cheap indexed reads replace the rollups, the win is wall time (test_dashboard_latency, docs/plans/READ_MODEL.md)"
+    },
+    "fstree_api_route_read_model": {
+        "queries": 25,
+        "notes": "measured 14 (2026-09-09) vs 44 live; counts barely move vs live -- cheap indexed reads replace the rollups, the win is wall time (test_dashboard_latency, docs/plans/READ_MODEL.md)"
+    },
+    "admin_expirations_expired_route_read_model": {
+        "queries": 40,
+        "notes": "measured 26 (2026-09-09); counts barely move vs live -- cheap indexed reads replace the rollups, the win is wall time (test_dashboard_latency, docs/plans/READ_MODEL.md)"
     }
 }

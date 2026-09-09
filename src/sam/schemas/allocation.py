@@ -28,7 +28,7 @@ from sam.accounting.allocations import Allocation
 from sam.accounting.adjustments import ChargeAdjustment
 from sam.summaries.comp_summaries import CompChargeSummary
 from sam.summaries.dav_summaries import DavChargeSummary
-from sam.summaries.disk_summaries import DiskChargeSummary
+from sam.summaries.disk_summaries import BYTES_PER_TIB, DiskChargeSummary
 from sam.summaries.archive_summaries import ArchiveChargeSummary
 
 
@@ -156,6 +156,18 @@ class AllocationWithUsageSchema(AllocationSchema):
         if not account or not session:
             return {}, 0.0, 0.0
 
+        # Read-model short-circuit: a row the route resolved through the
+        # freshness gate. Adjustments are stored separately.
+        row = self.context.get('state')
+        if row is not None:
+            charges = {k: float(v) for k, v in row.charges_by_type.items()}
+            # Same shape as the live sums: disk/archive always carry their
+            # key, comp/dav only when non-zero.
+            if row.resource_type in ('DISK', 'ARCHIVE'):
+                charges.setdefault(row.resource_type.lower(), 0.0)
+            adjustments = row.adjustments if include_adjustments else 0.0
+            return charges, adjustments, sum(charges.values()) + adjustments
+
         # Get date range for queries
         now = datetime.now()
         start_date = obj.start_date
@@ -165,6 +177,20 @@ class AllocationWithUsageSchema(AllocationSchema):
         resource_type = None
         if account.resource and account.resource.resource_type:
             resource_type = account.resource.resource_type.resource_type
+
+        # A parent project's usage is its subtree's, as on every other surface
+        # (dashboards, sam-search, fstree). The account-only sum below is for
+        # leaves, where the subtree is the account.
+        project = account.project
+        if project is not None and not project.is_leaf() and \
+                project.tree_root and project.tree_left and project.tree_right:
+            charges = project.get_subtree_charges(
+                account.resource_id, resource_type, start_date, end_date)
+            adjustments = 0.0
+            if include_adjustments:
+                adjustments = float(project.get_subtree_adjustments(
+                    account.resource_id, start_date, end_date) or 0.0)
+            return charges, adjustments, sum(charges.values()) + adjustments
 
         # Calculate charges by type based on resource type
         charges = self._get_charges_by_resource_type(
@@ -257,7 +283,7 @@ class AllocationWithUsageSchema(AllocationSchema):
         """For inheriting allocations, sum charges across the root project's
         full subtree — that's the authoritative shared-pool consumption.
 
-        Returns (tree_used, root_project) or (None, None) for non-inheriting.
+        Returns (tree_used, root_projcode) or (None, None) for non-inheriting.
         """
         if not obj.is_inheriting:
             return None, None
@@ -265,6 +291,9 @@ class AllocationWithUsageSchema(AllocationSchema):
         include_adjustments = self.context.get('include_adjustments', True)
         if not session:
             return None, None
+        row = self.context.get('state')
+        if row is not None and include_adjustments and row.root_projcode is not None:
+            return row.used, row.root_projcode
         root_alloc = obj.root
         root_account = root_alloc.account
         root_project = root_account.project if root_account else None
@@ -286,14 +315,19 @@ class AllocationWithUsageSchema(AllocationSchema):
         if include_adjustments:
             tree_used += root_project.get_subtree_adjustments(
                 root_account.resource_id, start_date, end_date)
-        return tree_used, root_project
+        return tree_used, root_project.projcode
 
     def get_used(self, obj):
         """Total used amount. For inheriting allocations, this is the
         root project's full subtree consumption (the actual shared pool
         usage). For standalone allocations, this is the single-account
-        charges + adjustments.
+        charges + adjustments. For DISK it is the subtree's occupancy at
+        the latest snapshot (TiB against a TiB allocation), as on every
+        other surface; the TiB-year integral stays in `charges_by_type`.
         """
+        cap = self._disk_capacity(obj)
+        if cap is not None:
+            return cap['used_tib']
         tree_used, _ = self._calculate_tree_usage(obj)
         if tree_used is not None:
             return tree_used
@@ -341,14 +375,15 @@ class AllocationWithUsageSchema(AllocationSchema):
         """
         if not obj.is_inheriting:
             return None
-        _, root_project = self._calculate_tree_usage(obj)
-        return root_project.projcode if root_project else None
+        _, root_projcode = self._calculate_tree_usage(obj)
+        return root_projcode
 
-    def _current_disk_usage(self, obj):
-        """Latest disk snapshot occupancy for this allocation's account.
+    def _disk_capacity(self, obj):
+        """Subtree snapshot occupancy for a DISK allocation, else None.
 
-        Returns the CurrentDiskUsage dataclass, or None for non-disk
-        resources / accounts with no disk_charge_summary rows.
+        The same `bulk_get_subtree_disk_capacity` figure the dashboards use;
+        a read-model row supplies it directly. Memoized per schema instance
+        because every Method field calls it.
         """
         account = self.context.get('account')
         session = self.context.get('session')
@@ -358,28 +393,44 @@ class AllocationWithUsageSchema(AllocationSchema):
             return None
         if account.resource.resource_type.resource_type != 'DISK':
             return None
-        return account.current_disk_usage(session)
+        row = self.context.get('state')
+        if row is not None:
+            return {'used_tib': row.used,
+                    'used_bytes': int(round(row.used * BYTES_PER_TIB)),
+                    'activity_date': row.activity_date}
+        memo = self.__dict__.setdefault('_disk_caps', {})
+        key = (account.project_id, account.resource.resource_name)
+        if key not in memo:
+            from sam.queries.disk_usage import bulk_get_subtree_disk_capacity
+            memo[key] = bulk_get_subtree_disk_capacity(
+                session, [(account.project, account.resource.resource_name)]).get(key)
+        return memo[key]
+
+    def _current_snapshot(self, obj):
+        """The disk capacity dict when a snapshot exists somewhere in the subtree."""
+        cap = self._disk_capacity(obj)
+        return cap if cap is not None and cap['activity_date'] is not None else None
 
     def get_current_used_bytes(self, obj):
-        u = self._current_disk_usage(obj)
-        return u.bytes if u is not None else None
+        cap = self._current_snapshot(obj)
+        return cap['used_bytes'] if cap is not None else None
 
     def get_current_used_tib(self, obj):
-        u = self._current_disk_usage(obj)
-        return u.used_tib if u is not None else None
+        cap = self._current_snapshot(obj)
+        return cap['used_tib'] if cap is not None else None
 
     def get_current_snapshot_date(self, obj):
-        u = self._current_disk_usage(obj)
-        return u.activity_date if u is not None else None
+        cap = self._current_snapshot(obj)
+        return cap['activity_date'] if cap is not None else None
 
     def get_current_pct_used(self, obj):
-        u = self._current_disk_usage(obj)
-        if u is None:
+        cap = self._current_snapshot(obj)
+        if cap is None:
             return None
         allocated = float(obj.amount) if obj.amount else 0.0
         if allocated <= 0:
             return 0.0
-        return (u.used_tib / allocated) * 100.0
+        return (cap['used_tib'] / allocated) * 100.0
 
 
 class AccountSchema(BaseSchema):

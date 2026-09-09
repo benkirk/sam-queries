@@ -166,10 +166,13 @@ def get_project_charges_summary(project):
         JSON with total charges by resource type for all active allocations
     """
     from sam.accounting.accounts import Account
+    from sam.queries.allocation_state import read_model_rows_for
     from sam.summaries.comp_summaries import CompChargeSummary
     from sam.summaries.dav_summaries import DavChargeSummary
     from sam.summaries.disk_summaries import DiskChargeSummary
     from sam.summaries.archive_summaries import ArchiveChargeSummary
+
+    state = read_model_rows_for(db.session, project)
 
     # Get all accounts
     accounts = db.session.query(Account).filter(
@@ -202,7 +205,8 @@ def get_project_charges_summary(project):
         schema.context = {
             'account': account,
             'session': db.session,
-            'include_adjustments': True
+            'include_adjustments': True,
+            'state': state.get(active_alloc.allocation_id),
         }
         usage_data = schema.dump(active_alloc)
 

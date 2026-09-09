@@ -48,3 +48,43 @@ def test_allocation_summary_latency(benchmark, session, perf_hpc_resource):
 
     result = benchmark(get_allocation_summary, session, resource_name=resource_name)
     assert isinstance(result, list)
+
+
+# ---------------------------------------------------------------------------
+# Read-model: the same calls with the readers on. Query COUNTS barely move
+# (cheap indexed reads replace a few expensive rollups); wall time is the
+# figure that matters, so these benchmarks sit beside the live ones.
+# ---------------------------------------------------------------------------
+
+def test_fstree_latency(benchmark, session, perf_hpc_resource):
+    from sam.queries.fstree_access import get_fstree_data
+    result = benchmark(get_fstree_data, session, resource_name=perf_hpc_resource.resource_name)
+    assert result is not None
+
+
+def test_fstree_latency_read_model(benchmark, session, perf_hpc_resource, read_model_on):
+    from sam.queries.fstree_access import get_fstree_data
+    result = benchmark(get_fstree_data, session, resource_name=perf_hpc_resource.resource_name)
+    assert result is not None
+
+
+def test_allocation_summary_with_usage_latency(benchmark, session, perf_hpc_resource):
+    from sam.queries.allocations import get_allocation_summary_with_usage
+    result = benchmark(get_allocation_summary_with_usage, session,
+                       resource_name=perf_hpc_resource.resource_name, root_only=True)
+    assert isinstance(result, list)
+
+
+def test_allocation_summary_with_usage_latency_read_model(benchmark, session,
+                                                          perf_hpc_resource, read_model_on):
+    from sam.queries.allocations import get_allocation_summary_with_usage
+    result = benchmark(get_allocation_summary_with_usage, session,
+                       resource_name=perf_hpc_resource.resource_name, root_only=True)
+    assert isinstance(result, list)
+
+
+def test_project_dashboard_latency_read_model(benchmark, session, perf_active_project,
+                                              read_model_on):
+    from sam.queries.dashboard import get_project_dashboard_data
+    result = benchmark(get_project_dashboard_data, session, perf_active_project.projcode)
+    assert result is not None

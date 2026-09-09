@@ -328,8 +328,11 @@ def get_project_allocations(project):
         from sam.resources.resources import Resource
         query = query.join(Resource).filter(Resource.resource_name == resource_name)
 
+    from sam.queries.allocation_state import read_model_rows_for
+
     allocations_data = []
     now = datetime.now()
+    state = read_model_rows_for(db.session, project)
 
     for account in query.all():
         # Find active allocation
@@ -340,7 +343,8 @@ def get_project_allocations(project):
                 schema.context = {
                     'account': account,
                     'session': db.session,
-                    'include_adjustments': include_adjustments
+                    'include_adjustments': include_adjustments,
+                    'state': state.get(alloc.allocation_id),
                 }
                 alloc_data = schema.dump(alloc)
                 allocations_data.append(alloc_data)

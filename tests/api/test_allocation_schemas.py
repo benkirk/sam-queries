@@ -301,6 +301,32 @@ class TestChargeSummarySchemas:
 class TestSchemaIntegration:
     """Test schema integration matching sam_search_cli.py output."""
 
+    def test_parent_project_usage_is_the_subtree(self, session, subtree_project):
+        """A parent's `used` is its subtree's, as sam-search and the dashboards
+        report it -- not the parent's own account alone (which read 0 for most
+        parents before this test existed)."""
+        detailed = subtree_project.get_detailed_allocation_usage(include_adjustments=True)
+        now = datetime.now()
+        checked = 0
+        for account in subtree_project.accounts:
+            if account.deleted or not account.resource:
+                continue
+            expected = detailed.get(account.resource.resource_name)
+            if expected is None:
+                continue
+            for alloc in account.allocations:
+                if not (alloc.is_active_at(now) and not alloc.deleted):
+                    continue
+                schema = AllocationWithUsageSchema()
+                schema.context = {'account': account, 'session': session,
+                                  'include_adjustments': True}
+                result = schema.dump(alloc)
+                assert result['used'] == pytest.approx(expected['used']), \
+                    account.resource.resource_name
+                assert result['adjustments'] == pytest.approx(expected.get('adjustments', 0.0))
+                checked += 1
+        assert checked, "subtree_project has no active allocation"
+
     def test_project_allocation_usage_matches_cli(self, session, real_project):
         """
         Test that AllocationWithUsageSchema output matches sam_search_cli.py format.
