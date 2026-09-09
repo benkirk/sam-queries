@@ -73,6 +73,7 @@ class JobHistoryExtension(PluginExtension):
             try:
                 engine = mod.get_engine(machine, pool_kwargs=pool_kwargs)
                 state['engines'][machine] = engine
+                self.instrument_engine(engine)
                 # We can't inject application_name via `pool_kwargs` because
                 # the plugin's ``get_engine`` sets ``connect_args`` itself when
                 # calling ``create_engine``, so passing our own through

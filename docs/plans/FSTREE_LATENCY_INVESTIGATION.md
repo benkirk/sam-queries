@@ -72,11 +72,13 @@ It remains the right frame for pace-chart's CPU-heavy render.
 
 ## What the instruments in this PR add
 
-- **Per-request `db=Xms cpu=Yms q=N`** on the app log line
+- **Per-request `db=Xms cpu=Yms pgdb=Zms q=N pq=M`** on the app log line
   (`webapp/request_timing.py` + `run.py`) — partitions every request:
-  `total ~= cpu (compute/GIL, via time.thread_time) + db (DB wait) + rest
-  (GIL/pool wait)`. Per-request accurate. Also appended to the `Slow request:`
-  warning line.
+  `total ~= cpu (compute/GIL, via time.thread_time) + db (SAM/MySQL wait) +
+  pgdb (plugin CNPG wait: job-history, fs-scans) + rest (GIL/pool wait)`.
+  Per-request accurate. Also appended to the `Slow request:` warning line.
+  `pgdb=` exists because a 19 s jobs drill-down once logged `db=8ms`: the
+  plugin engines were uninstrumented and their time hid in `rest`.
 - **Watch `load:` line** (`scripts/cirrus_watch.sh`) — `dbload:` (Threads_running,
   Threads_connected, Slow_queries Δ) + `podcpu:` (sum/max millicores), plus a
   `↳ split` note (db/cpu/total) computed from the slow-request lines. The

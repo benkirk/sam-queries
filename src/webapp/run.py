@@ -255,6 +255,8 @@ def create_app(*, config_overrides: dict | None = None):
         g.cpu_start     = time.thread_time()   # per-thread CPU; gthread = 1 thread/request
         g.db_ms         = 0.0
         g.db_queries    = 0
+        g.pgdb_ms       = 0.0   # plugin engines (job-history / fs-scans on CNPG)
+        g.pgdb_queries  = 0
 
     @app.after_request
     def _log_request(response):
@@ -274,18 +276,21 @@ def create_app(*, config_overrides: dict | None = None):
         )
         if not is_health_probe:
             app.logger.info(
-                '%s %s → %s  (%.1f ms  db=%.1fms cpu=%.1fms q=%d)  rid=%s',
+                '%s %s → %s  (%.1f ms  db=%.1fms cpu=%.1fms pgdb=%.1fms q=%d pq=%d)  rid=%s',
                 request.method, request.path, response.status_code,
-                elapsed_ms, g.get('db_ms', 0.0), cpu_ms, g.get('db_queries', 0), request_id,
+                elapsed_ms, g.get('db_ms', 0.0), cpu_ms, g.get('pgdb_ms', 0.0),
+                g.get('db_queries', 0), g.get('pgdb_queries', 0), request_id,
             )
         if elapsed_ms > 5000:
             # db=/cpu=/q= appended at the END so the watch's method/path parse
             # (cirrus_watch.sh) is preserved while the split stays available.
-            # total ~= cpu (compute) + db (DB wait) + rest (GIL/pool wait).
+            # total ~= cpu (compute) + db (SAM/MySQL wait) + pgdb (plugin CNPG wait)
+            # + rest (GIL/pool wait).
             app.logger.warning(
-                'Slow request: %.1f ms  %s %s  (db=%.1fms cpu=%.1fms q=%d)',
+                'Slow request: %.1f ms  %s %s  (db=%.1fms cpu=%.1fms pgdb=%.1fms q=%d pq=%d)',
                 elapsed_ms, request.method, request.path,
-                g.get('db_ms', 0.0), cpu_ms, g.get('db_queries', 0),
+                g.get('db_ms', 0.0), cpu_ms, g.get('pgdb_ms', 0.0),
+                g.get('db_queries', 0), g.get('pgdb_queries', 0),
             )
         return response
     # =========================================================================
