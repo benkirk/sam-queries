@@ -27,10 +27,12 @@ This is the durable lever.
 ## The idea
 
 One denormalized **read-model** table holding the current rolled-up state of every
-active account, fed on a schedule, that the slow paths **consult if present and
+active account, built by an **hourly** authoritative pass and kept sub-hour-fresh by
+**refresh-on-miss** on the serve path, that the slow paths **consult if present and
 fresh, else fall back to the live computation** — the slow paths are never removed,
-only short-circuited. Because the feeder runs the *same* batched computation the
-live path uses, the table **cannot drift** from the live answer.
+only short-circuited. Because both the hourly feeder and the miss-path run the
+*same* batched computation the live path uses, the table **cannot drift** from the
+live answer.
 
 ## Grain — one row per `account` = (project, resource, active allocation)
 
@@ -118,46 +120,51 @@ Create the table in the **prod SAM MySQL** (operator has `CREATE`), with a
 
 Working table name: **`account_allocation_state`** (negotiable).
 
-## Two-speed refresh (one projection, two WHERE clauses)
+## Refresh: hourly baseline (push) + refresh-on-miss (pull, cache-aside)
 
-The feeder calls the **same batched computation the slow path uses**
-(`get_allocation_summary_with_usage` / `Project.batch_get_subtree_charges` /
-`bulk_get_subtree_disk_capacity`) and writes the result — so the read-model cannot
-drift (the feeder *is* the expensive path). Two cadences differ only in which
-accounts they re-project:
+**Hourly full push** (`Hourly()` schedule) is the authoritative writer. It
+re-projects **all** active accounts into the table via the **same batched
+computation the slow path uses** (`get_allocation_summary_with_usage` /
+`Project.batch_get_subtree_charges` / `bulk_get_subtree_disk_capacity`) — so the
+baseline **cannot drift** (the feeder *is* the expensive path) and the whole table
+is reconciled each hour. **The hourly task is the SOLE writer of the table.** Writes
+use the `upsert + management_transaction` idiom (`src/sam/manage/summaries.py`
+shape); the scheduler runner owns the commit. Size `expected_runtime` so the lease
+exceeds the CronJob deadline (the documented double-run trap).
 
-- **Hourly full pass** (`Hourly()` schedule) — re-project all active accounts; the
-  authoritative usage refresh and the reconciliation that heals incremental drift.
-  Tolerates slop.
-- **Fast changed-only pass** (`CronExpr('*/N * * * *')`) — re-project only accounts
-  changed since the last fast watermark. Three dirty-signals:
-  - **Structural** (durable, already timestamped): `allocation_transaction.creation_time`
-    (CREATE/EDIT/ADJUSTMENT/LINK/TRANSFER/DETACH — covers allocation *and* tree
-    changes) and `project.modified_time` (create/deactivate). Membership needs no
-    signal (roster is live).
-  - **Usage:** `comp_charge_summary` is a *daily* summary whose current-day rows are
-    rewritten every couple minutes as usage accrues, so `used` goes stale within the
-    hour — the fast pass must re-project accounts whose summary rows changed. The
-    freshness signal comes from the revived status table (below).
-  - **Disk/archive** change once/day; their status `current`-flag flip /
-    `activity_date` advance triggers re-projection of affected accounts (low volume;
-    the hourly pass also covers them).
+**Refresh-on-miss (pull), cache-aside** handles the sub-hour freshness — replacing
+what an earlier draft did with a `*/5` background CronJob. The serve path is the
+**existing** `src/sam/queries/usage_cache.py` read-through (`BucketedTTLCache`,
+shared Redis) with a ~5-min TTL; on a miss the **caller** computes and caches the
+VALUE, and does **not** write the table (so the hourly task stays the sole writer —
+no write-on-GET, no row locking, no write concurrency):
 
-**Delta-accrual option** (worth measuring): store `used_prior` (through yesterday,
-stable) + recompute only `used_today` per fast pass, so a pass costs "today's
-charges for dirty accounts," not a full-window re-roll; the hourly pass folds
-yesterday into the baseline. Simpler alternative: re-roll the full window for each
-dirty account. Decide on the measured fast-pass cost.
+- **Cheap incremental:** read the hour-old baseline rows for the scope + apply
+  **today's delta** — one day of `comp_charge_summary` for the scope's changed
+  accounts (found via the freshness stamp below). The bet: baseline read + today's
+  slice ≪ the full-window MPTT rollup; verify it in the build.
+- **Structural check:** if `allocation_transaction.creation_time` /
+  `project.modified_time` for the scope changed since the baseline, **re-roll that
+  scope fully** (rare); an unknown/new scope → **full live fallback** (self-heal).
+  This keeps "respond quickly when a project/allocation changes" true; membership
+  needs no signal (roster is a live join). Disk/archive change daily.
+- **Single-flight:** a short dogpile lock so a herd of PBS pollers missing together
+  (poll cadence ≈ TTL) does not launch N recomputes — or accept N *cheap* concurrent
+  recomputes; confirm `BucketedTTLCache` behavior in the build.
 
-Writes use the `upsert + management_transaction` idiom
-(`src/sam/manage/summaries.py` shape); the scheduler runner owns the commit. Size
-`expected_runtime` so the lease exceeds the CronJob deadline (the documented
-double-run trap).
+**Why pull beats the `*/5` push:** no new minute-granularity schedule, no ~1,440
+task pods/day, no extra `SAM_TASKS_DISABLED` wiring; it is demand-driven (no work
+for scopes nobody views); and after a deploy the baseline table survives in MySQL,
+so a cold Redis pays baseline+delta, not the full rollup.
+
+**Delta-accrual** (worth measuring): the incremental naturally stores/uses
+`used_prior` (through yesterday, stable) + `used_today`, so the miss cost is "today's
+charges for the scope," and the hourly pass folds yesterday into the baseline.
 
 ## Freshness stamp — revive `comp_charge_summary_status`
 
-The comp ingest must record when a summary row changed so the fast pass can key on
-it. **Decision: repurpose `comp_charge_summary_status`** (it already carries a
+The comp ingest must record when a summary row changed so the miss-path incremental
+can key on it. **Decision: repurpose `comp_charge_summary_status`** (it already carries a
 `modified` DateTime with `onupdate`), rather than add a `comp_charge_summary`
 column. That table is currently a dormant in-flight lock (a legacy migration
 reshaped it; ~438 stale rows; keyed `UNIQUE(command_id, charge_summary_id)`), so
@@ -173,8 +180,8 @@ reviving it safely means:
   writes no status row, so `modified` means "charges changed." This is the one new
   write in `src/cli/accounting/commands.py` (which today deliberately skips the
   table) and `src/sam/manage/summaries.py`.
-- **Fast pass reads** `MAX(modified) per account_id > watermark` via a
-  `summary → status` join.
+- **The miss-path reads** `MAX(modified) per account_id > watermark` via a
+  `summary → status` join to find the scope's changed accounts.
 - **One-time cleanup** of the stale lock rows / abandoned `command_id` when the new
   convention lands (a small script).
 - Likely **no DDL** (the column exists) — confirm the type/index and add a schema
@@ -223,18 +230,20 @@ flip.
    projection function (reuse the batched path); the **Hourly** feeder in
    `src/scheduling/tasks/` + `tasks/__init__.py` + `helm/templates/cronjob-tasks.yaml`
    env + `SAM_TASKS_DISABLED` rollout. Readers untouched.
-2. **Freshness stamp + fast changed-only pass.** Revive `comp_charge_summary_status`
-   (stable `command_id`, write on `created`/`updated`, `MAX(modified)` read; stale-
-   row cleanup; schema pin), then the `CronExpr('*/N')` pass keyed off the three
-   watermarks.
-3. **Short-circuit readers** (flag-gated, self-healing) — wire the seams above;
-   flip `READ_MODEL_ENABLED` after validation.
+2. **Freshness stamp + refresh-on-miss incremental.** Revive
+   `comp_charge_summary_status` (stable `command_id`, write on `created`/`updated`,
+   `MAX(modified)` read; stale-row cleanup; schema pin), then make the
+   `usage_cache.py` read-through's miss-path do **baseline + today's delta** (with
+   the structural-change re-roll, unknown-scope live fallback, and single-flight)
+   instead of the full rollup. **No `*/5` CronJob.**
+3. **Short-circuit readers** (flag-gated, self-healing) — route the seams above
+   through the read-model/cache path; flip `READ_MODEL_ENABLED` after validation.
 4. **(Deferred, separate PR)** CNPG migration at the full-Postgres cutover.
 
 **CIRRUS checkpoints** (dispatch `build-images-cirrus-deploy` at stage boundaries):
-after stage 1 (feeder populates dark — table fills, no behavior change), stage 2
-(fast pass + stamp — freshness/cost), stage 3 (readers, flag still off — flip
-`READ_MODEL_ENABLED` on the cluster to validate).
+after stage 1 (hourly feeder populates dark — table fills, no behavior change),
+stage 2 (stamp + miss-path incremental behind the flag — delta cost), stage 3
+(readers — flip `READ_MODEL_ENABLED` on the cluster to validate).
 
 ## Critical files to reuse
 - Projection source of truth: `src/sam/queries/allocations.py`
