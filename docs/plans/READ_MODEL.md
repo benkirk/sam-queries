@@ -103,6 +103,31 @@ the whole allocation/usage core, not just the three motivating endpoints:
   (`resource_details_disk`, `get_disk_quotas`) — the account-level disk snapshot
   serves the roots; the per-directory tree is disk-scan territory.
 
+## Caveat: the resource-details page computes companion grains EAGERLY
+
+Prod caught `GET /user/resource-details/<projcode>?resource=<hpc/dav>` at ~5.4s,
+97% DB, on a deep long-lived project (P93300041 — compute/DAV/archive, no disk; ~46
+allocations over 10 resources incl. retired machines). This is worth calling out
+because the read-model **does not, by itself, make this page's first load fast.**
+
+The base route (`src/webapp/dashboards/user/blueprint.py`, `resource_details()`)
+requires `?resource=` and branches on that resource's type (DISK vs HPC/DAV). On the
+HPC/DAV branch its **initial GET runs, synchronously before any HTMX**, not just the
+account-grain summary but a stack of finer-grain aggregates over `comp_charge_summary`
+(90-day window, MPTT-subtree joins): `daily_charges` + `get_daily_summary_for_project`
+(per-day), `get_user_summary_for_project` (per-user),
+`get_monthly_user_counts_for_project` (fires at the 90-day default), and
+`get_charges_by_projcode` (tree rollup). The ~5.4s is the **sum of ~5–7 independent
+subtree aggregates**; the read-model short-circuits only the summary/rolling cards.
+
+**Lever — read-model-independent and cheap.** The two chart fragments (usage-chart,
+user-pie) are already lazy HTMX; the per-day table, per-user summary, monthly counts,
+and tree rollup are not. Deferring those to lazy fragments too lets the first paint
+need only account-grain data (read-model-fast) while the breakdowns stream in "in the
+seconds" — the accepted tolerance for drill-downs. This is a **small separate
+follow-on** (no new read-model scope) and is the real fix for this page's first-paint
+latency.
+
 ## Where it lives — SAM MySQL first (CNPG at full cutover)
 
 Create the table in the **prod SAM MySQL** (operator has `CREATE`), with a
