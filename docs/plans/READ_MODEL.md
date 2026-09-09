@@ -303,10 +303,12 @@ enable the task, soak dark for a day (ledger `detail`, row counts), then flip
 - Short-circuit / self-heal precedent: `src/scheduling/tasks/xras_sweep.py`.
 
 ## Verification (per phase, on build)
-- **Feeder:** `sam-admin tasks --run refresh_allocation_state --force` in webdev;
-  ~4.3k rows populate; parity — rows equal `get_projects_dashboard_data` for the
-  `subtree_project` and `inheriting_project` fixtures; a second run is idempotent
-  and deletes rows that left the candidate set.
+- **Feeder:** `sam-admin tasks --run refresh_allocation_state --force` in webdev.
+  Measured 2026-09-09 on the dev snapshot: 4,781 rows (4,280 current) for 1,509
+  projects in 5.7 s, single transaction. Parity — rows equal
+  `get_projects_dashboard_data` for the `subtree_project` and
+  `inheriting_project` fixtures; a second run is idempotent and deletes rows
+  that left the candidate set.
 - **Gate:** each fallback reason has a test; editing an allocation stales its scope
   and no other.
 - **Readers:** with the flag on, fstree/allocations/deep-dive render identically

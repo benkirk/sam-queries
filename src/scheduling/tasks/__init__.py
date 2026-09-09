@@ -12,8 +12,9 @@ Import this package (not the modules individually) before reading
 from scheduling.tasks import cleanup_status       # noqa: F401
 from scheduling.tasks import deactivate_expired   # noqa: F401
 from scheduling.tasks import expiration_notices   # noqa: F401
+from scheduling.tasks import refresh_allocation_state  # noqa: F401
 from scheduling.tasks import xras_notices         # noqa: F401
 from scheduling.tasks import xras_sweep           # noqa: F401
 
 __all__ = ['cleanup_status', 'deactivate_expired', 'expiration_notices',
-           'xras_notices', 'xras_sweep']
+           'refresh_allocation_state', 'xras_notices', 'xras_sweep']
