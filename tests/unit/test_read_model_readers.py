@@ -173,6 +173,28 @@ class TestAllocationSummary:
                                                    root_only=True)
         self._rows_equal(live, served)
 
+    def test_all_resources_over_the_snapshot_on_equals_off(self, request, session, flag):
+        """The allocations page's scope: every active resource, every project,
+        shared disk trees included."""
+        from sam.resources.resources import Resource
+        names = [r for (r,) in session.query(Resource.resource_name)
+                 .filter(Resource.is_active).order_by(Resource.resource_name).all()]
+        live = get_allocation_summary_with_usage(session, resource_name=names)
+
+        _feed(session)
+        flag(True)
+        request.getfixturevalue('armed')
+        served = get_allocation_summary_with_usage(session, resource_name=names)
+        self._rows_equal(live, served)
+
+    def test_a_total_row_with_a_shared_disk_tree_stays_live(self, request, session, flag):
+        from sam.resources.resources import Resource
+        _feed(session)
+        flag(True)
+        request.getfixturevalue('armed')
+        with pytest.raises(AssertionError, match='live rollup ran'):
+            get_allocation_summary_with_usage(session, resource_name="TOTAL")
+
     def test_without_adjustments_stays_live(self, request, session, flag, subtree_project):
         _feed(session)
         flag(True)

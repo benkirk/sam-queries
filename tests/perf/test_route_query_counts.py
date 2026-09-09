@@ -293,3 +293,42 @@ def test_admin_expirations_expired_route(auth_client, route_count_queries):
         f"{stats.count} queries > {baseline} baseline. "
         f"{stats.summary()}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Read-model path (READ_MODEL_ENABLED on, table fed and committed)
+# ---------------------------------------------------------------------------
+
+def _route_within(name, auth_client, route_count_queries, url):
+    baseline = get_baseline(name)
+    with route_count_queries() as stats:
+        response = auth_client.get(url)
+    assert response.status_code == 200, f"GET {url} returned {response.status_code}"
+    assert stats.count <= baseline, (
+        f"{name} query regression: {stats.count} queries > {baseline} baseline. "
+        f"{stats.summary()}"
+    )
+
+
+def test_user_dashboard_route_read_model(auth_client, route_count_queries,
+                                         read_model_on_committed):
+    _route_within("user_dashboard_route_read_model", auth_client,
+                  route_count_queries, '/user/accounts')
+
+
+def test_allocations_index_route_read_model(auth_client, route_count_queries,
+                                            read_model_on_committed):
+    _route_within("allocations_index_route_read_model", auth_client,
+                  route_count_queries, '/allocations/projects')
+
+
+def test_fstree_api_route_read_model(auth_client, route_count_queries,
+                                     read_model_on_committed):
+    _route_within("fstree_api_route_read_model", auth_client,
+                  route_count_queries, '/api/v1/fstree_access/')
+
+
+def test_admin_expirations_expired_route_read_model(auth_client, route_count_queries,
+                                                    read_model_on_committed):
+    _route_within("admin_expirations_expired_route_read_model", auth_client,
+                  route_count_queries, '/admin/expirations?view=expired')

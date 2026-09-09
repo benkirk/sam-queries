@@ -951,14 +951,17 @@ def _aggregate_usage_to_total(per_project_usage: List[Dict]) -> List[Dict]:
     return result
 
 
-def _read_model_rows(session, all_allocations, active_at, include_adjustments):
+def _read_model_rows(session, all_allocations, active_at, include_adjustments,
+                     resource_name):
     """Read-model rows covering every allocation, or None for the live path.
 
     Live when the gate refuses, when ``include_adjustments`` is off (a row's
-    pool figure bakes the root's adjustments in), when an inheriting DISK
-    allocation is present (its pool figure is the snapshot override), or when
-    any allocation lacks a row. Lazy import: ``allocation_state`` imports the
-    dashboard builder this module's callers share.
+    pool figure bakes the root's adjustments in), when any allocation lacks
+    a row, or when resources are merged into a TOTAL row that holds an
+    inheriting DISK allocation (only there is its pool figure, which the row
+    stores as the snapshot override, observable). Lazy import:
+    ``allocation_state`` imports the dashboard builder this module's callers
+    share.
     """
     if not include_adjustments or not all_allocations:
         return None
@@ -975,7 +978,7 @@ def _read_model_rows(session, all_allocations, active_at, include_adjustments):
         alloc, res_type = t[0], t[2]
         if alloc.allocation_id not in rows:
             return None
-        if res_type == 'DISK' and alloc.is_inheriting:
+        if resource_name == "TOTAL" and res_type == 'DISK' and alloc.is_inheriting:
             return None
     return rows
 
@@ -1074,7 +1077,8 @@ def get_allocation_summary_with_usage(
     # Read-model short-circuit (docs/plans/READ_MODEL.md): rows the hourly task
     # wrote stand in for the batched rollups, the root anchors and the disk
     # snapshot walk when the gate says the scope is fresh.
-    state = _read_model_rows(session, all_allocations, active_at, include_adjustments)
+    state = _read_model_rows(session, all_allocations, active_at, include_adjustments,
+                             resource_name)
 
     # Tree-aware augmentation: for inheriting allocations, the per-allocation
     # subtree charge does NOT match what users see in the project card —

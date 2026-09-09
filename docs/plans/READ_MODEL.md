@@ -197,9 +197,10 @@ Otherwise the reader runs the existing live computation for that scope. So an
 allocation edit, renewal, relink, threshold change, or adjustment makes its scope
 fall back to live *immediately* (the "respond quickly when a project/allocation
 changes" requirement) and the next hourly pass picks it up; sibling scopes stay on
-the read-model. Membership needs no signal (roster is a live join). The gate costs
-a handful of `MAX()` scans over ≤50k-row tables — milliseconds. Charge accrual lags
-by at most ~1 h on the read-model path.
+the read-model. Membership needs no signal (roster is a live join). The gate is
+**two statements**: the scope's rows, and one `SELECT NOW(), (MAX ...), ...` with
+the seven stamps as scalar subqueries — milliseconds. Charge accrual lags by at
+most ~1 h on the read-model path.
 
 **What was considered and dropped (2026-09-09).** An earlier draft added a
 `comp_charge_summary_status` revival as a per-row change stamp plus a
@@ -232,7 +233,10 @@ readers on. Seams:
   `all_charges` and the disk caps from rows instead of `batch_get_*_charges` +
   `bulk_get_subtree_disk_capacity`. Covers everything behind
   `cached_allocation_usage` (`usage_cache.py`, TTL default **3600 s** via
-  `ALLOCATION_USAGE_CACHE_TTL`).
+  `ALLOCATION_USAGE_CACHE_TTL`). Live when adjustments are excluded (the pool
+  figure bakes the root's in) and when a `"TOTAL"` resource row would merge an
+  inheriting DISK allocation (only there is its pool figure observable; the row
+  stores the snapshot override instead).
 - `src/sam/queries/dashboard.py` (`_build_user_projects_resources_batched`): phases
   4/5 and the disk override read from rows. `_build_project_resources_data`
   delegates to the batched builder for `[project]`, so the project card, edit page,
@@ -244,16 +248,47 @@ readers on. Seams:
   skeleton, lifecycle, roster and cascade are untouched. fstree's response shape
   is legacy-frozen (Flask cache TTL 300 s via `CACHE_DEFAULT_TIMEOUT`, poll ≈ TTL);
   gates: `tests/api/test_fstree_access.py`, `tests/unit/test_fstree_queries.py`.
-- `AllocationWithUsageSchema`: optional precomputed `usage` in context, supplied by
-  the two API routes when `fresh_state` has the project.
+- `AllocationWithUsageSchema`: an optional `state` row in context replaces the
+  account-scoped sums and the root-subtree pass; `read_model_rows_for` hands it
+  to the two API routes for **leaf projects only** — the schema sums the
+  account, the row the subtree, and the two agree only when the subtree is the
+  account.
 
 ## Anti-drift
 
 The hourly full pass is a full reconciliation. A **parity test** compares
 read-model rows against the live computation for sampled projects (the feeder and
-the live path share code, so equality is the invariant). The `task_run` ledger is
-the feeder's success watermark. Perf baselines are **ceilings**: a drop is not
-flagged by CI, so the covered names are re-measured and lowered explicitly.
+the live path share code, so equality is the invariant), and every reader is
+tested flag-on == flag-off on the snapshot with the batch primitives armed to
+raise, so a served scope is proven served. The `task_run` ledger is the feeder's
+success watermark.
+
+## What was measured (2026-09-09, webdev, prod-size data, local MySQL)
+
+| call | live | read-model |
+|---|---|---|
+| `get_fstree_data('Derecho')` | 537 ms | 137 ms |
+| `get_fstree_data('Casper')` | 454 ms | 166 ms |
+| `get_fstree_data()` (all) | 1,227 ms | 385 ms |
+| `get_allocation_summary_with_usage(all resources, root_only)` | 1,278 ms | 582 ms |
+| `get_allocation_summary_with_usage('Derecho')` | 733 ms | 201 ms |
+| `get_project_dashboard_data` (deep / shallow project) | 54 / 32 ms | 44 / 40 ms |
+
+Best of three, timed inside the webdev container. The local
+MySQL is far faster than the shared prod VM (fstree cold is ~3.3 s DB there), and
+what the read-model removes is exactly the expensive part, so the prod saving
+should be a larger fraction. The feeder takes ~5 s for 4,781 rows.
+
+**Query counts are the wrong metric for this feature.** The read-model path
+issues about as many statements as the live one (a few cheap indexed reads
+replace a few expensive rollups: fstree 5 vs 3, dashboards 19/20 vs 26/45, the
+allocations page 25 vs 55, the fstree API 14 vs 44). The existing perf baselines
+therefore **stay** — the live path remains the fallback and needs its ceiling —
+and the read-model path gets its own `*_read_model` baselines in
+`tests/perf/baselines.json` plus live-vs-served benchmarks in
+`tests/perf/test_dashboard_latency.py`. On the small test snapshot the served
+path is *not* faster (the rollups cost milliseconds there); the numbers above are
+the ones that matter.
 
 ## Phased implementation (ordered commits on one living PR, base `staging`)
 
@@ -278,7 +313,8 @@ flip.
 3. **Freshness gate** (`fresh_state()`, `READ_MODEL_ENABLED`, `READ_MODEL_MAX_AGE`),
    unit-tested per fallback reason. No consumer wired yet.
 4. **Short-circuit readers** (flag-gated, self-healing) — the seams above, each
-   tested flag-on == flag-off and table-emptied → live; perf baselines lowered.
+   tested flag-on == flag-off and table-emptied → live; `*_read_model` perf
+   baselines and benchmarks added beside the live ones.
 5. **(Deferred, separate PR)** delta accrual on measured need; the resource-details
    lazy-fragment follow-on; CNPG migration at the full-Postgres cutover.
 
@@ -318,13 +354,11 @@ enable the task, soak dark for a day (ledger `detail`, row counts), then flip
 - **Readers:** with the flag on, fstree/allocations/deep-dive render identically
   (fstree gates above); with the table emptied, pages still render via the live
   fallback (self-heal).
-- Full suite + `test_schema_validation.py` + `test_docs.py`; `make helm-test`; re-run
-  `make perf` with the flag on and a populated table and lower the covered baselines
-  (`get_fstree_data`, `get_allocation_summary_with_usage[_all_resources]`,
-  `get_user_dashboard_data`, `get_project_dashboard_data`, `fstree_api_route`,
-  `allocations_index_route`, `user_dashboard_route`,
-  `admin_expirations_expired_route`). Note the autouse `_reset_usage_cache`
-  fixture in `tests/perf/conftest.py`.
+- Full suite + `test_schema_validation.py` + `test_docs.py`; `make helm-test`;
+  `pytest -m perf -n 0` runs both the live baselines and the `*_read_model` ones
+  (the `read_model_on` / `read_model_on_committed` fixtures in
+  `tests/perf/conftest.py` feed the table; the route variant commits and
+  truncates, since Flask-SQLAlchemy's session sees only committed rows).
 
 ## Traps (from the scaffolding survey)
 - **The CI test DB is cloned from prod, and nothing applies `scripts/sql/*.sql`
@@ -345,8 +379,9 @@ enable the task, soak dark for a day (ledger `detail`, row counts), then flip
   the shape exactly (`tests/api/test_fstree_access.py` guards it).
 - **`usage_cache` key is day-granular on `active_at`** and the gate only serves
   "today"; historical as-of views always run live.
-- **Baselines are ceilings** — lowering the real count never fails CI; lower the
-  numbers in `tests/perf/baselines.json` on purpose.
+- **Baselines are ceilings, and counts are not the read-model's metric** — the
+  served path trades a few expensive statements for a few cheap ones, so the live
+  baselines stay and the `*_read_model` ones sit beside them; time it on webdev.
 
 ## Out of scope
 - CNPG placement now (SAM MySQL first).

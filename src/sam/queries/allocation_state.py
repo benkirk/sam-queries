@@ -203,6 +203,27 @@ def _scope_accounts(session: Session, resource_ids, project_ids):
     return q
 
 
+def _stamp_query(session: Session, resource_ids, project_ids):
+    """One statement: the DB clock plus every structural MAX() in scope."""
+    accts = _scope_accounts(session, resource_ids, project_ids)
+    projects = select(Account.project_id).where(Account.account_id.in_(accts))
+    cols = [
+        select(func.max(Account.modified_time)).where(Account.account_id.in_(accts)),
+        select(func.max(Account.creation_time)).where(Account.account_id.in_(accts)),
+        select(func.max(Allocation.modified_time)).where(Allocation.account_id.in_(accts)),
+        select(func.max(Allocation.creation_time)).where(Allocation.account_id.in_(accts)),
+        select(func.max(AllocationTransaction.creation_time))
+        .join(Allocation, Allocation.allocation_id == AllocationTransaction.allocation_id)
+        .where(Allocation.account_id.in_(accts)),
+        select(func.max(ChargeAdjustment.adjustment_date))
+        .where(ChargeAdjustment.account_id.in_(accts)),
+        select(func.max(Project.modified_time)).where(Project.project_id.in_(projects)),
+    ]
+    row = session.execute(select(func.now(), *[c.scalar_subquery() for c in cols])).one()
+    stamps = [v for v in row[1:] if v is not None]
+    return row[0], (max(stamps) if stamps else None)
+
+
 def structural_watermark(session: Session, *, resource_ids=None,
                          project_ids=None) -> Optional[datetime]:
     """The newest structural change in scope, or None when nothing is stamped.
@@ -212,25 +233,7 @@ def structural_watermark(session: Session, *, resource_ids=None,
     table has no creation stamp, so a back-dated adjustment waits for the
     hourly pass). Charge accrual is deliberately not a signal.
     """
-    accts = _scope_accounts(session, resource_ids, project_ids)
-    stamps = []
-    stamps += session.execute(select(func.max(Account.modified_time),
-                                     func.max(Account.creation_time))
-                              .where(Account.account_id.in_(accts))).one()
-    stamps += session.execute(select(func.max(Allocation.modified_time),
-                                     func.max(Allocation.creation_time))
-                              .where(Allocation.account_id.in_(accts))).one()
-    stamps += session.execute(select(func.max(AllocationTransaction.creation_time))
-                              .join(Allocation, Allocation.allocation_id ==
-                                    AllocationTransaction.allocation_id)
-                              .where(Allocation.account_id.in_(accts))).one()
-    stamps += session.execute(select(func.max(ChargeAdjustment.adjustment_date))
-                              .where(ChargeAdjustment.account_id.in_(accts))).one()
-    projects = select(Account.project_id).where(Account.account_id.in_(accts))
-    stamps += session.execute(select(func.max(Project.modified_time))
-                              .where(Project.project_id.in_(projects))).one()
-    stamps = [s for s in stamps if s is not None]
-    return max(stamps) if stamps else None
+    return _stamp_query(session, resource_ids, project_ids)[1]
 
 
 def fresh_state(session: Session, *, resource_ids=None, project_ids=None,
@@ -257,10 +260,9 @@ def fresh_state(session: Session, *, resource_ids=None, project_ids=None,
         return Lookup(None, 'no-rows')
 
     oldest = min(r.refreshed_at for r in rows)
-    if db_now(session) - oldest > cfg.max_age:
+    now, stamp = _stamp_query(session, resource_ids, project_ids)
+    if now - oldest > cfg.max_age:
         return Lookup(None, 'too-old')
-    stamp = structural_watermark(session, resource_ids=resource_ids,
-                                 project_ids=project_ids)
     if stamp is not None and stamp >= oldest:
         return Lookup(None, 'structural-change')
     return Lookup({r.allocation_id: r for r in rows}, 'ok')

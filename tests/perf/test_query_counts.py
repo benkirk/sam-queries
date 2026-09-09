@@ -278,3 +278,65 @@ def test_get_institutions_with_members_include_projects(session, count_queries):
         f"{stats.count} queries > {baseline} baseline. "
         f"Breakdown: {stats.summary()}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Read-model path (READ_MODEL_ENABLED on, table fed) — the live tests above
+# keep guarding the fallback.
+# ---------------------------------------------------------------------------
+
+def _assert_within(name, stats):
+    baseline = get_baseline(name)
+    assert stats.count <= baseline, (
+        f"{name} query count regression: {stats.count} queries > {baseline} "
+        f"baseline. Breakdown: {stats.summary()}"
+    )
+
+
+def test_get_user_dashboard_data_read_model(session, count_queries,
+                                            perf_multi_project_user, read_model_on):
+    from sam.queries.dashboard import get_user_dashboard_data
+    with count_queries() as stats:
+        data = get_user_dashboard_data(session, perf_multi_project_user.user_id)
+    assert data is not None
+    _assert_within("get_user_dashboard_data_read_model", stats)
+
+
+def test_get_project_dashboard_data_read_model(session, count_queries,
+                                               perf_active_project, read_model_on):
+    from sam.queries.dashboard import get_project_dashboard_data
+    with count_queries() as stats:
+        data = get_project_dashboard_data(session, perf_active_project.projcode)
+    assert data is not None
+    _assert_within("get_project_dashboard_data_read_model", stats)
+
+
+def test_get_fstree_data_read_model(session, count_queries, perf_hpc_resource,
+                                    read_model_on):
+    from sam.queries.fstree_access import get_fstree_data
+    with count_queries() as stats:
+        data = get_fstree_data(session, resource_name=perf_hpc_resource.resource_name)
+    assert data is not None
+    _assert_within("get_fstree_data_read_model", stats)
+
+
+def test_get_allocation_summary_with_usage_read_model(session, count_queries,
+                                                      perf_hpc_resource, read_model_on):
+    from sam.queries.allocations import get_allocation_summary_with_usage
+    with count_queries() as stats:
+        data = get_allocation_summary_with_usage(
+            session, resource_name=perf_hpc_resource.resource_name)
+    assert isinstance(data, list)
+    _assert_within("get_allocation_summary_with_usage_read_model", stats)
+
+
+def test_get_allocation_summary_with_usage_all_resources_read_model(
+        session, count_queries, read_model_on):
+    from sam.queries.allocations import get_allocation_summary_with_usage
+    from sam.resources.resources import Resource
+    names = [r.resource_name for r in session.query(Resource.resource_name)
+             .filter(Resource.is_active).order_by(Resource.resource_name).all()]
+    with count_queries() as stats:
+        data = get_allocation_summary_with_usage(session, resource_name=names)
+    assert isinstance(data, list)
+    _assert_within("get_allocation_summary_with_usage_all_resources_read_model", stats)
