@@ -181,3 +181,81 @@ class TestAllocationSummary:
             get_allocation_summary_with_usage(session, projcode=subtree_project.projcode,
                                               include_adjustments=False)
 
+
+
+class TestFstree:
+
+    def test_one_resource_on_equals_off(self, request, session, flag, hpc_resource):
+        """The byte-frozen shape: the whole payload must be identical."""
+        from sam.queries.fstree_access import get_fstree_data
+        name = hpc_resource.resource_name
+        live = get_fstree_data(session, resource_name=name)
+
+        _feed(session)
+        flag(True)
+        request.getfixturevalue('armed')
+        served = get_fstree_data(session, resource_name=name)
+
+        assert served == live
+
+
+class TestApiSchema:
+
+    def test_leaf_project_on_equals_off(self, session, flag):
+        """`AllocationWithUsageSchema` with a row in context dumps what it
+        dumps without one, for a leaf project with charges and an adjustment."""
+        from datetime import timedelta
+        from factories.projects import (make_account, make_allocation,
+                                        make_charge_adjustment, make_project)
+        from factories.resources import make_resource
+        from factories.summaries import make_comp_charge_summary
+        from sam.queries.allocation_state import read_model_rows_for
+        from sam.resources.resources import ResourceType
+        from sam.schemas.allocation import AllocationWithUsageSchema
+
+        hpc = make_resource(session, resource_type=session.query(ResourceType)
+                            .filter_by(resource_type='HPC').one())
+        project = make_project(session, facility_name='UNIV')
+        account = make_account(session, project=project, resource=hpc)
+        now = datetime.now()
+        alloc = make_allocation(session, account=account, amount=1000.0,
+                                start_date=now - timedelta(days=30),
+                                end_date=now + timedelta(days=335))
+        for c in (40.0, 60.0):
+            row = make_comp_charge_summary(session, charges=c, activity_date=now)
+            row.account_id = account.account_id
+        make_charge_adjustment(session, account=account, amount=-5.0,
+                               adjustment_date=now - timedelta(days=1))
+        session.flush()
+        # Factory rows are stamped this second; the gate reads a same-second
+        # stamp as newer than the refresh, so age them past it.
+        then = db_now(session) - timedelta(seconds=60)
+        for obj in (project, account, alloc):
+            obj.creation_time = obj.modified_time = then
+        for txn in alloc.transactions:
+            txn.creation_time = then
+        session.flush()
+
+        def dump(state):
+            schema = AllocationWithUsageSchema()
+            schema.context = {'account': account, 'session': session,
+                              'include_adjustments': True, 'state': state}
+            return schema.dump(alloc)
+
+        live = dump(None)
+        assert live['used'] == pytest.approx(95.0)
+
+        _feed(session, [project])
+        flag(True)
+        rows = read_model_rows_for(session, project)
+        assert set(rows) == {alloc.allocation_id}
+        assert dump(rows[alloc.allocation_id]) == live
+
+
+class TestDeepDive:
+
+    def test_the_allocation_tree_fragment_renders(self, auth_client, subtree_project):
+        resp = auth_client.get(
+            f'/admin/htmx/project-allocation-tree/{subtree_project.projcode}')
+        assert resp.status_code == 200
+        assert subtree_project.projcode.encode() in resp.data

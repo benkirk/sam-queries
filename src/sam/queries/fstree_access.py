@@ -434,6 +434,38 @@ def _ensure_project(
 # Public API
 # ---------------------------------------------------------------------------
 
+def _read_model_rows(session: Session, alloc_infos: List[Dict],
+                     threshold_accounts: Dict[int, tuple]):
+    """Read-model rows by allocation_id covering the skeleton, or None (live).
+
+    Live when the gate refuses, when any skeleton allocation has no row, or
+    when a threshold account's row carries no rolling windows. Lazy import:
+    ``allocation_state`` imports the dashboard builder.
+    """
+    if not alloc_infos:
+        return None
+    from sam.queries.allocation_state import fresh_state
+    rows = fresh_state(session, resource_ids={i['resource_id'] for i in alloc_infos}).rows
+    if rows is None:
+        return None
+    for info in alloc_infos:
+        row = rows.get(info['allocation_id'])
+        if row is None:
+            return None
+        if info['account_id'] in threshold_accounts and not row.rolling_windows:
+            return None
+    return rows
+
+
+def _own_window_charges(row, window: str) -> float:
+    """The account's own-subtree window charges: `self_charges` on a pool
+    member (where `charges` is the pool's), `charges` otherwise."""
+    win = (row.rolling_windows or {}).get(window) or {}
+    if row.is_inheriting and win.get('self_charges') is not None:
+        return float(win['self_charges'])
+    return float(win.get('charges') or 0.0)
+
+
 def get_fstree_data(
     session: Session,
     resource_name: Optional[str] = None,
@@ -497,6 +529,7 @@ def get_fstree_data(
                 alloc_infos.append({
                     'key':           row.account_id,   # lookup key in charge_map (account_id)
                     'account_id':    row.account_id,
+                    'allocation_id': row.allocation_id,
                     'resource_id':   row.resource_id,
                     'resource_type': row.resource_type,
                     'tree_root':     row.tree_root,
@@ -556,20 +589,27 @@ def get_fstree_data(
         else:
             subtree_infos.append(info)
 
-    raw_charges: Dict[Any, Dict] = {}
-    if subtree_infos:
-        raw_charges.update(
-            Project.batch_get_subtree_charges(session, subtree_infos, include_adjustments=True)
-        )
-    if account_infos:
-        raw_charges.update(
-            Project.batch_get_account_charges(session, account_infos, include_adjustments=True)
-        )
+    # Read-model short-circuit (docs/plans/READ_MODEL.md): rows the hourly task
+    # wrote stand in for the rollup and the threshold-window queries below.
+    state = _read_model_rows(session, alloc_infos, threshold_accounts)
 
     # charge_map: account_id -> adjusted_usage (float)
     charge_map: Dict[int, float] = {}
-    for account_id, data in raw_charges.items():
-        charge_map[account_id] = sum(data['charges_by_type'].values()) + data['adjustment']
+    if state is not None:
+        for info in alloc_infos:
+            charge_map[info['account_id']] = state[info['allocation_id']].self_used
+    else:
+        raw_charges: Dict[Any, Dict] = {}
+        if subtree_infos:
+            raw_charges.update(
+                Project.batch_get_subtree_charges(session, subtree_infos, include_adjustments=True)
+            )
+        if account_infos:
+            raw_charges.update(
+                Project.batch_get_account_charges(session, account_infos, include_adjustments=True)
+            )
+        for account_id, data in raw_charges.items():
+            charge_map[account_id] = sum(data['charges_by_type'].values()) + data['adjustment']
 
     # ------------------------------------------------------------------
     # N-day window charges (only for threshold accounts — typically ~12)
@@ -589,13 +629,20 @@ def get_fstree_data(
     window_30: Dict[int, float] = {}
     window_90: Dict[int, float] = {}
 
-    if threshold_leaf_ids:
-        window_30.update(_query_window_charges(session, threshold_leaf_ids, 30, now, alloc_windows))
-        window_90.update(_query_window_charges(session, threshold_leaf_ids, 90, now, alloc_windows))
+    if state is not None:
+        alloc_id_of = {info['account_id']: info['allocation_id'] for info in alloc_infos}
+        for aid in threshold_accounts:
+            row = state[alloc_id_of[aid]]
+            window_30[aid] = _own_window_charges(row, '30')
+            window_90[aid] = _own_window_charges(row, '90')
+    else:
+        if threshold_leaf_ids:
+            window_30.update(_query_window_charges(session, threshold_leaf_ids, 30, now, alloc_windows))
+            window_90.update(_query_window_charges(session, threshold_leaf_ids, 90, now, alloc_windows))
 
-    if threshold_subtree_infos:
-        window_30.update(_query_window_subtree_charges(session, threshold_subtree_infos, 30, now, alloc_windows))
-        window_90.update(_query_window_subtree_charges(session, threshold_subtree_infos, 90, now, alloc_windows))
+        if threshold_subtree_infos:
+            window_30.update(_query_window_subtree_charges(session, threshold_subtree_infos, 30, now, alloc_windows))
+            window_90.update(_query_window_subtree_charges(session, threshold_subtree_infos, 90, now, alloc_windows))
 
     # ------------------------------------------------------------------
     # Query 3 — Users per account

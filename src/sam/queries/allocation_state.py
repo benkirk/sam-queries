@@ -264,3 +264,15 @@ def fresh_state(session: Session, *, resource_ids=None, project_ids=None,
     if stamp is not None and stamp >= oldest:
         return Lookup(None, 'structural-change')
     return Lookup({r.allocation_id: r for r in rows}, 'ok')
+
+
+def read_model_rows_for(session: Session, project: Project) -> Dict[int, AccountAllocationState]:
+    """Rows by allocation_id for an API route serializing one project's
+    accounts through ``AllocationWithUsageSchema``; empty means live.
+
+    Leaf projects only: the schema sums the account, the row the subtree,
+    and the two agree only when the subtree is the account.
+    """
+    if not project.is_leaf():
+        return {}
+    return fresh_state(session, project_ids=[project.project_id]).rows or {}

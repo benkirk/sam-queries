@@ -156,6 +156,15 @@ class AllocationWithUsageSchema(AllocationSchema):
         if not account or not session:
             return {}, 0.0, 0.0
 
+        # Read-model short-circuit: a row the route resolved through the
+        # freshness gate (leaf projects only -- the row is a subtree rollup,
+        # this schema is account-scoped). Adjustments are stored separately.
+        row = self.context.get('state')
+        if row is not None:
+            charges = dict(row.charges_by_type)
+            adjustments = row.adjustments if include_adjustments else 0.0
+            return charges, adjustments, sum(charges.values()) + adjustments
+
         # Get date range for queries
         now = datetime.now()
         start_date = obj.start_date
@@ -257,7 +266,7 @@ class AllocationWithUsageSchema(AllocationSchema):
         """For inheriting allocations, sum charges across the root project's
         full subtree — that's the authoritative shared-pool consumption.
 
-        Returns (tree_used, root_project) or (None, None) for non-inheriting.
+        Returns (tree_used, root_projcode) or (None, None) for non-inheriting.
         """
         if not obj.is_inheriting:
             return None, None
@@ -265,6 +274,9 @@ class AllocationWithUsageSchema(AllocationSchema):
         include_adjustments = self.context.get('include_adjustments', True)
         if not session:
             return None, None
+        row = self.context.get('state')
+        if row is not None and include_adjustments and row.root_projcode is not None:
+            return row.used, row.root_projcode
         root_alloc = obj.root
         root_account = root_alloc.account
         root_project = root_account.project if root_account else None
@@ -286,7 +298,7 @@ class AllocationWithUsageSchema(AllocationSchema):
         if include_adjustments:
             tree_used += root_project.get_subtree_adjustments(
                 root_account.resource_id, start_date, end_date)
-        return tree_used, root_project
+        return tree_used, root_project.projcode
 
     def get_used(self, obj):
         """Total used amount. For inheriting allocations, this is the
@@ -341,8 +353,8 @@ class AllocationWithUsageSchema(AllocationSchema):
         """
         if not obj.is_inheriting:
             return None
-        _, root_project = self._calculate_tree_usage(obj)
-        return root_project.projcode if root_project else None
+        _, root_projcode = self._calculate_tree_usage(obj)
+        return root_projcode
 
     def _current_disk_usage(self, obj):
         """Latest disk snapshot occupancy for this allocation's account.
