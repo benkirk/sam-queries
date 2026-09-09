@@ -335,6 +335,39 @@ def engine(test_db_url):
     eng.dispose()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _bootstrap_read_model_table(engine, tmp_path_factory):
+    """Create ``account_allocation_state`` from its DDL script if absent.
+
+    The test DB is a blob cloned from prod, so an app-owned table cannot reach
+    it before the prod DDL is applied. Running the script's CREATE statements
+    here lets schema-validation compare the ORM against the SCRIPT-created
+    table (the convergence check), and becomes a no-op once the blob carries
+    the table. Serialized across xdist workers with a file lock.
+    """
+    import fcntl
+    from sqlalchemy import inspect as _sa_inspect, text as _text
+
+    if _sa_inspect(engine).has_table('account_allocation_state'):
+        return
+    script = Path(__file__).resolve().parents[1] / 'scripts' / 'sql' / \
+        'create_account_allocation_state.sql'
+    sql = '\n'.join(line for line in script.read_text().splitlines()
+                    if not line.lstrip().startswith('--'))
+    statements = [stmt.strip() for stmt in sql.split(';')
+                  if stmt.strip().upper().startswith('CREATE TABLE')]
+    base = tmp_path_factory.getbasetemp()
+    shared = base.parent if base.name.startswith('popen-') else base
+    with open(shared / 'read_model_ddl.lock', 'w') as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            with engine.begin() as conn:
+                for stmt in statements:
+                    conn.execute(_text(stmt))
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
 @pytest.fixture(scope="session")
 def SessionFactory(engine):
     """Session factory for tests that want their own short-lived sessions."""

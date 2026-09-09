@@ -174,15 +174,16 @@ else
               | sort | uniq -c | sort -rn | head -1 | sed 's/^ *//')
         echo "  slow(>5s): $NSLOW  top: $TOP"
         note "known-slow (under investigation — docs/plans/FSTREE_LATENCY_INVESTIGATION.md): directory_access ~6.9s, fstree/Casper ~3s DB + app tail under load"
-        # Per-endpoint split from the app's db=/cpu= (total ~= cpu compute/GIL +
-        # db DB-wait + rest GIL/pool-wait). Tab-keyed so a decoded space in the
-        # path ("Casper GPU") doesn't split the key; -n/p drops pre-deploy lines.
+        # Per-endpoint split from the app's db=/cpu=/pgdb= (total ~= cpu compute/GIL
+        # + db SAM/MySQL wait + pgdb plugin CNPG wait + rest GIL/pool-wait). pgdb=
+        # is optional so a pod on an older image still parses. Tab-keyed so a
+        # decoded space in the path ("Casper GPU") doesn't split the key.
         SPLIT=$(printf '%s\n' "$SLOW" \
-            | sed -n -E 's/.*Slow request: ([0-9.]+) ms  (.*)  \(db=([0-9.]+)ms cpu=([0-9.]+)ms.*/\1\t\2\t\3\t\4/p' \
-            | awk -F'\t' '{ c[$2]++; t[$2]+=$1; d[$2]+=$3; p[$2]+=$4 }
-                END{ for (k in c) printf "%.0f\t  ↳ %s: db≈%.0fms cpu≈%.0fms / total≈%.0fms (%dx, %.0f%% DB, %.0f%% CPU)\n",
-                         t[k], k, d[k]/c[k], p[k]/c[k], t[k]/c[k], c[k],
-                         (t[k]>0?100*d[k]/t[k]:0), (t[k]>0?100*p[k]/t[k]:0) }' \
+            | sed -n -E 's/.*Slow request: ([0-9.]+) ms  (.*)  \(db=([0-9.]+)ms cpu=([0-9.]+)ms( pgdb=([0-9.]+)ms)?.*/\1\t\2\t\3\t\4\t\6/p' \
+            | awk -F'\t' '{ c[$2]++; t[$2]+=$1; d[$2]+=$3; p[$2]+=$4; pg[$2]+=$5 }
+                END{ for (k in c) printf "%.0f\t  ↳ %s: db≈%.0fms cpu≈%.0fms pgdb≈%.0fms / total≈%.0fms (%dx, %.0f%% DB, %.0f%% CPU, %.0f%% PG)\n",
+                         t[k], k, d[k]/c[k], p[k]/c[k], pg[k]/c[k], t[k]/c[k], c[k],
+                         (t[k]>0?100*d[k]/t[k]:0), (t[k]>0?100*p[k]/t[k]:0), (t[k]>0?100*pg[k]/t[k]:0) }' \
             | sort -rn | head -4 | cut -f2-)
         [[ -n "$SPLIT" ]] && printf '%s\n' "$SPLIT"
     fi

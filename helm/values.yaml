@@ -175,6 +175,7 @@ webapp:
   env:
     DISABLE_AUTH: "0"                     # Explicitly disabled — must remain 0 in production
     FLASK_ADMIN_ENABLED: "0"              # Flask-Admin /database browser stays unmounted on the public deploy
+    READ_MODEL_ENABLED: "1"               # serve allocation usage from account_allocation_state when fresh; "0" = live path (docs/plans/READ_MODEL.md)
     FLASK_DEBUG: "0"
     FLASK_CONFIG: "production"            # Selects ProductionConfig (DEBUG=False, SESSION_COOKIE_SECURE=True)
     AUDIT_ENABLED: "1"
@@ -551,6 +552,8 @@ tasks:
     #                                         overwriting. Ingestion does not depend
     #                                         on this task or on api.xras.org.)
     #           expiration_notices           (mails external PIs; Mon 09:00 MT)
+    #           refresh_allocation_state     (writes account_allocation_state hourly;
+    #                                         served only when READ_MODEL_ENABLED=1)
     # Disabled: xras_notices                 (mails external PIs)
     #
     # WARNING: this is an ENUMERATION and it is fail-OPEN. `disabled_tasks()` in

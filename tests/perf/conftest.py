@@ -170,3 +170,46 @@ def _disk_target(engine):
         "snapshot has no active tree-root projects with disk-resource accounts"
     )
     return row[0], row[1]
+
+
+# ---- Read-model fixtures ---------------------------------------------------
+#
+# The live path stays the fallback, so its baselines stay. These switch the
+# readers on against a table fed from the snapshot, for the *_read_model
+# baselines. Function tests feed inside the SAVEPOINT; route tests go through
+# Flask-SQLAlchemy's own connection, which sees only committed rows.
+
+
+def _feed_read_model(s):
+    from datetime import datetime
+    from sam.queries.allocation_state import db_now, project_allocation_state
+    from sam.summaries.allocation_state import AccountAllocationState
+    rows = project_allocation_state(s, now=datetime.now())
+    AccountAllocationState.bulk_replace(s, rows, refreshed_at=db_now(s))
+
+
+@pytest.fixture
+def read_model_on(session, monkeypatch):
+    """Feed the table in the test transaction and switch the readers on."""
+    _feed_read_model(session)
+    monkeypatch.setenv('READ_MODEL_ENABLED', '1')
+
+
+@pytest.fixture
+def read_model_on_committed(app, SessionFactory, monkeypatch):
+    """Feed and COMMIT the table for route tests; truncate it afterwards."""
+    from sam.summaries.allocation_state import AccountAllocationState
+    s = SessionFactory()
+    try:
+        _feed_read_model(s)
+        s.commit()
+    finally:
+        s.close()
+    monkeypatch.setitem(app.config, 'READ_MODEL_ENABLED', True)
+    yield
+    s = SessionFactory()
+    try:
+        s.query(AccountAllocationState).delete()
+        s.commit()
+    finally:
+        s.close()

@@ -121,8 +121,9 @@ class TestAllocationDiskCurrentFields:
         assert out['current_used_bytes'] is None
         assert out['current_used_tib'] is None
         assert out['current_pct_used'] is None
+        assert out['used'] == 0.0                # no snapshot anywhere: 0 TiB, like the dashboards
 
-    def test_current_used_distinct_from_cumulative_used(self, session):
+    def test_used_is_the_snapshot_and_charges_keep_the_integral(self, session):
         """Two snapshots, different sizes: cumulative SUMs both,
         current reflects only the latest. They differ — that's the
         whole point of the new fields."""
@@ -156,8 +157,40 @@ class TestAllocationDiskCurrentFields:
             'account': account, 'session': session, 'include_adjustments': True,
         }
         out = schema.dump(alloc)
-        # Cumulative `used` sums charges over the allocation window: 1.0 + 2.0
-        assert out['used'] == pytest.approx(3.0)
-        # Current `used` is the latest snapshot only — 20 TiB.
+        # `used` is the latest snapshot (20 TiB), as on every other surface;
+        # the cumulative TiB-year integral (1.0 + 2.0) lives in charges_by_type.
+        assert out['used'] == pytest.approx(20.0)
         assert out['current_used_tib'] == pytest.approx(20.0)
-        assert out['current_used_tib'] != out['used']
+        assert out['percent_used'] == pytest.approx(out['current_pct_used'])
+        assert out['charges_by_type']['disk'] == pytest.approx(3.0)
+
+
+    def test_parent_reads_the_subtree_snapshot(self, session):
+        """A parent whose child holds the bytes reports the child's
+        occupancy, as the dashboards do (NMMM0003-shaped)."""
+        user, parent_project, parent_account, parent_alloc = _disk_alloc(session, amount_tib=100.0)
+        child_project = make_project(session, lead=user, parent=parent_project)
+        child_account = make_account(session, project=child_project,
+                                     resource=parent_account.resource)
+        snap_date = next_date("disk_snap")
+        parent_alloc.start_date = datetime(snap_date.year - 1, 1, 1)
+        parent_alloc.end_date = datetime(snap_date.year + 1, 1, 1)
+        session.flush()
+        _ensure_status(session, snap_date)
+        session.add(DiskChargeSummary(
+            activity_date=snap_date, user_id=user.user_id,
+            account_id=child_account.account_id, username=user.username,
+            bytes=30 * BYTES_PER_TIB, terabyte_years=0.1, charges=0.1,
+            number_of_files=1,
+        ))
+        session.flush()
+        _mark_current(session, snap_date)
+
+        schema = AllocationWithUsageSchema()
+        schema.context = {'account': parent_account, 'session': session,
+                          'include_adjustments': True}
+        out = schema.dump(parent_alloc)
+        assert out['used'] == pytest.approx(30.0)
+        assert out['current_used_tib'] == pytest.approx(30.0)
+        assert out['percent_used'] == pytest.approx(30.0)
+        assert out['remaining'] == pytest.approx(70.0)

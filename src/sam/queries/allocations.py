@@ -951,6 +951,38 @@ def _aggregate_usage_to_total(per_project_usage: List[Dict]) -> List[Dict]:
     return result
 
 
+def _read_model_rows(session, all_allocations, active_at, include_adjustments,
+                     resource_name):
+    """Read-model rows covering every allocation, or None for the live path.
+
+    Live when the gate refuses, when ``include_adjustments`` is off (a row's
+    pool figure bakes the root's adjustments in), when any allocation lacks
+    a row, or when resources are merged into a TOTAL row that holds an
+    inheriting DISK allocation (only there is its pool figure, which the row
+    stores as the snapshot override, observable). Lazy import:
+    ``allocation_state`` imports the dashboard builder this module's callers
+    share.
+    """
+    if not include_adjustments or not all_allocations:
+        return None
+    from sam.queries.allocation_state import fresh_state
+    # `_fetch_all_allocations` rows: (alloc, res_name, res_type, facility,
+    # alloc_type, projcode, project, account).
+    resource_ids = {t[7].resource_id for t in all_allocations}
+    project_ids = {t[6].project_id for t in all_allocations}
+    rows = fresh_state(session, resource_ids=resource_ids, project_ids=project_ids,
+                       as_of=active_at).rows
+    if rows is None:
+        return None
+    for t in all_allocations:
+        alloc, res_type = t[0], t[2]
+        if alloc.allocation_id not in rows:
+            return None
+        if resource_name == "TOTAL" and res_type == 'DISK' and alloc.is_inheriting:
+            return None
+    return rows
+
+
 def get_allocation_summary_with_usage(
     session: Session,
     resource_name: Optional[Union[str, List[str]]] = None,
@@ -1042,6 +1074,12 @@ def get_allocation_summary_with_usage(
             else:
                 account_infos.append(info)
 
+    # Read-model short-circuit (docs/plans/READ_MODEL.md): rows the hourly task
+    # wrote stand in for the batched rollups, the root anchors and the disk
+    # snapshot walk when the gate says the scope is fresh.
+    state = _read_model_rows(session, all_allocations, active_at, include_adjustments,
+                             resource_name)
+
     # Tree-aware augmentation: for inheriting allocations, the per-allocation
     # subtree charge does NOT match what users see in the project card —
     # there `used` reflects the ROOT allocation's full subtree (the actual
@@ -1049,8 +1087,10 @@ def get_allocation_summary_with_usage(
     # we can batch a parallel set of subtree queries keyed by ('root',
     # allocation_id). Cheap when the row set is fully non-inheriting (no
     # extra entries appended).
-    root_anchor_by_alloc_id: Dict[int, 'Project'] = {}
+    root_projcode_by_alloc_id: Dict[int, str] = {}
     for alloc_list in alloc_by_key.values():
+        if state is not None:
+            break
         for alloc, res_name, res_type, project, account in alloc_list:
             if not alloc.is_inheriting:
                 continue
@@ -1061,7 +1101,7 @@ def get_allocation_summary_with_usage(
                 continue
             if not (root_project.tree_root and root_project.tree_left and root_project.tree_right):
                 continue
-            root_anchor_by_alloc_id[alloc.allocation_id] = root_project
+            root_projcode_by_alloc_id[alloc.allocation_id] = root_project.projcode
             subtree_infos.append({
                 'key':           ('root', alloc.allocation_id),
                 'resource_type': res_type,
@@ -1076,10 +1116,21 @@ def get_allocation_summary_with_usage(
 
     # Batch compute all charges in O(charge_models × date_groups) SQL queries
     all_charges: Dict[Any, Dict] = {}
-    if subtree_infos:
-        all_charges.update(Project.batch_get_subtree_charges(session, subtree_infos, include_adjustments))
-    if account_infos:
-        all_charges.update(Project.batch_get_account_charges(session, account_infos, include_adjustments))
+    if state is not None:
+        for alloc, res_name, res_type, project, account in (
+                t for group in alloc_by_key.values() for t in group):
+            row = state[alloc.allocation_id]
+            all_charges[alloc.allocation_id] = {'charges_by_type': dict(row.charges_by_type),
+                                                'adjustment': row.adjustments}
+            if alloc.is_inheriting and row.root_projcode is not None:
+                all_charges[('root', alloc.allocation_id)] = {
+                    'charges_by_type': {'pool': row.used}, 'adjustment': 0.0}
+                root_projcode_by_alloc_id[alloc.allocation_id] = row.root_projcode
+    else:
+        if subtree_infos:
+            all_charges.update(Project.batch_get_subtree_charges(session, subtree_infos, include_adjustments))
+        if account_infos:
+            all_charges.update(Project.batch_get_account_charges(session, account_infos, include_adjustments))
 
     # Bulk-resolve disk capacity for every all-disk row at once. The
     # `get_subtree_disk_capacity` walk is expensive (per-account snapshot
@@ -1100,7 +1151,15 @@ def get_allocation_summary_with_usage(
             only_resource = next(iter(unique_resources))
             disk_capacity_pairs.append((only_project, only_resource))
     from sam.queries.disk_usage import _EMPTY_CAP
-    if disk_capacity_pairs:
+    if state is not None:
+        disk_caps = {}
+        for alloc, res_name, res_type, project, account in (
+                t for group in alloc_by_key.values() for t in group):
+            row = state[alloc.allocation_id]
+            if res_type == 'DISK' and row.activity_date is not None:
+                disk_caps[(project.project_id, res_name)] = {
+                    'used_tib': row.used, 'activity_date': row.activity_date}
+    elif disk_capacity_pairs:
         from sam.queries.disk_usage import bulk_get_subtree_disk_capacity
         disk_caps = bulk_get_subtree_disk_capacity(session, disk_capacity_pairs)
     else:
@@ -1143,9 +1202,9 @@ def get_allocation_summary_with_usage(
                 tree_used += sum(root_data['charges_by_type'].values())
                 if include_adjustments:
                     tree_used += root_data['adjustment']
-                root_proj = root_anchor_by_alloc_id.get(alloc.allocation_id)
-                if root_proj is not None:
-                    root_projcodes.add(root_proj.projcode)
+                root_code = root_projcode_by_alloc_id.get(alloc.allocation_id)
+                if root_code is not None:
+                    root_projcodes.add(root_code)
             else:
                 all_inheriting = False
                 # Non-inheriting allocation contributes equally to self/tree.

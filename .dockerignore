@@ -17,6 +17,8 @@ htmlcov/
 # the build-context root, not subdirectories — this is the reason
 # the 223 MB dump dir was previously slipping into the image.
 **/*.sql
+# The DDL scripts are small and the test-DB bootstrap needs them in the image.
+!scripts/sql/*.sql
 **/*.sql.xz
 **/*.dump
 .git/

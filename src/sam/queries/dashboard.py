@@ -146,6 +146,13 @@ def _build_project_resources_data(project: Project,
     Returns:
         List of resource dictionaries with usage details
     """
+    # Read-model short-circuit: the batched builder consults the table, so at
+    # N=1 it is the cheap path whenever the gate says the scope is fresh.
+    if _read_model_rows(project.session, [project.project_id], None, active_at) is not None:
+        return _build_user_projects_resources_batched(
+            project.session, [project], active_at=active_at,
+        ).get(project.project_id, [])
+
     resources = []
     # Note: disk-capacity overrides for DISK rows are applied inside
     # get_detailed_allocation_usage() — no per-row override needed here.
@@ -254,6 +261,23 @@ def _apply_disk_capacity_overrides(
     resource_dict['remaining'] = allocated - used_tib
     resource_dict['percent_used'] = pct
     resource_dict['activity_date'] = cap['activity_date']
+
+
+def _read_model_rows(session: Session, project_ids, allocation_ids,
+                     active_at: Optional[datetime]):
+    """Read-model rows for the projects, or None when the live path must run.
+
+    None when the gate refuses (flag off, stale, structural change, historical
+    ``active_at``) or when any of ``allocation_ids`` has no row. Lazy import:
+    ``allocation_state`` imports this module for the projection.
+    """
+    from sam.queries.allocation_state import fresh_state
+    rows = fresh_state(session, project_ids=list(project_ids), as_of=active_at).rows
+    if rows is None:
+        return None
+    if allocation_ids is not None and not set(allocation_ids) <= rows.keys():
+        return None
+    return rows
 
 
 def _select_query_alloc(account: Account, now: datetime):
@@ -468,18 +492,35 @@ def _build_user_projects_resources_batched(
             'end_date':      end_date,
         })
 
+    # Read-model short-circuit (docs/plans/READ_MODEL.md): when the gate says
+    # every chosen allocation has a fresh row, phases 4/5 and the disk override
+    # read the rows the hourly task wrote from this same builder.
+    state = _read_model_rows(
+        session, project_ids,
+        [qa.allocation_id for _p, _a, qa, _rt, _ed in chosen.values()], active_at,
+    )
+
     # Phase 4: ONE batched fetch per partition (subtree / leaf). Each call
     # issues N_resource_types x N_charge_models queries -- typically 5-20 for
     # the whole user, regardless of project count.
     raw_charges: Dict[Any, Dict] = {}
-    if subtree_infos:
-        raw_charges.update(
-            Project.batch_get_subtree_charges(session, subtree_infos, include_adjustments=True)
-        )
-    if account_infos:
-        raw_charges.update(
-            Project.batch_get_account_charges(session, account_infos, include_adjustments=True)
-        )
+    if state is not None:
+        for key, (_p, _a, query_alloc, _rt, _ed) in chosen.items():
+            row = state[query_alloc.allocation_id]
+            raw_charges[key] = {'charges_by_type': dict(row.charges_by_type),
+                                'adjustment': row.adjustments}
+            if query_alloc.is_inheriting and row.root_projcode is not None:
+                raw_charges[('root', key)] = {'charges_by_type': {'pool': row.used},
+                                              'adjustment': 0.0}
+    else:
+        if subtree_infos:
+            raw_charges.update(
+                Project.batch_get_subtree_charges(session, subtree_infos, include_adjustments=True)
+            )
+        if account_infos:
+            raw_charges.update(
+                Project.batch_get_account_charges(session, account_infos, include_adjustments=True)
+            )
 
     # Phase 5: rolling-usage gate, the same rule `_build_project_resources_data`
     # applies so both paths agree. The template gates rendering on
@@ -487,6 +528,8 @@ def _build_user_projects_resources_batched(
     # ~8-9 queries per project, ~93 queries and ~1.2 s for one test user.
     rolling_usage_by_projcode: Dict[str, Dict] = {}
     for project in projects:
+        if state is not None:
+            break
         needs_rolling = any(
             (acct.first_threshold is not None or acct.second_threshold is not None)
             for acct in accounts_by_project.get(project.project_id, [])
@@ -511,7 +554,15 @@ def _build_user_projects_resources_batched(
         for project, account, _qa, rtype, _ed in chosen.values()
         if rtype == 'DISK'
     ]
-    if disk_pairs:
+    if state is not None:
+        disk_caps = {}
+        for project, account, query_alloc, rtype, _ed in chosen.values():
+            row = state[query_alloc.allocation_id]
+            if rtype == 'DISK' and row.activity_date is not None:
+                disk_caps[(project.project_id, account.resource.resource_name)] = {
+                    'used_tib': row.used, 'activity_date': row.activity_date,
+                }
+    elif disk_pairs:
         from sam.queries.disk_usage import bulk_get_subtree_disk_capacity
         disk_caps = bulk_get_subtree_disk_capacity(session, disk_pairs)
     else:
@@ -573,7 +624,11 @@ def _build_user_projects_resources_batched(
                 elapsed_pct = 0
                 bar_state = 'no-duration'
 
-        rwin = rolling_usage_by_projcode.get(project.projcode, {}).get(resource_name, {}).get('windows', {})
+        if state is not None:
+            stored = state[query_alloc.allocation_id].rolling_windows or {}
+            rwin = {30: stored.get('30'), 90: stored.get('90')}
+        else:
+            rwin = rolling_usage_by_projcode.get(project.projcode, {}).get(resource_name, {}).get('windows', {})
 
         resource_dict = {
             'resource_name':        resource_name,

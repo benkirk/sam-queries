@@ -33,6 +33,8 @@ from typing import Any, Dict, Optional
 from flask import Flask, current_app
 from sqlalchemy import event
 
+from webapp.request_timing import attach_query_timing
+
 
 class PluginExtension:
     """Base for a webapp extension wrapping one optional SAM plugin.
@@ -118,6 +120,20 @@ class PluginExtension:
     def get_engines(self, app: Optional[Flask] = None) -> Dict[str, Any]:
         """Return this plugin's engines keyed by whatever it keys them by."""
         return self._state(app).get('engines') or {}
+
+    # Per-request timing
+
+    def instrument_engine(self, engine) -> None:
+        """Count this engine's query time into the request line's ``pgdb=``.
+
+        Fail-soft: a plugin engine that cannot take the listeners stays
+        usable, just unmeasured.
+        """
+        try:
+            attach_query_timing(engine, 'pgdb')
+        except Exception as exc:
+            self.logger.warning('%s: query timing not attached: %s',
+                                self.log_label, exc)
 
     # Connection tagging
 

@@ -178,6 +178,8 @@ from .summaries.archive_summaries import (
     ArchiveChargeSummaryStatus
 )
 
+from .summaries.allocation_state import AccountAllocationState
+
 # 9. Integration and security
 # XRAS table models (actual tables, not views)
 from .integration.xras import (
@@ -272,6 +274,7 @@ __all__ = [
     'DatasetActivity',
     # Summaries
     'CompChargeSummary', 'CompChargeSummaryStatus',
+    'AccountAllocationState',
     'HPCChargeSummary', 'HPCChargeSummaryStatus',
     'DavChargeSummary', 'DavChargeSummaryStatus',
     'DiskChargeSummary', 'DiskChargeSummaryStatus',
