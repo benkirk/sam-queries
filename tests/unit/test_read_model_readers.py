@@ -134,9 +134,18 @@ class TestDashboards:
 
 class TestAllocationSummary:
 
+    @staticmethod
+    def _key(row):
+        # The summary GROUPs but never ORDERs, so two calls may return rows
+        # in different orders; compare by the grouping tuple, not position.
+        return tuple(row.get(k) for k in ('resource', 'facility', 'allocation_type', 'projcode'))
+
     def _rows_equal(self, live, served):
         assert len(live) == len(served)
-        for a, b in zip(live, served):
+        by_key = {self._key(r): r for r in served}
+        assert len(by_key) == len(served), "grouping tuple is not unique"
+        for a in live:
+            b = by_key[self._key(a)]
             assert a.keys() == b.keys(), a.get('projcode')
             for k, v in a.items():
                 if isinstance(v, float):
