@@ -30,54 +30,32 @@ from datetime import datetime
 from typing import Dict, List
 
 import sqlalchemy
-from sqlalchemy import event
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(_HERE, '..', '..', 'src'))
+_REPO = os.path.join(_HERE, '..', '..')
+sys.path.insert(0, os.path.join(_REPO, 'src'))
+sys.path.insert(0, _REPO)   # for tests.perf._query_count (canonical SQLStats)
 
 from webapp.run import create_app
 from webapp.extensions import db
 from flask import render_template
+from tests.perf._query_count import SQLStats
 
 
 # ---------------------------------------------------------------------------
-# SQL instrumentation (same pattern as profile_allocations.py)
+# SQL instrumentation — canonical SQLStats (tests/perf), which shares one
+# cursor-timing primitive with the request profiler (webapp.request_timing).
 # ---------------------------------------------------------------------------
 
-class _SQLStats:
-    def __init__(self):
-        self._t: Dict[int, float] = {}
-        self.reset()
-
-    def reset(self):
-        self.count = 0
-        self.total_time = 0.0
-        self.slowest: List[tuple] = []
-        self._t.clear()
-
-    def before(self, conn, cursor, statement, parameters, context, executemany):
-        self._t[id(conn)] = time.perf_counter()
-
-    def after(self, conn, cursor, statement, parameters, context, executemany):
-        elapsed = time.perf_counter() - self._t.pop(id(conn), time.perf_counter())
-        self.count += 1
-        self.total_time += elapsed
-        self.slowest.append((elapsed, statement.strip()[:140]))
-        self.slowest.sort(reverse=True)
-        self.slowest = self.slowest[:10]
-
-
-_sql = _SQLStats()
+_sql = SQLStats()
 
 
 def _attach(engine):
-    event.listen(engine, 'before_cursor_execute', _sql.before)
-    event.listen(engine, 'after_cursor_execute',  _sql.after)
+    _sql.attach(engine)
 
 
 def _detach(engine):
-    event.remove(engine, 'before_cursor_execute', _sql.before)
-    event.remove(engine, 'after_cursor_execute',  _sql.after)
+    _sql.detach(engine)
 
 
 @contextmanager

@@ -4,7 +4,6 @@ import re
 import socket
 import sys
 import uuid
-import time
 from datetime import datetime
 
 # Disarm a module-name shadow, BEFORE any project import.
@@ -177,7 +176,8 @@ def create_app(*, config_overrides: dict | None = None):
     # Initialize db with app
     db.init_app(app)
 
-    # Per-request DB-time accumulation (db=/q= on the request log line).
+    # Per-request timing, attributed per logical database (sam/status/... on the
+    # request log line). See webapp.request_timing.
     from webapp.request_timing import init_request_timing
     init_request_timing(app, db)
 
@@ -250,25 +250,23 @@ def create_app(*, config_overrides: dict | None = None):
     @app.before_request
     def _set_request_id():
         from flask import g, request
-        g.request_id    = request.headers.get('X-Request-ID', str(uuid.uuid4()))
-        g.request_start = time.monotonic()
-        g.cpu_start     = time.thread_time()   # per-thread CPU; gthread = 1 thread/request
-        g.db_ms         = 0.0
-        g.db_queries    = 0
-        g.pgdb_ms       = 0.0   # plugin engines (job-history / fs-scans on CNPG)
-        g.pgdb_queries  = 0
+        from webapp.request_timing import RequestProfile, upstream_wait_ms
+        g.request_id = request.headers.get('X-Request-ID', str(uuid.uuid4()))
+        profile = RequestProfile.start()
+        profile.set_wait(upstream_wait_ms(request))
 
     @app.after_request
     def _log_request(response):
         from flask import g, request
-        # An earlier before_request hook (e.g. CSRF rejection) can abort the
-        # request before _set_request_id runs — fall back gracefully.
-        start = g.get('request_start')
-        elapsed_ms = round((time.monotonic() - start) * 1000, 1) if start else 0.0
-        cpu_start = g.get('cpu_start')
-        cpu_ms = round((time.thread_time() - cpu_start) * 1000, 1) if cpu_start is not None else 0.0
         request_id = g.get('request_id', request.headers.get('X-Request-ID', '-'))
         response.headers['X-Request-ID'] = request_id
+        # An earlier before_request hook (e.g. CSRF rejection) can abort before
+        # _set_request_id runs, leaving no profile — nothing to log then.
+        profile = g.get('request_profile')
+        if profile is None:
+            return response
+        total_ms = profile.total_ms()
+        fields = profile.render_fields()   # ONE formatter for both lines
         # Healthcheck probes fire every 10s — log only when they fail.
         is_health_probe = (
             _HEALTH_PATH_RE.match(request.path)
@@ -276,21 +274,16 @@ def create_app(*, config_overrides: dict | None = None):
         )
         if not is_health_probe:
             app.logger.info(
-                '%s %s → %s  (%.1f ms  db=%.1fms cpu=%.1fms pgdb=%.1fms q=%d pq=%d)  rid=%s',
+                '%s %s → %s  (%.1f ms %s)  rid=%s',
                 request.method, request.path, response.status_code,
-                elapsed_ms, g.get('db_ms', 0.0), cpu_ms, g.get('pgdb_ms', 0.0),
-                g.get('db_queries', 0), g.get('pgdb_queries', 0), request_id,
+                total_ms, fields, request_id,
             )
-        if elapsed_ms > 5000:
-            # db=/cpu=/q= appended at the END so the watch's method/path parse
-            # (cirrus_watch.sh) is preserved while the split stays available.
-            # total ~= cpu (compute) + db (SAM/MySQL wait) + pgdb (plugin CNPG wait)
-            # + rest (GIL/pool wait).
+        if total_ms > 5000:
+            # Fields stay AFTER the method/path so the watch's path parse
+            # (cirrus_watch.sh) is preserved. rest = total - cpu - Σdb - pool - wait.
             app.logger.warning(
-                'Slow request: %.1f ms  %s %s  (db=%.1fms cpu=%.1fms pgdb=%.1fms q=%d pq=%d)',
-                elapsed_ms, request.method, request.path,
-                g.get('db_ms', 0.0), cpu_ms, g.get('pgdb_ms', 0.0),
-                g.get('db_queries', 0), g.get('pgdb_queries', 0),
+                'Slow request: %.1f ms  %s %s  (%s)',
+                total_ms, request.method, request.path, fields,
             )
         return response
     # =========================================================================

@@ -1,9 +1,11 @@
-"""Per-request DB-time instrumentation (webapp.request_timing).
+"""Per-request timing (webapp.request_timing), attributed per logical database.
 
-Verifies the request log line carries `db=`/`q=` (SAM engine) and `pgdb=`/`pq=`
-(plugin engines), that the two buckets do not bleed into each other, that both
-plugin loaders instrument what they warm, and that the cursor listener is a
-no-op outside a Flask request context (the CLI/task guard).
+Verifies the request log line carries ``cpu=`` and one ``<label>=Xms/Nq`` per
+database TOUCHED (sam / status / jobhistory / fsscans), that buckets do not bleed
+into each other, that the plugin loaders label what they warm, the
+``render_fields`` format contract (the single formatter for both log lines), and
+that the cursor listener is a no-op outside a Flask request context (the CLI/task
+guard).
 """
 
 import logging
@@ -13,7 +15,11 @@ from types import SimpleNamespace
 from flask import Flask, g
 from sqlalchemy import create_engine, text
 
-from webapp.request_timing import attach_query_timing, instrumented_bucket
+from webapp.request_timing import (
+    RequestProfile,
+    attach_query_timing,
+    instrumented_label,
+)
 
 
 class _Capture(logging.Handler):
@@ -25,8 +31,8 @@ class _Capture(logging.Handler):
         self.messages.append(record.getMessage())
 
 
-class TestRequestDbTiming:
-    def test_log_line_carries_db_time_and_query_count(self, app, auth_client):
+class TestRequestTimingLine:
+    def test_log_line_carries_cpu_and_sam_query_time(self, app, auth_client):
         # app.logger has propagate=False, so attach a handler directly.
         cap = _Capture()
         app.logger.addHandler(cap)
@@ -39,31 +45,40 @@ class TestRequestDbTiming:
         assert resp.status_code == 200
         line = next((m for m in cap.messages if '/allocations/projects' in m), None)
         assert line is not None, f'no request log line captured: {cap.messages}'
-        assert 'db=' in line and 'cpu=' in line and 'pgdb=' in line, line
-        # The projects page issues real SAM queries; TestingConfig loads no plugin.
-        q = re.search(r' q=(\d+) pq=(\d+)', line)
-        assert q and int(q.group(1)) >= 1 and int(q.group(2)) == 0, line
+        assert 'cpu=' in line, line
+        # The projects page issues real SAM queries; TestingConfig loads no
+        # plugin, so the sam bucket is present with a count and no plugin bucket is.
+        m = re.search(r' sam=[0-9.]+ms/(\d+)q', line)
+        assert m and int(m.group(1)) >= 1, line
+        assert 'jobhistory=' not in line and 'fsscans=' not in line, line
 
     def test_query_outside_request_context_does_not_raise(self, app):
-        # after_cursor_execute guards on has_request_context(); a query in a bare
-        # app context (no request) must accumulate nothing and not raise.
+        # The cursor callback guards on RequestProfile.current(); a query in a
+        # bare app context (no request) must accumulate nothing and not raise.
         from webapp.extensions import db
         with app.app_context():
             assert db.session.execute(text('SELECT 1')).scalar() == 1
 
+    def test_sam_engine_is_labelled_sam(self, app):
+        from webapp.extensions import db
+        with app.app_context():
+            assert instrumented_label(db.engine) == 'sam'
 
-class TestPluginBucket:
-    def test_plugin_engine_time_lands_in_pgdb_not_db(self, app):
+
+class TestPerDatabaseBuckets:
+    def test_plugin_time_lands_in_its_label_not_sam(self, app):
         engine = create_engine('sqlite://')
-        attach_query_timing(engine, 'pgdb')
-        attach_query_timing(engine, 'pgdb')   # idempotent: no double count
+        attach_query_timing(engine, 'jobhistory')
+        attach_query_timing(engine, 'jobhistory')   # idempotent: no double count
         with app.test_request_context('/'):
+            RequestProfile.start()
             with engine.connect() as conn:
                 conn.execute(text('SELECT 1'))
-            assert g.get('pgdb_queries') == 1 and g.get('pgdb_ms') > 0
-            assert g.get('db_queries', 0) == 0 and g.get('db_ms', 0.0) == 0.0
+            profile = g.request_profile
+            assert profile.db['jobhistory'][1] == 1 and profile.db['jobhistory'][0] > 0
+            assert 'sam' not in profile.db
 
-    def test_job_history_loader_instruments_what_it_warms(self):
+    def test_job_history_loader_labels_what_it_warms(self):
         from webapp.jobs.session import JobHistoryExtension
         engine = create_engine('sqlite://')
         mod = SimpleNamespace(get_engine=lambda machine, pool_kwargs=None: engine)
@@ -71,9 +86,9 @@ class TestPluginBucket:
         flask_app.config['JOB_HISTORY_MACHINES'] = ['x']
         state = {'engines': {}}
         JobHistoryExtension()._warm(flask_app, mod, state)
-        assert state['enabled'] and instrumented_bucket(engine) == 'pgdb'
+        assert state['enabled'] and instrumented_label(engine) == 'jobhistory'
 
-    def test_fs_scans_loader_instruments_what_it_warms(self):
+    def test_fs_scans_loader_labels_what_it_warms(self):
         from webapp.disk_scans.session import FsScansExtension
         engine = create_engine('sqlite://')
         mod = SimpleNamespace(list_pg_schemas=lambda database=None: ['c1'],
@@ -81,4 +96,32 @@ class TestPluginBucket:
         flask_app = Flask('t')
         state = {'databases': {}}
         FsScansExtension()._warm(flask_app, mod, state)
-        assert state['enabled'] and instrumented_bucket(engine) == 'pgdb'
+        assert state['enabled'] and instrumented_label(engine) == 'fsscans'
+
+
+class TestRenderFieldsContract:
+    """``render_fields`` is the single formatter for both log lines — pin its shape."""
+
+    def test_touched_dbs_pool_and_wait_are_presence_gated(self, app):
+        with app.test_request_context('/'):
+            p = RequestProfile.start()
+            p.add_db('sam', 12.0)
+            p.add_db('sam', 8.0)
+            p.add_db('jobhistory', 30.0)
+            p.add_pool(5.0)
+            fields = p.render_fields()
+        assert fields.startswith('cpu=')
+        assert 'sam=20.0ms/2q' in fields
+        assert 'jobhistory=30.0ms/1q' in fields
+        assert 'pool=5.0ms' in fields
+        # wait was never set -> omitted; an untouched DB never appears.
+        assert 'wait=' not in fields
+        assert 'status=' not in fields and 'fsscans=' not in fields
+
+    def test_sam_orders_first(self, app):
+        with app.test_request_context('/'):
+            p = RequestProfile.start()
+            p.add_db('jobhistory', 1.0)
+            p.add_db('sam', 1.0)
+            fields = p.render_fields()
+        assert fields.index('sam=') < fields.index('jobhistory=')

@@ -44,6 +44,7 @@ class FsScansExtension(PluginExtension):
     ext_key = _EXT_KEY
     plugin = FS_SCANS
     log_label = 'fs_scans'
+    timing_label = 'fsscans'   # all collection engines roll up to one label
 
     def _init_state(self, state: Dict[str, Any]) -> None:
         # database -> {'collections': [str], 'engines': {collection: Engine}}.
