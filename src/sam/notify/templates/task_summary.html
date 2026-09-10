@@ -1,61 +1,22 @@
 {% extends "_email_base.html" %}
 
-{% block extra_styles %}
-        .headline {
-            background-color: #f5f5f5;
-            border-left: 4px solid #5cb85c;
-            padding: 10px 15px;
-            margin: 15px 0;
-        }
-        /* An aborted run is the one message that must not read like the
-           other 51 a year. Same shape, unmistakably different color. */
-        .headline.aborted {
-            background-color: #f8e6e6;
-            border-left-color: #d9534f;
-        }
-        table.counts,
-        table.rows {
-            border-collapse: collapse;
-            margin: 15px 0;
-            width: 100%;
-        }
-        table.counts th,
-        table.counts td,
-        table.rows th,
-        table.rows td {
-            border-bottom: 1px solid #ddd;
-            padding: 6px 10px;
-            text-align: left;
-        }
-        table.counts th,
-        table.rows th {
-            background-color: #f5f5f5;
-        }
-        td.num {
-            text-align: right;
-            font-variant-numeric: tabular-nums;
-        }
-        .failed {
-            color: #a94442;
-        }
-{% endblock %}
-
 {% block content %}
-    <div class="headline{% if aborted %} aborted{% endif %}">
+    {# Aborted runs get the distinct red box: a no-op run must never read like a normal one. #}
+    <div class="callout {% if aborted %}aborted{% else %}good{% endif %}">
         <strong>{{ task_name }}</strong> — {{ headline }}
         {% if aborted %}
         <p><strong>This run sent nothing.</strong> {{ abort_reason }}</p>
         {% endif %}
     </div>
 
-    <table class="counts">
+    <table class="data">
         <tr><th>Occurrence</th><td>{{ occurrence }}</td></tr>
         <tr><th>Window</th><td>{{ window_start }} to {{ window_end }}</td></tr>
         <tr><th>Milestones</th><td>{{ milestones | join(', ') }}</td></tr>
     </table>
 
     <h3>Counts</h3>
-    <table class="counts">
+    <table class="data">
         <tr><th>Selected</th><td class="num">{{ selected }}</td>
             <td>allocations matching the window</td></tr>
         <tr><th>Already notified</th><td class="num">{{ suppressed }}</td><td></td></tr>
@@ -69,7 +30,7 @@
 
     {% if per_project %}
     <h3>Recipients by project</h3>
-    <table class="rows">
+    <table class="data">
         <tr><th>Project</th><th>Recipients</th></tr>
         {% for row in per_project %}
         <tr><td>{{ row.projcode }}</td><td class="num">{{ row.count }}</td></tr>
@@ -79,7 +40,7 @@
 
     {% if failures %}
     <h3 class="failed">Failures</h3>
-    <table class="rows">
+    <table class="data">
         <tr><th>Recipient</th><th>Detail</th></tr>
         {% for f in failures %}
         <tr><td>{{ f.recipient }}</td><td>{{ f.detail }}</td></tr>

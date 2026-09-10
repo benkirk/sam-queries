@@ -64,23 +64,29 @@ warns on both, comparing the sha to the last tick.
 `load:` line — `dbload:` (`threads_running` / `conns` / `slow_q` Δ from the
 read-only `hpc-reader` `SHOW GLOBAL STATUS`) and `podcpu:` (`kubectl top`,
 sum/max millicores across the webapp pods). On a slow (>5s) window the script also
-prints a `↳ split` computed from the per-request `db=`/`cpu=`/`pgdb=` figures
-the app logs: `total ~= cpu (compute/GIL) + db (SAM/MySQL wait) + pgdb (plugin
-CNPG wait: job-history, fs-scans) + rest (GIL/pool wait)`. Read it:
+prints a `↳ split` from the per-request tokens the app logs (`cpu=`, one
+`<db>=Xms/Nq` per database TOUCHED — `sam` / `status` / `jobhistory` / `fsscans`
+— and `pool=` when non-zero): `total ~= cpu (compute/GIL) + Σ per-DB query wait
++ pool (connection checkout) + rest (GIL/pool-not-attributed)`. The split names
+the dominant database. Read it:
 
-- **large `db` share** → SAM/MySQL-bound (the query itself).
-- **large `pgdb` share** → the plugin's Postgres (CNPG) — a jobs or fs-scans
-  drill-down; the lever is on the CNPG side, not SAM's.
+- **a named DB dominates** (e.g. `jobhistory≈99%`, `sam≈97%`) → that database is
+  the cost. The lever is on that store: `jobhistory` / `fsscans` are the plugin
+  CNPG databases, `sam` is the primary application DB, `status` is system_status
+  — not "Postgres" generically.
 - **large `cpu` share** → app compute — matplotlib render / Python aggregation
   (the GIL-bound path); fix is warming / render-trim.
-- **`total` ≫ `db + pgdb + cpu`** → the request was *waiting* (GIL contention
-  or pool checkout), not computing → the sizing lever (workers/pool/HPA).
+- **large `pool` share** → connection-checkout wait (a `/health/ready` stall
+  reads like this) → the pool/sizing lever.
+- **`rest` dominates** → the request was *waiting* (GIL contention or pool
+  checkout not otherwise attributed), not computing → the sizing lever
+  (workers/pool/HPA).
 
-⚠️ `db=`/`pgdb=`/`cpu=` on the `↳ split` are **per-request accurate**; `dbload:`/`podcpu:`
-are **point-in-time snapshots at tick time** and may not coincide with the slow
+⚠️ The `↳ split` tokens are **per-request accurate**; `dbload:`/`podcpu:` are
+**point-in-time snapshots at tick time** and may not coincide with the slow
 request's moment — trust the `split` for attribution, treat the snapshots as
-ambient context. (`db=`/`cpu=` overlap slightly — result-parsing CPU counts in
-both — so the split is approximate.)
+ambient context. (`cpu` and the per-DB figures overlap slightly — result-parsing
+CPU counts in both — so the split is approximate.)
 
 ## 3. The XRAS action_log line
 

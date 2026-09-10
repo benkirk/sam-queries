@@ -14,11 +14,12 @@ Usage in tests (via the ``count_queries`` fixture in conftest.py)::
 """
 
 import re
-import time
 from contextlib import contextmanager
 from typing import Dict, List
 
 from sqlalchemy import event
+
+from webapp.request_timing import timed_cursor_listeners
 
 _TABLE_RE = re.compile(r'\bFROM\s+([a-z_][a-z0-9_]*)', re.IGNORECASE)
 
@@ -35,7 +36,7 @@ class SQLStats:
     """Accumulates query count, total time, per-table breakdown, and slowest queries."""
 
     def __init__(self):
-        self._t: Dict[int, float] = {}
+        self._listeners = None   # (before, after) from timed_cursor_listeners
         self.reset()
 
     def reset(self):
@@ -43,13 +44,9 @@ class SQLStats:
         self.total_time = 0.0
         self.slowest: List[tuple] = []
         self.by_table: Dict[str, List[float]] = {}
-        self._t.clear()
 
-    def before(self, conn, cursor, statement, parameters, context, executemany):
-        self._t[id(conn)] = time.perf_counter()
-
-    def after(self, conn, cursor, statement, parameters, context, executemany):
-        elapsed = time.perf_counter() - self._t.pop(id(conn), time.perf_counter())
+    def _record(self, elapsed_ms, statement, executemany):
+        elapsed = elapsed_ms / 1000.0
         self.count += 1
         self.total_time += elapsed
         self.slowest.append((elapsed, statement.strip()[:140]))
@@ -64,14 +61,17 @@ class SQLStats:
         self.by_table.setdefault(table, []).append(elapsed)
 
     def attach(self, engine):
-        """Start listening on *engine*."""
-        event.listen(engine, 'before_cursor_execute', self.before)
-        event.listen(engine, 'after_cursor_execute', self.after)
+        """Start listening on *engine* (via the shared cursor primitive)."""
+        self._listeners = timed_cursor_listeners(self._record)
+        before, after = self._listeners
+        event.listen(engine, 'before_cursor_execute', before)
+        event.listen(engine, 'after_cursor_execute', after)
 
     def detach(self, engine):
         """Stop listening on *engine*."""
-        event.remove(engine, 'before_cursor_execute', self.before)
-        event.remove(engine, 'after_cursor_execute', self.after)
+        before, after = self._listeners
+        event.remove(engine, 'before_cursor_execute', before)
+        event.remove(engine, 'after_cursor_execute', after)
 
     def summary(self) -> str:
         """One-line human-readable summary."""

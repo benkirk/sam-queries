@@ -1,24 +1,9 @@
 {% extends "_email_base.html" %}
 
-{% block extra_styles %}
-        .project-info {
-            background-color: #f5f5f5;
-            border-left: 4px solid #d9534f;
-            padding: 10px 15px;
-            margin: 15px 0;
-        }
-        .grace-period {
-            background-color: #fff3cd;
-            border-left: 4px solid #ffc107;
-            padding: 10px 15px;
-            margin: 15px 0;
-        }
-{% endblock %}
-
 {% block content %}
     <p>Dear {{ recipient_name }},</p>
 
-    <div class="project-info">
+    <div class="callout expiring">
         NCAR/Wyoming Computing Project <strong>{{ project_code }}</strong> - "{{ project_title }}" is expiring on <strong>{{ latest_expiration }}</strong>.
     </div>
 
@@ -27,7 +12,7 @@
     <h3>Project Data Removal Timeline</h3>
     <p>Expired projects have <strong>90 days after expiration</strong> for data retrieval, after which all project data is subject to removal from NCAR systems. You therefore must transfer any required data to your home institution during this 90 day grace period.</p>
 
-    <div class="grace-period">
+    <div class="callout grace">
         Your 90 day post-expiry grace period will end on <strong>{{ grace_expiration }}</strong>, after which you will <strong>NOT</strong> have further access to project data and it will be removed.
     </div>
 

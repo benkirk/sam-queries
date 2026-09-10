@@ -256,6 +256,26 @@ class TestKillSwitch:
         assert row.state == 'skipped'
         assert '"disabled"' in row.detail
 
+    def test_dispatched_twice_in_one_slot_records_one_row_no_second_insert(
+            self, ledger, rows, monkeypatch):
+        # A disabled task dispatched hourly stays on one occurrence off-window;
+        # the repeat must be a no-op that never re-attempts the INSERT (else
+        # Postgres logs a 23505 per hour). See runner.py step 1.
+        task = make_task('cleanup')          # Daily(2,15): due once at NOW's day
+        inserts = []
+        real_record_skip = ledger.record_skip
+        monkeypatch.setattr(ledger, 'record_skip',
+                            lambda *a, **k: inserts.append(1) or real_record_skip(*a, **k))
+
+        env = {'SAM_TASKS_DISABLED': 'cleanup'}
+        first = run_due(now=NOW, ledger=ledger, registry=registry_of(task), env=env)
+        second = run_due(now=NOW, ledger=ledger, registry=registry_of(task), env=env)
+
+        assert first['counts'] == {'skipped': 1}
+        assert second['counts'] == {'already_claimed': 1}
+        assert len(rows()) == 1            # no duplicate row
+        assert len(inserts) == 1           # the repeat sent no INSERT at all
+
     def test_only_the_named_task_is_disabled(self, ledger):
         a = make_task('a')
         b = make_task('b')

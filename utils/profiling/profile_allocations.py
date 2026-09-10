@@ -36,17 +36,20 @@ from datetime import datetime
 from typing import Dict, List
 
 import sqlalchemy
-from sqlalchemy import event
 
 # ---------------------------------------------------------------------------
 # Path setup — script lives at project root, src/ is the package root
 # ---------------------------------------------------------------------------
 _HERE = os.path.dirname(os.path.abspath(__file__))
+_REPO = os.path.join(_HERE, '..', '..')
 sys.path.insert(0, os.path.join(_HERE, 'src'))
+sys.path.insert(0, os.path.join(_REPO, 'src'))
+sys.path.insert(0, _REPO)   # for tests.perf._query_count (canonical SQLStats)
 
 # Flask app
 from webapp.run import create_app
 from webapp.extensions import db
+from tests.perf._query_count import SQLStats
 
 # Query functions (called directly, bypassing @cache.cached on the route)
 from sam.queries.allocations import get_allocation_summary, get_allocation_summary_with_usage, _aggregate_usage_to_total
@@ -77,46 +80,19 @@ except ImportError:
 
 
 # ---------------------------------------------------------------------------
-# SQL instrumentation
+# SQL instrumentation — canonical SQLStats (tests/perf), which shares one
+# cursor-timing primitive with the request profiler (webapp.request_timing).
 # ---------------------------------------------------------------------------
 
-class _SQLStats:
-    """Accumulate SQL query count and wall-clock time via Engine cursor events."""
-
-    def __init__(self):
-        self._t: Dict[int, float] = {}
-        self.reset()
-
-    def reset(self):
-        self.count = 0
-        self.total_time = 0.0
-        self.slowest: List[tuple] = []   # [(elapsed, sql_fragment), ...]
-        self._t.clear()
-
-    # SQLAlchemy event handlers -------------------------------------------
-    def before(self, conn, cursor, statement, parameters, context, executemany):
-        self._t[id(conn)] = time.perf_counter()
-
-    def after(self, conn, cursor, statement, parameters, context, executemany):
-        elapsed = time.perf_counter() - self._t.pop(id(conn), time.perf_counter())
-        self.count += 1
-        self.total_time += elapsed
-        self.slowest.append((elapsed, statement.strip()[:140]))
-        self.slowest.sort(reverse=True)
-        self.slowest = self.slowest[:10]
-
-
-_sql = _SQLStats()
+_sql = SQLStats()
 
 
 def _attach(engine):
-    event.listen(engine, 'before_cursor_execute', _sql.before)
-    event.listen(engine, 'after_cursor_execute',  _sql.after)
+    _sql.attach(engine)
 
 
 def _detach(engine):
-    event.remove(engine, 'before_cursor_execute', _sql.before)
-    event.remove(engine, 'after_cursor_execute',  _sql.after)
+    _sql.detach(engine)
 
 
 # ---------------------------------------------------------------------------

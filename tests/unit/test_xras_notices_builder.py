@@ -252,27 +252,31 @@ class TestTheIncrementsGoToTheRightSlot:
 
 
 class TestTheApproverComment:
-    """The note rides the context; the templates do not render it yet (the
-    template PR flips the last assertion)."""
+    """The reviewer's note renders on the lead's (PI's) message only; a non-lead
+    recipient's copy never carries it — `build_xras_messages` gates on role."""
 
     NOTE = 'Your extension is approved. Please verify your balance.'
 
-    def _message(self, session, project, *, note, service='extend',
-                 action_type='Extension'):
+    LEAD_AND_ADMIN = [
+        {'name': 'A PI', 'email': 'pi@example.edu', 'role': 'lead'},
+        {'name': 'An Admin', 'email': 'admin@example.edu', 'role': 'admin'},
+    ]
+
+    def _messages(self, session, project, *, note, service='extend',
+                  action_type='Extension', people=PEOPLE):
         action = make_xras_action(
             session, status='processed', action_type=action_type, service=service,
             request_number=project.projcode, projcode_result=project.projcode,
             payload=json.dumps({'actionType': action_type}))
-        (message,) = build_xras_messages(session, project, PEOPLE, action=action,
-                                         requested_by='t', approver_comment=note)
-        return message
+        return build_xras_messages(session, project, people, action=action,
+                                   requested_by='t', approver_comment=note)
 
     def test_the_context_carries_the_note(self, session, project):
-        message = self._message(session, project, note=self.NOTE)
+        (message,) = self._messages(session, project, note=self.NOTE)
         assert message.context['approver_comment'] == self.NOTE
 
     def test_the_key_exists_even_when_there_is_no_note(self, session, project):
-        message = self._message(session, project, note=None)
+        (message,) = self._messages(session, project, note=None)
         assert 'approver_comment' in message.context
         assert message.context['approver_comment'] is None
 
@@ -280,14 +284,25 @@ class TestTheApproverComment:
         ('add', 'New'), ('extend', 'Extension'), ('supplement', 'Supplement'),
         ('update', 'New'), ('adjust', 'Adjust'),
     ])
-    def test_no_template_renders_it_yet(self, session, project, service,
-                                        action_type):
+    def test_the_lead_template_renders_it(self, session, project, service,
+                                          action_type):
         from sam.notify import TemplateRenderer
-        message = self._message(session, project, note=self.NOTE,
-                                service=service, action_type=action_type)
+        (message,) = self._messages(session, project, note=self.NOTE,
+                                    service=service, action_type=action_type)
         rendered = TemplateRenderer().render(message)
+        assert self.NOTE in (rendered.text or '')
+        assert self.NOTE in (rendered.html or '')
+
+    def test_the_admin_copy_omits_the_note(self, session, project):
+        from sam.notify import TemplateRenderer
+        lead, admin = self._messages(session, project, note=self.NOTE,
+                                     people=self.LEAD_AND_ADMIN)
+        assert admin.recipient.role == 'admin'
+        assert admin.context['approver_comment'] is None
+        rendered = TemplateRenderer().render(admin)
         assert self.NOTE not in (rendered.text or '')
         assert self.NOTE not in (rendered.html or '')
+        assert lead.context['approver_comment'] == self.NOTE
 
 
 

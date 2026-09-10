@@ -254,10 +254,12 @@ class TestTransport:
         assert 'context' not in inspect.signature(
             XrasApiClient.__init__).parameters
 
-    def test_the_timeout_is_always_passed(self, monkeypatch):
+    def test_the_connect_and_read_timeouts_are_always_passed(self, monkeypatch):
+        # (connect, read) tuple: a hung connect fails fast, a slow read still
+        # gets the full budget. Defaults are (3.05, 10).
         client = _client(monkeypatch, [_response(200, _envelope(RESOURCES))])
         client.get_resources()
-        assert client.session.request.call_args.kwargs['timeout'] == 10
+        assert client.session.request.call_args.kwargs['timeout'] == (3.05, 10)
 
 
 # envelope and endpoint shapes

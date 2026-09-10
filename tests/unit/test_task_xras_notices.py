@@ -416,6 +416,8 @@ class TestASendableAction:
         assert result.detail['sent'] == 1
         assert seen == [action.xras_action_log_id]
         message, _rendered = transport.delivered[0]
+        # The note is PI-only; this project's sole recipient is the lead.
+        assert message.recipient.role == 'lead'
         assert message.context['approver_comment'] == 'Approved with caveats.'
 
     def test_an_unconfigured_xras_api_never_withholds_the_mail(self, session, ctx,

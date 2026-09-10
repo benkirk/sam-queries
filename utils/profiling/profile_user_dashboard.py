@@ -31,10 +31,10 @@ from contextlib import contextmanager
 from datetime import datetime
 from typing import Dict, List
 
-from sqlalchemy import event
-
 _HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(_HERE, '..', '..', 'src'))
+_REPO = os.path.join(_HERE, '..', '..')
+sys.path.insert(0, os.path.join(_REPO, 'src'))
+sys.path.insert(0, _REPO)   # for tests.perf._query_count (canonical SQLStats)
 
 from webapp.run import create_app
 from webapp.extensions import db
@@ -44,6 +44,7 @@ from flask_login import login_user
 from sam.core.users import User
 from sam.queries.dashboard import get_user_dashboard_data
 from webapp.auth.models import AuthUser
+from tests.perf._query_count import SQLStats
 
 
 DEFAULT_USERNAME = 'bdobbins'
@@ -54,65 +55,19 @@ USAGE_CRITICAL_THRESHOLD = 90
 
 
 # ---------------------------------------------------------------------------
-# SQL instrumentation (same pattern as profile_admin_orgs.py / profile_allocations.py)
+# SQL instrumentation — the canonical SQLStats (tests/perf), which shares one
+# cursor-timing primitive with the request profiler (webapp.request_timing).
 # ---------------------------------------------------------------------------
 
-import re
-_TABLE_RE = re.compile(r'\bFROM\s+([a-z_][a-z0-9_]*)', re.IGNORECASE)
-
-
-def _extract_table(statement: str) -> str:
-    """Best-effort: pull the first FROM <table> name out of a SQL statement."""
-    m = _TABLE_RE.search(statement)
-    if m:
-        return m.group(1).lower()
-    # Fall back to first word (e.g. WITH ... statements)
-    return statement.strip().split(None, 1)[0].lower()[:30]
-
-
-class _SQLStats:
-    def __init__(self):
-        self._t: Dict[int, float] = {}
-        self.reset()
-
-    def reset(self):
-        self.count = 0
-        self.total_time = 0.0
-        self.slowest: List[tuple] = []
-        self.by_table: Dict[str, List[float]] = {}
-        self._t.clear()
-
-    def before(self, conn, cursor, statement, parameters, context, executemany):
-        self._t[id(conn)] = time.perf_counter()
-
-    def after(self, conn, cursor, statement, parameters, context, executemany):
-        elapsed = time.perf_counter() - self._t.pop(id(conn), time.perf_counter())
-        self.count += 1
-        self.total_time += elapsed
-        self.slowest.append((elapsed, statement.strip()[:140]))
-        self.slowest.sort(reverse=True)
-        self.slowest = self.slowest[:10]
-
-        table = _extract_table(statement)
-        # Bucket WITH-anchors CTE batches under a synthetic name
-        if statement.strip().lower().startswith('with anchors'):
-            table = '<batched WITH anchors CTE>'
-        elif statement.strip().lower().startswith('with w '):
-            table = '<batched WITH w (rolling) CTE>'
-        self.by_table.setdefault(table, []).append(elapsed)
-
-
-_sql = _SQLStats()
+_sql = SQLStats()
 
 
 def _attach(engine):
-    event.listen(engine, 'before_cursor_execute', _sql.before)
-    event.listen(engine, 'after_cursor_execute',  _sql.after)
+    _sql.attach(engine)
 
 
 def _detach(engine):
-    event.remove(engine, 'before_cursor_execute', _sql.before)
-    event.remove(engine, 'after_cursor_execute',  _sql.after)
+    _sql.detach(engine)
 
 
 @contextmanager

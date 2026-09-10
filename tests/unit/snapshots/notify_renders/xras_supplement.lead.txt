@@ -18,6 +18,11 @@ The additional time is available now; no change to how you submit work.
   - Documentation: https://ncar-hpc-docs.readthedocs.io/
   - Manage your project and its members at https://sam.hpc.ucar.edu/
 
+Note from the reviewer:
+
+Approved as recommended by the panel.
+
+
 --
 This is an automated notification from the NSF NCAR Systems Accounting Manager.
 If you believe you received this message in error, please contact

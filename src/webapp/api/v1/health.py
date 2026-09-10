@@ -10,6 +10,7 @@ Intended consumers:
 ``/`` and ``/ready`` deliberately differ: only ``/`` fails on schema drift.
 See ``readiness`` for why a drifted schema must not empty the Service.
 """
+import time
 from datetime import datetime
 
 from flask import Blueprint, current_app, jsonify
@@ -17,6 +18,7 @@ from flask_login import login_required
 from sqlalchemy import text
 
 from webapp.extensions import db
+from webapp.request_timing import RequestProfile
 from webapp.api.helpers import register_error_handlers
 from webapp.limiter import limiter as _rate_limit
 from webapp.utils.rbac import require_permission, Permission
@@ -39,9 +41,16 @@ def _ping_engine(engine):
 
     Returns (ok: bool, latency_ms: float | None, error: str | None).
     """
+    profile = RequestProfile.current()
     start = datetime.now()
     try:
+        connect_t0 = time.perf_counter()
         with engine.connect() as conn:
+            # Connection acquisition (pool checkout) is where a /ready stall
+            # hides — the SELECT 1 itself is trivial. Attribute it to `pool` so
+            # the slow-request line reads pool=… instead of an unexplained rest.
+            if profile is not None:
+                profile.add_pool((time.perf_counter() - connect_t0) * 1000.0)
             conn.execute(text('SELECT 1'))
         latency_ms = round((datetime.now() - start).total_seconds() * 1000, 2)
         return True, latency_ms, None
