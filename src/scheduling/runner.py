@@ -101,11 +101,26 @@ def run_due(*, now: datetime,
     for name in names:
         task = registry[name]
 
-        # 1. Kill switch. Checked before anything else, including dueness, so
-        #    a disabled task costs one dict lookup.
+        # 1. Kill switch. Checked before dueness, but still consult the ledger
+        #    first: last_occurrence holds constant off the schedule window (by
+        #    design), so re-recording a 'disabled' skip on every hourly dispatch
+        #    would provoke a duplicate-key rollback each time (CNPG 23505 noise).
+        #    Record one skip per genuine occurrence, then no-op like step 3.
         if name in disabled:
-            results.append(_skip(ledger, task, now, dry_run,
-                                 reason='disabled', runner_id=runner_id))
+            occ = task.schedule.last_occurrence(now)
+            if occ is None:
+                results.append({'task': name, 'occurrence': None,
+                                'outcome': 'nothing_due'})
+                continue
+            key = occurrence_key(occ)
+            settled = ledger.get(name, key)
+            if settled is not None and settled['state'] != 'running':
+                results.append({'task': name, 'occurrence': occ.isoformat(),
+                                'outcome': 'already_claimed',
+                                'state': settled['state']})
+                continue
+            results.append(_skip(ledger, task, now, dry_run, reason='disabled',
+                                 occurrence=occ, key=key, runner_id=runner_id))
             continue
 
         # 2. Which slot are we filling?
