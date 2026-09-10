@@ -149,7 +149,7 @@ class _XrasTransport:
                 response = self.session.request(
                     'GET', url, params=params,
                     headers=self._headers(xa_user, context),
-                    timeout=self.config.timeout)
+                    timeout=(self.config.connect_timeout, self.config.timeout))
             except requests.RequestException as exc:
                 last_error = exc
                 if attempt == self.config.max_retries - 1:

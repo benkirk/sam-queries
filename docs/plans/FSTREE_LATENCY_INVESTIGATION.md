@@ -72,26 +72,30 @@ It remains the right frame for pace-chart's CPU-heavy render.
 
 ## What the instruments in this PR add
 
-- **Per-request `db=Xms cpu=Yms pgdb=Zms q=N pq=M`** on the app log line
-  (`webapp/request_timing.py` + `run.py`) — partitions every request:
-  `total ~= cpu (compute/GIL, via time.thread_time) + db (SAM/MySQL wait) +
-  pgdb (plugin CNPG wait: job-history, fs-scans) + rest (GIL/pool wait)`.
-  Per-request accurate. Also appended to the `Slow request:` warning line.
-  `pgdb=` exists because a 19 s jobs drill-down once logged `db=8ms`: the
-  plugin engines were uninstrumented and their time hid in `rest`.
+- **Per-request `cpu=Xms <db>=Yms/Nq …`** on the app log line
+  (`webapp/request_timing.py` + `run.py`) — partitions every request by LOGICAL
+  database: `total ~= cpu (compute/GIL, via time.thread_time) + Σ per-DB query
+  wait (sam / status / jobhistory / fsscans) + pool (connection checkout) +
+  rest (GIL/pool-not-attributed)`. A database appears
+  only when the request touched it. Per-request accurate; the same fields ride
+  the `Slow request:` warning line. Per-DB (not backend) attribution exists
+  because a 19 s jobs drill-down once logged `db=8ms`: the plugin engines hid in
+  `rest`, and lumping them all as "PG" could not name job-history vs fs-scans.
 - **Watch `load:` line** (`scripts/cirrus_watch.sh`) — `dbload:` (Threads_running,
   Threads_connected, Slow_queries Δ) + `podcpu:` (sum/max millicores), plus a
-  `↳ split` note (db/cpu/total) computed from the slow-request lines. The
-  `dbload:`/`podcpu:` are tick-time snapshots (ambient context); the per-request
-  `↳ split` is the trustworthy attribution.
+  `↳ split` note that names the dominant database (e.g. `jobhistory≈99%`)
+  computed from the slow-request lines. The `dbload:`/`podcpu:` are tick-time
+  snapshots (ambient context); the per-request `↳ split` is the trustworthy
+  attribution.
 
 ## Data-collection plan (DONE — answered by the verdict at top)
 
-The steps below were the plan; the live `db=`/`cpu=` split (verdict section)
+The steps below were the plan; the live per-DB split (verdict section)
 executed step 1 and settled the attribution as DB-bound. Retained as the method.
 
-1. Watch a slow window; read the slow-request `↳ db split` note — it gives
-   `db≈Xms / total≈Yms`. If `total ≫ db`, the gap is app-side.
+1. Watch a slow window; read the slow-request `↳ split` note — it names the
+   dominant database and its share. If no DB dominates and `rest` is large, the
+   gap is app-side.
 2. Read the `podcpu:` on the same tick:
    - **high CPU** → GIL/app-CPU contention (the lead hypothesis).
    - **idle CPU** → queueing / connection wait.
@@ -156,6 +160,24 @@ Any chosen fix is a **separate deploy PR** (deploy mechanics owned separately).
   (needs `CHART_FINGERPRINT_REGEN=1` + a visual check).
 
 Each chosen fix is its own PR.
+
+## Deferred follow-on: upstream queue-time (`X-Request-Start`)
+
+The one request-lifecycle segment the per-request instrument cannot see is time
+spent upstream (ingress + connection backlog) BEFORE Flask dispatch — the "app
+logs nothing" signature of a client-side timeout. Measuring it needs the edge to
+stamp an `X-Request-Start` header (nginx `proxy_set_header X-Request-Start
+"t=${msec}"`) for the app to read and subtract.
+
+Blocked on nwc1: the nginx-ingress controller runs `allow-snippet-annotations=false`
+(the post-CVE-2023-5043 default). A server-side dry-run confirmed the admission
+webhook rejects a `configuration-snippet` outright ("Snippet directives are
+disabled by the Ingress administrator"), and the alternative (a controller-level
+`proxy-set-headers` ConfigMap) is not ours to set. **Follow-on:** an upstream
+ticket to the nwc1 ingress owners to re-enable snippets for our Ingress or add a
+`proxy-set-headers` entry emitting the header; the app-side consumer is a ~15-line
+addition when that lands. Until then, the nearest proxy is comparing the gunicorn
+access-log request duration against the app's `total`.
 
 ## Related
 

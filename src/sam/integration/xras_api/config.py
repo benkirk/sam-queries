@@ -39,9 +39,15 @@ DEFAULT_ALLOCATIONS_PROCESS = 'NCAR'
 #: it says — but it is a required header on every call.
 DEFAULT_API_USER = 'arcguest'
 
-#: Seconds. Short on purpose: this can run inside an htmx round-trip, so a
-#: slow XRAS must degrade to "source unavailable" rather than hold a worker.
+#: Read-timeout seconds. Short on purpose: this can run inside an htmx
+#: round-trip, so a slow XRAS must degrade to "source unavailable" rather than
+#: hold a worker. Passed to requests as the read half of a (connect, read) pair.
 DEFAULT_TIMEOUT = 10
+
+#: Connect-timeout seconds. Separated from the read timeout so a *connect* that
+#: hangs (the upstream-unreachable case) fails fast instead of burning the full
+#: read budget. 3.05 is the requests convention (just over a TCP retransmit).
+DEFAULT_CONNECT_TIMEOUT = 3.05
 
 DEFAULT_MAX_RETRIES = 3
 
@@ -82,6 +88,15 @@ def _config_int(key: str, default: int) -> int:
     return parsed if parsed > 0 else default
 
 
+def _config_float(key: str, default: float) -> float:
+    value = _raw(key, default)
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
 @dataclass(frozen=True)
 class XrasApiConfig:
     """A snapshot of outbound-XRAS config, resolved at construction."""
@@ -105,6 +120,7 @@ class XrasApiConfig:
     allocations_process: str = DEFAULT_ALLOCATIONS_PROCESS
     api_user: str = DEFAULT_API_USER
     timeout: int = DEFAULT_TIMEOUT
+    connect_timeout: float = DEFAULT_CONNECT_TIMEOUT
     max_retries: int = DEFAULT_MAX_RETRIES
 
     @classmethod
@@ -124,6 +140,8 @@ class XrasApiConfig:
             api_user=(_config_str('XRAS_API_USER', DEFAULT_API_USER)
                       or DEFAULT_API_USER),
             timeout=_config_int('XRAS_API_TIMEOUT', DEFAULT_TIMEOUT),
+            connect_timeout=_config_float('XRAS_API_CONNECT_TIMEOUT',
+                                          DEFAULT_CONNECT_TIMEOUT),
             max_retries=_config_int('XRAS_API_MAX_RETRIES', DEFAULT_MAX_RETRIES),
         )
 
@@ -178,6 +196,7 @@ class XrasApiConfig:
             'allocations_process': self.allocations_process,
             'api_user': self.api_user,
             'timeout': self.timeout,
+            'connect_timeout': self.connect_timeout,
             'max_retries': self.max_retries,
             'configured': self.configured,
             'write_configured': self.write_configured,

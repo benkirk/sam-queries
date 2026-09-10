@@ -37,6 +37,7 @@ class JobHistoryExtension(PluginExtension):
     ext_key = _EXT_KEY
     plugin = HPC_USAGE_QUERIES
     log_label = 'job_history'
+    timing_label = 'jobhistory'   # per-machine engines roll up to one label
 
     def _init_state(self, state: Dict[str, Any]) -> None:
         state['engines'] = {}   # machine -> Engine

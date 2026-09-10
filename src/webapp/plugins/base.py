@@ -123,14 +123,18 @@ class PluginExtension:
 
     # Per-request timing
 
+    #: Logical DB label this plugin's engines report into on the request line.
+    #: Role-based, not backend-based; overridden per plugin.
+    timing_label = 'plugin'
+
     def instrument_engine(self, engine) -> None:
-        """Count this engine's query time into the request line's ``pgdb=``.
+        """Count this engine's query time into the request line under ``timing_label``.
 
         Fail-soft: a plugin engine that cannot take the listeners stays
         usable, just unmeasured.
         """
         try:
-            attach_query_timing(engine, 'pgdb')
+            attach_query_timing(engine, self.timing_label)
         except Exception as exc:
             self.logger.warning('%s: query timing not attached: %s',
                                 self.log_label, exc)
