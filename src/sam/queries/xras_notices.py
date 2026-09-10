@@ -146,8 +146,8 @@ def build_xras_messages(session: Session, project,
 
     ``approver_comment`` is the XRAS reviewer's note (``adminComments``),
     resolved by the caller because it lives on the outbound reports feed and
-    this builder is DB-only. It rides the context; the templates decide
-    whether to render it.
+    this builder is DB-only. It reaches the lead's message only: a non-lead
+    recipient's context carries ``None``, so the note is PI-only.
 
     ``dedup_key`` embeds the action, so a Supplement mints a different key from
     the New that preceded it: each outcome can be reported once, and re-opening
@@ -209,7 +209,8 @@ def build_xras_messages(session: Session, project,
         'changes': (action_increments(session, increments_action, signed=True)
                     if kind == 'xras_adjustment' else []),
         'action_type': action.action_type if action else None,
-        'approver_comment': approver_comment,
+        # Default None; the fan-out below sets the note on the lead's copy only.
+        'approver_comment': None,
     }
     subject = XRAS_KIND_SUBJECTS.get(
         kind, XRAS_KIND_SUBJECTS['xras_activation']
@@ -220,7 +221,8 @@ def build_xras_messages(session: Session, project,
             kind=kind,
             recipient=recipient,
             subject=subject,
-            context=context,
+            context={**context, 'approver_comment':
+                     approver_comment if recipient.role == 'lead' else None},
             entity=('project', project.project_id),
             projcode=project.projcode,
             dedup_key=xras_dedup_key(kind, project.projcode, action_id,

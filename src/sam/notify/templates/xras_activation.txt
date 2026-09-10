@@ -12,6 +12,11 @@ Allocations:
 Getting started:
   - Documentation: https://ncar-hpc-docs.readthedocs.io/
   - Manage your project and its members at https://sam.hpc.ucar.edu/
+{% if approver_comment %}
+Note from the reviewer:
+
+{{ approver_comment }}
+{% endif %}
 {% if recipient_role == 'lead' %}
 As project lead you can add and remove project members, designate a project
 administrator, and request extensions or supplements through the SAM portal.

@@ -20,6 +20,11 @@ If this does not look right, please contact help@ucar.edu.
 
   - Documentation: https://ncar-hpc-docs.readthedocs.io/
   - Manage your project and its members at https://sam.hpc.ucar.edu/
+{% if approver_comment %}
+Note from the reviewer:
+
+{{ approver_comment }}
+{% endif %}
 {% if recipient_role != 'lead' %}
 Your project lead ({{ project_lead }}{% if project_lead_email %} /
 {{ project_lead_email }}{% endif %}) manages membership and any future
