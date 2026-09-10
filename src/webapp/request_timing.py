@@ -1,11 +1,10 @@
 """Per-request timing, attributed by logical database.
 
 One object, :class:`RequestProfile`, owns every timed dimension of a request —
-wall ``total``, ``cpu``, per-database query time+count, connection ``pool`` wait,
-and upstream ``wait`` — and renders them onto the log line through a single
-formatter. Adding a dimension is a field here plus a line in ``render_fields``,
-not edits scattered across the request hooks, both log formats, and the watch
-parser.
+wall ``total``, ``cpu``, per-database query time+count, connection ``pool`` wait
+— and renders them onto the log line through a single formatter. Adding a
+dimension is a field here plus a line in ``render_fields``, not edits scattered
+across the request hooks, both log formats, and the watch parser.
 
 Databases are named by ROLE, not backend engine: ``sam`` (SAM's own database),
 ``status`` (system_status), ``jobhistory`` and ``fsscans`` (the plugin stores).
@@ -62,14 +61,13 @@ def timed_cursor_listeners(on_execute):
 class RequestProfile:
     """Timing accumulated on ``flask.g`` for one request, rendered onto its log line."""
 
-    __slots__ = ('t_start', 'cpu_start', 'db', 'pool_ms', 'wait_ms')
+    __slots__ = ('t_start', 'cpu_start', 'db', 'pool_ms')
 
     def __init__(self):
         self.t_start = time.monotonic()
         self.cpu_start = time.thread_time()   # per-thread CPU; gthread = 1 thread/request
         self.db = {}          # label -> [ms, count]
         self.pool_ms = 0.0
-        self.wait_ms = 0.0
 
     @classmethod
     def start(cls):
@@ -94,9 +92,6 @@ class RequestProfile:
     def add_pool(self, ms):
         self.pool_ms += ms
 
-    def set_wait(self, ms):
-        self.wait_ms = ms
-
     def total_ms(self):
         return (time.monotonic() - self.t_start) * 1000.0
 
@@ -111,9 +106,9 @@ class RequestProfile:
         """The canonical token string for BOTH log lines.
 
         ``cpu=Xms`` then one ``label=Yms/Nq`` per database the request TOUCHED
-        (presence-gated — untouched DBs never appear), then ``pool=``/``wait=``
-        only when non-zero. ``rest`` (GIL/pool-not-attributed) is derived by the
-        reader as ``total - cpu - Σdb - pool - wait``, not emitted.
+        (presence-gated — untouched DBs never appear), then ``pool=`` when
+        non-zero. ``rest`` (GIL/pool-not-attributed) is derived by the reader as
+        ``total - cpu - Σdb - pool``, not emitted.
         """
         parts = ['cpu=%.1fms' % self.cpu_ms()]
         for label, (ms, count) in self._db_items():
@@ -121,31 +116,7 @@ class RequestProfile:
                 parts.append('%s=%.1fms/%dq' % (label, ms, count))
         if self.pool_ms > 0:
             parts.append('pool=%.1fms' % self.pool_ms)
-        if self.wait_ms > 0:
-            parts.append('wait=%.1fms' % self.wait_ms)
         return ' '.join(parts)
-
-
-def upstream_wait_ms(request):
-    """Milliseconds a request waited upstream before Flask dispatch.
-
-    Read from an ``X-Request-Start`` header (``t=<sec.frac>`` or epoch-ms) if the
-    ingress injects one; ``0.0`` when absent or implausible, so the field is
-    simply omitted. Dormant until the ingress is configured to set the header —
-    it does NOT see gunicorn's own listen-backlog.
-    """
-    raw = (request.headers.get('X-Request-Start') or '').strip()
-    if not raw:
-        return 0.0
-    if raw.startswith('t='):
-        raw = raw[2:]
-    try:
-        val = float(raw)
-    except ValueError:
-        return 0.0
-    start = val if val < 1e12 else val / 1000.0   # seconds vs epoch-ms
-    wait = (time.time() - start) * 1000.0
-    return wait if 0 < wait < 600000 else 0.0
 
 
 def _db_recorder(label):

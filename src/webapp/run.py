@@ -250,10 +250,9 @@ def create_app(*, config_overrides: dict | None = None):
     @app.before_request
     def _set_request_id():
         from flask import g, request
-        from webapp.request_timing import RequestProfile, upstream_wait_ms
+        from webapp.request_timing import RequestProfile
         g.request_id = request.headers.get('X-Request-ID', str(uuid.uuid4()))
-        profile = RequestProfile.start()
-        profile.set_wait(upstream_wait_ms(request))
+        RequestProfile.start()
 
     @app.after_request
     def _log_request(response):

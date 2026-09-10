@@ -76,7 +76,7 @@ It remains the right frame for pace-chart's CPU-heavy render.
   (`webapp/request_timing.py` + `run.py`) — partitions every request by LOGICAL
   database: `total ~= cpu (compute/GIL, via time.thread_time) + Σ per-DB query
   wait (sam / status / jobhistory / fsscans) + pool (connection checkout) +
-  wait (upstream dispatch) + rest (GIL/pool-not-attributed)`. A database appears
+  rest (GIL/pool-not-attributed)`. A database appears
   only when the request touched it. Per-request accurate; the same fields ride
   the `Slow request:` warning line. Per-DB (not backend) attribution exists
   because a 19 s jobs drill-down once logged `db=8ms`: the plugin engines hid in
@@ -160,6 +160,24 @@ Any chosen fix is a **separate deploy PR** (deploy mechanics owned separately).
   (needs `CHART_FINGERPRINT_REGEN=1` + a visual check).
 
 Each chosen fix is its own PR.
+
+## Deferred follow-on: upstream queue-time (`X-Request-Start`)
+
+The one request-lifecycle segment the per-request instrument cannot see is time
+spent upstream (ingress + connection backlog) BEFORE Flask dispatch — the "app
+logs nothing" signature of a client-side timeout. Measuring it needs the edge to
+stamp an `X-Request-Start` header (nginx `proxy_set_header X-Request-Start
+"t=${msec}"`) for the app to read and subtract.
+
+Blocked on nwc1: the nginx-ingress controller runs `allow-snippet-annotations=false`
+(the post-CVE-2023-5043 default). A server-side dry-run confirmed the admission
+webhook rejects a `configuration-snippet` outright ("Snippet directives are
+disabled by the Ingress administrator"), and the alternative (a controller-level
+`proxy-set-headers` ConfigMap) is not ours to set. **Follow-on:** an upstream
+ticket to the nwc1 ingress owners to re-enable snippets for our Ingress or add a
+`proxy-set-headers` entry emitting the header; the app-side consumer is a ~15-line
+addition when that lands. Until then, the nearest proxy is comparing the gunicorn
+access-log request duration against the app's `total`.
 
 ## Related
 

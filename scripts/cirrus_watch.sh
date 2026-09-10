@@ -176,11 +176,11 @@ else
         note "known-slow (under investigation — docs/plans/FSTREE_LATENCY_INVESTIGATION.md): directory_access ~6.9s, fstree/Casper ~3s DB + app tail under load"
         # Per-endpoint split from the app's per-DB tokens. The line carries
         # cpu=, one <db>=Xms/Nq per database TOUCHED (sam/status/jobhistory/
-        # fsscans), and pool=/wait= when non-zero; total ~= cpu + Σdb + pool +
-        # wait + rest (GIL/pool-not-attributed). We name the dominant DB rather
-        # than the backend platform. A token whose value is not <float>ms (none
-        # in the current format) is skipped. Tab-keyed so a decoded space in the
-        # path ("Casper GPU") stays one key.
+        # fsscans), and pool= when non-zero; total ~= cpu + Σdb + pool + rest
+        # (GIL/pool-not-attributed). We name the dominant DB rather than the
+        # backend platform. A token whose value is not <float>ms (none in the
+        # current format) is skipped. Tab-keyed so a decoded space in the path
+        # ("Casper GPU") stays one key.
         SPLIT=$(printf '%s\n' "$SLOW" \
             | sed -n -E 's/.*Slow request: ([0-9.]+) ms  (.*)  \((.*)\).*/\1\t\2\t\3/p' \
             | awk -F'\t' '
@@ -194,18 +194,16 @@ else
                     sub(/ms$/,"",val); v=val+0;
                     if(name=="cpu") CPU[key]+=v;
                     else if(name=="pool") POOL[key]+=v;
-                    else if(name=="wait") WAIT[key]+=v;
                     else { DBSUM[key]+=v; DB[key SUBSEP name]+=v; seen[key SUBSEP name]=name; } } }
                 END{ for(k in cnt){ n=cnt[k]; tt=T[k]/n;
                        best=""; bestv=-1;
                        for(kk in seen){ split(kk,pp,SUBSEP);
                          if(pp[1]==k && DB[kk]>bestv){ bestv=DB[kk]; best=seen[kk]; } }
-                       cpu=CPU[k]/n; pool=POOL[k]/n; wait=WAIT[k]/n; dbs=DBSUM[k]/n;
-                       rest=tt-cpu-dbs-pool-wait; if(rest<0) rest=0;
+                       cpu=CPU[k]/n; pool=POOL[k]/n; dbs=DBSUM[k]/n;
+                       rest=tt-cpu-dbs-pool; if(rest<0) rest=0;
                        line=sprintf("  ↳ %s: total≈%.0fms — cpu≈%.0f%%", k, tt, tt>0?100*cpu/tt:0);
                        if(best!="") line=line sprintf(", %s≈%.0f%%", best, tt>0?100*(bestv/n)/tt:0);
                        if(pool>0) line=line sprintf(", pool≈%.0f%%", tt>0?100*pool/tt:0);
-                       if(wait>0) line=line sprintf(", wait≈%.0f%%", tt>0?100*wait/tt:0);
                        line=line sprintf(", rest≈%.0f%% (%dx)", tt>0?100*rest/tt:0, n);
                        printf "%.0f\t%s\n", tt, line; } }' \
             | sort -rn | head -4 | cut -f2-)

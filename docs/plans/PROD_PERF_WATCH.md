@@ -45,7 +45,7 @@ header. What exists, all read-only:
     source.
   - app request line ([`src/webapp/run.py`](../../src/webapp/run.py),
     [`src/webapp/logging_config.py`](../../src/webapp/logging_config.py)):
-    `METHOD path → status (N.N ms cpu=…ms <db>=…ms/…q … [pool=…ms] [wait=…ms]) rid=…`
+    `METHOD path → status (N.N ms cpu=…ms <db>=…ms/…q … [pool=…ms]) rid=…`
     where each `<db>` (sam/status/jobhistory/fsscans) appears only when touched,
     plus a `Slow request: N ms … (same fields)` warning above 5,000 ms.
 - **Redis** — chart cache hit/miss counters in DB 0 (`chart:hits:<name>` /

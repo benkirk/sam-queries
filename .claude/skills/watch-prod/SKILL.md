@@ -66,9 +66,9 @@ read-only `hpc-reader` `SHOW GLOBAL STATUS`) and `podcpu:` (`kubectl top`,
 sum/max millicores across the webapp pods). On a slow (>5s) window the script also
 prints a `↳ split` from the per-request tokens the app logs (`cpu=`, one
 `<db>=Xms/Nq` per database TOUCHED — `sam` / `status` / `jobhistory` / `fsscans`
-— and `pool=`/`wait=` when non-zero): `total ~= cpu (compute/GIL) + Σ per-DB
-query wait + pool (connection checkout) + wait (upstream dispatch) + rest
-(GIL/pool-not-attributed)`. The split names the dominant database. Read it:
+— and `pool=` when non-zero): `total ~= cpu (compute/GIL) + Σ per-DB query wait
++ pool (connection checkout) + rest (GIL/pool-not-attributed)`. The split names
+the dominant database. Read it:
 
 - **a named DB dominates** (e.g. `jobhistory≈99%`, `sam≈97%`) → that database is
   the cost. The lever is on that store: `jobhistory` / `fsscans` are the plugin

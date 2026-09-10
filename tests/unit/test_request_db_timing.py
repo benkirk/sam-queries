@@ -102,7 +102,7 @@ class TestPerDatabaseBuckets:
 class TestRenderFieldsContract:
     """``render_fields`` is the single formatter for both log lines — pin its shape."""
 
-    def test_touched_dbs_pool_and_wait_are_presence_gated(self, app):
+    def test_touched_dbs_and_pool_are_presence_gated(self, app):
         with app.test_request_context('/'):
             p = RequestProfile.start()
             p.add_db('sam', 12.0)
@@ -114,8 +114,7 @@ class TestRenderFieldsContract:
         assert 'sam=20.0ms/2q' in fields
         assert 'jobhistory=30.0ms/1q' in fields
         assert 'pool=5.0ms' in fields
-        # wait was never set -> omitted; an untouched DB never appears.
-        assert 'wait=' not in fields
+        # an untouched DB never appears.
         assert 'status=' not in fields and 'fsscans=' not in fields
 
     def test_sam_orders_first(self, app):
