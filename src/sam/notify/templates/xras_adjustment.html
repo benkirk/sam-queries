@@ -1,32 +1,9 @@
 {% extends "_email_base.html" %}
 
-{% block extra_styles %}
-        .project-info {
-            background-color: #f5f5f5;
-            border-left: 4px solid #5cb85c;
-            padding: 10px 15px;
-            margin: 15px 0;
-        }
-        table.allocations {
-            border-collapse: collapse;
-            margin: 15px 0;
-            width: 100%;
-        }
-        table.allocations th,
-        table.allocations td {
-            border-bottom: 1px solid #ddd;
-            padding: 6px 10px;
-            text-align: left;
-        }
-        table.allocations th {
-            background-color: #f5f5f5;
-        }
-{% endblock %}
-
 {% block content %}
     <p>Dear {{ recipient_name }},</p>
 
-    <div class="project-info">
+    <div class="callout good">
         The allocation for your project <strong>{{ project_code }}</strong> -
         "{{ project_title }}" has been adjusted.
     </div>
@@ -35,7 +12,7 @@
        amounts can be negative, and the sign is carried in r.amount. #}
     {% if changes %}
     <h3>Changes applied by this request</h3>
-    <table class="allocations">
+    <table class="data">
         <tr><th>Resource</th><th>Change</th></tr>
         {% for r in changes %}
         <tr>
@@ -48,7 +25,7 @@
 
     {% if resources %}
     <h3>Your project now holds</h3>
-    <table class="allocations">
+    <table class="data">
         <tr><th>Resource</th><th>Amount</th><th>Through</th></tr>
         {% for r in resources %}
         <tr>
@@ -72,6 +49,13 @@
         <li>Manage your project and its members at
             <a href="https://sam.hpc.ucar.edu/">sam.hpc.ucar.edu</a></li>
     </ul>
+
+    {% if approver_comment %}
+    <div class="callout note">
+        <strong>Note from the reviewer</strong>
+        <p>{{ approver_comment }}</p>
+    </div>
+    {% endif %}
 
     {% if recipient_role != 'lead' %}
     <p>
