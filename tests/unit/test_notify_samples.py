@@ -70,6 +70,15 @@ class TestThePreviewContext:
         assert preview_context('expiration', role='user')['recipient_role'] == 'user'
         assert sample_recipient('admin').role == 'admin'
 
+    @pytest.mark.parametrize('kind', ['xras_activation', 'xras_update',
+                                      'xras_extension', 'xras_supplement',
+                                      'xras_adjustment'])
+    def test_the_approver_note_is_pi_only(self, kind):
+        """Mirrors build_xras_messages: only the lead's copy carries the note."""
+        assert preview_context(kind, role='lead')['approver_comment']
+        assert preview_context(kind, role='admin')['approver_comment'] is None
+        assert preview_context(kind, role='user')['approver_comment'] is None
+
 
 class TestTheNotes:
     """The palette is only useful if every row it can show has a note."""
