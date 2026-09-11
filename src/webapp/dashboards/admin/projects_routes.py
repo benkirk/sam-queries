@@ -900,8 +900,8 @@ def htmx_project_allocation_tree(project):
     can_exchange = can_exchange_allocations(current_user, project)
     can_modify_allocs = can_modify_allocations(current_user, project)
     descendant_projcodes = {
-        p.projcode for p in project.get_descendants(include_self=False)
-        if p.active
+        n.projcode for n in all_nodes
+        if project.tree_left < n.tree_left < project.tree_right
     }
     exchange_eligible_resources = set()
     if can_exchange:
@@ -930,15 +930,27 @@ def htmx_project_allocation_tree(project):
     # Carve-out residual per (parent node, dedicated resource allocation):
     # surfaced only on nodes that actually have carve-out children (pure
     # pool nodes and fully-uncovered parents keep the Add/Propagate flows).
-    # Cost note: one frontier walk per parent-node allocation — this route
-    # already calls get_detailed_allocation_usage per node, which is far
-    # heavier; admin tree views are small and rare.
+    # The walks read `node.children` and one account per visited node, so
+    # both are loaded for the whole tree first (four statements) instead of
+    # one lazy query per node per parent allocation.
     #
     # Frontier date-filtering uses the displayed allocation row's own
     # window, so a historical/future `active_at` view stays coherent: the
     # residual shown always belongs to the row it annotates.
-    from sam.manage.allocations import get_carveout_frontier
+    from sqlalchemy.orm import selectinload
+    from sam.accounting.accounts import Account
     from sam.accounting.allocations import Allocation
+    from sam.manage.allocations import get_carveout_frontier
+    from sam.projects.projects import Project
+    node_ids = [n.project_id for n in all_nodes]
+    db.session.query(Project).options(selectinload(Project.children)).filter(
+        Project.project_id.in_(node_ids)).all()
+    account_index = {
+        (a.project_id, a.resource_id): a
+        for a in db.session.query(Account).options(selectinload(Account.allocations))
+        .filter(Account.project_id.in_(node_ids), Account.deleted == False)  # noqa: E712
+        .order_by(Account.account_id.desc())
+    }
     for node in all_nodes:
         if not any(c.active for c in node.children):
             continue
@@ -949,7 +961,7 @@ def htmx_project_allocation_tree(project):
             alloc = db.session.get(Allocation, rdata['allocation_id'])
             if alloc is None:
                 continue
-            frontier = get_carveout_frontier(db.session, alloc)
+            frontier = get_carveout_frontier(db.session, alloc, account_index=account_index)
             if not frontier.carve_children:
                 continue
             if node_can is None:
