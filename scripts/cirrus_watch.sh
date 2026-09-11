@@ -189,6 +189,7 @@ else
                   for(i=1;i<=n;i++){ eq=index(toks[i],"=");
                     if(eq==0) continue;
                     name=substr(toks[i],1,eq-1); val=substr(toks[i],eq+1);
+                    if(name=="who"){ if(!(key in WHO)) WHO[key]=val; else if(WHO[key]!=val) WHO[key]="mixed"; continue; }
                     s=index(val,"/"); if(s>0) val=substr(val,1,s-1);
                     if(val !~ /ms$/) continue;
                     sub(/ms$/,"",val); v=val+0;
@@ -204,7 +205,9 @@ else
                        line=sprintf("  ↳ %s: total≈%.0fms — cpu≈%.0f%%", k, tt, tt>0?100*cpu/tt:0);
                        if(best!="") line=line sprintf(", %s≈%.0f%%", best, tt>0?100*(bestv/n)/tt:0);
                        if(pool>0) line=line sprintf(", pool≈%.0f%%", tt>0?100*pool/tt:0);
-                       line=line sprintf(", rest≈%.0f%% (%dx)", tt>0?100*rest/tt:0, n);
+                       line=line sprintf(", rest≈%.0f%% (%dx", tt>0?100*rest/tt:0, n);
+                       if(k in WHO && WHO[k]!="mixed") line=line sprintf(", who=%s", WHO[k]);
+                       line=line ")";
                        printf "%.0f\t%s\n", tt, line; } }' \
             | sort -rn | head -4 | cut -f2-)
         [[ -n "$SPLIT" ]] && printf '%s\n' "$SPLIT"

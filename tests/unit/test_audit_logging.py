@@ -128,6 +128,18 @@ def test_init_audit_events_does_not_raise(audit_log_path):
     init_audit_events(_FakeApp(), _FakeDB(), audit_log_path)
 
 
+def test_responsible_user_names_the_api_key_before_the_session(app):
+    """An XRAS push or a collector write must not be audited as anonymous."""
+    from flask import g
+    from webapp.audit.events import responsible_user
+
+    with app.test_request_context('/'):
+        assert responsible_user() == 'anonymous'
+        g.api_key_user = 'collector'
+        assert responsible_user() == 'collector'
+    assert responsible_user() == 'anonymous'       # no request context: CLI, tasks
+
+
 def test_audit_excludes_api_credentials(session, audit_log_path):
     """ApiCredentials INSERTs must NOT appear in the audit log.
 

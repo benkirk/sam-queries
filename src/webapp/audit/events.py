@@ -14,6 +14,28 @@ from .logger import get_audit_logger
 _AUDIT_EVENTS_REGISTERED = False
 
 
+def responsible_user():
+    """The request's actor: the API-key name (an XRAS push, a collector),
+    else the logged-in user, else "anonymous" (CLI, background job)."""
+    try:
+        from flask import g
+        from flask_login import current_user
+
+        api_user = g.get('api_key_user')
+        if api_user:
+            return api_user
+        if current_user and current_user.is_authenticated:
+            return current_user.username
+    except RuntimeError:
+        # No Flask request context (CLI, background job)
+        pass
+    except Exception:
+        # Any other error accessing current_user
+        pass
+
+    return "anonymous"
+
+
 def init_audit_events(app, db, logfile_path, stdout=True):
     """
     Initialize SQLAlchemy event handlers for audit logging.
@@ -40,27 +62,6 @@ def init_audit_events(app, db, logfile_path, stdout=True):
 
     # Excluded Binds
     EXCLUDED_BINDS = {'system_status'}
-
-    def responsible_user():
-        """
-        Get username of currently logged-in user.
-
-        Returns:
-            str: Username of authenticated user, or "anonymous" if not logged in
-        """
-        try:
-            from flask_login import current_user
-
-            if current_user and current_user.is_authenticated:
-                return current_user.username
-        except RuntimeError:
-            # No Flask request context (CLI, background job)
-            pass
-        except Exception:
-            # Any other error accessing current_user
-            pass
-
-        return "anonymous"
 
     def should_track(obj):
         """

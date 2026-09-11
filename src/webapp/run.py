@@ -265,6 +265,15 @@ def create_app(*, config_overrides: dict | None = None):
         if profile is None:
             return response
         total_ms = profile.total_ms()
+        # The actor, read off g without touching current_user: the proxy
+        # would run load_user's query here, after sam= was snapshotted.
+        api_user = g.get('api_key_user')
+        if api_user:
+            profile.note_actor('apikey', api_user)
+        else:
+            session_user = g.get('_login_user')
+            if session_user is not None and getattr(session_user, 'is_authenticated', False):
+                profile.note_actor('user', getattr(session_user, 'username', None))
         fields = profile.render_fields()   # ONE formatter for both lines
         # Healthcheck probes fire every 10s — log only when they fail.
         is_health_probe = (
@@ -281,8 +290,8 @@ def create_app(*, config_overrides: dict | None = None):
             # Fields stay AFTER the method/path so the watch's path parse
             # (cirrus_watch.sh) is preserved. rest = total - cpu - Σdb - pool - wait.
             app.logger.warning(
-                'Slow request: %.1f ms  %s %s  (%s)',
-                total_ms, request.method, request.path, fields,
+                'Slow request: %.1f ms  %s %s  (%s)  rid=%s',
+                total_ms, request.method, request.path, fields, request_id,
             )
         return response
     # =========================================================================
