@@ -7,7 +7,8 @@
 #   - XRAS xras_action_log — new rows since the last tick (classify per the
 #     watch-prod skill), read from the prod DB
 #   - web traffic — gunicorn 2xx/3xx/4xx/5xx, latency percentiles, slow (>5s)
-#     requests, probe-path hits, from the webapp pod logs
+#     requests, query-count hits (an N+1 shape, whatever its latency),
+#     probe-path hits, from the webapp pod logs
 #   - pods — image sha / restart counts / phase; flags a deploy since last tick
 #   - redis — memory %, hit rate, and the load-bearing evicted-keys delta
 #   - samuel-tasks CronJob — suspended? heartbeat stale? failed Jobs? (report
@@ -23,6 +24,8 @@
 #   -r, --release   REL  Helm release name                 (default: samuel)
 #       --context   CTX  kubectl context to target         (default: current)
 #       --window    DUR  Web-log lookback window           (default: 35m)
+#       --query-guard N  Statements per request that flag an N+1 (default: 200;
+#                        WATCH_QUERY_GUARD_IGNORE exempts write fan-outs)
 #       --db-host   HOST Prod DB host for the XRAS read     (default: sam-sql.ucar.edu)
 #       --state     FILE State file path                    (default: XDG state dir)
 #       --reset-baseline Forget prior state; seed a fresh baseline this run
@@ -43,6 +46,11 @@ source "${_LIBDIR}/cirrus_common.sh"
 
 # --- defaults (overridable via flags/env) -----------------------------------
 WINDOW="${WATCH_WINDOW:-35m}"
+QUERY_GUARD="${WATCH_QUERY_GUARD:-200}"
+# Routes whose count is a write fan-out by design, not a read N+1: the status
+# ingest adds one row per queue/node/job per snapshot (~1.2-1.5k statements on
+# the status DB in ~0.2 s). Extended regex on "METHOD /path".
+QUERY_GUARD_IGNORE="${WATCH_QUERY_GUARD_IGNORE:-^POST /api/v1/status/}"
 DBHOST="${WATCH_DB_HOST:-sam-sql.ucar.edu}"
 DBPORT=3306
 STATE="${WATCH_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/sam-watch/state}"
@@ -52,6 +60,7 @@ while [[ $# -gt 0 ]]; do
     if handle_common_arg "$@"; then shift "$_CONSUMED"; continue; fi
     case "$1" in
         --window)         WINDOW="$2"; shift 2;;
+        --query-guard)    QUERY_GUARD="$2"; shift 2;;
         --db-host)        DBHOST="$2"; shift 2;;
         --state)          STATE="$2"; shift 2;;
         --reset-baseline) RESET_BASELINE=1; shift;;
@@ -219,6 +228,34 @@ else
         END{ if(s+p+l){ line=sprintf("  read-model: served=%d patched=%d (trees=%d) live=%d", s,p,t,l);
              for(k in r) line=line sprintf(" %s=%d", k, r[k]); print line } }')
     [[ -n "$RM" ]] && printf '%s\n' "$RM"
+    # Query-count guard: sum of the /Nq tokens per run line. An N+1 shape is
+    # a count, not a latency -- 895 statements answered in 2 s passes the slow
+    # gate. Warns like a new slow endpoint; the lines name route, worst count,
+    # its wall time, hits, and the actor when every hit shared one.
+    QG=$(printf '%s\n' "$LOGS" \
+        | { grep -F 'webapp.run — ' | grep -F ' → ' | grep -vF 'Slow request' || true; } \
+        | sed -n -E 's/.*webapp\.run — ([A-Z]+ [^ ?]+)[^ ]* → [0-9]+ +\(([0-9.]+) ms (.*)\).*/\1\t\2\t\3/p' \
+        | awk -F'\t' -v thr="$QUERY_GUARD" -v ign="$QUERY_GUARD_IGNORE" '
+            { if(ign!="" && $1 ~ ign) next;
+              n=split($3,toks," "); q=0; who="";
+              for(i=1;i<=n;i++){
+                if(toks[i] ~ /^who=/){ who=substr(toks[i],5); continue }
+                s=index(toks[i],"/"); if(s==0) continue;
+                v=substr(toks[i],s+1); if(v !~ /q$/) continue;
+                sub(/q$/,"",v); q+=v+0 }
+              if(q<thr+0) next;
+              key=$1; hits[key]++;
+              if(q>maxq[key]){ maxq[key]=q; ms[key]=$2 }
+              if(!(key in W)) W[key]=who; else if(W[key]!=who) W[key]="mixed" }
+            END{ for(k in hits){
+                   line=sprintf("  ↳ %s: max %dq (%.0fms) %dx", k, maxq[k], ms[k], hits[k]);
+                   if(W[k]!="" && W[k]!="mixed") line=line " who=" W[k];
+                   printf "%d\t%s\n", maxq[k], line } }' \
+        | sort -rn | head -4 | cut -f2-)
+    if [[ -n "$QG" ]]; then
+        warn "queries(>=${QUERY_GUARD}): N+1-shaped request(s) this window"
+        printf '%s\n' "$QG"
+    fi
 fi
 
 # --- 2b. load context (DB tier + app-pod CPU) -------------------------------
