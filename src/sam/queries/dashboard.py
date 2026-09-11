@@ -146,11 +146,13 @@ def _build_project_resources_data(project: Project,
     Returns:
         List of resource dictionaries with usage details
     """
-    # Read-model short-circuit: the batched builder consults the table, so at
-    # N=1 it is the cheap path whenever the gate says the scope is fresh.
-    if _read_model_rows(project.session, [project.project_id], None, active_at) is not None:
+    # Read-model short-circuit: the batched builder consumes the table, so at
+    # N=1 it is the cheap path whenever the gate says the scope is fresh. The
+    # rows are handed over so the builder does not consult the gate again.
+    state = _read_model_rows(project.session, [project.project_id], None, active_at)
+    if state is not None:
         return _build_user_projects_resources_batched(
-            project.session, [project], active_at=active_at,
+            project.session, [project], active_at=active_at, state=state,
         ).get(project.project_id, [])
 
     resources = []
@@ -290,9 +292,15 @@ def _build_user_projects_resources_batched(
     session: Session,
     projects: List[Project],
     active_at: Optional[datetime] = None,
+    *,
+    state: Optional[Dict[int, Any]] = None,
 ) -> Dict[int, List[DashboardResource]]:
     """
     Batched, multi-project equivalent of _build_project_resources_data().
+
+    ``state``: read-model rows by allocation_id a caller already obtained
+    from the gate; the builder then does not consult it again. Rows that do
+    not cover every chosen allocation send the build live, as the gate would.
 
     Returns a dict mapping ``project_id`` -> list of resource dicts in
     EXACTLY the same shape that _build_project_resources_data() produces
@@ -475,10 +483,11 @@ def _build_user_projects_resources_batched(
     # Read-model short-circuit (docs/plans/READ_MODEL.md): when the gate says
     # every chosen allocation has a fresh row, phases 4/5 and the disk override
     # read the rows the hourly task wrote from this same builder.
-    state = _read_model_rows(
-        session, project_ids,
-        [qa.allocation_id for _p, _a, qa, _rt, _ed in chosen.values()], active_at,
-    )
+    chosen_ids = [qa.allocation_id for _p, _a, qa, _rt, _ed in chosen.values()]
+    if state is None:
+        state = _read_model_rows(session, project_ids, chosen_ids, active_at)
+    elif not set(chosen_ids) <= state.keys():
+        state = None
 
     # Phase 4: ONE batched fetch per partition (subtree / leaf). Each call
     # issues N_resource_types x N_charge_models queries -- typically 5-20 for
