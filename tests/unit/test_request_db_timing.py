@@ -124,3 +124,25 @@ class TestRenderFieldsContract:
             p.add_db('sam', 1.0)
             fields = p.render_fields()
         assert fields.index('sam=') < fields.index('jobhistory=')
+
+    def test_read_model_token_is_presence_gated_and_worst_wins(self, app):
+        with app.test_request_context('/'):
+            p = RequestProfile.start()
+            assert 'rm=' not in p.render_fields()      # never consulted
+            p.note_read_model('ok')
+            assert p.render_fields().endswith('rm=served')
+            p.note_read_model('ok-patched', patched=2)
+            assert p.render_fields().endswith('rm=patched:2')
+            p.note_read_model('no-rows')
+            p.note_read_model('ok')
+            assert p.render_fields().endswith('rm=live:no-rows')
+
+    def test_the_gate_verdict_reaches_the_profile(self, app):
+        """The observer registered at init forwards every Lookup the gate returns."""
+        from sam.queries.allocation_state import Lookup, _LOOKUP_OBSERVER
+        assert _LOOKUP_OBSERVER is not None
+        with app.test_request_context('/'):
+            p = RequestProfile.start()
+            _LOOKUP_OBSERVER(Lookup(None, 'disabled'))
+            assert p.render_fields().endswith('rm=live:disabled')
+        _LOOKUP_OBSERVER(Lookup({}, 'ok'))            # outside a request: no-op
