@@ -358,6 +358,30 @@ class TestStaleTree:
         assert look.stale_trees == (fed_then_changed.tree_root
                                     or fed_then_changed.project_id,)
 
+    def test_the_per_project_builder_consults_the_gate_once(self, session, flag,
+                                                            subtree_project):
+        """One lookup, one patch: the rows the single-project builder obtains
+        are handed to the batched builder, which must not re-project the tree."""
+        from sam.accounting.accounts import Account
+        from sam.accounting.allocations import Allocation
+        from sam.queries import allocation_state as als
+        _feed(session, [subtree_project])
+        changed = (session.query(Allocation)
+                   .join(Account, Account.account_id == Allocation.account_id)
+                   .filter(Account.project_id == subtree_project.project_id).first())
+        changed.modified_time = db_now(session)      # same second as the feed: stale
+        session.flush()
+
+        seen, before = [], als._LOOKUP_OBSERVER
+        als.set_lookup_observer(seen.append)
+        try:
+            flag(True)
+            served = _build_project_resources_data(subtree_project)
+        finally:
+            als.set_lookup_observer(before)
+        assert served
+        assert [(l.reason, l.patched) for l in seen] == [('ok-patched', 1)]
+
     def test_fstree_on_equals_off(self, session, flag, hpc_resource, fed_then_changed):
         from sam.queries.fstree_access import get_fstree_data
         name = hpc_resource.resource_name
