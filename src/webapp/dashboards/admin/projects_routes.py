@@ -708,9 +708,6 @@ def edit_project_page(project):
     tab but a limited edit surface gated by ``can_edit_governance``.
     """
     from datetime import datetime
-    from sam.queries.dashboard import get_project_dashboard_data
-
-    project_data = get_project_dashboard_data(db.session, project.projcode)
 
     # Reverse-lookup facility_id / panel_id for cascading dropdown pre-population.
     current_facility_id = None
@@ -742,7 +739,6 @@ def edit_project_page(project):
     return render_template(
         'dashboards/admin/edit_project.html',
         project=project,
-        project_data=project_data,
         current_facility_id=current_facility_id,
         current_panel_id=current_panel_id,
         can_edit_governance=can_edit_governance,
