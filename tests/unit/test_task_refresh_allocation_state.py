@@ -36,6 +36,16 @@ OCC = datetime(2026, 9, 9, 15, 0)
 VALUES = Path(__file__).resolve().parents[2] / 'helm' / 'values.yaml'
 
 
+# A real run writes every snapshot allocation's row under its real
+# allocation_id; two workers doing that at once (this file, or the readers
+# tests' whole-snapshot feed) deadlock on the shared PKs. Same lock name as
+# test_read_model_readers.py. See `serial_file_lock` in tests/conftest.py.
+@pytest.fixture(autouse=True)
+def _one_worker_at_a_time(serial_file_lock):
+    with serial_file_lock('read_model_table'):
+        yield
+
+
 @pytest.fixture
 def ctx(session):
     return TaskContext(now=OCC + timedelta(minutes=7), occurrence=OCC,

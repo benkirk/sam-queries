@@ -20,6 +20,16 @@ from sam.summaries.allocation_state import AccountAllocationState
 
 pytestmark = pytest.mark.unit
 
+
+# `_feed(session)` writes every snapshot allocation's row under its real
+# allocation_id; two workers doing that at once deadlock on the shared PKs.
+# See `serial_file_lock` in tests/conftest.py.
+@pytest.fixture(autouse=True)
+def _one_worker_at_a_time(serial_file_lock):
+    with serial_file_lock('read_model_table'):
+        yield
+
+
 SCALAR = ('resource_name', 'allocation_id', 'parent_allocation_id', 'is_inheriting',
           'account_id', 'status', 'start_date', 'end_date', 'days_until_expiration',
           'date_group_key', 'bar_state', 'resource_type', 'root_projcode',
