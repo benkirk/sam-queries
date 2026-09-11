@@ -213,3 +213,62 @@ def read_model_on_committed(app, SessionFactory, monkeypatch):
         s.commit()
     finally:
         s.close()
+
+
+# ---- The stale-tree regime --------------------------------------------------
+#
+# Production's third state: the table is fresh but one tree changed since the
+# refresh (an XRAS handoff, an admin allocation edit), so the gate re-projects
+# that tree in memory. A same-second stamp counts as newer, by design, so
+# stamping one allocation right after the feed is enough.
+
+
+@pytest.fixture
+def perf_subtree_project(session, _subtree_project_id):
+    """A tree root with >=3 active children — the admin tree view's shape."""
+    from sam import Project
+    return session.get(Project, _subtree_project_id)
+
+
+def _an_allocation_of(s, project_id):
+    from sam.accounting.accounts import Account
+    from sam.accounting.allocations import Allocation
+    return (s.query(Allocation).join(Account, Account.account_id == Allocation.account_id)
+            .filter(Account.project_id == project_id, Account.deleted == False)  # noqa: E712
+            .order_by(Allocation.allocation_id).first())
+
+
+@pytest.fixture
+def read_model_on_stale(session, monkeypatch, perf_subtree_project):
+    """Feed in the test transaction, then stamp the subtree project's tree."""
+    from sam.queries.allocation_state import db_now
+    _feed_read_model(session)
+    _an_allocation_of(session, perf_subtree_project.project_id).modified_time = db_now(session)
+    session.flush()
+    monkeypatch.setenv('READ_MODEL_ENABLED', '1')
+
+
+@pytest.fixture
+def read_model_on_committed_stale(app, SessionFactory, monkeypatch, _subtree_project_id):
+    """Feed and COMMIT, then stamp one committed allocation; both are undone."""
+    from sam.queries.allocation_state import db_now
+    from sam.summaries.allocation_state import AccountAllocationState
+    s = SessionFactory()
+    try:
+        _feed_read_model(s)
+        alloc = _an_allocation_of(s, _subtree_project_id)
+        allocation_id, was = alloc.allocation_id, alloc.modified_time
+        alloc.modified_time = db_now(s)
+        s.commit()
+    finally:
+        s.close()
+    monkeypatch.setitem(app.config, 'READ_MODEL_ENABLED', True)
+    yield
+    s = SessionFactory()
+    try:
+        from sam.accounting.allocations import Allocation
+        s.get(Allocation, allocation_id).modified_time = was
+        s.query(AccountAllocationState).delete()
+        s.commit()
+    finally:
+        s.close()

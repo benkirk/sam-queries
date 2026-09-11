@@ -132,5 +132,61 @@
     "admin_expirations_expired_route_read_model": {
         "queries": 40,
         "notes": "measured 26 (2026-09-09); counts barely move vs live -- cheap indexed reads replace the rollups, the win is wall time (test_dashboard_latency, docs/plans/READ_MODEL.md)"
+    },
+    "get_project_dashboard_data_read_model_stale": {
+        "queries": 65,
+        "notes": "measured 52 (2026-09-11): served path plus ONE in-memory re-projection of the changed tree; the gate's rows reach the batched builder, so the tree is never projected twice"
+    },
+    "get_carveout_frontier_indexed": {
+        "queries": 5,
+        "notes": "measured 0 (2026-09-11): with the tree's accounts and children preloaded the frontier walk issues nothing"
+    },
+    "admin_project_edit_route": {
+        "queries": 35,
+        "notes": "measured 26 (2026-09-11) in every regime -- the page reads no usage data; the Allocations tab loads the tree fragment lazily"
+    },
+    "admin_project_edit_route_read_model": {
+        "queries": 35,
+        "notes": "measured 26 (2026-09-11); no gate lookup on this page"
+    },
+    "admin_project_edit_route_read_model_stale": {
+        "queries": 35,
+        "notes": "measured 26 (2026-09-11); a changed tree costs this page nothing"
+    },
+    "admin_allocation_tree_route": {
+        "queries": 100,
+        "notes": "measured 81 (2026-09-11) on the subtree fixture, live rollups; the carve-out walk reads a preloaded account index"
+    },
+    "admin_allocation_tree_route_read_model": {
+        "queries": 45,
+        "notes": "measured 35 (2026-09-11) vs 81 live"
+    },
+    "admin_allocation_tree_route_read_model_stale": {
+        "queries": 110,
+        "notes": "measured 93 (2026-09-11): served plus one re-projection of the tree; the lookup observer pins it to exactly one"
+    },
+    "admin_project_card_route": {
+        "queries": 65,
+        "notes": "measured 55 (2026-09-11), live"
+    },
+    "admin_project_card_route_read_model": {
+        "queries": 40,
+        "notes": "measured 30 (2026-09-11) vs 55 live"
+    },
+    "admin_project_card_route_read_model_stale": {
+        "queries": 75,
+        "notes": "measured 64 (2026-09-11): one re-projection, not two"
+    },
+    "user_project_details_route": {
+        "queries": 70,
+        "notes": "measured 60 (2026-09-11), live"
+    },
+    "user_project_details_route_read_model": {
+        "queries": 45,
+        "notes": "measured 35 (2026-09-11) vs 60 live"
+    },
+    "user_project_details_route_read_model_stale": {
+        "queries": 80,
+        "notes": "measured 69 (2026-09-11): one re-projection, not two"
     }
 }
