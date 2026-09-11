@@ -2554,11 +2554,14 @@ def _render_project_directories_card(*, active_only: bool):
     fall into a final "No Resource Identified" group.
     """
     from collections import defaultdict
+    from sqlalchemy.orm import joinedload
     from sam.projects.projects import ProjectDirectory, Project
-    from sam.resources.resources import DiskResourceRootDirectory
+    from sam.resources.resources import DiskResourceRootDirectory, Resource
 
     roots = (
         db.session.query(DiskResourceRootDirectory)
+        .options(joinedload(DiskResourceRootDirectory.resource)
+                 .joinedload(Resource.resource_type))
         .order_by(DiskResourceRootDirectory.root_directory)
         .all()
     )
@@ -2571,7 +2574,10 @@ def _render_project_directories_card(*, active_only: bool):
                 return r.resource
         return None
 
-    q = db.session.query(ProjectDirectory).join(Project)
+    # The template reads `pd.project` per row; a Project loaded on its own
+    # also fires its selectin `accounts` load, so that is suppressed too.
+    q = db.session.query(ProjectDirectory).join(Project).options(
+        joinedload(ProjectDirectory.project).lazyload(Project.accounts))
     if active_only:
         q = q.filter(ProjectDirectory.is_active)
     rows = q.order_by(ProjectDirectory.directory_name).all()

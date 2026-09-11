@@ -188,5 +188,13 @@
     "user_project_details_route_read_model_stale": {
         "queries": 80,
         "notes": "measured 69 (2026-09-11): one re-projection, not two"
+    },
+    "admin_project_directories_route": {
+        "queries": 20,
+        "notes": "measured 12 (2026-09-11) vs 2834 before the joined project + suppressed accounts cascade; every directory row, no filter"
+    },
+    "admin_project_directories_active_route": {
+        "queries": 20,
+        "notes": "measured 12 (2026-09-11) vs 894 before (the 895 q / 5 s seen in prod); ?active_only=1, the page shell's first load"
     }
 }

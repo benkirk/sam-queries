@@ -395,3 +395,19 @@ def test_project_page_route_read_model_stale(auth_client, route_count_queries,
     assert [(l.reason, l.patched) for l in seen] == [('ok-patched', 1)] * n, (
         f'{stem}: a stale tree must be re-projected {n}x, saw '
         f'{[(l.reason, l.patched) for l in seen]}')
+
+
+# ---------------------------------------------------------------------------
+# Project Directories card: every row's project is joined in, and the
+# Project's selectin `accounts` load is suppressed -- one query per distinct
+# project (x2 with the cascade) was 895 queries / 5 s in prod.
+# ---------------------------------------------------------------------------
+
+def test_admin_project_directories_route(auth_client, route_count_queries):
+    _route_within("admin_project_directories_route", auth_client,
+                  route_count_queries, '/admin/htmx/admin/project-directories')
+
+
+def test_admin_project_directories_active_route(auth_client, route_count_queries):
+    _route_within("admin_project_directories_active_route", auth_client,
+                  route_count_queries, '/admin/htmx/admin/project-directories?active_only=1')
