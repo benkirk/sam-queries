@@ -1955,7 +1955,7 @@ def htmx_edit_allocation_form(allocation):
         if project and project.has_children:
             def _has_any_alloc(proj_id):
                 acct = Account.get_by_project_and_resource(db.session, proj_id, resource_id)
-                return acct is not None and any(not a.deleted for a in acct.allocations)
+                return acct is not None and bool(acct.live_allocations)
             unlinked_descendants_count = sum(
                 1 for d in project.get_descendants()
                 if d.active and not _has_any_alloc(d.project_id)
@@ -2161,7 +2161,7 @@ def htmx_propagate_to_remaining(allocation):
     # (not just those linked via allocation.children — detached ones are excluded correctly)
     def _has_any_alloc(proj_id):
         acct = Account.get_by_project_and_resource(db.session, proj_id, resource_id)
-        return acct is not None and any(not a.deleted for a in acct.allocations)
+        return acct is not None and bool(acct.live_allocations)
 
     descendants = [
         d for d in project.get_descendants()

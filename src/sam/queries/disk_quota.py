@@ -25,7 +25,7 @@ from sam.resources.resources import DiskResourceRootDirectory
 def _latest_allocation(account: Account) -> Optional[Allocation]:
     """Legacy Account.getLatestAllocation: the null-end_date allocation if any,
     else the one with the max end_date. Ignores soft-deleted rows."""
-    live = [al for al in account.allocations if not al.deleted]
+    live = account.live_allocations
     if not live:
         return None
     open_ended = [al for al in live if al.end_date is None]

@@ -232,6 +232,35 @@ class TestDashboardQueries:
             for field in ('project', 'resource_obj', 'resource_summary', 'daily_charges'):
                 assert field in result
 
+    def test_a_soft_deleted_allocation_is_invisible_on_both_paths(self, session, hpc_resource):
+        """Renew-with-replace leaves a deleted row with a far-future end date;
+        neither the batched builder nor get_detailed_allocation_usage may show
+        it, and an account with only deleted rows yields no resource at all."""
+        from factories.projects import make_account, make_allocation, make_project
+        from factories.resources import make_resource
+        now = datetime.now()
+        project = make_project(session, facility_name='UNIV')
+        account = make_account(session, project=project, resource=hpc_resource)
+        ended = make_allocation(session, account=account, amount=100.0,
+                                start_date=now - timedelta(days=375),
+                                end_date=now - timedelta(days=10))
+        make_allocation(session, account=account, amount=999.0, deleted=True,
+                        end_date=now + timedelta(days=3000))
+        other = make_resource(session, resource_type=hpc_resource.resource_type)
+        ghost = make_account(session, project=project, resource=other)
+        make_allocation(session, account=ghost, amount=5.0, deleted=True)
+
+        batched = _build_user_projects_resources_batched(session, [project], active_at=now)
+        rows = batched[project.project_id]
+        assert [r['allocation_id'] for r in rows] == [ended.allocation_id]
+        assert rows[0]['bar_state'] == 'expired'
+        assert rows[0]['allocated'] == 100.0
+
+        usage = project.get_detailed_allocation_usage()
+        assert set(usage) == {hpc_resource.resource_name}
+        shown = usage[hpc_resource.resource_name]
+        assert (shown['allocated'], shown['end_date']) == (100.0, ended.end_date)
+
     def test_user_dashboard_batched_matches_per_project(
         self, session, multi_project_user
     ):

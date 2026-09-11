@@ -788,29 +788,9 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
             resource = account.resource.resource_name
             resource_type = account.resource.resource_type.resource_type if account.resource.resource_type else 'UNKNOWN'
 
-            # Find active allocation, or most recent if none are active
-            query_alloc = None
-            for alloc in account.allocations:
-                if alloc.is_active_at(now):
-                    query_alloc = alloc
-                    break
-
-            # No active allocation found - find the most recent one (latest end_date)
-            if not query_alloc:
-                if account.allocations:
-                    most_recent_alloc = max(account.allocations,
-                                            key=lambda a: a.end_date if a.end_date else datetime.max
-                                            )
-                    # Apply date threshold: only query 'most_recent_alloc'
-                    # if it has expired within the past 90 days.
-                    # An open-ended allocation (end_date=None) never expires —
-                    # treat it as always within threshold.
-                    end = most_recent_alloc.end_date
-                    if end is None or (now - end) <= timedelta(days=90):
-                        query_alloc = most_recent_alloc
-
-            # OK, if we still don't have an allocation to query
-            # then simply skip this account
+            # The active allocation, else one that ended within 90 days —
+            # the rule the dashboards' batched builder shares.
+            query_alloc = account.display_allocation(now)
             if not query_alloc:
                 continue
 

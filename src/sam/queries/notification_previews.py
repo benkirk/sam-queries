@@ -40,8 +40,7 @@ def expiring_rows_for_project(project, *,
     for account in project.accounts:
         if account.deleted:
             continue
-        dated = [a for a in account.allocations
-                 if not a.deleted and a.end_date is not None]
+        dated = [a for a in account.live_allocations if a.end_date is not None]
         if not dated:
             continue
         active = [a for a in dated if a.is_active_at(now)]

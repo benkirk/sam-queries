@@ -131,6 +131,18 @@ class TestProjection:
         row, = project_allocation_state(session, now=now, projects=[project])
         assert row['is_current'] is False
 
+    def test_a_soft_deleted_allocation_is_never_a_row(self, session, hpc):
+        """The project qualifies through its live allocation; the deleted row on
+        its other account must not be projected, even with a future end date."""
+        project, account, alloc = _charged_project(session, hpc)
+        other = make_resource(session, resource_type=hpc.resource_type)
+        ghost = make_account(session, project=project, resource=other)
+        make_allocation(session, account=ghost, deleted=True,
+                        end_date=datetime.now() + timedelta(days=3000))
+
+        rows = project_allocation_state(session, now=datetime.now(), projects=[project])
+        assert [r['allocation_id'] for r in rows] == [alloc.allocation_id]
+
     def test_an_allocation_ended_long_ago_is_not_a_candidate(self, session, hpc):
         project = make_project(session, facility_name='UNIV')
         account = make_account(session, project=project, resource=hpc)
