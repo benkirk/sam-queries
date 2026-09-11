@@ -157,3 +157,7 @@ is a new client with its own credential and its own review, never a relaxation o
 one.
 
 Design and deferred work: [`../plans/XRAS_ACCOUNT_QUEUE.md`](../plans/XRAS_ACCOUNT_QUEUE.md).
+
+The third arc — SAM authoring the request itself, so that the PI, mnemonic,
+facility and contract are resolved at submission rather than at approval — is
+designed in [`outgoing/XRAS_SUBMISSION.md`](outgoing/XRAS_SUBMISSION.md).
