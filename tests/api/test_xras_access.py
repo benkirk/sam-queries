@@ -768,6 +768,8 @@ class TestDispatchArms:
             content_type='application/json', headers=_auth())
 
         assert resp.status_code == 200
+        assert json.loads(resp.data) == {
+            'message': 'OK', 'result': {'projcode': 'UCUB0166'}}
         row = action_log.one()
         assert row['status'] == 'processed'
         assert row['projcode_result'] == 'UCUB0166'
@@ -1026,17 +1028,21 @@ class TestDispatchArms:
         assert 'XRAS_ACTIONS_ENABLED' not in body['message']
         assert body['message'] == actions._MANUAL_MESSAGE
 
-    def test_a_processed_action_still_answers_exactly_OK(
+    def test_a_processed_action_answers_OK_with_the_projcode(
             self, xras_client, action_log, dispatching):
-        """The half that must NOT move. ``'OK'`` on success is legacy's byte-exact
-        success body, and the parked split is not a license to redesign it."""
+        """``message`` stays legacy's ``'OK'``; the projcode rides in ``result``.
+
+        ACCESS confirmed the ``result`` member is SAM's purview (as the 422
+        ``errors`` member already is), so the operator sees which project the
+        post touched. The ACCESS-facing ``'OK'`` string is unchanged."""
         dispatching.register('extend', lambda s, a, *, validate_only=False: dispatching.DispatchResult(
             status='processed', service='extend', projcode='UCUB0166'))
 
         status, body = self._post_body(xras_client)
 
         assert action_log.one()['status'] == 'processed'
-        assert (status, body) == (200, {'message': 'OK', 'result': None})
+        assert (status, body) == (
+            200, {'message': 'OK', 'result': {'projcode': 'UCUB0166'}})
 
 
 class TestPostActionsErrors:
