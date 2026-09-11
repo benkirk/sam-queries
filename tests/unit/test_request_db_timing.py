@@ -137,6 +137,20 @@ class TestRenderFieldsContract:
             p.note_read_model('ok')
             assert p.render_fields().endswith('rm=live:no-rows')
 
+    def test_actor_token_is_presence_gated_and_last(self, app):
+        with app.test_request_context('/'):
+            p = RequestProfile.start()
+            assert 'who=' not in p.render_fields()      # anonymous: no token
+            p.note_actor('user', 'benkirk')
+            assert p.render_fields().endswith('who=user:benkirk')
+            p.note_read_model('ok')
+            fields = p.render_fields()
+            assert fields.endswith('rm=served who=user:benkirk')
+            p.note_actor('apikey', 'collector')
+            assert p.render_fields().endswith('who=apikey:collector')
+            p.note_actor('apikey', None)                # a missing name changes nothing
+            assert p.render_fields().endswith('who=apikey:collector')
+
     def test_the_gate_verdict_reaches_the_profile(self, app):
         """The observer registered at init forwards every Lookup the gate returns."""
         from sam.queries.allocation_state import Lookup, _LOOKUP_OBSERVER
