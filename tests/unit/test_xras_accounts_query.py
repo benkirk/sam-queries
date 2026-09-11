@@ -440,12 +440,16 @@ class TestFeedA:
         assert row.xras_action_log_id not in ids
 
     def test_the_window_bounds_the_read(self, session):
-        self._log_row(session, PLACEHOLDER_FIXTURE,
-                      received_time=datetime(2026, 8, 1))
-        assert records_from_action_log(
-            session, since=datetime(2026, 9, 1), validate=False) == []
-        assert records_from_action_log(
-            session, since=datetime(2026, 7, 1), validate=False)
+        """Presence of OUR row only: `test_xras_accounts_card.py` COMMITs a row
+        stamped now, so asserting the window is empty races against it."""
+        row = self._log_row(session, PLACEHOLDER_FIXTURE,
+                            received_time=datetime(2026, 8, 1))
+
+        def ids(since):
+            return {r.ref.action_log_id for r in records_from_action_log(
+                session, since=since, validate=False)}
+        assert row.xras_action_log_id not in ids(datetime(2026, 9, 1))
+        assert row.xras_action_log_id in ids(datetime(2026, 7, 1))
 
     def test_a_role_outside_the_date_window_is_excluded(self, session):
         """``new_ncar4214_ok.json``'s placeholder role ended before the action

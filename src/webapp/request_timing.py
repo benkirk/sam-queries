@@ -61,13 +61,14 @@ def timed_cursor_listeners(on_execute):
 class RequestProfile:
     """Timing accumulated on ``flask.g`` for one request, rendered onto its log line."""
 
-    __slots__ = ('t_start', 'cpu_start', 'db', 'pool_ms')
+    __slots__ = ('t_start', 'cpu_start', 'db', 'pool_ms', 'read_model')
 
     def __init__(self):
         self.t_start = time.monotonic()
         self.cpu_start = time.thread_time()   # per-thread CPU; gthread = 1 thread/request
         self.db = {}          # label -> [ms, count]
         self.pool_ms = 0.0
+        self.read_model = None   # [live reason or None, trees patched, served calls]
 
     @classmethod
     def start(cls):
@@ -92,6 +93,24 @@ class RequestProfile:
     def add_pool(self, ms):
         self.pool_ms += ms
 
+    def note_read_model(self, reason, patched=0):
+        """Record one read-model gate verdict; the worst one wins the token."""
+        if self.read_model is None:
+            self.read_model = [None, 0, 0]
+        live = None if reason in ('ok', 'ok-patched') else reason
+        if live is not None and self.read_model[0] is None:
+            self.read_model[0] = live
+        self.read_model[1] += patched
+        self.read_model[2] += 1
+
+    def _read_model_token(self):
+        live, patched, calls = self.read_model
+        if live is not None:
+            return 'rm=live:%s' % live
+        if patched:
+            return 'rm=patched:%d' % patched
+        return 'rm=served'
+
     def total_ms(self):
         return (time.monotonic() - self.t_start) * 1000.0
 
@@ -107,8 +126,9 @@ class RequestProfile:
 
         ``cpu=Xms`` then one ``label=Yms/Nq`` per database the request TOUCHED
         (presence-gated — untouched DBs never appear), then ``pool=`` when
-        non-zero. ``rest`` (GIL/pool-not-attributed) is derived by the reader as
-        ``total - cpu - Σdb - pool``, not emitted.
+        non-zero, then ``rm=served|patched:N|live:<reason>`` when the request
+        consulted the allocation read-model. ``rest`` (GIL/pool-not-attributed)
+        is derived by the reader as ``total - cpu - Σdb - pool``, not emitted.
         """
         parts = ['cpu=%.1fms' % self.cpu_ms()]
         for label, (ms, count) in self._db_items():
@@ -116,6 +136,8 @@ class RequestProfile:
                 parts.append('%s=%.1fms/%dq' % (label, ms, count))
         if self.pool_ms > 0:
             parts.append('pool=%.1fms' % self.pool_ms)
+        if self.read_model is not None:
+            parts.append(self._read_model_token())
         return ' '.join(parts)
 
 
@@ -138,8 +160,17 @@ def attach_query_timing(engine, label):
     event.listen(engine, 'after_cursor_execute', after)
 
 
+def _note_read_model(lookup):
+    profile = RequestProfile.current()
+    if profile is not None:
+        profile.note_read_model(lookup.reason, lookup.patched)
+
+
 def init_request_timing(app, db):
-    """Attach ``sam`` to the default engine and ``status`` to the system_status bind."""
+    """Attach ``sam`` to the default engine and ``status`` to the system_status
+    bind, and forward read-model gate verdicts onto the request profile."""
+    from sam.queries.allocation_state import set_lookup_observer
+    set_lookup_observer(_note_read_model)
     with app.app_context():
         attach_query_timing(db.engine, 'sam')
         status_engine = db.engines.get('system_status')

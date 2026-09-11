@@ -284,6 +284,59 @@ class TestReplayAmount:
         assert replayed != pytest.approx(926.0)
 
 
+class TestAccountDisplayAllocation:
+    """The one rule behind the dashboards' and get_detailed_allocation_usage's
+    choice of allocation: active, else ended within 90 days, live rows only."""
+
+    @staticmethod
+    def _account(session):
+        from factories.projects import make_account
+        return make_account(session)
+
+    def test_live_allocations_excludes_soft_deleted(self, session):
+        from factories.projects import make_allocation
+        account = self._account(session)
+        live = make_allocation(session, account=account)
+        make_allocation(session, account=account, deleted=True)
+        assert account.live_allocations == [live]
+
+    def test_the_active_live_allocation_wins(self, session):
+        from factories.projects import make_allocation
+        account = self._account(session)
+        now = datetime.now()
+        live = make_allocation(session, account=account)
+        make_allocation(session, account=account, deleted=True,
+                        end_date=now + timedelta(days=3000))
+        assert account.display_allocation(now) is live
+
+    def test_a_deleted_row_never_wins_the_fallback(self, session):
+        """The renew-with-replace shape: the deleted row has the later end date."""
+        from factories.projects import make_allocation
+        account = self._account(session)
+        now = datetime.now()
+        ended = make_allocation(session, account=account,
+                                start_date=now - timedelta(days=375),
+                                end_date=now - timedelta(days=10))
+        make_allocation(session, account=account, deleted=True,
+                        end_date=now + timedelta(days=3000))
+        assert account.display_allocation(now) is ended
+
+    def test_only_deleted_rows_means_none(self, session):
+        from factories.projects import make_allocation
+        account = self._account(session)
+        make_allocation(session, account=account, deleted=True)
+        assert account.display_allocation(datetime.now()) is None
+
+    def test_ended_long_ago_means_none(self, session):
+        from factories.projects import make_allocation
+        account = self._account(session)
+        now = datetime.now()
+        make_allocation(session, account=account,
+                        start_date=now - timedelta(days=500),
+                        end_date=now - timedelta(days=120))
+        assert account.display_allocation(now) is None
+
+
 class TestAccountGetOrCreate:
     """Account.get_or_create handles the empty- and soft-deleted-account slots
     that the "Add Allocation" dropdown now offers (project_resource_ux is NOT

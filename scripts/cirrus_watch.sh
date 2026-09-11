@@ -209,6 +209,13 @@ else
             | sort -rn | head -4 | cut -f2-)
         [[ -n "$SPLIT" ]] && printf '%s\n' "$SPLIT"
     fi
+    # Read-model gate verdicts (the rm= token). Report-only: a live count is
+    # expected inside the hourly too-old window; a trend is what matters.
+    RM=$(printf '%s\n' "$LOGS" | { grep -oE 'rm=[a-z-]+(:[a-z0-9-]+)?' || true; } | awk -F'[=:]' '
+        { if($2=="served") s++; else if($2=="patched"){p++; t+=$3+0} else if($2=="live"){l++; r[$3]++} }
+        END{ if(s+p+l){ line=sprintf("  read-model: served=%d patched=%d (trees=%d) live=%d", s,p,t,l);
+             for(k in r) line=line sprintf(" %s=%d", k, r[k]); print line } }')
+    [[ -n "$RM" ]] && printf '%s\n' "$RM"
 fi
 
 # --- 2b. load context (DB tier + app-pod CPU) -------------------------------
