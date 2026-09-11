@@ -1514,7 +1514,7 @@ Today only `API_KEYS_COLLECTOR` is configured (`helm/values.yaml:253`). Pinned b
 Reproduce byte-exactly everything that is *contract* — field presence, field order, value formatting,
 and array order that comes from SQL. Diverge deliberately where legacy emits a **server-side failure
 artifact**, or where its ordering is an artifact of a **JDK data structure** rather than of the data.
-Six divergences, each recorded so re-standardising later is a local edit:
+Seven divergences, each recorded so re-standardising later is a local edit:
 
 | # | Legacy | Ours | Why |
 |---|---|---|---|
@@ -1524,6 +1524,7 @@ Six divergences, each recorded so re-standardising later is a local edit:
 | 4 | roster order *incidental* (no `ORDER BY`) | explicit `ORDER BY u.user_id` | Reproduces observed output **and** makes it deterministic — strictly better than legacy |
 | 5 | unmapped path → **401** unauthenticated, **404** (431 B Tomcat HTML) authenticated | Flask's own 404 in both cases | Legacy 401s because the filter runs *before* routing; Flask routes first, so a blueprint `errorhandler(404)` never sees a routing miss. Reproducing it means a catch-all that turns every typo into a 401 — worse to debug, for a case no client exercises |
 | 6 | `allocations[]` order under a **`start_date` tie** is arbitrary | primary-key tiebreaker | See below |
+| 7 | processed `POST /actions` → `{"message":"OK","result":null}` | `{"message":"OK","result":{"projcode":…}}` | Additive: `message` stays the ACCESS-facing `'OK'`; the affected projcode rides in `result` so the operator sees which project a post touched. `result` is SAM's purview (confirmed by Steven Peckins, XRAS/UIUC), same standing as the 422 `result.errors` member |
 
 **On #3 —** the order *is* reproducible: emulating `String.hashCode()` plus `HashMap`'s
 spread-and-bucket walk matched all three captured multi-master responses exactly, including one where

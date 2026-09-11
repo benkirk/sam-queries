@@ -367,11 +367,13 @@ def make_allocation(
     end_date: Optional[datetime] = None,
     description: Optional[str] = None,
     parent: Optional[Allocation] = None,
+    deleted: bool = False,
 ) -> Allocation:
     """Build and flush a fresh Allocation, auto-building an Account if needed.
 
     Delegates to `Allocation.create()`, which validates `amount > 0` and
-    creates the Account -> Project -> Resource graph as needed.
+    creates the Account -> Project -> Resource graph as needed. `deleted`
+    soft-deletes the row after creation (the renew-with-replace shape).
     """
     if account is None:
         account = make_account(session)
@@ -380,7 +382,7 @@ def make_allocation(
     if end_date is None:
         end_date = datetime.now() + timedelta(days=365)
 
-    return Allocation.create(
+    alloc = Allocation.create(
         session,
         project_id=account.project_id,
         resource_id=account.resource_id,
@@ -390,6 +392,10 @@ def make_allocation(
         description=description,
         parent_allocation_id=parent.allocation_id if parent is not None else None,
     )
+    if deleted:
+        alloc.deleted = True
+        session.flush()
+    return alloc
 
 
 def make_allocation_transaction(

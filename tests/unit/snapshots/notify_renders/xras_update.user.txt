@@ -13,14 +13,10 @@ Your project code and its members are unchanged.
   - Documentation: https://ncar-hpc-docs.readthedocs.io/
   - Manage your project and its members at https://sam.hpc.ucar.edu/
 
-Note from the reviewer:
-
-Approved as recommended by the panel.
-
 
 Your project lead (Jane Lead /
-jane.lead@example.edu) manages membership and any future
-extension or supplement requests.
+jane.lead@example.edu) and the project administrator manage
+membership and any future extension or supplement requests.
 
 --
 This is an automated notification from the NSF NCAR Systems Accounting Manager.

@@ -20,6 +20,16 @@ from sam.summaries.allocation_state import AccountAllocationState
 
 pytestmark = pytest.mark.unit
 
+
+# `_feed(session)` writes every snapshot allocation's row under its real
+# allocation_id; two workers doing that at once deadlock on the shared PKs.
+# See `serial_file_lock` in tests/conftest.py.
+@pytest.fixture(autouse=True)
+def _one_worker_at_a_time(serial_file_lock):
+    with serial_file_lock('read_model_table'):
+        yield
+
+
 SCALAR = ('resource_name', 'allocation_id', 'parent_allocation_id', 'is_inheriting',
           'account_id', 'status', 'start_date', 'end_date', 'days_until_expiration',
           'date_group_key', 'bar_state', 'resource_type', 'root_projcode',
@@ -318,6 +328,69 @@ class TestApiSchema:
                     assert v == pytest.approx(served[aid][k]), (aid, k)
                 else:
                     assert v == served[aid][k], (aid, k)
+
+
+class TestStaleTree:
+    """A structural change after the feed stales one tree; the gate re-projects
+    that tree in memory and every reader still equals the live answer. Not
+    armed: recomputing the stale tree is the point."""
+
+    @pytest.fixture
+    def fed_then_changed(self, session, hpc_resource):
+        from datetime import timedelta
+        from factories.projects import make_account, make_allocation, make_project
+        _feed(session)
+        project = make_project(session, facility_name='UNIV')
+        account = make_account(session, project=project, resource=hpc_resource)
+        now = datetime.now()
+        make_allocation(session, account=account, amount=250.0,
+                        start_date=now - timedelta(days=10),
+                        end_date=now + timedelta(days=355))
+        session.flush()
+        return project
+
+    def test_the_gate_patches_exactly_one_tree(self, session, flag, hpc_resource,
+                                               fed_then_changed):
+        from sam.queries.allocation_state import fresh_state
+        flag(True)
+        look = fresh_state(session, resource_ids=[hpc_resource.resource_id])
+        assert (look.reason, look.patched) == ('ok-patched', 1)
+        assert look.stale_trees == (fed_then_changed.tree_root
+                                    or fed_then_changed.project_id,)
+
+    def test_fstree_on_equals_off(self, session, flag, hpc_resource, fed_then_changed):
+        from sam.queries.fstree_access import get_fstree_data
+        name = hpc_resource.resource_name
+        flag(True)
+        served = get_fstree_data(session, resource_name=name)
+        flag(False)
+        assert served == get_fstree_data(session, resource_name=name)
+
+    def test_allocation_summary_on_equals_off(self, session, flag, hpc_resource,
+                                              fed_then_changed):
+        name = hpc_resource.resource_name
+        flag(True)
+        served = get_allocation_summary_with_usage(session, resource_name=name,
+                                                   root_only=True)
+        flag(False)
+        live = get_allocation_summary_with_usage(session, resource_name=name,
+                                                 root_only=True)
+        TestAllocationSummary()._rows_equal(live, served)
+
+    def test_dashboard_on_equals_off(self, session, flag, fed_then_changed):
+        flag(True)
+        served = get_projects_dashboard_data(session, [fed_then_changed])
+        flag(False)
+        live = get_projects_dashboard_data(session, [fed_then_changed])
+        assert_resources_equal(live[0]['resources'], served[0]['resources'])
+
+    def test_an_untouched_tree_is_still_served_without_recomputing(
+            self, request, session, flag, subtree_project, fed_then_changed):
+        from sam.queries.allocation_state import fresh_state
+        flag(True)
+        assert fresh_state(session, project_ids=[subtree_project.project_id]).reason == 'ok'
+        request.getfixturevalue('armed')
+        assert get_projects_dashboard_data(session, [subtree_project])[0]['resources']
 
 
 class TestDeepDive:

@@ -128,13 +128,17 @@ def preview_context(kind: str, facility: Optional[str] = None,
                     role: str = 'lead') -> Dict[str, Any]:
     """``sample_context`` plus the four keys the renderer injects."""
     recipient = sample_recipient(role)
-    return {
+    context = {
         **sample_context(kind, facility),
         'subject': _SUBJECTS[get_kind(kind).key],
         'recipient': recipient.address,
         'recipient_name': recipient.name,
         'recipient_role': recipient.role,
     }
+    # Mirror build_xras_messages: the approver note is PI-only.
+    if role != 'lead' and 'approver_comment' in context:
+        context['approver_comment'] = None
+    return context
 
 
 #: One line per variable, keyed by dotted name for list-item fields.

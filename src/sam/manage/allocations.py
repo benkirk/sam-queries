@@ -620,10 +620,7 @@ def propagate_allocation_to_subprojects(
         account = Account.get_by_project_and_resource(
             session, child_proj.project_id, resource_id
         )
-        existing = (
-            [a for a in account.allocations if not a.deleted]
-            if account else []
-        )
+        existing = account.live_allocations if account else []
 
         if existing:
             if skip_existing:

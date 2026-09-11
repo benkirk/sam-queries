@@ -508,7 +508,9 @@ def _dispatch(log_id, action):
         current_app.logger.info(
             'XRAS action processed: id=%s service=%s projcode=%s',
             log_id, result.service, result.projcode)
-        return xras_response(message='OK')
+        # `message` stays the legacy 'OK'; the projcode goes in `result`, which
+        # ACCESS confirmed is SAM's purview (like the 422 `errors` member).
+        return xras_response({'projcode': result.projcode}, message='OK')
 
     # `service` and `outcome_reason` are the whole reason this arm is worth
     # distinguishing: four causes park an action and, without them, the rows are

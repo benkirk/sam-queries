@@ -1,7 +1,8 @@
 """Golden renders of every shipped notification template.
 
-Each `{stem}.{txt,html}` is rendered against `preview_context` for a lead and
-a plain member and compared with a committed snapshot. Text is byte-exact;
+Each `{stem}.{txt,html}` is rendered against `preview_context` for a lead, an
+admin, and a plain member and compared with a committed snapshot. The admin
+role guards the PI-only approver note. Text is byte-exact;
 HTML is compared whitespace-normalized, because a `{% extends %}` layout
 cannot be byte-stable without `trim_blocks`. Regenerate with
 `NOTIFY_RENDER_REGEN=1 pytest tests/unit/test_notify_golden_renders.py` and
@@ -20,7 +21,7 @@ from sam.notify.samples import preview_context, sample_recipient
 
 SNAPSHOT_DIR = Path(__file__).parent / 'snapshots' / 'notify_renders'
 REGEN = os.environ.get('NOTIFY_RENDER_REGEN') == '1'
-ROLES = ('lead', 'user')
+ROLES = ('lead', 'admin', 'user')
 
 
 def _stems():

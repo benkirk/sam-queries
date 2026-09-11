@@ -281,29 +281,9 @@ def _read_model_rows(session: Session, project_ids, allocation_ids,
 
 
 def _select_query_alloc(account: Account, now: datetime):
-    """
-    Pick the allocation to display for an account, mirroring the logic in
-    Project.get_detailed_allocation_usage(): prefer the active allocation,
-    otherwise fall back to the most recent one if it expired within 90 days.
-
-    Returns the chosen Allocation or None.
-    """
-    for alloc in account.allocations:
-        if alloc.is_active_at(now):
-            return alloc
-    if account.allocations:
-        most_recent = max(
-            account.allocations,
-            key=lambda a: a.end_date if a.end_date else datetime.max,
-        )
-        end = most_recent.end_date
-        # Exact timedelta comparison, NOT (now - end).days <= 90: .days
-        # truncates toward zero, keeping an allocation a full extra day in
-        # [90d, 91d) after expiry and breaking the batched/per-project
-        # equivalence with get_detailed_allocation_usage() at that boundary.
-        if end is None or (now - end) <= timedelta(days=90):
-            return most_recent
-    return None
+    """The allocation to display for an account: `Account.display_allocation`,
+    the one rule shared with Project.get_detailed_allocation_usage()."""
+    return account.display_allocation(now)
 
 
 def _build_user_projects_resources_batched(

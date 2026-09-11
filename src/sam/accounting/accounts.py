@@ -4,6 +4,7 @@ from ..base import *
 #-------------------------------------------------------------------------eh-
 
 from dataclasses import dataclass
+from datetime import timedelta
 
 
 @dataclass(frozen=True)
@@ -247,6 +248,32 @@ class Account(Base, SoftDeleteMixin, SessionMixin):
             self.second_threshold = second_threshold
         self.session.flush()
         return self
+
+    @property
+    def live_allocations(self) -> list:
+        """The account's allocations that are not soft-deleted."""
+        return [a for a in self.allocations if not a.deleted]
+
+    def display_allocation(self, now: datetime):
+        """The allocation the dashboards show for this account, or None.
+
+        The active one, else the newest to have ended within 90 days. Only
+        live rows compete: renew-with-replace leaves a soft-deleted row with a
+        far-future end date that would otherwise win the fallback.
+        """
+        live = self.live_allocations
+        for alloc in live:
+            if alloc.is_active_at(now):
+                return alloc
+        if not live:
+            return None
+        most_recent = max(live, key=lambda a: a.end_date if a.end_date else datetime.max)
+        end = most_recent.end_date
+        # Exact timedelta comparison, NOT (now - end).days <= 90: .days
+        # truncates toward zero and keeps an allocation a full extra day.
+        if end is None or (now - end) <= timedelta(days=90):
+            return most_recent
+        return None
 
     def current_disk_usage(self, session=None) -> Optional['CurrentDiskUsage']:
         """Return the latest ``disk_charge_summary`` snapshot for this account.

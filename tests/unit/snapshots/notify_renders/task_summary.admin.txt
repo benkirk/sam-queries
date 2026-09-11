@@ -1,0 +1,32 @@
+expiration_notices — 11 sent, 1 FAILED
+
+Occurrence:  2026-09-07T15:00:00
+Window:      2026-09-07T00:00:00 to 2026-10-17T00:00:00
+Milestones:  expiring
+
+Counts
+------
+  Selected            40   (allocations matching the window)
+  Already notified    28
+  Audience            12   (messages this run intended to send)
+  Sent                11
+  Failed              1
+  Projects            5
+
+Recipients by project
+---------------------
+  SCSG0001    3
+  UCUB0001    2
+
+
+Failures
+--------
+  bounced@example.edu
+    550 5.1.1 mailbox unavailable
+
+
+--
+Automated summary from the NSF NCAR Systems Accounting Manager task
+dispatcher. It is sent once per run of expiration_notices, whatever the outcome
+— a quiet week reporting zero is the expected result roughly 40 weeks a year,
+and is only distinguishable from a broken query by the Selected count above.

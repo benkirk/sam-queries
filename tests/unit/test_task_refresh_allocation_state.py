@@ -36,6 +36,16 @@ OCC = datetime(2026, 9, 9, 15, 0)
 VALUES = Path(__file__).resolve().parents[2] / 'helm' / 'values.yaml'
 
 
+# A real run writes every snapshot allocation's row under its real
+# allocation_id; two workers doing that at once (this file, or the readers
+# tests' whole-snapshot feed) deadlock on the shared PKs. Same lock name as
+# test_read_model_readers.py. See `serial_file_lock` in tests/conftest.py.
+@pytest.fixture(autouse=True)
+def _one_worker_at_a_time(serial_file_lock):
+    with serial_file_lock('read_model_table'):
+        yield
+
+
 @pytest.fixture
 def ctx(session):
     return TaskContext(now=OCC + timedelta(minutes=7), occurrence=OCC,
@@ -130,6 +140,18 @@ class TestProjection:
         assert project in candidate_projects(session, now)
         row, = project_allocation_state(session, now=now, projects=[project])
         assert row['is_current'] is False
+
+    def test_a_soft_deleted_allocation_is_never_a_row(self, session, hpc):
+        """The project qualifies through its live allocation; the deleted row on
+        its other account must not be projected, even with a future end date."""
+        project, account, alloc = _charged_project(session, hpc)
+        other = make_resource(session, resource_type=hpc.resource_type)
+        ghost = make_account(session, project=project, resource=other)
+        make_allocation(session, account=ghost, deleted=True,
+                        end_date=datetime.now() + timedelta(days=3000))
+
+        rows = project_allocation_state(session, now=datetime.now(), projects=[project])
+        assert [r['allocation_id'] for r in rows] == [alloc.allocation_id]
 
     def test_an_allocation_ended_long_ago_is_not_a_candidate(self, session, hpc):
         project = make_project(session, facility_name='UNIV')

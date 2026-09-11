@@ -20,8 +20,8 @@ Note from the reviewer:
 {% endif %}
 {% if recipient_role != 'lead' %}
 Your project lead ({{ project_lead }}{% if project_lead_email %} /
-{{ project_lead_email }}{% endif %}) manages membership and any future
-extension or supplement requests.
+{{ project_lead_email }}{% endif %}) and the project administrator manage
+membership and any future extension or supplement requests.
 {% endif %}
 --
 This is an automated notification from the NSF NCAR Systems Accounting Manager.

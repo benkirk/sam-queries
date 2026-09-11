@@ -1,4 +1,5 @@
-"""The read-model freshness gate: every reason it says "live path" has a test.
+"""The read-model freshness gate: every reason it says "live path" has a test,
+and a stale tree is re-projected in memory rather than failing the scope.
 
 Flask-free on purpose — the gate reads the environment outside an app
 context, which is how the CLI and the tasks see it. Stamps are second-granular
@@ -12,7 +13,9 @@ from datetime import datetime, timedelta
 import pytest
 from factories.projects import make_account, make_allocation, make_project
 from factories.resources import make_resource
+from sqlalchemy.orm import object_session
 
+import sam.queries.allocation_state as gate
 from sam.queries.allocation_state import (
     db_now,
     fresh_state,
@@ -21,6 +24,10 @@ from sam.queries.allocation_state import (
 )
 from sam.resources.resources import ResourceType
 from sam.summaries.allocation_state import AccountAllocationState
+
+
+def _tree(project):
+    return project.tree_root or project.project_id
 
 pytestmark = pytest.mark.unit
 
@@ -116,34 +123,133 @@ class TestFallbackReasons:
         monkeypatch.setenv('READ_MODEL_MAX_AGE', str(4 * 3600))
         assert fresh_state(session, resource_ids=[fed['r1'].resource_id]).reason == 'ok'
 
-    def test_a_threshold_edit_stales_its_scope_and_no_other(self, session, fed, enabled):
+    def test_a_threshold_edit_patches_its_tree_and_no_other(self, session, fed, enabled):
         fed['a1'].update_thresholds(first_threshold=150)
         session.flush()
 
-        assert fresh_state(session, resource_ids=[fed['r1'].resource_id]).reason == \
-            'structural-change'
-        assert fresh_state(session, project_ids=[fed['p1'].project_id]).reason == \
-            'structural-change'
-        assert fresh_state(session, resource_ids=[fed['r2'].resource_id]).reason == 'ok'
-        assert fresh_state(session, project_ids=[fed['p2'].project_id]).reason == 'ok'
+        for scope in ({'resource_ids': [fed['r1'].resource_id]},
+                      {'project_ids': [fed['p1'].project_id]}):
+            look = fresh_state(session, **scope)
+            assert look.reason == 'ok-patched'
+            assert look.patched == 1
+            assert look.stale_trees == (_tree(fed['p1']),)
+            assert fed['alloc1'].allocation_id in look.rows
+        for scope in ({'resource_ids': [fed['r2'].resource_id]},
+                      {'project_ids': [fed['p2'].project_id]}):
+            look = fresh_state(session, **scope)
+            assert (look.reason, look.patched) == ('ok', 0)
 
-    def test_a_new_allocation_stales_its_scope(self, session, fed, enabled):
+    def test_a_new_allocation_is_served_from_the_patch(self, session, fed, enabled):
+        """The old gate could only refuse here; the patch hands the new row over."""
         account = make_account(session, project=fed['p2'], resource=fed['r1'])
-        make_allocation(session, account=account, amount=1.0)
+        alloc = make_allocation(session, account=account, amount=1.0)
         session.flush()
 
-        assert fresh_state(session, resource_ids=[fed['r1'].resource_id]).reason == \
-            'structural-change'
-        assert fresh_state(session, project_ids=[fed['p2'].project_id]).reason == \
-            'structural-change'
+        by_res = fresh_state(session, resource_ids=[fed['r1'].resource_id])
+        assert by_res.reason == 'ok-patched'
+        assert alloc.allocation_id in by_res.rows
+        assert fresh_state(session, project_ids=[fed['p2'].project_id]).reason == 'ok-patched'
         assert fresh_state(session, resource_ids=[fed['r2'].resource_id]).reason == 'ok'
 
     def test_a_project_scope_spans_its_tree(self, session, fed, enabled, hpc_type):
         """A child's change must stale the parent: subtree rollups read it."""
-        child = make_project(session, facility_name='UNIV', parent=fed['p1'])
+        make_project(session, facility_name='UNIV', parent=fed['p1'])
         session.flush()
-        assert fresh_state(session, project_ids=[fed['p1'].project_id]).reason == \
-            'structural-change'
+        look = fresh_state(session, project_ids=[fed['p1'].project_id])
+        assert (look.reason, look.patched) == ('ok-patched', 1)
+
+
+class TestPatch:
+    """What the in-memory re-projection of a stale tree looks like."""
+
+    def test_the_sibling_tree_is_served_from_the_table(self, session, fed, enabled):
+        p3, a3, alloc3 = _project_on(session, fed['r1'])
+        _backdate(session, p3, a3, alloc3)
+        _feed(session, [fed['p1'], fed['p2'], p3])
+
+        fed['a1'].update_thresholds(first_threshold=150)
+        session.flush()
+        look = fresh_state(session, resource_ids=[fed['r1'].resource_id])
+
+        assert look.reason == 'ok-patched'
+        assert look.stale_trees == (_tree(fed['p1']),)
+        patched, kept = look.rows[fed['alloc1'].allocation_id], look.rows[alloc3.allocation_id]
+        assert object_session(kept) is session
+        assert object_session(patched) is None       # transient: never written
+        assert abs((db_now(session) - patched.refreshed_at).total_seconds()) < 60
+        assert patched.rolling_windows is not None    # the threshold it was patched for
+
+    def test_a_project_created_since_the_refresh_is_patched_in(self, session, fed, enabled):
+        _p, _a, alloc = _project_on(session, fed['r1'])
+        session.flush()
+        look = fresh_state(session, resource_ids=[fed['r1'].resource_id])
+        assert look.reason == 'ok-patched'
+        assert alloc.allocation_id in look.rows
+
+    def test_a_retired_tree_without_rows_is_not_patched(self, session, fed, enabled):
+        """Hundreds of long-ended projects sit in a resource scope with no rows;
+        their stamps predate every refresh and must never be re-projected."""
+        project = make_project(session, facility_name='UNIV')
+        account = make_account(session, project=project, resource=fed['r1'])
+        now = datetime.now()
+        alloc = make_allocation(session, account=account, amount=5.0,
+                                start_date=now - timedelta(days=565),
+                                end_date=now - timedelta(days=200))
+        _backdate(session, project, account, alloc)
+        look = fresh_state(session, resource_ids=[fed['r1'].resource_id])
+        assert (look.reason, look.patched) == ('ok', 0)
+
+    def test_patched_rows_equal_a_fresh_projection(self, session, fed, enabled):
+        fed['a1'].update_thresholds(first_threshold=150)
+        session.flush()
+        look = fresh_state(session, project_ids=[fed['p1'].project_id])
+        assert look.reason == 'ok-patched'
+
+        expect = {r['allocation_id']: r for r in project_allocation_state(
+            session, now=datetime.now(), projects=[fed['p1']])}
+        assert set(look.rows) == set(expect)
+        cols = [c for c in AccountAllocationState.VALUE_COLUMNS if c != 'refreshed_at']
+        for aid, row in look.rows.items():
+            for c in cols:
+                assert getattr(row, c) == expect[aid][c], (aid, c)
+
+    def test_an_allocation_ended_long_ago_leaves_the_answer(self, session, fed, enabled):
+        """The dashboards drop an allocation 90 days after it ends; so does the
+        patch, because the stale tree's table rows are replaced, not merged."""
+        now = datetime.now()
+        fed['alloc1'].start_date = now - timedelta(days=565)
+        fed['alloc1'].end_date = now - timedelta(days=200)
+        session.flush()
+        look = fresh_state(session, resource_ids=[fed['r1'].resource_id])
+        assert look.reason == 'ok-patched'
+        assert look.rows == {}                       # served, and empty
+
+    def test_a_failed_patch_falls_back_to_live(self, session, fed, enabled, monkeypatch):
+        def boom(*a, **k):
+            raise RuntimeError('projection broke')
+        monkeypatch.setattr(gate, 'project_allocation_state', boom)
+        fed['a1'].update_thresholds(first_threshold=150)
+        session.flush()
+        look = fresh_state(session, resource_ids=[fed['r1'].resource_id])
+        assert (look.reason, look.rows) == ('patch-failed', None)
+        assert look.stale_trees == (_tree(fed['p1']),)
+
+    def test_too_many_stale_trees_go_live(self, session, fed, enabled, monkeypatch):
+        monkeypatch.setenv('READ_MODEL_PATCH_MAX_TREES', '0')
+        fed['a1'].update_thresholds(first_threshold=150)
+        session.flush()
+        look = fresh_state(session, resource_ids=[fed['r1'].resource_id])
+        assert (look.reason, look.rows) == ('too-many-stale', None)
+
+    def test_the_observer_sees_every_verdict(self, session, fed, enabled, monkeypatch):
+        seen = []
+        monkeypatch.setattr(gate, '_LOOKUP_OBSERVER', seen.append)
+        fresh_state(session, resource_ids=[fed['r1'].resource_id])
+        fed['a1'].update_thresholds(first_threshold=150)
+        session.flush()
+        fresh_state(session, resource_ids=[fed['r1'].resource_id])
+        # The projection's own inner gate call is not a verdict and is not seen.
+        assert [(s.reason, s.patched) for s in seen] == [('ok', 0), ('ok-patched', 1)]
 
 
 class TestWatermark:

@@ -40,14 +40,14 @@
     {% if recipient_role == 'lead' %}
     <p>
         As project lead you can add and remove project members, designate a
-        project administrator, and request extensions or supplements through
-        the SAM portal.
+        project administrator (who can also manage members), and request
+        extensions or supplements through the SAM portal.
     </p>
     {% else %}
     <p>
         Your project lead ({{ project_lead }}{% if project_lead_email %} /
-        {{ project_lead_email }}{% endif %}) manages membership and any future
-        extension or supplement requests.
+        {{ project_lead_email }}{% endif %}) and the project administrator
+        manage membership and any future extension or supplement requests.
     </p>
     {% endif %}
 {% endblock %}
