@@ -1,15 +1,14 @@
-Dear Sam User,
+Dear Alex Admin,
 
-Your project SCSG0001 - "Sample Project Title" has been extended on
+Your project SCSG0001 - "Sample Project Title" has been renewed on
 NSF NCAR computing resources.
 
-Allocations and their new end dates:
+Allocations for the new period:
 
   - Casper: 50,000 hours through 2027-09-30
   - Derecho: 1.15M hours through 2027-09-30
 
-Nothing else changes — your project code, members and unused balance carry
-forward.
+Your project code and its members are unchanged.
 
   - Documentation: https://ncar-hpc-docs.readthedocs.io/
   - Manage your project and its members at https://sam.hpc.ucar.edu/

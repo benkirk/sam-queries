@@ -1,15 +1,20 @@
-Dear Sam User,
+Dear Alex Admin,
 
-Your project SCSG0001 - "Sample Project Title" has been extended on
-NSF NCAR computing resources.
+The allocation for your project SCSG0001 -
+"Sample Project Title" has been adjusted on NSF NCAR computing resources.
 
-Allocations and their new end dates:
+Changes applied by this request:
+
+  - Derecho: -100,000 hours
+
+
+Your project now holds:
 
   - Casper: 50,000 hours through 2027-09-30
   - Derecho: 1.15M hours through 2027-09-30
 
-Nothing else changes — your project code, members and unused balance carry
-forward.
+The revised balances are in effect now; no change to how you submit work.
+If this does not look right, please contact help@ucar.edu.
 
   - Documentation: https://ncar-hpc-docs.readthedocs.io/
   - Manage your project and its members at https://sam.hpc.ucar.edu/
