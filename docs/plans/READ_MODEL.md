@@ -187,20 +187,43 @@ every stamp. Size `expected_runtime` so the lease exceeds the CronJob deadline
 2. the request is for *now* (any `active_at` other than today → live path),
 3. the scope has rows and the oldest `refreshed_at` is within `READ_MODEL_MAX_AGE`
    (default 7200 s — one missed hourly run is tolerated), and
-4. the scope's **structural watermark** is not newer than `refreshed_at`, where the
-   watermark is `MAX()` over the scope of `allocation.creation_time`,
-   `allocation.modified_time`, `allocation_transaction.creation_time`,
-   `account.modified_time`, `project.modified_time`, and the `charge_adjustment`
-   date columns.
+4. every **MPTT tree** in scope is either unchanged since its rows' refresh or
+   re-projected in memory (below). A tree is `COALESCE(project.tree_root,
+   project_id)`; its **structural watermark** is `MAX()` over its accounts of
+   `allocation.creation_time`, `allocation.modified_time`,
+   `allocation_transaction.creation_time`, `account.creation_time`,
+   `account.modified_time`, `project.modified_time`, and
+   `charge_adjustment.adjustment_date`.
 
-Otherwise the reader runs the existing live computation for that scope. So an
-allocation edit, renewal, relink, threshold change, or adjustment makes its scope
-fall back to live *immediately* (the "respond quickly when a project/allocation
-changes" requirement) and the next hourly pass picks it up; sibling scopes stay on
-the read-model. Membership needs no signal (roster is a live join). The gate is
-**two statements**: the scope's rows, and one `SELECT NOW(), (MAX ...), ...` with
-the seven stamps as scalar subqueries — milliseconds. Charge accrual lags by at
-most ~1 h on the read-model path.
+The tree is the unit, not the project: a child's change moves the parent's
+subtree rollup and a pool root's members' `used`. The gate is **two
+statements**: the scope's rows, and one grouped `SELECT NOW(), project_id,
+tree, MAX(stamp)` over a `UNION ALL` of the stamp sources — 135 ms on the
+production replica for the whole Casper scope (3,446 trees). Membership needs
+no signal (roster is a live join). Charge accrual lags by at most ~1 h on the
+read-model path.
+
+**Read-time patch.** A tree whose watermark is at least as new as its rows'
+refresh is **re-projected in memory** — `project_allocation_state()` over just
+that tree's projects (~4 ms per project, the same computation the feeder runs)
+— and the fresh rows are overlaid on the table rows for the scope. The table is
+never written from a read path; the hourly task remains its only writer, and
+its next pass reconciles. So an allocation edit, renewal, relink, threshold
+change, or adjustment is reflected *immediately* while every sibling tree keeps
+being served. A tree with a stamp but no rows (a project created since the
+refresh) is patched in only when its stamp beats the scope's oldest refresh;
+the same bound keeps the hundreds of retired projects in a resource scope,
+whose stamps predate every refresh, from being re-projected on every request.
+More than `READ_MODEL_PATCH_MAX_TREES` (default 250) stale trees, or a
+projection that raises, sends the scope live (`too-many-stale`,
+`patch-failed`) — a page never breaks on the gate.
+
+Why the grain matters, measured 2026-09-11 with the first implementation
+(a scope-wide watermark): one XRAS handoff at 09:14:38 MDT stamped a project
+with accounts on Casper and Derecho, and both resources' fstree scopes fell to
+the live path (48 queries, 3.3 s warm / 6.0 s cold instead of 26 queries,
+0.25–0.7 s) until the 10:07 refresh. At ~10 handoffs per business day that made
+daytime fallback windows routine.
 
 **What was considered and dropped (2026-09-09).** An earlier draft added a
 `comp_charge_summary_status` revival as a per-row change stamp plus a
@@ -396,6 +419,20 @@ enable the task, soak dark for a day (ledger `detail`, row counts), then flip
   the shape exactly (`tests/api/test_fstree_access.py` guards it).
 - **`usage_cache` key is day-granular on `active_at`** and the gate only serves
   "today"; historical as-of views always run live.
+- **A rowless tree is patched only past the scope's oldest refresh.** A resource
+  scope holds hundreds of projects whose allocations ended more than 90 days ago
+  — stamped years back, no rows. Comparing them against "no rows" would
+  re-project every one of them on every request; the `>= oldest` bound is what
+  keeps the patch to the trees that actually changed.
+- **The projection runs with the gate bypassed.** `project_allocation_state`
+  feeds the batched builder, and the builder consults the gate; without the
+  re-entrancy guard a stale tree's patch recursed. A projection is always the
+  live computation — for the feeder too.
+- **`rm=` on the request line is the only production signal.** The gate logs
+  nothing at INFO; `rm=served`, `rm=patched:<n>` and `rm=live:<reason>` on
+  the `webapp.run —` line are how `cirrus_watch.sh` counts fallbacks. A
+  `live:too-old` burst inside the hour after a failed feeder run is expected;
+  `live:patch-failed` is a bug.
 - **Baselines are ceilings, and counts are not the read-model's metric** — the
   served path trades a few expensive statements for a few cheap ones, so the live
   baselines stay and the `*_read_model` ones sit beside them; time it on webdev.

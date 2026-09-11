@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS account_allocation_state (
   start_date           DATETIME      NOT NULL,
   end_date             DATETIME          NULL,
   is_current           TINYINT(1)    NOT NULL DEFAULT 1,
-  refreshed_at         DATETIME      NOT NULL,        -- app clock, naive-Mountain
+  refreshed_at         DATETIME      NOT NULL,        -- database clock (SELECT NOW()); compared with ON UPDATE stamps
   PRIMARY KEY (allocation_id),
   KEY account_allocation_state_account  (account_id),
   KEY account_allocation_state_resource (resource_id, is_current),
