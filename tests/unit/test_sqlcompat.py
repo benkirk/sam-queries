@@ -49,3 +49,17 @@ class TestCiLike:
             sql = str(expr.compile(dialect=dialect))
             assert sql.startswith('lower(users.username) LIKE lower(')
             assert 'ILIKE' not in sql
+        escaped = str(sqlcompat.ci_like(t.c.username, r'%a\_b', escape='\\').compile(dialect=postgresql.dialect()))
+        assert ' ESCAPE ' in escaped
+
+    def test_no_ilike_survives_in_sam_or_webapp(self):
+        """Postgres rejects ILIKE under the sam_ci collation; every SAM site goes through ci_like.
+
+        system_status is exempt: its own Postgres database has no such collation.
+        """
+        from pathlib import Path
+        src = Path(__file__).resolve().parents[2] / 'src'
+        offenders = [str(p.relative_to(src)) for sub in ('sam', 'webapp', 'cli', 'scheduling')
+                     for p in (src / sub).rglob('*.py')
+                     if p.name != 'sqlcompat.py' and '.ilike(' in p.read_text(encoding='utf-8')]
+        assert offenders == []

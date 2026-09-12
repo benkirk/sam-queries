@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from sam.core.users import User
 from sam.core.groups import AdhocGroup, AdhocSystemAccountEntry
+from sam.sqlcompat import ci_like
 from sam.projects.projects import Project
 from sam.resources.resources import Resource, ResourceType
 
@@ -331,11 +332,11 @@ def search_groups_by_pattern(
         query = query.filter(
             or_(
                 AdhocGroup.unix_gid == gid_int,
-                AdhocGroup.group_name.ilike(f"%{pattern}%"),
+                ci_like(AdhocGroup.group_name, f"%{pattern}%"),
             )
         )
     else:
-        query = query.filter(AdhocGroup.group_name.ilike(f"%{pattern}%"))
+        query = query.filter(ci_like(AdhocGroup.group_name, f"%{pattern}%"))
 
     return query.order_by(AdhocGroup.group_name).limit(limit).all()
 

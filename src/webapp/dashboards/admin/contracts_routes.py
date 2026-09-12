@@ -26,6 +26,8 @@ from datetime import datetime
 from functools import partial
 from sqlalchemy import func
 
+from sam.sqlcompat import ci_like
+
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.fk_validation import validate_fk_existence
 from webapp.utils.htmx import (
@@ -90,7 +92,7 @@ def _search_nsf_programs_fk(q, active_only):
     rather than from this search.
     """
     query = db.session.query(NSFProgram).filter(
-        NSFProgram.nsf_program_name.ilike(f'%{q}%'))
+        ci_like(NSFProgram.nsf_program_name, f'%{q}%'))
     if active_only:
         query = query.filter(NSFProgram.is_active)
     return query.order_by(NSFProgram.nsf_program_name).limit(15).all()

@@ -21,7 +21,7 @@ import sqlalchemy.exc as sa_exc
 
 from datetime import timedelta
 
-from ..sqlcompat import row_constructor, sam_now
+from ..sqlcompat import ci_like, row_constructor, sam_now
 
 _logger = logging.getLogger(__name__)
 
@@ -217,10 +217,10 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         query = session.query(cls)
 
         # Build search conditions
-        conditions = [cls.projcode.ilike(pattern)]
+        conditions = [ci_like(cls.projcode, pattern)]
 
         if search_title:
-            conditions.append(cls.title.ilike(pattern))
+            conditions.append(ci_like(cls.title, pattern))
 
         query = query.filter(or_(*conditions))
 

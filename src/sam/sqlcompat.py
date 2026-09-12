@@ -53,6 +53,6 @@ def schema_predicate(bind) -> str:
     return 'table_schema = current_schema()'
 
 
-def ci_like(column, pattern):
+def ci_like(column, pattern, escape=None):
     """Case-insensitive LIKE on both backends: exactly what `.ilike()` renders on MySQL."""
-    return func.lower(column).like(func.lower(pattern))
+    return func.lower(column).like(func.lower(pattern), escape=escape)
