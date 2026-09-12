@@ -140,10 +140,12 @@ class TestTopologicalSort:
         order = self._order(clone, edges, ['allocation', 'account', 'resource_shell',
                                            'resources', 'project'])
         assert len(order) == 5 and len(set(order)) == 5
-        assert order.index('account') < order.index('allocation')
-        assert order.index('project') < order.index('account')
-        assert {'resources', 'resource_shell'} < set(order[:3])
+        for parent, child in edges:
+            if {parent, child} != {'resources', 'resource_shell'}:
+                assert order.index(parent) < order.index(child), (parent, child)
         assert 'FK cycles broken at' in capsys.readouterr().out
+        assert order == self._order(clone, edges, ['allocation', 'account', 'resource_shell',
+                                                   'resources', 'project'])  # deterministic
 
 
 class TestSchemaStrip:

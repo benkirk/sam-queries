@@ -247,15 +247,15 @@ def topological_sort(parents_map, children_of, all_tables):
     broken = []
     while len(res) < len(all_tables):
         if not q:
-            unresolved = {t for t in all_tables if t not in res}
-            n = min((t for t in unresolved if _on_cycle(t, parents_map, unresolved)),
+            unresolved = [t for t in all_tables if t not in res]
+            n = min((t for t in unresolved if _on_cycle(t, parents_map, set(unresolved))),
                     key=lambda t: in_deg[t])
             broken.append(n)
             in_deg[n] = 0
             q.append(n)
         n = q.popleft()
         res.append(n)
-        for child in parents_map.get(n, ()):
+        for child in sorted(parents_map.get(n, ())):  # sorted: a reproducible load order
             if in_deg[child] > 0:
                 in_deg[child] -= 1
                 if in_deg[child] == 0:
