@@ -28,6 +28,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import text
 
+from sam.sqlcompat import schema_predicate
+
 
 # Per-pid cache so a fresh worker doesn't re-parse /proc on every request.
 # Module-level dict survives forks (correctly: each forked worker gets its
@@ -229,10 +231,10 @@ def schema_drift(engine, ttl_seconds: float = _SCHEMA_DRIFT_TTL_SECONDS) -> Dict
         orm_tables = _mapped_tables()
         db_tables: Dict[str, set] = {}
         with engine.connect() as conn:
-            rows = conn.execute(text("""
+            rows = conn.execute(text(f"""
                 SELECT TABLE_NAME, COLUMN_NAME
                 FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE TABLE_SCHEMA = DATABASE()
+                WHERE {schema_predicate(conn)}
             """))
             for table_name, column_name in rows:
                 db_tables.setdefault(table_name, set()).add(column_name)

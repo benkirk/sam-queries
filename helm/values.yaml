@@ -186,6 +186,7 @@ webapp:
     JUPYTERHUB_API_URL: "https://jupyterhub.hpc.ucar.edu"
     JUPYTERHUB_INSTANCE: "stable"
     JUPYTERHUB_CACHE_TTL: "300"
+    SAM_DB_DRIVER: "mysql"
     SAM_DB_SERVER: "sam-sql.ucar.edu"
     SAM_DB_REQUIRE_SSL: "true"
     # Match the SAM DB server's timezone (sam-sql.ucar.edu runs Mountain). The

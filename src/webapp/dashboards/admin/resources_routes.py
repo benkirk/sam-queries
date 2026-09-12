@@ -26,6 +26,7 @@ from webapp.utils.rbac import (
     require_permission, require_permission_any_facility, Permission,
 )
 from sam.manage import management_transaction
+from sam.sqlcompat import ci_like
 from sam.resources.machines import Machine
 from sam.resources.resources import Resource, ResourceType
 from sam.schemas.forms.resources import (
@@ -590,7 +591,7 @@ def _search_organizations_fk(q, active_only):
         db.session.query(Organization)
         .filter(
             Organization.is_active,
-            Organization.name.ilike(f'%{q}%') | Organization.acronym.ilike(f'%{q}%')
+            ci_like(Organization.name, f'%{q}%') | ci_like(Organization.acronym, f'%{q}%')
         )
         .order_by(Organization.name)
         .limit(15)

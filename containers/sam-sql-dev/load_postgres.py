@@ -5,10 +5,12 @@ Schema comes from the ORM (`sam.base.Base.metadata`, views excluded, FKs
 deferred); data streams table by table through COPY into `<db>_next`; FKs,
 sequences and the ported views go on last; then `<db>_next` is renamed over
 `<db>`. Target from SAM_DEV_PG_* (CNPG defaults) or the CLI; source is the
-`local:` block of config.yaml. Refuses a source that still holds real
-usernames unless --allow-pii. Exits non-zero on any count mismatch.
+`local:` block of config.yaml. A source that still holds real usernames loads
+with a warning (PII is a public-repo concern, not a cluster one). Exits
+non-zero on any count mismatch or a failed view.
 """
 import argparse
+import copy
 import datetime
 import decimal
 import io
@@ -21,8 +23,8 @@ import psycopg2
 import pymysql
 import yaml
 from dotenv import find_dotenv, load_dotenv
-from sqlalchemy import (URL, Boolean, Column, ForeignKeyConstraint, Index, Integer, MetaData, String,
-                        Table, UniqueConstraint, create_engine)
+from sqlalchemy import (URL, Boolean, Column, Enum, ForeignKeyConstraint, Index, Integer, MetaData,
+                        String, Table, UniqueConstraint, create_engine)
 
 from check_username_leak import leak_query, preserved_usernames
 
@@ -37,6 +39,10 @@ ENV_DEFAULTS = {
 VIEWS_SQL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "postgres", "views.sql")
 CHUNK_ROWS = 50_000
 MAINTENANCE_DB = "postgres"
+# MySQL's `_ci` columns compare case- and accent-insensitively; an ICU primary-strength
+# collation on exactly those columns keeps ==, LIKE, IN and ORDER BY meaning the same
+# on Postgres (docs/plans/POSTGRES_MIGRATION.md gotcha 6).
+CI_COLLATION = "sam_ci"
 
 
 # ----------------------------
@@ -46,9 +52,11 @@ def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--config", default="config.yaml")
     p.add_argument("--source", metavar="URL", help="mysql+pymysql://user:pw@host:port/db (default: config.yaml local)")
-    p.add_argument("--pg-host"), p.add_argument("--pg-port"), p.add_argument("--pg-user"), p.add_argument("--pg-db")
+    p.add_argument("--pg-host")
+    p.add_argument("--pg-port")
+    p.add_argument("--pg-user")
+    p.add_argument("--pg-db")
     p.add_argument("--no-ssl", action="store_true", help="sslmode=prefer instead of require")
-    p.add_argument("--allow-pii", action="store_true", help="load a source that still holds real usernames")
     p.add_argument("--no-swap", action="store_true", help="leave <db>_next in place for inspection")
     return p.parse_args(argv)
 
@@ -117,12 +125,13 @@ def fk_free_metadata():
     return md, fks
 
 
-def mysql_column_lengths(my_conn, database):
-    """(table, column) -> CHARACTER_MAXIMUM_LENGTH from the source, the schema of record."""
+def mysql_column_facts(my_conn, database):
+    """(table, column) -> (CHARACTER_MAXIMUM_LENGTH, COLLATION_NAME) for the source's string columns."""
     with my_conn.cursor() as c:
-        c.execute("SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns "
+        c.execute("SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_MAXIMUM_LENGTH, COLLATION_NAME "
+                  "FROM information_schema.columns "
                   "WHERE TABLE_SCHEMA=%s AND CHARACTER_MAXIMUM_LENGTH IS NOT NULL", (database,))
-        return {(t, col): n for t, col, n in c.fetchall()}
+        return {(t, col): (n, coll) for t, col, n, coll in c.fetchall()}
 
 
 def widen_strings(md, lengths):
@@ -136,8 +145,30 @@ def widen_strings(md, lengths):
             n = lengths.get((t.name, col.name))
             if isinstance(col.type, String) and col.type.length and n and n > col.type.length:
                 drifts.append((t.name, col.name, col.type.length, n))
-                col.type = String(n)
+                col.type = String(n, collation=col.type.collation)
     return drifts
+
+
+def collation_sql():
+    return (f"CREATE COLLATION {_q(CI_COLLATION)} (provider = icu, locale = 'und-u-ks-level1', "
+            "deterministic = false)")
+
+
+def apply_collations(md, collations):
+    """Every string column MySQL declares `_ci` gets the ICU collation; `_bin` columns stay default.
+
+    The copied Column shares its type object with the ORM, so the type is replaced, never mutated.
+    """
+    touched = []
+    for t in md.tables.values():
+        for col in t.columns:
+            coll = collations.get((t.name, col.name))
+            if coll and coll.endswith("_ci") and isinstance(col.type, String) and not isinstance(col.type, Enum):
+                new_type = copy.copy(col.type)
+                new_type.collation = CI_COLLATION
+                col.type = new_type
+                touched.append((t.name, col.name))
+    return touched
 
 
 def _copy_table_without_fks(t, md):
@@ -152,7 +183,6 @@ def _copy_table_without_fks(t, md):
             nt.append_constraint(UniqueConstraint(*[c.name for c in uc.columns], name=uc.name))
     for ix in t.indexes:
         Index(ix.name, *[nt.c[c.name] for c in ix.columns], unique=ix.unique)
-    return nt
 
 
 def unique_index_names(md):
@@ -165,7 +195,6 @@ def unique_index_names(md):
         if len(indexes) > 1:
             for ix in indexes:
                 ix.name = f"{ix.table.name}_{name}"[:63]
-    return md
 
 
 def serial_columns(md):
@@ -276,7 +305,8 @@ def fk_statement(fk, name, not_valid):
 
 
 def add_foreign_keys(pg_conn, fks, names, unvalidated):
-    """One ALTER per FK; a failure is logged, not fatal. NOT VALID for the policy edges."""
+    """One ALTER per FK, NOT VALID for the policy edges. Failures are advisory on purpose:
+    the grandfathered fk_dav_charge_dav_activity_id fails on every engine."""
     failed = []
     with pg_conn.cursor() as cur:
         for fk in fks:
@@ -315,9 +345,10 @@ def view_statements(sql_text):
 
 
 def apply_views(pg_conn, path):
+    """The views are part of the schema: a missing file is a failed load, not a skip."""
     if not os.path.exists(path):
-        print(f"ℹ️  no {path}; views skipped")
-        return []
+        print(f"❌ {path} is missing; the copy would have no views", file=sys.stderr)
+        return [(path, "missing")]
     with open(path) as f:
         statements = view_statements(f.read())
     failed = []
@@ -390,10 +421,8 @@ def main(argv=None):
         c.execute(leak_query("users", "username", preserved_usernames(cfg)))
         real_rows = c.fetchone()[0]
     print(f"Source tier: {'REAL usernames in ' + str(real_rows) + ' users rows' if real_rows else 'obfuscated'}")
-    if real_rows and not args.allow_pii:
-        print("❌ refusing to load real usernames into a shared server; pass --allow-pii to override",
-              file=sys.stderr)
-        return 1
+    if real_rows:
+        print("WARNING: source holds real usernames; this copy is not for the public repo", file=sys.stderr)
 
     maint = pg_connect(target, MAINTENANCE_DB)
     with maint.cursor() as cur:
@@ -402,11 +431,16 @@ def main(argv=None):
     print(f"🧱 {scratch} created; building schema from the ORM ...")
 
     md, fks = fk_free_metadata()
-    for table, col, orm_len, db_len in widen_strings(md, mysql_column_lengths(my, source["database"])):
+    facts = mysql_column_facts(my, source["database"])
+    for table, col, orm_len, db_len in widen_strings(md, {k: n for k, (n, _) in facts.items()}):
         print(f"  ⚠️  {table}.{col}: ORM String({orm_len}) but the source column holds {db_len}; using {db_len}")
+    ci_columns = apply_collations(md, {k: coll for k, (_, coll) in facts.items()})
     engine = create_engine(pg_url(target, scratch))
+    with engine.begin() as conn:
+        conn.exec_driver_sql(collation_sql())
     md.create_all(engine)
     engine.dispose()
+    print(f"  {len(ci_columns)} case-insensitive columns declared COLLATE {CI_COLLATION}")
 
     pg = pg_connect(target, scratch)
     mismatched = []
@@ -423,12 +457,15 @@ def main(argv=None):
     add_foreign_keys(pg, fks, mysql_fk_names(my, source["database"]),
                      set(cfg.get("settings", {}).get("unvalidated_fks", [])))
     reset_sequences(pg, md)
-    apply_views(pg, VIEWS_SQL)
+    view_failures = apply_views(pg, VIEWS_SQL)
     pg.close()
     my.close()
 
     if mismatched:
         print(f"❌ row counts differ for: {', '.join(mismatched)}; {scratch} left in place", file=sys.stderr)
+        return 1
+    if view_failures:
+        print(f"❌ {len(view_failures)} view statement(s) failed; {scratch} left in place", file=sys.stderr)
         return 1
     if args.no_swap:
         print(f"ℹ️  --no-swap: {scratch} left in place")

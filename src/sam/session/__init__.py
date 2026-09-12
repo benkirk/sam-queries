@@ -9,6 +9,27 @@ from contextlib import contextmanager
 
 connection_string = None
 
+# Env-var driver strings (SAM_DB_DRIVER / STATUS_DB_DRIVER); SQLAlchemy dialect
+# names are keyed separately by sam.sqlcompat.MYSQL_DIALECTS.
+POSTGRES_DRIVERS = ('postgresql', 'postgres')
+
+
+def sam_dialect(driver: str) -> str:
+    """SQLAlchemy drivername for SAM_DB_DRIVER ('mysql' default, 'postgresql'/'postgres')."""
+    return 'postgresql+psycopg2' if driver.lower() in POSTGRES_DRIVERS else 'mysql+pymysql'
+
+
+def connect_args(driver: str, require_ssl: bool, application_name: str = None) -> dict:
+    """The DBAPI connect_args for one bind: SSL in each driver's dialect, and on Postgres
+    the application_name pg_stat_activity shows (MySQL has no equivalent)."""
+    if driver.lower() in POSTGRES_DRIVERS:
+        args = {'application_name': application_name} if application_name else {}
+        if require_ssl:
+            args['sslmode'] = 'require'
+        return args
+    return {'ssl': {'ssl_disabled': False}} if require_ssl else {}
+
+
 def init_sam_db_defaults():
     """Build the module-level `connection_string` from SAM_DB_* env vars.
 
@@ -34,20 +55,23 @@ def init_sam_db_defaults():
         return
 
     database = os.getenv('SAM_DB_NAME', 'sam')
+    driver = os.getenv('SAM_DB_DRIVER', 'mysql')
+    port = os.getenv('SAM_DB_PORT') or None
 
     import logging as _logging
     _logging.getLogger(__name__).debug(
-        'SAM DB: %s:$SAM_DB_PASSWORD@%s/%s', username, server, database
+        'SAM DB: %s %s:$SAM_DB_PASSWORD@%s/%s', driver, username, server, database
     )
 
     # Create connection URL using URL.create() to safely handle special characters
     # in the password (e.g. '@', '%', etc.) that would break f-string URL interpolation.
     global connection_string
     connection_string = URL.create(
-        drivername='mysql+pymysql',
+        drivername=sam_dialect(driver),
         username=username,
         password=password,
         host=server,
+        port=int(port) if port else None,
         database=database,
     )
 
@@ -62,6 +86,8 @@ def create_sam_engine(input_connection_string: str = None):
         SAM_DB_USERNAME
         SAM_DB_PASSWORD
         SAM_DB_SERVER
+        SAM_DB_DRIVER (optional, default: mysql; postgresql for the dev copy)
+        SAM_DB_PORT (optional)
         SAM_DB_REQUIRE_SSL (optional, default: false)
 
     Example connection_string:
@@ -84,17 +110,12 @@ def create_sam_engine(input_connection_string: str = None):
     # Check if SSL is required (for remote servers)
     require_ssl = os.getenv('SAM_DB_REQUIRE_SSL', 'false').lower() in ('true', '1', 'yes')
 
-    # Build connect_args based on SSL requirement
-    connect_args = {}
-    if require_ssl:
-        connect_args['ssl'] = {'ssl_disabled': False}
-
     engine = create_engine(
         input_connection_string,
         echo=False,  # Set to True for SQL debugging
         pool_pre_ping=True,
         pool_recycle=3600,
-        connect_args=connect_args
+        connect_args=connect_args(os.getenv('SAM_DB_DRIVER', 'mysql'), require_ssl)
     )
     SessionLocal = sessionmaker(bind=engine)
     return engine, SessionLocal

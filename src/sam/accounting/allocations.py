@@ -1,6 +1,7 @@
 #-------------------------------------------------------------------------bh-
 # Common Imports:
 from ..base import *
+from ..sqlcompat import sam_now
 import enum
 #-------------------------------------------------------------------------eh-
 
@@ -76,7 +77,7 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin, SessionMixin):
     @is_active.expression
     def is_active(cls):
         """Check if allocation is currently active (SQL side)."""
-        now = func.now()
+        now = sam_now()
         return and_(
             cls.deleted == False,
             cls.start_date <= now,

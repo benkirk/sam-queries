@@ -1,6 +1,8 @@
 #-------------------------------------------------------------------------bh-
 # Common Imports:
+from sqlalchemy.dialects import mysql
 from ..base import *
+from ..sqlcompat import ci_like
 #-------------------------------------------------------------------------eh-
 
 
@@ -190,7 +192,7 @@ class User(Base, TimestampMixin, SessionMixin):
             >>> # Include inactive users
             >>> users = User.search_by_username(session, 'test%', active_only=False)
         """
-        query = session.query(cls).filter(cls.username.ilike(pattern))
+        query = session.query(cls).filter(ci_like(cls.username, pattern))
 
         if active_only:
             query = query.filter(cls.active == True, cls.locked == False)
@@ -235,11 +237,11 @@ class User(Base, TimestampMixin, SessionMixin):
         conditions = []
 
         if search_first:
-            conditions.append(cls.first_name.ilike(pattern))
+            conditions.append(ci_like(cls.first_name, pattern))
         if search_last:
-            conditions.append(cls.last_name.ilike(pattern))
+            conditions.append(ci_like(cls.last_name, pattern))
         if search_nickname:
-            conditions.append(cls.nickname.ilike(pattern))
+            conditions.append(ci_like(cls.nickname, pattern))
 
         if not conditions:
             return []
@@ -277,7 +279,7 @@ class User(Base, TimestampMixin, SessionMixin):
         from sqlalchemy.orm import joinedload
 
         query = session.query(cls).join(cls.email_addresses).filter(
-            EmailAddress.email_address.ilike(pattern)
+            ci_like(EmailAddress.email_address, pattern)
         ).options(joinedload(cls.email_addresses))
 
         if active_only:
@@ -333,13 +335,13 @@ class User(Base, TimestampMixin, SessionMixin):
 
         # Username search
         if search_username:
-            conditions.append(cls.username.ilike(pattern))
+            conditions.append(ci_like(cls.username, pattern))
 
         # Name search
         if search_name:
-            conditions.append(cls.first_name.ilike(pattern))
-            conditions.append(cls.last_name.ilike(pattern))
-            conditions.append(cls.nickname.ilike(pattern))
+            conditions.append(ci_like(cls.first_name, pattern))
+            conditions.append(ci_like(cls.last_name, pattern))
+            conditions.append(ci_like(cls.nickname, pattern))
 
         # Build base query
         if conditions:
@@ -350,7 +352,7 @@ class User(Base, TimestampMixin, SessionMixin):
         # Email search (requires join)
         if search_email:
             email_query = session.query(cls).join(cls.email_addresses).filter(
-                EmailAddress.email_address.ilike(pattern)
+                ci_like(EmailAddress.email_address, pattern)
             )
 
             if active_only:
@@ -700,7 +702,11 @@ class UserAlias(Base):
     orcid_id = Column(String(20))
     access_global_id = Column(String(31))
     creation_time = Column(DateTime, server_default=text('CURRENT_TIMESTAMP'))  # DB: nullable
-    modified_time = Column(TIMESTAMP(3), server_default=text('CURRENT_TIMESTAMP(3)'))
+    # Generic TIMESTAMP's first argument is `timezone`, not the precision:
+    # TIMESTAMP(3) would be timestamptz on Postgres. The MySQL variant keeps
+    # the DB's timestamp(3).
+    modified_time = Column(DateTime().with_variant(mysql.TIMESTAMP(fsp=3), 'mysql'),
+                           server_default=text('CURRENT_TIMESTAMP(3)'))
 
     user = relationship('User', back_populates='aliases')
 

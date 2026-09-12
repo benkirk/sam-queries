@@ -1,6 +1,7 @@
 #-------------------------------------------------------------------------bh-
 # Common Imports:
 from ..base import *
+from ..sqlcompat import sam_now
 #-------------------------------------------------------------------------eh-
 
 
@@ -408,7 +409,7 @@ class PanelSession(Base, TimestampMixin, SessionMixin):
     @is_active.expression
     def is_active(cls):
         """Check if panel session is currently active (SQL side)."""
-        now = func.now()
+        now = sam_now()
         return and_(
             cls.start_date <= now,
             or_(cls.end_date.is_(None), cls.end_date >= now)

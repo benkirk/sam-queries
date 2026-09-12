@@ -14,6 +14,8 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence
 
 from sqlalchemy import func, or_, select
+
+from sam.sqlcompat import ci_like
 from sqlalchemy.orm import Session
 
 from querykit import LogSpec, count_rows, facet_counts, page_rows
@@ -245,8 +247,8 @@ def _filters(*, since: Optional[datetime] = None,
     if search:
         term = f'%{search.strip()}%'
         conditions.append(or_(
-            NotificationLog.recipient.ilike(term),
-            NotificationLog.projcode.ilike(term),
+            ci_like(NotificationLog.recipient, term),
+            ci_like(NotificationLog.projcode, term),
         ))
     return conditions
 

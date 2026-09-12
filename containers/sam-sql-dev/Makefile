@@ -1,7 +1,7 @@
 COMPOSE_FILE := ../../compose.yaml
 
 .PHONY: all clone clean bootstrap verify db-up db-test db-down db-restart db-reset FORCE \
-        pg-up pg-down pg-reset clone-pg clone-pg-local
+        pg-up pg-down pg-reset clone-pg clone-pg-local clone-pg-test pg-test-up pg-test-reset
 
 all: clone
 
@@ -92,6 +92,24 @@ clone-pg-local: export SAM_DEV_PG_REQUIRE_SSL = false
 clone-pg-local:
 	@python load_postgres.py --config config.yaml $(CLONE_PG_ARGS)
 
+# The test suite's Postgres target: `sam` on the compose `postgres-test` service,
+# built from mysql-test (3307). Fixed test credentials, never .env's; the
+# PG_TEST_* overrides let CI run it inside the webapp container by service name.
+clone-pg-test: export SAM_DEV_PG_HOST = $(or $(PG_TEST_HOST),127.0.0.1)
+clone-pg-test: export SAM_DEV_PG_PORT = $(or $(PG_TEST_PORT),5434)
+clone-pg-test: export SAM_DEV_PG_USER = sam_test
+clone-pg-test: export SAM_DEV_PG_PASSWORD = sam_test
+clone-pg-test: export SAM_DEV_PG_DB = sam
+clone-pg-test: export SAM_DEV_PG_REQUIRE_SSL = false
+clone-pg-test:
+	@python load_postgres.py --config config.yaml \
+	    --source '$(or $(PG_TEST_SOURCE_URL),mysql+pymysql://root:root@127.0.0.1:3307/sam)' $(CLONE_PG_ARGS)
+
+pg-test-up:
+	docker compose -f $(COMPOSE_FILE) --profile test up -d postgres-test
+	@timeout 120 bash -c 'until docker compose -f $(COMPOSE_FILE) --profile test ps postgres-test | grep -q "healthy"; do sleep 3; done'
+	@echo "✅ postgres-test ready on 127.0.0.1:5434"
+
 pg-up:
 	docker compose -f $(COMPOSE_FILE) --profile pg up -d postgres
 	@echo "Waiting for healthy status..."
@@ -106,6 +124,10 @@ pg-down:
 pg-reset:
 	docker compose -f $(COMPOSE_FILE) --profile pg rm -sf postgres
 	-docker volume rm project-samuel_postgres-data
+
+pg-test-reset:
+	docker compose -f $(COMPOSE_FILE) --profile test rm -sf postgres-test
+	-docker volume rm project-samuel_postgres-test-data
 
 # Dump targets are real files but must always rebuild: a stale blob from the
 # last run would otherwise be "up to date" and silently kept.

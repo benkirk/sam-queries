@@ -35,8 +35,9 @@ class TestGidAllocationModel:
         # Verify the MySQL column names really are camelCase by querying
         # them by their raw column names — fails loudly if the ORM
         # silently renamed the underlying column.
+        q = session.get_bind().dialect.identifier_preparer.quote
         row = session.execute(
-            text("SELECT `startGid`, `nextGid`, `endGid` "
+            text(f"SELECT {q('startGid')}, {q('nextGid')}, {q('endGid')} "
                  "FROM gid_allocation "
                  "WHERE gid_allocation_id = :pk"),
             {"pk": block.gid_allocation_id},

@@ -24,6 +24,8 @@ from datetime import datetime
 from typing import List, Optional, Dict, Tuple
 
 from sqlalchemy import or_, func, desc, select, exists
+
+from sam.sqlcompat import ci_like
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from sam.core.users import User, EmailAddress
@@ -204,10 +206,10 @@ def search_users_by_pattern(
         EmailAddress, User.user_id == EmailAddress.user_id
     ).filter(
         or_(
-            User.username.ilike(like_pattern),
-            User.first_name.ilike(like_pattern),
-            User.last_name.ilike(like_pattern),
-            EmailAddress.email_address.ilike(like_pattern)
+            ci_like(User.username, like_pattern),
+            ci_like(User.first_name, like_pattern),
+            ci_like(User.last_name, like_pattern),
+            ci_like(EmailAddress.email_address, like_pattern)
         )
     ).distinct()
 
