@@ -8,6 +8,8 @@ from sqlalchemy import (
     ForeignKey, ForeignKeyConstraint, PrimaryKeyConstraint,
     Text, BigInteger, SmallInteger, TIMESTAMP, text, and_, or_, Index, exists, select
 )
+from sqlalchemy import update as sa_update
+from .sqlcompat import sam_now
 from sqlalchemy.orm import relationship, declarative_base, declared_attr, Session, validates
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -177,7 +179,7 @@ class DateRangeMixin:
     @is_currently_active.expression
     def is_currently_active(cls):
         """Check if this record is currently active (SQL side)."""
-        now = func.now()
+        now = sam_now()
         return and_(
             cls.start_date <= now,
             or_(cls.end_date.is_(None), cls.end_date >= now)
@@ -208,7 +210,7 @@ class DateRangeMixin:
     @is_future.expression
     def is_future(cls):
         """True when this record's window has not opened yet (SQL side)."""
-        return cls.start_date > func.now()
+        return cls.start_date > sam_now()
 
 class SessionMixin:
     @property
@@ -371,7 +373,7 @@ class NestedSetMixin:
         * **Child node**: inserts the new node as the *last child* of ``parent``
           by opening a gap at ``parent.tree_right`` and shifting all affected
           sibling/ancestor right-boundaries by 2.  Nodes are shifted with two
-          targeted SQL UPDATEs; when ``_ns_root_col`` is set the UPDATEs are
+          targeted Core UPDATEs; when ``_ns_root_col`` is set the UPDATEs are
           scoped to that root so other independent trees are untouched.
 
         The ``parent`` itself is refreshed from the database after the shifts so
@@ -385,7 +387,6 @@ class NestedSetMixin:
         """
         cls = type(self)
         my_pk = getattr(self, self._ns_pk_col)
-        table = cls.__tablename__
 
         if parent is None:
             # New standalone root tree
@@ -397,27 +398,15 @@ class NestedSetMixin:
             parent_right = parent.tree_right
             tree_root_val = getattr(parent, self._ns_root_col) if self._ns_root_col else None
 
-            if self._ns_root_col and tree_root_val:
-                # Scope shifts to this subtree only
-                root_col = self._ns_root_col
-                session.execute(text(
-                    f"UPDATE `{table}` SET tree_left = tree_left + 2 "
-                    f"WHERE tree_left >= :pr AND `{root_col}` = :root"
-                ), {'pr': parent_right, 'root': tree_root_val})
-                session.execute(text(
-                    f"UPDATE `{table}` SET tree_right = tree_right + 2 "
-                    f"WHERE tree_right >= :pr AND `{root_col}` = :root"
-                ), {'pr': parent_right, 'root': tree_root_val})
-            else:
-                # Global tree (no tree_root scoping, e.g. Organization)
-                session.execute(text(
-                    f"UPDATE `{table}` SET tree_left = tree_left + 2 "
-                    f"WHERE tree_left >= :pr"
-                ), {'pr': parent_right})
-                session.execute(text(
-                    f"UPDATE `{table}` SET tree_right = tree_right + 2 "
-                    f"WHERE tree_right >= :pr"
-                ), {'pr': parent_right})
+            # Core update() so each dialect quotes the identifiers. Shifts are
+            # scoped to this root when the model has one; Organization's tree
+            # is global.
+            t = cls.__table__
+            scope = [t.c[self._ns_root_col] == tree_root_val] if (self._ns_root_col and tree_root_val) else []
+            session.execute(sa_update(t).where(t.c.tree_left >= parent_right, *scope)
+                            .values(tree_left=t.c.tree_left + 2))
+            session.execute(sa_update(t).where(t.c.tree_right >= parent_right, *scope)
+                            .values(tree_right=t.c.tree_right + 2))
 
             self.tree_left = parent_right
             self.tree_right = parent_right + 1
