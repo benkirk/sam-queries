@@ -319,6 +319,43 @@ services:
     networks:
       - sam-network
 
+  #------------------------------------
+  # Local Postgres — the offline target for `make clone-pg-local`
+  # (containers/sam-sql-dev/load_postgres.py builds every table; no initdb).
+  # Same major as the csg-postgres CNPG cluster. Host port 5433 because the
+  # hpc-usage-queries compose stack already binds 5432.
+  #
+  # To start it:   docker compose --profile pg up -d postgres
+  # To stop it:    docker compose --profile pg down
+  postgres:
+    container_name: samuel-postgres
+    profiles: [pg]
+    image: postgres:18
+    # Credentials come from .env (SAM_DEV_PG_USER / _PASSWORD, the same pair the
+    # CNPG target uses); the volume is initialized with them on first start, so
+    # changing them means `make pg-reset` (containers/sam-sql-dev) first. The
+    # password has no default on purpose: the image refuses to initialize
+    # without one, at `make pg-up` time. (A `:?` required-variable form would
+    # instead break EVERY compose command wherever .env is absent, such as CI.)
+    # WARNING: never `docker compose --profile pg down -v`: -v removes EVERY
+    # named volume of the project, including mysql-data.
+    environment:
+      POSTGRES_USER: ${SAM_DEV_PG_USER:-sam_dev}
+      POSTGRES_PASSWORD: ${SAM_DEV_PG_PASSWORD:-}
+      POSTGRES_DB: ${SAM_DEV_PG_DB:-sam_dev}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    ports:
+      - "5433:5432"
+    networks:
+      - sam-network
+
 networks:
   sam-network:
     driver: bridge
@@ -326,6 +363,7 @@ networks:
 volumes:
   mysql-data:
   mysql-test-data:
+  postgres-data:
 
 secrets:
   # Read-only deploy key for the private NCAR/hpc-scheduling-tools plugin.
