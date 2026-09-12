@@ -39,6 +39,7 @@ settings:
   # Modes:
   #   empty   -> schema only, zero rows (WHERE 1=0)
   #   recent  -> rows where <column> >= CURDATE() - <days>
+  #              (SAM_CLONE_DAYS or `--days N` replaces every recent <days>)
   #
   # Tables with no matching strategy fall through to size-based sampling.
   # An emptied parent does NOT cascade: its children are dumped by their own

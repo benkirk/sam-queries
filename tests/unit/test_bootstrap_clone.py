@@ -90,6 +90,38 @@ class TestFkRestrictions:
         assert clone.fk_restrictions('x', fk, {'p': ["it's"]}) == ["`code` IN ('it''s')"]
 
 
+class TestDepthOverride:
+    def _cfg(self):
+        return {'settings': {'table_strategies': [
+            {'pattern': '*_activity', 'mode': 'empty'},
+            {'pattern': 'comp_charge_summary', 'mode': 'recent', 'column': 'activity_date', 'days': 730},
+            {'pattern': '*_charge_summary', 'mode': 'recent', 'column': 'activity_date', 'days': 400}]}}
+
+    def test_none_keeps_the_config_depths(self, clone):
+        cfg = clone.apply_depth(self._cfg(), None)
+        assert [s.get('days') for s in cfg['settings']['table_strategies']] == [None, 730, 400]
+
+    def test_a_depth_replaces_every_recent_window_only(self, clone):
+        cfg = clone.apply_depth(self._cfg(), 1500)
+        assert [s.get('days') for s in cfg['settings']['table_strategies']] == [None, 1500, 1500]
+
+    def test_a_non_positive_depth_is_rejected(self, clone):
+        with pytest.raises(SystemExit):
+            clone.apply_depth(self._cfg(), 0)
+
+    def test_the_cli_and_env_both_reach_load_config(self, clone, tmp_path, monkeypatch):
+        import yaml
+        path = tmp_path / 'c.yaml'
+        path.write_text(yaml.safe_dump({'remote': {'database': 'sam', 'user': 'u', 'password': 'p',
+                                                    'host': 'h'}, **self._cfg()}))
+        monkeypatch.setenv('SAM_CLONE_DAYS', '900')
+        assert clone.load_config(str(path))['settings']['table_strategies'][1]['days'] == 900
+        assert clone.load_config(str(path), 1200)['settings']['table_strategies'][1]['days'] == 1200
+        monkeypatch.delenv('SAM_CLONE_DAYS')
+        assert clone.load_config(str(path))['settings']['table_strategies'][1]['days'] == 730
+        assert clone.parse_args(['--days', '42']).days == 42
+
+
 class TestTopologicalSort:
     def _order(self, clone, edges, tables):
         rows = [{'parent_table': p, 'child_table': c} for p, c in edges]

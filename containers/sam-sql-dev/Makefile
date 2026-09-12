@@ -6,6 +6,7 @@ all: clone
 
 # Subset production into the local container (reads prod as hpc-reader).
 # The result holds REAL PII until `bootstrap` anonymizes it.
+# SAM_CLONE_DAYS=<n> deepens every `recent` window in config.yaml.
 clone:
 	@python bootstrap_clone.py --config config.yaml
 

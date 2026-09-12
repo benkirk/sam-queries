@@ -47,11 +47,27 @@ atexit.register(_remove_temp_files)
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--config", default="config.yaml")
+    p.add_argument("--days", type=int, default=None,
+                   help="depth for every `recent` strategy; default $SAM_CLONE_DAYS, else config.yaml")
     return p.parse_args(argv)
 
 
-def load_config(path):
+def apply_depth(cfg, days):
+    """Replace the `days` of every `mode: recent` strategy; None leaves config.yaml alone."""
+    if days is None:
+        return cfg
+    if days < 1:
+        raise SystemExit(f"--days / SAM_CLONE_DAYS must be positive, got {days}")
+    for s in cfg["settings"]["table_strategies"]:
+        if s.get("mode") == "recent":
+            s["days"] = days
+    return cfg
+
+
+def load_config(path, days=None):
     load_dotenv(find_dotenv())
+    if days is None and os.environ.get("SAM_CLONE_DAYS"):
+        days = int(os.environ["SAM_CLONE_DAYS"])
     with open(path) as f:
         cfg = yaml.safe_load(f)
     s = cfg.setdefault("settings", {})
@@ -63,11 +79,12 @@ def load_config(path):
     s.setdefault("table_strategies", [])
     s.setdefault("unvalidated_fks", [])
     r = cfg["remote"]
-    r.setdefault("user", os.environ["PROD_SAM_DB_USERNAME"])
-    r.setdefault("password", os.environ["PROD_SAM_DB_PASSWORD"])
-    r.setdefault("host", os.environ["PROD_SAM_DB_SERVER"])
+    for key, var in (("user", "PROD_SAM_DB_USERNAME"), ("password", "PROD_SAM_DB_PASSWORD"),
+                     ("host", "PROD_SAM_DB_SERVER")):
+        if key not in r:
+            r[key] = os.environ[var]
     r.setdefault("port", 3306)
-    return cfg
+    return apply_depth(cfg, days)
 
 
 def write_defaults_file(remote):
@@ -469,8 +486,10 @@ def sample_and_dump_table(cfg, conn, table, size_mb, pk_map, fk_map, sampled_ids
 # ----------------------------
 def main(argv=None):
     args = parse_args(argv)
-    cfg = load_config(args.config)
+    cfg = load_config(args.config, args.days)
     os.makedirs(DUMP_DIR, exist_ok=True)
+    depths = sorted({s["days"] for s in cfg["settings"]["table_strategies"] if s.get("mode") == "recent"})
+    print(f"Recent-window depth: {', '.join(f'{d}d' for d in depths)}")
     remote = cfg["remote"]
     remote["_defaults_file"] = write_defaults_file(remote)
     remote["_client_flags"] = client_flags(
