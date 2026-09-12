@@ -20,10 +20,16 @@ like the obvious source for `/people`. It is the wrong one, for two reasons:
    `COALESCE(MIN(ea1), MIN(ea2), ...)` — a per-tier coalesce — where the named
    query uses `ANY_VALUE(COALESCE(ea1, ea2, ...))`, a per-row one. For a user
    with several addresses these select different values, so porting the view
-   would ship a silent data divergence.
+   would ship a silent data divergence. This module keeps the per-row form as
+   `MIN(COALESCE(ea1, ea2, ...))`, which also makes the pick deterministic.
 
 The named query already carries `(:username IS NULL OR username = :username)`,
 which is exactly the shape needed to serve both endpoints from one statement.
+
+Every statement here runs on MySQL and Postgres: the camelCase aliases are
+double-quoted (Postgres folds bare identifiers to lowercase and the callers
+read `row.projectId`), and no MySQL-only function remains except the
+`GROUP_CONCAT` that `_SQL_REQUESTS` selects per dialect.
 
 See `docs/xras/incoming/XRAS_REIMPLEMENTATION.md` section 4.2.
 """
@@ -33,6 +39,8 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
+from sam.sqlcompat import dialect_name
+
 # `PersonDTO`'s Java field-declaration order, which is the JSON key order.
 # Note this differs from the SQL alias order (phone/organization are swapped),
 # so callers must project through this tuple rather than trusting the row.
@@ -41,39 +49,41 @@ PERSON_FIELDS = (
     'organization', 'academicStatus', 'phone', 'email',
 )
 
-#: Verbatim port of `identityServicePersons` (namedQuery.xml:7-60). Two
+#: Port of `identityServicePersons` (namedQuery.xml:7-60) in portable SQL. Two
 #: faithfulness notes worth not "fixing":
 #:
 #: - The `phone` expression looks like a priority ranking and is not one. The
-#:   `MIN(CASE ...)` is only a null test; `ANY_VALUE(p.phone_number)` then
-#:   returns an arbitrary phone row. Legacy behavior, reproduced.
+#:   `MIN(CASE ...)` is only a null test ("any listed type exists"); legacy's
+#:   `ANY_VALUE(p.phone_number)` then returned an arbitrary phone row, which
+#:   `MIN(p.phone_number)` makes deterministic over the same candidates.
 #: - `login_type_id = 1` is the only filter -- no active/deleted predicate, so
 #:   `/people` publishes every user who ever existed (22k of 28k inactive).
 #:
-#: `ORDER BY MIN(u.user_id)` is ours: the named query has no `ORDER BY` at all,
-#: so legacy's row order is a `GROUP BY` artifact that happens to be
-#: user_id-ascending. Stating it reproduces the observed 3.8 MB roster
-#: byte-for-byte while making the order deterministic. `MIN()` rather than a
-#: bare column keeps it legal under `ONLY_FULL_GROUP_BY`, which dev and CI
-#: enable and production does not.
+#: `organization` guards `CONCAT` with a CASE because Postgres `CONCAT` skips a
+#: NULL where MySQL returns NULL. `ORDER BY u.user_id` is ours: the named query
+#: has no `ORDER BY` at all, so legacy's row order is a `GROUP BY` artifact
+#: that happens to be user_id-ascending. Stating it reproduces the observed
+#: 3.8 MB roster byte-for-byte while making the order deterministic.
 _SQL_PEOPLE = text("""
-    SELECT u.username AS username,
-           IF(u.nickname IS NOT NULL, u.nickname, u.first_name) AS firstName,
-           u.middle_name AS middleName,
-           u.last_name  AS lastName,
-           ANY_VALUE(IF((MIN((CASE pt.phone_type
+    SELECT u.username AS "username",
+           COALESCE(u.nickname, u.first_name) AS "firstName",
+           u.middle_name AS "middleName",
+           u.last_name  AS "lastName",
+           CASE WHEN MIN(CASE pt.phone_type
                    WHEN 'Ucar Office'     THEN 0
                    WHEN 'External Office' THEN 1
                    WHEN 'Cell'            THEN 2
                    WHEN 'Other'           THEN 3
                    WHEN 'Home'            THEN 4
                    WHEN 'Fax'             THEN 5
-                   ELSE NULL END)) IS NOT NULL), p.phone_number, NULL)) AS phone,
-           ANY_VALUE(COALESCE(MIN(i.name),
-                              CONCAT('UCAR/NCAR:', o.acronym))) AS organization,
-           ANY_VALUE(COALESCE(ea1.email_address, ea2.email_address,
-                              ea3.email_address, ea4.email_address)) AS email,
-           ac.description AS academicStatus
+                   ELSE NULL END) IS NOT NULL
+                THEN MIN(p.phone_number) END AS "phone",
+           MIN(COALESCE(i.name,
+                        CASE WHEN o.acronym IS NULL THEN NULL
+                             ELSE CONCAT('UCAR/NCAR:', o.acronym) END)) AS "organization",
+           MIN(COALESCE(ea1.email_address, ea2.email_address,
+                        ea3.email_address, ea4.email_address)) AS "email",
+           ac.description AS "academicStatus"
       FROM users u
       LEFT JOIN phone p       ON u.user_id = p.user_id
       LEFT JOIN phone_type pt ON p.ext_phone_type_id = pt.ext_phone_type_id
@@ -98,8 +108,9 @@ _SQL_PEOPLE = text("""
             ON u.academic_status_id = ac.academic_status_id
      WHERE u.login_type_id = 1
        AND (:username IS NULL OR u.username = :username)
-     GROUP BY u.username, firstName, u.middle_name, u.last_name, ac.description
-     ORDER BY MIN(u.user_id)
+     GROUP BY u.user_id, u.username, u.nickname, u.first_name, u.middle_name,
+              u.last_name, ac.description
+     ORDER BY u.user_id
 """)
 
 #: Organizations whose primary name is fixed rather than derived by walking
@@ -244,13 +255,13 @@ def get_person(session: Session, username: str) -> Optional[Dict[str, Any]]:
 #: exactly why `/requests/role/co_pi/{u}` is a valid request that always returns
 #: an empty result rather than an error.
 _SQL_ROLES = text("""
-    SELECT p.projcode AS projectId, 'AllocationManager' AS role
+    SELECT p.projcode AS "projectId", 'AllocationManager' AS "role"
       FROM users u
       JOIN project p ON u.user_id = p.project_admin_user_id
      WHERE u.username = :username
        AND (:role IS NULL OR 'AllocationManager' = :role)
     UNION ALL
-    SELECT p.projcode AS projectId, 'Pi' AS role
+    SELECT p.projcode AS "projectId", 'Pi' AS "role"
       FROM users u
       JOIN project p ON u.user_id = p.project_lead_user_id
      WHERE u.username = :username
@@ -262,14 +273,16 @@ _SQL_ROLES = text("""
 #: dashboard's lifecycle tree (`queries/xras_requests.request_family`) derives its
 #: own New/current from the reports payload; it is deliberately NOT this query, whose
 #: bytes are the frozen legacy contract, so the two must not be merged.
-_SQL_REQUESTS = text("""
-    SELECT p.projcode AS projectId,
-           MIN(CAST(al.start_date AS DATE)) AS requestBeginDate,
-           CAST(al.end_date AS DATE)        AS requestEndDate,
-           GROUP_CONCAT(al.allocation_id)   AS allocationIds,
-           alt.allocation_type              AS allocationType,
-           p.title                          AS projectTitle,
-           p.area_of_interest_id            AS xrasFosTypeId
+#: `allocationIds` is a comma-joined list the caller splits; the aggregate is the
+#: one dialect-specific spelling in this module.
+_REQUESTS_SQL = """
+    SELECT p.projcode AS "projectId",
+           MIN(CAST(al.start_date AS DATE)) AS "requestBeginDate",
+           CAST(al.end_date AS DATE)        AS "requestEndDate",
+           {allocation_ids}                 AS "allocationIds",
+           alt.allocation_type              AS "allocationType",
+           p.title                          AS "projectTitle",
+           p.area_of_interest_id            AS "xrasFosTypeId"
       FROM project p
       JOIN account ac         ON p.project_id = ac.project_id
       JOIN allocation al      ON ac.account_id = al.account_id
@@ -278,19 +291,25 @@ _SQL_REQUESTS = text("""
      GROUP BY p.projcode, CAST(al.end_date AS DATE), alt.allocation_type,
               p.title, p.area_of_interest_id
      ORDER BY p.projcode, CAST(al.end_date AS DATE)
-""").bindparams(bindparam('projcodes', expanding=True))
+"""
+_SQL_REQUESTS = {
+    dialect: text(_REQUESTS_SQL.format(allocation_ids=agg)).bindparams(
+        bindparam('projcodes', expanding=True))
+    for dialect, agg in (('mysql', 'GROUP_CONCAT(al.allocation_id)'),
+                         ('postgresql', "STRING_AGG(CAST(al.allocation_id AS TEXT), ',')"))
+}
 
 #: `remainingAmount` is HPC-only and comes from a LEFT JOIN, which is why it is
 #: absent from ~56% of allocations. The subquery is `xras_hpc_allocation_amount`
 #: with the project filter pushed inside it — the whole point of this module.
 _SQL_ALLOCATIONS = text("""
-    SELECT al.allocation_id AS allocationId,
-           p.projcode       AS projectId,
-           al.start_date    AS allocationBeginDate,
-           al.end_date      AS allocationEndDate,
-           al.amount        AS allocatedAmount,
-           hpc.remaining    AS remainingAmount,
-           xrrk.resource_repository_key AS resourceRepositoryKey
+    SELECT al.allocation_id AS "allocationId",
+           p.projcode       AS "projectId",
+           al.start_date    AS "allocationBeginDate",
+           al.end_date      AS "allocationEndDate",
+           al.amount        AS "allocatedAmount",
+           hpc.remaining    AS "remainingAmount",
+           xrrk.resource_repository_key AS "resourceRepositoryKey"
       FROM project p
       JOIN account ac    ON p.project_id = ac.project_id
       LEFT JOIN xras_resource_repository_key_resource xrrk
@@ -327,8 +346,8 @@ _SQL_ALLOCATIONS = text("""
 #: difference is deliberate on both sides: these bytes are the contract a parity
 #: run checks, so this spelling cannot be changed to match.
 _SQL_ACTIONS = text("""
-    SELECT al.allocation_id AS allocationId,
-           p.projcode       AS projectId,
+    SELECT al.allocation_id AS "allocationId",
+           p.projcode       AS "projectId",
            CASE altr.transaction_type
                 WHEN 'NEW'        THEN 'New'
                 WHEN 'TRANSFER'   THEN 'Transfer'
@@ -336,10 +355,10 @@ _SQL_ACTIONS = text("""
                 WHEN 'ADVANCE'    THEN 'Advance'
                 WHEN 'EXTENSION'  THEN 'Extension'
                 WHEN 'ADJUSTMENT' THEN 'Adjustment'
-           END                       AS actionType,
-           altr.transaction_amount   AS amount,
-           altr.alloc_end_date       AS endDate,
-           altr.creation_time        AS dateApplied
+           END                       AS "actionType",
+           altr.transaction_amount   AS "amount",
+           altr.alloc_end_date       AS "endDate",
+           altr.creation_time        AS "dateApplied"
       FROM project p
       JOIN account ac    ON p.project_id = ac.project_id
       JOIN allocation al ON ac.account_id = al.account_id
@@ -353,9 +372,9 @@ _SQL_ACTIONS = text("""
 #: grouping that `_SQL_REQUESTS` keeps. The inner join to `allocation_type` is
 #: the view's and is load-bearing: a project with no matching type yields no row.
 _SQL_REQUEST_DATES = text("""
-    SELECT p.projcode                   AS requestNumber,
-           MIN(CAST(al.start_date AS DATE)) AS requestBeginDate,
-           MAX(CAST(al.end_date AS DATE))   AS requestEndDate
+    SELECT p.projcode                   AS "requestNumber",
+           MIN(CAST(al.start_date AS DATE)) AS "requestBeginDate",
+           MAX(CAST(al.end_date AS DATE))   AS "requestEndDate"
       FROM project p
       JOIN account ac         ON p.project_id = ac.project_id
       JOIN allocation al      ON ac.account_id = al.account_id
@@ -383,7 +402,8 @@ def get_role_projcodes(
 
 def get_request_rows(session: Session, projcodes) -> List[Any]:
     """Derived request rows, ordered by projcode then end date."""
-    return session.execute(_SQL_REQUESTS, {'projcodes': list(projcodes)}).fetchall()
+    stmt = _SQL_REQUESTS.get(dialect_name(session), _SQL_REQUESTS['mysql'])
+    return session.execute(stmt, {'projcodes': list(projcodes)}).fetchall()
 
 
 def get_allocation_rows(session: Session, projcodes) -> List[Any]:
