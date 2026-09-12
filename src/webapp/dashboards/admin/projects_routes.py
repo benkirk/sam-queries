@@ -787,7 +787,20 @@ class _ProjectUpdateHandler(HtmxFormHandler):
             (AreaOfInterest, data.get('area_of_interest_id'), 'area of interest'),
             (AllocationType, data.get('allocation_type_id'), 'allocation type'),
         )
+        # Governance checkboxes: a partial load drops an unchecked box, so read
+        # the boxes from request.form. active carries an inactivate_time side
+        # effect and is applied via reactivate()/deactivate(), never update().
+        can_governance = can_edit_project_governance(current_user, self.project)
+        data.pop('active', None)
+        if can_governance:
+            data['charging_exempt'] = 'charging_exempt' in request.form
         self.project.update(**data)
+        if can_governance:
+            want_active = 'active' in request.form
+            if want_active and not self.project.active:
+                self.project.reactivate()
+            elif not want_active and self.project.active:
+                self.project.deactivate()
 
     def context(self):
         current_facility_id = None
