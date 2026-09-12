@@ -333,12 +333,15 @@ services:
     image: postgres:18
     # Credentials come from .env (SAM_DEV_PG_USER / _PASSWORD, the same pair the
     # CNPG target uses); the volume is initialized with them on first start, so
-    # changing them means `make pg-reset` (containers/sam-sql-dev) first.
+    # changing them means `make pg-reset` (containers/sam-sql-dev) first. The
+    # password has no default on purpose: the image refuses to initialize
+    # without one, at `make pg-up` time. (A `:?` required-variable form would
+    # instead break EVERY compose command wherever .env is absent, such as CI.)
     # WARNING: never `docker compose --profile pg down -v`: -v removes EVERY
     # named volume of the project, including mysql-data.
     environment:
-      POSTGRES_USER: ${SAM_DEV_PG_USER:?set SAM_DEV_PG_USER in .env}
-      POSTGRES_PASSWORD: ${SAM_DEV_PG_PASSWORD:?set SAM_DEV_PG_PASSWORD in .env}
+      POSTGRES_USER: ${SAM_DEV_PG_USER:-sam_dev}
+      POSTGRES_PASSWORD: ${SAM_DEV_PG_PASSWORD:-}
       POSTGRES_DB: ${SAM_DEV_PG_DB:-sam_dev}
     volumes:
       - postgres-data:/var/lib/postgresql
