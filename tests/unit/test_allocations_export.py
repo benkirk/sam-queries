@@ -29,3 +29,17 @@ class TestProjectsExport:
     def test_403_without_view_projects(self, non_admin_client):
         assert non_admin_client.get(
             '/allocations/projects/export').status_code == 403
+
+    def test_the_roots_only_switch_reaches_the_detail_fetch(self, auth_client, monkeypatch):
+        """The workbook must match the screen: default roots only, off lists all."""
+        from unittest.mock import Mock
+        from webapp.dashboards.allocations import blueprint as bp
+        spy = Mock(wraps=bp.cached_allocation_usage)
+        monkeypatch.setattr(bp, 'cached_allocation_usage', spy)
+
+        assert auth_client.get('/allocations/projects/export?resources=Derecho').status_code == 200
+        assert spy.call_args_list and all(c.kwargs['root_only'] is True for c in spy.call_args_list)
+
+        spy.reset_mock()
+        assert auth_client.get('/allocations/projects/export?resources=Derecho&root_only=0').status_code == 200
+        assert spy.call_args_list and all(c.kwargs['root_only'] is False for c in spy.call_args_list)

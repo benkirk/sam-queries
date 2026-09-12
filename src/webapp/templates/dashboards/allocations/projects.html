@@ -1,5 +1,7 @@
 {% extends 'dashboards/allocations/base_allocations.html' %}
 {% from 'dashboards/fragments/form_fields.html' import multiselect_filter %}
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/glossary.html' import g_roots_only %}
 
 {% block title %}Allocations Dashboard{% endblock %}
 
@@ -137,6 +139,17 @@
         {{ multiselect_filter('Resources', 'resources', all_resources,
                               selected_resources, width='240px', id='resources') }}
 
+        {# Hidden 0 before the box: a GET form omits an unchecked box, and
+           this switch defaults ON (read_switch takes the last value). #}
+        <div class="form-check form-switch align-self-end mb-2">
+            <input type="hidden" name="root_only" value="0">
+            <input class="form-check-input" type="checkbox" role="switch"
+                   id="root_only" name="root_only" value="1"
+                   {% if root_only %}checked{% endif %}>
+            <label class="form-check-label" for="root_only">Roots only</label>
+            {{ help_icon(g_roots_only(), rich=True, title='Roots only') }}
+        </div>
+
         <button type="submit" class="btn btn-outline-white align-self-end">Update</button>
         {# formaction submits the current filter selections to the export route,
            so the download matches what is on screen. No JS needed. #}
@@ -242,7 +255,7 @@
                     </tr>
                     <tr class="project-details-row" data-fac-id="{{ fac_id }}" id="{{ details_id }}">
                         <td colspan="7"
-                            hx-get="{{ url_for('allocations_dashboard.projects_fragment') }}?resource={{ resource_name|urlencode }}&facility={{ facility_name|urlencode }}&allocation_type={{ type_data.allocation_type|urlencode }}&active_at={{ active_at }}"
+                            hx-get="{{ url_for('allocations_dashboard.projects_fragment') }}?resource={{ resource_name|urlencode }}&facility={{ facility_name|urlencode }}&allocation_type={{ type_data.allocation_type|urlencode }}&active_at={{ active_at }}&root_only={{ 1 if root_only else 0 }}"
                             hx-trigger="load-details"
                             hx-swap="innerHTML">
                             <div class="p-3 text-center">

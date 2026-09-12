@@ -73,9 +73,10 @@ class EditProjectForm(HtmxFormSchema):
     Mandatory project identity fields (title, lead, area of interest) are
     required because the edit form always renders them. Other scalar fields
     use ``load_default=None`` so ``project.update()`` can skip unchanged
-    values. Checkbox fields use ``load_default=False`` because unchecked
-    HTML checkboxes send no key at all — the schema's default then
-    correctly represents "unchecked" rather than "unchanged".
+    values. The checkbox fields (active, charging_exempt) are applied by
+    ``_ProjectUpdateHandler.perform`` from ``request.form`` directly: this
+    schema loads ``partial=True``, which skips ``load_default`` for an absent
+    key, so an unchecked box cannot round-trip through the loaded dict.
 
     FK existence checks remain in the route (require DB access).
     """
