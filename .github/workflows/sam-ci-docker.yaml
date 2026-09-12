@@ -231,3 +231,84 @@ jobs:
         if: always()
         run: |
           docker compose down -v
+
+  # The same default tier on a Postgres copy of the test database
+  # (docs/plans/POSTGRES_MIGRATION.md, Stage 3). The copy is built inside the
+  # stack by the loader from mysql-test; tests/postgres_expected_failures.txt
+  # lists what still fails there, as strict xfails. Perf and stress stay MySQL.
+  pytest-postgres:
+    name: Run Test Suite (Docker, Postgres)
+    if: >-
+      !contains(github.event.head_commit.message, '[skip ci]')
+      && !contains(github.event.head_commit.message, '[ci skip]')
+      && !contains(github.event.head_commit.message, '[no ci]')
+      && !contains(github.event.pull_request.title, '[skip ci]')
+      && !contains(github.event.pull_request.title, '[ci skip]')
+      && !contains(github.event.pull_request.title, '[no ci]')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install MySQL Client
+        run: |
+          sudo apt-get install -y mysql-client
+
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      - name: Install latest Docker
+        uses: docker/setup-docker-action@v5
+        with:
+          docker-ce-version: latest
+
+      - name: Verify MySQL backup file is not an LFS pointer
+        run: |
+          BACKUP_FILE="containers/sam-sql-dev/backups/sam-obfuscated.sql.xz"
+          ls -lh "${BACKUP_FILE}"
+          if head -c 50 "${BACKUP_FILE}" | grep -q "version https"; then
+            echo "❌ ${BACKUP_FILE} is a Git LFS pointer"
+            exit 1
+          fi
+
+      - name: Build and start services
+        run: |
+          docker compose build
+          docker compose --profile test up -d
+          docker compose ps
+
+      - name: Wait for MySQL (test, port 3307)
+        run: scripts/ci/wait-for-mysql.sh
+        env:
+          MYSQL_PORT: "3307"
+          COMPOSE_SERVICE: mysql-test
+
+      - name: Wait for Postgres (test)
+        run: scripts/ci/wait-for-postgres.sh
+
+      - name: Wait for webapp to be ready
+        run: |
+          timeout 60 bash -c 'until docker compose exec -T webapp python -c "import sys; sys.exit(0)" 2>/dev/null; do sleep 2; done'
+
+      - name: Build the Postgres copy from mysql-test
+        run: |
+          docker compose exec -T \
+            -e SAM_TEST_MYSQL_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
+            -e SAM_TEST_PG_HOST=postgres-test -e SAM_TEST_PG_PORT=5432 \
+            webapp make -C /code/containers/sam-sql-dev clone-pg-test
+
+      - name: Run pytest against postgres-test
+        run: |
+          docker compose exec -T \
+            -e SAM_TEST_DB_URL='postgresql+psycopg2://sam_test:sam_test@postgres-test:5432/sam' \
+            webapp bash -c "cd /code && pytest"
+
+      - name: Show container logs (for debugging)
+        if: failure()
+        run: |
+          docker compose logs --tail=200
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose down -v
