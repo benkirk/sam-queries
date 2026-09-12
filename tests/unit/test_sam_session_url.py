@@ -5,7 +5,7 @@ from sam import session as sam_session
 
 pytestmark = pytest.mark.unit
 
-_CREDS = {'SAM_DB_USERNAME': 'u', 'SAM_DB_PASSWORD': 'p@ss', 'SAM_DB_SERVER': 'db.local'}
+_CREDS = {'SAM_DB_USERNAME': 'u', 'SAM_DB_PASSWORD': 'test-placeholder-pass', 'SAM_DB_SERVER': 'db.local'}
 
 
 @pytest.fixture
@@ -24,7 +24,7 @@ def test_the_default_is_mysql_without_a_port(env):
     sam_session.init_sam_db_defaults()
     url = sam_session.connection_string
     assert (url.drivername, url.host, url.port, url.database) == ('mysql+pymysql', 'db.local', None, 'sam')
-    assert url.password == 'p@ss'
+    assert url.password == 'test-placeholder-pass'
 
 
 def test_postgres_driver_port_and_name(env):
