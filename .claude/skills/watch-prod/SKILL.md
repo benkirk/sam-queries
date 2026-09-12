@@ -48,6 +48,25 @@ Steady state is one line. Raise it only on a real signal:
 - **4xx > 40%** of requests — heavy probing/scanning.
 - **a probe-path hit** (`/.env`, `/wp-login`, `.php`, `/actuator`, …).
 - **a NEW slow (>5s) endpoint.**
+- **a query-count hit** — the `queries(>=200)` warn and its `↳` lines. The
+  guard sums the run line's `<db>=Xms/Nq` counts; a request over the
+  threshold is an N+1 shape whatever its latency (895 statements at 2 s
+  passes the slow gate). Read count against time: many cheap statements is
+  an N+1 (an eager-load fix, e.g. the Project Directories card, #547), a few
+  slow ones is a heavy query (a different lever). Known N+1-shaped routes are
+  listed with their PR once fixed; re-flag one only if it comes back. The
+  status collector's `POST /api/v1/status/<system>` is exempt by default
+  (`WATCH_QUERY_GUARD_IGNORE`): it writes one row per queue/node/job per
+  snapshot, ~1.2–1.5k statements on the status DB in ~0.2 s — a write
+  fan-out by design, not a read N+1.
+
+**Who took the hit.** The run line's `who=` token names the actor:
+`who=apikey:<name>` is a machine poller (SSG, XRAS, the collectors),
+`who=user:<username>` a human session; no token means unauthenticated. The
+`↳ split` line carries it when every slow hit shared one actor. Weight a slow
+endpoint by who paid for it — a 6 s fstree call from the SSG poller is the
+known profile, the same call from a human is a user-facing stall — and read
+`who=` before calling a 4xx spike an anonymous scanner.
 
 **Known-slow — do NOT re-flag:** `directory_access` ~6.9s, `fstree/Casper`
 ~3s DB plus an app-side tail that amplifies under load (measured; the old "~1.7s"

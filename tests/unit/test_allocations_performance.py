@@ -299,6 +299,71 @@ class TestProjectsFragmentRoute:
         assert response.status_code == 200
 
 
+def _a_pool_member(session):
+    """(root projcode, child projcode, resource, facility, type, active_at) for
+    a snapshot child whose allocation inherits its root's, both active today
+    on a live HPC resource -- the production shape."""
+    from datetime import date
+    from sqlalchemy import text
+    row = session.execute(text("""
+        SELECT root.projcode, child.projcode, r.resource_name, f.facility_name,
+               at.allocation_type
+        FROM allocation ca
+        JOIN allocation ra ON ra.allocation_id = ca.parent_allocation_id
+        JOIN account cacc ON cacc.account_id = ca.account_id AND cacc.deleted = 0
+        JOIN account racc ON racc.account_id = ra.account_id AND racc.deleted = 0
+        JOIN project child ON child.project_id = cacc.project_id
+        JOIN project root ON root.project_id = racc.project_id
+        JOIN resources r ON r.resource_id = cacc.resource_id
+        JOIN allocation_type at ON at.allocation_type_id = child.allocation_type_id
+        JOIN panel pn ON pn.panel_id = at.panel_id
+        JOIN facility f ON f.facility_id = pn.facility_id
+        WHERE ca.deleted = 0 AND ra.deleted = 0 AND ra.parent_allocation_id IS NULL
+          AND child.parent_id IS NOT NULL AND root.parent_id IS NULL
+          AND child.active = 1 AND root.active = 1
+          AND cacc.resource_id = racc.resource_id
+          AND child.allocation_type_id = root.allocation_type_id
+          AND r.resource_name IN ('Derecho', 'Casper')
+          AND ca.start_date <= NOW() AND (ca.end_date IS NULL OR ca.end_date >= NOW())
+          AND ra.start_date <= NOW() AND (ra.end_date IS NULL OR ra.end_date >= NOW())
+        ORDER BY ca.allocation_id DESC LIMIT 1
+    """)).first()
+    assert row is not None, 'snapshot has no currently inheriting child allocation'
+    return row[0], row[1], row[2], row[3], row[4], date.today().strftime('%Y-%m-%d')
+
+
+class TestRootsOnlySwitch:
+    """The table's "Roots only" switch: on by default (the rule the page's
+    summaries and charts always apply), off lists the pool members too."""
+
+    def _url(self, pair, **extra):
+        root, child, resource, facility, atype, active_at = pair
+        q = {'resource': resource, 'facility': facility, 'allocation_type': atype,
+             'active_at': active_at, **extra}
+        return '/allocations/htmx/project_table?' + '&'.join(f'{k}={v}' for k, v in q.items())
+
+    def test_the_fragment_defaults_to_roots(self, auth_client, session):
+        pair = _a_pool_member(session)
+        body = auth_client.get(self._url(pair)).data.decode()
+        assert pair[0] in body and pair[1] not in body
+
+    def test_the_fragment_lists_pool_members_when_off(self, auth_client, session):
+        pair = _a_pool_member(session)
+        body = auth_client.get(self._url(pair, root_only=0)).data.decode()
+        assert pair[0] in body and pair[1] in body
+
+    def test_the_page_renders_the_switch_on_and_threads_it(self, auth_client):
+        body = auth_client.get('/allocations/projects').data.decode()
+        assert 'name="root_only" value="1"' in body and 'checked' in body
+        assert 'root_only=1"' in body and 'root_only=0"' not in body
+
+    def test_the_page_honors_off(self, auth_client):
+        body = auth_client.get('/allocations/projects?root_only=0').data.decode()
+        switch = body[body.index('id="root_only"'):]
+        assert 'checked' not in switch[:switch.index('>')]
+        assert 'root_only=0"' in body and 'root_only=1"' not in body
+
+
 class TestUsageModalRoute:
     """Tests for GET /allocations/usage/<projcode>/<resource>."""
 

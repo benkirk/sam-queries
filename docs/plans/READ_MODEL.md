@@ -436,6 +436,13 @@ enable the task, soak dark for a day (ledger `detail`, row counts), then flip
 - **Baselines are ceilings, and counts are not the read-model's metric** — the
   served path trades a few expensive statements for a few cheap ones, so the live
   baselines stay and the `*_read_model` ones sit beside them; time it on webdev.
+- **A patch is one full projection (30–60 statements), so consult the gate once
+  per request.** A caller that already holds the gate's rows hands them to the
+  batched builder (`state=`); the single-project builder did not and re-projected
+  a changed tree twice (`rm=patched:2` on a one-project page). The perf tier's
+  `*_read_model_stale` route tests pin every single-project page to exactly one
+  `ok-patched` lookup through the lookup observer — a count ceiling alone can
+  absorb a second projection on the small fixture tree.
 
 ## Out of scope
 - CNPG placement now (SAM MySQL first).

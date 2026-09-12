@@ -708,9 +708,6 @@ def edit_project_page(project):
     tab but a limited edit surface gated by ``can_edit_governance``.
     """
     from datetime import datetime
-    from sam.queries.dashboard import get_project_dashboard_data
-
-    project_data = get_project_dashboard_data(db.session, project.projcode)
 
     # Reverse-lookup facility_id / panel_id for cascading dropdown pre-population.
     current_facility_id = None
@@ -742,7 +739,6 @@ def edit_project_page(project):
     return render_template(
         'dashboards/admin/edit_project.html',
         project=project,
-        project_data=project_data,
         current_facility_id=current_facility_id,
         current_panel_id=current_panel_id,
         can_edit_governance=can_edit_governance,
@@ -791,7 +787,20 @@ class _ProjectUpdateHandler(HtmxFormHandler):
             (AreaOfInterest, data.get('area_of_interest_id'), 'area of interest'),
             (AllocationType, data.get('allocation_type_id'), 'allocation type'),
         )
+        # Governance checkboxes: a partial load drops an unchecked box, so read
+        # the boxes from request.form. active carries an inactivate_time side
+        # effect and is applied via reactivate()/deactivate(), never update().
+        can_governance = can_edit_project_governance(current_user, self.project)
+        data.pop('active', None)
+        if can_governance:
+            data['charging_exempt'] = 'charging_exempt' in request.form
         self.project.update(**data)
+        if can_governance:
+            want_active = 'active' in request.form
+            if want_active and not self.project.active:
+                self.project.reactivate()
+            elif not want_active and self.project.active:
+                self.project.deactivate()
 
     def context(self):
         current_facility_id = None
@@ -904,8 +913,8 @@ def htmx_project_allocation_tree(project):
     can_exchange = can_exchange_allocations(current_user, project)
     can_modify_allocs = can_modify_allocations(current_user, project)
     descendant_projcodes = {
-        p.projcode for p in project.get_descendants(include_self=False)
-        if p.active
+        n.projcode for n in all_nodes
+        if project.tree_left < n.tree_left < project.tree_right
     }
     exchange_eligible_resources = set()
     if can_exchange:
@@ -934,15 +943,27 @@ def htmx_project_allocation_tree(project):
     # Carve-out residual per (parent node, dedicated resource allocation):
     # surfaced only on nodes that actually have carve-out children (pure
     # pool nodes and fully-uncovered parents keep the Add/Propagate flows).
-    # Cost note: one frontier walk per parent-node allocation — this route
-    # already calls get_detailed_allocation_usage per node, which is far
-    # heavier; admin tree views are small and rare.
+    # The walks read `node.children` and one account per visited node, so
+    # both are loaded for the whole tree first (four statements) instead of
+    # one lazy query per node per parent allocation.
     #
     # Frontier date-filtering uses the displayed allocation row's own
     # window, so a historical/future `active_at` view stays coherent: the
     # residual shown always belongs to the row it annotates.
-    from sam.manage.allocations import get_carveout_frontier
+    from sqlalchemy.orm import selectinload
+    from sam.accounting.accounts import Account
     from sam.accounting.allocations import Allocation
+    from sam.manage.allocations import get_carveout_frontier
+    from sam.projects.projects import Project
+    node_ids = [n.project_id for n in all_nodes]
+    db.session.query(Project).options(selectinload(Project.children)).filter(
+        Project.project_id.in_(node_ids)).all()
+    account_index = {
+        (a.project_id, a.resource_id): a
+        for a in db.session.query(Account).options(selectinload(Account.allocations))
+        .filter(Account.project_id.in_(node_ids), Account.deleted == False)  # noqa: E712
+        .order_by(Account.account_id.desc())
+    }
     for node in all_nodes:
         if not any(c.active for c in node.children):
             continue
@@ -953,7 +974,7 @@ def htmx_project_allocation_tree(project):
             alloc = db.session.get(Allocation, rdata['allocation_id'])
             if alloc is None:
                 continue
-            frontier = get_carveout_frontier(db.session, alloc)
+            frontier = get_carveout_frontier(db.session, alloc, account_index=account_index)
             if not frontier.carve_children:
                 continue
             if node_can is None:
@@ -2546,11 +2567,14 @@ def _render_project_directories_card(*, active_only: bool):
     fall into a final "No Resource Identified" group.
     """
     from collections import defaultdict
+    from sqlalchemy.orm import joinedload
     from sam.projects.projects import ProjectDirectory, Project
-    from sam.resources.resources import DiskResourceRootDirectory
+    from sam.resources.resources import DiskResourceRootDirectory, Resource
 
     roots = (
         db.session.query(DiskResourceRootDirectory)
+        .options(joinedload(DiskResourceRootDirectory.resource)
+                 .joinedload(Resource.resource_type))
         .order_by(DiskResourceRootDirectory.root_directory)
         .all()
     )
@@ -2563,7 +2587,10 @@ def _render_project_directories_card(*, active_only: bool):
                 return r.resource
         return None
 
-    q = db.session.query(ProjectDirectory).join(Project)
+    # The template reads `pd.project` per row; a Project loaded on its own
+    # also fires its selectin `accounts` load, so that is suppressed too.
+    q = db.session.query(ProjectDirectory).join(Project).options(
+        joinedload(ProjectDirectory.project).lazyload(Project.accounts))
     if active_only:
         q = q.filter(ProjectDirectory.is_active)
     rows = q.order_by(ProjectDirectory.directory_name).all()

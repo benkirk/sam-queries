@@ -127,6 +127,14 @@ def read_flag(args, name, default=False):
     return default if raw is None else is_truthy(raw)
 
 
+def read_switch(args, name, default):
+    """A checkbox that must default ON in a plain GET form: the template sends
+    a hidden ``0`` before the box's ``1``, so the LAST value wins (``args.get``
+    would read the hidden ``0``); absent entirely means ``default``."""
+    values = args.getlist(name)
+    return default if not values else is_truthy(values[-1])
+
+
 def read_active_only(args, default=False):
     """Read an ``active_only`` filter flag off a request args/form mapping.
 

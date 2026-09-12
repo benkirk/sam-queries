@@ -17,7 +17,7 @@ from typing import List, Dict
 from webapp.extensions import db, cache, user_aware_cache_key
 from webapp.utils import age_bands
 from webapp.utils.htmx import (
-    handle_htmx_form_post, read_flag, read_layout, read_page,
+    handle_htmx_form_post, read_flag, read_layout, read_page, read_switch,
     read_sort, read_theme, register_typeahead,
 )
 from sam.projects.projects import Project
@@ -393,6 +393,8 @@ def projects():
 
     # Allow cache bypass for debugging / stale data
     force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+    # The table's row filter; the summaries and charts are always root-only.
+    root_only = read_switch(request.args, 'root_only', default=True)
 
     # Four pies rendered inline, so this is one of the nine chart call sites with
     # no htmx request behind them and the layout arrives on the cookie.
@@ -590,6 +592,7 @@ def projects():
         resource_types=resource_types,
         allowed_facility_names=allowed_facility_names,
         selected_facilities=effective_facilities,
+        root_only=root_only,
     )
 
 
@@ -695,6 +698,8 @@ def projects_fragment():
         facility: Facility name (required)
         allocation_type: Allocation type (required)
         active_at: Date to check for active status (YYYY-MM-DD)
+        root_only: 0/1, default on -- tree roots only, the rule the page's
+            summaries and charts always apply
 
     Returns:
         HTML table fragment of projects
@@ -704,6 +709,7 @@ def projects_fragment():
     allocation_type = request.args.get('allocation_type')
     active_at_str = request.args.get('active_at')
     force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+    root_only = read_switch(request.args, 'root_only', default=True)
 
     # Validate required params
     if not resource or not facility or not allocation_type:
@@ -734,6 +740,7 @@ def projects_fragment():
         active_only=True,
         active_at=active_at,
         force_refresh=force_refresh,
+        root_only=root_only,
     )
 
     if not projects:
@@ -813,6 +820,7 @@ def projects_export():
     selected_resources = request.args.getlist('resources')
     if not selected_resources:
         selected_resources = [r for r in all_resources if r not in HIDDEN_RESOURCES]
+    root_only = read_switch(request.args, 'root_only', default=True)
 
     # Enumerate the (resource, facility, type) combos in scope, then fetch
     # per-project detail per combo — the same cached call the detail fragment
@@ -829,7 +837,7 @@ def projects_export():
         detail = cached_allocation_usage(
             session=db.session, resource_name=combo['resource'],
             facility_name=combo['facility'], allocation_type=combo['allocation_type'],
-            projcode=None, active_only=True, active_at=active_at,
+            projcode=None, active_only=True, active_at=active_at, root_only=root_only,
         )
         rows_by_resource.setdefault(combo['resource'], []).extend(detail or [])
 

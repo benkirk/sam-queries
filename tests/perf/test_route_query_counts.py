@@ -332,3 +332,82 @@ def test_admin_expirations_expired_route_read_model(auth_client, route_count_que
                                                     read_model_on_committed):
     _route_within("admin_expirations_expired_route_read_model", auth_client,
                   route_count_queries, '/admin/expirations?view=expired')
+
+
+# ---------------------------------------------------------------------------
+# Single-project pages, in all three regimes: live, served, and a stale tree
+# (re-projected in memory at read time). The stale regime is the one that
+# catches a page consulting the gate twice: a count baseline can absorb a
+# second projection on a small fixture tree, the lookup observer cannot.
+# ---------------------------------------------------------------------------
+
+from contextlib import contextmanager
+
+PROJECT_PAGES = [
+    # (baseline stem, url template, gate lookups a stale tree must produce)
+    ('admin_project_edit_route', '/admin/project/{p}/edit', 0),
+    ('admin_allocation_tree_route', '/admin/htmx/project-allocation-tree/{p}', 1),
+    ('admin_project_card_route', '/admin/project/{p}', 1),
+    ('user_project_details_route', '/user/project-details-modal/{p}', 1),
+]
+
+
+@contextmanager
+def _lookups():
+    """Collect every Lookup the gate returns, forwarding to the app's observer."""
+    from sam.queries import allocation_state as als
+    seen, before = [], als._LOOKUP_OBSERVER
+
+    def collect(lookup):
+        seen.append(lookup)
+        if before is not None:
+            before(lookup)
+    als.set_lookup_observer(collect)
+    try:
+        yield seen
+    finally:
+        als.set_lookup_observer(before)
+
+
+@pytest.mark.parametrize('stem,url,_n', PROJECT_PAGES, ids=[p[0] for p in PROJECT_PAGES])
+def test_project_page_route(auth_client, route_count_queries, perf_subtree_project,
+                            stem, url, _n):
+    _route_within(stem, auth_client, route_count_queries,
+                  url.format(p=perf_subtree_project.projcode))
+
+
+@pytest.mark.parametrize('stem,url,_n', PROJECT_PAGES, ids=[p[0] for p in PROJECT_PAGES])
+def test_project_page_route_read_model(auth_client, route_count_queries,
+                                       perf_subtree_project, read_model_on_committed,
+                                       stem, url, _n):
+    _route_within(f'{stem}_read_model', auth_client, route_count_queries,
+                  url.format(p=perf_subtree_project.projcode))
+
+
+@pytest.mark.parametrize('stem,url,n', PROJECT_PAGES, ids=[p[0] for p in PROJECT_PAGES])
+def test_project_page_route_read_model_stale(auth_client, route_count_queries,
+                                             perf_subtree_project,
+                                             read_model_on_committed_stale,
+                                             stem, url, n):
+    with _lookups() as seen:
+        _route_within(f'{stem}_read_model_stale', auth_client, route_count_queries,
+                      url.format(p=perf_subtree_project.projcode))
+    assert [(l.reason, l.patched) for l in seen] == [('ok-patched', 1)] * n, (
+        f'{stem}: a stale tree must be re-projected {n}x, saw '
+        f'{[(l.reason, l.patched) for l in seen]}')
+
+
+# ---------------------------------------------------------------------------
+# Project Directories card: every row's project is joined in, and the
+# Project's selectin `accounts` load is suppressed -- one query per distinct
+# project (x2 with the cascade) was 895 queries / 5 s in prod.
+# ---------------------------------------------------------------------------
+
+def test_admin_project_directories_route(auth_client, route_count_queries):
+    _route_within("admin_project_directories_route", auth_client,
+                  route_count_queries, '/admin/htmx/admin/project-directories')
+
+
+def test_admin_project_directories_active_route(auth_client, route_count_queries):
+    _route_within("admin_project_directories_active_route", auth_client,
+                  route_count_queries, '/admin/htmx/admin/project-directories?active_only=1')

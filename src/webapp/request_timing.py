@@ -61,7 +61,7 @@ def timed_cursor_listeners(on_execute):
 class RequestProfile:
     """Timing accumulated on ``flask.g`` for one request, rendered onto its log line."""
 
-    __slots__ = ('t_start', 'cpu_start', 'db', 'pool_ms', 'read_model')
+    __slots__ = ('t_start', 'cpu_start', 'db', 'pool_ms', 'read_model', 'actor')
 
     def __init__(self):
         self.t_start = time.monotonic()
@@ -69,6 +69,7 @@ class RequestProfile:
         self.db = {}          # label -> [ms, count]
         self.pool_ms = 0.0
         self.read_model = None   # [live reason or None, trees patched, served calls]
+        self.actor = None        # 'user:<username>' | 'apikey:<name>'
 
     @classmethod
     def start(cls):
@@ -103,6 +104,11 @@ class RequestProfile:
         self.read_model[1] += patched
         self.read_model[2] += 1
 
+    def note_actor(self, kind, name):
+        """Record who made the request; the limiter's vocabulary (user:/apikey:)."""
+        if name:
+            self.actor = '%s:%s' % (kind, name)
+
     def _read_model_token(self):
         live, patched, calls = self.read_model
         if live is not None:
@@ -127,8 +133,10 @@ class RequestProfile:
         ``cpu=Xms`` then one ``label=Yms/Nq`` per database the request TOUCHED
         (presence-gated — untouched DBs never appear), then ``pool=`` when
         non-zero, then ``rm=served|patched:N|live:<reason>`` when the request
-        consulted the allocation read-model. ``rest`` (GIL/pool-not-attributed)
-        is derived by the reader as ``total - cpu - Σdb - pool``, not emitted.
+        consulted the allocation read-model, then ``who=user:<u>|apikey:<n>``
+        when it authenticated (anonymous requests carry no actor: the client
+        IP is lost at the ingress). ``rest`` (GIL/pool-not-attributed) is
+        derived by the reader as ``total - cpu - Σdb - pool``, not emitted.
         """
         parts = ['cpu=%.1fms' % self.cpu_ms()]
         for label, (ms, count) in self._db_items():
@@ -138,6 +146,8 @@ class RequestProfile:
             parts.append('pool=%.1fms' % self.pool_ms)
         if self.read_model is not None:
             parts.append(self._read_model_token())
+        if self.actor:
+            parts.append('who=%s' % self.actor)
         return ' '.join(parts)
 
 

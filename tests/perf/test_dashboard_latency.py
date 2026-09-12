@@ -83,6 +83,15 @@ def test_allocation_summary_with_usage_latency_read_model(benchmark, session,
     assert isinstance(result, list)
 
 
+def test_project_dashboard_latency_read_model_stale(benchmark, session,
+                                                    perf_subtree_project,
+                                                    read_model_on_stale):
+    """Served-vs-stale: one in-memory re-projection on top of the served path."""
+    from sam.queries.dashboard import get_project_dashboard_data
+    result = benchmark(get_project_dashboard_data, session, perf_subtree_project.projcode)
+    assert result is not None
+
+
 def test_project_dashboard_latency_read_model(benchmark, session, perf_active_project,
                                               read_model_on):
     from sam.queries.dashboard import get_project_dashboard_data

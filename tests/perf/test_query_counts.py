@@ -311,6 +311,42 @@ def test_get_project_dashboard_data_read_model(session, count_queries,
     _assert_within("get_project_dashboard_data_read_model", stats)
 
 
+def test_get_project_dashboard_data_read_model_stale(session, count_queries,
+                                                     perf_subtree_project,
+                                                     read_model_on_stale):
+    """A changed tree is re-projected once: the gate's rows reach the batched
+    builder instead of being looked up a second time."""
+    from sam.queries.dashboard import get_project_dashboard_data
+    with count_queries() as stats:
+        data = get_project_dashboard_data(session, perf_subtree_project.projcode)
+    assert data is not None
+    _assert_within("get_project_dashboard_data_read_model_stale", stats)
+
+
+def test_get_carveout_frontier_indexed(session, count_queries, perf_subtree_project):
+    """The admin tree view's walk over a preloaded account index."""
+    from sqlalchemy.orm import selectinload
+    from sam.accounting.accounts import Account
+    from sam.accounting.allocations import Allocation
+    from sam.manage.allocations import get_carveout_frontier
+    from sam.projects.projects import Project
+
+    nodes = [perf_subtree_project] + perf_subtree_project.get_descendants()
+    ids = [n.project_id for n in nodes]
+    session.query(Project).options(selectinload(Project.children)).filter(
+        Project.project_id.in_(ids)).all()
+    index = {(a.project_id, a.resource_id): a
+             for a in session.query(Account).options(selectinload(Account.allocations))
+             .filter(Account.project_id.in_(ids), Account.deleted == False)}  # noqa: E712
+    parents = [a for (pid, _r), acct in index.items() if pid == perf_subtree_project.project_id
+               for a in acct.allocations if not a.deleted and a.parent_allocation_id is None]
+    assert parents, 'the subtree project has no dedicated allocation of its own'
+    with count_queries() as stats:
+        for alloc in parents:
+            get_carveout_frontier(session, alloc, account_index=index)
+    _assert_within("get_carveout_frontier_indexed", stats)
+
+
 def test_get_fstree_data_read_model(session, count_queries, perf_hpc_resource,
                                     read_model_on):
     from sam.queries.fstree_access import get_fstree_data

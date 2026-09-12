@@ -785,10 +785,16 @@ class CarveoutFrontier:
         return max(self.raw_residual, 0.0)
 
 
-def get_carveout_frontier(session: Session, allocation: Allocation) -> 'CarveoutFrontier':
+def get_carveout_frontier(session: Session, allocation: Allocation, *,
+                          account_index: Optional[Dict[tuple, 'Account']] = None,
+                          ) -> 'CarveoutFrontier':
     """
     Decompose ``allocation``'s direct frontier into carve-outs, pool members,
     and open (uncovered) branches, and compute its unallocated residual.
+
+    ``account_index`` maps ``(project_id, resource_id)`` to the live account,
+    for a caller that already loaded the tree's accounts (the admin tree view
+    walks every parent allocation); without it each visited node is one query.
 
     Classification uses :func:`sam.queries.tree_audit.is_pool_member` — the
     single pool-vs-carve judgment site.  A frontier allocation linked to some
@@ -823,7 +829,10 @@ def get_carveout_frontier(session: Session, allocation: Allocation) -> 'Carveout
 
     def _walk(node) -> bool:
         """Classify node's branch; True if any allocation was found in it."""
-        acct = Account.get_by_project_and_resource(session, node.project_id, resource_id)
+        if account_index is not None:
+            acct = account_index.get((node.project_id, resource_id))
+        else:
+            acct = Account.get_by_project_and_resource(session, node.project_id, resource_id)
         cands = [
             a for a in (acct.allocations if acct else [])
             if not a.deleted and date_ranges_overlap(a, allocation)

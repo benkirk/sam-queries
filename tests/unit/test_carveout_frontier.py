@@ -252,3 +252,62 @@ class TestFrontierScoping:
         assert f.carve_total == 1_200_000.0
         assert f.raw_residual == -200_000.0
         assert f.residual == 0.0
+
+
+class TestAccountIndex:
+    """A caller that already loaded the tree's accounts hands them in; the
+    walk then issues no account query and classifies identically."""
+
+    def _tree(self, session, resource):
+        now = datetime.now()
+        root = make_project(session)
+        ra = _alloc(session, root, resource, 1_000_000.0)
+        pool = make_project(session, parent=root)
+        _alloc(session, pool, resource, 1_000_000.0, parent=ra)
+        carve = make_project(session, parent=root)
+        _alloc(session, carve, resource, 300_000.0)
+        uncovered = make_project(session, parent=root)
+        deep = make_project(session, parent=uncovered)
+        _alloc(session, deep, resource, 50_000.0,
+               start_date=now - timedelta(days=10), end_date=now + timedelta(days=355))
+        gone = make_project(session, parent=root)
+        deleted = make_account(session, project=gone, resource=resource)
+        make_allocation(session, account=deleted, amount=1.0)
+        deleted.deleted = True
+        session.flush()
+        return ra, [root, pool, carve, uncovered, deep, gone]
+
+    def _index(self, session, nodes):
+        from sam.accounting.accounts import Account
+        ids = [n.project_id for n in nodes]
+        return {(a.project_id, a.resource_id): a
+                for a in session.query(Account).filter(
+                    Account.project_id.in_(ids), Account.deleted == False)}  # noqa: E712
+
+    def test_indexed_walk_matches_the_query_walk(self, session, resource):
+        ra, nodes = self._tree(session, resource)
+        by_query = get_carveout_frontier(session, ra)
+        by_index = get_carveout_frontier(session, ra, account_index=self._index(session, nodes))
+        key = lambda allocs: sorted(a.allocation_id for a in allocs)
+        assert key(by_index.carve_children) == key(by_query.carve_children)
+        assert key(by_index.pool_children) == key(by_query.pool_children)
+        assert ([p.project_id for p in by_index.open_projects]
+                == [p.project_id for p in by_query.open_projects])
+        assert (by_index.carve_total, by_index.residual) == (by_query.carve_total, by_query.residual)
+        assert by_index.carve_total == 350_000.0
+
+    def test_indexed_walk_issues_no_account_query(self, session, resource):
+        from sqlalchemy import event
+        ra, nodes = self._tree(session, resource)
+        index = self._index(session, nodes)
+        for n in nodes:
+            n.children            # warm, as the admin tree route does
+        engine = session.get_bind()
+        seen = []
+        listener = lambda conn, cur, stmt, *a: seen.append(stmt)
+        event.listen(engine, 'before_cursor_execute', listener)
+        try:
+            get_carveout_frontier(session, ra, account_index=index)
+        finally:
+            event.remove(engine, 'before_cursor_execute', listener)
+        assert not [s for s in seen if 'FROM account' in s], seen
