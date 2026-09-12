@@ -256,7 +256,7 @@ the thing to fix while the load never truncates.
   needs its own entries.
 
 #### 14. `NOW()` is the server's clock on MySQL and the session's zone on Postgres
-SAM's columns are naive-Mountain (`project_timezone_conventions`): MySQL `NOW()` is
+SAM's columns are naive-Mountain (`CLAUDE.md`, DateTime Handling): MySQL `NOW()` is
 the server's Mountain clock, Postgres `now()` is the session `TimeZone`. The CNPG
 cluster runs `America/Denver`; the compose `postgres` and test services must set
 `TZ`/`PGTZ` the same way so raw-SQL `NOW()` comparisons and the one
