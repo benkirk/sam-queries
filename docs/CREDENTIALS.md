@@ -44,17 +44,16 @@ PROD_SAM_DB_PASSWORD=password$with!special#chars    # ❌ Will fail
 
 ### Postgres Copy of SAM (`sam_dev`)
 
-**Where to get:** the `sam_dev` role on the `csg-postgres` cluster is created
-by the CSG operator (see `containers/sam-sql-dev/README.md`); the local
-compose `postgres` service needs nothing beyond the defaults.
+**Where to get:** the owning role on the `csg-postgres` cluster is created by
+the CSG operator (see `containers/sam-sql-dev/README.md`). The local compose
+`postgres` service is initialized from the same two values.
 
 ```bash
-SAM_DEV_PG_HOST=csg-postgres.k8s.ucar.edu
-SAM_DEV_PG_USER=sam_dev
-SAM_DEV_PG_PASSWORD='your_sam_dev_password'
+SAM_DEV_PG_USER=<role name>
+SAM_DEV_PG_PASSWORD='<role password>'
 ```
 
-**Access:** owner of `sam_dev` only; `make clone-pg` rebuilds it from the local MySQL clone.
+**Access:** owner of the `sam_dev` database only; `make clone-pg` rebuilds it from the local MySQL clone.
 
 ### Local Database
 

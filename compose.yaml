@@ -331,14 +331,19 @@ services:
     container_name: samuel-postgres
     profiles: [pg]
     image: postgres:18
+    # Credentials come from .env (SAM_DEV_PG_USER / _PASSWORD, the same pair the
+    # CNPG target uses); the volume is initialized with them on first start, so
+    # changing them means `make pg-reset` (containers/sam-sql-dev) first.
+    # WARNING: never `docker compose --profile pg down -v`: -v removes EVERY
+    # named volume of the project, including mysql-data.
     environment:
-      POSTGRES_USER: "sam_dev"
-      POSTGRES_PASSWORD: "sam_dev"
-      POSTGRES_DB: "sam_dev"
+      POSTGRES_USER: ${SAM_DEV_PG_USER:?set SAM_DEV_PG_USER in .env}
+      POSTGRES_PASSWORD: ${SAM_DEV_PG_PASSWORD:?set SAM_DEV_PG_PASSWORD in .env}
+      POSTGRES_DB: ${SAM_DEV_PG_DB:-sam_dev}
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sam_dev -d sam_dev"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 5s
       timeout: 5s
       retries: 20

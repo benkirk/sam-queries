@@ -30,12 +30,12 @@ def loader():
 
 
 class TestTarget:
-    ENV = {'SAM_DEV_PG_PASSWORD': 'pw'}
+    ENV = {'SAM_DEV_PG_USER': 'u', 'SAM_DEV_PG_PASSWORD': 'pw'}
 
     def test_defaults_point_at_cnpg_with_ssl(self, loader):
         t = loader.target_from(self.ENV)
         assert (t['host'], t['port'], t['user'], t['dbname'], t['sslmode']) == \
-            ('csg-postgres.k8s.ucar.edu', 5432, 'sam_dev', 'sam_dev', 'require')
+            ('csg-postgres.k8s.ucar.edu', 5432, 'u', 'sam_dev', 'require')
 
     def test_env_then_cli_override(self, loader):
         env = {**self.ENV, 'SAM_DEV_PG_HOST': '127.0.0.1', 'SAM_DEV_PG_PORT': '5433',
@@ -46,9 +46,11 @@ class TestTarget:
         t = loader.target_from(env, args)
         assert (t['host'], t['dbname']) == ('h2', 'other')
 
-    def test_a_missing_password_is_refused(self, loader):
+    def test_missing_user_or_password_is_refused(self, loader):
         with pytest.raises(SystemExit):
-            loader.target_from({})
+            loader.target_from({'SAM_DEV_PG_PASSWORD': 'pw'})
+        with pytest.raises(SystemExit):
+            loader.target_from({'SAM_DEV_PG_USER': 'u'})
 
     def test_source_url_and_config(self, loader):
         s = loader.source_from({}, 'mysql+pymysql://u:p@db.local:3307/sam')

@@ -29,7 +29,7 @@ from check_username_leak import leak_query, preserved_usernames
 ENV_DEFAULTS = {
     "host": ("SAM_DEV_PG_HOST", "csg-postgres.k8s.ucar.edu"),
     "port": ("SAM_DEV_PG_PORT", "5432"),
-    "user": ("SAM_DEV_PG_USER", "sam_dev"),
+    "user": ("SAM_DEV_PG_USER", None),
     "password": ("SAM_DEV_PG_PASSWORD", None),
     "dbname": ("SAM_DEV_PG_DB", "sam_dev"),
     "require_ssl": ("SAM_DEV_PG_REQUIRE_SSL", "true"),
@@ -66,8 +66,9 @@ def target_from(environ, args=None):
         require_ssl = False
     t["sslmode"] = "require" if require_ssl else "prefer"
     t["port"] = int(t["port"])
-    if not t["password"]:
-        raise SystemExit("SAM_DEV_PG_PASSWORD is not set")
+    for k in ("user", "password"):
+        if not t[k]:
+            raise SystemExit(f"{ENV_DEFAULTS[k][0]} is not set (see .env.example)")
     return t
 
 
