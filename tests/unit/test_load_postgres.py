@@ -86,6 +86,15 @@ class TestSchema:
                 if isinstance(col.type, Boolean) and col.server_default is not None:
                     assert re.search(rf'\b{col.name} BOOLEAN DEFAULT (true|false)\b', ddl), f'{t.name}.{col.name}'
 
+    def test_no_column_becomes_timestamptz_on_postgres(self, loader):
+        """TIMESTAMP(3) is timezone=3 to the generic type (POSTGRES_MIGRATION.md #3)."""
+        from sqlalchemy.dialects import postgresql
+        from sqlalchemy.schema import CreateTable
+        md, _ = loader.fk_free_metadata()
+        for t in md.tables.values():
+            ddl = str(CreateTable(t).compile(dialect=postgresql.dialect()))
+            assert 'WITH TIME ZONE' not in ddl, t.name
+
     def test_index_names_are_unique_across_the_schema(self, loader):
         """MySQL allows the same index name on several tables; Postgres does not (POSTGRES_MIGRATION.md #11)."""
         md, _ = loader.fk_free_metadata()
