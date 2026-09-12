@@ -343,9 +343,10 @@ def view_statements(sql_text):
 
 
 def apply_views(pg_conn, path):
+    """The views are part of the schema: a missing file is a failed load, not a skip."""
     if not os.path.exists(path):
-        print(f"ℹ️  no {path}; views skipped")
-        return []
+        print(f"❌ {path} is missing; the copy would have no views", file=sys.stderr)
+        return [(path, "missing")]
     with open(path) as f:
         statements = view_statements(f.read())
     failed = []
@@ -456,12 +457,15 @@ def main(argv=None):
     add_foreign_keys(pg, fks, mysql_fk_names(my, source["database"]),
                      set(cfg.get("settings", {}).get("unvalidated_fks", [])))
     reset_sequences(pg, md)
-    apply_views(pg, VIEWS_SQL)
+    view_failures = apply_views(pg, VIEWS_SQL)
     pg.close()
     my.close()
 
     if mismatched:
         print(f"❌ row counts differ for: {', '.join(mismatched)}; {scratch} left in place", file=sys.stderr)
+        return 1
+    if view_failures:
+        print(f"❌ {len(view_failures)} view statement(s) failed; {scratch} left in place", file=sys.stderr)
         return 1
     if args.no_swap:
         print(f"ℹ️  --no-swap: {scratch} left in place")

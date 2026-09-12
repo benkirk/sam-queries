@@ -214,6 +214,10 @@ class TestSql:
         assert names == ['comp_activity_charge', 'xras_action', 'xras_allocation',
                          'xras_hpc_allocation_amount', 'xras_request', 'xras_role', 'xras_user']
 
+    def test_a_missing_views_file_is_a_failure_not_a_skip(self, loader, tmp_path):
+        failures = loader.apply_views(None, str(tmp_path / 'absent.sql'))
+        assert failures and failures[0][1] == 'missing'
+
     def test_setval_never_goes_below_one(self, loader):
         sql = loader.setval_sql('disk_cos', 'disk_cos_id')
         assert 'GREATEST(COALESCE(MAX("disk_cos_id"), 1), 1)' in sql
