@@ -161,6 +161,8 @@ spec:
                 value: {{ .Values.webapp.env.STATUS_DB_DRIVER | quote }}
               - name: STATUS_DB_SERVER
                 value: {{ .Values.webapp.env.STATUS_DB_SERVER | quote }}
+              - name: SAM_DB_DRIVER
+                value: {{ .Values.webapp.env.SAM_DB_DRIVER | default "mysql" | quote }}
               - name: SAM_DB_SERVER
                 value: {{ .Values.webapp.env.SAM_DB_SERVER | quote }}
               - name: SAM_DB_REQUIRE_SSL

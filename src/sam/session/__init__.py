@@ -9,6 +9,23 @@ from contextlib import contextmanager
 
 connection_string = None
 
+POSTGRES_DRIVERS = ('postgresql', 'postgres')
+
+
+def sam_dialect(driver: str) -> str:
+    """SQLAlchemy drivername for SAM_DB_DRIVER ('mysql' default, 'postgresql'/'postgres')."""
+    return 'postgresql+psycopg2' if driver.lower() in POSTGRES_DRIVERS else 'mysql+pymysql'
+
+
+def ssl_connect_args(driver: str, require_ssl: bool) -> dict:
+    """The SSL connect_args each DBAPI understands; empty when SSL is not required."""
+    if not require_ssl:
+        return {}
+    if driver.lower() in POSTGRES_DRIVERS:
+        return {'sslmode': 'require'}
+    return {'ssl': {'ssl_disabled': False}}
+
+
 def init_sam_db_defaults():
     """Build the module-level `connection_string` from SAM_DB_* env vars.
 
@@ -34,20 +51,23 @@ def init_sam_db_defaults():
         return
 
     database = os.getenv('SAM_DB_NAME', 'sam')
+    driver = os.getenv('SAM_DB_DRIVER', 'mysql')
+    port = os.getenv('SAM_DB_PORT') or None
 
     import logging as _logging
     _logging.getLogger(__name__).debug(
-        'SAM DB: %s:$SAM_DB_PASSWORD@%s/%s', username, server, database
+        'SAM DB: %s %s:$SAM_DB_PASSWORD@%s/%s', driver, username, server, database
     )
 
     # Create connection URL using URL.create() to safely handle special characters
     # in the password (e.g. '@', '%', etc.) that would break f-string URL interpolation.
     global connection_string
     connection_string = URL.create(
-        drivername='mysql+pymysql',
+        drivername=sam_dialect(driver),
         username=username,
         password=password,
         host=server,
+        port=int(port) if port else None,
         database=database,
     )
 
@@ -62,6 +82,8 @@ def create_sam_engine(input_connection_string: str = None):
         SAM_DB_USERNAME
         SAM_DB_PASSWORD
         SAM_DB_SERVER
+        SAM_DB_DRIVER (optional, default: mysql; postgresql for the dev copy)
+        SAM_DB_PORT (optional)
         SAM_DB_REQUIRE_SSL (optional, default: false)
 
     Example connection_string:
@@ -83,11 +105,7 @@ def create_sam_engine(input_connection_string: str = None):
 
     # Check if SSL is required (for remote servers)
     require_ssl = os.getenv('SAM_DB_REQUIRE_SSL', 'false').lower() in ('true', '1', 'yes')
-
-    # Build connect_args based on SSL requirement
-    connect_args = {}
-    if require_ssl:
-        connect_args['ssl'] = {'ssl_disabled': False}
+    connect_args = ssl_connect_args(os.getenv('SAM_DB_DRIVER', 'mysql'), require_ssl)
 
     engine = create_engine(
         input_connection_string,
