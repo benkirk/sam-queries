@@ -21,6 +21,34 @@ import pytest
 pytestmark = pytest.mark.unit
 
 
+class TestReadSwitchHelper:
+    """`read_switch` is for a box that must default ON in a plain GET form:
+    the template sends a hidden ``0`` before the box's ``1`` and the last
+    value wins, so absent means the default, not OFF."""
+
+    def _args(self, *values):
+        from werkzeug.datastructures import MultiDict
+        return MultiDict([('root_only', v) for v in values])
+
+    def test_absent_is_the_default_either_way(self):
+        from webapp.utils.htmx import read_switch
+        assert read_switch(self._args(), 'root_only', default=True) is True
+        assert read_switch(self._args(), 'root_only', default=False) is False
+
+    def test_hidden_zero_then_checked_one_reads_on(self):
+        from webapp.utils.htmx import read_switch
+        assert read_switch(self._args('0', '1'), 'root_only', default=False) is True
+
+    def test_hidden_zero_alone_reads_off(self):
+        from webapp.utils.htmx import read_switch
+        assert read_switch(self._args('0'), 'root_only', default=True) is False
+
+    def test_a_bare_deep_link_value_reads_as_written(self):
+        from webapp.utils.htmx import read_switch
+        assert read_switch(self._args('1'), 'root_only', default=False) is True
+        assert read_switch(self._args('false'), 'root_only', default=True) is False
+
+
 class TestReadActiveOnlyHelper:
     """`read_active_only` is the single parser every route shares — it exists
     so the `'1'` vs `'true'` spelling split can't silently reappear.
