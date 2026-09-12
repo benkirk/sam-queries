@@ -9,6 +9,7 @@ sequences and the ported views go on last; then `<db>_next` is renamed over
 usernames unless --allow-pii. Exits non-zero on any count mismatch.
 """
 import argparse
+import copy
 import datetime
 import decimal
 import io
@@ -21,8 +22,8 @@ import psycopg2
 import pymysql
 import yaml
 from dotenv import find_dotenv, load_dotenv
-from sqlalchemy import (URL, Boolean, Column, ForeignKeyConstraint, Index, Integer, MetaData, String,
-                        Table, UniqueConstraint, create_engine)
+from sqlalchemy import (URL, Boolean, Column, Enum, ForeignKeyConstraint, Index, Integer, MetaData,
+                        String, Table, UniqueConstraint, create_engine)
 
 from check_username_leak import leak_query, preserved_usernames
 
@@ -37,6 +38,10 @@ ENV_DEFAULTS = {
 VIEWS_SQL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "postgres", "views.sql")
 CHUNK_ROWS = 50_000
 MAINTENANCE_DB = "postgres"
+# MySQL's `_ci` columns compare case- and accent-insensitively; an ICU primary-strength
+# collation on exactly those columns keeps ==, LIKE, IN and ORDER BY meaning the same
+# on Postgres (docs/plans/POSTGRES_MIGRATION.md gotcha 6).
+CI_COLLATION = "sam_ci"
 
 
 # ----------------------------
@@ -117,12 +122,13 @@ def fk_free_metadata():
     return md, fks
 
 
-def mysql_column_lengths(my_conn, database):
-    """(table, column) -> CHARACTER_MAXIMUM_LENGTH from the source, the schema of record."""
+def mysql_column_facts(my_conn, database):
+    """(table, column) -> (CHARACTER_MAXIMUM_LENGTH, COLLATION_NAME) for the source's string columns."""
     with my_conn.cursor() as c:
-        c.execute("SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns "
+        c.execute("SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_MAXIMUM_LENGTH, COLLATION_NAME "
+                  "FROM information_schema.columns "
                   "WHERE TABLE_SCHEMA=%s AND CHARACTER_MAXIMUM_LENGTH IS NOT NULL", (database,))
-        return {(t, col): n for t, col, n in c.fetchall()}
+        return {(t, col): (n, coll) for t, col, n, coll in c.fetchall()}
 
 
 def widen_strings(md, lengths):
@@ -136,8 +142,30 @@ def widen_strings(md, lengths):
             n = lengths.get((t.name, col.name))
             if isinstance(col.type, String) and col.type.length and n and n > col.type.length:
                 drifts.append((t.name, col.name, col.type.length, n))
-                col.type = String(n)
+                col.type = String(n, collation=col.type.collation)
     return drifts
+
+
+def collation_sql(name=CI_COLLATION):
+    return (f"CREATE COLLATION {_q(name)} (provider = icu, locale = 'und-u-ks-level1', "
+            "deterministic = false)")
+
+
+def apply_collations(md, collations, name=CI_COLLATION):
+    """Every string column MySQL declares `_ci` gets the ICU collation; `_bin` columns stay default.
+
+    The copied Column shares its type object with the ORM, so the type is replaced, never mutated.
+    """
+    touched = []
+    for t in md.tables.values():
+        for col in t.columns:
+            coll = collations.get((t.name, col.name))
+            if coll and coll.endswith("_ci") and isinstance(col.type, String) and not isinstance(col.type, Enum):
+                new_type = copy.copy(col.type)
+                new_type.collation = name
+                col.type = new_type
+                touched.append((t.name, col.name))
+    return touched
 
 
 def _copy_table_without_fks(t, md):
@@ -402,11 +430,16 @@ def main(argv=None):
     print(f"🧱 {scratch} created; building schema from the ORM ...")
 
     md, fks = fk_free_metadata()
-    for table, col, orm_len, db_len in widen_strings(md, mysql_column_lengths(my, source["database"])):
+    facts = mysql_column_facts(my, source["database"])
+    for table, col, orm_len, db_len in widen_strings(md, {k: n for k, (n, _) in facts.items()}):
         print(f"  ⚠️  {table}.{col}: ORM String({orm_len}) but the source column holds {db_len}; using {db_len}")
+    ci_columns = apply_collations(md, {k: coll for k, (_, coll) in facts.items()})
     engine = create_engine(pg_url(target, scratch))
+    with engine.begin() as conn:
+        conn.exec_driver_sql(collation_sql())
     md.create_all(engine)
     engine.dispose()
+    print(f"  {len(ci_columns)} case-insensitive columns declared COLLATE {CI_COLLATION}")
 
     pg = pg_connect(target, scratch)
     mismatched = []

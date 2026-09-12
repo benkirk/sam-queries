@@ -343,6 +343,10 @@ services:
       POSTGRES_USER: ${SAM_DEV_PG_USER:-sam_dev}
       POSTGRES_PASSWORD: ${SAM_DEV_PG_PASSWORD:-}
       POSTGRES_DB: ${SAM_DEV_PG_DB:-sam_dev}
+      TZ: ${TZ:-America/Denver}
+    # SAM's columns are naive-Mountain and raw SQL compares them to NOW(): the
+    # server zone must match the CNPG cluster (America/Denver), not UTC.
+    command: ["postgres", "-c", "timezone=${TZ:-America/Denver}"]
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
@@ -356,6 +360,35 @@ services:
     networks:
       - sam-network
 
+  #------------------------------------
+  # Postgres test container — the second target for the test suite.
+  # No initdb: `make -C containers/sam-sql-dev clone-pg-test` builds `sam`
+  # from mysql-test with load_postgres.py. Fixed credentials like mysql-test's
+  # root/root; host port 5434 (5433 is the `pg` profile's dev copy).
+  # tests/conftest.py allowlists 127.0.0.1:5434 and postgres-test:5432.
+  postgres-test:
+    container_name: samuel-postgres-test
+    profiles: [test]
+    image: postgres:18
+    environment:
+      POSTGRES_USER: "sam_test"
+      POSTGRES_PASSWORD: "sam_test"
+      POSTGRES_DB: "sam"
+      TZ: ${TZ:-America/Denver}
+    command: ["postgres", "-c", "timezone=${TZ:-America/Denver}"]
+    volumes:
+      - postgres-test-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sam_test -d sam"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    ports:
+      - "5434:5432"
+    networks:
+      - sam-network
+
 networks:
   sam-network:
     driver: bridge
@@ -364,6 +397,7 @@ volumes:
   mysql-data:
   mysql-test-data:
   postgres-data:
+  postgres-test-data:
 
 secrets:
   # Read-only deploy key for the private NCAR/hpc-scheduling-tools plugin.

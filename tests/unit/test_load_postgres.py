@@ -105,6 +105,43 @@ class TestSchema:
         assert md.tables['users'].c.title.type.length == 40
         assert md.tables['users'].c.notes.type.length == 10  # never narrowed
 
+    def test_ci_columns_take_the_icu_collation_and_bin_columns_do_not(self, loader):
+        """MySQL `_ci` semantics ride along as an ICU collation (POSTGRES_MIGRATION.md #6)."""
+        from sqlalchemy import Column, Enum, Integer, MetaData, String, Table, Text
+        from sqlalchemy.dialects import postgresql
+        from sqlalchemy.schema import CreateTable
+        md = MetaData()
+        t = Table('users', md, Column('user_id', Integer, primary_key=True),
+                  Column('username', String(35)), Column('email', String(100)),
+                  Column('notes', Text), Column('kind', Enum('a', 'b', name='kind')))
+        touched = loader.apply_collations(md, {
+            ('users', 'username'): 'utf8mb3_general_ci', ('users', 'email'): 'utf8mb3_bin',
+            ('users', 'notes'): 'utf8mb4_0900_ai_ci', ('users', 'kind'): 'utf8mb3_general_ci'})
+        assert touched == [('users', 'username'), ('users', 'notes')]
+        assert t.c.username.type.collation == 'sam_ci' and t.c.username.type.length == 35
+        assert t.c.email.type.collation is None
+        ddl = str(CreateTable(t).compile(dialect=postgresql.dialect()))
+        assert 'username VARCHAR(35) COLLATE "sam_ci"' in ddl and 'notes TEXT COLLATE "sam_ci"' in ddl
+        assert 'email VARCHAR(100),' in ddl
+        assert loader.collation_sql() == ('CREATE COLLATION "sam_ci" (provider = icu, '
+                                          "locale = 'und-u-ks-level1', deterministic = false)")
+
+    def test_widening_keeps_the_collation(self, loader):
+        from sqlalchemy import Column, Integer, MetaData, String, Table
+        md = MetaData()
+        Table('users', md, Column('user_id', Integer, primary_key=True), Column('title', String(15)))
+        loader.apply_collations(md, {('users', 'title'): 'utf8mb3_general_ci'})
+        loader.widen_strings(md, {('users', 'title'): 45})
+        assert (md.tables['users'].c.title.type.length, md.tables['users'].c.title.type.collation) == (45, 'sam_ci')
+
+    def test_the_orm_type_object_is_never_mutated(self, loader):
+        """The copy shares type objects with the ORM (MySQL prod); a collation must not leak back."""
+        from sam.core.users import User
+        md, _ = loader.fk_free_metadata()
+        loader.apply_collations(md, {('users', 'username'): 'utf8mb3_general_ci'})
+        assert md.tables['users'].c.username.type.collation == 'sam_ci'
+        assert User.__table__.c.username.type.collation is None
+
     def test_serial_columns_are_single_integer_autoincrement_pks(self, loader):
         md, _ = loader.fk_free_metadata()
         serials = dict(loader.serial_columns(md))
