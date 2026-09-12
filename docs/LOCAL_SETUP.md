@@ -287,8 +287,8 @@ docker volume rm sam-queries_samuel-mysql-data
 - **Database:** sam
 - **Username:** root
 - **Password:** root
-- **Size:** ~10MB compressed backup, expands to ~50-100MB
-- **Tables:** 104 tables
+- **Size:** ~20 MB compressed backup, expands to ~400 MB
+- **Tables:** ~107 tables and 7 views
 - **Sample Data:** ~27,000 users (anonymized/obfuscated)
 
 ### Container Information
@@ -301,7 +301,7 @@ docker volume rm sam-queries_samuel-mysql-data
 ### Backup File
 
 - **Location:** `containers/sam-sql-dev/backups/sam-obfuscated.sql.xz`
-- **Size:** ~9.9MB compressed
+- **Size:** ~20 MB compressed
 - **Format:** XZ compressed SQL dump
 - **Storage:** Git LFS (large file storage)
 

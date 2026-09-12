@@ -141,6 +141,12 @@ class SAMAnonymizer:
             self.user_id_to_names[user_id] = (first, middle, last)
         return self.user_id_to_names[user_id]
 
+    def _orphan_username(self, original_username: str) -> str:
+        """user_<hash> for a username with no users row; preserved or already-anonymized names pass through."""
+        if original_username in self.preserve_usernames or original_username.startswith('user_'):
+            return original_username
+        return f"user_{self._deterministic_hash(original_username, 'username')[:8]}"
+
     def _get_fake_username(self, user_id: int, original_username: str) -> str:
         """
         Generate consistent fake username with collision avoidance.
@@ -894,6 +900,13 @@ class SAMAnonymizer:
                 if lookup_user_id:
                     fake_act_username = self.user_id_to_username.get(lookup_user_id)
 
+            # A name with no users row (a retired account) still gets the
+            # user_<hash> shape, so it cannot survive as a real username.
+            if not fake_username and orig_username:
+                fake_username = self._orphan_username(orig_username)
+            if not fake_act_username and orig_act_username:
+                fake_act_username = self._orphan_username(orig_act_username)
+
             # Update if we have anonymized values
             if fake_username or fake_act_username:
                 if not self.dry_run:
@@ -1338,6 +1351,11 @@ def main():
         nargs='*',
         help='Usernames to preserve (not anonymize), space-separated'
     )
+    parser.add_argument(
+        '--yes',
+        action='store_true',
+        help='Skip the confirmation prompt (for make bootstrap)'
+    )
 
     args = parser.parse_args()
 
@@ -1366,7 +1384,7 @@ def main():
         preserve_usernames = args.preserve_usernames
 
     # Confirm if not dry-run
-    if not args.dry_run:
+    if not args.dry_run and not args.yes:
         print("\n" + "!" * 70)
         print("WARNING: This will MODIFY the database permanently!")
         print("!" * 70)
