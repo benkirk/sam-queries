@@ -1,12 +1,13 @@
-"""Smoke tests for new_tests/ infrastructure.
+"""Smoke tests for the test infrastructure.
 
 These validate that the plumbing works: allowlist guard, engine fixture,
 session rollback, and that the obfuscated dump actually restored into the
-test container. They exercise zero application logic on purpose — any
-failure here points at infrastructure, not product code.
+test container (MySQL) or was loaded into it (Postgres). They exercise zero
+application logic on purpose — any failure here points at infrastructure,
+not product code.
 """
 import pytest
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 
 
 pytestmark = pytest.mark.smoke
@@ -19,28 +20,26 @@ def test_engine_points_at_test_container(engine):
         ("127.0.0.1", 3307),
         ("localhost", 3307),
         ("mysql-test", 3306),
+        ("127.0.0.1", 5434),
+        ("localhost", 5434),
+        ("postgres-test", 5432),
     }, f"engine is pointing at {url.host}:{url.port}, not the test DB"
 
 
-def test_sam_schema_has_tables(session):
-    """The obfuscated dump restored — we see the expected number of tables.
+def test_sam_schema_has_tables(engine):
+    """The dump restored — we see the expected number of tables.
 
     The real sam schema has ~97 tables. Anything under 50 means the restore
     didn't complete or the dump is missing; anything at 0 means we're
     talking to an empty database.
     """
-    result = session.execute(
-        text(
-            "SELECT COUNT(*) FROM information_schema.tables "
-            "WHERE table_schema = 'sam'"
-        )
-    ).scalar_one()
+    result = len(inspect(engine).get_table_names())
     assert result >= 50, f"sam schema only has {result} tables — dump did not restore"
 
 
 def test_users_table_is_populated(session):
     """A sanity check that the dump carried data, not just schema."""
-    count = session.execute(text("SELECT COUNT(*) FROM sam.users")).scalar_one()
+    count = session.execute(text("SELECT COUNT(*) FROM users")).scalar_one()
     assert count > 0, "users table is empty — obfuscated dump did not restore"
 
 
@@ -56,7 +55,7 @@ def test_session_rollback_isolation(session):
     # would see the mutation if rollback were broken — so this test mainly
     # documents the intended pattern.
     before = session.execute(
-        text("SELECT COUNT(*) FROM sam.users WHERE active = 1")
+        text("SELECT COUNT(*) FROM users WHERE active = TRUE")
     ).scalar_one()
     assert before > 0  # precondition
 

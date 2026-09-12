@@ -22,9 +22,9 @@ _FSTRING_SQL = re.compile(r'\btext\s*\(\s*f["\']')
 # Each interpolates ONLY structural/server-derived tokens. Change a count only
 # after re-auditing the statement(s); see the module docstring.
 _ALLOWLIST = {
-    "sam/base.py": 4,                   # MPTT tree-shift UPDATEs: {table}/{root_col}
-    "sam/projects/projects.py": 4,      # charge VALUES-CTE: placeholder names + __tablename__
+    "sam/projects/projects.py": 5,      # charge VALUES-CTE: placeholder names + __tablename__; the capability probe
     "sam/queries/rolling_usage.py": 4,  # rolling charge VALUES-CTE: same pattern
+    "webapp/utils/config_inspect.py": 1,  # information_schema scope predicate from sam.sqlcompat
 }
 
 

@@ -1,6 +1,7 @@
 #-------------------------------------------------------------------------bh-
 # Common Imports:
 from .base import *
+from .sqlcompat import sam_now
 #-------------------------------------------------------------------------eh-
 
 
@@ -127,7 +128,7 @@ class WallclockExemption(Base, TimestampMixin, SessionMixin):
     @is_currently_active.expression
     def is_currently_active(cls):
         """Check if exemption is currently active (SQL side)."""
-        now = func.now()
+        now = sam_now()
         return and_(
             cls.start_date <= now,
             cls.end_date >= now
@@ -141,7 +142,7 @@ class WallclockExemption(Base, TimestampMixin, SessionMixin):
     @is_active.expression
     def is_active(cls):
         """Check if exemption is currently active (SQL side). Alias for is_currently_active."""
-        now = func.now()
+        now = sam_now()
         return and_(
             cls.start_date <= now,
             cls.end_date >= now

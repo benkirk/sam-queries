@@ -9,7 +9,7 @@ Design and rollout: ``docs/plans/READ_MODEL.md``.
 from datetime import datetime as _datetime
 from typing import Dict, Iterable, Optional
 
-from sqlalchemy import JSON
+from sqlalchemy import false, true, JSON
 
 from ..base import *
 
@@ -38,7 +38,7 @@ class AccountAllocationState(Base, SessionMixin):
     allocation_type = Column(String(20))
 
     parent_allocation_id = Column(Integer)
-    is_inheriting = Column(Boolean, nullable=False, server_default=text('0'))
+    is_inheriting = Column(Boolean, nullable=False, server_default=false())
     root_projcode = Column(String(30))
 
     allocated = Column(Float, nullable=False)
@@ -54,7 +54,7 @@ class AccountAllocationState(Base, SessionMixin):
 
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime)
-    is_current = Column(Boolean, nullable=False, server_default=text('1'))
+    is_current = Column(Boolean, nullable=False, server_default=true())
     refreshed_at = Column(DateTime, nullable=False)
 
     #: Every writable column, in DDL order. ``bulk_replace`` assigns exactly these.

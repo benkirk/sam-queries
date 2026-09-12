@@ -17,6 +17,8 @@ import re
 from string import ascii_uppercase
 from typing import Any, Dict, List, Optional
 
+from sam.sqlcompat import ci_like
+
 # Dropped when initialing a name. "university" goes too: the projcode facility
 # letter is already "U", so a University-led mnemonic is redundant ("University
 # of Victoria" -> VIC -> UVIC, not UUVI). A bare "U" abbreviation token is KEPT
@@ -130,13 +132,13 @@ def search_targets(session, q, *, limit: int = 15,
     out: List[Dict[str, Any]] = []
     for o in (session.query(Organization)
               .filter(Organization.is_active,
-                      Organization.name.ilike(like) | Organization.acronym.ilike(like))
+                      ci_like(Organization.name, like) | ci_like(Organization.acronym, like))
               .order_by(Organization.name).limit(limit)):
         out.append({'kind': 'organization', 'id': o.organization_id,
                     'name': o.name, 'city': None, 'description': o.name,
                     'claimed_by': _claimed(o.name)})
     for i in (session.query(Institution)
-              .filter(Institution.deleted.isnot(True), Institution.name.ilike(like))
+              .filter(Institution.deleted.isnot(True), ci_like(Institution.name, like))
               .order_by(Institution.name).limit(limit)):
         desc = MnemonicCode.description_for(i)
         out.append({'kind': 'institution', 'id': i.institution_id,
@@ -163,8 +165,8 @@ def search_mnemonic_codes(session, q, *, limit: int = 20) -> List[Dict[str, Any]
              'description': m.description}
             for m in (session.query(MnemonicCode)
                       .filter(MnemonicCode.is_active,
-                              MnemonicCode.code.ilike(like)
-                              | MnemonicCode.description.ilike(like))
+                              ci_like(MnemonicCode.code, like)
+                              | ci_like(MnemonicCode.description, like))
                       .order_by(MnemonicCode.code).limit(limit))]
 
 

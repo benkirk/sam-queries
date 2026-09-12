@@ -1,0 +1,7 @@
+# Tests that still fail on the Postgres copy. conftest.py applies each line as a
+# strict xfail on a Postgres target: fix the code, remove the line, or the run fails.
+# Format: <node id or file::Class prefix>  # reason
+#
+# Empty since 2026-09-12: the default tier is green on both backends. A new
+# entry needs a reason and an owner; the sam-dev deployment gate is this file
+# staying empty (docs/plans/POSTGRES_MIGRATION.md, Stage 5).

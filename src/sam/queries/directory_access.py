@@ -26,6 +26,7 @@ Constants match legacy ``Constants.java``: grace period 90 days, common group
 ``ncar``, gid 1000.
 """
 
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set, Tuple
 
 from sqlalchemy import text
@@ -43,6 +44,11 @@ DEFAULT_SHELL = '/bin/tcsh'
 DEFAULT_HOME_BASE = '/home'
 
 
+def grace_cutoff(days: int) -> datetime:
+    """`end_date + days > NOW()` as a bound on end_date, from the app clock: portable and index-friendly."""
+    return datetime.now() - timedelta(days=days)
+
+
 # ---------------------------------------------------------------------------
 # SQL Queries
 # ---------------------------------------------------------------------------
@@ -58,7 +64,7 @@ _SQL_PROJECT_GROUPS = text("""
       JOIN access_branch_resource AS abr ON r.resource_id = abr.resource_id
       JOIN access_branch AS ab ON abr.access_branch_id = ab.access_branch_id
       JOIN allocation AS al ON (a.account_id = al.account_id
-           AND (al.end_date + INTERVAL :grace_period DAY) > NOW())
+           AND al.end_date > :grace_cutoff)
      WHERE (:branch IS NULL OR ab.name = :branch)
      GROUP BY ab.name, p.projcode, p.unix_gid
 """)
@@ -74,7 +80,7 @@ _SQL_PROJECT_MEMBERS = text("""
       JOIN access_branch_resource AS abr ON r.resource_id = abr.resource_id
       JOIN access_branch AS ab ON abr.access_branch_id = ab.access_branch_id
       JOIN allocation AS al ON (a.account_id = al.account_id
-           AND (al.end_date + INTERVAL :grace_period DAY) > NOW())
+           AND al.end_date > :grace_cutoff)
       JOIN account_user AS au ON (a.account_id = au.account_id
            AND au.start_date <= NOW()
            AND (au.end_date IS NULL OR au.end_date > NOW()))
@@ -132,7 +138,7 @@ _SQL_MEMBERSHIP = text("""
       JOIN access_branch_resource AS abr ON r.resource_id = abr.resource_id
       JOIN access_branch AS ab ON abr.access_branch_id = ab.access_branch_id
       JOIN allocation AS al ON (a.account_id = al.account_id
-           AND (al.end_date + INTERVAL :grace_period DAY) > NOW())
+           AND al.end_date > :grace_cutoff)
       JOIN account_user AS au ON (a.account_id = au.account_id
            AND au.start_date <= NOW()
            AND (au.end_date IS NULL OR au.end_date > NOW()))
@@ -248,7 +254,7 @@ def group_populator(
         access_branch: Optional branch name filter. None = all branches.
         grace_period_days: Days beyond allocation end_date to remain active.
     """
-    params = {'branch': access_branch, 'grace_period': grace_period_days}
+    params = {'branch': access_branch, 'grace_cutoff': grace_cutoff(grace_period_days)}
 
     # --- 1. Implicit project groups ---
     branches: Dict[str, Dict] = {}
@@ -353,7 +359,7 @@ def user_populator(
         access_branch: Optional branch name filter. None = all branches.
         grace_period_days: Days beyond allocation end_date to remain active.
     """
-    params = {'branch': access_branch, 'grace_period': grace_period_days}
+    params = {'branch': access_branch, 'grace_cutoff': grace_cutoff(grace_period_days)}
 
     # Per-user attribute lookups (one row per user, no account fan-out).
     phones: Dict[int, Optional[str]] = {}

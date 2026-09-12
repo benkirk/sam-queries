@@ -156,12 +156,12 @@ def _disk_target(engine):
               ON descendant.tree_root = p.project_id
              AND descendant.tree_left BETWEEN p.tree_left AND p.tree_right
             JOIN account a
-              ON a.project_id = descendant.project_id AND a.deleted = 0
+              ON a.project_id = descendant.project_id AND a.deleted = FALSE
             JOIN resources r ON r.resource_id = a.resource_id
             JOIN resource_type rt ON rt.resource_type_id = r.resource_type_id
             WHERE rt.resource_type = 'DISK'
               AND p.project_id = p.tree_root
-              AND p.active = 1
+              AND p.active = TRUE
             GROUP BY p.projcode, r.resource_name
             ORDER BY p.project_id, r.resource_name
             LIMIT 1

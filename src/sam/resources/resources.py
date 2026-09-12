@@ -1,6 +1,7 @@
 #-------------------------------------------------------------------------bh-
 # Common Imports:
 from ..base import *
+from ..sqlcompat import sam_now
 #-------------------------------------------------------------------------eh-
 
 
@@ -121,7 +122,7 @@ class Resource(Base, TimestampMixin, SessionMixin):
     @is_commissioned.expression
     def is_commissioned(cls):
         """Check if resource is currently commissioned (SQL side)."""
-        now = func.now()
+        now = sam_now()
         return and_(
             or_(cls.commission_date.is_(None), cls.commission_date <= now),
             or_(cls.decommission_date.is_(None), cls.decommission_date > now)
@@ -170,7 +171,7 @@ class Resource(Base, TimestampMixin, SessionMixin):
             ...     Resource.is_active
             ... ).all()
         """
-        now = func.now()
+        now = sam_now()
         return and_(
             or_(cls.commission_date.is_(None), cls.commission_date <= now),
             or_(cls.decommission_date.is_(None), cls.decommission_date > now)

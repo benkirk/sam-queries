@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from sam.accounting.allocations import AllocationType
+from sam.sqlcompat import ci_like
 from sam.core.organizations import MnemonicCode, Organization
 from sam.integration.xras import XrasOpportunityAllocationType, lookup_request_override
 from sam.core.users import User
@@ -735,7 +736,7 @@ def contract_candidates(session, core: str) -> List[Contract]:
     # not get to choose how many rows this returns. Escaped and capped.
     suffix = core.translate(_LIKE_ESCAPE)
     return (session.query(Contract)
-            .filter(Contract.contract_number.ilike(f'%{suffix}', escape='\\'))
+            .filter(ci_like(Contract.contract_number, f'%{suffix}', escape='\\'))
             .order_by(Contract.contract_id)
             .limit(_MAX_CONTRACT_CANDIDATES)
             .all())

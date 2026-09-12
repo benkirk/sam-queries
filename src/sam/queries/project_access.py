@@ -22,6 +22,8 @@ Note on `panel` and `autoRenewing`:
 from datetime import date
 from typing import Dict, List, Optional
 
+from sam.queries.directory_access import grace_cutoff
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -65,7 +67,7 @@ _SQL_PROJECT_GROUP_STATUS = text("""
       JOIN allocation AS al
            ON (a.account_id = al.account_id
                AND al.deleted = FALSE
-               AND (al.end_date + INTERVAL :dead_cutoff DAY) > NOW())
+               AND al.end_date > :dead_cutoff)
       LEFT JOIN allocation_type AS at
            ON p.allocation_type_id = at.allocation_type_id
       LEFT JOIN panel AS pa
@@ -149,7 +151,7 @@ def get_project_group_status(
     """
     params = {
         'branch': access_branch,
-        'dead_cutoff': dead_cutoff_days,
+        'dead_cutoff': grace_cutoff(dead_cutoff_days),
     }
 
     rows = session.execute(_SQL_PROJECT_GROUP_STATUS, params).fetchall()
