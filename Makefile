@@ -154,9 +154,13 @@ fixperms: ## Fix file permissions for .env
 	  getfacl $${file} ;\
 	done
 
+# Each runner pins its own SAM_TEST_DB_URL so an exported Postgres URL cannot
+# redirect `make check`, or the reverse.
+SAM_TEST_MYSQL_URL := mysql+pymysql://root:root@127.0.0.1:3307/sam
 check: ## Run tests
 	$(config_env) && source etc/config_env.sh && python3 scripts/orm_inventory.py
-	$(config_env) && source etc/config_env.sh && python3 -m pytest -v -n auto
+	$(config_env) && source etc/config_env.sh && \
+	    SAM_TEST_DB_URL='$(SAM_TEST_MYSQL_URL)' python3 -m pytest -v -n auto
 
 # The same default tier on the Postgres copy of the test DB (postgres-test,
 # 5434; built by `make -C containers/sam-sql-dev pg-test-up clone-pg-test`).
@@ -260,8 +264,8 @@ docker-pytest: ## Run pytest with coverage inside the webapp container against m
 docker-pytest-pg: ## Build the Postgres test copy inside the stack and run pytest against it (parity with CI)
 	@docker compose --profile test up --detach --wait
 	@docker compose exec -T \
-	    -e SAM_TEST_MYSQL_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
-	    -e SAM_TEST_PG_HOST=postgres-test -e SAM_TEST_PG_PORT=5432 \
+	    -e PG_TEST_SOURCE_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
+	    -e PG_TEST_HOST=postgres-test -e PG_TEST_PORT=5432 \
 	    webapp make -C /code/containers/sam-sql-dev clone-pg-test
 	@docker compose exec -T \
 	    -e SAM_TEST_DB_URL='postgresql+psycopg2://sam_test:sam_test@postgres-test:5432/sam' \

@@ -797,7 +797,7 @@ Measured server-side against production with `SHOW PROFILES`:
 **Port the Hibernate named queries against base tables, not the ORM's view models.** Three
 independent reasons:
 
-1. **`xras_user` does not push down a username predicate.** Its `GROUP BY u.user_id` materialises all
+1. **`xras_user` does not push down a username predicate.** Its `GROUP BY u.user_id` materializes all
    28k rows for every single-user lookup. Legacy is far faster end-to-end (95 ms p50) because
    `IdentityServiceImpl` uses the named query `identityServicePersons`
    (`2.0.3:src/main/resources/hibernate/xras/namedQuery.xml:7-60`), **not the view**. Measured on the

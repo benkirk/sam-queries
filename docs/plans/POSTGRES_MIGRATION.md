@@ -405,13 +405,14 @@ follows is the design.
 **The Postgres test service.** A `postgres-test` service in `compose.yaml` under
 `profiles: [test]`: `postgres:18`, fixed credentials `sam_test`/`sam_test`,
 `POSTGRES_DB: sam`, host port **5434** (5432 belongs to the peer stack, 5433 to the
-`pg` profile), `TZ`/`PGTZ: America/Denver` (gotcha 14), a `pg_isready` healthcheck,
-its own volume. No initdb scripts: `make clone-pg-test` in `containers/sam-sql-dev`
-runs `load_postgres.py --source mysql+pymysql://root:root@127.0.0.1:3307/sam
---pg-host 127.0.0.1 --pg-port 5434 --pg-db sam` with the fixed credentials exported
-by the target (test credentials are constants like `root/root`, not `.env`). In CI
-the same command runs inside the `webapp` container with the service names
-(`mysql-test:3306`, `postgres-test:5432`). A load takes about 35 seconds.
+`pg` profile), `TZ` plus `command: postgres -c timezone=America/Denver` (gotcha 14),
+a `pg_isready` healthcheck, its own volume. No initdb scripts: `make clone-pg-test`
+in `containers/sam-sql-dev` exports the fixed `SAM_DEV_PG_*` target
+(`127.0.0.1:5434`, `sam` as `sam_test`) and runs `load_postgres.py --source
+mysql+pymysql://root:root@127.0.0.1:3307/sam` (test credentials are constants like
+`root/root`, not `.env`). In CI the same target runs inside the `webapp` container
+with `PG_TEST_SOURCE_URL`, `PG_TEST_HOST` and `PG_TEST_PORT` pointing at the service
+names (`mysql-test:3306`, `postgres-test:5432`). A load takes about 35 seconds.
 
 **Loader additions.** `CREATE COLLATION sam_ci` in `<db>_next` before `create_all`,
 and `collation='sam_ci'` on every `String`/`Text` column whose MySQL collation ends

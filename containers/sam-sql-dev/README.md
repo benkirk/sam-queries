@@ -53,20 +53,32 @@ deferred), every table streams through `COPY` into `<db>_next`, then the FKs
 (`NOT VALID` for `unvalidated_fks`), sequences and the ported views in
 `containers/sam-sql-dev/postgres/views.sql` go on, and `<db>_next` is renamed over `<db>`. A row-count
 mismatch or a session another role holds on `<db>` stops the swap and leaves
-`<db>_next` for inspection (`--no-swap` does the same on purpose). The loader
-refuses a source that still holds real usernames unless `--allow-pii`.
+`<db>_next` for inspection (`--no-swap` does the same on purpose). A source
+that still holds real usernames loads with a warning: PII is a public-repo
+concern, and neither target is the repo.
 
 | Target | Command | Where |
 |---|---|---|
 | Local container (offline work) | `make pg-up && make clone-pg-local` | compose `postgres` service on `127.0.0.1:5433`, initialized from the same `SAM_DEV_PG_USER` / `_PASSWORD` / `_DB` (changing them: `make pg-reset` first, never `down -v`, which also removes the MySQL volume) |
 | `csg-postgres` CNPG cluster | `make clone-pg` | `SAM_DEV_PG_HOST/PORT/USER/PASSWORD/DB/REQUIRE_SSL` from `.env` |
+| Test copy for `make pytest-pg` | `make pg-test-up && make clone-pg-test` | compose `postgres-test` service on `127.0.0.1:5434`, `sam` as `sam_test`/`sam_test`, built from `mysql-test` (3307) |
 
-Both targets read `.env`; nothing about the role is written into the repo.
+The first two targets read `.env`; nothing about the role is written into the
+repo. The test target never does: its credentials are constants like
+`root/root`, and CI overrides only the hosts (`PG_TEST_SOURCE_URL`,
+`PG_TEST_HOST`, `PG_TEST_PORT`) to run it inside the stack by service name.
+
+| Service targets | |
+|---|---|
+| `make pg-up` / `pg-down` | Start (and wait for) or stop the `postgres` service. |
+| `make pg-reset` | Drop the `postgres` container and its volume only (a credential change needs a fresh initdb). |
+| `make pg-test-up` / `pg-test-reset` | The same pair for `postgres-test`. |
 
 Extra loader flags go through `CLONE_PG_ARGS`, e.g.
-`make clone-pg-local CLONE_PG_ARGS=--no-swap`. The rhythm is `make clone` (or
-a blob restore) → `make clone-pg-local`; the CNPG copy is the same run with the
-`.env` target and is the seed for a k8s `sam-dev`.
+`make clone-pg-local CLONE_PG_ARGS=--no-swap`. The rhythm is `make bootstrap`
+(or a blob restore) → `make clone-pg-local`; a raw `make clone` also loads,
+with the warning. The CNPG copy is the same run with the `.env` target and is
+the seed for a k8s `sam-dev`.
 
 One-time CNPG setup, run by the operator in the primary pod
 (`kubectl -n pg-testing exec csg-postgres-1 -c postgres -- psql -U postgres`):

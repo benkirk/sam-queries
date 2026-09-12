@@ -429,7 +429,7 @@ BRITISH = re.compile(
     r"|skilful|spelt|spilt|burnt|dreamt|leapt"
     r"|(?:normalis|organis|initialis|serialis|optimis|recognis|summaris|minimis"
     r"|maximis|prioritis|customis|standardis|synchronis|utilis|visualis|realis"
-    r"|characteris|emphasis|capitalis|centralis|generalis|specialis|sanitis"
+    r"|characteris|emphasis|capitalis|centralis|generalis|specialis|sanitis|materialis"
     r"|authoris|memoris|finalis|parametris|randomis|tokenis|categoris"
     r"|apologis|familiaris|legitimis|marginalis|neutralis|stabilis)" + _ISE +
     r")(?![A-Za-z])",

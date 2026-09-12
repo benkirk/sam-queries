@@ -6,8 +6,8 @@ that no longer matches anything after a rename or deletion.
 """
 import pytest
 
-from conftest import (EXPECTED_FAILURES_FILE, expected_failure_matches,
-                      read_expected_failures)
+from _backends import (EXPECTED_FAILURES_FILE, expected_failure_matches,
+                       read_expected_failures)
 
 pytestmark = pytest.mark.unit
 

@@ -13,7 +13,7 @@ The ORM exposes an `xras_user` view (`sam/integration/xras_views.py`) that looks
 like the obvious source for `/people`. It is the wrong one, for two reasons:
 
 1. **It is ~560x slower for a single lookup.** Its `GROUP BY u.user_id`
-   materialises all 28k rows before any filter applies, so a username predicate
+   materializes all 28k rows before any filter applies, so a username predicate
    layered on top cannot push down. Measured locally: 0.409 s through the view
    versus 0.0007 s with the predicate inside the grouped query.
 2. **It computes a different email.** The view uses
@@ -28,8 +28,8 @@ which is exactly the shape needed to serve both endpoints from one statement.
 
 Every statement here runs on MySQL and Postgres: the camelCase aliases are
 double-quoted (Postgres folds bare identifiers to lowercase and the callers
-read `row.projectId`), and no MySQL-only function remains except the
-`GROUP_CONCAT` that `_SQL_REQUESTS` selects per dialect.
+read `row.projectId`), and the one string-aggregate comes from
+`sqlcompat.group_concat` when `_REQUESTS_SQL` is formatted per call.
 
 See `docs/xras/incoming/XRAS_REIMPLEMENTATION.md` section 4.2.
 """
@@ -39,7 +39,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
-from sam.sqlcompat import dialect_name
+from sam.sqlcompat import group_concat
 
 # `PersonDTO`'s Java field-declaration order, which is the JSON key order.
 # Note this differs from the SQL alias order (phone/organization are swapped),
@@ -292,12 +292,6 @@ _REQUESTS_SQL = """
               p.title, p.area_of_interest_id
      ORDER BY p.projcode, CAST(al.end_date AS DATE)
 """
-_SQL_REQUESTS = {
-    dialect: text(_REQUESTS_SQL.format(allocation_ids=agg)).bindparams(
-        bindparam('projcodes', expanding=True))
-    for dialect, agg in (('mysql', 'GROUP_CONCAT(al.allocation_id)'),
-                         ('postgresql', "STRING_AGG(CAST(al.allocation_id AS TEXT), ',')"))
-}
 
 #: `remainingAmount` is HPC-only and comes from a LEFT JOIN, which is why it is
 #: absent from ~56% of allocations. The subquery is `xras_hpc_allocation_amount`
@@ -369,7 +363,7 @@ _SQL_ACTIONS = text("""
 """).bindparams(bindparam('projcodes', expanding=True))
 
 #: `requestDateRange` — the whole-project span, collapsing the per-end-date
-#: grouping that `_SQL_REQUESTS` keeps. The inner join to `allocation_type` is
+#: grouping that `_REQUESTS_SQL` keeps. The inner join to `allocation_type` is
 #: the view's and is load-bearing: a project with no matching type yields no row.
 _SQL_REQUEST_DATES = text("""
     SELECT p.projcode                   AS "requestNumber",
@@ -402,7 +396,8 @@ def get_role_projcodes(
 
 def get_request_rows(session: Session, projcodes) -> List[Any]:
     """Derived request rows, ordered by projcode then end date."""
-    stmt = _SQL_REQUESTS.get(dialect_name(session), _SQL_REQUESTS['mysql'])
+    stmt = text(_REQUESTS_SQL.format(allocation_ids=group_concat(session, 'al.allocation_id'))
+                ).bindparams(bindparam('projcodes', expanding=True))
     return session.execute(stmt, {'projcodes': list(projcodes)}).fetchall()
 
 

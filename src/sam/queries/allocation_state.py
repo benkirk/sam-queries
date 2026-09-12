@@ -13,14 +13,13 @@ from datetime import datetime, timedelta
 from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 from sqlalchemy import or_
-
-from sam.sqlcompat import sam_now
 from sqlalchemy.orm import Session
 
 from sam.accounting.accounts import Account
 from sam.accounting.allocations import Allocation
 from sam.projects.projects import Project
 from sam.resources.resources import Resource
+from sam.sqlcompat import sam_now
 from sam.queries.dashboard import (
     DashboardResource,
     _build_user_projects_resources_batched,

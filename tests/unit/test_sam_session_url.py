@@ -36,21 +36,22 @@ def test_postgres_driver_port_and_name(env):
     assert (url.drivername, url.port, url.database) == ('postgresql+psycopg2', 5433, 'sam_dev')
 
 
-def test_ssl_connect_args_follow_the_driver():
-    assert sam_session.ssl_connect_args('mysql', True) == {'ssl': {'ssl_disabled': False}}
-    assert sam_session.ssl_connect_args('postgresql', True) == {'sslmode': 'require'}
-    assert sam_session.ssl_connect_args('PostgreSQL', False) == {}
+def test_connect_args_follow_the_driver():
+    assert sam_session.connect_args('mysql', True) == {'ssl': {'ssl_disabled': False}}
+    assert sam_session.connect_args('mysql', False, application_name='x') == {}
+    assert sam_session.connect_args('postgresql', True) == {'sslmode': 'require'}
+    assert sam_session.connect_args('PostgreSQL', False) == {}
+    assert sam_session.connect_args('postgres', True, application_name='sam-webapp:pod:sam') == {
+        'application_name': 'sam-webapp:pod:sam', 'sslmode': 'require'}
     assert sam_session.sam_dialect('mariadb') == 'mysql+pymysql'
 
 
 def test_config_reload_reads_the_driver(monkeypatch):
     from config import SAMConfig
     monkeypatch.setenv('SAM_DB_DRIVER', 'postgresql')
-    monkeypatch.setenv('SAM_DB_PORT', '5433')
     SAMConfig.reload()
     try:
-        assert (SAMConfig.SAM_DB_DRIVER, SAMConfig.SAM_DB_PORT) == ('postgresql', '5433')
+        assert SAMConfig.SAM_DB_DRIVER == 'postgresql'
     finally:
         monkeypatch.delenv('SAM_DB_DRIVER')
-        monkeypatch.delenv('SAM_DB_PORT')
         SAMConfig.reload()

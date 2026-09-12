@@ -18,6 +18,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import sessionmaker
 
+from _backends import current_backend, expected_failure_matches, read_expected_failures
+
 
 # ---- Safety allowlist -----------------------------------------------------
 #
@@ -35,34 +37,6 @@ _ALLOWED_TEST_TARGETS = {
     ("localhost", 5434),
     ("postgres-test", 5432),
 }
-
-# tests/postgres_expected_failures.txt: node ids that still fail on Postgres,
-# applied as strict xfails so a fixed test cannot stay listed.
-EXPECTED_FAILURES_FILE = Path(__file__).parent / "postgres_expected_failures.txt"
-
-
-def test_backend() -> str:
-    """'mysql' or 'postgresql', from SAM_TEST_DB_URL (valid after pytest_configure)."""
-    return make_url(os.environ["SAM_TEST_DB_URL"]).get_backend_name()
-
-
-def read_expected_failures(path=EXPECTED_FAILURES_FILE):
-    """[(node id or prefix, reason)] from the file; blank and comment lines skipped."""
-    entries = []
-    if not path.exists():
-        return entries
-    for raw in path.read_text().splitlines():
-        line, _, comment = raw.partition("#")
-        line = line.strip()
-        if line:
-            entries.append((line, comment.strip() or "listed in postgres_expected_failures.txt"))
-    return entries
-
-
-def expected_failure_matches(entry: str, nodeid: str) -> bool:
-    """An entry names one test exactly, or a file/class/test prefix of many."""
-    return nodeid == entry or nodeid.startswith(entry + "::") or nodeid.startswith(entry + "[")
-
 
 def _verify_test_target(url) -> None:
     """Raise pytest.exit if `url` does not point at an allowed test DB."""
@@ -214,7 +188,7 @@ def pytest_collection_modifyitems(config, items):
     Runs in every xdist worker, so each applies the same marks. Never exit
     from here: a stale entry is reported by test_postgres_expected_failures.py.
     """
-    backend = test_backend()
+    backend = current_backend()
     skip_mysql = pytest.mark.skip(reason="mysql_only")
     skip_pg = pytest.mark.skip(reason="postgres_only")
     expected = read_expected_failures() if backend == "postgresql" else []
@@ -386,12 +360,6 @@ def engine(test_db_url):
     eng = create_engine(test_db_url, future=True, pool_pre_ping=True)
     yield eng
     eng.dispose()
-
-
-@pytest.fixture(scope="session")
-def dialect(engine) -> str:
-    """'mysql' or 'postgresql' — for the few tests whose expectations differ by backend."""
-    return engine.dialect.name
 
 
 @pytest.fixture(scope="session", autouse=True)

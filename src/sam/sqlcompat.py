@@ -2,9 +2,11 @@
 
 SAM runs on MySQL in production and Postgres in development from one ORM
 (docs/plans/POSTGRES_MIGRATION.md). Everything that can go through Core does;
-these are the leftovers: the VALUES row-constructor spelling, the
-information_schema scope predicate, and a LIKE that Postgres accepts under the
-nondeterministic `sam_ci` collation (ILIKE is rejected there).
+these are the leftovers, in two families. Bind -> fragment string, for text()
+statements: the VALUES row-constructor spelling, the information_schema scope
+predicate, the string-aggregate. Expression constructors, for Core: the
+statement clock, and a LIKE that Postgres accepts under the nondeterministic
+`sam_ci` collation (ILIKE is rejected there).
 """
 from sqlalchemy import DateTime, func
 from sqlalchemy.ext.compiler import compiles
@@ -51,6 +53,13 @@ def schema_predicate(bind) -> str:
     if dialect_name(bind) in MYSQL_DIALECTS:
         return 'TABLE_SCHEMA = DATABASE()'
     return 'table_schema = current_schema()'
+
+
+def group_concat(bind, expr: str, sep: str = ',') -> str:
+    """Comma-joined aggregate of a column expression: GROUP_CONCAT on MySQL, STRING_AGG on Postgres."""
+    if dialect_name(bind) in MYSQL_DIALECTS:
+        return f"GROUP_CONCAT({expr} SEPARATOR '{sep}')"
+    return f"STRING_AGG(CAST({expr} AS TEXT), '{sep}')"
 
 
 def ci_like(column, pattern, escape=None):

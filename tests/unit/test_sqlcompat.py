@@ -34,6 +34,15 @@ class TestSchemaPredicate:
         assert sqlcompat.schema_predicate(_bind('postgresql')) == 'table_schema = current_schema()'
 
 
+class TestGroupConcat:
+    def test_each_backend_spells_its_own_aggregate(self):
+        assert sqlcompat.group_concat(_bind('mysql'), 'al.allocation_id') == \
+            "GROUP_CONCAT(al.allocation_id SEPARATOR ',')"
+        assert sqlcompat.group_concat(_session('mariadb'), 'x', sep=';') == "GROUP_CONCAT(x SEPARATOR ';')"
+        assert sqlcompat.group_concat(_bind('postgresql'), 'al.allocation_id') == \
+            "STRING_AGG(CAST(al.allocation_id AS TEXT), ',')"
+
+
 class TestSamNow:
     def test_statement_time_on_postgres_and_now_elsewhere(self):
         assert str(sqlcompat.sam_now().compile(dialect=mysql.dialect())) == 'now()'

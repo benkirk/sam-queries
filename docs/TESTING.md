@@ -269,6 +269,8 @@ When the count goes UP unexpectedly — fix the regression first.
 
 The primary CI workflow:
 
+Job `pytest`:
+
 1. Builds and starts all containers including `mysql-test` (via `--profile test`)
 2. Waits for both MySQL services to accept TCP connections
 3. Runs `pytest --cov=src --cov-fail-under=60` inside the webapp container
@@ -277,9 +279,17 @@ The primary CI workflow:
    survival and parking
 5. Uploads coverage report as a GitHub Actions artifact
 
+Job `pytest-postgres`: the same build and start, then
+`scripts/ci/wait-for-postgres.sh`, then `make -C containers/sam-sql-dev
+clone-pg-test` inside the webapp container with `PG_TEST_SOURCE_URL`
+(`mysql-test:3306`), `PG_TEST_HOST` and `PG_TEST_PORT` (`postgres-test:5432`)
+overriding the loader's localhost defaults, then the default tier with
+`SAM_TEST_DB_URL` pointing at `postgres-test`. No coverage upload.
+
 ### `ci-staging.yaml`
 
-Staging merge gate — same container setup, runs `pytest` without coverage.
+Staging merge gate — the same two jobs (`test` and `test-postgres`), `pytest`
+without coverage.
 
 ### Configuration
 
@@ -316,10 +326,10 @@ make docker-pytest-pg                                      # the same inside the
 `127.0.0.1:5434`, `localhost:5434` and `postgres-test:5432` for it.
 
 - **Markers.** `mysql_only` and `postgres_only` skip a test on the other
-  backend (`tests/conftest.py` applies them in `pytest_collection_modifyitems`).
-  The MySQL drift gates (`test_schema_validation.py`) are `mysql_only` by
-  design. A `dialect` fixture (`'mysql'` / `'postgresql'`) serves the rare test
-  whose expectation differs.
+  backend (`tests/conftest.py` applies them in `pytest_collection_modifyitems`,
+  reading the backend through `tests/_backends.py`). The MySQL drift gates
+  (`test_schema_validation.py`) are `mysql_only` by design. The rare test whose
+  expectation differs reads `engine.dialect.name`.
 - **Fixture SQL is portable.** Raw fixture queries compare booleans to
   `TRUE`/`FALSE`, never `1`/`0`, and quote camelCase identifiers through the
   engine's `identifier_preparer`.

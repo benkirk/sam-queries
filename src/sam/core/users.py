@@ -1,8 +1,8 @@
 #-------------------------------------------------------------------------bh-
 # Common Imports:
+from sqlalchemy.dialects import mysql
 from ..base import *
 from ..sqlcompat import ci_like
-from sqlalchemy.dialects import mysql
 #-------------------------------------------------------------------------eh-
 
 

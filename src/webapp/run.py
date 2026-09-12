@@ -122,10 +122,8 @@ def create_app(*, config_overrides: dict | None = None):
     # Postgres for the dev copy); always set, so the system_status bind below
     # never inherits them.
     pod_id = os.environ.get('HOSTNAME') or socket.gethostname()
-    sam_connect_args = sam.session.ssl_connect_args(cfg.SAM_DB_DRIVER, cfg.SAM_DB_REQUIRE_SSL)
-    if cfg.SAM_DB_DRIVER.lower() in sam.session.POSTGRES_DRIVERS:
-        sam_connect_args['application_name'] = f'sam-webapp:{pod_id}:sam'
-    engine_options['connect_args'] = sam_connect_args
+    engine_options['connect_args'] = sam.session.connect_args(
+        cfg.SAM_DB_DRIVER, cfg.SAM_DB_REQUIRE_SSL, application_name=f'sam-webapp:{pod_id}:sam')
 
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_options
 
@@ -141,21 +139,12 @@ def create_app(*, config_overrides: dict | None = None):
         'pool_pre_ping': True,
         'pool_recycle':  int(os.getenv('STATUS_DB_POOL_RECYCLE', 600)),
     }
-    # Driver-correct connect_args: postgres takes sslmode plus an
-    # application_name so pg_stat_activity can attribute a connection to a pod;
-    # MySQL takes an ssl dict and has no application_name equivalent. Always set
-    # explicitly, or the system_status engine inherits the MySQL-style ssl dict
-    # from the main SAM engine under SAM_DB_REQUIRE_SSL=true.
+    # Always set explicitly, or the system_status engine inherits the SAM
+    # engine's connect_args under SAM_DB_REQUIRE_SSL=true.
     status_require_ssl = os.getenv('STATUS_DB_REQUIRE_SSL', 'false').lower() in ('true', '1', 'yes')
-    status_driver = os.getenv('STATUS_DB_DRIVER', 'mysql').lower()
-    status_connect_args: dict = {}
-    if status_driver in ('postgresql', 'postgres'):
-        status_connect_args['application_name'] = f'sam-webapp:{pod_id}:system_status'
-        if status_require_ssl:
-            status_connect_args['sslmode'] = 'require'
-    elif status_require_ssl:
-        status_connect_args['ssl'] = {'ssl_disabled': False}
-    status_pool['connect_args'] = status_connect_args
+    status_pool['connect_args'] = sam.session.connect_args(
+        os.getenv('STATUS_DB_DRIVER', 'mysql'), status_require_ssl,
+        application_name=f'sam-webapp:{pod_id}:system_status')
 
     app.config['SQLALCHEMY_BINDS'] = {
         # Dict form lets us override engine options per bind (Flask-SQLAlchemy

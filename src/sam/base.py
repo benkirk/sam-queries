@@ -9,12 +9,12 @@ from sqlalchemy import (
     Text, BigInteger, SmallInteger, TIMESTAMP, text, and_, or_, Index, exists, select
 )
 from sqlalchemy import update as sa_update
-from .sqlcompat import sam_now
 from sqlalchemy.orm import relationship, declarative_base, declared_attr, Session, validates
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.sql import func
 import os
+from .sqlcompat import sam_now
 
 
 #-------------------------------------------------------------------------bm-

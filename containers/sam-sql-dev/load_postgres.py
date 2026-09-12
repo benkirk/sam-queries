@@ -5,8 +5,9 @@ Schema comes from the ORM (`sam.base.Base.metadata`, views excluded, FKs
 deferred); data streams table by table through COPY into `<db>_next`; FKs,
 sequences and the ported views go on last; then `<db>_next` is renamed over
 `<db>`. Target from SAM_DEV_PG_* (CNPG defaults) or the CLI; source is the
-`local:` block of config.yaml. Refuses a source that still holds real
-usernames unless --allow-pii. Exits non-zero on any count mismatch.
+`local:` block of config.yaml. A source that still holds real usernames loads
+with a warning (PII is a public-repo concern, not a cluster one). Exits
+non-zero on any count mismatch or a failed view.
 """
 import argparse
 import copy
@@ -51,9 +52,11 @@ def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--config", default="config.yaml")
     p.add_argument("--source", metavar="URL", help="mysql+pymysql://user:pw@host:port/db (default: config.yaml local)")
-    p.add_argument("--pg-host"), p.add_argument("--pg-port"), p.add_argument("--pg-user"), p.add_argument("--pg-db")
+    p.add_argument("--pg-host")
+    p.add_argument("--pg-port")
+    p.add_argument("--pg-user")
+    p.add_argument("--pg-db")
     p.add_argument("--no-ssl", action="store_true", help="sslmode=prefer instead of require")
-    p.add_argument("--allow-pii", action="store_true", help="load a source that still holds real usernames")
     p.add_argument("--no-swap", action="store_true", help="leave <db>_next in place for inspection")
     return p.parse_args(argv)
 
@@ -146,12 +149,12 @@ def widen_strings(md, lengths):
     return drifts
 
 
-def collation_sql(name=CI_COLLATION):
-    return (f"CREATE COLLATION {_q(name)} (provider = icu, locale = 'und-u-ks-level1', "
+def collation_sql():
+    return (f"CREATE COLLATION {_q(CI_COLLATION)} (provider = icu, locale = 'und-u-ks-level1', "
             "deterministic = false)")
 
 
-def apply_collations(md, collations, name=CI_COLLATION):
+def apply_collations(md, collations):
     """Every string column MySQL declares `_ci` gets the ICU collation; `_bin` columns stay default.
 
     The copied Column shares its type object with the ORM, so the type is replaced, never mutated.
@@ -162,7 +165,7 @@ def apply_collations(md, collations, name=CI_COLLATION):
             coll = collations.get((t.name, col.name))
             if coll and coll.endswith("_ci") and isinstance(col.type, String) and not isinstance(col.type, Enum):
                 new_type = copy.copy(col.type)
-                new_type.collation = name
+                new_type.collation = CI_COLLATION
                 col.type = new_type
                 touched.append((t.name, col.name))
     return touched
@@ -180,7 +183,6 @@ def _copy_table_without_fks(t, md):
             nt.append_constraint(UniqueConstraint(*[c.name for c in uc.columns], name=uc.name))
     for ix in t.indexes:
         Index(ix.name, *[nt.c[c.name] for c in ix.columns], unique=ix.unique)
-    return nt
 
 
 def unique_index_names(md):
@@ -193,7 +195,6 @@ def unique_index_names(md):
         if len(indexes) > 1:
             for ix in indexes:
                 ix.name = f"{ix.table.name}_{name}"[:63]
-    return md
 
 
 def serial_columns(md):
@@ -304,7 +305,8 @@ def fk_statement(fk, name, not_valid):
 
 
 def add_foreign_keys(pg_conn, fks, names, unvalidated):
-    """One ALTER per FK; a failure is logged, not fatal. NOT VALID for the policy edges."""
+    """One ALTER per FK, NOT VALID for the policy edges. Failures are advisory on purpose:
+    the grandfathered fk_dav_charge_dav_activity_id fails on every engine."""
     failed = []
     with pg_conn.cursor() as cur:
         for fk in fks:
@@ -419,10 +421,8 @@ def main(argv=None):
         c.execute(leak_query("users", "username", preserved_usernames(cfg)))
         real_rows = c.fetchone()[0]
     print(f"Source tier: {'REAL usernames in ' + str(real_rows) + ' users rows' if real_rows else 'obfuscated'}")
-    if real_rows and not args.allow_pii:
-        print("❌ refusing to load real usernames into a shared server; pass --allow-pii to override",
-              file=sys.stderr)
-        return 1
+    if real_rows:
+        print("WARNING: source holds real usernames; this copy is not for the public repo", file=sys.stderr)
 
     maint = pg_connect(target, MAINTENANCE_DB)
     with maint.cursor() as cur:

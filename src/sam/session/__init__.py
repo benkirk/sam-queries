@@ -9,6 +9,8 @@ from contextlib import contextmanager
 
 connection_string = None
 
+# Env-var driver strings (SAM_DB_DRIVER / STATUS_DB_DRIVER); SQLAlchemy dialect
+# names are keyed separately by sam.sqlcompat.MYSQL_DIALECTS.
 POSTGRES_DRIVERS = ('postgresql', 'postgres')
 
 
@@ -17,13 +19,15 @@ def sam_dialect(driver: str) -> str:
     return 'postgresql+psycopg2' if driver.lower() in POSTGRES_DRIVERS else 'mysql+pymysql'
 
 
-def ssl_connect_args(driver: str, require_ssl: bool) -> dict:
-    """The SSL connect_args each DBAPI understands; empty when SSL is not required."""
-    if not require_ssl:
-        return {}
+def connect_args(driver: str, require_ssl: bool, application_name: str = None) -> dict:
+    """The DBAPI connect_args for one bind: SSL in each driver's dialect, and on Postgres
+    the application_name pg_stat_activity shows (MySQL has no equivalent)."""
     if driver.lower() in POSTGRES_DRIVERS:
-        return {'sslmode': 'require'}
-    return {'ssl': {'ssl_disabled': False}}
+        args = {'application_name': application_name} if application_name else {}
+        if require_ssl:
+            args['sslmode'] = 'require'
+        return args
+    return {'ssl': {'ssl_disabled': False}} if require_ssl else {}
 
 
 def init_sam_db_defaults():
@@ -105,14 +109,13 @@ def create_sam_engine(input_connection_string: str = None):
 
     # Check if SSL is required (for remote servers)
     require_ssl = os.getenv('SAM_DB_REQUIRE_SSL', 'false').lower() in ('true', '1', 'yes')
-    connect_args = ssl_connect_args(os.getenv('SAM_DB_DRIVER', 'mysql'), require_ssl)
 
     engine = create_engine(
         input_connection_string,
         echo=False,  # Set to True for SQL debugging
         pool_pre_ping=True,
         pool_recycle=3600,
-        connect_args=connect_args
+        connect_args=connect_args(os.getenv('SAM_DB_DRIVER', 'mysql'), require_ssl)
     )
     SessionLocal = sessionmaker(bind=engine)
     return engine, SessionLocal

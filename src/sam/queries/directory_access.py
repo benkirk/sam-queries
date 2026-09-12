@@ -45,7 +45,7 @@ DEFAULT_HOME_BASE = '/home'
 
 
 def grace_cutoff(days: int) -> datetime:
-    """`end_date + days > NOW()` as a bound on end_date: portable and index-friendly."""
+    """`end_date + days > NOW()` as a bound on end_date, from the app clock: portable and index-friendly."""
     return datetime.now() - timedelta(days=days)
 
 
