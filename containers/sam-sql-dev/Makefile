@@ -1,6 +1,6 @@
 COMPOSE_FILE := ../../compose.yaml
 
-.PHONY: all clone clean bootstrap verify db-up db-test db-down db-restart FORCE
+.PHONY: all clone clean bootstrap verify db-up db-test db-down db-restart db-reset FORCE
 
 all: clone
 
@@ -65,11 +65,17 @@ db-test: db-up verify
 	python test_username_anonymization.py
 
 db-down:
-	docker compose -f $(COMPOSE_FILE) down -v
+	docker compose -f $(COMPOSE_FILE) stop mysql
 
 db-restart:
 	@$(MAKE) db-down
 	@$(MAKE) db-up
+
+# Drop ONLY the mysql container and its volume so the next db-up restores the
+# blob. `down -v` would also remove every other project volume; never use it.
+db-reset:
+	docker compose -f $(COMPOSE_FILE) rm -sf mysql
+	-docker volume rm project-samuel_mysql-data
 
 # Dump targets are real files but must always rebuild: a stale blob from the
 # last run would otherwise be "up to date" and silently kept.

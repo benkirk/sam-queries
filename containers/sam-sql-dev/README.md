@@ -26,7 +26,8 @@ Run from this directory with the project conda environment active
 
 | Target | What it does |
 |---|---|
-| `make db-up` / `db-down` / `db-restart` | Start (and wait for), stop, or recreate the `mysql` compose service. A fresh volume restores `backups/sam-obfuscated.sql.xz` on first start. |
+| `make db-up` / `db-down` / `db-restart` | Start (and wait for), stop, or stop-and-start the `mysql` compose service. Data survives all three. |
+| `make db-reset` | Drop the `mysql` container **and its volume** (only that volume); the next `db-up` restores `backups/sam-obfuscated.sql.xz`. |
 | `make clone` | Subset production into the running container. **The result holds real PII.** 10–20 minutes, ~0.5 GB. Exits non-zero if any table, the views, or the orphan sweep failed. `SAM_CLONE_DAYS=1500 make clone` (or `--days`) deepens every `recent` window. |
 | `make verify` | Leak check against the container; non-zero on a leak. |
 | `make backups/sam-obfuscated.sql.xz` | Dump the committed blob. Depends on `verify`, so it cannot be built from an unanonymized database. |
