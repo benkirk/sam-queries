@@ -1,6 +1,7 @@
 COMPOSE_FILE := ../../compose.yaml
 
-.PHONY: all clone clean bootstrap verify db-up db-test db-down db-restart db-reset FORCE
+.PHONY: all clone clean bootstrap verify db-up db-test db-down db-restart db-reset FORCE \
+        pg-up pg-down clone-pg clone-pg-local
 
 all: clone
 
@@ -76,6 +77,31 @@ db-restart:
 db-reset:
 	docker compose -f $(COMPOSE_FILE) rm -sf mysql
 	-docker volume rm project-samuel_mysql-data
+
+# ---- Postgres copy (load_postgres.py) ------------------------------------
+# clone-pg targets SAM_DEV_PG_* from .env (the csg-postgres CNPG cluster by
+# default); clone-pg-local targets the compose `postgres` service on 5433.
+# Both build <db>_next from the local MySQL clone and rename it over <db>.
+clone-pg:
+	@python load_postgres.py --config config.yaml $(CLONE_PG_ARGS)
+
+clone-pg-local: export SAM_DEV_PG_HOST = 127.0.0.1
+clone-pg-local: export SAM_DEV_PG_PORT = 5433
+clone-pg-local: export SAM_DEV_PG_USER = sam_dev
+clone-pg-local: export SAM_DEV_PG_PASSWORD = sam_dev
+clone-pg-local: export SAM_DEV_PG_DB = sam_dev
+clone-pg-local: export SAM_DEV_PG_REQUIRE_SSL = false
+clone-pg-local:
+	@python load_postgres.py --config config.yaml $(CLONE_PG_ARGS)
+
+pg-up:
+	docker compose -f $(COMPOSE_FILE) --profile pg up -d postgres
+	@echo "Waiting for healthy status..."
+	@timeout 120 bash -c 'until docker compose -f $(COMPOSE_FILE) --profile pg ps postgres | grep -q "healthy"; do sleep 3; done'
+	@echo "✅ Postgres ready on 127.0.0.1:5433"
+
+pg-down:
+	docker compose -f $(COMPOSE_FILE) --profile pg down
 
 # Dump targets are real files but must always rebuild: a stale blob from the
 # last run would otherwise be "up to date" and silently kept.

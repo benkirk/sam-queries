@@ -45,6 +45,39 @@ enforced by the sweep (`disk_activity` is emptied by policy while
 Other dumps (`make backups/<name>.sql.xz`) skip the verify gate and must never
 be committed; `.gitattributes` routes every `*.sql.xz` through Git LFS.
 
+## Postgres copy — `make clone-pg`
+
+`load_postgres.py` turns the local MySQL clone into a Postgres database: the
+schema comes from the ORM (`sam.base.Base.metadata`, views excluded, FKs
+deferred), every table streams through `COPY` into `<db>_next`, then the FKs
+(`NOT VALID` for `unvalidated_fks`), sequences and the ported views in
+`containers/sam-sql-dev/postgres/views.sql` go on, and `<db>_next` is renamed over `<db>`. A row-count
+mismatch or a session another role holds on `<db>` stops the swap and leaves
+`<db>_next` for inspection (`--no-swap` does the same on purpose). The loader
+refuses a source that still holds real usernames unless `--allow-pii`.
+
+| Target | Command | Where |
+|---|---|---|
+| Local container (offline work) | `make pg-up && make clone-pg-local` | compose `postgres` service, `127.0.0.1:5433`, user/password/db `sam_dev` |
+| `csg-postgres` CNPG cluster | `make clone-pg` | `SAM_DEV_PG_HOST/PORT/USER/PASSWORD/DB/REQUIRE_SSL` from `.env` |
+
+Extra loader flags go through `CLONE_PG_ARGS`, e.g.
+`make clone-pg-local CLONE_PG_ARGS=--no-swap`. The rhythm is `make clone` (or
+a blob restore) → `make clone-pg-local`; the CNPG copy is the same run with the
+`.env` target and is the seed for a k8s `sam-dev`.
+
+One-time CNPG setup, run by the operator in the primary pod
+(`kubectl -n pg-testing exec csg-postgres-1 -c postgres -- psql -U postgres`):
+
+```sql
+CREATE ROLE sam_dev LOGIN PASSWORD '<generated>' CREATEDB;
+CREATE DATABASE sam_dev OWNER sam_dev;
+```
+
+`CREATEDB` is what lets the loader build `sam_dev_next` and swap; the role is
+deliberately not a superuser. Put the password in `.env` as
+`SAM_DEV_PG_PASSWORD`.
+
 ## Documentation
 
 - [ANONYMIZATION_PROCESS.md](ANONYMIZATION_PROCESS.md) — what is rewritten, what is preserved, troubleshooting.

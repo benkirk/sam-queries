@@ -36,7 +36,7 @@ class User(Base, TimestampMixin, SessionMixin):
     unix_uid = Column(Integer, nullable=False)
 
     # Personal information
-    title = Column(String(15))
+    title = Column(String(45))
     first_name = Column(String(40))
     middle_name = Column(String(40))
     last_name = Column(String(50))

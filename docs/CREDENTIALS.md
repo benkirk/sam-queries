@@ -42,6 +42,20 @@ PROD_SAM_DB_PASSWORD=password$with!special#chars    # ❌ Will fail
 
 **Access:** Read-only (safe for queries, CLI, Python REPL)
 
+### Postgres Copy of SAM (`sam_dev`)
+
+**Where to get:** the `sam_dev` role on the `csg-postgres` cluster is created
+by the CSG operator (see `containers/sam-sql-dev/README.md`); the local
+compose `postgres` service needs nothing beyond the defaults.
+
+```bash
+SAM_DEV_PG_HOST=csg-postgres.k8s.ucar.edu
+SAM_DEV_PG_USER=sam_dev
+SAM_DEV_PG_PASSWORD='your_sam_dev_password'
+```
+
+**Access:** owner of `sam_dev` only; `make clone-pg` rebuilds it from the local MySQL clone.
+
 ### Local Database
 
 **Default credentials** (already configured):

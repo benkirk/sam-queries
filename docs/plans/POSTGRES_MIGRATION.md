@@ -187,10 +187,35 @@ ORM.
 
 #### 8. `'0000-00-00'` sentinel dates — `queries/dashboard.py:180,554`
 Both surviving uses are **Python-side sort keys** (`date_group_key`), never sent to
-the DB — trivial. pgloader coerces any real zero-dates in data to `NULL`.
+the DB — trivial. In data, pymysql already reads a zero-date as `None`;
+`load_postgres.py` writes it as NULL, or as the column default (`COPY ... DEFAULT`)
+when the column is NOT NULL with a server default — `phone_type.creation_time` is
+the first such case (MySQL `TIMESTAMP NOT NULL` rows holding the zero sentinel).
 
 #### 9. `String(16384)` — `operational.py`
 PostgreSQL supports `VARCHAR` to 1 GB. No change needed; confirm in a test load.
+
+#### 10. `Boolean` + `server_default=text('0')` — `summaries/allocation_state.py` (found by the first `create_all` on PG)
+An integer literal as the default of a `boolean` column is a DDL error on Postgres
+(`DatatypeMismatch`). **Fix (done):** `server_default=false()` / `true()`, which
+SQLAlchemy renders as `false`/`true` on both dialects (MySQL accepts the keyword).
+`tests/unit/test_load_postgres.py` compiles every base table for Postgres, so the
+next one cannot land unnoticed. Gotchas 7–8 are handled by `load_postgres.py` at
+load time (booleans to `t`/`f`, zero-dates to NULL).
+
+#### 11. Index names are schema-global on Postgres (found by the first `create_all`)
+MySQL scopes an index name to its table, so several ORM tables carry the same
+`Index('allocation_account_fk', ...)`-style name; Postgres rejects the second
+`CREATE INDEX` with `DuplicateTable`. The names mirror the live MySQL schema and
+`make check-db-vs-orms` compares them, so the ORM keeps them; `load_postgres.py`
+prefixes a shared name with its table name on the Postgres copy only.
+
+#### 12. `varchar(n)` is enforced on Postgres (found by the first data load)
+MySQL never checked the ORM's `String(n)` against the live column, so a narrow
+declaration went unnoticed: `users.title` was `String(15)` over a `varchar(45)`
+column (fixed). `load_postgres.py` sizes every varchar from the source's
+`information_schema` and prints each ORM drift it had to widen, so the ORM stays
+the thing to fix while the load never truncates.
 
 ---
 
@@ -305,15 +330,22 @@ part of C are net wins even if Postgres never ships.
 0. **Dialect-agnostic ORM (Fixes 0–4 + category C)** — commit to main; validate the
    full suite on the mysql-test container *first*, proving prod MySQL is unchanged.
    `make check-db-vs-orms` stays clean.
-1. **Port the 7 views to portable, tracked DDL** — extract from
-   `containers/sam-sql-dev/dump/views.sql`, translate the MySQL-isms, store in-repo as
-   a dialect-aware `.sql` the pipeline applies after load; add an `is_view` exclusion
-   guard so a future `create_all()` can't materialize them as tables.
-2. **`make clone-pg` provisioning** — reuse `bootstrap_clone.py` (FK-aware
-   downsample) -> `anonymize_sam_db.py` -> obfuscated MySQL, then **pgloader** into a
-   local Postgres, then apply the Stage-1 views. Add a `postgres` service to
-   `compose.yaml` (+ a `postgres-test` profile). MySQL stays the schema source of
-   truth; the PG schema is disposable.
+1. **Port the 7 views to portable, tracked DDL** — DONE:
+   `containers/sam-sql-dev/postgres/views.sql`, applied by the loader after the data;
+   the loader skips `is_view` tables when it builds the schema.
+2. **`make clone-pg` provisioning** — DONE, with two changes from the original idea.
+   pgloader cannot connect to either MySQL (its driver speaks only
+   `mysql_native_password`; the local container is MySQL 9.x where that plugin is
+   gone, prod uses `caching_sha2_password`), so the loader is in-house:
+   `containers/sam-sql-dev/load_postgres.py` builds the schema from the ORM
+   (`Base.metadata`, FKs deferred), streams every table through `COPY`, re-adds the
+   FKs (`NOT VALID` for `config.yaml`'s `unvalidated_fks`), resets sequences,
+   applies the views, and renames `<db>_next` over `<db>`. Two targets, one loader:
+   the compose `postgres` service (`make clone-pg-local`, host port 5433) for
+   offline work, and the `sam_dev` database on the `csg-postgres` CNPG cluster
+   (`make clone-pg`, `SAM_DEV_PG_*`). The CNPG copy is the seed for a k8s
+   `sam-dev`; the dev-Postgres / prod-MySQL skew is accepted for the overlap period.
+   MySQL stays the schema source of truth; the PG schema is disposable.
 3. **Dual-backend CI (the gate)** — parametrize `SAM_TEST_DB_URL` to also run against
    `postgres-test`; relax the `tests/conftest.py` host allowlist. Fix GROUP BY
    (gotcha 5) and case-sensitivity (gotcha 6) surprises here, empirically. **Green
@@ -343,7 +375,7 @@ part of C are net wins even if Postgres never ships.
 |---|---|---|---|
 | Driver hardcoded `mysql+pymysql` | Blocker | Fix 0 (`SAM_DB_DRIVER`, mirror system_status) | `sam/session/__init__.py:47,90` |
 | 7 views' DDL only in MySQL dump | Blocker (net-new) | Stage 1: port + track portable DDL | `integration/xras_views.py`, `activity/computational.py` |
-| No PG provisioning path | Blocker (new infra) | Stage 2: `make clone-pg` (pgloader) | `containers/sam-sql-dev/`, `compose.yaml` |
+| No PG provisioning path | Done | Stage 2: `make clone-pg` (`load_postgres.py`, not pgloader) | `containers/sam-sql-dev/`, `compose.yaml` |
 | `TIMESTAMP` + `CURRENT_TIMESTAMP` | Low (dual) / High (cutover) | Fix 1 / Fix 5 | `base.py:84,88`; ~15 tables |
 | Backtick raw SQL | Critical | Fix 2 (Core `update()`) | `base.py:403-420` |
 | `TIMESTAMP(3)`/`CURRENT_TIMESTAMP(3)` | Critical | Fix 4 (`with_variant`) | `core/users.py:703` |
@@ -351,10 +383,11 @@ part of C are net wins even if Postgres never ships.
 | `GROUP BY` strictness | High | Audit on PG (Stage 3) | `directory_access.py:175`, CTEs |
 | Case sensitivity | High (silent) | `citext`/`func.lower()`/pgloader COLLATE | ~114 sites, query layer |
 | `IFNULL`/`CONCAT`/`INTERVAL`/`YEAR`/`GROUP_CONCAT`/`DATABASE()` | High | Category-C sweep | `sam/queries/*`, `config_inspect.py:235` |
-| `Boolean` / `'0000-00-00'` / charset | Medium | pgloader at load time | data-migration concern |
+| `Boolean` / `'0000-00-00'` / charset | Medium | `load_postgres.py` coerces at load time | data-migration concern |
 | `String(16384)` | Low | No change | `operational.py` |
 
 ---
 
 *Created: 2026-04-19 (one-shot migration). Revised: 2026-09-01 (dual-backend plan;
-Alembic-for-SAM placed at the all-Postgres milestone).*
+Alembic-for-SAM placed at the all-Postgres milestone); 2026-09-12 (Stages 1–2 done
+with an in-house loader; CNPG `sam_dev` as the seed for a k8s `sam-dev`).*
