@@ -21,17 +21,19 @@ import sqlalchemy.exc as sa_exc
 
 from datetime import timedelta
 
+from ..sqlcompat import row_constructor, sam_now
+
 _logger = logging.getLogger(__name__)
 
 # Lazily detected on first call to either batch charge method.
-# True  = DB supports VALUES ROW() CTEs (primary path).
-# False = DB does not support VALUES ROW() CTEs (fallback path; warning is logged once).
+# True  = DB supports VALUES row-constructor CTEs (primary path).
+# False = DB does not support them (fallback path; warning is logged once).
 # None  = not yet tested.
 _values_cte_supported: Optional[bool] = None
 
 
 def _ensure_values_cte_probed(session) -> None:
-    """Probe for VALUES ROW() CTE support and cache the result module-wide.
+    """Probe for VALUES row-constructor CTE support and cache the result module-wide.
 
     Called once by both batch_get_subtree_charges and batch_get_account_charges.
     Sets _values_cte_supported to True or False and emits a WARNING on failure so
@@ -41,7 +43,7 @@ def _ensure_values_cte_probed(session) -> None:
     if _values_cte_supported is not None:
         return
     try:
-        session.execute(text("SELECT * FROM (VALUES ROW(1)) AS t(n)"))
+        session.execute(text(f"SELECT * FROM (VALUES {row_constructor(session)}(1)) AS t(n)"))
         _values_cte_supported = True
     except (sa_exc.OperationalError, sa_exc.ProgrammingError):
         try:
@@ -731,7 +733,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
     @has_active_allocations.expression
     def has_active_allocations(cls):
         """Check if project has any active allocations (SQL side)."""
-        now = func.now()
+        now = sam_now()
         return exists(
             select(1)
             .select_from(Account)
@@ -1142,8 +1144,9 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
                 # Build parameterized VALUES rows: one row per allocation info entry.
                 # Each entry is (anchor_key=index, tree_root, tree_left, tree_right, resource_id).
                 # Using positional index as anchor_key; mapped back to info['key'] below.
+                row = row_constructor(session)
                 values_parts = ", ".join(
-                    f"ROW(:ak{i}, :tr{i}, :tl{i}, :rr{i}, :ri{i})"
+                    f"{row}(:ak{i}, :tr{i}, :tl{i}, :rr{i}, :ri{i})"
                     for i in range(len(group_infos))
                 )
                 idx_to_key = {}
@@ -1322,9 +1325,10 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
             for info in alloc_infos:
                 rt_groups[info['resource_type']].append(info)
 
+            row = row_constructor(session)
             for rt, group_infos in rt_groups.items():
                 values_parts = ", ".join(
-                    f"ROW(:ak{i}, :acct{i}, :sd{i}, :ed{i})"
+                    f"{row}(:ak{i}, :acct{i}, :sd{i}, :ed{i})"
                     for i in range(len(group_infos))
                 )
                 idx_to_key: Dict[int, Any] = {}

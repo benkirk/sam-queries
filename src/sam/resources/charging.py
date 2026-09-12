@@ -1,6 +1,7 @@
 #-------------------------------------------------------------------------bh-
 # Common Imports:
 from ..base import *
+from ..sqlcompat import sam_now
 #-------------------------------------------------------------------------eh-
 
 
@@ -41,7 +42,7 @@ class Factor(Base, TimestampMixin, DateRangeMixin):
     @is_active.expression
     def is_active(cls):
         """Check if factor is currently active (SQL side)."""
-        now = func.now()
+        now = sam_now()
         return and_(
             cls.start_date <= now,
             or_(cls.end_date.is_(None), cls.end_date >= now)
@@ -90,7 +91,7 @@ class Formula(Base, TimestampMixin, DateRangeMixin):
     @is_active.expression
     def is_active(cls):
         """Check if formula is currently active (SQL side)."""
-        now = func.now()
+        now = sam_now()
         return and_(
             cls.start_date <= now,
             or_(cls.end_date.is_(None), cls.end_date >= now)

@@ -1,0 +1,432 @@
+# Tests that still fail on the Postgres copy. conftest.py applies each line as a
+# strict xfail on a Postgres target: fix the code, remove the line, or the run fails.
+# Format: <node id or file::Class prefix>  # reason
+# First list written 2026-09-12 from a full run (305 failed, 112 errors).
+
+# --- ILIKE on a sam_ci column, or a dependency on one of the clusters above (untriaged) (52)
+tests/api/test_allocation_schema_disk_current.py::TestAllocationDiskCurrentFields::test_parent_reads_the_subtree_snapshot  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/api/test_route_authz_hardening.py::TestLeadStewardAccess::test_rolling_section  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/api/test_route_authz_hardening.py::TestPrivilegedAccessPreserved::test_rolling_section  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/api/test_route_authz_hardening.py::TestPrivilegedAccessPreserved::test_users_search  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/api/test_user_endpoints.py::TestApiKeyAccess::test_search_with_a_key_only  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/api/test_user_search.py::TestUserSearchEndpoint::test_search_case_insensitive  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/api/test_user_search.py::TestUserSearchEndpoint::test_search_excludes_project_members  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/api/test_user_search.py::TestUserSearchEndpoint::test_search_invalid_projcode_returns_results  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/api/test_user_search.py::TestUserSearchEndpoint::test_search_result_structure  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/api/test_user_search.py::TestUserSearchEndpoint::test_search_returns_matching_users  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/api/test_user_search.py::TestUserSearchEndpoint::test_search_wildcard_pattern  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/integration/test_cli_json_output.py::TestProjectJSON::test_project_exact_envelope  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/integration/test_cli_json_output.py::TestProjectJSON::test_project_pattern_envelope  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/integration/test_cli_json_output.py::TestProjectJSON::test_project_tree_marks_current  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/integration/test_cli_json_output.py::TestUserJSON::test_user_pattern_search_envelope  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/integration/test_cli_json_output.py::TestUserJSON::test_user_pattern_search_not_found  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_admin_notifications_page.py::TestPreviewForAProject::test_the_typeahead_finds_projects  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_dashboard_routes.py::TestUserDashboardRouting::test_info_page_renders  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_htmx_handler_routes.py::TestShellAndPrimaryGid::test_primary_gid_missing_field_rerenders  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_htmx_search_active_toggle.py::TestGroupSearchActiveToggle::test_inactive_group_found_when_unchecked  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_htmx_search_active_toggle.py::TestGroupSearchActiveToggle::test_inactive_group_hidden_when_checked  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_htmx_search_active_toggle.py::TestProjectSearchActiveToggle::test_inactive_project_found_when_unchecked  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_htmx_search_active_toggle.py::TestProjectSearchActiveToggle::test_inactive_project_hidden_when_checked  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_htmx_search_active_toggle.py::TestUserSearchActiveToggle::test_active_user_found_either_way  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_htmx_search_active_toggle.py::TestUserSearchActiveToggle::test_inactive_user_found_when_unchecked  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_htmx_search_active_toggle.py::TestUserSearchActiveToggle::test_inactive_user_hidden_when_checked  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_htmx_search_active_toggle.py::TestUserSearchActiveToggle::test_picker_contexts_stay_active_only[bogus]  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_htmx_search_active_toggle.py::TestUserSearchActiveToggle::test_picker_contexts_stay_active_only[fk]  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_mnemonic_console.py::TestSearchTargets::test_claimed_entity_is_flagged  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_mnemonic_console.py::TestSearchTargets::test_exclude_code_frees_its_own_claim  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_mnemonic_console.py::TestSearchTargets::test_finds_org_by_name_with_exact_string  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_mnemonic_console.py::TestSearchTargets::test_institution_description_is_name_comma_city  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_modal_shell_contract.py::test_project_modal_pages_ship_the_allocation_modal[/user/info]  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_notifications_queries.py::TestListing::test_search_also_matches_the_projcode  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_notifications_queries.py::TestListing::test_search_is_case_insensitive  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_notifications_queries.py::TestListing::test_search_matches_the_recipient  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_resource_details_partials.py::TestResourceDetailsAccessControl::test_authorized_user_is_not_forbidden  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_sam_search_cli.py::TestSamSearchCli::test_project_disk_row_shows_capacity_not_burn  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_sam_search_cli.py::TestSamSearchCli::test_project_search_pattern  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_sam_search_cli.py::TestSamSearchCli::test_project_verbose  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_sam_search_cli.py::TestSamSearchCli::test_user_search_pattern_found  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_sam_search_cli.py::TestSamSearchCli::test_user_search_pattern_not_found  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_theme_transport.py::TestThemeRoundTrip::test_dashboard_honours_the_cookie  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_user_affiliations.py::TestUserCardAffiliationRendering::test_admin_user_card_renders_benkirk  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_user_affiliations.py::TestUserCardAffiliationRendering::test_only_lapsed_affiliations_show_empty_state_and_former_block  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_user_affiliations.py::TestUserCardAffiliationRendering::test_own_info_page_shows_history_via_is_self  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_user_former_projects.py::TestUserCardFormerProjectsGate::test_admin_user_card_renders  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_user_former_projects.py::TestUserCardFormerProjectsGate::test_own_info_page_omits_section  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_webapp_jobs.py::test_resource_details_includes_jobs_fragment_url  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_webapp_jobs.py::test_resource_details_modal_shells_and_by_project_gate  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_webapp_jobs.py::test_resource_details_user_table_is_sortable  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+tests/unit/test_xras_remediations.py::TestAccessControl::test_the_mnemonic_code_typeahead_returns_rows  # ILIKE on a sam_ci column, or a dependency on one of the clusters above
+
+# --- INTERVAL :n DAY and VALUES ROW() raw SQL (Category C clusters 1 and 3) (145)
+tests/api/test_directory_access.py::TestBranchFilter::test_invalid_branch_returns_404  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_directory_access.py::TestBranchFilter::test_single_branch_returns_200  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_directory_access.py::TestBranchFilter::test_single_branch_returns_one_entry  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_directory_access.py::TestDirectoryAccessStructure::test_branch_has_required_keys  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_directory_access.py::TestDirectoryAccessStructure::test_returns_200  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_directory_access.py::TestDirectoryAccessStructure::test_three_access_branches  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_directory_access.py::TestDirectoryAccessStructure::test_top_level_key  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_directory_access.py::TestUnixAccounts::test_accounts_have_required_fields  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_directory_access.py::TestUnixAccounts::test_gecos_format  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_directory_access.py::TestUnixAccounts::test_home_directory_has_username  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_directory_access.py::TestUnixAccounts::test_login_shell_is_path  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_directory_access.py::TestUnixAccounts::test_uid_is_positive_integer  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_directory_access.py::TestUnixGroups::test_group_names_are_lowercase  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_directory_access.py::TestUnixGroups::test_groups_have_required_fields  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_directory_access.py::TestUnixGroups::test_ncar_global_group_present  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_directory_access.py::TestUnixGroups::test_ncar_group_gid_is_1000  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_directory_access.py::TestUnixGroups::test_ncar_group_has_members  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_fstree_access.py::TestFstreeAllResources::test_at_least_one_facility  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_fstree_access.py::TestFstreeAllResources::test_facilities_is_list  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_fstree_access.py::TestFstreeAllResources::test_facility_has_allocationTypes  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_fstree_access.py::TestFstreeAllResources::test_name_is_fairShareTree  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_fstree_access.py::TestFstreeAllResources::test_response_has_name_and_facilities  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_fstree_access.py::TestFstreeAllResources::test_returns_200  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_fstree_access.py::TestFstreeProjectsRemap::test_parent_project_present_and_resolvable  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_fstree_access.py::TestFstreeProjectsRemap::test_returns_200  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_fstree_access.py::TestFstreeSingleResource::test_account_status_is_valid  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_fstree_access.py::TestFstreeSingleResource::test_active_rows_expose_iso_date_window  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_fstree_access.py::TestFstreeSingleResource::test_derecho_resources_only_contain_derecho  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_fstree_access.py::TestFstreeSingleResource::test_derecho_response_has_fairShareTree_name  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_fstree_access.py::TestFstreeSingleResource::test_derecho_returns_200  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_fstree_access.py::TestFstreeSingleResource::test_projects_expose_parent_project  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_fstree_access.py::TestFstreeSingleResource::test_resource_entry_has_required_fields  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_fstree_access.py::TestFstreeSingleResource::test_threshold_key_present  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_project_access.py::TestProjectAccessAllBranches::test_at_least_one_branch  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_project_access.py::TestProjectAccessAllBranches::test_auto_renewing_derived_from_panel  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_project_access.py::TestProjectAccessAllBranches::test_each_branch_is_a_list  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_project_access.py::TestProjectAccessAllBranches::test_project_has_required_fields  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_project_access.py::TestProjectAccessAllBranches::test_resource_group_status_fields  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_project_access.py::TestProjectAccessAllBranches::test_response_is_dict  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_project_access.py::TestProjectAccessAllBranches::test_returns_200  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_project_access.py::TestProjectAccessSingleBranch::test_hpc_branch_returns_200  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_project_access.py::TestProjectAccessSingleBranch::test_single_branch_contains_projects  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_project_access.py::TestProjectAccessSingleBranch::test_single_branch_response_keyed_by_branch  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/api/test_project_access.py::TestProjectAccessSingleBranch::test_unknown_branch_returns_404  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestAdhocDependentAccountGate::test_orphan_adhoc_entry_is_excluded  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestAdhocDependentAccountGate::test_orphan_never_reaches_the_response  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestAdhocDependentAccountGate::test_qualifying_adhoc_entry_is_included  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestBuildDirectoryAccessResponse::test_accounts_sorted_by_username  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestBuildDirectoryAccessResponse::test_branches_sorted_alphabetically  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestBuildDirectoryAccessResponse::test_each_directory_has_required_keys  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestBuildDirectoryAccessResponse::test_response_structure  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestBuildDirectoryAccessResponse::test_unix_account_schema  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestBuildDirectoryAccessResponse::test_unix_group_schema  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestBuildDirectoryAccessResponse::test_usernames_sorted_within_group  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestGroupPopulator::test_at_least_one_branch  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestGroupPopulator::test_branch_filter  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestGroupPopulator::test_branch_filter_unknown_branch_returns_empty  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestGroupPopulator::test_group_names_lowercase  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestGroupPopulator::test_group_structure  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestGroupPopulator::test_groups_nonnegative_membership  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestGroupPopulator::test_ncar_equals_account_set  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestGroupPopulator::test_ncar_global_group_gid  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestGroupPopulator::test_ncar_global_group_in_every_branch  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestGroupPopulator::test_ncar_group_contains_all_branch_usernames  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestGroupPopulator::test_no_dangling_group_members  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestGroupPopulator::test_returns_dict_with_groups_key  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestGroupPopulator::test_user_groups_contains_ncar  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestGroupPopulator::test_user_groups_key_present  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestGroupPopulator::test_user_groups_symmetric  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestUserPopulator::test_account_structure  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestUserPopulator::test_at_least_one_branch  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestUserPopulator::test_branch_filter  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestUserPopulator::test_branch_filter_unknown_returns_empty  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestUserPopulator::test_gecos_has_two_commas  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestUserPopulator::test_gid_has_fallback  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestUserPopulator::test_home_directory_contains_username  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestUserPopulator::test_login_shell_is_absolute_path  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestUserPopulator::test_returns_dict_with_accounts_key  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_directory_access_queries.py::TestUserPopulator::test_uid_positive  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestAllocationTypeStructure::test_alloc_type_fairSharePercentage_is_float  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestAllocationTypeStructure::test_alloc_type_has_required_fields  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestAllocationTypeStructure::test_alloc_type_name_convention  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestAllocationTypeStructure::test_projects_is_list  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestFacilityStructure::test_allocation_types_is_list  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestFacilityStructure::test_facility_fairSharePercentage_is_float  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestFacilityStructure::test_facility_has_required_fields  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetFstreeDataStructure::test_at_least_one_facility  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetFstreeDataStructure::test_facilities_is_list  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetFstreeDataStructure::test_name_is_fairShareTree  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetFstreeDataStructure::test_returns_dict_with_name_and_facilities  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetProjectFsdata::test_alloc_type_name_format  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetProjectFsdata::test_parent_project_matches_the_fstree  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetProjectFsdata::test_project_active_is_bool  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetProjectFsdata::test_project_has_required_fields  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetProjectFsdata::test_projects_keyed_by_projcode  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetProjectFsdata::test_resource_has_required_fields  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetProjectFsdata::test_resources_is_list  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetProjectFsdata::test_resources_sorted_by_name  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetProjectFsdata::test_returns_dict_with_expected_keys  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetProjectFsdata::test_same_projects_as_fstree  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetProjectFsdata::test_users_list_present_on_resources  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetUserFsdata::test_at_least_one_user_present  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetUserFsdata::test_project_entry_has_required_fields  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetUserFsdata::test_resource_entry_has_no_users_key  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetUserFsdata::test_resource_entry_has_required_fields  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetUserFsdata::test_resources_sorted_by_name  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetUserFsdata::test_returns_dict_with_expected_keys  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetUserFsdata::test_user_has_uid_and_projects  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestGetUserFsdata::test_users_keyed_by_username  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestProjectHierarchy::test_every_project_carries_the_key  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestProjectHierarchy::test_no_project_is_its_own_parent  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestProjectHierarchy::test_parent_chains_terminate  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestProjectHierarchy::test_parent_is_none_or_a_projcode_in_the_payload  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestProjectHierarchy::test_snapshot_contains_at_least_one_tree  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestProjectStructure::test_project_active_is_bool  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestProjectStructure::test_project_has_required_fields  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestProjectStructure::test_projects_sorted_by_code  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestProjectStructure::test_resources_is_list  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestResourceFilter::test_no_filter_returns_multiple_resources  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestResourceStructure::test_account_status_is_valid  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestResourceStructure::test_active_resources_carry_iso_date_window  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestResourceStructure::test_adjusted_usage_is_int  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestResourceStructure::test_balance_equals_allocated_minus_usage  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestResourceStructure::test_cutoff_threshold_is_int  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestResourceStructure::test_lifecycle_rows_omit_date_keys  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestResourceStructure::test_resource_has_required_fields  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestResourceStructure::test_user_has_username_and_uid  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_fstree_queries.py::TestResourceStructure::test_users_is_list  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_project_access_queries.py::TestGetProjectGroupStatus::test_active_or_expiring_has_days_remaining  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_project_access_queries.py::TestGetProjectGroupStatus::test_auto_renewing_derived_from_panel  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_project_access_queries.py::TestGetProjectGroupStatus::test_branch_filter_single_branch  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_project_access_queries.py::TestGetProjectGroupStatus::test_branch_filter_unknown_returns_empty  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_project_access_queries.py::TestGetProjectGroupStatus::test_each_branch_is_a_list  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_project_access_queries.py::TestGetProjectGroupStatus::test_expiration_is_max_of_resource_end_dates  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_project_access_queries.py::TestGetProjectGroupStatus::test_expired_or_dead_has_days_expired  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_project_access_queries.py::TestGetProjectGroupStatus::test_expiring_within_warning_period  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_project_access_queries.py::TestGetProjectGroupStatus::test_future_projects_have_no_days_expired  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_project_access_queries.py::TestGetProjectGroupStatus::test_group_name_is_lowercase  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_project_access_queries.py::TestGetProjectGroupStatus::test_panel_comes_from_panel_name_not_allocation_type  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_project_access_queries.py::TestGetProjectGroupStatus::test_project_active_is_bool  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_project_access_queries.py::TestGetProjectGroupStatus::test_project_entry_has_required_fields  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_project_access_queries.py::TestGetProjectGroupStatus::test_resource_group_status_has_required_fields  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_project_access_queries.py::TestGetProjectGroupStatus::test_returns_dict_keyed_by_branch  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_project_access_queries.py::TestGetProjectGroupStatus::test_sorted_by_group_name_within_branch  # INTERVAL :n DAY and VALUES ROW() raw SQL
+tests/unit/test_project_access_queries.py::TestGetProjectGroupStatus::test_status_values  # INTERVAL :n DAY and VALUES ROW() raw SQL
+
+# --- config_inspect.schema_drift uses DATABASE() (cluster 3) (1)
+tests/api/test_health_endpoints.py::TestSchemaDriftContract::test_health_reports_schema_check_when_clean  # config_inspect.schema_drift uses DATABASE()
+
+# --- xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT (Category C cluster 2) (42)
+tests/api/test_xras_access.py::TestAuth::test_role_xras_key_is_admitted  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestGetPerson::test_404_body_is_the_closed_form[nosuchuser12345678901234x]  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestGetPerson::test_404_body_is_the_closed_form[nosuchuser12345]  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestGetPerson::test_404_body_is_the_closed_form[nosuchuser1]  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestGetPerson::test_404_body_is_the_closed_form[zz]  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestGetPerson::test_404_body_is_the_closed_form[zzzzz]  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestGetPerson::test_404_is_enveloped_unlike_the_200  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestGetPerson::test_content_type_has_no_charset  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestGetPerson::test_field_order_matches_persondto_declaration_order  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestGetPerson::test_null_fields_are_omitted_rather_than_emitted  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestGetPerson::test_response_is_compact_json  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestGetPerson::test_returns_a_bare_object_not_an_envelope  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestGetRoster::test_every_record_uses_canonical_field_order  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestGetRoster::test_no_raw_internal_org_strings_survive_the_fixup  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestGetRoster::test_returns_a_bare_array  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestGetRoster::test_roster_is_ordered_by_user_id  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestDates::test_comma_list_returns_one_entry_per_projcode  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestDates::test_dates_are_epoch_millis_not_strings  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestDates::test_millis_land_on_denver_midnight  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestDates::test_whitespace_after_a_comma_is_not_trimmed  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestOrdering::test_allocations_are_ordered_by_begin_date_descending  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestOrdering::test_exactly_one_new_per_master  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestOrdering::test_masters_are_sorted_by_projcode  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestOrdering::test_new_is_the_earliest_begin_date_first_wins_on_a_tie  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestOrdering::test_repeated_calls_are_byte_identical  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestOrdering::test_requests_are_ordered_by_end_date  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestShape::test_action_key_order_is_a_subsequence  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestShape::test_allocation_key_order_is_a_subsequence  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestShape::test_amounts_are_one_decimal_strings  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestShape::test_dates_are_yyyy_mm_dd_strings  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestShape::test_fos_is_always_one_primary_element  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestShape::test_master_key_order  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestShape::test_order_applied_is_one_based_and_dense  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestShape::test_request_key_order_and_no_xras_action_ids  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestsByRole::test_co_pi_is_valid_but_always_empty  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestsByRole::test_role_segment_is_case_insensitive  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestsByRole::test_unknown_user_404_uses_different_wording_than_people  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestsEnvelope::test_project_id_label_is_emitted_as_an_explicit_null  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestsEnvelope::test_result_is_wrapped_unlike_people  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestRequestsEnvelope::test_unknown_request_number_is_200_with_empty_masters  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestXaHeaderShim::test_both_headers_authenticate  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+tests/api/test_xras_access.py::TestXaHeaderShim::test_xa_and_basic_produce_identical_bytes  # xras_access.py: unquoted camelCase aliases, IF/ANY_VALUE, GROUP_CONCAT
+
+# --- NestedSet backtick UPDATEs (Fix 2); tree_audit also YEAR() (72)
+tests/unit/test_allocate_residual.py::TestBumpPath::test_bump_audit_rows  # NestedSet backtick UPDATEs
+tests/unit/test_allocate_residual.py::TestBumpPath::test_bump_cascades_to_shared_children_of_target  # NestedSet backtick UPDATEs
+tests/unit/test_allocate_residual.py::TestBumpPath::test_bump_increases_child_parent_unchanged  # NestedSet backtick UPDATEs
+tests/unit/test_allocate_residual.py::TestBumpPath::test_bump_replay_invariant  # NestedSet backtick UPDATEs
+tests/unit/test_allocate_residual.py::TestCreatePath::test_create_audit_row_replays  # NestedSet backtick UPDATEs
+tests/unit/test_allocate_residual.py::TestCreatePath::test_create_standalone_with_parent_dates  # NestedSet backtick UPDATEs
+tests/unit/test_allocate_residual.py::TestValidation::test_both_targets_rejected  # NestedSet backtick UPDATEs
+tests/unit/test_allocate_residual.py::TestValidation::test_bump_to_exact_parent_amount_rejected  # NestedSet backtick UPDATEs
+tests/unit/test_allocate_residual.py::TestValidation::test_covered_branch_project_not_create_target  # NestedSet backtick UPDATEs
+tests/unit/test_allocate_residual.py::TestValidation::test_create_at_exact_parent_amount_rejected  # NestedSet backtick UPDATEs
+tests/unit/test_allocate_residual.py::TestValidation::test_equal_amount_unlinked_target_rejected  # NestedSet backtick UPDATEs
+tests/unit/test_allocate_residual.py::TestValidation::test_full_residual_allowed_when_result_stays_distinct  # NestedSet backtick UPDATEs
+tests/unit/test_allocate_residual.py::TestValidation::test_inheriting_parent_rejected  # NestedSet backtick UPDATEs
+tests/unit/test_allocate_residual.py::TestValidation::test_missing_parent_rejected  # NestedSet backtick UPDATEs
+tests/unit/test_allocate_residual.py::TestValidation::test_neither_target_rejected  # NestedSet backtick UPDATEs
+tests/unit/test_allocate_residual.py::TestValidation::test_non_frontier_grandchild_target_rejected  # NestedSet backtick UPDATEs
+tests/unit/test_allocate_residual.py::TestValidation::test_nonpositive_amount_rejected  # NestedSet backtick UPDATEs
+tests/unit/test_allocate_residual.py::TestValidation::test_over_carved_parent_rejected  # NestedSet backtick UPDATEs
+tests/unit/test_allocate_residual.py::TestValidation::test_overdraft_rejected  # NestedSet backtick UPDATEs
+tests/unit/test_allocate_residual.py::TestValidation::test_pool_member_target_rejected  # NestedSet backtick UPDATEs
+tests/unit/test_disk_usage_queries.py::TestBuildDiskSubtree::test_node_without_disk_account_still_shown  # NestedSet backtick UPDATEs
+tests/unit/test_disk_usage_queries.py::TestBuildDiskSubtree::test_parent_with_children  # NestedSet backtick UPDATEs
+tests/unit/test_exchange_allocations.py::TestExchangeAllocationsAuditTrail::test_inheriting_child_cascade_replays  # NestedSet backtick UPDATEs
+tests/unit/test_exchange_allocations.py::TestExchangeAllocationsAuditTrail::test_no_adjustment_rows_on_exchanged_allocations  # NestedSet backtick UPDATEs
+tests/unit/test_exchange_allocations.py::TestExchangeAllocationsAuditTrail::test_replay_reproduces_amount  # NestedSet backtick UPDATEs
+tests/unit/test_exchange_allocations.py::TestExchangeAllocationsErrors::test_rejects_amount_exceeding_from  # NestedSet backtick UPDATEs
+tests/unit/test_exchange_allocations.py::TestExchangeAllocationsErrors::test_rejects_missing_allocation  # NestedSet backtick UPDATEs
+tests/unit/test_exchange_allocations.py::TestExchangeAllocationsErrors::test_rejects_non_positive_amount  # NestedSet backtick UPDATEs
+tests/unit/test_exchange_allocations.py::TestExchangeAllocationsErrors::test_rejects_same_from_and_to  # NestedSet backtick UPDATEs
+tests/unit/test_exchange_allocations.py::TestExchangeAllocationsHappyPath::test_applies_debit_and_credit  # NestedSet backtick UPDATEs
+tests/unit/test_exchange_allocations.py::TestExchangeAllocationsHappyPath::test_conserves_combined_total  # NestedSet backtick UPDATEs
+tests/unit/test_exchange_allocations.py::TestExchangeAllocationsHappyPath::test_dates_unchanged  # NestedSet backtick UPDATEs
+tests/unit/test_exchange_allocations.py::TestExchangeAllocationsHappyPath::test_writes_paired_transfer_rows  # NestedSet backtick UPDATEs
+tests/unit/test_factories.py::TestProjectFactories::test_make_project_child_under_parent  # NestedSet backtick UPDATEs
+tests/unit/test_query_functions.py::TestDashboardQueries::test_a_soft_deleted_allocation_is_invisible_on_both_paths  # NestedSet backtick UPDATEs
+tests/unit/test_query_functions.py::TestDiskCapacityInDashboardData::test_parent_project_capacity_includes_child_subtree  # NestedSet backtick UPDATEs
+tests/unit/test_query_functions.py::TestDiskCapacityInGetDetailedAllocationUsage::test_disk_capacity_includes_child_subtree  # NestedSet backtick UPDATEs
+tests/unit/test_query_functions.py::TestProjectQueries::test_search_projects_active_filter  # NestedSet backtick UPDATEs
+tests/unit/test_query_functions.py::TestProjectQueries::test_search_projects_by_code  # NestedSet backtick UPDATEs
+tests/unit/test_query_functions.py::TestProjectQueries::test_search_projects_by_title  # NestedSet backtick UPDATEs
+tests/unit/test_reconcile_quotas.py::TestTreeRollup::test_child_with_own_allocation_reconciles_independently  # NestedSet backtick UPDATEs
+tests/unit/test_reconcile_quotas.py::TestTreeRollup::test_mismatched_updates_to_rolled_up_value_not_own  # NestedSet backtick UPDATEs
+tests/unit/test_reconcile_quotas.py::TestTreeRollup::test_orphan_record_carries_project_directories  # NestedSet backtick UPDATEs
+tests/unit/test_reconcile_quotas.py::TestTreeRollup::test_orphan_requires_entire_subtree_empty  # NestedSet backtick UPDATEs
+tests/unit/test_reconcile_quotas.py::TestTreeRollup::test_parent_own_plus_child_sums_to_expected  # NestedSet backtick UPDATEs
+tests/unit/test_reconcile_quotas.py::TestTreeRollup::test_parent_with_zero_own_quota_rolls_up_child  # NestedSet backtick UPDATEs
+tests/unit/test_reconcile_quotas.py::TestTreeRollup::test_project_with_multiple_filesets_sums_all  # NestedSet backtick UPDATEs
+tests/unit/test_reconcile_quotas.py::TestTreeRollup::test_true_orphan_is_still_orphan  # NestedSet backtick UPDATEs
+tests/unit/test_reconcile_quotas.py::TestVerifyPathsIntegration::test_orphan_with_live_path_is_suppressed_without_force  # NestedSet backtick UPDATEs
+tests/unit/test_renew_extend.py::TestExtendDivergentTree::test_pushes_standalone_children_end_dates  # NestedSet backtick UPDATEs
+tests/unit/test_renew_extend.py::TestExtendInheritingTree::test_child_transactions_propagated  # NestedSet backtick UPDATEs
+tests/unit/test_renew_extend.py::TestExtendInheritingTree::test_pushes_root_and_all_children  # NestedSet backtick UPDATEs
+tests/unit/test_renew_extend.py::TestFindRenewableDescendants::test_divergent_tree_returns_standalone_children  # NestedSet backtick UPDATEs
+tests/unit/test_renew_extend.py::TestFindRenewableDescendants::test_inheriting_tree_returns_all_active_descendants  # NestedSet backtick UPDATEs
+tests/unit/test_renew_extend.py::TestFindSourceAllocationsAt::test_excludes_inheriting_allocations  # NestedSet backtick UPDATEs
+tests/unit/test_renew_extend.py::TestRenewDivergentTree::test_preserves_per_node_amounts  # NestedSet backtick UPDATEs
+tests/unit/test_renew_extend.py::TestRenewInheritingTree::test_creates_new_root_plus_inheriting_children  # NestedSet backtick UPDATEs
+tests/unit/test_renew_extend.py::TestRenewInheritingTree::test_topology_wired_to_new_root  # NestedSet backtick UPDATEs
+tests/unit/test_renew_extend.py::TestRenewPreservesZeroAmount::test_zero_amount_child_is_mirrored_forward  # NestedSet backtick UPDATEs
+tests/unit/test_renew_extend.py::TestRenewReplaceExisting::test_replace_true_supersedes_in_inheriting_tree  # NestedSet backtick UPDATEs
+tests/unit/test_renew_extend.py::TestRenewScaling::test_divergent_tree_scales_uniformly_across_all_nodes  # NestedSet backtick UPDATEs
+tests/unit/test_tree_audit.py::TestAuditScope::test_deficits_sort_worst_first  # NestedSet backtick UPDATEs
+tests/unit/test_tree_audit.py::TestAuditScope::test_violations_are_per_resource  # NestedSet backtick UPDATEs
+tests/unit/test_tree_audit.py::TestCarveOutTrees::test_children_exceeding_parent_are_flagged  # NestedSet backtick UPDATEs
+tests/unit/test_tree_audit.py::TestCarveOutTrees::test_covered_children_are_not_flagged  # NestedSet backtick UPDATEs
+tests/unit/test_tree_audit.py::TestCarveOutTrees::test_exactly_covered_is_not_flagged  # NestedSet backtick UPDATEs
+tests/unit/test_tree_audit.py::TestDateAudit::test_impossible_start_year_is_flagged  # NestedSet backtick UPDATEs
+tests/unit/test_tree_audit.py::TestDateAudit::test_long_windows_are_not_flagged  # NestedSet backtick UPDATEs
+tests/unit/test_tree_audit.py::TestDateAudit::test_normal_window_is_not_flagged  # NestedSet backtick UPDATEs
+tests/unit/test_tree_audit.py::TestSharedPools::test_equal_amount_children_are_pool_members  # NestedSet backtick UPDATEs
+tests/unit/test_tree_audit.py::TestSharedPools::test_linked_children_are_pool_members_regardless_of_amount  # NestedSet backtick UPDATEs
+tests/unit/test_tree_audit.py::TestSharedPools::test_pool_and_carve_children_coexist  # NestedSet backtick UPDATEs
+
+# --- VALUES ROW() CTEs and func.now() returning timestamptz (cluster 3, gotcha 14) (104)
+tests/unit/test_allocation_state_gate.py::TestFallbackReasons::test_a_historical_as_of_is_always_live  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_gate.py::TestFallbackReasons::test_a_new_allocation_is_served_from_the_patch  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_gate.py::TestFallbackReasons::test_a_project_scope_spans_its_tree  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_gate.py::TestFallbackReasons::test_a_threshold_edit_patches_its_tree_and_no_other  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_gate.py::TestFallbackReasons::test_fresh_rows_serve_by_resource_and_by_project  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_gate.py::TestFallbackReasons::test_off_by_default  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_gate.py::TestFallbackReasons::test_rows_past_max_age_are_live  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_gate.py::TestPatch::test_a_failed_patch_falls_back_to_live  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_gate.py::TestPatch::test_a_project_created_since_the_refresh_is_patched_in  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_gate.py::TestPatch::test_a_retired_tree_without_rows_is_not_patched  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_gate.py::TestPatch::test_an_allocation_ended_long_ago_leaves_the_answer  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_gate.py::TestPatch::test_patched_rows_equal_a_fresh_projection  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_gate.py::TestPatch::test_the_observer_sees_every_verdict  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_gate.py::TestPatch::test_the_sibling_tree_is_served_from_the_table  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_gate.py::TestPatch::test_too_many_stale_trees_go_live  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_gate.py::TestWatermark::test_it_reads_the_db_clock  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_transitions.py::TestDetachAllocation::test_detach_clears_parent_link  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_transitions.py::TestDetachAllocation::test_detach_standalone_raises  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_transitions.py::TestGetPartitionedDescendantSum::test_sum_aggregates_standalone_descendants  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_transitions.py::TestGetPartitionedDescendantSum::test_sum_excludes_non_overlapping_dates  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_transitions.py::TestGetPartitionedDescendantSum::test_sum_returns_zero_when_descendants_inherit  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_transitions.py::TestLinkAllocationToParent::test_link_already_inheriting_raises  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_transitions.py::TestLinkAllocationToParent::test_link_non_immediate_parent_raises  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_transitions.py::TestLinkAllocationToParent::test_link_resource_mismatch_raises  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_transitions.py::TestLinkAllocationToParent::test_link_success_mirrors_parent_fields  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_transitions.py::TestLinkAllocationToParent::test_link_unknown_child_raises  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_transitions.py::TestLinkAllocationToParent::test_link_unknown_parent_raises  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_transitions.py::TestPropagateAllocationToSubprojects::test_propagate_creates_child_allocations  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_transitions.py::TestPropagateAllocationToSubprojects::test_propagate_skip_existing_false_raises  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_transitions.py::TestPropagateAllocationToSubprojects::test_propagate_skips_descendants_with_existing_allocations  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_allocation_state_transitions.py::TestPropagateAllocationToSubprojects::test_propagate_skips_inactive_descendants  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_carveout_frontier.py::TestAccountIndex::test_indexed_walk_issues_no_account_query  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_carveout_frontier.py::TestAccountIndex::test_indexed_walk_matches_the_query_walk  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_carveout_frontier.py::TestFrontierClassification::test_equal_amount_unlinked_child_is_pool  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_carveout_frontier.py::TestFrontierClassification::test_linked_children_are_pool  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_carveout_frontier.py::TestFrontierClassification::test_mixed_pool_and_carve_children  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_carveout_frontier.py::TestFrontierClassification::test_simple_carve_children  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_carveout_frontier.py::TestFrontierNesting::test_frontier_stops_at_allocated_child  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_carveout_frontier.py::TestFrontierNesting::test_grandchild_is_frontier_when_child_uncovered  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_carveout_frontier.py::TestFrontierNesting::test_inactive_child_branch_skipped  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_carveout_frontier.py::TestFrontierNesting::test_uncovered_branch_is_open_project  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_carveout_frontier.py::TestFrontierScoping::test_date_disjoint_allocations_excluded  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_carveout_frontier.py::TestFrontierScoping::test_multiple_overlapping_rows_all_count  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_carveout_frontier.py::TestFrontierScoping::test_over_carved_clamps_residual  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_carveout_frontier.py::TestFrontierScoping::test_per_resource_divergence  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestAllocationSummary::test_a_total_row_with_a_shared_disk_tree_stays_live  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestAllocationSummary::test_all_resources_over_the_snapshot_on_equals_off  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestAllocationSummary::test_one_project_on_equals_off[inheriting_project]  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestAllocationSummary::test_one_project_on_equals_off[subtree_project]  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestAllocationSummary::test_one_resource_over_the_snapshot_on_equals_off  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestAllocationSummary::test_without_adjustments_stays_live  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestApiSchema::test_leaf_project_on_equals_off  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestApiSchema::test_parent_project_on_equals_off[inheriting_project]  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestApiSchema::test_parent_project_on_equals_off[subtree_project]  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestDashboards::test_a_historical_as_of_stays_live  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestDashboards::test_a_served_scope_runs_no_rollup  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestDashboards::test_an_empty_table_falls_back_to_live  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestDashboards::test_batched_builder_on_equals_off[inheriting_project]  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestDashboards::test_batched_builder_on_equals_off[multi_project_user]  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestDashboards::test_batched_builder_on_equals_off[subtree_project]  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestDashboards::test_per_project_builder_on_equals_off[inheriting_project]  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestDashboards::test_per_project_builder_on_equals_off[subtree_project]  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestDeepDive::test_the_allocation_tree_fragment_renders  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestFstree::test_one_resource_on_equals_off  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestStaleTree::test_allocation_summary_on_equals_off  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestStaleTree::test_an_untouched_tree_is_still_served_without_recomputing  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestStaleTree::test_dashboard_on_equals_off  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestStaleTree::test_fstree_on_equals_off  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestStaleTree::test_the_gate_patches_exactly_one_tree  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_read_model_readers.py::TestStaleTree::test_the_per_project_builder_consults_the_gate_once  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestFstreeRegressionAfterRefactor::test_fstree_data_loads  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestInheritedAllocation::test_non_inheriting_has_null_self_charges  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestInheritedAllocation::test_pool_charges_gte_self  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestInheritedAllocation::test_resource_dict_flags_inheriting  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestInheritedAllocation::test_threshold_math_holds_on_pool  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestInheritedAllocation::test_windows_carry_self_charges  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestLeafProject::test_window_charges_are_floats  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestResourceFilter::test_filter_returns_only_requested_resource  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestRollingUsageStructure::test_custom_single_window  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestRollingUsageStructure::test_each_entry_has_required_fields  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestRollingUsageStructure::test_pct_of_prorated_is_non_negative  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestRollingUsageStructure::test_resource_keys_are_strings  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestRollingUsageStructure::test_returns_dict  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestRollingUsageStructure::test_window_entry_has_required_fields  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestRollingUsageStructure::test_windows_dict_has_30_and_90  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestSubtreeProject::test_90d_charges_gte_30d_charges  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestSubtreeProject::test_charges_non_negative  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestSubtreeProject::test_has_30_and_90_windows  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestSubtreeProject::test_returns_data  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestThresholdLimits::test_fstree_threshold_limit_values_match  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestThresholdLimits::test_no_threshold_means_no_limit_fields  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestThresholdLimits::test_pct_of_limit_consistent_with_charges  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestThresholdLimits::test_threshold_values_present_when_configured  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_rolling_usage.py::TestThresholdLimits::test_use_limit_equals_prorated_times_threshold  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_shared_allocation_usage.py::TestAllocationRoot::test_root_of_grandchild_walks_to_top  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_shared_allocation_usage.py::TestAllocationRoot::test_root_of_root_is_self  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_shared_allocation_usage.py::TestSharedAllocationUsage::test_leaf_used_reflects_root_tree  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_shared_allocation_usage.py::TestSharedAllocationUsage::test_mid_self_used_includes_descendants  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_shared_allocation_usage.py::TestSharedAllocationUsage::test_root_sees_full_tree_usage  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_shared_allocation_usage.py::TestSharedAllocationUsage::test_self_percent_used_present_only_when_inheriting  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_task_refresh_allocation_state.py::TestProjection::test_rows_equal_the_dashboard_builder_on_the_snapshot[subtree_project]  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_task_refresh_allocation_state.py::TestTheTask::test_a_real_run_covers_the_snapshot  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_task_refresh_allocation_state.py::TestTheTask::test_an_empty_projection_raises_and_leaves_the_table_alone  # VALUES ROW() CTEs and func.now() returning timestamptz
+tests/unit/test_task_refresh_allocation_state.py::TestTheTask::test_it_fills_the_table_and_reports_counts  # VALUES ROW() CTEs and func.now() returning timestamptz
