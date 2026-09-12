@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 import psycopg2
 import pymysql
 import yaml
+from dotenv import find_dotenv, load_dotenv
 from sqlalchemy import (URL, Boolean, Column, ForeignKeyConstraint, Index, Integer, MetaData, String,
                         Table, UniqueConstraint, create_engine)
 
@@ -373,6 +374,7 @@ def swap(maint, db):
 # ----------------------------
 def main(argv=None):
     args = parse_args(argv)
+    load_dotenv(find_dotenv())
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
     target = target_from(os.environ, args)
