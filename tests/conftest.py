@@ -1,12 +1,13 @@
 """pytest fixtures and safety guards for the SAM test suite.
 
 The most important thing this file does: refuse to run against any database
-other than the dedicated `mysql-test` container. Production safety depends
-on the allowlist check in `pytest_configure` firing before any fixture or
-test module touches a connection.
+other than the dedicated test containers (`mysql-test`, `postgres-test`).
+Production safety depends on the allowlist check in `pytest_configure` firing
+before any fixture or test module touches a connection.
 
 Any run of `pytest` MUST set `SAM_TEST_DB_URL` to a SQLAlchemy URL pointing
-at an allowed host/port.
+at an allowed host/port. The suite runs on both backends; see
+docs/TESTING.md for the markers and the Postgres expected-failures file.
 """
 import os
 import sys
@@ -21,16 +22,46 @@ from sqlalchemy.orm import sessionmaker
 # ---- Safety allowlist -----------------------------------------------------
 #
 # (host, port) pairs that are permitted as a test database target. The
-# mysql-test compose service binds host port 3307 on localhost; from inside
-# a container on the sam-network it would be reachable as mysql-test:3306.
-# Any other combination — in particular the main dev DB on 3306, or any
-# remote production host — is rejected.
+# mysql-test compose service binds host port 3307 on localhost (mysql-test:3306
+# from inside the sam-network); postgres-test binds 5434 (postgres-test:5432).
+# Any other combination — in particular the main dev DBs on 3306/5433, or any
+# remote host — is rejected.
 
 _ALLOWED_TEST_TARGETS = {
     ("127.0.0.1", 3307),
     ("localhost", 3307),
     ("mysql-test", 3306),
+    ("127.0.0.1", 5434),
+    ("localhost", 5434),
+    ("postgres-test", 5432),
 }
+
+# tests/postgres_expected_failures.txt: node ids that still fail on Postgres,
+# applied as strict xfails so a fixed test cannot stay listed.
+EXPECTED_FAILURES_FILE = Path(__file__).parent / "postgres_expected_failures.txt"
+
+
+def test_backend() -> str:
+    """'mysql' or 'postgresql', from SAM_TEST_DB_URL (valid after pytest_configure)."""
+    return make_url(os.environ["SAM_TEST_DB_URL"]).get_backend_name()
+
+
+def read_expected_failures(path=EXPECTED_FAILURES_FILE):
+    """[(node id or prefix, reason)] from the file; blank and comment lines skipped."""
+    entries = []
+    if not path.exists():
+        return entries
+    for raw in path.read_text().splitlines():
+        line, _, comment = raw.partition("#")
+        line = line.strip()
+        if line:
+            entries.append((line, comment.strip() or "listed in postgres_expected_failures.txt"))
+    return entries
+
+
+def expected_failure_matches(entry: str, nodeid: str) -> bool:
+    """An entry names one test exactly, or a file/class/test prefix of many."""
+    return nodeid == entry or nodeid.startswith(entry + "::") or nodeid.startswith(entry + "[")
 
 
 def _verify_test_target(url) -> None:
@@ -55,11 +86,12 @@ def _verify_test_target(url) -> None:
             f"  SAM_TEST_DB_URL points at: {host}:{port}\n"
             f"  Allowed targets:           {allowed}\n"
             "\n"
-            "Start the isolated test container with:\n"
-            "  docker compose --profile test up -d mysql-test\n"
+            "Start the isolated test containers with:\n"
+            "  docker compose --profile test up -d mysql-test postgres-test\n"
             "\n"
-            "Then set:\n"
+            "Then set one of:\n"
             "  export SAM_TEST_DB_URL='mysql+pymysql://root:root@127.0.0.1:3307/sam'\n"
+            "  export SAM_TEST_DB_URL='postgresql+psycopg2://sam_test:sam_test@127.0.0.1:5434/sam'\n"
             + "=" * 70,
             returncode=2,
         )
@@ -174,6 +206,27 @@ def pytest_configure(config):
     tests_path = str(Path(__file__).parent)
     if tests_path not in sys.path:
         sys.path.insert(0, tests_path)
+
+
+def pytest_collection_modifyitems(config, items):
+    """Dialect markers and the Postgres expected-failures list.
+
+    Runs in every xdist worker, so each applies the same marks. Never exit
+    from here: a stale entry is reported by test_postgres_expected_failures.py.
+    """
+    backend = test_backend()
+    skip_mysql = pytest.mark.skip(reason="mysql_only")
+    skip_pg = pytest.mark.skip(reason="postgres_only")
+    expected = read_expected_failures() if backend == "postgresql" else []
+    for item in items:
+        if backend != "mysql" and item.get_closest_marker("mysql_only"):
+            item.add_marker(skip_mysql)
+        if backend != "postgresql" and item.get_closest_marker("postgres_only"):
+            item.add_marker(skip_pg)
+        for entry, reason in expected:
+            if expected_failure_matches(entry, item.nodeid):
+                item.add_marker(pytest.mark.xfail(strict=True, reason=reason))
+                break
 
 
 # ---- Test-only RBAC bundle ------------------------------------------------
@@ -329,10 +382,16 @@ def test_db_url() -> str:
 
 @pytest.fixture(scope="session")
 def engine(test_db_url):
-    """SQLAlchemy engine bound to the isolated mysql-test container."""
+    """SQLAlchemy engine bound to the isolated test container."""
     eng = create_engine(test_db_url, future=True, pool_pre_ping=True)
     yield eng
     eng.dispose()
+
+
+@pytest.fixture(scope="session")
+def dialect(engine) -> str:
+    """'mysql' or 'postgresql' — for the few tests whose expectations differ by backend."""
+    return engine.dialect.name
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -343,12 +402,18 @@ def _bootstrap_read_model_table(engine, tmp_path_factory):
     it before the prod DDL is applied. Running the script's CREATE statements
     here lets schema-validation compare the ORM against the SCRIPT-created
     table (the convergence check), and becomes a no-op once the blob carries
-    the table. Serialized across xdist workers with a file lock.
+    the table. Serialized across xdist workers with a file lock. The Postgres
+    copy is built from the ORM by load_postgres.py, so the table exists there;
+    the ORM DDL covers the case where it does not.
     """
     import fcntl
     from sqlalchemy import inspect as _sa_inspect, text as _text
 
     if _sa_inspect(engine).has_table('account_allocation_state'):
+        return
+    if engine.dialect.name == 'postgresql':
+        from sam.summaries.allocation_state import AccountAllocationState
+        AccountAllocationState.__table__.create(engine, checkfirst=True)
         return
     script = Path(__file__).resolve().parents[1] / 'scripts' / 'sql' / \
         'create_account_allocation_state.sql'
@@ -708,7 +773,7 @@ def _active_project_id(engine):
             FROM project p
             JOIN account a ON a.project_id = p.project_id
             JOIN allocation al ON al.account_id = a.account_id
-            WHERE p.active = 1
+            WHERE p.active = TRUE
               AND al.start_date <= NOW()
               AND (al.end_date IS NULL OR al.end_date >= NOW())
             GROUP BY p.project_id
@@ -731,8 +796,8 @@ def _multi_project_user_id(engine):
             JOIN account_user au ON au.user_id = u.user_id
             JOIN account a ON a.account_id = au.account_id
             JOIN project p ON p.project_id = a.project_id
-            WHERE u.active = 1 AND u.locked = 0
-              AND p.active = 1
+            WHERE u.active = TRUE AND u.locked = FALSE
+              AND p.active = TRUE
             GROUP BY u.user_id
             HAVING COUNT(DISTINCT p.project_id) >= 2
             ORDER BY u.user_id
@@ -783,7 +848,7 @@ def _subtree_project_id(engine):
             SELECT p.project_id
             FROM project p
             JOIN project c ON c.parent_id = p.project_id
-            WHERE p.active = 1 AND c.active = 1
+            WHERE p.active = TRUE AND c.active = TRUE
             GROUP BY p.project_id
             HAVING COUNT(c.project_id) >= 3
             ORDER BY p.project_id
@@ -838,8 +903,8 @@ def _inheriting_project_lookup(engine):
             JOIN allocation al ON al.account_id = a.account_id
             JOIN resources r ON r.resource_id = a.resource_id
             JOIN resource_type rt ON rt.resource_type_id = r.resource_type_id
-            WHERE p.active = 1
-              AND a.deleted = 0
+            WHERE p.active = TRUE
+              AND a.deleted = FALSE
               AND al.parent_allocation_id IS NOT NULL
               AND al.start_date <= NOW()
               AND (al.end_date IS NULL OR al.end_date >= NOW())

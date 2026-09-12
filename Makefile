@@ -6,6 +6,7 @@ CONDA_ROOT := $(shell conda info --base)
 config_env := module load conda >/dev/null 2>&1 || true && . $(CONDA_ROOT)/etc/profile.d/conda.sh
 
 .PHONY: help clean clobber distclean fixperms check perf helm-test e2e check-db-vs-orms docker-build docker-up docker-down docker-restart docker-watch docker-pytest \
+        pytest-pg docker-pytest-pg \
         conda-env prune-old-envs print-env-hash migrate-legacy-env \
         migrate-status-current migrate-status-up migrate-status-down migrate-status-history migrate-status-revision migrate-status-stamp-head
 
@@ -157,6 +158,15 @@ check: ## Run tests
 	$(config_env) && source etc/config_env.sh && python3 scripts/orm_inventory.py
 	$(config_env) && source etc/config_env.sh && python3 -m pytest -v -n auto
 
+# The same default tier on the Postgres copy of the test DB (postgres-test,
+# 5434; built by `make -C containers/sam-sql-dev pg-test-up clone-pg-test`).
+# Failures still expected on Postgres are listed, as strict xfails, in
+# tests/postgres_expected_failures.txt.
+SAM_TEST_PG_URL := postgresql+psycopg2://sam_test:sam_test@127.0.0.1:5434/sam
+pytest-pg: ## Run the default test tier against postgres-test
+	$(config_env) && source etc/config_env.sh && \
+	    SAM_TEST_DB_URL='$(SAM_TEST_PG_URL)' python3 -m pytest -v -n auto
+
 # Globs helm/tests/*.sh rather than naming scripts. ci-staging.yaml calls this
 # target, so a new render test runs in CI the moment it exists — the previous
 # arrangement named test-oidc-render.sh explicitly, which is how a second one
@@ -246,6 +256,16 @@ docker-pytest: ## Run pytest with coverage inside the webapp container against m
 	    webapp bash -c "cd /code && pytest --cov=src --cov-report=term-missing --cov-report=html"
 	@docker compose cp webapp:/code/htmlcov ./htmlcov >/dev/null 2>&1 || echo "⚠️  No coverage report copied"
 	@echo "📊 HTML coverage report: ./htmlcov/index.html"
+
+docker-pytest-pg: ## Build the Postgres test copy inside the stack and run pytest against it (parity with CI)
+	@docker compose --profile test up --detach --wait
+	@docker compose exec -T \
+	    -e SAM_TEST_MYSQL_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
+	    -e SAM_TEST_PG_HOST=postgres-test -e SAM_TEST_PG_PORT=5432 \
+	    webapp make -C /code/containers/sam-sql-dev clone-pg-test
+	@docker compose exec -T \
+	    -e SAM_TEST_DB_URL='postgresql+psycopg2://sam_test:sam_test@postgres-test:5432/sam' \
+	    webapp bash -c "cd /code && pytest"
 
 # -------------------------------------------------------------------
 # Alembic — system_status database (per-bind env)
