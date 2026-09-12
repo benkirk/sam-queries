@@ -17,8 +17,10 @@ htmlcov/
 # the build-context root, not subdirectories — this is the reason
 # the 223 MB dump dir was previously slipping into the image.
 **/*.sql
-# The DDL scripts are small and the test-DB bootstrap needs them in the image.
+# The DDL scripts are small and the test-DB bootstrap needs them in the image;
+# the Postgres views are what `make clone-pg-test` applies inside the stack.
 !scripts/sql/*.sql
+!containers/sam-sql-dev/postgres/views.sql
 **/*.sql.xz
 **/*.dump
 .git/
