@@ -21,9 +21,10 @@ two horizons:
    SAM is retired are we in complete control of the schema and out of
    compatibility mode. Until then, SAM-side migrations stay off for the SAM DB.
 
-Stages 1 and 2 (the views, the loader, both targets) are done. What remains for the
-near term is the dual-backend test harness (Stage 3), the dialect switch plus a
-bounded list of query-layer fixes the harness will confirm (Stage 4), and the
+Stages 1–4 are done: the views, the loader and both targets; the dual-backend test
+harness with a Postgres copy in CI; the dialect switch (`SAM_DB_DRIVER`) and every
+query-layer fix. The default tier is green on both backends with an empty
+`tests/postgres_expected_failures.txt`. What remains for the near term is the
 `sam-dev` deployment (Stage 5).
 
 ---
@@ -57,22 +58,22 @@ not sufficient.** Two facts make it tractable:
 
 **The one genuine hazard of a permanent split:** dev stops reproducing prod's SQL
 semantics (GROUP BY strictness, implicit coercion, and — unless ported — collation),
-so a MySQL-only bug can hide in dev and surface in prod. The database may stand
-(the `sam_dev` copy exists and is refreshed on demand); what stays gated is the
-**webapp** on Postgres. The gate is Stage 3: the suite runs against a Postgres copy
-of the test database in CI, and the `sam-dev` deployment (Stage 5) waits until the
-Postgres expected-failures list for the default tier is empty.
+so a MySQL-only bug can hide in dev and surface in prod. The answer is Stage 3: the
+suite runs against a Postgres copy of the test database in CI as well as against
+MySQL, so a query that works on one backend only fails a job. The
+expected-failures list is empty, which was the gate for the `sam-dev` deployment
+(Stage 5).
 
 ### What "only ORM tweaks" covers — and the four things it doesn't
 
 | Bucket | ORM tweak? | Effort | Status |
 |---|---|---|---|
-| Session driver switch (`SAM_DB_DRIVER`), SSL branch | Yes | Small | Fix 0, Stage 4. Near-copy of `system_status/session`. |
-| Timestamps, NestedSet Core `update()`, fractional `TIMESTAMP` | Yes | Small | Fixes 2 and 4, Stage 4, prod-safe via `with_variant` / Core. |
+| Session driver switch (`SAM_DB_DRIVER`, `SAM_DB_PORT`), SSL branch | Yes | Small | **Done** (Fix 0): `sam/session/__init__.py` mirrors `system_status/session`. |
+| Timestamps, NestedSet Core `update()`, fractional `TIMESTAMP` | Yes | Small | **Done** (Fixes 2 and 4), prod-safe via `with_variant` / Core. |
 | **A. The 7 database views** | **No** | — | **Done**: `containers/sam-sql-dev/postgres/views.sql`, applied by the loader. |
-| **B. PG provisioning pipeline** | **No** | — | **Done**: `containers/sam-sql-dev/load_postgres.py`, two targets (compose 5433, CNPG). |
-| **C. Query-layer dialect SQL** | Partly | Bounded, fully inventoried | Category C below: four `+ INTERVAL` sites, two `YEAR()`, one `GROUP_CONCAT` cluster, one untyped bind, four unguarded `VALUES ROW()` CTEs, one `information_schema` query, four backtick `UPDATE`s. `IFNULL` has no live use. |
-| **D. Case-sensitivity / collation** | **No — no code fix** | Load-time | Mitigated by the loader: an ICU `sam_ci` collation on every column MySQL declares `_ci` (gotcha 6). Residual risk is code that *relies* on case-sensitivity; none known. |
+| **B. PG provisioning pipeline** | **No** | — | **Done**: `containers/sam-sql-dev/load_postgres.py`, three targets (compose 5433, CNPG, `postgres-test` 5434). |
+| **C. Query-layer dialect SQL** | Partly | — | **Done**: Category C below, plus `src/sam/sqlcompat.py` for the three fragments Core cannot express (row constructor, schema predicate, statement-time clock) and `ci_like`. |
+| **D. Case-sensitivity / collation** | **No — no code fix** | Load-time | **Done** by the loader: an ICU `sam_ci` collation on every column MySQL declares `_ci` (gotcha 6). ILIKE is the one consequence, handled by `ci_like`. |
 
 ---
 
@@ -143,8 +144,9 @@ column comes out `timestamp WITH time zone` — the only such column among 208 o
 `sam_dev` copy — while MySQL ignores the flag and drops the fractional precision the
 author meant. This is the only fractional case in the tree.
 
-**Fix:** Fix 4 below — `DateTime().with_variant(mysql.TIMESTAMP(fsp=3), 'mysql')`,
-which keeps MySQL byte-identical and gives Postgres a naive timestamp.
+**Fix (done):** Fix 4 below — `DateTime().with_variant(mysql.TIMESTAMP(fsp=3), 'mysql')`,
+which keeps MySQL byte-identical and gives Postgres a naive timestamp;
+`tests/unit/test_load_postgres.py` asserts no column compiles `WITH TIME ZONE`.
 
 ---
 
@@ -173,7 +175,8 @@ mostly clean. The live risks are raw SQL:
   `projects/projects.py:33-58` has the probe and a Python fallback; `rolling_usage.py`
   raises. `fstree_access.py` calls into it.
 
-Stage 3 runs them against Postgres; Category C below lists the fixes.
+Both are done (Category C below): `sqlcompat.row_constructor` spells the row
+constructor per dialect, and the probe uses it, so Postgres takes the CTE path.
 
 #### 6. Case sensitivity — ported at load time, not in code
 
@@ -191,9 +194,13 @@ folds case and accents the way `_general_ci` does. Postgres 18 — the version o
 `csg-postgres` and in compose — supports `LIKE` on nondeterministic collations, so
 equality, `LIKE`, `IN` and `ORDER BY` all match MySQL with no code change. B-tree
 indexes work for equality and ordering; `text_pattern_ops` indexes do not apply,
-which is fine for a dev copy. Code that *relies* on case-sensitive comparison of a
-`_ci` column would be the residual risk; none is known, and the harness would show
-it.
+which is fine for a dev copy. **`ILIKE` is rejected** on a nondeterministic
+collation (measured on the first load: "nondeterministic collations are not
+supported for ILIKE"), and SQLAlchemy renders `.ilike()` as `ILIKE` on Postgres, so
+every `.ilike()` site goes through `sqlcompat.ci_like` — `lower(x) LIKE lower(y)`,
+which is what `ilike` already rendered on MySQL; a gate test keeps `.ilike(` out of
+`sam/` and `webapp/`. Code that *relies* on case-sensitive comparison of a `_ci`
+column would be the residual risk; the harness found none.
 
 ---
 
@@ -235,7 +242,7 @@ column (fixed). `load_postgres.py` sizes every varchar from the source's
 `information_schema` and prints each ORM drift it had to widen, so the ORM stays
 the thing to fix while the load never truncates.
 
-#### 13. The test suite carries MySQL-isms of its own (Stage 3 work)
+#### 13. The test suite carried MySQL-isms of its own (fixed in Stage 3)
 - `tests/integration/test_schema_validation.py` is built on MySQL
   `INFORMATION_SCHEMA` (`STATISTICS`, `SEQ_IN_INDEX`, `GROUP_CONCAT ... ORDER BY`,
   charset assertions). It is the MySQL drift gate by design and stays MySQL-only.
@@ -255,15 +262,19 @@ the thing to fix while the load never truncates.
   `test_smoke.py` check host and port only, never the driver; a Postgres target
   needs its own entries.
 
-#### 14. `NOW()` is the server's clock on MySQL and the session's zone on Postgres
-SAM's columns are naive-Mountain (`CLAUDE.md`, DateTime Handling): MySQL `NOW()` is
-the server's Mountain clock, Postgres `now()` is the session `TimeZone`. The CNPG
-cluster runs `America/Denver`; the compose `postgres` and test services must set
-`TZ`/`PGTZ` the same way so raw-SQL `NOW()` comparisons and the one
-`timestamp with time zone` column keep their meaning. Nine raw-SQL sites use
-`NOW()` (`directory_access.py`, `project_access.py`, `tree_audit.py`,
-`fstree_access.py`, `xras_access.py`); none needs a code change once the zone
-matches.
+#### 14. `now()` differs three ways on Postgres: zone, type, and *when*
+SAM's columns are naive-Mountain (`CLAUDE.md`, DateTime Handling). MySQL `NOW()` is
+the server's Mountain clock at statement start, naive. Postgres `now()` is (a) in
+the session `TimeZone`, (b) `timestamptz`, and (c) the **transaction** start, so a
+row inserted earlier in the same transaction never reads as current, and the
+value cannot be compared with the naive stamps. The zone is handled by
+configuration: the CNPG cluster runs `America/Denver` and the compose Postgres
+services pin `timezone` the same way. The type and the timing are handled by
+`sqlcompat.sam_now()`, a compiled construct that renders `now()` on MySQL and
+`CAST(statement_timestamp() AS TIMESTAMP)` on Postgres; every `func.now()` in the
+model hybrids and the read-model gate goes through it. Raw-SQL `NOW()` in the
+read-only legacy queries (`fstree_access.py`, `xras_access.py`, `tree_audit.py`)
+stays: those run in short transactions where transaction-start is fine.
 
 ---
 
@@ -275,10 +286,11 @@ selects the dialect. Where a change would alter *prod MySQL* DDL/behavior, prefe
 diverges — the dual-backend split means prod must not shift, and
 `make check-db-vs-orms` is the proof.
 
-### Fix 0: dialect switch in `sam.session` — mirror `system_status`
+### Fix 0 (done): dialect switch in `sam.session` — mirror `system_status`
 
-Add a `SAM_DB_DRIVER` env var (default `mysql`) and branch the driver + SSL args,
-exactly as `system_status/session/__init__.py:48-52,104-107` already does:
+`SAM_DB_DRIVER` (default `mysql`) and `SAM_DB_PORT` select the drivername and port;
+the SSL args branch by driver, exactly as `system_status/session/__init__.py`
+does:
 
 ```python
 driver = os.getenv('SAM_DB_DRIVER', 'mysql').lower()
@@ -288,12 +300,11 @@ if require_ssl:
     connect_args['sslmode'] = 'require' if driver in ('postgresql', 'postgres') else ...
     # else: connect_args['ssl'] = {'ssl_disabled': False}   # pymysql
 ```
-Plumb through `src/config.py` (`SAMConfig`, including `reload()`), the SSL branch in
-`webapp/run.py:~128` (add `application_name` on Postgres as the status engine does
-at `webapp/run.py:150-158`), `SAM_DB_NAME` (already read, default `sam`; `sam_dev`
-on CNPG), `.env.example`, `compose.yaml` pass-through, and helm `values*.yaml`
-(default mysql everywhere). Unit tests: the URL built under each driver, and the
-engine options branch.
+Plumbed through `src/config.py` (`SAMConfig`, including `reload()`), the SAM engine
+options in `webapp/run.py` (`application_name` on Postgres, as the status engine),
+`.env.example` (a POSTGRES block), `compose.yaml` pass-through, helm `values.yaml`
+(`mysql`) and the tasks CronJob env. `tests/unit/test_sam_session_url.py` pins the
+URL under each driver and the connect_args branch.
 
 ### Fix 1: `TimestampMixin` / `SoftDeleteMixin` — no change for dual ops
 
@@ -303,10 +314,10 @@ is emitted by the ORM on both. **Caveat:** `onupdate` fires through the ORM only
 raw-SQL updates won't auto-stamp on PG (they do on MySQL). See Fix 5 for optional
 server-side parity at prod cutover.
 
-### Fix 2: `NestedSetMixin` raw SQL -> Core `update()`
+### Fix 2 (done): `NestedSetMixin` raw SQL -> Core `update()`
 
-Replace the four backtick statements at `base.py:403-420` with SQLAlchemy Core
-`update()` constructs (dialect-neutral quoting):
+The four backtick statements in `base.py` are SQLAlchemy Core `update()` constructs
+(dialect-neutral quoting), in the shape of:
 
 ```python
 from sqlalchemy import update, table as sa_table, column as sa_col, bindparam
@@ -319,8 +330,8 @@ def _ns_shift(session, table_name, root_col, pr, root=None):
     session.execute(update(t).where(left).values(tree_left=t.c.tree_left + 2), params)
     session.execute(update(t).where(right).values(tree_right=t.c.tree_right + 2), params)
 ```
-`tests/unit/test_no_fstring_sql.py` pins the per-file count of f-string SQL; it
-drops by four with this fix.
+`tests/unit/test_no_fstring_sql.py` pins the per-file count of f-string SQL; the
+`base.py` entry is gone.
 
 ### Fix 3 (optional): `Float(precision)` -> `Numeric` for financial columns
 
@@ -331,7 +342,7 @@ remaining  = Column(Numeric(25, 8))   # was Float(25)   -- double(25,8)
 ```
 View models only (gotcha 4); worth doing for exactness, not needed for dual ops.
 
-### Fix 4: fractional timestamp without the `timezone` trap — `core/users.py:703`
+### Fix 4 (done): fractional timestamp without the `timezone` trap — `core/users.py`
 
 ```python
 from sqlalchemy.dialects.mysql import TIMESTAMP as MYSQL_TIMESTAMP
@@ -361,34 +372,35 @@ _pg_auto_modified_ddl = DDL("""
 Not required for the dev stepping stone (writes go through the ORM). Belongs in the
 future `migrations/sam/` Alembic baseline, not the compatibility-mode ORM.
 
-### Category C — the exact query-layer list
+### Category C — the exact query-layer list (all done)
 
 Every raw or dialect-specific SQL site in `src/` (excluding `system_status`, which
-already runs on Postgres in production):
+already runs on Postgres in production), and what it became:
 
 | Site | Construct | Portable form |
 |---|---|---|
-| `queries/directory_access.py:61,77,135`, `queries/project_access.py:68` | `end_date + INTERVAL :n DAY > NOW()` | bind a Python-computed cutoff: `end_date > :cutoff` — index-friendly on both |
-| `queries/tree_audit.py:117-118` | `YEAR(x)` | `EXTRACT(YEAR FROM x)`, valid on both |
-| `queries/xras_access.py:61-75,101` | `IF()`, nested `ANY_VALUE()`, alias `GROUP BY` | the `xras_user` form in `containers/sam-sql-dev/postgres/views.sql`: `COALESCE`, `ARRAY_AGG ... FILTER` / `MIN`, group by `u.user_id` |
-| `queries/xras_access.py:269` | `GROUP_CONCAT(...)` | one-line dialect branch: `GROUP_CONCAT` on MySQL, `STRING_AGG(x::text, ',')` on Postgres |
-| `queries/fstree_access.py:181` | untyped `:resource` in a `UNION ALL` select list | `CAST(:resource AS VARCHAR(40))` |
-| `queries/rolling_usage.py:53,68-89,137,152-187` | `VALUES ROW(...)` CTEs, no probe | row constructor `ROW(` on MySQL, `(` on Postgres via one helper keyed on `session.bind.dialect.name`, plus the `projects/projects.py:33-58` probe so an unknown engine falls back to Python |
-| `webapp/utils/config_inspect.py:232-236` | `INFORMATION_SCHEMA.COLUMNS ... DATABASE()` | `sqlalchemy.inspect(engine).get_columns()` per table |
-| `base.py:403-420` | backtick `UPDATE` ×4 | Fix 2 |
+| `queries/directory_access.py`, `queries/project_access.py` | `end_date + INTERVAL :n DAY > NOW()` | `end_date > :cutoff`, the cutoff computed on the app clock (`grace_cutoff`); index-friendly on both |
+| `queries/tree_audit.py` | `YEAR(x)` | `EXTRACT(YEAR FROM x)` |
+| `queries/xras_access.py` | `IF()`, nested `ANY_VALUE()`, alias `GROUP BY`, unquoted camelCase aliases | `COALESCE`, `MIN` over the same candidates, group by base columns, `AS "firstName"` (Postgres folds bare aliases to lowercase and the callers read `row.projectId`) |
+| `queries/xras_access.py` | `GROUP_CONCAT(...)` | the one per-dialect statement: `GROUP_CONCAT` on MySQL, `STRING_AGG(CAST(x AS TEXT), ',')` on Postgres, selected in `get_request_rows` |
+| `queries/fstree_access.py` | untyped `:resource` in a `UNION ALL` select list | no change needed: psycopg2 interpolates the literal client-side and Postgres resolves it against the other branch |
+| `queries/rolling_usage.py`, `projects/projects.py` | `VALUES ROW(...)` CTEs and the capability probe | `sqlcompat.row_constructor(session)`: `ROW` on MySQL, empty on Postgres; the probe uses it too |
+| `webapp/utils/config_inspect.py` | `INFORMATION_SCHEMA.COLUMNS ... DATABASE()` | `sqlcompat.schema_predicate(conn)`: `DATABASE()` / `current_schema()`, one query as before |
+| `base.py` and the model hybrids | backtick `UPDATE` ×4; `func.now()` | Fix 2; `sqlcompat.sam_now()` (gotcha 14) |
+| 34 `.ilike()` sites | `ILIKE` on Postgres | `sqlcompat.ci_like` (gotcha 6) |
 
-The legacy-compat API blueprints keep their byte-shape; their existing tests are the
-gate for the `xras_access.py` rewrite. `projects/projects.py`'s probe-guarded
-`VALUES ROW()` CTEs already fall back to Python and stay as they are.
+The legacy-compat API blueprints kept their byte-shape; their existing tests were
+the gate for the `xras_access.py` rewrite on both backends.
 
 ---
 
-## Stage 3 — the dual-backend harness
+## Stage 3 — the dual-backend harness (done)
 
 The suite runs against a Postgres copy of the test database, built by the loader from
-the same obfuscated blob the `mysql-test` container restores. Nothing in `src/`
-changes for this stage; the deliverable is a CI leg that is green *because its
-expected-failures list is honest*.
+the same obfuscated blob the `mysql-test` container restores. The deliverable is a
+CI leg that is green *because its expected-failures list is honest*; the list is
+empty. `docs/TESTING.md` "Two backends" is the user-facing description; what
+follows is the design.
 
 **The Postgres test service.** A `postgres-test` service in `compose.yaml` under
 `profiles: [test]`: `postgres:18`, fixed credentials `sam_test`/`sam_test`,
@@ -417,13 +429,16 @@ and `(postgres-test, 5432)`, mirrored in `tests/unit/test_smoke.py`; a session-s
 `test_smoke.py` moves to `inspect(engine).get_table_names()` and an unqualified
 `users`.
 
-**The expected-failures file.** A `postgres_expected_failures.txt` under `tests/`,
-one node id per line with a `# reason`. On a Postgres target `conftest.py` applies
+**The expected-failures file.** `tests/postgres_expected_failures.txt`, one node id
+per line with a `# reason`. On a Postgres target `conftest.py` applies
 `xfail(strict=True)` to each, so a test that starts passing **fails the run** until
-its line is removed. This is the burn-down list and the Stage 5 gate (empty for the
-default tier). It is the same house pattern as `tests/perf/baselines.json` and
+its line is removed, and `tests/unit/test_postgres_expected_failures.py` fails on an
+entry that names no test (never `pytest.exit` from the collection hook: xdist
+reports that as a worker crash). This was the burn-down list and the Stage 5 gate.
+It is the same house pattern as `tests/perf/baselines.json` and
 `tests/stress/scenarios.json`: a declaration file the tests check themselves against.
-The first version is written from one full run with `--maxfail` lifted.
+The first version, written from one full run with `--maxfail` lifted, held 416
+entries; the burn-down went 416 → 169 → 0 in one day.
 
 **Runners.** `make pytest-pg` (local:
 `SAM_TEST_DB_URL=postgresql+psycopg2://sam_test:sam_test@127.0.0.1:5434/sam pytest`)
@@ -433,8 +448,7 @@ wait script for `postgres-test` beside `scripts/ci/wait-for-mysql.sh` (a
 `docker compose exec -T postgres-test pg_isready` loop), `clone-pg-test`, then the
 default tier with no coverage upload. The perf and stress tiers stay MySQL-only —
 their baselines are MySQL measurements — and `e2e/` is untouched.
-`.github/workflows/ci-staging.yaml` gains the leg once the list is empty.
-`docs/TESTING.md` documents the second target.
+`.github/workflows/ci-staging.yaml` carries the same leg.
 
 ---
 
@@ -458,19 +472,21 @@ Ordered so the cheapest verification precedes the expensive commitment.
    5433) for offline work, and the `sam_dev` database on the `csg-postgres` CNPG
    cluster (`make clone-pg`, `SAM_DEV_PG_*`). MySQL stays the schema source of
    truth; the PG schema is disposable.
-3. **The harness** — everything under Stage 3 above, one PR. Ends with the first
-   honest expected-failures list and a green `pytest-postgres` job.
-4. **Dialect switch and burn-down** — Fix 0, Fix 2, Fix 4 and Category C, in the
-   order the failures list dictates; every fix deletes lines from the file. One PR
-   per file cluster if the list is long. `make check-db-vs-orms` stays clean:
-   MySQL DDL is unchanged by construction (`with_variant`, Core `update()`, no type
-   changes). Validate the full suite on `mysql-test` first for every change.
+3. **The harness** — DONE (PR #551): everything under Stage 3 above; the
+   `pytest-postgres` job is green.
+4. **Dialect switch and burn-down** — DONE (PR #551): Fix 0, Fix 2, Fix 4,
+   Category C and `sqlcompat`, one commit per cluster, in the order the failures
+   list dictated. MySQL DDL is unchanged by construction (`with_variant`, Core
+   `update()`, no type changes) and the MySQL drift gates stayed green
+   throughout. Verified live: `sam-search` and `create_app()` against the
+   compose Postgres copy with `SAM_DB_DRIVER=postgresql`, health `healthy`,
+   user and allocation endpoints 200.
 5. **`sam-dev` on Postgres** — a helm dev deployment with `SAM_DB_DRIVER=postgresql`,
-   `SAM_DB_NAME=sam_dev` and `SAM_DB_REQUIRE_SSL` meaning `sslmode=require`, pointing
-   at the CNPG copy (the chart today exposes only `SAM_DB_SERVER`/`_USERNAME`/
-   `_PASSWORD`/`_REQUIRE_SSL`); the `sam_dev` role gets an OpenBao entry;
-   `sam-admin cache --refresh` after deploy. **Gate:** the expected-failures list is
-   empty for the default tier.
+   `SAM_DB_NAME=sam_dev` and `SAM_DB_REQUIRE_SSL=true` (meaning `sslmode=require`),
+   pointing at the CNPG copy; the `sam_dev` role gets an OpenBao entry;
+   `sam-admin cache --refresh` after deploy. The gate (an empty expected-failures
+   list) is met; what remains is chart work, a values file for the dev
+   deployment, and a refresh cadence for `make clone clone-pg`.
 
 ### Horizon 2 — All-Postgres production (endgame)
 
@@ -490,21 +506,21 @@ Ordered so the cheapest verification precedes the expensive commitment.
 
 | Issue | Severity (dual) | Fix | Location |
 |---|---|---|---|
-| Driver hardcoded `mysql+pymysql` | Blocker | Fix 0 (`SAM_DB_DRIVER`, mirror system_status) | `sam/session/__init__.py:47,90` |
+| Driver hardcoded `mysql+pymysql` | Done | Fix 0 (`SAM_DB_DRIVER`, `SAM_DB_PORT`) | `sam/session/__init__.py` |
 | 7 views' DDL only in MySQL dump | Done | Stage 1: `postgres/views.sql` | `containers/sam-sql-dev/postgres/views.sql` |
 | No PG provisioning path | Done | Stage 2: `make clone-pg` (`load_postgres.py`, not pgloader) | `containers/sam-sql-dev/`, `compose.yaml` |
-| No second test target | Blocker for Stage 5 | Stage 3 harness + expected-failures file | `compose.yaml`, `tests/conftest.py`, CI |
-| `TIMESTAMP` + `CURRENT_TIMESTAMP` | Low (dual) / High (cutover) | Fix 1 (none) / Fix 5 | `base.py:84,88`; ~15 tables |
-| Backtick raw SQL | Critical | Fix 2 (Core `update()`) | `base.py:403-420` |
-| `TIMESTAMP(3)` means `timezone=True` | Critical | Fix 4 (`with_variant`) | `core/users.py:703` |
+| No second test target | Done | Stage 3 harness + expected-failures file (empty) | `compose.yaml`, `tests/conftest.py`, CI |
+| `TIMESTAMP` + `CURRENT_TIMESTAMP` | Low (dual) / High (cutover) | Fix 1 (none) / Fix 5 | `base.py`; ~15 tables |
+| Backtick raw SQL | Done | Fix 2 (Core `update()`) | `base.py` |
+| `TIMESTAMP(3)` means `timezone=True` | Done | Fix 4 (`with_variant`) | `core/users.py` |
 | `Float(precision)` | Low (view models) | Fix 3, optional | 6x `xras_views.py`, 3x `computational.py` |
-| `GROUP BY` alias, nested `ANY_VALUE` | High | Category C (the `views.sql` form) | `xras_access.py:61-75,101` |
-| `VALUES ROW()` without a probe | High | Category C (dialect row constructor + probe) | `rolling_usage.py` ×4 |
-| `+ INTERVAL`, `YEAR()`, untyped bind, `DATABASE()` | High | Category C | `directory_access.py`, `project_access.py`, `tree_audit.py`, `fstree_access.py`, `config_inspect.py` |
-| Case sensitivity | Mitigated | loader `sam_ci` ICU collation (Stage 3) | 121 `_ci` columns, no code |
-| `NOW()` timezone | Medium | `TZ`/`PGTZ=America/Denver` on every Postgres service | compose, CNPG (already) |
+| `GROUP BY` alias, nested `ANY_VALUE`, unquoted aliases, `GROUP_CONCAT` | Done | Category C | `xras_access.py` |
+| `VALUES ROW()` without a probe | Done | `sqlcompat.row_constructor` | `rolling_usage.py`, `projects.py` |
+| `+ INTERVAL`, `YEAR()`, `DATABASE()` | Done | Category C, `sqlcompat.schema_predicate` | `directory_access.py`, `project_access.py`, `tree_audit.py`, `config_inspect.py` |
+| Case sensitivity | Done | loader `sam_ci` ICU collation; `sqlcompat.ci_like` for the 34 `.ilike()` sites | 121 `_ci` columns |
+| `now()` zone / type / transaction-start | Done | server `timezone` on every Postgres service; `sqlcompat.sam_now()` | compose, CNPG, model hybrids |
 | `Boolean` / `'0000-00-00'` / widths / index names | Handled | `load_postgres.py` at load time | data-migration concern |
-| Test-suite MySQL-isms | Stage 3 | markers, portable fixtures, `test_smoke.py` rewrite | `tests/` |
+| Test-suite MySQL-isms | Done | markers, portable fixtures, `test_smoke.py` rewrite | `tests/` |
 | `String(16384)` | Low | No change | `operational.py` |
 
 ---
@@ -512,4 +528,6 @@ Ordered so the cheapest verification precedes the expensive commitment.
 *Created: 2026-04-19 (one-shot migration). Revised: 2026-09-01 (dual-backend plan;
 Alembic-for-SAM placed at the all-Postgres milestone); 2026-09-12 (Stages 1–2 done
 with an in-house loader; CNPG `sam_dev` live; dual-ops harness design; collation
-port; gotchas 3, 5 and 6 corrected against the first loads).*
+port; gotchas 3, 5 and 6 corrected against the first loads; then Stages 3–4
+implemented the same day: harness, `sqlcompat`, every Category C fix, an empty
+expected-failures list, and gotcha 14's transaction-start finding).*
