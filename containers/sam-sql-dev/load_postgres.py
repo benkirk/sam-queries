@@ -41,7 +41,7 @@ CHUNK_ROWS = 50_000
 MAINTENANCE_DB = "postgres"
 # MySQL's `_ci` columns compare case- and accent-insensitively; an ICU primary-strength
 # collation on exactly those columns keeps ==, LIKE, IN and ORDER BY meaning the same
-# on Postgres (docs/plans/POSTGRES_MIGRATION.md gotcha 6).
+# on Postgres (docs/plans/implemented/POSTGRES_MIGRATION.md gotcha 6).
 CI_COLLATION = "sam_ci"
 
 

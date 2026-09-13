@@ -17,7 +17,7 @@ the same warning at the other end of the pipe.
 
 **Everything runs in Python over one eager-loaded result set** rather than as
 SQL predicates.  Two reasons: the funding-account rule is a regex, and
-``REGEXP`` is MySQL-specific (see docs/plans/POSTGRES_MIGRATION.md); and the
+``REGEXP`` is MySQL-specific (see docs/plans/implemented/POSTGRES_MIGRATION.md); and the
 whole table is 2,225 rows, so a single loaded pass costs less than six round
 trips.
 """

@@ -1,5 +1,10 @@
 # PostgreSQL Migration & Dual-Backend Plan
 
+**Status**: IMPLEMENTED for Horizon 1 (Stages 1–4) — PRs #549, #550 and #551,
+merged to staging 2026-09-12. Stage 5 (the `sam-dev` deployment) and Horizon 2
+(all-Postgres production) are still open; this document stays the record for
+both, and the open items are marked in the Suggested Sequence.
+
 ## Overview
 
 SAM runs today in **maintain-compatibility mode**: the production MySQL/MariaDB
@@ -82,7 +87,7 @@ expected-failures list is empty, which was the gate for the `sam-dev` deployment
 **system_status: DONE.** Alembic manages the separate `system_status` DB
 (`migrations/system_status/`, cross-dialect — the same revisions apply to MySQL,
 Postgres, and the SQLite tempfiles the test suite uses; `render_as_batch=True`,
-`compare_type=True`). See `implemented/ADD_ALEMBRIC_and_SYSTEM_STATUS_REFACTOR.md`.
+`compare_type=True`). See `docs/plans/implemented/ADD_ALEMBRIC_and_SYSTEM_STATUS_REFACTOR.md`.
 
 **SAM-proper: DEFERRED to the all-Postgres milestone — by design, not omission.**
 Today the SAM DB is mirrored read-only from the legacy Java SAM's MySQL schema
@@ -482,7 +487,7 @@ Ordered so the cheapest verification precedes the expensive commitment.
    throughout. Verified live: `sam-search` and `create_app()` against the
    compose Postgres copy with `SAM_DB_DRIVER=postgresql`, health `healthy`,
    user and allocation endpoints 200.
-5. **`sam-dev` on Postgres** — a helm dev deployment with `SAM_DB_DRIVER=postgresql`,
+5. **`sam-dev` on Postgres** — OPEN, the next step: a helm dev deployment with `SAM_DB_DRIVER=postgresql`,
    `SAM_DB_NAME=sam_dev` and `SAM_DB_REQUIRE_SSL=true` (meaning `sslmode=require`),
    pointing at the CNPG copy; the `sam_dev` role gets an OpenBao entry;
    `sam-admin cache --refresh` after deploy. The gate (an empty expected-failures
@@ -499,7 +504,7 @@ Ordered so the cheapest verification precedes the expensive commitment.
 7. **Drop the objects nothing uses.** Once legacy SAM is gone we own the schema and
    can retire unused views (and later tables). The inventory of retirement candidates
    — starting with the 7 views SAM's own code no longer queries — lives in
-   `SCHEMA_RETIREMENT.md`; port only the objects it does not list.
+   `docs/plans/SCHEMA_RETIREMENT.md`; port only the objects it does not list.
 
 ---
 
@@ -531,4 +536,5 @@ Alembic-for-SAM placed at the all-Postgres milestone); 2026-09-12 (Stages 1–2 
 with an in-house loader; CNPG `sam_dev` live; dual-ops harness design; collation
 port; gotchas 3, 5 and 6 corrected against the first loads; then Stages 3–4
 implemented the same day: harness, `sqlcompat`, every Category C fix, an empty
-expected-failures list, and gotcha 14's transaction-start finding).*
+expected-failures list, and gotcha 14's transaction-start finding). Moved to
+`implemented/` 2026-09-12 once #549–#551 merged; Stage 5 and Horizon 2 remain open.*

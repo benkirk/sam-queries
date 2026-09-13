@@ -277,7 +277,7 @@ A directional audit should also be clear about what doesn't need attention:
 1. CONTRIBUTING.md test stats — intentional pin or stale?
 2. Remediation log home — Jira/Confluence/Wiki, or keep in-repo?
 3. `src/webapp/REFACTORING_PLAN.md` charges-API centralization — scheduled, backlog, or shelved?
-4. `docs/plans/POSTGRES_MIGRATION.md` — planned, paused, shelved?
+4. `docs/plans/implemented/POSTGRES_MIGRATION.md` — planned, paused, shelved?
 5. `docs/prompts/` — intentional artifact or residue?
 
 ### From Phase 2 (web)

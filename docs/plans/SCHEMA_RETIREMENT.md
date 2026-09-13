@@ -2,7 +2,7 @@
 
 Living inventory of database objects SAM no longer uses, to be dropped once legacy
 Java SAM 2.0.3 is retired and SAM owns the schema outright
-(`POSTGRES_MIGRATION.md` Horizon 2). Nothing here is dropped in compatibility mode —
+(`implemented/POSTGRES_MIGRATION.md` Horizon 2). Nothing here is dropped in compatibility mode —
 legacy SAM may still read these objects. Initial focus: **VIEWS**. A tables pass
 follows.
 

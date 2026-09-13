@@ -221,7 +221,7 @@ jobs:
         if: always()
         run: docker compose down -v
 
-  # The default tier on the Postgres copy (docs/plans/POSTGRES_MIGRATION.md,
+  # The default tier on the Postgres copy (docs/plans/implemented/POSTGRES_MIGRATION.md,
   # Stage 3); tests/postgres_expected_failures.txt is empty, so this is a
   # plain pass/fail leg like `test`.
   test-postgres:
