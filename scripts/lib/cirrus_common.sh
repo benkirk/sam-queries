@@ -1,14 +1,15 @@
 # shellcheck shell=bash
 #
 # cirrus_common.sh — Kubernetes / cirrus layer shared by the SAM cluster
-# scripts (cirrus_healthcheck.sh, cirrus_weblog_audit.sh).
+# scripts (cirrus_healthcheck.sh, cirrus_watch.sh, cirrus_weblog_audit.sh).
 #
 # Sits ON TOP of common.sh (sourced automatically here) and adds the bits
-# that know about the 'samuel' release on the nwc1 cluster:
+# that know about the 'samuel' (prod) and 'samuel-dev' releases on nwc1:
 #
-#   - baked-in release/object names + defaults (NAMESPACE/RELEASE/CONTEXT)
+#   - cirrus_set_env        release/object names per SAM_ENV (prod | dev),
+#                           applied at source time and again by --env
 #   - build_kctl            populate KCTL / KCTL_NS command arrays
-#   - handle_common_arg     parse the shared -n/-r/--context/--no-color/-v/-h
+#   - handle_common_arg     parse the shared --env/-n/-r/--context/--no-color/-v/-h
 #                           flags; return 1 for flags the caller owns
 #   - human_bytes / to_cores / to_bytes / seconds_since
 #                           K8s resource-unit + RFC3339 conversions
@@ -23,35 +24,59 @@ _CIRRUS_COMMON_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
 source "${_CIRRUS_COMMON_DIR}/common.sh"
 
-# --- release / object names (match helm/templates/*.yaml) -------------------
-# If you rename objects in the chart, update these in lockstep. Resource
-# limits are always read live from the pod spec, never hard-coded here.
+# --- release / object names (match helm/values*.yaml) -----------------------
+# One row per environment; if you rename objects in the chart, update the row
+# in lockstep. Resource limits are always read live from the pod spec, never
+# hard-coded here.
 NAMESPACE="${NAMESPACE:-sam-queries}"
-RELEASE="${RELEASE:-samuel}"
 CONTEXT="${CONTEXT:-}"
-
-WEBAPP_NAME="samuel"
 WEBAPP_PORT=5050
-REDIS_NAME="samuel-redis"
 REDIS_PORT=6379
-# The scheduled-task dispatcher (helm tasks.name). Its Jobs and pods carry
-# `app: samuel-tasks` — NOT `app.kubernetes.io/component=tasks`, which matches
-# nothing and reads as "the dispatcher never fired". See TASKS_SELECTOR.
-TASKS_NAME="samuel-tasks"
-TASKS_SELECTOR="app=${TASKS_NAME}"
 # The dispatcher wakes hourly (helm tasks.schedule "7 * * * *"), so anything
 # past one interval plus slack means it has stopped being scheduled.
 TASKS_MAX_SILENCE_S=4200
-# INGRESS_HOST is the platform-primary name (helm webapp.tls.fqdn) and the CN of
-# the issued cert. INGRESS_HOSTS is every name the ingress answers for — primary
-# plus helm webapp.tls.extraHosts — all covered by the one multi-SAN TLS_SECRET.
-# Keep both in lockstep with helm/values.yaml. Scripts that address the app by a
-# single canonical name use INGRESS_HOST; scripts that verify edge behavior
-# should iterate INGRESS_HOSTS so an alias can't silently regress.
-INGRESS_HOST="samuel.k8s.ucar.edu"
-INGRESS_HOSTS=("samuel.k8s.ucar.edu" "sam.hpc.ucar.edu")
-TLS_SECRET="incommon-cert-samuel"
 HEALTH_PATH="/api/v1/health/ready"
+
+# cirrus_set_env <prod|dev>
+#
+# INGRESS_HOST is the platform-primary name (helm webapp.tls.fqdn) and the CN of
+# the issued cert; INGRESS_HOSTS is every name the ingress answers for (fqdn +
+# extraHosts), all on the one multi-SAN TLS_SECRET. The task pods carry
+# `app: <tasks.name>` — NOT `app.kubernetes.io/component=tasks`, which matches
+# nothing and reads as "the dispatcher never fired". XRAS_ES_EXPECTED says
+# whether the chart syncs the XRAS API key for this env (values-dev.yaml turns
+# it off). DEFAULT_WATCH_DB_HOST empty = no XRAS/db-load reads (dev SAM is
+# Postgres and XRAS never posts to dev).
+cirrus_set_env() {
+    SAM_ENV="$1"
+    case "$SAM_ENV" in
+        prod)
+            RELEASE="samuel"
+            WEBAPP_NAME="samuel"
+            REDIS_NAME="samuel-redis"
+            TASKS_NAME="samuel-tasks"
+            INGRESS_HOST="samuel.k8s.ucar.edu"
+            INGRESS_HOSTS=("samuel.k8s.ucar.edu" "sam.hpc.ucar.edu")
+            TLS_SECRET="incommon-cert-samuel"
+            XRAS_ES_EXPECTED=1
+            DEFAULT_WATCH_DB_HOST="sam-sql.ucar.edu"
+            ;;
+        dev)
+            RELEASE="samuel-dev"
+            WEBAPP_NAME="samuel-dev"
+            REDIS_NAME="samuel-dev-redis"
+            TASKS_NAME="samuel-dev-tasks"
+            INGRESS_HOST="samuel-dev.k8s.ucar.edu"
+            INGRESS_HOSTS=("samuel-dev.k8s.ucar.edu")
+            TLS_SECRET="incommon-cert-samuel-dev"
+            XRAS_ES_EXPECTED=0
+            DEFAULT_WATCH_DB_HOST=""
+            ;;
+        *) echo "cirrus_common.sh: unknown SAM_ENV '$SAM_ENV' (prod|dev)" >&2; exit 2;;
+    esac
+    TASKS_SELECTOR="app=${TASKS_NAME}"
+}
+cirrus_set_env "${SAM_ENV:-prod}"
 
 # --------------------------------------------------------------------------
 # build_kctl
@@ -86,6 +111,8 @@ build_kctl() {
 handle_common_arg() {
     _CONSUMED=0
     case "$1" in
+        # Re-applies the whole name table, so put --env before -r/--ingress-host.
+        --env)          cirrus_set_env "$2"; _CONSUMED=2;;
         -n|--namespace) NAMESPACE="$2"; _CONSUMED=2;;
         -r|--release)   RELEASE="$2";   _CONSUMED=2;;
         --context)      CONTEXT="$2";   _CONSUMED=2;;

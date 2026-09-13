@@ -1,17 +1,19 @@
 #!/bin/bash
-# cirrus_watch.sh — recurring READ-ONLY watch tick for the sam-queries (samuel)
-# release on nwc1. Reports only what CHANGED since the previous run, diffing
-# against a small state file, so it can be run every ~30 min from a scheduler.
+# cirrus_watch.sh — recurring READ-ONLY watch tick for the sam-queries release
+# on nwc1: prod ('samuel', the default) or dev ('samuel-dev', --env dev).
+# Reports only what CHANGED since the previous run, diffing against a small
+# state file, so it can be run every ~30 min from a scheduler.
 #
 # What it looks at, in one pass:
 #   - XRAS xras_action_log — new rows since the last tick (classify per the
-#     watch-prod skill), read from the prod DB
+#     watch-prod skill), read from the prod DB (skipped when the env has no
+#     DB host: dev SAM is Postgres and XRAS never posts to dev)
 #   - web traffic — gunicorn 2xx/3xx/4xx/5xx, latency percentiles, slow (>5s)
 #     requests, query-count hits (an N+1 shape, whatever its latency),
 #     probe-path hits, from the webapp pod logs
 #   - pods — image sha / restart counts / phase; flags a deploy since last tick
 #   - redis — memory %, hit rate, and the load-bearing evicted-keys delta
-#   - samuel-tasks CronJob — suspended? heartbeat stale? failed Jobs? (report
+#   - the tasks CronJob — suspended? heartbeat stale? failed Jobs? (report
 #     only — this script NEVER touches the remote CronJob)
 #
 # Read-only. Never modifies cluster or DB state. Exit: 0 quiet / 1 warn / 2 fail.
@@ -20,14 +22,17 @@
 #   scripts/cirrus_watch.sh [options]
 #
 # Options:
+#       --env       ENV  Which release: prod | dev          (default: $SAM_ENV or prod)
 #   -n, --namespace NS   Namespace the release lives in    (default: sam-queries)
-#   -r, --release   REL  Helm release name                 (default: samuel)
+#   -r, --release   REL  Helm release name                 (default: per --env)
 #       --context   CTX  kubectl context to target         (default: current)
 #       --window    DUR  Web-log lookback window           (default: 35m)
 #       --query-guard N  Statements per request that flag an N+1 (default: 200;
 #                        WATCH_QUERY_GUARD_IGNORE exempts write fan-outs)
-#       --db-host   HOST Prod DB host for the XRAS read     (default: sam-sql.ucar.edu)
-#       --state     FILE State file path                    (default: XDG state dir)
+#       --db-host   HOST Prod DB host for the XRAS read     (default: per --env;
+#                        WATCH_DB_HOST overrides, "" skips the DB reads)
+#       --state     FILE State file path                    (default: XDG state dir,
+#                        one file per env)
 #       --reset-baseline Forget prior state; seed a fresh baseline this run
 #       --no-color       Disable ANSI color
 #   -v, --verbose        Extra detail
@@ -51,9 +56,9 @@ QUERY_GUARD="${WATCH_QUERY_GUARD:-200}"
 # ingest adds one row per queue/node/job per snapshot (~1.2-1.5k statements on
 # the status DB in ~0.2 s). Extended regex on "METHOD /path".
 QUERY_GUARD_IGNORE="${WATCH_QUERY_GUARD_IGNORE:-^POST /api/v1/status/}"
-DBHOST="${WATCH_DB_HOST:-sam-sql.ucar.edu}"
 DBPORT=3306
-STATE="${WATCH_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/sam-watch/state}"
+DBHOST_FLAG=""
+STATE_FLAG=""
 RESET_BASELINE=0
 
 while [[ $# -gt 0 ]]; do
@@ -61,12 +66,19 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --window)         WINDOW="$2"; shift 2;;
         --query-guard)    QUERY_GUARD="$2"; shift 2;;
-        --db-host)        DBHOST="$2"; shift 2;;
-        --state)          STATE="$2"; shift 2;;
+        --db-host)        DBHOST_FLAG="$2"; shift 2;;
+        --state)          STATE_FLAG="$2"; shift 2;;
         --reset-baseline) RESET_BASELINE=1; shift;;
         *) echo "Unknown option: $1" >&2; exit 2;;
     esac
 done
+
+# Resolved after parsing so --env is in effect. `${WATCH_DB_HOST-...}` (no
+# colon) lets an explicitly empty WATCH_DB_HOST mean "no DB reads".
+DBHOST="${DBHOST_FLAG:-${WATCH_DB_HOST-$DEFAULT_WATCH_DB_HOST}}"
+STATE_DEFAULT="${XDG_STATE_HOME:-$HOME/.local/state}/sam-watch/state"
+[[ "$SAM_ENV" != "prod" ]] && STATE_DEFAULT="${STATE_DEFAULT}-${SAM_ENV}"
+STATE="${STATE_FLAG:-${WATCH_STATE:-$STATE_DEFAULT}}"
 
 setup_colors
 build_kctl
@@ -86,15 +98,18 @@ else
     source "$STATE"
 fi
 
-echo "=== tick $(date -u '+%Y-%m-%d %H:%M:%SZ')  (web window ${WINDOW}) ==="
+ENV_TAG=""; [[ "$SAM_ENV" != "prod" ]] && ENV_TAG="  [$SAM_ENV: $WEBAPP_NAME]"
+echo "=== tick $(date -u '+%Y-%m-%d %H:%M:%SZ')  (web window ${WINDOW})${ENV_TAG} ==="
 
 # --- 0. connectivity preflight ----------------------------------------------
 # A fully-down VPN blackholes DNS/SYN and the mysql/kubectl connect timeouts do
 # not cover that (a bare run took ~1000s). Fast TCP probe first; skip internal
 # reads cleanly if prod's internal net is unreachable (VPN down is not a prod
-# fault, so this is a clean exit 0, not a fail).
-if ! python3 -c "import socket; socket.setdefaulttimeout(4); socket.create_connection(('$DBHOST',$DBPORT),4).close()" 2>/dev/null; then
-    echo "OFFLINE: $DBHOST:$DBPORT unreachable in 4s (VPN down?) — skipping internal reads this tick."
+# fault, so this is a clean exit 0, not a fail). An env with no DB host probes
+# its ingress instead.
+if [[ -n "$DBHOST" ]]; then PROBE_HOST="$DBHOST"; PROBE_PORT="$DBPORT"; else PROBE_HOST="$INGRESS_HOST"; PROBE_PORT=443; fi
+if ! python3 -c "import socket; socket.setdefaulttimeout(4); socket.create_connection(('$PROBE_HOST',$PROBE_PORT),4).close()" 2>/dev/null; then
+    echo "OFFLINE: $PROBE_HOST:$PROBE_PORT unreachable in 4s (VPN down?) — skipping internal reads this tick."
     exit 0
 fi
 
@@ -104,10 +119,12 @@ MYSQL=(mysql --connect-timeout=8 -h "$DBHOST")
 if [[ ! -f "$HOME/.my.cnf" && -n "${SAM_DB_USERNAME:-}" ]]; then
     MYSQL+=(-u "$SAM_DB_USERNAME" -p"${SAM_DB_PASSWORD:-}")
 fi
-q() { "${MYSQL[@]}" sam -N -e "$1" 2>/dev/null; }
+q() { [[ -n "$DBHOST" ]] || return 1; "${MYSQL[@]}" sam -N -e "$1" 2>/dev/null; }
 
-MAXID=$(q "SELECT COALESCE(MAX(xras_action_log_id),0) FROM xras_action_log;" || true)
-if [[ -z "$MAXID" ]]; then
+MAXID=""
+if [[ -z "$DBHOST" ]]; then
+    echo "xras: skipped (no DB host for env $SAM_ENV)"
+elif MAXID=$(q "SELECT COALESCE(MAX(xras_action_log_id),0) FROM xras_action_log;" || true); [[ -z "$MAXID" ]]; then
     warn "xras: DB UNREACHABLE (mysql read failed — VPN/creds?)"
 elif [[ "$BASELINE" -eq 1 ]]; then
     echo "xras: baseline seeded at #$MAXID"
@@ -264,7 +281,9 @@ fi
 CUR_SLOWQ=$(q "SHOW GLOBAL STATUS WHERE Variable_name='Slow_queries'" | awk '{print $2}')
 TR=$(q "SHOW GLOBAL STATUS WHERE Variable_name='Threads_running'" | awk '{print $2}')
 TC=$(q "SHOW GLOBAL STATUS WHERE Variable_name='Threads_connected'" | awk '{print $2}')
-if [[ -n "$TR" ]]; then
+if [[ -z "$DBHOST" ]]; then
+    DBLOAD="dbload: skipped (no DB host)"
+elif [[ -n "$TR" ]]; then
     SQD="n/a"
     [[ -n "$CUR_SLOWQ" && -n "$LASTSLOWQ" ]] && SQD=$((CUR_SLOWQ-LASTSLOWQ))
     DBLOAD="dbload: threads_running=$TR conns=$TC slow_q(Δ)=$SQD"
@@ -297,7 +316,7 @@ fi
 # The load-bearing signal is evicted_keys RISING between ticks: with allkeys-lru
 # that means live entries are being dropped -> raise cache.maxmemoryMB.
 CUR_EVICTED=""; CUR_HITS=""; CUR_MISSES=""
-RPOD=$("${KCTL_NS[@]}" --request-timeout=10s get pods -o name 2>/dev/null | grep -i "$REDIS_NAME" | head -1 || true)
+RPOD=$("${KCTL_NS[@]}" --request-timeout=10s get pods -l "app=${REDIS_NAME}" -o name 2>/dev/null | head -1 || true)
 if [[ -z "$RPOD" ]]; then
     warn "cache: redis pod not found (VPN/RBAC?)"
 else
@@ -328,7 +347,7 @@ else
     fi
 fi
 
-# --- 4. samuel-tasks CronJob (read-only report — never touch it) -------------
+# --- 4. tasks CronJob (read-only report — never touch it) --------------------
 # The dispatcher wakes hourly and the ledger records occurrences, not wake-ups,
 # so "is it alive?" is answerable only from the CronJob object + its Jobs. We
 # REPORT problems here; remediation (kubectl create job --from=cronjob/...) is a
@@ -345,11 +364,11 @@ else
     if [[ -n "$AGE_S" ]]; then LAST_STR="$((AGE_S/60))m ago"; else LAST_STR="never"; fi
     echo "tasks: suspend=$CJ_SUSPEND  last=$LAST_STR  failedJobs=$N_FAILED"
     if [[ "$CJ_SUSPEND" == "true" ]]; then
-        fail "samuel-tasks CronJob is SUSPENDED — nothing is being dispatched"
+        fail "$TASKS_NAME CronJob is SUSPENDED — nothing is being dispatched"
     elif [[ -n "$AGE_S" && "$AGE_S" -gt "$TASKS_MAX_SILENCE_S" ]]; then
         fail "dispatcher silent $((AGE_S/60))m (>$((TASKS_MAX_SILENCE_S/60))m) — it has stopped waking"
     fi
-    [[ "${N_FAILED:-0}" -gt 0 ]] && warn "$N_FAILED retained samuel-tasks Job(s) failed — inspect: kubectl -n $NAMESPACE logs job/<name>"
+    [[ "${N_FAILED:-0}" -gt 0 ]] && warn "$N_FAILED retained $TASKS_NAME Job(s) failed — inspect: kubectl -n $NAMESPACE logs job/<name>"
     if [[ "$CJ_SUSPEND" == "true" || ( -n "$AGE_S" && "$AGE_S" -gt "$TASKS_MAX_SILENCE_S" ) ]]; then
         note "manual remedy (human decision, NOT run here): kubectl -n $NAMESPACE create job --from=cronjob/$TASKS_NAME ${TASKS_NAME}-manual"
     fi

@@ -10,6 +10,8 @@ scripts/
 ├── cirrus_healthcheck.sh        # CIRRUS/k8s health probe (samuel release)
 ├── cirrus_watch.sh              # CIRRUS/k8s recurring delta watch tick (report-only)
 ├── cirrus_weblog_audit.sh       # CIRRUS/k8s traffic + rate-limit + abuse audit
+├── deploy_dev.sh                # TEMPORARY laptop helm deploy of samuel-dev (make deploy-dev)
+├── seed_status_dev.sh           # Reseed system_status_dev from prod (make refresh-dev)
 ├── zap_probe_docker.sh          # Dockerized OWASP ZAP scan of the webapp
 ├── apis/                        # Public-API worked examples / smoke tests
 │   ├── systems_integration_apis.sh  # Download→refresh→re-download over the 5 SI APIs
@@ -29,7 +31,7 @@ scripts/
 │   ├── ssh-staging.sh          # SSH into staging ECS container
 │   ├── query-staging-db.sh     # Connect to staging RDS MySQL
 │   └── deploy-staging.sh       # Manual staging deployment
-├── gen_api_key.py              # Generate API key + bcrypt hash for collector auth
+├── gen_api_key.py              # Generate API key + bcrypt hash (API_KEYS_<USER> env var)
 ├── setup_status_db.py          # System status database setup
 ├── test_status_db.py           # System status database testing
 ├── cleanup_status_data.py      # System status data cleanup
@@ -41,11 +43,12 @@ scripts/
 
 ### Cluster Operations (CIRRUS / `nwc1`)
 
-Read-only operator tools for the public `samuel` release on the `nwc1`
-cluster. All use the same idioms: colored PASS/WARN/FAIL output, exit codes
-`0` (all pass) / `1` (≥1 warn) / `2` (≥1 fail), and the shared `--no-color`,
-`-n/--namespace`, `-r/--release`, `--context`, `-v/--verbose`, `-h/--help`
-flags.
+Read-only operator tools for the `samuel` (prod, default) and `samuel-dev`
+releases on `nwc1`. Same idioms throughout: colored PASS/WARN/FAIL output, exit
+codes `0` (all pass) / `1` (≥1 warn) / `2` (≥1 fail), and the shared
+`--env prod|dev` (or `SAM_ENV=dev`; swaps every object name, host and TLS
+secret), `--no-color`, `-n/--namespace`, `-r/--release`, `--context`,
+`-v/--verbose`, `-h/--help` flags.
 
 - **`cirrus_healthcheck.sh`** — "is the cluster healthy?" 12-section probe of
   the Helm release: pods, rollout safety, Redis, resource usage, ingress/TLS,
@@ -67,6 +70,7 @@ flags.
   ```bash
   scripts/cirrus_watch.sh                       # one tick; report deltas
   scripts/cirrus_watch.sh --reset-baseline      # seed a fresh baseline, no report
+  scripts/cirrus_watch.sh --env dev             # the dev release; no XRAS/db-load reads
   ```
 
 - **`cirrus_weblog_audit.sh`** — "who's hitting the public site, and is anything
@@ -136,24 +140,20 @@ layers:
   (TTY/`NO_COLOR`-aware), plain log primitives (`info`/`ok`/`die`), verdict
   primitives with PASS/WARN/FAIL counters (`section`/`pass`/`warn`/`fail`/`run`)
   + `verdict_exit`, `usage_from_header`, and `repo_paths`.
-- **`lib/cirrus_common.sh`** — the CIRRUS layer (sources `common.sh`): baked-in
-  release/object names, `build_kctl` (KCTL/KCTL_NS arrays), `handle_common_arg`
-  (shared flag parsing), and K8s resource-unit converters.
+- **`lib/cirrus_common.sh`** — the CIRRUS layer (sources `common.sh`):
+  `cirrus_set_env` (per-environment object-name table, from `SAM_ENV` and
+  `--env`), `build_kctl` (KCTL/KCTL_NS arrays), `handle_common_arg` (shared
+  flag parsing), and K8s resource-unit converters.
 
-`cirrus_healthcheck.sh` and `cirrus_weblog_audit.sh` source
+`cirrus_healthcheck.sh`, `cirrus_watch.sh` and `cirrus_weblog_audit.sh` source
 `cirrus_common.sh`; `zap_probe_docker.sh` sources only `common.sh`.
 `lib/prereqs.sh` (`require_cmd`, `check_vpn`, `check_docker`, `check_aws_cli`)
 remains the dependency-check helper used by the setup/infra scripts.
 
 ### Setup Scripts (`setup/`)
 
-Utility scripts for database setup, switching, and troubleshooting:
-
-- **Database Switching:** Switch between local and production databases
-- **Troubleshooting:** Docker diagnostics, MySQL permissions fixes
-- **Git LFS:** Download database backup files
-
-See [setup/README.md](setup/README.md) for detailed documentation.
+Database switching (local ↔ production), Docker/MySQL troubleshooting, and the
+Git LFS backup download — see [setup/README.md](setup/README.md).
 
 ### Infrastructure Scripts (`infra/`)
 
@@ -178,10 +178,8 @@ python scripts/gen_api_key.py --username my_service
 
 # Output:
 #   API Key  → set as STATUS_API_KEY in collectors/.env
-#   Hash     → add to API_KEYS dict in src/webapp/config.py
+#   Hash     → set as API_KEYS_<USERNAME> in the webapp env (helm/values*.yaml)
 ```
-
-Run this whenever you create or rotate collector credentials.
 
 ### System Status Scripts
 

@@ -347,10 +347,11 @@ webapp:
     # Merge has no undo.
     #
     # This is webapp-only ON PURPOSE. cronjob-tasks.yaml renders `.Values.tasks.env`
-    # plus a hand-listed set and inherits NOTHING from here, so a scheduled task cannot
-    # write to XRAS even if one imported the admin client. Do not "fix" that by adding
-    # it there. `tests/unit/test_xras_admin_client.py` asserts both halves: this key is
-    # "0", and the tasks env never carries it at all.
+    # plus hand-listed keys and the NOTIFY_* / SAM_DB_* / STATUS_DB_* prefixes, and
+    # inherits nothing else from here, so a scheduled task cannot write to XRAS even
+    # if one imported the admin client. Do not "fix" that by adding it there.
+    # `tests/unit/test_xras_admin_client.py` asserts both halves: this key ships with
+    # the value pinned there, and the tasks env never carries it at all.
     #
     # With it off the Remediations card still renders — with its controls DISABLED and
     # an explanation — rather than vanishing, so the state is visible rather than
@@ -441,7 +442,7 @@ webapp:
   # OIDC SSO credentials + Flask session-signing key.
   # secretPath convention: csg/sam-{env}-oidc when multiple environments coexist.
   # csg/sam-oidc is shorthand for the production-equivalent (samuel.k8s.ucar.edu) deployment.
-  # Future staging k8s deployment should override secretPath: csg/sam-staging-oidc in values-staging.yaml.
+  # The samuel-dev deployment overrides secretPath: csg/sam-dev-oidc in values-dev.yaml.
   oidcCredentials:
     enabled: true
     useExternalSecret: true
