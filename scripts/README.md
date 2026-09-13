@@ -10,6 +10,8 @@ scripts/
 ├── cirrus_healthcheck.sh        # CIRRUS/k8s health probe (samuel release)
 ├── cirrus_watch.sh              # CIRRUS/k8s recurring delta watch tick (report-only)
 ├── cirrus_weblog_audit.sh       # CIRRUS/k8s traffic + rate-limit + abuse audit
+├── deploy_dev.sh                # TEMPORARY laptop helm deploy of samuel-dev (make deploy-dev)
+├── seed_status_dev.sh           # Reseed system_status_dev from prod (make refresh-dev)
 ├── zap_probe_docker.sh          # Dockerized OWASP ZAP scan of the webapp
 ├── apis/                        # Public-API worked examples / smoke tests
 │   ├── systems_integration_apis.sh  # Download→refresh→re-download over the 5 SI APIs
@@ -150,13 +152,8 @@ remains the dependency-check helper used by the setup/infra scripts.
 
 ### Setup Scripts (`setup/`)
 
-Utility scripts for database setup, switching, and troubleshooting:
-
-- **Database Switching:** Switch between local and production databases
-- **Troubleshooting:** Docker diagnostics, MySQL permissions fixes
-- **Git LFS:** Download database backup files
-
-See [setup/README.md](setup/README.md) for detailed documentation.
+Database switching (local ↔ production), Docker/MySQL troubleshooting, and the
+Git LFS backup download — see [setup/README.md](setup/README.md).
 
 ### Infrastructure Scripts (`infra/`)
 

@@ -5,7 +5,7 @@ CONDA_ROOT := $(shell conda info --base)
 # Common way to initialize environment across various types of systems
 config_env := module load conda >/dev/null 2>&1 || true && . $(CONDA_ROOT)/etc/profile.d/conda.sh
 
-.PHONY: help clean clobber distclean fixperms check perf helm-test deploy-dev e2e check-db-vs-orms docker-build docker-up docker-down docker-restart docker-watch docker-pytest \
+.PHONY: help clean clobber distclean fixperms check perf helm-test deploy-dev refresh-dev e2e check-db-vs-orms docker-build docker-up docker-down docker-restart docker-watch docker-pytest \
         pytest-pg docker-pytest-pg \
         conda-env prune-old-envs print-env-hash migrate-legacy-env \
         migrate-status-current migrate-status-up migrate-status-down migrate-status-history migrate-status-revision migrate-status-stamp-head
@@ -183,6 +183,16 @@ helm-test: ## Run every Helm render assertion script (needs helm v3+)
 # self-retires once the Deployment carries an Argo tracking annotation).
 deploy-dev: ## Deploy samuel-dev on nwc1 from origin/cirrus-dev (laptop helm; phase 1 only)
 	@scripts/deploy_dev.sh
+
+# Laptop-only (VPN): `clone` reads prod MySQL as hpc-reader. Needs .env's
+# SAM_DEV_PG_* and SAM_DEV_API_PASS plus PGPASSWORD (csg/pg-superuser) for the
+# status seed. The loader evicts the dev pods' own sessions before the swap.
+refresh-dev: ## Rebuild sam_dev + system_status_dev from prod, then refresh samuel-dev's caches
+	$(config_env) && source etc/config_env.sh && \
+	    $(MAKE) -C containers/sam-sql-dev clone clone-pg && \
+	    scripts/seed_status_dev.sh && \
+	    SAM_API_USER=collector SAM_API_PASS="$$SAM_DEV_API_PASS" \
+	    SAM_API_BASE=https://samuel-dev.k8s.ucar.edu sam-admin cache --refresh
 
 perf: ## Run perf regression + benchmark suite (serial)
 	$(config_env) && source etc/config_env.sh && \
