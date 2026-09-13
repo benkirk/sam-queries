@@ -1,11 +1,12 @@
 # samuel-dev: a routable k8s dev deployment
 
-**Status: PLANNED, not started.** Written 2026-09-12 as the implementation handoff
-for a fresh session. This is Stage 5 of `docs/plans/implemented/POSTGRES_MIGRATION.md`:
+**Status: IN PROGRESS.** Written 2026-09-12 as the implementation handoff; the repo
+side (§4) landed the same day as eight commits on `k8s_dev_plan` → `staging`, each
+leaving the prod render byte-identical. §5 (outside the repo) and §7 steps 2–5 are
+open — see §10. This is Stage 5 of `docs/plans/implemented/POSTGRES_MIGRATION.md`:
 a second install of the `samuel` chart on nwc1, serving `samuel-dev.k8s.ucar.edu`
 from the CNPG `sam_dev` Postgres copy, deployable from any branch without touching
-production. The work lands as one living PR (`k8s_dev` → `staging`) whose scope is
-§4; everything in §5 happens outside the repo.
+production.
 
 Prior art this doc leans on rather than repeats: `docs/CIRRUS_PUBLISHING.md` (how
 `cirrus` is pinned and locked), `docs/README-k8s.md` (the chart's runbook),
@@ -19,7 +20,7 @@ instance that runs feature branches with real OIDC, real plugin databases, and t
 real ingress, without any path to production data or production mail. The dual-ops
 work (#549–#551) made SAM run on Postgres with an empty expected-failures list; the
 `sam_dev` database on `csg-postgres` already exists and is rebuilt by
-`make clone clone-pg`. What is missing is the chart overlay, a second git pointer for
+`make -C containers/sam-sql-dev clone clone-pg`. What was missing was the chart overlay, a second git pointer for
 the GitOps controller, the safety gates, and the runbook.
 
 ## 2. Decisions (Ben, 2026-09-12)
@@ -35,6 +36,7 @@ the GitOps controller, the safety gates, and the runbook.
 | jobhistory, fs-scans | `csg-postgres-ro`, unchanged | Read-only from SAM; too heavy to duplicate. |
 | Mail | **Off** (`NOTIFY_ENABLED=0`, mail tasks disabled) | The relay reaches any internet address. The redirect valve stays a one-line opt-in. |
 | Entra | New app registration (`csg/sam-dev-oidc`) | Interim: add the dev reply URL to the prod registration and copy its client id/secret into the dev path, with a fresh `FLASK_SECRET_KEY` either way. |
+| JupyterHub token | **Inherit prod `csg/jh-api-token`** | Read-only token; the JupyterHub status card works on dev with no new OpenBao entry. Pinned by `test-dev-render.sh`. |
 
 ## 3. Verified facts (2026-09-12)
 
@@ -66,12 +68,13 @@ Repo:
   `tasks.name` → CronJob; `webapp.group` label everywhere; selectors are exact-match
   `app:` labels.
 - `helm/templates/cronjob-tasks.yaml` renders `.Values.tasks.env` plus a hand-listed set
-  copied from `webapp.env`: `NOTIFY_*`/`MAIL_*` (by prefix), `STATUS_DB_DRIVER/SERVER`,
-  `SAM_DB_DRIVER/SERVER/REQUIRE_SSL`, `CACHE_REDIS_URL`, `XRAS_*`. **It never sees
-  `SAM_DB_NAME`, `SAM_DB_PORT`, or `STATUS_DB_NAME`**, and the chart sets none of them
-  (app defaults: `sam`, `system_status`). A dev overlay without a template fix runs the
-  dev tasks pod, including the nightly `cleanup_status_snapshots` DELETEs, against
-  **prod** `system_status`.
+  copied from `webapp.env`: `NOTIFY_*` by prefix, five `MAIL_*` keys by hand (not a
+  prefix loop — one would reorder prod bytes), `STATUS_DB_DRIVER/SERVER`,
+  `SAM_DB_DRIVER/SERVER/REQUIRE_SSL`, `CACHE_REDIS_URL`, `XRAS_*`. Before §4.1 **it
+  never saw `SAM_DB_NAME`, `SAM_DB_PORT`, or `STATUS_DB_NAME`**, and the chart set none
+  of them (app defaults: `sam`, `system_status`). A dev overlay without the template
+  fix would have run the dev tasks pod, including the nightly
+  `cleanup_status_snapshots` DELETEs, against **prod** `system_status`.
 - Prod render baseline: `helm template samuel helm -f helm/values.yaml -n sam-queries | md5`
   = `311be05e3e320cb9aa7c613eb6512fc7` (helm 4.1.3, commit ae9452ca). Prod's
   `webapp.env` carries exactly five `SAM_DB_*`/`STATUS_DB_*` keys.
@@ -93,12 +96,22 @@ Repo:
   session. So pods that connect as the loader's role are evicted by a refresh and
   reconnect through `pool_pre_ping`; no loader change is needed.
 - Alembic for system_status: `make migrate-status-up` / `migrate-status-current`
-  (`migrations/system_status/`), driven by `STATUS_DB_*` env.
+  (`migrations/system_status/`), driven by `STATUS_DB_*` env — **but the make targets
+  `source etc/config_env.sh`, which `set -a; source .env` and clobbers any `STATUS_DB_*`
+  passed on the command line.** The seed (§4.7) therefore carries the schema and
+  `alembic_version` in the dump instead; `ALEMBIC_SYSTEM_STATUS_URL=... alembic current`
+  is the way to check a non-`.env` database.
+- `make clone` / `make clone-pg` are targets of `containers/sam-sql-dev/Makefile`, not
+  the top level; `SAM_DEV_API_PASS` was a name this doc invented (the CLI reads
+  `SAM_API_USER` / `SAM_API_PASS` / `SAM_API_BASE`), so `refresh-dev` maps it.
 - API keys: `scripts/gen_api_key.py` prints a bcrypt hash for `API_KEYS_<USER>`.
-- `scripts/lib/cirrus_common.sh` hardcodes prod names; `scripts/cirrus_healthcheck.sh`
-  adopts the **first** helm release it finds in the namespace when `helm status samuel`
-  fails (it always fails, prod is Argo-applied). Once `samuel-dev` is a real helm
-  release, an unfixed prod-mode healthcheck reports dev as prod.
+- `scripts/lib/cirrus_common.sh` hardcoded prod names; `scripts/cirrus_healthcheck.sh`
+  adopted the **first** helm release it found in the namespace when `helm status samuel`
+  failed (it always fails, prod is Argo-applied) — but only `$RELEASE`, so it would
+  have reported dev's release name while probing prod's objects. Its ExternalSecret
+  list was six literal names (the XRAS one unchecked). The watch DB host lived in
+  `cirrus_watch.sh`, not the lib, and its TCP preflight `exit 0`s the whole tick.
+  All fixed in §4.5.
 - `docs/README-k8s.md` already uses `samuel-dev` as the **local Docker Desktop**
   namespace name.
 - `tests/unit/test_docs.py` treats `docs/plans/` as records (exempt from the path,
@@ -106,6 +119,12 @@ Repo:
   paths, so files and the docs that cite them land in the same PR.
 
 ## 4. Implementation (one PR, in this order)
+
+As built, 2026-09-12 — one commit per subsection: 4.1 chart; 4.3's `lib/assert.sh`
+alone (so the extraction is reviewable with unchanged assertions); 4.2 + the rest of
+4.3 (22 rejections proven, `jupyterhubCredentials` pinned); 4.4 + `CIRRUS_PUBLISHING.md`;
+4.5; 4.6 + `helm/README.md`; 4.7; 4.8. Deviations from the text below are noted in
+place.
 
 ### 4.1 Chart: close the CronJob drift trap first
 
@@ -285,13 +304,17 @@ value, nothing more.
   `SAM_ENV` (`prod` default, `dev`) inside a `cirrus_set_env()` called at source time
   and again by a new `--env` common flag. Dev row: release `samuel-dev`, webapp
   `samuel-dev`, redis `samuel-dev-redis`, tasks `samuel-dev-tasks`, host
-  `samuel-dev.k8s.ucar.edu` only, TLS secret `incommon-cert-samuel-dev`, and an empty
-  watch DB host (dev SAM is Postgres and XRAS never posts to dev).
-- `scripts/cirrus_healthcheck.sh`: derive the ExternalSecret list from `$WEBAPP_NAME`;
-  **delete the adopt-the-first-release fallback.** Pass only when `helm list` contains
-  `$RELEASE`, otherwise print that Argo CD applies the chart.
+  `samuel-dev.k8s.ucar.edu` only, TLS secret `incommon-cert-samuel-dev`,
+  `XRAS_ES_EXPECTED=0`, and an empty `DEFAULT_WATCH_DB_HOST` (dev SAM is Postgres and
+  XRAS never posts to dev).
+- `scripts/cirrus_healthcheck.sh`: derive the ExternalSecret list from `$WEBAPP_NAME`
+  (six, plus the XRAS one when `XRAS_ES_EXPECTED`); scope the usage and ExternalSecret
+  listings to the release's pods/objects; **delete the adopt-the-first-release
+  fallback** (prod: info that Argo applies the chart; dev: warn). As built it also
+  fixed the limits map, whose nested jsonpath never yielded a pod name.
 - `scripts/cirrus_watch.sh`: Redis pod by `-l app=$REDIS_NAME`; `$TASKS_NAME` in messages;
-  skip the XRAS section with a one-line note when the DB host is empty.
+  one state file per env; with an empty DB host the VPN preflight probes the ingress
+  and the XRAS and db-load reads print one-line skips.
 - `scripts/README.md`: document `SAM_ENV=dev` / `--env dev`.
 
 ### 4.6 Phase-1 laptop deploy: `scripts/deploy_dev.sh (new)` + `make deploy-dev`
@@ -313,6 +336,10 @@ flags: release `samuel-dev`, namespace `sam-queries`, context `nwc1`, source
 5. `helm upgrade --install samuel-dev "$TMP/helm" -f values.yaml -f values-dev.yaml -n sam-queries --atomic --timeout 10m`,
    then `kubectl -n sam-queries rollout status deploy/samuel-dev`.
 
+As built: step 4 also runs the tree's own `helm/tests/test-dev-render.sh`; `--render-only`
+stops after step 4; `DEPLOY_DEV_SOURCE_REF` overrides the source for `--render-only`
+tests only (a real deploy always uses `origin/cirrus-dev`).
+
 Retirement when Argo adopts the objects: delete the helm release Secrets
 (`kubectl -n sam-queries delete secret -l name=samuel-dev,owner=helm`) and remove the
 make target.
@@ -322,12 +349,19 @@ make target.
 - `load_postgres.py`: print the number of own-role sessions terminated before the
   swap (today it is silent), so a refresh log shows the dev pods being evicted.
 - `scripts/seed_status_dev.sh (new)`:
-  `pg_dump -Fc --exclude-table-data=task_run ... system_status | pg_restore -d system_status_dev --clean --if-exists --no-owner --no-privileges`.
-  `task_run` is excluded so dev's ledger is its own; prod rows would settle dev's slots.
-- Top-level `Makefile`, `refresh-dev`: `clone` → `clone-pg` → `scripts/seed_status_dev.sh`
-  → `SAM_API_BASE=https://samuel-dev.k8s.ucar.edu sam-admin cache --refresh` with the dev
-  key from `.env`. Cadence: on demand, floor weekly. It runs from a VPN'd laptop because
-  `clone` reads prod MySQL as `hpc-reader`, so it is not a cluster CronJob.
+  `pg_dump -Fc --exclude-table-data=task_run ... system_status | pg_restore -d system_status_dev --clean --if-exists --no-owner --no-privileges`,
+  then an idempotent re-grant to `pguser`. `task_run` is excluded so dev's ledger is
+  its own; prod rows would settle dev's slots. The dump carries the schema and
+  `alembic_version`, so there is no Alembic step (§3: the migrate targets clobber
+  `STATUS_DB_*`). Runs as the superuser via libpq env: `PGPASSWORD` required,
+  `PGHOST`/`PGUSER`/`PGSSLMODE` defaulted.
+- Top-level `Makefile`, `refresh-dev`: `$(MAKE) -C containers/sam-sql-dev clone clone-pg`
+  → `scripts/seed_status_dev.sh` → `SAM_API_USER=collector SAM_API_PASS=$SAM_DEV_API_PASS
+  SAM_API_BASE=https://samuel-dev.k8s.ucar.edu sam-admin cache --refresh`
+  (`SAM_DEV_API_PASS` in `.env`, documented in `.env.example`). Cadence: on demand,
+  floor weekly. It runs from a VPN'd laptop because `clone` reads prod MySQL as
+  `hpc-reader`, so it is not a cluster CronJob. Do not `make -n refresh-dev`: the
+  recipe contains `$(MAKE)`, which GNU make runs even under `-n`.
 
 ### 4.8 Docs
 
@@ -371,24 +405,23 @@ login fails (AADSTS50011) until item 5 lands. Item 6 is the real gate.
 ### 6.1 `system_status_dev` (once)
 
 ```bash
-# as postgres (OpenBao csg/pg-superuser); default privileges BEFORE the DDL
-psql "host=csg-postgres.k8s.ucar.edu dbname=postgres user=postgres sslmode=require" \
-  -c 'CREATE DATABASE system_status_dev'
-psql "host=csg-postgres.k8s.ucar.edu dbname=system_status_dev user=postgres sslmode=require" <<'SQL'
+# as postgres (OpenBao csg/pg-superuser); default privileges BEFORE the restore
+export PGHOST=csg-postgres.k8s.ucar.edu PGUSER=postgres PGSSLMODE=require PGPASSWORD='...'
+psql -d postgres -c 'CREATE DATABASE system_status_dev'
+psql -d system_status_dev <<'SQL'
 GRANT CONNECT ON DATABASE system_status_dev TO pguser;
 GRANT USAGE ON SCHEMA public TO pguser;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO pguser;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO pguser;
 SQL
-STATUS_DB_DRIVER=postgresql STATUS_DB_SERVER=csg-postgres.k8s.ucar.edu \
-STATUS_DB_NAME=system_status_dev STATUS_DB_USERNAME=postgres STATUS_DB_PASSWORD='...' \
-STATUS_DB_REQUIRE_SSL=true make migrate-status-up migrate-status-current   # expect (head)
-psql "... dbname=system_status_dev ..." -c '\dp task_run'                    # pguser: arwd
-scripts/seed_status_dev.sh                                                   # first seed
+scripts/seed_status_dev.sh                    # schema + data + alembic_version; task_run empty
+psql -d system_status_dev -c '\dp task_run'   # pguser: arwd
+ALEMBIC_SYSTEM_STATUS_URL="postgresql://postgres:...@csg-postgres.k8s.ucar.edu/system_status_dev?sslmode=require" \
+  alembic -c migrations/system_status/alembic.ini current   # expect (head); optional
 ```
 
-The grant block mirrors the one above `dbCredentials` in `helm/values.yaml`; keep the
-explicit `GRANT ... ON ALL TABLES` there as the idempotent re-grant.
+The grant block mirrors the one above `dbCredentials` in `helm/values.yaml`; the seed
+script carries the explicit `GRANT ... ON ALL TABLES` as the idempotent re-grant.
 
 ### 6.2 Refresh with live pods
 
@@ -486,10 +519,11 @@ overlay edit the test already tolerates); moving the refresh into the cluster (n
 | Item | State | Date |
 |---|---|---|
 | Plan written, decisions taken | done | 2026-09-12 |
-| Living PR opened (`k8s_dev` → `staging`) | — | |
-| Ruleset covers `cirrus-dev` | — | |
-| OpenBao `csg/sam-dev-pg`, `csg/sam-dev-oidc` | — | |
-| `system_status_dev` created, migrated, seeded | — | |
+| §4 implemented, eight commits on `k8s_dev_plan`; prod render byte-identical | done | 2026-09-12 |
+| Living PR opened (`k8s_dev_plan` → `staging`) | — | |
+| Ruleset covers `cirrus-dev` (before the CI commit merges) | — | |
+| OpenBao `csg/sam-dev-pg` (`username`, `password`), `csg/sam-dev-oidc` (`client_id`, `client_secret`, `issuer`, `flask_secret_key`) | — | |
+| `system_status_dev` created and seeded (§6.1) | — | |
 | First `make deploy-dev`; DNS + cert live | — | |
 | Entra dev registration | — | |
 | Argo `sam-query-dev`; `deploy-dev` retired | — | |

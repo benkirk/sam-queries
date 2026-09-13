@@ -146,7 +146,7 @@ Docker images. The other values are plain config.
 
 ## Where it runs (the deployment matrix)
 
-Same code, four deployment shapes. The only thing that changes is
+Same code, several deployment shapes. The only thing that changes is
 *where* the OIDC config comes from.
 
 | Deployment | URL | How auth works | OIDC creds source | Reply URL on Entra |
@@ -155,8 +155,8 @@ Same code, four deployment shapes. The only thing that changes is
 | **Local k8s** (Docker Desktop, `values-local.yaml`) | port-forwarded | Stub auto-login (`DISABLE_AUTH=1`) | n/a | n/a |
 | **Fargate staging** | `https://sam-staging.csgsam.ucar.edu` | OIDC | AWS SSM `/sam/staging/oidc-*` | `https://sam-staging.csgsam.ucar.edu/auth/oidc/callback` |
 | **CIRRUS k8s** (samuel) | `https://sam.hpc.ucar.edu` (advertised)<br>`https://samuel.k8s.ucar.edu` (platform alias) | OIDC | OpenBao `csg/sam-oidc` | one per host — `https://sam.hpc.ucar.edu/auth/oidc/callback` and `https://samuel.k8s.ucar.edu/auth/oidc/callback` |
+| **CIRRUS k8s dev** (samuel-dev, `helm/values-dev.yaml`) | `https://samuel-dev.k8s.ucar.edu` | OIDC (`FLASK_CONFIG=production`, so the auth interlock applies) | OpenBao `csg/sam-dev-oidc` | `https://samuel-dev.k8s.ucar.edu/auth/oidc/callback` (post-logout `https://samuel-dev.k8s.ucar.edu/status/`) |
 | Future ECS production | tbd | OIDC | AWS SSM `/sam/production/oidc-*` | tbd |
-| Future k8s staging | tbd | OIDC | OpenBao `csg/sam-staging-oidc` | tbd |
 
 ### Why two paths to OIDC?
 
@@ -329,12 +329,12 @@ rather than a live local cluster.
 
 ### Where each secret lives, by environment
 
-| What | Fargate (staging) | k8s (samuel) |
-|---|---|---|
-| OIDC client ID | AWS SSM `/sam/staging/oidc-client-id` | OpenBao `csg/sam-oidc.client_id` |
-| OIDC client secret | AWS SSM `/sam/staging/oidc-client-secret` | OpenBao `csg/sam-oidc.client_secret` |
-| OIDC issuer URL | AWS SSM `/sam/staging/oidc-issuer` | OpenBao `csg/sam-oidc.issuer` |
-| Flask session key | AWS SSM `/sam/staging/flask-secret-key` | OpenBao `csg/sam-oidc.flask_secret_key` |
+| What | Fargate (staging) | k8s (samuel) | k8s (samuel-dev) |
+|---|---|---|---|
+| OIDC client ID | AWS SSM `/sam/staging/oidc-client-id` | OpenBao `csg/sam-oidc.client_id` | OpenBao `csg/sam-dev-oidc.client_id` |
+| OIDC client secret | AWS SSM `/sam/staging/oidc-client-secret` | OpenBao `csg/sam-oidc.client_secret` | OpenBao `csg/sam-dev-oidc.client_secret` |
+| OIDC issuer URL | AWS SSM `/sam/staging/oidc-issuer` | OpenBao `csg/sam-oidc.issuer` | OpenBao `csg/sam-dev-oidc.issuer` |
+| Flask session key | AWS SSM `/sam/staging/flask-secret-key` | OpenBao `csg/sam-oidc.flask_secret_key` | OpenBao `csg/sam-dev-oidc.flask_secret_key` (its own; never prod's) |
 
 Both stores require auth. AWS SSM is gated by IAM (the `terraform`
 user can read/write under `/sam/`); OpenBao is gated by the team's

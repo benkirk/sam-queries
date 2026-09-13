@@ -883,6 +883,13 @@ Both show the stub login page with Quick Login buttons (stub auth accepts any
 password; `DISABLE_AUTH=0` is pinned for `webapp`). True auto-login is opt-in —
 see docs/AUTHENTICATION.md § Local development.
 
+**samuel-dev** (`https://samuel-dev.k8s.ucar.edu`) is a second install of the
+prod chart on nwc1 with `helm/values-dev.yaml` — Postgres `sam_dev`, own
+`system_status_dev`, mail and XRAS levers off. `gh workflow run "Publish Images
+and CIRRUS Deploy" --ref <branch>` pins it; `make deploy-dev` / `make
+refresh-dev`; every `scripts/cirrus_*.sh` takes `--env dev`. Record:
+`docs/plans/K8S_DEV_ENVIRONMENT.md`; `helm/tests/test-dev-render.sh` is the gate.
+
 ### Adding New ORM Models
 1. Create the model in the matching domain module; add `SessionMixin` if it
    needs write methods; add `update()` / `create()` per §7.

@@ -487,12 +487,14 @@ Ordered so the cheapest verification precedes the expensive commitment.
    throughout. Verified live: `sam-search` and `create_app()` against the
    compose Postgres copy with `SAM_DB_DRIVER=postgresql`, health `healthy`,
    user and allocation endpoints 200.
-5. **`sam-dev` on Postgres** — OPEN, the next step: a helm dev deployment with `SAM_DB_DRIVER=postgresql`,
-   `SAM_DB_NAME=sam_dev` and `SAM_DB_REQUIRE_SSL=true` (meaning `sslmode=require`),
-   pointing at the CNPG copy; the `sam_dev` role gets an OpenBao entry;
-   `sam-admin cache --refresh` after deploy. The gate (an empty expected-failures
-   list) is met; what remains is chart work, a values file for the dev
-   deployment, and a refresh cadence for `make clone clone-pg`.
+5. **`sam-dev` on Postgres** — IN PROGRESS as `samuel-dev`
+   (`docs/plans/K8S_DEV_ENVIRONMENT.md`): `helm/values-dev.yaml` sets
+   `SAM_DB_DRIVER=postgresql`, `SAM_DB_NAME=sam_dev` and `SAM_DB_REQUIRE_SSL=true`
+   (meaning `sslmode=require`) against the CNPG copy; the `sam_dev` role's OpenBao
+   entry is `csg/sam-dev-pg`; `make refresh-dev` chains
+   `make -C containers/sam-sql-dev clone clone-pg`, the `system_status_dev` seed
+   and `sam-admin cache --refresh`. The gate (an empty expected-failures list)
+   was met by #549–#551.
 
 ### Horizon 2 — All-Postgres production (endgame)
 
