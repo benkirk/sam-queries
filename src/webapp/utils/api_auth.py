@@ -28,6 +28,7 @@ Usage:
         ...
 """
 
+import hashlib
 import time
 import bcrypt
 from functools import wraps
@@ -43,6 +44,14 @@ from webapp.utils.rbac import has_permission, Permission
 # rows) means an unknown username is an in-memory miss — no per-attempt DB query
 # — which keeps failed-auth traffic off the DB and friendly to RATELIMIT_M2M.
 _DB_KEY_CACHE = {'at': None, 'map': {}}
+
+# Successful verifications, keyed (username, stored_hash, sha256(presented key))
+# -> monotonic time. bcrypt at cost 12 is ~260 ms of CPU per call and was the
+# whole per-request cost of an API-key hit (docs/plans/DEV_LOAD_CAMPAIGN.md).
+# Only successes are cached: a wrong key always pays full bcrypt, and rotating
+# a key changes stored_hash so old entries miss. Bounded, per worker process.
+_VERIFY_CACHE = {}
+_VERIFY_CACHE_MAX = 256
 
 
 def _auth_challenge(message: str = 'Authentication required'):
@@ -102,6 +111,24 @@ def _get_db_api_keys() -> dict:
     return fresh
 
 
+def _key_matches(username: str, password: str, stored_hash: str) -> bool:
+    """bcrypt check behind the success cache (``API_KEY_VERIFY_TTL``; 0 = off)."""
+    ttl = current_app.config.get('API_KEY_VERIFY_TTL', 0)
+    key = (username, stored_hash, hashlib.sha256(password.encode('utf-8')).hexdigest())
+    now = time.monotonic()
+    if ttl:
+        seen = _VERIFY_CACHE.get(key)
+        if seen is not None and (now - seen) < ttl:
+            return True
+    if not _bcrypt_matches(password, stored_hash):
+        return False
+    if ttl:
+        if len(_VERIFY_CACHE) >= _VERIFY_CACHE_MAX:
+            _VERIFY_CACHE.pop(next(iter(_VERIFY_CACHE)))
+        _VERIFY_CACHE[key] = now
+    return True
+
+
 def _verify_api_key(username: str, password: str) -> Optional[dict]:
     """Resolve and verify a Basic-Auth API key across config + DB sources.
 
@@ -115,12 +142,12 @@ def _verify_api_key(username: str, password: str) -> Optional[dict]:
     """
     config_keys = current_app.config.get('API_KEYS', {})
     if username in config_keys:
-        if _bcrypt_matches(password, config_keys[username]):
+        if _key_matches(username, password, config_keys[username]):
             return {'username': username, 'source': 'config', 'roles': []}
         return None
 
     entry = _get_db_api_keys().get(username)
-    if entry and _bcrypt_matches(password, entry['hash']):
+    if entry and _key_matches(username, password, entry['hash']):
         return {'username': username, 'source': 'db', 'roles': entry['roles']}
     return None
 

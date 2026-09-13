@@ -32,6 +32,8 @@ class SAMWebappConfig(SAMConfig):
     # behind an in-process TTL cache, TTL=0 refreshing on every lookup.
     API_KEYS_DB_ENABLED = os.getenv('API_KEYS_DB_ENABLED', '1').lower() in ('1', 'true', 'yes')
     API_KEYS_DB_TTL     = int(os.getenv('API_KEYS_DB_TTL', 60))
+    # Seconds a successful bcrypt verification is remembered per worker; 0 = off.
+    API_KEY_VERIFY_TTL  = int(os.getenv('API_KEY_VERIFY_TTL', 300))
 
     # Auth provider ('stub' | 'ldap' | 'oidc')
     AUTH_PROVIDER = os.getenv('AUTH_PROVIDER', 'stub')
@@ -367,6 +369,7 @@ class TestingConfig(SAMWebappConfig):
     # inserted mid-test is visible immediately and no cache state leaks across
     # tests (the module-level cache in api_auth is process-global).
     API_KEYS_DB_TTL = 0
+    API_KEY_VERIFY_TTL = 0
 
     # Disable usage cache in tests to prevent cross-test pollution
     ALLOCATION_USAGE_CACHE_TTL  = 0
