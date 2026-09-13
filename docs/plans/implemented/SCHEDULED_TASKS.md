@@ -1044,16 +1044,16 @@ tidy-up while touching this.
 ### Docker Desktop validation, before CIRRUS
 
 ```bash
-bash helm/local-secrets.sh samuel-dev
+bash helm/local-secrets.sh samuel-local
 helm upgrade --install samuel ./helm -f helm/values.yaml -f helm/values-local.yaml \
-  -n samuel-dev \
+  -n samuel-local \
   --set tasks.enabled=true --set tasks.schedule='*/5 * * * *' \
   --set 'tasks.env.SAM_TASKS_DISABLED=cleanup_status_snapshots'
 
-kubectl create job -n samuel-dev --from=cronjob/samuel-tasks tasks-manual-1   # don't wait 5 minutes
-kubectl logs -n samuel-dev job/tasks-manual-1
-kubectl exec -n samuel-dev deploy/samuel -- sam-admin tasks --list
-kubectl exec -n samuel-dev deploy/samuel -- sam-admin --format json tasks --history | jq
+kubectl create job -n samuel-local --from=cronjob/samuel-tasks tasks-manual-1   # don't wait 5 minutes
+kubectl logs -n samuel-local job/tasks-manual-1
+kubectl exec -n samuel-local deploy/samuel -- sam-admin tasks --list
+kubectl exec -n samuel-local deploy/samuel -- sam-admin --format json tasks --history | jq
 ```
 
 That proves image, command, secrets, DNS, and ledger writes with the destructive

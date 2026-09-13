@@ -755,7 +755,8 @@ reviewer — so `test_task_xras_notices.py` greps `values.yaml` for the name.
 
 ⚠️ **`NOTIFY_*`/`MAIL_*` must reach the CronJob explicitly.**
 `helm/templates/cronjob-tasks.yaml` renders `.Values.tasks.env` plus a
-hand-listed set and does **not** inherit `.Values.webapp.env`. A missing
+hand-listed set and the `NOTIFY_*` / `SAM_DB_*` / `STATUS_DB_*` prefixes, and
+does **not** otherwise inherit `.Values.webapp.env`. A missing
 `NOTIFY_ENABLED` there is fail-closed: every message recorded `suppressed`,
 `succeeded` reported, exit 0, green Job, no mail, no indication. Guarded twice
 — the task's own `config.enabled` check and a **per-manifest**
@@ -882,6 +883,14 @@ Both show the stub login page with Quick Login buttons (stub auth accepts any
 password; `DISABLE_AUTH=0` is pinned for `webapp`). True auto-login is opt-in —
 see docs/AUTHENTICATION.md § Local development.
 
+**samuel-dev** (`https://samuel-dev.k8s.ucar.edu`) is a second install of the
+prod chart on nwc1 with `helm/values-dev.yaml` — Postgres `sam_dev`, own
+`system_status_dev`, mail and XRAS levers off. `gh workflow run "Publish Images
+and CIRRUS Deploy" --ref <branch>` pins it; `make deploy-dev` / `make
+refresh-dev`; every `scripts/cirrus_*.sh` takes `--env dev`. Limiter tiers are
+effectively off on dev (load-test target), login tier excepted. Record:
+`docs/plans/K8S_DEV_ENVIRONMENT.md`; `helm/tests/test-dev-render.sh` is the gate.
+
 ### Adding New ORM Models
 1. Create the model in the matching domain module; add `SessionMixin` if it
    needs write methods; add `update()` / `create()` per §7.
@@ -975,6 +984,9 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 and never append `?`/`#` to a `url_for('static')` result, which already carries one
 ❌ **DON'T** touch the legacy-compat API blueprints beyond additive changes
 ❌ **DON'T** hardcode integer PKs from lookup tables in app constants — pair rules with names, resolve IDs at runtime
+❌ **DON'T** add a secondary bind to `/ready`'s required set (`_REQUIRED_BINDS` in
+`webapp/api/v1/health.py`) — a shared external DB fails every replica at once and
+empties the Service (2026-09-13; `docs/plans/CNPG_ROLL_RESILIENCE.md`)
 
 ✅ **DO** run schema-validation tests before committing model changes
 ✅ **DO** check the actual database schema when in doubt

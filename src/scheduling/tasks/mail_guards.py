@@ -40,6 +40,6 @@ class NotificationsDisabled(RuntimeError):
     green, and nobody would learn that a chart change had stopped the mail.
 
     The CronJob does **not** inherit `webapp.env` — `cronjob-tasks.yaml`
-    renders `.Values.tasks.env` plus a hand-listed set and nothing else — so
+    renders `.Values.tasks.env` plus a hand-listed set and three prefixes — so
     this is a live failure mode and not a hypothetical one.
     """

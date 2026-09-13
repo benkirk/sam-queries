@@ -115,11 +115,14 @@ webapp:
     mountPath: /etc/sam/capacities.json
   # Kubernetes probes. Endpoints from src/webapp/api/v1/health.py:
   #   /live  -> process up, no DB call          (liveness + startup)
-  #   /ready -> DB-gated, 200 healthy / 503 not  (readiness: gates rollout
-  #             completion AND Service membership)
+  #   /ready -> 503 only when the PRIMARY (sam) bind is down; a secondary bind
+  #             (system_status on csg-postgres) reports `degraded` and stays
+  #             200 (readiness: gates rollout completion AND Service membership)
   # Liveness uses /live (no DB) so a transient DB blip can't trigger a
-  # restart storm; readiness uses /ready so a DB outage pulls the pod from
-  # the Service without killing it.
+  # restart storm. WARNING: a shared external DB fails every replica at once,
+  # so anything readiness 503s on empties the Service; on 2026-09-13 a
+  # csg-postgres roll took the whole site out for 3.5 min that way while
+  # sam-sql was fine. Only the primary bind may gate readiness.
   probes:
     enabled: true
     path: /api/v1/health                 # base; /live and /ready appended
@@ -235,8 +238,8 @@ webapp:
     NOTIFY_TRANSPORT: "smtp"
     STATUS_DB_DRIVER: "postgresql"
     STATUS_DB_SERVER: "csg-postgres.k8s.ucar.edu"
-    # STATUS_DB_POOL_* defaults (size=2, overflow=4, recycle=600) live in
-    # webapp/run.py and are already sized for csg-postgres' 100-slot cap.
+    # STATUS_DB_POOL_* defaults (size=10, overflow=20, recycle=600) live in
+    # webapp/run.py, sized against csg-postgres' max_connections (300).
     # Override here only if a future deployment uses a different backing
     # database (e.g. dedicated postgres with more headroom).
     GOOGLE_CALENDAR_EMBED_URL: "https://calendar.google.com/calendar/embed?src=ucar.edu_o09r1n89tid1b8jkrvurc8qio4%40group.calendar.google.com&ctz=America%2FDenver"
@@ -344,10 +347,11 @@ webapp:
     # Merge has no undo.
     #
     # This is webapp-only ON PURPOSE. cronjob-tasks.yaml renders `.Values.tasks.env`
-    # plus a hand-listed set and inherits NOTHING from here, so a scheduled task cannot
-    # write to XRAS even if one imported the admin client. Do not "fix" that by adding
-    # it there. `tests/unit/test_xras_admin_client.py` asserts both halves: this key is
-    # "0", and the tasks env never carries it at all.
+    # plus hand-listed keys and the NOTIFY_* / SAM_DB_* / STATUS_DB_* prefixes, and
+    # inherits nothing else from here, so a scheduled task cannot write to XRAS even
+    # if one imported the admin client. Do not "fix" that by adding it there.
+    # `tests/unit/test_xras_admin_client.py` asserts both halves: this key ships with
+    # the value pinned there, and the tasks env never carries it at all.
     #
     # With it off the Remediations card still renders — with its controls DISABLED and
     # an explanation — rather than vanishing, so the state is visible rather than
@@ -438,7 +442,7 @@ webapp:
   # OIDC SSO credentials + Flask session-signing key.
   # secretPath convention: csg/sam-{env}-oidc when multiple environments coexist.
   # csg/sam-oidc is shorthand for the production-equivalent (samuel.k8s.ucar.edu) deployment.
-  # Future staging k8s deployment should override secretPath: csg/sam-staging-oidc in values-staging.yaml.
+  # The samuel-dev deployment overrides secretPath: csg/sam-dev-oidc in values-dev.yaml.
   oidcCredentials:
     enabled: true
     useExternalSecret: true

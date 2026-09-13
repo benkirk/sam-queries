@@ -1,0 +1,68 @@
+# samuel-dev: the routable dev deployment (docs/plans/K8S_DEV_ENVIRONMENT.md).
+# Layered on values.yaml: helm template samuel-dev helm -f values.yaml -f values-dev.yaml
+# NEVER add an `image:` line here; CI pins the image in values.yaml on cirrus-dev.
+replicaCount: 1
+podDisruptionBudget:
+  enabled: false                          # minAvailable 1 on 1 replica blocks drains
+
+cache:
+  name: samuel-dev-redis
+  maxmemoryMB: 64
+  requests:
+    memory: 32Mi
+    cpu: 25m
+  limits:
+    memory: 128Mi
+    cpu: 250m
+
+webapp:
+  name: samuel-dev
+  group: samuel-dev
+  tls:
+    fqdn: samuel-dev.k8s.ucar.edu
+    extraHosts: []
+    secretName: incommon-cert-samuel-dev
+  container:
+    requests:
+      memory: 1024M
+      cpu: 1
+    limits:
+      memory: 4G
+      cpu: 4
+  env:
+    FLASK_CONFIG: "production"            # ProductionConfig.validate() is the auth interlock
+    AUTH_PROVIDER: "oidc"
+    DISABLE_AUTH: "0"
+    SAM_DB_DRIVER: "postgresql"
+    SAM_DB_SERVER: "csg-postgres.k8s.ucar.edu"
+    SAM_DB_PORT: "5432"
+    SAM_DB_NAME: "sam_dev"                # rebuilt by `make refresh-dev`; dev writes are discarded
+    SAM_DB_REQUIRE_SSL: "true"
+    STATUS_DB_NAME: "system_status_dev"   # own task_run ledger, so dev never settles a prod slot
+    NOTIFY_ENABLED: "0"                   # the relay reaches any address; "1" needs NOTIFY_REDIRECT_TO
+    NOTIFY_XRAS_CC: ""
+    NOTIFY_XRAS_REPLY_TO: ""
+    XRAS_OUTGOING_ENABLED: "0"
+    XRAS_WRITE_ENABLED: "0"
+    XRAS_ACTIONS_CAPTURE_ONLY: "1"
+    # Dev-only bcrypt hash; plaintext is SAM_DEV_API_PASS in the laptop .env.
+    API_KEYS_COLLECTOR: "$2b$12$cT8gWOKQtobRHrs1/lgVaeiUL6mivFdfsctyFImGRgulhd8I11mb6"
+    SAM_API_BASE: "https://samuel-dev.k8s.ucar.edu"   # sam-admin cache --refresh defaults to prod
+    # Dev is the load-test target: no throttling of authed, M2M or anonymous
+    # traffic. RATELIMIT_AUTH_LOGIN stays at the prod default (guards the OIDC
+    # callback; nothing legitimate hammers it). Flask-Limiter notation.
+    RATELIMIT_AUTHED: "100000 per minute"
+    RATELIMIT_M2M: "100000 per minute"
+    RATELIMIT_ANON: "100000 per minute"
+  samDbCredentials:
+    secretPath: csg/sam-dev-pg            # the sam_dev owner role (SAM_DEV_PG_USER)
+  oidcCredentials:
+    secretPath: csg/sam-dev-oidc
+  xrasApiCredentials:
+    enabled: false                        # lever off; do not hold the prod key
+
+tasks:
+  name: samuel-dev-tasks
+  env:
+    SAM_API_BASE: "https://samuel-dev.k8s.ucar.edu"
+    SAM_TASKS_DISABLED: "expiration_notices,xras_notices,xras_sweep"

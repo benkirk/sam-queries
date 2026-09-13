@@ -36,14 +36,39 @@ def test_postgres_driver_port_and_name(env):
     assert (url.drivername, url.port, url.database) == ('postgresql+psycopg2', 5433, 'sam_dev')
 
 
-def test_connect_args_follow_the_driver():
-    assert sam_session.connect_args('mysql', True) == {'ssl': {'ssl_disabled': False}}
-    assert sam_session.connect_args('mysql', False, application_name='x') == {}
-    assert sam_session.connect_args('postgresql', True) == {'sslmode': 'require'}
-    assert sam_session.connect_args('PostgreSQL', False) == {}
+_PG_HARDENING = {'connect_timeout': 10, 'keepalives': 1, 'keepalives_idle': 30,
+                 'keepalives_interval': 10, 'keepalives_count': 3,
+                 'target_session_attrs': 'read-write'}
+
+
+def test_connect_args_follow_the_driver(monkeypatch):
+    monkeypatch.delenv('SAM_DB_CONNECT_TIMEOUT', raising=False)
+    assert sam_session.connect_args('mysql', True) == {'connect_timeout': 10, 'ssl': {'ssl_disabled': False}}
+    assert sam_session.connect_args('mysql', False, application_name='x') == {'connect_timeout': 10}
+    assert sam_session.connect_args('postgresql', True) == {**_PG_HARDENING, 'sslmode': 'require'}
+    assert sam_session.connect_args('PostgreSQL', False) == _PG_HARDENING
     assert sam_session.connect_args('postgres', True, application_name='sam-webapp:pod:sam') == {
-        'application_name': 'sam-webapp:pod:sam', 'sslmode': 'require'}
+        **_PG_HARDENING, 'application_name': 'sam-webapp:pod:sam', 'sslmode': 'require'}
     assert sam_session.sam_dialect('mariadb') == 'mysql+pymysql'
+
+
+def test_connect_timeout_is_tunable_and_bounded_on_both_drivers(monkeypatch):
+    """A probe or a request must never hang in connect() for the OS SYN timeout."""
+    monkeypatch.setenv('SAM_DB_CONNECT_TIMEOUT', '3')
+    assert sam_session.connect_args('postgres', False)['connect_timeout'] == 3
+    assert sam_session.connect_args('mysql', False)['connect_timeout'] == 3
+
+
+def test_status_engine_shares_the_hardened_connect_args(monkeypatch):
+    """The CLI/CronJob status engine funnels through sam.session.connect_args too."""
+    from unittest.mock import patch
+    from system_status import session as status_session
+    monkeypatch.setenv('STATUS_DB_DRIVER', 'postgresql')
+    monkeypatch.setenv('STATUS_DB_REQUIRE_SSL', 'true')
+    with patch('sam.session.connect_args', wraps=sam_session.connect_args) as spy:
+        engine, _ = status_session.create_status_engine('postgresql+psycopg2://u:p@db.local/system_status')
+    engine.dispose()
+    spy.assert_called_once_with('postgresql', True)
 
 
 def test_config_reload_reads_the_driver(monkeypatch):

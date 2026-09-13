@@ -223,6 +223,30 @@ class TestSql:
         assert 'GREATEST(COALESCE(MAX("disk_cos_id"), 1), 1)' in sql
         assert 'COALESCE(MAX("disk_cos_id"), 0) >= 1' in sql and sql.endswith('FROM "disk_cos"')
 
+    def test_swap_reports_evicted_sessions_and_refuses_other_roles(self, loader, capsys):
+        class Cursor:
+            def __init__(self, terminated, others):
+                self.results = [[(1,)], terminated, others]
+                self.executed = []
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def execute(self, sql, params=None): self.executed.append(sql)
+            def fetchone(self): return self.results[0][0]
+            def fetchall(self): return self.results.pop(1) if len(self.results) > 1 else []
+
+        class Conn:
+            def __init__(self, cur): self.cur = cur
+            def cursor(self): return self.cur
+
+        cur = Cursor(terminated=[(True,), (True,)], others=[])
+        assert loader.swap(Conn(cur), 'sam_dev') == 0
+        assert 'terminated 2 own-role session(s) on sam_dev' in capsys.readouterr().out
+        assert cur.executed[-1] == 'DROP DATABASE "sam_dev_prev"'
+
+        cur = Cursor(terminated=[], others=[('sam_web', 'sam-webapp', '10.0.0.1')])
+        assert loader.swap(Conn(cur), 'sam_dev') == 1
+        assert not any(s.startswith('ALTER DATABASE') for s in cur.executed)
+
     def test_swap_sql_in_order_and_first_run(self, loader):
         stmts = loader.swap_sql('sam_dev', True)
         assert stmts == ['ALTER DATABASE "sam_dev" RENAME TO "sam_dev_prev"',

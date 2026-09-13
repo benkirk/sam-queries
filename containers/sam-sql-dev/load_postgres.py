@@ -387,6 +387,8 @@ def swap(maint, db):
         cur.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
                     "WHERE datname = %s AND pid <> pg_backend_pid() AND usename = current_user "
                     "AND backend_type = 'client backend'", (db,))
+        evicted = len(cur.fetchall())
+        print(f"⏏ terminated {evicted} own-role session(s) on {db} (the samuel-dev pods reconnect via pool_pre_ping)")
         cur.execute("SELECT usename, application_name, client_addr FROM pg_stat_activity "
                     "WHERE datname = %s AND pid <> pg_backend_pid() AND backend_type = 'client backend'", (db,))
         others = cur.fetchall()

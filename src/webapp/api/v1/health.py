@@ -1,19 +1,22 @@
 """Health check and application readiness endpoints.
 
 Intended consumers:
-  GET /api/v1/health/       — load balancers + monitoring: connectivity AND
-                              ORM <-> database schema drift
+  GET /api/v1/health/       — monitoring: every bind, plus ORM <-> database
+                              schema drift; 503 on any failure
   GET /api/v1/health/live   — Kubernetes liveness probe (no DB call)
-  GET /api/v1/health/ready  — Kubernetes readiness probe (connectivity only)
+  GET /api/v1/health/ready  — Kubernetes readiness probe: 503 only when the
+                              primary (``sam``) bind is down; a secondary bind
+                              is reported as degraded. ``?strict=1`` restores
+                              503-on-any-bind (compose startup ordering).
   GET /api/v1/health/db-pool — admin: connection pool statistics
 
-``/`` and ``/ready`` deliberately differ: only ``/`` fails on schema drift.
-See ``readiness`` for why a drifted schema must not empty the Service.
+See ``readiness`` for why neither drift nor a secondary bind may empty the
+Service.
 """
 import time
 from datetime import datetime
 
-from flask import Blueprint, current_app, jsonify
+from flask import Blueprint, current_app, jsonify, request
 from flask_login import login_required
 from sqlalchemy import text
 
@@ -58,12 +61,17 @@ def _ping_engine(engine):
         return False, None, str(exc)
 
 
-def _collect_health(include_schema=False):
-    """Ping all configured DB engines and return a (healthy, checks) tuple.
+# Binds whose failure means the app cannot serve at all. Everything else is a
+# secondary bind: reported, and fatal only under `strict`.
+_REQUIRED_BINDS = frozenset({'sam'})
 
-    With ``include_schema``, additionally diff the ORM's mapped columns
-    against the live ``sam`` schema and report it as a ``sam_schema`` check.
-    See ``schema_drift`` for why connectivity alone is not enough.
+
+def _collect_health(include_schema=False, strict=False):
+    """Ping every configured bind; return (healthy, degraded, checks).
+
+    A required bind failing is unhealthy. A secondary bind failing is
+    degraded, and unhealthy only when ``strict``. With ``include_schema``,
+    additionally diff the ORM against the live ``sam`` schema (``sam_schema``).
     """
     engines = {'sam': db.engine}
     ss_engine = db.engines.get('system_status')
@@ -72,15 +80,20 @@ def _collect_health(include_schema=False):
 
     checks = {}
     healthy = True
+    degraded = False
 
     for name, engine in engines.items():
+        required = name in _REQUIRED_BINDS
         ok, latency_ms, error = _ping_engine(engine)
-        checks[name] = {'status': 'healthy' if ok else 'unhealthy'}
+        checks[name] = {'status': 'healthy' if ok else 'unhealthy', 'required': required}
         if ok:
             checks[name]['latency_ms'] = latency_ms
         else:
             checks[name]['error'] = error
-            healthy = False
+            if required or strict:
+                healthy = False
+            else:
+                degraded = True
 
     # Only meaningful when the bind is reachable; a drift probe against a
     # dead connection would report 'unknown' and add nothing.
@@ -89,14 +102,19 @@ def _collect_health(include_schema=False):
         if checks['sam_schema']['status'] == 'unhealthy':
             healthy = False
 
-    return healthy, checks
+    return healthy, degraded, checks
 
 
-def _health_response(include_schema):
+def _health_response(include_schema, strict):
     """Build the shared (payload, status_code) pair for / and /ready."""
-    healthy, checks = _collect_health(include_schema=include_schema)
+    healthy, degraded, checks = _collect_health(include_schema=include_schema, strict=strict)
+    if healthy and degraded:
+        failing = ', '.join(f"{n}: {c.get('error')}" for n, c in checks.items()
+                            if c['status'] == 'unhealthy')
+        current_app.logger.warning('readiness degraded (still serving): %s', failing)
+    status = 'unhealthy' if not healthy else ('degraded' if degraded else 'healthy')
     return jsonify({
-        'status': 'healthy' if healthy else 'unhealthy',
+        'status': status,
         'service': 'sam-webapp',
         'timestamp': datetime.now().isoformat(),
         'checks': checks,
@@ -120,7 +138,7 @@ def health():
     Public endpoint (no login required). Exempt from rate limiting so
     LB/Kubernetes probes never get throttled.
     """
-    return _health_response(include_schema=True)
+    return _health_response(include_schema=True, strict=True)
 
 
 @bp.route('/live', methods=['GET'])
@@ -138,16 +156,23 @@ def liveness():
 def readiness():
     """Kubernetes readiness probe — confirms the app can serve traffic.
 
-    Connectivity only: deliberately does NOT include the schema-drift check
-    that ``/`` reports. Drift affects every replica of an image identically,
-    so failing readiness on it would empty the Service and turn a degraded
-    site into an unreachable one — and stall the very rolling deploy that
-    ships the fix. Drift is a paging signal, not a "take this pod out"
-    signal; ``/`` carries it.
+    503 only when the primary ``sam`` bind is down. Two things are reported
+    but never fail readiness, for the same reason: they affect every replica
+    identically, so failing readiness on them empties the Service and turns
+    a degraded site into an unreachable one.
 
+    - Schema drift (``/`` carries it): a paging signal, not a "take this pod
+      out" signal, and failing on it would stall the deploy that ships the fix.
+    - A secondary bind (``system_status``): on 2026-09-13 a csg-postgres
+      rolling restart failed this ping on both pods for 3.5 minutes while
+      ``sam`` answered in 4 ms, and the whole site was unreachable for the
+      duration. Now it renders as ``degraded`` and the status pages fail soft.
+
+    ``?strict=1`` restores 503-on-any-bind, for compose startup ordering.
     Public endpoint.
     """
-    return _health_response(include_schema=False)
+    strict = request.args.get('strict') == '1'
+    return _health_response(include_schema=False, strict=strict)
 
 
 @bp.route('/db-pool', methods=['GET'])

@@ -1,8 +1,9 @@
 # Kubernetes Deployment Guide
 
-This guide covers deploying the SAM webapp via Helm in two environments:
+This guide covers deploying the SAM webapp via Helm in three environments:
 - **Local Development** — Docker Desktop k8s on your Mac (learn k8s without a remote cluster)
-- **CIRRUS** — Remote production cluster at NCAR
+- **CIRRUS** — Remote production cluster at NCAR (`samuel`)
+- **CIRRUS dev** — a second, routable install of the same chart (`samuel-dev`), see § samuel-dev
 
 The Helm chart lives in `helm/`. Both environments use the same templates; a layered
 values file approach handles the differences.
@@ -44,20 +45,20 @@ kubectl cluster-info
 
 ```bash
 # 1. Create a dedicated namespace
-kubectl create namespace samuel-dev
+kubectl create namespace samuel-local
 
 # 2. Inject secrets from ../.env (creates the 3 k8s Secrets that ESO would normally provide)
-bash helm/local-secrets.sh samuel-dev
+bash helm/local-secrets.sh samuel-local
 
 # 3. Install the chart with local overrides
 helm install samuel ./helm \
   -f helm/values.yaml \
   -f helm/values-local.yaml \
-  -n samuel-dev
+  -n samuel-local
 
 # 4. Verify the pod is running
-kubectl get pods -n samuel-dev
-kubectl logs -n samuel-dev -l app=samuel
+kubectl get pods -n samuel-local
+kubectl logs -n samuel-local -l app=samuel
 ```
 
 ### Accessing the App
@@ -66,7 +67,7 @@ kubectl logs -n samuel-dev -l app=samuel
 while you use the browser — leave it open in a dedicated terminal tab:
 
 ```bash
-kubectl port-forward -n samuel-dev svc/samuel 6050:5050
+kubectl port-forward -n samuel-local svc/samuel 6050:5050
 ```
 
 Then open **http://localhost:6050** in your browser.
@@ -77,9 +78,9 @@ Then open **http://localhost:6050** in your browser.
 
 **Check status:**
 ```bash
-kubectl get pods -n samuel-dev
-kubectl describe pod -n samuel-dev -l app=samuel   # detailed events/errors
-kubectl logs -n samuel-dev -l app=samuel --follow  # live log stream
+kubectl get pods -n samuel-local
+kubectl describe pod -n samuel-local -l app=samuel   # detailed events/errors
+kubectl logs -n samuel-local -l app=samuel --follow  # live log stream
 ```
 
 **After changing `helm/` templates or `values-local.yaml`:**
@@ -87,13 +88,13 @@ kubectl logs -n samuel-dev -l app=samuel --follow  # live log stream
 helm upgrade samuel ./helm \
   -f helm/values.yaml \
   -f helm/values-local.yaml \
-  -n samuel-dev
+  -n samuel-local
 ```
 
 **After changing `../.env` credentials:**
 ```bash
-bash helm/local-secrets.sh samuel-dev   # re-creates/updates the k8s Secrets
-kubectl rollout restart deployment/samuel -n samuel-dev  # picks up new secret values
+bash helm/local-secrets.sh samuel-local   # re-creates/updates the k8s Secrets
+kubectl rollout restart deployment/samuel -n samuel-local  # picks up new secret values
 ```
 
 **Preview rendered manifests without deploying:**
@@ -101,14 +102,14 @@ kubectl rollout restart deployment/samuel -n samuel-dev  # picks up new secret v
 helm template samuel ./helm \
   -f helm/values.yaml \
   -f helm/values-local.yaml \
-  -n samuel-dev
+  -n samuel-local
 ```
 
 ### Destroy / Clean Up
 
 ```bash
-helm uninstall samuel -n samuel-dev
-kubectl delete namespace samuel-dev
+helm uninstall samuel -n samuel-local
+kubectl delete namespace samuel-local
 ```
 
 This removes all k8s resources (Deployment, Service, Ingress, Secrets). Re-run
@@ -126,7 +127,7 @@ First-Time Setup to start fresh.
 | `useExternalSecret` | `false` | `true` |
 | CPU request | 0.5 | 4 |
 | Memory request | 512M | 4096M |
-| Ingress | Rendered but inactive | Active via Traefik |
+| Ingress | Rendered but inactive | Active via `nginx-external` |
 | TLS | None | InCommon cert via cert-manager |
 
 ---
@@ -139,7 +140,7 @@ CIRRUS provides the dependencies the chart expects:
 
 - **External Secrets Operator (ESO)** — syncs secrets from OpenBao into k8s Secrets
 - **SecretStore `csg-ro`** — read-only OpenBao connection for the `csg/` secret path
-- **Traefik ingress controller** (`traefik-internal`) — routes traffic to pods
+- **nginx ingress controller** (`nginx-external`) — routes traffic to pods
 - **cert-manager** — auto-provisions TLS certificates via the `incommon` ClusterIssuer
 
 You do not manage any of these directly. They are cluster-wide services.
@@ -164,15 +165,19 @@ helm install samuel ./helm -f helm/values.yaml -n <namespace>
 
 ### How Secrets Work on CIRRUS
 
-The four `ExternalSecret` CRD resources rendered by the chart instruct ESO to pull
-credentials from OpenBao and create k8s Secrets automatically:
+The `ExternalSecret` CRD resources rendered by the chart (seven for prod, six for
+dev) instruct ESO to pull credentials from OpenBao and create k8s Secrets
+automatically. Names are `<webapp.name>-<block>-credentials`:
 
-| k8s Secret | OpenBao Path | Contains |
-|---|---|---|
-| `samuel-db-credentials` | `csg/pg-superuser` | `STATUS_DB_USERNAME`, `STATUS_DB_PASSWORD` |
-| `samuel-sam-db-credentials` | `csg/sam-readuser` | `SAM_DB_USERNAME`, `SAM_DB_PASSWORD` |
-| `samuel-jh-credentials` | `csg/jh-api-token` | `JUPYTERHUB_API_TOKEN` |
-| `samuel-oidc-credentials` | `csg/sam-oidc` | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_ISSUER`, `FLASK_SECRET_KEY` |
+| k8s Secret (`samuel-…`) | OpenBao path, prod | OpenBao path, `samuel-dev` | Contains |
+|---|---|---|---|
+| `…-db-credentials` | `csg/pg-appuser` | same | `STATUS_DB_USERNAME`, `STATUS_DB_PASSWORD` (the `pguser` role, never the superuser) |
+| `…-sam-db-credentials` | `csg/sam-writeuser` | `csg/sam-dev-pg` | `SAM_DB_USERNAME`, `SAM_DB_PASSWORD` |
+| `…-jh-db-credentials` | `csg/pg-appuser` | same | `JOB_HISTORY_PG_USER`, `JOB_HISTORY_PG_PASSWORD` |
+| `…-fs-db-credentials` | `csg/pg-appuser` | same | `FS_SCAN_PG_USER`, `FS_SCAN_PG_PASSWORD` |
+| `…-jh-credentials` | `csg/jh-api-token` | same | `JUPYTERHUB_API_TOKEN` |
+| `…-xras-api-credentials` | `csg/xras-api-key` | not synced | `XRAS_API_KEY` |
+| `…-oidc-credentials` | `csg/sam-oidc` | `csg/sam-dev-oidc` | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_ISSUER`, `FLASK_SECRET_KEY` |
 
 ESO refreshes these every hour (`refreshInterval: 1h`). You never manage these secrets
 manually on CIRRUS — rotating credentials in OpenBao is sufficient.
@@ -238,8 +243,8 @@ Logout needs no equivalent setting: it already derives
 | Local k8s (Docker Desktop, `values-local.yaml`) | port-forwarded | stub (`DISABLE_AUTH=1`) | n/a | n/a |
 | Fargate staging | `https://sam-staging.csgsam.ucar.edu` | oidc | AWS SSM `/sam/staging/oidc-*` | `https://sam-staging.csgsam.ucar.edu/auth/oidc/callback` |
 | CIRRUS k8s (this chart) | `https://sam.hpc.ucar.edu` (advertised)<br>`https://samuel.k8s.ucar.edu` (platform alias) | oidc | OpenBao `csg/sam-oidc` | both `https://sam.hpc.ucar.edu/auth/oidc/callback` and `https://samuel.k8s.ucar.edu/auth/oidc/callback` |
+| CIRRUS k8s dev (`samuel-dev`, `values-dev.yaml`) | `https://samuel-dev.k8s.ucar.edu` | oidc | OpenBao `csg/sam-dev-oidc` | `https://samuel-dev.k8s.ucar.edu/auth/oidc/callback` |
 | Future: ECS production | tbd | oidc | AWS SSM `/sam/production/oidc-*` | tbd |
-| Future: k8s staging | tbd | oidc | OpenBao `csg/sam-staging-oidc` | tbd |
 
 Scheduled tasks, by environment:
 
@@ -248,6 +253,7 @@ Scheduled tasks, by environment:
 | Local Docker Compose (`webdev`) | n/a — no chart | Run by hand: `sam-admin tasks --run-due` |
 | Local k8s (Docker Desktop) | `false` | Nothing should silently DELETE local data |
 | CIRRUS k8s (this chart) | `true`, kill-switched | Staged enable; the switch names what is not yet live. `SAM_TASKS_DISABLED=xras_notices` |
+| CIRRUS k8s dev (`samuel-dev-tasks`) | `true`, own ledger in `system_status_dev` | Mail tasks and the sweep off: `SAM_TASKS_DISABLED=expiration_notices,xras_notices,xras_sweep` |
 
 When the per-environment Entra app strategy is adopted (separate `sam-production`
 and `sam-staging` Entra apps), only the OpenBao / SSM values change — the chart
@@ -301,6 +307,7 @@ kubectl get externalsecrets -n <namespace>   # check ESO sync status
 kubectl get ingress -n <namespace>
 kubectl get cronjob -n <namespace>           # samuel-tasks (see below)
 kubectl logs -n <namespace> -l app=samuel --tail=50
+curl -s https://samuel.k8s.ucar.edu/api/v1/health/ready | jq .status   # healthy | degraded (a secondary bind down; still serving) | unhealthy
 ```
 
 ### Scheduled tasks
@@ -330,7 +337,9 @@ until it has been reviewed on its own, so the dispatcher wakes hourly and the
 untried task writes a `skipped` row instead of running. Today
 `cleanup_status_snapshots`, `deactivate_expired_projects`, `xras_sweep`,
 `expiration_notices` and `refresh_allocation_state` are live; `xras_notices`
-is switched off. Enabling one is a separate, reviewable one-line commit.
+is switched off (on `samuel-dev` the two mail tasks and the sweep are off as
+well, in `values-dev.yaml`). Enabling one is a separate, reviewable one-line
+commit.
 
 ⚠️ **It is an enumeration, and it is fail-OPEN.** `disabled_tasks()` in
 `src/scheduling/runner.py` is a case-sensitive exact match against registry
@@ -367,7 +376,7 @@ that needs no task to actually do anything:
 
 ```bash
 helm upgrade --install samuel ./helm -f helm/values.yaml -f helm/values-local.yaml \
-  -n samuel-dev --set tasks.enabled=true --set tasks.schedule='*/5 * * * *' \
+  -n samuel-local --set tasks.enabled=true --set tasks.schedule='*/5 * * * *' \
   --set 'tasks.env.SAM_TASKS_DISABLED=cleanup_status_snapshots\,deactivate_expired_projects\,expiration_notices\,refresh_allocation_state\,xras_notices\,xras_sweep'
 ```
 
@@ -385,3 +394,28 @@ helm uninstall samuel -n <namespace>
 
 Note: The `ExternalSecret` resources (and the k8s Secrets they manage) are deleted with
 the release. OpenBao credentials are unaffected.
+
+---
+
+## samuel-dev (CIRRUS dev)
+
+A second install of the same chart in the same namespace, rendered with
+`helm/values-dev.yaml` on top of `values.yaml`: every object is named
+`samuel-dev*`, it serves `https://samuel-dev.k8s.ucar.edu`, reads the Postgres
+`sam_dev` copy and its own `system_status_dev`, sends no mail, never holds the
+XRAS API key, and accepts only its own collector API key.
+`helm/tests/test-dev-render.sh` proves each of those and that the render shares
+no name, label, host or TLS secret with prod. Design, decisions and the
+outside-the-repo checklist: `docs/plans/K8S_DEV_ENVIRONMENT.md`.
+
+```bash
+gh workflow run "Publish Images and CIRRUS Deploy" --ref <branch>   # builds + pins cirrus-dev (docs/CIRRUS_PUBLISHING.md)
+make deploy-dev                                  # phase 1: laptop helm from origin/cirrus-dev (until Argo adopts it)
+PGPASSWORD=... make refresh-dev                  # rebuild sam_dev + reseed system_status_dev + refresh dev caches
+scripts/cirrus_healthcheck.sh --env dev          # every cirrus script takes --env dev / SAM_ENV=dev
+scripts/cirrus_watch.sh --env dev
+```
+
+A push to `staging` also pins `cirrus-dev`. A refresh evicts the dev pods'
+database sessions; they reconnect on the next request, and whatever was written
+to dev since the last refresh is gone by design.

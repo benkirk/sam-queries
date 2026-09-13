@@ -106,7 +106,7 @@ def raise_if_disabled(notifier) -> None:
     notice task sails through: every message records `suppressed`, the run
     reports `succeeded`, the Job goes green, and nobody learns the mail stopped.
     The CronJob does **not** inherit `webapp.env` (`cronjob-tasks.yaml` renders
-    `.Values.tasks.env` plus a hand-listed set and nothing else), so this is a
+    `.Values.tasks.env` plus a hand-listed set and three prefixes), so this is a
     live failure mode, not a hypothetical one.
     """
     if not notifier.config.enabled:

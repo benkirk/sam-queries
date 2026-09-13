@@ -167,6 +167,18 @@ spec:
                 value: {{ .Values.webapp.env.SAM_DB_SERVER | quote }}
               - name: SAM_DB_REQUIRE_SSL
                 value: {{ .Values.webapp.env.SAM_DB_REQUIRE_SSL | quote }}
+              {{- /* Every other non-empty SAM_DB_* / STATUS_DB_* key in webapp.env
+                     (NAME, PORT, ...) forwards by prefix, like NOTIFY_* above.
+                     WARNING: without this an overlay that points the webapp at a
+                     different database leaves the task pod on the app defaults
+                     (sam / system_status), i.e. on production. */}}
+              {{- range $key, $value := .Values.webapp.env }}
+              {{- if and (or (hasPrefix "SAM_DB_" $key) (hasPrefix "STATUS_DB_" $key)) $value
+                         (not (has $key (list "SAM_DB_DRIVER" "SAM_DB_SERVER" "SAM_DB_REQUIRE_SSL" "STATUS_DB_DRIVER" "STATUS_DB_SERVER"))) }}
+              - name: {{ $key }}
+                value: {{ $value | quote }}
+              {{- end }}
+              {{- end }}
               # WARNING: The sweep PUBLISHES its worklist into the shared cache for
               # the dashboard to read, so it needs the same Redis the webapp
               # uses. Without this the bucket falls back to a per-worker

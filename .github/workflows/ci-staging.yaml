@@ -134,6 +134,9 @@ jobs:
       - name: Helm template renders cleanly (local dev values)
         run: helm template samuel helm/ -f helm/values.yaml -f helm/values-local.yaml > /dev/null
 
+      - name: Helm template renders cleanly (samuel-dev values)
+        run: helm template samuel-dev helm/ -f helm/values.yaml -f helm/values-dev.yaml > /dev/null
+
       # Every script in helm/tests/, not a hand-maintained list. Naming them
       # individually is how a new render test gets written and then silently
       # never runs.
