@@ -1,8 +1,9 @@
 #!/bin/bash
-# cirrus_healthcheck.sh — opinionated probe for the sam-queries (samuel) release on nwc1.
+# cirrus_healthcheck.sh — opinionated probe for the sam-queries release on nwc1:
+# prod ('samuel', the default) or dev ('samuel-dev', --env dev / SAM_ENV=dev).
 #
-# Inspects the Helm chart in ./helm/ (Deployment 'samuel' webapp +
-# Deployment 'samuel-redis' cache, in namespace 'sam-queries' by default).
+# Inspects the objects the Helm chart in ./helm/ renders (webapp Deployment +
+# Redis Deployment + tasks CronJob, in namespace 'sam-queries' by default).
 # Designed to be read top-to-bottom by someone new to Kubernetes: each section
 # prints what it's checking, the raw kubectl/helm output, a short explanation,
 # and a PASS / WARN / FAIL line.
@@ -13,8 +14,9 @@
 #   scripts/cirrus_healthcheck.sh [options]
 #
 # Options:
+#       --env        ENV  Which release: prod | dev           (default: $SAM_ENV or prod)
 #   -n, --namespace NS    Namespace the release lives in   (default: sam-queries)
-#   -r, --release    REL  Helm release name                (default: samuel)
+#   -r, --release    REL  Helm release name                (default: per --env)
 #       --context    CTX  kubectl context to target       (default: current)
 #       --ingress-host H  Check only this host at the edge (default: every host
 #                         the ingress serves — see INGRESS_HOSTS in lib/)
@@ -31,18 +33,6 @@ _LIBDIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib"
 # shellcheck source=lib/cirrus_common.sh
 source "${_LIBDIR}/cirrus_common.sh"
 
-# ExternalSecret resource names carry the '-esos' suffix per
-# helm/templates/external_secret.yaml; the produced Secret (consumed
-# via env secretKeyRef in the Deployment) drops the suffix.
-EXTERNAL_SECRETS=(
-    "samuel-db-credentials-esos"
-    "samuel-sam-db-credentials-esos"
-    "samuel-jh-db-credentials-esos"
-    "samuel-jh-credentials-esos"
-    "samuel-fs-db-credentials-esos"
-    "samuel-oidc-credentials-esos"
-)
-
 # Tuning hints accumulate across sections and print in the summary.
 TUNING_HINTS=()
 hint() { TUNING_HINTS+=("$1"); }
@@ -56,6 +46,16 @@ done
 
 setup_colors
 build_kctl
+
+# ExternalSecret names are <webapp.name>-<block>-esos per
+# helm/templates/external_secret.yaml; the produced Secret (consumed via env
+# secretKeyRef in the Deployment) drops the suffix. Built after arg parsing so
+# --env is in effect.
+EXTERNAL_SECRETS=()
+for block in db sam-db jh-db jh fs-db oidc; do
+    EXTERNAL_SECRETS+=("${WEBAPP_NAME}-${block}-credentials-esos")
+done
+[[ "$XRAS_ES_EXPECTED" -eq 1 ]] && EXTERNAL_SECRETS+=("${WEBAPP_NAME}-xras-api-credentials-esos")
 
 # ============================================================================
 section "0. Prerequisites"
@@ -85,18 +85,15 @@ else
     exit 1
 fi
 
+echo "  environment: $SAM_ENV (webapp '$WEBAPP_NAME', release '$RELEASE')"
+# No adopt-the-first-release fallback: with two releases in the namespace it
+# would probe one release's objects under the other's name.
 if helm status -n "$NAMESPACE" "$RELEASE" >/dev/null 2>&1; then
     pass "helm release '$RELEASE' present in '$NAMESPACE'"
+elif [[ "$SAM_ENV" == "prod" ]]; then
+    info "no helm release named '$RELEASE' in '$NAMESPACE' — Argo CD applies the chart directly (normal)"
 else
-    # Try auto-detect: pick the first release in the namespace.
-    DETECTED=$(helm list -n "$NAMESPACE" -o json 2>/dev/null | jq -r '.[0].name // empty')
-    if [[ -n "$DETECTED" ]]; then
-        warn "helm release '$RELEASE' not found; auto-detected '$DETECTED' in '$NAMESPACE'"
-        explain "Re-run with --release $DETECTED to silence this warning."
-        RELEASE="$DETECTED"
-    else
-        warn "no helm release found in '$NAMESPACE' — chart may be applied as raw manifests or via ArgoCD"
-    fi
+    warn "no helm release named '$RELEASE' in '$NAMESPACE' — not deployed yet, or adopted by Argo CD"
 fi
 
 # ============================================================================
@@ -410,16 +407,21 @@ fi
 section "5. Resource usage vs limits"
 # ============================================================================
 
+# Only this release's pods: the namespace also holds the other environment's.
+RELEASE_PODS=(-l "app in (${WEBAPP_NAME},${REDIS_NAME},${TASKS_NAME})")
 if ! "${KCTL_NS[@]}" top pods --no-headers >/dev/null 2>&1; then
     warn "kubectl top unavailable (metrics-server not installed?) — skipping live usage"
 else
     echo "  live usage snapshot (one-shot — re-run for trend):"
-    run "${KCTL_NS[@]}" top pods --containers
+    run "${KCTL_NS[@]}" top pods --containers "${RELEASE_PODS[@]}"
 
     # Build per-container limits map from current pods, then compare to live usage.
-    LIMITS_TSV=$("${KCTL_NS[@]}" get pods \
-        -o jsonpath='{range .items[*]}{range .spec.containers[*]}{..metadata.name}{"\t"}{.name}{"\t"}{.resources.limits.cpu}{"\t"}{.resources.limits.memory}{"\n"}{end}{end}' 2>/dev/null \
-        | awk -F'\t' 'NF==4 && $3!="" {print}')
+    # jq, not a nested jsonpath range: inside the container range the pod name
+    # is out of scope, and the map silently matched nothing.
+    LIMITS_TSV=$("${KCTL_NS[@]}" get pods "${RELEASE_PODS[@]}" -o json 2>/dev/null \
+        | jq -r '.items[] | .metadata.name as $p | .spec.containers[]
+                 | select(.resources.limits.cpu != null and .resources.limits.memory != null)
+                 | [$p, .name, .resources.limits.cpu, .resources.limits.memory] | @tsv')
 
     # webapp container memory peak across replicas (for overprovisioning hint)
     webapp_mem_peak=0
@@ -457,7 +459,7 @@ else
                 fi
             fi
         fi
-    done < <("${KCTL_NS[@]}" top pods --containers --no-headers 2>/dev/null)
+    done < <("${KCTL_NS[@]}" top pods --containers --no-headers "${RELEASE_PODS[@]}" 2>/dev/null)
 
     # Overprovisioning hint: webapp peak < 25% of mem limit
     if [[ "$webapp_mem_limit" -gt 0 ]]; then
@@ -663,7 +665,7 @@ section "8. ExternalSecrets (OpenBao sync)"
 if ! "${KCTL_NS[@]}" get externalsecret >/dev/null 2>&1; then
     warn "ExternalSecret CRD not present or not readable — skipping"
 else
-    run "${KCTL_NS[@]}" get externalsecret -o wide
+    run "${KCTL_NS[@]}" get externalsecret -l "app=${WEBAPP_NAME}" -o wide
     explain "ExternalSecrets sync DB / OIDC / JupyterHub credentials from OpenBao. STATUS should be 'SecretSynced' and Ready=True."
 
     any_missing=0
