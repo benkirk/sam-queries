@@ -145,20 +145,21 @@ class TestReadinessEndpoint:
         d_ready = r_ready.get_json()
         d_health = r_health.get_json()
 
-        # Same keys
+        # Same keys, and the same verdict while everything is up (they
+        # diverge by design when a secondary bind is down — see below).
         assert set(d_ready.keys()) == set(d_health.keys())
-        # Same service and status values (timestamps will differ)
         assert d_ready['service'] == d_health['service']
-        assert d_ready['status'] == d_health['status']
+        assert d_ready['status'] == d_health['status'] == 'healthy'
 
-    def test_readiness_returns_503_when_db_fails(self, client):
-        """Returns 503 when a DB ping fails."""
+    def test_readiness_returns_503_when_primary_db_fails(self, client):
+        """The sam bind is required: its failure is a 503."""
         failing_ping = (False, None, 'simulated failure')
 
         with patch('webapp.api.v1.health._ping_engine', return_value=failing_ping):
             response = client.get('/api/v1/health/ready')
 
         assert response.status_code == 503
+        assert response.get_json()['status'] == 'unhealthy'
 
     def test_readiness_omits_schema_check(self, client):
         """/ready must not even run the drift probe."""
@@ -230,6 +231,68 @@ class TestSchemaDriftContract:
 
         assert response.status_code == 503
         assert 'sam_schema' not in response.get_json()['checks']
+
+
+# ---------------------------------------------------------------------------
+# Secondary bind — the 2026-09-13 csg-postgres roll in endpoint form
+# ---------------------------------------------------------------------------
+
+def _secondary_bind_down(engine):
+    """_ping_engine stand-in: sam answers, everything else refuses."""
+    from webapp.extensions import db
+    if engine is db.engine:
+        return True, 4.4, None
+    return False, None, 'connection refused (csg-postgres rolling)'
+
+
+class TestSecondaryBindContract:
+    """A CNPG rolling restart failed the system_status ping on both pods for
+    3.5 minutes while sam answered in 4 ms. Readiness went 503, Kubernetes
+    emptied the Service, and a status-dashboard blip became a full outage.
+
+    - `/ready` must stay 200 and say `degraded`, so the site keeps serving.
+    - `/` must go 503, so monitoring still pages.
+    - `/ready?strict=1` must go 503, for compose startup ordering.
+    """
+
+    def test_readiness_stays_200_when_secondary_bind_down(self, client):
+        """Load-bearing: a secondary bind must never empty the k8s Service."""
+        with patch('webapp.api.v1.health._ping_engine', side_effect=_secondary_bind_down):
+            response = client.get('/api/v1/health/ready')
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['status'] == 'degraded'
+        assert data['checks']['sam']['status'] == 'healthy'
+        assert data['checks']['sam']['required'] is True
+        assert data['checks']['system_status']['status'] == 'unhealthy'
+        assert data['checks']['system_status']['required'] is False
+        assert 'csg-postgres' in data['checks']['system_status']['error']
+
+    def test_readiness_strict_returns_503_when_secondary_bind_down(self, client):
+        with patch('webapp.api.v1.health._ping_engine', side_effect=_secondary_bind_down):
+            response = client.get('/api/v1/health/ready?strict=1')
+
+        assert response.status_code == 503
+        assert response.get_json()['status'] == 'unhealthy'
+
+    def test_health_returns_503_when_secondary_bind_down(self, client):
+        """The monitoring surface still fails on any bind."""
+        with patch('webapp.api.v1.health._ping_engine', side_effect=_secondary_bind_down):
+            response = client.get('/api/v1/health/')
+
+        assert response.status_code == 503
+        assert response.get_json()['status'] == 'unhealthy'
+
+    def test_degradation_is_logged_at_warning(self, client, caplog):
+        """A 503 used to log as routine INFO; degradation must be visible."""
+        import logging
+        with caplog.at_level(logging.WARNING), \
+             patch('webapp.api.v1.health._ping_engine', side_effect=_secondary_bind_down):
+            client.get('/api/v1/health/ready')
+
+        assert any('readiness degraded' in r.getMessage() and 'system_status' in r.getMessage()
+                   for r in caplog.records)
 
 
 # ---------------------------------------------------------------------------
