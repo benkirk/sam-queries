@@ -113,10 +113,12 @@ switch) and/or a one-shot retry on `OperationalError` at connect time.
 
 **F. ~8 s connect stalls at the shared Ingress, with or without load.** Roughly every
 1–2 min a new TCP connection to 128.117.41.126 gets no SYN answer for 8 s (curl
-`time_appconnect` 0, DNS bypassed). The same run showed prod's hostname stalling
-while dev, www.ucar.edu and the Postgres LB answered, and vice versa; the Postgres LB
-never stalled. Platform-side (nginx-external / its LB), not SAM; prod users would see
-it as a sporadic first-load hang. Hand to the platform team with this evidence.
+`time_appconnect` 0, DNS bypassed). A 5-minute discriminator (150 rounds, 2 s apart,
+four targets per round) counted 11 stalls on the Ingress hostnames (7 dev, 4 prod,
+never both in the same round) and 0 on www.ucar.edu and 0 on the Postgres LB
+(`csg-postgres.k8s.ucar.edu:5432`, a different LB IP on the same cluster).
+Platform-side (nginx-external / its LB), not SAM; prod users would see it as a
+sporadic first-load hang. Hand to the platform team with this evidence.
 
 **Migration blockers already known, confirmed here:** the webapp's theoretical pool
 ceiling (9 workers × 30 × 2 pods = 540) exceeds `max_connections` 300, and the
