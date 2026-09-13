@@ -5,7 +5,7 @@ CONDA_ROOT := $(shell conda info --base)
 # Common way to initialize environment across various types of systems
 config_env := module load conda >/dev/null 2>&1 || true && . $(CONDA_ROOT)/etc/profile.d/conda.sh
 
-.PHONY: help clean clobber distclean fixperms check perf helm-test e2e check-db-vs-orms docker-build docker-up docker-down docker-restart docker-watch docker-pytest \
+.PHONY: help clean clobber distclean fixperms check perf helm-test deploy-dev e2e check-db-vs-orms docker-build docker-up docker-down docker-restart docker-watch docker-pytest \
         pytest-pg docker-pytest-pg \
         conda-env prune-old-envs print-env-hash migrate-legacy-env \
         migrate-status-current migrate-status-up migrate-status-down migrate-status-history migrate-status-revision migrate-status-stamp-head
@@ -178,6 +178,11 @@ pytest-pg: ## Run the default test tier against postgres-test
 helm-test: ## Run every Helm render assertion script (needs helm v3+)
 	@command -v helm >/dev/null 2>&1 || { echo "helm not found in PATH"; exit 1; }
 	@for t in helm/tests/*.sh; do echo "==> $$t"; bash "$$t" || exit 1; done
+
+# TEMPORARY until Argo CD Application sam-query-dev exists (the script
+# self-retires once the Deployment carries an Argo tracking annotation).
+deploy-dev: ## Deploy samuel-dev on nwc1 from origin/cirrus-dev (laptop helm; phase 1 only)
+	@scripts/deploy_dev.sh
 
 perf: ## Run perf regression + benchmark suite (serial)
 	$(config_env) && source etc/config_env.sh && \
