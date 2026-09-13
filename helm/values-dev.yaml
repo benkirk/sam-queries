@@ -48,6 +48,12 @@ webapp:
     # Dev-only bcrypt hash; plaintext is SAM_DEV_API_PASS in the laptop .env.
     API_KEYS_COLLECTOR: "$2b$12$cT8gWOKQtobRHrs1/lgVaeiUL6mivFdfsctyFImGRgulhd8I11mb6"
     SAM_API_BASE: "https://samuel-dev.k8s.ucar.edu"   # sam-admin cache --refresh defaults to prod
+    # Dev is the load-test target: no throttling of authed, M2M or anonymous
+    # traffic. RATELIMIT_AUTH_LOGIN stays at the prod default (guards the OIDC
+    # callback; nothing legitimate hammers it). Flask-Limiter notation.
+    RATELIMIT_AUTHED: "100000 per minute"
+    RATELIMIT_M2M: "100000 per minute"
+    RATELIMIT_ANON: "100000 per minute"
   samDbCredentials:
     secretPath: csg/sam-dev-pg            # the sam_dev owner role (SAM_DEV_PG_USER)
   oidcCredentials:

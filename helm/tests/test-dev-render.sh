@@ -102,6 +102,11 @@ check_dev() {
     grep -q xras_sweep <<<"$switch" || { red "FAIL: xras_sweep must be disabled while XRAS_OUTGOING_ENABLED is off"; return 1; }
   fi
 
+  # Load-test target: the three traffic tiers are raised, the login tier is not.
+  [[ -n "$(env_value "$deploy" RATELIMIT_M2M)" ]] || { red "FAIL: dev must raise RATELIMIT_M2M (load-test target)"; return 1; }
+  [[ "$(env_value "$deploy" RATELIMIT_AUTHED)" == "$(env_value "$deploy" RATELIMIT_M2M)" ]] || { red "FAIL: RATELIMIT_AUTHED and RATELIMIT_M2M must be raised together"; return 1; }
+  assert_not_contains "$deploy" "name: RATELIMIT_AUTH_LOGIN" "the login tier stays at the prod default on dev"
+
   assert_contains "$deploy" "replicas: 1" "dev runs one replica"
   assert_not_contains "$whole" "kind: PodDisruptionBudget" "a PDB with minAvailable 1 on 1 replica blocks node drains"
 
@@ -165,6 +170,9 @@ prod_cron=$(render prod -s templates/cronjob-tasks.yaml)
 prod_keys=$(env_value_names "$prod_cron" '(SAM_DB|STATUS_DB)_' | tr '\n' ' ')
 [[ "$prod_keys" == "SAM_DB_DRIVER SAM_DB_REQUIRE_SSL SAM_DB_SERVER STATUS_DB_DRIVER STATUS_DB_SERVER " ]] || {
   red "FAIL: the prod CronJob must carry exactly the five original DB keys, got: $prod_keys"; exit 1; }
+prod_deploy=$(render prod -s templates/deployment.yaml)
+[[ -z "$(env_value_names "$prod_deploy" 'RATELIMIT_(AUTHED|M2M|ANON|AUTH_LOGIN)')" ]] || {
+  red "FAIL: prod must not carry a RATELIMIT_ tier override (only the dev overlay raises them)"; exit 1; }
 
 # --- the negative loop: each prod value must be refused ----------------------
 # `set +e` around a `( set -e; ... )` subshell keeps errexit live inside it;

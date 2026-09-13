@@ -122,3 +122,10 @@ helm upgrade --install "$RELEASE" "$CHART" \
     -n "$NAMESPACE" --kube-context "$CONTEXT" --atomic --timeout 10m
 kubectl --context "$CONTEXT" -n "$NAMESPACE" rollout status "deploy/$RELEASE" --timeout=5m
 echo -e "  ${GREEN}✔${NC} $RELEASE deployed from $SOURCE_REF ($PIN)"
+# A fresh install races the webapp against its Redis pod; the cache and limiter
+# fall back once per process and stay there (webapp/caching/__init__.py).
+if kubectl --context "$CONTEXT" -n "$NAMESPACE" logs "deploy/$RELEASE" --tail=-1 2>/dev/null \
+        | grep -q 'Redis is unreachable'; then
+    warn "$RELEASE started before its Redis answered and is on in-process caches; restart it once:"
+    echo "      kubectl --context $CONTEXT -n $NAMESPACE rollout restart deploy/$RELEASE"
+fi

@@ -456,6 +456,27 @@ spec:
 
 Argo adopts the Phase-1 objects by name. Afterwards retire `deploy-dev` (§4.6).
 
+### 6.4 Fresh install: the Redis race
+
+On the first install (2026-09-13) the webapp pod PINGed Redis before the Redis pod
+and its NetworkPolicy answered and logged `Redis is unreachable (Error 1 … Operation
+not permitted)`. `Caching.__init__` and `Limiting.init_app`
+(`src/webapp/caching/__init__.py`, `src/webapp/limiter/__init__.py`) decide the
+fallback once per process, so the pod ran on per-worker caches and `memory://`
+limits until `kubectl -n sam-queries rollout restart deploy/samuel-dev`. Later
+deploys find Redis already up; `deploy_dev.sh` prints the restart command when it
+sees the log line. Not chart-fixed on purpose: the fallback is load-bearing and the
+race is one-time per fresh install.
+
+### 6.5 Hammering dev
+
+The overlay raises `RATELIMIT_AUTHED`, `RATELIMIT_M2M` and `RATELIMIT_ANON` to
+100000/min; `RATELIMIT_AUTH_LOGIN` keeps the prod default (it guards the OIDC
+callback). The limiter still runs, so Admin → Configuration → Rate limits keeps
+counting, and an API-key load run against `/api/v1/*` never sees a 429. To test
+throttling behavior itself, use compose or restore the prod tiers in the overlay
+temporarily. The repo ships no load generator; pick one on the day.
+
 ## 7. Sequencing
 
 1. §4.1 → prod identity gate → §4.2, §4.3 → §4.4 → §4.5, §4.6, §4.7 → §4.8 → PR to
@@ -524,6 +545,7 @@ overlay edit the test already tolerates); moving the refresh into the cluster (n
 | Ruleset covers `cirrus-dev` (before the CI commit merges) | done; negative push test rejected (GH013), branch not created | 2026-09-13 |
 | OpenBao `csg/sam-dev-pg` (`username`, `password`), `csg/sam-dev-oidc` (`client_id`, `client_secret`, `issuer`, `flask_secret_key`) | done | 2026-09-13 |
 | `system_status_dev` created and seeded (§6.1) | done; 18 tables, alembic `0006_task_run`, `task_run` empty, 1m49s | 2026-09-13 |
-| First `make deploy-dev`; DNS + cert live | — | |
-| Entra dev registration | — | |
+| Living PR merged (#555); first automatic `cirrus-dev` pin (sha-4d30e9d, `target=dev`) | done | 2026-09-13 |
+| First `make deploy-dev`; DNS + cert live | done 15:04Z; 6 ExternalSecrets synced, cert Ready <1 min, A record by external-dns, `/` + `/ready` healthy on `sam_dev` + `system_status_dev` (101 models, no drift), `pg_stat_activity` isolation clean, first CronJob run touched dev only; one `rollout restart` for §6.4 | 2026-09-13 |
+| Entra dev registration | interim: dev reply URL on prod's registration, verified (no AADSTS error); separate registration open | 2026-09-13 |
 | Argo `sam-query-dev`; `deploy-dev` retired | — | |
