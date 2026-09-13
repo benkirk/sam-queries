@@ -521,8 +521,8 @@ overlay edit the test already tolerates); moving the refresh into the cluster (n
 | Plan written, decisions taken | done | 2026-09-12 |
 | §4 implemented, eight commits on `k8s_dev_plan`; prod render byte-identical | done | 2026-09-12 |
 | Living PR opened (`k8s_dev_plan` → `staging`) | — | |
-| Ruleset covers `cirrus-dev` (before the CI commit merges) | — | |
-| OpenBao `csg/sam-dev-pg` (`username`, `password`), `csg/sam-dev-oidc` (`client_id`, `client_secret`, `issuer`, `flask_secret_key`) | — | |
+| Ruleset covers `cirrus-dev` (before the CI commit merges) | done; negative push test rejected (GH013), branch not created | 2026-09-13 |
+| OpenBao `csg/sam-dev-pg` (`username`, `password`), `csg/sam-dev-oidc` (`client_id`, `client_secret`, `issuer`, `flask_secret_key`) | done | 2026-09-13 |
 | `system_status_dev` created and seeded (§6.1) | — | |
 | First `make deploy-dev`; DNS + cert live | — | |
 | Entra dev registration | — | |
