@@ -13,7 +13,7 @@ were throwaway (scratchpad); the numbers are here.
 | SAM | samuel-dev rev 2, image sha-8e3b48c, 1 replica, gunicorn gthread 3 workers × 8 threads (24 slots), pod requests 1 CPU / 1 GiB, limits 4 CPU / 4 GiB, no HPA |
 | DB | `sam_dev` (407 MB obfuscated clone) + `system_status_dev` on the shared CNPG `csg-postgres` (2 instances, no Pooler, `max_connections` 300, ~21 in use at start, `work_mem` 64 MB, no `statement_timeout`) |
 | Pool | `sam` engine `pool_size` 10 + `max_overflow` 20 per worker, `pool_pre_ping`, `connect_timeout` 10 s, keepalives, `target_session_attrs=read-write` |
-| Limits | dev limiter tiers 100000/min; Ingress `limit-rps` 100 (burst ×5) and `limit-connections` 200 per client IP |
+| Limits | dev limiter tiers 100000/min; Ingress annotations declare `limit-rps` 100 (burst ×5) and `limit-connections` 200 — but see the note below the P1 rerun: 180 req/s from one IP was served without a single rejection |
 | Client | one laptop, API key `collector` (Basic auth), Python `requests` driver, 8–32 threads |
 
 ## P0 — single client, cold (after `POST …/refresh`) then warm
@@ -40,6 +40,34 @@ The 4.4 s on the first `queue` GET was outside the app (server 279 ms); see F.
 Pod CPU sat at 3.9–4.0 cores (the limit) for the whole `/users` ladder; memory
 stayed under 500 MiB. `kubectl port-forward` was tried first and rejected as a
 transport: 36 ms median but an 8–9 s tail and failed requests at 32 clients.
+
+### P1 repeated after the fix (#561, image sha-1dd1516, 21:0xZ)
+
+Same ladder, same client, same endpoints, with `API_KEY_VERIFY_TTL` at its 300 s
+default:
+
+| Run | Before | After | Change |
+|---|---|---|---|
+| `/users/<u>`, 8 clients | 13.5 req/s, p50 586 ms | 121.0 req/s, p50 60 ms | 9.0× |
+| `/users/<u>`, 16 clients | 12.8 req/s, p50 1216 ms | 122.1 req/s, p50 81 ms | 9.5× |
+| `/users/<u>`, 32 clients | 12.5 req/s, p50 2004 ms | 179.7 req/s, p50 164 ms, p99 943 ms | 14.4× |
+
+Single-client repeat calls: first request 456 ms server-side (`cpu=442`, cold
+worker plus the one bcrypt), every later one **15 ms** server-side with `cpu=12`,
+`sam=4.0 ms/18q` — against ~290 ms and `cpu=275–300` before.
+
+The bottleneck moved off the app. Across the 20 897 requests of the ladder the
+median server time was 37 ms = `cpu` 7.5 + `sam` 26.9, so a request is now
+database-dominated, and the pod drew 1.4 cores instead of pinning at 4. One
+request in the 16-client run hit the 60 s client timeout: that is the Ingress
+connect stall of finding F, not the app.
+
+**Correction to an earlier claim.** Before the fix the app could not exceed 13 req/s,
+so the Ingress `limit-rps: 100` annotation was never tested and was written up as the
+real single-client ceiling. The rerun sustained 121–180 req/s from one IP with zero
+429s and zero 503s, so that annotation does not bite the way the number suggests —
+nginx applies `limit_req` per worker process, and the burst multiplier absorbs the
+rest. Treat the declared limits as a floor on what is allowed, not a measured cap.
 
 ## P3 — write path, `POST /api/v1/status/derecho`, 5/s × 5 min
 
@@ -87,16 +115,19 @@ minutes later.
 
 ## Findings
 
-**A. Every API-key request costs ~260 ms of CPU before route code runs.**
-`webapp/utils/api_auth.py` caches the credential rows but runs `bcrypt.checkpw`
-(cost 12) on each request. A warm cache hit with no DB work still shows
-`cpu=260ms`. Fix: cache the verification result (e.g. SHA-256 of the presented key
-→ ok, short TTL) or a cheaper cost for M2M keys.
+**A. Every API-key request cost ~260 ms of CPU before route code ran. FIXED (#561).**
+`webapp/utils/api_auth.py` cached the credential rows but ran `bcrypt.checkpw`
+(cost 12) on each request, so a warm cache hit with no DB work still showed
+`cpu=260ms`. `API_KEY_VERIFY_TTL` (default 300 s) now remembers a successful
+verification per worker, keyed by username, stored hash and a SHA-256 of the
+presented key; failures are never cached, so brute-force cost is unchanged.
+Measured after: `cpu` 12 ms on a repeat call.
 
-**C. API-key throughput per dev pod saturates at ~13 req/s at the 4-core limit**, all
-of it bcrypt; latency then grows linearly with client count (pure queueing). Prod's
-16-core pods and two replicas put the same ceiling near 100 req/s of API-key calls.
-Same fix as A.
+**C. API-key throughput per dev pod saturated at ~13 req/s at the 4-core limit**,
+all of it bcrypt, with latency growing linearly with client count. **FIXED with A**:
+121–180 req/s on the same pod, drawing 1.4 cores. The remaining cost is the query
+itself (18 statements for one user), so the next lever, if one is ever wanted, is
+that route rather than the auth layer.
 
 **B. Postgres beats prod MySQL on the legacy heavy queries** (obfuscated clone caveat):
 fstree db 148 ms vs ~3.3 s, directory_access 415 ms vs ~7 s wall. A migration datum,
