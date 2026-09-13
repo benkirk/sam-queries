@@ -301,6 +301,7 @@ kubectl get externalsecrets -n <namespace>   # check ESO sync status
 kubectl get ingress -n <namespace>
 kubectl get cronjob -n <namespace>           # samuel-tasks (see below)
 kubectl logs -n <namespace> -l app=samuel --tail=50
+curl -s https://samuel.k8s.ucar.edu/api/v1/health/ready | jq .status   # healthy | degraded (a secondary bind down; still serving) | unhealthy
 ```
 
 ### Scheduled tasks

@@ -108,10 +108,11 @@ services:
       - "SAM_TASKS_DISABLED=${SAM_TASKS_DISABLED:-}"
 
     healthcheck:
-      # Probe the app's own readiness endpoint, which pings every configured
-      # DB bind (sam + system_status). Returns 503 if any bind is unreachable,
-      # so the webapp is only marked healthy once both databases are queryable.
-      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:5050/api/v1/health/ready', timeout=3).read()\""]
+      # Probe the app's own readiness endpoint in strict mode: 503 if ANY bind
+      # (sam + system_status) is unreachable, so the webapp is only marked
+      # healthy once both databases are queryable. Without ?strict=1 a
+      # secondary bind only degrades, which is what k8s readiness wants.
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:5050/api/v1/health/ready?strict=1', timeout=3).read()\""]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -227,10 +228,9 @@ services:
             - .env       # don't ferry the host .env into /code; env_file
                          # already passes its values to the container
     healthcheck:
-      # Probe the app's own readiness endpoint, which pings every configured
-      # DB bind (sam + system_status). Returns 503 if any bind is unreachable,
-      # so the webdev is only marked healthy once both databases are queryable.
-      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:5050/api/v1/health/ready', timeout=3).read()\""]
+      # Strict readiness (503 if ANY bind is unreachable), same as webapp above:
+      # the webdev is only marked healthy once both databases are queryable.
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:5050/api/v1/health/ready?strict=1', timeout=3).read()\""]
       interval: 10s
       timeout: 5s
       retries: 10

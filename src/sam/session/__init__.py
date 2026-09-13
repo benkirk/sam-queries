@@ -1,3 +1,5 @@
+import os
+
 from sqlalchemy import create_engine, URL
 from sqlalchemy.orm import sessionmaker, Session
 from contextlib import contextmanager
@@ -20,14 +22,30 @@ def sam_dialect(driver: str) -> str:
 
 
 def connect_args(driver: str, require_ssl: bool, application_name: str = None) -> dict:
-    """The DBAPI connect_args for one bind: SSL in each driver's dialect, and on Postgres
-    the application_name pg_stat_activity shows (MySQL has no equivalent)."""
+    """The DBAPI connect_args for one bind: a bounded connect, SSL in each driver's
+    dialect, and on Postgres the application_name pg_stat_activity shows plus the
+    libpq settings that make a dead or demoted primary fail fast (SAM_DB_CONNECT_TIMEOUT
+    seconds, default 10). WARNING: with no bound, a readiness probe hung in connect()
+    for the OS SYN timeout while csg-postgres rolled, one gthread per probe."""
+    timeout = int(os.getenv('SAM_DB_CONNECT_TIMEOUT', '10'))
     if driver.lower() in POSTGRES_DRIVERS:
-        args = {'application_name': application_name} if application_name else {}
+        args = {
+            'connect_timeout': timeout,
+            'keepalives': 1,
+            'keepalives_idle': 30,
+            'keepalives_interval': 10,
+            'keepalives_count': 3,
+            'target_session_attrs': 'read-write',
+        }
+        if application_name:
+            args['application_name'] = application_name
         if require_ssl:
             args['sslmode'] = 'require'
         return args
-    return {'ssl': {'ssl_disabled': False}} if require_ssl else {}
+    args = {'connect_timeout': timeout}
+    if require_ssl:
+        args['ssl'] = {'ssl_disabled': False}
+    return args
 
 
 def init_sam_db_defaults():

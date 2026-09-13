@@ -94,24 +94,19 @@ def create_status_engine(input_connection_string: str = None):
             "`create_status_engine()`."
         )
 
-    # Check if SSL is required (for remote servers)
+    # Same connect_args as every other SAM engine (SSL per driver, bounded
+    # connect, libpq keepalives), so the CLI and the CronJob cannot hang on a
+    # dead status DB any more than the webapp can.
+    from sam.session import connect_args as _connect_args
     require_ssl = os.getenv('STATUS_DB_REQUIRE_SSL', 'false').lower() in ('true', '1', 'yes')
     driver = os.getenv('STATUS_DB_DRIVER', 'mysql').lower()
-
-    # Build connect_args based on SSL requirement (syntax differs by driver)
-    connect_args = {}
-    if require_ssl:
-        if driver in ('postgresql', 'postgres'):
-            connect_args['sslmode'] = 'require'
-        else:
-            connect_args['ssl'] = {'ssl_disabled': False}
 
     engine = create_engine(
         input_connection_string,
         echo=False,  # Set to True for SQL debugging
         pool_pre_ping=True,
         pool_recycle=3600,
-        connect_args=connect_args
+        connect_args=_connect_args(driver, require_ssl)
     )
     SessionLocal = sessionmaker(bind=engine)
     return engine, SessionLocal
