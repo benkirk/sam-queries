@@ -17,35 +17,8 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CHART_DIR="${SCRIPT_DIR}/.."
-RELEASE_NAME="samuel"
-
-red()   { printf '\033[31m%s\033[0m\n' "$*" >&2; }
-green() { printf '\033[32m%s\033[0m\n' "$*"; }
-
-assert_contains() {
-  local haystack="$1" needle="$2" msg="$3"
-  if ! grep -qF -- "$needle" <<<"$haystack"; then
-    red "FAIL: $msg"
-    red "  expected to find: $needle"
-    return 1
-  fi
-}
-
-assert_not_contains() {
-  local haystack="$1" needle="$2" msg="$3"
-  if grep -qF -- "$needle" <<<"$haystack"; then
-    red "FAIL: $msg"
-    red "  unexpectedly found: $needle"
-    return 1
-  fi
-}
-
-if ! command -v helm >/dev/null 2>&1; then
-  red "FAIL: helm not found in PATH (needed for template rendering)"
-  exit 1
-fi
+# shellcheck source=lib/assert.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/assert.sh"
 
 # ---------------------------------------------------------------------------
 # Production render (values.yaml only)

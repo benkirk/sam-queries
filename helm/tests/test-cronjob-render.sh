@@ -22,35 +22,8 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CHART_DIR="${SCRIPT_DIR}/.."
-RELEASE_NAME="samuel"
-
-red()   { printf '\033[31m%s\033[0m\n' "$*" >&2; }
-green() { printf '\033[32m%s\033[0m\n' "$*"; }
-
-assert_contains() {
-  local haystack="$1" needle="$2" msg="$3"
-  if ! grep -qF -- "$needle" <<<"$haystack"; then
-    red "FAIL: $msg"
-    red "  expected to find: $needle"
-    return 1
-  fi
-}
-
-assert_not_contains() {
-  local haystack="$1" needle="$2" msg="$3"
-  if grep -qF -- "$needle" <<<"$haystack"; then
-    red "FAIL: $msg"
-    red "  unexpectedly found: $needle"
-    return 1
-  fi
-}
-
-if ! command -v helm >/dev/null 2>&1; then
-  red "FAIL: helm not found in PATH (needed for template rendering)"
-  exit 1
-fi
+# shellcheck source=lib/assert.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/assert.sh"
 
 # ---------------------------------------------------------------------------
 # Production render (values.yaml only)
@@ -156,7 +129,7 @@ assert_contains "$prod_out" 'value: "365"' \
 # --- Notifications must reach the CronJob, not just the Deployment ----------
 #
 # WARNING: Asserted PER-MANIFEST, and that is load-bearing. `cronjob-tasks.yaml`
-# renders `.Values.tasks.env` plus a hand-listed set and NOTHING else — it does
+# renders `.Values.tasks.env` plus a hand-listed set and three prefixes — it does
 # not inherit `webapp.env`, where NOTIFY_* and MAIL_* live. So a whole-render
 # grep passes on the Deployment's copy alone and proves nothing about the pod
 # that actually sends the mail.
