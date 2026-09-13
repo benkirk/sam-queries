@@ -506,6 +506,10 @@ Ordered so the cheapest verification precedes the expensive commitment.
    primary on csg-postgres inherits the cluster's roll behavior: see
    `docs/plans/CNPG_ROLL_RESILIENCE.md` (switchover + fast-failing connects make
    a roll a seconds-long blip on the required bind; a `Pooler` would hide it).
+   Measured on samuel-dev under load 2026-09-13: a 9 s window of fast 500s, no
+   hangs, pod never pulled — `docs/plans/DEV_LOAD_CAMPAIGN.md`, which also lists
+   the blockers to clear first (webapp pool ceiling 540 > `max_connections` 300;
+   per-request bcrypt on API keys; no cache dogpile lock; no `statement_timeout`).
 7. **Drop the objects nothing uses.** Once legacy SAM is gone we own the schema and
    can retire unused views (and later tables). The inventory of retirement candidates
    — starting with the 7 views SAM's own code no longer queries — lives in
