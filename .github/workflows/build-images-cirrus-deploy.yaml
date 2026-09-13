@@ -2,7 +2,7 @@ name: Publish Images and CIRRUS Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
     tags: ['v*']
   workflow_dispatch:
     inputs:
@@ -10,9 +10,17 @@ on:
         description: |
           Space-separated list of images to build.
           Available: mysql webapp webdev collectors
-          Leave empty to build defaults (mysql webapp).
+          Leave empty to build defaults (webapp collectors).
         required: false
         default: ''
+      target:
+        description: |
+          Deploy target. dev pins cirrus-dev (samuel-dev); prod pins cirrus
+          (samuel). Prod is inferred only from a push to main or a v* tag.
+        type: choice
+        options: [dev, prod]
+        default: dev
+        required: false
 
 env:
   REGISTRY: ghcr.io
@@ -28,8 +36,49 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       webapp_built: ${{ steps.matrix.outputs.webapp_built }}
+      target: ${{ steps.target.outputs.target }}
+      cirrus_branch: ${{ steps.target.outputs.cirrus_branch }}
 
     steps:
+      # Prod is never inferred: only a push to main or a v* tag selects it.
+      # A push to staging and every dispatch land on dev unless the dispatch
+      # says target=prod, which is allowed from any ref but warned about.
+      - name: Resolve deploy target
+        id: target
+        env:
+          REQUESTED: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          case "$GITHUB_EVENT_NAME" in
+            push)
+              case "$GITHUB_REF" in
+                refs/heads/main|refs/tags/v*) TARGET=prod ;;
+                refs/heads/staging)           TARGET=dev ;;
+                *) echo "::error::push from unexpected ref $GITHUB_REF"; exit 1 ;;
+              esac ;;
+            workflow_dispatch)
+              TARGET="${REQUESTED:-dev}"
+              case "$TARGET" in
+                dev) ;;
+                prod)
+                  case "$GITHUB_REF" in
+                    refs/heads/main|refs/tags/v*) ;;
+                    *) echo "::warning::deploying $GITHUB_REF_NAME to PROD by explicit request"
+                       echo "> **WARNING:** prod deploy requested from \`$GITHUB_REF_NAME\`, not \`main\`" >> "$GITHUB_STEP_SUMMARY" ;;
+                  esac ;;
+                *) echo "::error::unknown target '$TARGET'"; exit 1 ;;
+              esac ;;
+            *) echo "::error::unsupported event $GITHUB_EVENT_NAME"; exit 1 ;;
+          esac
+          case "$TARGET" in
+            prod) BRANCH=cirrus ;;
+            dev)  BRANCH=cirrus-dev ;;
+          esac
+          echo "target=$TARGET"        >> "$GITHUB_OUTPUT"
+          echo "cirrus_branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "Deploy target: $TARGET (pins $BRANCH) from $GITHUB_REF_NAME"
+          echo "Deploy target: **$TARGET** → \`$BRANCH\` from \`$GITHUB_REF_NAME\`" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build matrix
         id: matrix
         run: |
@@ -286,26 +335,30 @@ jobs:
             >> "$GITHUB_STEP_SUMMARY"
 
   # -----------------------------------------------------------------------
-  # update-helm: pin helm/values.yaml to the built SHA tag, push to cirrus
+  # update-helm: pin helm/values.yaml to the built SHA tag, push to the
+  # target's cirrus branch (cirrus = prod, cirrus-dev = samuel-dev)
   # -----------------------------------------------------------------------
   update-helm:
-    name: Pin Helm image tag → cirrus
+    name: Pin Helm image tag → ${{ needs.setup.outputs.cirrus_branch }}
     needs: [setup, build]
     if: needs.setup.outputs.webapp_built == 'true'
     runs-on: ubuntu-latest
+    env:
+      CIRRUS_BRANCH: ${{ needs.setup.outputs.cirrus_branch }}
+      TARGET: ${{ needs.setup.outputs.target }}
 
-    # Serialize cirrus force-pushes so two concurrent deploys can't race the
-    # branch (it is reset + force-pushed on every run).
+    # Serialize force-pushes per target branch so two concurrent deploys can't
+    # race it (it is reset + force-pushed on every run).
     concurrency:
-      group: cirrus-branch-push
+      group: cirrus-branch-push-${{ needs.setup.outputs.target }}
       cancel-in-progress: false
 
     permissions:
-      contents: read   # push to cirrus uses the App token below, not GITHUB_TOKEN
+      contents: read   # the push uses the App token below, not GITHUB_TOKEN
 
     steps:
-      # The cirrus branch is locked by a repository ruleset whose only bypass
-      # actor is this GitHub App, so the push below MUST authenticate as the App.
+      # Both cirrus branches are locked by a repository ruleset whose only
+      # bypass actor is this GitHub App, so the push below MUST authenticate as the App.
       - name: Mint GitHub App token (cirrus deploy identity)
         id: app-token
         uses: actions/create-github-app-token@v3
@@ -334,11 +387,11 @@ jobs:
             helm/values.yaml
           grep "image:" helm/values.yaml   # sanity-check
 
-      - name: Commit and force-push cirrus branch
+      - name: Commit and force-push the target cirrus branch
         run: |
           git config user.name  "${{ steps.app-token.outputs.app-slug }}[bot]"
           git config user.email "${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
-          git checkout -B cirrus
+          git checkout -B "$CIRRUS_BRANCH"
           git add helm/values.yaml
-          git commit -m "ci: pin webapp image to sha-${GITHUB_SHA:0:7} ($(.github/scripts/build_stamp.sh)) [skip ci]"
-          git push origin cirrus --force
+          git commit -m "ci: pin webapp image to sha-${GITHUB_SHA:0:7} ($(.github/scripts/build_stamp.sh)) target=${TARGET} from ${GITHUB_REF_NAME} [skip ci]"
+          git push origin "$CIRRUS_BRANCH" --force
