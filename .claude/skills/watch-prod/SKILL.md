@@ -43,9 +43,21 @@ line per section; escalate a *trend across ticks*, not a single outlier.
 
 Steady state is one line. Raise it only on a real signal:
 
-- **5xx > 0** — server errors (the script FAILs).
+- **5xx > 0** — server errors (the script FAILs). Classify before escalating:
+  a burst of `GET /api/v1/health/ready → 503` from `kube-probe` is the
+  readiness probe, and since #556 it fires **only** when the `sam` bind is
+  down. A csg-postgres roll or failover now shows as `readiness degraded
+  (still serving)` WARNINGs in the pod log and a `degraded` `/ready` body,
+  with zero 5xx (measured 2026-09-13: <1 s for a switchover, ~16 s for a
+  failover — `docs/plans/CNPG_ROLL_RESILIENCE.md`). A readiness 503 whose run
+  line shows `sam=…ms/1q` succeeding means that fix regressed. Correlate any
+  status-DB blip with the peer repo's `cnpg_watch.sh` (a `FAILOVER: primary
+  X → Y` line during a known roll is the switchover).
 - **p95 > 4000ms** — latency regression.
-- **4xx > 40%** of requests — heavy probing/scanning.
+- **4xx > 40%** of requests — heavy probing/scanning. A burst that is all
+  404/405 from one anonymous scanner (WordPress, PHP, `.env` families) with
+  nothing on a probe path answering 2xx is a WARN to name in one line, not
+  escalate; escalate a scanner that recurs across ticks or that finds a 2xx.
 - **a probe-path hit** (`/.env`, `/wp-login`, `.php`, `/actuator`, …).
 - **a NEW slow (>5s) endpoint.**
 - **a query-count hit** — the `queries(>=200)` warn and its `↳` lines. The
