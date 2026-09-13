@@ -162,7 +162,7 @@ def _disk_target(engine):
             WHERE rt.resource_type = 'DISK'
               AND p.project_id = p.tree_root
               AND p.active = TRUE
-            GROUP BY p.projcode, r.resource_name
+            GROUP BY p.project_id, p.projcode, r.resource_name
             ORDER BY p.project_id, r.resource_name
             LIMIT 1
         """)).first()
