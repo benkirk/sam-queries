@@ -313,7 +313,7 @@ disabled under xdist" noise.
 
 The default tier runs on MySQL and on a Postgres copy of the same obfuscated
 snapshot, so a query that only works on one backend cannot land unnoticed
-(`docs/plans/POSTGRES_MIGRATION.md`, Stage 3). The Postgres copy is built by
+(`docs/plans/implemented/POSTGRES_MIGRATION.md`, Stage 3). The Postgres copy is built by
 the loader from `mysql-test`, not restored from a dump:
 
 ```bash

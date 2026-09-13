@@ -135,7 +135,7 @@ UNION ALL SELECT 'url missing', COUNT(*) FROM open_c WHERE url IS NULL OR TRIM(u
 
 Note the shipped checks run in **Python** over one eager-loaded result set, not
 as SQL predicates — the funding-account rule is a regex and `REGEXP` is
-MySQL-specific (see `docs/plans/POSTGRES_MIGRATION.md`); the whole table is
+MySQL-specific (see `docs/plans/implemented/POSTGRES_MIGRATION.md`); the whole table is
 2,225 rows, so one loaded pass beats six round trips.
 
 ## 4. What was built

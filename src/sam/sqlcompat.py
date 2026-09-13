@@ -1,7 +1,7 @@
 """Dialect-keyed fragments for the raw-SQL sites SQLAlchemy Core cannot express.
 
 SAM runs on MySQL in production and Postgres in development from one ORM
-(docs/plans/POSTGRES_MIGRATION.md). Everything that can go through Core does;
+(docs/plans/implemented/POSTGRES_MIGRATION.md). Everything that can go through Core does;
 these are the leftovers, in two families. Bind -> fragment string, for text()
 statements: the VALUES row-constructor spelling, the information_schema scope
 predicate, the string-aggregate. Expression constructors, for Core: the

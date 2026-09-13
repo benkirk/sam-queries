@@ -233,7 +233,7 @@ jobs:
           docker compose down -v
 
   # The same default tier on a Postgres copy of the test database
-  # (docs/plans/POSTGRES_MIGRATION.md, Stage 3). The copy is built inside the
+  # (docs/plans/implemented/POSTGRES_MIGRATION.md, Stage 3). The copy is built inside the
   # stack by the loader from mysql-test; tests/postgres_expected_failures.txt
   # lists what still fails there, as strict xfails. Perf and stress stay MySQL.
   pytest-postgres:
