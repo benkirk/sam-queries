@@ -887,7 +887,8 @@ see docs/AUTHENTICATION.md § Local development.
 prod chart on nwc1 with `helm/values-dev.yaml` — Postgres `sam_dev`, own
 `system_status_dev`, mail and XRAS levers off. `gh workflow run "Publish Images
 and CIRRUS Deploy" --ref <branch>` pins it; `make deploy-dev` / `make
-refresh-dev`; every `scripts/cirrus_*.sh` takes `--env dev`. Record:
+refresh-dev`; every `scripts/cirrus_*.sh` takes `--env dev`. Limiter tiers are
+effectively off on dev (load-test target), login tier excepted. Record:
 `docs/plans/K8S_DEV_ENVIRONMENT.md`; `helm/tests/test-dev-render.sh` is the gate.
 
 ### Adding New ORM Models
