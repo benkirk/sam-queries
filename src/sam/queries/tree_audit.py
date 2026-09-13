@@ -114,8 +114,8 @@ _SQL_BAD_DATES = text("""
                                AND rt.resource_type IN ('HPC', 'DAV'))
     WHERE al.deleted IS FALSE
       AND (:resource IS NULL OR r.resource_name = :resource)
-      AND (YEAR(al.start_date) < 1990
-           OR YEAR(al.end_date) > 2100
+      AND (EXTRACT(YEAR FROM al.start_date) < 1990
+           OR EXTRACT(YEAR FROM al.end_date) > 2100
            OR (al.end_date IS NOT NULL AND al.end_date < al.start_date))
     ORDER BY p.projcode, r.resource_name
 """)

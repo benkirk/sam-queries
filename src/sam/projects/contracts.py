@@ -3,6 +3,7 @@
 import re
 
 from ..base import *
+from ..sqlcompat import ci_like
 #-------------------------------------------------------------------------eh-
 
 
@@ -317,8 +318,8 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
 
         def _text_filter(column, value):
             """LIKE iff the term carries a wildcard, else substring."""
-            return (column.ilike(value) if ('%' in value or '_' in value)
-                    else column.ilike(f'%{value}%'))
+            return (ci_like(column, value) if ('%' in value or '_' in value)
+                    else ci_like(column, f'%{value}%'))
 
         query = session.query(cls)
 

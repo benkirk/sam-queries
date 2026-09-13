@@ -18,6 +18,7 @@ class SAMConfig:
     SAM_DB_PASSWORD    = os.getenv('SAM_DB_PASSWORD', '')
     SAM_DB_SERVER      = os.getenv('SAM_DB_SERVER', '')
     SAM_DB_NAME        = os.getenv('SAM_DB_NAME', 'sam')
+    SAM_DB_DRIVER      = os.getenv('SAM_DB_DRIVER', 'mysql')
     SAM_DB_REQUIRE_SSL = os.getenv('SAM_DB_REQUIRE_SSL', 'false').lower() in ('true', '1', 'yes')
 
     # --------------------------------------------------------- system_status DB
@@ -62,6 +63,7 @@ class SAMConfig:
         cls.SAM_DB_PASSWORD    = os.getenv('SAM_DB_PASSWORD', '')
         cls.SAM_DB_SERVER      = os.getenv('SAM_DB_SERVER', '')
         cls.SAM_DB_NAME        = os.getenv('SAM_DB_NAME', 'sam')
+        cls.SAM_DB_DRIVER      = os.getenv('SAM_DB_DRIVER', 'mysql')
         cls.SAM_DB_REQUIRE_SSL = os.getenv('SAM_DB_REQUIRE_SSL', 'false').lower() in ('true', '1', 'yes')
 
     # ---------------------------------------------------------------- Validate

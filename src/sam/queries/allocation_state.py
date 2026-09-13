@@ -19,6 +19,7 @@ from sam.accounting.accounts import Account
 from sam.accounting.allocations import Allocation
 from sam.projects.projects import Project
 from sam.resources.resources import Resource
+from sam.sqlcompat import sam_now
 from sam.queries.dashboard import (
     DashboardResource,
     _build_user_projects_resources_batched,
@@ -225,9 +226,9 @@ def _noted(lookup: Lookup) -> Lookup:
 
 
 def db_now(session: Session) -> datetime:
-    """The database clock. The ON UPDATE stamps the gate compares against use
-    it; the app clock only agrees with it where the DB server runs Mountain."""
-    return session.execute(select(func.now())).scalar()
+    """The database clock, naive like the stamps the gate compares it against;
+    the app clock only agrees with it where the DB server runs Mountain."""
+    return session.execute(select(sam_now())).scalar()
 
 
 def _scope_accounts(session: Session, resource_ids, project_ids):
@@ -290,7 +291,7 @@ def _tree_stamps(session: Session, resource_ids, project_ids):
         .where(Project.project_id.in_(projects)),
     ]
     stamps = union_all(*parts).subquery('stamps')
-    stmt = (select(func.now(), stamps.c.project_id, stamps.c.tree,
+    stmt = (select(sam_now(), stamps.c.project_id, stamps.c.tree,
                    func.max(stamps.c.stamp))
             .group_by(stamps.c.project_id, stamps.c.tree))
     result = session.execute(stmt).all()

@@ -217,7 +217,7 @@ These mostly resolve to "execute the recommendations" — no new heavy questions
 
 1. **`docs/remediation/` home** — Confluence, Jira, in-repo? [Phase 1 Q2 still open]
 2. **`docs/prompts/` archive vs delete** — keep as historical or drop entirely? [Phase 1 Q5]
-3. **`docs/plans/POSTGRES_MIGRATION.md`** — still planned, paused, shelved? [Phase 1 Q4]
+3. **`docs/plans/implemented/POSTGRES_MIGRATION.md`** — still planned, paused, shelved? [Phase 1 Q4]
 4. **`src/webapp/REFACTORING_PLAN.md`** — appetite for the verify-and-reconcile pass? [Phase 1 Q3]
 5. **`collectors/docs/PBS_COLLECTORS_*PLAN.md`** — archive or delete? [Phase 5 Q34]
 

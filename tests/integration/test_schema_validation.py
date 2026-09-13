@@ -31,7 +31,8 @@ from scripts.lib.schema_introspection import (
 )
 
 
-pytestmark = pytest.mark.integration
+# The MySQL drift gate by design: INFORMATION_SCHEMA + DATABASE() + MySQL type names.
+pytestmark = [pytest.mark.integration, pytest.mark.mysql_only]
 
 
 # ============================================================================

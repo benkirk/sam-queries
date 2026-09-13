@@ -310,17 +310,17 @@ def _a_pool_member(session):
                at.allocation_type
         FROM allocation ca
         JOIN allocation ra ON ra.allocation_id = ca.parent_allocation_id
-        JOIN account cacc ON cacc.account_id = ca.account_id AND cacc.deleted = 0
-        JOIN account racc ON racc.account_id = ra.account_id AND racc.deleted = 0
+        JOIN account cacc ON cacc.account_id = ca.account_id AND cacc.deleted = FALSE
+        JOIN account racc ON racc.account_id = ra.account_id AND racc.deleted = FALSE
         JOIN project child ON child.project_id = cacc.project_id
         JOIN project root ON root.project_id = racc.project_id
         JOIN resources r ON r.resource_id = cacc.resource_id
         JOIN allocation_type at ON at.allocation_type_id = child.allocation_type_id
         JOIN panel pn ON pn.panel_id = at.panel_id
         JOIN facility f ON f.facility_id = pn.facility_id
-        WHERE ca.deleted = 0 AND ra.deleted = 0 AND ra.parent_allocation_id IS NULL
+        WHERE ca.deleted = FALSE AND ra.deleted = FALSE AND ra.parent_allocation_id IS NULL
           AND child.parent_id IS NOT NULL AND root.parent_id IS NULL
-          AND child.active = 1 AND root.active = 1
+          AND child.active = TRUE AND root.active = TRUE
           AND cacc.resource_id = racc.resource_id
           AND child.allocation_type_id = root.allocation_type_id
           AND r.resource_name IN ('Derecho', 'Casper')

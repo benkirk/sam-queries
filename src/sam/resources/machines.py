@@ -1,6 +1,7 @@
 #-------------------------------------------------------------------------bh-
 # Common Imports:
 from ..base import *
+from ..sqlcompat import sam_now
 #-------------------------------------------------------------------------eh-
 
 
@@ -49,7 +50,7 @@ class Machine(Base, TimestampMixin, SessionMixin):
     @is_active.expression
     def is_active(cls):
         """Check if machine is currently active (SQL side)."""
-        now = func.now()
+        now = sam_now()
         return and_(
             or_(cls.commission_date.is_(None), cls.commission_date <= now),
             or_(cls.decommission_date.is_(None), cls.decommission_date > now)
@@ -224,7 +225,7 @@ class Queue(Base, TimestampMixin, SessionMixin):
     @is_active.expression
     def is_active(cls):
         """Check if queue is currently active (SQL side)."""
-        now = func.now()
+        now = sam_now()
         return and_(
             or_(cls.start_date.is_(None), cls.start_date <= now),
             or_(cls.end_date.is_(None), cls.end_date >= now)

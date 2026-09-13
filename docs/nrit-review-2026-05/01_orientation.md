@@ -156,7 +156,7 @@ Same pattern likely repeats elsewhere; flag any similar artifacts in later phase
 1. **CONTRIBUTING.md test stats** — is the "380+ tests / 77.47% coverage" figure intentionally pinned (i.e., do you treat it as a soft floor) or just stale? If stale, can you `pytest --cov` and update?
 2. **Remediation log home** — is there an off-repo destination (Jira, Confluence, Wiki) you'd prefer for files like `docs/remediation/CESM0002_*`? Checking them into the main repo works but ages poorly.
 3. **`src/webapp/REFACTORING_PLAN.md`** — is the charges-API centralization (Priority 1.1) actively scheduled, backlog, or shelved? Drives whether to archive or surface it.
-4. **`POSTGRES_MIGRATION.md`** in `docs/plans/` — still planned, paused, or shelved? Affects how seriously Phase 4 should consider the current MySQL ORM as the long-term target.
+4. **`POSTGRES_MIGRATION.md`** in `docs/plans/` (since moved to `docs/plans/implemented/`) — still planned, paused, or shelved? Affects how seriously Phase 4 should consider the current MySQL ORM as the long-term target.
 5. **`docs/prompts/`** — intentional artifact (so future Claude/Gemini sessions have context) or residue? Either is fine; just want to know.
 
 ## Trust calibration for downstream phases

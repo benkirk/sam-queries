@@ -22,7 +22,7 @@ def content_hash(data: Any) -> str:
     """Stable MD5 hex digest of arbitrary JSON-serialisable data.
 
     O(n) compute, O(1) memory — suitable as a cache key for large inputs
-    where materialising a hashable tuple would be prohibitive.
+    where materializing a hashable tuple would be prohibitive.
     """
     return hashlib.md5(
         json.dumps(data, default=str, sort_keys=True).encode(),

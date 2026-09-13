@@ -34,6 +34,7 @@ from webapp.utils.project_permissions import (
     can_allocate_residual,
 )
 from sam.manage import management_transaction
+from sam.sqlcompat import ci_like
 from sam.accounting.allocations import InheritingAllocationException
 from sam.core.groups import GidAllocation, NoAvailableGidError
 from sam.schemas.forms import (
@@ -318,7 +319,7 @@ def _search_orgs_for_project(q, active_only):
         db.session.query(Organization)
         .filter(
             Organization.is_active,
-            Organization.name.ilike(f'%{q}%') | Organization.acronym.ilike(f'%{q}%')
+            ci_like(Organization.name, f'%{q}%') | ci_like(Organization.acronym, f'%{q}%')
         )
         .order_by(Organization.name)
         .limit(15)

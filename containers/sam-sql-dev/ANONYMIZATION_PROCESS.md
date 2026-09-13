@@ -713,7 +713,7 @@ mysql -u root -h 127.0.0.1 -proot sam -e "SELECT 1;"
 
 ```bash
 # Start MySQL container
-./docker_start.sh
+make db-up
 
 # Or manually
 docker compose up -d

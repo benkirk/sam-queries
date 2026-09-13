@@ -143,24 +143,24 @@ pytest tests/ --no-cov
 **Setup:**
 
 ```bash
-# 1. Start Docker container
+# 1. Start the MySQL container
 cd containers/sam-sql-dev
-./docker_start.sh
+make db-up
 
-# 2. Bootstrap database (clones subset of production data)
-source ../../.env && ./bootstrap_clone.py
+# 2. Clone a subset of production (reads .env for the hpc-reader credentials)
+make clone
 ```
 
 **What to expect:**
 - **Time:** 10-20 minutes for initial clone
-- **Size:** ~500MB-1GB (subsetted from multi-GB production database)
-- **Success message:** `🎉 Done. Local clone is ready. Connect to local db as configured.`
+- **Size:** ~0.5 GB (subsetted from a multi-GB production database)
+- **Success message:** `🎉 Done. Local clone is ready.` — a non-zero exit means a table, the views, or the orphan sweep failed; the log names it.
 
-The bootstrap script:
-- Copies all 97 table schemas
-- Samples recent data from large tables (maintains ~10k rows from multi-million row tables)
-- Preserves foreign key relationships
-- Creates 7 database views
+The clone script:
+- Copies every base table's schema
+- Copies small tables in full; large tables are emptied, windowed, or sampled per `containers/sam-sql-dev/config.yaml`
+- Re-applies production's foreign keys and prunes orphaned rows
+- Creates the database views
 
 **⚠️ Important:**
 - Local database is **not anonymized** and contains real PII (names, emails)

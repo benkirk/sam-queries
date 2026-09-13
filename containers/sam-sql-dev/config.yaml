@@ -25,14 +25,12 @@ settings:
   prefer_column: created_at        # preferred ordering column for sampling recent rows
 
   # --- Post-processing ---
-  prune_orphans: true              # whether to run cleanup_orphans.py automatically
+  prune_orphans: true              # run cleanup_orphans.py after the FKs are back
 
-  # --- Performance tweaks ---
-  # Set to true to temporarily disable foreign key checks during loads (faster, riskier)
-  disable_fk_checks: false         # (currently informational, not used by script)
-
-  # --- Optional: logging / debug ---
-  verbose: true                    # print detailed progress (default: true)
+  # FKs (by constraint name) that cleanup_orphans.py must not enforce: their
+  # parent is emptied by policy below, and the child rows are still wanted.
+  unvalidated_fks:
+    - fk_disk_charge_disk_activity   # disk_charge feeds the disk usage queries
 
   # --- Per-table subsetting strategies ---
   # Applied BEFORE the size-threshold logic. Patterns are tried in document
@@ -41,8 +39,11 @@ settings:
   # Modes:
   #   empty   -> schema only, zero rows (WHERE 1=0)
   #   recent  -> rows where <column> >= CURDATE() - <days>
+  #              (SAM_CLONE_DAYS or `--days N` replaces every recent <days>)
   #
   # Tables with no matching strategy fall through to size-based sampling.
+  # An emptied parent does NOT cascade: its children are dumped by their own
+  # rule and cleanup_orphans.py prunes rows that point at the missing parent.
   table_strategies:
     # Individual-event tables: already rolled up into *_charge_summary,
     # not needed for local dev. Leaving them empty avoids cloning real
@@ -112,3 +113,10 @@ anonymization:
 
   # Random seed for deterministic anonymization
   seed: 42                         # change this to get different anonymized data
+
+  # Username columns the leak check reports but does not fail on. Each entry
+  # is an explicit acceptance; add one only with the reason.
+  accepted_exposures:
+    # varchar(12) cannot hold user_<8 hex> and there is no user_id to map
+    # through; the table is unrelated to charging. Accepted 2026-08-10.
+    - adhoc_system_account_entry.username

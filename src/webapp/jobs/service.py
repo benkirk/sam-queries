@@ -17,6 +17,8 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Sequence
 
+from sam.sqlcompat import ci_like
+
 from webapp.jobs import cache as jobs_cache
 from webapp.jobs.scope import JobScope, ProjectJobScope
 from webapp.jobs.session import (
@@ -341,7 +343,7 @@ def _count_via_sam_summary(
 
     q = db.session.query(func.coalesce(func.sum(CompChargeSummary.num_jobs), 0))
     q = q.filter(CompChargeSummary.act_projcode.in_(projcodes))
-    q = q.filter(CompChargeSummary.machine.ilike(f'{machine}%'))
+    q = q.filter(ci_like(CompChargeSummary.machine, f'{machine}%'))
     if start is not None:
         q = q.filter(CompChargeSummary.activity_date >= start)
     if end is not None:

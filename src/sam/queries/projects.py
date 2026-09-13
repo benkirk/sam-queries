@@ -17,6 +17,8 @@ from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import or_
+
+from sam.sqlcompat import ci_like
 from sqlalchemy.orm import Session, joinedload
 
 from sam.core.users import User
@@ -49,8 +51,8 @@ def search_projects_by_code_or_title(
     query = session.query(Project)\
         .filter(
             or_(
-                Project.projcode.ilike(like_search_term),
-                Project.title.ilike(like_search_term)
+                ci_like(Project.projcode, like_search_term),
+                ci_like(Project.title, like_search_term)
             )
         )
     if active is not None:
@@ -67,7 +69,7 @@ def search_projects_by_code_or_title(
 def search_projects_by_title(session: Session, search_term: str) -> List[Project]:
     """Search projects by title."""
     return session.query(Project)\
-        .filter(Project.title.ilike(f"%{search_term}%"))\
+        .filter(ci_like(Project.title, f"%{search_term}%"))\
         .all()
 
 

@@ -26,6 +26,7 @@ from sam.projects.projects import Project
 from sam.accounting.accounts import Account
 from sam.accounting.allocations import Allocation
 from sam.resources.resources import Resource, ResourceType
+from sam.sqlcompat import row_constructor
 
 
 # ---------------------------------------------------------------------------
@@ -49,8 +50,9 @@ def _query_window_charges(
     window_start_global = now - timedelta(days=window_days)
     result: Dict[int, float] = {aid: 0.0 for aid in account_ids}
 
+    row = row_constructor(session)
     rows_sql = ', '.join(
-        f'ROW({aid}, :ws{i}, :we{i})'
+        f'{row}({aid}, :ws{i}, :we{i})'
         for i, aid in enumerate(account_ids)
     )
     params: Dict[str, Any] = {}
@@ -128,13 +130,14 @@ def _query_window_subtree_charges(
     idx_to_aid: Dict[int, int] = {}
     values_parts = []
     params: Dict[str, Any] = {}
+    row = row_constructor(session)
 
     for i, (aid, info) in enumerate(entries):
         idx_to_aid[i] = aid
         alloc_start, alloc_end = alloc_windows.get(aid, (now, now))
         clamped_start = max(window_start_global, alloc_start)
         clamped_end   = min(now, alloc_end or now)
-        values_parts.append(f'ROW(:ak{i}, :tr{i}, :tl{i}, :rr{i}, :ri{i}, :ws{i}, :we{i})')
+        values_parts.append(f'{row}(:ak{i}, :tr{i}, :tl{i}, :rr{i}, :ri{i}, :ws{i}, :we{i})')
         params[f'ak{i}'] = i
         params[f'tr{i}'] = info['tree_root']
         params[f'tl{i}'] = info['tree_left']

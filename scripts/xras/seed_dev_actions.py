@@ -85,7 +85,7 @@ def _error_bodies():
 
 
 def _db_url(args):
-    """Build the SQLAlchemy URL for the local dev database."""
+    """Build the SQLAlchemy URL for the local dev database (the compose MySQL only)."""
     return (f'mysql+pymysql://{args.db_user}:{args.db_password}'
             f'@{args.db_host}:{args.db_port}/{args.db_name}')
 
