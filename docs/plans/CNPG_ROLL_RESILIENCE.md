@@ -1,8 +1,9 @@
 # Surviving a csg-postgres roll
 
-**Status: IMPLEMENTED (SAM side) 2026-09-13; CNPG side in hpc-usage-queries
-`cnpg/switchover-updates` awaiting Ben.** Record of the 2026-09-13 outage, why a
-secondary database took the whole site down, and what changed on both sides.
+**Status: IMPLEMENTED both sides and VERIFIED 2026-09-13** (SAM #556 deployed
+14:00Z; hpc-usage-queries #114 merged, #115 drove the verifying roll at 14:26Z).
+Record of the 2026-09-13 outage, why a secondary database took the whole site down,
+what changed on both sides, and what a roll costs now.
 
 ## What happened
 
@@ -78,10 +79,22 @@ the SAM database itself lives on csg-postgres, that seconds-long blip is on the
 `failureThreshold: 3 × 10 s` it will usually not even trip. The levers above are
 what make that acceptable; a `Pooler` is what would make it invisible.
 
-## Verifying the next roll
+## Verified (2026-09-13, both changes live)
 
-The real test is Ben's next deliberate CNPG roll with both changes live:
-`scripts/cirrus_watch.sh` should show zero readiness 503s, `kubectl -n sam-queries
-get events` no `Unhealthy`, the status pages degraded for seconds, and the
-peer repo's `cnpg_watch.sh` a `FAILOVER: primary X → Y` line that is the
-switchover.
+| Experiment | Exercised | Primary gap | SAM `/ready` | Whole roll |
+|---|---|---|---|---|
+| 14:15Z Ben deleted the primary pod (#114 had applied in place, no roll) | CNPG **failover** | ~16 s | `degraded` ≤16 s, 0 × 503 | 65 s |
+| 14:26Z hpc-usage-queries #115 (`memory` 64→65Gi, a pod-spec change) | CNPG **switchover**, the #114 path | <1 s | never left `healthy` at a 15 s poll | 59 s |
+
+The switchover roll, from a 15 s monitor on the pod labels and `/ready`: `-1`
+(replica) recreated 14:26:04 → promoted ~14:26:20 (SAM logged two `readiness
+degraded (still serving)` WARNINGs one second apart) → `-2` recreated 14:26:37 →
+replica by 14:27:03. Pod logs for the window: 0 readiness 503s, 0 5xx; no
+`Unhealthy` event on the samuel pods. Overnight the same class of change was 3.5
+minutes of full-site outage.
+
+Deleting a pod is a **failover**; only an operator-driven roll (image, `resources`,
+restart-class parameters) takes the `primaryUpdateMethod` path. The primary now
+alternates between `csg-postgres-1` and `-2` after each roll (on `-1` since
+14:26Z); the peer repo's `cnpg_watch.sh` prints that as a `FAILOVER` line, which
+during a known roll is the switchover, not an incident. #115's 65Gi is kept.

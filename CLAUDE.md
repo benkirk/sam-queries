@@ -975,6 +975,9 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 and never append `?`/`#` to a `url_for('static')` result, which already carries one
 ❌ **DON'T** touch the legacy-compat API blueprints beyond additive changes
 ❌ **DON'T** hardcode integer PKs from lookup tables in app constants — pair rules with names, resolve IDs at runtime
+❌ **DON'T** add a secondary bind to `/ready`'s required set (`_REQUIRED_BINDS` in
+`webapp/api/v1/health.py`) — a shared external DB fails every replica at once and
+empties the Service (2026-09-13; `docs/plans/CNPG_ROLL_RESILIENCE.md`)
 
 ✅ **DO** run schema-validation tests before committing model changes
 ✅ **DO** check the actual database schema when in doubt
