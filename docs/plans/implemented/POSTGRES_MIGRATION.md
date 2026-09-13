@@ -500,7 +500,10 @@ Ordered so the cheapest verification precedes the expensive commitment.
    compatibility mode. Steps: migrate prod data with the loader against a copy; audit
    any remaining GROUP BY; run the full suite on PG; apply Fix 5 triggers if raw-SQL
    auto-stamping is required; **bring SAM under `migrations/sam/` Alembic** (stamp a
-   baseline against the migrated PG schema); flip prod's `SAM_DB_DRIVER`.
+   baseline against the migrated PG schema); flip prod's `SAM_DB_DRIVER`. A
+   primary on csg-postgres inherits the cluster's roll behavior: see
+   `docs/plans/CNPG_ROLL_RESILIENCE.md` (switchover + fast-failing connects make
+   a roll a seconds-long blip on the required bind; a `Pooler` would hide it).
 7. **Drop the objects nothing uses.** Once legacy SAM is gone we own the schema and
    can retire unused views (and later tables). The inventory of retirement candidates
    — starting with the 7 views SAM's own code no longer queries — lives in
