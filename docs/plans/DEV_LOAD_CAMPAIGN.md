@@ -155,6 +155,77 @@ sporadic first-load hang. Hand to the platform team with this evidence.
 ceiling (9 workers × 30 × 2 pods = 540) exceeds `max_connections` 300, and the
 cluster sets no `statement_timeout`.
 
+## Next steps
+
+### The session round — what a logged-in browser adds
+
+The `collector` key reaches only the legacy blueprints, so the whole `@login_required`
+surface went untested: the allocation and charge rollups, every matplotlib chart, and
+the dashboards themselves. That is the CPU/GIL-bound half of the app — the half where
+the pod's core limit still binds now that the auth cost is gone. The prod tick on the
+afternoon of this campaign made the point: the one new slow endpoint it flagged,
+`/user/resource-details/<projcode>` at 7.9 s and 98% database time, is a route nothing
+here could reach.
+
+Playwright is not a load generator; it drives one browser at human pace. Its two uses
+are **fidelity** — the real asset, htmx and chart path a user sees — and
+**authentication**: log in once, save the storage state, let the driver replay that
+cookie at concurrency. Ranked by what it would teach us:
+
+1. **Charts, and the dashboards carrying them.** `/allocations/projects` is the
+   heaviest single page: a full-page GET rendering pies inline plus one pace-chart
+   fragment per resource. Server-rendered SVG under the GIL is the "large cpu share"
+   regime, and on three workers concurrent page loads are its pathological case.
+2. **Allocation-usage and charge rollups.** The summary routes dump one usage schema
+   per account in a Python loop. Finding B compares Postgres to MySQL on the legacy
+   blueprints only; these are the queries Horizon 2 actually turns on.
+3. **The read-model fallbacks.** Every request here logged `rm=served`. Those two
+   rollup routes are the token's main producers, six distinct reasons force the `live`
+   path, and none of their costs are measured.
+4. **Per-user cache cardinality.** Rendered HTML is keyed by user first, then path,
+   query string, facility scope, layout and theme, so N users are N entries. The chart
+   SVGs are the opposite, keyed on data content and shared across users — the per-user
+   cost is the HTML, not the pictures. One browser as one user therefore measures only
+   the warm path; sizing `cache.maxmemoryMB` needs distinct users or query strings.
+   This campaign saw `evicted 0` throughout under a single identity, which proves
+   nothing about the real key space.
+5. **Real-browser request counts.** A warm browser issues no request at all for a
+   `?v=`-tagged asset and a conditional one for the rest. The measurement behind the
+   static-asset work — 87.5% of requests to `/static`, 96% of those answered 304 — is
+   a browser phenomenon, as is the true gunicorn `max_requests` recycle rate; curl
+   measures neither. A session spanning a deploy also surfaces the documented window
+   where cached HTML keeps emitting a stale `?v=`.
+6. **CSRF and htmx swaps under load** — a correctness question rather than a
+   throughput one. Every POST here was a `@csrf.exempt` API route.
+
+Before that round:
+
+- **`e2e/` cannot authenticate against samuel-dev as it stands** — it logs in through
+  the stub provider, and dev runs OIDC. The cheap path is a storage-state file from
+  one real Entra login, which those fixtures already accept; the base URL is already
+  an environment variable, and the harness can enumerate every dashboard page.
+- **Do not load-test the login path.** `RATELIMIT_AUTH_LOGIN` keeps the prod default
+  on dev deliberately, and the dev render test pins its absence from the overlay. It
+  covers the login POST and the OIDC callback, per client IP, so the sixth callback in
+  a minute is a 429 and every worker behind one egress IP shares that budget. It is
+  also real traffic to the Entra tenant. Log in once.
+- The session cookie is a credential: environment only, never the repo.
+- Graduate the driver to `scripts/` with a cookie flag. It has been used twice
+  already, and rebuilding it each time loses the accumulated flag set.
+- Interpretation caveat: dev is one replica of four cores against prod's two of
+  sixteen, on an obfuscated clone, so GIL-bound chart numbers are indicative only.
+
+### Open items
+
+| Item | Next move |
+|---|---|
+| F, Ingress connect stalls | Platform ticket carrying the discriminator evidence |
+| D, no cache dogpile lock | Decide before Horizon 2; cheap, and the herd is app-tier |
+| Pool ceiling 540 > `max_connections` 300 | A CNPG `Pooler` or a webapp pool resize, before Horizon 2 |
+| No `statement_timeout` on the cluster | Cluster-side decision |
+| E, ~9 s of fast 500s on a roll | A `Pooler` and/or a one-shot retry on connect |
+| `/user/resource-details/<projcode>` at 7.9 s | First target of the session round; one occurrence so far |
+
 ## Tooling notes
 
 - `cirrus_watch.sh --env dev` reports "kubectl logs unreachable" on an empty window
