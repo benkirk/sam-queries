@@ -475,7 +475,10 @@ The overlay raises `RATELIMIT_AUTHED`, `RATELIMIT_M2M` and `RATELIMIT_ANON` to
 callback). The limiter still runs, so Admin → Configuration → Rate limits keeps
 counting, and an API-key load run against `/api/v1/*` never sees a 429. To test
 throttling behavior itself, use compose or restore the prod tiers in the overlay
-temporarily. The repo ships no load generator; pick one on the day.
+temporarily. The repo ships no load generator; pick one on the day. Two limits the
+app does not own: the Ingress annotations cap one client IP at 100 req/s (burst
+×5) and 200 connections, and `kubectl port-forward` is not a load transport (8 s
+tails at 32 clients). Numbers from the first campaign: `DEV_LOAD_CAMPAIGN.md`.
 
 ## 7. Sequencing
 
