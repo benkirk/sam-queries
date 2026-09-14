@@ -100,7 +100,9 @@ permission grant is not enough — it must be the key.
 ## 5. Wire mechanics (measured, not from the apidoc)
 
 - **Transport is query params** for every write **except publications**, which
-  wants a **JSON body** (params → 400 "JSON parse error"). `_write` supports both.
+  wants a **JSON body** (params → 400 "JSON parse error"), and — measured in
+  `XRAS_SUBMISSION_PROBES.md` — opportunity attributes and documents. `_write` is
+  params-only; those three need a `json=` path.
 - **`resourceId` is the resource *type* id** (not a per-line id); there is at most
   one line per resource per stage, so `(action, resourceId, stage)` is unambiguous.
 - **Sub-resource creates return their id** in `result` (`allocationDateId`,
