@@ -142,10 +142,11 @@ peaked **34/300**, **no temp spill**, replication in sync, no slow/ERROR/FATAL.
 cleanly at 8–32 concurrent clients: no 5xx, `rm=served` dominates, DB bounded.
 But `--vary` did *not* slow `/allocations/projects` — busting the per-user HTML
 cache key still hits the **content-keyed chart SVG cache** (shared across users,
-keyed on data, not URL), so the GIL-bound render never ran. Measuring the true
-cold-render ceiling needs `sam-admin cache --refresh --category chart` before the
-run. Per-user HTML cache cardinality is likewise untested (one identity, `evicted
-0`) — it needs distinct users. Both are the next pass.
+keyed on data, not URL), so the GIL-bound render never ran. Flushing the chart
+cache first and re-driving `--vary` *did* find the wall — see finding D (32 cold
+concurrent renders → p50 16.5 s, all GIL wait). Per-user HTML cache cardinality is
+still untested (one identity, `evicted 0`) — it needs distinct users, the one
+remaining next pass.
 
 ## Findings
 
@@ -167,9 +168,19 @@ that route rather than the auth layer.
 fstree db 148 ms vs ~3.3 s, directory_access 415 ms vs ~7 s wall. A migration datum,
 not a hardening item.
 
-**D. The cache herd is real but app-tier.** N cold callers = N rebuilds; the cost
-multiplier comes from CPU contention, not the DB. A dogpile lock caps it at one
-rebuild. Lower priority than A/C.
+**D. The cache herd is real but app-tier — and for the chart page it is a GIL
+wall. Quantified 2026-09-15 (session round).** With a warm chart cache the
+authenticated surface is very well behaved (see the session-round table: 5xx=0,
+`rm=served`, ~42 req/s on `/allocations/projects`). Flush the chart cache
+(`sam-admin cache --refresh --category chart`) and drive `/allocations/projects
+--vary` — every request re-renders the inline SVGs — and it collapses: 16 clients
+p95 7.5 s, **32 clients p50 16.5 s at 1.8 req/s**. The request profile of the 24
+slow (>5 s) hits reads `cpu≈13%, sam≈1%, rest≈86%` — the time is neither CPU-per-
+thread nor DB but GIL wait: N concurrent matplotlib renders serialize. No 5xx, no
+DB stress (conns 46/300, temp spill minor) — it just goes slow. The one moment
+this bites in production is a **post-deploy `cache --refresh` under concurrent
+traffic**: a thundering herd of cold renders. A dogpile lock caps it at one render
+per chart instead of N; that is the fix, and this is its cost if skipped.
 
 **E. A CNPG roll on the required bind costs a ~9 s window of fast 500s** with
 switchover + the readiness/connect hardening. No hangs, no stuck pool, no pod
