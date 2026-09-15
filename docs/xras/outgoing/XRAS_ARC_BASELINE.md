@@ -5,8 +5,8 @@ exists as a result.** This is W9 of [`XRAS_SUBMISSION_PROBES.md`](XRAS_SUBMISSIO
 the *existing* ARC → XRAS → SAM workflow driven once, for real, on a throwaway
 Exploratory request under `benkirk`, with the ARC form, the XRAS admin app, the
 report API, SAM's own XRAS page and the mail read at every step. It answers three
-questions the design ([`XRAS_SUBMISSION.md`](../../plans/XRAS_SUBMISSION.md) § 2,
-§ 3, § 9) left open, and turns up one the design had not asked.
+questions the design ([`XRAS_SUBMISSION.md`](../../plans/XRAS_SUBMISSION.md) § 3.2,
+§ 4.2) had left open, and turns up one the design had not asked.
 
 | Question | Answer |
 |---|---|

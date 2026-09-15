@@ -5,7 +5,7 @@ operator-approved call by call the same day, plus a second full round trip on
 2026-09-15 observed from ARC, the admin app and mail (W8), and one real
 ARC-driven request approved, posted and notified the same day (W9, recorded in
 [`XRAS_ARC_BASELINE.md`](XRAS_ARC_BASELINE.md)).** This is the probe plan of
-[`XRAS_SUBMISSION.md`](../../plans/XRAS_SUBMISSION.md) § 7, executed. It extends
+[`XRAS_SUBMISSION.md`](../../plans/XRAS_SUBMISSION.md) § 2, executed. It extends
 [`XRAS_WRITE_PROBES.md`](XRAS_WRITE_PROBES.md) (merge / withdraw / re-submit /
 roster) and the 2026-08-22 editor spike in [`REQUEST_EDITOR.md`](REQUEST_EDITOR.md)
 § 3 to the verbs a SAM-authored request needs: add an action to an approved

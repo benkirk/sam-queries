@@ -215,7 +215,7 @@ subclass; the write runs inside `management_transaction`. No login means no
 ## 4. The XRAS phase-3 link
 
 A person with no account may still need to start an allocation request, and review
-should not wait on account creation. `XRAS_SUBMISSION.md` § 7 phase 3 does this
+should not wait on account creation. `XRAS_SUBMISSION.md` § 2 phase 3 does this
 under a SAM-minted XRAS identity:
 
 1. The registration row exists and is verified.
