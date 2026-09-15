@@ -185,8 +185,8 @@ deploy-dev: ## Deploy samuel-dev on nwc1 from origin/cirrus-dev (laptop helm; ph
 	@scripts/deploy_dev.sh
 
 # Laptop-only (VPN): `clone` reads prod MySQL as hpc-reader. Needs .env's
-# SAM_DEV_PG_* and SAM_DEV_API_PASS plus PGPASSWORD (csg/pg-superuser) for the
-# status seed. The loader evicts the dev pods' own sessions before the swap.
+# SAM_DEV_PG_*, SAM_DEV_API_PASS, and PROD_STATUS_DB_* (the csg/pg-superuser the
+# status seed uses). The loader evicts the dev pods' own sessions before the swap.
 refresh-dev: ## Rebuild sam_dev + system_status_dev from prod, then refresh samuel-dev's caches
 	$(config_env) && source etc/config_env.sh && \
 	    $(MAKE) -C containers/sam-sql-dev clone clone-pg && \
@@ -196,8 +196,8 @@ refresh-dev: ## Rebuild sam_dev + system_status_dev from prod, then refresh samu
 
 # Laptop-only (VPN): superset of refresh-dev — also loads the local compose
 # postgres (:5433) via clone-pg-local, and brings it up first. Needs .env's
-# SAM_DEV_PG_* and SAM_DEV_API_PASS plus PGPASSWORD (csg/pg-superuser) for the
-# status seed; docker for the local postgres bring-up.
+# SAM_DEV_PG_*, SAM_DEV_API_PASS, and PROD_STATUS_DB_* (the csg/pg-superuser the
+# status seed uses); docker for the local postgres bring-up.
 sync-dev: ## Update all backing dev DBs (local :5433 + CNPG sam_dev + system_status_dev) from prod, then refresh caches
 	$(config_env) && source etc/config_env.sh && \
 	    $(MAKE) -C containers/sam-sql-dev pg-up clone clone-pg-local clone-pg && \

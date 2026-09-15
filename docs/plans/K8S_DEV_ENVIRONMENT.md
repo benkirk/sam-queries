@@ -353,8 +353,10 @@ make target.
   then an idempotent re-grant to `pguser`. `task_run` is excluded so dev's ledger is
   its own; prod rows would settle dev's slots. The dump carries the schema and
   `alembic_version`, so there is no Alembic step (§3: the migrate targets clobber
-  `STATUS_DB_*`). Runs as the superuser via libpq env: `PGPASSWORD` required,
-  `PGHOST`/`PGUSER`/`PGSSLMODE` defaulted.
+  `STATUS_DB_*`). Runs as the superuser via libpq env: explicit `PG*` win (the
+  §6.1 runbook), else `PGHOST`/`PGUSER`/`PGPASSWORD` fall back to `.env`'s
+  `PROD_STATUS_DB_*` (which name the postgres superuser), so the make targets need
+  no separate `PGPASSWORD`; `PGSSLMODE` defaults to `require`.
 - Top-level `Makefile`, `refresh-dev`: `$(MAKE) -C containers/sam-sql-dev clone clone-pg`
   → `scripts/seed_status_dev.sh` → `SAM_API_USER=collector SAM_API_PASS=$SAM_DEV_API_PASS
   SAM_API_BASE=https://samuel-dev.k8s.ucar.edu sam-admin cache --refresh`
