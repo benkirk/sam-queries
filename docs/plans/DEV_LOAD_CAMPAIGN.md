@@ -113,6 +113,40 @@ minutes later.
 - The peer `cnpg_watch.sh` tick that started at 19:26:44 blocked for ~2.5 min while
   the cluster switched (its exec/psql calls wait); note for that skill.
 
+## Session round — first pass, 2026-09-15
+
+First authenticated run: `scripts/dev_capture_session.py` captured one real Entra
+session, `scripts/dev_session_load.py` replayed it. samuel-dev rev 2 (build
+`0ac427a`), watched by `cirrus_watch.sh --env dev` (app) and `cnpg_watch.sh
+--database sam_dev` (DB). Every target returned 200 — the cookie replay reaches
+the whole `@login_required` surface the `collector` key never could.
+
+Cold single shot (chart caches already warm): `/allocations/projects` **3.28 s**
+first hit; `charges/summary` 200 ms, `/allocations` 190 ms, `resource-details`
+445 ms, `/user/accounts` 726 ms.
+
+| Target | clients | req/s | p50 / p95 / p99 ms | errors |
+|---|---|---|---|---|
+| `/allocations/projects` (HTML-cache hit) | 8 / 16 / 32 | 28.9 / 40.2 / 42.6 | 226 / 373 / 670 (p99 to 1888) | 0 |
+| `/allocations/projects` `--vary` | 4 / 8 | 26.9 / 35.0 | 136 / 213 | 0 |
+| `/api/v1/.../charges/summary` | 16 | 31.3 | 476 / 842 / 1076 | 0 |
+| `/api/v1/.../allocations` | 16 | 34.4 | 443 / 677 / 748 | 0 |
+| `/user/resource-details/…?resource=Derecho` | 16 | 28.1 | 521 / 1097 / 1428 | 0 |
+
+Server side (app log, whole window): 5091 req, **5xx=0 4xx=0**, p50=24 / p95=511 /
+p99=716 ms; **read-model served=1009**, patched=2, live=0 — the rollups served
+from the snapshot, no live rollup ran. DB (cnpg_watch): primary connections
+peaked **34/300**, **no temp spill**, replication in sync, no slow/ERROR/FATAL.
+
+**What this pass did and did NOT measure.** The authenticated surface holds
+cleanly at 8–32 concurrent clients: no 5xx, `rm=served` dominates, DB bounded.
+But `--vary` did *not* slow `/allocations/projects` — busting the per-user HTML
+cache key still hits the **content-keyed chart SVG cache** (shared across users,
+keyed on data, not URL), so the GIL-bound render never ran. Measuring the true
+cold-render ceiling needs `sam-admin cache --refresh --category chart` before the
+run. Per-user HTML cache cardinality is likewise untested (one identity, `evicted
+0`) — it needs distinct users. Both are the next pass.
+
 ## Findings
 
 **A. Every API-key request cost ~260 ms of CPU before route code ran. FIXED (#561).**
