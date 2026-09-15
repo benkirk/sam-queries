@@ -198,20 +198,30 @@ cookie at concurrency. Ranked by what it would teach us:
 6. **CSRF and htmx swaps under load** — a correctness question rather than a
    throughput one. Every POST here was a `@csrf.exempt` API route.
 
-Before that round:
+The tooling for this round now lives in `scripts/` (graduated from the throwaway
+driver):
 
-- **`e2e/` cannot authenticate against samuel-dev as it stands** — it logs in through
-  the stub provider, and dev runs OIDC. The cheap path is a storage-state file from
-  one real Entra login, which those fixtures already accept; the base URL is already
-  an environment variable, and the harness can enumerate every dashboard page.
+- `scripts/dev_capture_session.py` — headed Playwright; log in + 2FA once, it
+  writes a `storage_state.json` outside the repo (a credential).
+- `scripts/dev_session_load.py` — replays that cookie at concurrency against a
+  ranked session-only target list (`--list`), client latency/throughput/status
+  only, `X-Request-ID` recorded for pod-log correlation. Refuses a non-dev base.
+- `e2e/conftest.py` honors `SAM_E2E_STORAGE_STATE`, so the single-browser
+  fidelity sweep runs against samuel-dev:
+  `make e2e SAM_E2E_BASE_URL=https://samuel-dev.k8s.ucar.edu SAM_E2E_STORAGE_STATE=<file>`.
+
+Watched on three sides during a run: the driver, SAM's `scripts/cirrus_watch.sh
+--env dev` (app/logs), and the CNPG `cnpg_watch.sh --context nwc1 --database
+sam_dev` from `hpc-usage-queries` (its `watch-cnpg` skill).
+
+Rules that still hold:
+
 - **Do not load-test the login path.** `RATELIMIT_AUTH_LOGIN` keeps the prod default
   on dev deliberately, and the dev render test pins its absence from the overlay. It
   covers the login POST and the OIDC callback, per client IP, so the sixth callback in
   a minute is a 429 and every worker behind one egress IP shares that budget. It is
   also real traffic to the Entra tenant. Log in once.
 - The session cookie is a credential: environment only, never the repo.
-- Graduate the driver to `scripts/` with a cookie flag. It has been used twice
-  already, and rebuilding it each time loses the accumulated flag set.
 - Interpretation caveat: dev is one replica of four cores against prod's two of
   sixteen, on an obfuscated clone, so GIL-bound chart numbers are indicative only.
 

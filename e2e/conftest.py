@@ -203,7 +203,16 @@ def storage_state(browser, base_url, tmp_path_factory):
     defaults to '5 per minute'). Fills the real form rather than clicking a
     Quick Login button — the buttons are a dev affordance and a weaker
     contract, and they only exist under DevelopmentConfig.
+
+    SAM_E2E_STORAGE_STATE short-circuits the form: a real-OIDC target (samuel-dev)
+    serves an Entra redirect, not the stub form, so pass a cookie captured once by
+    scripts/dev_capture_session.py and the fixture reuses it verbatim.
     """
+    preset = os.environ.get('SAM_E2E_STORAGE_STATE')
+    if preset:
+        assert os.path.exists(preset), f'SAM_E2E_STORAGE_STATE not found: {preset}'
+        return preset
+
     context = browser.new_context(base_url=base_url)
     page = context.new_page()
     response = page.goto('/auth/login')

@@ -235,6 +235,9 @@ e2e: ## Run the Playwright browser console sweep against a running stack (needs 
 	@# is exactly what lets browser-smoke.yaml install a bare python +
 	@# pytest-playwright instead of building the conda environment.
 	@# One-time local setup:  pip install -e ".[e2e]" && playwright install chromium
+	@# Against a real-OIDC target (samuel-dev), capture a session once with
+	@# scripts/dev_capture_session.py and pass it: make e2e
+	@#   SAM_E2E_BASE_URL=https://samuel-dev.k8s.ucar.edu SAM_E2E_STORAGE_STATE=<file>
 	python3 -m pytest -c e2e/pytest.ini e2e/ --base-url $(SAM_E2E_BASE_URL)
 
 check-db-vs-orms: ## Audit prod DB schema vs ORM models — runs check_db_drift + orm_inventory (skips if PROD_* env unset / VPN unreachable)
