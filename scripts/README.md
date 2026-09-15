@@ -12,6 +12,7 @@ scripts/
 ├── cirrus_weblog_audit.sh       # CIRRUS/k8s traffic + rate-limit + abuse audit
 ├── deploy_dev.sh                # TEMPORARY laptop helm deploy of samuel-dev (make deploy-dev)
 ├── seed_status_dev.sh           # Reseed system_status_dev from prod (make refresh-dev)
+├── dev_session_load.py          # Load driver for samuel-dev's authed surface (+ dev_capture_session.py)
 ├── zap_probe_docker.sh          # Dockerized OWASP ZAP scan of the webapp
 ├── apis/                        # Public-API worked examples / smoke tests
 │   ├── systems_integration_apis.sh  # Download→refresh→re-download over the 5 SI APIs
@@ -72,6 +73,8 @@ secret), `--no-color`, `-n/--namespace`, `-r/--release`, `--context`,
   scripts/cirrus_watch.sh --reset-baseline      # seed a fresh baseline, no report
   scripts/cirrus_watch.sh --env dev             # the dev release; no XRAS/db-load reads
   ```
+
+- **`dev_capture_session.py` + `dev_session_load.py`** — capture one OIDC session (headed Playwright; log in once), then replay the cookie at concurrency (`--list` for targets; refuses a non-`samuel-dev` base, no cookie in the repo). The `profile-dev` skill carries the process; numbers in `../docs/plans/DEV_LOAD_CAMPAIGN.md`.
 
 - **`cirrus_weblog_audit.sh`** — "who's hitting the public site, and is anything
   abusive getting through?" Harvests the webapp's stdout (and the Redis

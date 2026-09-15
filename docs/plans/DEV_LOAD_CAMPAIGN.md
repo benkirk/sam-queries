@@ -113,6 +113,75 @@ minutes later.
 - The peer `cnpg_watch.sh` tick that started at 19:26:44 blocked for ~2.5 min while
   the cluster switched (its exec/psql calls wait); note for that skill.
 
+## Session round — first pass, 2026-09-15
+
+First authenticated run: `scripts/dev_capture_session.py` captured one real Entra
+session, `scripts/dev_session_load.py` replayed it. samuel-dev rev 2 (build
+`0ac427a`), watched by `cirrus_watch.sh --env dev` (app) and `cnpg_watch.sh
+--database sam_dev` (DB). Every target returned 200 — the cookie replay reaches
+the whole `@login_required` surface the `collector` key never could.
+
+Cold single shot (chart caches already warm): `/allocations/projects` **3.28 s**
+first hit; `charges/summary` 200 ms, `/allocations` 190 ms, `resource-details`
+445 ms, `/user/accounts` 726 ms.
+
+| Target | clients | req/s | p50 / p95 / p99 ms | errors |
+|---|---|---|---|---|
+| `/allocations/projects` (HTML-cache hit) | 8 / 16 / 32 | 28.9 / 40.2 / 42.6 | 226 / 373 / 670 (p99 to 1888) | 0 |
+| `/allocations/projects` `--vary` | 4 / 8 | 26.9 / 35.0 | 136 / 213 | 0 |
+| `/api/v1/.../charges/summary` | 16 | 31.3 | 476 / 842 / 1076 | 0 |
+| `/api/v1/.../allocations` | 16 | 34.4 | 443 / 677 / 748 | 0 |
+| `/user/resource-details/…?resource=Derecho` | 16 | 28.1 | 521 / 1097 / 1428 | 0 |
+
+Server side (app log, whole window): 5091 req, **5xx=0 4xx=0**, p50=24 / p95=511 /
+p99=716 ms; **read-model served=1009**, patched=2, live=0 — the rollups served
+from the snapshot, no live rollup ran. DB (cnpg_watch): primary connections
+peaked **34/300**, **no temp spill**, replication in sync, no slow/ERROR/FATAL.
+
+**What this pass did and did NOT measure.** The authenticated surface holds
+cleanly at 8–32 concurrent clients: no 5xx, `rm=served` dominates, DB bounded.
+But `--vary` did *not* slow `/allocations/projects` — busting the per-user HTML
+cache key still hits the **content-keyed chart SVG cache** (shared across users,
+keyed on data, not URL), so the GIL-bound render never ran. Flushing the chart
+cache first and re-driving `--vary` *did* find the wall — see finding D (32 cold
+concurrent renders → p50 16.5 s, all GIL wait). Per-user HTML cache cardinality is
+still untested (one identity, `evicted 0`) — it needs distinct users, the one
+remaining next pass.
+
+## Session round — resource-details / tree + plugins, 2026-09-15
+
+Second authenticated pass, aimed at the `/user/resource-details/*` project-tree
+routes — **none cache at the route level** (only the downstream chart-SVG hash
+does), so single-request latency *is* the interactive cost. Worst-case tree
+`NCGD0006` (**54 descendants**, on both Derecho and Campaign_Store), 8-client
+fan-out (one page firing its fragments). All 200, zero errors.
+
+| Route | plugin | req/s @8 | p50 / p95 ms | server breakdown (pod log) |
+|---|---|---|---|---|
+| `resource-details` (Derecho) | — | 21.8 | 318 / 637 | SAM-DB tree walk |
+| `resource-details` (Campaign_Store) | fsscans `scan_overview` | 35.4 | 212 / 425 | SAM-DB subtree + plugin, sub-second |
+| `disk-usage-chart` (rebuilds subtree/call) | — | 55.8 | 117 / 309 | SAM-DB |
+| `usage-chart` | — | 41.8 | 167 / 352 | detail-data + matplotlib |
+| `user-subtree` | — | 77.3 | 97 / 132 | SAM-DB |
+| `day-subtree` | — | 66.2 | 110 / 167 | ~25 ms server, `sam=15ms/9q` |
+| `user/tree` | — | — | (0.2 s single) | tree macro render |
+
+**The one real cost is the job-history charts (jobhistory plugin), embedded lazily
+on the HPC resource-details page.** `jobs_by_user` at **days=365** over the 54-node
+tree: **2.6 s cold**, of which `jobhistory=2420ms/4q` (**92 %**) — a year of jobs
+aggregated over the whole tree on `csg-postgres-ro`; cpu 161 ms and `sam` 3 ms are
+noise. Warm (its own fragment cache) ~15 ms; **days=30** is `jobhistory=70ms`, ~160
+ms total. The jobs *card* itself stays cheap (p50 58 ms). So the slowest single
+interaction is a wide-window jobs chart on a wide tree, and it is **plugin-DB-bound,
+not GIL** — a different axis from finding D.
+
+**Verdict:** interactively fine, as expected. The uncached SAM-DB tree routes stay
+under 320 ms p50 even on the widest tree; the fsscans disk path is sub-second. Only
+the 365-day jobs chart on a broad tree is a noticeable (~2.5 s) one-off, cached
+thereafter; narrowing the window or the tree scope removes it. No route-level cache
+is warranted for the SAM-DB routes — they are already cheap. Relevant to
+`FSTREE_LATENCY_INVESTIGATION.md` (the DB-time axis).
+
 ## Findings
 
 **A. Every API-key request cost ~260 ms of CPU before route code ran. FIXED (#561).**
@@ -133,9 +202,19 @@ that route rather than the auth layer.
 fstree db 148 ms vs ~3.3 s, directory_access 415 ms vs ~7 s wall. A migration datum,
 not a hardening item.
 
-**D. The cache herd is real but app-tier.** N cold callers = N rebuilds; the cost
-multiplier comes from CPU contention, not the DB. A dogpile lock caps it at one
-rebuild. Lower priority than A/C.
+**D. The cache herd is real but app-tier — and for the chart page it is a GIL
+wall. Quantified 2026-09-15 (session round).** With a warm chart cache the
+authenticated surface is very well behaved (see the session-round table: 5xx=0,
+`rm=served`, ~42 req/s on `/allocations/projects`). Flush the chart cache
+(`sam-admin cache --refresh --category chart`) and drive `/allocations/projects
+--vary` — every request re-renders the inline SVGs — and it collapses: 16 clients
+p95 7.5 s, **32 clients p50 16.5 s at 1.8 req/s**. The request profile of the 24
+slow (>5 s) hits reads `cpu≈13%, sam≈1%, rest≈86%` — the time is neither CPU-per-
+thread nor DB but GIL wait: N concurrent matplotlib renders serialize. No 5xx, no
+DB stress (conns 46/300, temp spill minor) — it just goes slow. The one moment
+this bites in production is a **post-deploy `cache --refresh` under concurrent
+traffic**: a thundering herd of cold renders. A dogpile lock caps it at one render
+per chart instead of N; that is the fix, and this is its cost if skipped.
 
 **E. A CNPG roll on the required bind costs a ~9 s window of fast 500s** with
 switchover + the readiness/connect hardening. No hangs, no stuck pool, no pod
@@ -198,20 +277,30 @@ cookie at concurrency. Ranked by what it would teach us:
 6. **CSRF and htmx swaps under load** — a correctness question rather than a
    throughput one. Every POST here was a `@csrf.exempt` API route.
 
-Before that round:
+The tooling for this round now lives in `scripts/` (graduated from the throwaway
+driver):
 
-- **`e2e/` cannot authenticate against samuel-dev as it stands** — it logs in through
-  the stub provider, and dev runs OIDC. The cheap path is a storage-state file from
-  one real Entra login, which those fixtures already accept; the base URL is already
-  an environment variable, and the harness can enumerate every dashboard page.
+- `scripts/dev_capture_session.py` — headed Playwright; log in + 2FA once, it
+  writes a `storage_state.json` outside the repo (a credential).
+- `scripts/dev_session_load.py` — replays that cookie at concurrency against a
+  ranked session-only target list (`--list`), client latency/throughput/status
+  only, `X-Request-ID` recorded for pod-log correlation. Refuses a non-dev base.
+- `e2e/conftest.py` honors `SAM_E2E_STORAGE_STATE`, so the single-browser
+  fidelity sweep runs against samuel-dev:
+  `make e2e SAM_E2E_BASE_URL=https://samuel-dev.k8s.ucar.edu SAM_E2E_STORAGE_STATE=<file>`.
+
+Watched on three sides during a run: the driver, SAM's `scripts/cirrus_watch.sh
+--env dev` (app/logs), and the CNPG `cnpg_watch.sh --context nwc1 --database
+sam_dev` from `hpc-usage-queries` (its `watch-cnpg` skill).
+
+Rules that still hold:
+
 - **Do not load-test the login path.** `RATELIMIT_AUTH_LOGIN` keeps the prod default
   on dev deliberately, and the dev render test pins its absence from the overlay. It
   covers the login POST and the OIDC callback, per client IP, so the sixth callback in
   a minute is a 429 and every worker behind one egress IP shares that budget. It is
   also real traffic to the Entra tenant. Log in once.
 - The session cookie is a credential: environment only, never the repo.
-- Graduate the driver to `scripts/` with a cookie flag. It has been used twice
-  already, and rebuilding it each time loses the accumulated flag set.
 - Interpretation caveat: dev is one replica of four cores against prod's two of
   sixteen, on an obfuscated clone, so GIL-bound chart numbers are indicative only.
 
