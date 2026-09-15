@@ -39,7 +39,7 @@ stored). `SessionMixin`; state transitions as methods.
 | Group | Columns |
 |---|---|
 | Identity claim | `email` (lower-cased; the join key SAM already uses to match people — `sam_merge_targets` in `sam/queries/xras_accounts.py` reads `email_address` the same way), `first_name`, `middle_name`, `last_name`, `organization`, `academic_status`, `residence_country`, `orcid`, `phone` — the same field set as an XRAS person (`PERSON_FIELDS`), so a row can feed `POST /v1/people` or an upstream form without re-derivation; `desired_username` nullable (the upstream mints the real one) |
-| Intent | `purpose` ∈ `standalone · enrollment · submission`; `project_id` nullable (the project a fulfilled account joins); `sponsor_user_id` nullable (the lead who enrolled them); `event_code` nullable (§ 2.1); `xras_username` nullable (the placeholder SAM minted, § 4) |
+| Intent | `purpose` ∈ `standalone · enrollment · submission`; `project_id` nullable (the project a fulfilled account joins); `sponsor_user_id` nullable (which sponsor enrolled this person, § 2.2); `event_code` nullable (§ 2.1); `xras_username` nullable (the placeholder SAM minted, § 4) |
 | Queue state | `state` ∈ `submitted · claimed · requested · rejected · dismissed`; `assignee` (claimed by); `requested_at` (the date SAM told NUSD); `reject_reason`; `comment` |
 | Provenance | `created_by` (`self` from the public form, a username for a sponsor or operator, `task:xras_sweep` for rows derived from handoff rosters), `verified_at` (email verification), `creation_time`, `modified_time` |
 | Fulfillment | `user_id`, `upid` — stamped when the observer (§ 3.4) finds the mirrored row; `upid` is the upstream's durable person key and outlives a username change |
@@ -64,7 +64,7 @@ hackathon, an onboarding wave — because they share a project and a deadline.
 | `event_code` | short, unique, human-typed and human-shared: `WRF-TUTORIAL-2026-10` |
 | `name` | what a person sees on the form after entering the code |
 | `project_id` | the project every fulfilled account joins |
-| `sponsor_user_id` | the lead or staff member who owns the event |
+| `extra_sponsor_user_id` | nullable — one sponsor beyond the project's lead and admin (§ 2.2) |
 | `accounts_needed_by` | the creation deadline NUSD works to |
 | `opens_at`, `closes_at` | when the code is accepted on the public form |
 | `active`, `created_by`, timestamps | `ActiveFlagMixin`; `set()`/`clear()` |
@@ -74,6 +74,26 @@ A registration carrying a valid open code inherits `purpose = enrollment`,
 deadline first, so NUSD sees "31 accounts for this workshop, due Friday" as one
 block. The code is optional and deliberately generic: it costs nothing when unused and
 any future cohort is the same mechanism.
+
+### 2.2 Who may run an event
+
+Creating or editing an event, pasting a roster under it, and seeing its rows are one
+capability with three doors, all of which exist today:
+
+| Door | Who | How it is checked |
+|---|---|---|
+| The project | its lead and its single admin | derived from the project on every request, exactly as membership changes are — nothing stored |
+| The event | one optional **extra sponsor** (`extra_sponsor_user_id`, say an instructor who is neither lead nor admin) | the one stored sponsor; a join table only if a real event ever needs more than three people |
+| RBAC | staff — a new `MANAGE_ACCOUNT_REQUESTS` permission in the `_ALLOCATION_ADMIN` set (`webapp/utils/rbac.py`), which is exactly the `nusd` and `csg` bundles | system-wide, any project |
+
+The route guard is the existing `require_project_permission(Permission.MANAGE_ACCOUNT_REQUESTS)`
+(permission system-wide, or the project's lead/admin) with one added clause for the
+event's extra sponsor, as a sibling decorator in `webapp/api/access_control.py` that
+resolves the event code to its project and passes the event object to the view. The
+facility-scoped manager tier reaches it through the facility variant of the same
+decorator if that tier is ever granted the permission. The queue in § 3.3 is
+permission-only and never project-scoped. The single-administrator model is
+untouched: sponsorship adds no role, only one column.
 
 ## 3. Surfaces
 
@@ -96,8 +116,8 @@ subclass; the write runs inside `management_transaction`. No login means no
 
 ### 3.2 Sponsor enrollment
 
-From the project card, the lead or admin (`require_project_permission`) has two
-ways to the same rows:
+From the project card, any sponsor (§ 2.2: the project's lead or admin, the event's
+extra sponsor, or csg/NUSD staff) has two ways to the same rows:
 
 - **Create an event** for the project — code, name, deadline, window — and hand the
   code out; participants register themselves through § 3.1.
@@ -106,15 +126,16 @@ ways to the same rows:
   already resolves to an active SAM user skip the queue and go straight to
   membership.
 
-On fulfillment the observer calls `add_user_to_project` (`sam/manage`), the same
-function the member form and the XRAS handlers use. This is the first bulk
+The event card on the project page lists its sponsors and its open rows, so any of
+them can see progress. On fulfillment the observer calls `add_user_to_project`
+(`sam/manage`), the same function the member form and the XRAS handlers use. This is the first bulk
 membership path in SAM, and it should reuse the one "lead must exist and be active"
 predicate the lifecycle document asks for rather than add a third.
 
 ### 3.3 The NUSD queue
 
-Admin → Accounts → **Requests**, behind a new `MANAGE_ACCOUNT_REQUESTS` permission
-granted to the NUSD bundle (the same bundle that fields XRAS failure mail). One table,
+Admin → Accounts → **Requests**, behind the `MANAGE_ACCOUNT_REQUESTS` permission of
+§ 2.2 — held by the NUSD bundle, which fields XRAS failure mail today, and by csg. One table,
 grouped by event with the nearest deadline first, then ungrouped rows by age; filters
 on state, purpose, event and age. Per row: **claim** (sets `assignee`; a second
 operator sees who has it), **dismiss** (with a reason — a duplicate, a person who
