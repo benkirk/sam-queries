@@ -362,6 +362,13 @@ make target.
   floor weekly. It runs from a VPN'd laptop because `clone` reads prod MySQL as
   `hpc-reader`, so it is not a cluster CronJob. Do not `make -n refresh-dev`: the
   recipe contains `$(MAKE)`, which GNU make runs even under `-n`.
+- Top-level `Makefile`, `sync-dev`: a superset of `refresh-dev` that also loads the
+  local compose Postgres (127.0.0.1:5433) for offline work. It runs
+  `$(MAKE) -C containers/sam-sql-dev pg-up clone clone-pg-local clone-pg` (bringing
+  the local Postgres up first, then one `clone` feeding both the local and CNPG
+  loads) → `scripts/seed_status_dev.sh` → the same `sam-admin cache --refresh`.
+  Same secrets as `refresh-dev` plus docker for the local bring-up. Same
+  `make -n` caveat.
 
 ### 4.8 Docs
 
@@ -428,7 +435,8 @@ script carries the explicit `GRANT ... ON ALL TABLES` as the idempotent re-grant
 `make refresh-dev`. The loader evicts the dev pods' sessions (same role) before the
 rename; `/api/v1/health/ready` returns 200 again within one readiness period. Dev
 writes since the last refresh (XRAS capture-only rows, test edits) are discarded by
-design.
+design. `make sync-dev` does the same for the k8s DBs and additionally refreshes the
+local compose Postgres.
 
 ### 6.3 Argo Application for the platform team (Phase 2)
 
