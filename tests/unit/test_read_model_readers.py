@@ -43,7 +43,14 @@ def assert_resources_equal(live, served):
     for a, b in zip(live, served):
         ctx = a['resource_name']
         for f in SCALAR:
-            assert a[f] == b[f], (ctx, f, a[f], b[f])
+            if f == 'days_until_expiration' and a[f] is not None and b[f] is not None:
+                # Now-relative: the served path derives this from the snapshot's
+                # refresh time, the live path from request-now, so the two calls
+                # here can straddle one day boundary. A real request computes it
+                # once, from a single clock, so a page never shows the split.
+                assert abs(a[f] - b[f]) <= 1, (ctx, f, a[f], b[f])
+            else:
+                assert a[f] == b[f], (ctx, f, a[f], b[f])
         for f in FLOAT:
             assert float(a[f]) == pytest.approx(float(b[f])), (ctx, f)
         for f in OPTIONAL_FLOAT:

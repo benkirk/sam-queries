@@ -39,8 +39,10 @@ def _reset_db_key_cache():
     """The api_auth DB-key cache is a process-global dict — wipe it around each
     test so cached maps never leak between tests."""
     api_auth._DB_KEY_CACHE.update(at=None, map={})
+    api_auth._VERIFY_CACHE.clear()
     yield
     api_auth._DB_KEY_CACHE.update(at=None, map={})
+    api_auth._VERIFY_CACHE.clear()
 
 
 @pytest.fixture
@@ -158,6 +160,64 @@ class TestVerifyPrecedence:
 # ---------------------------------------------------------------------------
 # _get_db_api_keys TTL cache
 # ---------------------------------------------------------------------------
+
+class TestVerifyCache:
+    """A successful bcrypt check is remembered for API_KEY_VERIFY_TTL seconds."""
+
+    @pytest.fixture
+    def bcrypt_calls(self, monkeypatch):
+        calls = {"n": 0}
+        real = api_auth._bcrypt_matches
+
+        def counting(password, stored_hash):
+            calls["n"] += 1
+            return real(password, stored_hash)
+
+        monkeypatch.setattr(api_auth, "_bcrypt_matches", counting)
+        return calls
+
+    def test_repeat_success_skips_bcrypt(self, api_app, monkeypatch, bcrypt_calls):
+        monkeypatch.setitem(api_app.config, "API_KEY_VERIFY_TTL", 300)
+        with api_app.app_context():
+            assert api_auth._verify_api_key("testuser", "good-password")
+            assert api_auth._verify_api_key("testuser", "good-password")
+        assert bcrypt_calls["n"] == 1
+
+    def test_failure_is_never_cached(self, api_app, monkeypatch, bcrypt_calls):
+        monkeypatch.setitem(api_app.config, "API_KEY_VERIFY_TTL", 300)
+        with api_app.app_context():
+            assert api_auth._verify_api_key("testuser", "wrong") is None
+            assert api_auth._verify_api_key("testuser", "wrong") is None
+        assert bcrypt_calls["n"] == 2
+        assert api_auth._VERIFY_CACHE == {}
+
+    def test_rotated_hash_invalidates(self, api_app, monkeypatch, bcrypt_calls):
+        monkeypatch.setitem(api_app.config, "API_KEY_VERIFY_TTL", 300)
+        with api_app.app_context():
+            assert api_auth._verify_api_key("testuser", "good-password")
+            new_hash = bcrypt.hashpw(b"rotated", bcrypt.gensalt(rounds=4)).decode()
+            api_app.config["API_KEYS"] = {"testuser": new_hash}
+            assert api_auth._verify_api_key("testuser", "good-password") is None
+            assert api_auth._verify_api_key("testuser", "rotated")
+        assert bcrypt_calls["n"] == 3
+
+    def test_ttl_zero_disables(self, api_app, bcrypt_calls):
+        """TestingConfig sets API_KEY_VERIFY_TTL=0 -> every call pays bcrypt."""
+        with api_app.app_context():
+            assert api_auth._verify_api_key("testuser", "good-password")
+            assert api_auth._verify_api_key("testuser", "good-password")
+        assert bcrypt_calls["n"] == 2
+        assert api_auth._VERIFY_CACHE == {}
+
+    def test_cache_is_bounded(self, api_app, monkeypatch):
+        monkeypatch.setitem(api_app.config, "API_KEY_VERIFY_TTL", 300)
+        monkeypatch.setattr(api_auth, "_VERIFY_CACHE_MAX", 2)
+        monkeypatch.setattr(api_auth, "_bcrypt_matches", lambda p, h: True)
+        with api_app.app_context():
+            for pw in ("a", "b", "c"):
+                api_auth._verify_api_key("testuser", pw)
+        assert len(api_auth._VERIFY_CACHE) == 2
+
 
 class TestDbKeyCache:
     def test_ttl_zero_refreshes_every_call(self, app, monkeypatch):

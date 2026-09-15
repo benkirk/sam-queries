@@ -11,10 +11,12 @@
 #
 # Runs from a laptop on the VPN as the Postgres SUPERUSER (OpenBao
 # csg/pg-superuser); the target database must already exist. Standard libpq
-# variables select the server:
-#   PGHOST      (default csg-postgres.k8s.ucar.edu)
-#   PGUSER      (default postgres)
-#   PGPASSWORD  (required)
+# variables select the server; unset, they fall back to the prod status-site
+# creds in .env (PROD_STATUS_DB_*, which name the postgres superuser), so
+# make refresh-dev / sync-dev need nothing extra:
+#   PGHOST      (default PROD_STATUS_DB_SERVER, then csg-postgres.k8s.ucar.edu)
+#   PGUSER      (default PROD_STATUS_DB_USERNAME, then postgres)
+#   PGPASSWORD  (required; default PROD_STATUS_DB_PASSWORD)
 #   PGSSLMODE   (default require)
 #
 # Usage:
@@ -31,8 +33,11 @@ source "${_LIBDIR}/common.sh"
 SOURCE_DB="system_status"
 TARGET_DB="system_status_dev"
 APP_ROLE="${STATUS_DEV_APP_ROLE:-pguser}"
-export PGHOST="${PGHOST:-csg-postgres.k8s.ucar.edu}"
-export PGUSER="${PGUSER:-postgres}"
+# Explicit libpq vars win (the § 6.1 runbook); otherwise take the prod
+# status-site superuser creds from .env so the make targets need no extra env.
+export PGHOST="${PGHOST:-${PROD_STATUS_DB_SERVER:-csg-postgres.k8s.ucar.edu}}"
+export PGUSER="${PGUSER:-${PROD_STATUS_DB_USERNAME:-postgres}}"
+export PGPASSWORD="${PGPASSWORD:-${PROD_STATUS_DB_PASSWORD:-}}"
 export PGSSLMODE="${PGSSLMODE:-require}"
 
 while [[ $# -gt 0 ]]; do
@@ -45,7 +50,7 @@ done
 setup_colors
 
 for c in pg_dump pg_restore psql; do command -v "$c" >/dev/null 2>&1 || die "$c not found in PATH"; done
-[[ -n "${PGPASSWORD:-}" ]] || die "PGPASSWORD is required (the postgres superuser, OpenBao csg/pg-superuser)"
+[[ -n "${PGPASSWORD:-}" ]] || die "PGPASSWORD is required (postgres superuser, OpenBao csg/pg-superuser; or set PROD_STATUS_DB_PASSWORD in .env)"
 
 exists() { psql -d postgres -Atc "SELECT 1 FROM pg_database WHERE datname = '$1'" 2>/dev/null; }
 [[ "$(exists "$TARGET_DB")" == "1" ]] || die "$TARGET_DB does not exist on $PGHOST — create it first (K8S_DEV_ENVIRONMENT.md § 6.1)"

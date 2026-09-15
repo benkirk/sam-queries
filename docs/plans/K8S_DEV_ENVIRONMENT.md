@@ -353,8 +353,10 @@ make target.
   then an idempotent re-grant to `pguser`. `task_run` is excluded so dev's ledger is
   its own; prod rows would settle dev's slots. The dump carries the schema and
   `alembic_version`, so there is no Alembic step (§3: the migrate targets clobber
-  `STATUS_DB_*`). Runs as the superuser via libpq env: `PGPASSWORD` required,
-  `PGHOST`/`PGUSER`/`PGSSLMODE` defaulted.
+  `STATUS_DB_*`). Runs as the superuser via libpq env: explicit `PG*` win (the
+  §6.1 runbook), else `PGHOST`/`PGUSER`/`PGPASSWORD` fall back to `.env`'s
+  `PROD_STATUS_DB_*` (which name the postgres superuser), so the make targets need
+  no separate `PGPASSWORD`; `PGSSLMODE` defaults to `require`.
 - Top-level `Makefile`, `refresh-dev`: `$(MAKE) -C containers/sam-sql-dev clone clone-pg`
   → `scripts/seed_status_dev.sh` → `SAM_API_USER=collector SAM_API_PASS=$SAM_DEV_API_PASS
   SAM_API_BASE=https://samuel-dev.k8s.ucar.edu sam-admin cache --refresh`
@@ -362,6 +364,13 @@ make target.
   floor weekly. It runs from a VPN'd laptop because `clone` reads prod MySQL as
   `hpc-reader`, so it is not a cluster CronJob. Do not `make -n refresh-dev`: the
   recipe contains `$(MAKE)`, which GNU make runs even under `-n`.
+- Top-level `Makefile`, `sync-dev`: a superset of `refresh-dev` that also loads the
+  local compose Postgres (127.0.0.1:5433) for offline work. It runs
+  `$(MAKE) -C containers/sam-sql-dev pg-up clone clone-pg-local clone-pg` (bringing
+  the local Postgres up first, then one `clone` feeding both the local and CNPG
+  loads) → `scripts/seed_status_dev.sh` → the same `sam-admin cache --refresh`.
+  Same secrets as `refresh-dev` plus docker for the local bring-up. Same
+  `make -n` caveat.
 
 ### 4.8 Docs
 
@@ -428,7 +437,8 @@ script carries the explicit `GRANT ... ON ALL TABLES` as the idempotent re-grant
 `make refresh-dev`. The loader evicts the dev pods' sessions (same role) before the
 rename; `/api/v1/health/ready` returns 200 again within one readiness period. Dev
 writes since the last refresh (XRAS capture-only rows, test edits) are discarded by
-design.
+design. `make sync-dev` does the same for the k8s DBs and additionally refreshes the
+local compose Postgres.
 
 ### 6.3 Argo Application for the platform team (Phase 2)
 
@@ -475,7 +485,13 @@ The overlay raises `RATELIMIT_AUTHED`, `RATELIMIT_M2M` and `RATELIMIT_ANON` to
 callback). The limiter still runs, so Admin → Configuration → Rate limits keeps
 counting, and an API-key load run against `/api/v1/*` never sees a 429. To test
 throttling behavior itself, use compose or restore the prod tiers in the overlay
-temporarily. The repo ships no load generator; pick one on the day.
+temporarily. Interactive/authenticated profiling uses `scripts/dev_capture_session.py`
++ `scripts/dev_session_load.py` (capture one OIDC session, replay at concurrency);
+the `profile-dev` skill carries the process and the target ranking. Two things the
+app does not own: the Ingress annotations declare 100 req/s (burst ×5) and 200
+connections per client IP, though 180 req/s from one IP was served without a
+rejection, and `kubectl port-forward` is not a load transport (8 s tails at 32
+clients). Numbers from the campaigns: `DEV_LOAD_CAMPAIGN.md`.
 
 ## 7. Sequencing
 
@@ -533,7 +549,10 @@ After the first deploy:
 Deleting the retired AWS staging workflow, terraform, and `docs/STAGING.md`; collectors
 dual-posting to dev; a Flask-Admin toggle for dev; the mail redirect valve (a one-line
 overlay edit the test already tolerates); moving the refresh into the cluster (needs the
-`hpc-reader` MySQL credential in OpenBao); a second namespace.
+`hpc-reader` MySQL credential in OpenBao); a second namespace; pointing samuel-dev at
+the XRAS test instance — priced side by side (outbound levers, render-test
+assertions, an inbound `ROLE_XRAS` credential that survives the refresh, the ask to
+Steve) in `XRAS_SUBMISSION.md` § 6 (this directory).
 
 ## 10. Status
 
