@@ -160,4 +160,4 @@ Design and deferred work: [`../plans/XRAS_ACCOUNT_QUEUE.md`](../plans/XRAS_ACCOU
 
 The third arc — SAM authoring the request itself, so that the PI, mnemonic,
 facility and contract are resolved at submission rather than at approval — is
-designed in [`outgoing/XRAS_SUBMISSION.md`](outgoing/XRAS_SUBMISSION.md).
+designed in [`docs/plans/XRAS_SUBMISSION.md`](../plans/XRAS_SUBMISSION.md).

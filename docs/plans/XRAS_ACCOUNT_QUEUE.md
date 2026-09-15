@@ -1,6 +1,7 @@
 # The XRAS account queue — deferred work
 
-**Status: written down, deliberately unbuilt.** Everything here was scoped during the
+**Status: written down, deliberately unbuilt.** The queue itself is designed as a product
+in [`ACCOUNT_REGISTRATION.md`](ACCOUNT_REGISTRATION.md). Everything here was scoped during the
 2026-08-20 pass that made the worklist legible, and cut from it on purpose so triage week
 ships without new tables or new mail. Each item names what it is, why it was deferred, and
 what would justify picking it up.

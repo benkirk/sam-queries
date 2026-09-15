@@ -190,7 +190,11 @@ overnight VPN outage without alarms.
   With `allkeys-lru`, `evicted` rising between ticks means live entries are being
   dropped — raise `cache.maxmemoryMB`. A missing INFO field (db1 is absent when
   the ratelimit DB is empty) must not abort the run.
-- **The prod DB is a read-only replica.** The XRAS read is a `SELECT`; never add
-  a write path here.
+- **The prod DB is the production MySQL VM itself — there is no read replica.**
+  The tick reads it through the read-only `hpc-reader` credential; the XRAS read
+  is a `SELECT`; never add a write path here. Because it is the live server,
+  `dbload: slow_q(Δ)` counts every client of it (backups, other tools, the
+  webapp's write user) — a delta with no slow samuel request in the window
+  points away from SAM.
 - **State lives outside the repo.** Don't commit a state file; `--reset-baseline`
   re-seeds it after a long gap so historical rows aren't reported as new.
