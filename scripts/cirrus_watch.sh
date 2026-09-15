@@ -40,8 +40,9 @@
 #
 # Credentials: the XRAS read uses mysql, which picks up ~/.my.cnf automatically;
 # otherwise set SAM_DB_USERNAME / SAM_DB_PASSWORD in the environment. The prod DB
-# is a read-only replica. kubectl must target the nwc1 context (pass --context
-# nwc1 if it is not your current context).
+# is the production MySQL VM (no replica exists); use the read-only hpc-reader
+# credential and never add a write here. kubectl must target the nwc1 context
+# (pass --context nwc1 if it is not your current context).
 
 set -euo pipefail
 
