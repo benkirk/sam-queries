@@ -1,8 +1,11 @@
 # HPC account registration — the request portal and the NUSD queue
 
-**Status: design, not built.** A standalone product: the way a person asks for an
-NCAR HPC account, the queue the account-creating team works from, and the hook that
-lets SAM act the moment the account exists. It is also the identity step that
+**Status: design, not built; phase 1 can start now.** A standalone product: the way
+a person asks for an NCAR HPC account, the queue the account-creating team works
+from, and the hook that lets SAM act the moment the account exists. It ships in two
+phases (§ 5) — **internal** first, where authenticated sponsors invite people who
+have no account and the XRAS sweep feeds the queue, with no dependency outside SAM;
+then **external** self-registration. It is also the identity step that
 `XRAS_SUBMISSION.md` phase 3 needs, but nothing here depends on XRAS.
 
 ---
@@ -23,12 +26,14 @@ Three needs share one shape:
 | Need | Today |
 |---|---|
 | A researcher needs an account before anything else can happen | ARC or a help-desk mail; SAM learns of it only if an XRAS handoff names them |
-| A project lead brings a cohort — thirty workshop participants, a class — who need accounts on an existing project | Members are added one existing `users` row at a time (`_AddMemberHandler` refuses an unknown username); an XRAS handoff silently skips unknown non-PI members, and thirty `absent` rows appear on Pending Users afterwards |
+| A project lead wants to **invite a user who has no account** — one external collaborator onto an existing project, or thirty workshop participants at once | Leads and admins can add *existing* users only (`_AddMemberHandler` refuses an unknown username); anyone else is a help-desk mail. An XRAS handoff silently skips unknown non-PI members, and thirty `absent` rows appear on Pending Users afterwards |
 | A new allocation request from someone without an account (`XRAS_SUBMISSION.md` phase 3) | Not possible from SAM; ARC mints an untracked XRAS placeholder, which is 55% of `New` handoff failures |
 
 One record, one queue, one observer serves all three. NUSD gets a worklist instead of
-a card to transcribe; leads get a bulk path that does not exist; the XRAS submission
-gets a tracked identity instead of an orphaned placeholder.
+a card to transcribe; leads get an invitation path that does not exist — for one
+person or a cohort, since not every project runs workshops but every project has a
+reason to bring in an outside collaborator; the XRAS submission gets a tracked
+identity instead of an orphaned placeholder.
 
 ## 2. The record
 
@@ -97,42 +102,35 @@ untouched: sponsorship adds no role, only one column.
 
 ## 3. Surfaces
 
-### 3.1 The public form
+### 3.1 Inviting a user (phase 1)
 
-`GET/POST /register`, and `/register/<event_code>`, which pre-fills and locks the
-code. Unauthenticated, which has precedent (the status dashboard serves anonymous
-visitors), with the protections that precedent already carries: CSRF, and the
-per-IP login-POST rate tier (`RATELIMIT_AUTH_LOGIN`) rather than the anonymous page
-tier, because a POST that creates rows is the shape the login tier exists for. The
-row is created `submitted` but invisible to the queue until the requester clicks a
-verification link mailed to the address they gave (`verified_at`); an unverified row
-older than a configured horizon is purged. An unknown, closed or inactive event code
-is refused with the reason. The form asks for the person fields and, without a code,
-a free-text "why" that the queue shows.
+Leads and admins can already add an existing user to their project. This is the
+same gesture for a person who has no account yet. From the project card, any sponsor
+(§ 2.2: the project's lead or admin, the event's extra sponsor, or csg/NUSD staff)
+has three ways to the same rows:
 
-Validation is a `sam.schemas.forms` schema; the route is a `HtmxFormHandler`
-subclass; the write runs inside `management_transaction`. No login means no
-`current_user`: `created_by = 'self'`.
-
-### 3.2 Sponsor enrollment
-
-From the project card, any sponsor (§ 2.2: the project's lead or admin, the event's
-extra sponsor, or csg/NUSD staff) has two ways to the same rows:
-
+- **Invite user** — name and email for one person, an optional note NUSD will see,
+  and the project they join on fulfillment. The everyday case: a collaborator at
+  another institution, a new student, a visitor.
 - **Create an event** for the project — code, name, deadline, window — and hand the
-  code out; participants register themselves through § 3.1.
+  code out; participants register themselves through § 3.5 once phase 2 ships. Until
+  then the sponsor pastes the roster.
 - **Paste a roster** (one `name <email>` per line) under an event; each line becomes
-  a `submitted`, pre-verified row with `sponsor_user_id` set. Lines whose email
-  already resolves to an active SAM user skip the queue and go straight to
-  membership.
+  a row with `sponsor_user_id` set. Lines whose email already resolves to an active
+  SAM user skip the queue and go straight to membership.
+
+A sponsor-created row is `submitted` with `verified_at` set at creation: the sponsor
+is authenticated and vouching, and NUSD contacts the invitee anyway, so no mail to
+the invitee is needed for the queue to see the row. A workshop is therefore nothing
+special — an invitation with a code and a deadline attached, grouped for NUSD.
 
 The event card on the project page lists its sponsors and its open rows, so any of
 them can see progress. On fulfillment the observer calls `add_user_to_project`
-(`sam/manage`), the same function the member form and the XRAS handlers use. This is the first bulk
-membership path in SAM, and it should reuse the one "lead must exist and be active"
-predicate the lifecycle document asks for rather than add a third.
+(`sam/manage`), the same function the member form and the XRAS handlers use. This is
+the first bulk membership path in SAM, and it should reuse the one "lead must exist
+and be active" predicate the lifecycle document asks for rather than add a third.
 
-### 3.3 The NUSD queue
+### 3.2 The NUSD queue (phase 1)
 
 Admin → Accounts → **Requests**, behind the `MANAGE_ACCOUNT_REQUESTS` permission of
 § 2.2 — held by the NUSD bundle, which fields XRAS failure mail today, and by csg. One table,
@@ -156,7 +154,7 @@ same change that registers it).
 The digest carries names and addresses. Its audience is one team, its content is the
 queue they own, and the address is deployment configuration, not a form field.
 
-### 3.4 The fulfillment observer
+### 3.3 The fulfillment observer (phase 1)
 
 Every render of the queue, and every digest run, resolves each open row against the
 mirror: by `desired_username` (casefolded — the `users` collation trap Pending Users
@@ -168,7 +166,7 @@ honoring its `ambiguous` outcome rather than guessing. A hit stamps `user_id` an
 |---|---|
 | `standalone` | nothing further; the row is history |
 | `enrollment` | `add_user_to_project(project_id)`; the sponsor is notified once per event when the last row lands |
-| `submission` | the XRAS merge in § 4 |
+| `submission` | the XRAS merge in § 4 (phase 3) |
 
 `users.creation_time` is written by the mirror and read by nothing today; the gap
 between `requested_at` and it is NUSD's lead time, worth a number on the card.
@@ -178,15 +176,41 @@ What SAM cannot observe: that NUSD has started, or declined, on their side. The
 their queue. If NUSD wants a ticket per request, that is a second transport on the
 same rows, later.
 
-### 3.5 Pending Users becomes a view of the queue
+### 3.4 XRAS-derived rows (phase 1)
 
-The XRAS worklist's rows are `account_request` rows the sweep did not have a table
-for: every handoff roster member with no active `users` row becomes a `submitted`
+The queue is useful on its first day without anyone typing, because the XRAS
+worklist's rows are `account_request` rows the sweep did not have a table for: every handoff roster member with no active `users` row becomes a `submitted`
 row with `purpose = submission`, `created_by = 'task:xras_sweep'`, `xras_username`
 the ARC placeholder, and `project_id` once the handoff lands. The card keeps its
 classification and its merge-target ranking, reads the rows instead of recomputing
 them, and gains the claim and dismiss that it has lacked. Shims first: the classifier
 keeps running beside the table until every row it would produce already exists.
+
+### 3.5 The public form (phase 2)
+
+`GET/POST /register`, and `/register/<event_code>`, which pre-fills and locks the
+code. Unauthenticated, which has precedent (the status dashboard serves anonymous
+visitors), with the protections that precedent already carries: CSRF, and the
+per-IP login-POST rate tier (`RATELIMIT_AUTH_LOGIN`) rather than the anonymous page
+tier, because a POST that creates rows is the shape the login tier exists for. An
+unknown, closed or inactive event code is refused with the reason. The form asks for
+the person fields and, without a code, a free-text "why" that the queue shows.
+
+The row is created `submitted` but invisible to the queue until the address is
+verified (`verified_at`). Verification needs nothing SAM does not have: the mailer,
+the ledger and the relay exist, and Flask ships a signed, expiring token serializer
+keyed on `FLASK_SECRET_KEY`. One mail carries both a **link** (the token names the
+row; the route checks signature and age) and a **six-digit code** (its hash and
+expiry on the row) typed into the page the person is already on — the code helps
+where a mail client rewrites links or the person is on a phone. The mail body
+carries nothing the visitor typed, so SAM cannot be used as a relay with a UCAR
+return address, and the form is limited per IP and per address so nobody can flood
+a stranger's inbox. An unverified row older than a configured horizon is purged.
+SMS is not part of this: see § 6.
+
+Validation is a `sam.schemas.forms` schema; the route is a `HtmxFormHandler`
+subclass; the write runs inside `management_transaction`. No login means no
+`current_user`: `created_by = 'self'`.
 
 ## 4. The XRAS phase-3 link
 
@@ -212,7 +236,20 @@ The person-create verb is not yet in the write client and has not been probed;
 `XRAS_WRITE_PROBES.md` § 4.4 applies (a 200 proves nothing; verify by re-reading
 `GET /v1/people/<u>`).
 
-## 5. Out of scope, and open
+## 5. Phases
+
+| Phase | Ships | Needs |
+|---|---|---|
+| **1 — internal** | the `account_request` and `account_request_event` tables and ORM, every column from the start (nullable where a later phase fills it — a column added later is a hand DDL on the production VM); the NUSD queue card with claim, dismiss and reject, grouped by event, behind `MANAGE_ACCOUNT_REQUESTS`; **Invite user** and the event/roster workflow on the project card for lead, admin, extra sponsor and staff; rows derived from the XRAS sweep rosters; the fulfillment observer with `add_user_to_project`; the queue-summary mail once NUSD has said what they want on it | nothing outside SAM; the NUSD conversation, for the digest only |
+| **2 — external** | the public self-registration form with email verification (link and code), the login-POST rate tier, the hardening pass; event codes accepted from the public form | phase 1; the internet-hardening review |
+| **3 — XRAS link** | the placeholder-and-merge path of § 4; `registration_id` on `xras_submission` | phase 2; `XRAS_SUBMISSION.md` phase 2 in production |
+
+Phase 1 does double duty twice over: the invitation replaces a help-desk mail for
+every project, workshop or not, and the sweep-derived rows give the XRAS work the
+account queue it has lacked. The public form is last because it is the one surface
+that needs verification, abuse limits and a hardening review before it exists.
+
+## 6. Out of scope, and open
 
 - SAM still never writes `users`, `active` or `locked`. Reactivation of a locked
   account is a NUSD action, and a request for one is a row here with a purpose
@@ -222,8 +259,14 @@ The person-create verb is not yet in the write client and has not been probed;
   conversation with them before the card is built.
 - The public form is the first internet-facing write in SAM that is not a login.
   It gets the hardening pass the internet-hardening record prescribes before it ships.
+- **SMS verification** is an optional later transport behind the same interface as
+  the emailed code. It is not free, and not for a licensing reason: every reliable
+  path is a metered API (Twilio, AWS SNS, Vonage), and US carriers require sender
+  registration for application-originated texts, which takes weeks. The carrier
+  email-to-text gateways are unreliable and being retired. If UCAR holds such an
+  account it is a small addition; it is never a prerequisite.
 
-## 6. References
+## 7. References
 
 | | |
 |---|---|
