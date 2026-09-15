@@ -148,6 +148,40 @@ concurrent renders → p50 16.5 s, all GIL wait). Per-user HTML cache cardinalit
 still untested (one identity, `evicted 0`) — it needs distinct users, the one
 remaining next pass.
 
+## Session round — resource-details / tree + plugins, 2026-09-15
+
+Second authenticated pass, aimed at the `/user/resource-details/*` project-tree
+routes — **none cache at the route level** (only the downstream chart-SVG hash
+does), so single-request latency *is* the interactive cost. Worst-case tree
+`NCGD0006` (**54 descendants**, on both Derecho and Campaign_Store), 8-client
+fan-out (one page firing its fragments). All 200, zero errors.
+
+| Route | plugin | req/s @8 | p50 / p95 ms | server breakdown (pod log) |
+|---|---|---|---|---|
+| `resource-details` (Derecho) | — | 21.8 | 318 / 637 | SAM-DB tree walk |
+| `resource-details` (Campaign_Store) | fsscans `scan_overview` | 35.4 | 212 / 425 | SAM-DB subtree + plugin, sub-second |
+| `disk-usage-chart` (rebuilds subtree/call) | — | 55.8 | 117 / 309 | SAM-DB |
+| `usage-chart` | — | 41.8 | 167 / 352 | detail-data + matplotlib |
+| `user-subtree` | — | 77.3 | 97 / 132 | SAM-DB |
+| `day-subtree` | — | 66.2 | 110 / 167 | ~25 ms server, `sam=15ms/9q` |
+| `user/tree` | — | — | (0.2 s single) | tree macro render |
+
+**The one real cost is the job-history charts (jobhistory plugin), embedded lazily
+on the HPC resource-details page.** `jobs_by_user` at **days=365** over the 54-node
+tree: **2.6 s cold**, of which `jobhistory=2420ms/4q` (**92 %**) — a year of jobs
+aggregated over the whole tree on `csg-postgres-ro`; cpu 161 ms and `sam` 3 ms are
+noise. Warm (its own fragment cache) ~15 ms; **days=30** is `jobhistory=70ms`, ~160
+ms total. The jobs *card* itself stays cheap (p50 58 ms). So the slowest single
+interaction is a wide-window jobs chart on a wide tree, and it is **plugin-DB-bound,
+not GIL** — a different axis from finding D.
+
+**Verdict:** interactively fine, as expected. The uncached SAM-DB tree routes stay
+under 320 ms p50 even on the widest tree; the fsscans disk path is sub-second. Only
+the 365-day jobs chart on a broad tree is a noticeable (~2.5 s) one-off, cached
+thereafter; narrowing the window or the tree scope removes it. No route-level cache
+is warranted for the SAM-DB routes — they are already cheap. Relevant to
+`FSTREE_LATENCY_INVESTIGATION.md` (the DB-time axis).
+
 ## Findings
 
 **A. Every API-key request cost ~260 ms of CPU before route code ran. FIXED (#561).**

@@ -37,12 +37,25 @@ except ImportError:
 DEFAULT_BASE = "https://samuel-dev.k8s.ucar.edu"
 
 # name -> path template. GET-only, session-only routes (the collector API key
-# cannot reach these). {projcode}/{username}/{resource} fill from flags.
+# cannot reach these). {projcode}/{username}/{resource}/{date} fill from flags.
+# The rd_* group is the uncached resource-details tree/plugin surface: every hit
+# pays the full subtree walk (no route cache), so single-request latency is the
+# interactive cost. Disk group: --projcode <disk-tree> --resource Campaign_Store.
 TARGETS = {
     "allocations_projects": "/allocations/projects",
     "charges_summary":      "/api/v1/projects/{projcode}/charges/summary",
     "project_allocations":  "/api/v1/projects/{projcode}/allocations",
     "resource_details":     "/user/resource-details/{projcode}?resource={resource}",
+    "rd_usage_chart":       "/user/resource-details/usage-chart/{projcode}?resource={resource}",
+    "rd_user_pie":          "/user/resource-details/user-pie/{projcode}?resource={resource}",
+    "rd_disk_chart":        "/user/resource-details/disk-usage-chart/{projcode}?resource={resource}",
+    "rd_user_subtree":      "/user/resource-details/user-subtree/{projcode}?resource={resource}&username={username}",
+    "rd_day_subtree":       "/user/resource-details/day-subtree/{projcode}?resource={resource}&date={date}",
+    # jobs card + a chart: the jobhistory plugin, embedded lazily on the HPC
+    # resource-details page. days=365 over a wide tree is the heavy one.
+    "jobs_card":            "/dashboards/user/jobs/{projcode}/card?machine={machine}&cid=jobs-hist&tablist_id=jobsCardTabs&scope={projcode}&days={days}",
+    "jobs_by_user":         "/dashboards/user/jobs/{projcode}/by-user?machine={machine}&target_id=t&scope={projcode}&days={days}",
+    "user_tree":            "/user/tree/{projcode}",
     "user_accounts":        "/user/accounts",
     "admin_projects":       "/admin/projects",
 }
@@ -144,6 +157,10 @@ def main():
     p.add_argument("--projcode", default="SCSG0001")
     p.add_argument("--username", default="benkirk")
     p.add_argument("--resource", default="Derecho")
+    p.add_argument("--date", default=None,
+                   help="YYYY-MM-DD for rd_day_subtree (default: 3 days ago)")
+    p.add_argument("--machine", default="derecho", help="jobs_* machine (lowercase)")
+    p.add_argument("--days", type=int, default=365, help="jobs_* window in days")
     p.add_argument("--vary", action="store_true", help="append a cache-buster to defeat per-user HTML cache")
     p.add_argument("--csv", help="write raw per-request rows here")
     p.add_argument("--list", action="store_true", help="print the target table and exit")
@@ -162,11 +179,15 @@ def main():
     if not args.storage_state or not os.path.exists(args.storage_state):
         sys.exit("--storage-state FILE is required (capture it with dev_capture_session.py)")
 
+    from datetime import date, timedelta
+    day = args.date or (date.today() - timedelta(days=3)).isoformat()
+
     names = list(TARGETS) if args.all else (args.target or DEFAULT_TARGETS)
     runs = []
     for name in names:
         path = TARGETS[name].format(projcode=args.projcode, username=args.username,
-                                    resource=args.resource)
+                                    resource=args.resource, date=day,
+                                    machine=args.machine, days=args.days)
         if path.startswith("/auth"):
             sys.exit("refusing to drive an auth path")
         url = args.base + path

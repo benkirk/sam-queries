@@ -485,11 +485,13 @@ The overlay raises `RATELIMIT_AUTHED`, `RATELIMIT_M2M` and `RATELIMIT_ANON` to
 callback). The limiter still runs, so Admin → Configuration → Rate limits keeps
 counting, and an API-key load run against `/api/v1/*` never sees a 429. To test
 throttling behavior itself, use compose or restore the prod tiers in the overlay
-temporarily. The repo ships no load generator; pick one on the day. Two things the
+temporarily. Interactive/authenticated profiling uses `scripts/dev_capture_session.py`
++ `scripts/dev_session_load.py` (capture one OIDC session, replay at concurrency);
+the `profile-dev` skill carries the process and the target ranking. Two things the
 app does not own: the Ingress annotations declare 100 req/s (burst ×5) and 200
 connections per client IP, though 180 req/s from one IP was served without a
 rejection, and `kubectl port-forward` is not a load transport (8 s tails at 32
-clients). Numbers from the first campaign: `DEV_LOAD_CAMPAIGN.md`.
+clients). Numbers from the campaigns: `DEV_LOAD_CAMPAIGN.md`.
 
 ## 7. Sequencing
 
