@@ -1,7 +1,8 @@
 # XRAS submission probes — the authoring surface, measured
 
 **Status: read set run 2026-09-14 against production `api.xras.org`; write set
-operator-approved call by call the same day.** This is the probe plan of
+operator-approved call by call the same day, plus a second full round trip on
+2026-09-15 observed from ARC, the admin app and mail (W8).** This is the probe plan of
 [`XRAS_SUBMISSION.md`](../../plans/XRAS_SUBMISSION.md) § 7, executed. It extends
 [`XRAS_WRITE_PROBES.md`](XRAS_WRITE_PROBES.md) (merge / withdraw / re-submit /
 roster) and the 2026-08-22 editor spike in [`REQUEST_EDITOR.md`](REQUEST_EDITOR.md)
@@ -61,6 +62,7 @@ after each call.
 | W5 | `POST …/actions/399242/submit` as `benkirk` → Ben rejects in `admin-ncar.xras.org` | — | 200, `result: null` (as P3). Re-read: **`requestNumber` minted at submit — `NCAR4352`**; status **`Submitted`** (not `Under Review`, where P3's *re*-submit landed), `states: [Conflicts Verified, Reviewers Assigned]`, `submitDate` set. After the reject: request **`Rejected`**, action **`Declined`** (the action-level word differs from the request-level one), and the operator's comment came back on the action's `adminComments` — the same field the `xras_notices` approver's note reads. § 3.4 |
 | W6a | `POST /v1/requests/1449311/renew?opportunityId=532221` as `benkirk` | `DELETE /v1/requests/1449312/actions/399244` | 200 on a merely `Submitted` request (`rules.allowedActions` was `[]` — the list is not the gate). New line `1449312 Renewal/Incomplete` with one `Renewal` action (399244), `rules{}` present. **Copied:** roster (PI + Allocation Manager), title, keywords, fos. **Not copied:** abstract, grants, resources, dates, attributes, documents. Delete → line `isDeleted: true` |
 | W6b | `POST /v1/requests?opportunityId=532221&requestType=Renewal&requestNumber=NCAR4352` as `benkirk` | `DELETE /v1/requests/1449313/actions/399245` | 200; line `1449313 Renewal/Incomplete`, action 399245, `rules{}`. **Copies nothing** — roster is the creator as Allocation Manager only, no title. Delete → `isDeleted: true` |
+| W8 (2026-09-15) | the W1–W3 recipe again — create, `roles/PI`, attributes, resource, dates, fos, EUA, document, validate — then submit, with ARC, the admin app and Gmail read at each stage | Ben rejects in `admin-ncar` | request `1449364`, action `399355`; validate passed on the first try; submit → `NCAR4353`, `Submitted` at 14:02:58Z. What each surface showed is in § 3.5 |
 
 ### 3.1 Add-action is the phase-1 verb, and delete is soft
 
@@ -93,6 +95,30 @@ every approved production `New` payload carries the same `null` with `answer` = 
 attribute's own label (`tests/fixtures/xras/actions/new_*.json` `opportunityQA`).
 Presence of the row is the acknowledgment; there is nothing to encode.
 
+### 3.5 What ARC, the admin app and the mail show (W8)
+
+Read from Ben's signed-in sessions, never clicked to write.
+
+| Surface | Before submit (`Incomplete`) | After submit (`Submitted`) |
+|---|---|---|
+| **ARC** "My Allocations" (`arc.ucar.edu/xras_submit/opportunities`) | the API-created draft is listed under its title (ARC title-cases it), with its own ARC id (22793, distinct from the XRAS `requestId`) and a completeness bar at 100%; its view page carries an **Edit** link | listed with the minted number and `Submitted`; the row's **Actions** menu offers **View**, **Edit request** and **Delete request** — the PI can edit and delete a submitted request from ARC, which our key cannot |
+| **Admin app** (`admin-ncar.xras.org/requests/1449364`) | — | on the dashboard within a minute; status `Submitted`; operator buttons **Hold Off** and **Return for Corrections**; the **Process** tab holds "Finalize and Post" with columns Status / Date Resolved / **Posted to** / **Notifications Generated?**, plus Award Dates and Award Amounts (Requested / Recommended / Approved) — the post and the notification are separate, recorded steps |
+| **Mail** | none | two mails nine seconds after the submit, both from `cislhelp@ucar.edu` via Amazon SES: a **staff notice** to `alloc@ucar.edu` ("New Exploratory Allocation (University) submitted by Kirk (NCAR4353)", title + requested resources) and a **submitter confirmation** to the address on the XRAS person record ("Your NCAR/CISL … request was submitted successfully", promising a reply within two business days and, for a submitter without an NCAR username, an account created "when the project is ready" plus a ticket) |
+
+ARC's opportunities page publishes the policy limits as text — Small: Derecho
+1,000,000 core-hours and Derecho GPU 2,500 GPU-hours; Exploratory and Classroom:
+500,000 and 1,500; Large: none; Data Analysis: Casper only — the same for initial
+and supplement. Nothing in the admin app enforces them: an allocation type's
+"Available Resources" tab offers only **Default Resource Amounts** (the
+`Default Amount` number, `source: allocationType`), an opportunity's "Available
+Resource Numbers" page writes `Available Units` (`source: opportunity`, the pool), and
+the resource page has properties and submission questions but no amount bound. The
+`Maximum Amount` / `Minimum Amount` number types exist in the vocabulary with no
+editor behind them. The rule book *is* self-serve there (Required Submission Fields,
+Required/Optional Documents, Maximum Requests per type, action time periods), as are
+opportunity attribute sets ("Add a Question": Simple String, Multiple Strings,
+Numeric Range, Yes/No, Date; Text Field, Text Area, Calendar, Drop Down, Integer Only).
+
 ### 3.4 Documents: the JSON path works, and XRAS parses the bytes
 
 A 400-byte hand-written PDF was refused (`document is not a PDF file`); a
@@ -110,6 +136,7 @@ authoritative form spec.
 | NCAR0007 `1167091` | request `isDeleted: true`; 30578 `Supplement/Incomplete` (deleted), 30576 `New/Approved` (deleted) | identical, plus **399241** `Supplement/Incomplete` soft-deleted |
 | NCAR0001 `1166819` | read only (control) | untouched |
 | **NCAR4352** `1449311` (created by W1) | — | **`Rejected`** (action 399242 `Declined`, rejected by Ben in `admin-ncar.xras.org` with a comment); PI + Allocation Manager `benkirk`; title `SAM submission probe 2026-09-14 - please reject`; 399243 soft-deleted; one Advisor Letter document (319659, a one-line PDF) |
+| **NCAR4353** `1449364` (created by W8) | — | **`Rejected`** (action 399355 `Declined`, rejected by Ben in `admin-ncar.xras.org`); PI + Allocation Manager `benkirk`; title `SAM submission probe #2 2026-09-15 - please reject`; one Advisor Letter document |
 | NCAR4352 `1449312`, `1449313` (W6 renewals) | — | both `isDeleted: true` (sole action deleted) |
 | `benkirk` roles | User on one NCAR request | plus PI 13 + Allocation Manager 14 on NCAR4352 |
 

@@ -53,7 +53,7 @@ every `/actions` payload; they behave differently, and the difference is measure
 | At `POST /v1/requests` | **`null`** — nothing is minted at create | XRAS assigns; returned in the create response with `rules{}` |
 | At submit | **minted** (`NCAR4352` appeared on the first `POST …/submit`) | unchanged |
 | At handoff | **rewritten in place to the projcode**: `UPSU0087` resolves under the projcode and `NCAR4277` stops resolving | **unchanged** — `1445869` before and after |
-| Promptness of the rewrite | hours for `UPUR0036`; a day and counting for `NCAR4212` → `NRAL0056`. A manual step is the likely reading (§ 9 Q1) | n/a |
+| Promptness of the rewrite | hours for `UPUR0036`; a day and counting for `NCAR4212` → `NRAL0056`. a manual step at the post is the likely reading (§ 9) | n/a |
 | Across a renewal | stable — the family key | a renewal spawns a **new** line/id |
 
 So the SAM-side record keys on **`request_id`** for the create → approval window —
@@ -136,6 +136,15 @@ row is committed **before** the write leaves (`sam/manage/xras_remediation.py`,
 available, and the Requested stage is the only stage a SAM submission can populate —
 two entries for the privilege register in `XRAS_WRITE_PROBES.md` § 7.
 
+**What the PI sees.** An API-created request is a first-class object in ARC: the
+draft is listed under its title with a completeness bar and an Edit link, the
+submitted request under its number with View, Edit request and **Delete request** in
+its Actions menu — the PI can delete from ARC what our key cannot delete through the
+API. In the admin app it reaches the dashboard within a minute with Hold Off and
+Return for Corrections as the operator's first choices, and a Process tab whose
+"Finalize and Post" table records the post to the accounting service and whether
+notifications were generated as two separate steps (probes doc § 3.5).
+
 **Vocabulary is process-scoped**; the apidoc's examples are XSEDE's. NCAR request
 types are New and Renewal only; action types carry ids (Supplement 500020, Extension
 500017, Renewal 500021, New 500019, Adjustment 500168, Date Adjustment 500334);
@@ -217,11 +226,18 @@ resolved when read.
 | **Unconfigured pair** | no limit; the form shows the resource without a default and says so |
 | **Where it is edited** | Admin → Configuration, a card in the shape of Notification Addressing |
 
-XRAS has a native slot for the same numbers — each opportunity resource carries
-`numbers[]` with `source: allocationType` and types Default, Minimum and Maximum —
-and NCAR populates it with two decade-old defaults and Derecho dollar values, never a
-maximum. Mirroring our table into it is an ask to ACCESS (§ 9 Q7), not a dependency:
-SAM enforces its own.
+XRAS carries the same number types on the wire — each opportunity resource has
+`numbers[]` with `source: allocationType` and types Default, Minimum and Maximum — but
+the admin app exposes no editor for a maximum: an allocation type's "Available
+Resources" tab offers **Default Resource Amounts** only, an opportunity's "Available
+Resource Numbers" page writes the `Available Units` pool, and the resource page has
+properties and submission questions. NCAR's data agrees (two decade-old defaults and
+Derecho dollar values, never a maximum). ARC publishes the policy limits as text on
+its opportunities page and enforces nothing. So SAM's table is the only enforcement,
+and its seed values are ARC's published policy: Small — Derecho 1,000,000
+core-hours, Derecho GPU 2,500 GPU-hours; Exploratory and Classroom — 500,000 and
+1,500; Large — none; Data Analysis — Casper only; the same for initial and
+supplement.
 
 ## 6. The flow layer: one implementation, two doors
 
@@ -323,26 +339,35 @@ Priced from the chart:
 The order is the ask first — it costs a conversation — then the chart change, then
 the seeding. Until it exists, anything that needs an approval is labeled unproven.
 
-## 9. Questions for ACCESS and Steve
+## 9. What XRAS lets us set ourselves
 
-1. Who or what rewrites `requestNumber` to the projcode after handoff? It happened
-   for `UPSU0087` before SAM echoed a projcode, and had not happened for
-   `NCAR4212`/`NRAL0056` a day after. If XRAS reads `result.projcode` from our
-   `/actions` reply, that is half the loop already.
-2. Will ACCESS add a `simpleString` attribute to NCAR opportunities for a SAM
-   reference, and is that per opportunity or process-wide?
-3. Does an API-created request appear in ARC for the PI to see and edit, or only in
-   the admin app? `NCAR4352` is the specimen — created and submitted entirely through
-   the API.
-4. The § 8 ask: test-instance base URL, process name, a key, and the test
+Ben holds the admin role on `admin-ncar.xras.org`, and most of what this design
+once listed as asks turn out to be settings there:
+
+| Setting | Where | Use |
+|---|---|---|
+| Opportunity questions (`opportunityQA`) | Opportunities → *Submission Questions* → "Add a Question": Simple String, Multiple Strings, Numeric Range, Yes/No, Date; Text Field, Text Area, Calendar, Drop Down, Integer Only; active flag | a SAM-reference field is possible, but a question on an opportunity is rendered to every ARC submitter too, so it stays a soft dependency and is not added until phase 2 needs it |
+| Default resource amounts | Allocation Types → *Available Resources* → Default Resource Amounts | the ARC form's pre-fill; SAM's § 5 default should match it |
+| Rule book | Allocation Types → *Allocation Type Rules*: Required Submission Fields, Required/Optional Documents, Maximum Requests per type, action time periods, ineligible lead statuses | the same rules `required_fields` and `required_documents_status` report; edit here, read there |
+| Available units per opportunity | Opportunities → *Available Resource Numbers* | the pool, not a per-request bound; leave blank |
+| Notifications | XRAS mails the submitter (to the XRAS person's address) and the `alloc@` staff list on submit, and again at the operator's "notify" step after the post; both are XRAS-side settings | once phase 1 ships, switching them off makes SAM's `xras_*` notices the only mail — an optional coordination step, not a prerequisite |
+
+The dashboard lifecycle, as Ben reads it: a New sits on the XRAS dashboard as
+`NCAR####` until approved and notified and disappears only when notified; the
+requestNumber rewrite to the projcode happens at the post, not the notify. The goal
+state is "disappears on a successful post, with no XRAS mail". Confirming which step
+rewrites the number takes one real handoff read through `reports/request_numbers`
+before and after each admin step.
+
+**Left for Steve:**
+
+1. The § 8 ask: test-instance base URL, process name, a key, and the test
    `xras_admin` pointed at samuel-dev.
-5. `GET /v1/projects` is proxied to the accounting service as
+2. `GET /v1/projects` is proxied to the accounting service as
    `/api/xras/v1/users/projects/<username>`, which neither legacy SAM nor this one
    serves. Does anything in the NCAR process call it?
-6. Does XRAS Submit mail the submitter on submit and on decision? If so, SAM sends
-   no "received" notice of its own.
-7. Would ACCESS populate `numbers[].Maximum Amount` on NCAR opportunity resources from
-   the § 5 table, so ARC-originated requests get the same bound?
+3. Which admin step rewrites `requestNumber` to the projcode, if the read above
+   does not settle it.
 
 ## 10. References
 
