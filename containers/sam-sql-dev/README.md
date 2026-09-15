@@ -63,6 +63,10 @@ concern, and neither target is the repo.
 | `csg-postgres` CNPG cluster | `make clone-pg` | `SAM_DEV_PG_HOST/PORT/USER/PASSWORD/DB/REQUIRE_SSL` from `.env` |
 | Test copy for `make pytest-pg` | `make pg-test-up && make clone-pg-test` | compose `postgres-test` service on `127.0.0.1:5434`, `sam` as `sam_test`/`sam_test`, built from `mysql-test` (3307) |
 
+The top-level `make sync-dev` orchestrates the local-container and CNPG targets
+together — `pg-up clone clone-pg-local clone-pg` — then seeds `system_status_dev`
+and refreshes the samuel-dev caches, as one full "update the backing dev DBs" pass.
+
 The first two targets read `.env`; nothing about the role is written into the
 repo. The test target never does: its credentials are constants like
 `root/root`, and CI overrides only the hosts (`PG_TEST_SOURCE_URL`,
