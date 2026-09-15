@@ -53,7 +53,8 @@ every `/actions` payload; they behave differently, and the difference is measure
 | At `POST /v1/requests` | **`null`** — nothing is minted at create | XRAS assigns; returned in the create response with `rules{}` |
 | At submit | **minted** (`NCAR4352` appeared on the first `POST …/submit`) | unchanged |
 | At handoff | **rewritten in place to the projcode**: `UPSU0087` resolves under the projcode and `NCAR4277` stops resolving | **unchanged** — `1445869` before and after |
-| Promptness of the rewrite | hours for `UPUR0036`; a day and counting for `NCAR4212` → `NRAL0056`. a manual step at the post is the likely reading (§ 9) | n/a |
+| Promptness of the rewrite | **not the post and not the notify** — measured on `NCAR4354` → `UHSS0001` (W9): the family still answered only to `NCAR4354` 17 min after the post and 11 min after the notify, and the award letter XRAS mails at the notify names `NCAR4354`. The rewrite is a later asynchronous step on XRAS's side; hours for `UPUR0036`, a day and counting for `NCAR4212` → `NRAL0056` | n/a |
+| Cost of the gap | an action posted on the family before the rewrite arrives with `requestNumber = NCAR####`, which `select_service` cannot resolve, and parks as `manual` (W9: the Extension on `UHSS0001`, `xras_action_log` #184). SAM already knows the mapping from the processed `New` row's `requestId` (§ 2.1) | |
 | Across a renewal | stable — the family key | a renewal spawns a **new** line/id |
 
 So the SAM-side record keys on **`request_id`** for the create → approval window —
@@ -85,6 +86,16 @@ in the shape of the two `lookup_request_override` branches, or one
 422 ordering the tests pin is untouched. `NewHandler.execute` stamps `applied` and
 `project_id` after `Project.create`. Nothing precious — no projcode, no GID — is
 consumed before approval; a rejected or aborted submission costs one row.
+
+A second consult point is now measured as necessary, not optional: `select_service`
+(`sam/xras/dispatch.py`). W9 posted an Extension 17 minutes after its New and it
+arrived as `requestNumber: NCAR4354` — the rewrite had not run — so no service
+matched and the row parked. The fallback is one lookup: no project under
+`requestNumber`, but a `processed` `New` row in `xras_action_log` with the same
+`requestId` → route to that row's `projcode_result`. It needs no new table and
+covers ARC-originated families; the `xras_submission` row is the same lookup for
+SAM-authored ones. This belongs with the idempotency guard below, in
+`XRAS_INGEST_IMPROVEMENTS.md`.
 
 That row is also the idempotency key the ingest path lacks: `actionId` is enforced by
 nothing today and four of the six handlers double-apply on a re-post
@@ -143,7 +154,36 @@ its Actions menu — the PI can delete from ARC what our key cannot delete throu
 API. In the admin app it reaches the dashboard within a minute with Hold Off and
 Return for Corrections as the operator's first choices, and a Process tab whose
 "Finalize and Post" table records the post to the accounting service and whether
-notifications were generated as two separate steps (probes doc § 3.5).
+notifications were generated as two separate steps (probes doc § 3.5). Once the
+operator approves, ARC shows `Approved` under the `NCAR####` immediately — before
+any post — and the Actions menu becomes **View, Extension, Supplement, Transfer**,
+gaining **Start a Renewal** after the notify. Nothing ARC shows depends on SAM,
+and a pending extension is not surfaced in the list at all
+([`XRAS_ARC_BASELINE.md`](../xras/outgoing/XRAS_ARC_BASELINE.md) § 2). That is
+"where Extend comes from": the XRAS approval, and phase 1's control on the SAM
+project card is the same affordance keyed the other way round.
+
+### 3.1 The ARC baseline — what phase 2 has to beat
+
+Measured by driving the real form once (`XRAS_ARC_BASELINE.md` § 1). Six pages:
+Request Information (title, abstract, optional keywords) → Fields of Science
+(dropdown, one primary) → Related Personnel (the submitter is pre-filled as
+**Project Admin** and must pick a Project Lead, self included; a *Create User*
+button for people not in XRAS) → Additional Questions (the EUA checkbox alone,
+under a `data_analysis` slug) → Available Resources (four rows, amount + comment,
+**nothing required, nothing bounded**) → Documents (the Advisor letter; uploaded at
+submit). Validation is native HTML5 `required`: an empty submit moves focus and
+says nothing. ARC never asks for allocation dates (the operator picks them at
+approval) or grants on this opportunity. The Extension form is one page — end
+date and comments — whose date picker parses **mm/dd/yy**, so an ISO date becomes
+year 31, XRAS accepts it, and the admin app offers to approve it; ARC also
+answered that submit with a 504 after the action existed.
+
+The wizard of phase 2 therefore improves on ARC where ARC loses people: the
+personnel page (no pre-filled lead, a role vocabulary of "Project Lead / Project
+Admin" that differs from XRAS's own), the unbounded resource amounts (§ 5), the
+absent limits text, the date box, and the silent required fields. It keeps what
+ARC gets right: six short pages, one document rule, one agreement.
 
 **Vocabulary is process-scoped**; the apidoc's examples are XSEDE's. NCAR request
 types are New and Renewal only; action types carry ids (Supplement 500020, Extension
@@ -352,12 +392,15 @@ once listed as asks turn out to be settings there:
 | Available units per opportunity | Opportunities → *Available Resource Numbers* | the pool, not a per-request bound; leave blank |
 | Notifications | XRAS mails the submitter (to the XRAS person's address) and the `alloc@` staff list on submit, and again at the operator's "notify" step after the post; both are XRAS-side settings | once phase 1 ships, switching them off makes SAM's `xras_*` notices the only mail — an optional coordination step, not a prerequisite |
 
-The dashboard lifecycle, as Ben reads it: a New sits on the XRAS dashboard as
-`NCAR####` until approved and notified and disappears only when notified; the
-requestNumber rewrite to the projcode happens at the post, not the notify. The goal
-state is "disappears on a successful post, with no XRAS mail". Confirming which step
-rewrites the number takes one real handoff read through `reports/request_numbers`
-before and after each admin step.
+The dashboard lifecycle, measured on W9: a New sits on the XRAS dashboard as
+`NCAR####` through submit and approval and **leaves it the moment the post
+succeeds**, before the notify; the rows that linger for days are approved and not
+yet posted. The `requestNumber` rewrite is **neither** the post nor the notify —
+both keys were re-read within seconds of each and again every five minutes, and
+the award letter XRAS mails at the notify still names `NCAR4354`. So "disappears on
+a successful post" is already true; "with no XRAS mail" is the notification
+setting above; and the rewrite's timing is XRAS's, which is why § 2.1's
+`requestId` fallback in `select_service` is needed regardless.
 
 **Left for Steve:**
 
@@ -366,14 +409,17 @@ before and after each admin step.
 2. `GET /v1/projects` is proxied to the accounting service as
    `/api/xras/v1/users/projects/<username>`, which neither legacy SAM nor this one
    serves. Does anything in the NCAR process call it?
-3. Which admin step rewrites `requestNumber` to the projcode, if the read above
-   does not settle it.
+3. What rewrites `requestNumber` to the projcode and on what clock — W9 rules
+   out the post and the notify (an Extension filed in the gap parks in SAM).
+   If it is a periodic job, its cadence bounds how soon after a New an action
+   on the family can be filed from ARC.
 
 ## 10. References
 
 | | |
 |---|---|
 | [`XRAS_SUBMISSION_PROBES.md`](../xras/outgoing/XRAS_SUBMISSION_PROBES.md) | the 2026-09-14 probe record: every verb in § 3, the NCAR vocabularies, the rule-book tables, the final state left in XRAS |
+| [`XRAS_ARC_BASELINE.md`](../xras/outgoing/XRAS_ARC_BASELINE.md) | W9, 2026-09-15: the ARC form page by page, one real New and Extension seen from ARC, the admin app, the API, SAM and mail; the rewrite and dashboard measurements § 2 and § 9 cite |
 | [`ACCOUNT_REGISTRATION.md`](ACCOUNT_REGISTRATION.md) | the identity step of phase 3, as a product of its own |
 | [`REQUEST_EDITOR.md`](../xras/outgoing/REQUEST_EDITOR.md) | the write client, tiers, levers and stage model the flow layer extends |
 | [`XRAS_WRITE_PROBES.md`](../xras/outgoing/XRAS_WRITE_PROBES.md) | probe methodology, the one authorization rule, the privilege register |

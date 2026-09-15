@@ -2,7 +2,9 @@
 
 **Status: read set run 2026-09-14 against production `api.xras.org`; write set
 operator-approved call by call the same day, plus a second full round trip on
-2026-09-15 observed from ARC, the admin app and mail (W8).** This is the probe plan of
+2026-09-15 observed from ARC, the admin app and mail (W8), and one real
+ARC-driven request approved, posted and notified the same day (W9, recorded in
+[`XRAS_ARC_BASELINE.md`](XRAS_ARC_BASELINE.md)).** This is the probe plan of
 [`XRAS_SUBMISSION.md`](../../plans/XRAS_SUBMISSION.md) § 7, executed. It extends
 [`XRAS_WRITE_PROBES.md`](XRAS_WRITE_PROBES.md) (merge / withdraw / re-submit /
 roster) and the 2026-08-22 editor spike in [`REQUEST_EDITOR.md`](REQUEST_EDITOR.md)
@@ -63,6 +65,7 @@ after each call.
 | W6a | `POST /v1/requests/1449311/renew?opportunityId=532221` as `benkirk` | `DELETE /v1/requests/1449312/actions/399244` | 200 on a merely `Submitted` request (`rules.allowedActions` was `[]` — the list is not the gate). New line `1449312 Renewal/Incomplete` with one `Renewal` action (399244), `rules{}` present. **Copied:** roster (PI + Allocation Manager), title, keywords, fos. **Not copied:** abstract, grants, resources, dates, attributes, documents. Delete → line `isDeleted: true` |
 | W6b | `POST /v1/requests?opportunityId=532221&requestType=Renewal&requestNumber=NCAR4352` as `benkirk` | `DELETE /v1/requests/1449313/actions/399245` | 200; line `1449313 Renewal/Incomplete`, action 399245, `rules{}`. **Copies nothing** — roster is the creator as Allocation Manager only, no title. Delete → `isDeleted: true` |
 | W8 (2026-09-15) | the W1–W3 recipe again — create, `roles/PI`, attributes, resource, dates, fos, EUA, document, validate — then submit, with ARC, the admin app and Gmail read at each stage | Ben rejects in `admin-ncar` | request `1449364`, action `399355`; validate passed on the first try; submit → `NCAR4353`, `Submitted` at 14:02:58Z. What each surface showed is in § 3.5 |
+| W9 (2026-09-15) | the real thing: a New submitted **from the ARC form**, approved, posted to production SAM and notified; then an Extension from ARC, approved and posted | none — the project is real and kept | request `1449367` / `NCAR4354` → SAM project **`UHSS0001`** (`xras_action_log` #183). `requestNumber` was **not** rewritten by the post or the notify, and the Extension posted 17 min later parked as `manual` (#184) because SAM cannot map `NCAR4354`. Full record: [`XRAS_ARC_BASELINE.md`](XRAS_ARC_BASELINE.md) |
 
 ### 3.1 Add-action is the phase-1 verb, and delete is soft
 
@@ -138,11 +141,13 @@ authoritative form spec.
 | **NCAR4352** `1449311` (created by W1) | — | **`Rejected`** (action 399242 `Declined`, rejected by Ben in `admin-ncar.xras.org` with a comment); PI + Allocation Manager `benkirk`; title `SAM submission probe 2026-09-14 - please reject`; 399243 soft-deleted; one Advisor Letter document (319659, a one-line PDF) |
 | **NCAR4353** `1449364` (created by W8) | — | **`Rejected`** (action 399355 `Declined`, rejected by Ben in `admin-ncar.xras.org`); PI + Allocation Manager `benkirk`; title `SAM submission probe #2 2026-09-15 - please reject`; one Advisor Letter document |
 | NCAR4352 `1449312`, `1449313` (W6 renewals) | — | both `isDeleted: true` (sole action deleted) |
-| `benkirk` roles | User on one NCAR request | plus PI 13 + Allocation Manager 14 on NCAR4352 |
+| **NCAR4354** `1449367` (W9, from ARC) | — | **`Approved`, posted, notified**; `399364 New/Approved`, `399373 Extension/Declined`, `399374 Extension/Approved` posted and parked in SAM; **SAM project `UHSS0001`** (active, lead `benkirk`, Derecho 1 core-hour through 2027-09-30) |
+| `benkirk` roles | User on one NCAR request | plus PI 13 + Allocation Manager 14 on NCAR4352, NCAR4353 and NCAR4354 |
 
-Nothing here is a SAM projcode; the sweep windows on `Approved`, so none of it can
-reach the Pending card or the accounts worklist. `Rejected` is terminal, and the
-family stays readable under `NCAR4352` as the specimen for § 8 Q3 of the design doc.
+W1–W8 minted no SAM projcode; the sweep windows on `Approved`, so none of them
+can reach the Pending card or the accounts worklist, and `Rejected` is terminal.
+W9 is the exception by design: `UHSS0001` is a real project, kept as the
+phase-1 test bed.
 
 ---
 
