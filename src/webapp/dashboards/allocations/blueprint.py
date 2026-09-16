@@ -18,7 +18,7 @@ from webapp.extensions import db, cache, user_aware_cache_key
 from webapp.utils import age_bands
 from webapp.utils.htmx import (
     handle_htmx_form_post, read_flag, read_layout, read_page, read_switch,
-    read_sort, read_theme, register_typeahead,
+    read_sort, read_tab, read_theme, register_typeahead,
 )
 from sam.projects.projects import Project
 from sam.queries.allocations import (
@@ -460,6 +460,14 @@ def projects():
     # Group results hierarchically for tab structure
     grouped_data = group_by_resource_facility(summary_data)
 
+    # Shareable resource tab: ?tab=<slug> selects the active #resourceTabs pane.
+    # read_tab lowercases, so the slug set and template comparison use the
+    # lowercased "name with spaces -> underscores" form. Default = first sorted.
+    tab_slugs = {name.replace(' ', '_').lower() for name in grouped_data}
+    default_tab = (sorted(grouped_data, key=str.lower)[0].replace(' ', '_').lower()
+                   if grouped_data else '')
+    active_tab = read_tab('tab', tab_slugs, default_tab)
+
     # Get resource type mapping for conditional display
     resource_types = get_resource_types(db.session)
 
@@ -587,6 +595,7 @@ def projects():
         allocation_type_usage_charts=allocation_type_usage_charts,
         type_annualized_rates=type_annualized_rates,
         active_at=active_at.strftime('%Y-%m-%d'),
+        active_tab=active_tab,
         all_resources=all_resources,
         selected_resources=selected_resources,
         resource_types=resource_types,

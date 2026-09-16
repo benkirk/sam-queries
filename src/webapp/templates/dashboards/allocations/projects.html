@@ -128,6 +128,11 @@
     <div id="allocations-filter-fields" class="collapse show filter-fields-collapse" data-no-persist>
     <form method="GET" class="d-flex flex-wrap align-items-start gap-3 mb-0"
           id="allocations-facility-filter-form">
+        {# Carry the active resource tab across a GET filter reload: this tablist
+           is on the ?tab= URL channel (not localStorage), so without this the
+           Update submit would reset to the first tab. syncTabParam keeps it
+           current on tab click; the seeded value covers deep-link-then-Update. #}
+        <input type="hidden" name="tab" value="{{ active_tab }}">
         <div>
             <label for="active_at" class="form-label"><strong>Active at</strong></label>
             <input type="date" class="form-control" id="active_at"
@@ -163,14 +168,17 @@
 
 <!-- Resource Tabs -->
 {% if grouped_data %}
-<ul class="nav nav-tabs" id="resourceTabs" role="tablist">
+<ul class="nav nav-tabs" id="resourceTabs" role="tablist" data-tab-url-param="tab">
     {% for resource_name in grouped_data.keys()|sort %}
+    {% set slug = resource_name|replace(' ', '_')|lower %}
     <li class="nav-item">
-        <a class="nav-link {% if loop.first %}active{% endif %}"
+        <a class="nav-link {% if slug == active_tab %}active{% endif %}"
            id="{{ resource_name|replace(' ', '_') }}-tab"
            data-bs-toggle="tab"
+           data-tab-param-value="{{ slug }}"
            href="#{{ resource_name|replace(' ', '_') }}"
-           role="tab">
+           role="tab"
+           aria-selected="{{ 'true' if slug == active_tab else 'false' }}">
             {{ resource_name }}
         </a>
     </li>
@@ -179,7 +187,8 @@
 
 <div class="tab-content" id="resourceTabsContent">
     {% for resource_name, facilities in grouped_data.items()|sort %}
-    <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
+    {% set slug = resource_name|replace(' ', '_')|lower %}
+    <div class="tab-pane fade {% if slug == active_tab %}show active{% endif %}"
          id="{{ resource_name|replace(' ', '_') }}"
          role="tabpanel">
 
