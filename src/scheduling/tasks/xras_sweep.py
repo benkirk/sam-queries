@@ -909,6 +909,14 @@ def xras_sweep(ctx) -> TaskResult:
     detail['accounts'] = worklist_counts(enumerated)
     detail['accounts_sample'] = [r['username'] for r in enumerated][:_MAX_REPORTED]
 
+    # 3b. give every absent roster member an account_request row, once. The
+    # classifier above stays the card's source; the table is what NUSD works
+    # (claim, dismiss) and what the reconcile pass fulfills. Idempotent, and
+    # an operator's dismissal survives every later sweep.
+    from sam.manage.account_requests import upsert_sweep_requests
+    detail['account_requests'] = upsert_sweep_requests(session, enumerated,
+                                                       clock=ctx.now)
+
     # 4. warm the person cache for the card's morning renders
     #
     # Feed A only: Feed B carried its person objects inline, so re-fetching
