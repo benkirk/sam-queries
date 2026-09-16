@@ -69,7 +69,7 @@ def make_account_request(session, *, email=None, first_name='Test', last_name=No
         created_by=by,
         project_id=project_id,
         sponsor_user_id=sponsor.user_id if sponsor else None,
-        event_id=event.account_request_event_id if event else None,
+        event_id=fields.pop('event_id', event.account_request_event_id if event else None),
         xras_username=xras_username,
         verified_by=verified_by,
         **fields,
