@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 from sam.base import Base
 
@@ -444,7 +444,7 @@ class TestModelCoverage:
 # ============================================================================
 
 
-#: The seven columns that must be utf8mb4 while their tables default to utf8mb3.
+#: The columns that must be utf8mb4 while their tables default to utf8mb3.
 #:
 #: This is a **data-loss guard, not a preference.** utf8mb3 cannot hold a 4-byte
 #: character at all, and under ``STRICT_TRANS_TABLES`` (which production runs)
@@ -472,7 +472,25 @@ UTF8MB4_COLUMNS = {
     ('notification_log',      'subject'),
     ('notification_log',      'error'),
     ('notification_template_override', 'body'),
+    # People type these; a 4-byte character in a name must not lose the row.
+    ('account_request', 'first_name'),
+    ('account_request', 'middle_name'),
+    ('account_request', 'last_name'),
+    ('account_request', 'organization'),
+    ('account_request', 'closed_reason'),
+    ('account_request', 'comment'),
+    ('account_request', 'purpose_note'),
+    ('account_request_event', 'name'),
 }
+
+#: Every table the charset-split tests read. Add a table here when it joins
+#: UTF8MB4_COLUMNS, or its columns are silently outside the assertion.
+_CHARSET_SPLIT_TABLES = (
+    'xras_action_log', 'xras_activation_event', 'xras_remediation_event',
+    'xras_request_override', 'notification_log',
+    'notification_template_override', 'account_request',
+    'account_request_event',
+)
 
 
 class TestCharsetSplit:
@@ -496,12 +514,10 @@ class TestCharsetSplit:
             SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_SET_NAME
               FROM information_schema.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE()
-               AND TABLE_NAME IN ('xras_action_log', 'xras_activation_event',
-                                  'xras_remediation_event', 'xras_request_override',
-                                  'notification_log',
-                                  'notification_template_override')
+               AND TABLE_NAME IN :tables
                AND CHARACTER_SET_NAME IS NOT NULL
-        """)).all()
+        """).bindparams(bindparam('tables', expanding=True)),
+            {'tables': list(_CHARSET_SPLIT_TABLES)}).all()
 
         actual = {(t, c) for t, c, cs in rows if cs == 'utf8mb4'}
         assert actual == UTF8MB4_COLUMNS, (
@@ -526,14 +542,22 @@ class TestCharsetSplit:
                   # keys the mnemonic FK / audit read on these identifiers.
                   ('xras_request_override', 'request_number'),
                   ('xras_request_override', 'kind'),
-                  ('xras_request_override', 'created_by')]
+                  ('xras_request_override', 'created_by'),
+                  # The reconcile pass matches email against email_address
+                  # (lower-cased on both sides) and the sweep keys on the XRAS
+                  # placeholder username; the event code is a lookup key.
+                  ('account_request', 'email'),
+                  ('account_request', 'xras_username'),
+                  ('account_request', 'desired_username'),
+                  ('account_request', 'created_by'),
+                  ('account_request_event', 'event_code')]
         rows = dict(((t, c), cs) for t, c, cs in session.execute(text("""
             SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_SET_NAME
               FROM information_schema.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE()
-               AND TABLE_NAME IN ('xras_action_log', 'notification_log',
-                                  'xras_remediation_event', 'xras_request_override')
-        """)).all())
+               AND TABLE_NAME IN :tables
+        """).bindparams(bindparam('tables', expanding=True)),
+            {'tables': list(_CHARSET_SPLIT_TABLES)}).all())
         for key in joined:
             assert rows.get(key) == 'utf8mb3', (
                 f"{key[0]}.{key[1]} is {rows.get(key)}, not utf8mb3 — it joins "
@@ -696,6 +720,69 @@ class TestCriticalSchemas:
                AND REFERENCED_TABLE_NAME IS NOT NULL
         """)).scalar()
         assert fk == 0, "the read-model carries no foreign keys by design"
+
+    def test_account_request_event_schema(self, session):
+        """A cohort of requests: unique human-typed code, no FKs, app-clock stamps."""
+        table_name = 'account_request_event'
+        db_cols = get_db_columns(session, table_name)
+        expected = {'account_request_event_id', 'event_code', 'name', 'project_id',
+                    'extra_sponsor_user_id', 'accounts_needed_by', 'opens_at',
+                    'closes_at', 'active', 'created_by', 'creation_time',
+                    'modified_time'}
+        assert set(db_cols.keys()) == expected, set(db_cols.keys()) ^ expected
+        assert db_cols['account_request_event_id']['key'] == 'PRI'
+        unique = session.execute(text("""
+            SELECT COUNT(*) FROM information_schema.STATISTICS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = 'account_request_event'
+               AND INDEX_NAME = 'account_request_event_code'
+               AND NON_UNIQUE = 0
+        """)).scalar()
+        assert unique == 1, 'expected the UNIQUE(event_code) index'
+        fks = session.execute(text("""
+            SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = 'account_request_event'
+               AND REFERENCED_TABLE_NAME IS NOT NULL
+        """)).scalar()
+        assert fks == 0, 'no foreign keys by design'
+
+    def test_account_request_schema(self, session):
+        """One person who needs an account. No FKs; the row outlives its referents."""
+        table_name = 'account_request'
+        db_cols = get_db_columns(session, table_name)
+        expected = {
+            'account_request_id',
+            'email', 'first_name', 'middle_name', 'last_name', 'organization',
+            'academic_status', 'residence_country', 'orcid', 'phone',
+            'desired_username',
+            'purpose', 'project_id', 'sponsor_user_id', 'event_id', 'xras_username',
+            'state', 'assignee', 'requested_at', 'closed_by', 'closed_at',
+            'closed_reason', 'comment', 'purpose_note',
+            'created_by', 'verified_at', 'verified_by', 'verify_code_hash',
+            'verify_expires_at', 'creation_time', 'modified_time',
+            'user_id', 'upid', 'fulfilled_at', 'fulfill_error',
+        }
+        assert set(db_cols.keys()) == expected, set(db_cols.keys()) ^ expected
+        assert db_cols['account_request_id']['key'] == 'PRI'
+        assert db_cols['email']['type'] == 'varchar(255)', (
+            'email must be as wide as email_address.email_address')
+        assert db_cols['verify_code_hash']['type'] == 'char(64)', (
+            'an HMAC-SHA256 hex digest is exactly 64 characters')
+        for col in ('creation_time', 'modified_time'):
+            default = session.execute(text("""
+                SELECT COLUMN_DEFAULT FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE()
+                   AND TABLE_NAME = 'account_request' AND COLUMN_NAME = :col
+            """), {'col': col}).scalar()
+            assert default is None, f'{col} is stamped from the app clock'
+        fks = session.execute(text("""
+            SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = 'account_request'
+               AND REFERENCED_TABLE_NAME IS NOT NULL
+        """)).scalar()
+        assert fks == 0, 'no foreign keys by design'
 
     def test_notification_template_override_schema(self, session):
         """The operator template store: one row per template file name."""

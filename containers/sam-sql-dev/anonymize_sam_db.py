@@ -1258,9 +1258,13 @@ class SAMAnonymizer:
 
                 # Operator configuration written from Admin > Notifications:
                 # addresses and edited template bodies. Same tolerance.
+                # HPC account requests: people with NO SAM account, so the
+                # username map cannot reach them. Same tolerance, no FKs.
                 for table_name, what in (
                         ('notification_addressing', 'operator cc/bcc rows (real mailboxes)'),
-                        ('notification_template_override', 'edited template bodies')):
+                        ('notification_template_override', 'edited template bodies'),
+                        ('account_request', 'account requests (names + emails of non-users)'),
+                        ('account_request_event', 'account-request events (sponsor prose)')):
                     if self._table_exists(session, table_name):
                         self.purge_operator_table(session, table_name, what)
                     else:
