@@ -197,6 +197,7 @@ class TestPermissionEnumSurface:
         'VIEW_FACILITIES', 'EDIT_FACILITIES', 'CREATE_FACILITIES', 'DELETE_FACILITIES',
         'VIEW_GROUPS', 'EDIT_GROUPS', 'CREATE_GROUPS', 'DELETE_GROUPS',
         'VIEW_ORG_METADATA', 'EDIT_ORG_METADATA', 'CREATE_ORG_METADATA', 'DELETE_ORG_METADATA',
+        'MANAGE_ACCOUNT_REQUESTS',
     ])
     def test_new_permission_member_exists(self, perm_name):
         assert hasattr(Permission, perm_name)
@@ -242,6 +243,30 @@ class TestXrasAdminTierRidesWithSystemAdmin:
         # for benkirk's [p for p in Permission] override — so an XRAS admin does
         # get it, just not via an allocation bundle.
         assert Permission.ADMIN_XRAS in GROUP_PERMISSIONS['admin-testing-only']
+
+
+class TestAccountRequestGrants:
+    """The HPC account-request queue is NUSD's worklist, so the allocation-admin
+    tier holds MANAGE_ACCOUNT_REQUESTS. ``manage_`` is matched by no ALL_*
+    aggregate, so the grant is explicit and cannot be swept into ssg."""
+
+    @pytest.mark.parametrize('bundle', ['nusd', 'csg'])
+    def test_allocation_admin_bundles_hold_it(self, bundle):
+        assert Permission.MANAGE_ACCOUNT_REQUESTS in GROUP_PERMISSIONS[bundle]
+
+    def test_ssg_does_not(self):
+        assert Permission.MANAGE_ACCOUNT_REQUESTS not in GROUP_PERMISSIONS['ssg']
+
+    def test_it_fails_closed_against_the_all_aggregates(self):
+        assert Permission.MANAGE_ACCOUNT_REQUESTS not in (
+            ALL_VIEW | ALL_EDIT | ALL_CREATE | ALL_DELETE)
+
+    def test_facility_scoped_tier_does_not_hold_it(self):
+        # USER_FACILITY_PERMISSIONS enumerates by hand; the queue is
+        # permission-only and never project- or facility-scoped, so the
+        # facility-scoped manager gets it only if someone adds it deliberately.
+        assert Permission.MANAGE_ACCOUNT_REQUESTS not in \
+            rbac.USER_FACILITY_PERMISSIONS['sureshm']['WNA']
 
 
 class TestOrgMetadataGrants:
