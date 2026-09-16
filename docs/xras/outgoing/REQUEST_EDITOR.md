@@ -151,5 +151,5 @@ lever, and `hx-confirm`.
    editing (§4); flip `XRAS_ADMIN_CONTEXT_ENABLED` and the built editors go live.
 2. **Part B2b** — grants, publications, FoS editors (surface authorized in §3).
 3. **The submission flow** — Add action grows into the multi-step flow layer that
-   also serves the PI-facing request form (`docs/plans/XRAS_SUBMISSION.md` § 6);
+   also serves the PI-facing request form (`docs/plans/XRAS_SUBMISSION.md` § 4.3);
    opportunity attributes and documents (JSON) arrive with it.
