@@ -10,7 +10,7 @@ from datetime import datetime
 from flask import render_template, request, redirect, url_for
 from webapp.utils.htmx import (htmx_success, htmx_success_message,
                                handle_htmx_form_post, read_active_only,
-                               register_typeahead)
+                               read_tab, register_typeahead)
 from webapp.utils.fk_validation import FKValidationError, validate_fk_existence
 from flask_login import login_required, current_user
 
@@ -737,6 +737,15 @@ def edit_project_page(project):
     # human display — mirrors the now_str line in htmx_project_allocation_tree.
     now_str = datetime.now().strftime('%Y-%m-%d')
 
+    # Shareable point-in-time link: ?active_at=YYYY-MM-DD seeds the picker and
+    # initial tree fetch (e.g. a PI link to the FY27 allocation) and implies the
+    # Allocations tab; explicit ?tab= wins. _parse_active_at_arg matches Renew.
+    active_at_raw = request.args.get('active_at', '').strip()
+    active_at_seed = (_parse_active_at_arg(active_at_raw).strftime('%Y-%m-%d')
+                      if active_at_raw else now_str)
+    active_tab = read_tab('tab', {'details', 'allocations', 'members'},
+                          'allocations' if active_at_raw else 'details')
+
     return render_template(
         'dashboards/admin/edit_project.html',
         project=project,
@@ -746,6 +755,8 @@ def edit_project_page(project):
         can_modify_allocations=can_modify_allocs,
         can_access_admin=can_access_admin,
         now_str=now_str,
+        active_at_seed=active_at_seed,
+        active_tab=active_tab,
         **form_data,
     )
 
