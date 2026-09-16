@@ -75,6 +75,18 @@ def _is_project_steward(
     return False
 
 
+def _is_event_sponsor(user, event, project, system_permission: Permission) -> bool:
+    """Who may run an account-request event: a steward of its project (the
+    tree walked, as for a subtree operation), or the event's one stored
+    extra sponsor. Sponsorship adds no role, only that column."""
+    if _is_project_steward(user, project, system_permission, include_ancestors=True):
+        return True
+    user_id = getattr(user, 'user_id', None)
+    return (user_id is not None
+            and event.extra_sponsor_user_id is not None
+            and event.extra_sponsor_user_id == user_id)
+
+
 def can_access_edit_project_page(user, project) -> bool:
     """
     Enter the admin Edit Project page (/admin/project/<projcode>/edit).
