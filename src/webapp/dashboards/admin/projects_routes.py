@@ -999,6 +999,11 @@ def htmx_project_allocation_tree(project):
                 'has_targets': bool(frontier.carve_children or frontier.open_projects),
             }
 
+    # Grace-window warning: every displayed root allocation expired (shown only
+    # for the customary 90-day post-expiry window), so the view is not active.
+    grace_window_end = _grace_window_end(
+        list(resources_by_projcode.get(root.projcode, {}).values()))
+
     return render_template(
         'dashboards/admin/fragments/project_allocation_tree_htmx.html',
         root=root,
@@ -1007,6 +1012,7 @@ def htmx_project_allocation_tree(project):
         resources_by_projcode=resources_by_projcode,
         active_at=active_at_str,
         now_str=now_str,
+        grace_window_end=grace_window_end,
         can_edit_governance=can_edit_project_governance(current_user, project),
         can_modify_allocations=can_modify_allocs,
         can_exchange=can_exchange,
@@ -1515,6 +1521,21 @@ def _parse_active_at_arg(arg: str) -> datetime:
         except ValueError:
             pass
     return datetime.now()
+
+
+def _grace_window_end(alloc_dicts):
+    """Most-recent end_date when every shown allocation is expired (in the
+    90-day post-expiry window), else None — drives the grace-window warning.
+
+    bar_state=='expired' means end_date < active_at (see DashboardResource);
+    display_allocation only returns an expired row within 90 days, so an
+    all-expired set is a view existing solely on that customary window.
+    """
+    shown = [d for d in alloc_dicts if d.get('allocation_id')]
+    if shown and all(d.get('bar_state') == 'expired' for d in shown):
+        ends = [d['end_date'] for d in shown if d.get('end_date')]
+        return max(ends) if ends else None
+    return None
 
 
 def _snap_to_end_of_month(d):

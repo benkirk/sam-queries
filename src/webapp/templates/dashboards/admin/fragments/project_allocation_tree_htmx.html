@@ -35,6 +35,20 @@
 </div>
 {% endif %}
 
+{# Grace-window warning: an allocation stays visible for a customary 90 days
+   after it ends, so a view of only-expired allocations reads as active when
+   it is not. Set by _grace_window_end when every shown root allocation is
+   expired at active_at. #}
+{% if grace_window_end %}
+<div class="alert alert-warning py-2 small mb-3" role="alert">
+  <i class="fa-solid fa-triangle-exclamation me-1"></i>
+  <strong>No allocation is active on {{ active_at }}.</strong>
+  The most recent allocation ended {{ grace_window_end | fmt_date }}; SAM shows
+  an expired allocation for a customary 90-day post-expiry access window, after
+  which it no longer appears.
+</div>
+{% endif %}
+
 {% if not resources_by_tab %}
 <div class="alert alert-info">
   <i class="fa-solid fa-circle-info"></i>

@@ -3,6 +3,38 @@
 Auth/render smoke per house convention — these gate the server-driven tab
 channel and the point-in-time picker seed, not any write path.
 """
+from datetime import datetime
+
+from webapp.dashboards.admin.projects_routes import _grace_window_end
+
+
+def _alloc(bar_state, end_date, allocation_id=1):
+    return {'allocation_id': allocation_id, 'bar_state': bar_state, 'end_date': end_date}
+
+
+class TestGraceWindowEnd:
+    """The grace-window banner fires only when every shown allocation expired."""
+
+    def test_all_expired_returns_latest_end(self):
+        end_a = datetime(2026, 9, 30)
+        end_b = datetime(2026, 6, 30)
+        assert _grace_window_end([_alloc('expired', end_b), _alloc('expired', end_a)]) == end_a
+
+    def test_any_active_returns_none(self):
+        assert _grace_window_end([
+            _alloc('expired', datetime(2026, 9, 30)),
+            _alloc('active', datetime(2027, 9, 30)),
+        ]) is None
+
+    def test_open_ended_returns_none(self):
+        assert _grace_window_end([_alloc('open-ended', None)]) is None
+
+    def test_empty_returns_none(self):
+        assert _grace_window_end([]) is None
+        assert _grace_window_end([{'bar_state': 'expired'}]) is None  # no allocation_id
+
+    def test_expired_without_end_date_returns_none(self):
+        assert _grace_window_end([_alloc('expired', None)]) is None
 
 
 def _edit(auth_client, projcode, query=''):
