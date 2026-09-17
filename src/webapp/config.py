@@ -57,9 +57,17 @@ class SAMWebappConfig(SAMConfig):
     # The anonymous HPC account-registration form (/register). When off, the
     # blueprint is not mounted and the URL 404s. ProductionConfig flips the
     # default OFF: it ships dark and is switched on per deployment (the k8s
-    # dev overlay). Same idiom as FLASK_ADMIN_ENABLED. The internal surfaces
-    # (Admin -> Accounts, the Invitations tab) are not behind this flag.
+    # dev overlay). Same idiom as FLASK_ADMIN_ENABLED. The Admin -> Accounts
+    # queue is not behind any flag; the project Invitations tab is gated by
+    # ACCOUNT_INVITATIONS_ENABLED (below), separately.
     ACCOUNT_REGISTRATION_ENABLED = os.getenv('ACCOUNT_REGISTRATION_ENABLED', '1').lower() in ('1', 'true', 'yes')
+    # The internal invitation workflows -- the project Invitations tab: invite
+    # a person, create/edit events, roster paste. Gates the tab and its routes
+    # (a 404 when off, per _invitations_enabled in dashboards/project_invites.py).
+    # ProductionConfig flips the default OFF so the initial prod capability is
+    # XRAS mirroring only (the sweep-fed Accounts queue); the Accounts queue and
+    # the XRAS Pending-Users card stay live regardless.
+    ACCOUNT_INVITATIONS_ENABLED = os.getenv('ACCOUNT_INVITATIONS_ENABLED', '1').lower() in ('1', 'true', 'yes')
     # How long a verification link and code stay valid.
     ACCOUNT_VERIFY_TTL_HOURS = int(os.getenv('ACCOUNT_VERIFY_TTL_HOURS', 48))
     # Per-address cap on the registration POST, on top of the per-IP login
@@ -314,6 +322,10 @@ class ProductionConfig(SAMWebappConfig):
     # Default OFF in production -- the anonymous registration form ships dark
     # and is enabled per deployment (docs/plans/ACCOUNT_REGISTRATION.md).
     ACCOUNT_REGISTRATION_ENABLED = os.getenv('ACCOUNT_REGISTRATION_ENABLED', '0').lower() in ('1', 'true', 'yes')
+    # Default OFF in production -- the invitation workflows ship dark so the
+    # initial prod capability is the XRAS-mirrored queue only; enabled per
+    # deployment, like ACCOUNT_REGISTRATION_ENABLED.
+    ACCOUNT_INVITATIONS_ENABLED = os.getenv('ACCOUNT_INVITATIONS_ENABLED', '0').lower() in ('1', 'true', 'yes')
 
     @classmethod
     def validate(cls):

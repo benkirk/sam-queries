@@ -70,6 +70,9 @@ check_dev() {
   [[ "$(env_value "$deploy" DISABLE_AUTH)" == "0" ]] || { red "FAIL: DISABLE_AUTH must be 0 on a routable host"; return 1; }
   # The anonymous /register form is live on dev (its test bed) and dark in prod.
   [[ "$(env_value "$deploy" ACCOUNT_REGISTRATION_ENABLED)" == "1" ]] || { red "FAIL: ACCOUNT_REGISTRATION_ENABLED must be 1 on dev"; return 1; }
+  # The project Invitations tab is live on dev and dark in prod (initial prod
+  # capability is the XRAS-mirrored Accounts queue only).
+  [[ "$(env_value "$deploy" ACCOUNT_INVITATIONS_ENABLED)" == "1" ]] || { red "FAIL: ACCOUNT_INVITATIONS_ENABLED must be 1 on dev"; return 1; }
   assert_not_contains "$deploy" "name: OIDC_REDIRECT_URI" "OIDC_REDIRECT_URI must stay unset so the callback follows the request host"
   assert_not_contains "$whole" "auth/oidc/callback" "no hard-coded OIDC callback URL"
 
@@ -177,6 +180,8 @@ prod_deploy=$(render prod -s templates/deployment.yaml)
   red "FAIL: prod must not carry a RATELIMIT_ tier override (only the dev overlay raises them)"; exit 1; }
 [[ "$(env_value "$prod_deploy" ACCOUNT_REGISTRATION_ENABLED)" == "0" ]] || {
   red "FAIL: the anonymous /register form must ship dark in prod (ACCOUNT_REGISTRATION_ENABLED=0)"; exit 1; }
+[[ "$(env_value "$prod_deploy" ACCOUNT_INVITATIONS_ENABLED)" == "0" ]] || {
+  red "FAIL: the project Invitations tab must ship dark in prod (ACCOUNT_INVITATIONS_ENABLED=0)"; exit 1; }
 
 # --- the negative loop: each prod value must be refused ----------------------
 # `set +e` around a `( set -e; ... )` subshell keeps errexit live inside it;
@@ -190,6 +195,7 @@ expect_reject() {
 }
 expect_reject --set webapp.env.DISABLE_AUTH=1
 expect_reject --set webapp.env.ACCOUNT_REGISTRATION_ENABLED=0
+expect_reject --set webapp.env.ACCOUNT_INVITATIONS_ENABLED=0
 expect_reject --set webapp.env.FLASK_CONFIG=development
 expect_reject --set webapp.env.AUTH_PROVIDER=stub
 expect_reject --set webapp.env.NOTIFY_ENABLED=1

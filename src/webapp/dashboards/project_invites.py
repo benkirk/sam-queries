@@ -9,8 +9,9 @@ or MANAGE_ACCOUNT_REQUESTS. Design: docs/plans/ACCOUNT_REGISTRATION.md 3.1.
 """
 
 from datetime import datetime
+from functools import wraps
 
-from flask import render_template, request, url_for
+from flask import abort, current_app, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from sam.core.account_requests import AccountRequest, AccountRequestEvent
@@ -53,6 +54,21 @@ _GUARD = require_project_permission(Permission.MANAGE_ACCOUNT_REQUESTS,
 _EVENT_GUARD = require_event_sponsor_access(Permission.MANAGE_ACCOUNT_REQUESTS)
 
 
+def _invitations_enabled(view):
+    """404 the whole Invitations tab when ACCOUNT_INVITATIONS_ENABLED is off.
+
+    The tab ships dark in prod (config default) so the initial capability is
+    the XRAS-mirrored Accounts queue only; local/dev turn it on. Runs before
+    the project/event guards so a disabled feature never touches the DB.
+    """
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not current_app.config.get('ACCOUNT_INVITATIONS_ENABLED', False):
+            abort(404)
+        return view(*args, **kwargs)
+    return wrapped
+
+
 def _sponsor():
     """The acting user's SAM row; the sponsor recorded on every row written here."""
     return db.session.get(User, current_user.user_id)
@@ -75,6 +91,7 @@ def _event_for(project, code):
 
 
 @bp.route('/<projcode>/invitations')
+@_invitations_enabled
 @login_required
 @_GUARD
 def invitations_fragment(project):
@@ -153,6 +170,7 @@ class _InviteUserHandler(HtmxFormHandler):
 
 
 @bp.route('/institutions')
+@_invitations_enabled
 @login_required
 def institutions_fragment():
     """Datalist options for the invite form's Institution field (login only:
@@ -163,6 +181,7 @@ def institutions_fragment():
 
 
 @bp.route('/<projcode>/invite-form')
+@_invitations_enabled
 @login_required
 @_GUARD
 def htmx_invite_form(project):
@@ -172,6 +191,7 @@ def htmx_invite_form(project):
 
 
 @bp.route('/<projcode>/invite', methods=['POST'])
+@_invitations_enabled
 @login_required
 @_GUARD
 def htmx_invite_user(project):
@@ -195,6 +215,7 @@ def _sponsor_label(user):
 
 
 @bp.route('/<projcode>/events/new-form')
+@_invitations_enabled
 @login_required
 @_GUARD
 def htmx_event_form(project):
@@ -204,6 +225,7 @@ def htmx_event_form(project):
 
 
 @bp.route('/<projcode>/events', methods=['POST'])
+@_invitations_enabled
 @login_required
 @_GUARD
 def htmx_event_create(project):
@@ -269,6 +291,7 @@ class _EventEditHandler(HtmxFormHandler):
 
 
 @bp.route('/events/<event_code>/edit-form')
+@_invitations_enabled
 @login_required
 @_EVENT_GUARD
 def htmx_event_edit_form(event, project):
@@ -281,6 +304,7 @@ def htmx_event_edit_form(event, project):
 
 
 @bp.route('/events/<event_code>', methods=['POST', 'PUT'])
+@_invitations_enabled
 @login_required
 @_EVENT_GUARD
 def htmx_event_update(event, project):
@@ -298,6 +322,7 @@ def _switch(event, verb):
 
 
 @bp.route('/events/<event_code>/close', methods=['POST'])
+@_invitations_enabled
 @login_required
 @_EVENT_GUARD
 def htmx_event_close(event, project):
@@ -306,6 +331,7 @@ def htmx_event_close(event, project):
 
 
 @bp.route('/events/<event_code>/reopen', methods=['POST'])
+@_invitations_enabled
 @login_required
 @_EVENT_GUARD
 def htmx_event_reopen(event, project):
@@ -349,6 +375,7 @@ class _RosterHandler(HtmxFormHandler):
 
 
 @bp.route('/events/<event_code>/roster-form')
+@_invitations_enabled
 @login_required
 @_EVENT_GUARD
 def htmx_roster_form(event, project):
@@ -358,6 +385,7 @@ def htmx_roster_form(event, project):
 
 
 @bp.route('/events/<event_code>/roster', methods=['POST'])
+@_invitations_enabled
 @login_required
 @_EVENT_GUARD
 def htmx_roster_paste(event, project):
