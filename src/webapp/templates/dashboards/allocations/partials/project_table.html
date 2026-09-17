@@ -1,5 +1,6 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
+{% from 'dashboards/fragments/project_bits.html' import project_link with context %}
 <!-- Project Details Table -->
 <table class="table table-sm table-striped">
     <thead class="align-top">
@@ -27,15 +28,7 @@
         {% set pct = project.get('percent_used') or 0 %}
         <tr>
             <td data-sort-value="{{ project['projcode'] }}">
-                <button class="btn btn-link p-0"
-                        title="View project details"
-                        data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
-                        hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=project['projcode']) }}"
-                        hx-target="#projectDetailsModalBody"
-                        hx-swap="innerHTML"
-                        data-stop-propagation>
-                    <strong>{{ project['projcode'] }}</strong>
-                </button>
+                {{ project_link(project['projcode'], can_view_projects, stop_propagation=True) }}
             </td>
             <td data-sort-value="{{ project['title'] or '' }}">{{ project['title'] if project['title'] else 'N/A' }}</td>
             <td data-sort-value="{{ project['total_amount'] }}">{{ project['total_amount'] | fmt_number }}</td>

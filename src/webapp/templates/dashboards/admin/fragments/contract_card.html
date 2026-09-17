@@ -1,6 +1,7 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/contract_bits.html' import contract_user_link, nsf_program_link, contract_status_badge with context %}
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
+{% from 'dashboards/fragments/project_bits.html' import project_link with context %}
 {#
   Admin: Contract detail card.
 
@@ -134,24 +135,13 @@
                     {% for pc in linked_projects %}
                     <tr{% if not pc.project.active %} class="text-muted"{% endif %}>
                         <td>
-                            {% if can_view_projects %}
-                            <a href="#" class="text-decoration-none font-monospace"
-                               title="View project details"
-                               data-action="show-detail-modal"
-                               data-modal-id="projectDetailsModal"
-                               hx-get="{{ url_for('admin_dashboard.project_card', projcode=pc.project.projcode) }}"
-                               hx-target="#projectDetailsModalBody" hx-swap="innerHTML">
-                                <strong>{{ pc.project.projcode }}</strong>
-                            </a>
-                            {% else %}
-                            <span class="font-monospace">{{ pc.project.projcode }}</span>
-                            {% endif %}
+                            {{ project_link(pc.project.projcode, can_view_projects, admin=True) }}
                             {% if not pc.project.active %}
                             {{ status_badge('inactive', extra='ms-1', small=True) }}
                             {% endif %}
                         </td>
                         <td class="small">{{ pc.project.title }}</td>
-                        <td class="small">{{ pc.project.lead.display_name if pc.project.lead else '—' }}</td>
+                        <td class="small">{{ contract_user_link(pc.project.lead, can_view_users) }}</td>
                         <td class="text-muted small">{{ pc.creation_time | fmt_date }}</td>
                     </tr>
                     {% endfor %}

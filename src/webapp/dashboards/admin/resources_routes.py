@@ -5,7 +5,7 @@ Covers: Resources, Resource Types, Machines, Queues.
 """
 
 from flask import render_template, request
-from flask_login import login_required
+from flask_login import current_user, login_required
 from datetime import datetime
 from functools import partial
 
@@ -23,6 +23,7 @@ from webapp.api.v1.queue import invalidate_queue_cache
 from webapp.utils.fk_validation import validate_fk_existence
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.rbac import (
+    has_permission_any_facility,
     require_permission, require_permission_any_facility, Permission,
 )
 from sam.manage import management_transaction
@@ -143,6 +144,7 @@ def htmx_resources_card():
         now=now,
         active_only=active_only,
         active_tab=read_tab('tab', _RESOURCES_TABS, 'resources'),
+        can_view_users=has_permission_any_facility(current_user, Permission.VIEW_USERS),
     )
 
 

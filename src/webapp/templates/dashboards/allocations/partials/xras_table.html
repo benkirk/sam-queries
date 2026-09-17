@@ -3,6 +3,7 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/project_bits.html' import project_link with context %}
 {#
   XRAS action-log HTMX fragment.
 
@@ -132,15 +133,7 @@
                        mis-sent. Linking either one blindly would 404 on the 21%
                        of traffic that fails most. #}
                     {% if r.request_is_project %}
-                    <button class="btn btn-link p-0"
-                            title="View project details"
-                            data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
-                            hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=r.request_number) }}"
-                            hx-target="#projectDetailsModalBody"
-                            hx-swap="innerHTML"
-                            data-stop-propagation>
-                        <strong>{{ r.request_number }}</strong>
-                    </button>
+                    {{ project_link(r.request_number, can_view_projects, stop_propagation=True) }}
                     {% elif r.request_is_token %}
                     <span title="XRAS request number — no project exists yet, which is normal for a New action">
                         {{ r.request_number }}
@@ -169,15 +162,7 @@
                 </td>
                 <td>
                     {% if r.projcode_result and r.result_is_project %}
-                    <button class="btn btn-link p-0"
-                            title="View project details"
-                            data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
-                            hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=r.projcode_result) }}"
-                            hx-target="#projectDetailsModalBody"
-                            hx-swap="innerHTML"
-                            data-stop-propagation>
-                        <strong>{{ r.projcode_result }}</strong>
-                    </button>
+                    {{ project_link(r.projcode_result, can_view_projects, stop_propagation=True) }}
                     {% elif r.projcode_result %}
                     <span title="Project not found in SAM">{{ r.projcode_result }}</span>
                     {% else %}

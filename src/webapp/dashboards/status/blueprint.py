@@ -418,7 +418,7 @@ def queue_history(system, queue_name):
     # operators with VIEW_SYSTEM_STATUS_USER_INFO. Skipping the query
     # entirely (vs. always fetching + hiding in template) avoids the join
     # cost for pages viewed by non-privileged users.
-    from webapp.utils.rbac import has_permission
+    from webapp.utils.rbac import has_permission, has_permission_any_facility
     can_view_user_info = (
         current_user.is_authenticated
         and has_permission(current_user, Permission.VIEW_SYSTEM_STATUS_USER_INFO)
@@ -442,6 +442,8 @@ def queue_history(system, queue_name):
         end_date=end_date,
         can_view_user_info=can_view_user_info,
         user_proj_rows=user_proj_rows,
+        can_view_projects=has_permission_any_facility(current_user, Permission.VIEW_PROJECTS),
+        can_view_users=has_permission_any_facility(current_user, Permission.VIEW_USERS),
     )
 
 

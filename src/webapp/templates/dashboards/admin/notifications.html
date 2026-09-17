@@ -193,4 +193,8 @@
 </div>{# /tab-content #}
 
 {% include 'dashboards/allocations/partials/audit_details_modal.html' %}
+{# The notifications ledger links project codes (notifications_log.html) into the
+   shared project-details modal; this page extends base.html directly, so it
+   ships the shell itself rather than inheriting it from base_admin.html. #}
+{% include 'dashboards/shared/project_details_modal.html' %}
 {% endblock %}

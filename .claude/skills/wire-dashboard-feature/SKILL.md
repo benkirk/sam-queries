@@ -25,8 +25,11 @@ markup and stale CSS.
 Reach for an existing macro in `dashboards/fragments/` before writing markup.
 The families:
 
-- **Entity links / rosters** — `contract_bits` (user / NSF-program links),
-  `user_rows.render_user_rows`.
+- **Entity links / rosters** — `project_bits.project_link` (clickable projcode),
+  `contract_bits.contract_user_link` (a User object) / `user_rows.user_link`
+  (a bare username string) / `contract_bits` NSF-program links,
+  `user_rows.render_user_rows`. Pass `stop_propagation=True` when the link sits
+  inside a `data-bs-toggle` row (see §5).
 - **Status** — `badges.status_badge` (its state vocab is the source of truth;
   an unknown state falls back to a neutral `bg-secondary` badge).
 - **Collapse** — `collapse.collapse_toggle`.
@@ -94,6 +97,22 @@ When a fragment references a modal shell id its host page must supply, add the
 fragment to `HTMX_FRAGMENT_SHELL_DEPS` in `test_modal_shell_contract.py`. That
 test's comment on the `_xras_remediation_actions.html` entry is the worked
 example of this exact rule.
+
+**The inverse trap — a link opening a DIFFERENT modal inside a `data-bs-toggle`
+row.** A row that is itself a modal opener (`<tr data-bs-toggle="modal"
+data-bs-target="#auditDetailsModal">`, the allocations ledgers) holds cells with
+projcode / username links that open *their own* modal. Here the link **must**
+carry its own `data-bs-toggle="modal" data-bs-target="#itsModal"` — the
+stack-safe `data-action="show-detail-modal"` idiom is NOT enough. Bootstrap's ONE
+document-level modal data-api runs in the **capture** phase and does
+`event.target.closest('[data-bs-toggle="modal"]')`, so it matches the ROW and
+opens the audit modal before the link's bubble-phase `data-stop-propagation` can
+fire. The link's own `data-bs-toggle` makes `closest()` match the link first and
+shadow the row; `data-stop-propagation` still stops the row's htmx fetch. This is
+the `stop_propagation=True` branch of the shared `project_link` / `user_link`
+macros (`fragments/project_bits.html`, `user_rows.html`); the default `data-action`
+opener is right only when there is NO `data-bs-toggle` ancestor. Same
+capture-phase mechanism as §6.
 
 ## 6. Collapse triggers
 

@@ -654,6 +654,7 @@ def resource_details(project):
         projcode=projcode,
         resource_name=resource_name,
         jobs_machine=jobs_machine,
+        can_view_users=has_permission_any_facility(current_user, Permission.VIEW_USERS),
         start_date=start_date.strftime('%Y-%m-%d'),
         end_date=end_date.strftime('%Y-%m-%d'),
         detail_data=detail_data,
@@ -789,6 +790,7 @@ def resource_details_day_subtree(project):
         did=request.args.get('did', 'd'),
         projcode=project.projcode,
         jobs_machine=_resolve_jobs_machine(resource_name),
+        can_view_users=has_permission_any_facility(current_user, Permission.VIEW_USERS),
     )
 
 
@@ -1265,6 +1267,7 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
         projcode=project.projcode,
         project=project,
         resource_name=resource_name,
+        can_view_users=has_permission_any_facility(current_user, Permission.VIEW_USERS),
         resource=resource,
         scope=scope,
         scope_node=scope_node,

@@ -11,6 +11,7 @@
 #}
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_adjustment with context %}
+{% from 'dashboards/fragments/contract_bits.html' import contract_user_link with context %}
 <h6 class="mt-4 mb-2">
     Charge Adjustments
     {{ help_icon(g_adjustment(), rich=True, title='Charge adjustments', placement='right') }}
@@ -49,11 +50,7 @@
                     {% endif %}
                 </td>
                 <td>
-                    {% if a.adjusted_by %}
-                        <span title="{{ a.adjusted_by.display_name or '' }}">{{ a.adjusted_by.username }}</span>
-                    {% else %}
-                        <span class="text-muted">—</span>
-                    {% endif %}
+                    {{ contract_user_link(a.adjusted_by, can_view_users, compact=True) }}
                 </td>
                 <td class="small text-muted"
                     title="{{ a.comment or '' }}"

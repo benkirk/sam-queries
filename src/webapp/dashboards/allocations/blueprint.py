@@ -40,6 +40,7 @@ from sam.schemas.forms import CreateChargeAdjustmentForm
 from flask import abort
 from webapp.utils.rbac import (
     apply_facility_scope, filter_rows_by_facility,
+    has_permission_any_facility,
     require_permission, require_permission_any_facility, user_facility_scope,
     Permission, allowed_facility_names as _allowed_facility_names,
 )
@@ -777,6 +778,7 @@ def projects_fragment():
         active_at=active_at.strftime('%Y-%m-%d'),
         active_at_dt=active_at,
         resource_type=resource_type,
+        can_view_projects=True,  # route requires VIEW_PROJECTS
     )
 
 
@@ -975,6 +977,8 @@ def transactions_fragment():
         target_id='alloc-transactions-fragment',
         form_id='tx-filters',
         sortable_columns=sorted(ALLOCATION_TRANSACTION_SORT_COLUMNS),
+        can_view_projects=True,  # route requires VIEW_PROJECTS
+        can_view_users=has_permission_any_facility(current_user, Permission.VIEW_USERS),
     )
 
 
@@ -1007,6 +1011,8 @@ def adjustments_fragment():
         target_id='alloc-adjustments-fragment',
         form_id='adj-filters',
         sortable_columns=sorted(CHARGE_ADJUSTMENT_SORT_COLUMNS),
+        can_view_projects=True,  # route requires VIEW_PROJECTS
+        can_view_users=has_permission_any_facility(current_user, Permission.VIEW_USERS),
     )
 
 

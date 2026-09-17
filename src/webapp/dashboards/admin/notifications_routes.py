@@ -56,7 +56,7 @@ from webapp.utils.htmx import (
     handle_htmx_form_post, htmx_modal_not_found, read_tab, register_typeahead,
 )
 from webapp.utils.notify import get_notifier
-from webapp.utils.rbac import require_permission, Permission
+from webapp.utils.rbac import has_permission_any_facility, require_permission, Permission
 
 from .blueprint import bp
 
@@ -192,6 +192,7 @@ def notifications_log():
         form_id=_FORM_ID,
         target_id=_FRAGMENT_TARGET,
         fragment_url=url_for('admin_dashboard.notifications_log'),
+        can_view_projects=has_permission_any_facility(current_user, Permission.VIEW_PROJECTS),
     )
 
 
