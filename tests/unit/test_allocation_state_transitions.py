@@ -22,11 +22,13 @@ from sam.accounting.allocations import (
     AllocationTransaction,
     AllocationTransactionType,
     intent_filter,
+    replay_amount,
 )
 from sam.manage.allocations import (
     detach_allocation,
     get_partitioned_descendant_sum,
     link_allocation_to_parent,
+    log_allocation_transaction,
     propagate_allocation_to_subprojects,
 )
 from sam.manage.transaction import management_transaction
@@ -307,6 +309,53 @@ class TestLinkAllocationToParent:
         ).first()
         assert txn is not None
         assert txn.transaction_amount == 0.0
+
+    def test_link_records_amount_delta_so_replay_matches(self, session):
+        """Regression: linking a child whose standalone amount is below the
+        (supplemented) parent must record the adoption as a signed delta so
+        replay(history) == amount. A bare LINK wrote a 0.0 delta and left the
+        child's replayed sum short of the bumped amount."""
+        resource, root, accounts = _build_tree(session)
+        user = make_user(session)
+
+        root_alloc = make_allocation(
+            session, account=accounts[root.project_id],
+            amount=ROOT_AMOUNT, start_date=FAR_START, end_date=FAR_END,
+        )
+        c1 = root.get_descendants()[0]
+        # Child standalone amount is BELOW the parent pool (parent supplemented since).
+        child_alloc = make_allocation(
+            session, account=accounts[c1.project_id],
+            amount=ROOT_AMOUNT - 250_000.0, start_date=FAR_START, end_date=FAR_END,
+        )
+        # Seed the child's base NEW row so its ledger is consistent pre-link
+        # (prod allocations carry a NEW; the bare factory does not).
+        with management_transaction(session):
+            log_allocation_transaction(
+                session, child_alloc, user.user_id, AllocationTransactionType.NEW,
+            )
+        pre = session.query(AllocationTransaction).filter(
+            AllocationTransaction.allocation_id == child_alloc.allocation_id).all()
+        assert replay_amount(pre) == pytest.approx(child_alloc.amount)
+
+        with management_transaction(session):
+            linked = link_allocation_to_parent(
+                session, child_alloc.allocation_id, root_alloc.allocation_id,
+                user.user_id,
+            )
+        session.refresh(linked)
+        assert linked.amount == ROOT_AMOUNT
+
+        # The invariant holds: the ledger replays to the bumped amount.
+        post = session.query(AllocationTransaction).filter(
+            AllocationTransaction.allocation_id == linked.allocation_id).all()
+        assert replay_amount(post) == pytest.approx(linked.amount)
+        # LINK row itself stays a 0.0 topology marker; the delta lives on an EDIT.
+        link_txn = session.query(AllocationTransaction).filter(
+            AllocationTransaction.allocation_id == linked.allocation_id,
+            intent_filter(AllocationTransactionType.LINK),
+        ).first()
+        assert link_txn.transaction_amount == 0.0
 
     def test_link_already_inheriting_raises(self, session):
         resource, root, accounts = _build_tree(session)

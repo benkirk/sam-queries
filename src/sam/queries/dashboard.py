@@ -43,6 +43,7 @@ from sam.summaries.dav_summaries import DavChargeSummary
 from sam.summaries.disk_summaries import DiskChargeSummary
 from sam.summaries.archive_summaries import ArchiveChargeSummary
 from sam.queries.charges import get_adjustment_totals_by_date
+from sam.accounting.calculator import get_compute_charge_model_for_activity
 from sam.queries.rolling_usage import get_project_rolling_usage
 
 
@@ -438,6 +439,7 @@ def _build_user_projects_resources_batched(
                     'key':           key,
                     'account_id':    account.account_id,
                     'resource_type': resource_type,
+                    'activity_type': account.resource.activity_type,
                     'start_date':    start_date,
                     'end_date':      end_date,
                 })
@@ -446,6 +448,7 @@ def _build_user_projects_resources_batched(
                     'key':           key,
                     'resource_id':   account.resource_id,
                     'resource_type': resource_type,
+                    'activity_type': account.resource.activity_type,
                     'tree_root':     project.tree_root,
                     'tree_left':     project.tree_left,
                     'tree_right':    project.tree_right,
@@ -473,6 +476,7 @@ def _build_user_projects_resources_batched(
             'key':           ('root', key),
             'resource_id':   account.resource_id,
             'resource_type': resource_type,
+            'activity_type': account.resource.activity_type,
             'tree_root':     root_project.tree_root,
             'tree_left':     root_project.tree_left,
             'tree_right':    root_project.tree_right,
@@ -892,6 +896,9 @@ def get_resource_detail_data(
 
     # Determine resource type to query appropriate tables
     resource_type = resource.resource_type.resource_type if resource.resource_type else ResourceTypeName.HPC
+    # Compute charges/jobs come from the resource's authoritative table (by
+    # activity_type: comp/dav/hpc), not always CompChargeSummary. None => non-compute.
+    compute_model = get_compute_charge_model_for_activity(resource.activity_type)
 
     # Surface the type so the template can label the allocation figure with
     # its unit (hours / TiB) via the alloc_unit filter.
@@ -917,16 +924,17 @@ def get_resource_detail_data(
         # Use MPPT join pattern (same as Project.get_subtree_charges) to aggregate
         # daily charges across this project and all descendants.
         results = None
-        if ResourceTypeName.is_compute(resource_type):
+        if compute_model is not None:
             # Pull num_jobs + core_hours alongside charges so the Usage
             # Trend pill selector can switch metrics without an extra
             # query. Disk/Archive summaries don't carry these columns.
+            CC = compute_model
             results = session.query(
-                CompChargeSummary.activity_date,
-                func.sum(CompChargeSummary.charges).label('charges'),
-                func.sum(CompChargeSummary.num_jobs).label('num_jobs'),
-                func.sum(CompChargeSummary.core_hours).label('core_hours'),
-            ).join(Account, CompChargeSummary.account_id == Account.account_id)\
+                CC.activity_date,
+                func.sum(CC.charges).label('charges'),
+                func.sum(CC.num_jobs).label('num_jobs'),
+                func.sum(CC.core_hours).label('core_hours'),
+            ).join(Account, CC.account_id == Account.account_id)\
              .join(Project, Account.project_id == Project.project_id)\
              .filter(
                 Project.tree_root == scope_proj.tree_root,
@@ -934,9 +942,9 @@ def get_resource_detail_data(
                 Project.tree_right <= scope_proj.tree_right,
                 Account.resource_id == resource.resource_id,
                 Account.deleted == False,
-                CompChargeSummary.activity_date >= start_date,
-                CompChargeSummary.activity_date <= end_date,
-            ).group_by(CompChargeSummary.activity_date).all()
+                CC.activity_date >= start_date,
+                CC.activity_date <= end_date,
+            ).group_by(CC.activity_date).all()
 
         elif resource_type == ResourceTypeName.DISK:
             results = session.query(
@@ -974,7 +982,7 @@ def get_resource_detail_data(
         daily_jobs_map: dict = {}
         daily_core_hours_map: dict = {}
         if results:
-            comp = ResourceTypeName.is_compute(resource_type)
+            comp = compute_model is not None
             for row in results:
                 d = row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date
                 daily_map[d] = daily_map.get(d, 0.0) + float(row.charges or 0.0)
@@ -1023,17 +1031,18 @@ def get_resource_detail_data(
 
         results = None
 
-        if ResourceTypeName.is_compute(resource_type):
+        if compute_model is not None:
+            CC = compute_model
             results = session.query(
-                CompChargeSummary.activity_date,
-                func.sum(CompChargeSummary.charges).label('charges'),
-                func.sum(CompChargeSummary.num_jobs).label('num_jobs'),
-                func.sum(CompChargeSummary.core_hours).label('core_hours'),
+                CC.activity_date,
+                func.sum(CC.charges).label('charges'),
+                func.sum(CC.num_jobs).label('num_jobs'),
+                func.sum(CC.core_hours).label('core_hours'),
             ).filter(
-                CompChargeSummary.account_id == account.account_id,
-                CompChargeSummary.activity_date >= start_date,
-                CompChargeSummary.activity_date <= end_date
-            ).group_by(CompChargeSummary.activity_date).all()
+                CC.account_id == account.account_id,
+                CC.activity_date >= start_date,
+                CC.activity_date <= end_date
+            ).group_by(CC.activity_date).all()
 
         elif resource_type == ResourceTypeName.DISK:
             results = session.query(
@@ -1059,7 +1068,7 @@ def get_resource_detail_data(
         daily_jobs_map = {}
         daily_core_hours_map = {}
         if results:
-            comp = ResourceTypeName.is_compute(resource_type)
+            comp = compute_model is not None
             for row in results:
                 d = row.activity_date.date() if hasattr(row.activity_date, 'date') else row.activity_date
                 daily_map[d] = daily_map.get(d, 0.0) + float(row.charges or 0.0)

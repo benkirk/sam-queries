@@ -777,8 +777,8 @@ def _fetch_all_allocations(
     """
     Fetch all active allocations matching the given filters in a single query.
 
-    Returns list of (Allocation, resource_name, resource_type, facility_name,
-    allocation_type_name, projcode, Project, Account) tuples.
+    Returns list of (Allocation, resource_name, resource_type, activity_type,
+    facility_name, allocation_type_name, projcode, Project, Account) tuples.
     Account.users selectin is suppressed via lazyload — the caller never needs it.
     The facility, allocation_type, and projcode columns are fetched as explicit scalars
     to avoid triggering lazy-loads when building grouping keys.
@@ -787,6 +787,7 @@ def _fetch_all_allocations(
         Allocation,
         Resource.resource_name,
         ResourceType.resource_type,
+        Resource.activity_type,
         Facility.facility_name,
         AllocationType.allocation_type,
         Project.projcode,
@@ -864,7 +865,7 @@ def _group_allocations_by_summary_key(
     """
     grouped: Dict[tuple, List[tuple]] = {}
     for row in allocations:
-        alloc, res_name, res_type, fac_name, at_name, proj_code, project, account = row
+        alloc, res_name, res_type, _activity, fac_name, at_name, proj_code, project, account = row
 
         key_parts = []
         if resource_name != "TOTAL":
@@ -966,10 +967,10 @@ def _read_model_rows(session, all_allocations, active_at, include_adjustments,
     if not include_adjustments or not all_allocations:
         return None
     from sam.queries.allocation_state import fresh_state
-    # `_fetch_all_allocations` rows: (alloc, res_name, res_type, facility,
-    # alloc_type, projcode, project, account).
-    resource_ids = {t[7].resource_id for t in all_allocations}
-    project_ids = {t[6].project_id for t in all_allocations}
+    # `_fetch_all_allocations` rows: (alloc, res_name, res_type, activity_type,
+    # facility, alloc_type, projcode, project, account).
+    resource_ids = {t[8].resource_id for t in all_allocations}
+    project_ids = {t[7].project_id for t in all_allocations}
     rows = fresh_state(session, resource_ids=resource_ids, project_ids=project_ids,
                        as_of=active_at).rows
     if rows is None:
@@ -1041,6 +1042,13 @@ def get_allocation_summary_with_usage(
         session, resource_name, facility_name, allocation_type, projcode,
         active_only, check_date, root_only=root_only
     )
+    # account_id -> activity_type: the resource's single authoritative charge
+    # table (see accounting/calculator.py). Cheap map off the already-fetched
+    # scalar, so charge routing needs no extra query per allocation.
+    account_activity = {
+        _acct.account_id: _act
+        for (_a, _rn, _rt, _act, _fn, _atn, _pc, _proj, _acct) in all_allocations
+    }
     alloc_by_key = _group_allocations_by_summary_key(
         all_allocations, resource_name, facility_name, allocation_type, projcode
     )
@@ -1058,6 +1066,7 @@ def get_allocation_summary_with_usage(
             info = {
                 'key': alloc.allocation_id,
                 'resource_type': res_type,
+                'activity_type': account_activity.get(alloc.account_id),
                 'resource_id': account.resource_id,
                 'account_id': alloc.account_id,
                 'tree_root': project.tree_root,
@@ -1105,6 +1114,7 @@ def get_allocation_summary_with_usage(
             subtree_infos.append({
                 'key':           ('root', alloc.allocation_id),
                 'resource_type': res_type,
+                'activity_type': account_activity.get(alloc.account_id),
                 'resource_id':   account.resource_id,
                 'account_id':    alloc.account_id,
                 'tree_root':     root_project.tree_root,
