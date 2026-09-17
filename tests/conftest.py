@@ -777,13 +777,16 @@ def _multi_project_user_id(engine):
 
 @pytest.fixture(scope="session")
 def _hpc_resource_id(engine):
-    """ID of any currently-active HPC resource.
+    """ID of any currently-active HPC resource that charges to comp.
 
     "Active" means commissioned on or before today AND either still
     commissioned (NULL decommission_date) or decommissioned in the future.
     The low-ID HPC resources in the obfuscated snapshot are long-retired
     (Bluefire, Yellowstone, Jellystone, ...) so ORDER BY resource_id
     without this filter returns a dead resource with no fstree presence.
+    activity_type='COMP' pins the modern compute machines (Derecho family) —
+    charges route to comp_charge_summary (the live table tests seed), not the
+    dead hpc_charge_summary of the activity_type='HPC' legacy machines.
     """
     from sqlalchemy import text as _text
     with _session_for_setup(engine) as s:
@@ -792,12 +795,13 @@ def _hpc_resource_id(engine):
             FROM resources r
             JOIN resource_type rt ON rt.resource_type_id = r.resource_type_id
             WHERE rt.resource_type = 'HPC'
+              AND r.activity_type = 'COMP'
               AND (r.commission_date IS NULL OR r.commission_date <= NOW())
               AND (r.decommission_date IS NULL OR r.decommission_date >= NOW())
             ORDER BY r.resource_id
             LIMIT 1
         """)).first()
-    assert row is not None, "snapshot has no currently-active HPC resources"
+    assert row is not None, "snapshot has no currently-active HPC/COMP resources"
     return row[0]
 
 

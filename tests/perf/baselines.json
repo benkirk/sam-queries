@@ -30,16 +30,16 @@
         "notes": "measured 8 — exercises joinedload collapsing"
     },
     "get_fstree_data": {
-        "queries": 10,
-        "notes": "measured 3 — most expensive by wall time, few queries"
+        "queries": 20,
+        "notes": "measured 14 (2026-09-17) — charges now route to each resource's single activity_type table (comp/dav/hpc), replacing the comp+dav union; querying hpc_charge_summary for HPC-activity resources and splitting DAV-resource-type into COMP/DAV activity groups adds queries but is correct. Was 10 / measured 3 under the buggy union."
     },
     "get_allocation_summary": {
         "queries": 10,
         "notes": "measured 2 — heavy aggregation in single SQL"
     },
     "get_allocation_summary_with_usage": {
-        "queries": 10,
-        "notes": "measured 2 — aggregation plus charge joins"
+        "queries": 20,
+        "notes": "measured 14 (2026-09-17) — charges route to each resource's single activity_type table (comp/dav/hpc), replacing the comp+dav union; querying hpc_charge_summary and splitting DAV-resource-type into COMP/DAV activity groups adds queries but is correct. Was 10 / measured 2 under the buggy union."
     },
     "get_detailed_allocation_usage": {
         "queries": 50,

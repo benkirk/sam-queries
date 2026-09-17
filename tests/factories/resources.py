@@ -29,18 +29,28 @@ def make_resource(
     resource_type: Optional[ResourceType] = None,
     resource_name: Optional[str] = None,
     commission_date: Optional[datetime] = None,
+    activity_type: Optional[str] = None,
 ) -> Resource:
-    """Build and flush a fresh Resource row, auto-building a ResourceType if needed."""
+    """Build and flush a fresh Resource row, auto-building a ResourceType if needed.
+
+    activity_type names the resource's single charge table (see
+    accounting/calculator.py). Defaults to 'COMP' — the live compute table tests
+    seed — mapping DISK/ARCHIVE resource types to their own tables.
+    """
     if resource_type is None:
         resource_type = make_resource_type(session)
     if resource_name is None:
         resource_name = next_seq("RES")
+    if activity_type is None:
+        rt_name = resource_type.resource_type
+        activity_type = rt_name if rt_name in ('DISK', 'ARCHIVE') else 'COMP'
 
     return Resource.create(
         session,
         resource_name=resource_name,
         resource_type_id=resource_type.resource_type_id,
         commission_date=commission_date,
+        activity_type=activity_type,
     )
 
 
