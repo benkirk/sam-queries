@@ -117,11 +117,12 @@ class RegisterForm(HtmxFormSchema):
     middle_name = f.Str(load_default=None, validate=v.Length(max=64))
     last_name = f.Str(required=True, validate=v.Length(min=1, max=64))
     organization = f.Str(required=True, validate=v.Length(min=1, max=128))
-    academic_status = f.Str(required=True, validate=v.Length(min=1, max=32))
+    academic_status = f.Str(required=True, validate=v.Length(min=1, max=64))
     residence_country = f.Str(required=True, validate=v.Length(min=1, max=64))
     orcid = f.Str(load_default=None, validate=v.Regexp(
         r'^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$', error='An ORCID looks like 0000-0002-1825-0097.'))
-    phone = f.Str(load_default=None, validate=v.Length(max=32))
+    #: Required: the account team needs it for Duo enrollment.
+    phone = f.Str(required=True, validate=v.Length(min=1, max=32))
     desired_username = f.Str(load_default=None, validate=v.Regexp(
         r'^[A-Za-z][A-Za-z0-9._-]{1,63}$',
         error='Letters, digits, dots, dashes or underscores, starting with a letter.'))

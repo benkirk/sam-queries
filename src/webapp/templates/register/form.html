@@ -56,7 +56,8 @@
             <div class="col-md-6">{{ text_field('residence_country', 'Country of residence', required=True, maxlength=64) }}</div>
         </div>
         <div class="row">
-            <div class="col-md-6">{{ text_field('phone', 'Phone', maxlength=32) }}</div>
+            <div class="col-md-6">{{ text_field('phone', 'Phone', required=True, maxlength=32,
+                                                help='Needed to enroll your account in two-factor authentication.') }}</div>
             <div class="col-md-6">{{ text_field('orcid', 'ORCID', maxlength=19, placeholder='0000-0002-1825-0097') }}</div>
         </div>
         {{ text_field('desired_username', 'Preferred username', maxlength=64,

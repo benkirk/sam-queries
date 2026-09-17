@@ -19,7 +19,8 @@ pytestmark = pytest.mark.unit
 GOOD = {
     'email': 'zz.register.test@example.invalid', 'first_name': 'Reg', 'last_name': 'Tester',
     'organization': 'University of Example', 'academic_status': 'Graduate Student',
-    'residence_country': 'US', 'purpose_note': 'Running the class exercises.',
+    'residence_country': 'US', 'phone': '+1 303 555 0100',
+    'purpose_note': 'Running the class exercises.',
 }
 
 
@@ -139,6 +140,15 @@ class TestSubmit:
         resp = client.post('/register/', data={'email': GOOD['email']})
         assert resp.status_code == 200
         assert 'first_name' in resp.get_data(as_text=True)
+
+    def test_a_phone_number_is_required(self, client, null_notifier):
+        """The account team needs it for two-factor enrollment."""
+        data = dict(GOOD)
+        data.pop('phone')
+        resp = client.post('/register/', data=data)
+        assert resp.status_code == 200
+        assert 'name="phone"' in resp.get_data(as_text=True)
+        assert 'Missing data for required field' in resp.get_data(as_text=True)
 
     def test_no_reason_without_an_event_is_refused(self, client, null_notifier):
         data = dict(GOOD)
