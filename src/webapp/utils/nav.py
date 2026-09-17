@@ -55,6 +55,13 @@ def _can_view_config():
             and has_permission(current_user, Permission.VIEW_SYSTEM_CONFIG))
 
 
+def _can_manage_account_requests():
+    # Same gate as the Accounts tab in base_admin.html: system-wide, never
+    # facility-scoped, because the queue is not project-scoped.
+    return (current_user.is_authenticated
+            and has_permission(current_user, Permission.MANAGE_ACCOUNT_REQUESTS))
+
+
 def _can_view_fs_scans():
     # Same gate as the status tab strip: permission AND at least one warmed
     # scan collection. scan_capable_resources() is a config-list +
@@ -189,6 +196,8 @@ NAV_SECTIONS = (
              'icon': 'fa-solid fa-file-signature'},
             {'endpoint': 'admin_dashboard.facilities', 'label': 'Facilities & Allocations',
              'icon': 'fa-solid fa-building'},
+            {'endpoint': 'admin_dashboard.account_requests', 'label': 'Accounts',
+             'icon': 'fa-solid fa-user-plus', 'visible': _can_manage_account_requests},
             {'endpoint': 'admin_dashboard.configuration', 'label': 'Configuration',
              'icon': 'fa-solid fa-sliders', 'visible': _can_view_config},
         ),
