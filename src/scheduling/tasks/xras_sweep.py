@@ -914,8 +914,10 @@ def xras_sweep(ctx) -> TaskResult:
     # (claim, dismiss) and what the reconcile pass fulfills. Idempotent, and
     # an operator's dismissal survives every later sweep.
     from sam.manage.account_requests import upsert_sweep_requests
-    detail['account_requests'] = upsert_sweep_requests(session, enumerated,
-                                                       clock=ctx.now)
+    detail['account_requests'] = upsert_sweep_requests(
+        session, enumerated,
+        # Rows are stamped naive-Mountain; ctx.now is naive UTC.
+        clock=to_local_naive(ctx.now, ZoneInfo(DEFAULT_TZ)))
 
     # 4. warm the person cache for the card's morning renders
     #
