@@ -58,6 +58,7 @@ class AccountRequestEventForm(HtmxFormSchema):
     event_code = f.Str(required=True,
                        validate=v.Regexp(_EVENT_CODE_RE, error=_EVENT_CODE_MSG))
     name = f.Str(required=True, validate=v.Length(min=1, max=128))
+    instructions = f.Str(load_default=None, validate=v.Length(max=4000))
     accounts_needed_by = f.Date('%Y-%m-%d', required=True)
     opens_at = f.DateTime(_DATETIME_LOCAL, load_default=None)
     closes_at = f.DateTime(_DATETIME_LOCAL, load_default=None)
@@ -81,6 +82,7 @@ class AccountRequestEventEditForm(HtmxFormSchema):
     the original form, since ``load_default`` fills absent fields with None."""
 
     name = f.Str(load_default=None, validate=v.Length(min=1, max=128))
+    instructions = f.Str(load_default=None, validate=v.Length(max=4000))
     accounts_needed_by = f.Date('%Y-%m-%d', load_default=None)
     opens_at = f.DateTime(_DATETIME_LOCAL, load_default=None)
     closes_at = f.DateTime(_DATETIME_LOCAL, load_default=None)

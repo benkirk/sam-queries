@@ -21,12 +21,12 @@ CREATE TABLE IF NOT EXISTS account_request (
   account_request_id   INT UNSIGNED NOT NULL AUTO_INCREMENT,
   -- Identity claim. The XRAS person field set, so a row can feed an upstream
   -- form or POST /v1/people without re-derivation.
-  email                VARCHAR(255)  NOT NULL,   -- lower-cased. The one match key against email_address
+  email                VARCHAR(255)  NOT NULL,   -- lower-cased ASCII match key, resolved in Python (never joined)
   first_name           VARCHAR(64)   NOT NULL,
   middle_name          VARCHAR(64)       NULL,
   last_name            VARCHAR(64)   NOT NULL,
   organization         VARCHAR(128)      NULL,
-  academic_status      VARCHAR(32)       NULL,
+  academic_status      VARCHAR(64)       NULL,
   residence_country    VARCHAR(64)       NULL,
   orcid                VARCHAR(19)       NULL,   -- 0000-0000-0000-000X
   phone                VARCHAR(32)       NULL,
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS account_request (
   project_id           INT               NULL,   -- the project a fulfilled account joins
   sponsor_user_id      INT               NULL,   -- the user who invited them
   event_id             INT UNSIGNED      NULL,   -- account_request_event.account_request_event_id
-  xras_username        VARCHAR(64)       NULL,   -- the ARC or SAM placeholder, when one exists
+  xras_username        VARCHAR(64)       NULL,   -- the ARC or SAM placeholder, lower-cased match key
   -- Queue state. Fulfilled is not a state (see the header).
   state                VARCHAR(16)   NOT NULL,   -- submitted|claimed|rejected|dismissed
   assignee             VARCHAR(35)       NULL,   -- users.username of the operator who claimed it
@@ -52,13 +52,17 @@ CREATE TABLE IF NOT EXISTS account_request (
   verified_by          VARCHAR(35)       NULL,   -- 'self' (mail) or the vouching operator
   verify_code_hash     CHAR(64)          NULL,   -- HMAC-SHA256 hex of the emailed code
   verify_expires_at    DATETIME          NULL,
+  verify_sent_count    SMALLINT UNSIGNED NOT NULL DEFAULT 0,  -- verification mails issued
+  source_ip            VARCHAR(45)       NULL,   -- where the public form was submitted from
   creation_time        DATETIME      NOT NULL,   -- app clock, naive-Mountain
-  modified_time        DATETIME          NULL,
+  modified_time        DATETIME      NOT NULL,
   -- Fulfillment, stamped by reconcile once the mirrored users row appears.
   user_id              INT               NULL,
   upid                 INT               NULL,   -- users.upid, the durable person key; outlives a username change
   fulfilled_at         DATETIME          NULL,
   fulfill_error        VARCHAR(255)      NULL,   -- the account exists but the enrollment failed
+  closure_notified_at  DATETIME          NULL,   -- when the requester was told of a rejection
+  merged_at            DATETIME          NULL,   -- when the XRAS placeholder was merged into the real person
   PRIMARY KEY (account_request_id),
   -- Index names live in one namespace with table names on Postgres (the
   -- dual-backend clone builds from the ORM), so none may equal a table name.
@@ -71,27 +75,30 @@ CREATE TABLE IF NOT EXISTS account_request (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
 
 -- ---------------------------------------------------------------------------
--- The charset split. Names, organization and every prose column are typed by
--- people and must survive a 4-byte character; under STRICT_TRANS_TABLES a
--- utf8mb3 column would refuse the whole row. The identifiers stay utf8mb3 so
--- the email and username lookups are not mixed-charset comparisons.
+-- The charset split. Every column a person types (or that echoes one, such as
+-- fulfill_error's interpolated names) must survive a 4-byte character; under
+-- STRICT_TRANS_TABLES a utf8mb3 column would refuse the whole row. The ASCII
+-- identifiers (email, usernames, orcid, phone) stay utf8mb3.
 -- tests/integration/test_schema_validation.py pins both halves.
 -- ---------------------------------------------------------------------------
 ALTER TABLE account_request
-  MODIFY first_name    VARCHAR(64)  CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
-  MODIFY middle_name   VARCHAR(64)  CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
-  MODIFY last_name     VARCHAR(64)  CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
-  MODIFY organization  VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
-  MODIFY closed_reason VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
-  MODIFY comment       TEXT         CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
-  MODIFY purpose_note  VARCHAR(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL;
+  MODIFY first_name        VARCHAR(64)  CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  MODIFY middle_name       VARCHAR(64)  CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+  MODIFY last_name         VARCHAR(64)  CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  MODIFY organization      VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+  MODIFY academic_status   VARCHAR(64)  CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+  MODIFY residence_country VARCHAR(64)  CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+  MODIFY closed_reason     VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+  MODIFY comment           TEXT         CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+  MODIFY purpose_note      VARCHAR(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+  MODIFY fulfill_error     VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL;
 
 -- ---------------------------------------------------------------------------
 -- Verification. All four must match, or the table is not as tested.
 -- ---------------------------------------------------------------------------
 SELECT COUNT(*) AS rows_expect_0 FROM account_request;
 
-SELECT COUNT(*) AS utf8mb4_cols_expect_7
+SELECT COUNT(*) AS utf8mb4_cols_expect_10
   FROM information_schema.COLUMNS
  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'account_request'
    AND CHARACTER_SET_NAME = 'utf8mb4';

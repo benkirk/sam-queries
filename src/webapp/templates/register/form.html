@@ -19,6 +19,9 @@
         (<span class="font-monospace">{{ event.event_code }}</span>).
         Accounts are needed by {{ event.accounts_needed_by | fmt_date }}.
     </p>
+    {% if event.instructions %}
+    <p class="text-muted" style="white-space: pre-wrap;">{{ event.instructions }}</p>
+    {% endif %}
     {% else %}
     <p class="text-muted">
         Tell us who you are and why you need an account. We will email you a

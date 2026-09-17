@@ -64,6 +64,22 @@ class TestTheInvariants:
         row = make_account_request(session, email='  Jane.Doe@Example.EDU ')
         assert row.email == 'jane.doe@example.edu'
 
+    def test_the_placeholder_is_stored_lower_cased(self, session):
+        """A match key looked up with a plain IN, on either backend."""
+        row = make_account_request(session, purpose='submission',
+                                   xras_username=' Jane-User-ABC123 ')
+        assert row.xras_username == 'jane-user-abc123'
+
+    def test_every_row_carries_both_stamps_from_the_clock(self, session):
+        when = datetime(2026, 9, 14, 8, 0)
+        row = make_account_request(session, clock=when)
+        assert (row.creation_time, row.modified_time) == (when, when)
+        assert row.verify_sent_count == 0 and row.source_ip is None
+
+    def test_source_ip_is_kept_when_given(self, session):
+        row = make_account_request(session, source_ip='2001:db8::1')
+        assert row.source_ip == '2001:db8::1'
+
     def test_a_non_address_is_refused(self, session):
         with pytest.raises(ValueError, match='email'):
             make_account_request(session, email='not-an-address')
@@ -103,6 +119,13 @@ class TestVisibilityToTheQueue:
             AccountRequest.account_request_id == row.account_request_id).count()
         assert found == 1
 
+    def test_every_verification_mail_is_counted(self, session):
+        row = make_account_request(session, verified_by=None)
+        expires = datetime.now() + timedelta(hours=1)
+        row.set_verification('a' * 64, expires)
+        row.set_verification('b' * 64, expires)
+        assert row.verify_sent_count == 2
+
 
 class TestQueueTransitions:
     def test_claim_and_unclaim(self, session):
@@ -127,6 +150,10 @@ class TestQueueTransitions:
     def test_reject_is_a_distinct_closure(self, session):
         row = make_account_request(session).reject('operator1', 'not eligible')
         assert row.state == 'rejected'
+        with pytest.raises(ValueError, match='cannot reject a rejected'):
+            row.reject('operator1', 'again')
+        with pytest.raises(ValueError, match='required to dismiss'):
+            make_account_request(session).dismiss('operator1', '  ')
 
     def test_a_closed_row_cannot_be_claimed(self, session):
         row = make_account_request(session).dismiss('operator1', 'dup')
@@ -146,6 +173,13 @@ class TestQueueTransitions:
         when = datetime(2026, 9, 14, 8, 0)
         row = make_account_request(session).mark_requested(when).claim('op')
         assert row.requested_at == when and row.state == 'claimed'
+
+    def test_requested_at_is_when_first_told(self, session):
+        """Later digests are in notification_log; the lead time starts here."""
+        first = datetime(2026, 9, 14, 8, 0)
+        row = make_account_request(session).mark_requested(first)
+        row.mark_requested(first + timedelta(days=7))
+        assert row.requested_at == first
 
 
 class TestFulfillment:
@@ -202,6 +236,14 @@ class TestEvents:
         event.update(extra_sponsor_user_id=None, accounts_needed_by=date(2027, 1, 1))
         assert event.extra_sponsor_user_id is None
         assert event.accounts_needed_by == date(2027, 1, 1)
+
+    def test_instructions_round_trip_and_clear(self, session):
+        event = make_account_request_event(session)
+        assert event.instructions is None and event.modified_time is not None
+        event.update(instructions='  Bring a laptop.\nLog in with the code. ')
+        assert event.instructions == 'Bring a laptop.\nLog in with the code.'
+        event.update(instructions='')
+        assert event.instructions is None
 
     def test_a_request_points_at_its_event(self, session):
         event = make_account_request_event(session)

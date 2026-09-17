@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-from sqlalchemy import func, or_
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from sam.core.account_requests import CREATED_BY_SELF, AccountRequest, AccountRequestEvent
@@ -210,13 +210,11 @@ def stamp_account_requests(session: Session,
                      for r in worklist_rows if r.get('username')})
     if not wanted:
         return
-    # lower() on both sides rather than the column's collation: the Postgres
-    # test copy is built from the ORM and carries no case-insensitive collation.
     found = {}
     for req in (session.query(AccountRequest)
-                .filter(func.lower(AccountRequest.xras_username).in_(wanted))
+                .filter(AccountRequest.xras_username.in_(wanted))
                 .order_by(AccountRequest.creation_time).all()):
-        found[(req.xras_username or '').lower()] = req
+        found[req.xras_username] = req
     for row in worklist_rows:
         req = found.get((row.get('username') or '').lower())
         row['account_request'] = ({

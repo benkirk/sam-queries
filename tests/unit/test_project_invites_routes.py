@@ -97,6 +97,8 @@ class TestRenderSmoke:
             resp = auth_client.get(path)
             assert resp.status_code == 200, path
             assert 'invitationModalLabel' in resp.get_data(as_text=True)
+        assert 'name="instructions"' in resp.get_data(as_text=True), \
+            'the event form carries the participant-facing instructions'
 
 
 class TestValidation:

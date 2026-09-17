@@ -11,7 +11,6 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from sam.core.account_requests import (
@@ -165,11 +164,9 @@ def upsert_sweep_requests(session: Session, worklist_rows: Sequence[Dict[str, An
     if not absent:
         return counts
     keys = sorted({r['username'].lower() for r in absent})
-    # lower() on both sides, as stamp_account_requests does: the Postgres test
-    # copy has no case-insensitive collation on this column.
-    known = {(req.xras_username or '').lower() for req in
+    known = {req.xras_username for req in
              session.query(AccountRequest.xras_username)
-             .filter(func.lower(AccountRequest.xras_username).in_(keys)).all()}
+             .filter(AccountRequest.xras_username.in_(keys)).all()}
     numbers = sorted({a.get('request_number') for r in absent
                       for a in r.get('actions', ()) if a.get('request_number')})
     projects = {}
