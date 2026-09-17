@@ -997,8 +997,9 @@ def link_allocation_to_parent(
 
     Mirrors the parent's amount/start_date/end_date onto the child so the
     re-linked allocation is functionally indistinguishable from one created
-    originally via propagate_allocation_to_subprojects(). Flushes, then
-    logs a single LINK transaction.
+    originally via propagate_allocation_to_subprojects(). Flushes, then logs an
+    EDIT (only when adopting the parent's amount changes the child's amount) plus
+    the LINK topology marker.
 
     Raises:
         ValueError: child not found / already inheriting; parent not found /
@@ -1044,16 +1045,28 @@ def link_allocation_to_parent(
             f"immediate parent project's allocation"
         )
 
+    prior_amount = child.amount
     child.parent_allocation_id = parent.allocation_id
     child.amount = parent.amount
     child.start_date = parent.start_date
     child.end_date = parent.end_date
     session.flush()
 
-    # LINK is a 0.0 topology marker, not an amount event: a re-linked child
-    # becomes an inheriting (shared-pool) member whose amount is, by definition,
-    # the parent's — kept in sync by the parent's cascades. The child's prior
-    # standalone amount is intentionally adopted-as-is, so no delta is recorded.
+    # Adopting the parent's amount is a real ledger event whenever it changes the
+    # child's amount (e.g. the parent pool was supplemented since this child was
+    # last in sync). Record it as an EDIT so its signed delta keeps
+    # replay(history) == amount; a bare LINK writes a 0.0 delta and would leave
+    # replay short of the bumped amount (docs/plans/implemented/FIX_TREE_EXTENSION_bugs.md).
+    if float(prior_amount or 0.0) != float(parent.amount or 0.0):
+        log_allocation_transaction(
+            session, child, user_id,
+            AllocationTransactionType.EDIT,
+            old_values={'amount': prior_amount},
+            comment=f"Adopt parent allocation #{parent.allocation_id} amount on re-link",
+        )
+
+    # LINK is a 0.0 topology marker recording the re-parenting itself; any amount
+    # change is captured by the EDIT above.
     log_allocation_transaction(
         session, child, user_id,
         AllocationTransactionType.LINK,
