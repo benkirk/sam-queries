@@ -87,6 +87,14 @@ def _is_event_sponsor(user, event, project, system_permission: Permission) -> bo
             and event.extra_sponsor_user_id == user_id)
 
 
+def can_manage_events(user, project) -> bool:
+    """Create or edit account-request events on a project: a steward of the
+    project or any ancestor, or a MANAGE_ACCOUNT_REQUESTS holder. The same
+    predicate the Invitations routes' guard applies."""
+    return _is_project_steward(user, project, Permission.MANAGE_ACCOUNT_REQUESTS,
+                               include_ancestors=True)
+
+
 def can_access_edit_project_page(user, project) -> bool:
     """
     Enter the admin Edit Project page (/admin/project/<projcode>/edit).

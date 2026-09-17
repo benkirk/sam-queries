@@ -53,7 +53,7 @@ class InviteUserForm(HtmxFormSchema):
 
 class AccountRequestEventForm(HtmxFormSchema):
     """Create an event: code, name, deadline, an optional public-form window
-    and an optional extra sponsor by username."""
+    and an optional extra sponsor picked from the SAM user search."""
 
     event_code = f.Str(required=True,
                        validate=v.Regexp(_EVENT_CODE_RE, error=_EVENT_CODE_MSG))
@@ -62,14 +62,12 @@ class AccountRequestEventForm(HtmxFormSchema):
     accounts_needed_by = f.Date('%Y-%m-%d', required=True)
     opens_at = f.DateTime(_DATETIME_LOCAL, load_default=None)
     closes_at = f.DateTime(_DATETIME_LOCAL, load_default=None)
-    extra_sponsor_username = f.Str(load_default=None, validate=v.Length(max=35))
+    extra_sponsor_user_id = f.Int(load_default=None)
 
     @post_load
     def _normalize(self, data, **kwargs):
         data['event_code'] = data['event_code'].strip().upper()
         data['name'] = data['name'].strip()
-        if data.get('extra_sponsor_username') is not None:
-            data['extra_sponsor_username'] = data['extra_sponsor_username'].strip() or None
         self.assert_date_range(data.get('opens_at'), data.get('closes_at'),
                                field='closes_at',
                                message='The window must close after it opens.')
@@ -86,14 +84,12 @@ class AccountRequestEventEditForm(HtmxFormSchema):
     accounts_needed_by = f.Date('%Y-%m-%d', load_default=None)
     opens_at = f.DateTime(_DATETIME_LOCAL, load_default=None)
     closes_at = f.DateTime(_DATETIME_LOCAL, load_default=None)
-    extra_sponsor_username = f.Str(load_default=None, validate=v.Length(max=35))
+    extra_sponsor_user_id = f.Int(load_default=None)
 
     @post_load
     def _normalize(self, data, **kwargs):
         if data.get('name') is not None:
             data['name'] = data['name'].strip()
-        if data.get('extra_sponsor_username') is not None:
-            data['extra_sponsor_username'] = data['extra_sponsor_username'].strip() or None
         self.assert_date_range(data.get('opens_at'), data.get('closes_at'),
                                field='closes_at',
                                message='The window must close after it opens.')

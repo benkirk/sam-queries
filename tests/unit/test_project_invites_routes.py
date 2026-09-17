@@ -53,6 +53,19 @@ def unled_projcode(session):
     return project.projcode
 
 
+@pytest.fixture
+def led_projcode(session):
+    """A snapshot project benkirk leads."""
+    from sam.core.users import User
+    from sam.projects.projects import Project
+    me = User.get_by_username(session, 'benkirk')
+    projcode = (session.query(Project.projcode)
+                .filter(Project.project_lead_user_id == me.user_id, Project.is_active)
+                .order_by(Project.project_id).limit(1).scalar())
+    assert projcode, 'benkirk leads no active snapshot project'
+    return projcode
+
+
 class TestThePermissionBoundary:
 
     def test_anonymous_is_refused(self, client, snapshot_projcode):
@@ -69,6 +82,20 @@ class TestThePermissionBoundary:
             assert steward_less_client.get(path).status_code == 403, path
         assert steward_less_client.post(
             f'/project-members/{unled_projcode}/invite', data={}).status_code == 403
+
+    def test_the_sponsor_search_needs_a_login(self, client, snapshot_projcode):
+        resp = client.get(f'/admin/htmx/search/users?context=sponsor&q=user'
+                          f'&projcode={snapshot_projcode}')
+        assert resp.status_code in (302, 401)
+
+    def test_the_sponsor_search_is_gated_like_the_event_routes(
+            self, steward_less_client, led_projcode, unled_projcode):
+        url = '/admin/htmx/search/users?context=sponsor&q=user'
+        assert steward_less_client.get(url).status_code == 400, 'projcode is required'
+        assert steward_less_client.get(f'{url}&projcode={unled_projcode}').status_code == 403
+        resp = steward_less_client.get(f'{url}&projcode={led_projcode}')
+        assert resp.status_code == 200, 'a lead without VIEW_USERS may pick a sponsor'
+        assert 'fk-search-result' in resp.get_data(as_text=True)
 
     def test_an_unknown_event_code_is_404(self, auth_client):
         for path in ('/project-members/events/NO-SUCH-EVENT/roster-form',
@@ -101,6 +128,15 @@ class TestRenderSmoke:
             assert 'invitationModalLabel' in resp.get_data(as_text=True)
         assert 'name="instructions"' in resp.get_data(as_text=True), \
             'the event form carries the participant-facing instructions'
+
+    def test_the_event_form_picks_the_sponsor_from_the_user_search(self, auth_client,
+                                                                   snapshot_projcode):
+        html = auth_client.get(f'/project-members/{snapshot_projcode}/events/new-form'
+                               ).get_data(as_text=True)
+        assert 'fk-picker' in html and 'name="extra_sponsor_user_id"' in html
+        assert (f'/admin/htmx/search/users?context=sponsor&amp;projcode={snapshot_projcode}'
+                in html)
+        assert 'extra_sponsor_username' not in html
 
     def test_the_invite_form_suggests_institutions(self, auth_client, snapshot_projcode):
         html = auth_client.get(f'/project-members/{snapshot_projcode}/invite-form').get_data(as_text=True)
@@ -140,6 +176,15 @@ class TestValidation:
                                       'accounts_needed_by': '2026-10-05'})
         assert resp.status_code == 200
         assert 'letters, digits or dashes' in resp.get_data(as_text=True)
+        assert 'HX-Trigger' not in resp.headers
+
+    def test_an_unknown_sponsor_id_is_refused(self, auth_client, snapshot_projcode):
+        resp = auth_client.post(f'/project-members/{snapshot_projcode}/events',
+                                data={'event_code': 'SPN-2026', 'name': 'x',
+                                      'accounts_needed_by': '2026-10-05',
+                                      'extra_sponsor_user_id': '999999999'})
+        assert resp.status_code == 200
+        assert 'not an active SAM user' in resp.get_data(as_text=True)
         assert 'HX-Trigger' not in resp.headers
 
     def test_a_backwards_window_is_refused(self, auth_client, snapshot_projcode):

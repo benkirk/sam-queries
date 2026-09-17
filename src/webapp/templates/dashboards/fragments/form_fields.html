@@ -428,7 +428,7 @@
                          search_class='form-control',
                          selected_id='', selected_label='',
                          id_prefix=None, label_class='form-label',
-                         wrapper_class='mb-3') %}
+                         wrapper_class='mb-3', help=None) %}
 {%- set _prefix = id_prefix or ('fk_' ~ name) -%}
 {%- set _id_input = _prefix ~ '_id' -%}
 {%- set _badge_id = _prefix ~ '_badge' -%}
@@ -469,6 +469,7 @@
     <div id="{{ _results_id }}" class="list-group mt-1 fk-picker-results"
          style="max-height:200px;overflow-y:auto;"></div>
     {{ _field_error(name, _search_id) }}
+    {%- if help %}<small class="form-text text-muted">{{ help }}</small>{% endif %}
 </div>
 {% endmacro %}
 
