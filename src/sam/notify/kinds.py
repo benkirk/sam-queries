@@ -46,6 +46,9 @@ FAMILIES: Mapping[str, NotificationFamily] = {
         NotificationFamily('expiration', 'Allocation expiration notices'),
         NotificationFamily('xras', 'XRAS handoff notices'),
         NotificationFamily('task', 'Scheduled task summaries', about_project=False),
+        # A request has no project until it is fulfilled, and the digest is
+        # about a queue; neither kind previews against a project.
+        NotificationFamily('account', 'HPC account requests', about_project=False),
     )
 }
 
@@ -185,6 +188,26 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
         # Not about a project, so it has no facility to vary on.
         facility_aware=False,
         family='task',
+    ),
+    # The HPC account-request queue (docs/plans/ACCOUNT_REGISTRATION.md).
+    # Two audiences in one family: the digest goes to the team that creates
+    # accounts, the verification mail to a stranger who typed an address --
+    # which is why its context carries nothing else they typed.
+    NotificationKind(
+        key='account_queue_summary',
+        label='Account-request queue digest',
+        template_base='account_queue_summary',
+        default_subscribed=True,
+        facility_aware=False,
+        family='account',
+    ),
+    NotificationKind(
+        key='account_verify',
+        label='Account-request email verification',
+        template_base='account_verify',
+        default_subscribed=True,
+        facility_aware=False,
+        family='account',
     ),
 )
 
