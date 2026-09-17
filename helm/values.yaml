@@ -228,6 +228,17 @@ webapp:
     NOTIFY_XRAS_BCC: ""
     NOTIFY_XRAS_FROM: ""
     NOTIFY_XRAS_REPLY_TO: "alloc@ucar.edu"
+    # The account-request family carries two kinds with different audiences:
+    # the queue digest to NUSD and the public form's verification mail to a
+    # stranger. NOTIFY_ACCOUNT_QUEUE_TO is the digest recipient; empty means
+    # the weekly digest and the Send button are inert. Keep the family CC
+    # empty -- it would copy every verification mail; a copy on the digest
+    # alone is a kind-scoped row in Admin > Notifications > Addressing.
+    NOTIFY_ACCOUNT_QUEUE_TO: ""
+    NOTIFY_ACCOUNT_CC: ""
+    NOTIFY_ACCOUNT_BCC: ""
+    NOTIFY_ACCOUNT_FROM: ""
+    NOTIFY_ACCOUNT_REPLY_TO: ""
     # WARNING: EXPLICIT, not inherited. NOTIFY_ENABLED is fail-closed everywhere
     #     (sam.notify.NotifyConfig defaults it false) precisely so a dev
     #     container cannot mail real users. Production is the one place that

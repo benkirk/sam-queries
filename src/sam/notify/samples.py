@@ -32,6 +32,8 @@ _SUBJECTS = {
     'xras_update': 'NSF NCAR Project SCSG0001 allocation has been renewed',
     'xras_adjustment': 'NSF NCAR Project SCSG0001 allocation has been adjusted',
     'task_summary': '[SAM] expiration_notices: 11 sent, 1 FAILED',
+    'account_queue_summary': 'NCAR HPC account requests: 4 waiting, 3 new',
+    'account_verify': 'Verify your email address for your NCAR HPC account request',
 }
 
 _XRAS_ACTION_TYPES = {
@@ -114,6 +116,58 @@ def _task_summary() -> Dict[str, Any]:
     }
 
 
+def _account_queue_summary() -> Dict[str, Any]:
+    return {
+        'occurrence': '2026-09-14T08:00:00',
+        'total': 4,
+        'new_count': 3,
+        'waiting_count': 1,
+        'oldest_days': 37,
+        'by_purpose': [{'purpose': 'enrollment', 'count': 3},
+                       {'purpose': 'submission', 'count': 1}],
+        'events': [{'event_code': 'WRF-TUTORIAL-2026-10',
+                    'event_name': 'WRF Tutorial, October 2026',
+                    'project_code': 'SCSG0001', 'deadline': '2026-10-05',
+                    'count': 2}],
+        'rows': [
+            {'name': 'Ada Lovelace', 'email': 'ada@example.edu',
+             'organization': 'University of Example', 'desired_username': 'ada',
+             'purpose': 'enrollment', 'project_code': 'SCSG0001',
+             'event_code': 'WRF-TUTORIAL-2026-10', 'sponsor': 'Jane Lead',
+             'waiting_days': 3, 'state': 'submitted', 'assignee': '',
+             'note': 'Visiting for the tutorial week.'},
+            {'name': 'Alan Turing', 'email': 'alan@example.edu',
+             'organization': '', 'desired_username': '',
+             'purpose': 'enrollment', 'project_code': 'SCSG0001',
+             'event_code': 'WRF-TUTORIAL-2026-10', 'sponsor': 'Jane Lead',
+             'waiting_days': 3, 'state': 'claimed', 'assignee': 'operator1',
+             'note': ''},
+            {'name': 'Grace Hopper', 'email': 'grace@example.edu',
+             'organization': 'NCAR', 'desired_username': '',
+             'purpose': 'enrollment', 'project_code': 'UCUB0001',
+             'event_code': '', 'sponsor': 'Alex Admin',
+             'waiting_days': 1, 'state': 'submitted', 'assignee': '',
+             'note': ''},
+            {'name': 'Linus Torvalds', 'email': 'linus@example.edu',
+             'organization': '', 'desired_username': '',
+             'purpose': 'submission', 'project_code': '',
+             'event_code': '', 'sponsor': '',
+             'waiting_days': 37, 'state': 'submitted', 'assignee': '',
+             'note': 'XRAS placeholder linus-user-8f2a'},
+        ],
+        'queue_url': 'https://sam.hpc.ucar.edu/dashboards/admin/account-requests',
+    }
+
+
+def _account_verify() -> Dict[str, Any]:
+    return {
+        'verify_url': 'https://sam.hpc.ucar.edu/register/verify/eyJpZCI6NDF9.abc.def',
+        'code': '493027',
+        'expires_hours': 48,
+        'event_name': 'WRF Tutorial, October 2026',
+    }
+
+
 def sample_context(kind: str, facility: Optional[str] = None) -> Dict[str, Any]:
     """A builder-shaped context for ``kind``; raises ValueError on an unknown kind."""
     key = get_kind(kind).key
@@ -121,6 +175,10 @@ def sample_context(kind: str, facility: Optional[str] = None) -> Dict[str, Any]:
         return _expiration(facility)
     if key == 'task_summary':
         return _task_summary()
+    if key == 'account_queue_summary':
+        return _account_queue_summary()
+    if key == 'account_verify':
+        return _account_verify()
     return _xras(key)
 
 
@@ -196,6 +254,37 @@ VARIABLE_NOTES: Dict[str, str] = {
     'sent': 'Messages delivered. Absent when the run aborted.',
     'failed': 'Messages that failed. Absent when the run aborted.',
     'failed_recipients': 'Addresses that failed, capped.',
+    'total': 'Open account requests in the digest.',
+    'new_count': 'Requests never included in an earlier digest.',
+    'waiting_count': 'Requests already sent in an earlier digest and still open.',
+    'oldest_days': 'Age in days of the oldest open request.',
+    'by_purpose': 'Open requests counted per purpose.',
+    'by_purpose.purpose': "One of 'standalone', 'enrollment', 'submission'.",
+    'by_purpose.count': 'Requests with that purpose.',
+    'events': 'The events (workshops, classes) with open requests, nearest deadline first.',
+    'events.event_code': 'The event code, e.g. WRF-TUTORIAL-2026-10.',
+    'events.event_name': 'The event name shown on the form.',
+    'events.project_code': 'The project every fulfilled account joins.',
+    'events.deadline': 'The date the accounts are needed by.',
+    'events.count': 'Open requests under that event.',
+    'rows': 'One entry per open request, event groups first then the rest by age.',
+    'rows.name': "The requester's name.",
+    'rows.email': "The requester's email address, lower-cased.",
+    'rows.organization': 'Organization as typed, or empty.',
+    'rows.desired_username': 'The username the requester asked for, or empty. A hint only.',
+    'rows.purpose': "One of 'standalone', 'enrollment', 'submission'.",
+    'rows.project_code': 'The project a fulfilled account joins, or empty.',
+    'rows.event_code': 'The event this request belongs to, or empty.',
+    'rows.sponsor': 'Display name of the sponsor who invited them, or empty.',
+    'rows.waiting_days': 'Days since the request was made.',
+    'rows.state': "'submitted' or 'claimed'.",
+    'rows.assignee': 'The operator who claimed it, or empty.',
+    'rows.note': "The sponsor's or requester's note, one line, or empty.",
+    'queue_url': 'Link to the queue in SAM, or empty.',
+    'verify_url': 'The signed verification link.',
+    'code': 'The six-digit code to type on the page the requester is on.',
+    'expires_hours': 'Hours until the link and code expire.',
+    'event_name': 'The event the request is for, or empty.',
 }
 
 

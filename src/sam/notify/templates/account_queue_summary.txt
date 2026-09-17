@@ -1,0 +1,34 @@
+NCAR HPC account requests waiting on NUSD — {{ total }} open
+({{ new_count }} new since the last digest, {{ waiting_count }} still waiting, oldest {{ oldest_days }} days)
+
+As of {{ occurrence }}.
+{% if by_purpose %}
+By purpose
+----------
+{% for p in by_purpose %}  {{ '%-12s' | format(p.purpose) }}{{ p.count }}
+{% endfor %}{% endif %}
+{%- for e in events %}
+{{ e.event_code }} — {{ e.event_name }} ({{ e.project_code }})
+{{ e.count }} account(s) needed by {{ e.deadline }}
+------------------------------------------------------------------------
+{% for r in rows if r.event_code == e.event_code %}  {{ r.name }} <{{ r.email }}>{% if r.organization %}, {{ r.organization }}{% endif %}{% if r.desired_username %} — wants "{{ r.desired_username }}"{% endif %}
+    {{ r.purpose }}{% if r.sponsor %}, invited by {{ r.sponsor }}{% endif %}; waiting {{ r.waiting_days }} day(s){% if r.assignee %}; claimed by {{ r.assignee }}{% endif %}
+{% if r.note %}    note: {{ r.note }}
+{% endif %}{% endfor %}
+{% endfor %}
+{%- set loose = rows | rejectattr('event_code') | list %}
+{%- if loose %}
+Other requests
+------------------------------------------------------------------------
+{% for r in loose %}  {{ r.name }} <{{ r.email }}>{% if r.organization %}, {{ r.organization }}{% endif %}{% if r.desired_username %} — wants "{{ r.desired_username }}"{% endif %}
+    {{ r.purpose }}{% if r.project_code %} on {{ r.project_code }}{% endif %}{% if r.sponsor %}, invited by {{ r.sponsor }}{% endif %}; waiting {{ r.waiting_days }} day(s){% if r.assignee %}; claimed by {{ r.assignee }}{% endif %}
+{% if r.note %}    note: {{ r.note }}
+{% endif %}{% endfor %}
+{% endif %}
+{%- if queue_url %}
+Work the queue, claim rows and mark them done: {{ queue_url }}
+{% endif %}
+--
+Automated digest from the NSF NCAR Systems Accounting Manager. SAM does not
+create accounts; this is the list of people waiting for one. A request leaves
+the list by itself once the account exists in the directory.
