@@ -177,14 +177,18 @@ def htmx_invite_user(project):
 
 # -- events -------------------------------------------------------------------
 
-def _resolve_sponsor(username):
-    """The extra sponsor's SAM row, or a FormError naming the problem."""
-    if not username:
+def _resolve_sponsor(user_id):
+    """The extra sponsor's SAM row (picked from the user search), or a FormError."""
+    if user_id is None:
         return None
-    user = User.get_by_username(db.session, username)
+    user = db.session.get(User, user_id)
     if user is None or not user.is_active:
-        raise FormError(f'No active SAM user named {username}.')
+        raise FormError('That sponsor is not an active SAM user.')
     return user
+
+
+def _sponsor_label(user):
+    return f'{user.display_name} ({user.username})'
 
 
 @bp.route('/<projcode>/events/new-form')
@@ -204,7 +208,7 @@ def htmx_event_create(project):
         code = data['event_code']
         if db.session.query(AccountRequestEvent).filter_by(event_code=code).first():
             raise FormError(f'The code {code} is already in use.')
-        sponsor = _resolve_sponsor(data.get('extra_sponsor_username'))
+        sponsor = _resolve_sponsor(data.get('extra_sponsor_user_id'))
         return AccountRequestEvent.create(
             db.session, event_code=code, name=data['name'],
             instructions=data.get('instructions'),
@@ -246,8 +250,9 @@ class _EventEditHandler(HtmxFormHandler):
             updates['opens_at'] = data.get('opens_at')
         if 'closes_at' in sent:
             updates['closes_at'] = data.get('closes_at')
-        if 'extra_sponsor_username' in sent:
-            sponsor = _resolve_sponsor(data.get('extra_sponsor_username'))
+        # The picker's hidden input is always posted: empty clears the sponsor.
+        if 'extra_sponsor_user_id' in sent:
+            sponsor = _resolve_sponsor(data.get('extra_sponsor_user_id'))
             updates['extra_sponsor_user_id'] = sponsor.user_id if sponsor else None
         return self.event.update(**updates)
 
@@ -266,7 +271,8 @@ class _EventEditHandler(HtmxFormHandler):
 def htmx_event_edit_form(event, project):
     sponsor = db.session.get(User, event.extra_sponsor_user_id) if event.extra_sponsor_user_id else None
     return render_template(_EVENT_FORM, project=project, event=event,
-                           sponsor_username=sponsor.username if sponsor else '',
+                           sponsor_id=sponsor.user_id if sponsor else '',
+                           sponsor_label=_sponsor_label(sponsor) if sponsor else '',
                            post_url=url_for('project_members.htmx_event_update',
                                             event_code=event.event_code), errors=[])
 

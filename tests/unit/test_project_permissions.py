@@ -15,6 +15,7 @@ from webapp.utils.project_permissions import (
     can_change_admin,
     can_edit_consumption_threshold,
     can_exchange_allocations,
+    can_manage_events,
     can_manage_project_members,
     can_modify_allocations,
     can_view_project_members,
@@ -169,6 +170,26 @@ class TestGetUserRoleInProject:
 # ---------------------------------------------------------------------------
 # Phase 2: _is_project_steward — central authorization primitive
 # ---------------------------------------------------------------------------
+
+class TestCanManageEvents:
+    """The Invitations routes' gate, reused by the sponsor user search."""
+
+    def test_lead_admin_and_ancestor_lead_pass(self):
+        grandparent = create_mock_project(project_lead_user_id=42)
+        parent = create_mock_project(project_lead_user_id=999, parent=grandparent)
+        child = create_mock_project(project_lead_user_id=998, project_admin_user_id=997,
+                                    parent=parent)
+        assert can_manage_events(create_mock_user(user_id=998, roles=[]), child)
+        assert can_manage_events(create_mock_user(user_id=997, roles=[]), child)
+        assert can_manage_events(create_mock_user(user_id=42, roles=[]), child), \
+            'the tree is walked, as for a subtree operation'
+
+    def test_permission_holder_passes_and_an_outsider_is_blocked(self):
+        project = create_mock_project(project_lead_user_id=1, project_admin_user_id=2)
+        assert can_manage_events(
+            create_mock_user(user_id=100, roles=['admin-testing-only']), project)
+        assert not can_manage_events(create_mock_user(user_id=42, roles=[]), project)
+
 
 class TestIsProjectSteward:
     """All ``can_*`` helpers route through ``_is_project_steward``."""

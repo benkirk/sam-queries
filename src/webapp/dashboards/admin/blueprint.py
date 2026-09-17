@@ -870,12 +870,16 @@ def htmx_search_users():
       member      -> project member add list; requires can_manage_project_members
                     on the target project (projcode required), so project
                     leads/admins can search when building the add-member form.
+      sponsor     -> FK-picker list for an event's extra sponsor; requires
+                    can_manage_events on the target project (projcode
+                    required), the Invitations routes' own gate, so a lead
+                    without VIEW_USERS can pick one.
 
     All other contexts fall back to ``fk``.
     """
     from sam.queries.users import search_users_by_pattern, get_project_member_user_ids
     from sam.projects.projects import Project
-    from webapp.utils.project_permissions import can_manage_project_members
+    from webapp.utils.project_permissions import can_manage_events, can_manage_project_members
 
     q = request.args.get('q', '').strip()
     context = request.args.get('context', 'fk')
@@ -887,6 +891,7 @@ def htmx_search_users():
         'fk':          'dashboards/admin/fragments/user_search_results_fk_htmx.html',
         'impersonate': 'dashboards/admin/fragments/user_search_results_htmx.html',
         'member':      'dashboards/user/fragments/user_search_results_htmx.html',
+        'sponsor':     'dashboards/admin/fragments/user_search_results_fk_htmx.html',
     }
     template = template_map.get(context, template_map['fk'])
 
@@ -897,16 +902,18 @@ def htmx_search_users():
                                    default=context != 'impersonate')
     exclude_ids = None
 
-    if context == 'member':
+    if context in ('member', 'sponsor'):
         projcode = request.args.get('projcode', '')
         if not projcode:
             abort(400)
         project = db.session.query(Project).filter_by(projcode=projcode).first()
         if not project:
             abort(404)
-        if not can_manage_project_members(current_user, project):
+        allowed = can_manage_events if context == 'sponsor' else can_manage_project_members
+        if not allowed(current_user, project):
             abort(403)
-        exclude_ids = get_project_member_user_ids(db.session, project.project_id)
+        if context == 'member':
+            exclude_ids = get_project_member_user_ids(db.session, project.project_id)
     else:
         # Both 'fk' and 'impersonate' contexts return a listing of users;
         # the impersonate button inside the 'impersonate' result row is

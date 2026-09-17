@@ -1,9 +1,9 @@
-{% from 'dashboards/fragments/form_fields.html' import text_field, textarea_field, date_field, datetime_field, readonly_display, form_errors_panel with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, textarea_field, date_field, datetime_field, fk_search_field, readonly_display, form_errors_panel with context %}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
 {#
   Create or edit an event. Lands in #invitationFormContainer.
 
-  Context: project, event (None on create), sponsor_username (edit), post_url, errors
+  Context: project, event (None on create), sponsor_id + sponsor_label (edit), post_url, errors
   On edit the form PUTs; the handler gates updates on the keys present.
 #}
 <h5 class="modal-title" id="invitationModalLabel" hx-swap-oob="true">
@@ -34,7 +34,10 @@
         <div class="col-md-6">{{ datetime_field('opens_at', 'Registration opens', default=event.opens_at if event else '', help='Blank: open now.') }}</div>
         <div class="col-md-6">{{ datetime_field('closes_at', 'Registration closes', default=event.closes_at if event else '', help='Blank: no end.') }}</div>
     </div>
-    {{ text_field('extra_sponsor_username', 'Extra sponsor', maxlength=35,
-                  default=sponsor_username if event else '',
-                  help='One SAM username besides the project lead and admin who may run this event (an instructor, say).') }}
+    {{ fk_search_field('extra_sponsor_user_id', 'Extra sponsor',
+                       url_for('admin_dashboard.htmx_search_users', context='sponsor', projcode=project.projcode),
+                       placeholder='Search SAM users…',
+                       selected_id=sponsor_id if event else '',
+                       selected_label=sponsor_label if event else '',
+                       help='One SAM user besides the project lead and admin who may run this event (an instructor, say).') }}
 {% endcall %}

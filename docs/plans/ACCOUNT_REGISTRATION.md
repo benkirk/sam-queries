@@ -123,7 +123,7 @@ capability with three doors, all of which exist today:
 | Door | Who | How it is checked |
 |---|---|---|
 | The project | its lead and its single admin | derived from the project on every request, exactly as membership changes are — nothing stored |
-| The event | one optional **extra sponsor** (`extra_sponsor_user_id`, say an instructor who is neither lead nor admin) | the one stored sponsor; a join table only if a real event ever needs more than three people |
+| The event | one optional **extra sponsor** (`extra_sponsor_user_id`, say an instructor who is neither lead nor admin), picked from the SAM user search (`sponsor` context, gated like the event routes) | the one stored sponsor; a join table only if a real event ever needs more than three people |
 | RBAC | staff — a new `MANAGE_ACCOUNT_REQUESTS` permission in the `_ALLOCATION_ADMIN` set (`webapp/utils/rbac.py`), which is exactly the `nusd` and `csg` bundles | system-wide, any project |
 
 The route guard is the existing `require_project_permission(Permission.MANAGE_ACCOUNT_REQUESTS)`
