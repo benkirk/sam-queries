@@ -1,4 +1,4 @@
-{% from 'dashboards/fragments/form_fields.html' import text_field, textarea_field, select_field, form_errors_panel with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, datalist_field, textarea_field, select_field, form_errors_panel with context %}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
 {#
   Invite one person who has no account. Lands in #invitationFormContainer.
@@ -22,7 +22,8 @@
         <div class="col-md-6">{{ text_field('first_name', 'First name', required=True, maxlength=64) }}</div>
         <div class="col-md-6">{{ text_field('last_name', 'Last name', required=True, maxlength=64) }}</div>
     </div>
-    {{ text_field('organization', 'Organization', maxlength=128) }}
+    {{ datalist_field('organization', 'Institution', url_for('project_members.institutions'),
+                      maxlength=128, help='Start typing to pick a known institution, or enter theirs.') }}
     {% if events %}
     {{ select_field('event_code', 'Event', items=events, value_attr='event_code',
                     label_attrs=['event_code', 'name'], placeholder='— none —',

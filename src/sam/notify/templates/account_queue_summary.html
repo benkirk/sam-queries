@@ -20,7 +20,7 @@
     <h3>{{ e.event_code }} — {{ e.event_name }} ({{ e.project_code }})</h3>
     <p>{{ e.count }} account(s) needed by <strong>{{ e.deadline }}</strong></p>
     <table class="data">
-        <tr><th>Name</th><th>Email</th><th>Organization</th><th>Wants</th>
+        <tr><th>Name</th><th>Email</th><th>Institution</th><th>Wants</th>
             <th>Sponsor</th><th>Waiting</th><th>Status</th></tr>
         {% for r in rows if r.event_code == e.event_code %}
         <tr>
@@ -43,7 +43,7 @@
     {% if loose %}
     <h3>Other requests</h3>
     <table class="data">
-        <tr><th>Name</th><th>Email</th><th>Organization</th><th>Purpose</th>
+        <tr><th>Name</th><th>Email</th><th>Institution</th><th>Purpose</th>
             <th>Project</th><th>Sponsor</th><th>Waiting</th><th>Status</th></tr>
         {% for r in loose %}
         <tr>

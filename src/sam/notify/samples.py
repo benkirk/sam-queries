@@ -270,7 +270,7 @@ VARIABLE_NOTES: Dict[str, str] = {
     'rows': 'One entry per open request, event groups first then the rest by age.',
     'rows.name': "The requester's name.",
     'rows.email': "The requester's email address, lower-cased.",
-    'rows.organization': 'Organization as typed, or empty.',
+    'rows.organization': 'Institution as typed (XRAS calls it organization), or empty.',
     'rows.desired_username': 'The username the requester asked for, or empty. A hint only.',
     'rows.purpose': "One of 'standalone', 'enrollment', 'submission'.",
     'rows.project_code': 'The project a fulfilled account joins, or empty.',

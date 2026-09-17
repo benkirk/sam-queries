@@ -123,6 +123,21 @@ class TestTheForm:
         assert 'name="website"' in html, 'the honeypot'
         assert 'name="purpose_note"' in html
 
+    def test_the_institution_field_is_free_text_with_suggestions(self, client):
+        html = client.get('/register/').get_data(as_text=True)
+        assert 'list="organization-list"' in html and '<datalist id="organization-list">' in html
+        assert 'hx-get="/register/institutions"' in html
+        assert 'Institution' in html and 'Organization' not in html, \
+            "SAM's word for the affiliation; Organization is a UCAR unit"
+
+    def test_institution_suggestions_are_anonymous_names_only(self, client):
+        resp = client.get('/register/institutions?organization=universit')
+        assert resp.status_code == 200
+        body = resp.get_data(as_text=True)
+        assert 0 < body.count('<option value="') <= 10
+        assert client.get('/register/institutions?organization=u').get_data(as_text=True).strip() == '', \
+            'below two characters nothing is suggested'
+
     def test_an_unknown_code_is_refused_at_200(self, client):
         resp = client.get('/register/NO-SUCH-EVENT-9999')
         assert resp.status_code == 200

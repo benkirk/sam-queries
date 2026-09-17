@@ -58,6 +58,8 @@ class TestThePermissionBoundary:
     def test_anonymous_is_refused(self, client, snapshot_projcode):
         resp = client.get(f'/project-members/{snapshot_projcode}/invitations')
         assert resp.status_code in (302, 401, 403)
+        resp = client.get('/project-members/institutions?organization=universit')
+        assert resp.status_code in (302, 401, 403), 'the suggestions need a login'
 
     def test_a_non_steward_without_the_permission_is_403(self, steward_less_client,
                                                          unled_projcode):
@@ -99,6 +101,13 @@ class TestRenderSmoke:
             assert 'invitationModalLabel' in resp.get_data(as_text=True)
         assert 'name="instructions"' in resp.get_data(as_text=True), \
             'the event form carries the participant-facing instructions'
+
+    def test_the_invite_form_suggests_institutions(self, auth_client, snapshot_projcode):
+        html = auth_client.get(f'/project-members/{snapshot_projcode}/invite-form').get_data(as_text=True)
+        assert 'list="organization-list"' in html and 'hx-get="/project-members/institutions"' in html
+        assert 'Institution' in html and 'Organization' not in html
+        body = auth_client.get('/project-members/institutions?organization=universit').get_data(as_text=True)
+        assert 0 < body.count('<option value="') <= 10
 
 
 class TestValidation:

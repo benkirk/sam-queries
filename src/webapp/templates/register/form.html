@@ -1,5 +1,5 @@
 {% extends 'dashboards/base.html' %}
-{% from 'dashboards/fragments/form_fields.html' import text_field, select_field, textarea_field with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, datalist_field, select_field, textarea_field with context %}
 {#
   The anonymous account-registration form. Plain PRG, CSRF hidden input as
   auth/login.html, no htmx: a phone-facing page for people with no account.
@@ -46,8 +46,9 @@
             <div class="col-md-2">{{ text_field('middle_name', 'Middle', optional_text='', maxlength=64) }}</div>
             <div class="col-md-5">{{ text_field('last_name', 'Last name', required=True, maxlength=64) }}</div>
         </div>
-        {{ text_field('organization', 'Organization', required=True, maxlength=128,
-                      placeholder='University or institution') }}
+        {{ datalist_field('organization', 'Institution', url_for('register.institutions'),
+                          required=True, maxlength=128, placeholder='University, lab or company',
+                          help='Start typing to pick a known institution, or enter yours.') }}
         <div class="row">
             <div class="col-md-6">
                 {{ select_field('academic_status', 'Academic status', required=True,

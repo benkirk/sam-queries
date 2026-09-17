@@ -143,7 +143,7 @@
             <td></td>
             <td colspan="5" class="small">
                 <dl class="row mb-0">
-                    {% if r.organization %}<dt class="col-sm-3">Organization</dt><dd class="col-sm-9">{{ r.organization }}</dd>{% endif %}
+                    {% if r.organization %}<dt class="col-sm-3">Institution</dt><dd class="col-sm-9">{{ r.organization }}</dd>{% endif %}
                     <dt class="col-sm-3">Invited</dt>
                     <dd class="col-sm-9">{{ r.creation_time | fmt_date }} by <span class="font-monospace">{{ r.created_by }}</span>{% if r.requested_at %}; sent to NUSD {{ r.requested_at | fmt_date }}{% endif %}</dd>
                     {% if r.comment %}<dt class="col-sm-3">Note</dt><dd class="col-sm-9" style="white-space: pre-wrap;">{{ r.comment }}</dd>{% endif %}
