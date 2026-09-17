@@ -814,3 +814,70 @@ class TestReadyToMerge:
         assert merge_ready_email_user in body
         assert 'user38@example.invalid' not in body
         assert 'xras_merge_form' not in body, 'view-only never sees the write'
+
+
+# ---------------------------------------------------------------------------
+# The link to the Accounts queue
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def committed_account_request(app):
+    """A committed `account_request` row for the fixture placeholder.
+
+    Committed for the same reason as the rows above: the route reads through
+    `db.session`. Keyed on `xras_username`, which is what the stamp matches
+    (lower-cased on both sides). Deleted by primary key on the way out.
+    """
+    from webapp.extensions import db
+
+    from sam.core.account_requests import CREATED_BY_SWEEP, AccountRequest
+
+    with app.app_context():
+        row = AccountRequest.create(
+            db.session, email='user38@example.invalid', first_name='Ada',
+            last_name='Invented', purpose='submission',
+            xras_username='Placeholder38-User-00038',
+            created_by=CREATED_BY_SWEEP, verified_by=CREATED_BY_SWEEP)
+        row.claim('operator1')
+        db.session.commit()
+        request_id = row.account_request_id
+
+    yield request_id
+
+    with app.app_context():
+        db.session.query(AccountRequest).filter(
+            AccountRequest.account_request_id == request_id).delete()
+        db.session.commit()
+
+
+class TestTheQueueLink:
+    """Each Pending Users row points at the `account_request` the sweep wrote
+    for it, so the claim/dismiss state and controls are reachable from here."""
+
+    def test_a_row_with_no_request_says_so(self, auth_client,
+                                           committed_worklist_action):
+        body = auth_client.get(URL).get_data(as_text=True)
+        assert 'placeholder38-user-00038' in body
+        assert 'No account request yet' in body
+        assert '/admin/account-requests/' not in body
+
+    def test_a_stamped_row_shows_its_state_and_controls(
+            self, auth_client, committed_worklist_action, committed_account_request):
+        body = auth_client.get(URL).get_data(as_text=True)
+        assert 'claimed · operator1' in body
+        assert f'/admin/account-requests/{committed_account_request}/unclaim' in body
+        assert f'/admin/account-requests/{committed_account_request}/dismiss-form' in body
+
+    def test_view_only_sees_the_state_but_not_the_controls(
+            self, view_only_client, monkeypatch, committed_worklist_action,
+            committed_account_request):
+        from webapp.utils import rbac
+        real = rbac.get_user_permissions
+        monkeypatch.setattr(rbac, 'get_user_permissions',
+                            lambda user, *a, **k: {p for p in real(user, *a, **k)
+                                                   if p not in (Permission.MANAGE_ACCOUNT_REQUESTS,
+                                                                Permission.MANAGE_XRAS,
+                                                                Permission.SYSTEM_ADMIN)})
+        body = view_only_client.get(URL).get_data(as_text=True)
+        assert 'claimed · operator1' in body, 'queue state is account state, not PII'
+        assert f'/admin/account-requests/{committed_account_request}/' not in body
