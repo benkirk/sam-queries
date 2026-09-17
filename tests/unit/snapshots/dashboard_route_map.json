@@ -2423,7 +2423,7 @@
     ]
   ],
   [
-    "project_members.institutions",
+    "project_members.institutions_fragment",
     "/project-members/institutions",
     [
       "GET"
