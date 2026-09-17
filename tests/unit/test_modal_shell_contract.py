@@ -175,9 +175,11 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # the already-open modal body, so it carries no toggle of its own.
     'dashboards/admin/fragments/account_request_reason_form_htmx.html': [
         'auditDetailsModalBody'],
+    # The Dismiss/Reject buttons open the audit modal from the card. The projcode
+    # links now go through the shared project_link macro (fragments/project_bits.html),
+    # so #projectDetailsModal(Body) is that macro's pinned dependency, not this card's.
     'dashboards/admin/fragments/account_requests_card.html': [
-        'auditDetailsModal', 'auditDetailsModalBody',
-        'projectDetailsModal', 'projectDetailsModalBody'],
+        'auditDetailsModal', 'auditDetailsModalBody'],
     # The Invitations tab (loaded only into admin/edit_project.html, which
     # includes invitation_modals_htmx.html). Its openers target that shell; the
     # forms that land in it carry no toggle of their own.
