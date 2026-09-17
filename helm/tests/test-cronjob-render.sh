@@ -214,6 +214,10 @@ assert_contains "$cron_out" 'name: XRAS_API_KEY' \
   "and the key itself, via secretKeyRef — the sweep cannot enumerate without it"
 assert_contains "$cron_out" 'name: samuel-xras-api-credentials' \
   "which must name the Secret the ExternalSecret materialises"
+assert_contains "$cron_out" 'name: SAM_TASKS_ACCOUNT_MAX' \
+  "the account-queue digest's runaway guard"
+assert_contains "$cron_out" 'name: SAM_TASKS_ACCOUNT_PURGE_DAYS' \
+  "and the unverified-registration purge horizon"
 assert_contains "$cron_out" 'name: SAM_TASKS_XRAS_SWEEP_MAX_PAGES' \
   "and the sweep's page budget"
 assert_contains "$cron_out" 'name: SAM_TASKS_XRAS_SWEEP_MAX_PEOPLE' \

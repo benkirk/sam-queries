@@ -65,4 +65,4 @@ tasks:
   name: samuel-dev-tasks
   env:
     SAM_API_BASE: "https://samuel-dev.k8s.ucar.edu"
-    SAM_TASKS_DISABLED: "expiration_notices,xras_notices,xras_sweep"
+    SAM_TASKS_DISABLED: "expiration_notices,xras_notices,xras_sweep,account_requests_reconcile,account_queue_digest"

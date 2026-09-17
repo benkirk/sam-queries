@@ -235,6 +235,9 @@ webapp:
     # empty -- it would copy every verification mail; a copy on the digest
     # alone is a kind-scoped row in Admin > Notifications > Addressing.
     NOTIFY_ACCOUNT_QUEUE_TO: ""
+    # The "work the queue" link the digest carries (the Admin > Accounts page
+    # on this deployment's public hostname); empty means no link.
+    NOTIFY_ACCOUNT_QUEUE_URL: ""
     NOTIFY_ACCOUNT_CC: ""
     NOTIFY_ACCOUNT_BCC: ""
     NOTIFY_ACCOUNT_FROM: ""
@@ -556,6 +559,16 @@ tasks:
     # when it bites, and the cap selects NEWEST first — a just-posted opportunity
     # is the case the feature exists for; a historical backfill can wait a slot.
     SAM_TASKS_XRAS_MAP_MAX: "20"
+    # account_queue_digest: runaway guard on the digest's row count -- one
+    # message, so the cap is on what it lists. A digest naming hundreds of
+    # people is a selection bug, not a workshop. The digest recipient is
+    # NOTIFY_ACCOUNT_QUEUE_TO in webapp.env (forwarded by prefix); empty
+    # leaves the task inert.
+    SAM_TASKS_ACCOUNT_MAX: "500"
+    # account_requests_reconcile: an unverified public registration older
+    # than this is purged. The verification mail expires in 48 h; a week is
+    # long enough for a retry and short enough that a bot's rows do not pile up.
+    SAM_TASKS_ACCOUNT_PURGE_DAYS: "7"
     # Comma-separated task names to skip, WITHOUT a code deploy. A staged-enable
     # control: the live set is enumerated here and the rest are named in the value
     # below until each has been reviewed on its own.
@@ -571,6 +584,9 @@ tasks:
     #           refresh_allocation_state     (writes account_allocation_state hourly;
     #                                         served only when READ_MODEL_ENABLED=1)
     # Disabled: xras_notices                 (mails external PIs)
+    #           account_requests_reconcile   (writes project memberships for
+    #                                         fulfilled account requests; hourly :20)
+    #           account_queue_digest         (mails NUSD the open queue; Mon 08:00 MT)
     #
     # WARNING: this is an ENUMERATION and it is fail-OPEN. `disabled_tasks()` in
     # src/scheduling/runner.py is a case-sensitive exact match against registry
@@ -584,4 +600,4 @@ tasks:
     # so re-enabling one mid-slot does not backfill: the first real run is the next
     # occurrence. The switch is checked ahead of `only`/`force`, so
     # `sam-admin tasks --run X --force` cannot override it.
-    SAM_TASKS_DISABLED: "xras_notices"
+    SAM_TASKS_DISABLED: "xras_notices,account_requests_reconcile,account_queue_digest"
