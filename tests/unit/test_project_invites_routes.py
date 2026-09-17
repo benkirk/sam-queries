@@ -38,6 +38,19 @@ def steward_less_client(auth_client, monkeypatch):
 
 
 @pytest.fixture
+def operator_client(auth_client, monkeypatch):
+    """`benkirk` WITH MANAGE_ACCOUNT_REQUESTS -- a real queue operator, whatever
+    the snapshot grants him. The snapshot makes him a project lead, not an
+    operator, so the create-event (operator-only) path needs this."""
+    from webapp.utils import rbac
+    real = rbac.get_user_permissions
+    monkeypatch.setattr(
+        rbac, 'get_user_permissions',
+        lambda user, *a, **k: real(user, *a, **k) | {Permission.MANAGE_ACCOUNT_REQUESTS})
+    return auth_client
+
+
+@pytest.fixture
 def unled_projcode(session):
     """A snapshot project benkirk neither leads nor administers."""
     from sam.core.users import User
@@ -229,3 +242,36 @@ class TestTheInvitationsFlag:
             f'/admin/project/{snapshot_projcode}/edit').get_data(as_text=True)
         assert 'id="invitations-tab"' not in html
         assert 'id="invitationModal"' not in html
+
+
+class TestEventCreationIsOperatorOnly:
+    """A PI/admin (project steward) may invite people and manage an event that
+    exists, but may NOT create one -- minting an event code is operator-only
+    (MANAGE_ACCOUNT_REQUESTS for the facility), so a PI cannot surprise the
+    operators with a code."""
+
+    def test_a_lead_may_invite_but_not_create_an_event(self, steward_less_client,
+                                                       led_projcode):
+        # A project he leads: steward access lets him invite ...
+        assert steward_less_client.get(
+            f'/project-members/{led_projcode}/invite-form').status_code == 200
+        # ... but creating an event needs the operator permission he lacks.
+        assert steward_less_client.get(
+            f'/project-members/{led_projcode}/events/new-form').status_code == 403
+        assert steward_less_client.post(
+            f'/project-members/{led_projcode}/events', data={}).status_code == 403
+
+    def test_a_lead_sees_invite_but_not_the_new_event_button(self, steward_less_client,
+                                                             led_projcode):
+        lead_html = steward_less_client.get(
+            f'/project-members/{led_projcode}/invitations').get_data(as_text=True)
+        assert 'Invite a person' in lead_html, 'a lead still invites'
+        assert 'New event' not in lead_html, 'a lead cannot open an event code'
+
+    def test_an_operator_gets_the_new_event_button_and_form(self, operator_client,
+                                                            led_projcode):
+        op_html = operator_client.get(
+            f'/project-members/{led_projcode}/invitations').get_data(as_text=True)
+        assert 'New event' in op_html, 'an operator opens events'
+        assert operator_client.get(
+            f'/project-members/{led_projcode}/events/new-form').status_code == 200

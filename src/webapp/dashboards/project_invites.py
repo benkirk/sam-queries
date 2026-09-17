@@ -33,7 +33,10 @@ from sam.schemas.forms import (
     InviteUserForm,
     RosterPasteForm,
 )
-from webapp.api.access_control import require_event_sponsor_access, require_project_permission
+from webapp.api.access_control import (
+    require_event_sponsor_access, require_project_facility_permission,
+    require_project_permission,
+)
 from webapp.extensions import db
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import handle_htmx_form_post, htmx_success, htmx_success_message
@@ -52,6 +55,11 @@ _TRIGGERS = {'closeActiveModal': {}, 'refreshInvitations': {}, 'refreshAccountQu
 _GUARD = require_project_permission(Permission.MANAGE_ACCOUNT_REQUESTS,
                                     include_ancestors=True)
 _EVENT_GUARD = require_event_sponsor_access(Permission.MANAGE_ACCOUNT_REQUESTS)
+# Creating an event (minting a code) is operator-only: MANAGE_ACCOUNT_REQUESTS
+# for the project's facility, NO lead/admin override -- a PI cannot open a code
+# and surprise the operators. Managing an event once it exists stays on
+# _EVENT_GUARD (steward or the event's extra sponsor).
+_CREATE_GUARD = require_project_facility_permission(Permission.MANAGE_ACCOUNT_REQUESTS)
 
 
 def _invitations_enabled(view):
@@ -217,7 +225,7 @@ def _sponsor_label(user):
 @bp.route('/<projcode>/events/new-form')
 @_invitations_enabled
 @login_required
-@_GUARD
+@_CREATE_GUARD
 def htmx_event_form(project):
     return render_template(_EVENT_FORM, project=project, event=None,
                            post_url=url_for('project_members.htmx_event_create',
@@ -227,7 +235,7 @@ def htmx_event_form(project):
 @bp.route('/<projcode>/events', methods=['POST'])
 @_invitations_enabled
 @login_required
-@_GUARD
+@_CREATE_GUARD
 def htmx_event_create(project):
     def _create(data):
         code = data['event_code']
