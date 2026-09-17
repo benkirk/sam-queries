@@ -1,0 +1,27 @@
+{#
+  One modal shell for the Invitations tab's three forms (invite a person,
+  create or edit an event, paste a roster). Each form fragment swaps its own
+  title into #invitationModalLabel via hx-swap-oob and its body into
+  #invitationFormContainer. Openers live on the tab (modal closed); the
+  fragments carry no toggle of their own.
+#}
+<div class="modal fade" id="invitationModal" tabindex="-1"
+     aria-labelledby="invitationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="invitationModalLabel">
+                    <i class="fa-solid fa-user-plus"></i> Invitations
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="invitationFormContainer">
+                <div class="modal-body text-center text-muted py-4" role="status">
+                    <i class="fa-solid fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
+                    <p class="mt-2">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
