@@ -196,3 +196,36 @@ class TestValidation:
         assert resp.status_code == 200
         assert 'close after it opens' in resp.get_data(as_text=True)
         assert 'HX-Trigger' not in resp.headers
+
+
+class TestTheInvitationsFlag:
+    """ACCOUNT_INVITATIONS_ENABLED gates the whole tab: off in prod so the
+    initial capability is the XRAS-mirrored Accounts queue only. The queue and
+    the XRAS Pending-Users card are not behind it."""
+
+    def test_the_class_defaults(self):
+        import os
+        from webapp.config import DevelopmentConfig, ProductionConfig, TestingConfig
+        if 'ACCOUNT_INVITATIONS_ENABLED' not in os.environ:
+            assert ProductionConfig.ACCOUNT_INVITATIONS_ENABLED is False
+            assert DevelopmentConfig.ACCOUNT_INVITATIONS_ENABLED is True
+            assert TestingConfig.ACCOUNT_INVITATIONS_ENABLED is True
+
+    def test_off_404s_every_invitation_route(self, auth_client, app, monkeypatch,
+                                             snapshot_projcode):
+        monkeypatch.setitem(app.config, 'ACCOUNT_INVITATIONS_ENABLED', False)
+        for path in (f'/project-members/{snapshot_projcode}/invitations',
+                     f'/project-members/{snapshot_projcode}/invite-form',
+                     f'/project-members/{snapshot_projcode}/events/new-form',
+                     '/project-members/institutions?organization=univ'):
+            assert auth_client.get(path).status_code == 404, path
+        assert auth_client.post(
+            f'/project-members/{snapshot_projcode}/invite', data={}).status_code == 404
+
+    def test_off_hides_the_tab_and_its_modal(self, auth_client, app, monkeypatch,
+                                            snapshot_projcode):
+        monkeypatch.setitem(app.config, 'ACCOUNT_INVITATIONS_ENABLED', False)
+        html = auth_client.get(
+            f'/admin/project/{snapshot_projcode}/edit').get_data(as_text=True)
+        assert 'id="invitations-tab"' not in html
+        assert 'id="invitationModal"' not in html

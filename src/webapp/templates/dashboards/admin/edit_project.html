@@ -77,7 +77,7 @@
   {# Invitations: people who have NO account yet (docs/plans/ACCOUNT_REGISTRATION.md).
      The routes walk the project tree, so an ancestor steward who can reach this
      page sees the tab too. #}
-  {% if can_act_on_project(Permission.MANAGE_ACCOUNT_REQUESTS, project, include_ancestors=True) %}
+  {% if config.ACCOUNT_INVITATIONS_ENABLED and can_act_on_project(Permission.MANAGE_ACCOUNT_REQUESTS, project, include_ancestors=True) %}
   <li class="nav-item" role="presentation">
     <button class="nav-link{{ ' active' if active_tab == 'invitations' }}" id="invitations-tab"
             data-bs-toggle="tab" data-bs-target="#tab-invitations" data-tab-param-value="invitations"
@@ -184,7 +184,7 @@
     </div>
   </div>
 
-  {% if can_act_on_project(Permission.MANAGE_ACCOUNT_REQUESTS, project, include_ancestors=True) %}
+  {% if config.ACCOUNT_INVITATIONS_ENABLED and can_act_on_project(Permission.MANAGE_ACCOUNT_REQUESTS, project, include_ancestors=True) %}
   <!-- Tab 4: Invitations -->
   <div class="tab-pane fade{{ ' show active' if active_tab == 'invitations' }}" id="tab-invitations" role="tabpanel">
     {# Refreshed by the invitation writes' HX-Trigger; the first load is the
@@ -338,7 +338,9 @@
 {% include 'project_members/fragments/member_modals_htmx.html' %}
 
 <!-- Invitations tab modals (invite / event / roster forms load into one shell) -->
+{% if config.ACCOUNT_INVITATIONS_ENABLED %}
 {% include 'project_members/fragments/invitation_modals_htmx.html' %}
+{% endif %}
 
 <!-- Edit ProjectDirectory modal scaffold (loaded by the pencil button on
      each row of the Directories panel inside #linkedElementsContainer). -->
