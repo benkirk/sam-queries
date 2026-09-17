@@ -245,6 +245,9 @@ from .xras_activation import (
     XrasActivationEventForm,
     XrasDismissForm,
 )
+from .account_requests import (
+    AccountRequestReasonForm,
+)
 from .xras_remediation import (
     XrasMergeForm,
     XrasRemediationReasonForm,
@@ -350,6 +353,8 @@ __all__ = [
     # XRAS action ingest
     'XrasActivationEventForm',
     'XrasDismissForm',
+    # Account requests
+    'AccountRequestReasonForm',
     'XrasMergeForm',
     'XrasRemediationReasonForm',
     'XrasRoleForm',
