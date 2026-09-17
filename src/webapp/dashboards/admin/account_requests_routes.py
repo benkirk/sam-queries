@@ -54,8 +54,10 @@ _FORM_ID = 'account-requests-filters'
 _TARGET = 'account-requests-card'
 _CARD = 'dashboards/admin/fragments/account_requests_card.html'
 _REASON_FORM = 'dashboards/admin/fragments/account_request_reason_form_htmx.html'
-_TRIGGERS = {'refreshAccountQueue': {}}
-_MODAL_TRIGGERS = modal_triggers('refreshAccountQueue')
+# Both cards that show these rows: the Accounts queue and the XRAS Pending
+# Users card, which posts to these same routes from the allocations page.
+_TRIGGERS = {'refreshAccountQueue': {}, 'refreshXrasTab': {}}
+_MODAL_TRIGGERS = modal_triggers('refreshAccountQueue', 'refreshXrasTab')
 
 ORIGIN_SELF, ORIGIN_SPONSOR, ORIGIN_SWEEP = 'self', 'sponsor', 'sweep'
 _ORIGIN_LABELS = {ORIGIN_SELF: 'Public form', ORIGIN_SPONSOR: 'Invited',
