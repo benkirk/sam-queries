@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% from 'dashboards/fragments/contract_bits.html' import contract_user_link %}
 {#
   The Invitations tab: people invited onto this project who have NO SAM
   account yet, and the events (workshops, classes) they register under.
@@ -61,7 +62,7 @@
                 {{ e.event.opens_at | fmt_date if e.event.opens_at else 'now' }} – {{ e.event.closes_at | fmt_date if e.event.closes_at else 'open-ended' }}
                 {% else %}open{% endif %}
             </td>
-            <td>{% if e.sponsor %}{{ e.sponsor.display_name }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            <td>{{ contract_user_link(e.sponsor, can_view_users) }}</td>
             <td class="text-nowrap" title="{{ e.fulfilled }} of {{ e.total }} accounts exist; {{ e.open }} still waiting">
                 {{ e.fulfilled }} of {{ e.total }} fulfilled
             </td>

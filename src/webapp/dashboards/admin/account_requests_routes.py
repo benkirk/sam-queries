@@ -44,7 +44,9 @@ from webapp.utils.htmx import (
     htmx_success_message, modal_triggers, read_flag, read_sort,
 )
 from webapp.utils.notify import get_notifier
-from webapp.utils.rbac import Permission, require_permission
+from webapp.utils.rbac import (
+    Permission, has_permission_any_facility, require_permission,
+)
 
 from .blueprint import bp
 
@@ -242,6 +244,8 @@ def account_requests_fragment():
         form_id=_FORM_ID, target_id=_TARGET,
         fragment_url=url_for('admin_dashboard.account_requests_fragment'),
         digest_recipient=_digest_recipient(),
+        can_view_projects=has_permission_any_facility(
+            current_user, Permission.VIEW_PROJECTS),
     )
 
 

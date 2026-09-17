@@ -36,7 +36,7 @@ from webapp.api.access_control import require_event_sponsor_access, require_proj
 from webapp.extensions import db
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import handle_htmx_form_post, htmx_success, htmx_success_message
-from webapp.utils.rbac import Permission
+from webapp.utils.rbac import Permission, has_permission_any_facility
 
 from .project_members import bp
 
@@ -108,6 +108,8 @@ def invitations_fragment(project):
         'waiting_days': waiting_days(r, today=today),
     } for r in rows]
     return render_template(_TAB, project=project, events=event_rows, rows=views,
+                           can_view_users=has_permission_any_facility(
+                               current_user, Permission.VIEW_USERS),
                            open_count=sum(1 for r in rows
                                           if r.is_open and r.user_id is None))
 
