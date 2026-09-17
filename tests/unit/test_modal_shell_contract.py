@@ -170,6 +170,13 @@ def test_page_template_targets_resolve(page):
 # confirm every page that can load the fragment ships those shells, then update
 # the pin. Same ratchet shape as tests/unit/test_template_csp_lint.py.
 HTMX_FRAGMENT_SHELL_DEPS = {
+    # The account-request queue (loaded only into admin/account_requests.html,
+    # which includes the audit_details_modal shell). The reason form swaps into
+    # the already-open modal body, so it carries no toggle of its own.
+    'dashboards/admin/fragments/account_request_reason_form_htmx.html': [
+        'auditDetailsModalBody'],
+    'dashboards/admin/fragments/account_requests_card.html': [
+        'auditDetailsModal', 'auditDetailsModalBody'],
     'dashboards/admin/fragments/bulk_deactivate_project_directories_form_htmx.html': [
         'bulkDeactivateProjectDirectoriesFormContainer'],
     'dashboards/admin/fragments/bulk_deactivate_project_directories_preview_htmx.html': [
@@ -433,6 +440,7 @@ PAGES_WITH_PROJECT_MODAL = {
     '/admin/contracts': 'dashboards/admin/contracts.html',
     '/admin/configuration': 'dashboards/admin/configuration.html',
     '/admin/htmx/notifications': 'dashboards/admin/notifications.html',
+    '/admin/account-requests': 'dashboards/admin/account_requests.html',
     '/admin/users-groups': 'dashboards/admin/users_groups.html',
     '/allocations/projects': 'dashboards/allocations/projects.html',
     '/allocations/transactions': 'dashboards/allocations/transactions.html',

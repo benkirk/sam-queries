@@ -1,0 +1,52 @@
+{% extends 'dashboards/admin/base_admin.html' %}
+{#
+  Admin -> Accounts: the HPC account-request queue NUSD works.
+
+  Context:
+    form_id, target_id, fragment_url, facets
+
+  The card (fragments/account_requests_card.html) is loaded by htmx and
+  refreshed by `refreshAccountQueue`. Its facet state lives in the hidden
+  form below, OUTSIDE the swap target, in the XRAS card idiom: every
+  dimension the card offers a chip for needs a control here, or the chip
+  writes into a field that does not exist and filters nothing.
+#}
+
+{% block title %}Account requests — SAM admin{% endblock %}
+
+{% block admin_content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <h2 class="mb-1"><i class="fa-solid fa-user-plus"></i> Account requests</h2>
+        <p class="text-muted mb-0">
+            People waiting for an NCAR HPC account. SAM does not create
+            accounts; this is the worklist for the team that does. A request
+            leaves the queue by itself once the account exists in the
+            directory (Reconcile checks now; the hourly task checks anyway).
+        </p>
+    </div>
+</div>
+
+<form id="{{ form_id }}" class="d-none">
+    {% for dim in facets %}
+    <select name="{{ dim }}" multiple hidden></select>
+    {% endfor %}
+    {# Sort is form state (set-sort-submit writes these), so it survives
+       every facet change, not just a header click. #}
+    <input type="hidden" name="sort_by" value="">
+    <input type="hidden" name="sort_dir" value="">
+</form>
+
+<div id="{{ target_id }}"
+     hx-get="{{ fragment_url }}"
+     hx-trigger="load, refreshAccountQueue from:body, submit from:#{{ form_id }}"
+     hx-include="#{{ form_id }}"
+     hx-swap="innerHTML">
+    <div class="text-center text-muted py-4">
+        <div class="spinner-border spinner-border-sm" role="status"></div>
+        Loading requests…
+    </div>
+</div>
+
+{% include 'dashboards/allocations/partials/audit_details_modal.html' %}
+{% endblock %}
