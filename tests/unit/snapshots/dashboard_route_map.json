@@ -2423,6 +2423,13 @@
     ]
   ],
   [
+    "project_members.institutions",
+    "/project-members/institutions",
+    [
+      "GET"
+    ]
+  ],
+  [
     "project_members.invitations_fragment",
     "/project-members/<projcode>/invitations",
     [

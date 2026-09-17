@@ -25,6 +25,7 @@ from sam.manage.account_requests import (
     paste_roster,
 )
 from sam.queries.account_requests import events_for, readiness_of, resolve_requests, waiting_days
+from sam.queries.admin import search_institutions
 from sam.schemas.forms import (
     AccountRequestEventEditForm,
     AccountRequestEventForm,
@@ -147,6 +148,15 @@ class _InviteUserHandler(HtmxFormHandler):
         else:
             message = f'Queued {obj.display_name} for an account; NUSD will be told.'
         return htmx_success_message(_TRIGGERS, message)
+
+
+@bp.route('/institutions')
+@login_required
+def institutions():
+    """Datalist options for the invite form's Institution field (login only:
+    institution names are not sensitive, and a plain project lead uses this)."""
+    return render_template('dashboards/fragments/institution_options_htmx.html',
+                           names=search_institutions(db.session, request.args.get('organization')))
 
 
 @bp.route('/<projcode>/invite-form')

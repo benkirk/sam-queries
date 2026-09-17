@@ -20,6 +20,7 @@ from sam.core.account_requests import AccountRequest, AccountRequestEvent
 from sam.manage import management_transaction
 from sam.manage.account_requests import register_request
 from sam.queries.account_requests import build_verify_message
+from sam.queries.admin import search_institutions
 from sam.schemas.forms import RegisterForm, VerifyCodeForm
 from webapp.extensions import db
 from webapp.limiter import limiter as _rate_limit
@@ -82,6 +83,14 @@ def _render_form(event=None, *, form=None, errors=(), field_errors=None, locked_
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
 def form():
     return _render_form()
+
+
+@bp.route('/institutions')
+@_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
+def institutions():
+    """Datalist options for the Institution field; names only, nothing the visitor typed."""
+    return render_template('dashboards/fragments/institution_options_htmx.html',
+                           names=search_institutions(db.session, request.args.get('organization')))
 
 
 @bp.route('/<event_code>')

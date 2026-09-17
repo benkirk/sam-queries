@@ -89,7 +89,7 @@
                        id="account-requests-search" name="search"
                        form="{{ form_id }}" value="{{ search or '' }}"
                        autocomplete="off" style="width: 24rem; max-width: 100%;"
-                       placeholder="Name, email, organization, project, event or sponsor"
+                       placeholder="Name, email, institution, project, event or sponsor"
                        hx-get="{{ fragment_url }}"
                        hx-target="#{{ target_id }}"
                        hx-swap="innerHTML"
@@ -239,7 +239,7 @@
                     <td></td>
                     <td colspan="8" class="small">
                         <dl class="row mb-0">
-                            <dt class="col-sm-3">Organization</dt><dd class="col-sm-9">{{ r.organization or '—' }}{% if r.academic_status %} · {{ r.academic_status }}{% endif %}{% if r.residence_country %} · {{ r.residence_country }}{% endif %}</dd>
+                            <dt class="col-sm-3">Institution</dt><dd class="col-sm-9">{{ r.organization or '—' }}{% if r.academic_status %} · {{ r.academic_status }}{% endif %}{% if r.residence_country %} · {{ r.residence_country }}{% endif %}</dd>
                             {% if r.phone or r.orcid %}
                             <dt class="col-sm-3">Contact</dt><dd class="col-sm-9">{{ r.phone or '' }}{% if r.orcid %} · ORCID {{ r.orcid }}{% endif %}</dd>
                             {% endif %}
