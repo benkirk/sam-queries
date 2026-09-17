@@ -1,6 +1,17 @@
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
+{#- The entity quick-view link, as on the XRAS accounts card: `.btn-link` for the
+    link color, the inner `.font-monospace` so `.btn` does not uppercase the code.
+    Opens #projectDetailsModal, which base_admin.html ships. -#}
+{% macro project_link(projcode) -%}
+<button type="button" class="btn btn-link btn-entity p-0"
+        title="View project details"
+        data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
+        hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=projcode) }}"
+        hx-target="#projectDetailsModalBody"
+        hx-swap="innerHTML"><span class="font-monospace">{{ projcode }}</span></button>
+{%- endmacro %}
 {#
   The account-request queue card.
 
@@ -128,7 +139,7 @@
                         <span class="font-monospace">{{ group.event.event_code }}</span>
                         — {{ group.event.name }}
                         <span class="text-muted fw-normal">
-                            ({{ group.project_code or '?' }}; accounts needed by
+                            ({% if group.project_code %}{{ project_link(group.project_code) }}{% else %}?{% endif %}; accounts needed by
                             <strong>{{ group.event.accounts_needed_by | fmt_date }}</strong>{% if not group.event.active %}; closed{% endif %})
                         </span>
                         {% else %}
@@ -153,8 +164,9 @@
                         <span class="badge bg-body-secondary text-body-secondary border">{{ v.purpose }}</span>
                         <br><small class="text-muted">{{ origin_labels[v.origin] }}</small>
                     </td>
-                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
-                        {% if v.project_code %}<span class="font-monospace">{{ v.project_code }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                    {# Not a collapse trigger: the modal opener inside would toggle the row too. #}
+                    <td>
+                        {% if v.project_code %}{{ project_link(v.project_code) }}{% else %}<span class="text-muted">—</span>{% endif %}
                     </td>
                     <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
                         {% if v.readiness == 'ready' %}

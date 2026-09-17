@@ -176,7 +176,8 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/admin/fragments/account_request_reason_form_htmx.html': [
         'auditDetailsModalBody'],
     'dashboards/admin/fragments/account_requests_card.html': [
-        'auditDetailsModal', 'auditDetailsModalBody'],
+        'auditDetailsModal', 'auditDetailsModalBody',
+        'projectDetailsModal', 'projectDetailsModalBody'],
     # The Invitations tab (loaded only into admin/edit_project.html, which
     # includes invitation_modals_htmx.html). Its openers target that shell; the
     # forms that land in it carry no toggle of their own.
