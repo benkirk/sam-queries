@@ -82,6 +82,9 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
     creation_time = Column(DateTime, nullable=False)
     modified_time = Column(DateTime, onupdate=datetime.now)
 
+    def __str__(self):
+        return f"{self.event_code} ({self.name}, by {self.accounts_needed_by})"
+
     def __repr__(self):
         return f"<AccountRequestEvent {self.event_code!r} project={self.project_id}>"
 
@@ -239,6 +242,9 @@ class AccountRequest(Base, SessionMixin):
     upid = Column(Integer)
     fulfilled_at = Column(DateTime)
     fulfill_error = Column(String(255))
+
+    def __str__(self):
+        return f"{self.email} ({self.display_name}, {self.purpose}, {self.state})"
 
     def __repr__(self):
         return (f"<AccountRequest {self.account_request_id} {self.email!r} "
