@@ -743,7 +743,7 @@ def edit_project_page(project):
     active_at_raw = request.args.get('active_at', '').strip()
     active_at_seed = (_parse_active_at_arg(active_at_raw).strftime('%Y-%m-%d')
                       if active_at_raw else now_str)
-    active_tab = read_tab('tab', {'details', 'allocations', 'members'},
+    active_tab = read_tab('tab', {'details', 'allocations', 'members', 'invitations'},
                           'allocations' if active_at_raw else 'details')
 
     return render_template(

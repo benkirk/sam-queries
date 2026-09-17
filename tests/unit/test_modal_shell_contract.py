@@ -177,6 +177,10 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'auditDetailsModalBody'],
     'dashboards/admin/fragments/account_requests_card.html': [
         'auditDetailsModal', 'auditDetailsModalBody'],
+    # The Invitations tab (loaded only into admin/edit_project.html, which
+    # includes invitation_modals_htmx.html). Its openers target that shell; the
+    # forms that land in it carry no toggle of their own.
+    'project_members/fragments/invitations_tab_htmx.html': ['invitationModal'],
     'dashboards/admin/fragments/bulk_deactivate_project_directories_form_htmx.html': [
         'bulkDeactivateProjectDirectoriesFormContainer'],
     'dashboards/admin/fragments/bulk_deactivate_project_directories_preview_htmx.html': [

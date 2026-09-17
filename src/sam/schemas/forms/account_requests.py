@@ -19,3 +19,87 @@ class AccountRequestReasonForm(HtmxFormSchema):
             from marshmallow import ValidationError
             raise ValidationError({'reason': ['A reason is required.']})
         return data
+
+
+#: HTML datetime-local wire format, as sam.schemas.forms.status uses it.
+_DATETIME_LOCAL = '%Y-%m-%dT%H:%M'
+
+_EVENT_CODE_RE = r'^[A-Za-z0-9][A-Za-z0-9-]{2,31}$'
+_EVENT_CODE_MSG = ('3-32 letters, digits or dashes, starting with a letter or '
+                   'digit (e.g. WRF-TUTORIAL-2026-10).')
+
+
+class InviteUserForm(HtmxFormSchema):
+    """One person invited onto a project by a steward. The email is the one
+    key that resolves later, so it is lower-cased here."""
+
+    email = f.Email(required=True, validate=v.Length(max=255))
+    first_name = f.Str(required=True, validate=v.Length(min=1, max=64))
+    last_name = f.Str(required=True, validate=v.Length(min=1, max=64))
+    organization = f.Str(load_default=None, validate=v.Length(max=128))
+    note = f.Str(load_default=None, validate=v.Length(max=255))
+    event_code = f.Str(load_default=None, validate=v.Length(max=32))
+
+    @post_load
+    def _normalize(self, data, **kwargs):
+        data['email'] = data['email'].strip().lower()
+        for key in ('first_name', 'last_name', 'organization', 'note'):
+            if data.get(key) is not None:
+                data[key] = data[key].strip() or None
+        if data.get('event_code'):
+            data['event_code'] = data['event_code'].strip().upper()
+        return data
+
+
+class AccountRequestEventForm(HtmxFormSchema):
+    """Create an event: code, name, deadline, an optional public-form window
+    and an optional extra sponsor by username."""
+
+    event_code = f.Str(required=True,
+                       validate=v.Regexp(_EVENT_CODE_RE, error=_EVENT_CODE_MSG))
+    name = f.Str(required=True, validate=v.Length(min=1, max=128))
+    accounts_needed_by = f.Date('%Y-%m-%d', required=True)
+    opens_at = f.DateTime(_DATETIME_LOCAL, load_default=None)
+    closes_at = f.DateTime(_DATETIME_LOCAL, load_default=None)
+    extra_sponsor_username = f.Str(load_default=None, validate=v.Length(max=35))
+
+    @post_load
+    def _normalize(self, data, **kwargs):
+        data['event_code'] = data['event_code'].strip().upper()
+        data['name'] = data['name'].strip()
+        if data.get('extra_sponsor_username') is not None:
+            data['extra_sponsor_username'] = data['extra_sponsor_username'].strip() or None
+        self.assert_date_range(data.get('opens_at'), data.get('closes_at'),
+                               field='closes_at',
+                               message='The window must close after it opens.')
+        return data
+
+
+class AccountRequestEventEditForm(HtmxFormSchema):
+    """Edit an event. The code is not editable -- it has been handed out.
+    Loaded ``partial=True``; the handler gates updates on the keys present in
+    the original form, since ``load_default`` fills absent fields with None."""
+
+    name = f.Str(load_default=None, validate=v.Length(min=1, max=128))
+    accounts_needed_by = f.Date('%Y-%m-%d', load_default=None)
+    opens_at = f.DateTime(_DATETIME_LOCAL, load_default=None)
+    closes_at = f.DateTime(_DATETIME_LOCAL, load_default=None)
+    extra_sponsor_username = f.Str(load_default=None, validate=v.Length(max=35))
+
+    @post_load
+    def _normalize(self, data, **kwargs):
+        if data.get('name') is not None:
+            data['name'] = data['name'].strip()
+        if data.get('extra_sponsor_username') is not None:
+            data['extra_sponsor_username'] = data['extra_sponsor_username'].strip() or None
+        self.assert_date_range(data.get('opens_at'), data.get('closes_at'),
+                               field='closes_at',
+                               message='The window must close after it opens.')
+        return data
+
+
+class RosterPasteForm(HtmxFormSchema):
+    """One ``Name <email>`` per line; parsed by ``sam.manage.account_requests.parse_roster``."""
+
+    roster = f.Str(required=True, validate=v.Length(min=1, max=20_000),
+                   error_messages={'required': 'Paste at least one line.'})

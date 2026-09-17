@@ -1,0 +1,23 @@
+{% from 'dashboards/fragments/form_fields.html' import textarea_field, form_errors_panel with context %}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{#
+  Paste a roster under an event. Lands in #invitationFormContainer; on
+  success the outcome summary (roster_result_htmx.html) replaces it.
+
+  Context: project, event, post_url, errors
+#}
+<h5 class="modal-title" id="invitationModalLabel" hx-swap-oob="true">
+    <i class="fa-solid fa-list-ul"></i> Paste a roster under {{ event.event_code }}
+</h5>
+
+{% call htmx_form(post_url, '#invitationFormContainer', 'Invite everyone', submit_icon='user-plus', errors=errors) %}
+    <p class="text-muted small">
+        One person per line, as <code>First Last &lt;email&gt;</code> or
+        <code>Last, First &lt;email&gt;</code>. Lines starting with <code>#</code>
+        are ignored. Anyone SAM already knows is added to
+        <strong>{{ project.projcode }}</strong> at once; everyone else is queued
+        for an account under <strong>{{ event.name }}</strong>.
+    </p>
+    {{ textarea_field('roster', 'Roster', required=True, rows=10,
+                      placeholder='Ada Lovelace <ada@example.edu>') }}
+{% endcall %}

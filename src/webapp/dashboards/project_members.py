@@ -288,3 +288,8 @@ def _render_members_table(projcode, project):
         can_view_users=has_permission_any_facility(current_user, Permission.VIEW_USERS),
         access_by_username=_members_access_by_username(project),
     )
+
+
+# The Invitations tab's routes live in a sibling module on this blueprint,
+# imported AFTER bp is defined (the admin blueprint's idiom).
+from . import project_invites  # noqa: E402, F401

@@ -1,0 +1,37 @@
+{% from 'dashboards/fragments/form_fields.html' import text_field, date_field, datetime_field, readonly_display, form_errors_panel with context %}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{#
+  Create or edit an event. Lands in #invitationFormContainer.
+
+  Context: project, event (None on create), sponsor_username (edit), post_url, errors
+  On edit the form PUTs; the handler gates updates on the keys present.
+#}
+<h5 class="modal-title" id="invitationModalLabel" hx-swap-oob="true">
+    <i class="fa-solid fa-calendar-plus"></i>
+    {% if event %}Edit {{ event.event_code }}{% else %}New event on {{ project.projcode }}{% endif %}
+</h5>
+
+{% call htmx_form(post_url, '#invitationFormContainer',
+                  'Save' if event else 'Create event',
+                  submit_icon='save' if event else 'plus', errors=errors) %}
+    {% if event %}
+    {{ readonly_display('Code', event.event_code) }}
+    {% else %}
+    {{ text_field('event_code', 'Code', required=True, maxlength=32,
+                  placeholder='WRF-TUTORIAL-2026-10',
+                  help='Short, unique, and shareable: participants type it on the registration form.') }}
+    {% endif %}
+    {{ text_field('name', 'Name', required=not event, maxlength=128,
+                  default=event.name if event else '',
+                  help='What a participant sees after entering the code.') }}
+    {{ date_field('accounts_needed_by', 'Accounts needed by', required=not event,
+                  default=event.accounts_needed_by.strftime('%Y-%m-%d') if event else '',
+                  help='The deadline the account team works to.') }}
+    <div class="row">
+        <div class="col-md-6">{{ datetime_field('opens_at', 'Registration opens', default=event.opens_at if event else '', help='Blank: open now.') }}</div>
+        <div class="col-md-6">{{ datetime_field('closes_at', 'Registration closes', default=event.closes_at if event else '', help='Blank: no end.') }}</div>
+    </div>
+    {{ text_field('extra_sponsor_username', 'Extra sponsor', maxlength=35,
+                  default=sponsor_username if event else '',
+                  help='One SAM username besides the project lead and admin who may run this event (an instructor, say).') }}
+{% endcall %}
