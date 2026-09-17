@@ -1,4 +1,4 @@
-{% from 'dashboards/fragments/form_fields.html' import text_field, date_field, datetime_field, readonly_display, form_errors_panel with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, textarea_field, date_field, datetime_field, readonly_display, form_errors_panel with context %}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
 {#
   Create or edit an event. Lands in #invitationFormContainer.
@@ -24,6 +24,9 @@
     {{ text_field('name', 'Name', required=not event, maxlength=128,
                   default=event.name if event else '',
                   help='What a participant sees after entering the code.') }}
+    {{ textarea_field('instructions', 'Instructions', rows=4, maxlength=4000,
+                      default=event.instructions if event else '',
+                      help='Shown to participants on the registration form, under the event name.') }}
     {{ date_field('accounts_needed_by', 'Accounts needed by', required=not event,
                   default=event.accounts_needed_by.strftime('%Y-%m-%d') if event else '',
                   help='The deadline the account team works to.') }}

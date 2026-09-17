@@ -66,12 +66,13 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
     __table_args__ = (
         UniqueConstraint('event_code', name='account_request_event_code'),
         Index('account_request_event_project', 'project_id'),
-        Index('account_request_event_deadline', 'active', 'accounts_needed_by'),
     )
 
     account_request_event_id = Column(Integer, primary_key=True, autoincrement=True)
     event_code = Column(String(32), nullable=False)
     name = Column(String(128), nullable=False)
+    #: Sponsor prose shown on the public form under the event name.
+    instructions = Column(Text)
     project_id = Column(Integer, nullable=False)
     extra_sponsor_user_id = Column(Integer)
     accounts_needed_by = Column(Date, nullable=False)
@@ -80,7 +81,8 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
     created_by = Column(String(35), nullable=False)
     #: App clock, never a DB default -- SAM's convention is naive-Mountain.
     creation_time = Column(DateTime, nullable=False)
-    modified_time = Column(DateTime, onupdate=datetime.now)
+    modified_time = Column(DateTime, nullable=False, default=datetime.now,
+                           onupdate=datetime.now)
 
     def __str__(self):
         return f"{self.event_code} ({self.name}, by {self.accounts_needed_by})"
@@ -111,8 +113,8 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
 
     @classmethod
     def create(cls, session, *, event_code, name, project_id, accounts_needed_by,
-               created_by, extra_sponsor_user_id=None, opens_at=None,
-               closes_at=None, clock=None):
+               created_by, instructions=None, extra_sponsor_user_id=None,
+               opens_at=None, closes_at=None, clock=None):
         """Flushes, does not commit; the caller owns the transaction."""
         name = _clean(name, width=128)
         if not name:
@@ -121,16 +123,19 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
             raise ValueError('accounts_needed_by must be a date')
         if opens_at and closes_at and closes_at < opens_at:
             raise ValueError('closes_at must not precede opens_at')
+        now = clock or datetime.now()
         event = cls(
             event_code=cls.normalize_code(event_code),
             name=name,
+            instructions=_clean(instructions),
             project_id=int(project_id),
             extra_sponsor_user_id=extra_sponsor_user_id,
             accounts_needed_by=accounts_needed_by,
             opens_at=opens_at,
             closes_at=closes_at,
             created_by=_clean(created_by, width=35),
-            creation_time=clock or datetime.now(),
+            creation_time=now,
+            modified_time=now,
         )
         if not event.created_by:
             raise ValueError('created_by is required')
@@ -138,14 +143,16 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
         session.flush()
         return event
 
-    def update(self, *, name=None, accounts_needed_by=None, opens_at=_UNSET,
-               closes_at=_UNSET, extra_sponsor_user_id=_UNSET):
-        """Sentinel-gated so a caller can clear the window or the sponsor."""
+    def update(self, *, name=None, accounts_needed_by=None, instructions=_UNSET,
+               opens_at=_UNSET, closes_at=_UNSET, extra_sponsor_user_id=_UNSET):
+        """Sentinel-gated so a caller can clear the window, sponsor or instructions."""
         if name is not None:
             cleaned = _clean(name, width=128)
             if not cleaned:
                 raise ValueError('an event needs a name')
             self.name = cleaned
+        if instructions is not _UNSET:
+            self.instructions = _clean(instructions)
         if accounts_needed_by is not None:
             self.accounts_needed_by = accounts_needed_by
         if opens_at is not _UNSET:
@@ -205,7 +212,7 @@ class AccountRequest(Base, SessionMixin):
     middle_name = Column(String(64))
     last_name = Column(String(64), nullable=False)
     organization = Column(String(128))
-    academic_status = Column(String(32))
+    academic_status = Column(String(64))
     residence_country = Column(String(64))
     orcid = Column(String(19))
     phone = Column(String(32))
@@ -216,6 +223,8 @@ class AccountRequest(Base, SessionMixin):
     project_id = Column(Integer)
     sponsor_user_id = Column(Integer)
     event_id = Column(Integer)
+    #: Stored lower-cased: a match key the sweep and the Pending Users card
+    #: look up with a plain IN, so the index serves it on either backend.
     xras_username = Column(String(64))
 
     # Queue state.
@@ -234,14 +243,21 @@ class AccountRequest(Base, SessionMixin):
     verified_by = Column(String(35))
     verify_code_hash = Column(String(64))
     verify_expires_at = Column(DateTime)
+    verify_sent_count = Column(Integer, nullable=False, default=0)
+    source_ip = Column(String(45))
     creation_time = Column(DateTime, nullable=False)
-    modified_time = Column(DateTime, onupdate=datetime.now)
+    modified_time = Column(DateTime, nullable=False, default=datetime.now,
+                           onupdate=datetime.now)
 
     # Fulfillment.
     user_id = Column(Integer)
     upid = Column(Integer)
     fulfilled_at = Column(DateTime)
     fulfill_error = Column(String(255))
+    #: Not written yet: the rejection notice (deferred) and the XRAS
+    #: placeholder merge (phase 3). Present so neither needs an ALTER.
+    closure_notified_at = Column(DateTime)
+    merged_at = Column(DateTime)
 
     def __str__(self):
         return f"{self.email} ({self.display_name}, {self.purpose}, {self.state})"
@@ -277,7 +293,7 @@ class AccountRequest(Base, SessionMixin):
                residence_country=None, orcid=None, phone=None,
                desired_username=None, project_id=None, sponsor_user_id=None,
                event_id=None, xras_username=None, comment=None, purpose_note=None,
-               verified_by=None, clock=None):
+               verified_by=None, source_ip=None, clock=None):
         """Flushes, does not commit.
 
         ``verified_by`` set means the row is visible to the queue at once: a
@@ -308,13 +324,14 @@ class AccountRequest(Base, SessionMixin):
         if not creator:
             raise ValueError('created_by is required')
         now = clock or datetime.now()
+        placeholder = _clean(xras_username, width=64)
         row = cls(
             email=address.lower(),
             first_name=first,
             middle_name=_clean(middle_name, width=64),
             last_name=last,
             organization=_clean(organization, width=128),
-            academic_status=_clean(academic_status, width=32),
+            academic_status=_clean(academic_status, width=64),
             residence_country=_clean(residence_country, width=64),
             orcid=_clean(orcid, width=19),
             phone=_clean(phone, width=32),
@@ -323,14 +340,16 @@ class AccountRequest(Base, SessionMixin):
             project_id=project_id,
             sponsor_user_id=sponsor_user_id,
             event_id=event_id,
-            xras_username=_clean(xras_username, width=64),
+            xras_username=placeholder.lower() if placeholder else None,
             state='submitted',
             comment=_clean(comment),
             purpose_note=_clean(purpose_note, width=500),
             created_by=creator,
             verified_at=now if verified_by else None,
             verified_by=_clean(verified_by, width=35),
+            source_ip=_clean(source_ip, width=45),
             creation_time=now,
+            modified_time=now,
         )
         session.add(row)
         session.flush()
@@ -356,11 +375,11 @@ class AccountRequest(Base, SessionMixin):
         self.session.flush()
         return self
 
-    def _close(self, state: str, by, reason, clock=None):
-        self._require_open(state.rstrip('ed').rstrip('t') or state)
+    def _close(self, state: str, verb: str, by, reason, clock=None):
+        self._require_open(verb)
         cleaned = _clean(reason, width=255)
         if not cleaned:
-            raise ValueError(f'a reason is required to {state} a request')
+            raise ValueError(f'a reason is required to {verb} a request')
         self.state = state
         self.assignee = None
         self.closed_by = _clean(by, width=35)
@@ -371,11 +390,11 @@ class AccountRequest(Base, SessionMixin):
 
     def dismiss(self, by, reason, clock=None):
         """Set aside: a duplicate, or a person who already has an account."""
-        return self._close('dismissed', by, reason, clock)
+        return self._close('dismissed', 'dismiss', by, reason, clock)
 
     def reject(self, by, reason, clock=None):
         """Refuse; the reason is what the requester is told."""
-        return self._close('rejected', by, reason, clock)
+        return self._close('rejected', 'reject', by, reason, clock)
 
     def reopen(self):
         if self.state in OPEN_STATES:
@@ -390,8 +409,10 @@ class AccountRequest(Base, SessionMixin):
     # -- verification --------------------------------------------------------
 
     def set_verification(self, code_hash: str, expires_at: datetime):
+        """One call per verification mail issued; the count is the abuse signal."""
         self.verify_code_hash = code_hash
         self.verify_expires_at = expires_at
+        self.verify_sent_count = (self.verify_sent_count or 0) + 1
         self.session.flush()
         return self
 
@@ -407,8 +428,10 @@ class AccountRequest(Base, SessionMixin):
     # -- what SAM did --------------------------------------------------------
 
     def mark_requested(self, when=None):
-        self.requested_at = when or datetime.now()
-        self.session.flush()
+        """First told only: every later digest is in notification_log."""
+        if self.requested_at is None:
+            self.requested_at = when or datetime.now()
+            self.session.flush()
         return self
 
     def fulfill(self, user, when=None):

@@ -237,6 +237,7 @@
                                 {%- if v.sponsor %} by {{ v.sponsor.display_name }} (<span class="font-monospace">{{ v.sponsor.username }}</span>){% endif %}
                                 {%- if v.event %}; event <span class="font-monospace">{{ v.event.event_code }}</span>{% endif %}
                                 {%- if v.verified %}; verified {{ r.verified_at | fmt_date }}{% if r.verified_by %} by {{ r.verified_by }}{% endif %}{% else %}; <span class="text-warning-emphasis">address not verified</span>{% endif %}
+                                {%- if r.source_ip %}; from <span class="font-monospace">{{ r.source_ip }}</span>{% if (r.verify_sent_count or 0) > 1 %}, {{ r.verify_sent_count }} verification mails{% endif %}{% endif %}
                             </dd>
                             {% if r.xras_username %}
                             <dt class="col-sm-3">XRAS placeholder</dt><dd class="col-sm-9"><span class="font-monospace">{{ r.xras_username }}</span></dd>

@@ -193,6 +193,13 @@ class TestTheSend:
         assert result.detail['selected'] == 1
         assert gone.requested_at is None, 'never sent to NUSD'
 
+    def test_next_weeks_digest_does_not_move_requested_at(self, ctx, wire, session):
+        row = make_account_request(session)
+        mod.account_queue_digest(ctx())
+        result = mod.account_queue_digest(ctx(OCC + timedelta(days=7)))
+        assert result.detail['sent'] == 1 and result.detail['new'] == 0
+        assert row.requested_at == LOCAL, 'first told; later digests are in the ledger'
+
     def test_a_second_run_on_the_same_day_is_suppressed_not_resent(
             self, ctx, wire, session):
         row = make_account_request(session)

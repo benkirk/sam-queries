@@ -154,7 +154,8 @@ class TestStampAccountRequests:
     def test_worklist_rows_point_at_their_request_casefolded(self, session):
         row = make_account_request(session, purpose='submission',
                                    xras_username='Jane-user-ABC123').claim('op')
-        worklist = [{'username': 'jane-user-abc123'}, {'username': 'nobody-user-x'}]
+        assert row.xras_username == 'jane-user-abc123', 'the stored key is lower-case'
+        worklist = [{'username': 'JANE-user-abc123'}, {'username': 'nobody-user-x'}]
         stamp_account_requests(session, worklist)
         assert worklist[0]['account_request'] == {
             'id': row.account_request_id, 'state': 'claimed', 'assignee': 'op',

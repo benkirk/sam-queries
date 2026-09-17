@@ -170,6 +170,7 @@ class TestSubmit:
             assert row.created_by == CREATED_BY_SELF and row.verified_at is None
             assert row.purpose == 'standalone' and row.purpose_note
             assert row.verify_code_hash and row.verify_expires_at > datetime.now()
+            assert row.verify_sent_count == 1 and row.source_ip == '127.0.0.1'
             assert not row.is_open, 'invisible to the queue until verified'
         page = client.get(location)
         assert page.status_code == 200

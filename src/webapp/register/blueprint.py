@@ -121,7 +121,8 @@ def submit():
     ttl = int(current_app.config.get('ACCOUNT_VERIFY_TTL_HOURS', 48))
     code = tokens.new_code()
     with management_transaction(db.session):
-        row = register_request(db.session, event=event, clock=now, **{
+        row = register_request(db.session, event=event, clock=now,
+                               source_ip=get_remote_address(), **{
             k: data.get(k) for k in ('email', 'first_name', 'last_name', 'middle_name',
                                      'organization', 'academic_status',
                                      'residence_country', 'orcid', 'phone',

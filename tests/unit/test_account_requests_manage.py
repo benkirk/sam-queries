@@ -186,7 +186,7 @@ def _worklist_row(username, *, classification='absent', email=None,
 class TestUpsertSweepRequests:
     def test_absent_rows_become_submission_requests_once(self, session):
         project = make_project(session)
-        rows = [_worklist_row('jane-user-abc', email='jane@example.edu',
+        rows = [_worklist_row('Jane-User-ABC', email='jane@example.edu',
                               request_number=project.projcode),
                 _worklist_row('john-user-def', email='john@example.edu')]
         assert upsert_sweep_requests(session, rows) == {'created': 2, 'existing': 0, 'skipped': 0}
@@ -199,7 +199,7 @@ class TestUpsertSweepRequests:
     def test_a_dismissed_row_survives_the_next_sweep(self, session):
         rows = [_worklist_row('Gone-user-1', email='gone@example.edu')]
         upsert_sweep_requests(session, rows)
-        session.query(AccountRequest).filter_by(xras_username='Gone-user-1').one().dismiss('op', 'dup')
+        session.query(AccountRequest).filter_by(xras_username='gone-user-1').one().dismiss('op', 'dup')
         assert upsert_sweep_requests(session, [_worklist_row('gone-user-1', email='gone@example.edu')]
                                      ) == {'created': 0, 'existing': 1, 'skipped': 0}
 

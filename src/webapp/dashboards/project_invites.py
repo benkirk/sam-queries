@@ -197,6 +197,7 @@ def htmx_event_create(project):
         sponsor = _resolve_sponsor(data.get('extra_sponsor_username'))
         return AccountRequestEvent.create(
             db.session, event_code=code, name=data['name'],
+            instructions=data.get('instructions'),
             project_id=project.project_id,
             accounts_needed_by=data['accounts_needed_by'],
             opens_at=data.get('opens_at'), closes_at=data.get('closes_at'),
@@ -227,6 +228,8 @@ class _EventEditHandler(HtmxFormHandler):
         updates = {}
         if 'name' in sent:
             updates['name'] = data.get('name')
+        if 'instructions' in sent:
+            updates['instructions'] = data.get('instructions')
         if 'accounts_needed_by' in sent and data.get('accounts_needed_by'):
             updates['accounts_needed_by'] = data['accounts_needed_by']
         if 'opens_at' in sent:

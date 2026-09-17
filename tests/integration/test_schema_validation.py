@@ -477,10 +477,14 @@ UTF8MB4_COLUMNS = {
     ('account_request', 'middle_name'),
     ('account_request', 'last_name'),
     ('account_request', 'organization'),
+    ('account_request', 'academic_status'),
+    ('account_request', 'residence_country'),
     ('account_request', 'closed_reason'),
     ('account_request', 'comment'),
     ('account_request', 'purpose_note'),
+    ('account_request', 'fulfill_error'),
     ('account_request_event', 'name'),
+    ('account_request_event', 'instructions'),
 }
 
 #: Every table the charset-split tests read. Add a table here when it joins
@@ -725,7 +729,8 @@ class TestCriticalSchemas:
         """A cohort of requests: unique human-typed code, no FKs, app-clock stamps."""
         table_name = 'account_request_event'
         db_cols = get_db_columns(session, table_name)
-        expected = {'account_request_event_id', 'event_code', 'name', 'project_id',
+        expected = {'account_request_event_id', 'event_code', 'name', 'instructions',
+                    'project_id',
                     'extra_sponsor_user_id', 'accounts_needed_by', 'opens_at',
                     'closes_at', 'active', 'created_by', 'creation_time',
                     'modified_time'}
@@ -760,8 +765,10 @@ class TestCriticalSchemas:
             'state', 'assignee', 'requested_at', 'closed_by', 'closed_at',
             'closed_reason', 'comment', 'purpose_note',
             'created_by', 'verified_at', 'verified_by', 'verify_code_hash',
-            'verify_expires_at', 'creation_time', 'modified_time',
+            'verify_expires_at', 'verify_sent_count', 'source_ip',
+            'creation_time', 'modified_time',
             'user_id', 'upid', 'fulfilled_at', 'fulfill_error',
+            'closure_notified_at', 'merged_at',
         }
         assert set(db_cols.keys()) == expected, set(db_cols.keys()) ^ expected
         assert db_cols['account_request_id']['key'] == 'PRI'
@@ -769,6 +776,12 @@ class TestCriticalSchemas:
             'email must be as wide as email_address.email_address')
         assert db_cols['verify_code_hash']['type'] == 'char(64)', (
             'an HMAC-SHA256 hex digest is exactly 64 characters')
+        assert db_cols['academic_status']['type'] == 'varchar(64)', (
+            'XRAS academic statuses are longer than 32 characters')
+        assert db_cols['source_ip']['type'] == 'varchar(45)', (
+            'an IPv6 address with an IPv4 tail is 45 characters')
+        assert db_cols['modified_time']['nullable'] is False, (
+            'modified_time is stamped at create, so a row never carries NULL')
         for col in ('creation_time', 'modified_time'):
             default = session.execute(text("""
                 SELECT COLUMN_DEFAULT FROM information_schema.COLUMNS
