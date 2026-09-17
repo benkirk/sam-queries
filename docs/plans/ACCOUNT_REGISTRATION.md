@@ -1,12 +1,45 @@
 # HPC account registration — the request portal and the NUSD queue
 
-**Status: design, not built; phase 1 can start now.** A standalone product: the way
+**Status: built 2026-09-16 (phases 1 and 2) on branch `account_registration`;
+phase 3 has its columns and nothing else.** § 0 records what the build changed
+against the design below. A standalone product: the way
 a person asks for an NCAR HPC account, the queue the account-creating team works
 from, and the hook that lets SAM act the moment the account exists. It ships in two
 phases (§ 5) — **internal** first, where authenticated sponsors invite people who
 have no account and the XRAS sweep feeds the queue, with no dependency outside SAM;
 then **external** self-registration. It is also the identity step that
 `XRAS_SUBMISSION.md` phase 3 needs, but nothing here depends on XRAS.
+
+---
+
+## 0. As built — deviations from the design
+
+Eleven commits, each green on its own, in the order the dependencies run:
+permission → tables and ORM → query/manage tier → the event guard → the
+sweep feed → the notify family → the two tasks → the Accounts queue → the
+Pending Users link → the Invitations tab → the flag and the public form.
+
+| | Decision | Why |
+|---|---|---|
+| D1 | **A render never writes.** The queue derives `open / ready / fulfilled` per render; every write goes through `reconcile_account_requests()` in `sam/manage/account_requests.py`, run by the hourly `account_requests_reconcile` task, the queue's *Reconcile now* button, and the digest before it selects. | § 3.3 had every render stamping rows and calling `add_user_to_project`, which raises on a project with no accounts — a membership commit inside a GET. |
+| D2 | `state ∈ submitted · claimed · rejected · dismissed`; `requested_at` is an orthogonal stamp. | A claimed row must be digestable without losing its assignee. |
+| D3 | No "sponsor notified when the last row lands" mail. The event row shows `n of m fulfilled`. | A third kind; "last" is unstable as rosters grow; NOTIFY is off everywhere it would be tested. |
+| D4 | The project surface is a fourth **Manage Project** tab, `?tab=invitations`. The invitation routes walk the project tree; the page gate (`require_project_permission(EDIT_PROJECTS)`) does not, so a tree-ancestor lead reaches the routes but not the page today. Widening `edit_project_page` and the card link with `include_ancestors=True` is a one-line decision left open. | Confirmed with the operator. |
+| D5 | `desired_username` is a hint shown to the operator, never a match key. Email through `sam_merge_targets`, honoring `ambiguous`, is the only resolver. | A casefolded hit on a stranger's username is a plausible collision. |
+| D6 | The sweep feeds `absent` rows only; `inactive` is the deferred `reactivation`. | § 6. |
+| D7 | The public form is plain PRG with the hidden CSRF input, not an `HtmxFormHandler`. | A phone-facing page for people with no account. |
+| D8 | Link and page tokens on two salts of `SECRET_KEY`; the code stored as an HMAC of `id:code`. | A leaked "check your mail" URL cannot verify; constant-time, fixed width; the brute-force bound is the rate limit. |
+| D9 | An operator **Mark verified** action on the queue (vouch). | Needed in production anyway (bounced mail, a phone call), and the only path where NOTIFY is off. `NOTIFY_TRANSPORT=console` shows the mail body in compose. |
+| D10 | The digest recipient is `NOTIFY_ACCOUNT_QUEUE_TO`, its link `NOTIFY_ACCOUNT_QUEUE_URL`; dedup key `account_queue_summary:<day>:<address>`. | `NOTIFY_`-prefixed keys reach the CronJob by prefix with no template edit. |
+| D11 | `email VARCHAR(255)`; `event_id` instead of `event_code` on the request row; `closed_by/closed_at/closed_reason` for both closures; `verified_by`, `verify_code_hash CHAR(64)`, `verify_expires_at`, `fulfilled_at`, `fulfill_error`. Index names never equal a table name — Postgres keeps both in one namespace. | D1, D8, and the dual backend. |
+
+**Operator handoffs, not automated:** apply `scripts/sql/create_account_request_event.sql`
+then `create_account_request.sql` to production and read the columns back by
+name; regenerate the obfuscated LFS blob afterwards and verify both purges ran;
+clear `account_requests_reconcile` and then `account_queue_digest` from
+`SAM_TASKS_DISABLED` once NUSD confirms `NOTIFY_ACCOUNT_QUEUE_TO`; set
+`ACCOUNT_REGISTRATION_ENABLED` per deployment (dark in `values.yaml`, on in
+`values-dev.yaml`); decide D4; `sam-admin cache --refresh` after deploy.
 
 ---
 
@@ -240,8 +273,8 @@ The person-create verb is not yet in the write client and has not been probed;
 
 | Phase | Ships | Needs |
 |---|---|---|
-| **1 — internal** | the `account_request` and `account_request_event` tables and ORM, every column from the start (nullable where a later phase fills it — a column added later is a hand DDL on the production VM); the NUSD queue card with claim, dismiss and reject, grouped by event, behind `MANAGE_ACCOUNT_REQUESTS`; **Invite user** and the event/roster workflow on the project card for lead, admin, extra sponsor and staff; rows derived from the XRAS sweep rosters; the fulfillment observer with `add_user_to_project`; the queue-summary mail once NUSD has said what they want on it | nothing outside SAM; the NUSD conversation, for the digest only |
-| **2 — external** | the public self-registration form with email verification (link and code), the login-POST rate tier, the hardening pass; event codes accepted from the public form | phase 1; the internet-hardening review |
+| **1 — internal** ✅ built | the `account_request` and `account_request_event` tables and ORM, every column from the start (nullable where a later phase fills it — a column added later is a hand DDL on the production VM); the NUSD queue card with claim, dismiss and reject, grouped by event, behind `MANAGE_ACCOUNT_REQUESTS`; **Invite user** and the event/roster workflow on the project card for lead, admin, extra sponsor and staff; rows derived from the XRAS sweep rosters; the fulfillment observer with `add_user_to_project`; the queue-summary mail once NUSD has said what they want on it | nothing outside SAM; the NUSD conversation, for the digest only |
+| **2 — external** ✅ built, dark in production | the public self-registration form with email verification (link and code), the login-POST rate tier, the hardening pass; event codes accepted from the public form | phase 1; the internet-hardening review |
 | **3 — XRAS link** | the placeholder-and-merge path of § 4; `registration_id` on `xras_submission` | phase 2; `XRAS_SUBMISSION.md` phase 2 in production |
 
 Phase 1 does double duty twice over: the invitation replaces a help-desk mail for

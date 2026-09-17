@@ -152,6 +152,18 @@ sam-queries/
 - **CompJob**/**CompActivity**, **HPCActivity**/**HPCCharge**, **DavActivity**/**DavCharge**,
   **DiskActivity**/**DiskCharge**, **ArchiveActivity**/**ArchiveCharge**
 
+### Account requests (`sam/core/account_requests.py`)
+- **AccountRequest** / **AccountRequestEvent**: a person who needs an HPC
+  account, and the cohort (workshop) they register under. SAM never creates
+  users; the row holds what SAM cannot re-derive. `state` is
+  submitted/claimed/rejected/dismissed — fulfilled is derived from `users` by
+  email (`sam_merge_targets`) and stamped only by
+  `sam.manage.account_requests.reconcile_account_requests()`; a render never
+  writes. Design + as-built record: `docs/plans/ACCOUNT_REGISTRATION.md`.
+  Surfaces: Admin → Accounts (`MANAGE_ACCOUNT_REQUESTS`), Manage Project →
+  Invitations, the Pending Users column, and the anonymous `/register` form
+  behind `ACCOUNT_REGISTRATION_ENABLED` (off in prod, on in dev).
+
 ### Security / Integration
 - **Role**, **ApiCredentials** (bcrypt-hashed), **RoleApiCredentials**
 - **XrasUserView**, **XrasAllocationView**, etc.: read-only database views
@@ -703,6 +715,7 @@ makes `smtplib.SMTP` raise so no test can open a socket whatever its config.
 | **Visibility** | Admin → Configuration → Notifications (`VIEW_SYSTEM_CONFIG`, counts only) → `Details »` (`SYSTEM_ADMIN`, rows name real addresses). |
 | **Approver's note** | `adminComments` from the XRAS reports feed (`src/sam/integration/xras_api/comments.py`, keyed by projcode + `actionId`), resolved by the Notify route and the `xras_notices` task and handed to `build_xras_messages(approver_comment=...)`. Fail-open: unconfigured/XRAS down/no match → `None` + one log line, never a withheld mail. Rendered on the **PI's copy only** — `build_xras_messages` sets the note on the lead's message and `None` on a non-lead's, so the admin's mail never carries it. |
 | **Family addressing** | `NOTIFY_<FAMILY>_{CC,BCC,FROM,REPLY_TO}` (family = a `FAMILIES` key in `kinds.py`) is filled onto empty `Message` fields by the `Notifier`; a builder-set cc/bcc replaces the env default. On top, `notification_addressing` rows (scope = family, kind, or `{kind}-{facility}` stem, e.g. `expiration-WNA`) **always add**, read once per `Notifier` through the ledger's session factory, fail-open. Admin → Notifications → **Addressing** (`SYSTEM_ADMIN`) adds/removes rows; deployment defaults are shown read-only. `Message.copies()` is the one redirect-drop rule (transports and ledger read it); what left is recorded in `notification_log.copies` as `cc:a@x;bcc:b@y`. The CronJob forwards every non-empty `NOTIFY_*` by prefix. `NOTIFY_BCC` is the kind-blind global. |
+| **Account family** | `account_queue_summary` (the open queue to `NOTIFY_ACCOUNT_QUEUE_TO`, keyed on the day so the Send button and the weekly `account_queue_digest` task cannot both send it) and `account_verify` (the public form's link + code; its context carries **nothing the visitor typed**). Keep `NOTIFY_ACCOUNT_CC` empty — it would copy every verification mail; a copy on the digest alone is a kind-scoped Addressing row. |
 | **Templates / overrides** | Admin → Notifications → **Templates** (`SYSTEM_ADMIN`) edits any of the 16 shipped files; a save writes `notification_template_override` (keyed by file name) and the renderer prefers the row on the **next** renderer build, one `SELECT` per `Notifier`. Reset deletes the row. `sam/notify/samples.py` is both the preview input and the variables table; `_email_base.html` (underscore = developer-owned) is never editable. Save **renders** the body against the sample context, because a sandbox refusal is a runtime error. "Preview for" a real project goes through `sam/queries/notification_previews.py` (`build_xras_messages(kind=)` forces the template's kind). Record: `docs/plans/implemented/NOTIFICATION_TEMPLATE_EDITOR.md`. |
 
 **Batch knobs**: `send_many(chunk_size=N)` opens one transport connection per N
@@ -745,6 +758,15 @@ named in `SAM_TASKS_DISABLED`** pending a soak.
 | **Writes** | one `XrasActivationEvent(event_type='notified', created_by='task:xras_notices')` per action that actually reached somebody — send first, record second, so the timeline never claims a handoff that did not leave. |
 | **Why it cannot double-mail** | button and task both call `build_xras_messages`, so both mint `{kind}:{projcode}:{action_id}:{address}`. The ledger suppresses whichever is second. No locking needed around the card. |
 | **Misfire** | the plain 6 h default. A missed slot costs nothing — the window is rolling, so the next slot subsumes it. |
+
+### The account-request tasks
+
+`account_requests_reconcile` (hourly :20, DB-only: stamps fulfilled requests,
+enrolls inside a savepoint so one project without accounts cannot fail the
+pass, purges unverified public rows past `SAM_TASKS_ACCOUNT_PURGE_DAYS`) and
+`account_queue_digest` (Monday 08:00 MT, one message, reconciles first,
+`SAM_TASKS_ACCOUNT_MAX` on the row count, an empty queue sends nothing, no
+summary mail). **Both ship named in `SAM_TASKS_DISABLED`.**
 
 ⚠️ **`SAM_TASKS_DISABLED` is fail-OPEN.** Registering a task in
 `src/scheduling/tasks/` puts it into production **live** on the next hourly
