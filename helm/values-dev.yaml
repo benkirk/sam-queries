@@ -33,6 +33,7 @@ webapp:
     FLASK_CONFIG: "production"            # ProductionConfig.validate() is the auth interlock
     AUTH_PROVIDER: "oidc"
     DISABLE_AUTH: "0"
+    ACCOUNT_REGISTRATION_ENABLED: "1"     # the anonymous /register form, live here and dark in prod
     SAM_DB_DRIVER: "postgresql"
     SAM_DB_SERVER: "csg-postgres.k8s.ucar.edu"
     SAM_DB_PORT: "5432"

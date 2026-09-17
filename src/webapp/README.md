@@ -6,6 +6,9 @@ Flask-based web administration interface for the Systems Accounting Manager (SAM
 
 - **Flask-Admin Interface**: Full CRUD operations for all SAM database tables
   (dev-only; gated by the `FLASK_ADMIN_ENABLED` kill-switch, off in production)
+- **Account registration**: anonymous `/register` form with email verification
+  (gated by the `ACCOUNT_REGISTRATION_ENABLED` kill-switch, off in production;
+  `docs/plans/ACCOUNT_REGISTRATION.md`)
 - **Authentication**: Pluggable authentication system (stub, LDAP, OIDC)
 - **Role-Based Access Control (RBAC)**: Permissions from POSIX group bundles + per-user overrides
 - **Dashboard**: Statistics and monitoring for projects, users, and allocations

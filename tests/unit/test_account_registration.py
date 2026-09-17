@@ -1,0 +1,282 @@
+"""The anonymous /register form: the flag, the form, the write, verification.
+
+The flag mirrors COMPONENT_GALLERY_ENABLED (on outside production, off in
+production; the URL 404s when off). The POST creates a committed row through
+`db.session`, so the tests that exercise it clean up by address; the mailer
+is replaced with a null transport and no ledger, so no notification_log row
+leaks into the shared test database.
+"""
+
+from contextlib import contextmanager
+from datetime import datetime, timedelta
+
+import pytest
+
+from webapp.limiter import limiter as facade
+
+pytestmark = pytest.mark.unit
+
+GOOD = {
+    'email': 'zz.register.test@example.invalid', 'first_name': 'Reg', 'last_name': 'Tester',
+    'organization': 'University of Example', 'academic_status': 'Graduate Student',
+    'residence_country': 'US', 'purpose_note': 'Running the class exercises.',
+}
+
+
+@pytest.fixture(scope='module')
+def registration_disabled_app(test_db_url, status_db_url):
+    from webapp.run import create_app
+    return create_app(config_overrides={
+        'SQLALCHEMY_DATABASE_URI': test_db_url,
+        'SQLALCHEMY_BINDS': {'system_status': status_db_url},
+        'ACCOUNT_REGISTRATION_ENABLED': False,
+    })
+
+
+@pytest.fixture
+def null_notifier(monkeypatch):
+    """A mailer that records nothing: TestingConfig has NOTIFY off, and a real
+    Notifier would still write a `suppressed` ledger row per POST."""
+    from sam.notify import NotifyConfig, Notifier, NullTransport
+    monkeypatch.setattr('webapp.register.blueprint.get_notifier',
+                        lambda **_: Notifier(config=NotifyConfig(enabled=False),
+                                             transport=NullTransport(), ledger=None))
+
+
+@pytest.fixture
+def cleanup_address(app):
+    """Delete whatever a POST created for the test address."""
+    from sam.core.account_requests import AccountRequest
+    from webapp.extensions import db
+    yield GOOD['email']
+    with app.app_context():
+        db.session.query(AccountRequest).filter(
+            AccountRequest.email == GOOD['email']).delete()
+        db.session.commit()
+
+
+@pytest.fixture
+def committed_registration(app):
+    """A committed, unverified self-registration with a known code."""
+    from sam.core.account_requests import AccountRequest, CREATED_BY_SELF
+    from webapp.extensions import db
+    from webapp.register import tokens
+
+    code = '246810'
+    with app.app_context():
+        row = AccountRequest.create(
+            db.session, email='zz.pending.test@example.invalid', first_name='Pen',
+            last_name='Ding', purpose='standalone', created_by=CREATED_BY_SELF)
+        row.set_verification(tokens.code_hash(row.account_request_id, code),
+                             datetime.now() + timedelta(hours=1))
+        db.session.commit()
+        row_id = row.account_request_id
+
+    yield row_id, code
+
+    with app.app_context():
+        db.session.query(AccountRequest).filter(
+            AccountRequest.account_request_id == row_id).delete()
+        db.session.commit()
+
+
+def _row(app, row_id):
+    from sam.core.account_requests import AccountRequest
+    from webapp.extensions import db
+    with app.app_context():
+        row = db.session.get(AccountRequest, row_id)
+        db.session.refresh(row)
+        return {'verified_at': row.verified_at, 'verified_by': row.verified_by,
+                'hash': row.verify_code_hash}
+
+
+class TestTheFlag:
+
+    def test_on_by_default_outside_production(self, app):
+        assert app.config['ACCOUNT_REGISTRATION_ENABLED'] is True
+        assert 'register' in app.blueprints
+
+    def test_off_means_404_and_no_blueprint(self, registration_disabled_app):
+        client = registration_disabled_app.test_client()
+        assert client.get('/register/').status_code == 404
+        assert client.get('/register/verify/x').status_code == 404
+        assert 'register' not in registration_disabled_app.blueprints
+        assert client.get('/auth/login').status_code == 200
+
+    def test_loaded_class_defaults(self):
+        import os
+        from webapp.config import DevelopmentConfig, ProductionConfig, TestingConfig
+        if 'ACCOUNT_REGISTRATION_ENABLED' not in os.environ:
+            assert ProductionConfig.ACCOUNT_REGISTRATION_ENABLED is False
+            assert DevelopmentConfig.ACCOUNT_REGISTRATION_ENABLED is True
+            assert TestingConfig.ACCOUNT_REGISTRATION_ENABLED is True
+
+
+class TestTheForm:
+
+    def test_it_is_anonymous_and_csrf_protected(self, client):
+        resp = client.get('/register/')
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert 'name="csrf_token"' in html
+        assert 'name="website"' in html, 'the honeypot'
+        assert 'name="purpose_note"' in html
+
+    def test_an_unknown_code_is_refused_at_200(self, client):
+        resp = client.get('/register/NO-SUCH-EVENT-9999')
+        assert resp.status_code == 200
+        assert 'not a known event code' in resp.get_data(as_text=True)
+
+    def test_a_malformed_code_is_refused_at_200(self, client):
+        resp = client.get('/register/x')
+        assert resp.status_code == 200
+        assert 'not a valid event code' in resp.get_data(as_text=True)
+
+
+class TestSubmit:
+
+    def test_missing_fields_re_render(self, client, null_notifier):
+        resp = client.post('/register/', data={'email': GOOD['email']})
+        assert resp.status_code == 200
+        assert 'first_name' in resp.get_data(as_text=True)
+
+    def test_no_reason_without_an_event_is_refused(self, client, null_notifier):
+        data = dict(GOOD)
+        data.pop('purpose_note')
+        resp = client.post('/register/', data=data)
+        assert resp.status_code == 200
+        assert 'what you need the account for' in resp.get_data(as_text=True)
+
+    def test_the_honeypot_pretends_and_writes_nothing(self, client, app, null_notifier,
+                                                     cleanup_address):
+        from sam.core.account_requests import AccountRequest
+        from webapp.extensions import db
+        resp = client.post('/register/', data={**GOOD, 'website': 'http://spam'})
+        assert resp.status_code == 302 and '/register/pending/' in resp.headers['Location']
+        with app.app_context():
+            assert db.session.query(AccountRequest).filter_by(email=GOOD['email']).count() == 0
+
+    def test_a_good_submission_creates_an_unverified_row_and_lands_on_pending(
+            self, client, app, null_notifier, cleanup_address):
+        from sam.core.account_requests import AccountRequest, CREATED_BY_SELF
+        from webapp.extensions import db
+        resp = client.post('/register/', data=GOOD)
+        assert resp.status_code == 302
+        location = resp.headers['Location']
+        assert '/register/pending/' in location and 'sent=0' in location, \
+            'mail is suppressed in the test config, and the page must say so'
+        with app.app_context():
+            row = db.session.query(AccountRequest).filter_by(email=GOOD['email']).one()
+            assert row.created_by == CREATED_BY_SELF and row.verified_at is None
+            assert row.purpose == 'standalone' and row.purpose_note
+            assert row.verify_code_hash and row.verify_expires_at > datetime.now()
+            assert not row.is_open, 'invisible to the queue until verified'
+        page = client.get(location)
+        assert page.status_code == 200
+        assert 'Mail delivery is switched off' in page.get_data(as_text=True)
+
+
+class TestVerification:
+
+    def test_the_link_verifies_once_and_clears_the_code(self, client, app,
+                                                        committed_registration):
+        from webapp.register import tokens
+        row_id, _ = committed_registration
+        with app.app_context():
+            token = tokens.link_token(row_id)
+        resp = client.get(f'/register/verify/{token}')
+        assert resp.status_code == 302 and resp.headers['Location'].endswith('/register/verified')
+        state = _row(app, row_id)
+        assert state['verified_at'] is not None and state['verified_by'] == 'self'
+        assert state['hash'] is None
+
+    def test_a_page_token_cannot_verify(self, client, app, committed_registration):
+        from webapp.register import tokens
+        row_id, _ = committed_registration
+        with app.app_context():
+            token = tokens.page_token(row_id)
+        resp = client.get(f'/register/verify/{token}')
+        assert resp.status_code == 200
+        assert 'no longer valid' in resp.get_data(as_text=True)
+        assert _row(app, row_id)['verified_at'] is None
+
+    def test_a_tampered_or_expired_link_is_refused_at_200(self, client, app,
+                                                          committed_registration, monkeypatch):
+        from webapp.register import tokens
+        row_id, _ = committed_registration
+        assert client.get('/register/verify/not-a-token').status_code == 200
+        with app.app_context():
+            token = tokens.link_token(row_id)
+        # itsdangerous expires on `age > max_age`, so a TTL of 0 still admits a
+        # token minted this second; a negative TTL is what forces expiry.
+        monkeypatch.setitem(app.config, 'ACCOUNT_VERIFY_TTL_HOURS', -1)
+        resp = client.get(f'/register/verify/{token}')
+        assert 'no longer valid' in resp.get_data(as_text=True)
+        assert _row(app, row_id)['verified_at'] is None
+
+    def test_the_code_path(self, client, app, committed_registration):
+        from webapp.register import tokens
+        row_id, code = committed_registration
+        with app.app_context():
+            page = tokens.page_token(row_id)
+        wrong = client.post(f'/register/pending/{page}', data={'code': '000000'})
+        assert wrong.status_code == 200
+        assert 'wrong or has expired' in wrong.get_data(as_text=True)
+        assert _row(app, row_id)['verified_at'] is None
+        right = client.post(f'/register/pending/{page}', data={'code': f' {code} '})
+        assert right.status_code == 302 and right.headers['Location'].endswith('/register/verified')
+        state = _row(app, row_id)
+        assert state['verified_by'] == 'self' and state['hash'] is None
+
+    def test_a_verified_row_skips_the_pending_page(self, client, app, committed_registration):
+        from webapp.register import tokens
+        row_id, _ = committed_registration
+        with app.app_context():
+            link, page = tokens.link_token(row_id), tokens.page_token(row_id)
+        client.get(f'/register/verify/{link}')
+        resp = client.get(f'/register/pending/{page}')
+        assert resp.status_code == 302 and resp.headers['Location'].endswith('/register/verified')
+
+
+@pytest.fixture
+def enabled_limiter(app):
+    """Flip the limiter on for one test (tests/integration/test_rate_limit_flow.py)."""
+    def _clear():
+        try:
+            storage = facade.limiter.storage
+        except (AssertionError, AttributeError):
+            return
+        inner = getattr(storage, 'storage', None)
+        if isinstance(inner, dict):
+            inner.clear()
+    with app.app_context():
+        facade.limiter.enabled = True
+        app.config['RATELIMIT_ENABLED'] = True
+        _clear()
+        try:
+            yield
+        finally:
+            facade.limiter.enabled = False
+            app.config['RATELIMIT_ENABLED'] = False
+            _clear()
+
+
+class TestRateLimits:
+
+    def test_the_post_carries_the_login_tier_per_ip(self, client, app, enabled_limiter,
+                                                    null_notifier):
+        """5 per minute: the sixth empty POST in a minute is a 429 -- the
+        brute-force surface, keyed by IP whatever the address typed."""
+        for i in range(5):
+            resp = client.post('/register/', data={'email': f'x{i}@example.invalid'})
+            assert resp.status_code != 429, i
+        assert client.post('/register/', data={'email': 'x9@example.invalid'}).status_code == 429
+
+    def test_the_post_is_also_capped_per_address(self, client, app, enabled_limiter,
+                                                 null_notifier, monkeypatch):
+        monkeypatch.setitem(app.config, 'RATELIMIT_AUTH_LOGIN', '100 per minute')
+        monkeypatch.setitem(app.config, 'RATELIMIT_REGISTER_EMAIL', '2 per hour')
+        for _ in range(2):
+            assert client.post('/register/', data={'email': GOOD['email']}).status_code != 429
+        assert client.post('/register/', data={'email': GOOD['email']}).status_code == 429
+        assert client.post('/register/', data={'email': 'other@example.invalid'}).status_code != 429

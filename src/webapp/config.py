@@ -54,6 +54,18 @@ class SAMWebappConfig(SAMConfig):
     # serves it — same idiom and posture as FLASK_ADMIN_ENABLED above.
     COMPONENT_GALLERY_ENABLED = os.getenv('COMPONENT_GALLERY_ENABLED', '1').lower() in ('1', 'true', 'yes')
 
+    # The anonymous HPC account-registration form (/register). When off, the
+    # blueprint is not mounted and the URL 404s. ProductionConfig flips the
+    # default OFF: it ships dark and is switched on per deployment (the k8s
+    # dev overlay). Same idiom as FLASK_ADMIN_ENABLED. The internal surfaces
+    # (Admin -> Accounts, the Invitations tab) are not behind this flag.
+    ACCOUNT_REGISTRATION_ENABLED = os.getenv('ACCOUNT_REGISTRATION_ENABLED', '1').lower() in ('1', 'true', 'yes')
+    # How long a verification link and code stay valid.
+    ACCOUNT_VERIFY_TTL_HOURS = int(os.getenv('ACCOUNT_VERIFY_TTL_HOURS', 48))
+    # Per-address cap on the registration POST, on top of the per-IP login
+    # tier: nobody can flood a stranger's inbox with verification mail.
+    RATELIMIT_REGISTER_EMAIL = os.getenv('RATELIMIT_REGISTER_EMAIL', '3 per hour; 5 per day')
+
     # Create Project workflow. When off, the modal still renders with all inputs
     # editable but its submit button is replaced with a disabled indicator, and
     # the create POST route 403s. Lets ops temporarily freeze project creation.
@@ -299,9 +311,25 @@ class ProductionConfig(SAMWebappConfig):
     # on the public deploy.
     COMPONENT_GALLERY_ENABLED = os.getenv('COMPONENT_GALLERY_ENABLED', '0').lower() in ('1', 'true', 'yes')
 
+    # Default OFF in production -- the anonymous registration form ships dark
+    # and is enabled per deployment (docs/plans/ACCOUNT_REGISTRATION.md).
+    ACCOUNT_REGISTRATION_ENABLED = os.getenv('ACCOUNT_REGISTRATION_ENABLED', '0').lower() in ('1', 'true', 'yes')
+
     @classmethod
     def validate(cls):
         super().validate()
+        # A registration form whose verification mail is switched off takes
+        # requests nobody can confirm; an operator must then vouch for each.
+        # Legal (that is the k8s dev posture), but never silent.
+        if (cls.ACCOUNT_REGISTRATION_ENABLED
+                and os.getenv('NOTIFY_ENABLED', '0').lower() not in ('1', 'true', 'yes')):
+            import warnings
+            warnings.warn(
+                "ACCOUNT_REGISTRATION_ENABLED is on but NOTIFY_ENABLED is not: "
+                "public registrations cannot verify their address by mail and "
+                "will wait for an operator to mark them verified.",
+                stacklevel=2,
+            )
         key = os.getenv('FLASK_SECRET_KEY', '')
         if not key:
             raise EnvironmentError(

@@ -103,3 +103,46 @@ class RosterPasteForm(HtmxFormSchema):
 
     roster = f.Str(required=True, validate=v.Length(min=1, max=20_000),
                    error_messages={'required': 'Paste at least one line.'})
+
+
+class RegisterForm(HtmxFormSchema):
+    """The public form: the XRAS person field set, plus a "why" when there is
+    no event code to say it. Nothing here is rendered into the verification
+    mail. ``website`` is the honeypot, read by the route before loading."""
+
+    email = f.Email(required=True, validate=v.Length(max=255))
+    first_name = f.Str(required=True, validate=v.Length(min=1, max=64))
+    middle_name = f.Str(load_default=None, validate=v.Length(max=64))
+    last_name = f.Str(required=True, validate=v.Length(min=1, max=64))
+    organization = f.Str(required=True, validate=v.Length(min=1, max=128))
+    academic_status = f.Str(required=True, validate=v.Length(min=1, max=32))
+    residence_country = f.Str(required=True, validate=v.Length(min=1, max=64))
+    orcid = f.Str(load_default=None, validate=v.Regexp(
+        r'^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$', error='An ORCID looks like 0000-0002-1825-0097.'))
+    phone = f.Str(load_default=None, validate=v.Length(max=32))
+    desired_username = f.Str(load_default=None, validate=v.Regexp(
+        r'^[A-Za-z][A-Za-z0-9._-]{1,63}$',
+        error='Letters, digits, dots, dashes or underscores, starting with a letter.'))
+    purpose_note = f.Str(load_default=None, validate=v.Length(max=500))
+    event_code = f.Str(load_default=None, validate=v.Length(max=32))
+
+    @post_load
+    def _normalize(self, data, **kwargs):
+        data['email'] = data['email'].strip().lower()
+        for key in ('first_name', 'middle_name', 'last_name', 'organization',
+                    'academic_status', 'residence_country', 'orcid', 'phone',
+                    'desired_username', 'purpose_note'):
+            if data.get(key) is not None:
+                data[key] = data[key].strip() or None
+        if data.get('event_code'):
+            data['event_code'] = data['event_code'].strip().upper()
+        return data
+
+
+class VerifyCodeForm(HtmxFormSchema):
+    code = f.Str(required=True, validate=v.Regexp(r'^\s*\d{6}\s*$'))
+
+    @post_load
+    def _strip(self, data, **kwargs):
+        data['code'] = data['code'].strip()
+        return data

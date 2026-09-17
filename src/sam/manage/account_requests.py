@@ -263,3 +263,19 @@ def reconcile_account_requests(session: Session, *, clock=None,
         counts['purged'] = len(stale)
         session.flush()
     return counts
+
+
+def register_request(session: Session, *, email: str, first_name: str, last_name: str,
+                     event: Optional[AccountRequestEvent] = None, clock=None,
+                     **person) -> AccountRequest:
+    """A self-registration: ``created_by='self'``, unverified, and therefore
+    invisible to the queue until the mailed link or code confirms the address.
+    An event makes it an ``enrollment`` on the event's project."""
+    return AccountRequest.create(
+        session,
+        email=email, first_name=first_name, last_name=last_name,
+        purpose='enrollment' if event else 'standalone',
+        project_id=event.project_id if event else None,
+        event_id=event.account_request_event_id if event else None,
+        created_by=CREATED_BY_SELF, verified_by=None, clock=clock, **person,
+    )

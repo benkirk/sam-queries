@@ -1,0 +1,81 @@
+{% extends 'dashboards/base.html' %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, select_field, textarea_field with context %}
+{#
+  The anonymous account-registration form. Plain PRG, CSRF hidden input as
+  auth/login.html, no htmx: a phone-facing page for people with no account.
+
+  Context: event (locked code) | None, locked_code, form, errors, field_errors,
+           academic_options
+#}
+{% block title %}Request an NCAR HPC account{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-12 col-lg-8">
+    <h2 class="mb-1"><i class="fa-solid fa-user-plus"></i> Request an NCAR HPC account</h2>
+    {% if event %}
+    <p class="text-muted">
+        Registering for <strong>{{ event.name }}</strong>
+        (<span class="font-monospace">{{ event.event_code }}</span>).
+        Accounts are needed by {{ event.accounts_needed_by | fmt_date }}.
+    </p>
+    {% else %}
+    <p class="text-muted">
+        Tell us who you are and why you need an account. We will email you a
+        link and a code to confirm the address; the request is not visible to
+        anyone until you do.
+    </p>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('register.submit') }}" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {# The honeypot. Hidden from people, filled by bots; the route drops
+           any submission that carries a value here. #}
+        <div class="d-none" aria-hidden="true">
+            <label for="website">Website</label>
+            <input type="text" name="website" id="website" tabindex="-1" autocomplete="off">
+        </div>
+
+        {{ text_field('email', 'Email address', required=True, type='email', maxlength=255,
+                      help='Your institutional address if you have one. The confirmation goes here.') }}
+        <div class="row">
+            <div class="col-md-5">{{ text_field('first_name', 'First name', required=True, maxlength=64) }}</div>
+            <div class="col-md-2">{{ text_field('middle_name', 'Middle', optional_text='', maxlength=64) }}</div>
+            <div class="col-md-5">{{ text_field('last_name', 'Last name', required=True, maxlength=64) }}</div>
+        </div>
+        {{ text_field('organization', 'Organization', required=True, maxlength=128,
+                      placeholder='University or institution') }}
+        <div class="row">
+            <div class="col-md-6">
+                {{ select_field('academic_status', 'Academic status', required=True,
+                                options=academic_options, placeholder='— choose —') }}
+            </div>
+            <div class="col-md-6">{{ text_field('residence_country', 'Country of residence', required=True, maxlength=64) }}</div>
+        </div>
+        <div class="row">
+            <div class="col-md-6">{{ text_field('phone', 'Phone', maxlength=32) }}</div>
+            <div class="col-md-6">{{ text_field('orcid', 'ORCID', maxlength=19, placeholder='0000-0002-1825-0097') }}</div>
+        </div>
+        {{ text_field('desired_username', 'Preferred username', maxlength=64,
+                      help='A preference only; the account team assigns the username.') }}
+        {% if locked_code %}
+        <input type="hidden" name="event_code" value="{{ locked_code }}">
+        {% else %}
+        {{ text_field('event_code', 'Event code', maxlength=32,
+                      placeholder='WRF-TUTORIAL-2026-10',
+                      help='If a workshop or class gave you one.') }}
+        {{ textarea_field('purpose_note', 'What do you need the account for?', rows=3, maxlength=500,
+                          help='Required when you have no event code. One or two sentences.') }}
+        {% endif %}
+
+        {% if errors %}
+        <div class="alert alert-danger">
+            {% for error in errors %}<p class="mb-0"><i class="fa-solid fa-circle-exclamation"></i> {{ error }}</p>{% endfor %}
+        </div>
+        {% endif %}
+
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-paper-plane"></i> Send me the confirmation</button>
+    </form>
+</div>
+</div>
+{% endblock %}

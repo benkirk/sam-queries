@@ -416,6 +416,11 @@ def create_app(*, config_overrides: dict | None = None):
     # never mounted on the public deploy), mirroring the init_admin gate below.
     if app.config.get('COMPONENT_GALLERY_ENABLED', False):
         app.register_blueprint(component_gallery_bp)
+    # The anonymous account-registration form: same kill-switch shape, ships
+    # dark in production (docs/plans/ACCOUNT_REGISTRATION.md section 3.5).
+    if app.config.get('ACCOUNT_REGISTRATION_ENABLED', False):
+        from webapp.register import bp as register_bp
+        app.register_blueprint(register_bp)
     # NOTE: admin_bp blueprint removed - Flask-Admin handles /database routing
     # app.register_blueprint(admin_bp, url_prefix='/database')
 
