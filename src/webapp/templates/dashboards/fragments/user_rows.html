@@ -40,6 +40,31 @@ hx-get="{{ url_for('admin_dashboard.user_card', username=username) }}"
 hx-target="#userDetailsModalBody" hx-swap="innerHTML"
 {%- endmacro %}
 
+{# Gated one-call link for a bare username string (a cell that has no User
+   object): can_view_users true opens #userDetailsModal, false degrades to
+   plain text so the click never 403s. compact = monospace table treatment;
+   label overrides the link text.
+
+   Two openers, picked by stop_propagation (same rule as project_bits.py's
+   project_link): default uses data-action="show-user-details" (stack-safe);
+   stop_propagation=True is for a link inside a data-bs-toggle row (the audit
+   tables), where the link must carry its OWN data-bs-toggle to shadow the
+   row's in Bootstrap's capture-phase closest() match — data-stop-propagation
+   alone cannot, because the row's modal opens before the link's bubble
+   handler runs. #}
+{% macro user_link(username, can_view_users, compact=False, stop_propagation=False, label=None) -%}
+{%- if username -%}
+  {%- set text = label or username -%}
+  {%- if can_view_users -%}
+    <a href="#" class="text-decoration-none{% if compact %} text-reset{% endif %}"
+       title="View user details"
+       {% if stop_propagation %}data-bs-toggle="modal" data-bs-target="#userDetailsModal" data-stop-propagation{% else %}data-action="show-user-details"{% endif %}
+       hx-get="{{ url_for('admin_dashboard.user_card', username=username) }}"
+       hx-target="#userDetailsModalBody" hx-swap="innerHTML">{% if compact %}<code>{{ text }}</code>{% else %}{{ text }}{% endif %}</a>
+  {%- else -%}{% if compact %}<code>{{ text }}</code>{% else %}{{ text }}{% endif %}{%- endif -%}
+{%- else -%}<span class="text-muted">—</span>{%- endif -%}
+{%- endmacro %}
+
 {% macro render_user_rows(users, can_view_users=false) %}
     {% for u in users %}
     {% set email = (u.primary_email if u.primary_email is defined else u.email) %}

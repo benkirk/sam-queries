@@ -3,6 +3,7 @@
 {% from 'dashboards/fragments/help.html' import term with context %}
 {% from 'dashboards/fragments/glossary.html' import g_tib with context %}
 {% from 'dashboards/fragments/date_range_picker.html' import date_range_picker %}
+{% from 'dashboards/fragments/user_rows.html' import user_link with context %}
 
 {% block title %}Disk Usage Details - {{ resource_name }} - SAM{% endblock %}
 
@@ -356,7 +357,7 @@
                     <tbody>
                         {% for row in user_rows %}
                         <tr>
-                            <td><code>{{ row.username }}</code></td>
+                            <td>{{ user_link(row.username, can_view_users, compact=True) }}</td>
                             <td class="text-end">{{ row.file_count | fmt_number }}</td>
                             <td class="text-end">{{ row.bytes | fmt_size }}</td>
                             <td class="text-end">{{ row.percent_of_project | fmt_pct }}</td>

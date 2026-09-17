@@ -1,5 +1,6 @@
 {% from 'dashboards/fragments/form_fields.html' import form_errors_panel with context %}
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/contract_bits.html' import contract_user_link with context %}
 {#
   Operator-only User / Resource Access grid (site operators only — gated by the
   collapsible card in edit_project.html on EDIT_PROJECTS + EDIT_PROJECT_MEMBERS).
@@ -93,8 +94,7 @@
         {% for row in member_rows %}
         <tr>
           <td class="sticky-col">
-            {{ row.user.display_name }}
-            <span class="text-muted small">({{ row.user.username }})</span>
+            {{ contract_user_link(row.user, can_view_users) }}
             {% if row.is_lead %}
             <span class="badge bg-info text-dark fw-normal ms-1">lead</span>
             {% endif %}

@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
+{% from 'dashboards/fragments/project_bits.html' import project_link with context %}
 {#
   Admin: Cross-project Project Directories card.
 
@@ -122,17 +123,7 @@
                         {{ pd.directory_name }}
                     </td>
                     <td>
-                        <button type="button"
-                                class="btn btn-link p-0 align-baseline"
-                                title="View project details"
-                                hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=pd.project.projcode) }}"
-                                hx-target="#projectDetailsModalBody"
-                                hx-swap="innerHTML"
-                                data-bs-toggle="modal"
-                                data-bs-target="#projectDetailsModal"
-                                data-stop-propagation>
-                            <strong>{{ pd.project.projcode }}</strong>
-                        </button>
+                        {{ project_link(pd.project.projcode, can_view_projects, stop_propagation=True) }}
                         {% if _orphan %}
                         <span class="badge bg-warning text-dark ms-1" title="Project is inactive">inactive project</span>
                         {% endif %}
