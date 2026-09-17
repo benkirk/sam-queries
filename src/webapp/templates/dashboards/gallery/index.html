@@ -148,7 +148,7 @@
         {{ ff.date_field('demo_date', 'Date') }}
         {{ ff.datetime_field('demo_datetime', 'Date &amp; time') }}
         {{ ff.textarea_field('demo_textarea', 'Notes', rows=2) }}
-        {{ ff.datalist_field('demo_institution', 'Institution', url_for('project_members.institutions'),
+        {{ ff.datalist_field('demo_institution', 'Institution', url_for('project_members.institutions_fragment'),
                              help='Free text with server-fed suggestions (datalist_field).') }}
       </div>
       <div class="col-md-6">

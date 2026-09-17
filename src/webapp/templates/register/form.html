@@ -46,7 +46,7 @@
             <div class="col-md-2">{{ text_field('middle_name', 'Middle', optional_text='', maxlength=64) }}</div>
             <div class="col-md-5">{{ text_field('last_name', 'Last name', required=True, maxlength=64) }}</div>
         </div>
-        {{ datalist_field('organization', 'Institution', url_for('register.institutions'),
+        {{ datalist_field('organization', 'Institution', url_for('register.institutions_fragment'),
                           required=True, maxlength=128, placeholder='University, lab or company',
                           help='Start typing to pick a known institution, or enter yours.') }}
         <div class="row">

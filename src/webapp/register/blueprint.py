@@ -87,8 +87,9 @@ def form():
 
 @bp.route('/institutions')
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
-def institutions():
-    """Datalist options for the Institution field; names only, nothing the visitor typed."""
+def institutions_fragment():
+    """Datalist options for the Institution field; names only, nothing the visitor typed.
+    The ``_fragment`` suffix keeps it out of the e2e page sweep (e2e/conftest.py)."""
     return render_template('dashboards/fragments/institution_options_htmx.html',
                            names=search_institutions(db.session, request.args.get('organization')))
 

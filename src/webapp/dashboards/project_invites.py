@@ -152,9 +152,10 @@ class _InviteUserHandler(HtmxFormHandler):
 
 @bp.route('/institutions')
 @login_required
-def institutions():
+def institutions_fragment():
     """Datalist options for the invite form's Institution field (login only:
-    institution names are not sensitive, and a plain project lead uses this)."""
+    institution names are not sensitive, and a plain project lead uses this).
+    The ``_fragment`` suffix keeps it out of the e2e page sweep (e2e/conftest.py)."""
     return render_template('dashboards/fragments/institution_options_htmx.html',
                            names=search_institutions(db.session, request.args.get('organization')))
 
