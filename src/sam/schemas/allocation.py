@@ -26,10 +26,8 @@ from .project import ProjectSummarySchema
 from sam.accounting.accounts import Account
 from sam.accounting.allocations import Allocation
 from sam.accounting.adjustments import ChargeAdjustment
-from sam.summaries.comp_summaries import CompChargeSummary
-from sam.summaries.dav_summaries import DavChargeSummary
-from sam.summaries.disk_summaries import BYTES_PER_TIB, DiskChargeSummary
-from sam.summaries.archive_summaries import ArchiveChargeSummary
+from sam.summaries.disk_summaries import BYTES_PER_TIB
+from sam.accounting.calculator import calculate_charges
 
 
 class AccountSummarySchema(BaseSchema):
@@ -173,10 +171,9 @@ class AllocationWithUsageSchema(AllocationSchema):
         start_date = obj.start_date
         end_date = obj.end_date or now
 
-        # Get resource type
-        resource_type = None
-        if account.resource and account.resource.resource_type:
-            resource_type = account.resource.resource_type.resource_type
+        # Charges route by the resource's activity_type (its single authoritative
+        # table), not resource_type — see accounting/calculator.py.
+        activity_type = account.resource.activity_type if account.resource else None
 
         # A parent project's usage is its subtree's, as on every other surface
         # (dashboards, sam-search, fstree). The account-only sum below is for
@@ -185,16 +182,16 @@ class AllocationWithUsageSchema(AllocationSchema):
         if project is not None and not project.is_leaf() and \
                 project.tree_root and project.tree_left and project.tree_right:
             charges = project.get_subtree_charges(
-                account.resource_id, resource_type, start_date, end_date)
+                account.resource_id, activity_type, start_date, end_date)
             adjustments = 0.0
             if include_adjustments:
                 adjustments = float(project.get_subtree_adjustments(
                     account.resource_id, start_date, end_date) or 0.0)
             return charges, adjustments, sum(charges.values()) + adjustments
 
-        # Calculate charges by type based on resource type
+        # Calculate charges from the resource's authoritative table (by activity_type)
         charges = self._get_charges_by_resource_type(
-            session, account.account_id, resource_type, start_date, end_date
+            session, account.account_id, activity_type, start_date, end_date
         )
 
         # Calculate adjustments
@@ -215,58 +212,15 @@ class AllocationWithUsageSchema(AllocationSchema):
 
         return charges, adjustments, total_used
 
-    def _get_charges_by_resource_type(self, session, account_id, resource_type, start_date, end_date):
+    def _get_charges_by_resource_type(self, session, account_id, activity_type, start_date, end_date):
+        """Sum the resource's authoritative charge table (by activity_type).
+
+        Delegates to the shared calculator so routing lives in exactly one place.
+        DISK/ARCHIVE keep their key even at zero, matching the prior contract.
         """
-        Query appropriate charge summary tables based on resource type.
-
-        Matches the logic from Project._get_charges_by_resource_type().
-        """
-        charges = {}
-
-        # HPC & DAV resources - may have both comp and dav charges
-        if resource_type in ('HPC', 'DAV'):
-            comp = session.query(
-                func.coalesce(func.sum(CompChargeSummary.charges), 0)
-            ).filter(
-                CompChargeSummary.account_id == account_id,
-                CompChargeSummary.activity_date >= start_date,
-                CompChargeSummary.activity_date <= end_date
-            ).scalar()
-            if comp:
-                charges['comp'] = float(comp)
-
-            dav = session.query(
-                func.coalesce(func.sum(DavChargeSummary.charges), 0)
-            ).filter(
-                DavChargeSummary.account_id == account_id,
-                DavChargeSummary.activity_date >= start_date,
-                DavChargeSummary.activity_date <= end_date
-            ).scalar()
-            if dav:
-                charges['dav'] = float(dav)
-
-        # DISK resources
-        elif resource_type == 'DISK':
-            disk = session.query(
-                func.coalesce(func.sum(DiskChargeSummary.charges), 0)
-            ).filter(
-                DiskChargeSummary.account_id == account_id,
-                DiskChargeSummary.activity_date >= start_date,
-                DiskChargeSummary.activity_date <= end_date
-            ).scalar()
-            charges['disk'] = float(disk) if disk else 0.0
-
-        # ARCHIVE resources
-        elif resource_type == 'ARCHIVE':
-            archive = session.query(
-                func.coalesce(func.sum(ArchiveChargeSummary.charges), 0)
-            ).filter(
-                ArchiveChargeSummary.account_id == account_id,
-                ArchiveChargeSummary.activity_date >= start_date,
-                ArchiveChargeSummary.activity_date <= end_date
-            ).scalar()
-            charges['archive'] = float(archive) if archive else 0.0
-
+        charges = calculate_charges(session, [account_id], start_date, end_date, activity_type)
+        if activity_type in ('DISK', 'ARCHIVE'):
+            charges.setdefault(activity_type.lower(), 0.0)
         return charges
 
     def get_charges_by_type(self, obj):
@@ -304,13 +258,9 @@ class AllocationWithUsageSchema(AllocationSchema):
         now = datetime.now()
         start_date = obj.start_date
         end_date = obj.end_date or now
-        resource_type = (
-            root_account.resource.resource_type.resource_type
-            if root_account.resource and root_account.resource.resource_type
-            else None
-        )
+        activity_type = root_account.resource.activity_type if root_account.resource else None
         charges = root_project.get_subtree_charges(
-            root_account.resource_id, resource_type, start_date, end_date)
+            root_account.resource_id, activity_type, start_date, end_date)
         tree_used = sum(charges.values())
         if include_adjustments:
             tree_used += root_project.get_subtree_adjustments(

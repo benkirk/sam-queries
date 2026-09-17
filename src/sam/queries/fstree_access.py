@@ -76,6 +76,7 @@ _SQL_FSTREE_SKELETON = text("""
         r.resource_id,
         r.resource_name,
         rt.resource_type,
+        r.activity_type,
         al.allocation_id,
         al.amount                                             AS allocation_amount,
         al.start_date,
@@ -532,6 +533,7 @@ def get_fstree_data(
                     'allocation_id': row.allocation_id,
                     'resource_id':   row.resource_id,
                     'resource_type': row.resource_type,
+                    'activity_type': row.activity_type,
                     'tree_root':     row.tree_root,
                     'tree_left':     row.tree_left,
                     'tree_right':    row.tree_right,
@@ -572,7 +574,7 @@ def get_fstree_data(
     #
     # Non-leaf projects (~28) -> batch_get_subtree_charges(): MPTT rollup
     #   that includes descendant charges.  With only ~28 non-leaf entries,
-    #   the (resource_type, start_date, end_date) grouping yields ~28 date
+    #   the (activity_type, start_date, end_date) grouping yields ~28 date
     #   groups -> ~56 SQL queries (fast).
     #
     # Leaf projects (~1,455) -> batch_get_account_charges(): VALUES CTE that

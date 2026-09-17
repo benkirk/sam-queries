@@ -90,21 +90,22 @@ pytestmark = pytest.mark.unit
 
 class TestChargeQueries:
 
-    @pytest.mark.parametrize('resource_type,expected_keys', [
-        (None,      ['comp', 'dav', 'disk', 'archive']),
-        ('HPC',     ['comp']),
-        ('DAV',     ['comp', 'dav']),
+    @pytest.mark.parametrize('activity_type,expected_keys', [
+        (None,      ['comp']),
+        ('HPC',     ['hpc']),
+        ('COMP',    ['comp']),
+        ('DAV',     ['dav']),
         ('DISK',    ['disk']),
         ('ARCHIVE', ['archive']),
     ])
     def test_get_daily_charge_trends_resource_types(
-        self, session, active_project, resource_type, expected_keys
+        self, session, active_project, activity_type, expected_keys
     ):
         account_ids = [acc.account_id for acc in active_project.accounts]
         end_date = datetime.now()
         start_date = end_date - timedelta(days=30)
         result = get_daily_charge_trends_for_accounts(
-            session, account_ids, start_date, end_date, resource_type=resource_type
+            session, account_ids, start_date, end_date, activity_type=activity_type
         )
         assert isinstance(result, dict)
         if result:
@@ -145,21 +146,22 @@ class TestChargeQueries:
             assert key in result
             assert isinstance(result[key], list)
 
-    @pytest.mark.parametrize('resource_type', ['HPC', 'DAV', 'DISK', 'ARCHIVE'])
+    @pytest.mark.parametrize('activity_type', ['HPC', 'COMP', 'DAV', 'DISK', 'ARCHIVE'])
     def test_get_raw_charge_summaries_resource_filter(
-        self, session, active_project, resource_type
+        self, session, active_project, activity_type
     ):
         account_ids = [acc.account_id for acc in active_project.accounts]
         end_date = datetime.now()
         start_date = end_date - timedelta(days=30)
         result = get_raw_charge_summaries_for_accounts(
-            session, account_ids, start_date, end_date, resource_type=resource_type
+            session, account_ids, start_date, end_date, activity_type=activity_type
         )
         assert isinstance(result, dict)
-        if resource_type == 'HPC':
+        if activity_type == 'HPC':
+            assert 'hpc' in result
+        elif activity_type == 'COMP':
             assert 'comp' in result
-        elif resource_type == 'DAV':
-            assert 'comp' in result
+        elif activity_type == 'DAV':
             assert 'dav' in result
 
     def test_get_user_breakdown_for_project_basic(

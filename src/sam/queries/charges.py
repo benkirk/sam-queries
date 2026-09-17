@@ -25,7 +25,7 @@ from sam.summaries.comp_summaries import CompChargeSummary
 from sam.accounting.accounts import Account
 from sam.accounting.adjustments import ChargeAdjustment, ChargeAdjustmentType
 from sam.accounting.allocations import AllocationType
-from sam.accounting.calculator import get_charge_models_for_resource
+from sam.accounting.calculator import get_charge_models_for_activity
 from sam.projects.projects import Project
 from sam.resources.facilities import Facility, Panel
 from sam.resources.resources import Resource
@@ -315,7 +315,7 @@ def get_daily_charge_trends_for_accounts(
     account_ids: List[int],
     start_date: datetime,
     end_date: datetime,
-    resource_type: Optional[str] = None,
+    activity_type: Optional[str] = None,
     include_adjustments: bool = True
 ) -> Dict[str, Dict[str, float]]:
     """
@@ -326,22 +326,22 @@ def get_daily_charge_trends_for_accounts(
         account_ids: List of account IDs to query.
         start_date: Start date for the charge data.
         end_date: End date for the charge data.
-        resource_type: Optional filter by resource type ('HPC', 'DAV', 'DISK', 'ARCHIVE').
-                       If None, all applicable resource types are included.
+        activity_type: Optional resource activity_type ('HPC', 'COMP', 'DAV', 'DISK',
+                       'ARCHIVE') selecting its single authoritative table.
+                       If None, all charge tables are included.
         include_adjustments: If True (default), include manual charge adjustments
                              as an 'adjustments' key in each day's dict.
 
     Returns:
         A dictionary where keys are date strings (YYYY-MM-DD) and values are
-        dictionaries containing charge totals for each type (comp, dav, disk, archive,
-        and optionally adjustments when include_adjustments=True).
-        Example: {'2024-01-01': {'comp': 100.0, 'dav': 10.0, 'disk': 0.0, 'archive': 0.0,
-                                  'adjustments': 0.0}}
+        dictionaries containing charge totals for each type (hpc, comp, dav, disk,
+        archive, and optionally adjustments when include_adjustments=True).
     """
     daily_data = {}
+    seed = {'hpc': 0.0, 'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
 
     # Use centralized registry
-    charge_models = get_charge_models_for_resource(resource_type)
+    charge_models = get_charge_models_for_activity(activity_type)
 
     for charge_type_key, model in charge_models.items():
         data = session.query(
@@ -356,14 +356,14 @@ def get_daily_charge_trends_for_accounts(
         for date, charges in data:
             date_str = date.strftime('%Y-%m-%d')
             if date_str not in daily_data:
-                daily_data[date_str] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0}
+                daily_data[date_str] = dict(seed)
             daily_data[date_str][charge_type_key] += float(charges or 0.0)
 
     if include_adjustments:
         for d, amount in get_adjustment_totals_by_date(session, account_ids, start_date, end_date).items():
             date_str = d.strftime('%Y-%m-%d')
             if date_str not in daily_data:
-                daily_data[date_str] = {'comp': 0.0, 'dav': 0.0, 'disk': 0.0, 'archive': 0.0, 'adjustments': 0.0}
+                daily_data[date_str] = {**seed, 'adjustments': 0.0}
             daily_data[date_str]['adjustments'] = daily_data[date_str].get('adjustments', 0.0) + amount
 
     return daily_data
@@ -374,7 +374,7 @@ def get_raw_charge_summaries_for_accounts(
     account_ids: List[int],
     start_date: datetime,
     end_date: datetime,
-    resource_type: Optional[str] = None,
+    activity_type: Optional[str] = None,
     include_adjustments: bool = True
 ) -> Dict[str, List[any]]:
     """
@@ -385,17 +385,19 @@ def get_raw_charge_summaries_for_accounts(
         account_ids: List of account IDs to query.
         start_date: Start date for the charge data.
         end_date: End date for the charge data.
-        resource_type: Optional filter by resource type ('HPC', 'DAV', 'DISK', 'ARCHIVE').
-                       If None, all applicable resource types are included.
+        activity_type: Optional resource activity_type ('HPC', 'COMP', 'DAV', 'DISK',
+                       'ARCHIVE') selecting its single authoritative table.
+                       If None, all charge tables are included.
         include_adjustments: If True (default), include ChargeAdjustment records
                              under the 'adjustments' key.
 
     Returns:
-        A dictionary where keys are charge type strings (comp, dav, disk, archive,
+        A dictionary where keys are charge type strings (hpc, comp, dav, disk, archive,
         and optionally adjustments when include_adjustments=True) and values are
         lists of raw summary/adjustment objects.
     """
     charge_data = {
+        'hpc': [],
         'comp': [],
         'dav': [],
         'disk': [],
@@ -403,7 +405,7 @@ def get_raw_charge_summaries_for_accounts(
     }
 
     # Use centralized registry
-    charge_models = get_charge_models_for_resource(resource_type)
+    charge_models = get_charge_models_for_activity(activity_type)
 
     for charge_type_key, model in charge_models.items():
         data = session.query(model).filter(

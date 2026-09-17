@@ -9,7 +9,8 @@ from ..accounting.adjustments import *
 from ..resources.resources import *
 from ..summaries.comp_summaries import *
 from ..summaries.dav_summaries import *
-from ..accounting.calculator import calculate_charges, get_charge_models_for_resource
+from ..accounting.calculator import (calculate_charges, get_charge_models_for_activity,
+                                     get_compute_charge_model_for_activity)
 from ..enums import ResourceTypeName
 
 import logging
@@ -789,6 +790,10 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
 
             resource = account.resource.resource_name
             resource_type = account.resource.resource_type.resource_type if account.resource.resource_type else 'UNKNOWN'
+            # Charges/job-stats route by activity_type (the single authoritative
+            # table), NOT resource_type. resource_type still drives the DISK
+            # snapshot override below.
+            activity_type = account.resource.activity_type
 
             # The active allocation, else one that ended within 90 days —
             # the rule the dashboards' batched builder shares.
@@ -802,12 +807,12 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
             # Determine usage (Charges)
             if use_hierarchy:
                 charges_by_type = self.get_subtree_charges(account.resource_id,
-                                                           resource_type,
+                                                           activity_type,
                                                            start_date,
                                                            end_date)
             else:
                 charges_by_type = self.get_charges_by_resource_type(account.account_id,
-                                                                    resource_type,
+                                                                    activity_type,
                                                                     start_date,
                                                                     end_date)
 
@@ -842,7 +847,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
                 if root_project is not None and root_project.tree_root \
                         and root_project.tree_left and root_project.tree_right:
                     root_charges = root_project.get_subtree_charges(
-                        account.resource_id, resource_type, start_date, end_date)
+                        account.resource_id, activity_type, start_date, end_date)
                     root_total = sum(root_charges.values())
                     if include_adjustments:
                         root_total += root_project.get_subtree_adjustments(
@@ -866,12 +871,12 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
             # Get job statistics (primarily for HPC/DAV)
             if use_hierarchy:
                 total_jobs, total_core_hours = self.get_subtree_job_statistics(account.resource_id,
-                                                                               resource_type,
+                                                                               activity_type,
                                                                                start_date,
                                                                                end_date)
             else:
                 total_jobs, total_core_hours = self.get_job_statistics(account.account_id,
-                                                                       resource_type,
+                                                                       activity_type,
                                                                        start_date,
                                                                        end_date)
 
@@ -1006,28 +1011,28 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
 
     def get_charges_by_resource_type(self,
                                      account_id: int,
-                                     resource_type: str,
+                                     activity_type: str,
                                      start_date: datetime,
                                      end_date: datetime) -> Dict[str, float]:
         """
-        Query appropriate charge summary tables based on resource type (Single Account).
+        Sum the resource's authoritative charge table (by activity_type) for one account.
 
         Returns:
-            Dict of charge type to amount, e.g., {'comp': 1000.0, 'disk': 50.0}
+            Dict of charge type to amount, e.g., {'comp': 1000.0}
         """
-        return calculate_charges(self.session, [account_id], start_date, end_date, resource_type)
+        return calculate_charges(self.session, [account_id], start_date, end_date, activity_type)
 
 
     def get_subtree_charges(self,
                             resource_id: int,
-                            resource_type: str,
+                            activity_type: str,
                             start_date: datetime,
                             end_date: datetime) -> Dict[str, float]:
         """
         Aggregate charges for this project AND all descendants (subtree) on a specific resource.
         """
         charges = {}
-        models = get_charge_models_for_resource(resource_type)
+        models = get_charge_models_for_activity(activity_type)
 
         for key, ModelClass in models.items():
             val = self.session.query(func.coalesce(func.sum(ModelClass.charges), 0))\
@@ -1101,15 +1106,16 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         coordinates; attribution back to anchors is done in Python via range containment.
         A WARNING is logged once per process so the deployment team can act on it.
 
-        Parallel to batch_get_account_charges() — both use the same charge model lookup
-        (get_charge_models_for_resource) and summary tables; this version follows project
-        MPTT tree coordinates while batch_get_account_charges() uses direct account_id.
+        Parallel to batch_get_account_charges() — both route by the resource's
+        activity_type (carried in each info dict) and summary tables; this version
+        follows project MPTT tree coordinates while batch_get_account_charges() uses
+        direct account_id.
 
         Args:
             alloc_infos: List of dicts, each with keys:
                 key           — unique identifier (usually allocation_id)
                 resource_id   — account.resource_id
-                resource_type — e.g. 'HPC', 'DAV', 'DISK', 'ARCHIVE'
+                activity_type — resource activity_type; selects the single charge table
                 tree_root     — project.tree_root
                 tree_left     — project.tree_left
                 tree_right    — project.tree_right
@@ -1129,13 +1135,17 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
 
         _ensure_values_cte_probed(session)
 
-        # Group by (resource_type, start_date, end_date) — one DB pass per group per charge model
+        # Charges route by the resource's activity_type (its single authoritative
+        # table, carried in each info dict) — never resource_type, which would
+        # union comp+dav and double-count (see accounting/calculator.py).
+        # Group by (activity_type, start_date, end_date) — one DB pass per group per charge model
         date_groups: Dict[tuple, List[Dict]] = defaultdict(list)
         for info in alloc_infos:
-            date_groups[(info['resource_type'], info['start_date'], info['end_date'])].append(info)
+            date_groups[(info['activity_type'],
+                         info['start_date'], info['end_date'])].append(info)
 
-        for (rt, start_date, end_date), group_infos in date_groups.items():
-            models = get_charge_models_for_resource(rt)
+        for (at, start_date, end_date), group_infos in date_groups.items():
+            models = get_charge_models_for_activity(at)
 
             if _values_cte_supported:
                 # ----------------------------------------------------------------
@@ -1281,23 +1291,23 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         """
         Batch version of get_charges_by_resource_type() + get_adjustments().
 
-        Primary path (VALUES CTE): groups by resource_type only, issuing one query per
+        Primary path (VALUES CTE): groups by activity_type only, issuing one query per
         charge model with all account_ids and their individual date ranges as an inlined
         VALUES table. The per-anchor date range is enforced in the JOIN ON clause, so
         allocations with diverse date ranges are handled in a single pass.
 
-        Fallback path: groups by (resource_type, start_date, end_date) and issues one
+        Fallback path: groups by (activity_type, start_date, end_date) and issues one
         query per charge model per date group (correct but more queries for diverse ranges).
 
-        Parallel to batch_get_subtree_charges() — both use the same charge model lookup
-        (get_charge_models_for_resource) and summary tables; this version filters by
-        direct account_id while batch_get_subtree_charges() uses MPTT tree coordinates.
+        Parallel to batch_get_subtree_charges() — both route by the resource's
+        activity_type (carried in each info dict) and summary tables; this version filters
+        by direct account_id while batch_get_subtree_charges() uses MPTT tree coordinates.
 
         Args:
             alloc_infos: List of dicts, each with keys:
                 key           — unique identifier (usually allocation_id)
                 account_id    — direct account_id filter
-                resource_type — e.g. 'HPC', 'DAV', 'DISK', 'ARCHIVE'
+                activity_type — resource activity_type; selects the single charge table
                 start_date    — allocation start datetime
                 end_date      — allocation end datetime (already resolved from check_date)
             include_adjustments: Include ChargeAdjustment amounts in 'adjustment'.
@@ -1314,19 +1324,22 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
 
         _ensure_values_cte_probed(session)
 
+        # Charges route by the resource's activity_type (its single authoritative
+        # table, carried in each info dict) — never resource_type, which would
+        # union comp+dav and double-count (see accounting/calculator.py).
         if _values_cte_supported:
             # ----------------------------------------------------------------
-            # PRIMARY PATH: VALUES CTE — group by resource_type only.
+            # PRIMARY PATH: VALUES CTE — group by activity_type only.
             # All accounts and their individual date ranges are inlined as a
             # VALUES table; the JOIN ON clause enforces per-anchor date filtering.
-            # Reduces queries to: N_resource_types × N_charge_models + adjustments.
+            # Reduces queries to: N_activity_types × N_charge_models + adjustments.
             # ----------------------------------------------------------------
-            rt_groups: Dict[str, List[Dict]] = defaultdict(list)
+            at_groups: Dict[str, List[Dict]] = defaultdict(list)
             for info in alloc_infos:
-                rt_groups[info['resource_type']].append(info)
+                at_groups[info['activity_type']].append(info)
 
             row = row_constructor(session)
-            for rt, group_infos in rt_groups.items():
+            for at, group_infos in at_groups.items():
                 values_parts = ", ".join(
                     f"{row}(:ak{i}, :acct{i}, :sd{i}, :ed{i})"
                     for i in range(len(group_infos))
@@ -1340,7 +1353,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
                     params[f'ed{i}']   = info['end_date']
                     idx_to_key[i]      = info['key']
 
-                models = get_charge_models_for_resource(rt)
+                models = get_charge_models_for_activity(at)
 
                 for charge_key, ModelClass in models.items():
                     sql = text(f"""
@@ -1381,16 +1394,17 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
             # ----------------------------------------------------------------
             date_groups: Dict[tuple, List[Dict]] = defaultdict(list)
             for info in alloc_infos:
-                date_groups[(info['resource_type'], info['start_date'], info['end_date'])].append(info)
+                date_groups[(info['activity_type'],
+                             info['start_date'], info['end_date'])].append(info)
 
-            for (rt, start_date, end_date), group_infos in date_groups.items():
+            for (at, start_date, end_date), group_infos in date_groups.items():
                 account_ids = list({info['account_id'] for info in group_infos})
 
                 acct_to_keys: Dict[int, List] = defaultdict(list)
                 for info in group_infos:
                     acct_to_keys[info['account_id']].append(info['key'])
 
-                models = get_charge_models_for_resource(rt)
+                models = get_charge_models_for_activity(at)
 
                 for charge_key, ModelClass in models.items():
                     rows = session.query(
@@ -1433,7 +1447,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
 
     def get_job_statistics(self,
                            account_id: int,
-                           resource_type: str,
+                           activity_type: str,
                            start_date: datetime,
                            end_date: datetime) -> tuple[Optional[int], Optional[float]]:
         """
@@ -1442,11 +1456,10 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         Returns:
             Tuple of (total_jobs, total_core_hours) or (None, None)
         """
-        if not ResourceTypeName.is_compute(resource_type):
+        # The authoritative compute table for this activity_type (comp/dav/hpc), else non-compute.
+        SummaryClass = get_compute_charge_model_for_activity(activity_type)
+        if SummaryClass is None:
             return None, None
-
-        # Use appropriate summary table
-        SummaryClass = CompChargeSummary if resource_type == ResourceTypeName.HPC else DavChargeSummary
 
         stats = self.session.query(func.coalesce(func.sum(SummaryClass.num_jobs), 0).label('jobs'),
                                    func.coalesce(func.sum(SummaryClass.core_hours), 0).label('hours')
@@ -1460,16 +1473,16 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
 
     def get_subtree_job_statistics(self,
                                    resource_id: int,
-                                   resource_type: str,
+                                   activity_type: str,
                                    start_date: datetime,
                                    end_date: datetime) -> tuple[Optional[int], Optional[float]]:
         """
         Get job count and core hours for computational resources (Subtree Aggregation).
         """
-        if not ResourceTypeName.is_compute(resource_type):
+        # The authoritative compute table for this activity_type (comp/dav/hpc), else non-compute.
+        SummaryClass = get_compute_charge_model_for_activity(activity_type)
+        if SummaryClass is None:
             return None, None
-
-        SummaryClass = CompChargeSummary if resource_type == ResourceTypeName.HPC else DavChargeSummary
 
         stats = self.session.query(
                 func.coalesce(func.sum(SummaryClass.num_jobs), 0).label('jobs'),

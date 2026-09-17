@@ -232,9 +232,11 @@ class Resource(Base, TimestampMixin, SessionMixin):
         charging_exempt: bool = False,
         prim_sys_admin_user_id: Optional[int] = None,
         prim_responsible_org_id: Optional[int] = None,
+        activity_type: Optional[str] = None,
     ) -> 'Resource':
         """
-        Create a new Resource.
+        Create a new Resource. activity_type names the resource's single charge
+        table (see accounting/calculator.py); None keeps the model default.
 
         NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
         """
@@ -250,6 +252,8 @@ class Resource(Base, TimestampMixin, SessionMixin):
             prim_sys_admin_user_id=prim_sys_admin_user_id,
             prim_responsible_org_id=prim_responsible_org_id,
         )
+        if activity_type is not None:
+            obj.activity_type = activity_type
         session.add(obj)
         session.flush()
         return obj

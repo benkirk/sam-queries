@@ -87,9 +87,12 @@ def get_project_charges(project):
             return jsonify({'error': 'No account found for this project/resource'}), 404
         account_ids = [account.account_id]
         resource_type = resource.resource_type.resource_type if resource.resource_type else 'UNKNOWN'
+        # Charges route by activity_type (the single authoritative table), not resource_type.
+        activity_type = resource.activity_type
     else:
         account_ids = [acc.account_id for acc in accounts_query.all()]
         resource_type = None
+        activity_type = None
 
     if not account_ids:
         return jsonify({
@@ -111,7 +114,7 @@ def get_project_charges(project):
             account_ids=account_ids,
             start_date=start_date,
             end_date=end_date,
-            resource_type=resource_type
+            activity_type=activity_type
         )
 
         # Convert to sorted list for charting
@@ -135,7 +138,7 @@ def get_project_charges(project):
         account_ids=account_ids,
         start_date=start_date,
         end_date=end_date,
-        resource_type=resource_type
+        activity_type=activity_type
     )
 
     return jsonify({

@@ -79,6 +79,7 @@ class FacilityName(StrEnum):
 class ChargeType(StrEnum):
     """Per-resource-type charge bucket names returned by allocation usage
     breakdowns (``Project.get_detailed_allocation_usage``)."""
+    HPC = 'hpc'
     COMP = 'comp'
     DAV = 'dav'
     DISK = 'disk'
