@@ -64,6 +64,7 @@ class AccountRequestEventForm(HtmxFormSchema):
     opens_at = f.DateTime(_DATETIME_LOCAL, load_default=None)
     closes_at = f.DateTime(_DATETIME_LOCAL, load_default=None)
     extra_sponsor_user_id = f.Int(load_default=None)
+    listed = f.Bool(load_default=False)
 
     @post_load
     def _normalize(self, data, **kwargs):
@@ -73,6 +74,11 @@ class AccountRequestEventForm(HtmxFormSchema):
                                field='closes_at',
                                message='The window must close after it opens.')
         return data
+
+
+class AccountRequestEventAdminForm(AccountRequestEventForm):
+    """Admin -> Events create: the project comes from a picker, not the URL."""
+    project_id = f.Int(required=True, error_messages={'required': 'Pick a project.'})
 
 
 class AccountRequestEventEditForm(HtmxFormSchema):

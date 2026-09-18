@@ -14,7 +14,7 @@ from datetime import date, datetime
 from typing import Optional
 
 from sqlalchemy import (
-    Column, Date, DateTime, Index, Integer, String, Text, UniqueConstraint, and_,
+    Boolean, Column, Date, DateTime, Index, Integer, String, Text, UniqueConstraint, and_,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
 
@@ -78,6 +78,8 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
     accounts_needed_by = Column(Date, nullable=False)
     opens_at = Column(DateTime)
     closes_at = Column(DateTime)
+    #: Opt-in public discoverability; an unlisted event is reachable by link only.
+    listed = Column(Boolean, nullable=False, default=False)
     created_by = Column(String(35), nullable=False)
     #: App clock, never a DB default -- SAM's convention is naive-Mountain.
     creation_time = Column(DateTime, nullable=False)
@@ -114,7 +116,7 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
     @classmethod
     def create(cls, session, *, event_code, name, project_id, accounts_needed_by,
                created_by, instructions=None, extra_sponsor_user_id=None,
-               opens_at=None, closes_at=None, clock=None):
+               opens_at=None, closes_at=None, listed=False, clock=None):
         """Flushes, does not commit; the caller owns the transaction."""
         name = _clean(name, width=128)
         if not name:
@@ -133,6 +135,7 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
             accounts_needed_by=accounts_needed_by,
             opens_at=opens_at,
             closes_at=closes_at,
+            listed=bool(listed),
             created_by=_clean(created_by, width=35),
             creation_time=now,
             modified_time=now,
@@ -144,7 +147,8 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
         return event
 
     def update(self, *, name=None, accounts_needed_by=None, instructions=_UNSET,
-               opens_at=_UNSET, closes_at=_UNSET, extra_sponsor_user_id=_UNSET):
+               opens_at=_UNSET, closes_at=_UNSET, extra_sponsor_user_id=_UNSET,
+               listed=None):
         """Sentinel-gated so a caller can clear the window, sponsor or instructions."""
         if name is not None:
             cleaned = _clean(name, width=128)
@@ -163,6 +167,8 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
             raise ValueError('closes_at must not precede opens_at')
         if extra_sponsor_user_id is not _UNSET:
             self.extra_sponsor_user_id = extra_sponsor_user_id
+        if listed is not None:
+            self.listed = bool(listed)
         self.session.flush()
         return self
 

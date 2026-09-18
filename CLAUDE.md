@@ -164,6 +164,13 @@ sam-queries/
   Invitations, the Pending Users column, and the anonymous `/register` form
   behind `ACCOUNT_REGISTRATION_ENABLED` (off in prod, on in dev) and, while
   `ACCOUNT_REGISTRATION_LOGIN_REQUIRED` is on (the default), signed-in only.
+  The **event lifecycle** (create/edit/close/reopen) is `MANAGE_EVENTS`
+  everywhere: Admin → Events (always mounted) and the Invitations tab share
+  `webapp/dashboards/event_lifecycle.py`. `listed` opts an event onto the
+  public Upcoming Events card on `/status/events`, which renders only while
+  `ACCOUNT_REGISTRATION_ENABLED` is on (its link 404s otherwise); the listing is
+  memoized there and every lifecycle write invalidates it. Record:
+  `docs/plans/implemented/EVENTS_VIEWS.md`.
 
 ### Security / Integration
 - **Role**, **ApiCredentials** (bcrypt-hashed), **RoleApiCredentials**

@@ -247,8 +247,9 @@ from .xras_activation import (
 )
 from .account_requests import (
     AccountRequestReasonForm,
-    AccountRequestEventForm,
+    AccountRequestEventAdminForm,
     AccountRequestEventEditForm,
+    AccountRequestEventForm,
     InviteUserForm,
     RosterPasteForm,
     RegisterForm,
@@ -361,7 +362,7 @@ __all__ = [
     'XrasDismissForm',
     # Account requests
     'AccountRequestReasonForm', 'AccountRequestEventForm',
-    'AccountRequestEventEditForm', 'InviteUserForm', 'RosterPasteForm',
+    'AccountRequestEventAdminForm', 'AccountRequestEventEditForm', 'InviteUserForm', 'RosterPasteForm',
     'RegisterForm', 'VerifyCodeForm',
     'XrasMergeForm',
     'XrasRemediationReasonForm',

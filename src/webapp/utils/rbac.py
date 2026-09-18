@@ -151,6 +151,10 @@ class Permission(Enum):
     # admin reaches the invitation routes through the steward check instead
     # (docs/plans/ACCOUNT_REGISTRATION.md section 2.2).
     MANAGE_ACCOUNT_REQUESTS = "manage_account_requests"
+    # The event lifecycle everywhere: Admin -> Events, and create / edit /
+    # close / reopen on a project's Invitations tab. Inviting people and
+    # pasting rosters stay on MANAGE_ACCOUNT_REQUESTS.
+    MANAGE_EVENTS = "manage_events"
     SYSTEM_ADMIN = "system_admin"  # Full access to everything
 
 
@@ -220,6 +224,7 @@ _ALLOCATION_ADMIN: Set[Permission] = (
         # The account-request queue is NUSD's worklist by design -- they are
         # the team that creates the accounts.
         Permission.MANAGE_ACCOUNT_REQUESTS,
+        Permission.MANAGE_EVENTS,
     }
 )
 

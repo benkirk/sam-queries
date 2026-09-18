@@ -36,28 +36,30 @@ def snapshot_projcode(session):
 
 @pytest.fixture
 def steward_less_client(auth_client, monkeypatch):
-    """`benkirk` without MANAGE_ACCOUNT_REQUESTS or SYSTEM_ADMIN: only a
-    project he leads or administers lets him in."""
+    """`benkirk` without MANAGE_ACCOUNT_REQUESTS, MANAGE_EVENTS or SYSTEM_ADMIN:
+    only a project he leads or administers lets him in."""
     from webapp.utils import rbac
     real = rbac.get_user_permissions
     monkeypatch.setattr(
         rbac, 'get_user_permissions',
         lambda user, *a, **k: {p for p in real(user, *a, **k)
                                if p not in (Permission.MANAGE_ACCOUNT_REQUESTS,
+                                            Permission.MANAGE_EVENTS,
                                             Permission.SYSTEM_ADMIN)})
     return auth_client
 
 
 @pytest.fixture
 def operator_client(auth_client, monkeypatch):
-    """`benkirk` WITH MANAGE_ACCOUNT_REQUESTS -- a real queue operator, whatever
+    """`benkirk` WITH MANAGE_ACCOUNT_REQUESTS and MANAGE_EVENTS -- a real operator, whatever
     the snapshot grants him. The snapshot makes him a project lead, not an
     operator, so the create-event (operator-only) path needs this."""
     from webapp.utils import rbac
     real = rbac.get_user_permissions
     monkeypatch.setattr(
         rbac, 'get_user_permissions',
-        lambda user, *a, **k: real(user, *a, **k) | {Permission.MANAGE_ACCOUNT_REQUESTS})
+        lambda user, *a, **k: real(user, *a, **k) | {Permission.MANAGE_ACCOUNT_REQUESTS,
+                                                     Permission.MANAGE_EVENTS})
     return auth_client
 
 

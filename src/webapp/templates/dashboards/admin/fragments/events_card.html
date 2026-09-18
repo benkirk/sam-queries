@@ -1,0 +1,75 @@
+{% from 'dashboards/fragments/project_bits.html' import project_link %}
+{% from 'dashboards/fragments/contract_bits.html' import contract_user_link %}
+{% from 'dashboards/fragments/clipboard.html' import copy_button %}
+{#
+  The Admin -> Events table. Context: rows (all_events dicts + reg_url),
+  can_view_projects, can_view_users. Openers target the #invitationModal shell
+  the host page (admin/events.html) ships.
+#}
+<div class="card-body">
+{% if rows %}
+<div class="table-responsive">
+<table class="table table-sm align-middle mb-0">
+    <thead class="table-subtle">
+        <tr>
+            <th>Code</th><th>Name</th><th>Project</th>
+            <th class="text-nowrap" title="Accounts needed by">Needed by</th>
+            <th title="Registration window">Window</th>
+            <th class="text-nowrap">Extra sponsor</th><th>Enrolled</th><th>Status</th>
+            <th class="text-end">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in rows %}
+        {% set e = r.event %}
+        <tr{% if not e.active %} class="text-muted"{% endif %}>
+            <td class="font-monospace text-nowrap">
+                {{ e.event_code }}
+                {{ copy_button(r.reg_url, label='Copy registration link', icon='fa-solid fa-link', compact=true, done='Registration link copied.') }}
+            </td>
+            <td>{{ e.name }}</td>
+            <td>{{ project_link(r.project_code, can_view_projects, admin=True) }}</td>
+            <td class="text-nowrap">{{ e.accounts_needed_by | fmt_date }}</td>
+            <td class="text-nowrap small">
+                {% if e.opens_at or e.closes_at %}
+                {{ e.opens_at | fmt_date if e.opens_at else 'now' }} – {{ e.closes_at | fmt_date if e.closes_at else 'no end' }}
+                {% else %}<span class="text-muted">always</span>{% endif %}
+            </td>
+            <td class="text-nowrap">{{ contract_user_link(r.sponsor, can_view_users) }}</td>
+            <td>{{ r.enrolled | fmt_number }}</td>
+            <td class="text-nowrap">
+                {% if e.active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Closed</span>{% endif %}
+                {% if e.listed %}<span class="badge bg-info" title="Shown on the public Upcoming Events card">Listed</span>{% endif %}
+            </td>
+            <td class="text-end text-nowrap">
+                {% if has_permission(Permission.MANAGE_EVENTS) %}
+                <div class="btn-group btn-group-sm flex-nowrap">
+                    <button type="button" class="btn btn-outline-secondary"
+                            title="Edit this event" aria-label="Edit"
+                            hx-get="{{ url_for('admin_dashboard.htmx_admin_event_edit_form', event_code=e.event_code) }}"
+                            hx-target="#invitationFormContainer" hx-swap="innerHTML"
+                            data-bs-toggle="modal" data-bs-target="#invitationModal"><i class="fa-solid fa-pen"></i></button>
+                    {% if e.active %}
+                    <button type="button" class="btn btn-outline-secondary"
+                            title="Close — stop accepting this code" aria-label="Close event"
+                            hx-post="{{ url_for('admin_dashboard.htmx_admin_event_close', event_code=e.event_code) }}"
+                            hx-confirm="Stop accepting {{ e.event_code }}? Existing requests are untouched."
+                            hx-swap="none"><i class="fa-solid fa-lock"></i></button>
+                    {% else %}
+                    <button type="button" class="btn btn-outline-secondary"
+                            title="Reopen this event" aria-label="Reopen event"
+                            hx-post="{{ url_for('admin_dashboard.htmx_admin_event_reopen', event_code=e.event_code) }}"
+                            hx-swap="none"><i class="fa-solid fa-lock-open"></i></button>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p class="text-muted mb-0">No events{% if active_only %} are active{% endif %}. An event groups a cohort of account requests under a code with a deadline.</p>
+{% endif %}
+</div>

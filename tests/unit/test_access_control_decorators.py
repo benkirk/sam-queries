@@ -269,7 +269,7 @@ class TestRequireEventSponsorAccess:
             session_mock.get.return_value = project
             with patch('webapp.api.access_control.db', Mock(session=session_mock)), \
                  patch('webapp.api.access_control.current_user', current_user):
-                @require_event_sponsor_access(Permission.MANAGE_ACCOUNT_REQUESTS)
+                @require_event_sponsor_access(Permission.MANAGE_EVENTS)
                 def route(event, project):
                     return ('ok', event, project)
 

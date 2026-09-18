@@ -88,22 +88,22 @@ def _is_event_sponsor(user, event, project, system_permission: Permission) -> bo
 
 
 def can_manage_events(user, project) -> bool:
-    """Manage an EXISTING account-request event (edit metadata, paste a roster,
-    pick the sponsor): a steward of the project or any ancestor, or a
-    MANAGE_ACCOUNT_REQUESTS holder. Creating an event is operator-only -- see
+    """Manage an EXISTING account-request event (edit metadata, pick the
+    sponsor): a steward of the project or any ancestor, or a MANAGE_EVENTS
+    holder. Creating an event is operator-only -- see
     can_create_events. The predicate require_event_sponsor_access applies (that
     also admits the event's own extra sponsor)."""
-    return _is_project_steward(user, project, Permission.MANAGE_ACCOUNT_REQUESTS,
+    return _is_project_steward(user, project, Permission.MANAGE_EVENTS,
                                include_ancestors=True)
 
 
 def can_create_events(user, project) -> bool:
     """Create a NEW account-request event (mint an event code): only a
-    MANAGE_ACCOUNT_REQUESTS holder for the project's facility. A project
+    MANAGE_EVENTS holder for the project's facility. A project
     lead/admin's role does NOT grant it, so a PI cannot open a code and
     surprise the operators. The predicate
-    require_project_facility_permission(MANAGE_ACCOUNT_REQUESTS) applies."""
-    return has_permission_for_facility(user, Permission.MANAGE_ACCOUNT_REQUESTS,
+    require_project_facility_permission(MANAGE_EVENTS) applies."""
+    return has_permission_for_facility(user, Permission.MANAGE_EVENTS,
                                        project.facility_name)
 
 

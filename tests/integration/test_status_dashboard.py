@@ -395,7 +395,7 @@ class TestEventsTab:
         body = response.get_data(as_text=True)
         assert 'Maintenance' in body
         assert self.CALENDAR in body          # calendar embed
-        assert '<title>Events - SAM' in body
+        assert '<title>Calendar &amp; Events - SAM' in body
 
     def test_tab_hidden_without_reservations_or_calendar(self, auth_client, status_session,
                                                          app, monkeypatch):

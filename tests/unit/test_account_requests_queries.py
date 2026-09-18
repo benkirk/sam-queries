@@ -20,7 +20,9 @@ from factories import (
 from sam.projects.projects import Project
 from sam.queries.account_requests import (
     Resolution,
+    all_events,
     all_requests,
+    enrolled_event_ids,
     enrollees_for_event,
     events_for,
     events_for_user,
@@ -32,6 +34,7 @@ from sam.queries.account_requests import (
     resolve_requests,
     stamp_account_requests,
     unverified_count,
+    upcoming_listed_events,
     user_has_enrollments,
     waiting_days,
 )
@@ -219,3 +222,59 @@ class TestEnrollmentReads:
         assert user_has_enrollments(session, user.user_id) is False
         make_event_enrollment(session, user=user)
         assert user_has_enrollments(session, user.user_id) is True
+
+
+class TestCrossProjectEventReads:
+    """Admin -> Events and the public Upcoming Events card."""
+
+    def test_all_events_carries_project_code_and_enrollee_count(self, session):
+        event = make_account_request_event(session)
+        make_event_enrollment(session, event=event, user=make_user(session))
+        make_event_enrollment(session, event=event, user=make_user(session))
+        row = next(r for r in all_events(session)
+                   if r['event'].account_request_event_id == event.account_request_event_id)
+        assert row['enrolled'] == 2
+        assert row['project_code'] == session.get(Project, event.project_id).projcode
+        assert row['sponsor'] is None
+
+    def test_all_events_counts_zero_for_an_empty_event(self, session):
+        event = make_account_request_event(session)
+        row = next(r for r in all_events(session)
+                   if r['event'].account_request_event_id == event.account_request_event_id)
+        assert row['enrolled'] == 0
+
+    def test_upcoming_is_listed_open_and_not_past_its_deadline(self, session):
+        now = datetime(2026, 10, 1, 12, 0)
+        soon = now.date() + timedelta(days=10)
+        shown = make_account_request_event(session, listed=True, accounts_needed_by=soon)
+        hidden = [
+            make_account_request_event(session, accounts_needed_by=soon),  # unlisted
+            make_account_request_event(session, listed=True, active=False,
+                                       accounts_needed_by=soon),
+            make_account_request_event(session, listed=True, accounts_needed_by=soon,
+                                       opens_at=now + timedelta(days=1)),
+            make_account_request_event(session, listed=True, accounts_needed_by=soon,
+                                       closes_at=now),  # closes_at is exclusive
+            make_account_request_event(session, listed=True,
+                                       accounts_needed_by=now.date() - timedelta(days=1)),
+        ]
+        codes = {r['event_code'] for r in upcoming_listed_events(session, now=now)}
+        assert shown.event_code in codes
+        assert not codes & {e.event_code for e in hidden}
+
+    def test_upcoming_rows_are_plain_picklable_dicts(self, session):
+        import pickle
+        now = datetime(2026, 10, 1, 12, 0)
+        make_account_request_event(session, listed=True,
+                                   accounts_needed_by=now.date() + timedelta(days=5))
+        rows = upcoming_listed_events(session, now=now)
+        assert rows and pickle.loads(pickle.dumps(rows)) == rows
+        assert set(rows[0]) == {'event_id', 'event_code', 'name', 'instructions',
+                                'project_code', 'accounts_needed_by', 'closes_at'}
+
+    def test_enrolled_event_ids(self, session):
+        user = make_user(session)
+        event = make_account_request_event(session)
+        assert enrolled_event_ids(session, user.user_id) == set()
+        make_event_enrollment(session, event=event, user=user)
+        assert enrolled_event_ids(session, user.user_id) == {event.account_request_event_id}
