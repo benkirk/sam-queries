@@ -89,7 +89,7 @@
             {{ facet_row('Status', facet_values.state, form_id, 'state', active=selected.state) }}
             {{ facet_row('Purpose', facet_values.purpose, form_id, 'purpose', active=selected.purpose) }}
             {{ facet_row('Origin', facet_values.origin, form_id, 'origin', active=selected.origin) }}
-            {{ facet_row('Directory', facet_values.readiness, form_id, 'readiness', active=selected.readiness) }}
+            {{ facet_row('Readiness', facet_values.readiness, form_id, 'readiness', active=selected.readiness) }}
             {{ facet_row('Event', facet_values.event, form_id, 'event', active=selected.event) }}
         </div>
 
@@ -113,7 +113,7 @@
                     <th>{{ sort_header('email', 'Email') }}</th>
                     <th style="width:8rem;">Purpose</th>
                     <th style="width:9rem;">Project</th>
-                    <th style="width:10rem;">Directory</th>
+                    <th style="width:10rem;">Readiness</th>
                     <th class="text-nowrap" style="width:6rem;">{{ sort_header('waiting', 'Waiting') }}</th>
                     <th style="width:9rem;">{{ sort_header('state', 'Status') }}</th>
                     <th class="text-end" style="width:9rem;">Actions</th>
