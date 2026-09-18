@@ -281,7 +281,7 @@
   ],
   [
     "admin_dashboard.htmx_admin_event_create",
-    "/admin/events/new",
+    "/admin/htmx/events/new",
     [
       "POST"
     ]
@@ -295,7 +295,7 @@
   ],
   [
     "admin_dashboard.htmx_admin_event_form",
-    "/admin/events/new-form",
+    "/admin/htmx/events/new-form",
     [
       "GET"
     ]

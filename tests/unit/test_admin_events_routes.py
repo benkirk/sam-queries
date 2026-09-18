@@ -59,9 +59,9 @@ def no_events_client(auth_client, monkeypatch):
     return auth_client
 
 
-GETS = [PAGE, FRAGMENT, '/admin/events/new-form', f'/admin/events/{CODE}/edit-form',
+GETS = [PAGE, FRAGMENT, '/admin/htmx/events/new-form', f'/admin/events/{CODE}/edit-form',
         '/admin/htmx/events/project-search?q=SC']
-POSTS = ['/admin/events/new', f'/admin/events/{CODE}', f'/admin/events/{CODE}/close',
+POSTS = ['/admin/htmx/events/new', f'/admin/events/{CODE}', f'/admin/events/{CODE}/close',
          f'/admin/events/{CODE}/reopen']
 
 
@@ -114,7 +114,7 @@ class TestRenderSmoke:
         assert f'/register/{code}' in html
 
     def test_the_create_form_has_a_project_picker_and_the_listed_box(self, auth_client):
-        html = auth_client.get('/admin/events/new-form').get_data(as_text=True)
+        html = auth_client.get('/admin/htmx/events/new-form').get_data(as_text=True)
         assert 'name="project_id"' in html
         assert 'name="listed"' in html
 
@@ -132,7 +132,7 @@ class TestRenderSmoke:
 class TestCreateValidation:
 
     def test_a_missing_project_is_a_field_error(self, auth_client):
-        resp = auth_client.post('/admin/events/new', data={
+        resp = auth_client.post('/admin/htmx/events/new', data={
             'event_code': 'ZZ-NO-PROJECT', 'name': 'x',
             'accounts_needed_by': '2030-01-01'})
         assert 'Pick a project.' in resp.get_data(as_text=True)
@@ -143,7 +143,7 @@ class TestCreateValidation:
         code, projcode = committed_event
         with app.app_context():
             pid = Project.get_by_projcode(db.session, projcode).project_id
-        resp = auth_client.post('/admin/events/new', data={
+        resp = auth_client.post('/admin/htmx/events/new', data={
             'event_code': code, 'name': 'dup', 'project_id': pid,
             'accounts_needed_by': '2030-01-01'})
         assert 'already in use' in resp.get_data(as_text=True)

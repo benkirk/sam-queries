@@ -78,14 +78,14 @@ def events_fragment():
         can_view_users=has_permission_any_facility(current_user, Permission.VIEW_USERS))
 
 
-@bp.route('/events/new-form')
+@bp.route('/htmx/events/new-form')
 @login_required
 @_GUARD
 def htmx_admin_event_form():
     return render_template(EVENT_FORM, errors=[], **_form_context())
 
 
-@bp.route('/events/new', methods=['POST'])
+@bp.route('/htmx/events/new', methods=['POST'])
 @login_required
 @_GUARD
 def htmx_admin_event_create():
