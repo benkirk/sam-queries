@@ -395,7 +395,7 @@ class TestEventsTab:
         body = response.get_data(as_text=True)
         assert 'Maintenance' in body
         assert self.CALENDAR in body          # calendar embed
-        assert '<title>Events - SAM' in body
+        assert '<title>Calendar &amp; Events - SAM' in body
 
     def test_tab_hidden_without_reservations_or_calendar(self, auth_client, status_session,
                                                          app, monkeypatch):
@@ -495,3 +495,90 @@ class TestStaleBanner:
         response = auth_client.get('/status/derecho')
         assert response.status_code == 200
         assert self.BANNER not in response.data
+
+
+_HISTORY_ROUTES = (
+    '/status/nodetype-history/casper/cpu',
+    '/status/partition-history/derecho/cpu',
+    '/status/queue-history/derecho/main',
+)
+
+
+class TestHoursWindowIsBounded:
+    """The drill-downs are anonymous: ``?hours=`` must neither 500 nor scan the table."""
+
+    @pytest.mark.parametrize('route', _HISTORY_ROUTES)
+    @pytest.mark.parametrize('raw', ['abc', '1e9', '-5'])
+    def test_junk_renders(self, client, status_session, route, raw):
+        seed_data(status_session)
+        assert client.get(f'{route}?hours={raw}').status_code == 200
+
+    @pytest.mark.parametrize('route', _HISTORY_ROUTES)
+    def test_huge_window_is_clamped(self, client, status_session, route):
+        seed_data(status_session)
+        body = client.get(f'{route}?hours=999999').get_data(as_text=True)
+        assert 'hours=999999' not in body
+        assert 'hours=720' in body
+
+    def test_legacy_days_is_clamped_too(self, client, status_session):
+        seed_data(status_session)
+        body = client.get('/status/queue-history/derecho/main?days=9999').get_data(as_text=True)
+        assert 'hours=720' in body
+
+
+@pytest.fixture
+def status_query_log(app):
+    """Statements issued on the system_status bind while the block runs."""
+    from sqlalchemy import event
+    from webapp.extensions import db
+    with app.app_context():
+        engine = db.engines['system_status']
+    seen = []
+
+    def _record(conn, cursor, statement, *_):
+        seen.append(statement)
+
+    event.listen(engine, 'before_cursor_execute', _record)
+    yield seen
+    event.remove(engine, 'before_cursor_execute', _record)
+
+
+class TestStatusReadPathsStayFlat:
+    """Read paths must not drag the snapshot's selectin collections or lazy-load names."""
+
+    def _seed_history(self, session, snapshots=6):
+        seed_data(session)
+        now = utcnow_naive()
+        for i in range(1, snapshots):
+            session.add(DerechoStatus(
+                timestamp=now - timedelta(minutes=5 * i),
+                cpu_nodes_total=100, cpu_nodes_available=90, cpu_nodes_down=10,
+                cpu_nodes_reserved=0, gpu_nodes_total=10, gpu_nodes_available=8,
+                gpu_nodes_down=2, gpu_nodes_reserved=0,
+                cpu_cores_total=1000, cpu_cores_allocated=500, cpu_cores_idle=500,
+                gpu_count_total=40, gpu_count_allocated=20, gpu_count_idle=20,
+                memory_total_gb=1000.0, memory_allocated_gb=500.0,
+                running_jobs=50, pending_jobs=10, active_users=20))
+        session.commit()
+
+    def test_partition_history_reads_no_child_tables(self, client, status_session,
+                                                     status_query_log):
+        self._seed_history(status_session)
+        del status_query_log[:]
+        assert client.get('/status/partition-history/derecho/cpu').status_code == 200
+        children = ('queue_status', 'login_node_status', 'filesystem_status',
+                    'user_proj_queue_status')
+        dragged = [s for s in status_query_log
+                   if any(f'FROM {t}' in s for t in children)]
+        assert not dragged, dragged
+
+    def test_landing_page_names_cost_no_lookup_round_trips(self, client, status_session,
+                                                           status_query_log):
+        seed_data(status_session)
+        del status_query_log[:]
+        assert client.get('/status/derecho').status_code == 200
+        lookups = [s for s in status_query_log
+                   if s.lstrip().upper().startswith('SELECT')
+                   and any(f'FROM {t} ' in s.replace('\n', ' ') + ' '
+                           for t in ('systems', 'queues', 'filesystems', 'login_nodes'))]
+        assert not lookups, lookups

@@ -38,6 +38,8 @@
     {'endpoint': 'admin_dashboard.facilities',    'label': 'Facilities & Allocations', 'icon': 'fa-solid fa-building'},
     {'endpoint': 'admin_dashboard.account_requests', 'label': 'Accounts', 'icon': 'fa-solid fa-user-plus',
      'visible': has_permission(Permission.MANAGE_ACCOUNT_REQUESTS)},
+    {'endpoint': 'admin_dashboard.events', 'label': 'Events', 'icon': 'fa-solid fa-calendar-days',
+     'visible': has_permission_any_facility(Permission.MANAGE_EVENTS)},
     {'endpoint': 'admin_dashboard.configuration', 'label': 'Configuration', 'icon': 'fa-solid fa-sliders',
      'visible': has_permission(Permission.VIEW_SYSTEM_CONFIG)},
 ]) }}

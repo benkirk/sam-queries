@@ -1,7 +1,8 @@
 {% extends 'dashboards/status/base_status.html' %}
 
-{% block title %}Events - SAM{% endblock %}
+{% block title %}Calendar &amp; Events - SAM{% endblock %}
 
 {% block status_content %}
+{% if upcoming_events %}{% include 'dashboards/status/fragments/upcoming_events.html' %}{% endif %}
 {% include 'dashboards/status/fragments/reservations.html' %}
 {% endblock %}

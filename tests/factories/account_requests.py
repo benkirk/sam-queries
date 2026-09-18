@@ -20,7 +20,7 @@ from .projects import make_project
 def make_account_request_event(session, *, project=None, event_code=None,
                                name=None, accounts_needed_by=None, by='benkirk',
                                extra_sponsor=None, opens_at=None, closes_at=None,
-                               active=True):
+                               active=True, listed=False):
     """An event 30 days out on a fresh project unless told otherwise.
 
     ``next_seq('EVT-')`` yields ``EVT-00001`` (worker-tagged), which already
@@ -37,6 +37,7 @@ def make_account_request_event(session, *, project=None, event_code=None,
         extra_sponsor_user_id=extra_sponsor.user_id if extra_sponsor else None,
         opens_at=opens_at,
         closes_at=closes_at,
+        listed=listed,
     )
     if not active:
         event.close()

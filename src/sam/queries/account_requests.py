@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy import func, or_
+from sqlalchemy.orm import Session, joinedload, lazyload
 
 from sam.core.account_requests import (
     CREATED_BY_SELF,
@@ -26,9 +26,10 @@ from sam.core.account_requests import (
     AccountRequestEvent,
     EventEnrollment,
 )
+from sam.accounting.allocations import AllocationType
 from sam.core.users import User
 from sam.projects.projects import Project
-from sam.projects.projects import Project
+from sam.resources.facilities import Panel
 
 from .xras_accounts import sam_merge_targets
 
@@ -266,22 +267,94 @@ def user_has_enrollments(session: Session, user_id: int) -> bool:
         EventEnrollment.user_id == user_id).first() is not None
 
 
+def all_events(session: Session, *,
+               facility_names: Optional[Sequence[str]] = None) -> List[Dict[str, Any]]:
+    """Every event across projects, soonest deadline first within active. Keys:
+    ``event project_code project_active facility sponsor enrolled``; four
+    queries whatever the row count. ``facility_names`` (None = no restriction)
+    keeps only events whose project sits in one of them."""
+    events = (session.query(AccountRequestEvent)
+              .order_by(AccountRequestEvent.active.desc(),
+                        AccountRequestEvent.accounts_needed_by,
+                        AccountRequestEvent.event_code).all())
+    if not events:
+        return []
+    project_ids = sorted({e.project_id for e in events})
+    projects = {p.project_id: p for p in (
+        session.query(Project)
+        .options(lazyload('*'),
+                 joinedload(Project.allocation_type)
+                 .joinedload(AllocationType.panel).joinedload(Panel.facility))
+        .filter(Project.project_id.in_(project_ids)).all())}
+    sponsors = event_sponsors(session, events)
+    counts = dict(session.query(EventEnrollment.event_id, func.count())
+                  .group_by(EventEnrollment.event_id).all())
+    allowed = None if facility_names is None else set(facility_names)
+    out = []
+    for e in events:
+        project = projects.get(e.project_id)
+        facility = project.facility_name if project else None
+        if allowed is not None and facility not in allowed:
+            continue
+        out.append({'event': e,
+                    'project_code': project.projcode if project else '',
+                    'project_active': bool(project and project.is_active),
+                    'facility': facility,
+                    'sponsor': sponsors.get(e.extra_sponsor_user_id),
+                    'enrolled': counts.get(e.account_request_event_id, 0)})
+    return out
+
+
+def upcoming_listed_events(session: Session, *,
+                           now: Optional[datetime] = None) -> List[Dict[str, Any]]:
+    """Listed events whose form is open and whose deadline has not passed,
+    soonest first, as plain dicts (the caller caches them). Keys: ``event_id
+    event_code name instructions project_code accounts_needed_by closes_at``.
+
+    ``now`` is naive-Mountain like the columns it is compared to, NOT the status
+    page's naive-UTC clock. The window mirrors AccountRequestEvent.is_open_at.
+    """
+    now = now or datetime.now()
+    E = AccountRequestEvent
+    # Inner join: an event on a retired (or vanished) project is not advertised.
+    rows = (session.query(E, Project.projcode)
+            .join(Project, Project.project_id == E.project_id)
+            .filter(E.is_active, E.listed, Project.is_active,
+                    or_(E.opens_at.is_(None), E.opens_at <= now),
+                    or_(E.closes_at.is_(None), E.closes_at > now),
+                    E.accounts_needed_by >= now.date())
+            .order_by(E.accounts_needed_by, E.event_code).all())
+    return [{'event_id': e.account_request_event_id, 'event_code': e.event_code,
+             'name': e.name, 'instructions': e.instructions,
+             'project_code': projcode or '',
+             'accounts_needed_by': e.accounts_needed_by,
+             'closes_at': e.closes_at} for e, projcode in rows]
+
+
+def enrolled_event_ids(session: Session, user_id: int) -> set:
+    return {eid for (eid,) in session.query(EventEnrollment.event_id)
+            .filter(EventEnrollment.user_id == user_id).all()}
+
+
 def group_by_event(views: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Event groups nearest deadline first, then the loose views last, each
-    in input order. A view whose event is gone (``event`` None) is loose,
-    not lost. Each group is ``{'event', 'rows', 'project_code'}``.
+    """Event groups nearest deadline first, then the event-less views: one
+    group per project (by projcode), project-less last, each in input order. A
+    view whose event is gone is event-less, not lost. Each group is
+    ``{'event', 'rows', 'project_code'}``.
     """
     by_event: Dict[int, List[Dict[str, Any]]] = {}
-    loose: List[Dict[str, Any]] = []
+    loose: Dict[str, List[Dict[str, Any]]] = {}
     for v in views:
-        (by_event.setdefault(v['event'].account_request_event_id, [])
-         if v['event'] else loose).append(v)
+        if v['event']:
+            by_event.setdefault(v['event'].account_request_event_id, []).append(v)
+        else:
+            loose.setdefault(v['project_code'] or '', []).append(v)
     groups = [{'event': members[0]['event'], 'rows': members,
                'project_code': members[0]['event_project_code']}
               for members in by_event.values()]
     groups.sort(key=lambda g: (g['event'].accounts_needed_by, g['event'].event_code))
-    if loose:
-        groups.append({'event': None, 'rows': loose, 'project_code': ''})
+    for code in sorted(loose, key=lambda c: (c == '', c)):
+        groups.append({'event': None, 'rows': loose[code], 'project_code': code})
     return groups
 
 

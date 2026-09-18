@@ -7,7 +7,7 @@ the ``register`` idiom, so the tab ships dark in prod and every route 404s
 there. Three ways to the same rows: one invitation, an event (a cohort with
 a code and a deadline), a roster pasted under it. Guards: the project's
 stewards (tree walked) or the event's extra sponsor, or
-MANAGE_ACCOUNT_REQUESTS. Design: docs/plans/ACCOUNT_REGISTRATION.md 3.1.
+MANAGE_ACCOUNT_REQUESTS (MANAGE_EVENTS for an event's own lifecycle). Design: docs/plans/implemented/ACCOUNT_REGISTRATION.md 3.1.
 """
 
 from flask import Blueprint, render_template, request, url_for
@@ -15,54 +15,53 @@ from flask_login import current_user, login_required
 
 from sam.core.account_requests import OPEN_STATES, AccountRequest, AccountRequestEvent
 from sam.core.users import User
-from sam.manage import management_transaction
 from sam.manage.account_requests import (
     OUTCOME_ADDED,
     OUTCOME_DUPLICATE,
-    OUTCOME_QUEUED,
     invite_user,
-    parse_roster,
-    paste_roster,
 )
 from sam.queries.account_requests import (
     enrollees_for_event, event_sponsors, events_for, request_views,
     resolve_requests,
 )
 from sam.schemas.forms import (
-    AccountRequestEventEditForm,
     AccountRequestEventForm,
     InviteUserForm,
-    RosterPasteForm,
 )
 from webapp.api.access_control import (
     require_event_sponsor_access, require_project_facility_permission,
     require_project_permission,
 )
+from webapp.dashboards.event_lifecycle import (
+    EVENT_FORM, ROSTER_FORM, EventEditHandler, RosterHandler, create_event,
+    invalidate_upcoming_events, sponsor_context, switch_event,
+)
 from webapp.extensions import db
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import (
-    handle_htmx_form_post, htmx_success, htmx_success_message, institution_options,
+    handle_htmx_form_post, htmx_success_message, institution_options,
 )
+from webapp.utils.project_permissions import can_create_events
 from webapp.utils.rbac import Permission, has_permission_any_facility
 
 bp = Blueprint('project_invites', __name__, url_prefix='/project-invitations')
 
 _TAB = 'project_members/fragments/invitations_tab_htmx.html'
 _INVITE_FORM = 'project_members/fragments/invite_form_htmx.html'
-_EVENT_FORM = 'project_members/fragments/event_form_htmx.html'
-_ROSTER_FORM = 'project_members/fragments/roster_form_htmx.html'
-_ROSTER_RESULT = 'project_members/fragments/roster_result_htmx.html'
 _FORM_TARGET = '#invitationFormContainer'
 _TRIGGERS = {'closeActiveModal': {}, 'refreshInvitations': {}, 'refreshAccountQueue': {}}
 
 _GUARD = require_project_permission(Permission.MANAGE_ACCOUNT_REQUESTS,
                                     include_ancestors=True)
+# Rosters create account requests, so they stay on MANAGE_ACCOUNT_REQUESTS; the
+# event's own lifecycle is MANAGE_EVENTS. Both admit a steward or the event's
+# extra sponsor.
 _EVENT_GUARD = require_event_sponsor_access(Permission.MANAGE_ACCOUNT_REQUESTS)
-# Creating an event (minting a code) is operator-only: MANAGE_ACCOUNT_REQUESTS
-# for the project's facility, NO lead/admin override -- a PI cannot open a code
-# and surprise the operators. Managing an event once it exists stays on
-# _EVENT_GUARD (steward or the event's extra sponsor).
-_CREATE_GUARD = require_project_facility_permission(Permission.MANAGE_ACCOUNT_REQUESTS)
+_EVENT_MANAGE_GUARD = require_event_sponsor_access(Permission.MANAGE_EVENTS)
+# Creating an event (minting a code) is operator-only: MANAGE_EVENTS for the
+# project's facility, NO lead/admin override -- a PI cannot open a code and
+# surprise the operators.
+_CREATE_GUARD = require_project_facility_permission(Permission.MANAGE_EVENTS)
 
 
 def _sponsor():
@@ -200,180 +199,90 @@ def htmx_invite_user(project):
 
 
 # -- events -------------------------------------------------------------------
+# The lifecycle itself lives in event_lifecycle.py, shared with Admin -> Events.
 
-def _resolve_sponsor(user_id):
-    """The extra sponsor's SAM row (picked from the user search), or a FormError."""
-    if user_id is None:
-        return None
-    user = db.session.get(User, user_id)
-    if user is None or not user.is_active:
-        raise FormError('That sponsor is not an active SAM user.')
-    return user
-
-
-def _sponsor_label(user):
-    return f'{user.display_name} ({user.username})'
+def _event_form_context(project, event=None):
+    post_url = (url_for('project_invites.htmx_event_update', event_code=event.event_code)
+                if event else
+                url_for('project_invites.htmx_event_create', projcode=project.projcode))
+    return {'project': project, 'event': event, 'post_url': post_url,
+            'can_list': can_create_events(current_user, project)}
 
 
 @bp.route('/<projcode>/events/new-form')
 @login_required
 @_CREATE_GUARD
 def htmx_event_form(project):
-    return render_template(_EVENT_FORM, project=project, event=None,
-                           post_url=url_for('project_invites.htmx_event_create',
-                                            projcode=project.projcode), errors=[])
+    return render_template(EVENT_FORM, errors=[], **_event_form_context(project))
 
 
 @bp.route('/<projcode>/events', methods=['POST'])
 @login_required
 @_CREATE_GUARD
 def htmx_event_create(project):
-    def _create(data):
-        code = data['event_code']
-        if db.session.query(AccountRequestEvent).filter_by(event_code=code).first():
-            raise FormError(f'The code {code} is already in use.')
-        sponsor = _resolve_sponsor(data.get('extra_sponsor_user_id'))
-        return AccountRequestEvent.create(
-            db.session, event_code=code, name=data['name'],
-            instructions=data.get('instructions'),
-            project_id=project.project_id,
-            accounts_needed_by=data['accounts_needed_by'],
-            opens_at=data.get('opens_at'), closes_at=data.get('closes_at'),
-            extra_sponsor_user_id=sponsor.user_id if sponsor else None,
-            created_by=current_user.username)
-
     return handle_htmx_form_post(
-        schema_cls=AccountRequestEventForm, template=_EVENT_FORM,
-        do_action=_create, success_triggers=_TRIGGERS,
+        schema_cls=AccountRequestEventForm, template=EVENT_FORM,
+        do_action=lambda data: create_event(data, project),
+        success_triggers=_TRIGGERS,
         success_message='Event created. Hand the code out; registrations '
                         'and pasted rosters land under it.',
         error_prefix='Error creating event',
-        extra_context={'project': project, 'event': None,
-                       'post_url': url_for('project_invites.htmx_event_create',
-                                           projcode=project.projcode)},
+        extra_context=_event_form_context(project),
+        after_commit=lambda _event: invalidate_upcoming_events(),
     )
 
 
-class _EventEditHandler(HtmxFormHandler):
-    """PUT: gated on the keys present in the ORIGINAL form, not the loaded
-    output -- load_default fills absent fields with None and would clear them."""
-    schema_cls = AccountRequestEventEditForm
-    template = _EVENT_FORM
-    partial = True
-
-    def perform(self, data):
-        sent = request.form
-        updates = {}
-        if 'name' in sent:
-            updates['name'] = data.get('name')
-        if 'instructions' in sent:
-            updates['instructions'] = data.get('instructions')
-        if 'accounts_needed_by' in sent and data.get('accounts_needed_by'):
-            updates['accounts_needed_by'] = data['accounts_needed_by']
-        if 'opens_at' in sent:
-            updates['opens_at'] = data.get('opens_at')
-        if 'closes_at' in sent:
-            updates['closes_at'] = data.get('closes_at')
-        # The picker's hidden input is always posted: empty clears the sponsor.
-        if 'extra_sponsor_user_id' in sent:
-            sponsor = _resolve_sponsor(data.get('extra_sponsor_user_id'))
-            updates['extra_sponsor_user_id'] = sponsor.user_id if sponsor else None
-        return self.event.update(**updates)
+class _EventEditHandler(EventEditHandler):
+    triggers = _TRIGGERS
 
     def context(self):
-        return {'project': self.project, 'event': self.event,
-                'post_url': url_for('project_invites.htmx_event_update',
-                                    event_code=self.event.event_code)}
-
-    def on_success(self, result):
-        return htmx_success_message(_TRIGGERS, f'Saved {self.event.event_code}.')
+        return _event_form_context(self.project, self.event)
 
 
 @bp.route('/events/<event_code>/edit-form')
 @login_required
-@_EVENT_GUARD
+@_EVENT_MANAGE_GUARD
 def htmx_event_edit_form(event, project):
-    sponsor = db.session.get(User, event.extra_sponsor_user_id) if event.extra_sponsor_user_id else None
-    return render_template(_EVENT_FORM, project=project, event=event,
-                           sponsor_id=sponsor.user_id if sponsor else '',
-                           sponsor_label=_sponsor_label(sponsor) if sponsor else '',
-                           post_url=url_for('project_invites.htmx_event_update',
-                                            event_code=event.event_code), errors=[])
+    return render_template(EVENT_FORM, errors=[], **sponsor_context(event),
+                           **_event_form_context(project, event))
 
 
 @bp.route('/events/<event_code>', methods=['POST', 'PUT'])
 @login_required
-@_EVENT_GUARD
+@_EVENT_MANAGE_GUARD
 def htmx_event_update(event, project):
     """Partial update; POST as well as PUT because the shared form wrapper
     emits hx-post. The gating on sent keys is what makes it a partial."""
     return _EventEditHandler(event=event, project=project).handle()
 
 
-def _switch(event, verb):
-    with management_transaction(db.session):
-        (event.close if verb == 'close' else event.reopen)()
-    return htmx_success_message(
-        {'refreshInvitations': {}},
-        f'{event.event_code} {"closed" if verb == "close" else "reopened"}.')
-
-
 @bp.route('/events/<event_code>/close', methods=['POST'])
 @login_required
-@_EVENT_GUARD
+@_EVENT_MANAGE_GUARD
 def htmx_event_close(event, project):
     """Stop accepting the code on the public form; existing rows are untouched."""
-    return _switch(event, 'close')
+    return switch_event(event, 'close', {'refreshInvitations': {}})
 
 
 @bp.route('/events/<event_code>/reopen', methods=['POST'])
 @login_required
-@_EVENT_GUARD
+@_EVENT_MANAGE_GUARD
 def htmx_event_reopen(event, project):
-    return _switch(event, 'reopen')
+    return switch_event(event, 'reopen', {'refreshInvitations': {}})
 
 
 # -- roster -------------------------------------------------------------------
 
-class _RosterHandler(HtmxFormHandler):
-    schema_cls = RosterPasteForm
-    template = _ROSTER_FORM
-
-    def clean(self, data):
-        entries, errors = parse_roster(data['roster'])
-        if errors:
-            raise FormError(*errors)
-        if not entries:
-            raise FormError('No people found; one "Name <email>" per line.')
-        data['entries'] = entries
-        return data
-
-    def perform(self, data):
-        return paste_roster(db.session, event=self.event, sponsor=_sponsor(),
-                            entries=data['entries'])
-
-    def context(self):
-        return {'project': self.project, 'event': self.event,
-                'post_url': url_for('project_invites.htmx_roster_paste',
-                                    event_code=self.event.event_code)}
-
-    def on_success(self, result):
-        # The summary replaces the form inside the still-open modal: an
-        # operator pasting thirty lines wants to see which three were known.
-        counts = {k: len(v) for k, v in result.items()}
-        return htmx_success(_ROSTER_RESULT,
-                            {'refreshInvitations': {}, 'refreshAccountQueue': {}},
-                            toast=(f"{counts[OUTCOME_QUEUED]} queued, "
-                                   f"{counts[OUTCOME_ADDED]} added, "
-                                   f"{counts[OUTCOME_DUPLICATE]} already waiting"),
-                            event=self.event, project=self.project, outcomes=result)
+class _RosterHandler(RosterHandler):
+    post_endpoint = 'project_invites.htmx_roster_paste'
+    triggers = {'refreshInvitations': {}, 'refreshAccountQueue': {}}
 
 
 @bp.route('/events/<event_code>/roster-form')
 @login_required
 @_EVENT_GUARD
 def htmx_roster_form(event, project):
-    return render_template(_ROSTER_FORM, project=project, event=event,
+    return render_template(ROSTER_FORM, project=project, event=event,
                            post_url=url_for('project_invites.htmx_roster_paste',
                                             event_code=event.event_code), errors=[])
 

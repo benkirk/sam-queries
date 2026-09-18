@@ -1,19 +1,26 @@
-{% from 'dashboards/fragments/form_fields.html' import text_field, textarea_field, date_field, datetime_field, fk_search_field, readonly_display, form_errors_panel with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, textarea_field, date_field, datetime_field, checkbox_field, fk_search_field, readonly_display, form_errors_panel with context %}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
 {#
   Create or edit an event. Lands in #invitationFormContainer.
 
-  Context: project, event (None on create), sponsor_id + sponsor_label (edit), post_url, errors
+  Context: project (None on the Admin -> Events create form, which sets
+  project_search_url and picks one), event (None on create), sponsor_id +
+  sponsor_label (edit), post_url, can_list (draw the Listed checkbox), errors.
   On edit the form PUTs; the handler gates updates on the keys present.
 #}
 <h5 class="modal-title" id="invitationModalLabel" hx-swap-oob="true">
     <i class="fa-solid fa-calendar-plus"></i>
-    {% if event %}Edit {{ event.event_code }}{% else %}New event on {{ project.projcode }}{% endif %}
+    {% if event %}Edit {{ event.event_code }}{% elif project %}New event on {{ project.projcode }}{% else %}New event{% endif %}
 </h5>
 
 {% call htmx_form(post_url, '#invitationFormContainer',
                   'Save' if event else 'Create event',
                   submit_icon='save' if event else 'plus', errors=errors) %}
+    {% if project_search_url %}
+    {{ fk_search_field('project_id', 'Project', project_search_url, required=True,
+                       placeholder='Search projects…', id_prefix='eventProject',
+                       help='Every account created for this event joins this project.') }}
+    {% endif %}
     {% if event %}
     {{ readonly_display('Code', event.event_code) }}
     {% else %}
@@ -35,9 +42,17 @@
         <div class="col-md-6">{{ datetime_field('closes_at', 'Registration closes', default=event.closes_at if event else '', help='Blank: no end.') }}</div>
     </div>
     {{ fk_search_field('extra_sponsor_user_id', 'Extra sponsor',
-                       url_for('admin_dashboard.htmx_search_users', context='sponsor', projcode=project.projcode),
+                       url_for('admin_dashboard.htmx_search_users', context='sponsor',
+                               projcode=project.projcode if project else none),
                        placeholder='Search SAM users…',
                        selected_id=sponsor_id if event else '',
                        selected_label=sponsor_label if event else '',
                        help='One SAM user besides the project lead and admin who may run this event (an instructor, say).') }}
+    {% if can_list %}
+    {# An unchecked box posts nothing; this says the box was drawn at all. #}
+    <input type="hidden" name="listed_present" value="1">
+    {{ checkbox_field('listed', 'List on the public Upcoming Events page',
+                      default=event.listed if event else False,
+                      help='Unlisted events stay reachable by their registration link only.') }}
+    {% endif %}
 {% endcall %}

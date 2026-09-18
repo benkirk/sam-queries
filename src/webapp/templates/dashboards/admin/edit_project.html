@@ -74,7 +74,7 @@
       <i class="fa-solid fa-users me-1"></i> Members
     </button>
   </li>
-  {# Invitations: people who have NO account yet (docs/plans/ACCOUNT_REGISTRATION.md).
+  {# Invitations: people who have NO account yet (docs/plans/implemented/ACCOUNT_REGISTRATION.md).
      The routes walk the project tree, so an ancestor steward who can reach this
      page sees the tab too. #}
   {% if config.ACCOUNT_INVITATIONS_ENABLED and can_act_on_project(Permission.MANAGE_ACCOUNT_REQUESTS, project, include_ancestors=True) %}

@@ -653,7 +653,7 @@ class TestIdentityRefresh:
 
 class TestWhatItWrites:
     """The sweep writes ONE kind of row: an `account_request` per absent
-    roster member (docs/plans/ACCOUNT_REGISTRATION.md section 3.4). It never
+    roster member (docs/plans/implemented/ACCOUNT_REGISTRATION.md section 3.4). It never
     touches the activation ledger; `TaskResult.detail` and the cards remain
     the record of everything else."""
 

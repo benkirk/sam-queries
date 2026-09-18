@@ -6,7 +6,7 @@ membership, and unverified public rows past the horizon are purged. The
 queue card's "Reconcile now" button runs the same function on demand.
 
 DB-only, so no ``dry_run`` branch: the runner's rollback is complete coverage
-(``TaskContext.dry_run``). Design: docs/plans/ACCOUNT_REGISTRATION.md.
+(``TaskContext.dry_run``). Design: docs/plans/implemented/ACCOUNT_REGISTRATION.md.
 """
 
 from __future__ import annotations

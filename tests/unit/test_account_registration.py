@@ -359,6 +359,33 @@ def signed_in(app, session):
     return client, user
 
 
+class TestAClosedEventIsRefused:
+    """The card and the copied link both outlive the event they point at."""
+
+    def _set(self, app, code, **fields):
+        from sam.core.account_requests import AccountRequestEvent
+        from webapp.extensions import db
+        with app.app_context():
+            event = db.session.query(AccountRequestEvent).filter_by(event_code=code).one()
+            for key, value in fields.items():
+                setattr(event, key, value)
+            db.session.commit()
+
+    def test_a_closed_code_is_refused_at_200(self, client, app, committed_event):
+        code, _ = committed_event
+        self._set(app, code, active=False)
+        resp = client.get(f'/register/{code}')
+        assert resp.status_code == 200
+        assert 'not accepting registrations' in resp.get_data(as_text=True)
+
+    def test_a_code_past_its_window_is_refused_at_200(self, client, app, committed_event):
+        code, _ = committed_event
+        self._set(app, code, closes_at=datetime.now() - timedelta(hours=1))
+        resp = client.get(f'/register/{code}')
+        assert resp.status_code == 200
+        assert 'not accepting registrations' in resp.get_data(as_text=True)
+
+
 class TestTheSignedInSelfEnrollShortcut:
     """A signed-in visitor to /register/<event> already has an account, so the
     anonymous creation form is out of context: they get a one-click self-enroll

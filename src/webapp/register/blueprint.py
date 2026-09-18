@@ -5,7 +5,7 @@ the login POST's protections: CSRF (global), the per-IP login tier on every
 POST plus a per-address cap, a honeypot, and plain PRG forms (no htmx on a
 phone-facing page). A row is created ``submitted`` but invisible to the queue
 until the address is verified by the mailed link or the mailed code; the
-mail carries nothing the visitor typed. Design: docs/plans/ACCOUNT_REGISTRATION.md 3.5.
+mail carries nothing the visitor typed. Design: docs/plans/implemented/ACCOUNT_REGISTRATION.md 3.5.
 """
 
 import logging

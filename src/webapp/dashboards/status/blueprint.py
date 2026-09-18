@@ -26,26 +26,29 @@ from webapp.jobs import service as jobs_service
 bp = Blueprint('status_dashboard', __name__, url_prefix='/status')
 logger = logging.getLogger(__name__)
 
-def _parse_selected_hours():
-    """Parse the optional ``hours`` (or legacy ``days``) query param.
+DEFAULT_HOURS = 168
+MAX_HOURS = 720   # the time_range_picker's widest preset (30d)
 
-    The param doesn't change what the pages query — it's a stateless
-    passthrough so drill-down row clicks inherit the user's last-set
-    time range, and the back link on detail pages can carry it through.
-    Returns ``None`` when absent (matches today's row-click URLs
-    bit-for-bit).
+
+def _parse_selected_hours():
+    """``?hours=`` (or legacy ``?days=``), clamped to [1, MAX_HOURS]; None when absent or junk.
+
+    These routes are anonymous: an unbounded window is a full-table scan on request.
     """
-    if request.args.get('hours'):
-        try:
-            return int(request.args['hours'])
-        except ValueError:
-            return None
-    if request.args.get('days'):
-        try:
-            return int(request.args['days']) * 24
-        except ValueError:
-            return None
+    for key, scale in (('hours', 1), ('days', 24)):
+        raw = request.args.get(key)
+        if raw:
+            try:
+                return max(1, min(int(raw) * scale, MAX_HOURS))
+            except ValueError:
+                return None
     return None
+
+
+def _window_hours():
+    """The drill-down window: the clamped param, else the 7-day default."""
+    hours = _parse_selected_hours()
+    return hours if hours is not None else DEFAULT_HOURS
 
 
 def _page_context(session):
@@ -58,12 +61,9 @@ def _page_context(session):
     `__bind_key__`, so `db.session` handles both reads and writes.
     """
     selected_hours = _parse_selected_hours()
-    # Default the chart window to 7 days when no ?hours= override is in
-    # the URL — matches the drill-down default so the time_range_picker
-    # on each chart card reads sensibly on first load. selected_hours
-    # stays None when absent (other code paths that introspect it still
-    # get the same signal).
-    chart_hours = selected_hours if selected_hours is not None else 168
+    # selected_hours stays None when absent (row-click URLs key on it);
+    # the chart window falls back to the drill-down default.
+    chart_hours = selected_hours if selected_hours is not None else DEFAULT_HOURS
 
     return dict(
         user=current_user,
@@ -205,10 +205,37 @@ def events():
     than for the PBS reservation rows that back it; the underlying data and
     query layer keep the reservation vocabulary.
     """
+    upcoming, enrolled = _upcoming_events()
     return render_template(
         'dashboards/status/events_page.html',
+        upcoming_events=upcoming, enrolled_event_ids=enrolled,
+        register_base_url=request.url_root.rstrip('/') + '/register',
         **_page_context(db.session),
     )
+
+
+def _upcoming_events():
+    """``(listed open events, the viewer's enrolled event ids)``.
+
+    Empty while ACCOUNT_REGISTRATION_ENABLED is off: the card links to
+    /register/<code>, which is unmounted (404) then. This is the status pages'
+    only SAM-database read, so it fails soft -- SAM being down must not take
+    the public status page with it. The listing is memoized; the failure is not.
+    """
+    if not current_app.config.get('ACCOUNT_REGISTRATION_ENABLED', False):
+        return [], set()
+    from sqlalchemy.exc import SQLAlchemyError
+    from sam.queries.account_requests import enrolled_event_ids
+    from webapp.dashboards.event_lifecycle import upcoming_events_data
+    try:
+        upcoming = upcoming_events_data()
+        enrolled = (enrolled_event_ids(db.session, current_user.user_id)
+                    if upcoming and current_user.is_authenticated else set())
+    except SQLAlchemyError:
+        logger.exception('upcoming events unavailable; rendering without the card')
+        db.session.rollback()
+        return [], set()
+    return upcoming, enrolled
 
 
 @bp.route('/filesystem-scans')
@@ -264,13 +291,7 @@ def nodetype_history(system, node_type):
         system: System name (casper)
         node_type: Node type name (e.g., 'gpu-a100', 'standard')
     """
-    # Get time range from query params; 'hours' is primary, 'days' kept for backward compat
-    if request.args.get('hours'):
-        hours = int(request.args.get('hours'))
-    elif request.args.get('days'):
-        hours = int(request.args.get('days')) * 24
-    else:
-        hours = 168  # 7-day default
+    hours = _window_hours()
     end_date = utcnow_naive()
     start_date = end_date - timedelta(hours=hours)
 
@@ -318,13 +339,7 @@ def partition_history(system, partition):
         system: System name (derecho, casper)
         partition: Partition name ('cpu', 'gpu', or 'viz')
     """
-    # Get time range from query params; 'hours' is primary, 'days' kept for backward compat
-    if request.args.get('hours'):
-        hours = int(request.args.get('hours'))
-    elif request.args.get('days'):
-        hours = int(request.args.get('days')) * 24
-    else:
-        hours = 168  # 7-day default
+    hours = _window_hours()
     end_date = utcnow_naive()
     start_date = end_date - timedelta(hours=hours)
 
@@ -388,13 +403,7 @@ def queue_history(system, queue_name):
         system: System name (casper, derecho)
         queue_name: Queue name (e.g., 'regular', 'gpu')
     """
-    # Get time range from query params; 'hours' is primary, 'days' kept for backward compat
-    if request.args.get('hours'):
-        hours = int(request.args.get('hours'))
-    elif request.args.get('days'):
-        hours = int(request.args.get('days')) * 24
-    else:
-        hours = 168  # 7-day default
+    hours = _window_hours()
     end_date = utcnow_naive()
     start_date = end_date - timedelta(hours=hours)
 
@@ -481,18 +490,7 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
     if metric == 'nodes' and state != 'running':
         metric = 'cores'
 
-    if request.args.get('hours'):
-        try:
-            hours = int(request.args['hours'])
-        except ValueError:
-            hours = 168
-    elif request.args.get('days'):
-        try:
-            hours = int(request.args['days']) * 24
-        except ValueError:
-            hours = 168
-    else:
-        hours = 168
+    hours = _window_hours()
 
     top_n = 15
     end_date = utcnow_naive()

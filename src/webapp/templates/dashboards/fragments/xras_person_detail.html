@@ -19,6 +19,7 @@
   `{% if person %}` here is a second gate over an already-empty value, not the
   only one.
 #}
+{% from 'dashboards/fragments/clipboard.html' import copy_button %}
 {% macro person_detail(person) %}
 {% if person %}
 {% set full_name = [person.firstName, person.middleName, person.lastName]
@@ -37,7 +38,8 @@
         {# A declared field with no value renders as an em dash rather than
            vanishing: "XRAS has no phone for them" and "we did not ask" look
            identical if the row simply disappears. #}
-        <dd class="d-inline ms-1 mb-0">{{ value if value else '—' }}</dd>
+        <dd class="d-inline ms-1 mb-0">{{ value if value else '—' }}
+            {%- if value and label in ('Name', 'Email') %}{{ copy_button(value, label='Copy ' ~ label | lower, inline=true) }}{% endif %}</dd>
     </div>
     {% endfor %}
 </dl>

@@ -14,13 +14,16 @@ from factories import (
     make_account_request_event,
     make_email_address,
     make_event_enrollment,
+    make_project,
     make_user,
 )
 
 from sam.projects.projects import Project
 from sam.queries.account_requests import (
     Resolution,
+    all_events,
     all_requests,
+    enrolled_event_ids,
     enrollees_for_event,
     events_for,
     events_for_user,
@@ -32,6 +35,7 @@ from sam.queries.account_requests import (
     resolve_requests,
     stamp_account_requests,
     unverified_count,
+    upcoming_listed_events,
     user_has_enrollments,
     waiting_days,
 )
@@ -146,12 +150,25 @@ class TestGrouping:
             loose_old.account_request_id, loose_new.account_request_id]
         assert groups[0]['project_code'] == session.get(Project, soon.project_id).projcode
 
+    def test_event_less_rows_split_by_project_with_project_less_last(self, session):
+        p1, p2 = make_project(session), make_project(session)
+        rows = [make_account_request(session),
+                make_account_request(session, purpose='enrollment', project=p2),
+                make_account_request(session, purpose='enrollment', project=p1),
+                make_account_request(session, purpose='enrollment', project=p2)]
+        groups = group_by_event(self._views(session, rows))
+        assert all(g['event'] is None for g in groups)
+        assert [g['project_code'] for g in groups] == sorted([p1.projcode, p2.projcode]) + ['']
+        by_code = {g['project_code']: [v['id'] for v in g['rows']] for g in groups}
+        assert by_code[p2.projcode] == [rows[1].account_request_id, rows[3].account_request_id]
+
     def test_a_row_naming_a_vanished_event_is_ungrouped_not_lost(self, session):
         row = make_account_request(session, purpose='enrollment', event_id=999_999_999,
                                    project=make_account_request_event(session).project_id)
         view, = self._views(session, [row])
         assert view['event'] is None and view['event_code'] == ''
-        assert group_by_event([view]) == [{'event': None, 'rows': [view], 'project_code': ''}]
+        assert group_by_event([view]) == [
+            {'event': None, 'rows': [view], 'project_code': view['project_code']}]
 
     def test_views_carry_the_sponsor_and_both_project_codes(self, session):
         sponsor = make_user(session)
@@ -219,3 +236,87 @@ class TestEnrollmentReads:
         assert user_has_enrollments(session, user.user_id) is False
         make_event_enrollment(session, user=user)
         assert user_has_enrollments(session, user.user_id) is True
+
+
+class TestCrossProjectEventReads:
+    """Admin -> Events and the public Upcoming Events card."""
+
+    def test_all_events_carries_project_code_and_enrollee_count(self, session):
+        event = make_account_request_event(session)
+        make_event_enrollment(session, event=event, user=make_user(session))
+        make_event_enrollment(session, event=event, user=make_user(session))
+        row = next(r for r in all_events(session)
+                   if r['event'].account_request_event_id == event.account_request_event_id)
+        assert row['enrolled'] == 2
+        assert row['project_code'] == session.get(Project, event.project_id).projcode
+        assert row['sponsor'] is None
+
+    def test_all_events_counts_zero_for_an_empty_event(self, session):
+        event = make_account_request_event(session)
+        row = next(r for r in all_events(session)
+                   if r['event'].account_request_event_id == event.account_request_event_id)
+        assert row['enrolled'] == 0
+
+    def test_all_events_scopes_to_facilities_and_flags_an_inactive_project(self, session):
+        event = make_account_request_event(session)
+        project = session.get(Project, event.project_id)
+        eid = event.account_request_event_id
+
+        def _row(**kw):
+            return next((r for r in all_events(session, **kw)
+                         if r['event'].account_request_event_id == eid), None)
+
+        row = _row()
+        assert row['project_active'] is True and row['facility'] == project.facility_name
+        assert _row(facility_names=['NO-SUCH-FACILITY']) is None
+        assert _row(facility_names=[]) is None
+        if project.facility_name:
+            assert _row(facility_names=[project.facility_name]) is not None
+        project.active = False
+        session.flush()
+        assert _row()['project_active'] is False
+
+    def test_upcoming_skips_an_event_on_an_inactive_project(self, session):
+        now = datetime(2026, 10, 1, 12, 0)
+        event = make_account_request_event(session, listed=True,
+                                           accounts_needed_by=now.date() + timedelta(days=5))
+        session.get(Project, event.project_id).active = False
+        session.flush()
+        assert event.event_code not in {
+            r['event_code'] for r in upcoming_listed_events(session, now=now)}
+
+    def test_upcoming_is_listed_open_and_not_past_its_deadline(self, session):
+        now = datetime(2026, 10, 1, 12, 0)
+        soon = now.date() + timedelta(days=10)
+        shown = make_account_request_event(session, listed=True, accounts_needed_by=soon)
+        hidden = [
+            make_account_request_event(session, accounts_needed_by=soon),  # unlisted
+            make_account_request_event(session, listed=True, active=False,
+                                       accounts_needed_by=soon),
+            make_account_request_event(session, listed=True, accounts_needed_by=soon,
+                                       opens_at=now + timedelta(days=1)),
+            make_account_request_event(session, listed=True, accounts_needed_by=soon,
+                                       closes_at=now),  # closes_at is exclusive
+            make_account_request_event(session, listed=True,
+                                       accounts_needed_by=now.date() - timedelta(days=1)),
+        ]
+        codes = {r['event_code'] for r in upcoming_listed_events(session, now=now)}
+        assert shown.event_code in codes
+        assert not codes & {e.event_code for e in hidden}
+
+    def test_upcoming_rows_are_plain_picklable_dicts(self, session):
+        import pickle
+        now = datetime(2026, 10, 1, 12, 0)
+        make_account_request_event(session, listed=True,
+                                   accounts_needed_by=now.date() + timedelta(days=5))
+        rows = upcoming_listed_events(session, now=now)
+        assert rows and pickle.loads(pickle.dumps(rows)) == rows
+        assert set(rows[0]) == {'event_id', 'event_code', 'name', 'instructions',
+                                'project_code', 'accounts_needed_by', 'closes_at'}
+
+    def test_enrolled_event_ids(self, session):
+        user = make_user(session)
+        event = make_account_request_event(session)
+        assert enrolled_event_ids(session, user.user_id) == set()
+        make_event_enrollment(session, event=event, user=user)
+        assert enrolled_event_ids(session, user.user_id) == {event.account_request_event_id}

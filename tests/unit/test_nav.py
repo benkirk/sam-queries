@@ -39,7 +39,8 @@ class TestNavLocate:
         """Events sits after the RBAC-gated status items, matching the tab
         strip in base_status.html (where it must stay rightmost)."""
         status = next(s for s in NAV_SECTIONS if s['key'] == 'status')
-        assert status['items'][-1]['label'] == 'Events'
+        assert status['items'][-1]['endpoint'] == 'status_dashboard.events'
+        assert status['items'][-1]['label'] == 'Calendar & Events'
 
     def test_registry_endpoints_exist(self, app):
         """Every registry endpoint must be a real route — catches drift when

@@ -1,0 +1,45 @@
+{% from 'dashboards/fragments/clipboard.html' import copy_button %}
+{#
+  Public "Upcoming Events" card: listed, open account-request events.
+  Context: upcoming_events (plain dicts from upcoming_listed_events),
+  enrolled_event_ids (empty for an anonymous viewer), register_base_url.
+  Anonymous-safe: names no person. No nav-tabs markup here -- the status tests
+  locate the page tab strip as the first one on the page.
+#}
+<h5 class="mb-3"><i class="fa-solid fa-user-graduate"></i> Upcoming Events</h5>
+{% for ev in upcoming_events %}
+{% set reg_url = register_base_url ~ '/' ~ ev.event_code %}
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start gap-3">
+            <div>
+                <h6 class="mb-1">
+                    <strong>{{ ev.name }}</strong>
+                    {% if ev.event_id in enrolled_event_ids %}
+                    <span class="badge bg-success ms-1"><i class="fa-solid fa-check"></i> Enrolled</span>
+                    {% endif %}
+                </h6>
+                <div class="text-muted small">
+                    <span class="font-monospace">{{ ev.event_code }}</span>
+                    {% if ev.project_code %}· project <span class="font-monospace">{{ ev.project_code }}</span>{% endif %}
+                    · accounts needed by {{ ev.accounts_needed_by | fmt_date }}
+                    {% if ev.closes_at %}· registration closes {{ ev.closes_at | fmt_date }}{% endif %}
+                </div>
+            </div>
+            <div class="text-nowrap">
+                {% if ev.event_id not in enrolled_event_ids %}
+                <a class="btn btn-sm btn-primary" href="{{ reg_url }}">
+                    <i class="fa-solid fa-user-plus me-1"></i>
+                    {%- if not current_user.is_authenticated and config.ACCOUNT_REGISTRATION_LOGIN_REQUIRED %} Sign in to register
+                    {%- else %} Register{% endif %}
+                </a>
+                {% endif %}
+                {{ copy_button(reg_url, label='Copy registration link', icon='fa-solid fa-link', compact=true, done='Registration link copied.') }}
+            </div>
+        </div>
+        {% if ev.instructions %}
+        <p class="mt-2 mb-0" style="white-space: pre-wrap;">{{ ev.instructions }}</p>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}

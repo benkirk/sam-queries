@@ -11,7 +11,7 @@ existing ARC workflow was driven once for real on 2026-09-15 and is recorded in
 [`XRAS_ARC_BASELINE.md`](../xras/outgoing/XRAS_ARC_BASELINE.md), which left
 production project `UHSS0001` behind as the phase-1 test bed. Traffic figures are
 from the production `xras_action_log` on 2026-09-10. The identity step of phase 3 is
-its own product, [`ACCOUNT_REGISTRATION.md`](ACCOUNT_REGISTRATION.md).
+its own product, [`ACCOUNT_REGISTRATION.md`](implemented/ACCOUNT_REGISTRATION.md).
 
 ---
 
@@ -466,7 +466,7 @@ The order is the ask, then the chart change, then the seeding.
 |---|---|
 | [`XRAS_SUBMISSION_PROBES.md`](../xras/outgoing/XRAS_SUBMISSION_PROBES.md) | the 2026-09-14 probe record: every verb in § 3.1, the NCAR vocabularies, the rule-book tables, the final state left in XRAS |
 | [`XRAS_ARC_BASELINE.md`](../xras/outgoing/XRAS_ARC_BASELINE.md) | W9, 2026-09-15: the ARC form page by page, one real New and Extension seen from ARC, the admin app, the API, SAM and mail; the measurements § 3.2 and § 4.2 cite |
-| [`ACCOUNT_REGISTRATION.md`](ACCOUNT_REGISTRATION.md) | the identity step of phase 3, as a product of its own |
+| [`ACCOUNT_REGISTRATION.md`](implemented/ACCOUNT_REGISTRATION.md) | the identity step of phase 3, as a product of its own |
 | [`REQUEST_EDITOR.md`](../xras/outgoing/REQUEST_EDITOR.md) | the write client, tiers, levers and stage model the flow layer extends |
 | [`XRAS_WRITE_PROBES.md`](../xras/outgoing/XRAS_WRITE_PROBES.md) | probe methodology, the one authorization rule, the privilege register |
 | [`XRAS_OUTGOING_QUERIES.md`](../xras/outgoing/XRAS_OUTGOING_QUERIES.md) | the readable surface and the request payload shape |

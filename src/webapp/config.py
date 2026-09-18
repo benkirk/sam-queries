@@ -83,7 +83,7 @@ class SAMWebappConfig(SAMConfig):
     # the per-IP tier is blind until the platform forwards the client IP, so
     # this is the only cap on breadth abuse (one attacker, many victims). Kept
     # low so enabling the form cannot open an unbounded mailer; raise it by env
-    # once the human-challenge gate lands (docs/plans/ACCOUNT_REGISTRATION.md 6).
+    # once the human-challenge gate lands (docs/plans/implemented/ACCOUNT_REGISTRATION.md 6).
     RATELIMIT_REGISTER_GLOBAL = os.getenv('RATELIMIT_REGISTER_GLOBAL', '10 per hour; 30 per day')
 
     # Create Project workflow. When off, the modal still renders with all inputs
@@ -332,7 +332,7 @@ class ProductionConfig(SAMWebappConfig):
     COMPONENT_GALLERY_ENABLED = os.getenv('COMPONENT_GALLERY_ENABLED', '0').lower() in ('1', 'true', 'yes')
 
     # Default OFF in production -- the anonymous registration form ships dark
-    # and is enabled per deployment (docs/plans/ACCOUNT_REGISTRATION.md).
+    # and is enabled per deployment (docs/plans/implemented/ACCOUNT_REGISTRATION.md).
     ACCOUNT_REGISTRATION_ENABLED = os.getenv('ACCOUNT_REGISTRATION_ENABLED', '0').lower() in ('1', 'true', 'yes')
     # Default OFF in production -- the invitation workflows ship dark so the
     # initial prod capability is the XRAS-mirrored queue only; enabled per
