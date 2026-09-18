@@ -63,7 +63,7 @@ regen-lfs-blob:
 %.sql.xz: FORCE
 	mkdir -p $$(dirname $@)
 	rm -f $@
-	docker compose -f $(COMPOSE_FILE) exec -T -e MYSQL_PWD=root mysql sh -c 'exec mysqldump --all-databases --lock-all-tables --triggers --routines --events -uroot' | xz > $@
+	docker compose -f $(COMPOSE_FILE) exec -T -e MYSQL_PWD=root mysql sh -c 'exec mysqldump --all-databases --lock-all-tables --triggers --routines --events --set-gtid-purged=OFF -uroot' | xz > $@
 
 # clone -> raw backup -> anonymize -> verified obfuscated blob. Every step must
 # succeed: a swallowed anonymizer failure once staged a near-raw prod dump.
@@ -89,7 +89,9 @@ restore-dev-raw:
 	@test -f backups/sam-local-dev.sql.xz \
 	    || { echo "backups/sam-local-dev.sql.xz is missing: make bootstrap writes it"; exit 1; }
 	@echo "Restoring the raw subset onto 3306 (the running app sees tables vanish for a minute)..."
-	xz -dc backups/sam-local-dev.sql.xz | $(MYSQL_DEV)
+	# The GTID_PURGED line a dump made without --set-gtid-purged=OFF carries is
+	# refused by the server it came from; drop it either way.
+	xz -dc backups/sam-local-dev.sql.xz | grep -v '^SET @@GLOBAL.GTID_PURGED' | $(MYSQL_DEV)
 	@echo "ANALYZE TABLE on every user table (init-db.sh does this on a blob restore; the clone path never does)..."
 	@$(MYSQL_DEV) --skip-column-names -e "SELECT CONCAT('ANALYZE TABLE \`', table_schema, '\`.\`', table_name, '\`;') FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys')" \
 	    | $(MYSQL_DEV) >/dev/null
