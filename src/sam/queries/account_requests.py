@@ -321,21 +321,24 @@ def enrolled_event_ids(session: Session, user_id: int) -> set:
 
 
 def group_by_event(views: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Event groups nearest deadline first, then the loose views last, each
-    in input order. A view whose event is gone (``event`` None) is loose,
-    not lost. Each group is ``{'event', 'rows', 'project_code'}``.
+    """Event groups nearest deadline first, then the event-less views: one
+    group per project (by projcode), project-less last, each in input order. A
+    view whose event is gone is event-less, not lost. Each group is
+    ``{'event', 'rows', 'project_code'}``.
     """
     by_event: Dict[int, List[Dict[str, Any]]] = {}
-    loose: List[Dict[str, Any]] = []
+    loose: Dict[str, List[Dict[str, Any]]] = {}
     for v in views:
-        (by_event.setdefault(v['event'].account_request_event_id, [])
-         if v['event'] else loose).append(v)
+        if v['event']:
+            by_event.setdefault(v['event'].account_request_event_id, []).append(v)
+        else:
+            loose.setdefault(v['project_code'] or '', []).append(v)
     groups = [{'event': members[0]['event'], 'rows': members,
                'project_code': members[0]['event_project_code']}
               for members in by_event.values()]
     groups.sort(key=lambda g: (g['event'].accounts_needed_by, g['event'].event_code))
-    if loose:
-        groups.append({'event': None, 'rows': loose, 'project_code': ''})
+    for code in sorted(loose, key=lambda c: (c == '', c)):
+        groups.append({'event': None, 'rows': loose[code], 'project_code': code})
     return groups
 
 
