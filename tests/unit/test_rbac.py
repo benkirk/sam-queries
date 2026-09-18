@@ -122,6 +122,11 @@ class TestPredicates:
         user = _StubUser(roles=['ssg'])
         assert not has_permission(user, Permission.SYSTEM_ADMIN)
 
+    def test_anonymous_user_holds_nothing(self):
+        """The public status drill-downs ask this of a visitor with no ``roles``."""
+        from flask_login import AnonymousUserMixin
+        assert get_user_permissions(AnonymousUserMixin()) == set()
+
 
 # ---------------------------------------------------------------------------
 # Impersonation no-escalation rule

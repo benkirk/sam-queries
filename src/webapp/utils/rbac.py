@@ -317,7 +317,8 @@ def get_user_permissions(user) -> Set[Permission]:
     ``user.roles``) and their ``USER_PERMISSION_OVERRIDES``."""
     permissions: Set[Permission] = set()
 
-    for group_name in user.roles:
+    # An anonymous visitor has no ``roles``: no permissions, not an AttributeError.
+    for group_name in getattr(user, 'roles', ()):
         if group_name in GROUP_PERMISSIONS:
             permissions.update(GROUP_PERMISSIONS[group_name])
 

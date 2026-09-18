@@ -7,7 +7,7 @@ Centralized queries for the system status dashboard.
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, contains_eager, joinedload, lazyload
 from sqlalchemy import desc
 
 from ..timeutil import utcnow_naive  # status/collector timestamps are naive-UTC
@@ -29,9 +29,15 @@ from .user_proj_queues import (  # noqa: F401
 from .user_proj_usage import get_user_proj_usage  # noqa: F401
 
 
+# The snapshot models map their child collections lazy='selectin' for ingest.
+# No status page reads them through the parent, so read paths opt out: a
+# history window would otherwise pull 4-5 collections per snapshot.
+_SCALARS_ONLY = lazyload('*')
+
+
 def get_latest_derecho_status(session: Session) -> Optional[DerechoStatus]:
-    """Get the latest Derecho system status."""
-    return session.query(DerechoStatus).order_by(
+    """Latest Derecho snapshot, scalars only (see _SCALARS_ONLY)."""
+    return session.query(DerechoStatus).options(_SCALARS_ONLY).order_by(
         DerechoStatus.timestamp.desc()
     ).first()
 
@@ -42,6 +48,7 @@ def get_latest_derecho_queues(session: Session, timestamp: datetime) -> List[Que
         session.query(QueueStatus)
         .join(System, QueueStatus.system_id == System.system_id)
         .join(QueueDef, QueueStatus.queue_id == QueueDef.queue_id)
+        .options(contains_eager(QueueStatus.system), contains_eager(QueueStatus.queue))
         .filter(QueueStatus.timestamp == timestamp, System.name == 'derecho')
         .order_by(QueueDef.name)
         .all()
@@ -54,6 +61,7 @@ def get_latest_derecho_filesystems(session: Session, timestamp: datetime) -> Lis
         session.query(FilesystemStatus)
         .join(System, FilesystemStatus.system_id == System.system_id)
         .join(Filesystem, FilesystemStatus.filesystem_id == Filesystem.filesystem_id)
+        .options(contains_eager(FilesystemStatus.system), contains_eager(FilesystemStatus.filesystem))
         .filter(FilesystemStatus.timestamp == timestamp, System.name == 'derecho')
         .order_by(Filesystem.name)
         .all()
@@ -66,6 +74,7 @@ def get_latest_derecho_login_nodes(session: Session, timestamp: datetime) -> Lis
         session.query(LoginNodeStatus)
         .join(System, LoginNodeStatus.system_id == System.system_id)
         .join(LoginNodeDef, LoginNodeStatus.login_node_def_id == LoginNodeDef.login_node_def_id)
+        .options(contains_eager(LoginNodeStatus.system), contains_eager(LoginNodeStatus.login_node_def))
         .filter(LoginNodeStatus.timestamp == timestamp, System.name == 'derecho')
         .order_by(LoginNodeDef.name)
         .all()
@@ -73,8 +82,8 @@ def get_latest_derecho_login_nodes(session: Session, timestamp: datetime) -> Lis
 
 
 def get_latest_casper_status(session: Session) -> Optional[CasperStatus]:
-    """Get the latest Casper system status."""
-    return session.query(CasperStatus).order_by(
+    """Latest Casper snapshot, scalars only (see _SCALARS_ONLY)."""
+    return session.query(CasperStatus).options(_SCALARS_ONLY).order_by(
         CasperStatus.timestamp.desc()
     ).first()
 
@@ -92,6 +101,7 @@ def get_latest_casper_queues(session: Session, timestamp: datetime) -> List[Queu
         session.query(QueueStatus)
         .join(System, QueueStatus.system_id == System.system_id)
         .join(QueueDef, QueueStatus.queue_id == QueueDef.queue_id)
+        .options(contains_eager(QueueStatus.system), contains_eager(QueueStatus.queue))
         .filter(QueueStatus.timestamp == timestamp, System.name == 'casper')
         .order_by(QueueDef.name)
         .all()
@@ -104,6 +114,7 @@ def get_latest_casper_login_nodes(session: Session, timestamp: datetime) -> List
         session.query(LoginNodeStatus)
         .join(System, LoginNodeStatus.system_id == System.system_id)
         .join(LoginNodeDef, LoginNodeStatus.login_node_def_id == LoginNodeDef.login_node_def_id)
+        .options(contains_eager(LoginNodeStatus.system), contains_eager(LoginNodeStatus.login_node_def))
         .filter(LoginNodeStatus.timestamp == timestamp, System.name == 'casper')
         .order_by(LoginNodeDef.name)
         .all()
@@ -116,6 +127,7 @@ def get_latest_casper_filesystems(session: Session, timestamp: datetime) -> List
         session.query(FilesystemStatus)
         .join(System, FilesystemStatus.system_id == System.system_id)
         .join(Filesystem, FilesystemStatus.filesystem_id == Filesystem.filesystem_id)
+        .options(contains_eager(FilesystemStatus.system), contains_eager(FilesystemStatus.filesystem))
         .filter(FilesystemStatus.timestamp == timestamp, System.name == 'casper')
         .order_by(Filesystem.name)
         .all()
@@ -131,7 +143,7 @@ def get_latest_jupyterhub_status(session: Session) -> Optional[JupyterHubStatus]
 
 def get_active_outages(session: Session) -> List[SystemOutage]:
     """Get all active system outages."""
-    return session.query(SystemOutage).filter(
+    return session.query(SystemOutage).options(joinedload(SystemOutage.system)).filter(
         SystemOutage.status != 'resolved'
     ).order_by(SystemOutage.start_time.desc()).all()
 
@@ -151,7 +163,9 @@ def get_upcoming_reservations(session: Session, max_staleness_minutes: int = 30)
     from sqlalchemy import func
     cutoff = utcnow_naive() - timedelta(minutes=max_staleness_minutes)
     last_seen = func.coalesce(ResourceReservation.updated_at, ResourceReservation.created_at)
-    return session.query(ResourceReservation).filter(
+    return session.query(ResourceReservation).options(
+        joinedload(ResourceReservation.system)
+    ).filter(
         ResourceReservation.end_time >= utcnow_naive(),
         last_seen >= cutoff,
     ).order_by(ResourceReservation.start_time).all()
@@ -325,7 +339,7 @@ def get_system_partition_history(
         return []
 
     # Query historical records
-    history_records = session.query(model).filter(
+    history_records = session.query(model).options(_SCALARS_ONLY).filter(
         model.timestamp >= start_date,
         model.timestamp <= end_date
     ).order_by(model.timestamp).all()
