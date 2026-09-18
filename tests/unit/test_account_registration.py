@@ -8,7 +8,8 @@ leaks into the shared test database.
 """
 
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from uuid import uuid4
 
 import pytest
 
@@ -322,6 +323,98 @@ class TestVerification:
         client.get(f'/register/verify/{link}')
         resp = client.get(f'/register/pending/{page}')
         assert resp.status_code == 302 and resp.headers['Location'].endswith('/register/verified')
+
+
+@pytest.fixture
+def committed_event(app):
+    """A committed, open event on an existing project, visible to db.session."""
+    from sam.core.account_requests import AccountRequestEvent
+    from sam.projects.projects import Project
+    from webapp.extensions import db
+    with app.app_context():
+        project = db.session.query(Project).filter(Project.is_active).first()
+        event = AccountRequestEvent.create(
+            db.session, event_code=f'ZZ-EVT-{uuid4().hex[:8].upper()}',
+            name='ZZ Self-Enroll Test', project_id=project.project_id,
+            accounts_needed_by=date.today() + timedelta(days=30), created_by='benkirk')
+        db.session.commit()
+        code, project_id, event_id = (event.event_code, project.project_id,
+                                      event.account_request_event_id)
+    yield code, project_id
+    with app.app_context():
+        db.session.query(AccountRequestEvent).filter(
+            AccountRequestEvent.account_request_event_id == event_id).delete()
+        db.session.commit()
+
+
+@pytest.fixture
+def signed_in(app, session):
+    """A test client with benkirk's session cookie, and his user row."""
+    from sam import User
+    user = User.get_by_username(session, 'benkirk')
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess['_user_id'] = str(user.user_id)
+        sess['_fresh'] = True
+    return client, user
+
+
+class TestTheSignedInSelfEnrollShortcut:
+    """A signed-in visitor to /register/<event> already has an account, so the
+    anonymous creation form is out of context: they get a one-click self-enroll
+    into the event's project instead. Registering others stays in the RBAC'd
+    Invitations panel. Authorization is the open event link itself."""
+
+    def test_a_signed_in_visitor_gets_the_self_enroll_shortcut(self, signed_in, committed_event):
+        code, _ = committed_event
+        client, _ = signed_in
+        html = client.get(f'/register/{code}').get_data(as_text=True)
+        assert 'Enroll me in' in html
+        assert 'name="email"' not in html, 'not the anonymous creation form'
+
+    def test_an_anonymous_visitor_still_gets_the_creation_form(self, client, committed_event):
+        """TestingConfig leaves LOGIN_REQUIRED off, so the anonymous path stays
+        the code-locked creation form -- the signed-in branch must not hijack it."""
+        code, _ = committed_event
+        html = client.get(f'/register/{code}').get_data(as_text=True)
+        assert 'Request an NCAR HPC account' in html and 'name="email"' in html
+        assert 'Enroll me in' not in html
+
+    def test_enroll_adds_the_signed_in_user_to_the_event_project(
+            self, signed_in, committed_event, monkeypatch):
+        """The write itself is add_user_to_project (model-tested); here we prove
+        the route hands it the event's project and the session's own user."""
+        code, project_id = committed_event
+        client, user = signed_in
+        calls = []
+        monkeypatch.setattr('webapp.register.blueprint.add_user_to_project',
+                            lambda _session, pid, uid: calls.append((pid, uid)))
+        resp = client.post(f'/register/{code}/enroll')
+        assert resp.status_code == 200
+        assert "You're enrolled" in resp.get_data(as_text=True)
+        assert calls == [(project_id, user.user_id)]
+
+    def test_a_project_without_accounts_re_renders_the_reason(
+            self, signed_in, committed_event, monkeypatch):
+        code, _ = committed_event
+        client, _ = signed_in
+        def _boom(*_a):
+            raise ValueError('Project has no accounts')
+        monkeypatch.setattr('webapp.register.blueprint.add_user_to_project', _boom)
+        resp = client.post(f'/register/{code}/enroll')
+        assert resp.status_code == 200
+        assert 'Project has no accounts' in resp.get_data(as_text=True)
+
+    def test_enroll_requires_login(self, client):
+        """The self-enroll POST is an authenticated action even with the gate
+        off: an anonymous POST is bounced to login, never a silent write."""
+        resp = client.post('/register/ANY-CODE-1/enroll')
+        assert resp.status_code == 302 and '/auth/login' in resp.headers['Location']
+
+    def test_enroll_refuses_an_unknown_event(self, signed_in):
+        client, _ = signed_in
+        resp = client.post('/register/NO-SUCH-EVENT-9999/enroll')
+        assert resp.status_code == 200 and 'not a known event code' in resp.get_data(as_text=True)
 
 
 @pytest.fixture

@@ -18,8 +18,9 @@ from flask_login import current_user
 from marshmallow import ValidationError
 
 from sam.core.account_requests import AccountRequest, AccountRequestEvent
-from sam.manage import management_transaction
+from sam.manage import add_user_to_project, management_transaction
 from sam.manage.account_requests import register_request
+from sam.projects.projects import Project
 from sam.queries.account_notices import build_verify_message
 from sam.schemas.forms import RegisterForm, VerifyCodeForm
 from webapp.extensions import db
@@ -62,6 +63,10 @@ def _global_key():
     # A fixed key: every registration POST shares one bucket, so the tier is a
     # site-wide ceiling independent of IP or address (the relay blast-radius bound).
     return 'register-global'
+
+
+def _user_key():
+    return f'user:{getattr(current_user, "user_id", None)}'
 
 
 def _anon_tier():
@@ -120,12 +125,46 @@ def institutions_fragment():
 @bp.route('/<event_code>')
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
 def form_for_event(event_code):
-    """The code pre-filled and locked; an unknown or closed code is refused
-    with the reason, at 200."""
+    """A signed-in visitor gets the self-enroll shortcut; an anonymous one
+    (only reachable with LOGIN_REQUIRED off) gets the code-locked anonymous
+    form. An unknown or closed code is refused with the reason, at 200."""
     event, refusal = _open_event(event_code)
     if refusal:
         return render_template('register/refused.html', reason=refusal)
+    if current_user.is_authenticated:
+        return _render_self_enroll(event)
     return _render_form(event, locked_code=event.event_code)
+
+
+def _render_self_enroll(event, *, error=None):
+    return render_template('register/self_enroll.html', event=event,
+                           project=db.session.get(Project, event.project_id),
+                           error=error)
+
+
+@bp.route('/<event_code>/enroll', methods=['POST'])
+@_rate_limit.limiter.limit(_post_tier, key_func=_user_key, methods=['POST'])
+def self_enroll(event_code):
+    """Add the signed-in user's own account to the event's project. The open
+    event link is the capability; the session is the identity, so no email
+    round-trip. Enrolling others stays in the RBAC'd Invitations panel."""
+    if not current_user.is_authenticated:
+        return redirect(url_for('auth.login',
+                                next=url_for('register.form_for_event', event_code=event_code)))
+    event, refusal = _open_event(event_code)
+    if refusal:
+        return render_template('register/refused.html', reason=refusal)
+    try:
+        with management_transaction(db.session):
+            add_user_to_project(db.session, event.project_id, current_user.user_id)
+    except ValueError as exc:
+        logger.warning('self-enroll %s for user %s failed: %s',
+                       event.event_code, current_user.user_id, exc)
+        return _render_self_enroll(event, error=str(exc))
+    logger.info('self-enroll %s: user %s -> project %s',
+                event.event_code, current_user.user_id, event.project_id)
+    return render_template('register/enrolled.html', event=event,
+                           project=db.session.get(Project, event.project_id))
 
 
 @bp.route('/', methods=['POST'], strict_slashes=False)

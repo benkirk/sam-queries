@@ -35,6 +35,7 @@ Pending Users link → the Invitations tab → the flag and the public form.
 | D13 | The affiliation is labeled **Institution** on every surface (SAM's word: the university, lab or company; an *Organization* is a UCAR/NCAR unit under it). The column stays `organization`, XRAS's wire name for the same thing, so the sweep and a future `POST /v1/people` need no mapping. Both forms offer live institutions as a `<datalist>` (free text still allowed). A UCAR organization second level and an `institution_id` stamp on a matched name are later ALTERs. | Terminology pass, 2026-09-17. |
 | D14 | **A global send ceiling on the public form**, `RATELIMIT_REGISTER_GLOBAL` (a fixed limiter key so every registration POST shares one bucket; default `10 per hour; 30 per day`), stacked on the per-IP and per-address tiers. Deliberately low: it doubles as a safety default so enabling the form cannot open an unbounded mailer, and is raised by env once the human-challenge gate lands. | The per-IP tier is blind until the platform forwards the client IP (D12), so a fixed-key ceiling is the only cap on *breadth* abuse — one attacker, many victims — and on the `ndir.ucar.edu` relay's blast radius. See § 6.1. |
 | D16 | **`ACCOUNT_REGISTRATION_LOGIN_REQUIRED`**, default on: every `/register` route (the mailed verify link included) redirects an anonymous visitor to login, and the form and pending pages carry a preview banner. The dev overlay also pins `RATELIMIT_REGISTER_GLOBAL` to `5 per hour; 20 per day`. Switching it off per deployment is what opens the public form, once § 6.1's gate lands. | The form can be shown to signed-in testers on dev now without exposing an anonymous mailer; the undo is a config flip, not a code change. |
+| D17 | **A signed-in visitor to `/register/<event_code>` gets a self-enroll shortcut, not the anonymous creation form.** `POST /register/<event_code>/enroll` adds their own account to the event's project (`add_user_to_project`, idempotent); the open event link is the capability, the session is the identity, no mail round-trip. Enrolling others stays in the RBAC'd Invitations panel (§ 3.1). | A logged-in internal user already has an account, so the creation form (phone-for-Duo, academic status, country) is out of context; their real intent on an event link is "enroll me." 2026-09-18. |
 | D15 | **The rejection notice is the operator's choice.** The reject form carries an "Email this reason" checkbox; ticked, `build_rejection_message` (kind `account_rejected`, family `account`) mails the recorded reason to the requester after the commit and stamps `closure_notified_at` only on a delivered send. Unticked, nothing leaves. A reopen clears the stamp and a second reject mints a new key. | The queue copy promised a notice that did not exist; a mail nobody chose would surprise both the operator and a sweep-derived stranger. |
 | D12 | The pre-production retrospective. Every person-typed or person-echoing column is utf8mb4 (`academic_status` widened to 64, `residence_country`, `fulfill_error`); `xras_username` is stored lower-cased and matched with a plain `IN`; `requested_at` is *first told* and never moves; `modified_time` is `NOT NULL`, stamped at create. Added now so no later `ALTER` is needed: `account_request_event.instructions` (sponsor prose on the public form), `verify_sent_count` + `source_ip` (the abuse signals; the ingress address today, the client's once the platform forwards it), `closure_notified_at` (D15), `merged_at` (phase 3). The unused `account_request_event_deadline` index is gone. | `fulfill_error` holds `str(ValueError)` with interpolated names, and a 4-byte character there failed the reconcile pass outside its savepoint; the rest is the design's own rule, every column from the start. |
 
@@ -249,6 +250,16 @@ SMS is not part of this: see § 6.
 Validation is a `sam.schemas.forms` schema; the route is a `HtmxFormHandler`
 subclass; the write runs inside `management_transaction`. No login means no
 `current_user`: `created_by = 'self'`.
+
+**Signed in, the event link is a self-enroll shortcut (D17).** A visitor to
+`/register/<event_code>` who is already authenticated does not need the creation
+form — they have an account. `form_for_event` renders a one-click confirm
+instead, and `POST /register/<event_code>/enroll` adds their own account to the
+event's project (`add_user_to_project`, idempotent) with no email round-trip:
+the open event link is the capability, the session is the identity. Registering
+*others* is unchanged — the RBAC'd Invitations panel (§ 3.1) — so the lowest
+tier self-enrolls but cannot enroll anyone else. The anonymous creation form is
+still what an unauthenticated visitor sees when `LOGIN_REQUIRED` is off.
 
 ## 4. The XRAS phase-3 link
 
