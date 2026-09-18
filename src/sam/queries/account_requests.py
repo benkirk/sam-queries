@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from sam.core.account_requests import (
     CREATED_BY_SELF,
     CREATED_BY_SWEEP,
+    OPEN_STATES,
     AccountRequest,
     AccountRequestEvent,
 )
@@ -252,7 +253,7 @@ def unverified_count(session: Session) -> int:
     """Rows the public form created that never verified -- not in the queue."""
     return (session.query(AccountRequest)
             .filter(AccountRequest.verified_at.is_(None),
-                    AccountRequest.state.in_(('submitted', 'claimed')))
+                    AccountRequest.state.in_(OPEN_STATES))
             .count())
 
 

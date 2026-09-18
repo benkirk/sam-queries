@@ -159,6 +159,9 @@ class Limiting:
                 'm2m':        cfg['RATELIMIT_M2M'],
                 'authed':     cfg['RATELIMIT_AUTHED'],
                 'anon':       cfg['RATELIMIT_ANON'],
+                # The public registration POST, on top of the login tier.
+                'register_email':  cfg.get('RATELIMIT_REGISTER_EMAIL', ''),
+                'register_global': cfg.get('RATELIMIT_REGISTER_GLOBAL', ''),
             },
             'events_24h':           len(events_24h),
             'top_offenders_24h':    top_offenders(n=5),

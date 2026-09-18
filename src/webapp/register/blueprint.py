@@ -41,7 +41,8 @@ def _ip_key():
 
 
 def _email_key():
-    return 'email:' + (request.form.get('email') or '').strip().lower()
+    # Raw input, so bounded to the column width before it becomes a Redis key.
+    return 'email:' + (request.form.get('email') or '').strip().lower()[:255]
 
 
 def _global_key():
