@@ -148,8 +148,14 @@
         {{ ff.date_field('demo_date', 'Date') }}
         {{ ff.datetime_field('demo_datetime', 'Date &amp; time') }}
         {{ ff.textarea_field('demo_textarea', 'Notes', rows=2) }}
-        {{ ff.datalist_field('demo_institution', 'Institution', url_for('project_members.institutions_fragment'),
+        {# The suggestion endpoint lives on the Invitations blueprint, mounted only
+           when ACCOUNT_INVITATIONS_ENABLED is on. #}
+        {% if config.ACCOUNT_INVITATIONS_ENABLED %}
+        {{ ff.datalist_field('demo_institution', 'Institution', url_for('project_invites.institutions_fragment'),
                              help='Free text with server-fed suggestions (datalist_field).') }}
+        {% else %}
+        <p class="text-muted small">datalist_field demo needs ACCOUNT_INVITATIONS_ENABLED.</p>
+        {% endif %}
       </div>
       <div class="col-md-6">
         {{ ff.select_field('demo_type', 'Resource type', options=[('hpc', 'HPC'), ('dav', 'DAV')], placeholder='Choose…', default='dav') }}

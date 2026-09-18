@@ -13,6 +13,17 @@ from webapp.utils.rbac import Permission
 pytestmark = pytest.mark.unit
 
 
+@pytest.fixture(scope='module')
+def invitations_disabled_app(test_db_url, status_db_url):
+    """The prod posture: the flag off means the blueprint is never mounted."""
+    from webapp.run import create_app
+    return create_app(config_overrides={
+        'SQLALCHEMY_DATABASE_URI': test_db_url,
+        'SQLALCHEMY_BINDS': {'system_status': status_db_url},
+        'ACCOUNT_INVITATIONS_ENABLED': False,
+    })
+
+
 @pytest.fixture
 def snapshot_projcode(session):
     """A committed, active project the route handlers can see."""
@@ -82,19 +93,19 @@ def led_projcode(session):
 class TestThePermissionBoundary:
 
     def test_anonymous_is_refused(self, client, snapshot_projcode):
-        resp = client.get(f'/project-members/{snapshot_projcode}/invitations')
+        resp = client.get(f'/project-invitations/{snapshot_projcode}/invitations')
         assert resp.status_code in (302, 401, 403)
-        resp = client.get('/project-members/institutions?organization=universit')
+        resp = client.get('/project-invitations/institutions?organization=universit')
         assert resp.status_code in (302, 401, 403), 'the suggestions need a login'
 
     def test_a_non_steward_without_the_permission_is_403(self, steward_less_client,
                                                          unled_projcode):
-        for path in (f'/project-members/{unled_projcode}/invitations',
-                     f'/project-members/{unled_projcode}/invite-form',
-                     f'/project-members/{unled_projcode}/events/new-form'):
+        for path in (f'/project-invitations/{unled_projcode}/invitations',
+                     f'/project-invitations/{unled_projcode}/invite-form',
+                     f'/project-invitations/{unled_projcode}/events/new-form'):
             assert steward_less_client.get(path).status_code == 403, path
         assert steward_less_client.post(
-            f'/project-members/{unled_projcode}/invite', data={}).status_code == 403
+            f'/project-invitations/{unled_projcode}/invite', data={}).status_code == 403
 
     def test_the_sponsor_search_needs_a_login(self, client, snapshot_projcode):
         resp = client.get(f'/admin/htmx/search/users?context=sponsor&q=user'
@@ -111,10 +122,10 @@ class TestThePermissionBoundary:
         assert 'fk-search-result' in resp.get_data(as_text=True)
 
     def test_an_unknown_event_code_is_404(self, auth_client):
-        for path in ('/project-members/events/NO-SUCH-EVENT/roster-form',
-                     '/project-members/events/NO-SUCH-EVENT/edit-form'):
+        for path in ('/project-invitations/events/NO-SUCH-EVENT/roster-form',
+                     '/project-invitations/events/NO-SUCH-EVENT/edit-form'):
             assert auth_client.get(path).status_code == 404, path
-        assert auth_client.post('/project-members/events/NO-SUCH-EVENT/roster',
+        assert auth_client.post('/project-invitations/events/NO-SUCH-EVENT/roster',
                                 data={'roster': 'A B <a@b.edu>'}).status_code == 404
 
     def test_the_tab_is_drawn_for_the_holder(self, auth_client, snapshot_projcode):
@@ -128,14 +139,14 @@ class TestThePermissionBoundary:
 class TestRenderSmoke:
 
     def test_the_tab_fragment_renders(self, auth_client, snapshot_projcode):
-        resp = auth_client.get(f'/project-members/{snapshot_projcode}/invitations')
+        resp = auth_client.get(f'/project-invitations/{snapshot_projcode}/invitations')
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
         assert 'Invite a person' in html and 'New event' in html
 
     def test_the_forms_render(self, auth_client, snapshot_projcode):
-        for path in (f'/project-members/{snapshot_projcode}/invite-form',
-                     f'/project-members/{snapshot_projcode}/events/new-form'):
+        for path in (f'/project-invitations/{snapshot_projcode}/invite-form',
+                     f'/project-invitations/{snapshot_projcode}/events/new-form'):
             resp = auth_client.get(path)
             assert resp.status_code == 200, path
             assert 'invitationModalLabel' in resp.get_data(as_text=True)
@@ -144,7 +155,7 @@ class TestRenderSmoke:
 
     def test_the_event_form_picks_the_sponsor_from_the_user_search(self, auth_client,
                                                                    snapshot_projcode):
-        html = auth_client.get(f'/project-members/{snapshot_projcode}/events/new-form'
+        html = auth_client.get(f'/project-invitations/{snapshot_projcode}/events/new-form'
                                ).get_data(as_text=True)
         assert 'fk-picker' in html and 'name="extra_sponsor_user_id"' in html
         assert (f'/admin/htmx/search/users?context=sponsor&amp;projcode={snapshot_projcode}'
@@ -152,10 +163,10 @@ class TestRenderSmoke:
         assert 'extra_sponsor_username' not in html
 
     def test_the_invite_form_suggests_institutions(self, auth_client, snapshot_projcode):
-        html = auth_client.get(f'/project-members/{snapshot_projcode}/invite-form').get_data(as_text=True)
-        assert 'list="organization-list"' in html and 'hx-get="/project-members/institutions"' in html
+        html = auth_client.get(f'/project-invitations/{snapshot_projcode}/invite-form').get_data(as_text=True)
+        assert 'list="organization-list"' in html and 'hx-get="/project-invitations/institutions"' in html
         assert 'Institution' in html and 'Organization' not in html
-        body = auth_client.get('/project-members/institutions?organization=universit').get_data(as_text=True)
+        body = auth_client.get('/project-invitations/institutions?organization=universit').get_data(as_text=True)
         assert 0 < body.count('<option value="') <= 10
 
 
@@ -163,20 +174,20 @@ class TestValidation:
 
     def test_an_invite_without_a_name_re_renders_with_errors(self, auth_client,
                                                             snapshot_projcode):
-        resp = auth_client.post(f'/project-members/{snapshot_projcode}/invite',
+        resp = auth_client.post(f'/project-invitations/{snapshot_projcode}/invite',
                                 data={'email': 'x@example.edu'})
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
         assert 'first_name' in html and 'HX-Trigger' not in resp.headers
 
     def test_an_invite_with_a_bad_email_is_refused(self, auth_client, snapshot_projcode):
-        resp = auth_client.post(f'/project-members/{snapshot_projcode}/invite',
+        resp = auth_client.post(f'/project-invitations/{snapshot_projcode}/invite',
                                 data={'email': 'nope', 'first_name': 'A', 'last_name': 'B'})
         assert resp.status_code == 200 and 'HX-Trigger' not in resp.headers
 
     def test_an_invite_naming_a_foreign_event_is_refused(self, auth_client,
                                                         snapshot_projcode):
-        resp = auth_client.post(f'/project-members/{snapshot_projcode}/invite',
+        resp = auth_client.post(f'/project-invitations/{snapshot_projcode}/invite',
                                 data={'email': 'a@example.edu', 'first_name': 'A',
                                       'last_name': 'B', 'event_code': 'NOT-HERE'})
         assert resp.status_code == 200
@@ -184,7 +195,7 @@ class TestValidation:
         assert 'HX-Trigger' not in resp.headers
 
     def test_a_bad_event_code_is_refused(self, auth_client, snapshot_projcode):
-        resp = auth_client.post(f'/project-members/{snapshot_projcode}/events',
+        resp = auth_client.post(f'/project-invitations/{snapshot_projcode}/events',
                                 data={'event_code': 'has space', 'name': 'x',
                                       'accounts_needed_by': '2026-10-05'})
         assert resp.status_code == 200
@@ -192,7 +203,7 @@ class TestValidation:
         assert 'HX-Trigger' not in resp.headers
 
     def test_an_unknown_sponsor_id_is_refused(self, auth_client, snapshot_projcode):
-        resp = auth_client.post(f'/project-members/{snapshot_projcode}/events',
+        resp = auth_client.post(f'/project-invitations/{snapshot_projcode}/events',
                                 data={'event_code': 'SPN-2026', 'name': 'x',
                                       'accounts_needed_by': '2026-10-05',
                                       'extra_sponsor_user_id': '999999999'})
@@ -201,7 +212,7 @@ class TestValidation:
         assert 'HX-Trigger' not in resp.headers
 
     def test_a_backwards_window_is_refused(self, auth_client, snapshot_projcode):
-        resp = auth_client.post(f'/project-members/{snapshot_projcode}/events',
+        resp = auth_client.post(f'/project-invitations/{snapshot_projcode}/events',
                                 data={'event_code': 'WIN-2026', 'name': 'x',
                                       'accounts_needed_by': '2026-10-05',
                                       'opens_at': '2026-10-02T09:00',
@@ -224,16 +235,23 @@ class TestTheInvitationsFlag:
             assert DevelopmentConfig.ACCOUNT_INVITATIONS_ENABLED is True
             assert TestingConfig.ACCOUNT_INVITATIONS_ENABLED is True
 
-    def test_off_404s_every_invitation_route(self, auth_client, app, monkeypatch,
-                                             snapshot_projcode):
-        monkeypatch.setitem(app.config, 'ACCOUNT_INVITATIONS_ENABLED', False)
-        for path in (f'/project-members/{snapshot_projcode}/invitations',
-                     f'/project-members/{snapshot_projcode}/invite-form',
-                     f'/project-members/{snapshot_projcode}/events/new-form',
-                     '/project-members/institutions?organization=univ'):
-            assert auth_client.get(path).status_code == 404, path
-        assert auth_client.post(
-            f'/project-members/{snapshot_projcode}/invite', data={}).status_code == 404
+    def test_on_by_default_outside_production(self, app):
+        assert app.config['ACCOUNT_INVITATIONS_ENABLED'] is True
+        assert 'project_invites' in app.blueprints
+
+    def test_off_means_404_and_no_blueprint(self, invitations_disabled_app,
+                                            snapshot_projcode):
+        client = invitations_disabled_app.test_client()
+        assert 'project_invites' not in invitations_disabled_app.blueprints
+        for path in (f'/project-invitations/{snapshot_projcode}/invitations',
+                     f'/project-invitations/{snapshot_projcode}/invite-form',
+                     f'/project-invitations/{snapshot_projcode}/events/new-form',
+                     '/project-invitations/institutions?organization=univ'):
+            assert client.get(path).status_code == 404, path
+        assert client.post(
+            f'/project-invitations/{snapshot_projcode}/invite', data={}).status_code == 404
+        # The members blueprint on the same prefix is untouched.
+        assert client.get(f'/project-members/{snapshot_projcode}').status_code != 404
 
     def test_off_hides_the_tab_and_its_modal(self, auth_client, app, monkeypatch,
                                             snapshot_projcode):
@@ -254,24 +272,24 @@ class TestEventCreationIsOperatorOnly:
                                                        led_projcode):
         # A project he leads: steward access lets him invite ...
         assert steward_less_client.get(
-            f'/project-members/{led_projcode}/invite-form').status_code == 200
+            f'/project-invitations/{led_projcode}/invite-form').status_code == 200
         # ... but creating an event needs the operator permission he lacks.
         assert steward_less_client.get(
-            f'/project-members/{led_projcode}/events/new-form').status_code == 403
+            f'/project-invitations/{led_projcode}/events/new-form').status_code == 403
         assert steward_less_client.post(
-            f'/project-members/{led_projcode}/events', data={}).status_code == 403
+            f'/project-invitations/{led_projcode}/events', data={}).status_code == 403
 
     def test_a_lead_sees_invite_but_not_the_new_event_button(self, steward_less_client,
                                                              led_projcode):
         lead_html = steward_less_client.get(
-            f'/project-members/{led_projcode}/invitations').get_data(as_text=True)
+            f'/project-invitations/{led_projcode}/invitations').get_data(as_text=True)
         assert 'Invite a person' in lead_html, 'a lead still invites'
         assert 'New event' not in lead_html, 'a lead cannot open an event code'
 
     def test_an_operator_gets_the_new_event_button_and_form(self, operator_client,
                                                             led_projcode):
         op_html = operator_client.get(
-            f'/project-members/{led_projcode}/invitations').get_data(as_text=True)
+            f'/project-invitations/{led_projcode}/invitations').get_data(as_text=True)
         assert 'New event' in op_html, 'an operator opens events'
         assert operator_client.get(
-            f'/project-members/{led_projcode}/events/new-form').status_code == 200
+            f'/project-invitations/{led_projcode}/events/new-form').status_code == 200

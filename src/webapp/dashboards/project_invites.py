@@ -1,16 +1,16 @@
 """The Invitations tab of Manage Project: invite a person who has no account.
 
-Routes on the ``project_members`` blueprint (imported at the bottom of that
-module), because the surface is project-scoped like the members table and
-reachable from the same page. Three ways to the same rows: one invitation,
-an event (a cohort with a code and a deadline), a roster pasted under it.
-Guards: the project's stewards (tree walked) or the event's extra sponsor,
-or MANAGE_ACCOUNT_REQUESTS. Design: docs/plans/ACCOUNT_REGISTRATION.md 3.1.
+Its own blueprint and URL prefix (sharing the members' prefix would let
+that blueprint's ``/<projcode>`` rule answer these paths once unmounted),
+mounted by ``create_app`` only when ``ACCOUNT_INVITATIONS_ENABLED`` is on --
+the ``register`` idiom, so the tab ships dark in prod and every route 404s
+there. Three ways to the same rows: one invitation, an event (a cohort with
+a code and a deadline), a roster pasted under it. Guards: the project's
+stewards (tree walked) or the event's extra sponsor, or
+MANAGE_ACCOUNT_REQUESTS. Design: docs/plans/ACCOUNT_REGISTRATION.md 3.1.
 """
 
-from functools import wraps
-
-from flask import abort, current_app, render_template, request, url_for
+from flask import Blueprint, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from sam.core.account_requests import OPEN_STATES, AccountRequest, AccountRequestEvent
@@ -44,7 +44,7 @@ from webapp.utils.htmx import (
 )
 from webapp.utils.rbac import Permission, has_permission_any_facility
 
-from .project_members import bp
+bp = Blueprint('project_invites', __name__, url_prefix='/project-invitations')
 
 _TAB = 'project_members/fragments/invitations_tab_htmx.html'
 _INVITE_FORM = 'project_members/fragments/invite_form_htmx.html'
@@ -62,21 +62,6 @@ _EVENT_GUARD = require_event_sponsor_access(Permission.MANAGE_ACCOUNT_REQUESTS)
 # and surprise the operators. Managing an event once it exists stays on
 # _EVENT_GUARD (steward or the event's extra sponsor).
 _CREATE_GUARD = require_project_facility_permission(Permission.MANAGE_ACCOUNT_REQUESTS)
-
-
-def _invitations_enabled(view):
-    """404 the whole Invitations tab when ACCOUNT_INVITATIONS_ENABLED is off.
-
-    The tab ships dark in prod (config default) so the initial capability is
-    the XRAS-mirrored Accounts queue only; local/dev turn it on. Runs before
-    the project/event guards so a disabled feature never touches the DB.
-    """
-    @wraps(view)
-    def wrapped(*args, **kwargs):
-        if not current_app.config.get('ACCOUNT_INVITATIONS_ENABLED', False):
-            abort(404)
-        return view(*args, **kwargs)
-    return wrapped
 
 
 def _sponsor():
@@ -101,7 +86,6 @@ def _event_for(project, code):
 
 
 @bp.route('/<projcode>/invitations')
-@_invitations_enabled
 @login_required
 @_GUARD
 def invitations_fragment(project):
@@ -158,7 +142,7 @@ class _InviteUserHandler(HtmxFormHandler):
 
     def context(self):
         return {'project': self.project, 'events': _project_events(self.project),
-                'post_url': url_for('project_members.htmx_invite_user',
+                'post_url': url_for('project_invites.htmx_invite_user',
                                     projcode=self.project.projcode)}
 
     def on_success(self, result):
@@ -173,7 +157,6 @@ class _InviteUserHandler(HtmxFormHandler):
 
 
 @bp.route('/institutions')
-@_invitations_enabled
 @login_required
 def institutions_fragment():
     """Datalist options for the invite form's Institution field (login only:
@@ -183,17 +166,15 @@ def institutions_fragment():
 
 
 @bp.route('/<projcode>/invite-form')
-@_invitations_enabled
 @login_required
 @_GUARD
 def htmx_invite_form(project):
     return render_template(_INVITE_FORM, project=project, events=_project_events(project),
-                           post_url=url_for('project_members.htmx_invite_user',
+                           post_url=url_for('project_invites.htmx_invite_user',
                                             projcode=project.projcode), errors=[])
 
 
 @bp.route('/<projcode>/invite', methods=['POST'])
-@_invitations_enabled
 @login_required
 @_GUARD
 def htmx_invite_user(project):
@@ -217,17 +198,15 @@ def _sponsor_label(user):
 
 
 @bp.route('/<projcode>/events/new-form')
-@_invitations_enabled
 @login_required
 @_CREATE_GUARD
 def htmx_event_form(project):
     return render_template(_EVENT_FORM, project=project, event=None,
-                           post_url=url_for('project_members.htmx_event_create',
+                           post_url=url_for('project_invites.htmx_event_create',
                                             projcode=project.projcode), errors=[])
 
 
 @bp.route('/<projcode>/events', methods=['POST'])
-@_invitations_enabled
 @login_required
 @_CREATE_GUARD
 def htmx_event_create(project):
@@ -252,7 +231,7 @@ def htmx_event_create(project):
                         'and pasted rosters land under it.',
         error_prefix='Error creating event',
         extra_context={'project': project, 'event': None,
-                       'post_url': url_for('project_members.htmx_event_create',
+                       'post_url': url_for('project_invites.htmx_event_create',
                                            projcode=project.projcode)},
     )
 
@@ -285,7 +264,7 @@ class _EventEditHandler(HtmxFormHandler):
 
     def context(self):
         return {'project': self.project, 'event': self.event,
-                'post_url': url_for('project_members.htmx_event_update',
+                'post_url': url_for('project_invites.htmx_event_update',
                                     event_code=self.event.event_code)}
 
     def on_success(self, result):
@@ -293,7 +272,6 @@ class _EventEditHandler(HtmxFormHandler):
 
 
 @bp.route('/events/<event_code>/edit-form')
-@_invitations_enabled
 @login_required
 @_EVENT_GUARD
 def htmx_event_edit_form(event, project):
@@ -301,12 +279,11 @@ def htmx_event_edit_form(event, project):
     return render_template(_EVENT_FORM, project=project, event=event,
                            sponsor_id=sponsor.user_id if sponsor else '',
                            sponsor_label=_sponsor_label(sponsor) if sponsor else '',
-                           post_url=url_for('project_members.htmx_event_update',
+                           post_url=url_for('project_invites.htmx_event_update',
                                             event_code=event.event_code), errors=[])
 
 
 @bp.route('/events/<event_code>', methods=['POST', 'PUT'])
-@_invitations_enabled
 @login_required
 @_EVENT_GUARD
 def htmx_event_update(event, project):
@@ -324,7 +301,6 @@ def _switch(event, verb):
 
 
 @bp.route('/events/<event_code>/close', methods=['POST'])
-@_invitations_enabled
 @login_required
 @_EVENT_GUARD
 def htmx_event_close(event, project):
@@ -333,7 +309,6 @@ def htmx_event_close(event, project):
 
 
 @bp.route('/events/<event_code>/reopen', methods=['POST'])
-@_invitations_enabled
 @login_required
 @_EVENT_GUARD
 def htmx_event_reopen(event, project):
@@ -361,7 +336,7 @@ class _RosterHandler(HtmxFormHandler):
 
     def context(self):
         return {'project': self.project, 'event': self.event,
-                'post_url': url_for('project_members.htmx_roster_paste',
+                'post_url': url_for('project_invites.htmx_roster_paste',
                                     event_code=self.event.event_code)}
 
     def on_success(self, result):
@@ -377,17 +352,15 @@ class _RosterHandler(HtmxFormHandler):
 
 
 @bp.route('/events/<event_code>/roster-form')
-@_invitations_enabled
 @login_required
 @_EVENT_GUARD
 def htmx_roster_form(event, project):
     return render_template(_ROSTER_FORM, project=project, event=event,
-                           post_url=url_for('project_members.htmx_roster_paste',
+                           post_url=url_for('project_invites.htmx_roster_paste',
                                             event_code=event.event_code), errors=[])
 
 
 @bp.route('/events/<event_code>/roster', methods=['POST'])
-@_invitations_enabled
 @login_required
 @_EVENT_GUARD
 def htmx_roster_paste(event, project):

@@ -17,7 +17,7 @@
     <span class="badge bg-secondary">{{ open_count | fmt_number }} waiting for an account</span>
     <div class="btn-group btn-group-sm ms-auto">
         <button type="button" class="btn btn-primary"
-                hx-get="{{ url_for('project_members.htmx_invite_form', projcode=project.projcode) }}"
+                hx-get="{{ url_for('project_invites.htmx_invite_form', projcode=project.projcode) }}"
                 hx-target="#invitationFormContainer" hx-swap="innerHTML"
                 data-bs-toggle="modal" data-bs-target="#invitationModal">
             <i class="fa-solid fa-user-plus me-1"></i> Invite a person
@@ -26,7 +26,7 @@
            existing events but does not open new ones. See can_create_events. #}
         {% if can_create_events(project) %}
         <button type="button" class="btn btn-outline-primary"
-                hx-get="{{ url_for('project_members.htmx_event_form', projcode=project.projcode) }}"
+                hx-get="{{ url_for('project_invites.htmx_event_form', projcode=project.projcode) }}"
                 hx-target="#invitationFormContainer" hx-swap="innerHTML"
                 data-bs-toggle="modal" data-bs-target="#invitationModal">
             <i class="fa-solid fa-calendar-plus me-1"></i> New event
@@ -74,24 +74,24 @@
                 <div class="btn-group btn-group-sm flex-nowrap">
                     <button type="button" class="btn btn-outline-primary"
                             title="Paste a roster under this event" aria-label="Paste roster"
-                            hx-get="{{ url_for('project_members.htmx_roster_form', event_code=e.event.event_code) }}"
+                            hx-get="{{ url_for('project_invites.htmx_roster_form', event_code=e.event.event_code) }}"
                             hx-target="#invitationFormContainer" hx-swap="innerHTML"
                             data-bs-toggle="modal" data-bs-target="#invitationModal"><i class="fa-solid fa-list-ul"></i></button>
                     <button type="button" class="btn btn-outline-secondary"
                             title="Edit this event" aria-label="Edit"
-                            hx-get="{{ url_for('project_members.htmx_event_edit_form', event_code=e.event.event_code) }}"
+                            hx-get="{{ url_for('project_invites.htmx_event_edit_form', event_code=e.event.event_code) }}"
                             hx-target="#invitationFormContainer" hx-swap="innerHTML"
                             data-bs-toggle="modal" data-bs-target="#invitationModal"><i class="fa-solid fa-pen"></i></button>
                     {% if e.event.active %}
                     <button type="button" class="btn btn-outline-secondary"
                             title="Close — stop accepting this code" aria-label="Close event"
-                            hx-post="{{ url_for('project_members.htmx_event_close', event_code=e.event.event_code) }}"
+                            hx-post="{{ url_for('project_invites.htmx_event_close', event_code=e.event.event_code) }}"
                             hx-confirm="Stop accepting {{ e.event.event_code }}? Existing requests are untouched."
                             hx-swap="none"><i class="fa-solid fa-lock"></i></button>
                     {% else %}
                     <button type="button" class="btn btn-outline-secondary"
                             title="Reopen this event" aria-label="Reopen event"
-                            hx-post="{{ url_for('project_members.htmx_event_reopen', event_code=e.event.event_code) }}"
+                            hx-post="{{ url_for('project_invites.htmx_event_reopen', event_code=e.event.event_code) }}"
                             hx-swap="none"><i class="fa-solid fa-lock-open"></i></button>
                     {% endif %}
                 </div>

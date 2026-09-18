@@ -22,7 +22,7 @@
         <div class="col-md-6">{{ text_field('first_name', 'First name', required=True, maxlength=64) }}</div>
         <div class="col-md-6">{{ text_field('last_name', 'Last name', required=True, maxlength=64) }}</div>
     </div>
-    {{ datalist_field('organization', 'Institution', url_for('project_members.institutions_fragment'),
+    {{ datalist_field('organization', 'Institution', url_for('project_invites.institutions_fragment'),
                       maxlength=128, help='Start typing to pick a known institution, or enter theirs.') }}
     {% if events %}
     {{ select_field('event_code', 'Event', items=events, value_attr='event_code',

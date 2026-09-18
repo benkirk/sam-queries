@@ -82,7 +82,7 @@
     <button class="nav-link{{ ' active' if active_tab == 'invitations' }}" id="invitations-tab"
             data-bs-toggle="tab" data-bs-target="#tab-invitations" data-tab-param-value="invitations"
             type="button" role="tab" aria-selected="{{ 'true' if active_tab == 'invitations' else 'false' }}"
-            hx-get="{{ url_for('project_members.invitations_fragment', projcode=project.projcode) }}"
+            hx-get="{{ url_for('project_invites.invitations_fragment', projcode=project.projcode) }}"
             hx-target="#invitations-{{ project.projcode }}"
             hx-trigger="{% if active_tab == 'invitations' %}load once, {% endif %}shown.bs.tab once">
       <i class="fa-solid fa-user-plus me-1"></i> Invitations
@@ -190,7 +190,7 @@
     {# Refreshed by the invitation writes' HX-Trigger; the first load is the
        tab button's. #}
     <div id="invitations-{{ project.projcode }}"
-         hx-get="{{ url_for('project_members.invitations_fragment', projcode=project.projcode) }}"
+         hx-get="{{ url_for('project_invites.invitations_fragment', projcode=project.projcode) }}"
          hx-trigger="refreshInvitations from:body"
          hx-swap="innerHTML">
       <div class="text-center text-muted py-4">

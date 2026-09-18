@@ -37,6 +37,7 @@ DASHBOARD_BLUEPRINTS = (
     'allocations_dashboard',
     'disk_scans',
     'jobs',
+    'project_invites',
     'project_members',
     'status_dashboard',
     'user_dashboard',

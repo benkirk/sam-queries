@@ -2317,6 +2317,91 @@
     ]
   ],
   [
+    "project_invites.htmx_event_close",
+    "/project-invitations/events/<event_code>/close",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "project_invites.htmx_event_create",
+    "/project-invitations/<projcode>/events",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "project_invites.htmx_event_edit_form",
+    "/project-invitations/events/<event_code>/edit-form",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "project_invites.htmx_event_form",
+    "/project-invitations/<projcode>/events/new-form",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "project_invites.htmx_event_reopen",
+    "/project-invitations/events/<event_code>/reopen",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "project_invites.htmx_event_update",
+    "/project-invitations/events/<event_code>",
+    [
+      "POST",
+      "PUT"
+    ]
+  ],
+  [
+    "project_invites.htmx_invite_form",
+    "/project-invitations/<projcode>/invite-form",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "project_invites.htmx_invite_user",
+    "/project-invitations/<projcode>/invite",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "project_invites.htmx_roster_form",
+    "/project-invitations/events/<event_code>/roster-form",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "project_invites.htmx_roster_paste",
+    "/project-invitations/events/<event_code>/roster",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "project_invites.institutions_fragment",
+    "/project-invitations/institutions",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "project_invites.invitations_fragment",
+    "/project-invitations/<projcode>/invitations",
+    [
+      "GET"
+    ]
+  ],
+  [
     "project_members.htmx_add_member",
     "/project-members/<projcode>/add",
     [
@@ -2338,65 +2423,8 @@
     ]
   ],
   [
-    "project_members.htmx_event_close",
-    "/project-members/events/<event_code>/close",
-    [
-      "POST"
-    ]
-  ],
-  [
-    "project_members.htmx_event_create",
-    "/project-members/<projcode>/events",
-    [
-      "POST"
-    ]
-  ],
-  [
-    "project_members.htmx_event_edit_form",
-    "/project-members/events/<event_code>/edit-form",
-    [
-      "GET"
-    ]
-  ],
-  [
-    "project_members.htmx_event_form",
-    "/project-members/<projcode>/events/new-form",
-    [
-      "GET"
-    ]
-  ],
-  [
-    "project_members.htmx_event_reopen",
-    "/project-members/events/<event_code>/reopen",
-    [
-      "POST"
-    ]
-  ],
-  [
-    "project_members.htmx_event_update",
-    "/project-members/events/<event_code>",
-    [
-      "POST",
-      "PUT"
-    ]
-  ],
-  [
     "project_members.htmx_grant_access",
     "/project-members/<projcode>/grant-access",
-    [
-      "POST"
-    ]
-  ],
-  [
-    "project_members.htmx_invite_form",
-    "/project-members/<projcode>/invite-form",
-    [
-      "GET"
-    ]
-  ],
-  [
-    "project_members.htmx_invite_user",
-    "/project-members/<projcode>/invite",
     [
       "POST"
     ]
@@ -2406,34 +2434,6 @@
     "/project-members/<projcode>/<username>",
     [
       "DELETE"
-    ]
-  ],
-  [
-    "project_members.htmx_roster_form",
-    "/project-members/events/<event_code>/roster-form",
-    [
-      "GET"
-    ]
-  ],
-  [
-    "project_members.htmx_roster_paste",
-    "/project-members/events/<event_code>/roster",
-    [
-      "POST"
-    ]
-  ],
-  [
-    "project_members.institutions_fragment",
-    "/project-members/institutions",
-    [
-      "GET"
-    ]
-  ],
-  [
-    "project_members.invitations_fragment",
-    "/project-members/<projcode>/invitations",
-    [
-      "GET"
     ]
   ],
   [
