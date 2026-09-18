@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS account_request_event (
   opens_at               DATETIME          NULL,   -- when the public form accepts the code
   closes_at              DATETIME          NULL,
   active                 TINYINT(1)    NOT NULL DEFAULT 1,
+  listed                 TINYINT(1)    NOT NULL DEFAULT 0,   -- opt-in: shown on the public Upcoming Events card
   created_by             VARCHAR(35)   NOT NULL,   -- users.username
   creation_time          DATETIME      NOT NULL,   -- app clock, naive-Mountain
   modified_time          DATETIME      NOT NULL,

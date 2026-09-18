@@ -237,6 +237,16 @@ class TestEvents:
         with pytest.raises(ValueError, match='closes_at'):
             make_account_request_event(session, opens_at=now, closes_at=now - timedelta(days=1))
 
+    def test_listed_is_opt_in_and_update_can_clear_it(self, session):
+        event = make_account_request_event(session)
+        assert event.listed is False
+        event.update(listed=True)
+        assert event.listed is True
+        event.update(name='Renamed')
+        assert event.listed is True, 'an update that does not mention it leaves it'
+        event.update(listed=False)
+        assert event.listed is False
+
     def test_update_can_clear_the_sponsor(self, session):
         sponsor = make_user(session)
         event = make_account_request_event(session, extra_sponsor=sponsor)

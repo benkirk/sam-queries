@@ -205,10 +205,37 @@ def events():
     than for the PBS reservation rows that back it; the underlying data and
     query layer keep the reservation vocabulary.
     """
+    upcoming, enrolled = _upcoming_events()
     return render_template(
         'dashboards/status/events_page.html',
+        upcoming_events=upcoming, enrolled_event_ids=enrolled,
+        register_base_url=request.url_root.rstrip('/') + '/register',
         **_page_context(db.session),
     )
+
+
+def _upcoming_events():
+    """``(listed open events, the viewer's enrolled event ids)``.
+
+    Empty while ACCOUNT_REGISTRATION_ENABLED is off: the card links to
+    /register/<code>, which is unmounted (404) then. This is the status pages'
+    only SAM-database read, so it fails soft -- SAM being down must not take
+    the public status page with it. The listing is memoized; the failure is not.
+    """
+    if not current_app.config.get('ACCOUNT_REGISTRATION_ENABLED', False):
+        return [], set()
+    from sqlalchemy.exc import SQLAlchemyError
+    from sam.queries.account_requests import enrolled_event_ids
+    from webapp.dashboards.event_lifecycle import upcoming_events_data
+    try:
+        upcoming = upcoming_events_data()
+        enrolled = (enrolled_event_ids(db.session, current_user.user_id)
+                    if upcoming and current_user.is_authenticated else set())
+    except SQLAlchemyError:
+        logger.exception('upcoming events unavailable; rendering without the card')
+        db.session.rollback()
+        return [], set()
+    return upcoming, enrolled
 
 
 @bp.route('/filesystem-scans')

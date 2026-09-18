@@ -119,6 +119,20 @@
     ]
   ],
   [
+    "admin_dashboard.events",
+    "/admin/events",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.events_fragment",
+    "/admin/events/fragment",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.expirations_export",
     "/admin/expirations/export",
     [
@@ -256,6 +270,49 @@
     "/admin/htmx/admin/disk-roots/<int:dr_id>/toggle-active",
     [
       "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_admin_event_close",
+    "/admin/events/<event_code>/close",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_admin_event_create",
+    "/admin/htmx/events/new",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_admin_event_edit_form",
+    "/admin/events/<event_code>/edit-form",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_admin_event_form",
+    "/admin/htmx/events/new-form",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_admin_event_reopen",
+    "/admin/events/<event_code>/reopen",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_admin_event_update",
+    "/admin/events/<event_code>",
+    [
+      "POST",
+      "PUT"
     ]
   ],
   [
@@ -1087,6 +1144,13 @@
   [
     "admin_dashboard.htmx_project_parent_prefill",
     "/admin/htmx/project-parent-prefill",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_project_search_for_event",
+    "/admin/htmx/events/project-search",
     [
       "GET"
     ]

@@ -1,0 +1,51 @@
+{% extends 'dashboards/admin/base_admin.html' %}
+{#
+  Admin -> Events: every account-request event across projects. The card
+  (fragments/events_card.html) is loaded by htmx and refreshed by
+  `refreshEvents`. The switch lives outside the swap target so its state
+  survives a refresh.
+#}
+
+{% block title %}Events — SAM admin{% endblock %}
+
+{% block admin_content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 flex-grow-1">
+            <i class="fa-solid fa-calendar-days"></i> Events
+        </h5>
+        <div class="form-check form-switch ms-3 mb-0">
+            <input class="form-check-input" type="checkbox" id="eventsCardActiveOnly"
+                   name="active_only" value="1" checked
+                   hx-get="{{ url_for('admin_dashboard.events_fragment') }}"
+                   hx-trigger="change"
+                   hx-include="this"
+                   hx-target="#eventsSection"
+                   hx-swap="innerHTML">
+            <label class="form-check-label small text-muted fw-normal" for="eventsCardActiveOnly">Active only</label>
+        </div>
+        {% if has_permission(Permission.MANAGE_EVENTS) %}
+        <button type="button" class="btn btn-sm btn-primary ms-3"
+                hx-get="{{ url_for('admin_dashboard.htmx_admin_event_form') }}"
+                hx-target="#invitationFormContainer" hx-swap="innerHTML"
+                data-bs-toggle="modal" data-bs-target="#invitationModal">
+            <i class="fa-solid fa-calendar-plus me-1"></i> New event
+        </button>
+        {% endif %}
+    </div>
+    <div id="eventsSection"
+         hx-get="{{ url_for('admin_dashboard.events_fragment') }}"
+         hx-trigger="load, refreshEvents from:body"
+         hx-include="#eventsCardActiveOnly"
+         hx-swap="innerHTML">
+        <div class="card-body text-center text-muted py-4" role="status">
+            <i class="fa-solid fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
+            <p class="mt-2">Loading...</p>
+        </div>
+    </div>
+</div>
+
+{% if has_permission(Permission.MANAGE_EVENTS) %}
+{% include 'project_members/fragments/invitation_modals_htmx.html' %}
+{% endif %}
+{% endblock %}

@@ -184,6 +184,8 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # includes invitation_modals_htmx.html). Its openers target that shell; the
     # forms that land in it carry no toggle of their own.
     'project_members/fragments/invitations_tab_htmx.html': ['invitationModal'],
+    # Admin -> Events reuses that shell: admin/events.html includes it.
+    'dashboards/admin/fragments/events_card.html': ['invitationModal'],
     'dashboards/admin/fragments/bulk_deactivate_project_directories_form_htmx.html': [
         'bulkDeactivateProjectDirectoriesFormContainer'],
     'dashboards/admin/fragments/bulk_deactivate_project_directories_preview_htmx.html': [
@@ -450,6 +452,7 @@ PAGES_WITH_PROJECT_MODAL = {
     '/admin/htmx/notifications': 'dashboards/admin/notifications.html',
     '/admin/account-requests': 'dashboards/admin/account_requests.html',
     '/admin/users-groups': 'dashboards/admin/users_groups.html',
+    '/admin/events': 'dashboards/admin/events.html',
     '/allocations/projects': 'dashboards/allocations/projects.html',
     '/allocations/transactions': 'dashboards/allocations/transactions.html',
     '/allocations/adjustments': 'dashboards/allocations/adjustments.html',

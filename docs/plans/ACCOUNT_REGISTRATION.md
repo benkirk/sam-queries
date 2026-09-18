@@ -132,6 +132,9 @@ capability with three doors, all of which exist today:
 | The event | one optional **extra sponsor** (`extra_sponsor_user_id`, say an instructor who is neither lead nor admin), picked from the SAM user search (`sponsor` context, gated like the event routes) | the one stored sponsor; a join table only if a real event ever needs more than three people |
 | RBAC | staff — a new `MANAGE_ACCOUNT_REQUESTS` permission in the `_ALLOCATION_ADMIN` set (`webapp/utils/rbac.py`), which is exactly the `nusd` and `csg` bundles | system-wide, any project |
 
+An event's own lifecycle (create, edit, close, reopen) moved to `MANAGE_EVENTS`,
+held by the same bundles -- see `docs/plans/implemented/EVENTS_VIEWS.md`.
+
 The route guard is the existing `require_project_permission(Permission.MANAGE_ACCOUNT_REQUESTS)`
 (permission system-wide, or the project's lead/admin) with one added clause for the
 event's extra sponsor, as a sibling decorator in `webapp/api/access_control.py` that

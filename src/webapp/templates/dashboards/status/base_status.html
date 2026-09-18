@@ -107,7 +107,7 @@
 </div>
 {% endif %}
 
-{% set events_label = 'Events ({})'.format(reservations|length) if reservations else 'Events' %}
+{% set events_label = 'Calendar & Events ({})'.format(reservations|length) if reservations else 'Calendar & Events' %}
 {# Events stays LAST in this list on purpose: the two tabs before it are
    RBAC/plugin-gated and drop out of the strip entirely when hidden, so
    ordering Events last is what keeps it rightmost for every audience —

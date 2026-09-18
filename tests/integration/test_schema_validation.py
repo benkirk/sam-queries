@@ -732,8 +732,8 @@ class TestCriticalSchemas:
         expected = {'account_request_event_id', 'event_code', 'name', 'instructions',
                     'project_id',
                     'extra_sponsor_user_id', 'accounts_needed_by', 'opens_at',
-                    'closes_at', 'active', 'created_by', 'creation_time',
-                    'modified_time'}
+                    'closes_at', 'active', 'listed', 'created_by',
+                    'creation_time', 'modified_time'}
         assert set(db_cols.keys()) == expected, set(db_cols.keys()) ^ expected
         assert db_cols['account_request_event_id']['key'] == 'PRI'
         unique = session.execute(text("""

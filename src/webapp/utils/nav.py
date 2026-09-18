@@ -62,6 +62,11 @@ def _can_manage_account_requests():
             and has_permission(current_user, Permission.MANAGE_ACCOUNT_REQUESTS))
 
 
+def _can_manage_events():
+    return (current_user.is_authenticated
+            and has_permission(current_user, Permission.MANAGE_EVENTS))
+
+
 def _can_view_fs_scans():
     # Same gate as the status tab strip: permission AND at least one warmed
     # scan collection. scan_capable_resources() is a config-list +
@@ -174,7 +179,7 @@ NAV_SECTIONS = (
              'icon': 'fa-solid fa-list-check', 'visible': _can_view_job_history},
             # Last on purpose — mirrors the status tab strip, where Events sits
             # to the right of the gated tabs (see base_status.html).
-            {'endpoint': 'status_dashboard.events', 'label': 'Events',
+            {'endpoint': 'status_dashboard.events', 'label': 'Calendar & Events',
              'icon': 'fa-solid fa-calendar-days'},
         ),
     },
@@ -218,6 +223,8 @@ NAV_SECTIONS = (
              'icon': 'fa-solid fa-building'},
             {'endpoint': 'admin_dashboard.account_requests', 'label': 'Accounts',
              'icon': 'fa-solid fa-user-plus', 'visible': _can_manage_account_requests},
+            {'endpoint': 'admin_dashboard.events', 'label': 'Events',
+             'icon': 'fa-solid fa-calendar-days', 'visible': _can_manage_events},
             {'endpoint': 'admin_dashboard.configuration', 'label': 'Configuration',
              'icon': 'fa-solid fa-sliders', 'visible': _can_view_config},
         ),
