@@ -99,3 +99,27 @@ class TestInvalidation:
             event_lifecycle.switch_event(MagicMock(event_code='X'), 'close', {})
             event_lifecycle.switch_event(MagicMock(event_code='X'), 'reopen', {})
         assert len(calls) == 2
+
+
+class TestTheRealCache:
+    """The suite runs NullCache, under which memoize and delete_memoized never
+    execute. Swap a real backend in for the one listing."""
+
+    @pytest.fixture
+    def simple_cache(self, app, monkeypatch):
+        from cachelib import SimpleCache
+        from webapp.extensions import cache
+        monkeypatch.setitem(app.extensions['cache'], cache, SimpleCache())
+
+    def test_second_read_hits_and_invalidation_misses(self, app, simple_cache, monkeypatch):
+        from webapp.dashboards import event_lifecycle
+        reads = []
+        monkeypatch.setattr(event_lifecycle, 'upcoming_listed_events',
+                            lambda session: reads.append(1) or [{'event_code': 'X'}])
+        with app.app_context():
+            assert event_lifecycle.upcoming_events_data() == [{'event_code': 'X'}]
+            event_lifecycle.upcoming_events_data()
+            assert len(reads) == 1
+            event_lifecycle.invalidate_upcoming_events()
+            event_lifecycle.upcoming_events_data()
+            assert len(reads) == 2

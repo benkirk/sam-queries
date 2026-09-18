@@ -1,10 +1,15 @@
 {% from 'dashboards/fragments/project_bits.html' import project_link %}
 {% from 'dashboards/fragments/contract_bits.html' import contract_user_link %}
 {% from 'dashboards/fragments/clipboard.html' import copy_button %}
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {#
   The Admin -> Events table. Context: rows (all_events dicts + reg_url),
-  can_view_projects, can_view_users. Openers target the #invitationModal shell
-  the host page (admin/events.html) ships.
+  can_roster, can_view_projects, can_view_users. Openers target the
+  #invitationModal shell the host page (admin/events.html) ships.
+
+  WARNING: the collapse toggle sits on the chevron and Enrolled cells only. The
+  code cell holds a copy button and the last cell the actions; a toggle there
+  (or on the <tr>) fires in Bootstrap's capture phase, before the button.
 #}
 <div class="card-body">
 {% if rows %}
@@ -12,7 +17,7 @@
 <table class="table table-sm align-middle mb-0">
     <thead class="table-subtle">
         <tr>
-            <th>Code</th><th>Name</th><th>Project</th>
+            <th style="width:1.5rem;"></th><th>Code</th><th>Name</th><th>Project</th>
             <th class="text-nowrap" title="Accounts needed by">Needed by</th>
             <th title="Registration window">Window</th>
             <th class="text-nowrap">Extra sponsor</th><th>Enrolled</th><th>Status</th>
@@ -22,13 +27,17 @@
     <tbody>
         {% for r in rows %}
         {% set e = r.event %}
+        {% set eid = 'event-enrollees-' ~ e.account_request_event_id %}
         <tr{% if not e.active %} class="text-muted"{% endif %}>
+            <td class="cursor-pointer" title="Who has enrolled" {{ collapse_toggle(eid) }}><i class="fa-solid fa-chevron-right small text-muted collapse-icon"></i></td>
             <td class="font-monospace text-nowrap">
                 {{ e.event_code }}
                 {{ copy_button(r.reg_url, label='Copy registration link', icon='fa-solid fa-link', compact=true, done='Registration link copied.') }}
             </td>
             <td>{{ e.name }}</td>
-            <td>{{ project_link(r.project_code, can_view_projects, admin=True) }}</td>
+            <td class="text-nowrap">{{ project_link(r.project_code, can_view_projects, admin=True) }}
+                {% if not r.project_active %}<span class="badge bg-warning-subtle text-warning-emphasis border" title="This project is not active: enrollments cannot be fulfilled and the event is not listed publicly">inactive</span>{% endif %}
+            </td>
             <td class="text-nowrap">{{ e.accounts_needed_by | fmt_date }}</td>
             <td class="text-nowrap small">
                 {% if e.opens_at or e.closes_at %}
@@ -36,14 +45,21 @@
                 {% else %}<span class="text-muted">always</span>{% endif %}
             </td>
             <td class="text-nowrap">{{ contract_user_link(r.sponsor, can_view_users) }}</td>
-            <td>{{ r.enrolled | fmt_number }}</td>
+            <td class="cursor-pointer" {{ collapse_toggle(eid) }}>{{ r.enrolled | fmt_number }}</td>
             <td class="text-nowrap">
                 {% if e.active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Closed</span>{% endif %}
                 {% if e.listed %}<span class="badge bg-info" title="Shown on the public Upcoming Events card">Listed</span>{% endif %}
             </td>
             <td class="text-end text-nowrap">
-                {% if has_permission(Permission.MANAGE_EVENTS) %}
+                {% if has_permission_any_facility(Permission.MANAGE_EVENTS) %}
                 <div class="btn-group btn-group-sm flex-nowrap">
+                    {% if can_roster and e.active and r.project_active %}
+                    <button type="button" class="btn btn-outline-secondary"
+                            title="Paste a roster under this event" aria-label="Paste a roster"
+                            hx-get="{{ url_for('admin_dashboard.htmx_admin_event_roster_form', event_code=e.event_code) }}"
+                            hx-target="#invitationFormContainer" hx-swap="innerHTML"
+                            data-bs-toggle="modal" data-bs-target="#invitationModal"><i class="fa-solid fa-list-ul"></i></button>
+                    {% endif %}
                     <button type="button" class="btn btn-outline-secondary"
                             title="Edit this event" aria-label="Edit"
                             hx-get="{{ url_for('admin_dashboard.htmx_admin_event_edit_form', event_code=e.event_code) }}"
@@ -64,6 +80,13 @@
                 </div>
                 {% endif %}
             </td>
+        </tr>
+        {# Loaded on first open, never per list row. #}
+        <tr class="collapse" id="{{ eid }}"
+            hx-get="{{ url_for('admin_dashboard.htmx_admin_event_enrollees', event_code=e.event_code) }}"
+            hx-trigger="shown.bs.collapse once" hx-target="find .event-enrollees" hx-swap="innerHTML">
+            <td></td>
+            <td colspan="9" class="small"><div class="event-enrollees text-muted">Loading…</div></td>
         </tr>
         {% endfor %}
     </tbody>

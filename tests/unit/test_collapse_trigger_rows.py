@@ -84,7 +84,7 @@ _CELL_OPEN = re.compile(r'<(td|th|span|div)\b[^>]*?>', re.S)
 # first draft of this test passed on the very cell that had just been measured
 # in a browser opening a modal AND toggling its row, purely because the `<a>`
 # lived in the macro body instead of at the call site.
-_CELL_ACTION = re.compile(r'<button\b|<a\b|request_cell\(')
+_CELL_ACTION = re.compile(r'<button\b|<a\b|request_cell\(|copy_button\(')
 
 # Either spelling of a trigger: the literal attribute, or the macro that emits
 # it (a macro call on the <tr> would be just as wrong, and is easy to write).
@@ -96,6 +96,7 @@ _ACTION = re.compile(
     r'<button\b'
     r'|edit_modal_button\('
     r'|delete_row_button\('
+    r'|copy_button\('
     r'|<a\b[^>]*class="[^"]*\bbtn\b',
     re.S,
 )

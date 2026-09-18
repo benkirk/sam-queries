@@ -5,7 +5,7 @@
 > **branch from `origin/staging`.** #575 delivered the event → registration →
 > enrollment workflow (self-enroll D17, the enrollment ledger D18, `copy_button`
 > D19, My Events, Invitations enrollees); this builds the two remaining views on
-> the same `AccountRequestEvent` data. Read `docs/plans/ACCOUNT_REGISTRATION.md`
+> the same `AccountRequestEvent` data. Read `docs/plans/implemented/ACCOUNT_REGISTRATION.md`
 > (D16–D19, §2.3) first.
 
 > **As built (2026-09-18, one PR).** The handoff below is kept as written; where
@@ -42,16 +42,36 @@ functions, unlike views). The fail-soft `try` sits outside the memo, so a SAM
 outage is never cached. Verified against Redis on webdev: close removes the
 card on the next request, reopen restores it.
 
-**Gaps left for later:**
-1. `_page_context` runs outages + reservations on all six pages. Memoize as
-   plain dicts and invalidate from the four outage routes; the templates read
-   ORM attributes today, so that needs a template audit.
-2. Latest-status reads per system: a 60 s memoize invalidated by the collector
-   ingest POST.
-3. The anonymous drill-downs (`nodetype` / `partition` / `queue-history`):
-   confirm the charts ride `chart_view` and the history queries are bounded.
-4. Unverified: the five per-user full-page caches also embed `csrf_token()`; a
-   user with two sessions may be served a stale token.
+**What the follow-up found** (`docs/plans/implemented/EVENTS_FOLLOWUPS.md`):
+`webapp/audit/events.py` flushes the whole Flask cache on *every* Session commit,
+any bind -- the collectors commit at least three times per five minutes. A
+status-page memoize therefore lives well under its TTL, and
+`invalidate_upcoming_events()` is belt-and-braces (kept: a non-web writer would
+not trigger the hook). So the status pages got query fixes, not a cache:
+
+1. `?hours=` / `?days=` on the anonymous drill-downs is one clamped parser
+   (`[1, 720]`, junk falls back to 7 days); it was an unguarded `int()`.
+2. Snapshot reads opt out of the `lazy='selectin'` child collections ingest
+   needs; the lookups the queries already join are `contains_eager`.
+3. Latent, not exploitable today: the per-user full-page caches embed
+   `csrf_token()`. `/allocations/projects` carries no state-changing request. If
+   one is ever added, put a session component in `user_aware_cache_key`.
+
+### Facility scope (added by the follow-up)
+
+Dropped from the first PR without a record. Admin -> Events admits a
+facility-scoped `MANAGE_EVENTS` holder: `all_events(facility_names=)` filters the
+list, every per-event route checks `has_permission_for_facility` on the event's
+project (403 outside it; a vanished project needs the unscoped grant), and the
+project typeahead and create refuse an out-of-scope project. Nobody holds a
+scoped grant today.
+
+### The `listed` sentinel (supersedes the table row above)
+
+The form posts a hidden `listed_present=1` beside the checkbox and the handler
+sets `listed` only when it is there (and the caller is an operator). Without it,
+any PUT that never drew the box -- a script, a future slimmer form -- unpublished
+the event.
 
 ### Rollout
 

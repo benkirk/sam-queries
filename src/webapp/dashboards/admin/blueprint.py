@@ -904,7 +904,7 @@ def htmx_search_users():
 
     if context == 'sponsor' and not request.args.get('projcode'):
         # Admin -> Events create form: no project is picked yet.
-        if not has_permission(current_user, Permission.MANAGE_EVENTS):
+        if not has_permission_any_facility(current_user, Permission.MANAGE_EVENTS):
             abort(400)
     elif context in ('member', 'sponsor'):
         projcode = request.args.get('projcode', '')

@@ -8,6 +8,7 @@
 {% block title %}Component Gallery — SAM{% endblock %}
 
 {% import 'dashboards/fragments/badges.html' as badges %}
+{% import 'dashboards/fragments/clipboard.html' as clipboard %}
 {% import 'dashboards/fragments/collapse.html' as collapse %}
 {% import 'dashboards/fragments/help.html' as help with context %}
 {% import 'dashboards/fragments/modals.html' as modals %}
@@ -106,6 +107,13 @@
     </button>
     <div id="galleryCollapseDemo" class="collapse mt-2">
       <div class="card card-body">Revealed content.</div>
+    </div>
+  {% endcall %}
+  {% call specimen('clipboard.copy_button', 'labelled, compact and inline; never inside a data-bs-toggle cell or row') %}
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+      {{ clipboard.copy_button('https://example.org/register?event=DEMO-2026', label='Copy link', icon='fa-solid fa-link') }}
+      {{ clipboard.copy_button('DEMO-2026', label='Copy code', compact=true) }}
+      <span><code>UABC0001</code>{{ clipboard.copy_button('UABC0001', label='Copy projcode', inline=true) }}</span>
     </div>
   {% endcall %}
 </section>

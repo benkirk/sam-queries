@@ -6,7 +6,7 @@ who asked, who vouched, whether NUSD was told, and who set a row aside. Whether
 the account now EXISTS is derived from ``users`` at read time and stamped by
 the reconcile pass -- never trusted from the row alone.
 
-Design: docs/plans/ACCOUNT_REGISTRATION.md.
+Design: docs/plans/implemented/ACCOUNT_REGISTRATION.md.
 """
 
 import re

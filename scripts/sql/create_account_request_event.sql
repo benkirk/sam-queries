@@ -5,7 +5,7 @@
 --   Apply with:  mysql -u <hpc-writer> -h <host> -p sam \
 --                      < scripts/sql/create_account_request_event.sql
 --
--- Design: docs/plans/ACCOUNT_REGISTRATION.md section 2.1. Apply this script
+-- Design: docs/plans/implemented/ACCOUNT_REGISTRATION.md section 2.1. Apply this script
 -- BEFORE create_account_request.sql -- a request row points at its event by id.
 --
 -- NO DROP and no rollback script, the house rule for hand-applied tables.

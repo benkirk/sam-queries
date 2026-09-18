@@ -159,7 +159,7 @@ sam-queries/
   submitted/claimed/rejected/dismissed — fulfilled is derived from `users` by
   email (`sam_merge_targets`) and stamped only by
   `sam.manage.account_requests.reconcile_account_requests()`; a render never
-  writes. Design + as-built record: `docs/plans/ACCOUNT_REGISTRATION.md`.
+  writes. Design + as-built record: `docs/plans/implemented/ACCOUNT_REGISTRATION.md`.
   Surfaces: Admin → Accounts (`MANAGE_ACCOUNT_REQUESTS`), Manage Project →
   Invitations, the Pending Users column, and the anonymous `/register` form
   behind `ACCOUNT_REGISTRATION_ENABLED` (off in prod, on in dev) and, while
@@ -169,8 +169,11 @@ sam-queries/
   `webapp/dashboards/event_lifecycle.py`. `listed` opts an event onto the
   public Upcoming Events card on `/status/events`, which renders only while
   `ACCOUNT_REGISTRATION_ENABLED` is on (its link 404s otherwise); the listing is
-  memoized there and every lifecycle write invalidates it. Record:
-  `docs/plans/implemented/EVENTS_VIEWS.md`.
+  memoized there and every lifecycle write invalidates it. Admin → Events is
+  facility-scoped (`all_events(facility_names=)` + a per-event facility check)
+  and carries the enrollee list and roster paste; a roster is an account-request
+  write, so its routes stay `MANAGE_ACCOUNT_REQUESTS`. Records:
+  `docs/plans/implemented/EVENTS_VIEWS.md`, `EVENTS_FOLLOWUPS.md`.
 
 ### Security / Integration
 - **Role**, **ApiCredentials** (bcrypt-hashed), **RoleApiCredentials**

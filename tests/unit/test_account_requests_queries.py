@@ -14,6 +14,7 @@ from factories import (
     make_account_request_event,
     make_email_address,
     make_event_enrollment,
+    make_project,
     make_user,
 )
 
@@ -149,12 +150,25 @@ class TestGrouping:
             loose_old.account_request_id, loose_new.account_request_id]
         assert groups[0]['project_code'] == session.get(Project, soon.project_id).projcode
 
+    def test_event_less_rows_split_by_project_with_project_less_last(self, session):
+        p1, p2 = make_project(session), make_project(session)
+        rows = [make_account_request(session),
+                make_account_request(session, purpose='enrollment', project=p2),
+                make_account_request(session, purpose='enrollment', project=p1),
+                make_account_request(session, purpose='enrollment', project=p2)]
+        groups = group_by_event(self._views(session, rows))
+        assert all(g['event'] is None for g in groups)
+        assert [g['project_code'] for g in groups] == sorted([p1.projcode, p2.projcode]) + ['']
+        by_code = {g['project_code']: [v['id'] for v in g['rows']] for g in groups}
+        assert by_code[p2.projcode] == [rows[1].account_request_id, rows[3].account_request_id]
+
     def test_a_row_naming_a_vanished_event_is_ungrouped_not_lost(self, session):
         row = make_account_request(session, purpose='enrollment', event_id=999_999_999,
                                    project=make_account_request_event(session).project_id)
         view, = self._views(session, [row])
         assert view['event'] is None and view['event_code'] == ''
-        assert group_by_event([view]) == [{'event': None, 'rows': [view], 'project_code': ''}]
+        assert group_by_event([view]) == [
+            {'event': None, 'rows': [view], 'project_code': view['project_code']}]
 
     def test_views_carry_the_sponsor_and_both_project_codes(self, session):
         sponsor = make_user(session)
@@ -242,6 +256,34 @@ class TestCrossProjectEventReads:
         row = next(r for r in all_events(session)
                    if r['event'].account_request_event_id == event.account_request_event_id)
         assert row['enrolled'] == 0
+
+    def test_all_events_scopes_to_facilities_and_flags_an_inactive_project(self, session):
+        event = make_account_request_event(session)
+        project = session.get(Project, event.project_id)
+        eid = event.account_request_event_id
+
+        def _row(**kw):
+            return next((r for r in all_events(session, **kw)
+                         if r['event'].account_request_event_id == eid), None)
+
+        row = _row()
+        assert row['project_active'] is True and row['facility'] == project.facility_name
+        assert _row(facility_names=['NO-SUCH-FACILITY']) is None
+        assert _row(facility_names=[]) is None
+        if project.facility_name:
+            assert _row(facility_names=[project.facility_name]) is not None
+        project.active = False
+        session.flush()
+        assert _row()['project_active'] is False
+
+    def test_upcoming_skips_an_event_on_an_inactive_project(self, session):
+        now = datetime(2026, 10, 1, 12, 0)
+        event = make_account_request_event(session, listed=True,
+                                           accounts_needed_by=now.date() + timedelta(days=5))
+        session.get(Project, event.project_id).active = False
+        session.flush()
+        assert event.event_code not in {
+            r['event_code'] for r in upcoming_listed_events(session, now=now)}
 
     def test_upcoming_is_listed_open_and_not_past_its_deadline(self, session):
         now = datetime(2026, 10, 1, 12, 0)

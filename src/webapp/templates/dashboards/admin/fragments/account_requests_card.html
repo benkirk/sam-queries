@@ -120,7 +120,7 @@
                 </tr>
             </thead>
             {% for group in groups %}
-            {% set gid = 'arq-group-' ~ (group.event.account_request_event_id if group.event else 'loose') %}
+            {% set gid = 'arq-group-' ~ (group.event.account_request_event_id if group.event else 'loose-' ~ (group.project_code or 'none')) %}
             <tbody>
                 <tr class="table-subtle fw-semibold">
                     <td colspan="9">
@@ -132,14 +132,13 @@
                             ({% if group.project_code %}{{ project_link(group.project_code, can_view_projects, compact=True) }}{% else %}?{% endif %}; accounts needed by
                             <strong>{{ group.event.accounts_needed_by | fmt_date }}</strong>{% if not group.event.active %}; closed{% endif %})
                         </span>
-                        {% else %}
-                        {# Event-less rows: all project-scoped -> invitations; a
-                           standalone/sweep row in the bucket keeps it generic. #}
-                        {% if group.rows | selectattr('project_code') | list | length == group.rows | length %}
+                        {# Event-less rows arrive one group per project; the
+                           project-less ones (standalone, sweep) come last. #}
+                        {% elif group.project_code %}
                         Project Invitations
+                        <span class="text-muted fw-normal">({{ project_link(group.project_code, can_view_projects, compact=True) }})</span>
                         {% else %}
                         Other requests
-                        {% endif %}
                         {% endif %}
                         <span class="cursor-pointer" {{ collapse_toggle(gid, expanded=true) }}><span class="badge bg-secondary ms-1">{{ group.rows | length }}</span></span>
                     </td>

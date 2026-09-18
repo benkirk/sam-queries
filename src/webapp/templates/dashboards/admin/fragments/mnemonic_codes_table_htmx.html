@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/clipboard.html' import copy_button %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
@@ -57,7 +58,8 @@
       <tbody>
         {% for r in rows %}
         <tr>
-          <td><span class="badge bg-dark-subtle text-dark-emphasis border font-monospace">{{ r.code }}</span></td>
+          <td class="text-nowrap"><span class="badge bg-dark-subtle text-dark-emphasis border font-monospace">{{ r.code }}</span>
+            {{- copy_button(r.code, label='Copy code', inline=true) }}</td>
           <td>{{ r.description }}</td>
           <td>
             {% if not r.active %}

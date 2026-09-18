@@ -1,25 +1,39 @@
-"""Account-request event create/edit/close/reopen, shared by two blueprints.
+"""Account-request event lifecycle and roster paste, shared by two blueprints.
 
 ``project_invites`` (per project, dark behind ACCOUNT_INVITATIONS_ENABLED) and
 Admin -> Events (``admin/events_routes.py``, always mounted) both call these,
 so the admin page never depends on the invitations flag. Also owns the memoized
-public listing, so every lifecycle write can invalidate it.
+public listing, so every lifecycle write can invalidate it. Every write logs
+one line naming the actor: the table has no ``modified_by``.
 """
 
-from flask import request
+import logging
+
+from flask import request, url_for
 from flask_login import current_user
 
 from sam.core.account_requests import AccountRequestEvent
 from sam.core.users import User
 from sam.manage import management_transaction
+from sam.manage.account_requests import (
+    OUTCOME_ADDED, OUTCOME_DUPLICATE, OUTCOME_QUEUED, parse_roster, paste_roster,
+)
 from sam.queries.account_requests import upcoming_listed_events
-from sam.schemas.forms import AccountRequestEventEditForm
+from sam.schemas.forms import AccountRequestEventEditForm, RosterPasteForm
 from webapp.extensions import cache, db
 from webapp.utils.form_handler import FormError, HtmxFormHandler
-from webapp.utils.htmx import htmx_success_message
+from webapp.utils.htmx import htmx_success, htmx_success_message
 from webapp.utils.project_permissions import can_create_events
 
+logger = logging.getLogger(__name__)
+
 EVENT_FORM = 'project_members/fragments/event_form_htmx.html'
+ROSTER_FORM = 'project_members/fragments/roster_form_htmx.html'
+ROSTER_RESULT = 'project_members/fragments/roster_result_htmx.html'
+
+
+def _actor():
+    return getattr(current_user, 'username', None)
 
 
 def resolve_sponsor(user_id):
@@ -54,10 +68,14 @@ def invalidate_upcoming_events():
 def create_event(data, project):
     """The event_code uniqueness check is global: a code is typed by strangers.
     Callers pass ``after_commit=lambda _: invalidate_upcoming_events()``."""
+    if not project.is_active:
+        raise FormError(f'{project.projcode} is not an active project.')
     code = data['event_code']
     if db.session.query(AccountRequestEvent).filter_by(event_code=code).first():
         raise FormError(f'The code {code} is already in use.')
     sponsor = resolve_sponsor(data.get('extra_sponsor_user_id'))
+    logger.info('event create: code=%s project=%s listed=%s by=%s', code,
+                project.projcode, bool(data.get('listed')), _actor())
     return AccountRequestEvent.create(
         db.session, event_code=code, name=data['name'],
         instructions=data.get('instructions'),
@@ -95,11 +113,15 @@ class EventEditHandler(HtmxFormHandler):
         if 'extra_sponsor_user_id' in sent:
             sponsor = resolve_sponsor(data.get('extra_sponsor_user_id'))
             updates['extra_sponsor_user_id'] = sponsor.user_id if sponsor else None
-        # A checkbox: absent means unchecked, so presence cannot gate it. The
-        # form draws it only for an operator, and only an operator may set it
-        # -- a steward's edit must not publish (or unpublish) the event.
-        if can_create_events(current_user, self.project):
+        # A checkbox: absent means unchecked, so its own key cannot gate it.
+        # The form posts ``listed_present`` beside it, so a caller that never
+        # drew the box cannot unpublish the event. Operator-only either way:
+        # a steward's edit must not publish (or unpublish).
+        if 'listed_present' in sent and can_create_events(current_user, self.project):
             updates['listed'] = 'listed' in sent
+        logger.info('event edit: code=%s fields=%s listed=%s->%s by=%s',
+                    self.event.event_code, sorted(updates), self.event.listed,
+                    updates.get('listed', self.event.listed), _actor())
         return self.event.update(**updates)
 
     def after_commit(self, result):
@@ -112,6 +134,49 @@ class EventEditHandler(HtmxFormHandler):
 def switch_event(event, verb, triggers):
     with management_transaction(db.session):
         (event.close if verb == 'close' else event.reopen)()
+    logger.info('event %s: code=%s by=%s', verb, event.event_code, _actor())
     invalidate_upcoming_events()
     return htmx_success_message(
         triggers, f'{event.event_code} {"closed" if verb == "close" else "reopened"}.')
+
+
+class RosterHandler(HtmxFormHandler):
+    """Paste a roster under ``self.event``. Subclasses name ``post_endpoint``
+    (takes ``event_code``) and the success ``triggers``."""
+    schema_cls = RosterPasteForm
+    template = ROSTER_FORM
+    post_endpoint = None
+    triggers = {}
+
+    def clean(self, data):
+        entries, errors = parse_roster(data['roster'])
+        if errors:
+            raise FormError(*errors)
+        if not entries:
+            raise FormError('No people found; one "Name <email>" per line.')
+        data['entries'] = entries
+        return data
+
+    def perform(self, data):
+        # The acting user is the sponsor recorded on every row written here.
+        sponsor = db.session.get(User, current_user.user_id)
+        return paste_roster(db.session, event=self.event, sponsor=sponsor,
+                            entries=data['entries'])
+
+    def context(self):
+        return {'project': self.project, 'event': self.event,
+                'post_url': url_for(self.post_endpoint,
+                                    event_code=self.event.event_code)}
+
+    def on_success(self, result):
+        # The summary replaces the form inside the still-open modal: an
+        # operator pasting thirty lines wants to see which three were known.
+        counts = {k: len(v) for k, v in result.items()}
+        logger.info('event roster: code=%s queued=%d added=%d duplicate=%d by=%s',
+                    self.event.event_code, counts[OUTCOME_QUEUED], counts[OUTCOME_ADDED],
+                    counts[OUTCOME_DUPLICATE], _actor())
+        return htmx_success(ROSTER_RESULT, self.triggers,
+                            toast=(f"{counts[OUTCOME_QUEUED]} queued, "
+                                   f"{counts[OUTCOME_ADDED]} added, "
+                                   f"{counts[OUTCOME_DUPLICATE]} already waiting"),
+                            event=self.event, project=self.project, outcomes=result)

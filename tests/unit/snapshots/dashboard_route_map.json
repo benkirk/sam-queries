@@ -294,6 +294,13 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_admin_event_enrollees",
+    "/admin/htmx/events/<event_code>/enrollees",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_admin_event_form",
     "/admin/htmx/events/new-form",
     [
@@ -305,6 +312,20 @@
     "/admin/events/<event_code>/reopen",
     [
       "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_admin_event_roster",
+    "/admin/htmx/events/<event_code>/roster",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_admin_event_roster_form",
+    "/admin/htmx/events/<event_code>/roster-form",
+    [
+      "GET"
     ]
   ],
   [

@@ -64,7 +64,7 @@ def _can_manage_account_requests():
 
 def _can_manage_events():
     return (current_user.is_authenticated
-            and has_permission(current_user, Permission.MANAGE_EVENTS))
+            and has_permission_any_facility(current_user, Permission.MANAGE_EVENTS))
 
 
 def _can_view_fs_scans():

@@ -49,6 +49,8 @@
                        selected_label=sponsor_label if event else '',
                        help='One SAM user besides the project lead and admin who may run this event (an instructor, say).') }}
     {% if can_list %}
+    {# An unchecked box posts nothing; this says the box was drawn at all. #}
+    <input type="hidden" name="listed_present" value="1">
     {{ checkbox_field('listed', 'List on the public Upcoming Events page',
                       default=event.listed if event else False,
                       help='Unlisted events stay reachable by their registration link only.') }}

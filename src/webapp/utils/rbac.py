@@ -149,7 +149,7 @@ class Permission(Enum):
     # invitation surface. ``manage_`` on purpose: SAM never creates accounts,
     # so the holder works a worklist handed to NUSD, and a project's lead or
     # admin reaches the invitation routes through the steward check instead
-    # (docs/plans/ACCOUNT_REGISTRATION.md section 2.2).
+    # (docs/plans/implemented/ACCOUNT_REGISTRATION.md section 2.2).
     MANAGE_ACCOUNT_REQUESTS = "manage_account_requests"
     # The event lifecycle everywhere: Admin -> Events, and create / edit /
     # close / reopen on a project's Invitations tab. Inviting people and
@@ -317,7 +317,8 @@ def get_user_permissions(user) -> Set[Permission]:
     ``user.roles``) and their ``USER_PERMISSION_OVERRIDES``."""
     permissions: Set[Permission] = set()
 
-    for group_name in user.roles:
+    # An anonymous visitor has no ``roles``: no permissions, not an AttributeError.
+    for group_name in getattr(user, 'roles', ()):
         if group_name in GROUP_PERMISSIONS:
             permissions.update(GROUP_PERMISSIONS[group_name])
 
