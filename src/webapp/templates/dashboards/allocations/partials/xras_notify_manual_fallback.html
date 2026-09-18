@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/clipboard.html' import copy_button %}
 {#
   Manual-fallback dialog for the Notify button — rendered into
   #auditDetailsModalBody when NOTHING was delivered.
@@ -53,6 +54,7 @@
     {% for p in people %}
     <li class="mb-1">
         <code class="user-select-all">{{ p.email }}</code>
+        {{- copy_button(p.email, label='Copy address', inline=true) }}
         <span class="text-muted small">— {{ p.name }} ({{ p.role }})</span>
     </li>
     {% endfor %}

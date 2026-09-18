@@ -2,6 +2,7 @@
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% from 'dashboards/fragments/clipboard.html' import copy_button %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {% from 'dashboards/fragments/project_bits.html' import project_link with context %}
 {#
@@ -95,7 +96,7 @@
                     <span class="text-muted" title="Body could not be parsed">—</span>
                     {% endif %}
                 </td>
-                <td>
+                <td class="text-nowrap">
                     {# The Request # is the XRAS request itself, so when an
                        outbound read is available it opens the full request
                        detail modal — EVEN when the number is a live projcode
@@ -145,6 +146,7 @@
                     </span>
                     {% endif %}
                     {% endif %}
+                    {% if r.request_number %}{{ copy_button(r.request_number, label='Copy request number', inline=true) }}{% endif %}
                 </td>
                 <td style="white-space:nowrap;">
                     {{ status_badge(r.status) }}

@@ -4,13 +4,19 @@
   button), so it is CSP-safe with no inline script. This is the first such
   control; the backport list is in docs/plans/ACCOUNT_REGISTRATION.md.
 
-  copy_button(text, label='Copy', icon='fa-regular fa-copy', compact=false, done=None)
+  copy_button(text, label='Copy', icon='fa-regular fa-copy', compact=false, done=None, inline=false)
     compact  icon-only (label becomes the aria-label/title)
     done     the toast message on success (defaults to "Copied to clipboard.")
+    inline   borderless, sits beside a value in a dense table cell (implies compact)
+
+  WARNING: never inside a data-bs-toggle cell or row -- Bootstrap's data-api
+  fires in the capture phase, so the click would toggle it too. Both
+  test_collapse_trigger_rows and test_action_cells_nowrap see this macro call.
 #}
-{% macro copy_button(text, label='Copy', icon='fa-regular fa-copy', compact=false, done=None) %}
+{% macro copy_button(text, label='Copy', icon='fa-regular fa-copy', compact=false, done=None, inline=false) %}
+{% set compact = compact or inline %}
 <button type="button"
-        class="btn btn-sm btn-outline-secondary{% if compact %} text-nowrap{% endif %}"
+        class="btn btn-sm {% if inline %}btn-link p-0 ms-1 text-body-secondary{% else %}btn-outline-secondary{% endif %}{% if compact %} text-nowrap{% endif %}"
         data-copy="{{ text }}"{% if done %} data-copy-done="{{ done }}"{% endif %}
         title="{{ text }}" aria-label="{{ label }}">
     <i class="{{ icon }}"></i>{% if not compact %} {{ label }}{% endif %}

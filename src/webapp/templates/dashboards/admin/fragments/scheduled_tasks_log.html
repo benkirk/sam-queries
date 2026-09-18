@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/clipboard.html' import copy_button %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/pagination.html' import pagination %}
@@ -98,6 +99,7 @@
                 <td class="text-muted small" style="white-space:nowrap;">
                     {% if r.runner_id %}
                     <code class="user-select-all small">{{ r.runner_id }}</code>
+                    {{- copy_button(r.runner_id, label='Copy runner id', inline=true) }}
                     {% else %}—{% endif %}
                 </td>
                 <td class="text-end" style="white-space:nowrap;">
