@@ -26,9 +26,9 @@ from sam.core.users import User
 from sam.manage import management_transaction
 from sam.manage.account_requests import reconcile_account_requests
 from sam.projects.projects import Project
+from sam.queries.account_notices import build_queue_summary
 from sam.queries.account_requests import (
     all_requests,
-    build_queue_summary,
     events_for,
     queue_counts,
     queue_requests,

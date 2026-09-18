@@ -19,7 +19,7 @@ from marshmallow import ValidationError
 from sam.core.account_requests import AccountRequest, AccountRequestEvent
 from sam.manage import management_transaction
 from sam.manage.account_requests import register_request
-from sam.queries.account_requests import build_verify_message
+from sam.queries.account_notices import build_verify_message
 from sam.queries.admin import search_institutions
 from sam.schemas.forms import RegisterForm, VerifyCodeForm
 from webapp.extensions import db

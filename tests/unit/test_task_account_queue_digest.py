@@ -1,6 +1,6 @@
 """The `account_queue_digest` task — the guards, the stamp, and the quiet week.
 
-The message is built by `sam.queries.account_requests.build_queue_summary`
+The message is built by `sam.queries.account_notices.build_queue_summary`
 and covered in `test_account_requests_builders.py`. What matters here is
 what the schedule adds: reconcile-before-select, the recipient/enabled/cap
 guards firing before any transport, the dry run writing no ledger row, and

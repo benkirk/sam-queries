@@ -69,7 +69,8 @@ def account_queue_digest(ctx) -> TaskResult:
     from sam.manage.account_requests import reconcile_account_requests
     from sam.notify import Notifier
     from sam.notify.ledger import NotificationLedger
-    from sam.queries.account_requests import build_queue_summary, queue_requests
+    from sam.queries.account_notices import build_queue_summary
+    from sam.queries.account_requests import queue_requests
 
     session = ctx.sam_session
     occurrence = to_local_naive(ctx.occurrence, ZoneInfo(SCHEDULE.tz))

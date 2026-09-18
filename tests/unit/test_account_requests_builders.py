@@ -18,7 +18,7 @@ from factories import (
 )
 
 from sam.notify.samples import sample_context
-from sam.queries.account_requests import (
+from sam.queries.account_notices import (
     ACCOUNT_KIND_SUBJECTS,
     build_queue_summary,
     build_verify_message,

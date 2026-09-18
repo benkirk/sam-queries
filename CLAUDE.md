@@ -797,8 +797,9 @@ and asserts the inequality.
 exports `NotificationLog`, so eager imports there put jinja2 and the
 transports into every ORM consumer's import graph.
 `tests/unit/test_notify_import_graph.py` is the gate.
-❌ **DON'T** export `sam/queries/expiration_notices.py` **or
-`sam/queries/xras_notices.py`** from `sam/queries/__init__.py` — that file
+❌ **DON'T** export `sam/queries/expiration_notices.py`,
+`sam/queries/xras_notices.py` **or `sam/queries/account_notices.py`** from
+`sam/queries/__init__.py` — that file
 imports its submodules eagerly, so listing either would put `sam.notify.base`
 into every `from sam.queries import ...`. The trap is that the near-identically
 named `xras_activation.py` **is** exported, safely, because it imports no

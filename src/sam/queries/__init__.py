@@ -121,6 +121,19 @@ from .xras_actions import (
     get_recent_xras_actions,
     summarize_xras_actions,
 )
+from .account_requests import (
+    Resolution,
+    all_requests,
+    events_for,
+    group_by_event,
+    queue_counts,
+    queue_requests,
+    readiness_of,
+    resolve_requests,
+    stamp_account_requests,
+    unverified_count,
+    waiting_days,
+)
 from .xras_activation import (
     ATTENTION_RECENT_DAYS,
     ACTIVITY_TAGS,
@@ -294,6 +307,18 @@ __all__ = [
     'get_projects_by_ids',
     'get_xras_activation_events',
     'get_xras_pending_recipients',
+    # Account requests (the notify builders live in account_notices, unexported)
+    'Resolution',
+    'all_requests',
+    'events_for',
+    'group_by_event',
+    'queue_counts',
+    'queue_requests',
+    'readiness_of',
+    'resolve_requests',
+    'stamp_account_requests',
+    'unverified_count',
+    'waiting_days',
     # Usage cache
     'cached_allocation_usage',
     'purge_usage_cache',
