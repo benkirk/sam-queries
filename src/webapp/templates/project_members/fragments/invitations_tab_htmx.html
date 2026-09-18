@@ -53,8 +53,7 @@
         <tr>
             <th style="width:1.5rem;"></th>
             <th>Code</th><th>Name</th><th class="text-nowrap">Accounts needed by</th>
-            <th class="text-nowrap">Registration link</th><th>Extra sponsor</th>
-            <th class="text-nowrap">Progress</th>
+            <th>Extra sponsor</th><th class="text-nowrap">Progress</th>
             <th class="text-end">Actions</th>
         </tr>
     </thead>
@@ -63,12 +62,12 @@
         {% set eid = 'event-enrollees-' ~ e.event.account_request_event_id %}
         <tr{% if not e.event.active %} class="text-muted"{% endif %}>
             <td class="cursor-pointer" {{ collapse_toggle(eid) }}><i class="fa-solid fa-chevron-right small text-muted collapse-icon"></i></td>
-            <td class="font-monospace text-nowrap cursor-pointer" {{ collapse_toggle(eid) }}>{{ e.event.event_code }}</td>
-            <td class="cursor-pointer" {{ collapse_toggle(eid) }}>{{ e.event.name }}</td>
-            <td class="text-nowrap cursor-pointer" {{ collapse_toggle(eid) }}>{{ e.event.accounts_needed_by | fmt_date }}</td>
-            <td class="text-nowrap">
+            <td class="font-monospace text-nowrap">
+                {{ e.event.event_code }}
                 {{ copy_button(e.reg_url, label='Copy registration link', icon='fa-solid fa-link', compact=true, done='Registration link copied.') }}
             </td>
+            <td class="cursor-pointer" {{ collapse_toggle(eid) }}>{{ e.event.name }}</td>
+            <td class="text-nowrap cursor-pointer" {{ collapse_toggle(eid) }}>{{ e.event.accounts_needed_by | fmt_date }}</td>
             <td>{{ contract_user_link(e.sponsor, can_view_users) }}</td>
             <td class="text-nowrap cursor-pointer" {{ collapse_toggle(eid) }}
                 title="{{ e.enrollees | length }} enrolled; {{ e.fulfilled }} of {{ e.total }} requests fulfilled; {{ e.open }} still waiting">
@@ -104,7 +103,7 @@
         </tr>
         <tr class="collapse" id="{{ eid }}">
             <td></td>
-            <td colspan="7" class="small">
+            <td colspan="6" class="small">
                 <div class="mb-2">
                     <span class="text-muted">Registration link:</span>
                     <a href="{{ e.reg_url }}" class="font-monospace">{{ e.reg_url }}</a>
