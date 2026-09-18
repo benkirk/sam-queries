@@ -18,24 +18,23 @@ from flask_login import current_user, login_required
 from sam.core.account_requests import (
     ACCOUNT_REQUEST_PURPOSES,
     ACCOUNT_REQUEST_STATES,
-    CREATED_BY_SELF,
-    CREATED_BY_SWEEP,
     AccountRequest,
 )
-from sam.core.users import User
 from sam.manage import management_transaction
 from sam.manage.account_requests import reconcile_account_requests
-from sam.projects.projects import Project
 from sam.queries.account_notices import build_queue_summary
 from sam.queries.account_requests import (
+    ORIGIN_SELF,
+    ORIGIN_SPONSOR,
+    ORIGIN_SWEEP,
     all_requests,
     events_for,
+    group_by_event,
     queue_counts,
     queue_requests,
-    readiness_of,
+    request_views,
     resolve_requests,
     unverified_count,
-    waiting_days,
 )
 from sam.schemas.forms import AccountRequestReasonForm
 from webapp.extensions import db
@@ -61,7 +60,6 @@ _REASON_FORM = 'dashboards/admin/fragments/account_request_reason_form_htmx.html
 _TRIGGERS = {'refreshAccountQueue': {}, 'refreshXrasTab': {}}
 _MODAL_TRIGGERS = modal_triggers('refreshAccountQueue', 'refreshXrasTab')
 
-ORIGIN_SELF, ORIGIN_SPONSOR, ORIGIN_SWEEP = 'self', 'sponsor', 'sweep'
 _ORIGIN_LABELS = {ORIGIN_SELF: 'Public form', ORIGIN_SPONSOR: 'Invited',
                   ORIGIN_SWEEP: 'XRAS roster'}
 _READINESS_LABELS = {'open': 'No account yet', 'ready': 'Account exists',
@@ -77,52 +75,6 @@ _SORT = {
     'deadline': lambda r: r['deadline'],
     'state': lambda r: r['state'],
 }
-
-
-def _origin_of(row: AccountRequest) -> str:
-    if row.created_by == CREATED_BY_SELF:
-        return ORIGIN_SELF
-    if row.created_by == CREATED_BY_SWEEP:
-        return ORIGIN_SWEEP
-    return ORIGIN_SPONSOR
-
-
-def _views(rows, resolutions, events):
-    """One plain dict per row: what the card and the sort keys read."""
-    sponsor_ids = sorted({r.sponsor_user_id for r in rows if r.sponsor_user_id})
-    sponsors = ({u.user_id: u for u in db.session.query(User)
-                 .filter(User.user_id.in_(sponsor_ids)).all()}
-                if sponsor_ids else {})
-    project_ids = sorted({r.project_id for r in rows if r.project_id}
-                         | {e.project_id for e in events.values()})
-    projects = (dict(db.session.query(Project.project_id, Project.projcode)
-                     .filter(Project.project_id.in_(project_ids)).all())
-                if project_ids else {})
-    today = datetime.now().date()
-    views = []
-    for r in rows:
-        event = events.get(r.event_id) if r.event_id else None
-        resolution = resolutions.get(r.account_request_id)
-        sponsor = sponsors.get(r.sponsor_user_id)
-        views.append({
-            'id': r.account_request_id,
-            'row': r,
-            'first_name': r.first_name, 'last_name': r.last_name,
-            'name': r.display_name, 'email': r.email,
-            'state': r.state, 'purpose': r.purpose,
-            'origin': _origin_of(r),
-            'readiness': readiness_of(r, resolution),
-            'resolution': resolution,
-            'event': event,
-            'event_code': event.event_code if event else '',
-            'deadline': event.accounts_needed_by if event else None,
-            'project_code': projects.get(r.project_id, '') if r.project_id else '',
-            'event_project_code': projects.get(event.project_id, '') if event else '',
-            'sponsor': sponsor,
-            'waiting_days': waiting_days(r, today=today),
-            'verified': r.is_verified,
-        })
-    return views
 
 
 def _apply(views, selected, *, skip=None):
@@ -161,22 +113,6 @@ def _search(views, term):
         v['sponsor'].display_name if v['sponsor'] else '')).casefold()]
 
 
-def _group(views, events):
-    """Event groups nearest deadline first, then the rest in the sorted order."""
-    by_event = {}
-    loose = []
-    for v in views:
-        (by_event.setdefault(v['event'].account_request_event_id, []) if v['event']
-         else loose).append(v)
-    groups = [{'event': events[eid], 'rows': members,
-               'project_code': members[0]['event_project_code']}
-              for eid, members in by_event.items()]
-    groups.sort(key=lambda g: (g['event'].accounts_needed_by, g['event'].event_code))
-    if loose:
-        groups.append({'event': None, 'rows': loose, 'project_code': ''})
-    return groups
-
-
 def _sort_views(views, sort):
     keyfn = _SORT.get((sort or {}).get('sort_by'))
     if not keyfn:
@@ -213,7 +149,8 @@ def account_requests_fragment():
     events = events_for(db.session, rows)
     counts = queue_counts(queue, resolutions if show_all
                           else resolve_requests(db.session, queue))
-    views = _views(rows, resolutions, events)
+    views = request_views(db.session, rows, resolutions=resolutions,
+                          events=events)
     scoped_total = len(views)
 
     search = (request.args.get('search') or '').strip()
@@ -234,7 +171,7 @@ def account_requests_fragment():
 
     return render_template(
         _CARD,
-        groups=_group(views, events),
+        groups=group_by_event(views),
         total=len(views), scoped_total=scoped_total,
         counts=counts, unverified=unverified_count(db.session),
         show_all=show_all, search=search,

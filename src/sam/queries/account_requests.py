@@ -18,8 +18,14 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from sam.core.account_requests import AccountRequest, AccountRequestEvent
+from sam.core.account_requests import (
+    CREATED_BY_SELF,
+    CREATED_BY_SWEEP,
+    AccountRequest,
+    AccountRequestEvent,
+)
 from sam.core.users import User
+from sam.projects.projects import Project
 from sam.projects.projects import Project
 
 from .xras_accounts import sam_merge_targets
@@ -40,6 +46,18 @@ class Resolution:
     @property
     def ready(self) -> bool:
         return self.active and not self.ambiguous and self.user_id is not None
+
+
+#: Where a row came from, for the card's Origin facet and the digest.
+ORIGIN_SELF, ORIGIN_SPONSOR, ORIGIN_SWEEP = 'self', 'sponsor', 'sweep'
+
+
+def origin_of(row: AccountRequest) -> str:
+    if row.created_by == CREATED_BY_SELF:
+        return ORIGIN_SELF
+    if row.created_by == CREATED_BY_SWEEP:
+        return ORIGIN_SWEEP
+    return ORIGIN_SPONSOR
 
 
 def queue_requests(session: Session) -> List[AccountRequest]:
@@ -139,24 +157,77 @@ def events_for(session: Session,
             .filter(AccountRequestEvent.account_request_event_id.in_(ids)).all()}
 
 
-def group_by_event(rows: Sequence[AccountRequest],
-                   events: Dict[int, AccountRequestEvent]) -> List[Dict[str, Any]]:
-    """Event groups nearest deadline first, then the ungrouped rows oldest first.
+def event_sponsors(session: Session,
+                   events: Iterable[AccountRequestEvent]) -> Dict[int, User]:
+    """``user_id -> User`` for every extra sponsor the events name, one query."""
+    ids = sorted({e.extra_sponsor_user_id for e in events if e.extra_sponsor_user_id})
+    if not ids:
+        return {}
+    return {u.user_id: u for u in
+            session.query(User).filter(User.user_id.in_(ids)).all()}
 
-    Each group is ``{'event': AccountRequestEvent | None, 'rows': [...]}``. A
-    row naming an event that no longer exists is ungrouped rather than lost.
+
+def request_views(session: Session, rows: Sequence[AccountRequest], *,
+                  resolutions: Dict[int, Resolution],
+                  events: Dict[int, AccountRequestEvent],
+                  today: Optional[date] = None) -> List[Dict[str, Any]]:
+    """One plain dict per row: what the card, the digest and the tab read.
+
+    Two batched lookups (sponsors, project codes) on top of the row. Order
+    is the input order. Keys: ``id row first_name last_name name email
+    state purpose origin readiness resolution event event_code deadline
+    project_code event_project_code sponsor waiting_days verified``.
     """
-    grouped: Dict[Optional[int], List[AccountRequest]] = {}
-    for row in rows:
-        key = row.event_id if row.event_id in events else None
-        grouped.setdefault(key, []).append(row)
-    groups = [{'event': events[key], 'rows': members}
-              for key, members in grouped.items() if key is not None]
-    groups.sort(key=lambda g: (g['event'].accounts_needed_by,
-                               g['event'].event_code))
-    if None in grouped:
-        loose = sorted(grouped[None], key=lambda r: r.creation_time)
-        groups.append({'event': None, 'rows': loose})
+    sponsor_ids = sorted({r.sponsor_user_id for r in rows if r.sponsor_user_id})
+    sponsors = ({u.user_id: u for u in session.query(User)
+                 .filter(User.user_id.in_(sponsor_ids)).all()}
+                if sponsor_ids else {})
+    project_ids = sorted({r.project_id for r in rows if r.project_id}
+                         | {e.project_id for e in events.values()})
+    projects = (dict(session.query(Project.project_id, Project.projcode)
+                     .filter(Project.project_id.in_(project_ids)).all())
+                if project_ids else {})
+    today = today or date.today()
+    views = []
+    for r in rows:
+        event = events.get(r.event_id) if r.event_id else None
+        views.append({
+            'id': r.account_request_id,
+            'row': r,
+            'first_name': r.first_name, 'last_name': r.last_name,
+            'name': r.display_name, 'email': r.email,
+            'state': r.state, 'purpose': r.purpose,
+            'origin': origin_of(r),
+            'readiness': readiness_of(r, resolutions.get(r.account_request_id)),
+            'resolution': resolutions.get(r.account_request_id),
+            'event': event,
+            'event_code': event.event_code if event else '',
+            'deadline': event.accounts_needed_by if event else None,
+            'project_code': projects.get(r.project_id, '') if r.project_id else '',
+            'event_project_code': projects.get(event.project_id, '') if event else '',
+            'sponsor': sponsors.get(r.sponsor_user_id),
+            'waiting_days': waiting_days(r, today=today),
+            'verified': r.is_verified,
+        })
+    return views
+
+
+def group_by_event(views: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Event groups nearest deadline first, then the loose views last, each
+    in input order. A view whose event is gone (``event`` None) is loose,
+    not lost. Each group is ``{'event', 'rows', 'project_code'}``.
+    """
+    by_event: Dict[int, List[Dict[str, Any]]] = {}
+    loose: List[Dict[str, Any]] = []
+    for v in views:
+        (by_event.setdefault(v['event'].account_request_event_id, [])
+         if v['event'] else loose).append(v)
+    groups = [{'event': members[0]['event'], 'rows': members,
+               'project_code': members[0]['event_project_code']}
+              for members in by_event.values()]
+    groups.sort(key=lambda g: (g['event'].accounts_needed_by, g['event'].event_code))
+    if loose:
+        groups.append({'event': None, 'rows': loose, 'project_code': ''})
     return groups
 
 

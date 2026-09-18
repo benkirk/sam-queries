@@ -18,11 +18,9 @@ from typing import Any, Dict, Optional, Sequence
 from sqlalchemy.orm import Session
 
 from sam.core.account_requests import CREATED_BY_SELF, AccountRequest
-from sam.core.users import User
 from sam.notify import Message, Recipient
-from sam.projects.projects import Project
 
-from .account_requests import events_for, group_by_event, waiting_days
+from .account_requests import events_for, group_by_event, request_views, waiting_days
 
 #: kind -> subject. In Python, not the template: it is also the searchable
 #: ``notification_log.subject`` column.
@@ -36,32 +34,24 @@ def queue_summary_context(session: Session, rows: Sequence[AccountRequest], *,
                           occurrence: datetime, queue_url: str = '') -> Dict[str, Any]:
     """The digest payload: two flat lists, event groups first then the rest."""
     events = events_for(session, rows)
-    groups = group_by_event(rows, events)
-    sponsor_ids = sorted({r.sponsor_user_id for r in rows if r.sponsor_user_id})
-    sponsors = {u.user_id: u for u in
-                session.query(User).filter(User.user_id.in_(sponsor_ids)).all()} \
-        if sponsor_ids else {}
-    project_ids = sorted({r.project_id for r in rows if r.project_id}
-                         | {e.project_id for e in events.values()})
-    projects = dict(session.query(Project.project_id, Project.projcode)
-                    .filter(Project.project_id.in_(project_ids)).all()) \
-        if project_ids else {}
-    today = occurrence.date()
+    views = request_views(session, rows, resolutions={}, events=events,
+                          today=occurrence.date())
+    groups = group_by_event(views)
 
-    def _row(r: AccountRequest, event_code: str) -> Dict[str, Any]:
-        sponsor = sponsors.get(r.sponsor_user_id)
+    def _row(v: Dict[str, Any]) -> Dict[str, Any]:
+        r = v['row']
         note = (r.comment or r.purpose_note or '').strip().splitlines()
         return {
-            'name': r.display_name,
-            'email': r.email,
+            'name': v['name'],
+            'email': v['email'],
             'organization': r.organization or '',
             'desired_username': r.desired_username or '',
-            'purpose': r.purpose,
-            'project_code': projects.get(r.project_id, '') if r.project_id else '',
-            'event_code': event_code,
-            'sponsor': sponsor.display_name if sponsor else '',
-            'waiting_days': waiting_days(r, today=today),
-            'state': r.state,
+            'purpose': v['purpose'],
+            'project_code': v['project_code'],
+            'event_code': v['event_code'],
+            'sponsor': v['sponsor'].display_name if v['sponsor'] else '',
+            'waiting_days': v['waiting_days'],
+            'state': v['state'],
             'assignee': r.assignee or '',
             'note': note[0] if note else '',
         }
@@ -69,19 +59,19 @@ def queue_summary_context(session: Session, rows: Sequence[AccountRequest], *,
     out_events, out_rows = [], []
     for group in groups:
         event = group['event']
-        code = event.event_code if event else ''
         if event:
             out_events.append({
-                'event_code': code,
+                'event_code': event.event_code,
                 'event_name': event.name,
-                'project_code': projects.get(event.project_id, ''),
+                'project_code': group['project_code'],
                 'deadline': event.accounts_needed_by.isoformat(),
                 'count': len(group['rows']),
             })
-        out_rows.extend(_row(r, code) for r in group['rows'])
+        out_rows.extend(_row(v) for v in group['rows'])
     by_purpose: Dict[str, int] = {}
     for r in rows:
         by_purpose[r.purpose] = by_purpose.get(r.purpose, 0) + 1
+    today = occurrence.date()
     return {
         'occurrence': occurrence.isoformat(timespec='seconds'),
         'total': len(rows),

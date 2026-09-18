@@ -16,6 +16,7 @@ from factories import (
     make_user,
 )
 
+from sam.projects.projects import Project
 from sam.queries.account_requests import (
     Resolution,
     all_requests,
@@ -24,6 +25,7 @@ from sam.queries.account_requests import (
     queue_counts,
     queue_requests,
     readiness_of,
+    request_views,
     resolve_requests,
     stamp_account_requests,
     unverified_count,
@@ -121,25 +123,42 @@ class TestTheQueuePredicate:
 
 
 class TestGrouping:
-    def test_events_nearest_deadline_first_then_loose_rows_oldest_first(self, session):
+    def _views(self, session, rows):
+        return request_views(session, rows, resolutions=resolve_requests(session, rows),
+                             events=events_for(session, rows))
+
+    def test_events_nearest_deadline_first_then_loose_rows_in_input_order(self, session):
         late = make_account_request_event(session, accounts_needed_by=date(2026, 12, 1))
         soon = make_account_request_event(session, accounts_needed_by=date(2026, 10, 1))
         a = make_account_request(session, purpose='enrollment', event=late)
         b = make_account_request(session, purpose='enrollment', event=soon)
         loose_new = make_account_request(session, when=datetime(2026, 9, 2))
         loose_old = make_account_request(session, when=datetime(2026, 9, 1))
-        rows = [a, loose_new, b, loose_old]
-        groups = group_by_event(rows, events_for(session, rows))
+        rows = [a, loose_old, b, loose_new]
+        groups = group_by_event(self._views(session, rows))
         assert [g['event'] and g['event'].event_code for g in groups] == [
             soon.event_code, late.event_code, None]
-        assert [r.account_request_id for r in groups[-1]['rows']] == [
+        assert [v['id'] for v in groups[-1]['rows']] == [
             loose_old.account_request_id, loose_new.account_request_id]
+        assert groups[0]['project_code'] == session.get(Project, soon.project_id).projcode
 
     def test_a_row_naming_a_vanished_event_is_ungrouped_not_lost(self, session):
         row = make_account_request(session, purpose='enrollment', event_id=999_999_999,
                                    project=make_account_request_event(session).project_id)
-        groups = group_by_event([row], {})
-        assert groups == [{'event': None, 'rows': [row]}]
+        view, = self._views(session, [row])
+        assert view['event'] is None and view['event_code'] == ''
+        assert group_by_event([view]) == [{'event': None, 'rows': [view], 'project_code': ''}]
+
+    def test_views_carry_the_sponsor_and_both_project_codes(self, session):
+        sponsor = make_user(session)
+        event = make_account_request_event(session)
+        row = make_account_request(session, purpose='enrollment', event=event,
+                                   sponsor=sponsor)
+        view, = self._views(session, [row])
+        assert view['sponsor'].user_id == sponsor.user_id
+        assert view['project_code'] == view['event_project_code'] != ''
+        assert view['origin'] == 'sponsor' and view['readiness'] == 'open'
+        assert view['verified'] is True and view['deadline'] == event.accounts_needed_by
 
     def test_queue_counts(self, session):
         user = _user_with_email(session, 'c@example.edu')

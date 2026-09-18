@@ -8,13 +8,12 @@ Guards: the project's stewards (tree walked) or the event's extra sponsor,
 or MANAGE_ACCOUNT_REQUESTS. Design: docs/plans/ACCOUNT_REGISTRATION.md 3.1.
 """
 
-from datetime import datetime
 from functools import wraps
 
 from flask import abort, current_app, render_template, request, url_for
 from flask_login import current_user, login_required
 
-from sam.core.account_requests import AccountRequest, AccountRequestEvent
+from sam.core.account_requests import OPEN_STATES, AccountRequest, AccountRequestEvent
 from sam.core.users import User
 from sam.manage import management_transaction
 from sam.manage.account_requests import (
@@ -25,7 +24,9 @@ from sam.manage.account_requests import (
     parse_roster,
     paste_roster,
 )
-from sam.queries.account_requests import events_for, readiness_of, resolve_requests, waiting_days
+from sam.queries.account_requests import (
+    event_sponsors, events_for, request_views, resolve_requests,
+)
 from sam.queries.admin import search_institutions
 from sam.schemas.forms import (
     AccountRequestEventEditForm,
@@ -109,29 +110,22 @@ def invitations_fragment(project):
             .order_by(AccountRequest.creation_time.desc()).all())
     resolutions = resolve_requests(db.session, rows)
     events = _project_events(project)
-    today = datetime.now().date()
+    sponsors = event_sponsors(db.session, events)
     by_event = {}
     for row in rows:
         by_event.setdefault(row.event_id, []).append(row)
     event_rows = []
     for event in events:
         members = by_event.get(event.account_request_event_id, [])
-        open_members = [r for r in members if r.state in ('submitted', 'claimed')]
         event_rows.append({
             'event': event,
             'total': len(members),
             'fulfilled': sum(1 for r in members if r.is_fulfilled),
-            'open': len(open_members),
-            'sponsor': (db.session.get(User, event.extra_sponsor_user_id)
-                        if event.extra_sponsor_user_id else None),
+            'open': sum(1 for r in members if r.state in OPEN_STATES),
+            'sponsor': sponsors.get(event.extra_sponsor_user_id),
         })
-    all_events = events_for(db.session, rows)
-    views = [{
-        'row': r,
-        'readiness': readiness_of(r, resolutions.get(r.account_request_id)),
-        'event': all_events.get(r.event_id) if r.event_id else None,
-        'waiting_days': waiting_days(r, today=today),
-    } for r in rows]
+    views = request_views(db.session, rows, resolutions=resolutions,
+                          events=events_for(db.session, rows))
     return render_template(_TAB, project=project, events=event_rows, rows=views,
                            can_view_users=has_permission_any_facility(
                                current_user, Permission.VIEW_USERS),
