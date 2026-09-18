@@ -9,6 +9,7 @@
 <div class="row justify-content-center">
 <div class="col-12 col-lg-6">
     <h2 class="mb-1"><i class="fa-solid fa-envelope-circle-check"></i> Confirm your email address</h2>
+    {% include 'register/_preview_banner.html' %}
     {% if mail_sent %}
     <p class="text-muted">
         We sent a message to <strong>{{ row.email }}</strong> with a link and a

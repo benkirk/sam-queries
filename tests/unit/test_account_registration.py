@@ -113,6 +113,60 @@ class TestTheFlag:
             assert TestingConfig.ACCOUNT_REGISTRATION_ENABLED is True
 
 
+class TestTheLoginGate:
+    """ACCOUNT_REGISTRATION_LOGIN_REQUIRED: the preview posture. Off in
+    TestingConfig so the anonymous-form tests above stay the public path;
+    this class builds an app with it on."""
+
+    @pytest.fixture(scope='class')
+    def gated_app(self, test_db_url, status_db_url):
+        from webapp.run import create_app
+        return create_app(config_overrides={
+            'SQLALCHEMY_DATABASE_URI': test_db_url,
+            'SQLALCHEMY_BINDS': {'system_status': status_db_url},
+            'ACCOUNT_REGISTRATION_LOGIN_REQUIRED': True,
+        })
+
+    def test_on_by_default_outside_testing(self):
+        import os
+        from webapp.config import DevelopmentConfig, ProductionConfig, TestingConfig
+        if 'ACCOUNT_REGISTRATION_LOGIN_REQUIRED' not in os.environ:
+            assert ProductionConfig.ACCOUNT_REGISTRATION_LOGIN_REQUIRED is True
+            assert DevelopmentConfig.ACCOUNT_REGISTRATION_LOGIN_REQUIRED is True
+        assert TestingConfig.ACCOUNT_REGISTRATION_LOGIN_REQUIRED is False
+
+    def test_anonymous_is_sent_to_login_on_every_route(self, gated_app):
+        client = gated_app.test_client()
+        for path in ('/register/', '/register/institutions?organization=uni',
+                     '/register/pending/x', '/register/verify/x', '/register/verified'):
+            resp = client.get(path)
+            assert resp.status_code == 302, path
+            assert '/auth/login' in resp.headers['Location'], path
+        from urllib.parse import unquote
+        assert 'next=/register/verify/x' in unquote(
+            client.get('/register/verify/x').headers['Location']), \
+            'the mailed link survives the round trip through login'
+        assert client.post('/register/', data={}).status_code == 302
+
+    def test_a_signed_in_user_sees_the_form_and_the_banner(self, gated_app, session):
+        from sam import User
+        user = User.get_by_username(session, 'benkirk')
+        client = gated_app.test_client()
+        with client.session_transaction() as sess:
+            sess['_user_id'] = str(user.user_id)
+            sess['_fresh'] = True
+        resp = client.get('/register/')
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert 'Request an NCAR HPC account' in html
+        assert 'temporarily limited to signed-in' in html, 'the preview banner'
+        assert 'name="csrf_token"' in html
+
+    def test_off_means_no_banner(self, client):
+        html = client.get('/register/').get_data(as_text=True)
+        assert 'temporarily limited to signed-in' not in html
+
+
 class TestTheForm:
 
     def test_it_is_anonymous_and_csrf_protected(self, client):

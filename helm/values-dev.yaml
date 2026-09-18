@@ -56,6 +56,9 @@ webapp:
     RATELIMIT_AUTHED: "100000 per minute"
     RATELIMIT_M2M: "100000 per minute"
     RATELIMIT_ANON: "100000 per minute"
+    # The registration form is a signed-in preview here (ACCOUNT_REGISTRATION_LOGIN_REQUIRED
+    # defaults on): a low site-wide ceiling on its POST while it is being shown around.
+    RATELIMIT_REGISTER_GLOBAL: "5 per hour; 20 per day"
   samDbCredentials:
     secretPath: csg/sam-dev-pg            # the sam_dev owner role (SAM_DEV_PG_USER)
   oidcCredentials:

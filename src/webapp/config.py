@@ -70,6 +70,11 @@ class SAMWebappConfig(SAMConfig):
     ACCOUNT_INVITATIONS_ENABLED = os.getenv('ACCOUNT_INVITATIONS_ENABLED', '1').lower() in ('1', 'true', 'yes')
     # How long a verification link and code stay valid.
     ACCOUNT_VERIFY_TTL_HOURS = int(os.getenv('ACCOUNT_VERIFY_TTL_HOURS', 48))
+    # Limit /register to signed-in users (a redirect to login, and a preview
+    # banner on the form). ON by default: the form is shared with authenticated
+    # testers on dev before the human-challenge gate exists; switch it off per
+    # deployment to open the form to the public.
+    ACCOUNT_REGISTRATION_LOGIN_REQUIRED = os.getenv('ACCOUNT_REGISTRATION_LOGIN_REQUIRED', '1').lower() in ('1', 'true', 'yes')
     # Per-address cap on the registration POST, on top of the per-IP login
     # tier: nobody can flood a stranger's inbox with verification mail.
     RATELIMIT_REGISTER_EMAIL = os.getenv('RATELIMIT_REGISTER_EMAIL', '3 per hour; 5 per day')
@@ -405,6 +410,8 @@ class TestingConfig(SAMWebappConfig):
     DEBUG = False
     SESSION_COOKIE_SECURE = False
     WTF_CSRF_ENABLED = False
+    # The public-form tests exercise the anonymous path; the gate has its own.
+    ACCOUNT_REGISTRATION_LOGIN_REQUIRED = False
 
     # Low-cost bcrypt hash for fast test execution (rounds=4)
     # Key value: 'test-api-key'

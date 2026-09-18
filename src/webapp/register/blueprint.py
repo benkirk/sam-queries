@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from flask import (Blueprint, current_app, redirect, render_template, request,
                    url_for)
 from flask_limiter.util import get_remote_address
+from flask_login import current_user
 from marshmallow import ValidationError
 
 from sam.core.account_requests import AccountRequest, AccountRequestEvent
@@ -30,6 +31,18 @@ from . import tokens
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('register', __name__, url_prefix='/register')
+
+@bp.before_request
+def _login_gate():
+    """ACCOUNT_REGISTRATION_LOGIN_REQUIRED: every route here, the mailed
+    verify link included, sends a visitor to login first (they come back
+    via ``next``). One hook rather than eight decorators, so the public form
+    is one config flip away."""
+    if (current_app.config.get('ACCOUNT_REGISTRATION_LOGIN_REQUIRED', False)
+            and not current_user.is_authenticated):
+        return redirect(url_for('auth.login', next=request.full_path.rstrip('?')))
+    return None
+
 
 #: The choices the form offers; free text would be a relay vector like the rest.
 ACADEMIC_STATUSES = ('Faculty', 'Staff', 'Postdoc', 'Graduate Student',
