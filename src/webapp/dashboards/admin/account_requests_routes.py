@@ -5,7 +5,7 @@ a queue/everything switch, sortable headers held in the hidden filter form,
 and one-click row actions that answer with an HX-Trigger. Every write runs
 inside ``management_transaction``; the render never writes -- fulfillment is
 derived per render and stamped only by Reconcile (button or hourly task).
-Design: docs/plans/ACCOUNT_REGISTRATION.md section 3.2.
+Design: docs/plans/implemented/ACCOUNT_REGISTRATION.md section 3.2.
 """
 
 import logging

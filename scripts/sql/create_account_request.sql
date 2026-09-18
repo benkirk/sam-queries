@@ -4,7 +4,7 @@
 --   Apply with:  mysql -u <hpc-writer> -h <host> -p sam \
 --                      < scripts/sql/create_account_request.sql
 --
--- Design: docs/plans/ACCOUNT_REGISTRATION.md section 2. Apply AFTER
+-- Design: docs/plans/implemented/ACCOUNT_REGISTRATION.md section 2. Apply AFTER
 -- create_account_request_event.sql.
 --
 -- SAM never creates users; NUSD does. This row holds only what SAM cannot

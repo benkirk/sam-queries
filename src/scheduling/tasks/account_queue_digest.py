@@ -8,7 +8,7 @@ never reaches NUSD, and every row that left is stamped ``requested_at``.
 Unlike ``expiration_notices`` there is no per-run summary mail: the digest IS
 the one message, and the ledger row is its record. A queue with nothing in
 it sends nothing -- NUSD asked for a worklist, not a heartbeat -- and the
-ledger detail says so. Design: docs/plans/ACCOUNT_REGISTRATION.md section 3.2.
+ledger detail says so. Design: docs/plans/implemented/ACCOUNT_REGISTRATION.md section 3.2.
 """
 
 from __future__ import annotations

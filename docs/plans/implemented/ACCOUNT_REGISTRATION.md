@@ -1,7 +1,9 @@
 # HPC account registration — the request portal and the NUSD queue
 
-**Status: built 2026-09-16 (phases 1 and 2) on branch `account_registration`;
-phase 3 has its columns and nothing else.** § 0 records what the build changed
+**Status: implemented.** Phases 1 and 2 merged in #569 (2026-09-16), the events
+views in #576 and their follow-ups in #578 (records: `EVENTS_VIEWS.md`,
+`EVENTS_FOLLOWUPS.md`, beside this file). Phase 3 has its columns and nothing
+else. **Future work** is listed at the end of § 0. § 0 records what the build changed
 against the design below. A standalone product: the way
 a person asks for an NCAR HPC account, the queue the account-creating team works
 from, and the hook that lets SAM act the moment the account exists. It ships in two
@@ -48,6 +50,20 @@ clear `account_requests_reconcile` and then `account_queue_digest` from
 `SAM_TASKS_DISABLED` once NUSD confirms `NOTIFY_ACCOUNT_QUEUE_TO`; set
 `ACCOUNT_REGISTRATION_ENABLED` per deployment (dark in `values.yaml`, on in
 `values-dev.yaml`); decide D4; `sam-admin cache --refresh` after deploy.
+
+**Future work, for a follow-up:**
+
+- **The human-challenge gate (CAPTCHA) on the anonymous form** -- § 6.1. Until it
+  lands `ACCOUNT_REGISTRATION_LOGIN_REQUIRED` stays on, and the client IP still
+  has to reach the app through the ingress for the per-IP tier to mean anything.
+- **The production config switch.** `ACCOUNT_REGISTRATION_ENABLED=1` with
+  `ACCOUNT_REGISTRATION_LOGIN_REQUIRED=1` lights self-enroll, the public Upcoming
+  Events card and the enrolled counts with no anonymous mailer; the write-up and
+  its caveat are in `EVENTS_FOLLOWUPS.md`. With it go the two task switches in
+  `SAM_TASKS_DISABLED` named above.
+- Phase 3 (§ 4), `reactivation` as a purpose (§ 6), and
+  `account_request_event.modified_by` (a prod ALTER; the lifecycle logs the actor
+  until then).
 
 ---
 
@@ -375,9 +391,9 @@ pass" the § 6 bullet names.
 
 | | |
 |---|---|
-| [`../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md`](../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md) | § 2: SAM never creates users; the upstream owner |
-| [`XRAS_ACCOUNT_QUEUE.md`](XRAS_ACCOUNT_QUEUE.md) | the Pending Users queue this generalizes; the designed `xras_account_event` |
-| [`../xras/outgoing/XRAS_OUTGOING_QUERIES.md`](../xras/outgoing/XRAS_OUTGOING_QUERIES.md) | the account worklist and its two feeds |
-| [`XRAS_SUBMISSION.md`](XRAS_SUBMISSION.md) | phase 3, the consumer of § 4 |
-| [`../xras/outgoing/XRAS_WRITE_PROBES.md`](../xras/outgoing/XRAS_WRITE_PROBES.md) | the write discipline the person-create verb inherits |
-| [`implemented/RATE_LIMITING.md`](implemented/RATE_LIMITING.md) | the anonymous and login-POST tiers |
+| [`../../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md`](../../xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md) | § 2: SAM never creates users; the upstream owner |
+| [`../XRAS_ACCOUNT_QUEUE.md`](../XRAS_ACCOUNT_QUEUE.md) | the Pending Users queue this generalizes; the designed `xras_account_event` |
+| [`../../xras/outgoing/XRAS_OUTGOING_QUERIES.md`](../../xras/outgoing/XRAS_OUTGOING_QUERIES.md) | the account worklist and its two feeds |
+| [`../XRAS_SUBMISSION.md`](../XRAS_SUBMISSION.md) | phase 3, the consumer of § 4 |
+| [`../../xras/outgoing/XRAS_WRITE_PROBES.md`](../../xras/outgoing/XRAS_WRITE_PROBES.md) | the write discipline the person-create verb inherits |
+| [`RATE_LIMITING.md`](RATE_LIMITING.md) | the anonymous and login-POST tiers |

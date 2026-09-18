@@ -417,7 +417,7 @@ def create_app(*, config_overrides: dict | None = None):
     if app.config.get('COMPONENT_GALLERY_ENABLED', False):
         app.register_blueprint(component_gallery_bp)
     # The anonymous account-registration form: same kill-switch shape, ships
-    # dark in production (docs/plans/ACCOUNT_REGISTRATION.md section 3.5).
+    # dark in production (docs/plans/implemented/ACCOUNT_REGISTRATION.md section 3.5).
     if app.config.get('ACCOUNT_REGISTRATION_ENABLED', False):
         from webapp.register import bp as register_bp
         app.register_blueprint(register_bp)

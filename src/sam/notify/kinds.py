@@ -189,7 +189,7 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
         facility_aware=False,
         family='task',
     ),
-    # The HPC account-request queue (docs/plans/ACCOUNT_REGISTRATION.md).
+    # The HPC account-request queue (docs/plans/implemented/ACCOUNT_REGISTRATION.md).
     # Two audiences in one family: the digest goes to the team that creates
     # accounts, the verification mail to a stranger who typed an address --
     # which is why its context carries nothing else they typed.

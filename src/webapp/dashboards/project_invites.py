@@ -7,7 +7,7 @@ the ``register`` idiom, so the tab ships dark in prod and every route 404s
 there. Three ways to the same rows: one invitation, an event (a cohort with
 a code and a deadline), a roster pasted under it. Guards: the project's
 stewards (tree walked) or the event's extra sponsor, or
-MANAGE_ACCOUNT_REQUESTS (MANAGE_EVENTS for an event's own lifecycle). Design: docs/plans/ACCOUNT_REGISTRATION.md 3.1.
+MANAGE_ACCOUNT_REQUESTS (MANAGE_EVENTS for an event's own lifecycle). Design: docs/plans/implemented/ACCOUNT_REGISTRATION.md 3.1.
 """
 
 from flask import Blueprint, render_template, request, url_for

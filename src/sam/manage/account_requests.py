@@ -2,7 +2,7 @@
 
 Everything that creates or advances a request lives here; the routes and
 tasks call these inside ``management_transaction``. The read side is
-:mod:`sam.queries.account_requests`. Design: docs/plans/ACCOUNT_REGISTRATION.md.
+:mod:`sam.queries.account_requests`. Design: docs/plans/implemented/ACCOUNT_REGISTRATION.md.
 """
 
 from __future__ import annotations

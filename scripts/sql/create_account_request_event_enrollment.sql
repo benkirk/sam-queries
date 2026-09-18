@@ -6,7 +6,7 @@
 --   Apply with:  mysql -u <hpc-writer> -h <host> -p sam \
 --                      < scripts/sql/create_account_request_event_enrollment.sql
 --
--- Design: docs/plans/ACCOUNT_REGISTRATION.md section 2.3. Apply this script
+-- Design: docs/plans/implemented/ACCOUNT_REGISTRATION.md section 2.3. Apply this script
 -- AFTER create_account_request_event.sql -- a row points at its event by id.
 --
 -- Why a table and not account_request.(event_id, user_id): add_user_to_project

@@ -159,7 +159,7 @@ sam-queries/
   submitted/claimed/rejected/dismissed — fulfilled is derived from `users` by
   email (`sam_merge_targets`) and stamped only by
   `sam.manage.account_requests.reconcile_account_requests()`; a render never
-  writes. Design + as-built record: `docs/plans/ACCOUNT_REGISTRATION.md`.
+  writes. Design + as-built record: `docs/plans/implemented/ACCOUNT_REGISTRATION.md`.
   Surfaces: Admin → Accounts (`MANAGE_ACCOUNT_REQUESTS`), Manage Project →
   Invitations, the Pending Users column, and the anonymous `/register` form
   behind `ACCOUNT_REGISTRATION_ENABLED` (off in prod, on in dev) and, while

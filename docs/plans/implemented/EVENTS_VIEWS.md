@@ -5,7 +5,7 @@
 > **branch from `origin/staging`.** #575 delivered the event → registration →
 > enrollment workflow (self-enroll D17, the enrollment ledger D18, `copy_button`
 > D19, My Events, Invitations enrollees); this builds the two remaining views on
-> the same `AccountRequestEvent` data. Read `docs/plans/ACCOUNT_REGISTRATION.md`
+> the same `AccountRequestEvent` data. Read `docs/plans/implemented/ACCOUNT_REGISTRATION.md`
 > (D16–D19, §2.3) first.
 
 > **As built (2026-09-18, one PR).** The handoff below is kept as written; where

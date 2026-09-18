@@ -27,7 +27,7 @@ still mail a third party (one verification message, globally capped per hour).
   bucket in prod, and `/status/*` rides the default tier.
 - The `account_requests_reconcile` / `account_queue_digest` switches in
   `SAM_TASKS_DISABLED`.
-- Phase 3 of `docs/plans/ACCOUNT_REGISTRATION.md`.
+- Phase 3 of `docs/plans/implemented/ACCOUNT_REGISTRATION.md`.
 - "Copy link to this view": re-file as *URL-complete filter state* -- only two
   pages keep their filters in the URL; the htmx cards hold them in hidden forms.
 - `account_request_event.modified_by`: a prod ALTER; the lifecycle logs the actor
