@@ -1,0 +1,11 @@
+{#- Shown while ACCOUNT_REGISTRATION_LOGIN_REQUIRED limits the form to signed-in users. -#}
+{% if config.ACCOUNT_REGISTRATION_LOGIN_REQUIRED %}
+<div class="alert alert-info d-flex align-items-start gap-2" role="status">
+    <i class="fa-solid fa-flask mt-1" aria-hidden="true"></i>
+    <div>
+        <strong>Preview.</strong> This page is temporarily limited to signed-in
+        users while the account team evaluates it. The live form will be public.
+        Requests made here are real and reach the account team's queue.
+    </div>
+</div>
+{% endif %}

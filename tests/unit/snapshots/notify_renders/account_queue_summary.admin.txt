@@ -1,0 +1,35 @@
+NCAR HPC account requests waiting on NUSD — 4 open
+(3 new since the last digest, 1 still waiting, oldest 37 days)
+
+As of 2026-09-14T08:00:00.
+
+By purpose
+----------
+  enrollment  3
+  submission  1
+
+WRF-TUTORIAL-2026-10 — WRF Tutorial, October 2026 (SCSG0001)
+2 account(s) needed by 2026-10-05
+------------------------------------------------------------------------
+  Ada Lovelace <ada@example.edu>, University of Example — wants "ada"
+    enrollment, invited by Jane Lead; waiting 3 day(s)
+    note: Visiting for the tutorial week.
+  Alan Turing <alan@example.edu>
+    enrollment, invited by Jane Lead; waiting 3 day(s); claimed by operator1
+
+
+Other requests
+------------------------------------------------------------------------
+  Grace Hopper <grace@example.edu>, NCAR
+    enrollment on UCUB0001, invited by Alex Admin; waiting 1 day(s)
+  Linus Torvalds <linus@example.edu>
+    submission; waiting 37 day(s)
+    note: XRAS placeholder linus-user-8f2a
+
+
+Work the queue, claim rows and mark them done: https://sam.hpc.ucar.edu/dashboards/admin/account-requests
+
+--
+Automated digest from the NSF NCAR Systems Accounting Manager. SAM does not
+create accounts; this is the list of people waiting for one. A request leaves
+the list by itself once the account exists in the directory.

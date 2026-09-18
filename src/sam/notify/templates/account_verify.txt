@@ -1,0 +1,17 @@
+Someone — we hope you — asked for an NCAR HPC account using this email
+address{% if event_name %}, for "{{ event_name }}"{% endif %}.
+
+To confirm the address, open this link:
+
+    {{ verify_url }}
+
+or enter this code on the page you were on:
+
+    {{ code }}
+
+The link and the code expire in {{ expires_hours }} hours.
+
+If you did not make this request, ignore this message. The request is not
+visible to anyone until the address is confirmed, and it will be discarded.
+--
+NSF NCAR Systems Accounting Manager

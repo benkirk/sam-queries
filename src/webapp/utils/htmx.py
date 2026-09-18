@@ -364,6 +364,19 @@ def handle_htmx_form_post(
     ).handle()
 
 
+def institution_options():
+    """The datalist options for a ``datalist_field('organization', ...)``:
+    live institution names matching what was typed. One view behind two
+    routes (the login-gated invite form, the anonymous public form), each
+    keeping its own decorators."""
+    from sam.queries.admin import search_institutions
+    from webapp.extensions import db
+
+    return render_template(
+        'dashboards/fragments/institution_options_htmx.html',
+        names=search_institutions(db.session, request.args.get('organization')))
+
+
 def register_typeahead(bp, *, rule, endpoint, permission, search, template,
                        ctx_key, min_len=2, any_facility=False,
                        active_only_default=False):

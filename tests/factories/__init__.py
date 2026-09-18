@@ -9,6 +9,9 @@ Tests that need "any row from the snapshot" should use the `any_*` Layer 1
 fixtures from conftest.py instead — never blend the two strategies.
 """
 from ._seq import next_date, next_int, next_seq, reset_seq
+from .account_requests import (
+    make_account_request, make_account_request_event, make_event_enrollment,
+)
 from .core import (
     make_adhoc_group,
     make_gid_allocation,
@@ -79,6 +82,9 @@ __all__ = [
     "make_queue",
     "make_comp_charge_summary",
     "make_wallclock_exemption",
+    "make_account_request",
+    "make_account_request_event",
+    "make_event_enrollment",
     "make_xras_action",
     "make_xras_activation_event",
     "make_xras_key_mapping",

@@ -1,0 +1,44 @@
+{% extends 'dashboards/base.html' %}
+{% from 'dashboards/fragments/form_fields.html' import text_field with context %}
+{#
+  "Check your mail": the code form. Context: row, token, mail_sent, errors, form
+#}
+{% block title %}Confirm your email address{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-12 col-lg-6">
+    <h2 class="mb-1"><i class="fa-solid fa-envelope-circle-check"></i> Confirm your email address</h2>
+    {% include 'register/_preview_banner.html' %}
+    {% if mail_sent %}
+    <p class="text-muted">
+        We sent a message to <strong>{{ row.email }}</strong> with a link and a
+        six-digit code. Open the link, or enter the code here.
+    </p>
+    {% else %}
+    <div class="alert alert-warning">
+        <i class="fa-solid fa-triangle-exclamation me-1"></i>
+        Mail delivery is switched off on this deployment, so no confirmation
+        was sent to <strong>{{ row.email }}</strong>. Your request is recorded;
+        ask your sponsor or the help desk to confirm it for you.
+    </div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('register.pending_code', token=token) }}" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {{ text_field('code', 'Six-digit code', required=True, maxlength=6,
+                      placeholder='000000') }}
+        {% if errors %}
+        <div class="alert alert-danger">
+            {% for error in errors %}<p class="mb-0"><i class="fa-solid fa-circle-exclamation"></i> {{ error }}</p>{% endfor %}
+        </div>
+        {% endif %}
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check"></i> Confirm</button>
+    </form>
+    <p class="text-muted small mt-3">
+        The link and the code expire after a while. If they have, just
+        <a href="{{ url_for('register.form') }}">register again</a>.
+    </p>
+</div>
+</div>
+{% endblock %}

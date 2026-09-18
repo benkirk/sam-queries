@@ -105,7 +105,8 @@ class AnonymizationVerifier:
         print("\n[*] Checking XRAS payload tables are empty...")
         issues = 0
         for t in ('xras_action_log', 'xras_activation_event',
-                  'xras_remediation_event'):
+                  'xras_remediation_event', 'account_request',
+                  'account_request_event'):
             n = session.execute(text(f"SELECT COUNT(*) AS c FROM {t}")).scalar()
             if n:
                 print(f"  ⚠️  {t} has {n} rows — raw payloads carry real PII the "

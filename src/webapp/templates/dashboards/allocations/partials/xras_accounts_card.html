@@ -246,6 +246,10 @@
                     <th style="width:99%; min-width:12rem;">{{ sort_header('person', 'Person') }}</th>
                     {% endif %}
                     <th style="width:120px; white-space:nowrap;">XRAS identity</th>
+                    {# The account_request row the sweep wrote for this username:
+                       the claim/dismiss state NUSD works from Admin -> Accounts.
+                       Controls live in the expansion (this row is a toggle). #}
+                    <th style="width:130px; white-space:nowrap;">Queue</th>
                     {# WARNING: Waiting, NOT "last seen". `last_seen` is when we most
                        recently HEARD about the person, which on a freshly
                        seeded log is today for every row — an order that tells
@@ -478,6 +482,21 @@
                         {% if configured %}</a>{% endif %}
                     </td>
 
+                    <td class="text-nowrap cursor-pointer" {{ collapse_toggle(body_id) }}>
+                        {% set arq = row.account_request %}
+                        {% if not arq %}
+                        <span class="text-muted" title="No account request yet — the next sweep writes one for an absent member with an email">—</span>
+                        {% elif arq.fulfilled %}
+                        <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle" title="The account exists; the request is fulfilled">fulfilled</span>
+                        {% elif arq.state == 'claimed' %}
+                        <span class="badge bg-info text-dark" title="Claimed by {{ arq.assignee }} on the Accounts queue">claimed · {{ arq.assignee }}</span>
+                        {% elif arq.state == 'submitted' %}
+                        <span class="badge bg-body-secondary text-body-secondary border" title="Open on the Accounts queue{% if arq.requested_at %}; sent to NUSD {{ arq.requested_at | fmt_date }}{% endif %}">{{ 'sent' if arq.requested_at else 'open' }}</span>
+                        {% else %}
+                        <span class="badge bg-secondary" title="Set aside on the Accounts queue">{{ arq.state }}</span>
+                        {% endif %}
+                    </td>
+
                     <td class="text-nowrap small text-muted cursor-pointer" {{ collapse_toggle(body_id) }}>
                         {% if row.waiting_days is none %}
                         <span class="text-muted" title="No dated provenance on this row">—</span>
@@ -490,7 +509,7 @@
                 </tr>
 
                 <tr class="collapse" id="{{ body_id }}">
-                    <td colspan="{{ 8 if may_manage else 7 }}" class="bg-body-tertiary">
+                    <td colspan="{{ 9 if may_manage else 8 }}" class="bg-body-tertiary">
                         {% if may_manage and row.placeholder and (row.is_reconciled or (row.merge_target and row.merge_target.active)) %}
                         {# Inside the EXPANSION, above the detail sheet — not on
                            the <tr>. Bootstrap's collapse data-api runs in the
@@ -519,6 +538,48 @@
                                     data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
                                 Resolve identity (merge in XRAS)…
                             </button>
+                        </div>
+                        {% endif %}
+                        {# The queue controls, in the expansion for the same
+                           capture-phase reason as the merge button above. They
+                           post to the Accounts routes, which fire refreshXrasTab
+                           as well as the queue's own event. #}
+                        {% if row.account_request and has_permission(Permission.MANAGE_ACCOUNT_REQUESTS) %}
+                        {% set arq = row.account_request %}
+                        <div class="d-flex align-items-center gap-2 py-2 mb-2 border-bottom">
+                            <div class="small flex-grow-1">
+                                <i class="fa-solid fa-user-plus me-1 text-muted"></i>
+                                On the <a href="{{ url_for('admin_dashboard.account_requests') }}">Accounts queue</a>
+                                {%- if arq.state == 'claimed' %} — claimed by <span class="font-monospace">{{ arq.assignee }}</span>
+                                {%- elif arq.state in ('dismissed', 'rejected') %} — {{ arq.state }}
+                                {%- elif arq.requested_at %} — sent to NUSD {{ arq.requested_at | fmt_date }}
+                                {%- else %} — open{% endif %}.
+                            </div>
+                            <div class="btn-group btn-group-sm flex-nowrap">
+                                {% if arq.state in ('submitted', 'claimed') %}
+                                {% if arq.state == 'claimed' %}
+                                <button type="button" class="btn btn-outline-secondary"
+                                        title="Release — take the claim off this request" aria-label="Release"
+                                        hx-post="{{ url_for('admin_dashboard.account_request_unclaim', request_id=arq.id) }}"
+                                        hx-swap="none"><i class="fa-solid fa-hand-back-fist"></i></button>
+                                {% else %}
+                                <button type="button" class="btn btn-outline-primary"
+                                        title="Claim — tell other operators you are working this one" aria-label="Claim"
+                                        hx-post="{{ url_for('admin_dashboard.account_request_claim', request_id=arq.id) }}"
+                                        hx-swap="none"><i class="fa-solid fa-hand"></i></button>
+                                {% endif %}
+                                <button type="button" class="btn btn-outline-secondary"
+                                        title="Dismiss — a duplicate, or someone who already has an account" aria-label="Dismiss"
+                                        hx-get="{{ url_for('admin_dashboard.account_request_dismiss_form', request_id=arq.id) }}"
+                                        hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                                        data-bs-toggle="modal" data-bs-target="#auditDetailsModal"><i class="fa-solid fa-eye-slash"></i></button>
+                                {% else %}
+                                <button type="button" class="btn btn-outline-secondary"
+                                        title="Reopen — put this request back in the queue" aria-label="Reopen"
+                                        hx-post="{{ url_for('admin_dashboard.account_request_reopen', request_id=arq.id) }}"
+                                        hx-swap="none"><i class="fa-solid fa-rotate-left"></i></button>
+                                {% endif %}
+                            </div>
                         </div>
                         {% endif %}
                         {% if may_manage %}{{ person_detail(row.person) }}{% endif %}

@@ -156,6 +156,8 @@
                         {{ stat('M2M (per IP)',        state.rate_limits.tiers.m2m) }}
                         {{ stat('Authed (per user)',   state.rate_limits.tiers.authed) }}
                         {{ stat('Anon (per IP)',       state.rate_limits.tiers.anon) }}
+                        {{ stat('Register (per address)', state.rate_limits.tiers.register_email) }}
+                        {{ stat('Register (global)',   state.rate_limits.tiers.register_global) }}
                     </dl>
                     {% endif %}
 

@@ -40,6 +40,26 @@ def get_institution_type_tree(session):
     return session.query(InstitutionType).order_by(InstitutionType.type).all()
 
 
+def search_institutions(session, q, *, limit=10):
+    """Live institution names containing ``q`` (case-insensitive), prefix hits first."""
+    from sam.core.organizations import Institution
+    from sam.sqlcompat import ci_like
+
+    q = (q or '').strip()
+    if len(q) < 2:
+        return []
+    rows = (session.query(Institution.name)
+            .filter(Institution.deleted.isnot(True), Institution.name.isnot(None),
+                    ci_like(Institution.name, f'%{q}%'))
+            .order_by(Institution.name)
+            .limit(limit * 4).all())
+    key = q.lower()
+    names = [r[0] for r in rows]
+    ordered = ([n for n in names if n.lower().startswith(key)]
+               + [n for n in names if not n.lower().startswith(key)])
+    return ordered[:limit]
+
+
 def get_institutions_with_members(session, *, country_id=None, state_prov_id=None,
                                   active_only=False, include_projects=False):
     """Load institutions, optionally filtered by geography and membership status.

@@ -1,0 +1,19 @@
+{% extends "_email_base.html" %}
+
+{% block content %}
+    <p>Someone — we hope you — asked for an NCAR HPC account using this email
+        address{% if event_name %}, for <strong>{{ event_name }}</strong>{% endif %}.</p>
+
+    <div class="callout good">
+        <p>To confirm the address, open this link:</p>
+        <p><a href="{{ verify_url }}">{{ verify_url }}</a></p>
+        <p>or enter this code on the page you were on:</p>
+        <p style="font-size: 1.6em; letter-spacing: 0.2em;"><strong>{{ code }}</strong></p>
+    </div>
+
+    <p>The link and the code expire in {{ expires_hours }} hours.</p>
+
+    <p>If you did not make this request, ignore this message. The request is
+        not visible to anyone until the address is confirmed, and it will be
+        discarded.</p>
+{% endblock %}

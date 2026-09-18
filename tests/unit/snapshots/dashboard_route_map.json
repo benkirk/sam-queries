@@ -1,5 +1,89 @@
 [
   [
+    "admin_dashboard.account_request_claim",
+    "/admin/account-requests/<int:request_id>/claim",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.account_request_dismiss",
+    "/admin/account-requests/<int:request_id>/dismiss",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.account_request_dismiss_form",
+    "/admin/account-requests/<int:request_id>/dismiss-form",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.account_request_reject",
+    "/admin/account-requests/<int:request_id>/reject",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.account_request_reject_form",
+    "/admin/account-requests/<int:request_id>/reject-form",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.account_request_reopen",
+    "/admin/account-requests/<int:request_id>/reopen",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.account_request_unclaim",
+    "/admin/account-requests/<int:request_id>/unclaim",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.account_request_verify",
+    "/admin/account-requests/<int:request_id>/verify",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.account_requests",
+    "/admin/account-requests",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.account_requests_digest",
+    "/admin/account-requests/digest",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.account_requests_fragment",
+    "/admin/account-requests/fragment",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.account_requests_reconcile",
+    "/admin/account-requests/reconcile",
+    [
+      "POST"
+    ]
+  ],
+  [
     "admin_dashboard.configuration",
     "/admin/configuration",
     [
@@ -2233,6 +2317,91 @@
     ]
   ],
   [
+    "project_invites.htmx_event_close",
+    "/project-invitations/events/<event_code>/close",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "project_invites.htmx_event_create",
+    "/project-invitations/<projcode>/events",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "project_invites.htmx_event_edit_form",
+    "/project-invitations/events/<event_code>/edit-form",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "project_invites.htmx_event_form",
+    "/project-invitations/<projcode>/events/new-form",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "project_invites.htmx_event_reopen",
+    "/project-invitations/events/<event_code>/reopen",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "project_invites.htmx_event_update",
+    "/project-invitations/events/<event_code>",
+    [
+      "POST",
+      "PUT"
+    ]
+  ],
+  [
+    "project_invites.htmx_invite_form",
+    "/project-invitations/<projcode>/invite-form",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "project_invites.htmx_invite_user",
+    "/project-invitations/<projcode>/invite",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "project_invites.htmx_roster_form",
+    "/project-invitations/events/<event_code>/roster-form",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "project_invites.htmx_roster_paste",
+    "/project-invitations/events/<event_code>/roster",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "project_invites.institutions_fragment",
+    "/project-invitations/institutions",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "project_invites.invitations_fragment",
+    "/project-invitations/<projcode>/invitations",
+    [
+      "GET"
+    ]
+  ],
+  [
     "project_members.htmx_add_member",
     "/project-members/<projcode>/add",
     [
@@ -2494,6 +2663,13 @@
   [
     "user_dashboard.my_data",
     "/user/data",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "user_dashboard.my_events",
+    "/user/events",
     [
       "GET"
     ]

@@ -651,17 +651,70 @@ class TestIdentityRefresh:
         assert result.state == 'partial'
 
 
-class TestItWritesNothing:
+class TestWhatItWrites:
+    """The sweep writes ONE kind of row: an `account_request` per absent
+    roster member (docs/plans/ACCOUNT_REGISTRATION.md section 3.4). It never
+    touches the activation ledger; `TaskResult.detail` and the cards remain
+    the record of everything else."""
 
-    def test_the_sweep_persists_no_rows(self, ctx, wire, session):
-        """Read-only by design: there is no table yet, and `TaskResult.detail`
-        plus the admin card are the whole record."""
+    def test_the_sweep_persists_no_activation_events(self, ctx, wire, session):
         from sam.integration.xras import XrasActivationEvent
 
         before = session.query(XrasActivationEvent).count()
         wire([[_request(1, 'ZZZZ9999')]])
         mod.xras_sweep(ctx())
         assert session.query(XrasActivationEvent).count() == before
+
+    def _requests_for(self, session, username):
+        from sam.core.account_requests import AccountRequest
+        return (session.query(AccountRequest)
+                .filter(AccountRequest.xras_username == username).all())
+
+    def test_an_absent_member_with_an_email_gets_a_submission_row_once(
+            self, ctx, wire, session):
+        from sam.core.account_requests import CREATED_BY_SWEEP
+
+        wire([[_request(1, 'ZZZZ9999', username='ghost-user-51',
+                        email='Ghost@Example.edu')]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['account_requests'] == {'created': 1, 'existing': 0, 'skipped': 0}
+        row, = self._requests_for(session, 'ghost-user-51')
+        assert row.purpose == 'submission' and row.email == 'ghost@example.edu'
+        assert row.created_by == CREATED_BY_SWEEP and row.is_open
+        assert row.first_name == 'Ada' and row.last_name == 'Invented'
+        assert row.project_id is None, 'ZZZZ9999 is no SAM project yet'
+
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['account_requests'] == {'created': 0, 'existing': 1, 'skipped': 0}
+        assert len(self._requests_for(session, 'ghost-user-51')) == 1
+
+    def test_a_dismissed_row_survives_the_next_sweep(self, ctx, wire, session):
+        wire([[_request(1, 'ZZZZ9999', username='ghost-user-52',
+                        email='g52@example.edu')]])
+        mod.xras_sweep(ctx())
+        row, = self._requests_for(session, 'ghost-user-52')
+        row.dismiss('operator', 'already has an account as someone else')
+        mod.xras_sweep(ctx())
+        row, = self._requests_for(session, 'ghost-user-52')
+        assert row.state == 'dismissed'
+
+    def test_a_member_without_an_email_is_skipped_not_created_blind(
+            self, ctx, wire, session):
+        wire([[_request(1, 'ZZZZ9999', username='ghost-user-53')]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['account_requests'] == {'created': 0, 'existing': 0, 'skipped': 1}
+        assert self._requests_for(session, 'ghost-user-53') == []
+
+    def test_an_already_pushed_request_feeds_nothing(self, ctx, wire, session):
+        from factories import make_project
+
+        project = make_project(session)
+        session.flush()
+        wire([[_request(1, project.projcode, username='ghost-user-54',
+                        email='g54@example.edu')]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['account_requests'] == {'created': 0, 'existing': 0, 'skipped': 0}
+        assert self._requests_for(session, 'ghost-user-54') == []
 
 
 class TestPublishHonesty:

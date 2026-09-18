@@ -85,6 +85,14 @@ settings:
     - pattern: "xras_remediation_event"
       mode: empty
 
+    # HPC account requests name real people who have NO SAM account yet, so
+    # the username map cannot rewrite them; the event table carries sponsor
+    # ids and prose. Dev and tests seed their own via tests/factories.
+    - pattern: "account_request"
+      mode: empty
+    - pattern: "account_request_event"
+      mode: empty
+
     # Specific overrides first
     - pattern: "comp_charge_summary"
       mode: recent

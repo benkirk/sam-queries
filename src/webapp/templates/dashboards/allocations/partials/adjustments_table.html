@@ -1,5 +1,7 @@
 {% from 'dashboards/fragments/pagination.html' import pagination %}
 {% from 'dashboards/fragments/sort_link.html' import sort_link with context %}
+{% from 'dashboards/fragments/project_bits.html' import project_link with context %}
+{% from 'dashboards/fragments/user_rows.html' import user_link with context %}
 {#
   Adjustments-table HTMX fragment.
 
@@ -33,17 +35,7 @@
                     <span class="badge bg-secondary">{{ r.adjustment_type }}</span>
                 </td>
                 <td>
-                    {% if r.projcode %}
-                    <button class="btn btn-link p-0"
-                            title="View project details"
-                            data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
-                            hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=r.projcode) }}"
-                            hx-target="#projectDetailsModalBody"
-                            hx-swap="innerHTML"
-                            data-stop-propagation>
-                        <strong>{{ r.projcode }}</strong>
-                    </button>
-                    {% endif %}
+                    {{ project_link(r.projcode, can_view_projects, stop_propagation=True) }}
                 </td>
                 <td style="max-width:130px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
                     title="{{ r.resource_name or '' }}">
@@ -58,11 +50,7 @@
                     {% endif %}
                 </td>
                 <td>
-                    {% if r.username %}
-                        <span title="{{ r.user_display_name or '' }}">{{ r.username }}</span>
-                    {% else %}
-                        <span class="text-muted">—</span>
-                    {% endif %}
+                    {{ user_link(r.username, can_view_users, stop_propagation=True) }}
                 </td>
                 <td class="small text-muted"
                     title="{{ r.comment or '' }}"

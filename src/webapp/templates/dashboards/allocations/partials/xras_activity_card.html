@@ -3,6 +3,7 @@
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_xras_attention_queue with context %}
+{% from 'dashboards/fragments/project_bits.html' import project_link with context %}
 {#
   Recent XRAS outcomes — "Pending Activations & Recent Notifications".
 
@@ -170,13 +171,7 @@
                         {% if expandable %}
                         <span class="cursor-pointer" {{ collapse_toggle(detail_id) }}><i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i></span>
                         {% endif %}
-                        <button type="button" class="btn btn-link p-0 align-baseline"
-                                hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=r.projcode) }}"
-                                hx-target="#projectDetailsModalBody"
-                                hx-swap="innerHTML"
-                                data-bs-toggle="modal" data-bs-target="#projectDetailsModal">
-                            {{ r.projcode }}
-                        </button>
+                        {{ project_link(r.projcode, can_view_projects) }}
                     </td>
                     <td class="text-truncate{% if expandable %} cursor-pointer{% endif %}"
                         style="max-width:0;" title="{{ r.title }}"

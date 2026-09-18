@@ -1,0 +1,18 @@
+{#
+  copy_button: the app's shared copy-to-clipboard control. The click is handled
+  by the delegated listener in static/js/clipboard.js (one handler, every
+  button), so it is CSP-safe with no inline script. This is the first such
+  control; the backport list is in docs/plans/ACCOUNT_REGISTRATION.md.
+
+  copy_button(text, label='Copy', icon='fa-regular fa-copy', compact=false, done=None)
+    compact  icon-only (label becomes the aria-label/title)
+    done     the toast message on success (defaults to "Copied to clipboard.")
+#}
+{% macro copy_button(text, label='Copy', icon='fa-regular fa-copy', compact=false, done=None) %}
+<button type="button"
+        class="btn btn-sm btn-outline-secondary{% if compact %} text-nowrap{% endif %}"
+        data-copy="{{ text }}"{% if done %} data-copy-done="{{ done }}"{% endif %}
+        title="{{ text }}" aria-label="{{ label }}">
+    <i class="{{ icon }}"></i>{% if not compact %} {{ label }}{% endif %}
+</button>
+{% endmacro %}

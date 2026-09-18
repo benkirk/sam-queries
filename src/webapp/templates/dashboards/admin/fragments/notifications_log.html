@@ -1,6 +1,7 @@
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/pagination.html' import pagination %}
+{% from 'dashboards/fragments/project_bits.html' import project_link with context %}
 {#
   Notification delivery log — HTMX fragment.
 
@@ -77,11 +78,7 @@
                 </td>
                 <td class="small">{{ r.subject or '—' }}</td>
                 <td>
-                    {% if r.projcode %}
-                    <code class="small">{{ r.projcode }}</code>
-                    {% else %}
-                    <span class="text-muted">—</span>
-                    {% endif %}
+                    {{ project_link(r.projcode, can_view_projects, admin=True, compact=True) }}
                 </td>
                 <td class="text-muted small">{{ r.requested_by }}</td>
                 <td class="text-end" style="white-space:nowrap;">

@@ -1,0 +1,36 @@
+{#
+  Shared renderer for a clickable project code — the project-side sibling of
+  contract_bits.html's contract_user_link. The affordance was hand-copied
+  across ~10 templates in two idioms; this macro is the single one.
+
+  Two openers, picked by stop_propagation:
+  - default: data-action="show-detail-modal" (actions.js) — stack-safe, so a
+    link inside an already-open modal re-shows the target rather than letting
+    Bootstrap's toggle close the host (the PR #464 trap).
+  - stop_propagation=True: the link sits inside a row that is itself a
+    data-bs-toggle opener (the audit tables). Bootstrap's modal data-api
+    matches the NEAREST data-bs-toggle via closest() before a bubble-phase
+    stopPropagation can fire, so the link must carry its OWN data-bs-toggle to
+    shadow the row's — data-action cannot prevent the row's modal. data-stop-
+    propagation then stops the row's htmx fetch. These rows are never inside a
+    modal, so the toggle is safe here.
+
+  can_view_projects gates VIEW_PROJECTS (any facility) — the permission the
+  project_card / project_details_modal routes enforce. False degrades to plain
+  text so the click never 403s. Callers pass it from the route, never look it
+  up in the template. admin=True picks the admin-dashboard endpoint; compact
+  is the monospace table treatment; label overrides the link text.
+#}
+
+{% macro project_link(projcode, can_view_projects, admin=False, compact=False, label=None, stop_propagation=False) -%}
+{%- if projcode -%}
+  {%- if can_view_projects -%}
+    {%- set endpoint = 'admin_dashboard.project_card' if admin else 'user_dashboard.project_details_modal' -%}
+    <a href="#" class="text-decoration-none{% if compact %} text-reset{% endif %}"
+       title="View project details"
+       {% if stop_propagation %}data-bs-toggle="modal" data-bs-target="#projectDetailsModal" data-stop-propagation{% else %}data-action="show-detail-modal" data-modal-id="projectDetailsModal"{% endif %}
+       hx-get="{{ url_for(endpoint, projcode=projcode) }}"
+       hx-target="#projectDetailsModalBody" hx-swap="innerHTML">{% if compact %}<code>{{ label or projcode }}</code>{% else %}<strong>{{ label or projcode }}</strong>{% endif %}</a>
+  {%- else -%}<code>{{ label or projcode }}</code>{%- endif -%}
+{%- else -%}<span class="text-muted">—</span>{%- endif -%}
+{%- endmacro %}

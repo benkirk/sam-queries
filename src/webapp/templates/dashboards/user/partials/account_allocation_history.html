@@ -14,6 +14,7 @@
 #}
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_txn_types with context %}
+{% from 'dashboards/fragments/contract_bits.html' import contract_user_link with context %}
 <h6 class="mb-2">Transactions</h6>
 
 {% if allocation_transactions %}
@@ -53,11 +54,7 @@
                     {% if not t.alloc_start_date and not t.alloc_end_date %}—{% endif %}
                 </td>
                 <td>
-                    {% if t.user %}
-                        <span title="{{ t.user.display_name or '' }}">{{ t.user.username }}</span>
-                    {% else %}
-                        <span class="text-muted">—</span>
-                    {% endif %}
+                    {{ contract_user_link(t.user, can_view_users, compact=True) }}
                 </td>
                 <td class="small text-muted"
                     title="{{ t.transaction_comment or '' }}"

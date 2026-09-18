@@ -139,7 +139,7 @@ class TestDerivedValues:
         from sam.notify.kinds import NOTIFICATION_KINDS, families
         for kind in NOTIFICATION_KINDS.values():
             assert re.fullmatch(r'[a-z][a-z_]*', kind.family), kind.key
-        assert families() == ('expiration', 'task', 'xras')
+        assert families() == ('account', 'expiration', 'task', 'xras')
 
     def test_resolve_recipient_is_identity_without_a_redirect(self):
         cfg = NotifyConfig()

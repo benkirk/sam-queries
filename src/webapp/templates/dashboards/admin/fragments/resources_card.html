@@ -1,5 +1,6 @@
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button, delete_row_button with context %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% from 'dashboards/fragments/contract_bits.html' import contract_user_link with context %}
 {#
   Admin: Resources Card Body (lazy-loaded into the Resources collapsible section)
   Contains three tabs: Resources (types+resources combined), Machines, Queues.
@@ -490,8 +491,7 @@
                         <tr class="table-secondary{% if not e.is_active %} opacity-50{% endif %}">
                             <td class="ps-4">{{ e.queue.queue_name }}</td>
                             <td>
-                                {{ e.user.display_name }}
-                                <div class="text-muted small">{{ e.user.username }}</div>
+                                {{ contract_user_link(e.user, can_view_users) }}
                             </td>
                             <td>{{ e.time_limit_hours | fmt_number }}</td>
                             <td class="text-nowrap small">{{ e.start_date | fmt_date }}</td>

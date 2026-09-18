@@ -220,7 +220,8 @@ def test_stats_returns_documented_shape(app):
         'enabled', 'storage', 'tiers',
         'events_24h', 'top_offenders_24h', 'active_blocks_count',
     }
-    assert set(s['tiers'].keys()) == {'auth_login', 'm2m', 'authed', 'anon'}
+    assert set(s['tiers'].keys()) == {'auth_login', 'm2m', 'authed', 'anon',
+                                      'register_email', 'register_global'}
     assert isinstance(s['events_24h'], int)
     assert isinstance(s['active_blocks_count'], int)
 

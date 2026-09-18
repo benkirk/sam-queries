@@ -1,0 +1,17 @@
+{% extends "_email_base.html" %}
+
+{% block content %}
+    <p>Hello {{ name }},</p>
+
+    <p>Your request for an NCAR HPC account{% if event_name %} for
+        <strong>{{ event_name }}</strong>{% endif %}{% if project_code %}
+        (project <strong>{{ project_code }}</strong>){% endif %} was not approved.</p>
+
+    <div class="callout note">
+        <p>The account team's reason:</p>
+        <p><strong>{{ reason }}</strong></p>
+    </div>
+
+    <p>If you think this is a mistake, or your situation has changed, reply
+        to this message and the account team will take another look.</p>
+{% endblock %}

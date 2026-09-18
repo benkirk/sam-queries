@@ -1,0 +1,12 @@
+Hello {{ name }},
+
+Your request for an NCAR HPC account{% if event_name %} for "{{ event_name }}"{% endif %}{% if project_code %} (project {{ project_code }}){% endif %} was not approved.
+
+The account team's reason:
+
+    {{ reason }}
+
+If you think this is a mistake, or your situation has changed, reply to this
+message and the account team will take another look.
+--
+NSF NCAR Systems Accounting Manager

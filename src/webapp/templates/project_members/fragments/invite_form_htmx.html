@@ -1,0 +1,36 @@
+{% from 'dashboards/fragments/form_fields.html' import text_field, datalist_field, textarea_field, select_field, form_errors_panel with context %}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{#
+  Invite one person who has no account. Lands in #invitationFormContainer.
+
+  Context: project, events (this project's events), default_event_code
+           (pre-selected when one active event), post_url, errors
+#}
+<h5 class="modal-title" id="invitationModalLabel" hx-swap-oob="true">
+    <i class="fa-solid fa-user-plus"></i> Invite a person to {{ project.projcode }}
+</h5>
+
+{% call htmx_form(post_url, '#invitationFormContainer', 'Invite', submit_icon='user-plus', errors=errors) %}
+    <p class="text-muted small">
+        If SAM already knows this email on an active account, the person is
+        added to the project right away. Otherwise the request is queued for
+        the team that creates accounts, and the membership is added the moment
+        the account exists.
+    </p>
+    {{ text_field('email', 'Email', required=True, type='email',
+                  placeholder='person@university.edu') }}
+    <div class="row">
+        <div class="col-md-6">{{ text_field('first_name', 'First name', required=True, maxlength=64) }}</div>
+        <div class="col-md-6">{{ text_field('last_name', 'Last name', required=True, maxlength=64) }}</div>
+    </div>
+    {{ datalist_field('organization', 'Institution', url_for('project_invites.institutions_fragment'),
+                      maxlength=128, help='Start typing to pick a known institution, or enter theirs.') }}
+    {% if events %}
+    {{ select_field('event_code', 'Event', items=events, value_attr='event_code',
+                    label_attrs=['event_code', 'name'], placeholder='— none —',
+                    default=default_event_code|default(''),
+                    help='Group this invitation under an event (workshop, class).') }}
+    {% endif %}
+    {{ textarea_field('note', 'Note for the account team', rows=2, maxlength=255,
+                      placeholder='e.g. visiting scholar, needs access before Oct 5') }}
+{% endcall %}

@@ -13,7 +13,9 @@ from flask_login import current_user, login_required
 
 from webapp.extensions import db
 from webapp.utils.project_permissions import can_edit_project_governance
-from webapp.utils.rbac import Permission, has_permission, require_permission
+from webapp.utils.rbac import (
+    Permission, has_permission, has_permission_any_facility, require_permission,
+)
 from sam.queries.xras_actions import (
     XRAS_ACTION_SORT_COLUMNS,
     XRAS_ACTION_STATUSES,
@@ -218,6 +220,7 @@ def xras_fragment():
         form_id=_XRAS_FORM_ID,
         sortable_columns=sorted(XRAS_ACTION_SORT_COLUMNS),
         configured=xras_api_configured(),
+        can_view_projects=has_permission_any_facility(current_user, Permission.VIEW_PROJECTS),
     )
 
 
@@ -315,6 +318,7 @@ def xras_pending_fragment():
         # the whole set (not the window), matching "skip ALL pending notices".
         notify_only_count=len(notify_only_project_ids(everything)),
         can_bulk_dismiss=has_permission(current_user, Permission.ADMIN_XRAS),
+        can_view_projects=has_permission_any_facility(current_user, Permission.VIEW_PROJECTS),
         form_id=_XRAS_ACTIVITY_FORM_ID,
         fragment_url=url_for('allocations_dashboard.xras_pending_fragment'),
         target_id=_XRAS_ACTIVITY_TARGET,
@@ -386,6 +390,12 @@ def xras_accounts_fragment():
     # After enrichment (a Feed-A row has no email until then) and before the
     # PII strip: the matched USERNAME is account state and rides top-level.
     stamp_merge_targets(db.session, rows)
+    # The account_request the sweep wrote for this username, if any: the
+    # claim/dismiss state the card can now act on. Account state, not PII, so
+    # it rides on the VIEW_XRAS side; the controls themselves are gated on
+    # MANAGE_ACCOUNT_REQUESTS in the template.
+    from sam.queries.account_requests import stamp_account_requests
+    stamp_account_requests(db.session, rows)
 
     if not may_manage:
         # After the merge every row is a copy, so strip in place -- and only

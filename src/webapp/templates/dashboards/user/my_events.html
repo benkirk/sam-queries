@@ -1,0 +1,47 @@
+{% extends 'dashboards/user/base_user.html' %}
+{% from 'dashboards/fragments/project_bits.html' import project_link %}
+{# My Events: the workshops/classes the user enrolled in, from the event
+   enrollment ledger. Context: events [{event, project_code, enrolled_at, source}]. #}
+{% block title %}My Events - SAM{% endblock %}
+
+{% block user_content %}
+<div class="mb-3">
+    <h4 class="mb-1"><i class="fa-solid fa-calendar-check"></i> My Events</h4>
+    <p class="text-muted mb-0">
+        Workshops and classes you registered for. Enrolling added your account
+        to each event's project, so you can use its resources.
+    </p>
+</div>
+
+{% if not events %}
+<div class="alert alert-info">You are not enrolled in any events.</div>
+{% else %}
+<div class="table-responsive">
+<table class="table table-sm align-middle">
+    <thead class="table-subtle">
+        <tr>
+            <th>Event</th><th>Project</th>
+            <th class="text-nowrap">Accounts needed by</th>
+            <th class="text-nowrap">Enrolled</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for ev in events %}
+        <tr>
+            <td>
+                <div>{{ ev.event.name }}</div>
+                <div class="font-monospace small text-muted">{{ ev.event.event_code }}</div>
+                {% if ev.event.instructions %}
+                <div class="small text-muted" style="white-space: pre-wrap;">{{ ev.event.instructions }}</div>
+                {% endif %}
+            </td>
+            <td>{{ project_link(ev.project_code, True) }}</td>
+            <td class="text-nowrap">{{ ev.event.accounts_needed_by | fmt_date }}</td>
+            <td class="text-nowrap text-muted" title="{{ ev.enrolled_at | fmt_date }}">{{ ev.enrolled_at | fmt_date }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

@@ -244,6 +244,88 @@ class TestRequireAllocationPermission:
 
 
 # ---------------------------------------------------------------------------
+# @require_event_sponsor_access
+# ---------------------------------------------------------------------------
+
+def _stub_event(*, project_id=100, extra_sponsor_id=None, code='WRF-2026'):
+    e = Mock()
+    e.account_request_event_id = 7
+    e.event_code = code
+    e.project_id = project_id
+    e.extra_sponsor_user_id = extra_sponsor_id
+    return e
+
+
+class TestRequireEventSponsorAccess:
+    """Three doors, all verified here: the project (steward, tree walked),
+    the event (its one extra sponsor), and RBAC (the system permission)."""
+
+    def _call(self, mini_app, current_user, event, project, code='wrf-2026'):
+        from webapp.api.access_control import require_event_sponsor_access
+
+        with mini_app.test_request_context('/'):
+            session_mock = Mock()
+            session_mock.query.return_value.filter_by.return_value.first.return_value = event
+            session_mock.get.return_value = project
+            with patch('webapp.api.access_control.db', Mock(session=session_mock)), \
+                 patch('webapp.api.access_control.current_user', current_user):
+                @require_event_sponsor_access(Permission.MANAGE_ACCOUNT_REQUESTS)
+                def route(event, project):
+                    return ('ok', event, project)
+
+                result = route(code)
+            return result, session_mock
+
+    def test_the_project_lead_may_run_the_event(self, mini_app):
+        project = _stub_project(lead_id=42)
+        event = _stub_event()
+        (status, recv_event, recv_project), _ = self._call(
+            mini_app, _stub_user(user_id=42), event, project)
+        assert status == 'ok' and recv_event is event and recv_project is project
+
+    def test_an_ancestor_lead_may_run_it(self, mini_app):
+        parent = _stub_project(project_id=1, lead_id=42)
+        child = _stub_project(project_id=2, lead_id=999, parent=parent)
+        (status, _, _), _ = self._call(mini_app, _stub_user(user_id=42),
+                                       _stub_event(), child)
+        assert status == 'ok'
+
+    def test_the_extra_sponsor_may_run_it_without_any_role(self, mini_app):
+        project = _stub_project(lead_id=999, admin_id=998)
+        event = _stub_event(extra_sponsor_id=42)
+        (status, _, _), _ = self._call(mini_app, _stub_user(user_id=42), event, project)
+        assert status == 'ok'
+
+    def test_the_permission_holder_may_run_any_event(self, mini_app):
+        project = _stub_project(lead_id=999)
+        user = _stub_user(user_id=42, roles=['admin-testing-only'])
+        (status, _, _), _ = self._call(mini_app, user, _stub_event(), project)
+        assert status == 'ok'
+
+    def test_a_stranger_aborts_403(self, mini_app):
+        project = _stub_project(lead_id=999, admin_id=998)
+        with pytest.raises(Forbidden):
+            self._call(mini_app, _stub_user(user_id=42),
+                       _stub_event(extra_sponsor_id=41), project)
+
+    def test_an_unknown_code_aborts_404(self, mini_app):
+        with pytest.raises(NotFound):
+            self._call(mini_app, _stub_user(user_id=42), None, _stub_project())
+
+    def test_an_event_whose_project_is_gone_aborts_403(self, mini_app):
+        user = _stub_user(user_id=42, roles=['admin-testing-only'])
+        with pytest.raises(Forbidden):
+            self._call(mini_app, user, _stub_event(), None)
+
+    def test_the_code_is_looked_up_upper_cased(self, mini_app):
+        _, session_mock = self._call(mini_app, _stub_user(user_id=42),
+                                     _stub_event(), _stub_project(lead_id=42),
+                                     code='  wrf-2026 ')
+        session_mock.query.return_value.filter_by.assert_called_once_with(
+            event_code='WRF-2026')
+
+
+# ---------------------------------------------------------------------------
 # Phase 3: action_buttons macro self-gating
 # ---------------------------------------------------------------------------
 

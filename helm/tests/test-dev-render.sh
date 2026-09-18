@@ -68,6 +68,14 @@ check_dev() {
   [[ "$(env_value "$deploy" FLASK_CONFIG)" == "production" ]] || { red "FAIL: FLASK_CONFIG must be production (the auth interlock)"; return 1; }
   [[ "$(env_value "$deploy" AUTH_PROVIDER)" == "oidc" ]] || { red "FAIL: AUTH_PROVIDER must be oidc"; return 1; }
   [[ "$(env_value "$deploy" DISABLE_AUTH)" == "0" ]] || { red "FAIL: DISABLE_AUTH must be 0 on a routable host"; return 1; }
+  # The anonymous /register form is live on dev (its test bed) and dark in prod.
+  [[ "$(env_value "$deploy" ACCOUNT_REGISTRATION_ENABLED)" == "1" ]] || { red "FAIL: ACCOUNT_REGISTRATION_ENABLED must be 1 on dev"; return 1; }
+  # The project Invitations tab is live on dev and dark in prod (initial prod
+  # capability is the XRAS-mirrored Accounts queue only).
+  [[ "$(env_value "$deploy" ACCOUNT_INVITATIONS_ENABLED)" == "1" ]] || { red "FAIL: ACCOUNT_INVITATIONS_ENABLED must be 1 on dev"; return 1; }
+  # The signed-in preview of /register runs under a low site-wide POST ceiling.
+  grep -A1 'name: RATELIMIT_REGISTER_GLOBAL' <<<"$deploy" | grep -q 'value: "5 per hour; 20 per day"' \
+    || { red "FAIL: dev must pin RATELIMIT_REGISTER_GLOBAL low for the registration preview"; return 1; }
   assert_not_contains "$deploy" "name: OIDC_REDIRECT_URI" "OIDC_REDIRECT_URI must stay unset so the callback follows the request host"
   assert_not_contains "$whole" "auth/oidc/callback" "no hard-coded OIDC callback URL"
 
@@ -173,6 +181,10 @@ prod_keys=$(env_value_names "$prod_cron" '(SAM_DB|STATUS_DB)_' | tr '\n' ' ')
 prod_deploy=$(render prod -s templates/deployment.yaml)
 [[ -z "$(env_value_names "$prod_deploy" 'RATELIMIT_(AUTHED|M2M|ANON|AUTH_LOGIN)')" ]] || {
   red "FAIL: prod must not carry a RATELIMIT_ tier override (only the dev overlay raises them)"; exit 1; }
+[[ "$(env_value "$prod_deploy" ACCOUNT_REGISTRATION_ENABLED)" == "0" ]] || {
+  red "FAIL: the anonymous /register form must ship dark in prod (ACCOUNT_REGISTRATION_ENABLED=0)"; exit 1; }
+[[ "$(env_value "$prod_deploy" ACCOUNT_INVITATIONS_ENABLED)" == "0" ]] || {
+  red "FAIL: the project Invitations tab must ship dark in prod (ACCOUNT_INVITATIONS_ENABLED=0)"; exit 1; }
 
 # --- the negative loop: each prod value must be refused ----------------------
 # `set +e` around a `( set -e; ... )` subshell keeps errexit live inside it;
@@ -185,6 +197,8 @@ expect_reject() {
   [[ $rc -ne 0 ]] || { red "FAIL: the dev checks accepted: $*"; exit 1; }
 }
 expect_reject --set webapp.env.DISABLE_AUTH=1
+expect_reject --set webapp.env.ACCOUNT_REGISTRATION_ENABLED=0
+expect_reject --set webapp.env.ACCOUNT_INVITATIONS_ENABLED=0
 expect_reject --set webapp.env.FLASK_CONFIG=development
 expect_reject --set webapp.env.AUTH_PROVIDER=stub
 expect_reject --set webapp.env.NOTIFY_ENABLED=1
@@ -207,4 +221,4 @@ expect_reject --set tasks.env.SAM_TASKS_DISABLED=xras_notices
 expect_reject --set podDisruptionBudget.enabled=true
 expect_reject --set-string "webapp.env.API_KEYS_COLLECTOR=${prod_hash}"
 
-green "OK: samuel-dev renders authenticated, mute, on its own data, disjoint from prod (22 rejections proven)"
+green "OK: samuel-dev renders authenticated, mute, on its own data, disjoint from prod (24 rejections proven)"

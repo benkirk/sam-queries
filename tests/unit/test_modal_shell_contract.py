@@ -170,14 +170,26 @@ def test_page_template_targets_resolve(page):
 # confirm every page that can load the fragment ships those shells, then update
 # the pin. Same ratchet shape as tests/unit/test_template_csp_lint.py.
 HTMX_FRAGMENT_SHELL_DEPS = {
+    # The account-request queue (loaded only into admin/account_requests.html,
+    # which includes the audit_details_modal shell). The reason form swaps into
+    # the already-open modal body, so it carries no toggle of its own.
+    'dashboards/admin/fragments/account_request_reason_form_htmx.html': [
+        'auditDetailsModalBody'],
+    # The Dismiss/Reject buttons open the audit modal from the card. The projcode
+    # links now go through the shared project_link macro (fragments/project_bits.html),
+    # so #projectDetailsModal(Body) is that macro's pinned dependency, not this card's.
+    'dashboards/admin/fragments/account_requests_card.html': [
+        'auditDetailsModal', 'auditDetailsModalBody'],
+    # The Invitations tab (loaded only into admin/edit_project.html, which
+    # includes invitation_modals_htmx.html). Its openers target that shell; the
+    # forms that land in it carry no toggle of their own.
+    'project_members/fragments/invitations_tab_htmx.html': ['invitationModal'],
     'dashboards/admin/fragments/bulk_deactivate_project_directories_form_htmx.html': [
         'bulkDeactivateProjectDirectoriesFormContainer'],
     'dashboards/admin/fragments/bulk_deactivate_project_directories_preview_htmx.html': [
         'bulkDeactivateProjectDirectoriesFormContainer'],
     'dashboards/admin/fragments/contract_award_candidates_htmx.html': [
         'createContractFormContainer', 'createContractModal'],
-    'dashboards/admin/fragments/contract_card.html': [
-        'projectDetailsModalBody'],
     'dashboards/admin/fragments/contracts_table_htmx.html': [
         'contractDetailsModalBody', 'createContractFormContainer', 'createContractModal',
         'createContractSourceFormContainer', 'createContractSourceModal'],
@@ -220,10 +232,13 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # notification delivery log above, the page this one is modeled on.
     'dashboards/admin/fragments/scheduled_tasks_log.html': [
         'auditDetailsModal', 'auditDetailsModalBody'],
+    # The projcode link now renders through the project_link macro
+    # (fragments/project_bits.html), so #projectDetailsModal is that macro's
+    # cross-boundary dependency, pinned there. This card's own targets are its
+    # add / bulk-deactivate modals.
     'dashboards/admin/fragments/project_directories_card.html': [
         'addProjectDirectoryFormContainer', 'addProjectDirectoryModal',
-        'bulkDeactivateProjectDirectoriesFormContainer', 'bulkDeactivateProjectDirectoriesModal',
-        'projectDetailsModal', 'projectDetailsModalBody'],
+        'bulkDeactivateProjectDirectoriesFormContainer', 'bulkDeactivateProjectDirectoriesModal'],
     'dashboards/admin/fragments/project_linked_elements_htmx.html': [
         'contractDetailsModalBody', 'editProjectDirectoryFormContainer',
         'editProjectDirectoryModal'],
@@ -236,14 +251,14 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'createResourceFormContainer', 'createResourceModal',
         'createResourceTypeFormContainer', 'createResourceTypeModal',
         'queueCleanupFormContainer', 'queueCleanupModal'],
+    # adjustments/transactions: projcode + username now render through the
+    # project_link / user_link macros, so #projectDetailsModal / #userDetailsModal
+    # are pinned on those macro files (project_bits.html / user_rows.html). The
+    # row-click audit modal is still targeted inline here.
     'dashboards/allocations/partials/adjustments_table.html': [
-        'auditDetailsModal', 'auditDetailsModalBody',
-        'projectDetailsModal', 'projectDetailsModalBody'],
-    'dashboards/allocations/partials/project_table.html': [
-        'projectDetailsModal', 'projectDetailsModalBody'],
+        'auditDetailsModal', 'auditDetailsModalBody'],
     'dashboards/allocations/partials/transactions_table.html': [
-        'auditDetailsModal', 'auditDetailsModalBody',
-        'projectDetailsModal', 'projectDetailsModalBody'],
+        'auditDetailsModal', 'auditDetailsModalBody'],
     # The XRAS trio loads only into dashboards/allocations/xras.html, which
     # includes partials/audit_details_modal.html itself and inherits
     # #projectDetailsModal from base_allocations.html — same arrangement as the
@@ -260,8 +275,7 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # notify preview, the dismiss form and the activation history. Same shell,
     # same single host page (xras.html includes partials/audit_details_modal.html).
     'dashboards/allocations/partials/xras_activity_card.html': [
-        'auditDetailsModal', 'auditDetailsModalBody',
-        'projectDetailsModal', 'projectDetailsModalBody'],
+        'auditDetailsModal', 'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_pending_event_form.html': [
         'auditDetailsModalBody'],
     # The Remediations family. Every one of these is reached only from
@@ -345,13 +359,23 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_pending_history_modal.html': [
         'auditDetailsModalBody'],
+    # xras_table's projcode/result links now render through project_link
+    # (project_bits.html); the request-detail button targets the audit modal inline.
     'dashboards/allocations/partials/xras_table.html': [
-        'auditDetailsModal', 'auditDetailsModalBody',
-        'projectDetailsModal', 'projectDetailsModalBody'],
+        'auditDetailsModal', 'auditDetailsModalBody'],
     'dashboards/fragments/contract_bits.html': [
         'nsfProgramContractsModalBody', 'userDetailsModalBody'],
+    # The project_link macro's shared target — every page whose fragments call
+    # project_link ships #projectDetailsModal (all extend a base_* that includes
+    # the shell; notifications.html includes it directly). Only the body id is
+    # listed: the macro's own data-modal-id="projectDetailsModal" reads to the
+    # id-scanner as defining the shell, so it nets out (same as contract_bits).
+    'dashboards/fragments/project_bits.html': [
+        'projectDetailsModalBody'],
+    # user_link uses data-action="show-user-details" (no data-modal-id) plus a
+    # data-bs-toggle opener, so both the shell and its body are real deps.
     'dashboards/fragments/user_rows.html': [
-        'userDetailsModalBody'],
+        'userDetailsModal', 'userDetailsModalBody'],
     'dashboards/shared/project_tree.html': [
         'allocateDownModal', 'editAllocationModal', 'exchangeAllocationModal'],
     'dashboards/user/partials/jobs_histogram.html': [
@@ -414,6 +438,7 @@ PAGES_WITH_PROJECT_MODAL = {
     '/user/info': 'dashboards/user/info.html',
     '/user/jobs': 'dashboards/user/my_jobs.html',
     '/user/data': 'dashboards/user/my_data.html',
+    '/user/events': 'dashboards/user/my_events.html',
     '/admin/projects': 'dashboards/admin/projects.html',
     '/admin/projects/directories': 'dashboards/admin/projects_directories.html',
     '/admin/organizations': 'dashboards/admin/organizations.html',
@@ -422,6 +447,8 @@ PAGES_WITH_PROJECT_MODAL = {
     '/admin/facilities': 'dashboards/admin/facilities.html',
     '/admin/contracts': 'dashboards/admin/contracts.html',
     '/admin/configuration': 'dashboards/admin/configuration.html',
+    '/admin/htmx/notifications': 'dashboards/admin/notifications.html',
+    '/admin/account-requests': 'dashboards/admin/account_requests.html',
     '/admin/users-groups': 'dashboards/admin/users_groups.html',
     '/allocations/projects': 'dashboards/allocations/projects.html',
     '/allocations/transactions': 'dashboards/allocations/transactions.html',

@@ -1,0 +1,76 @@
+{% extends "_email_base.html" %}
+
+{% block content %}
+    <div class="callout {% if total %}note{% else %}good{% endif %}">
+        <strong>NCAR HPC account requests waiting on NUSD</strong> — {{ total }} open
+        <p>{{ new_count }} new since the last digest, {{ waiting_count }} still waiting,
+            oldest {{ oldest_days }} days. As of {{ occurrence }}.</p>
+    </div>
+
+    {% if by_purpose %}
+    <table class="data">
+        <tr><th>Purpose</th><th>Open</th></tr>
+        {% for p in by_purpose %}
+        <tr><td>{{ p.purpose }}</td><td class="num">{{ p.count }}</td></tr>
+        {% endfor %}
+    </table>
+    {% endif %}
+
+    {% for e in events %}
+    <h3>{{ e.event_code }} — {{ e.event_name }} ({{ e.project_code }})</h3>
+    <p>{{ e.count }} account(s) needed by <strong>{{ e.deadline }}</strong></p>
+    <table class="data">
+        <tr><th>Name</th><th>Email</th><th>Institution</th><th>Wants</th>
+            <th>Sponsor</th><th>Waiting</th><th>Status</th></tr>
+        {% for r in rows if r.event_code == e.event_code %}
+        <tr>
+            <td>{{ r.name }}</td>
+            <td>{{ r.email }}</td>
+            <td>{{ r.organization }}</td>
+            <td>{{ r.desired_username }}</td>
+            <td>{{ r.sponsor }}</td>
+            <td class="num">{{ r.waiting_days }} d</td>
+            <td>{% if r.assignee %}claimed by {{ r.assignee }}{% else %}{{ r.state }}{% endif %}</td>
+        </tr>
+        {% if r.note %}
+        <tr><td></td><td colspan="6"><em>{{ r.note }}</em></td></tr>
+        {% endif %}
+        {% endfor %}
+    </table>
+    {% endfor %}
+
+    {% set loose = rows | rejectattr('event_code') | list %}
+    {% if loose %}
+    <h3>Other requests</h3>
+    <table class="data">
+        <tr><th>Name</th><th>Email</th><th>Institution</th><th>Purpose</th>
+            <th>Project</th><th>Sponsor</th><th>Waiting</th><th>Status</th></tr>
+        {% for r in loose %}
+        <tr>
+            <td>{{ r.name }}{% if r.desired_username %}<br><small>wants {{ r.desired_username }}</small>{% endif %}</td>
+            <td>{{ r.email }}</td>
+            <td>{{ r.organization }}</td>
+            <td>{{ r.purpose }}</td>
+            <td>{{ r.project_code }}</td>
+            <td>{{ r.sponsor }}</td>
+            <td class="num">{{ r.waiting_days }} d</td>
+            <td>{% if r.assignee %}claimed by {{ r.assignee }}{% else %}{{ r.state }}{% endif %}</td>
+        </tr>
+        {% if r.note %}
+        <tr><td></td><td colspan="7"><em>{{ r.note }}</em></td></tr>
+        {% endif %}
+        {% endfor %}
+    </table>
+    {% endif %}
+
+    {% if queue_url %}
+    <p><a href="{{ queue_url }}">Work the queue</a> — claim rows and mark them done.</p>
+    {% endif %}
+{% endblock %}
+
+{% block footer %}
+        <p>Automated digest from the NSF NCAR Systems Accounting Manager. SAM does
+            not create accounts; this is the list of people waiting for one. A
+            request leaves the list by itself once the account exists in the
+            directory.</p>
+{% endblock %}

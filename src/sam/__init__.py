@@ -182,6 +182,13 @@ from .summaries.allocation_state import AccountAllocationState
 
 # 9. Integration and security
 # XRAS table models (actual tables, not views)
+from .core.account_requests import (
+    AccountRequest,
+    AccountRequestEvent,
+    EventEnrollment,
+    ACCOUNT_REQUEST_STATES,
+    ACCOUNT_REQUEST_PURPOSES,
+)
 from .integration.xras import (
     XrasResourceRepositoryKeyResource,
     XrasOpportunityAllocationType,
@@ -279,6 +286,9 @@ __all__ = [
     'DavChargeSummary', 'DavChargeSummaryStatus',
     'DiskChargeSummary', 'DiskChargeSummaryStatus',
     'ArchiveChargeSummary', 'ArchiveChargeSummaryStatus',
+    # Account requests
+    'AccountRequest', 'AccountRequestEvent', 'EventEnrollment',
+    'ACCOUNT_REQUEST_STATES', 'ACCOUNT_REQUEST_PURPOSES',
     # Integration
     'XrasResourceRepositoryKeyResource', 'XrasOpportunityAllocationType',
     'SOURCE_MANUAL', 'SOURCE_SWEEP',

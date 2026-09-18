@@ -3,6 +3,8 @@
    matches the parent QueueStatus rollup grain so per-row values are
    directly comparable to the totals shown in the Current Status card
    above. #}
+{% from 'dashboards/fragments/project_bits.html' import project_link with context %}
+{% from 'dashboards/fragments/user_rows.html' import user_link with context %}
 {% if user_proj_rows %}
 {# Suppress GPU columns when this snapshot has no GPU activity at all —
    purely data-driven from the rows themselves (mirrors the chart-side
@@ -35,8 +37,8 @@
     <tbody>
         {% for r in user_proj_rows %}
         <tr>
-            <td data-sort-value="{{ r.username }}"><code>{{ r.username }}</code></td>
-            <td data-sort-value="{{ r.project_code }}"><code>{{ r.project_code }}</code></td>
+            <td data-sort-value="{{ r.username }}">{{ user_link(r.username, can_view_users, compact=True) }}</td>
+            <td data-sort-value="{{ r.project_code }}">{{ project_link(r.project_code, can_view_projects, compact=True) }}</td>
             <td class="text-end" data-sort-value="{{ r.running_jobs }}">{{ r.running_jobs | fmt_number }}</td>
             <td class="text-end" data-sort-value="{{ r.pending_jobs }}">{{ r.pending_jobs | fmt_number }}</td>
             <td class="text-end" data-sort-value="{{ r.held_jobs }}">{{ r.held_jobs | fmt_number }}</td>
