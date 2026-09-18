@@ -9,6 +9,8 @@ Import this package (not the modules individually) before reading
 ``scheduling.registry.TASKS``; ``cli.tasks`` and any future daemon both do.
 """
 
+from scheduling.tasks import account_queue_digest       # noqa: F401
+from scheduling.tasks import account_requests_reconcile  # noqa: F401
 from scheduling.tasks import cleanup_status       # noqa: F401
 from scheduling.tasks import deactivate_expired   # noqa: F401
 from scheduling.tasks import expiration_notices   # noqa: F401
@@ -16,5 +18,6 @@ from scheduling.tasks import refresh_allocation_state  # noqa: F401
 from scheduling.tasks import xras_notices         # noqa: F401
 from scheduling.tasks import xras_sweep           # noqa: F401
 
-__all__ = ['cleanup_status', 'deactivate_expired', 'expiration_notices',
+__all__ = ['account_queue_digest', 'account_requests_reconcile',
+           'cleanup_status', 'deactivate_expired', 'expiration_notices',
            'refresh_allocation_state', 'xras_notices', 'xras_sweep']

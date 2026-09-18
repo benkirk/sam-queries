@@ -33,6 +33,8 @@ webapp:
     FLASK_CONFIG: "production"            # ProductionConfig.validate() is the auth interlock
     AUTH_PROVIDER: "oidc"
     DISABLE_AUTH: "0"
+    ACCOUNT_REGISTRATION_ENABLED: "1"     # the anonymous /register form, live here and dark in prod
+    ACCOUNT_INVITATIONS_ENABLED: "1"      # the project Invitations tab, live here and dark in prod
     SAM_DB_DRIVER: "postgresql"
     SAM_DB_SERVER: "csg-postgres.k8s.ucar.edu"
     SAM_DB_PORT: "5432"
@@ -54,6 +56,9 @@ webapp:
     RATELIMIT_AUTHED: "100000 per minute"
     RATELIMIT_M2M: "100000 per minute"
     RATELIMIT_ANON: "100000 per minute"
+    # The registration form is a signed-in preview here (ACCOUNT_REGISTRATION_LOGIN_REQUIRED
+    # defaults on): a low site-wide ceiling on its POST while it is being shown around.
+    RATELIMIT_REGISTER_GLOBAL: "5 per hour; 20 per day"
   samDbCredentials:
     secretPath: csg/sam-dev-pg            # the sam_dev owner role (SAM_DEV_PG_USER)
   oidcCredentials:
@@ -65,4 +70,4 @@ tasks:
   name: samuel-dev-tasks
   env:
     SAM_API_BASE: "https://samuel-dev.k8s.ucar.edu"
-    SAM_TASKS_DISABLED: "expiration_notices,xras_notices,xras_sweep"
+    SAM_TASKS_DISABLED: "expiration_notices,xras_notices,xras_sweep,account_requests_reconcile,account_queue_digest"

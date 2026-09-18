@@ -1,0 +1,49 @@
+{% extends 'dashboards/base.html' %}
+{#
+  The signed-in self-enroll shortcut for /register/<event_code>. A logged-in
+  visitor already has an account, so the anonymous creation form is out of
+  context: enrolling just adds their account to the event's project.
+  Context: event, project | None, error | None
+#}
+{% block title %}Register for {{ event.name }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-12 col-lg-6">
+    <h2 class="mb-1"><i class="fa-solid fa-user-check"></i> Register for {{ event.name }}</h2>
+    <p class="text-muted">
+        <span class="font-monospace">{{ event.event_code }}</span> ·
+        accounts needed by {{ event.accounts_needed_by | fmt_date }}.
+    </p>
+    {% if event.instructions %}
+    <p class="text-muted" style="white-space: pre-wrap;">{{ event.instructions }}</p>
+    {% endif %}
+
+    {% if error %}
+    <div class="alert alert-danger">
+        <i class="fa-solid fa-circle-exclamation"></i> {{ error }}
+    </div>
+    {% endif %}
+
+    <p>
+        You are signed in as <strong>{{ current_user.display_name }}</strong>
+        ({{ current_user.primary_email }}). Enrolling adds your existing account
+        to {% if project %}<strong>{{ project.projcode }}</strong>{% else %}the
+        event's project{% endif %}, so you can use its resources — no new account
+        request needed.
+    </p>
+
+    <form method="post" action="{{ url_for('register.self_enroll', event_code=event.event_code) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-primary">
+            <i class="fa-solid fa-user-check"></i> Enroll me in {{ event.name }}
+        </button>
+    </form>
+
+    <p class="text-muted small mt-3">
+        Registering someone else? Use the Invitations tab of Manage Project
+        (requires permission on the project).
+    </p>
+</div>
+</div>
+{% endblock %}

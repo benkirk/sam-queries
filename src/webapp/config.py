@@ -54,6 +54,38 @@ class SAMWebappConfig(SAMConfig):
     # serves it — same idiom and posture as FLASK_ADMIN_ENABLED above.
     COMPONENT_GALLERY_ENABLED = os.getenv('COMPONENT_GALLERY_ENABLED', '1').lower() in ('1', 'true', 'yes')
 
+    # The anonymous HPC account-registration form (/register). When off, the
+    # blueprint is not mounted and the URL 404s. ProductionConfig flips the
+    # default OFF: it ships dark and is switched on per deployment (the k8s
+    # dev overlay). Same idiom as FLASK_ADMIN_ENABLED. The Admin -> Accounts
+    # queue is not behind any flag; the project Invitations tab is gated by
+    # ACCOUNT_INVITATIONS_ENABLED (below), separately.
+    ACCOUNT_REGISTRATION_ENABLED = os.getenv('ACCOUNT_REGISTRATION_ENABLED', '1').lower() in ('1', 'true', 'yes')
+    # The internal invitation workflows -- the project Invitations tab: invite
+    # a person, create/edit events, roster paste. Gates the tab and its routes
+    # (a 404 when off, per _invitations_enabled in dashboards/project_invites.py).
+    # ProductionConfig flips the default OFF so the initial prod capability is
+    # XRAS mirroring only (the sweep-fed Accounts queue); the Accounts queue and
+    # the XRAS Pending-Users card stay live regardless.
+    ACCOUNT_INVITATIONS_ENABLED = os.getenv('ACCOUNT_INVITATIONS_ENABLED', '1').lower() in ('1', 'true', 'yes')
+    # How long a verification link and code stay valid.
+    ACCOUNT_VERIFY_TTL_HOURS = int(os.getenv('ACCOUNT_VERIFY_TTL_HOURS', 48))
+    # Limit /register to signed-in users (a redirect to login, and a preview
+    # banner on the form). ON by default: the form is shared with authenticated
+    # testers on dev before the human-challenge gate exists; switch it off per
+    # deployment to open the form to the public.
+    ACCOUNT_REGISTRATION_LOGIN_REQUIRED = os.getenv('ACCOUNT_REGISTRATION_LOGIN_REQUIRED', '1').lower() in ('1', 'true', 'yes')
+    # Per-address cap on the registration POST, on top of the per-IP login
+    # tier: nobody can flood a stranger's inbox with verification mail.
+    RATELIMIT_REGISTER_EMAIL = os.getenv('RATELIMIT_REGISTER_EMAIL', '3 per hour; 5 per day')
+    # Global ceiling on the registration POST across ALL addresses and IPs
+    # (a fixed limiter key) -- the relay blast-radius bound. Deliberately low:
+    # the per-IP tier is blind until the platform forwards the client IP, so
+    # this is the only cap on breadth abuse (one attacker, many victims). Kept
+    # low so enabling the form cannot open an unbounded mailer; raise it by env
+    # once the human-challenge gate lands (docs/plans/ACCOUNT_REGISTRATION.md 6).
+    RATELIMIT_REGISTER_GLOBAL = os.getenv('RATELIMIT_REGISTER_GLOBAL', '10 per hour; 30 per day')
+
     # Create Project workflow. When off, the modal still renders with all inputs
     # editable but its submit button is replaced with a disabled indicator, and
     # the create POST route 403s. Lets ops temporarily freeze project creation.
@@ -299,9 +331,29 @@ class ProductionConfig(SAMWebappConfig):
     # on the public deploy.
     COMPONENT_GALLERY_ENABLED = os.getenv('COMPONENT_GALLERY_ENABLED', '0').lower() in ('1', 'true', 'yes')
 
+    # Default OFF in production -- the anonymous registration form ships dark
+    # and is enabled per deployment (docs/plans/ACCOUNT_REGISTRATION.md).
+    ACCOUNT_REGISTRATION_ENABLED = os.getenv('ACCOUNT_REGISTRATION_ENABLED', '0').lower() in ('1', 'true', 'yes')
+    # Default OFF in production -- the invitation workflows ship dark so the
+    # initial prod capability is the XRAS-mirrored queue only; enabled per
+    # deployment, like ACCOUNT_REGISTRATION_ENABLED.
+    ACCOUNT_INVITATIONS_ENABLED = os.getenv('ACCOUNT_INVITATIONS_ENABLED', '0').lower() in ('1', 'true', 'yes')
+
     @classmethod
     def validate(cls):
         super().validate()
+        # A registration form whose verification mail is switched off takes
+        # requests nobody can confirm; an operator must then vouch for each.
+        # Legal (that is the k8s dev posture), but never silent.
+        if (cls.ACCOUNT_REGISTRATION_ENABLED
+                and os.getenv('NOTIFY_ENABLED', '0').lower() not in ('1', 'true', 'yes')):
+            import warnings
+            warnings.warn(
+                "ACCOUNT_REGISTRATION_ENABLED is on but NOTIFY_ENABLED is not: "
+                "public registrations cannot verify their address by mail and "
+                "will wait for an operator to mark them verified.",
+                stacklevel=2,
+            )
         key = os.getenv('FLASK_SECRET_KEY', '')
         if not key:
             raise EnvironmentError(
@@ -358,6 +410,8 @@ class TestingConfig(SAMWebappConfig):
     DEBUG = False
     SESSION_COOKIE_SECURE = False
     WTF_CSRF_ENABLED = False
+    # The public-form tests exercise the anonymous path; the gate has its own.
+    ACCOUNT_REGISTRATION_LOGIN_REQUIRED = False
 
     # Low-cost bcrypt hash for fast test execution (rounds=4)
     # Key value: 'test-api-key'

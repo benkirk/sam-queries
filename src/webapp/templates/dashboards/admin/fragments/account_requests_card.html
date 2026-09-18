@@ -1,0 +1,280 @@
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
+{% from 'dashboards/fragments/project_bits.html' import project_link %}
+{#
+  The account-request queue card.
+
+  Context:
+    groups          [{event, project_code, rows[]}] deadline-first, loose rows last
+    total           rows in view;  scoped_total  rows before search and chips
+    counts          {open, claimed, ready, failed} over the QUEUE (whatever the view)
+    unverified      public-form rows that never verified (never in the queue)
+    show_all        everything (every state) vs the queue
+    facet_values / selected / origin_labels / readiness_labels
+    sort / sortable_columns / form_id / target_id / fragment_url
+    digest_recipient  NOTIFY_ACCOUNT_QUEUE_TO, or ''
+
+  Every row action answers with an HX-Trigger (`refreshAccountQueue`); the
+  two that take a reason open the shared #auditDetailsModal from the card,
+  where the modal is still closed, so data-bs-toggle is right here.
+#}
+<div class="card mb-3">
+    <div class="card-header d-flex align-items-center flex-wrap gap-2">
+        <strong>Requests</strong>
+        <span class="badge bg-secondary">{{ total | fmt_number }} {{ 'request(s)' if show_all else 'in queue' }}</span>
+        {% if counts.ready %}
+        <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle"
+              title="The account now exists in the directory. Reconcile stamps these and enrolls them.">
+            {{ counts.ready | fmt_number }} ready to reconcile
+        </span>
+        {% endif %}
+        {% if counts.failed %}
+        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle"
+              title="The account exists but the project enrollment failed. The reason is on the row; Reconcile retries.">
+            {{ counts.failed | fmt_number }} enrollment failure(s)
+        </span>
+        {% endif %}
+        {% if unverified %}
+        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+              title="Registered on the public form and never confirmed the address. Not in the queue; purged after the horizon. Mark verified to vouch for one.">
+            {{ unverified | fmt_number }} unverified
+        </span>
+        {% endif %}
+        <div class="btn-group btn-group-sm ms-auto">
+            <button type="button" class="btn btn-outline-secondary"
+                    title="Check every open request against the directory now: stamp the ones whose account exists and enroll them. The hourly task does the same."
+                    hx-post="{{ url_for('admin_dashboard.account_requests_reconcile') }}"
+                    hx-swap="none"><i class="fa-solid fa-rotate me-1"></i>Reconcile</button>
+            <button type="button" class="btn btn-outline-primary"
+                    {% if not digest_recipient %}disabled title="No digest recipient is configured (NOTIFY_ACCOUNT_QUEUE_TO)."{% else %}
+                    title="Mail the open queue to {{ digest_recipient }} now. Once per day; the weekly task sends the same digest."{% endif %}
+                    hx-post="{{ url_for('admin_dashboard.account_requests_digest') }}"
+                    hx-confirm="Send the open queue to {{ digest_recipient or 'NUSD' }} now?"
+                    hx-swap="none"><i class="fa-solid fa-paper-plane me-1"></i>Send to NUSD</button>
+        </div>
+    </div>
+
+    <div class="card-body">
+        <div class="facet-grid mb-3">
+            <div class="facet-grid-label">View</div>
+            <div class="facet-grid-values">
+                <div class="form-check form-switch small mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="account-requests-show-all" name="show_all" value="1"
+                           form="{{ form_id }}" {% if show_all %}checked{% endif %}
+                           hx-get="{{ fragment_url }}"
+                           hx-target="#{{ target_id }}"
+                           hx-swap="innerHTML"
+                           hx-trigger="change"
+                           hx-include="#{{ form_id }}">
+                    <label class="form-check-label" for="account-requests-show-all">
+                        Show everything — dismissed, rejected, fulfilled and unverified rows too
+                    </label>
+                </div>
+            </div>
+            <div class="facet-grid-label">Search</div>
+            <div class="facet-grid-values">
+                <input type="search" class="form-control form-control-sm"
+                       id="account-requests-search" name="search"
+                       form="{{ form_id }}" value="{{ search or '' }}"
+                       autocomplete="off" style="width: 24rem; max-width: 100%;"
+                       placeholder="Name, email, institution, project, event or sponsor"
+                       hx-get="{{ fragment_url }}"
+                       hx-target="#{{ target_id }}"
+                       hx-swap="innerHTML"
+                       hx-trigger="input changed delay:300ms, search"
+                       hx-include="#{{ form_id }}">
+            </div>
+            {{ facet_row('Status', facet_values.state, form_id, 'state', active=selected.state) }}
+            {{ facet_row('Purpose', facet_values.purpose, form_id, 'purpose', active=selected.purpose) }}
+            {{ facet_row('Origin', facet_values.origin, form_id, 'origin', active=selected.origin) }}
+            {{ facet_row('Readiness', facet_values.readiness, form_id, 'readiness', active=selected.readiness) }}
+            {{ facet_row('Event', facet_values.event, form_id, 'event', active=selected.event) }}
+        </div>
+
+        {% if not groups %}
+        <div class="text-muted mb-0">
+            {% if scoped_total %}
+            {{ scoped_total | fmt_number }} request(s) are hidden by the search or chips.
+            {% elif show_all %}
+            No account requests have been recorded yet.
+            {% else %}
+            <strong>The queue is empty.</strong> Nobody is waiting for an account.
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-subtle">
+                <tr>
+                    <th style="width:1.5rem;"></th>
+                    <th>{{ sort_header('person', 'Person') }}</th>
+                    <th>{{ sort_header('email', 'Email') }}</th>
+                    <th style="width:8rem;">Purpose</th>
+                    <th style="width:9rem;">Project</th>
+                    <th style="width:10rem;">Readiness</th>
+                    <th class="text-nowrap" style="width:6rem;">{{ sort_header('waiting', 'Waiting') }}</th>
+                    <th style="width:9rem;">{{ sort_header('state', 'Status') }}</th>
+                    <th class="text-end" style="width:9rem;">Actions</th>
+                </tr>
+            </thead>
+            {% for group in groups %}
+            {% set gid = 'arq-group-' ~ (group.event.account_request_event_id if group.event else 'loose') %}
+            <tbody>
+                <tr class="table-subtle fw-semibold">
+                    <td colspan="9">
+                        <span class="cursor-pointer" {{ collapse_toggle(gid, expanded=true) }}><i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i></span>
+                        {% if group.event %}
+                        <span class="font-monospace">{{ group.event.event_code }}</span>
+                        — {{ group.event.name }}
+                        <span class="text-muted fw-normal">
+                            ({% if group.project_code %}{{ project_link(group.project_code, can_view_projects, compact=True) }}{% else %}?{% endif %}; accounts needed by
+                            <strong>{{ group.event.accounts_needed_by | fmt_date }}</strong>{% if not group.event.active %}; closed{% endif %})
+                        </span>
+                        {% else %}
+                        {# Event-less rows: all project-scoped -> invitations; a
+                           standalone/sweep row in the bucket keeps it generic. #}
+                        {% if group.rows | selectattr('project_code') | list | length == group.rows | length %}
+                        Project Invitations
+                        {% else %}
+                        Other requests
+                        {% endif %}
+                        {% endif %}
+                        <span class="cursor-pointer" {{ collapse_toggle(gid, expanded=true) }}><span class="badge bg-secondary ms-1">{{ group.rows | length }}</span></span>
+                    </td>
+                </tr>
+            </tbody>
+            <tbody id="{{ gid }}" class="collapse show">
+                {% for v in group.rows %}
+                {% set r = v.row %}
+                {% set body_id = 'arq-' ~ v.id %}
+                <tr{% if r.state in ('dismissed', 'rejected') %} class="text-muted"{% endif %}>
+                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}><i class="fa-solid fa-chevron-right small text-muted collapse-icon"></i></td>
+                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
+                        {{ v.name }}
+                        {% if r.desired_username %}<br><small class="text-muted">wants <span class="font-monospace">{{ r.desired_username }}</span></small>{% endif %}
+                    </td>
+                    <td class="cursor-pointer text-truncate" style="max-width:0;" title="{{ v.email }}" {{ collapse_toggle(body_id) }}>{{ v.email }}</td>
+                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
+                        <span class="badge bg-body-secondary text-body-secondary border">{{ v.purpose }}</span>
+                        <br><small class="text-muted">{{ origin_labels[v.origin] }}</small>
+                    </td>
+                    {# Not a collapse trigger: the modal opener inside would toggle the row too. #}
+                    <td>
+                        {% if v.project_code %}{{ project_link(v.project_code, can_view_projects, compact=True) }}{% else %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
+                        {% if v.readiness == 'ready' %}
+                        <span class="badge bg-success" title="A SAM account {{ v.resolution.username }} holds this address. Reconcile stamps and enrolls it.">Account exists</span>
+                        {% elif v.readiness == 'fulfilled' %}
+                        <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle" title="Fulfilled {{ r.fulfilled_at | fmt_date }}">Fulfilled</span>
+                        {% elif v.readiness == 'failed' %}
+                        <span class="badge bg-danger" title="{{ r.fulfill_error }}">Enrollment failed</span>
+                        {% elif v.readiness == 'inactive' %}
+                        <span class="badge bg-warning text-dark" title="SAM account {{ v.resolution.username }} holds this address but is inactive. Reactivation is NUSD's.">Account inactive</span>
+                        {% elif v.readiness == 'ambiguous' %}
+                        <span class="badge bg-dark" title="More than one active SAM account holds this address. Nothing is stamped automatically.">Ambiguous</span>
+                        {% else %}
+                        <span class="badge bg-secondary">No account yet</span>
+                        {% endif %}
+                        {% if not v.verified %}<br><small class="text-warning-emphasis">unverified</small>{% endif %}
+                    </td>
+                    <td class="cursor-pointer text-nowrap text-muted" title="{{ r.creation_time | fmt_date }}" {{ collapse_toggle(body_id) }}>{{ v.waiting_days }} d</td>
+                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
+                        {% if r.state == 'claimed' %}
+                        <span class="badge bg-info text-dark" title="Claimed by {{ r.assignee }}">claimed · {{ r.assignee }}</span>
+                        {% elif r.state == 'submitted' %}
+                        <span class="badge bg-body-secondary text-body-secondary border">open</span>
+                        {% else %}
+                        <span class="badge bg-secondary" title="{{ r.closed_reason }} — {{ r.closed_by }}, {{ r.closed_at | fmt_date }}">{{ r.state }}</span>
+                        {% endif %}
+                        {% if r.requested_at %}<br><small class="text-muted" title="Included in a digest to NUSD">sent {{ r.requested_at | fmt_date }}</small>{% endif %}
+                    </td>
+                    <td class="text-end text-nowrap">
+                        <div class="btn-group btn-group-sm flex-nowrap">
+                            {% if r.state in ('submitted', 'claimed') %}
+                            {% if not v.verified %}
+                            <button type="button" class="btn btn-outline-warning"
+                                    title="Mark verified — vouch for this address; the request enters the queue" aria-label="Mark verified"
+                                    hx-post="{{ url_for('admin_dashboard.account_request_verify', request_id=v.id) }}"
+                                    hx-confirm="Vouch for {{ v.email }} without the mail round trip?"
+                                    hx-swap="none"><i class="fa-solid fa-envelope-circle-check"></i></button>
+                            {% endif %}
+                            {% if r.state == 'claimed' %}
+                            <button type="button" class="btn btn-outline-secondary"
+                                    title="Release — take your claim off this request" aria-label="Release"
+                                    hx-post="{{ url_for('admin_dashboard.account_request_unclaim', request_id=v.id) }}"
+                                    hx-swap="none"><i class="fa-solid fa-hand-back-fist"></i></button>
+                            {% else %}
+                            <button type="button" class="btn btn-outline-primary"
+                                    title="Claim — tell other operators you are working this one" aria-label="Claim"
+                                    hx-post="{{ url_for('admin_dashboard.account_request_claim', request_id=v.id) }}"
+                                    hx-swap="none"><i class="fa-solid fa-hand"></i></button>
+                            {% endif %}
+                            <button type="button" class="btn btn-outline-secondary"
+                                    title="Dismiss — a duplicate, or someone who already has an account" aria-label="Dismiss"
+                                    hx-get="{{ url_for('admin_dashboard.account_request_dismiss_form', request_id=v.id) }}"
+                                    hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                                    data-bs-toggle="modal" data-bs-target="#auditDetailsModal"><i class="fa-solid fa-eye-slash"></i></button>
+                            <button type="button" class="btn btn-outline-danger"
+                                    title="Reject — refuse the request; optionally email the reason to the requester" aria-label="Reject"
+                                    hx-get="{{ url_for('admin_dashboard.account_request_reject_form', request_id=v.id) }}"
+                                    hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                                    data-bs-toggle="modal" data-bs-target="#auditDetailsModal"><i class="fa-solid fa-ban"></i></button>
+                            {% else %}
+                            <button type="button" class="btn btn-outline-secondary"
+                                    title="Reopen — put this request back in the queue" aria-label="Reopen"
+                                    hx-post="{{ url_for('admin_dashboard.account_request_reopen', request_id=v.id) }}"
+                                    hx-swap="none"><i class="fa-solid fa-rotate-left"></i></button>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                <tr class="collapse" id="{{ body_id }}">
+                    <td></td>
+                    <td colspan="8" class="small">
+                        <dl class="row mb-0">
+                            <dt class="col-sm-3">Institution</dt><dd class="col-sm-9">{{ r.organization or '—' }}{% if r.academic_status %} · {{ r.academic_status }}{% endif %}{% if r.residence_country %} · {{ r.residence_country }}{% endif %}</dd>
+                            {% if r.phone or r.orcid %}
+                            <dt class="col-sm-3">Contact</dt><dd class="col-sm-9">{{ r.phone or '' }}{% if r.orcid %} · ORCID {{ r.orcid }}{% endif %}</dd>
+                            {% endif %}
+                            <dt class="col-sm-3">Requested</dt>
+                            <dd class="col-sm-9">
+                                {{ r.creation_time | fmt_date }} via {{ origin_labels[v.origin] }}
+                                {%- if v.sponsor %} by {{ v.sponsor.display_name }} (<span class="font-monospace">{{ v.sponsor.username }}</span>){% endif %}
+                                {%- if v.event %}; event <span class="font-monospace">{{ v.event.event_code }}</span>{% endif %}
+                                {%- if v.verified %}; verified {{ r.verified_at | fmt_date }}{% if r.verified_by %} by {{ r.verified_by }}{% endif %}{% else %}; <span class="text-warning-emphasis">address not verified</span>{% endif %}
+                                {%- if r.source_ip %}; from <span class="font-monospace">{{ r.source_ip }}</span>{% if (r.verify_sent_count or 0) > 1 %}, {{ r.verify_sent_count }} verification mails{% endif %}{% endif %}
+                            </dd>
+                            {% if r.xras_username %}
+                            <dt class="col-sm-3">XRAS placeholder</dt><dd class="col-sm-9"><span class="font-monospace">{{ r.xras_username }}</span></dd>
+                            {% endif %}
+                            {% if v.resolution and v.resolution.hint %}
+                            <dt class="col-sm-3">Username hint</dt>
+                            <dd class="col-sm-9">A SAM account <span class="font-monospace">{{ v.resolution.hint }}</span> already exists with the username asked for. Shown only; the email is what matches.</dd>
+                            {% endif %}
+                            {% if r.comment or r.purpose_note %}
+                            <dt class="col-sm-3">Note</dt><dd class="col-sm-9" style="white-space: pre-wrap;">{{ r.comment or r.purpose_note }}</dd>
+                            {% endif %}
+                            {% if r.fulfill_error %}
+                            <dt class="col-sm-3 text-danger">Enrollment</dt><dd class="col-sm-9 text-danger">{{ r.fulfill_error }} — Reconcile retries once fixed.</dd>
+                            {% endif %}
+                            {% if r.user_id %}
+                            <dt class="col-sm-3">Fulfilled</dt><dd class="col-sm-9">{{ r.fulfilled_at | fmt_date }} — user id {{ r.user_id }}{% if r.upid %}, UPID {{ r.upid }}{% endif %}</dd>
+                            {% endif %}
+                            {% if r.closed_at %}
+                            <dt class="col-sm-3">{{ r.state | capitalize }}</dt>
+                            <dd class="col-sm-9">{{ r.closed_reason }} — {{ r.closed_by }}, {{ r.closed_at | fmt_date }}{% if r.closure_notified_at %}; requester emailed {{ r.closure_notified_at | fmt_date }}{% endif %}</dd>
+                            {% endif %}
+                        </dl>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            {% endfor %}
+        </table>
+        </div>
+        {% endif %}
+    </div>
+</div>

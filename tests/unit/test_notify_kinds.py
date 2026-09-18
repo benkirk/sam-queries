@@ -20,13 +20,17 @@ class TestTheRegistry:
             assert kinds_in_family(key), key
 
     def test_families_is_the_sorted_registry(self):
-        assert families() == tuple(sorted(FAMILIES)) == ('expiration', 'task', 'xras')
+        assert families() == tuple(sorted(FAMILIES)) == (
+            'account', 'expiration', 'task', 'xras')
 
-    def test_only_the_task_family_is_not_about_a_project(self):
-        assert {k for k, f in FAMILIES.items() if not f.about_project} == {'task'}
+    def test_the_task_and_account_families_are_not_about_a_project(self):
+        # A task summary is about the system; an account request has no
+        # project until it is fulfilled, and the digest is about a queue.
+        assert {k for k, f in FAMILIES.items() if not f.about_project} == {
+            'account', 'task'}
 
     def test_an_unknown_family_raises_with_the_vocabulary(self):
-        with pytest.raises(ValueError, match='expiration, task, xras'):
+        with pytest.raises(ValueError, match='account, expiration, task, xras'):
             get_family('nope')
 
 

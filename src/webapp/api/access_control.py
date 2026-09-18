@@ -24,6 +24,7 @@ from typing import Callable, Any
 from webapp.extensions import db
 from webapp.utils.rbac import has_permission, has_permission_for_facility, Permission
 from webapp.utils.project_permissions import (
+    _is_event_sponsor,
     _is_project_steward,
     can_change_admin,
     can_edit_consumption_threshold,
@@ -358,6 +359,46 @@ def require_allocation_permission(permission: Permission) -> Callable:
                 abort(403)
 
             return f(allocation, *args, **kwargs)
+
+        return decorated_function
+    return decorator
+
+
+def require_event_sponsor_access(permission: Permission) -> Callable:
+    """Decorator factory for account-request event routes.
+
+    Resolves ``<event_code>`` (case-insensitively) to its event and project
+    and grants access when the user holds ``permission`` system-wide or is
+    lead/admin of the project or an ancestor, or is the event's extra
+    sponsor. Passes ``(event, project)`` to the view in place of the code.
+    404 on an unknown code; 403 on an event whose project is gone.
+
+    Usage:
+        @bp.route('/events/<event_code>/roster', methods=['POST'])
+        @login_required
+        @require_event_sponsor_access(Permission.MANAGE_ACCOUNT_REQUESTS)
+        def roster(event, project):
+            ...
+    """
+    # Late imports, as require_allocation_permission: module-level SAM ORM
+    # imports here trigger the ORM init chain.
+    from sam.core.account_requests import AccountRequestEvent
+    from sam.projects.projects import Project
+
+    def decorator(f: Callable) -> Callable:
+        @wraps(f)
+        def decorated_function(event_code: str, *args, **kwargs):
+            code = str(event_code or '').strip().upper()
+            event = (db.session.query(AccountRequestEvent)
+                     .filter_by(event_code=code).first())
+            if event is None:
+                abort(404)
+            project = db.session.get(Project, event.project_id)
+            if project is None:
+                abort(403)
+            if not _is_event_sponsor(current_user, event, project, permission):
+                abort(403)
+            return f(event, project, *args, **kwargs)
 
         return decorated_function
     return decorator

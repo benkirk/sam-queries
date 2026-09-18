@@ -390,6 +390,12 @@ def xras_accounts_fragment():
     # After enrichment (a Feed-A row has no email until then) and before the
     # PII strip: the matched USERNAME is account state and rides top-level.
     stamp_merge_targets(db.session, rows)
+    # The account_request the sweep wrote for this username, if any: the
+    # claim/dismiss state the card can now act on. Account state, not PII, so
+    # it rides on the VIEW_XRAS side; the controls themselves are gated on
+    # MANAGE_ACCOUNT_REQUESTS in the template.
+    from sam.queries.account_requests import stamp_account_requests
+    stamp_account_requests(db.session, rows)
 
     if not may_manage:
         # After the merge every row is a copy, so strip in place -- and only

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h3 {
+            color: #0275d8;
+            margin-top: 25px;
+            margin-bottom: 10px;
+        }
+        /* Shared email vocabulary (this file is developer-owned; content
+           templates carry no <style>).
+           Box:   .callout + one of  good | expiring | grace | note | aborted
+           Table: table.data  (td.num = right-aligned figures; .failed = red) */
+        .callout {
+            background-color: #f5f5f5;
+            border-left: 4px solid #ccc;
+            padding: 10px 15px;
+            margin: 15px 0;
+        }
+        .callout.good     { border-left-color: #5cb85c; }
+        .callout.expiring { border-left-color: #d9534f; }
+        .callout.grace    { background-color: #fff3cd; border-left-color: #ffc107; }
+        .callout.note     { background-color: #fdf6e3; border-left-color: #f0ad4e; }
+        /* pre-wrap keeps the reviewer's line breaks in the approver note. */
+        .callout.note p   { margin: 6px 0 0; white-space: pre-wrap; }
+        .callout.aborted  { background-color: #f8e6e6; border-left-color: #d9534f; }
+        table.data {
+            border-collapse: collapse;
+            margin: 15px 0;
+            width: 100%;
+        }
+        table.data th,
+        table.data td {
+            border-bottom: 1px solid #ddd;
+            padding: 6px 10px;
+            text-align: left;
+        }
+        table.data th { background-color: #f5f5f5; }
+        td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        .failed { color: #a94442; }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            font-size: 0.9em;
+            color: #666;
+        }
+        /* The contact line lives in the footer; a default-blue mailto would
+           pull the eye straight past the message body to the fine print. */
+        .footer a {
+            color: inherit;
+        }
+        .footer p {
+            margin: 0 0 6px;
+        }
+    </style>
+</head>
+<body>
+    <div class="callout note">
+        <strong>NCAR HPC account requests waiting on NUSD</strong> — 4 open
+        <p>3 new since the last digest, 1 still waiting,
+            oldest 37 days. As of 2026-09-14T08:00:00.</p>
+    </div>
+
+    
+    <table class="data">
+        <tr><th>Purpose</th><th>Open</th></tr>
+        
+        <tr><td>enrollment</td><td class="num">3</td></tr>
+        
+        <tr><td>submission</td><td class="num">1</td></tr>
+        
+    </table>
+    
+
+    
+    <h3>WRF-TUTORIAL-2026-10 — WRF Tutorial, October 2026 (SCSG0001)</h3>
+    <p>2 account(s) needed by <strong>2026-10-05</strong></p>
+    <table class="data">
+        <tr><th>Name</th><th>Email</th><th>Institution</th><th>Wants</th>
+            <th>Sponsor</th><th>Waiting</th><th>Status</th></tr>
+        
+        <tr>
+            <td>Ada Lovelace</td>
+            <td>ada@example.edu</td>
+            <td>University of Example</td>
+            <td>ada</td>
+            <td>Jane Lead</td>
+            <td class="num">3 d</td>
+            <td>submitted</td>
+        </tr>
+        
+        <tr><td></td><td colspan="6"><em>Visiting for the tutorial week.</em></td></tr>
+        
+        
+        <tr>
+            <td>Alan Turing</td>
+            <td>alan@example.edu</td>
+            <td></td>
+            <td></td>
+            <td>Jane Lead</td>
+            <td class="num">3 d</td>
+            <td>claimed by operator1</td>
+        </tr>
+        
+        
+    </table>
+    
+
+    
+    
+    <h3>Other requests</h3>
+    <table class="data">
+        <tr><th>Name</th><th>Email</th><th>Institution</th><th>Purpose</th>
+            <th>Project</th><th>Sponsor</th><th>Waiting</th><th>Status</th></tr>
+        
+        <tr>
+            <td>Grace Hopper</td>
+            <td>grace@example.edu</td>
+            <td>NCAR</td>
+            <td>enrollment</td>
+            <td>UCUB0001</td>
+            <td>Alex Admin</td>
+            <td class="num">1 d</td>
+            <td>submitted</td>
+        </tr>
+        
+        
+        <tr>
+            <td>Linus Torvalds</td>
+            <td>linus@example.edu</td>
+            <td></td>
+            <td>submission</td>
+            <td></td>
+            <td></td>
+            <td class="num">37 d</td>
+            <td>submitted</td>
+        </tr>
+        
+        <tr><td></td><td colspan="7"><em>XRAS placeholder linus-user-8f2a</em></td></tr>
+        
+        
+    </table>
+    
+
+    
+    <p><a href="https://sam.hpc.ucar.edu/dashboards/admin/account-requests">Work the queue</a> — claim rows and mark them done.</p>
+    
+
+
+    <div class="footer">
+        <p>Automated digest from the NSF NCAR Systems Accounting Manager. SAM does
+            not create accounts; this is the list of people waiting for one. A
+            request leaves the list by itself once the account exists in the
+            directory.</p>
+
+    </div>
+</body>
+</html>

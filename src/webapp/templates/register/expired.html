@@ -1,0 +1,15 @@
+{% extends 'dashboards/base.html' %}
+{% block title %}Link expired{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-12 col-lg-6">
+    <h2 class="mb-1"><i class="fa-solid fa-clock text-muted"></i> That link is no longer valid</h2>
+    <p class="text-muted">
+        It may have expired, or it may not be a confirmation link at all.
+        Please <a href="{{ url_for('register.form') }}">register again</a> to
+        receive a fresh one.
+    </p>
+</div>
+</div>
+{% endblock %}

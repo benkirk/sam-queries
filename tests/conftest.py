@@ -362,41 +362,72 @@ def engine(test_db_url):
     eng.dispose()
 
 
+#: App-owned tables that reach the prod snapshot only after a hand-applied
+#: DDL: (table, script under scripts/sql, "module:Model"). Order matters where
+#: one script's header says to apply another first.
+_BOOTSTRAP_TABLES = (
+    ('account_allocation_state', 'create_account_allocation_state.sql',
+     'sam.summaries.allocation_state:AccountAllocationState'),
+    ('account_request_event', 'create_account_request_event.sql',
+     'sam.core.account_requests:AccountRequestEvent'),
+    ('account_request', 'create_account_request.sql',
+     'sam.core.account_requests:AccountRequest'),
+    ('account_request_event_enrollment', 'create_account_request_event_enrollment.sql',
+     'sam.core.account_requests:EventEnrollment'),
+)
+
+
+def _ddl_statements(script: Path) -> list:
+    """The CREATE and ALTER statements of a scripts/sql file, comments removed.
+
+    Inline ``--`` comments go too: ``text()`` would read a ``:word`` inside one
+    as a bind parameter, and a ``;`` inside one would split the statement.
+    """
+    import re
+    sql = re.sub(r'--[^\n]*', '', script.read_text())
+    return [stmt.strip() for stmt in sql.split(';')
+            if stmt.strip().upper().startswith(('CREATE TABLE', 'ALTER TABLE'))]
+
+
 @pytest.fixture(scope="session", autouse=True)
-def _bootstrap_read_model_table(engine, tmp_path_factory):
-    """Create ``account_allocation_state`` from its DDL script if absent.
+def _bootstrap_app_owned_tables(engine, tmp_path_factory):
+    """Create each app-owned table from its DDL script if absent.
 
     The test DB is a blob cloned from prod, so an app-owned table cannot reach
-    it before the prod DDL is applied. Running the script's CREATE statements
-    here lets schema-validation compare the ORM against the SCRIPT-created
-    table (the convergence check), and becomes a no-op once the blob carries
-    the table. Serialized across xdist workers with a file lock. The Postgres
-    copy is built from the ORM by load_postgres.py, so the table exists there;
-    the ORM DDL covers the case where it does not.
+    it before the prod DDL is applied. Running the script here lets
+    schema-validation compare the ORM against the SCRIPT-created table (the
+    convergence check), and becomes a no-op once the blob carries the table.
+    Serialized across xdist workers with a file lock. The Postgres copy is
+    built from the ORM by load_postgres.py, so the table exists there; the ORM
+    DDL covers the case where it does not.
     """
     import fcntl
+    import importlib
     from sqlalchemy import inspect as _sa_inspect, text as _text
 
-    if _sa_inspect(engine).has_table('account_allocation_state'):
+    inspector = _sa_inspect(engine)
+    missing = [t for t in _BOOTSTRAP_TABLES if not inspector.has_table(t[0])]
+    if not missing:
         return
     if engine.dialect.name == 'postgresql':
-        from sam.summaries.allocation_state import AccountAllocationState
-        AccountAllocationState.__table__.create(engine, checkfirst=True)
+        for _, _, target in missing:
+            module, name = target.split(':')
+            model = getattr(importlib.import_module(module), name)
+            model.__table__.create(engine, checkfirst=True)
         return
-    script = Path(__file__).resolve().parents[1] / 'scripts' / 'sql' / \
-        'create_account_allocation_state.sql'
-    sql = '\n'.join(line for line in script.read_text().splitlines()
-                    if not line.lstrip().startswith('--'))
-    statements = [stmt.strip() for stmt in sql.split(';')
-                  if stmt.strip().upper().startswith('CREATE TABLE')]
+    sql_dir = Path(__file__).resolve().parents[1] / 'scripts' / 'sql'
     base = tmp_path_factory.getbasetemp()
     shared = base.parent if base.name.startswith('popen-') else base
     with open(shared / 'read_model_ddl.lock', 'w') as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
         try:
             with engine.begin() as conn:
-                for stmt in statements:
-                    conn.execute(_text(stmt))
+                for table, script_name, _ in missing:
+                    # Another worker may have created it while we waited.
+                    if _sa_inspect(conn).has_table(table):
+                        continue
+                    for stmt in _ddl_statements(sql_dir / script_name):
+                        conn.execute(_text(stmt))
         finally:
             fcntl.flock(handle, fcntl.LOCK_UN)
 

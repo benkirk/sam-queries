@@ -62,7 +62,7 @@ class TestNavbarDropdowns:
                      '/allocations/projects', '/admin/projects'):
             assert f'href="{href}"' in html
         # Dropdown pages, including the permission-gated ones
-        for href in ('/admin/configuration',
+        for href in ('/admin/configuration', '/admin/account-requests',
                      '/allocations/adjustments', '/admin/users-groups'):
             assert f'href="{href}"' in html
         # Split caret toggles render per section
@@ -113,6 +113,8 @@ class TestNavbarDropdowns:
         assert 'aria-label="Admin pages"' in html
         assert 'href="/admin/projects"' in html
         assert 'href="/admin/configuration"' not in html
+        assert 'href="/admin/account-requests"' not in html, \
+            'the Accounts queue is system-wide, never facility-scoped'
 
     def test_mobile_offcanvas_markup_present(self, auth_client):
         html = auth_client.get('/user/accounts').get_data(as_text=True)

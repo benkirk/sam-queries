@@ -170,6 +170,20 @@ def test_page_template_targets_resolve(page):
 # confirm every page that can load the fragment ships those shells, then update
 # the pin. Same ratchet shape as tests/unit/test_template_csp_lint.py.
 HTMX_FRAGMENT_SHELL_DEPS = {
+    # The account-request queue (loaded only into admin/account_requests.html,
+    # which includes the audit_details_modal shell). The reason form swaps into
+    # the already-open modal body, so it carries no toggle of its own.
+    'dashboards/admin/fragments/account_request_reason_form_htmx.html': [
+        'auditDetailsModalBody'],
+    # The Dismiss/Reject buttons open the audit modal from the card. The projcode
+    # links now go through the shared project_link macro (fragments/project_bits.html),
+    # so #projectDetailsModal(Body) is that macro's pinned dependency, not this card's.
+    'dashboards/admin/fragments/account_requests_card.html': [
+        'auditDetailsModal', 'auditDetailsModalBody'],
+    # The Invitations tab (loaded only into admin/edit_project.html, which
+    # includes invitation_modals_htmx.html). Its openers target that shell; the
+    # forms that land in it carry no toggle of their own.
+    'project_members/fragments/invitations_tab_htmx.html': ['invitationModal'],
     'dashboards/admin/fragments/bulk_deactivate_project_directories_form_htmx.html': [
         'bulkDeactivateProjectDirectoriesFormContainer'],
     'dashboards/admin/fragments/bulk_deactivate_project_directories_preview_htmx.html': [
@@ -424,6 +438,7 @@ PAGES_WITH_PROJECT_MODAL = {
     '/user/info': 'dashboards/user/info.html',
     '/user/jobs': 'dashboards/user/my_jobs.html',
     '/user/data': 'dashboards/user/my_data.html',
+    '/user/events': 'dashboards/user/my_events.html',
     '/admin/projects': 'dashboards/admin/projects.html',
     '/admin/projects/directories': 'dashboards/admin/projects_directories.html',
     '/admin/organizations': 'dashboards/admin/organizations.html',
@@ -433,6 +448,7 @@ PAGES_WITH_PROJECT_MODAL = {
     '/admin/contracts': 'dashboards/admin/contracts.html',
     '/admin/configuration': 'dashboards/admin/configuration.html',
     '/admin/htmx/notifications': 'dashboards/admin/notifications.html',
+    '/admin/account-requests': 'dashboards/admin/account_requests.html',
     '/admin/users-groups': 'dashboards/admin/users_groups.html',
     '/allocations/projects': 'dashboards/allocations/projects.html',
     '/allocations/transactions': 'dashboards/allocations/transactions.html',

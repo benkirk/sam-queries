@@ -39,10 +39,11 @@ def leak_query(table, column, preserved):
     return q
 
 
-def check_leaks(cfg):
+def check_leaks(cfg, host=None, port=None):
     local = cfg["local"]
     engine = create_engine(f"mysql+pymysql://{local['user']}:{local['password']}"
-                           f"@{local['host']}:{local.get('port', 3306)}/{local['database']}")
+                           f"@{host or local['host']}:{port or local.get('port', 3306)}"
+                           f"/{local['database']}")
     preserved = preserved_usernames(cfg)
     accepted = accepted_exposures(cfg)
     print(f"Preserved usernames (config.yaml): {', '.join(preserved) or 'none'}")
@@ -71,8 +72,10 @@ def check_leaks(cfg):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--config", default="config.yaml")
+    p.add_argument("--host", help="override config.yaml local.host (same credentials)")
+    p.add_argument("--port", type=int, help="override config.yaml local.port, e.g. 3307 for mysql-test")
     args = p.parse_args(argv)
-    return check_leaks(load_config(args.config))
+    return check_leaks(load_config(args.config), host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

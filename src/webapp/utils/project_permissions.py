@@ -75,6 +75,38 @@ def _is_project_steward(
     return False
 
 
+def _is_event_sponsor(user, event, project, system_permission: Permission) -> bool:
+    """Who may run an account-request event: a steward of its project (the
+    tree walked, as for a subtree operation), or the event's one stored
+    extra sponsor. Sponsorship adds no role, only that column."""
+    if _is_project_steward(user, project, system_permission, include_ancestors=True):
+        return True
+    user_id = getattr(user, 'user_id', None)
+    return (user_id is not None
+            and event.extra_sponsor_user_id is not None
+            and event.extra_sponsor_user_id == user_id)
+
+
+def can_manage_events(user, project) -> bool:
+    """Manage an EXISTING account-request event (edit metadata, paste a roster,
+    pick the sponsor): a steward of the project or any ancestor, or a
+    MANAGE_ACCOUNT_REQUESTS holder. Creating an event is operator-only -- see
+    can_create_events. The predicate require_event_sponsor_access applies (that
+    also admits the event's own extra sponsor)."""
+    return _is_project_steward(user, project, Permission.MANAGE_ACCOUNT_REQUESTS,
+                               include_ancestors=True)
+
+
+def can_create_events(user, project) -> bool:
+    """Create a NEW account-request event (mint an event code): only a
+    MANAGE_ACCOUNT_REQUESTS holder for the project's facility. A project
+    lead/admin's role does NOT grant it, so a PI cannot open a code and
+    surprise the operators. The predicate
+    require_project_facility_permission(MANAGE_ACCOUNT_REQUESTS) applies."""
+    return has_permission_for_facility(user, Permission.MANAGE_ACCOUNT_REQUESTS,
+                                       project.facility_name)
+
+
 def can_access_edit_project_page(user, project) -> bool:
     """
     Enter the admin Edit Project page (/admin/project/<projcode>/edit).

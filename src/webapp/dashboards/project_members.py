@@ -288,3 +288,4 @@ def _render_members_table(projcode, project):
         can_view_users=has_permission_any_facility(current_user, Permission.VIEW_USERS),
         access_by_username=_members_access_by_username(project),
     )
+

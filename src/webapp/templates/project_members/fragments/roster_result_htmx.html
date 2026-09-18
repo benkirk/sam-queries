@@ -1,0 +1,27 @@
+{#
+  What a pasted roster did, replacing the form inside the open modal.
+
+  Context: event, project, outcomes {added: [...], queued: [...], duplicate: [...], error: [(email, why)]}
+#}
+<h5 class="modal-title" id="invitationModalLabel" hx-swap-oob="true">
+    <i class="fa-solid fa-list-check"></i> Roster for {{ event.event_code }}
+</h5>
+<div class="modal-body">
+    <dl class="row mb-0">
+        <dt class="col-sm-4">Queued for an account</dt>
+        <dd class="col-sm-8">{{ outcomes.queued | length }}{% if outcomes.queued %} <small class="text-muted">— {{ outcomes.queued | join(', ') }}</small>{% endif %}</dd>
+        <dt class="col-sm-4">Added as members</dt>
+        <dd class="col-sm-8">{{ outcomes.added | length }}{% if outcomes.added %} <small class="text-muted">— {{ outcomes.added | join(', ') }}</small>{% endif %}</dd>
+        <dt class="col-sm-4">Already waiting</dt>
+        <dd class="col-sm-8">{{ outcomes.duplicate | length }}{% if outcomes.duplicate %} <small class="text-muted">— {{ outcomes.duplicate | join(', ') }}</small>{% endif %}</dd>
+        {% if outcomes.error %}
+        <dt class="col-sm-4 text-danger">Could not invite</dt>
+        <dd class="col-sm-8 text-danger">
+            {% for email, why in outcomes.error %}{{ email }}: {{ why }}<br>{% endfor %}
+        </dd>
+        {% endif %}
+    </dl>
+</div>
+<div class="modal-footer">
+    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button>
+</div>

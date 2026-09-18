@@ -1,12 +1,53 @@
 # HPC account registration — the request portal and the NUSD queue
 
-**Status: design, not built; phase 1 can start now.** A standalone product: the way
+**Status: built 2026-09-16 (phases 1 and 2) on branch `account_registration`;
+phase 3 has its columns and nothing else.** § 0 records what the build changed
+against the design below. A standalone product: the way
 a person asks for an NCAR HPC account, the queue the account-creating team works
 from, and the hook that lets SAM act the moment the account exists. It ships in two
 phases (§ 5) — **internal** first, where authenticated sponsors invite people who
 have no account and the XRAS sweep feeds the queue, with no dependency outside SAM;
 then **external** self-registration. It is also the identity step that
 `XRAS_SUBMISSION.md` phase 3 needs, but nothing here depends on XRAS.
+
+---
+
+## 0. As built — deviations from the design
+
+Eleven commits, each green on its own, in the order the dependencies run:
+permission → tables and ORM → query/manage tier → the event guard → the
+sweep feed → the notify family → the two tasks → the Accounts queue → the
+Pending Users link → the Invitations tab → the flag and the public form.
+
+| | Decision | Why |
+|---|---|---|
+| D1 | **A render never writes.** The queue derives `open / ready / fulfilled` per render; every write goes through `reconcile_account_requests()` in `sam/manage/account_requests.py`, run by the hourly `account_requests_reconcile` task, the queue's *Reconcile now* button, and the digest before it selects. | § 3.3 had every render stamping rows and calling `add_user_to_project`, which raises on a project with no accounts — a membership commit inside a GET. |
+| D2 | `state ∈ submitted · claimed · rejected · dismissed`; `requested_at` is an orthogonal stamp. | A claimed row must be digestable without losing its assignee. |
+| D3 | No "sponsor notified when the last row lands" mail. The event row shows `n of m fulfilled`. | A third kind; "last" is unstable as rosters grow; NOTIFY is off everywhere it would be tested. |
+| D4 | The project surface is a fourth **Manage Project** tab, `?tab=invitations`. The invitation routes walk the project tree; the page gate (`require_project_permission(EDIT_PROJECTS)`) does not, so a tree-ancestor lead reaches the routes but not the page today. Widening `edit_project_page` and the card link with `include_ancestors=True` is a one-line decision left open. | Confirmed with the operator. |
+| D5 | `desired_username` is a hint shown to the operator, never a match key. Email through `sam_merge_targets`, honoring `ambiguous`, is the only resolver. | A casefolded hit on a stranger's username is a plausible collision. |
+| D6 | The sweep feeds `absent` rows only; `inactive` is the deferred `reactivation`. | § 6. |
+| D7 | The public form is plain PRG with the hidden CSRF input, not an `HtmxFormHandler`. | A phone-facing page for people with no account. |
+| D8 | Link and page tokens on two salts of `SECRET_KEY`; the code stored as an HMAC of `id:code`. | A leaked "check your mail" URL cannot verify; constant-time, fixed width; the brute-force bound is the rate limit. |
+| D9 | An operator **Mark verified** action on the queue (vouch). | Needed in production anyway (bounced mail, a phone call), and the only path where NOTIFY is off. `NOTIFY_TRANSPORT=console` shows the mail body in compose. |
+| D10 | The digest recipient is `NOTIFY_ACCOUNT_QUEUE_TO`, its link `NOTIFY_ACCOUNT_QUEUE_URL`; dedup key `account_queue_summary:<day>:<address>`. | `NOTIFY_`-prefixed keys reach the CronJob by prefix with no template edit. |
+| D11 | `email VARCHAR(255)`; `event_id` instead of `event_code` on the request row; `closed_by/closed_at/closed_reason` for both closures; `verified_by`, `verify_code_hash CHAR(64)`, `verify_expires_at`, `fulfilled_at`, `fulfill_error`. Index names never equal a table name — Postgres keeps both in one namespace. | D1, D8, and the dual backend. |
+| D13 | The affiliation is labeled **Institution** on every surface (SAM's word: the university, lab or company; an *Organization* is a UCAR/NCAR unit under it). The column stays `organization`, XRAS's wire name for the same thing, so the sweep and a future `POST /v1/people` need no mapping. Both forms offer live institutions as a `<datalist>` (free text still allowed). A UCAR organization second level and an `institution_id` stamp on a matched name are later ALTERs. | Terminology pass, 2026-09-17. |
+| D14 | **A global send ceiling on the public form**, `RATELIMIT_REGISTER_GLOBAL` (a fixed limiter key so every registration POST shares one bucket; default `10 per hour; 30 per day`), stacked on the per-IP and per-address tiers. Deliberately low: it doubles as a safety default so enabling the form cannot open an unbounded mailer, and is raised by env once the human-challenge gate lands. | The per-IP tier is blind until the platform forwards the client IP (D12), so a fixed-key ceiling is the only cap on *breadth* abuse — one attacker, many victims — and on the `ndir.ucar.edu` relay's blast radius. See § 6.1. |
+| D16 | **`ACCOUNT_REGISTRATION_LOGIN_REQUIRED`**, default on: every `/register` route (the mailed verify link included) redirects an anonymous visitor to login, and the form and pending pages carry a preview banner. The dev overlay also pins `RATELIMIT_REGISTER_GLOBAL` to `5 per hour; 20 per day`. Switching it off per deployment is what opens the public form, once § 6.1's gate lands. | The form can be shown to signed-in testers on dev now without exposing an anonymous mailer; the undo is a config flip, not a code change. |
+| D17 | **A signed-in visitor to `/register/<event_code>` gets a self-enroll shortcut, not the anonymous creation form.** `POST /register/<event_code>/enroll` adds their own account to the event's project (`add_user_to_project`, idempotent); the open event link is the capability, the session is the identity, no mail round-trip. Enrolling others stays in the RBAC'd Invitations panel (§ 3.1). | A logged-in internal user already has an account, so the creation form (phone-for-Duo, academic status, country) is out of context; their real intent on an event link is "enroll me." 2026-09-18. |
+| D18 | **A dedicated enrollment ledger, `account_request_event_enrollment` (§ 2.3), is the single source of truth for who joined an event.** One helper `enroll_user_in_event` does `add_user_to_project` + an idempotent upsert of `(event_id, user_id, source)`, called by every path (self-enroll, existing-user invite, roster, reconcile of a queued request). The Invitations event row expands to the enrollee list; the user's **My Events** tab reads it the other way. | The only prior tie was `account_request.(event_id, user_id)`, which the two direct-add paths (existing-user invite `OUTCOME_ADDED`, signed-in self-enroll) never wrote — so "who enrolled via this event" was unanswerable. DDL was still uncommitted-to-prod, so a table was a same-PR change. 2026-09-18. |
+| D19 | **`copy_button` (`fragments/clipboard.html` + `static/js/clipboard.js`) is the app's first shared copy-to-clipboard control.** CSP-safe: one delegated `[data-copy]` listener, feedback on the `showToast` channel. Its first use is the Invitations tab's Event Registration URL. Backport candidates (not done here): "copy link to this view" on the routable/deep-linked dashboards, and the XRAS operator identifiers pasted back into XRAS. | Operators asked for a shareable event link; the control is built reusable so the deep-link and XRAS copies are one macro call each on their own tracks. 2026-09-18. |
+| D15 | **The rejection notice is the operator's choice.** The reject form carries an "Email this reason" checkbox; ticked, `build_rejection_message` (kind `account_rejected`, family `account`) mails the recorded reason to the requester after the commit and stamps `closure_notified_at` only on a delivered send. Unticked, nothing leaves. A reopen clears the stamp and a second reject mints a new key. | The queue copy promised a notice that did not exist; a mail nobody chose would surprise both the operator and a sweep-derived stranger. |
+| D12 | The pre-production retrospective. Every person-typed or person-echoing column is utf8mb4 (`academic_status` widened to 64, `residence_country`, `fulfill_error`); `xras_username` is stored lower-cased and matched with a plain `IN`; `requested_at` is *first told* and never moves; `modified_time` is `NOT NULL`, stamped at create. Added now so no later `ALTER` is needed: `account_request_event.instructions` (sponsor prose on the public form), `verify_sent_count` + `source_ip` (the abuse signals; the ingress address today, the client's once the platform forwards it), `closure_notified_at` (D15), `merged_at` (phase 3). The unused `account_request_event_deadline` index is gone. | `fulfill_error` holds `str(ValueError)` with interpolated names, and a 4-byte character there failed the reconcile pass outside its savepoint; the rest is the design's own rule, every column from the start. |
+
+**Operator handoffs, not automated:** apply `scripts/sql/create_account_request_event.sql`
+then `create_account_request.sql` to production and read the columns back by
+name; regenerate the obfuscated LFS blob afterwards and verify both purges ran;
+clear `account_requests_reconcile` and then `account_queue_digest` from
+`SAM_TASKS_DISABLED` once NUSD confirms `NOTIFY_ACCOUNT_QUEUE_TO`; set
+`ACCOUNT_REGISTRATION_ENABLED` per deployment (dark in `values.yaml`, on in
+`values-dev.yaml`); decide D4; `sam-admin cache --refresh` after deploy.
 
 ---
 
@@ -88,7 +129,7 @@ capability with three doors, all of which exist today:
 | Door | Who | How it is checked |
 |---|---|---|
 | The project | its lead and its single admin | derived from the project on every request, exactly as membership changes are — nothing stored |
-| The event | one optional **extra sponsor** (`extra_sponsor_user_id`, say an instructor who is neither lead nor admin) | the one stored sponsor; a join table only if a real event ever needs more than three people |
+| The event | one optional **extra sponsor** (`extra_sponsor_user_id`, say an instructor who is neither lead nor admin), picked from the SAM user search (`sponsor` context, gated like the event routes) | the one stored sponsor; a join table only if a real event ever needs more than three people |
 | RBAC | staff — a new `MANAGE_ACCOUNT_REQUESTS` permission in the `_ALLOCATION_ADMIN` set (`webapp/utils/rbac.py`), which is exactly the `nusd` and `csg` bundles | system-wide, any project |
 
 The route guard is the existing `require_project_permission(Permission.MANAGE_ACCOUNT_REQUESTS)`
@@ -99,6 +140,22 @@ facility-scoped manager tier reaches it through the facility variant of the same
 decorator if that tier is ever granted the permission. The queue in § 3.3 is
 permission-only and never project-scoped. The single-administrator model is
 untouched: sponsorship adds no role, only one column.
+
+### 2.3 The enrollment ledger (D18)
+
+`account_request_event_enrollment` (`scripts/sql/create_account_request_event_enrollment.sql`,
+model `EventEnrollment`) is the durable event↔user tie: one row per user who
+joined an event, `UNIQUE(event_id, user_id)`, with a `source`
+(`self`/`invite`/`roster`/`reconcile`). It exists because `add_user_to_project`
+records only project membership, so the two direct-add paths — existing-user
+invite (`OUTCOME_ADDED`) and signed-in self-enroll (D17) — left no event trace,
+and the request row's `(event_id, user_id)` never covered them. The single write
+point is `enroll_user_in_event(session, event, user, source, by)` in
+`sam.manage.account_requests` (membership + idempotent upsert, together so they
+cannot drift); every path calls it, including `reconcile` for a fulfilled queued
+request. Reads: `enrollees_for_event` (the Invitations event row expands to the
+list) and `events_for_user` (the user's **My Events** tab). No FKs, per the
+family rule; a row survives its event or project being retired.
 
 ## 3. Surfaces
 
@@ -212,6 +269,16 @@ Validation is a `sam.schemas.forms` schema; the route is a `HtmxFormHandler`
 subclass; the write runs inside `management_transaction`. No login means no
 `current_user`: `created_by = 'self'`.
 
+**Signed in, the event link is a self-enroll shortcut (D17).** A visitor to
+`/register/<event_code>` who is already authenticated does not need the creation
+form — they have an account. `form_for_event` renders a one-click confirm
+instead, and `POST /register/<event_code>/enroll` adds their own account to the
+event's project (`add_user_to_project`, idempotent) with no email round-trip:
+the open event link is the capability, the session is the identity. Registering
+*others* is unchanged — the RBAC'd Invitations panel (§ 3.1) — so the lowest
+tier self-enrolls but cannot enroll anyone else. The anonymous creation form is
+still what an unauthenticated visitor sees when `LOGIN_REQUIRED` is off.
+
 ## 4. The XRAS phase-3 link
 
 A person with no account may still need to start an allocation request, and review
@@ -240,8 +307,8 @@ The person-create verb is not yet in the write client and has not been probed;
 
 | Phase | Ships | Needs |
 |---|---|---|
-| **1 — internal** | the `account_request` and `account_request_event` tables and ORM, every column from the start (nullable where a later phase fills it — a column added later is a hand DDL on the production VM); the NUSD queue card with claim, dismiss and reject, grouped by event, behind `MANAGE_ACCOUNT_REQUESTS`; **Invite user** and the event/roster workflow on the project card for lead, admin, extra sponsor and staff; rows derived from the XRAS sweep rosters; the fulfillment observer with `add_user_to_project`; the queue-summary mail once NUSD has said what they want on it | nothing outside SAM; the NUSD conversation, for the digest only |
-| **2 — external** | the public self-registration form with email verification (link and code), the login-POST rate tier, the hardening pass; event codes accepted from the public form | phase 1; the internet-hardening review |
+| **1 — internal** ✅ built | the `account_request` and `account_request_event` tables and ORM, every column from the start (nullable where a later phase fills it — a column added later is a hand DDL on the production VM); the NUSD queue card with claim, dismiss and reject, grouped by event, behind `MANAGE_ACCOUNT_REQUESTS`; **Invite user** and the event/roster workflow on the project card for lead, admin, extra sponsor and staff; rows derived from the XRAS sweep rosters; the fulfillment observer with `add_user_to_project`; the queue-summary mail once NUSD has said what they want on it | nothing outside SAM; the NUSD conversation, for the digest only |
+| **2 — external** ✅ built, dark in production | the public self-registration form with email verification (link and code), the login-POST rate tier, the hardening pass; event codes accepted from the public form | phase 1; the internet-hardening review |
 | **3 — XRAS link** | the placeholder-and-merge path of § 4; `registration_id` on `xras_submission` | phase 2; `XRAS_SUBMISSION.md` phase 2 in production |
 
 Phase 1 does double duty twice over: the invitation replaces a help-desk mail for
@@ -265,6 +332,41 @@ that needs verification, abuse limits and a hardening review before it exists.
   registration for application-originated texts, which takes weeks. The carrier
   email-to-text gateways are unreliable and being retired. If UCAR holds such an
   account it is a small addition; it is never a prerequisite.
+
+### 6.1 Registration abuse (email-bombing) — the ceiling that is in, and the follow-on
+
+The form mails a verification link to whatever address is submitted. Double
+opt-in already prevents a *fake account* — an unverified row never reaches the
+queue (D1, § 3.5) — so the residual risks are (a) email-bombing a third party,
+(b) reputation damage to the `ndir.ucar.edu` relay, (c) queue noise.
+
+**In place now:** the per-address cap `RATELIMIT_REGISTER_EMAIL` (3/hr, 5/day)
+bounds a single victim; a honeypot (`website`); the verify-TTL purge; and the
+**global ceiling** `RATELIMIT_REGISTER_GLOBAL` (D14), which bounds the site-wide
+send rate regardless of source and defaults low so an enabled form is a trickle
+until deliberately raised.
+
+**Gaps the ceiling does not close — deferred because each needs an external
+dependency, and required before `ACCOUNT_REGISTRATION_ENABLED=1` in prod:**
+
+1. **A human challenge** (Cloudflare Turnstile, hCaptcha, or reCAPTCHA) — the
+   real fix for breadth abuse. Verify the token server-side before the mail is
+   sent. Cost: a `script-src` / `connect-src` allowance in
+   `webapp/utils/csp.py` (today `script-src 'self'`, no inline, no nonces) and a
+   test fake for the outbound verify call (tests block outbound). Confirm which
+   provider the organization already has — Turnstile if Cloudflare is in the
+   stack. Decide fail-open vs fail-closed if the provider is unreachable.
+2. **A real client IP** — the per-IP tier is blind behind the load balancer
+   (D12): `get_remote_address()` collapses to the ingress address. Confirm the
+   proxy chain and set `PROXYFIX_X_FOR`, or have the ingress forward a trusted
+   client-IP header. This is the precondition for any per-IP defense.
+
+Notes on the ceiling's limits: it counts POST *attempts* (an upper bound on
+mails, so it fails safe), it weakens to per-worker if the limiter falls back to
+`memory://` instead of shared Redis, and the verification `dedup_key` changes on
+every issue — so the limiter, not the ledger, is what caps repeats. (1) + (2)
+are the pair that actually closes the gap; this subsection is the "hardening
+pass" the § 6 bullet names.
 
 ## 7. References
 

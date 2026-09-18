@@ -64,9 +64,31 @@ def _result(operation='withdraw_action', verified=True, **kw):
 
 @pytest.fixture
 def factory(engine):
-    """A real session factory — the service opens and commits its own."""
+    """A real session factory — the service opens and commits its own.
+
+    Those commits outlive the per-test SAVEPOINT, so every event row the
+    sessions flush is tracked by id and deleted at teardown: the shared test
+    DB must stay as the blob left it (`make regen-lfs-blob` dumps it).
+    """
+    from sqlalchemy import delete, event
     from sqlalchemy.orm import Session
-    return lambda: Session(engine)
+
+    created = []
+
+    def make():
+        session = Session(engine)
+
+        @event.listens_for(session, 'after_flush')
+        def _track(sess, _ctx):
+            created.extend(o.xras_remediation_event_id for o in sess.new
+                           if isinstance(o, XrasRemediationEvent))
+        return session
+
+    yield make
+    if created:
+        with engine.begin() as conn:
+            conn.execute(delete(XrasRemediationEvent).where(
+                XrasRemediationEvent.xras_remediation_event_id.in_(created)))
 
 
 @pytest.fixture(autouse=True)

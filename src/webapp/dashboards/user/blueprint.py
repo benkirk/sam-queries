@@ -45,6 +45,7 @@ from sam.queries.charges import (
 )
 from sam.queries.lookups import find_project_by_code, get_user_group_access, get_group_members
 from sam.queries.shells import get_allowable_shell_names, get_user_current_shell
+from sam.queries.account_requests import events_for_user, user_has_enrollments
 from sam.accounting.accounts import Account
 from sam.accounting.allocations import Allocation
 from sam.core.users import User
@@ -117,6 +118,9 @@ def _page_context():
         fs_scan_resources=fs_scan_resources,
         my_jobs_available=bool(job_history_machines),
         job_history_machines=job_history_machines,
+        # The event-enrollment ledger is written whatever the register/invite
+        # flags say, so gate the tab on having any enrollment, not on a flag.
+        my_events_available=user_has_enrollments(db.session, user_to_display.user_id),
     )
 
 
@@ -174,6 +178,21 @@ def my_data():
     if not ctx['my_data_available']:
         abort(404)
     return render_template('dashboards/user/my_data.html', **ctx)
+
+
+@bp.route('/events')
+@login_required
+def my_events():
+    """My Events page — the workshops/classes the user enrolled in.
+
+    Always renders: the tab is hidden when empty (``my_events_available``),
+    but a direct visit shows the empty state rather than a 404 -- there is no
+    plugin behind this, only whether the user has enrollments yet.
+    """
+    ctx = _page_context()
+    return render_template('dashboards/user/my_events.html',
+                           events=events_for_user(db.session, ctx['user'].user_id),
+                           **ctx)
 
 
 @bp.route('/jobs')
