@@ -20,10 +20,10 @@ from sam.core.account_requests import AccountRequest, AccountRequestEvent
 from sam.manage import management_transaction
 from sam.manage.account_requests import register_request
 from sam.queries.account_notices import build_verify_message
-from sam.queries.admin import search_institutions
 from sam.schemas.forms import RegisterForm, VerifyCodeForm
 from webapp.extensions import db
 from webapp.limiter import limiter as _rate_limit
+from webapp.utils.htmx import institution_options
 from webapp.utils.notify import get_notifier
 
 from . import tokens
@@ -100,8 +100,7 @@ def form():
 def institutions_fragment():
     """Datalist options for the Institution field; names only, nothing the visitor typed.
     The ``_fragment`` suffix keeps it out of the e2e page sweep (e2e/conftest.py)."""
-    return render_template('dashboards/fragments/institution_options_htmx.html',
-                           names=search_institutions(db.session, request.args.get('organization')))
+    return institution_options()
 
 
 @bp.route('/<event_code>')

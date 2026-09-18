@@ -27,7 +27,6 @@ from sam.manage.account_requests import (
 from sam.queries.account_requests import (
     event_sponsors, events_for, request_views, resolve_requests,
 )
-from sam.queries.admin import search_institutions
 from sam.schemas.forms import (
     AccountRequestEventEditForm,
     AccountRequestEventForm,
@@ -40,7 +39,9 @@ from webapp.api.access_control import (
 )
 from webapp.extensions import db
 from webapp.utils.form_handler import FormError, HtmxFormHandler
-from webapp.utils.htmx import handle_htmx_form_post, htmx_success, htmx_success_message
+from webapp.utils.htmx import (
+    handle_htmx_form_post, htmx_success, htmx_success_message, institution_options,
+)
 from webapp.utils.rbac import Permission, has_permission_any_facility
 
 from .project_members import bp
@@ -178,8 +179,7 @@ def institutions_fragment():
     """Datalist options for the invite form's Institution field (login only:
     institution names are not sensitive, and a plain project lead uses this).
     The ``_fragment`` suffix keeps it out of the e2e page sweep (e2e/conftest.py)."""
-    return render_template('dashboards/fragments/institution_options_htmx.html',
-                           names=search_institutions(db.session, request.args.get('organization')))
+    return institution_options()
 
 
 @bp.route('/<projcode>/invite-form')
