@@ -16,12 +16,8 @@ the point of testing them together. ``raw_payload`` is utf8mb4 and survives by *
 either one alone leaves this file half-red.
 """
 
-import pytest
-
 from .conftest import auth_headers
 from .test_audit_row_survives import ASTRAL, TEXT_LIMIT
-
-pytestmark = pytest.mark.stress
 
 
 def test_unmapped_path_oversize_body(xras_client, action_log, scenario):

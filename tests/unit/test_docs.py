@@ -483,7 +483,7 @@ CHANGELOG_PHRASES = re.compile(
 PHRASING_EXEMPT = {
     # Each documents a deliberately INVERTED assertion, where the state it is
     # inverted from is the entire point of the comment.
-    "tests/stress/test_parking_is_explained.py",
+    "tests/api/xras_audit_rows/test_parking_is_explained.py",
     "tests/unit/test_task_runner.py",
 }
 

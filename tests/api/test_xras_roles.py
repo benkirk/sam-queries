@@ -22,7 +22,7 @@ before the fixture was added to ``test_success_asks_for_the_right_write``.
 import pytest
 from sqlalchemy import select
 
-from xras_audit import action_log  # noqa: F401  — shared with tests/stress/
+from xras_audit import action_log  # noqa: F401  — shared with tests/api/xras_audit_rows/
 from xras_helpers import (  # noqa: F401  — pytest resolves fixtures by name
     reset_db_key_cache,
     xras_auth as _auth,

@@ -1,4 +1,4 @@
-"""Fixtures for the XRAS stress tier.
+"""Fixtures for the XRAS audit-row survival scenarios.
 
 Everything here drives the **HTTP route**, not ``dispatch_action``, because the audit
 row is the thing under test and it is written by ``_record`` / ``_finish`` on their own
@@ -51,8 +51,8 @@ def scenario(request):
     """
     name = request.node.name.split('[')[0].removeprefix('test_')
     assert name in SCENARIOS, (
-        f'{name!r} has no entry in tests/stress/scenarios.json. Every stress '
-        f'scenario declares what the audit row must say before it runs.')
+        f'{name!r} has no entry in tests/api/xras_audit_rows/scenarios.json. '
+        f'Every scenario declares what the audit row must say before it runs.')
     return SCENARIOS[name]
 
 

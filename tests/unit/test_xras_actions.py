@@ -205,7 +205,7 @@ def test_request_type_renewal_never_implies_a_renewal_action():
     """No payload has ever carried ``actionType: 'Renewal'`` — only ``requestType``.
 
     So the Update handler's ``Renewal`` arm remains unsampled after 41 payloads, and
-    ``tests/stress/scenarios.json::unsampled_renewal`` stays synthetic. Recorded here
+    ``tests/api/xras_audit_rows/scenarios.json::unsampled_renewal`` stays synthetic. Recorded here
     because the three ``requestType: 'Renewal'`` payloads look at a glance like the
     sample that would close it, and they are not.
     """

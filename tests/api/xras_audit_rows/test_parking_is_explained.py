@@ -13,11 +13,7 @@ is the difference between a two-minute triage and a long one."* It has carried
 missing, and the app log holding them in the meantime is ephemeral in k8s.
 """
 
-import pytest
-
 from .conftest import post_action as _post
-
-pytestmark = pytest.mark.stress
 
 
 def _action(action_type='Supplement', request_number='PARK0001', **extra):

@@ -18,11 +18,7 @@ payload — and for ``error_messages``, it is reachable while ``raw_payload`` st
 
 import json
 
-import pytest
-
 from .conftest import ACTIONS_PATH as PATH, auth_headers
-
-pytestmark = pytest.mark.stress
 
 #: ``TEXT`` — 65,535 **bytes**, not characters. The column is utf8mb3.
 TEXT_LIMIT = 65_535

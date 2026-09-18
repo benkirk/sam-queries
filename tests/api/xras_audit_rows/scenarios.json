@@ -21,7 +21,7 @@
     "                would be needed. A 'verdict' that names a column is schema",
     "                evidence, NOT a failing test.",
     "",
-    "Run:  pytest -m stress -n 0",
+    "Run:  pytest tests/api/xras_audit_rows -n 0",
     "",
     "-n 0 is deliberate in the docs but not enforced: these write audit rows on",
     "their own connection, and the `action_log` fixture deletes by captured PK",

@@ -18,8 +18,6 @@ import pytest
 
 from .conftest import post_action as _post
 
-pytestmark = pytest.mark.stress
-
 
 # ---------------------------------------------------------------------------
 # Repeat posts — can the row see it?
@@ -95,34 +93,10 @@ class TestWhatADoublePostCosts:
         session.refresh(project)
         return project, allocation, key
 
-    def test_a_repeated_supplement_is_additive(self, session, mapped, monkeypatch):
-        """250,000 posted three times leaves 750,000 added.
-
-        Correct per-post behavior and the wrong total — `awardedAmount` is the
-        INCREMENT, not the new total, which is the most consequential porting semantic
-        in the sprint. This is the number behind the `action_id` verdict.
-        """
-        from contextlib import contextmanager
-
-        import sam.xras.handlers.base as base
-        from sam.xras.dispatch import dispatch_action
-
-        @contextmanager
-        def flushing(sess):
-            yield sess
-            sess.flush()
-
-        monkeypatch.setattr(base, 'management_transaction', flushing)
-        project, allocation, key = mapped
-
-        action = {'actionType': 'Supplement', 'requestNumber': project.projcode,
-                  'allocationType': 'Small', 'roles': [],
-                  'resources': [{'resourceRepositoryKey': key,
-                                 'awardedAmount': '250000', 'comments': None}]}
-        for _ in range(3):
-            dispatch_action(session, action)
-
-        assert allocation.amount == pytest.approx(1_750_000.0)
+    # NOTE: Supplement additivity through repeated posts is covered at the handler
+    # layer by test_xras_supplement_handler.py::TestItIsAdditive
+    # (test_two_supplements_accumulate + test_the_transaction_carries_the_increment_not_the_total).
+    # The Extension asymmetry below has no such twin, so it stays here.
 
     def test_a_repeated_extension_is_near_idempotent(self, session, mapped,
                                                      monkeypatch):

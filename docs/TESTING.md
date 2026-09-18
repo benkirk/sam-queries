@@ -26,7 +26,7 @@ The two `-n 0`s are **not** the same kind of `-n 0`:
   row ids the route mints and reads/deletes by those PKs, so workers cannot see
   or deadlock on each other's committed audit rows. The reasoning lives on the
   fixture in `tests/xras_audit.py` and in the `_comment` at the head of
-  `tests/stress/scenarios.json`. **Plain `pytest -m stress` is also correct.**
+  `tests/api/xras_audit_rows/scenarios.json`. **Plain `pytest -m stress` is also correct.**
 
 > This file is the single source of truth for suite size and timings —
 > other docs link here rather than restating numbers.
@@ -74,7 +74,7 @@ make stress
 Both `perf` and `stress` are gated **off** by default via `addopts`
 (`-m "not perf and not stress"`) and run only when asked for. Each has a
 declaration file next to it that the tests read — `tests/perf/baselines.json`
-for query-count limits, `tests/stress/scenarios.json` for what each scenario
+for query-count limits, `tests/api/xras_audit_rows/scenarios.json` for what each scenario
 expects the `xras_action_log` row to say. A stress test with no manifest entry
 fails rather than running unspecified.
 
