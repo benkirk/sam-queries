@@ -13,6 +13,7 @@ from factories import (
     make_account_request,
     make_account_request_event,
     make_email_address,
+    make_event_enrollment,
     make_user,
 )
 
@@ -20,7 +21,9 @@ from sam.projects.projects import Project
 from sam.queries.account_requests import (
     Resolution,
     all_requests,
+    enrollees_for_event,
     events_for,
+    events_for_user,
     group_by_event,
     queue_counts,
     queue_requests,
@@ -29,6 +32,7 @@ from sam.queries.account_requests import (
     resolve_requests,
     stamp_account_requests,
     unverified_count,
+    user_has_enrollments,
     waiting_days,
 )
 
@@ -183,3 +187,35 @@ class TestStampAccountRequests:
 
     def test_an_empty_worklist_is_a_no_op(self, session):
         stamp_account_requests(session, [])
+
+
+class TestEnrollmentReads:
+    """The event<->user ledger, read both directions."""
+
+    def test_enrollees_for_event_lists_each_user_newest_first(self, session):
+        event = make_account_request_event(session)
+        first = make_user(session)
+        second = make_user(session)
+        make_event_enrollment(session, event=event, user=first, source='invite',
+                              when=datetime(2026, 1, 1))
+        make_event_enrollment(session, event=event, user=second, source='self',
+                              when=datetime(2026, 2, 1))
+        rows = enrollees_for_event(session, event.account_request_event_id)
+        assert [r['user'].user_id for r in rows] == [second.user_id, first.user_id]
+        assert rows[0]['source'] == 'self'
+
+    def test_events_for_user_carries_the_project_code(self, session):
+        user = make_user(session)
+        event = make_account_request_event(session)
+        make_event_enrollment(session, event=event, user=user)
+        rows = events_for_user(session, user.user_id)
+        assert len(rows) == 1
+        project = session.get(Project, event.project_id)
+        assert rows[0]['event'].account_request_event_id == event.account_request_event_id
+        assert rows[0]['project_code'] == project.projcode
+
+    def test_user_has_enrollments_is_a_cheap_exists(self, session):
+        user = make_user(session)
+        assert user_has_enrollments(session, user.user_id) is False
+        make_event_enrollment(session, user=user)
+        assert user_has_enrollments(session, user.user_id) is True

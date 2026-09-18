@@ -438,6 +438,7 @@ PAGES_WITH_PROJECT_MODAL = {
     '/user/info': 'dashboards/user/info.html',
     '/user/jobs': 'dashboards/user/my_jobs.html',
     '/user/data': 'dashboards/user/my_data.html',
+    '/user/events': 'dashboards/user/my_events.html',
     '/admin/projects': 'dashboards/admin/projects.html',
     '/admin/projects/directories': 'dashboards/admin/projects_directories.html',
     '/admin/organizations': 'dashboards/admin/organizations.html',

@@ -372,6 +372,8 @@ _BOOTSTRAP_TABLES = (
      'sam.core.account_requests:AccountRequestEvent'),
     ('account_request', 'create_account_request.sql',
      'sam.core.account_requests:AccountRequest'),
+    ('account_request_event_enrollment', 'create_account_request_event_enrollment.sql',
+     'sam.core.account_requests:EventEnrollment'),
 )
 
 

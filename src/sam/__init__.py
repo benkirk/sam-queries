@@ -185,6 +185,7 @@ from .summaries.allocation_state import AccountAllocationState
 from .core.account_requests import (
     AccountRequest,
     AccountRequestEvent,
+    EventEnrollment,
     ACCOUNT_REQUEST_STATES,
     ACCOUNT_REQUEST_PURPOSES,
 )
@@ -286,7 +287,7 @@ __all__ = [
     'DiskChargeSummary', 'DiskChargeSummaryStatus',
     'ArchiveChargeSummary', 'ArchiveChargeSummaryStatus',
     # Account requests
-    'AccountRequest', 'AccountRequestEvent',
+    'AccountRequest', 'AccountRequestEvent', 'EventEnrollment',
     'ACCOUNT_REQUEST_STATES', 'ACCOUNT_REQUEST_PURPOSES',
     # Integration
     'XrasResourceRepositoryKeyResource', 'XrasOpportunityAllocationType',

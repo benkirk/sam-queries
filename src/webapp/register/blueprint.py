@@ -18,8 +18,9 @@ from flask_login import current_user
 from marshmallow import ValidationError
 
 from sam.core.account_requests import AccountRequest, AccountRequestEvent
-from sam.manage import add_user_to_project, management_transaction
-from sam.manage.account_requests import register_request
+from sam.core.users import User
+from sam.manage import management_transaction
+from sam.manage.account_requests import enroll_user_in_event, register_request
 from sam.projects.projects import Project
 from sam.queries.account_notices import build_verify_message
 from sam.schemas.forms import RegisterForm, VerifyCodeForm
@@ -154,9 +155,11 @@ def self_enroll(event_code):
     event, refusal = _open_event(event_code)
     if refusal:
         return render_template('register/refused.html', reason=refusal)
+    user = db.session.get(User, current_user.user_id)
     try:
         with management_transaction(db.session):
-            add_user_to_project(db.session, event.project_id, current_user.user_id)
+            enroll_user_in_event(db.session, event=event, user=user,
+                                 source='self', by=current_user.username)
     except ValueError as exc:
         logger.warning('self-enroll %s for user %s failed: %s',
                        event.event_code, current_user.user_id, exc)

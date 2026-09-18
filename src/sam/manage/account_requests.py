@@ -18,6 +18,7 @@ from sam.core.account_requests import (
     CREATED_BY_SWEEP,
     AccountRequest,
     AccountRequestEvent,
+    EventEnrollment,
 )
 from sam.core.users import User
 from sam.projects.projects import Project
@@ -43,16 +44,31 @@ def _open_request_for(session: Session, email: str,
     return query.first()
 
 
+def enroll_user_in_event(session: Session, *, event: AccountRequestEvent,
+                         user: User, source: str, by: str, clock=None
+                         ) -> EventEnrollment:
+    """Add a known user to an event's project and record the enrollment.
+
+    The membership write and the ledger row are kept together so they cannot
+    drift; both are idempotent for a live member. Raises ``ValueError`` from
+    ``add_user_to_project`` when the project has no accounts.
+    """
+    add_user_to_project(session, event.project_id, user.user_id)
+    return EventEnrollment.upsert(session, event=event, user=user,
+                                  source=source, by=by, clock=clock)
+
+
 def invite_user(session: Session, *, project_id: int, sponsor: User, email: str,
                 first_name: str, last_name: str, note: Optional[str] = None,
-                event: Optional[AccountRequestEvent] = None, clock=None,
-                **person) -> Tuple[str, Any]:
+                event: Optional[AccountRequestEvent] = None, source: str = 'invite',
+                clock=None, **person) -> Tuple[str, Any]:
     """Invite one person onto a project; returns ``(outcome, User | AccountRequest)``.
 
     An address SAM already holds on an active account skips the queue and
-    becomes a membership at once. An inactive holder is queued with the
-    account named in the comment -- reactivation is NUSD's. Two active
-    holders is a ``ValueError``: the sponsor should pick the user by name.
+    becomes a membership at once (recorded as an event enrollment when an event
+    is given). An inactive holder is queued with the account named in the
+    comment -- reactivation is NUSD's. Two active holders is a ``ValueError``:
+    the sponsor should pick the user by name.
     """
     address = email.strip().lower()
     target = sam_merge_targets(session, [address]).get(address)
@@ -62,7 +78,11 @@ def invite_user(session: Session, *, project_id: int, sponsor: User, email: str,
             f'member by username instead')
     if target and target['active']:
         user = User.get_by_username(session, target['username'])
-        add_user_to_project(session, project_id, user.user_id)
+        if event is not None:
+            enroll_user_in_event(session, event=event, user=user, source=source,
+                                 by=sponsor.username, clock=clock)
+        else:
+            add_user_to_project(session, project_id, user.user_id)
         return OUTCOME_ADDED, user
     existing = _open_request_for(session, address, project_id)
     if existing is not None:
@@ -140,7 +160,7 @@ def paste_roster(session: Session, *, event: AccountRequestEvent, sponsor: User,
         try:
             outcome, _ = invite_user(
                 session, project_id=event.project_id, sponsor=sponsor,
-                event=event, clock=clock, **entry)
+                event=event, source='roster', clock=clock, **entry)
         except ValueError as exc:
             outcomes['error'].append((entry['email'], str(exc)))
             continue
@@ -241,7 +261,13 @@ def reconcile_account_requests(session: Session, *, clock=None,
         if row.purpose == 'enrollment' and row.project_id:
             try:
                 with session.begin_nested():
-                    add_user_to_project(session, row.project_id, user.user_id)
+                    event = (session.get(AccountRequestEvent, row.event_id)
+                             if row.event_id else None)
+                    if event is not None:
+                        enroll_user_in_event(session, event=event, user=user,
+                                             source='reconcile', by=row.created_by)
+                    else:
+                        add_user_to_project(session, row.project_id, user.user_id)
             except ValueError as exc:
                 row.record_fulfill_error(str(exc))
                 counts['enroll_failed'] += 1

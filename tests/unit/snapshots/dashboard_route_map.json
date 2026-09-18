@@ -2668,6 +2668,13 @@
     ]
   ],
   [
+    "user_dashboard.my_events",
+    "/user/events",
+    [
+      "GET"
+    ]
+  ],
+  [
     "user_dashboard.my_jobs",
     "/user/jobs",
     [

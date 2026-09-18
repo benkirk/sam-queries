@@ -24,6 +24,7 @@ from sam.core.account_requests import (
     OPEN_STATES,
     AccountRequest,
     AccountRequestEvent,
+    EventEnrollment,
 )
 from sam.core.users import User
 from sam.projects.projects import Project
@@ -211,6 +212,58 @@ def request_views(session: Session, rows: Sequence[AccountRequest], *,
             'verified': r.is_verified,
         })
     return views
+
+
+def enrollees_for_event(session: Session, event_id: int) -> List[Dict[str, Any]]:
+    """One dict per enrolled user, newest first. Keys: ``user enrolled_at source``.
+
+    The event-enrollment ledger (:class:`EventEnrollment`) is the single source
+    of truth, so this includes people no ``account_request`` row ever named --
+    the existing-user invite and the signed-in self-enroll.
+    """
+    rows = (session.query(EventEnrollment)
+            .filter(EventEnrollment.event_id == event_id)
+            .order_by(EventEnrollment.enrolled_at.desc()).all())
+    if not rows:
+        return []
+    users = {u.user_id: u for u in session.query(User)
+             .filter(User.user_id.in_({r.user_id for r in rows})).all()}
+    return [{'user': users.get(r.user_id), 'enrolled_at': r.enrolled_at,
+             'source': r.source} for r in rows]
+
+
+def events_for_user(session: Session, user_id: int) -> List[Dict[str, Any]]:
+    """One dict per event the user enrolled in, newest first. Keys:
+    ``enrollment event project_code enrolled_at source``. A row whose event is
+    gone is skipped, not lost."""
+    rows = (session.query(EventEnrollment)
+            .filter(EventEnrollment.user_id == user_id)
+            .order_by(EventEnrollment.enrolled_at.desc()).all())
+    if not rows:
+        return []
+    events = {e.account_request_event_id: e for e in
+              session.query(AccountRequestEvent).filter(
+                  AccountRequestEvent.account_request_event_id.in_(
+                      {r.event_id for r in rows})).all()}
+    project_ids = {e.project_id for e in events.values()}
+    projects = (dict(session.query(Project.project_id, Project.projcode)
+                     .filter(Project.project_id.in_(project_ids)).all())
+                if project_ids else {})
+    out = []
+    for r in rows:
+        event = events.get(r.event_id)
+        if event is None:
+            continue
+        out.append({'enrollment': r, 'event': event,
+                    'project_code': projects.get(event.project_id, ''),
+                    'enrolled_at': r.enrolled_at, 'source': r.source})
+    return out
+
+
+def user_has_enrollments(session: Session, user_id: int) -> bool:
+    """Cheap EXISTS for gating the My Events tab."""
+    return session.query(EventEnrollment.enrollment_id).filter(
+        EventEnrollment.user_id == user_id).first() is not None
 
 
 def group_by_event(views: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:

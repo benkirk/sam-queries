@@ -8,9 +8,12 @@ enforces are the ones a test exercises.
 
 from datetime import date, datetime, timedelta
 
-from sam.core.account_requests import AccountRequest, AccountRequestEvent
+from sam.core.account_requests import (
+    AccountRequest, AccountRequestEvent, EventEnrollment,
+)
 
 from ._seq import next_seq
+from .core import make_user
 from .projects import make_project
 
 
@@ -78,3 +81,12 @@ def make_account_request(session, *, email=None, first_name='Test', last_name=No
         row.creation_time = when
         session.flush()
     return row
+
+
+def make_event_enrollment(session, *, event=None, user=None, source='self',
+                          by=None, when=None):
+    """One enrollment; builds an event and a user when not given."""
+    event = event or make_account_request_event(session)
+    user = user or make_user(session)
+    return EventEnrollment.upsert(session, event=event, user=user, source=source,
+                                  by=by or user.username, clock=when)

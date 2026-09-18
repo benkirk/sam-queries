@@ -17,11 +17,14 @@ from factories import (
 )
 
 from sam.accounting.accounts import AccountUser
-from sam.core.account_requests import CREATED_BY_SELF, CREATED_BY_SWEEP, AccountRequest
+from sam.core.account_requests import (
+    CREATED_BY_SELF, CREATED_BY_SWEEP, AccountRequest, EventEnrollment,
+)
 from sam.manage.account_requests import (
     OUTCOME_ADDED,
     OUTCOME_DUPLICATE,
     OUTCOME_QUEUED,
+    enroll_user_in_event,
     invite_user,
     parse_roster,
     paste_roster,
@@ -271,3 +274,62 @@ class TestReconcile:
         ids = {r.account_request_id for r in session.query(AccountRequest).all()}
         assert stale.account_request_id not in ids
         assert {fresh.account_request_id, vouched.account_request_id} <= ids
+
+
+def _enrollments(session, event, user):
+    return (session.query(EventEnrollment)
+            .filter_by(event_id=event.account_request_event_id,
+                       user_id=user.user_id).count())
+
+
+class TestEventEnrollmentLedger:
+    """Every enrollment path records the event<->user tie exactly once."""
+
+    def test_enroll_adds_membership_and_one_ledger_row(self, session):
+        project = _project_with_account(session)
+        event = make_account_request_event(session, project=project)
+        user = make_user(session)
+        enroll_user_in_event(session, event=event, user=user, source='self',
+                             by=user.username)
+        assert _memberships(session, project, user) == 1
+        assert _enrollments(session, event, user) == 1
+
+    def test_enroll_is_idempotent(self, session):
+        project = _project_with_account(session)
+        event = make_account_request_event(session, project=project)
+        user = make_user(session)
+        for _ in range(2):
+            enroll_user_in_event(session, event=event, user=user, source='self',
+                                 by=user.username)
+        assert _enrollments(session, event, user) == 1
+
+    def test_existing_user_invite_with_event_records_enrollment(self, session):
+        """OUTCOME_ADDED used to leave no event trace; now it enrolls."""
+        project = _project_with_account(session)
+        sponsor = make_user(session)
+        event = make_account_request_event(session, project=project)
+        known = _user_with_email(session, 'known.enrol@example.edu')
+        outcome, _ = invite_user(
+            session, project_id=project.project_id, sponsor=sponsor,
+            email='known.enrol@example.edu', first_name='K', last_name='Nown',
+            event=event)
+        assert outcome == OUTCOME_ADDED
+        assert _enrollments(session, event, known) == 1
+
+    def test_existing_user_invite_without_event_records_nothing(self, session):
+        project = _project_with_account(session)
+        sponsor = make_user(session)
+        _user_with_email(session, 'noevent@example.edu')
+        invite_user(session, project_id=project.project_id, sponsor=sponsor,
+                    email='noevent@example.edu', first_name='N', last_name='One')
+        assert session.query(EventEnrollment).count() == 0
+
+    def test_reconcile_records_enrollment_for_an_event_row(self, session):
+        project = _project_with_account(session)
+        event = make_account_request_event(session, project=project)
+        user = _user_with_email(session, 'queued@example.edu')
+        make_account_request(session, email='queued@example.edu',
+                             purpose='enrollment', project=project, event=event,
+                             first_name='Q', last_name='Ueue')
+        reconcile_account_requests(session)
+        assert _enrollments(session, event, user) == 1

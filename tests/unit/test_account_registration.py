@@ -380,27 +380,29 @@ class TestTheSignedInSelfEnrollShortcut:
         assert 'Request an NCAR HPC account' in html and 'name="email"' in html
         assert 'Enroll me in' not in html
 
-    def test_enroll_adds_the_signed_in_user_to_the_event_project(
+    def test_enroll_records_the_signed_in_user_via_the_helper(
             self, signed_in, committed_event, monkeypatch):
-        """The write itself is add_user_to_project (model-tested); here we prove
-        the route hands it the event's project and the session's own user."""
+        """The write itself is enroll_user_in_event (model/manage-tested); here
+        we prove the route hands it the event, the session's own user, and the
+        'self' source."""
         code, project_id = committed_event
         client, user = signed_in
         calls = []
-        monkeypatch.setattr('webapp.register.blueprint.add_user_to_project',
-                            lambda _session, pid, uid: calls.append((pid, uid)))
+        monkeypatch.setattr('webapp.register.blueprint.enroll_user_in_event',
+                            lambda _s, *, event, user, source, by:
+                            calls.append((event.project_id, user.user_id, source, by)))
         resp = client.post(f'/register/{code}/enroll')
         assert resp.status_code == 200
         assert "You're enrolled" in resp.get_data(as_text=True)
-        assert calls == [(project_id, user.user_id)]
+        assert calls == [(project_id, user.user_id, 'self', user.username)]
 
     def test_a_project_without_accounts_re_renders_the_reason(
             self, signed_in, committed_event, monkeypatch):
         code, _ = committed_event
         client, _ = signed_in
-        def _boom(*_a):
+        def _boom(*_a, **_k):
             raise ValueError('Project has no accounts')
-        monkeypatch.setattr('webapp.register.blueprint.add_user_to_project', _boom)
+        monkeypatch.setattr('webapp.register.blueprint.enroll_user_in_event', _boom)
         resp = client.post(f'/register/{code}/enroll')
         assert resp.status_code == 200
         assert 'Project has no accounts' in resp.get_data(as_text=True)

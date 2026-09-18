@@ -454,3 +454,63 @@ class AccountRequest(Base, SessionMixin):
         self.fulfill_error = _clean(message, width=255)
         self.session.flush()
         return self
+
+
+#: ``account_request_event_enrollment.source`` -- how the enrollment was made.
+ENROLLMENT_SOURCES = ('self', 'invite', 'roster', 'reconcile')
+
+
+#----------------------------------------------------------------------------
+class EventEnrollment(Base, SessionMixin):
+    """One user's enrollment in one event -- the durable event<->user tie.
+
+    ``add_user_to_project`` links user<->project only; this records that the
+    link was made for an event, so "who enrolled via X" and "which events am I
+    in" are answerable. One row per ``(event_id, user_id)``; :meth:`upsert` is
+    idempotent, which every enrollment path relies on.
+    """
+    __tablename__ = 'account_request_event_enrollment'
+
+    __table_args__ = (
+        UniqueConstraint('event_id', 'user_id',
+                         name='account_request_event_enrollment_uk'),
+        Index('account_request_event_enrollment_user', 'user_id'),
+    )
+
+    enrollment_id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(Integer, nullable=False)
+    user_id = Column(Integer, nullable=False)
+    #: ``users.upid`` -- outlives a username change, as on the request row.
+    upid = Column(Integer)
+    source = Column(String(16), nullable=False)
+    created_by = Column(String(35), nullable=False)
+    enrolled_at = Column(DateTime, nullable=False)
+    creation_time = Column(DateTime, nullable=False)
+    modified_time = Column(DateTime, nullable=False, default=datetime.now,
+                           onupdate=datetime.now)
+
+    def __str__(self):
+        return f"user {self.user_id} in event {self.event_id} ({self.source})"
+
+    def __repr__(self):
+        return (f"<EventEnrollment event={self.event_id} user={self.user_id} "
+                f"{self.source!r}>")
+
+    @classmethod
+    def upsert(cls, session, *, event, user, source, by, clock=None):
+        """Record ``user`` in ``event`` once; a repeat is a no-op. Flushes."""
+        if source not in ENROLLMENT_SOURCES:
+            raise ValueError(f'unknown enrollment source {source!r}')
+        event_id = event.account_request_event_id
+        existing = (session.query(cls)
+                    .filter(cls.event_id == event_id, cls.user_id == user.user_id)
+                    .first())
+        if existing is not None:
+            return existing
+        now = clock or datetime.now()
+        row = cls(event_id=event_id, user_id=user.user_id, upid=user.upid,
+                  source=source, created_by=_clean(by, width=35) or source,
+                  enrolled_at=now, creation_time=now, modified_time=now)
+        session.add(row)
+        session.flush()
+        return row

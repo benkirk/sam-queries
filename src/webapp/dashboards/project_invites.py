@@ -25,7 +25,8 @@ from sam.manage.account_requests import (
     paste_roster,
 )
 from sam.queries.account_requests import (
-    event_sponsors, events_for, request_views, resolve_requests,
+    enrollees_for_event, event_sponsors, events_for, request_views,
+    resolve_requests,
 )
 from sam.schemas.forms import (
     AccountRequestEventEditForm,
@@ -99,6 +100,7 @@ def invitations_fragment(project):
     by_event = {}
     for row in rows:
         by_event.setdefault(row.event_id, []).append(row)
+    base_url = request.url_root.rstrip('/')
     event_rows = []
     for event in events:
         members = by_event.get(event.account_request_event_id, [])
@@ -108,6 +110,10 @@ def invitations_fragment(project):
             'fulfilled': sum(1 for r in members if r.is_fulfilled),
             'open': sum(1 for r in members if r.state in OPEN_STATES),
             'sponsor': sponsors.get(event.extra_sponsor_user_id),
+            'enrollees': enrollees_for_event(db.session, event.account_request_event_id),
+            # Built by hand, not url_for: the register blueprint is unmounted in
+            # prod (ACCOUNT_REGISTRATION_ENABLED off), so url_for would BuildError.
+            'reg_url': f'{base_url}/register/{event.event_code}',
         })
     views = request_views(db.session, rows, resolutions=resolutions,
                           events=events_for(db.session, rows))
