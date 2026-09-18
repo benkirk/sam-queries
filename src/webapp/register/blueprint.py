@@ -44,6 +44,12 @@ def _email_key():
     return 'email:' + (request.form.get('email') or '').strip().lower()
 
 
+def _global_key():
+    # A fixed key: every registration POST shares one bucket, so the tier is a
+    # site-wide ceiling independent of IP or address (the relay blast-radius bound).
+    return 'register-global'
+
+
 def _anon_tier():
     return current_app.config['RATELIMIT_ANON']
 
@@ -54,6 +60,10 @@ def _post_tier():
 
 def _email_tier():
     return current_app.config['RATELIMIT_REGISTER_EMAIL']
+
+
+def _global_tier():
+    return current_app.config['RATELIMIT_REGISTER_GLOBAL']
 
 
 def _open_event(code):
@@ -108,6 +118,7 @@ def form_for_event(event_code):
 @bp.route('/', methods=['POST'], strict_slashes=False)
 @_rate_limit.limiter.limit(_post_tier, key_func=_ip_key, methods=['POST'])
 @_rate_limit.limiter.limit(_email_tier, key_func=_email_key, methods=['POST'])
+@_rate_limit.limiter.limit(_global_tier, key_func=_global_key, methods=['POST'])
 def submit():
     raw = request.form
     # The honeypot: a bot fills every field. Pretend success and write nothing.

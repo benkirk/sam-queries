@@ -33,6 +33,7 @@ Pending Users link → the Invitations tab → the flag and the public form.
 | D10 | The digest recipient is `NOTIFY_ACCOUNT_QUEUE_TO`, its link `NOTIFY_ACCOUNT_QUEUE_URL`; dedup key `account_queue_summary:<day>:<address>`. | `NOTIFY_`-prefixed keys reach the CronJob by prefix with no template edit. |
 | D11 | `email VARCHAR(255)`; `event_id` instead of `event_code` on the request row; `closed_by/closed_at/closed_reason` for both closures; `verified_by`, `verify_code_hash CHAR(64)`, `verify_expires_at`, `fulfilled_at`, `fulfill_error`. Index names never equal a table name — Postgres keeps both in one namespace. | D1, D8, and the dual backend. |
 | D13 | The affiliation is labeled **Institution** on every surface (SAM's word: the university, lab or company; an *Organization* is a UCAR/NCAR unit under it). The column stays `organization`, XRAS's wire name for the same thing, so the sweep and a future `POST /v1/people` need no mapping. Both forms offer live institutions as a `<datalist>` (free text still allowed). A UCAR organization second level and an `institution_id` stamp on a matched name are later ALTERs. | Terminology pass, 2026-09-17. |
+| D14 | **A global send ceiling on the public form**, `RATELIMIT_REGISTER_GLOBAL` (a fixed limiter key so every registration POST shares one bucket; default `10 per hour; 30 per day`), stacked on the per-IP and per-address tiers. Deliberately low: it doubles as a safety default so enabling the form cannot open an unbounded mailer, and is raised by env once the human-challenge gate lands. | The per-IP tier is blind until the platform forwards the client IP (D12), so a fixed-key ceiling is the only cap on *breadth* abuse — one attacker, many victims — and on the `ndir.ucar.edu` relay's blast radius. See § 6.1. |
 | D12 | The pre-production retrospective. Every person-typed or person-echoing column is utf8mb4 (`academic_status` widened to 64, `residence_country`, `fulfill_error`); `xras_username` is stored lower-cased and matched with a plain `IN`; `requested_at` is *first told* and never moves; `modified_time` is `NOT NULL`, stamped at create. Added now so no later `ALTER` is needed: `account_request_event.instructions` (sponsor prose on the public form), `verify_sent_count` + `source_ip` (the abuse signals; the ingress address today, the client's once the platform forwards it), `closure_notified_at` (the rejection notice, still deferred), `merged_at` (phase 3). The unused `account_request_event_deadline` index is gone. | `fulfill_error` holds `str(ValueError)` with interpolated names, and a 4-byte character there failed the reconcile pass outside its savepoint; the rest is the design's own rule, every column from the start. |
 
 **Operator handoffs, not automated:** apply `scripts/sql/create_account_request_event.sql`
@@ -300,6 +301,41 @@ that needs verification, abuse limits and a hardening review before it exists.
   registration for application-originated texts, which takes weeks. The carrier
   email-to-text gateways are unreliable and being retired. If UCAR holds such an
   account it is a small addition; it is never a prerequisite.
+
+### 6.1 Registration abuse (email-bombing) — the ceiling that is in, and the follow-on
+
+The form mails a verification link to whatever address is submitted. Double
+opt-in already prevents a *fake account* — an unverified row never reaches the
+queue (D1, § 3.5) — so the residual risks are (a) email-bombing a third party,
+(b) reputation damage to the `ndir.ucar.edu` relay, (c) queue noise.
+
+**In place now:** the per-address cap `RATELIMIT_REGISTER_EMAIL` (3/hr, 5/day)
+bounds a single victim; a honeypot (`website`); the verify-TTL purge; and the
+**global ceiling** `RATELIMIT_REGISTER_GLOBAL` (D14), which bounds the site-wide
+send rate regardless of source and defaults low so an enabled form is a trickle
+until deliberately raised.
+
+**Gaps the ceiling does not close — deferred because each needs an external
+dependency, and required before `ACCOUNT_REGISTRATION_ENABLED=1` in prod:**
+
+1. **A human challenge** (Cloudflare Turnstile, hCaptcha, or reCAPTCHA) — the
+   real fix for breadth abuse. Verify the token server-side before the mail is
+   sent. Cost: a `script-src` / `connect-src` allowance in
+   `webapp/utils/csp.py` (today `script-src 'self'`, no inline, no nonces) and a
+   test fake for the outbound verify call (tests block outbound). Confirm which
+   provider the organization already has — Turnstile if Cloudflare is in the
+   stack. Decide fail-open vs fail-closed if the provider is unreachable.
+2. **A real client IP** — the per-IP tier is blind behind the load balancer
+   (D12): `get_remote_address()` collapses to the ingress address. Confirm the
+   proxy chain and set `PROXYFIX_X_FOR`, or have the ingress forward a trusted
+   client-IP header. This is the precondition for any per-IP defense.
+
+Notes on the ceiling's limits: it counts POST *attempts* (an upper bound on
+mails, so it fails safe), it weakens to per-worker if the limiter falls back to
+`memory://` instead of shared Redis, and the verification `dedup_key` changes on
+every issue — so the limiter, not the ledger, is what caps repeats. (1) + (2)
+are the pair that actually closes the gap; this subsection is the "hardening
+pass" the § 6 bullet names.
 
 ## 7. References
 

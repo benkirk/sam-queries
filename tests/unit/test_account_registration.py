@@ -172,14 +172,20 @@ class TestSubmit:
         assert resp.status_code == 200
         assert 'what you need the account for' in resp.get_data(as_text=True)
 
-    def test_the_honeypot_pretends_and_writes_nothing(self, client, app, null_notifier,
-                                                     cleanup_address):
+    def test_the_honeypot_pretends_and_writes_nothing(self, client, app, null_notifier):
         from sam.core.account_requests import AccountRequest
         from webapp.extensions import db
-        resp = client.post('/register/', data={**GOOD, 'website': 'http://spam'})
+        # A distinct address, not GOOD['email']: a committed row from the
+        # good-submission test (route COMMIT, outside the per-test SAVEPOINT) is
+        # visible to every xdist worker, so sharing the address would make this
+        # "wrote nothing" assertion order-dependent under parallel runs.
+        honeypot_email = 'zz.honeypot.test@example.invalid'
+        resp = client.post('/register/',
+                           data={**GOOD, 'email': honeypot_email, 'website': 'http://spam'})
         assert resp.status_code == 302 and '/register/pending/' in resp.headers['Location']
         with app.app_context():
-            assert db.session.query(AccountRequest).filter_by(email=GOOD['email']).count() == 0
+            assert db.session.query(AccountRequest).filter_by(
+                email=honeypot_email).count() == 0
 
     def test_a_good_submission_creates_an_unverified_row_and_lands_on_pending(
             self, client, app, null_notifier, cleanup_address):
@@ -306,3 +312,26 @@ class TestRateLimits:
             assert client.post('/register/', data={'email': GOOD['email']}).status_code != 429
         assert client.post('/register/', data={'email': GOOD['email']}).status_code == 429
         assert client.post('/register/', data={'email': 'other@example.invalid'}).status_code != 429
+
+    def test_a_global_ceiling_caps_all_addresses_together(self, client, app,
+                                                          enabled_limiter, null_notifier,
+                                                          monkeypatch):
+        """The fixed-key tier is a site-wide ceiling: with the per-IP and
+        per-address tiers slackened, a fourth *never-seen* address still 429s,
+        so enabling the form cannot open an unbounded mailer (relay blast-radius)."""
+        monkeypatch.setitem(app.config, 'RATELIMIT_AUTH_LOGIN', '100 per minute')
+        monkeypatch.setitem(app.config, 'RATELIMIT_REGISTER_EMAIL', '100 per hour')
+        monkeypatch.setitem(app.config, 'RATELIMIT_REGISTER_GLOBAL', '3 per hour')
+        for i in range(3):
+            assert client.post('/register/',
+                               data={'email': f'g{i}@example.invalid'}).status_code != 429, i
+        assert client.post('/register/',
+                           data={'email': 'fresh@example.invalid'}).status_code == 429
+
+    def test_the_global_ceiling_default_is_low(self):
+        """A safety default: the code ceiling ships low so prod (which uses the
+        code default, not a helm override) is throttled until deliberately raised."""
+        import os
+        from webapp.config import ProductionConfig
+        if 'RATELIMIT_REGISTER_GLOBAL' not in os.environ:
+            assert ProductionConfig.RATELIMIT_REGISTER_GLOBAL == '10 per hour; 30 per day'

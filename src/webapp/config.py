@@ -73,6 +73,13 @@ class SAMWebappConfig(SAMConfig):
     # Per-address cap on the registration POST, on top of the per-IP login
     # tier: nobody can flood a stranger's inbox with verification mail.
     RATELIMIT_REGISTER_EMAIL = os.getenv('RATELIMIT_REGISTER_EMAIL', '3 per hour; 5 per day')
+    # Global ceiling on the registration POST across ALL addresses and IPs
+    # (a fixed limiter key) -- the relay blast-radius bound. Deliberately low:
+    # the per-IP tier is blind until the platform forwards the client IP, so
+    # this is the only cap on breadth abuse (one attacker, many victims). Kept
+    # low so enabling the form cannot open an unbounded mailer; raise it by env
+    # once the human-challenge gate lands (docs/plans/ACCOUNT_REGISTRATION.md 6).
+    RATELIMIT_REGISTER_GLOBAL = os.getenv('RATELIMIT_REGISTER_GLOBAL', '10 per hour; 30 per day')
 
     # Create Project workflow. When off, the modal still renders with all inputs
     # editable but its submit button is replaced with a disabled indicator, and
