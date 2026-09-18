@@ -44,7 +44,7 @@ if [ -f /backup.sql.xz ]; then
                 mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" --skip-column-names -e \
                     "SELECT CONCAT('ANALYZE TABLE \`', table_schema, '\`.\`', table_name, '\`;') \
                      FROM information_schema.tables \
-                     WHERE table_schema NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys');" 2>/dev/null \
+                     WHERE table_type = 'BASE TABLE' AND table_schema NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys');" 2>/dev/null \
                     | mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" 2>&1 || echo "[init-db.sh] Warning: ANALYZE TABLE had errors"
                 echo "[init-db.sh] ANALYZE TABLE complete"
             else

@@ -2,12 +2,14 @@ COMPOSE_FILE := ../../compose.yaml
 
 .PHONY: all clone clean bootstrap verify db-up db-test db-down db-restart db-reset FORCE \
         pg-up pg-down pg-reset clone-pg clone-pg-local clone-pg-test pg-test-up pg-test-reset \
-        test-db-up test-db-reset regen-lfs-blob
+        test-db-up test-db-reset regen-lfs-blob restore-dev-raw everything-coherent
 
 # The compose service the blob is dumped from: `mysql` (3306, the dev copy) by
 # default; regen-lfs-blob sets `mysql-test` (3307). VERIFY_ARGS follows it.
 DUMP_SERVICE ?= mysql
 VERIFY_ARGS ?=
+# A root mysql client on the dev service (3306), stdin-capable.
+MYSQL_DEV := docker compose -f $(COMPOSE_FILE) exec -T -e MYSQL_PWD=root mysql mysql -uroot
 
 all: clone
 
@@ -77,6 +79,38 @@ bootstrap:
 	./run_anonymization_workflow.sh --yes
 	@echo "Verifying and backing up the obfuscated database..."
 	@$(MAKE) backups/sam-obfuscated.sql.xz
+
+# Put the RAW (pre-anonymization) subset back on 3306 after `bootstrap` has
+# anonymized it in place, so local dev runs on real data with one prod pull.
+# The clone path never runs ANALYZE (only init-db.sh does, on a blob restore),
+# so it is run here. NOT a make prerequisite: the `%.sql.xz: FORCE` rule
+# would re-dump the anonymized 3306 over the raw backup.
+restore-dev-raw:
+	@test -f backups/sam-local-dev.sql.xz \
+	    || { echo "backups/sam-local-dev.sql.xz is missing: make bootstrap writes it"; exit 1; }
+	@echo "Restoring the raw subset onto 3306 (the running app sees tables vanish for a minute)..."
+	xz -dc backups/sam-local-dev.sql.xz | $(MYSQL_DEV)
+	@echo "ANALYZE TABLE on every user table (init-db.sh does this on a blob restore; the clone path never does)..."
+	@$(MYSQL_DEV) --skip-column-names -e "SELECT CONCAT('ANALYZE TABLE \`', table_schema, '\`.\`', table_name, '\`;') FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys')" \
+	    | $(MYSQL_DEV) >/dev/null
+	@echo "✅ 3306 is the raw subset again, analyzed"
+
+# One prod pull, every copy coherent: raw on 3306, 5433 and the CNPG sam_dev;
+# anonymized on 3307, 5434 and the committed blob. ORDER MATTERS: 3307 is
+# restored from the blob FILE when its volume is created, so the reset must
+# follow bootstrap (which writes the blob) and precede clone-pg-test (which
+# reads 3307). regen-lfs-blob is deliberately absent: bootstrap already dumped
+# and verified the blob from 3306; re-dumping the 3307 restore of that file
+# only rewrites identical bytes. Afterwards: git add the blob and commit.
+everything-coherent:
+	@$(MAKE) pg-up pg-test-up
+	@$(MAKE) bootstrap
+	@$(MAKE) restore-dev-raw
+	@$(MAKE) clone-pg-local
+	@$(MAKE) clone-pg
+	@$(MAKE) test-db-reset test-db-up
+	@$(MAKE) clone-pg-test
+	@echo "✅ coherent: now git add backups/sam-obfuscated.sql.xz (Git LFS) and commit it"
 
 db-up:
 	docker compose -f $(COMPOSE_FILE) up -d mysql
