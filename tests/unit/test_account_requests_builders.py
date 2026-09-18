@@ -21,6 +21,7 @@ from sam.notify.samples import sample_context
 from sam.queries.account_notices import (
     ACCOUNT_KIND_SUBJECTS,
     build_queue_summary,
+    build_rejection_message,
     build_verify_message,
     queue_summary_context,
 )
@@ -118,3 +119,27 @@ class TestVerifyMessage:
         assert message.entity == ('account_request', row.account_request_id)
         assert message.requested_by == 'self'
         assert message.subject == ACCOUNT_KIND_SUBJECTS['account_verify']
+
+
+class TestRejectionMessage:
+    def test_it_names_the_person_and_echoes_the_reason(self, session):
+        row = make_account_request(session, first_name='Ada', last_name='Lovelace',
+                                   email='ada@example.edu')
+        row.reject('operator1', 'Roster full', clock=datetime(2026, 9, 17, 9, 30))
+        message = build_rejection_message(row, requested_by='operator1',
+                                          event_name='WRF Tutorial', project_code='SCSG0001')
+        assert set(message.context) == set(sample_context('account_rejected'))
+        assert message.context['name'] == 'Ada Lovelace'
+        assert message.context['reason'] == 'Roster full'
+        assert message.recipient.address == 'ada@example.edu'
+        assert message.recipient.name == 'Ada Lovelace' and message.recipient.role == 'user'
+        assert message.subject == ACCOUNT_KIND_SUBJECTS['account_rejected']
+        assert message.entity == ('account_request', row.account_request_id)
+        assert message.dedup_key == (
+            f'account_rejected:{row.account_request_id}:2026-09-17T09:30:00')
+
+    def test_a_second_reject_after_a_reopen_mints_a_new_key(self, session):
+        row = make_account_request(session).reject('op', 'no', clock=datetime(2026, 9, 1))
+        first = build_rejection_message(row, requested_by='op').dedup_key
+        row.reopen().reject('op', 'still no', clock=datetime(2026, 9, 2))
+        assert build_rejection_message(row, requested_by='op').dedup_key != first

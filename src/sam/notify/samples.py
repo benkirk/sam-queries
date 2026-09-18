@@ -34,6 +34,7 @@ _SUBJECTS = {
     'task_summary': '[SAM] expiration_notices: 11 sent, 1 FAILED',
     'account_queue_summary': 'NCAR HPC account requests: 4 waiting, 3 new',
     'account_verify': 'Verify your email address for your NCAR HPC account request',
+    'account_rejected': 'Your NCAR HPC account request',
 }
 
 _XRAS_ACTION_TYPES = {
@@ -168,6 +169,16 @@ def _account_verify() -> Dict[str, Any]:
     }
 
 
+def _account_rejected() -> Dict[str, Any]:
+    return {
+        'name': 'Ada Lovelace',
+        'reason': 'The workshop roster is full; the organizers will contact you '
+                  'about the next session.',
+        'event_name': 'WRF Tutorial, October 2026',
+        'project_code': 'SCSG0001',
+    }
+
+
 def sample_context(kind: str, facility: Optional[str] = None) -> Dict[str, Any]:
     """A builder-shaped context for ``kind``; raises ValueError on an unknown kind."""
     key = get_kind(kind).key
@@ -179,6 +190,8 @@ def sample_context(kind: str, facility: Optional[str] = None) -> Dict[str, Any]:
         return _account_queue_summary()
     if key == 'account_verify':
         return _account_verify()
+    if key == 'account_rejected':
+        return _account_rejected()
     return _xras(key)
 
 
@@ -285,6 +298,8 @@ VARIABLE_NOTES: Dict[str, str] = {
     'code': 'The six-digit code to type on the page the requester is on.',
     'expires_hours': 'Hours until the link and code expire.',
     'event_name': 'The event the request is for, or empty.',
+    'name': "The requester's name.",
+    'reason': "The operator's reason, as written on the reject form.",
 }
 
 

@@ -2,7 +2,8 @@
 
 Both consumers of each kind (the admin Send button and the weekly task; the
 public form and any resend) must mint the same dedup key, so each message
-is built in one place. The read side is :mod:`sam.queries.account_requests`.
+is built in one place. The rejection notice has one consumer, the reject
+form's checkbox, and lives here for the same reason. The read side is :mod:`sam.queries.account_requests`.
 
 WARNING: NOT exported from ``sam/queries/__init__.py``. This module imports
 ``sam.notify``, and that file imports its submodules eagerly, so listing it
@@ -27,6 +28,7 @@ from .account_requests import events_for, group_by_event, request_views, waiting
 ACCOUNT_KIND_SUBJECTS = {
     'account_queue_summary': 'NCAR HPC account requests: {total} waiting, {new} new',
     'account_verify': 'Verify your email address for your NCAR HPC account request',
+    'account_rejected': 'Your NCAR HPC account request',
 }
 
 
@@ -125,5 +127,28 @@ def build_verify_message(row: AccountRequest, *, verify_url: str, code: str,
         },
         entity=('account_request', row.account_request_id),
         dedup_key=f'account_verify:{row.account_request_id}:{issued}',
+        requested_by=requested_by,
+    )
+
+
+def build_rejection_message(row: AccountRequest, *, requested_by: str,
+                            event_name: str = '', project_code: str = '') -> Message:
+    """The notice an operator chose to send on Reject. The address is verified
+    or sponsor-vouched, so naming the person and echoing the operator's reason
+    is fine here (the "nothing typed" rule is the verify mail's). Keyed on the
+    closure time, so a reopen and a second reject can notify again."""
+    closed = (row.closed_at.isoformat(timespec='seconds') if row.closed_at else 'open')
+    return Message(
+        kind='account_rejected',
+        recipient=Recipient(row.email, name=row.display_name, role='user'),
+        subject=ACCOUNT_KIND_SUBJECTS['account_rejected'],
+        context={
+            'name': row.display_name,
+            'reason': row.closed_reason or '',
+            'event_name': event_name or '',
+            'project_code': project_code or '',
+        },
+        entity=('account_request', row.account_request_id),
+        dedup_key=f'account_rejected:{row.account_request_id}:{closed}',
         requested_by=requested_by,
     )

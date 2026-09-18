@@ -155,6 +155,14 @@ class TestQueueTransitions:
         with pytest.raises(ValueError, match='required to dismiss'):
             make_account_request(session).dismiss('operator1', '  ')
 
+    def test_the_rejection_notice_is_stamped_and_a_reopen_clears_it(self, session):
+        row = make_account_request(session).reject('operator1', 'not eligible')
+        assert row.closure_notified_at is None
+        row.mark_closure_notified(datetime(2026, 9, 17, 10, 0))
+        assert row.closure_notified_at == datetime(2026, 9, 17, 10, 0)
+        row.reopen()
+        assert row.closure_notified_at is None and row.closed_reason is None
+
     def test_a_closed_row_cannot_be_claimed(self, session):
         row = make_account_request(session).dismiss('operator1', 'dup')
         with pytest.raises(ValueError, match='dismissed'):

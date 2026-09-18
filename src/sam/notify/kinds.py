@@ -209,6 +209,15 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
         facility_aware=False,
         family='account',
     ),
+    # Operator-chosen on Reject (a checkbox), never automatic.
+    NotificationKind(
+        key='account_rejected',
+        label='Account-request rejection notice',
+        template_base='account_rejected',
+        default_subscribed=True,
+        facility_aware=False,
+        family='account',
+    ),
 )
 
 

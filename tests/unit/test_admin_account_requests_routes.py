@@ -12,6 +12,50 @@ from webapp.utils.rbac import Permission
 
 pytestmark = pytest.mark.unit
 
+
+@pytest.fixture
+def committed_request(app):
+    """A committed open request the route handlers' session can see."""
+    from sam.core.account_requests import AccountRequest
+    from webapp.extensions import db
+
+    with app.app_context():
+        row = AccountRequest.create(
+            db.session, email='zz.reject.test@example.invalid', first_name='Rae',
+            last_name='Jekt', purpose='standalone', created_by='operator1',
+            verified_by='operator1')
+        db.session.commit()
+        row_id = row.account_request_id
+
+    yield row_id
+
+    with app.app_context():
+        db.session.query(AccountRequest).filter(
+            AccountRequest.account_request_id == row_id).delete()
+        db.session.commit()
+
+
+@pytest.fixture
+def sending_notifier(monkeypatch):
+    """A mailer that reports `sent`; what it was handed is `.delivered`."""
+    from sam.notify import NotifyConfig, Notifier, NullTransport
+
+    transport = NullTransport()
+    monkeypatch.setattr(
+        'webapp.dashboards.admin.account_requests_routes.get_notifier',
+        lambda **_: Notifier(config=NotifyConfig(enabled=True, transport='null'),
+                             transport=transport, ledger=None))
+    return transport
+
+
+def _row_state(app, row_id):
+    from sam.core.account_requests import AccountRequest
+    from webapp.extensions import db
+    with app.app_context():
+        row = db.session.get(AccountRequest, row_id)
+        db.session.refresh(row)
+        return row.state, row.closed_reason, row.closure_notified_at
+
 PAGE = '/admin/account-requests'
 FRAGMENT = '/admin/account-requests/fragment'
 MISSING = 99_999_999
@@ -129,3 +173,52 @@ class TestGuards:
         resp = auth_client.post('/admin/account-requests/reconcile')
         assert resp.status_code == 200
         assert 'refreshAccountQueue' in resp.headers.get('HX-Trigger', '')
+
+
+class TestRejectNotice:
+    """The notice is the operator's choice: no box, no mail."""
+
+    def test_the_reject_form_offers_the_box_and_dismiss_does_not(
+            self, auth_client, committed_request):
+        reject = auth_client.get(
+            f'/admin/account-requests/{committed_request}/reject-form').get_data(as_text=True)
+        dismiss = auth_client.get(
+            f'/admin/account-requests/{committed_request}/dismiss-form').get_data(as_text=True)
+        assert 'name="notify"' in reject
+        assert 'name="notify"' not in dismiss
+
+    def test_without_the_box_nothing_is_mailed(self, auth_client, app,
+                                               committed_request, sending_notifier):
+        resp = auth_client.post(f'/admin/account-requests/{committed_request}/reject',
+                                data={'reason': 'not eligible'})
+        assert resp.status_code == 200
+        assert 'refreshAccountQueue' in resp.headers.get('HX-Trigger', '')
+        assert sending_notifier.delivered == []
+        assert _row_state(app, committed_request) == ('rejected', 'not eligible', None)
+
+    def test_with_the_box_one_notice_leaves_and_is_stamped(
+            self, auth_client, app, committed_request, sending_notifier):
+        resp = auth_client.post(f'/admin/account-requests/{committed_request}/reject',
+                                data={'reason': 'not eligible', 'notify': '1'})
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert 'Rejected Rae Jekt' in html and 'Notice sent' in html
+        (message, _rendered), = sending_notifier.delivered
+        assert message.kind == 'account_rejected'
+        assert message.recipient.address == 'zz.reject.test@example.invalid'
+        assert message.context['reason'] == 'not eligible'
+        state, reason, notified = _row_state(app, committed_request)
+        assert state == 'rejected' and notified is not None
+
+    def test_a_suppressed_notice_is_reported_and_not_stamped(
+            self, auth_client, app, committed_request, monkeypatch):
+        from sam.notify import NotifyConfig, Notifier, NullTransport
+        monkeypatch.setattr(
+            'webapp.dashboards.admin.account_requests_routes.get_notifier',
+            lambda **_: Notifier(config=NotifyConfig(enabled=False),
+                                 transport=NullTransport(), ledger=None))
+        resp = auth_client.post(f'/admin/account-requests/{committed_request}/reject',
+                                data={'reason': 'not eligible', 'notify': '1'})
+        assert resp.status_code == 200
+        assert 'mail is off' in resp.get_data(as_text=True)
+        assert _row_state(app, committed_request)[2] is None

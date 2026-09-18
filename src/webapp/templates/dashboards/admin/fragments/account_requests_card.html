@@ -212,7 +212,7 @@
                                     hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
                                     data-bs-toggle="modal" data-bs-target="#auditDetailsModal"><i class="fa-solid fa-eye-slash"></i></button>
                             <button type="button" class="btn btn-outline-danger"
-                                    title="Reject — refuse the request; the reason is what the requester is told" aria-label="Reject"
+                                    title="Reject — refuse the request; optionally email the reason to the requester" aria-label="Reject"
                                     hx-get="{{ url_for('admin_dashboard.account_request_reject_form', request_id=v.id) }}"
                                     hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
                                     data-bs-toggle="modal" data-bs-target="#auditDetailsModal"><i class="fa-solid fa-ban"></i></button>
@@ -258,7 +258,8 @@
                             <dt class="col-sm-3">Fulfilled</dt><dd class="col-sm-9">{{ r.fulfilled_at | fmt_date }} — user id {{ r.user_id }}{% if r.upid %}, UPID {{ r.upid }}{% endif %}</dd>
                             {% endif %}
                             {% if r.closed_at %}
-                            <dt class="col-sm-3">{{ r.state | capitalize }}</dt><dd class="col-sm-9">{{ r.closed_reason }} — {{ r.closed_by }}, {{ r.closed_at | fmt_date }}</dd>
+                            <dt class="col-sm-3">{{ r.state | capitalize }}</dt>
+                            <dd class="col-sm-9">{{ r.closed_reason }} — {{ r.closed_by }}, {{ r.closed_at | fmt_date }}{% if r.closure_notified_at %}; requester emailed {{ r.closure_notified_at | fmt_date }}{% endif %}</dd>
                             {% endif %}
                         </dl>
                     </td>

@@ -3,11 +3,12 @@
   in place on a validation error by handle_htmx_form_post.
 
   Context:
-    row       the AccountRequest
-    verb      'dismiss' | 'reject'
-    post_url  where to POST
+    row             the AccountRequest
+    verb            'dismiss' | 'reject'
+    post_url        where to POST
+    notify_enabled  whether mail leaves this deployment (reject only)
 #}
-{% from 'dashboards/fragments/form_fields.html' import textarea_field, form_errors_panel with context %}
+{% from 'dashboards/fragments/form_fields.html' import textarea_field, checkbox_field, form_errors_panel with context %}
 
 <h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
     {{ verb | capitalize }} the request from {{ row.display_name }}
@@ -19,9 +20,9 @@
     person who already has an account under another address. The row stays
     under <strong>Show everything</strong> with your reason, and can be reopened.
     {% else %}
-    Refuse this request. The reason is what the requester will be told, so
-    write it for them. The row stays under <strong>Show everything</strong>
-    and can be reopened.
+    Refuse this request. The reason is recorded with the request; tick the
+    box to email it to the requester as well. The row stays under
+    <strong>Show everything</strong> and can be reopened.
     {% endif %}
 </p>
 
@@ -31,6 +32,11 @@
     {{ textarea_field('reason', 'Reason', required=True, rows=3, maxlength=255,
                       placeholder='Why?',
                       help='Recorded on the request with your username.') }}
+    {% if verb == 'reject' %}
+    {{ checkbox_field('notify', 'Email this reason to ' ~ row.email,
+                      help=('Sent as you wrote it, from the account team.' if notify_enabled
+                            else 'Mail is off on this deployment; the attempt is recorded and nothing leaves.')) }}
+    {% endif %}
     {{ form_errors_panel() }}
     <div class="d-flex justify-content-end gap-2 mt-3">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>

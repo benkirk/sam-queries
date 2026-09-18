@@ -22,7 +22,7 @@ from sam.core.account_requests import (
 )
 from sam.manage import management_transaction
 from sam.manage.account_requests import reconcile_account_requests
-from sam.queries.account_notices import build_queue_summary
+from sam.queries.account_notices import build_queue_summary, build_rejection_message
 from sam.queries.account_requests import (
     ORIGIN_SELF,
     ORIGIN_SPONSOR,
@@ -38,6 +38,7 @@ from sam.queries.account_requests import (
 )
 from sam.schemas.forms import AccountRequestReasonForm
 from webapp.extensions import db
+from webapp.utils.form_handler import HtmxFormHandler
 from webapp.utils.htmx import (
     handle_htmx_form_post, htmx_modal_not_found, htmx_not_found, htmx_success,
     htmx_success_message, modal_triggers, read_flag, read_sort,
@@ -243,13 +244,18 @@ def account_request_reopen(request_id):
                       'Reopened {name}.')
 
 
+def _reason_context(row, verb):
+    return {'row': row, 'verb': verb,
+            'notify_enabled': get_notifier(ledger=False).config.enabled,
+            'post_url': url_for(f'admin_dashboard.account_request_{verb}',
+                                request_id=row.account_request_id)}
+
+
 def _reason_form(request_id, verb):
     row = _load(request_id)
     if row is None:
         return htmx_modal_not_found('Account request')
-    return render_template(_REASON_FORM, row=row, verb=verb,
-                           post_url=url_for(f'admin_dashboard.account_request_{verb}',
-                                            request_id=request_id))
+    return render_template(_REASON_FORM, **_reason_context(row, verb))
 
 
 def _reason_post(request_id, verb, action, done):
@@ -263,11 +269,7 @@ def _reason_post(request_id, verb, action, done):
         success_triggers=_MODAL_TRIGGERS,
         success_message=done.format(name=row.display_name),
         error_prefix=f'Error: could not {verb}',
-        extra_context={
-            'row': row, 'verb': verb,
-            'post_url': url_for(f'admin_dashboard.account_request_{verb}',
-                                request_id=request_id),
-        },
+        extra_context=_reason_context(row, verb),
     )
 
 
@@ -295,14 +297,66 @@ def account_request_reject_form(request_id):
     return _reason_form(request_id, 'reject')
 
 
+class _RejectHandler(HtmxFormHandler):
+    """Reject, and mail the reason only when the operator ticked the box.
+    Send after the commit, stamp after the send, so the row never claims a
+    notice that did not leave."""
+    schema_cls = AccountRequestReasonForm
+    template = _REASON_FORM
+    error_prefix = 'Error: could not reject'
+
+    def clean(self, data):
+        self.notify = bool(data.get('notify'))
+        return data
+
+    def perform(self, data):
+        return self.row.reject(current_user.username, data['reason'])
+
+    def after_commit(self, row):
+        self.notice = None
+        if not self.notify:
+            return
+        event = events_for(db.session, [row]).get(row.event_id)
+        view, = request_views(db.session, [row], resolutions={},
+                              events={row.event_id: event} if event else {})
+        message = build_rejection_message(
+            row, requested_by=current_user.username,
+            event_name=event.name if event else '',
+            project_code=view['project_code'])
+        self.notice = get_notifier().send(message)
+        if self.notice.status in ('sent', 'redirected'):
+            with management_transaction(db.session):
+                row.mark_closure_notified()
+
+    def context(self):
+        return _reason_context(self.row, 'reject')
+
+    def triggers(self, row):
+        return _MODAL_TRIGGERS
+
+    def detail(self, row):
+        if self.notice is None:
+            return None
+        if self.notice.status in ('sent', 'redirected'):
+            return f'Notice {self.notice.status} to {row.email}.'
+        if self.notice.status == 'suppressed':
+            return 'Notice not sent: mail is off on this deployment.'
+        return f'Notice not sent: {self.notice.detail or self.notice.status}.'
+
+    def on_success(self, row):
+        self.success_message = f'Rejected {row.display_name}.'
+        return super().on_success(row)
+
+
 @bp.route('/account-requests/<int:request_id>/reject', methods=['POST'])
 @login_required
 @require_permission(Permission.MANAGE_ACCOUNT_REQUESTS)
 def account_request_reject(request_id):
-    """Refuse; the reason is what the requester is told."""
-    return _reason_post(request_id, 'reject',
-                        lambda row, reason: row.reject(current_user.username, reason),
-                        'Rejected {name}.')
+    """Refuse; the reason is recorded and, on request, mailed to the requester."""
+    row = _load(request_id)
+    if row is None:
+        return htmx_not_found('Account request')
+    return _RejectHandler(row=row).handle()
 
 
 @bp.route('/account-requests/reconcile', methods=['POST'])

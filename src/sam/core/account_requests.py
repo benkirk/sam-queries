@@ -254,9 +254,9 @@ class AccountRequest(Base, SessionMixin):
     upid = Column(Integer)
     fulfilled_at = Column(DateTime)
     fulfill_error = Column(String(255))
-    #: Not written yet: the rejection notice (deferred) and the XRAS
-    #: placeholder merge (phase 3). Present so neither needs an ALTER.
+    #: When the operator-chosen rejection notice left.
     closure_notified_at = Column(DateTime)
+    #: Not written yet: the XRAS placeholder merge (phase 3).
     merged_at = Column(DateTime)
 
     def __str__(self):
@@ -393,8 +393,14 @@ class AccountRequest(Base, SessionMixin):
         return self._close('dismissed', 'dismiss', by, reason, clock)
 
     def reject(self, by, reason, clock=None):
-        """Refuse; the reason is what the requester is told."""
+        """Refuse; the reason is recorded and, if the operator chose, mailed."""
         return self._close('rejected', 'reject', by, reason, clock)
+
+    def mark_closure_notified(self, when=None):
+        """The rejection notice reached the requester (send first, stamp second)."""
+        self.closure_notified_at = when or datetime.now()
+        self.session.flush()
+        return self
 
     def reopen(self):
         if self.state in OPEN_STATES:
@@ -403,6 +409,7 @@ class AccountRequest(Base, SessionMixin):
         self.closed_by = None
         self.closed_at = None
         self.closed_reason = None
+        self.closure_notified_at = None
         self.session.flush()
         return self
 

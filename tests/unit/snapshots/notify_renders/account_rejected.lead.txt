@@ -1,0 +1,12 @@
+Hello Ada Lovelace,
+
+Your request for an NCAR HPC account for "WRF Tutorial, October 2026" (project SCSG0001) was not approved.
+
+The account team's reason:
+
+    The workshop roster is full; the organizers will contact you about the next session.
+
+If you think this is a mistake, or your situation has changed, reply to this
+message and the account team will take another look.
+--
+NSF NCAR Systems Accounting Manager
