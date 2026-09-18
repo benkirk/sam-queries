@@ -3,7 +3,8 @@
 {#
   Invite one person who has no account. Lands in #invitationFormContainer.
 
-  Context: project, events (this project's events), post_url, errors
+  Context: project, events (this project's events), default_event_code
+           (pre-selected when one active event), post_url, errors
 #}
 <h5 class="modal-title" id="invitationModalLabel" hx-swap-oob="true">
     <i class="fa-solid fa-user-plus"></i> Invite a person to {{ project.projcode }}
@@ -27,6 +28,7 @@
     {% if events %}
     {{ select_field('event_code', 'Event', items=events, value_attr='event_code',
                     label_attrs=['event_code', 'name'], placeholder='— none —',
+                    default=default_event_code|default(''),
                     help='Group this invitation under an event (workshop, class).') }}
     {% endif %}
     {{ textarea_field('note', 'Note for the account team', rows=2, maxlength=255,

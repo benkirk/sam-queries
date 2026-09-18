@@ -133,7 +133,13 @@
                             <strong>{{ group.event.accounts_needed_by | fmt_date }}</strong>{% if not group.event.active %}; closed{% endif %})
                         </span>
                         {% else %}
+                        {# Event-less rows: all project-scoped -> invitations; a
+                           standalone/sweep row in the bucket keeps it generic. #}
+                        {% if group.rows | selectattr('project_code') | list | length == group.rows | length %}
+                        Project Invitations
+                        {% else %}
                         Other requests
+                        {% endif %}
                         {% endif %}
                         <span class="cursor-pointer" {{ collapse_toggle(gid, expanded=true) }}><span class="badge bg-secondary ms-1">{{ group.rows | length }}</span></span>
                     </td>

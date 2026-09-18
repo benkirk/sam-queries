@@ -77,6 +77,14 @@ def _project_events(project):
                       AccountRequestEvent.accounts_needed_by).all())
 
 
+def _default_event_code(events):
+    """Pre-select the sole active event so an invitation defaults into its
+    cohort (the common case: one workshop running). Stay neutral (— none —)
+    when there are zero or several active events, where a guess could misfile."""
+    active = [e for e in events if e.active]
+    return active[0].event_code if len(active) == 1 else ''
+
+
 def _event_for(project, code):
     """This project's event by code, or None."""
     if not code:
@@ -147,7 +155,9 @@ class _InviteUserHandler(HtmxFormHandler):
             organization=data.get('organization'), event=self.event)
 
     def context(self):
-        return {'project': self.project, 'events': _project_events(self.project),
+        events = _project_events(self.project)
+        return {'project': self.project, 'events': events,
+                'default_event_code': _default_event_code(events),
                 'post_url': url_for('project_invites.htmx_invite_user',
                                     projcode=self.project.projcode)}
 
@@ -175,7 +185,9 @@ def institutions_fragment():
 @login_required
 @_GUARD
 def htmx_invite_form(project):
-    return render_template(_INVITE_FORM, project=project, events=_project_events(project),
+    events = _project_events(project)
+    return render_template(_INVITE_FORM, project=project, events=events,
+                           default_event_code=_default_event_code(events),
                            post_url=url_for('project_invites.htmx_invite_user',
                                             projcode=project.projcode), errors=[])
 
