@@ -1,5 +1,40 @@
 # PR 3 — deferred gaps from #575 / #576 (one PR vs `staging`)
 
+**Status: implemented** on `events_followups`. The plan below is kept as written.
+
+## As built -- deviations from the plan
+
+| Plan said | Built | Why |
+|---|---|---|
+| Query-count assertions in `tests/perf/` with `baselines.json` entries | Always-on statement assertions in `tests/integration/test_status_dashboard.py` | The perf harness counts on `db.engine` (the SAM bind); status reads go to the `system_status` bind. "No child-table or lookup SELECT" is exact, needs no headroom, and runs in CI |
+| Clamp only | Also fixed an anonymous 500: `get_user_permissions` read `user.roles` on `AnonymousUserMixin`, so `/status/queue-history/...` never rendered signed-out | Found by the new anonymous clamp tests; it fails closed now |
+| Copy button on the Accounts card username cell | Skipped | That card's rows carry no glyphs by design (`e2e/test_xras_accounts_card.py::test_the_row_icons_are_gone`); the person detail in its expansion has name and email buttons |
+| `compact=true` in cells | New `inline=true` variant (borderless, beside the value) | A bordered `btn-sm` in a dense cell grows the row |
+| Card chevron via `collapse_toggle` | Chevron cell **and** the Enrolled count toggle; the code cell cannot (it holds a copy button) | Capture-phase data-api |
+| Roster button always | Drawn for a `MANAGE_ACCOUNT_REQUESTS` holder on an active event whose project is active | A roster on a retired project queues requests nobody can fulfill |
+
+## Prod posture option (Ben's switch, not flipped here)
+
+`ACCOUNT_REGISTRATION_ENABLED=1` with `ACCOUNT_REGISTRATION_LOGIN_REQUIRED=1`
+lights the self-enroll shortcut, the public Upcoming Events card and the enrolled
+counts with **no anonymous mailer**. Caveat: the signed-in creation form can
+still mail a third party (one verification message, globally capped per hour).
+
+## Still blocked outside this repo (note only)
+
+- CAPTCHA on the anonymous form.
+- Client IP at the ingress: until it arrives, `RATELIMIT_ANON` is one global
+  bucket in prod, and `/status/*` rides the default tier.
+- The `account_requests_reconcile` / `account_queue_digest` switches in
+  `SAM_TASKS_DISABLED`.
+- Phase 3 of `docs/plans/ACCOUNT_REGISTRATION.md`.
+- "Copy link to this view": re-file as *URL-complete filter state* -- only two
+  pages keep their filters in the URL; the htmx cards hold them in hidden forms.
+- `account_request_event.modified_by`: a prod ALTER; the lifecycle logs the actor
+  until then.
+
+---
+
 ## Context
 
 #575 (account registration) and #576 (events views) each deferred work. A census

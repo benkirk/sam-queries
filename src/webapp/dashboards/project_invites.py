@@ -18,10 +18,7 @@ from sam.core.users import User
 from sam.manage.account_requests import (
     OUTCOME_ADDED,
     OUTCOME_DUPLICATE,
-    OUTCOME_QUEUED,
     invite_user,
-    parse_roster,
-    paste_roster,
 )
 from sam.queries.account_requests import (
     enrollees_for_event, event_sponsors, events_for, request_views,
@@ -30,20 +27,19 @@ from sam.queries.account_requests import (
 from sam.schemas.forms import (
     AccountRequestEventForm,
     InviteUserForm,
-    RosterPasteForm,
 )
 from webapp.api.access_control import (
     require_event_sponsor_access, require_project_facility_permission,
     require_project_permission,
 )
 from webapp.dashboards.event_lifecycle import (
-    EVENT_FORM, EventEditHandler, create_event, invalidate_upcoming_events,
-    sponsor_context, switch_event,
+    EVENT_FORM, ROSTER_FORM, EventEditHandler, RosterHandler, create_event,
+    invalidate_upcoming_events, sponsor_context, switch_event,
 )
 from webapp.extensions import db
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import (
-    handle_htmx_form_post, htmx_success, htmx_success_message, institution_options,
+    handle_htmx_form_post, htmx_success_message, institution_options,
 )
 from webapp.utils.project_permissions import can_create_events
 from webapp.utils.rbac import Permission, has_permission_any_facility
@@ -52,8 +48,6 @@ bp = Blueprint('project_invites', __name__, url_prefix='/project-invitations')
 
 _TAB = 'project_members/fragments/invitations_tab_htmx.html'
 _INVITE_FORM = 'project_members/fragments/invite_form_htmx.html'
-_ROSTER_FORM = 'project_members/fragments/roster_form_htmx.html'
-_ROSTER_RESULT = 'project_members/fragments/roster_result_htmx.html'
 _FORM_TARGET = '#invitationFormContainer'
 _TRIGGERS = {'closeActiveModal': {}, 'refreshInvitations': {}, 'refreshAccountQueue': {}}
 
@@ -279,45 +273,16 @@ def htmx_event_reopen(event, project):
 
 # -- roster -------------------------------------------------------------------
 
-class _RosterHandler(HtmxFormHandler):
-    schema_cls = RosterPasteForm
-    template = _ROSTER_FORM
-
-    def clean(self, data):
-        entries, errors = parse_roster(data['roster'])
-        if errors:
-            raise FormError(*errors)
-        if not entries:
-            raise FormError('No people found; one "Name <email>" per line.')
-        data['entries'] = entries
-        return data
-
-    def perform(self, data):
-        return paste_roster(db.session, event=self.event, sponsor=_sponsor(),
-                            entries=data['entries'])
-
-    def context(self):
-        return {'project': self.project, 'event': self.event,
-                'post_url': url_for('project_invites.htmx_roster_paste',
-                                    event_code=self.event.event_code)}
-
-    def on_success(self, result):
-        # The summary replaces the form inside the still-open modal: an
-        # operator pasting thirty lines wants to see which three were known.
-        counts = {k: len(v) for k, v in result.items()}
-        return htmx_success(_ROSTER_RESULT,
-                            {'refreshInvitations': {}, 'refreshAccountQueue': {}},
-                            toast=(f"{counts[OUTCOME_QUEUED]} queued, "
-                                   f"{counts[OUTCOME_ADDED]} added, "
-                                   f"{counts[OUTCOME_DUPLICATE]} already waiting"),
-                            event=self.event, project=self.project, outcomes=result)
+class _RosterHandler(RosterHandler):
+    post_endpoint = 'project_invites.htmx_roster_paste'
+    triggers = {'refreshInvitations': {}, 'refreshAccountQueue': {}}
 
 
 @bp.route('/events/<event_code>/roster-form')
 @login_required
 @_EVENT_GUARD
 def htmx_roster_form(event, project):
-    return render_template(_ROSTER_FORM, project=project, event=event,
+    return render_template(ROSTER_FORM, project=project, event=event,
                            post_url=url_for('project_invites.htmx_roster_paste',
                                             event_code=event.event_code), errors=[])
 

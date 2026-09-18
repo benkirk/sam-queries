@@ -24,7 +24,7 @@
                    hx-swap="innerHTML">
             <label class="form-check-label small text-muted fw-normal" for="eventsCardActiveOnly">Active only</label>
         </div>
-        {% if has_permission(Permission.MANAGE_EVENTS) %}
+        {% if has_permission_any_facility(Permission.MANAGE_EVENTS) %}
         <button type="button" class="btn btn-sm btn-primary ms-3"
                 hx-get="{{ url_for('admin_dashboard.htmx_admin_event_form') }}"
                 hx-target="#invitationFormContainer" hx-swap="innerHTML"
@@ -45,7 +45,7 @@
     </div>
 </div>
 
-{% if has_permission(Permission.MANAGE_EVENTS) %}
+{% if has_permission_any_facility(Permission.MANAGE_EVENTS) %}
 {% include 'project_members/fragments/invitation_modals_htmx.html' %}
 {% endif %}
 {% endblock %}
