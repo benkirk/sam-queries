@@ -555,7 +555,13 @@ class SAMAnonymizer:
 
             if not self.dry_run:
                 session.execute(text(
+                    # modified_time = modified_time on every table with an ON UPDATE
+                    # stamp: anonymizing is not a modification, and a bumped stamp
+                    # (the container clock, UTC) reads as the future to a Mountain
+                    # clock for six hours, which the allocation read-model gate
+                    # treats as every tree changed.
                     "UPDATE user_alias SET "
+                    "modified_time = modified_time, "
                     "username = :username, "
                     "orcid_id = :orcid_id, "
                     "access_global_id = :access_global_id "
@@ -599,7 +605,7 @@ class SAMAnonymizer:
 
             if not self.dry_run:
                 session.execute(text(
-                    "UPDATE email_address SET email_address = :email "
+                    "UPDATE email_address SET modified_time = modified_time, email_address = :email "
                     "WHERE email_address_id = :email_id"
                 ), {'email': fake_email, 'email_id': email_id})
 
@@ -637,7 +643,7 @@ class SAMAnonymizer:
 
             if not self.dry_run:
                 session.execute(text(
-                    "UPDATE phone SET phone_number = :phone "
+                    "UPDATE phone SET modified_time = modified_time, phone_number = :phone "
                     "WHERE ext_phone_id = :phone_id"
                 ), {'phone': fake_phone, 'phone_id': phone_id})
 
@@ -682,6 +688,7 @@ class SAMAnonymizer:
             if not self.dry_run:
                 session.execute(text(
                     "UPDATE institution SET "
+                    "modified_time = modified_time, "
                     "name = :name, "
                     "acronym = :acronym, "
                     "address = :address, "
@@ -732,6 +739,7 @@ class SAMAnonymizer:
             if not self.dry_run:
                 session.execute(text(
                     "UPDATE organization SET "
+                    "modified_time = modified_time, "
                     "name = :name, "
                     "acronym = :acronym, "
                     "description = :description "
@@ -779,6 +787,7 @@ class SAMAnonymizer:
             if not self.dry_run:
                 session.execute(text(
                     "UPDATE project SET "
+                    "modified_time = modified_time, "
                     "title = :title, "
                     "abstract = :abstract "
                     "WHERE project_id = :project_id"
@@ -831,6 +840,7 @@ class SAMAnonymizer:
             if not self.dry_run:
                 session.execute(text(
                     "UPDATE contract SET "
+                    "modified_time = modified_time, "
                     "contract_number = :number, "
                     "title = :title, "
                     "url = :url "
@@ -1260,11 +1270,16 @@ class SAMAnonymizer:
                 # addresses and edited template bodies. Same tolerance.
                 # HPC account requests: people with NO SAM account, so the
                 # username map cannot reach them. Same tolerance, no FKs.
+                # The allocation read model is derived: the UPDATEs above bump
+                # modified_time past its refreshed_at, so every tree reads as
+                # stale and the reader refuses the whole table. Ship it empty;
+                # the hourly task and the tests rebuild it.
                 for table_name, what in (
                         ('notification_addressing', 'operator cc/bcc rows (real mailboxes)'),
                         ('notification_template_override', 'edited template bodies'),
                         ('account_request', 'account requests (names + emails of non-users)'),
-                        ('account_request_event', 'account-request events (sponsor prose)')):
+                        ('account_request_event', 'account-request events (sponsor prose)'),
+                        ('account_allocation_state', 'the allocation read model (stale after anonymization)')):
                     if self._table_exists(session, table_name):
                         self.purge_operator_table(session, table_name, what)
                     else:
