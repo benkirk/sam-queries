@@ -110,6 +110,24 @@ def _my_jobs_available():
     return bool(jobs_service.job_history_machines())
 
 
+def _my_events_available():
+    # Mirrors user_dashboard._page_context(): shown once the user has any
+    # event enrollment. The only nav predicate that must hit the DB (there is
+    # no in-memory signal for "has enrollments"), so it is memoized on ``g``:
+    # the navbar and the mobile nav both resolve the registry per request, and
+    # this bounds it to one indexed EXISTS per request.
+    if not current_user.is_authenticated:
+        return False
+    from flask import g
+    cached = getattr(g, '_my_events_available', None)
+    if cached is None:
+        from sam.queries.account_requests import user_has_enrollments
+        from webapp.extensions import db
+        cached = user_has_enrollments(db.session, current_user.user_id)
+        g._my_events_available = cached
+    return cached
+
+
 # The registry
 #
 # Section keys: 'blueprint' drives section-level active state; 'endpoint' is
@@ -134,6 +152,8 @@ NAV_SECTIONS = (
              'icon': 'fa-solid fa-hard-drive', 'visible': _my_data_available},
             {'endpoint': 'user_dashboard.my_jobs', 'label': 'My Jobs',
              'icon': 'fa-solid fa-list-check', 'visible': _my_jobs_available},
+            {'endpoint': 'user_dashboard.my_events', 'label': 'My Events',
+             'icon': 'fa-solid fa-calendar-check', 'visible': _my_events_available},
         ),
     },
     {
