@@ -10,7 +10,6 @@ metric) over label grepping.
 
 from __future__ import annotations
 
-import pytest
 
 from webapp.dashboards.charts import (
     _jobs_metric_value,
@@ -21,7 +20,6 @@ from webapp.dashboards.charts import (
     generate_jobs_user_pie_chart,
 )
 
-pytestmark = pytest.mark.unit
 
 
 # Charges default to HALF the hours rather than a copy of them, so a metric

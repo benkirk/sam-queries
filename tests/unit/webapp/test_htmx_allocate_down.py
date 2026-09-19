@@ -23,7 +23,6 @@ from sam.accounting.allocations import Allocation
 from sam.manage.allocations import get_carveout_frontier
 
 
-pytestmark = pytest.mark.unit
 
 _BOGUS = 99_999_999
 

@@ -182,8 +182,42 @@ def pytest_configure(config):
         sys.path.insert(0, tests_path)
 
 
+#: Domain marker derived from a test's location. Keyed on the first path
+#: segment under ``tests/`` (and, for ``unit``, the segment below it). The
+#: ``gates`` directory carries the ``gate`` marker; every other domain marker
+#: matches its directory name. Registered in pytest.ini (``--strict-markers``).
+_UNIT_DOMAIN_MARKERS = {
+    "gates": "gate",
+    "xras": "xras",
+    "notify": "notify",
+    "tasks": "tasks",
+    "charts": "charts",
+    "cli": "cli",
+    "webapp": "webapp",
+    "models": "models",
+    "queries": "queries",
+    "manage": "manage",
+}
+
+
+def _domain_marker(item):
+    """The marker for an item's directory, or None if it maps to no domain."""
+    parts = item.path.parts
+    if "tests" not in parts:
+        return None
+    rel = parts[parts.index("tests") + 1:]
+    if not rel:
+        return None
+    if rel[0] == "unit" and len(rel) >= 2:
+        return _UNIT_DOMAIN_MARKERS.get(rel[1])
+    if rel[0] in ("api", "integration"):
+        return rel[0]
+    return None
+
+
 def pytest_collection_modifyitems(config, items):
-    """Dialect markers and the Postgres expected-failures list.
+    """Directory-derived domain markers, dialect skips, and the Postgres
+    expected-failures list.
 
     Runs in every xdist worker, so each applies the same marks. Never exit
     from here: a stale entry is reported by test_postgres_expected_failures.py.
@@ -193,6 +227,9 @@ def pytest_collection_modifyitems(config, items):
     skip_pg = pytest.mark.skip(reason="postgres_only")
     expected = read_expected_failures() if backend == "postgresql" else []
     for item in items:
+        marker = _domain_marker(item)
+        if marker:
+            item.add_marker(getattr(pytest.mark, marker))
         if backend != "mysql" and item.get_closest_marker("mysql_only"):
             item.add_marker(skip_mysql)
         if backend != "postgresql" and item.get_closest_marker("postgres_only"):

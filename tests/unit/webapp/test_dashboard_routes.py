@@ -8,7 +8,6 @@ the auth/permission gates, and a render smoke for each page.
 """
 import pytest
 
-pytestmark = pytest.mark.unit
 
 
 # ---------------------------------------------------------------------------

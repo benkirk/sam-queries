@@ -4,12 +4,10 @@ Ported verbatim from tests/unit/queries/test_project_access_queries.py. All test
 are structural (dict shape, field types, value-set invariants) and were
 already snapshot-safe — no hardcoded projcodes or usernames.
 """
-import pytest
 
 from sam.queries.project_access import get_project_group_status
 
 
-pytestmark = pytest.mark.unit
 
 
 class TestGetProjectGroupStatus:

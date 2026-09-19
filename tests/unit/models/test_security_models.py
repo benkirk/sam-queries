@@ -9,7 +9,6 @@ import pytest
 from sam import ApiCredentials
 
 
-pytestmark = pytest.mark.unit
 
 
 class TestApiCredentialsModel:

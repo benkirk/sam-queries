@@ -8,7 +8,6 @@ grouping and stamping shapes the cards read.
 
 from datetime import date, datetime, timedelta
 
-import pytest
 from factories import (
     make_account_request,
     make_account_request_event,
@@ -40,7 +39,6 @@ from sam.queries.account_requests import (
     waiting_days,
 )
 
-pytestmark = pytest.mark.unit
 
 
 def _user_with_email(session, email, *, active=True):

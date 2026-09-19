@@ -11,7 +11,6 @@ import pytest
 from sam import Factor, Formula, ResourceType
 
 
-pytestmark = pytest.mark.unit
 
 
 # ============================================================================

@@ -33,7 +33,6 @@ from sam.xras.errors import ActionErrors, XrasActionRejected
 
 from xras_helpers import FIXTURE_DIR, load_fixture
 
-pytestmark = pytest.mark.unit
 
 
 def act(action_type='Extension', request_number='NOSUCH9999', **extra):

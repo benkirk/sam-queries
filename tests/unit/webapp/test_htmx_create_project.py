@@ -17,7 +17,6 @@ from sam import GidPoolSummary
 from webapp.dashboards.admin.projects_routes import _gid_pool_badge
 
 
-pytestmark = pytest.mark.unit
 
 
 # ---------------------------------------------------------------------------

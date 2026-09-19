@@ -32,7 +32,6 @@ from sam.xras.errors import XrasActionRejected
 from xras_helpers import wire_resource
 from xras_helpers import committing  # noqa: F401  — pytest resolves it by name
 
-pytestmark = pytest.mark.unit
 
 
 #: builder name -> the test method that produces it. Checked against the module.

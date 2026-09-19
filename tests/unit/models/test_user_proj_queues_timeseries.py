@@ -13,7 +13,6 @@ from system_status import DerechoStatus, UserProjQueueStatus
 from system_status.queries.user_proj_queues import get_user_proj_timeseries
 
 
-pytestmark = pytest.mark.unit
 
 
 def _make_derecho(session, ts):

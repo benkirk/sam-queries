@@ -11,13 +11,11 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
-import pytest
 from factories import make_allocation, make_project
 
 from sam.xras.preflight import (Synthesis, iter_candidate_actions, infer_applied,
                                  preflight_action, synthesize_action)
 
-pytestmark = pytest.mark.unit
 
 
 def _report(*, number='NCAR9001', request_type='New', opportunity_id=5,

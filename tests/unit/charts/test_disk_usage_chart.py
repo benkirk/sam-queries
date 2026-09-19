@@ -8,11 +8,9 @@ paths (``svg.fonttype`` defaults to ``'path'``), so we assert on behavior
 than grepping for label strings.
 """
 
-import pytest
 
 from webapp.dashboards.charts import generate_disk_usage_stacked_area
 
-pytestmark = pytest.mark.unit
 
 _TIB = 1024 ** 4
 

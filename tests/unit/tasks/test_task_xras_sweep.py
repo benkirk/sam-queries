@@ -32,7 +32,6 @@ from scheduling.tasks import xras_sweep as mod
 
 from factories import make_xras_opportunity_mapping
 
-pytestmark = pytest.mark.unit
 
 # WARNING: One worker at a time for this file. The opportunity-mapping tests insert
 # rows under FIXED `opportunity_id` PKs — 535388 and the 999-series are

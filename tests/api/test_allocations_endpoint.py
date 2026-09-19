@@ -16,7 +16,6 @@ import pytest
 from sam import Allocation
 
 
-pytestmark = pytest.mark.integration
 
 
 @pytest.fixture

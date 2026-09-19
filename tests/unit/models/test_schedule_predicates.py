@@ -26,7 +26,6 @@ from scheduling.schedules import (
     occurrence_key,
 )
 
-pytestmark = pytest.mark.unit
 
 
 def sweep(sched, start, *, hours, step_minutes=60):

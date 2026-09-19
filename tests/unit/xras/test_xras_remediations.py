@@ -28,7 +28,6 @@ from sam.integration.xras_api.base import XrasSourceUnavailable
 from sam.queries.xras_requests import request_index_entry
 from webapp.utils.rbac import Permission
 
-pytestmark = pytest.mark.unit
 
 FRAGMENT = '/allocations/xras_remediations'
 # Most tests below publish UNCHECKED rows (no preflight), which the default

@@ -19,7 +19,6 @@ non-member non-admin users, exercised separately.
 """
 import pytest
 
-pytestmark = pytest.mark.unit
 
 
 @pytest.fixture

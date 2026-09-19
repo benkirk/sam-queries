@@ -32,7 +32,6 @@ from factories import (
     make_project,
 )
 
-pytestmark = pytest.mark.unit
 
 
 @pytest.fixture

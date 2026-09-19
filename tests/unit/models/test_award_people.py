@@ -17,7 +17,6 @@ from sam.integration.awards.base import PersonRef
 from sam.integration.awards.people import resolve_person
 from factories.core import make_user
 
-pytestmark = pytest.mark.unit
 
 
 def _add_email(session, user, address, *, is_primary=False, active=True):

@@ -17,7 +17,6 @@ import pytest
 from sam.xras import errors as e
 from sam.xras.errors import ActionErrors, XrasActionRejected
 
-pytestmark = pytest.mark.unit
 
 
 class TestPunctuationQuirks:

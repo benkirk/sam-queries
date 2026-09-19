@@ -10,7 +10,6 @@ from datetime import date
 import pytest
 from sqlalchemy.exc import OperationalError
 
-pytestmark = pytest.mark.unit
 
 EVENT = {'event_id': 424242, 'event_code': 'ZZ-CARD-TEST', 'name': 'Card test workshop',
          'instructions': 'Bring a laptop.', 'project_code': 'SCSG0001',

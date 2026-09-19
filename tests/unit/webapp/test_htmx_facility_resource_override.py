@@ -16,7 +16,6 @@ import os
 import pytest
 
 
-pytestmark = pytest.mark.unit
 
 
 _BOGUS = 99999999

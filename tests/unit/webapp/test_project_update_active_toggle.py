@@ -14,7 +14,6 @@ import pytest
 from webapp.dashboards.admin import projects_routes as pr
 from factories import make_project
 
-pytestmark = pytest.mark.unit
 
 
 def _perform(app, project, form):

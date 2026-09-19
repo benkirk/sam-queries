@@ -22,7 +22,6 @@ from sam.core.organizations import Institution, InstitutionType, Organization
 from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
 from sam.projects.contracts import Contract, ContractSource, NSFProgram
 
-pytestmark = pytest.mark.unit
 
 MISSING_ID = 99999999
 

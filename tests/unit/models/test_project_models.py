@@ -24,7 +24,6 @@ from sam import (
 from factories import make_project
 
 
-pytestmark = pytest.mark.unit
 
 
 # ============================================================================

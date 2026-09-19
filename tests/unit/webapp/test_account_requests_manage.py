@@ -33,7 +33,6 @@ from sam.manage.account_requests import (
 )
 from sam.queries.account_requests import queue_requests
 
-pytestmark = pytest.mark.unit
 
 
 def _project_with_account(session):

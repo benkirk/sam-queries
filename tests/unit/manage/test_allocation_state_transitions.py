@@ -36,7 +36,6 @@ from sam.manage.transaction import management_transaction
 from factories import make_account, make_allocation, make_project, make_resource, make_user
 
 
-pytestmark = pytest.mark.unit
 
 
 # Far-future window so we never collide with snapshot allocations.

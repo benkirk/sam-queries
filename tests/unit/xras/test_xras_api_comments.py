@@ -10,7 +10,6 @@ from sam.integration.xras_api import (
 )
 from sam.integration.xras_api.comments import find_action, normalize_comment
 
-pytestmark = pytest.mark.unit
 
 
 def _family():

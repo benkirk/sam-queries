@@ -4,13 +4,11 @@ Phase 1 of the disk_resource_root_directory schema-parity work — exercises the
 new `active` column (provided by ActiveFlagMixin) and the universal `is_active`
 hybrid (CLAUDE.md §5).
 """
-import pytest
 
 from sam.resources.resources import DiskResourceRootDirectory
 from tests.factories import make_disk_resource_root_directory
 
 
-pytestmark = pytest.mark.unit
 
 
 class TestDiskResourceRootDirectoryActive:

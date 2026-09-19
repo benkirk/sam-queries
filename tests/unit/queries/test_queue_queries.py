@@ -11,7 +11,6 @@ import pytest
 
 from sam.queries.queue_access import get_queue_data
 
-pytestmark = pytest.mark.unit
 
 
 @pytest.fixture

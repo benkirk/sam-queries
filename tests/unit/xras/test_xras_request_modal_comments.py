@@ -1,11 +1,9 @@
 """The Request modal shows the approver's note the handoff notice will relay."""
 from pathlib import Path
 
-import pytest
 
 from webapp.dashboards.allocations.xras.modals import _detail_actions
 
-pytestmark = pytest.mark.unit
 
 TEMPLATE = Path('src/webapp/templates/dashboards/allocations/partials/'
                 'xras_request_detail.html')

@@ -16,7 +16,6 @@ We use flush() to match the legacy semantics.
 
 from datetime import datetime
 
-import pytest
 
 from system_status import (
     DerechoStatus,
@@ -25,7 +24,6 @@ from system_status import (
 )
 
 
-pytestmark = pytest.mark.integration
 
 
 class TestDerechoIntegration:

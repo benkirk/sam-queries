@@ -23,7 +23,6 @@ from scripts.lib.schema_introspection import (
     normalize_type,
 )
 
-pytestmark = pytest.mark.unit
 
 
 class TestNormalizeType:

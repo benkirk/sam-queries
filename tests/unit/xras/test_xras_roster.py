@@ -36,7 +36,6 @@ from sam.xras.roster import (
 
 from xras_helpers import FIXTURE_DIR, load_fixture
 
-pytestmark = pytest.mark.unit
 
 
 def role(role_type='PI', username='alice', begin='2026-01-01', end=None):

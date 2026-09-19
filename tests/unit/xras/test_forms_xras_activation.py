@@ -5,7 +5,6 @@ from marshmallow import ValidationError
 from sam.schemas.forms import XrasActivationEventForm, XrasDismissForm
 from sam.schemas.forms.xras_activation import _COMMENT_MAX
 
-pytestmark = pytest.mark.unit
 
 
 class TestDismissForm:

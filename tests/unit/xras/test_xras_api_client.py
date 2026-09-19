@@ -28,7 +28,6 @@ from sam.integration.xras_api.base import (
 from sam.integration.xras_api.client import XrasApiClient, _XrasTransport
 from sam.integration.xras_api.config import XrasApiConfig, xras_api_configured
 
-pytestmark = pytest.mark.unit
 
 
 # canned payloads

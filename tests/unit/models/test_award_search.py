@@ -31,7 +31,6 @@ from sam.integration.awards.usaspending import (
 
 from tests.unit.models.test_award_providers import NSF_PAYLOAD, _provider
 
-pytestmark = pytest.mark.unit
 
 
 # Two hits from api.nsf.gov/services/v1/awards.json?keyword=… — the same 62

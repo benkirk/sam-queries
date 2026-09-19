@@ -33,7 +33,6 @@ from sam.manage.renew import (
 
 from factories import make_project, make_resource, make_user
 
-pytestmark = pytest.mark.unit
 
 
 # ---------------------------------------------------------------------------

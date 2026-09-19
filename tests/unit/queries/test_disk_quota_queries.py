@@ -6,7 +6,6 @@ the schema test pins the legacy camelCase data_key contract.
 """
 from datetime import datetime, timedelta
 
-import pytest
 
 from sam.projects.projects import ProjectDirectory
 from sam.resources.resources import ResourceType
@@ -22,7 +21,6 @@ from tests.factories import (
     make_user,
 )
 
-pytestmark = pytest.mark.unit
 
 
 def _resource_type(session, name):

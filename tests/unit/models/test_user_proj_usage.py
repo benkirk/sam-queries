@@ -23,7 +23,6 @@ from system_status import (
 from system_status.queries import get_user_proj_usage
 
 
-pytestmark = pytest.mark.unit
 
 
 # ---------------------------------------------------------------------------

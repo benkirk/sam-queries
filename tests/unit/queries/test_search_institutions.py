@@ -1,11 +1,9 @@
 """`search_institutions`: the datalist behind the Institution fields."""
 
-import pytest
 from factories import make_institution
 
 from sam.queries.admin import search_institutions
 
-pytestmark = pytest.mark.unit
 
 
 def test_prefix_hits_first_deleted_rows_never(session):

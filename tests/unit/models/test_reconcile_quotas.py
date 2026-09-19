@@ -29,7 +29,6 @@ from factories import (
 )
 
 
-pytestmark = pytest.mark.unit
 
 
 # GpfsQuotaReader (no DB)

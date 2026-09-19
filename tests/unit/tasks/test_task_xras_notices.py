@@ -36,7 +36,6 @@ from scheduling.tasks import xras_notices as mod
 from scheduling.tasks.mail_guards import EmailCapExceeded, NotificationsDisabled
 from _paths import REPO_ROOT
 
-pytestmark = pytest.mark.unit
 
 NAME = 'xras_notices'
 

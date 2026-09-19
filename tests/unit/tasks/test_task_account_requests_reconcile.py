@@ -18,7 +18,6 @@ from scheduling.registry import TASKS, TaskContext
 from scheduling.schedules import Hourly, occurrence_key
 from scheduling.tasks import account_requests_reconcile as mod
 
-pytestmark = pytest.mark.unit
 
 NAME = 'account_requests_reconcile'
 #: 2026-09-16 15:20 UTC == 09:20 Mountain (MDT).

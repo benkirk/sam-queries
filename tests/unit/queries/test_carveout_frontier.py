@@ -24,7 +24,6 @@ from factories import (
     make_resource,
 )
 
-pytestmark = pytest.mark.unit
 
 
 # ---------------------------------------------------------------------------

@@ -11,7 +11,6 @@ import pytest
 
 from sam.queries.wallclock_exemption_access import get_wallclock_exemption_data
 
-pytestmark = pytest.mark.unit
 
 
 @pytest.fixture

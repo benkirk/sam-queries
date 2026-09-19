@@ -22,7 +22,6 @@ from sam.accounting.allocations import AllocationType
 from sam.resources.facilities import PanelSession
 
 
-pytestmark = pytest.mark.unit
 
 
 # ============================================================================

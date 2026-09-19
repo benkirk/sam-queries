@@ -17,7 +17,6 @@ import pytest
 
 from sam import fmt
 
-pytestmark = pytest.mark.unit
 
 
 def _ticks(span, n, start=datetime(2026, 7, 26)):

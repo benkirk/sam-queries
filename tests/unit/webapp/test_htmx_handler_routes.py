@@ -15,7 +15,6 @@ from sam.accounting.accounts import Account
 from sam.accounting.allocations import Allocation
 from sam.projects.projects import Project
 
-pytestmark = pytest.mark.unit
 
 MISSING_ID = 99999999
 

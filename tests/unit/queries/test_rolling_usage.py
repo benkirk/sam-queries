@@ -24,7 +24,6 @@ import pytest
 from sam.queries.rolling_usage import get_project_rolling_usage
 
 
-pytestmark = pytest.mark.unit
 
 
 # Tests that still require NMMM0003/Derecho specifically (threshold config).

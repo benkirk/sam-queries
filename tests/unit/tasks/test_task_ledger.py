@@ -26,7 +26,6 @@ from scheduling.ledger import (
 )
 from system_status.models import TaskRun
 
-pytestmark = pytest.mark.unit
 
 NOW = datetime(2026, 8, 12, 9, 7, 0)
 KEY = '20260812T081500Z'

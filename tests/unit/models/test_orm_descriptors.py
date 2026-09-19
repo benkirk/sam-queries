@@ -18,7 +18,6 @@ from sam.base import Base
 from system_status.base import StatusBase
 
 
-pytestmark = pytest.mark.unit
 
 
 def _all_orm_classes():

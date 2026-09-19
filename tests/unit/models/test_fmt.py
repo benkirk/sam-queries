@@ -24,7 +24,6 @@ from sam.fmt import (
 )
 
 
-pytestmark = pytest.mark.unit
 
 
 @pytest.fixture(autouse=True)

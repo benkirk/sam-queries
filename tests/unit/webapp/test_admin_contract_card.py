@@ -16,7 +16,6 @@ import pytest
 
 from sam.projects.contracts import Contract, NSFProgram
 
-pytestmark = pytest.mark.unit
 
 CARD_URL = '/admin/contract/{}'
 SEARCH_URL = '/admin/htmx/search/contracts'

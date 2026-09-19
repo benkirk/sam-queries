@@ -51,7 +51,6 @@ from sam.queries.xras_accounts import (
     worklist_counts,
 )
 
-pytestmark = pytest.mark.unit
 
 FIXTURES = TESTS / 'fixtures' / 'xras' / 'actions'
 

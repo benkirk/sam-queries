@@ -16,7 +16,6 @@ from factories import (
     make_project_organization,
 )
 
-pytestmark = pytest.mark.unit
 
 
 def _ago(days):

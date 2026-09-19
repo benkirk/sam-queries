@@ -24,7 +24,6 @@ from sam.queries.expirations import (
     unique_projects,
 )
 
-pytestmark = pytest.mark.unit
 
 #: A fixed reference instant, passed as `now=` so nothing here depends on when
 #: the suite runs.

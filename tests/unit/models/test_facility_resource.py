@@ -14,7 +14,6 @@ from sam.resources.facilities import FacilityResource
 from factories import make_facility, make_resource
 
 
-pytestmark = pytest.mark.unit
 
 
 class TestFacilityResourceCreate:

@@ -25,7 +25,6 @@ from tests.factories._seq import next_seq
 from tests.factories.core import make_user
 from tests.factories.projects import make_contract, make_contract_source
 
-pytestmark = pytest.mark.unit
 
 
 @pytest.fixture

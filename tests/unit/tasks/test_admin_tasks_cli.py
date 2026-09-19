@@ -18,7 +18,6 @@ from click.testing import CliRunner
 
 from cli.cmds.admin import cli
 
-pytestmark = pytest.mark.unit
 
 NAME = 'cleanup_status_snapshots'
 

@@ -26,7 +26,6 @@ from sam.queries.xras_notices import (
     build_xras_messages,
 )
 
-pytestmark = pytest.mark.unit
 
 
 class TestSignedIncrements:

@@ -31,7 +31,6 @@ from scheduling.tasks.deactivate_expired import (
     deactivate_expired_projects,
 )
 
-pytestmark = pytest.mark.unit
 
 NAME = 'deactivate_expired_projects'
 

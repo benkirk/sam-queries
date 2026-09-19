@@ -22,7 +22,6 @@ from tests.factories.projects import (
 )
 from tests.factories._seq import next_seq
 
-pytestmark = pytest.mark.unit
 
 
 @pytest.fixture

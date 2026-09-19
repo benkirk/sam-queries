@@ -35,7 +35,6 @@ from sam.queries.xras_remediations import (
 )
 from sam.queries.xras_requests import request_index_entry
 
-pytestmark = pytest.mark.unit
 
 
 def _payload(number='EXAM0001', status='Approved', action_status='Approved'):

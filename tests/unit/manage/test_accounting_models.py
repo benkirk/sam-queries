@@ -33,7 +33,6 @@ from factories import (
 )
 
 
-pytestmark = pytest.mark.unit
 
 
 class TestContractModel:

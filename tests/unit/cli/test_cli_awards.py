@@ -26,7 +26,6 @@ from sam.integration.awards.base import (
 from tests.factories._seq import next_seq
 from tests.factories.projects import make_contract, make_contract_source
 
-pytestmark = pytest.mark.unit
 
 
 def _award(**overrides):

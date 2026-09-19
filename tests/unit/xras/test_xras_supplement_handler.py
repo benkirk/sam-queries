@@ -38,7 +38,6 @@ from sam.xras.handlers.supplement import handle_supplement
 from xras_helpers import load_fixture, txns_for, wire_resource
 from xras_helpers import committing  # noqa: F401  — pytest resolves it by name
 
-pytestmark = pytest.mark.unit
 
 
 def action_for(projcode, *resources, allocation_type='Small'):

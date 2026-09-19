@@ -20,7 +20,6 @@ from cli.cmds.search import cli as search_cli
 from cli.cmds.admin import cli as admin_cli
 
 
-pytestmark = pytest.mark.integration
 
 
 @pytest.fixture

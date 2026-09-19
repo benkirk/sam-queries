@@ -20,7 +20,6 @@ from click.testing import CliRunner
 from cli.cmds.search import cli
 
 
-pytestmark = pytest.mark.unit
 
 
 class TestSamSearchCli:

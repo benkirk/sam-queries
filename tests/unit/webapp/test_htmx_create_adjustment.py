@@ -18,7 +18,6 @@ import os
 import pytest
 
 
-pytestmark = pytest.mark.unit
 
 
 @pytest.fixture

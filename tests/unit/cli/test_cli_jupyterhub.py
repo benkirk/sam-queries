@@ -8,10 +8,8 @@ the rest of new_tests/.
 """
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 
-pytestmark = pytest.mark.unit
 
 
 @patch('system_status.cli.create_status_engine')

@@ -12,9 +12,7 @@ If either fails, no Phase 4 port can proceed. If both pass, the rest of
 Phase 4 is unblocked and the fixture patterns in `new_tests/conftest.py`
 can be relied on.
 """
-import pytest
 
-pytestmark = pytest.mark.smoke
 
 
 def test_liveness_endpoint_returns_200(client):

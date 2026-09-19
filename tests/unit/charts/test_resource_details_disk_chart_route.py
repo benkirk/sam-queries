@@ -15,7 +15,6 @@ import re
 
 import pytest
 
-pytestmark = pytest.mark.unit
 
 _DISK_RESOURCE = 'Campaign_Store'
 

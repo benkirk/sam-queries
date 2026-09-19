@@ -9,7 +9,6 @@ import pytest
 from _backends import (EXPECTED_FAILURES_FILE, expected_failure_matches,
                        read_expected_failures)
 
-pytestmark = pytest.mark.unit
 
 
 def test_entries_are_well_formed():

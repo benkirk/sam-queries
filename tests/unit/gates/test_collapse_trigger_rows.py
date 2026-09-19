@@ -35,9 +35,7 @@ import re
 from pathlib import Path
 from _paths import REPO_ROOT
 
-import pytest
 
-pytestmark = pytest.mark.unit
 
 
 TEMPLATE_ROOT = REPO_ROOT / 'src' / 'webapp' / 'templates'

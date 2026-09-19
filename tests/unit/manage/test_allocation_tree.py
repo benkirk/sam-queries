@@ -20,7 +20,6 @@ from sam.manage.allocations import log_allocation_transaction, update_allocation
 
 from factories import make_account, make_allocation, make_project, make_user
 
-pytestmark = pytest.mark.unit
 
 
 # ---------------------------------------------------------------------------

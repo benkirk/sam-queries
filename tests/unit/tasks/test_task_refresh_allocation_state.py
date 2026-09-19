@@ -30,7 +30,6 @@ from scheduling.registry import TASKS, TaskContext
 from scheduling.schedules import occurrence_key
 from scheduling.tasks.refresh_allocation_state import refresh_allocation_state
 
-pytestmark = pytest.mark.unit
 
 NAME = 'refresh_allocation_state'
 OCC = datetime(2026, 9, 9, 15, 0)

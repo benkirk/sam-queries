@@ -18,7 +18,6 @@ from sam.queries.dashboard import (
 )
 from sam.summaries.allocation_state import AccountAllocationState
 
-pytestmark = pytest.mark.unit
 
 
 # `_feed(session)` writes every snapshot allocation's row under its real

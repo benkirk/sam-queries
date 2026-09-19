@@ -6,11 +6,9 @@ test container (MySQL) or was loaded into it (Postgres). They exercise zero
 application logic on purpose — any failure here points at infrastructure,
 not product code.
 """
-import pytest
 from sqlalchemy import inspect, text
 
 
-pytestmark = pytest.mark.smoke
 
 
 def test_engine_points_at_test_container(engine):

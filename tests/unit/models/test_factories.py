@@ -7,7 +7,6 @@ These verify that each factory:
 
 Validates the factory module in isolation before any port depends on it.
 """
-import pytest
 
 from factories import (
     make_account,
@@ -25,7 +24,6 @@ from factories import (
     make_wallclock_exemption,
 )
 
-pytestmark = pytest.mark.unit
 
 
 class TestCoreFactories:

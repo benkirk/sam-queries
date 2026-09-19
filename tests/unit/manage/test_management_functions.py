@@ -20,7 +20,6 @@ from sam.manage import add_user_to_project, change_project_admin, remove_user_fr
 
 from factories import make_account, make_project, make_user
 
-pytestmark = pytest.mark.unit
 
 
 def _project_with_account(session):

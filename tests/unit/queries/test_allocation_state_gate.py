@@ -29,7 +29,6 @@ from sam.summaries.allocation_state import AccountAllocationState
 def _tree(project):
     return project.tree_root or project.project_id
 
-pytestmark = pytest.mark.unit
 
 
 @pytest.fixture

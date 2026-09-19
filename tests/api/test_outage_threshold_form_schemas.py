@@ -14,7 +14,6 @@ from marshmallow import ValidationError
 from sam.schemas.forms import SetThresholdForm, CreateOutageForm, EditOutageForm
 
 
-pytestmark = pytest.mark.unit
 
 
 class TestSetThresholdForm:

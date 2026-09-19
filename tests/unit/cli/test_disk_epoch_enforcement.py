@@ -16,7 +16,6 @@ from cli.cmds.admin import cli
 from sam.summaries.disk_summaries import DISK_CHARGING_TIB_EPOCH
 
 
-pytestmark = pytest.mark.unit
 
 
 def _make_acct_glade(tmp_path: Path, snap_date: date) -> Path:

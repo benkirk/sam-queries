@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
 
 from sam.queries.xras_identity_report import identity_merge_report
 
-pytestmark = pytest.mark.unit
 
 
 def _row(username, *numbers, remedy='merge', target='real', active=True,

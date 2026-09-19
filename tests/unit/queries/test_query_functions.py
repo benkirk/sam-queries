@@ -80,7 +80,6 @@ from factories import (
 from factories._seq import next_int, next_seq
 
 
-pytestmark = pytest.mark.unit
 
 
 # ============================================================================

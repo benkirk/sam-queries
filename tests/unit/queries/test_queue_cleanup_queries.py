@@ -19,7 +19,6 @@ import pytest
 from sam.queries.queue_access import get_queue_cleanup_candidates
 from factories import make_comp_charge_summary, make_queue, make_resource
 
-pytestmark = pytest.mark.unit
 
 
 NOW = datetime(2026, 7, 1, 12, 0, 0)

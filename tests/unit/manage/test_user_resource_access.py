@@ -26,7 +26,6 @@ from sam.manage import (
 from factories import make_account, make_allocation, make_project, make_user
 from factories import make_resource
 
-pytestmark = pytest.mark.unit
 
 
 def _membership_rows(session, account_id, user_id):

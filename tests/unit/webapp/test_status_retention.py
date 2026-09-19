@@ -13,7 +13,6 @@ the agenda leaves evidence rather than a changelog entry:
 
 from datetime import datetime, timedelta
 
-import pytest
 
 from system_status import (
     CasperNodeTypeStatus,
@@ -35,7 +34,6 @@ from system_status.retention import (
     cleanup_old_data,
 )
 
-pytestmark = pytest.mark.unit
 
 
 #: A fixed "now" so nothing here depends on the wall clock.

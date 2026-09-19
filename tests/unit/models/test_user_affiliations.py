@@ -21,7 +21,6 @@ from factories import (
     make_user_organization,
 )
 
-pytestmark = pytest.mark.unit
 
 INST_LABEL = 'Former Institution'
 ORG_LABEL = 'Former Organization'

@@ -12,7 +12,6 @@ import pytest
 
 from webapp.utils.rbac import Permission
 
-pytestmark = pytest.mark.unit
 
 PAGE = '/admin/events'
 FRAGMENT = '/admin/events/fragment'

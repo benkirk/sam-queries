@@ -40,7 +40,6 @@ from sam.xras.handlers.extension import EXTENSION_COMMENT, handle_extension
 from xras_helpers import load_fixture, txns_for
 from xras_helpers import committing  # noqa: F401  — pytest resolves it by name
 
-pytestmark = pytest.mark.unit
 
 
 def action_for(projcode, end_date='2030-06-30', **extra):

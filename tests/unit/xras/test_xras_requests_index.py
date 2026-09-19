@@ -22,7 +22,6 @@ from sam.queries.xras_requests import (
     roster_from_payload,
 )
 
-pytestmark = pytest.mark.unit
 
 
 def _payload(**over):

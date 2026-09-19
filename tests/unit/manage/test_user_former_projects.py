@@ -6,14 +6,12 @@ rely solely on committed snapshot rows — Flask routes read a separate
 db.session connection and cannot see factory rows (see
 tests/unit/webapp/test_htmx_search_active_toggle.py).
 """
-import pytest
 from datetime import datetime, timedelta
 
 from sam.manage import add_user_to_project
 
 from factories import make_account, make_project, make_user
 
-pytestmark = pytest.mark.unit
 
 SECTION_LABEL = 'Inactive / Former Projects'
 

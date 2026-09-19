@@ -41,7 +41,6 @@ from sam.schemas.forms import xras as xras_schemas
 
 from xras_helpers import FIXTURE_DIR
 
-pytestmark = pytest.mark.unit
 
 XRAS_SRC = REPO_ROOT / 'src' / 'sam' / 'xras'
 

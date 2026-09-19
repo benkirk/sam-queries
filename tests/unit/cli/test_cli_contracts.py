@@ -20,7 +20,6 @@ from cli.cmds.admin import cli
 from sam.integration.awards import AwardRecord, AwardSourceUnavailable, PersonRef
 from sam.queries.contract_audit import CHECKS
 
-pytestmark = pytest.mark.unit
 
 
 @pytest.fixture

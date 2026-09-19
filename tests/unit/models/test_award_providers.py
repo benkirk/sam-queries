@@ -19,7 +19,6 @@ from sam.integration.awards.usaspending import (
     UsaSpendingProvider, award_id_candidates,
 )
 
-pytestmark = pytest.mark.unit
 
 
 # Trimmed from api.nsf.gov/services/v1/awards/1852977.json. The "Atmoshperic"

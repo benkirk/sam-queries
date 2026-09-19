@@ -6,11 +6,9 @@ dropdowns, the mobile offcanvas menu, and breadcrumbs. Visibility is
 permission-driven per request; ``nav_locate`` maps endpoints to their
 section/item for breadcrumb derivation.
 """
-import pytest
 
 from webapp.utils.nav import NAV_SECTIONS, nav_locate
 
-pytestmark = pytest.mark.unit
 
 
 # ---------------------------------------------------------------------------

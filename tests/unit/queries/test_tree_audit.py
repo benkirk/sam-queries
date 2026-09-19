@@ -12,7 +12,6 @@ from sam.queries.tree_audit import audit_allocation_trees, audit_allocation_date
 from tests.factories.projects import make_project, make_account, make_allocation
 from tests.factories.resources import make_resource
 
-pytestmark = pytest.mark.unit
 
 
 @pytest.fixture

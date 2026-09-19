@@ -34,7 +34,6 @@ from webapp.audit.logger import (
 
 from factories import next_seq
 
-pytestmark = pytest.mark.unit
 
 
 @pytest.fixture

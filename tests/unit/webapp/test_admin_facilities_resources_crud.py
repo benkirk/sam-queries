@@ -24,7 +24,6 @@ from sam.resources.facilities import Facility, Panel, PanelSession
 from sam.resources.machines import Machine, Queue
 from sam.resources.resources import Resource, ResourceType
 
-pytestmark = pytest.mark.unit
 
 MISSING_ID = 99999999
 

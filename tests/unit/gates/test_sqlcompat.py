@@ -1,14 +1,12 @@
 """sam.sqlcompat: the dialect-keyed fragments render the right spelling per backend."""
 from types import SimpleNamespace
 
-import pytest
 from sqlalchemy import Column, MetaData, String, Table
 from sqlalchemy.dialects import mysql, postgresql
 
 from sam import sqlcompat
 from _paths import REPO_ROOT
 
-pytestmark = pytest.mark.unit
 
 
 def _bind(name):

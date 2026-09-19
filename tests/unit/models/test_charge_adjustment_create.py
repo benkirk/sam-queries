@@ -16,7 +16,6 @@ from sam.accounting.adjustments import ChargeAdjustment, ChargeAdjustmentType
 from factories import make_account, make_user
 
 
-pytestmark = pytest.mark.unit
 
 
 def _type_by_name(session, name):

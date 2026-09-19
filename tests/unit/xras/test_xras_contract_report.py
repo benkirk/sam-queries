@@ -12,7 +12,6 @@ from factories import make_contract
 from sam.queries.xras_contract_report import (contract_unblock_report,
                                               suggested_source)
 
-pytestmark = pytest.mark.unit
 
 
 def _grant(number, *, core=None, reason='missing', candidates=(), agency=None,

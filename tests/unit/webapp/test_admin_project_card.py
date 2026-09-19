@@ -8,9 +8,7 @@ which lands on a bare `/admin/projects` (no `?projcode=`) and blanks the card â€
 a silent runtime failure no other test sees. Pin the attribute here.
 """
 
-import pytest
 
-pytestmark = pytest.mark.unit
 
 CARD_URL = '/admin/project/{}'
 

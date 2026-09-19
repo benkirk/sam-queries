@@ -29,7 +29,6 @@ import pytest
 from webapp.extensions import user_aware_cache_key
 from webapp.utils.htmx import LAYOUT_COOKIE, read_layout
 
-pytestmark = pytest.mark.unit
 
 JS = (REPO_ROOT
       / 'src' / 'webapp' / 'static' / 'js' / 'layout-axis.js')

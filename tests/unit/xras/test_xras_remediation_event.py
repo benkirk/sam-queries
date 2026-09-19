@@ -26,7 +26,6 @@ from sam.integration.xras import (
     XrasRemediationEvent,
 )
 
-pytestmark = pytest.mark.unit
 
 
 class TestTheVocabularies:

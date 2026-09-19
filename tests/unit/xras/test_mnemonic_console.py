@@ -15,7 +15,6 @@ from sam.schemas.forms import EditMnemonicCodeForm, ReassignMnemonicForm
 from factories import (
     make_facility, make_institution, make_mnemonic_code, make_organization)
 
-pytestmark = pytest.mark.unit
 
 _N = "Zzq"  # nonce prefix: disjoint from real snapshot descriptions/names
 

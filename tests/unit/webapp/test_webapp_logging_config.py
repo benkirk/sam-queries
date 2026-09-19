@@ -15,7 +15,6 @@ import pytest
 
 from webapp.logging_config import configure_logging
 
-pytestmark = pytest.mark.unit
 
 _PLUGIN_LOGGERS = ('job_history', 'fs_scans')
 

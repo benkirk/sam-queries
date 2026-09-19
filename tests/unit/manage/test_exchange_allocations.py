@@ -29,7 +29,6 @@ from factories import (
     make_user,
 )
 
-pytestmark = pytest.mark.unit
 
 
 # ---------------------------------------------------------------------------

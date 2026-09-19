@@ -8,7 +8,6 @@ from _paths import REPO_ROOT
 
 import pytest
 
-pytestmark = pytest.mark.unit
 
 CLONE_DIR = REPO_ROOT / 'containers' / 'sam-sql-dev'
 

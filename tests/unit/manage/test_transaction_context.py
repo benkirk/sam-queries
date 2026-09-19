@@ -24,7 +24,6 @@ from sam.manage.transaction import management_transaction
 
 from factories import make_user
 
-pytestmark = pytest.mark.unit
 
 
 class TestManagementTransaction:

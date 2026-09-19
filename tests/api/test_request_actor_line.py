@@ -7,7 +7,6 @@ import logging
 
 import pytest
 
-pytestmark = pytest.mark.webapp
 
 
 class _Lines(logging.Handler):

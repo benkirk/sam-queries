@@ -23,7 +23,6 @@ from _paths import REPO_ROOT
 
 import pytest
 
-pytestmark = pytest.mark.unit
 
 PLANS_DIR = "docs/plans/"
 

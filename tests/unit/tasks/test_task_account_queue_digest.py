@@ -34,7 +34,6 @@ from scheduling.schedules import Weekly, occurrence_key
 from scheduling.tasks import account_queue_digest as mod
 from scheduling.tasks.mail_guards import EmailCapExceeded, NotificationsDisabled
 
-pytestmark = pytest.mark.unit
 
 NAME = 'account_queue_digest'
 #: Monday 2026-09-14 08:00 America/Denver == 14:00 UTC.

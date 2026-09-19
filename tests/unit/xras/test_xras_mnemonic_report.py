@@ -7,14 +7,12 @@ against the current DB. See `docs/plans/XRAS_INGEST_IMPROVEMENTS.md` § 2.2.
 
 from __future__ import annotations
 
-import pytest
 from factories import (make_institution, make_mnemonic_code, make_organization,
                        make_user, make_user_institution, make_user_organization)
 
 from sam.queries.xras_mnemonic_report import mnemonic_unblock_report
 from sam.xras.errors import mnemonic_external_failed, mnemonic_internal_failed
 
-pytestmark = pytest.mark.unit
 
 INTERNAL = mnemonic_internal_failed()
 EXTERNAL = mnemonic_external_failed()

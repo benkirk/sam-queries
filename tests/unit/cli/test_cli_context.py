@@ -17,7 +17,6 @@ from rich.console import Console
 
 from cli.core.context import Context, SamConnectionError
 
-pytestmark = pytest.mark.unit
 
 
 @pytest.fixture

@@ -15,7 +15,6 @@ import pytest
 
 from webapp.limiter import limiter as facade
 
-pytestmark = pytest.mark.unit
 
 GOOD = {
     'email': 'zz.register.test@example.invalid', 'first_name': 'Reg', 'last_name': 'Tester',

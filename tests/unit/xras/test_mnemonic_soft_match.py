@@ -7,13 +7,11 @@ injective soft-key fallback; institutions stay exact (matching legacy).
 """
 from types import SimpleNamespace
 
-import pytest
 
 from sam.core.organizations import MnemonicCode
 
 from factories import make_mnemonic_code
 
-pytestmark = pytest.mark.unit
 
 _N = "Zzq"  # nonce prefix: disjoint from real snapshot descriptions
 

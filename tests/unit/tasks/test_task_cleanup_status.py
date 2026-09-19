@@ -21,7 +21,6 @@ from system_status import DerechoStatus
 from system_status.models import TaskRun
 from system_status.retention import DEFAULT_RETENTION_DAYS
 
-pytestmark = pytest.mark.unit
 
 NAME = 'cleanup_status_snapshots'
 #: A dispatch instant well after the 02:15 MDT slot (08:15 UTC) on this date.

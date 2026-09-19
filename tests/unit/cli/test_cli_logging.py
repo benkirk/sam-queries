@@ -17,7 +17,6 @@ import pytest
 
 from cli.core.utils import CLI_LOG_FORMAT, _StderrHandler, configure_logging
 
-pytestmark = pytest.mark.unit
 
 HEALTHCHECK = REPO_ROOT / 'scripts' / 'cirrus_healthcheck.sh'
 

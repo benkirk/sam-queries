@@ -20,7 +20,6 @@ from webapp.dashboards.admin.blueprint import (
     _expirations_summary,
 )
 
-pytestmark = pytest.mark.unit
 
 
 class TestTheFacilityDefault:

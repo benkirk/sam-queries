@@ -13,9 +13,7 @@ gate.
 
 from datetime import datetime, timedelta
 
-import pytest
 
-pytestmark = pytest.mark.unit
 
 MACRO = 'dashboards/user/partials/project_card.html'
 

@@ -13,7 +13,6 @@ from factories import make_user
 from factories.resources import make_resource, make_resource_type
 
 
-pytestmark = pytest.mark.unit
 
 
 def _hpc_resource(session, name_prefix='test_hpc'):

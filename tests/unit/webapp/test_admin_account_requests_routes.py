@@ -10,7 +10,6 @@ import pytest
 
 from webapp.utils.rbac import Permission
 
-pytestmark = pytest.mark.unit
 
 
 @pytest.fixture

@@ -27,7 +27,6 @@ from factories.projects import make_account, make_allocation, make_project
 from factories.resources import make_resource
 
 
-pytestmark = pytest.mark.unit
 
 
 # ============================================================================

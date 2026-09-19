@@ -17,7 +17,6 @@ from cli.accounting.commands import (
     normalize_queue_name,
 )
 
-pytestmark = pytest.mark.unit
 
 
 def _row(*, cpu_hours=0.0, gpu_hours=0.0, cpu_charges=0.0, gpu_charges=0.0,

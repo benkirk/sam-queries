@@ -18,7 +18,6 @@ conftest for the same constraint).
 """
 import pytest
 
-pytestmark = pytest.mark.unit
 
 
 class TestReadSwitchHelper:

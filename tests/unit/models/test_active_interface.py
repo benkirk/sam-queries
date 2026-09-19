@@ -37,7 +37,6 @@ from sam.resources.facilities import PanelSession
 from sam.resources.machines import Queue
 
 
-pytestmark = pytest.mark.unit
 
 
 # ============================================================================

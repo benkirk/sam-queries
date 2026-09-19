@@ -17,7 +17,6 @@ from scheduling.runner import disabled_tasks, run_due
 from scheduling.schedules import Daily, Hourly, occurrence_key
 from system_status.models import TaskRun
 
-pytestmark = pytest.mark.unit
 
 NOW = datetime(2026, 8, 12, 9, 7, 0)
 

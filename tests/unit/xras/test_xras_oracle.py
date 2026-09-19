@@ -72,7 +72,6 @@ from sam.xras.errors import XrasActionRejected
 from xras_helpers import FIXTURE_DIR
 from xras_helpers import committing  # noqa: F401  — pytest resolves it by name
 
-pytestmark = pytest.mark.unit
 
 ALL_FIXTURES = sorted(p.name for p in FIXTURE_DIR.glob('*.json'))
 

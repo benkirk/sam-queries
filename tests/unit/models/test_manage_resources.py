@@ -12,7 +12,6 @@ from sam.resources.machines import Queue, QueueFactor
 from factories import make_queue, make_resource
 
 
-pytestmark = pytest.mark.unit
 
 
 # ============================================================================

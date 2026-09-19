@@ -7,7 +7,6 @@ stub and avoid the DB.
 """
 from datetime import datetime
 
-import pytest
 
 from webapp.dashboards.admin.projects_routes import (
     _propose_extend_end,
@@ -19,7 +18,6 @@ from webapp.dashboards.admin.projects_routes import (
 from factories import make_account, make_allocation, make_project, make_resource
 
 
-pytestmark = pytest.mark.unit
 
 
 class _Alloc:

@@ -9,7 +9,6 @@ the real builders' key sets.
 
 from datetime import date, datetime
 
-import pytest
 from factories import (
     make_account_request,
     make_account_request_event,
@@ -26,7 +25,6 @@ from sam.queries.account_notices import (
     queue_summary_context,
 )
 
-pytestmark = pytest.mark.unit
 
 OCC = datetime(2026, 9, 14, 8, 0)
 

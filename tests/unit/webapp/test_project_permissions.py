@@ -7,7 +7,6 @@ runs inside an installed package.
 """
 from unittest.mock import Mock
 
-import pytest
 
 from webapp.utils.project_permissions import (
     _is_project_steward,
@@ -24,7 +23,6 @@ from webapp.utils.project_permissions import (
 from webapp.utils.rbac import Permission
 
 
-pytestmark = pytest.mark.unit
 
 
 def create_mock_user(user_id: int, roles: list = None, username: str = 'stubuser'):

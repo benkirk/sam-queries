@@ -34,7 +34,6 @@ from scheduling.schedules import Weekly, occurrence_key
 from scheduling.tasks import expiration_notices as mod
 from _paths import REPO_ROOT
 
-pytestmark = pytest.mark.unit
 
 NAME = 'expiration_notices'
 

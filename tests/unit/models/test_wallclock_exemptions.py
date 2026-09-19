@@ -14,7 +14,6 @@ from sam import WallclockExemption
 
 from factories import make_queue, make_user, make_wallclock_exemption
 
-pytestmark = pytest.mark.unit
 
 
 class TestWallclockExemption:

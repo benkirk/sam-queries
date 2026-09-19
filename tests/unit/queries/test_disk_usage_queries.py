@@ -39,7 +39,6 @@ from factories import (
 from factories._seq import next_seq
 
 
-pytestmark = pytest.mark.unit
 
 
 BYTES_PER_TIB = 1024 ** 4

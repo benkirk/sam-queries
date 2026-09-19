@@ -45,7 +45,6 @@ from utils.remediation.fix_cesm0002_audit_trail import (
 )
 from factories import make_allocation, make_user
 
-pytestmark = pytest.mark.unit
 
 
 # ---------------------------------------------------------------------------

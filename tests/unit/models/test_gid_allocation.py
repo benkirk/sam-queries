@@ -13,7 +13,6 @@ from sam import GidAllocation, GidPoolSummary, NoAvailableGidError
 from factories import make_gid_allocation
 
 
-pytestmark = pytest.mark.unit
 
 
 # ============================================================================

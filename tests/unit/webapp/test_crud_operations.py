@@ -29,7 +29,6 @@ from sam.core.users import EmailAddress, Phone, PhoneType
 
 from factories import make_account, make_allocation, make_user
 
-pytestmark = pytest.mark.unit
 
 
 class TestCreateOperations:

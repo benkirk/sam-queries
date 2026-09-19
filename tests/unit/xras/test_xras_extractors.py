@@ -37,7 +37,6 @@ from sam.xras.extractors import (
 from factories import make_xras_opportunity_mapping
 from xras_helpers import FIXTURE_DIR, load_fixture
 
-pytestmark = pytest.mark.unit
 
 #: The nine rows seeded into production on 2026-08-20, as ``id -> (panel, type)``.
 #:

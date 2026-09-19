@@ -30,7 +30,6 @@ from cli.project.builders import (
 )
 
 
-pytestmark = pytest.mark.unit
 
 
 # ----------------------------------------------------------------------

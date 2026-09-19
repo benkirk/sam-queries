@@ -56,7 +56,6 @@ from factories import (
     next_seq,
 )
 
-pytestmark = pytest.mark.unit
 
 
 # ---------------------------------------------------------------------------

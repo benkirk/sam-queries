@@ -28,7 +28,6 @@ from sam.schemas.forms.orgs import CreateContractForm, EditContractForm
 from factories.core import make_user
 from factories.projects import make_contract, make_contract_source
 
-pytestmark = pytest.mark.unit
 
 
 def _award(**overrides):

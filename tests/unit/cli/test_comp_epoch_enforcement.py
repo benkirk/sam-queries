@@ -15,7 +15,6 @@ from cli.cmds.admin import cli
 from sam.summaries.comp_summaries import COMP_CHARGING_EPOCH
 
 
-pytestmark = pytest.mark.unit
 
 
 class TestCompEpochEnforcement:

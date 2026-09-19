@@ -10,7 +10,6 @@ in the same flush share a brand-new lookup row.
 
 from datetime import datetime
 
-import pytest
 
 from system_status import (
     UserProjQueueStatus,
@@ -21,7 +20,6 @@ from system_status import (
 )
 
 
-pytestmark = pytest.mark.integration
 
 
 def test_single_row_resolves_all_pending_names(status_session):

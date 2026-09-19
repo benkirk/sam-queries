@@ -32,7 +32,6 @@ from sam.xras.errors import ActionErrors
 
 from factories import make_xras_opportunity_mapping
 
-pytestmark = pytest.mark.unit
 
 #: The single module permitted to bind ``management_transaction``.
 THE_SEAM = 'sam.xras.handlers.base'

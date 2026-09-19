@@ -31,7 +31,6 @@ from sam.xras.handlers.new import handle_new
 from xras_helpers import load_fixture, wire_resource
 from xras_helpers import committing  # noqa: F401  — pytest resolves it by name
 
-pytestmark = pytest.mark.unit
 
 
 @pytest.fixture(autouse=True)

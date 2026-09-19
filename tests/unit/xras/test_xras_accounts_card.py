@@ -27,7 +27,6 @@ import pytest
 from webapp.utils.rbac import Permission
 from _paths import TESTS
 
-pytestmark = pytest.mark.unit
 
 URL = '/allocations/xras_accounts_fragment'
 

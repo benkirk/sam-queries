@@ -25,7 +25,6 @@ from sam.core.account_requests import (
     AccountRequestEvent,
 )
 
-pytestmark = pytest.mark.unit
 
 
 class TestTheVocabularies:

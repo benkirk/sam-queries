@@ -28,7 +28,6 @@ from sqlalchemy.orm import sessionmaker
 from sam.queries.fstree_access import get_fstree_data, get_project_fsdata, get_user_fsdata
 
 
-pytestmark = pytest.mark.unit
 
 
 # ---- Module-scoped expensive-query caches ---------------------------------

@@ -31,7 +31,6 @@ from factories.resources import make_resource, make_resource_type
 from factories._seq import next_seq
 
 
-pytestmark = pytest.mark.unit
 
 
 def _build_campaign_store_graph(session, monkeypatch):

@@ -3,7 +3,6 @@ import pytest
 
 from sam import session as sam_session
 
-pytestmark = pytest.mark.unit
 
 _CREDS = {'SAM_DB_USERNAME': 'u', 'SAM_DB_PASSWORD': 'test-placeholder-pass', 'SAM_DB_SERVER': 'db.local'}
 

@@ -12,7 +12,6 @@ import pytest
 from sam.projects.contracts import Contract
 
 
-pytestmark = pytest.mark.unit
 
 
 # ============================================================================

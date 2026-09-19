@@ -27,7 +27,6 @@ from webapp.extensions import user_aware_cache_key
 from webapp.utils.htmx import (LAYOUT_COOKIE, THEME_COOKIE, _THEMES,
                                read_layout, read_theme)
 
-pytestmark = pytest.mark.unit
 
 STATIC = REPO_ROOT / 'src' / 'webapp' / 'static'
 TEMPLATES = REPO_ROOT / 'src' / 'webapp' / 'templates'

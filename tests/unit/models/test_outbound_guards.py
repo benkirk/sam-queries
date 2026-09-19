@@ -19,7 +19,6 @@ import os
 import pytest
 import requests
 
-pytestmark = pytest.mark.unit
 
 
 class TestTheXrasCredentialsArePinnedFailClosed:
