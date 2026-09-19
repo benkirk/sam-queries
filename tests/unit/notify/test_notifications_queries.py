@@ -8,6 +8,7 @@ filter is picked, which turns switchers into dead ends.
 from datetime import datetime, timedelta
 
 import pytest
+from factories import next_seq
 from factories.notify import make_notification_log
 
 from sam.queries.notifications import (
@@ -272,11 +273,16 @@ class TestExpirationNoticeStatus:
     def test_one_now_serves_the_whole_page(self, session):
         """Two cards from the same request must not report ages a second
         apart."""
-        for code in ('PPPP0001', 'PPPP0002'):
+        # One `when` for both rows: computing it per row lets the second cross a
+        # DATETIME second-boundary (MySQL truncates), so the two creation_times
+        # land a full second apart and swamp the "one now" property under test.
+        codes = [next_seq('PROJ'), next_seq('PROJ')]
+        when = datetime.now() - timedelta(days=5)
+        for code in codes:
             make_notification_log(session, status='sent', kind='expiration',
                                   projcode=code, recipient=f'{code}@x.edu',
-                                  when=datetime.now() - timedelta(days=5))
-        status = get_expiration_notice_status(session, ['PPPP0001', 'PPPP0002'])
-        a = status['PPPP0001']['notified_age']
-        b = status['PPPP0002']['notified_age']
+                                  when=when)
+        status = get_expiration_notice_status(session, codes)
+        a = status[codes[0]]['notified_age']
+        b = status[codes[1]]['notified_age']
         assert abs((a - b).total_seconds()) < 1

@@ -11,6 +11,7 @@ docs/TESTING.md for the markers and the Postgres expected-failures file.
 """
 import os
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -82,6 +83,13 @@ def pytest_configure(config):
     os.environ.setdefault("FLASK_ACTIVE", "1")
     os.environ.setdefault("FLASK_CONFIG", "testing")
     os.environ.setdefault("FLASK_SECRET_KEY", "test-secret-key")
+
+    # Pin the zone before any datetime-sensitive collection. CI runs inside the
+    # webapp container (TZ=America/Denver); a bare-laptop run inherits the host
+    # zone, so tests that reconcile naive-Mountain SAM datetimes against the wall
+    # clock read differently there. setdefault so an explicit TZ still wins.
+    os.environ.setdefault("TZ", "America/Denver")
+    time.tzset()
 
     # Test-only placeholder values for SAM_DB_*/STATUS_DB_*. The test
     # suite never reads these — sessions are routed through SAM_TEST_DB_URL
@@ -1131,3 +1139,43 @@ def serial_file_lock(tmp_path_factory):
                 fcntl.flock(handle, fcntl.LOCK_UN)
 
     return acquire
+
+
+@pytest.fixture
+def committed_rows(app):
+    """Track rows a test COMMITs on ``db.session`` and delete them at teardown.
+
+    Route handlers read committed rows through Flask-SQLAlchemy's ``db.session``
+    on its own connection, so a test exercising them commits outside the
+    per-test SAVEPOINT — which then cannot roll the rows back, and they leak
+    into the shared xdist database. Register each object right after committing
+    it; teardown deletes them in REVERSE registration order, by primary key.
+
+    Reverse order is FK-safe for both hazards a single ``IN (...)`` is not: a
+    child committed after its parent — cross-table, or a self-FK replay — is
+    deleted first. Always by primary key, never a range predicate, which would
+    take an open-ended gap lock and deadlock against concurrent inserts.
+    """
+    from sqlalchemy import inspect as _inspect
+
+    from webapp.extensions import db
+
+    tracked = []
+
+    def track(obj):
+        # Capture (class, identity) while obj is live in its committing context;
+        # a detached instance's attributes are expired by teardown.
+        tracked.append((type(obj), _inspect(obj).identity))
+        return obj
+
+    yield track
+
+    if tracked:
+        with app.app_context():
+            for cls, ident in reversed(tracked):
+                if ident is None:
+                    continue
+                obj = db.session.get(cls, ident)
+                if obj is not None:
+                    db.session.delete(obj)
+            db.session.commit()

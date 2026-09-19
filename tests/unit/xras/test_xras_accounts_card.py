@@ -70,13 +70,12 @@ def view_only_client(auth_client, monkeypatch):
 
 
 @pytest.fixture
-def committed_worklist_action(app):
+def committed_worklist_action(app, committed_rows):
     """One committed `xras_action_log` row naming an unknown placeholder.
 
     Committed, not factory-built: route handlers read through
     Flask-SQLAlchemy's `db.session` on its own connection and only ever see
-    committed rows. Deleted by primary key on the way out — a range predicate
-    would take an open-ended gap lock and deadlock against other xdist workers.
+    committed rows. `committed_rows` deletes it by primary key at teardown.
     """
 
     from webapp.extensions import db
@@ -94,17 +93,13 @@ def committed_worklist_action(app):
         db.session.add(row)
         db.session.commit()
         action_id = row.xras_action_log_id
+        committed_rows(row)
 
     yield action_id
 
-    with app.app_context():
-        db.session.query(XrasActionLog).filter(
-            XrasActionLog.xras_action_log_id == action_id).delete()
-        db.session.commit()
-
 
 @pytest.fixture
-def merge_ready_email_user(app):
+def merge_ready_email_user(app, committed_rows):
     """A committed ACTIVE user holding the fixture placeholder's email.
 
     `user38@example.invalid` is the inline person on the committed action's
@@ -124,19 +119,14 @@ def merge_ready_email_user(app):
                             user_id=user.user_id, is_primary=True)
         db.session.add(mail)
         db.session.commit()
-        user_id, mail_id = user.user_id, mail.email_address_id
+        committed_rows(user)     # deleted after `mail` (reverse order) — FK-safe
+        committed_rows(mail)
 
     yield 'realname38'
 
-    with app.app_context():
-        db.session.query(EmailAddress).filter(
-            EmailAddress.email_address_id == mail_id).delete()
-        db.session.query(User).filter(User.user_id == user_id).delete()
-        db.session.commit()
-
 
 @pytest.fixture
-def deactivated_worklist_user(app):
+def deactivated_worklist_user(app, committed_rows):
     """A committed, INACTIVE `users` row for the worklist payload's username.
 
     Committed for the same reason as the action row above — the route reads
@@ -157,12 +147,9 @@ def deactivated_worklist_user(app):
         db.session.add(user)
         db.session.commit()
         user_id = user.user_id
+        committed_rows(user)
 
     yield user_id
-
-    with app.app_context():
-        db.session.query(User).filter(User.user_id == user_id).delete()
-        db.session.commit()
 
 
 class TestTheUsernameLinksWhenSamHasTheAccount:
