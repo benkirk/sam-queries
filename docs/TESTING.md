@@ -65,8 +65,8 @@ source etc/config_env.sh && pytest
 # One domain (marker == directory: gate/xras/notify/tasks/charts/cli/webapp/models/queries/manage)
 pytest -m xras            # or, equivalently, by path: pytest tests/unit/xras
 
-# With coverage
-pytest --cov=src --cov-report=html --cov-fail-under=60
+# With coverage (branch coverage + the fail_under floor come from pyproject.toml)
+pytest --cov=src --cov-report=html
 
 # Performance regression tests (serial, ~26s)
 make perf
@@ -265,7 +265,8 @@ Job `pytest`:
 
 1. Builds and starts all containers including `mysql-test` (via `--profile test`)
 2. Waits for both MySQL services to accept TCP connections
-3. Runs `pytest --cov=src --cov-fail-under=60` inside the webapp container
+3. Runs `pytest --cov=src` inside the webapp container (branch coverage and the
+   `fail_under` floor are configured in `pyproject.toml`)
 4. Runs the gated `perf` tier, `if: always()` — `pytest -m perf -n 0`. The XRAS
    audit-row scenarios run inside step 3, as part of the default suite.
 5. Uploads coverage report as a GitHub Actions artifact
