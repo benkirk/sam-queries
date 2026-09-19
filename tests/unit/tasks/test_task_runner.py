@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import pytest
 from sqlalchemy.orm import Session
 
-from scheduling.ledger import MIN_LEASE, TaskLedger
+from scheduling.ledger import MIN_LEASE
 from scheduling.registry import CatchUp, Task, TaskContext, TaskResult
 from scheduling.runner import disabled_tasks, run_due
 from scheduling.schedules import Daily, Hourly, occurrence_key
@@ -20,17 +20,6 @@ from system_status.models import TaskRun
 pytestmark = pytest.mark.unit
 
 NOW = datetime(2026, 8, 12, 9, 7, 0)
-
-
-@pytest.fixture
-def status_engine(app, status_session):
-    from webapp.extensions import db
-    return db.engines['system_status']
-
-
-@pytest.fixture
-def ledger(status_engine):
-    return TaskLedger(lambda: Session(status_engine))
 
 
 @pytest.fixture

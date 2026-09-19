@@ -15,10 +15,8 @@ from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
-from sqlalchemy.orm import Session
 
 from cli.cmds.admin import cli
-from scheduling.ledger import TaskLedger
 
 pytestmark = pytest.mark.unit
 
@@ -28,12 +26,6 @@ NAME = 'cleanup_status_snapshots'
 @pytest.fixture
 def runner():
     return CliRunner()
-
-
-@pytest.fixture
-def status_engine(app, status_session):
-    from webapp.extensions import db
-    return db.engines['system_status']
 
 
 @pytest.fixture
@@ -62,11 +54,6 @@ def wired(status_engine, monkeypatch):
     with patch('system_status.session.create_status_engine') as mk:
         mk.return_value = (status_engine, None)
         yield status_engine
-
-
-@pytest.fixture
-def ledger(status_engine):
-    return TaskLedger(lambda: Session(status_engine))
 
 
 def _json(result):

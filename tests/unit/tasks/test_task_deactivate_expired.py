@@ -21,9 +21,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from factories.projects import make_account, make_allocation, make_project
 from factories.resources import make_resource
-from sqlalchemy.orm import Session
 
-from scheduling.ledger import TaskLedger
 from scheduling.registry import TASKS, TaskContext, TaskResult
 from scheduling.runner import run_due
 from scheduling.schedules import occurrence_key, to_local_naive
@@ -42,17 +40,6 @@ NAME = 'deactivate_expired_projects'
 OCC = datetime(2026, 9, 3, 10, 30)
 #: ...and the same instant in the naive-Mountain terms every SAM date uses.
 SLOT = datetime(2026, 9, 3, 4, 30)
-
-
-@pytest.fixture
-def status_engine(app, status_session):
-    from webapp.extensions import db
-    return db.engines['system_status']
-
-
-@pytest.fixture
-def ledger(status_engine):
-    return TaskLedger(lambda: Session(status_engine))
 
 
 @pytest.fixture

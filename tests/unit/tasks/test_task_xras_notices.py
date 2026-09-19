@@ -27,7 +27,7 @@ from factories.resources import make_resource
 from factories.xras import make_xras_action, make_xras_activation_event
 
 from sam.core.users import EmailAddress
-from sam.notify import NotifyConfig, Notifier, NullTransport
+from sam.notify import NotifyConfig, Notifier
 from sam.notify.ledger import NotificationLedger
 from sam.queries.xras_activation import xras_dedup_key
 from scheduling.registry import TASKS, TaskContext
@@ -61,11 +61,6 @@ DAY = timedelta(days=1)
 
 
 # harness
-
-@pytest.fixture
-def transport():
-    return NullTransport()
-
 
 @pytest.fixture
 def ledger(session):

@@ -52,11 +52,6 @@ from sam.notify.ledger import NotificationLedger
 # Fixtures
 
 @pytest.fixture
-def transport():
-    return NullTransport()
-
-
-@pytest.fixture
 def command(session, transport):
     """A real ProjectExpirationCommand whose notifier records but never sends.
 

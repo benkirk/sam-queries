@@ -25,7 +25,7 @@ from factories import (
     make_user,
 )
 
-from sam.notify import NotifyConfig, Notifier, NullTransport
+from sam.notify import NotifyConfig, Notifier
 from sam.notify.ledger import NotificationLedger
 from sam.notify.models import NotificationLog
 from scheduling.ledger import lease_for
@@ -41,11 +41,6 @@ NAME = 'account_queue_digest'
 OCC = datetime(2026, 9, 14, 14, 0)
 LOCAL = datetime(2026, 9, 14, 8, 0)
 HELM = REPO_ROOT / 'helm'
-
-
-@pytest.fixture
-def transport():
-    return NullTransport()
 
 
 @pytest.fixture

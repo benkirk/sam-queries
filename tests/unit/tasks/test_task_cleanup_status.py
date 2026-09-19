@@ -9,9 +9,7 @@ row, and that `$STATUS_RETENTION_DAYS` reaches it.
 from datetime import datetime, timedelta
 
 import pytest
-from sqlalchemy.orm import Session
 
-from scheduling.ledger import TaskLedger
 from scheduling.registry import TASKS
 from scheduling.runner import run_due
 from scheduling.tasks.cleanup_status import (
@@ -29,17 +27,6 @@ NAME = 'cleanup_status_snapshots'
 #: A dispatch instant well after the 02:15 MDT slot (08:15 UTC) on this date.
 NOW = datetime(2026, 8, 12, 9, 7, 0)
 OCC = datetime(2026, 8, 12, 8, 15, 0)
-
-
-@pytest.fixture
-def status_engine(app, status_session):
-    from webapp.extensions import db
-    return db.engines['system_status']
-
-
-@pytest.fixture
-def ledger(status_engine):
-    return TaskLedger(lambda: Session(status_engine))
 
 
 @pytest.fixture

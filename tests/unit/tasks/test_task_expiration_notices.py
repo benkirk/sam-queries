@@ -53,11 +53,6 @@ START = datetime(2033, 11, 21, 0, 0)
 # harness
 
 @pytest.fixture
-def transport():
-    return NullTransport()
-
-
-@pytest.fixture
 def ledger(session):
     """A ledger on the test session, so its commits stay inside the SAVEPOINT."""
     @contextmanager

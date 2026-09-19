@@ -14,7 +14,7 @@ the first.
 
 import json
 from datetime import date, datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
@@ -69,16 +69,6 @@ def runner():
     """Wide terminal — the result tables ellipsize to fit (see
     test_cli_contracts_search for the same reasoning)."""
     return CliRunner(env={'COLUMNS': '200'})
-
-
-@pytest.fixture
-def mock_db_session(session):
-    """Bind the CLI group to the test's SAVEPOINT session."""
-    with patch('sam.session.create_sam_engine') as mock_engine, \
-         patch('cli.core.context.Session') as mock_session_cls:
-        mock_engine.return_value = (MagicMock(), None)
-        mock_session_cls.return_value = session
-        yield session
 
 
 class TestGuards:

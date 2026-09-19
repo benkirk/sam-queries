@@ -12,14 +12,8 @@ import types
 from unittest.mock import MagicMock, patch
 
 import pytest
-from click.testing import CliRunner
 
 from cli.cmds.search import cli as search_cli
-
-
-@pytest.fixture
-def runner():
-    return CliRunner()
 
 
 @pytest.fixture

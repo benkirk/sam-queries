@@ -10,14 +10,8 @@ auth, params, and exit-code handling.
 from unittest.mock import patch, MagicMock
 
 import pytest
-from click.testing import CliRunner
 
 from cli.cmds.admin import cli
-
-
-@pytest.fixture
-def runner():
-    return CliRunner()
 
 
 @pytest.fixture

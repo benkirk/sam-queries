@@ -16,7 +16,6 @@ three-outcome convention shared by every other `sam-search` subcommand —
 
 import json
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
@@ -38,16 +37,6 @@ def runner():
     row-content assertions would be testing layout instead of behavior.
     """
     return CliRunner(env={'COLUMNS': '200'})
-
-
-@pytest.fixture
-def mock_db_session(session):
-    """Bind the CLI group to the test's SAVEPOINT session."""
-    with patch('sam.session.create_sam_engine') as mock_engine, \
-         patch('cli.core.context.Session') as mock_session_cls:
-        mock_engine.return_value = (MagicMock(), None)
-        mock_session_cls.return_value = session
-        yield session
 
 
 @pytest.fixture

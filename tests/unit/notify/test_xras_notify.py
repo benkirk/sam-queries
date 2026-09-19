@@ -28,11 +28,6 @@ PROJECT_ID = 1
 
 
 @pytest.fixture
-def transport():
-    return NullTransport()
-
-
-@pytest.fixture
 def notifier(monkeypatch, transport):
     """Swap the route's notifier for one that records and never sends.
 

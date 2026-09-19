@@ -15,18 +15,12 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
-from click.testing import CliRunner
 
 from cli.cmds.admin import cli
 from sam.integration.awards import AwardRecord, AwardSourceUnavailable, PersonRef
 from sam.queries.contract_audit import CHECKS
 
 pytestmark = pytest.mark.unit
-
-
-@pytest.fixture
-def runner():
-    return CliRunner()
 
 
 @pytest.fixture
