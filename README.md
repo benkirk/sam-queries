@@ -616,10 +616,12 @@ sam-queries/
 ├── tests/                       # Test suite (see docs/TESTING.md)
 │   ├── conftest.py              # Safety guard + session/app/client fixtures
 │   ├── factories/               # Layer-2 builder functions for write-path tests
-│   ├── unit/                    # Unit tests (ORM, queries, CLI, webapp)
+│   ├── unit/                    # Unit tests, one directory per domain:
+│   │                            #   gates/ xras/ notify/ tasks/ charts/ cli/
+│   │                            #   webapp/ models/ queries/ manage/
 │   ├── integration/             # Integration tests (schema validation, views,
 │   │                            #   status tier, CLI entry-point smoke)
-│   └── api/                     # API endpoint + schema tests
+│   └── api/                     # API endpoint + schema tests (+ xras_audit_rows/)
 │
 └── utils/                       # Miscellaneous utilities
     ├── run-webui-dbg.sh         # Debug launcher for Web UI

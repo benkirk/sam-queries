@@ -2,31 +2,26 @@
 
 ## Overview
 
-The SAM test suite has **6,244 collected tests** (measured 2026-08-11) across
-five tiers. The default run — everything except the two gated tiers — is
-**6,200 tests in ~90 seconds** on a laptop with pytest-xdist parallelism.
+The SAM test suite has **9,296 collected tests** (measured 2026-09-18). The
+default run — everything except the gated `perf` tier — is **9,239 tests in
+~90 seconds** on a laptop with pytest-xdist parallelism.
 
 Regenerate both numbers with `pytest --collect-only -q | tail -1` (default run)
 and `pytest --collect-only -q -m "" | tail -1` (everything).
 
-Two tiers are gated **off** by default and run only when asked for:
+One tier is gated **off** by default and runs only when asked for:
 
 | tier | size | command | what it is |
 |---|---|---|---|
-| `perf` | 22 | `pytest -m perf -n 0` (or `make perf`) | query-count and latency baselines |
-| `stress` | 22 | `pytest -m stress -n 0` (or `make stress`) | XRAS audit-row triage: oversize payloads, 4-byte unicode, the unmapped-path ingress, repeat posts, parking causes (incl. the unserviced `Date Adjustment`), unsampled wire shapes |
+| `perf` | 57 | `pytest -m perf -n 0` (or `make perf`) | query-count and latency baselines |
 
-The two `-n 0`s are **not** the same kind of `-n 0`:
-
-- **`perf` requires it.** `pytest-benchmark` is disabled under xdist, and a
-  query-count baseline is meaningless under concurrent load.
-- **`stress` merely prefers it** — faster (~2.5 s vs ~6.5 s; xdist startup
-  dominates 22 tests), matches CI, and sidesteps worker-count-dependent factory
-  bugs. The tier is genuinely xdist-safe: the `action_log` fixture captures the
-  row ids the route mints and reads/deletes by those PKs, so workers cannot see
-  or deadlock on each other's committed audit rows. The reasoning lives on the
-  fixture in `tests/xras_audit.py` and in the `_comment` at the head of
-  `tests/api/xras_audit_rows/scenarios.json`. **Plain `pytest -m stress` is also correct.**
+`perf` **requires** `-n 0`: `pytest-benchmark` is disabled under xdist, and a
+query-count baseline is meaningless under concurrent load. The XRAS audit-row
+scenarios in `tests/api/xras_audit_rows/` are **not** gated — they run in the
+default suite, xdist-safe because their `action_log` fixture reads and deletes
+by the PKs the route mints (reasoning on the fixture in `tests/xras_audit.py`);
+`scenarios.json` beside them records what each scenario expects the
+`xras_action_log` row to say.
 
 > This file is the single source of truth for suite size and timings —
 > other docs link here rather than restating numbers.
@@ -37,15 +32,24 @@ backend — see [Two backends](#two-backends) below. A hard safety guard in
 `tests/conftest.py` refuses to run against any other target — there is no
 way for a stray run to touch production or dev data.
 
+`tests/unit/` is split by domain, and each test's marker is derived from its
+directory (below), so `pytest -m xras` and its siblings select a directory and
+cannot drift out of step with the layout:
+
 ```
 tests/
   conftest.py              # Safety guard, engine/session, Flask app/client fixtures
   factories/               # Layer-2 builder functions (make_user, make_project, ...)
-  unit/                    # ORM, queries, CLI, webapp unit, cache behavior
-  integration/             # Schema validation, views, system_status, CLI smoke
-  api/                     # REST API endpoints + Marshmallow schema tests
-  perf/                    # Query-count regression + latency benchmarks (gated)
+  unit/<domain>/           # gates xras notify tasks charts cli webapp models
+                           #   queries manage (marker == directory; gates -> -m gate).
+                           #   snapshots/ is fixture JSON, not tests
+  integration/             # Schema validation, views, status tier, CLI smoke (-m integration)
+  api/                     # REST endpoints + schemas; xras_audit_rows/     (-m api)
+  perf/                    # Query-count regression + latency benchmarks (gated, -m perf)
 ```
+
+Shared fixtures live in each domain's `conftest.py`, and a new file dropped into
+a domain directory inherits the marker automatically.
 
 ---
 
@@ -55,8 +59,11 @@ tests/
 # One-time: start the isolated test container
 docker compose --profile test up -d mysql-test
 
-# Fast iteration (parallel, no coverage) — ~67s
+# Fast iteration (parallel, no coverage) — ~90s
 source etc/config_env.sh && pytest
+
+# One domain (marker == directory: gate/xras/notify/tasks/charts/cli/webapp/models/queries/manage)
+pytest -m xras            # or, equivalently, by path: pytest tests/unit/xras
 
 # With coverage
 pytest --cov=src --cov-report=html --cov-fail-under=60
@@ -64,19 +71,14 @@ pytest --cov=src --cov-report=html --cov-fail-under=60
 # Performance regression tests (serial, ~26s)
 make perf
 # or: pytest -m perf -n 0 -v
-
-# XRAS stress scenarios (~2.5s) — audit-row triage, oversize payloads,
-# repeat posts, parking causes, and the wire shapes the corpus never sampled
-make stress
-# or: pytest -m stress -n 0 -v   (plain `pytest -m stress` also works — see above)
 ```
 
-Both `perf` and `stress` are gated **off** by default via `addopts`
-(`-m "not perf and not stress"`) and run only when asked for. Each has a
-declaration file next to it that the tests read — `tests/perf/baselines.json`
-for query-count limits, `tests/api/xras_audit_rows/scenarios.json` for what each scenario
-expects the `xras_action_log` row to say. A stress test with no manifest entry
-fails rather than running unspecified.
+`perf` is gated **off** by default via `addopts` (`-m "not perf"`) and runs only
+when asked for. Its declaration file `tests/perf/baselines.json` holds the
+query-count limits the tests read. The audit-row scenarios in
+`tests/api/xras_audit_rows/` run in the default suite; `scenarios.json` beside
+them records what each scenario expects the `xras_action_log` row to say, and a
+scenario with no manifest entry fails rather than running unspecified.
 
 If `SAM_TEST_DB_URL` is unset or points at anything other than
 `127.0.0.1:3307`, pytest aborts with `REFUSING TO RUN tests against
@@ -198,18 +200,16 @@ test may compose both: `active_project` for a read-only graph and
 
 ## Performance Regression Tests (`tests/perf/`)
 
-Gated behind `@pytest.mark.perf` and excluded from the default `pytest`
-run via `-m "not perf"` in `pytest.ini`. Must run serially (`-n 0`)
-because `pytest-benchmark` is disabled under xdist.
+Gated behind `@pytest.mark.perf` and excluded from the default run via
+`-m "not perf"`. Must run serially (`-n 0`) — `pytest-benchmark` is disabled
+under xdist.
 
 ### What They Guard Against
 
-The test suite was built to prevent recurrence of 7 specific performance
-bugs identified by profiling scripts in `utils/profiling/`:
+Recurrence of the specific performance bugs profiling in `utils/profiling/` found:
 
 - **N+1 per-row queries** in allocation summaries (52,923 queries → 42)
-- **Cascade-loading explosions** where `joinedload(Project.lead)` dragged
-  in `User.accounts`, `User.email_addresses`, etc.
+- **Cascade-loading explosions** — `joinedload(Project.lead)` dragging in `User.accounts` etc.
 - **Lazy-load regressions** during template rendering and JSON serialization
 - **Per-project loop fanout** on the user dashboard (288 queries → 36)
 - **Duplicate allocation fetches** (two full passes → one + Python aggregation)
@@ -241,25 +241,17 @@ wall-time order-of-magnitude regressions.
 
 ### Query Counting Infrastructure
 
-`tests/perf/_query_count.py` provides the `SQLStats` class (extracted
-from `utils/profiling/profile_user_dashboard.py`). It hooks into
-SQLAlchemy's `before_cursor_execute` / `after_cursor_execute` events to
-count and time every query through an engine.
-
-Two fixtures expose it:
-- **`count_queries`** — attaches to the standalone `engine` (function-level tests)
-- **`route_count_queries`** — attaches to `db.engine` (Flask route tests)
+`tests/perf/_query_count.py`'s `SQLStats` class hooks SQLAlchemy's
+`before_cursor_execute` / `after_cursor_execute` events to count and time every
+query. Two fixtures expose it: `count_queries` (the standalone `engine`,
+function-level tests) and `route_count_queries` (`db.engine`, Flask routes).
 
 ### Re-Baseline Workflow
 
-When you intentionally improve a query pattern:
-
-1. Run `pytest -m perf -n 0 -v`
-2. The failure message shows the actual count vs. baseline
-3. Update `tests/perf/baselines.json` with the new count
-4. Commit both the code change and the updated baseline
-
-When the count goes UP unexpectedly — fix the regression first.
+When you intentionally improve a query pattern, run `pytest -m perf -n 0 -v`,
+read the actual-vs-baseline count from the failure, update
+`tests/perf/baselines.json`, and commit both together. When the count goes UP
+unexpectedly — fix the regression first.
 
 ---
 
@@ -274,9 +266,8 @@ Job `pytest`:
 1. Builds and starts all containers including `mysql-test` (via `--profile test`)
 2. Waits for both MySQL services to accept TCP connections
 3. Runs `pytest --cov=src --cov-fail-under=60` inside the webapp container
-4. Runs **both** gated tiers, each `if: always()` — `pytest -m perf -n 0` for
-   performance regression, and `pytest -m stress -n 0 -v` for XRAS audit-row
-   survival and parking
+4. Runs the gated `perf` tier, `if: always()` — `pytest -m perf -n 0`. The XRAS
+   audit-row scenarios run inside step 3, as part of the default suite.
 5. Uploads coverage report as a GitHub Actions artifact
 
 Job `pytest-postgres`: the same build and start, then
@@ -296,16 +287,19 @@ without coverage.
 Root `pytest.ini`:
 
 ```ini
-addopts = -v --strict-markers --tb=short --maxfail=5 -n auto -m "not perf and not stress"
+addopts = -v --strict-markers --tb=short --maxfail=5 -n auto -m "not perf"
 markers =
-    unit / integration / smoke / webapp / perf / stress / mysql_only / postgres_only
+    gate / xras / notify / tasks / charts / cli / webapp / models / queries /
+    manage / api / integration / perf / mysql_only / postgres_only
 filterwarnings = ignore::pytest_benchmark.logger.PytestBenchmarkWarning
 timeout = 300
 ```
 
-The `-m "not perf and not stress"` in `addopts` keeps both gated tiers out
-of the default suite. The `filterwarnings` suppresses the "benchmarks
-disabled under xdist" noise.
+The `-m "not perf"` in `addopts` keeps the one gated tier out of the default
+suite. The domain markers (`gate`…`integration`) are **auto-applied by
+directory** in `pytest_collection_modifyitems` — do not hand-apply them; `perf`,
+`mysql_only` and `postgres_only` are hand-applied. The `filterwarnings`
+suppresses the "benchmarks disabled under xdist" noise.
 
 ---
 
@@ -340,8 +334,7 @@ make docker-pytest-pg                                      # the same inside the
   `tests/unit/models/test_postgres_expected_failures.py` fails on an entry that no
   longer names a collected test. The `sam-dev` deployment waits for the list to
   be empty. Same house pattern as `tests/perf/baselines.json`.
-- The perf and stress tiers stay MySQL-only: their baselines are MySQL
-  measurements.
+- The `perf` tier stays MySQL-only: its baselines are MySQL measurements.
 
 ---
 
@@ -349,14 +342,19 @@ make docker-pytest-pg                                      # the same inside the
 
 ### Which tier?
 
+Pick the `tests/unit/<domain>/` directory by subject; the marker follows it.
+
 | Testing... | Put it in | Use |
 |------------|-----------|-----|
-| ORM model properties, query functions | `tests/unit/` | `session` + representative fixtures |
-| Write operations (create/update/delete) | `tests/unit/` | `session` + factories |
-| CLI commands | `tests/unit/` | `CliRunner` + mock session |
+| ORM model properties, write ops | `tests/unit/models/` | `session` + fixtures / factories |
+| Read-side query functions | `tests/unit/queries/` | `session` + representative fixtures |
+| Multi-entity writes (`sam.manage`) | `tests/unit/manage/` | `session` + factories |
+| CLI commands | `tests/unit/cli/` | `CliRunner` + mock session |
+| Webapp routes + template rendering | `tests/unit/webapp/` | `auth_client` + status code checks |
+| XRAS / notifications / tasks / charts | `tests/unit/{xras,notify,tasks,charts}/` | domain fixtures |
+| Source-scanning lint / contract gates | `tests/unit/gates/` | AST / file scans |
 | Schema validation (ORM vs DB drift) | `tests/integration/` | `engine` + `SHOW CREATE TABLE` |
 | API endpoints | `tests/api/` | `auth_client` + JSON assertions |
-| Webapp routes + template rendering | `tests/unit/` | `auth_client` + status code checks |
 | Query-count regression | `tests/perf/` | `count_queries` + `baselines.json` |
 
 ### Conventions
@@ -371,6 +369,7 @@ make docker-pytest-pg                                      # the same inside the
 ### Running Specific Areas
 
 ```bash
+pytest -m xras                                    # one domain (marker == directory)
 pytest tests/unit/queries/test_query_functions.py -v      # query functions
 pytest tests/integration/test_schema_validation.py # ORM/DB drift
 pytest tests/api/ -v                              # all API tests

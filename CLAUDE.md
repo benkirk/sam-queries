@@ -110,7 +110,10 @@ sam-queries/
 ├── migrations/           # Alembic (system_status DB only)
 ├── compose.yaml          # Docker Compose (webapp:7050, webdev:5050, DBs, cache)
 └── tests/                # See docs/TESTING.md for suite size/timings
-    ├── unit/  integration/  api/  perf/   # perf/ gated behind -m perf
+    ├── unit/<domain>/       # per-domain dirs (gates xras notify tasks charts
+    │                        #   cli webapp models queries manage); the matching
+    │                        #   marker is auto-applied from the directory (C4)
+    ├── integration/ api/ perf/   # perf/ gated behind -m perf; api/ has xras_audit_rows/
     └── factories/           # Layer-2 builders (core, resources, projects,
                              #   operational, security, summaries, _seq)
 ```
@@ -603,6 +606,12 @@ pytest -n 0                                 # force serial
   `tests/api/xras_audit_rows/` (xdist-safe; rows cleaned up by captured PK), and
   its `scenarios.json` records what each scenario expects the `xras_action_log`
   row to say.
+- **Domain markers are derived from the directory**, not hand-applied:
+  `pytest_collection_modifyitems` tags each `tests/unit/<domain>/` test with its
+  domain marker (`gate` for `gates/`), and `tests/api`/`tests/integration` with
+  `api`/`integration`. So `pytest -m xras` (or gate/notify/tasks/charts/cli/
+  webapp/models/queries/manage) selects a directory and cannot drift. Registered
+  in `pytest.ini`; identical fixtures live in the domain's `conftest.py`.
 - **Route handlers use Flask-SQLAlchemy's `db.session`** (its own connection) —
   they only see committed snapshot rows, and route-level writes would COMMIT.
   House convention: HTTP-layer tests cover auth/validation/404/render smoke;
