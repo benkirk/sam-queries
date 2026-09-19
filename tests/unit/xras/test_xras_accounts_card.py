@@ -31,6 +31,16 @@ from _paths import TESTS
 URL = '/allocations/xras_accounts_fragment'
 
 
+def _recent_submit_date():
+    """A submit_date comfortably inside the default 30-day window, off the same
+    clock the route filters with. A fixed string sits on the boundary as the
+    wall clock advances and flips in/out with the process time zone (the route's
+    ``since`` is ``datetime.now() - 30d`` -- see ``_submitted_since`` in
+    ``xras/_shared.py``)."""
+    from datetime import timedelta
+    return (datetime.now() - timedelta(days=5)).date().isoformat()
+
+
 # WARNING: One worker at a time for this file. The committed fixtures below use
 # FIXED identifiers ('placeholder38-user-00038', NCAR4227) and real COMMITs —
 # required, because the routes read committed rows through `db.session` — so
@@ -529,7 +539,7 @@ class TestTheWindowNeverHidesSilently:
         rows = []
         for i in range(rows_total):
             # The first `shown_total` are recent; the rest are ancient.
-            submitted = '2026-08-19' if i < shown_total else '2019-01-01'
+            submitted = _recent_submit_date() if i < shown_total else '2019-01-01'
             rows.append({
                 'username': f'ghost-user-{i}', 'classification': 'absent',
                 'remedy': 'create', 'placeholder': False, 'roles': ('PI',),
@@ -633,7 +643,7 @@ class TestBothFeedsShowTheSameDetail:
                                    'request_number': 'NCAR0001',
                                    'action_type': 'New', 'status': 'Approved',
                                    'received_time': None,
-                                   'submit_date': '2026-08-19',
+                                   'submit_date': _recent_submit_date(),
                                    'source': 'reports', 'would_succeed': None,
                                    'reject_messages': []}]}],
         })
@@ -669,7 +679,7 @@ class TestBothFeedsShowTheSameDetail:
                                    'request_number': 'NCAR0001',
                                    'action_type': 'New', 'status': 'Approved',
                                    'received_time': None,
-                                   'submit_date': '2026-08-19',
+                                   'submit_date': _recent_submit_date(),
                                    'source': 'reports', 'would_succeed': None,
                                    'reject_messages': []}]}],
         })
@@ -701,7 +711,7 @@ class TestTheMergedCardUnionsBothFeeds:
                                    'request_number': 'NCAR9001',
                                    'action_type': 'New', 'status': 'Approved',
                                    'received_time': None,
-                                   'submit_date': '2026-08-19',
+                                   'submit_date': _recent_submit_date(),
                                    'source': 'reports', 'would_succeed': None,
                                    'reject_messages': []}]}],
         })
