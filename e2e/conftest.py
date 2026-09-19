@@ -39,7 +39,7 @@ PLUGIN_GATED = {'/user/data', '/user/jobs'}
 # fire: the app serves one.) `test_console_allowlist_has_no_dead_entries` in
 # test_console_sweep.py keeps any future addition honest — a pattern that stops
 # matching has to be deleted rather than left to rot, exactly like
-# ALLOWED_VIOLATIONS in tests/unit/test_template_csp_lint.py.
+# ALLOWED_VIOLATIONS in tests/unit/gates/test_template_csp_lint.py.
 ALLOWED_CONSOLE = ()
 
 
@@ -47,7 +47,7 @@ def dashboard_page_routes():
     """Every top-level dashboard page, derived from the pinned route map.
 
     `tests/unit/snapshots/dashboard_route_map.json` is already the source of
-    truth for dashboard routing (tests/unit/test_route_map_parity.py pins it;
+    truth for dashboard routing (tests/unit/gates/test_route_map_parity.py pins it;
     ROUTE_MAP_REGEN=1 regenerates it). Deriving from it means a new tab enters
     the sweep automatically — an earlier hand-written list in the plan doc
     invented a route that never existed while omitting seven real pages.
@@ -293,7 +293,7 @@ def set_theme(page, base_url, theme):
     """Pin the server-rendered theme for this page's browsing context.
 
     Set on the context rather than by clicking the toggle: the toggle's own
-    behavior is unit-tested (tests/unit/test_theme_transport.py), and driving
+    behavior is unit-tested (tests/unit/charts/test_theme_transport.py), and driving
     it here would add a reload to every parameterized case for no extra
     coverage.
     """

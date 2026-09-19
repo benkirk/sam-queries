@@ -4,7 +4,7 @@
 Why a script and not a test
 ---------------------------
 Everything this exercises needs a real API key against a real production
-service. ``tests/unit/test_xras_api_client.py`` covers the client's transport
+service. ``tests/unit/xras/test_xras_api_client.py`` covers the client's transport
 and parsing with canned payloads; this covers the thing a fixture cannot:
 that the endpoints, headers and field names we built against are still what
 XRAS actually serves.

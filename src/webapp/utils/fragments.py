@@ -23,7 +23,7 @@ would cost more than it saves.
 **Endpoint names are the contract.** They are named by ``url_for`` in a dozen
 templates, so the generated names must match the hand-written ones exactly:
 ``{panel.key}{mode.endpoint_suffix}_{panel.noun}``. The route-map parity
-snapshot (``tests/unit/test_route_map_parity.py``) is what proves it.
+snapshot (``tests/unit/gates/test_route_map_parity.py``) is what proves it.
 """
 
 from __future__ import annotations

@@ -158,8 +158,8 @@ the failure-meaning glossary for the first one.
 
 ```bash
 source etc/config_env.sh
-pytest tests/unit/test_vendor_assets.py            # hashes, version-pinned, local-only, sub-resources present
-pytest tests/unit/test_csp.py tests/unit/test_security_headers.py   # CSP still 'self', no new origins
+pytest tests/unit/gates/test_vendor_assets.py            # hashes, version-pinned, local-only, sub-resources present
+pytest tests/unit/webapp/test_csp.py tests/unit/webapp/test_security_headers.py   # CSP still 'self', no new origins
 ```
 
 For a bump touching a trap surface, add the matching structural gate:
@@ -188,13 +188,13 @@ A bump may fix one (removable, step 7) or invalidate one (blocking, step 4).
 The grep in step 3 catches any added since; this table is the starting set.
 
 - **Bootstrap — modals/toggles.** PR #464 fragment-in-open-modal trap
-  (`CLAUDE.md` §9, gated by `tests/unit/test_modal_shell_contract.py`);
+  (`CLAUDE.md` §9, gated by `tests/unit/gates/test_modal_shell_contract.py`);
   cross-modal z-index stacking (`static/js/htmx-config.js`); a `data-bs-toggle`
   inside an open modal closes its host (`static/js/actions.js`); pinch-zoom
   scrollbar-pad miscalculation (`static/js/modals.js`); manual tooltip/popover
   init + dispose-before-htmx-swap (`static/js/tooltip-init.js`).
 - **Bootstrap — collapse.** Collapse data-api fires in the capture phase, so a
-  nested link/button toggles the row (`tests/unit/test_collapse_trigger_rows.py`;
+  nested link/button toggles the row (`tests/unit/gates/test_collapse_trigger_rows.py`;
   `wire-dashboard-feature` step 6).
 - **Bootstrap — CSS/theme.** `<td>` paints opaque `--bs-table-bg` over any
   row-level background; dark mode does not retheme `.table-*` or
@@ -213,7 +213,7 @@ The grep in step 3 catches any added since; this table is the starting set.
 - **Font Awesome.** The entry-point CSS resolves webfonts by relative
   `../webfonts/` `url()`, which no `url_for` can reach — the short-TTL branch of
   the cache-header rule exists for exactly these (`CLAUDE.md` §11), and their
-  presence is gated (`tests/unit/test_vendor_assets.py`). A **major** can rename
+  presence is gated (`tests/unit/gates/test_vendor_assets.py`). A **major** can rename
   or retire icon classes — grep template `fa-*` usage before bumping (step 4).
   Also: the webfont **family name is versioned** (`'Font Awesome 6 Free'` →
   `'Font Awesome 7 Free'`), and two `static/css/dashboard.css` pseudo-element

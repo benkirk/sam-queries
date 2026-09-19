@@ -1,6 +1,6 @@
 """The XRAS account-creation worklist card, in a real browser.
 
-Complements the HTTP-tier tests in `tests/unit/test_xras_accounts_card.py`:
+Complements the HTTP-tier tests in `tests/unit/xras/test_xras_accounts_card.py`:
 those assert what the response body carries, this asserts the card actually
 renders, its lazy fragment loads, and its chips filter without a page reload.
 

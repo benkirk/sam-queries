@@ -197,8 +197,8 @@ CLAUDE.md § Charts.
    hand Jinja `Undefined` to any key you add later: `{% if x > 0 %}` raises,
    `{% if x %}` is fine — guard new context keys by truthiness.
 6. Run the structural gates:
-   `pytest tests/unit/test_modal_shell_contract.py tests/unit/test_collapse_trigger_rows.py tests/unit/test_action_cells_nowrap.py tests/unit/test_static_assets.py tests/unit/test_template_csp_lint.py tests/unit/test_css_tokens.py tests/unit/test_route_map_parity.py`
+   `pytest tests/unit/gates/test_modal_shell_contract.py tests/unit/gates/test_collapse_trigger_rows.py tests/unit/gates/test_action_cells_nowrap.py tests/unit/gates/test_static_assets.py tests/unit/gates/test_template_csp_lint.py tests/unit/gates/test_css_tokens.py tests/unit/gates/test_route_map_parity.py`
    plus the feature's own tests.
 7. If routes changed, regenerate the route-map snapshot
-   (`ROUTE_MAP_REGEN=1 pytest tests/unit/test_route_map_parity.py`) and commit
+   (`ROUTE_MAP_REGEN=1 pytest tests/unit/gates/test_route_map_parity.py`) and commit
    the diff.

@@ -398,7 +398,7 @@ class XrasActionLog(Base):
     #: ``SmallInteger`` to match the DDL's ``SMALLINT UNSIGNED``. ``Integer`` is
     #: harmless in MySQL but is the kind of drift that makes a guard computed
     #: from the ORM quietly wrong -- pinned by
-    #: ``tests/stress/test_audit_row_survives.py``.
+    #: ``tests/api/xras_audit_rows/test_audit_row_survives.py``.
     http_status = Column(SmallInteger)
 
     #: The ordered error list, one message per line — the same list the 422 carries.

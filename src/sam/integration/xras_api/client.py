@@ -12,7 +12,7 @@ more write-capable than this client, and our key holds at least some of it:
 creating and deleting requests, submitting and withdrawing actions, adding and
 removing roles, **merging one person into another**. The sole transport
 primitive is :meth:`_get`, there is no generic verb method, and
-``tests/unit/test_xras_api_client.py`` pins that no post/put/patch/delete
+``tests/unit/xras/test_xras_api_client.py`` pins that no post/put/patch/delete
 callable exists on the class.
 
 ``XA-CONTEXT`` is hardcoded to ``report`` and is not a knob: the Reports family,
@@ -68,7 +68,7 @@ class _XrasTransport:
     This base carries **no write verb**: its sole transport primitive is
     :meth:`_get`. The write half lives on the admin subclass as ``_write``,
     which is exactly why ``XrasApiClient`` stays GET-only by construction while
-    reusing this scaffolding. ``tests/unit/test_xras_api_client.py`` pins that
+    reusing this scaffolding. ``tests/unit/xras/test_xras_api_client.py`` pins that
     invariant against this class.
     """
 
@@ -199,7 +199,7 @@ class XrasApiClient(_XrasTransport):
 
     Inherits the shared transport (:class:`_XrasTransport`) unchanged and adds
     only read verbs — there is deliberately no write primitive here (see the
-    module docstring and ``tests/unit/test_xras_api_client.py``). The base's
+    module docstring and ``tests/unit/xras/test_xras_api_client.py``). The base's
     default :meth:`_client_error` — raising :class:`XrasSourceUnavailable` — is
     exactly the read behavior, so this class does not override it.
     """

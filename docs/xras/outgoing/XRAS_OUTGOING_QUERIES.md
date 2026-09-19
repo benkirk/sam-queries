@@ -730,7 +730,7 @@ crawl.
 `SAM_TASKS_DISABLED` in `helm/values.yaml` **in the same commit** that
 registers it, plus the values.yaml-grep test (`test_it_ships_switched_off`
 pattern), the `docs/README-k8s.md` mentions (3 places), and the module added
-to `tests/unit/test_task_ledger.py`'s subprocess import matrix.
+to `tests/unit/tasks/test_task_ledger.py`'s subprocess import matrix.
 
 ### 7.5 CLI — `sam-admin xras` grows three things
 
@@ -838,7 +838,7 @@ The only remaining external conversations with XRAS are operational, § 13.
 ## 10. Verification
 
 - **Unit tests with canned fixtures; no live calls in CI.** Mirror
-  `tests/unit/test_award_providers.py`: payloads as module dict constants with
+  `tests/unit/models/test_award_providers.py`: payloads as module dict constants with
   invented identities, transport tests via a mocked `session.request` +
   no-op sleep, the three-outcome model, an "outage is never memoised" case,
   and the cache-reset autouse fixture (`reset_for_tests()` +
@@ -956,10 +956,10 @@ tokens anywhere in title/body/commits.
 Verification commands (the operator runs pytest):
 
 ```
-pytest tests/unit/test_xras_api_client.py tests/unit/test_xras_accounts_query.py \
-       tests/unit/test_xras_accounts_card.py tests/unit/test_task_xras_sweep.py
-pytest tests/unit/test_task_ledger.py tests/unit/test_admin_tasks_cli.py
-ROUTE_MAP_REGEN=1 pytest tests/unit/test_route_map_parity.py
+pytest tests/unit/xras/test_xras_api_client.py tests/unit/xras/test_xras_accounts_query.py \
+       tests/unit/xras/test_xras_accounts_card.py tests/unit/tasks/test_task_xras_sweep.py
+pytest tests/unit/tasks/test_task_ledger.py tests/unit/tasks/test_admin_tasks_cli.py
+ROUTE_MAP_REGEN=1 pytest tests/unit/gates/test_route_map_parity.py
 pytest tests/unit
 bash helm/tests/test-cronjob-render.sh
 helm template samuel helm -f helm/values.yaml -s templates/cronjob-tasks.yaml | grep XRAS

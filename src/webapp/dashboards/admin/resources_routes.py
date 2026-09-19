@@ -797,7 +797,7 @@ def htmx_admin_disk_root_delete(dr_id):
 #
 # Endpoints, URL rules, templates, permissions, and not-found messages are
 # identical to the hand-written routes these replace (pinned by
-# tests/unit/test_admin_facilities_resources_crud.py and the route-map
+# tests/unit/webapp/test_admin_facilities_resources_crud.py and the route-map
 # parity snapshot). Deletes for resource/machine/queue stay bespoke above —
 # they retire by date rather than the active flag.
 

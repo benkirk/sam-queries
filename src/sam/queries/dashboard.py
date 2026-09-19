@@ -60,7 +60,7 @@ class DashboardResource(TypedDict):
     _build_project_resources_data() (single-project path) and
     _build_user_projects_resources_batched() (multi-project batched path).
     Both producers must populate every field listed here; the equivalence
-    test in tests/unit/test_query_functions.py compares them
+    test in tests/unit/queries/test_query_functions.py compares them
     field-by-field at runtime.
 
     Note: this is a documentation/IDE annotation only. The project does
@@ -343,7 +343,7 @@ def _build_user_projects_resources_batched(
     Equivalence
     -----------
     Locked to _build_project_resources_data() field-by-field by
-    tests/unit/test_query_functions.py::TestDashboardQueries
+    tests/unit/queries/test_query_functions.py::TestDashboardQueries
     ::test_user_dashboard_batched_matches_per_project. Any divergence
     between the two paths fails CI.
     """

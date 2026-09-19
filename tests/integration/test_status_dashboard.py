@@ -30,7 +30,6 @@ from system_status import (
 from system_status.timeutil import utcnow_naive
 
 
-pytestmark = pytest.mark.integration
 
 
 def seed_data(session):

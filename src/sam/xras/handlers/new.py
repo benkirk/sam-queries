@@ -71,7 +71,7 @@ class XrasProjectCreationFailed(RuntimeError):
     WARNING: It lives **here** rather than in :mod:`sam.xras.errors`, where it would read as a
     sibling of :class:`~sam.xras.errors.XrasActionRejected`. That module is the *error
     string vocabulary*, and two tests enumerate its public callables to prove every
-    builder is exported and declared — ``tests/unit/test_xras_errors.py`` and
+    builder is exported and declared — ``tests/unit/xras/test_xras_errors.py`` and
     ``test_xras_error_coverage.py``, both excluding the two existing classes by name. A
     class is callable, so moving this one there would enrol it in the 34-builder matrix
     and fail both gates. Raised below by :func:`handle_new`; defined above it so the

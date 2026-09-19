@@ -8,7 +8,7 @@ form's checkbox, and lives here for the same reason. The read side is :mod:`sam.
 WARNING: NOT exported from ``sam/queries/__init__.py``. This module imports
 ``sam.notify``, and that file imports its submodules eagerly, so listing it
 would put ``sam.notify.base`` into every ``from sam.queries import ...``.
-Import by full path; the gate is ``tests/unit/test_notify_import_graph.py``.
+Import by full path; the gate is ``tests/unit/gates/test_notify_import_graph.py``.
 """
 
 from __future__ import annotations

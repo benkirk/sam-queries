@@ -24,7 +24,7 @@ load-bearing:
    here and read by nothing. So the design conclusion stands and no field SAM *reads*
    has ever arrived ``""`` — but "never" was too strong, and those initializers
    evidently can fire. Pinned by
-   ``tests/unit/test_xras_actions.py::KNOWN_EMPTY_STRINGS``, which still fails on a
+   ``tests/unit/xras/test_xras_actions.py::KNOWN_EMPTY_STRINGS``, which still fails on a
    second one.
 2. **Ints arrive in String-declared fields.** ``awardPeriod`` is ``12`` and
    ``fos[].fosTypeId`` is ``500006``, both ``private String`` in Java — Jackson coerces
