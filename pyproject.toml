@@ -174,11 +174,11 @@ exclude_lines = [
 ]
 show_missing = true
 precision = 2
-# 75.0 gives a ~7-point safety margin below the current 81.90% baseline
-# (after the deferred admin/user HTMX dashboard routes were moved to
-# `omit` and Bucket-3 targeted tests landed). Bump this as we add
-# coverage, don't drop it.
-fail_under = 75.0
+# 87.0 keeps a ~2.5-point safety margin below the current 89.51% baseline
+# (measured 2026-09-19). The margin absorbs routine churn; a genuinely
+# untested feature still trips it. Bump this as we add coverage, don't
+# drop it.
+fail_under = 87.0
 
 [tool.coverage.html]
 directory = "htmlcov"
