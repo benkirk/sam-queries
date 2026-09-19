@@ -62,8 +62,24 @@ def assert_resources_equal(live, served):
             assert a['charges_by_type'][k] == pytest.approx(b['charges_by_type'][k]), (ctx, k)
 
 
+#: The whole-snapshot projection is identical for every test — all sessions see
+#: the same committed snapshot and each test's own writes roll back with its
+#: SAVEPOINT — yet computing it is this module's dominant cost (~4s a call).
+#: Cache it once per worker; bulk_replace still writes per test, into that test's
+#: SAVEPOINT. Only the projects=None path is cached: narrowed projections are
+#: cheap and may target rows the test just created.
+_SNAPSHOT_ROWS = None
+
+
 def _feed(session, projects=None):
-    rows = project_allocation_state(session, now=datetime.now(), projects=projects)
+    global _SNAPSHOT_ROWS
+    if projects is None:
+        if _SNAPSHOT_ROWS is None:
+            _SNAPSHOT_ROWS = project_allocation_state(
+                session, now=datetime.now(), projects=None)
+        rows = _SNAPSHOT_ROWS
+    else:
+        rows = project_allocation_state(session, now=datetime.now(), projects=projects)
     AccountAllocationState.bulk_replace(session, rows, refreshed_at=db_now(session))
     return rows
 
