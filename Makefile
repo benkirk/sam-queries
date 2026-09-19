@@ -234,7 +234,10 @@ e2e: ## Run the Playwright browser console sweep against a running stack (needs 
 	python3 -m pytest -c e2e/pytest.ini e2e/ --base-url $(SAM_E2E_BASE_URL)
 
 # Everything a laptop can run, composed from the rules above. Self-provisions:
-# `docker-up` (--profile test) brings up webapp:7050 + mysql-test:3307 +
+# `docker-build` first, because the webapp:7050 image BAKES the code (only webdev
+# is code-synced) -- without a rebuild the browser sweep runs whatever code the
+# cached image last had, so a route added since would 404 against current tests.
+# Then `docker-up` (--profile test) brings up webapp:7050 + mysql-test:3307 +
 # postgres-test:5434, and clone-pg-test (re)builds the Postgres test copy, so
 # both host pytest tiers and the browser sweep have their targets.
 #
@@ -247,6 +250,7 @@ e2e: ## Run the Playwright browser console sweep against a running stack (needs 
 # default suite, tests/api/xras_audit_rows, so check/pytest-pg already cover
 # them); prod-schema drift is VPN-gated -- run `make check-db-vs-orms` on the VPN.
 check-all: ## Run the lot: both DB backends + perf + helm renders + e2e (all hard; prints an install hint if helm/.[e2e] is missing)
+	@$(MAKE) docker-build
 	@$(MAKE) docker-up
 	@$(MAKE) -C containers/sam-sql-dev clone-pg-test
 	@$(MAKE) check
