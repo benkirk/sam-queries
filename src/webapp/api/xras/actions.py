@@ -98,7 +98,7 @@ _OUTCOME_REASON_WIDTH = 255
 #:
 #: WARNING: Under ``STRICT_TRANS_TABLES`` an oversized value does **not** truncate, it raises
 #: ``1406 Data too long`` — so an unbounded write here loses the audit row entirely.
-#: That is measured, not theoretical: ``tests/stress/test_audit_row_survives.py``
+#: That is measured, not theoretical: ``tests/api/xras_audit_rows/test_audit_row_survives.py``
 #: reproduced it against the test container before this guard existed.
 _TEXT_WIDTH = 65_535
 

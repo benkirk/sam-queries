@@ -8,7 +8,7 @@ so they run in the **capture** phase on ``document`` — before any listener on
 the button. Nothing the button does (``data-stop-propagation`` included) can
 prevent it; the fix is to move the toggle onto the non-action ``<td>``s.
 
-``tests/unit/test_collapse_trigger_rows.py`` proves the *markup* no longer puts
+``tests/unit/gates/test_collapse_trigger_rows.py`` proves the *markup* no longer puts
 a trigger on a row that holds a button. Only a browser proves the *behavior*,
 and the issue's acceptance criterion is written as one::
 

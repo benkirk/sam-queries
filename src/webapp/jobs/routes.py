@@ -1991,7 +1991,7 @@ def _panel_card(ctx, fragment_url, *, mode, scope_for, log_label, **_kw):
 # All the same shape: resolve the machine, build the fragment URL and a default
 # target_id, call the shared renderer with this mode's scoping arguments.
 # `register_panels` generates them, and the endpoint names it derives are pinned
-# by tests/unit/test_route_map_parity.py. The three `explore` PAGES stay
+# by tests/unit/gates/test_route_map_parity.py. The three `explore` PAGES stay
 # hand-written above -- they build a page-level context the fragments do not
 # have, which is more than the spec expresses.
 

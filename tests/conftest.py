@@ -11,6 +11,7 @@ docs/TESTING.md for the markers and the Postgres expected-failures file.
 """
 import os
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -83,6 +84,13 @@ def pytest_configure(config):
     os.environ.setdefault("FLASK_CONFIG", "testing")
     os.environ.setdefault("FLASK_SECRET_KEY", "test-secret-key")
 
+    # Pin the zone before any datetime-sensitive collection. CI runs inside the
+    # webapp container (TZ=America/Denver); a bare-laptop run inherits the host
+    # zone, so tests that reconcile naive-Mountain SAM datetimes against the wall
+    # clock read differently there. setdefault so an explicit TZ still wins.
+    os.environ.setdefault("TZ", "America/Denver")
+    time.tzset()
+
     # Test-only placeholder values for SAM_DB_*/STATUS_DB_*. The test
     # suite never reads these — sessions are routed through SAM_TEST_DB_URL
     # (mysql-test) via `create_app(config_overrides=…)`, and CLI tests
@@ -107,7 +115,7 @@ def pytest_configure(config):
     # so a developer's `.env` — which supplies `XRAS_OUTGOING_ENABLED=1` and a
     # real `XRAS_API_KEY` — lands in `os.environ` during collection. Measured
     # 2026-08-21: `xras_api_configured()` returned **True** inside the suite,
-    # and `tests/unit/test_xras_accounts_card.py` was previously observed
+    # and `tests/unit/xras/test_xras_accounts_card.py` was previously observed
     # making real `GET https://api.xras.org/v1/people/<username>` calls
     # (docs/plans/XRAS_ACCOUNT_QUEUE.md).
     #
@@ -182,8 +190,42 @@ def pytest_configure(config):
         sys.path.insert(0, tests_path)
 
 
+#: Domain marker derived from a test's location. Keyed on the first path
+#: segment under ``tests/`` (and, for ``unit``, the segment below it). The
+#: ``gates`` directory carries the ``gate`` marker; every other domain marker
+#: matches its directory name. Registered in pytest.ini (``--strict-markers``).
+_UNIT_DOMAIN_MARKERS = {
+    "gates": "gate",
+    "xras": "xras",
+    "notify": "notify",
+    "tasks": "tasks",
+    "charts": "charts",
+    "cli": "cli",
+    "webapp": "webapp",
+    "models": "models",
+    "queries": "queries",
+    "manage": "manage",
+}
+
+
+def _domain_marker(item):
+    """The marker for an item's directory, or None if it maps to no domain."""
+    parts = item.path.parts
+    if "tests" not in parts:
+        return None
+    rel = parts[parts.index("tests") + 1:]
+    if not rel:
+        return None
+    if rel[0] == "unit" and len(rel) >= 2:
+        return _UNIT_DOMAIN_MARKERS.get(rel[1])
+    if rel[0] in ("api", "integration"):
+        return rel[0]
+    return None
+
+
 def pytest_collection_modifyitems(config, items):
-    """Dialect markers and the Postgres expected-failures list.
+    """Directory-derived domain markers, dialect skips, and the Postgres
+    expected-failures list.
 
     Runs in every xdist worker, so each applies the same marks. Never exit
     from here: a stale entry is reported by test_postgres_expected_failures.py.
@@ -193,6 +235,9 @@ def pytest_collection_modifyitems(config, items):
     skip_pg = pytest.mark.skip(reason="postgres_only")
     expected = read_expected_failures() if backend == "postgresql" else []
     for item in items:
+        marker = _domain_marker(item)
+        if marker:
+            item.add_marker(getattr(pytest.mark, marker))
         if backend != "mysql" and item.get_closest_marker("mysql_only"):
             item.add_marker(skip_mysql)
         if backend != "postgresql" and item.get_closest_marker("postgres_only"):
@@ -274,7 +319,7 @@ def _no_smtp_sockets(monkeypatch):
 # leak which usernames the suite tests to a third party and make the suite
 # depend on a remote host. Outbound XRAS *writes* are worse: the same key can
 # merge one person into another, which **deletes** the source account in
-# production, and there is no undo. `tests/unit/test_xras_admin_client.py`
+# production, and there is no undo. `tests/unit/gates/test_xras_admin_client.py`
 # pins single-attempt-no-retry, which means such a call would not even be
 # retried into visibility — it would simply happen, once, silently.
 #
@@ -1094,3 +1139,43 @@ def serial_file_lock(tmp_path_factory):
                 fcntl.flock(handle, fcntl.LOCK_UN)
 
     return acquire
+
+
+@pytest.fixture
+def committed_rows(app):
+    """Track rows a test COMMITs on ``db.session`` and delete them at teardown.
+
+    Route handlers read committed rows through Flask-SQLAlchemy's ``db.session``
+    on its own connection, so a test exercising them commits outside the
+    per-test SAVEPOINT — which then cannot roll the rows back, and they leak
+    into the shared xdist database. Register each object right after committing
+    it; teardown deletes them in REVERSE registration order, by primary key.
+
+    Reverse order is FK-safe for both hazards a single ``IN (...)`` is not: a
+    child committed after its parent — cross-table, or a self-FK replay — is
+    deleted first. Always by primary key, never a range predicate, which would
+    take an open-ended gap lock and deadlock against concurrent inserts.
+    """
+    from sqlalchemy import inspect as _inspect
+
+    from webapp.extensions import db
+
+    tracked = []
+
+    def track(obj):
+        # Capture (class, identity) while obj is live in its committing context;
+        # a detached instance's attributes are expired by teardown.
+        tracked.append((type(obj), _inspect(obj).identity))
+        return obj
+
+    yield track
+
+    if tracked:
+        with app.app_context():
+            for cls, ident in reversed(tracked):
+                if ident is None:
+                    continue
+                obj = db.session.get(cls, ident)
+                if obj is not None:
+                    db.session.delete(obj)
+            db.session.commit()

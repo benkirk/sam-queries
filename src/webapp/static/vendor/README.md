@@ -44,7 +44,7 @@ Each registry entry pins the `sha384` of its entry-point file. For the five
 five assets vendored from a CDN these are the *original publisher SRI values*; the
 downloads were verified against them at vendoring time. Because the files are now served locally, the
 browser no longer performs an SRI check — instead
-`tests/unit/test_vendor_assets.py` re-computes the sha384 of every committed file and
+`tests/unit/gates/test_vendor_assets.py` re-computes the sha384 of every committed file and
 fails CI on any mismatch. So the `path` and `sha384` of an entry must always be updated
 together, and the file on disk must always match its recorded hash.
 
@@ -117,7 +117,7 @@ flows into the right directive automatically (js→`script-src`, css→`style-sr
 docker compose --profile test up -d mysql-test
 export SAM_TEST_DB_URL='mysql+pymysql://root:root@127.0.0.1:3307/sam'
 
-source etc/config_env.sh && pytest tests/unit/test_vendor_assets.py
+source etc/config_env.sh && pytest tests/unit/gates/test_vendor_assets.py
 ```
 
 What the failures mean:
@@ -138,7 +138,7 @@ What the failures mean:
 Also worth running after a change:
 
 ```bash
-source etc/config_env.sh && pytest tests/unit/test_csp.py tests/unit/test_security_headers.py
+source etc/config_env.sh && pytest tests/unit/webapp/test_csp.py tests/unit/webapp/test_security_headers.py
 ```
 
 to confirm the rendered CSP still reads as intended (vendored bumps should keep
@@ -156,6 +156,6 @@ gives you a clean cache-bust for free.
 
 - `src/webapp/vendor_assets.py` — the registry (source of truth) + recipe docstring
 - `src/webapp/utils/csp.py` — how the registry becomes the CSP header
-- `tests/unit/test_vendor_assets.py` — the hash / presence checks described above
+- `tests/unit/gates/test_vendor_assets.py` — the hash / presence checks described above
 - `docs/plans/implemented/CSP.md`, `docs/plans/implemented/CSP-discussion.md` — full CSP rationale
 ```

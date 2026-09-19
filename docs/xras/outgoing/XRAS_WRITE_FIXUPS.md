@@ -12,7 +12,7 @@ deliberately left closed.
 
 > ⚠️ **Nothing in this document has a write client behind it yet.** The shipped
 > `XrasApiClient` is GET-only *by construction* — its only transport primitive is
-> `_get`, and `tests/unit/test_xras_api_client.py` pins that no
+> `_get`, and `tests/unit/xras/test_xras_api_client.py` pins that no
 > post/put/patch/delete callable exists on the class. Building any of this means
 > a **new** client with its own credential and its own review
 > ([`PROJECT_AND_ACCOUNT_LIFECYCLE.md`](../PROJECT_AND_ACCOUNT_LIFECYCLE.md) § 4),

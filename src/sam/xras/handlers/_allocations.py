@@ -59,7 +59,7 @@ __all__ = [
 #: ``AllocationTypeIdExtractor``'s two panel-authorized ALLOCATION TYPES —
 #: ``getAuthAtPanelMeeting()`` is ``true`` iff the resolved type is one of these.
 #: Both must resolve to real ``allocation_type`` rows; pinned by
-#: ``tests/unit/test_xras_transaction_seam.py`` and re-checked by
+#: ``tests/unit/xras/test_xras_transaction_seam.py`` and re-checked by
 #: ``sam-admin xras --validate-vocabulary``.
 PANEL_AUTHORISED_TYPES = frozenset({'CSL', 'CHAP'})
 

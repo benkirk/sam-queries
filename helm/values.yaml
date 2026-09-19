@@ -366,13 +366,13 @@ webapp:
     # plus hand-listed keys and the NOTIFY_* / SAM_DB_* / STATUS_DB_* prefixes, and
     # inherits nothing else from here, so a scheduled task cannot write to XRAS even
     # if one imported the admin client. Do not "fix" that by adding it there.
-    # `tests/unit/test_xras_admin_client.py` asserts both halves: this key ships with
+    # `tests/unit/gates/test_xras_admin_client.py` asserts both halves: this key ships with
     # the value pinned there, and the tasks env never carries it at all.
     #
     # With it off the Remediations card still renders — with its controls DISABLED and
     # an explanation — rather than vanishing, so the state is visible rather than
     # mysterious. Armed 2026-08-25 (PR #482) for the triage-week identity merges;
-    # the drift test in tests/unit/test_xras_admin_client.py pins whichever value
+    # the drift test in tests/unit/gates/test_xras_admin_client.py pins whichever value
     # ships, so a flip in either direction is a reviewed change to both files.
     XRAS_WRITE_ENABLED: "1"
 

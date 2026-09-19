@@ -1,0 +1,672 @@
+from __future__ import annotations
+
+import types
+
+from _jobs_helpers import (
+    _install_mock_plugin,
+    _make_row,
+)
+
+
+def test_jobs_fragment_renders_disabled_banner(auth_client, active_project):
+    """When the plugin is off the route returns 200 with the 'unavailable' alert."""
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'Per-job data is unavailable' in body
+
+
+def test_jobs_fragment_400_on_missing_machine(app, auth_client, active_project, monkeypatch):
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(f'/dashboards/user/jobs/{active_project.projcode}')
+    assert resp.status_code == 400
+
+
+def test_jobs_fragment_400_on_invalid_machine(app, auth_client, active_project, monkeypatch):
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=gust'
+    )
+    assert resp.status_code == 400
+
+
+def test_jobs_fragment_404_on_unknown_projcode(auth_client):
+    """require_project_access raises 404 via get_project_or_404 for unknown codes."""
+    resp = auth_client.get('/dashboards/user/jobs/NOPE9999?machine=derecho')
+    assert resp.status_code == 404
+
+
+def test_jobs_fragment_renders_rows_when_enabled(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Happy path: mocked plugin returns rows, fragment renders them."""
+    rows = [
+        {
+            'job_id':    '12345.desched1',
+            'user':      'benkirk',
+            'queue':     'main',
+            'start':     '2026-05-01 10:00:00',
+            'end':       '2026-05-01 11:00:00',
+            'elapsed':   3600,
+            'cpu_hours': 64.0,
+            'gpu_hours': 0.0,
+        }
+    ]
+    _install_mock_plugin(app, monkeypatch, jobs_search_return=rows)
+
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert '12345.desched1' in body
+    # A single-page single-user result suppresses the User column, so
+    # benkirk surfaces via the `user:` header badge instead.
+    assert 'benkirk' in body
+    # Disabled banner must NOT be present on the enabled path.
+    assert 'Per-job data is unavailable' not in body
+
+
+def test_jobs_fragment_accepts_user_only_filter(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Usage-by-User drill-down: route accepts `user` alone (no queue, no date).
+
+    The Usage-by-User card surfaces a leaf row at the user level whenever
+    the user has a single queue — the resulting drill omits both the
+    queue filter (since there's only one) and the date range (since the
+    leaf aggregates over all dates). The route + service forward None
+    filters as "no filter", and the plugin / SAM-summary count path
+    handle the omission. This test pins the contract: a request with
+    only `machine` and `user` returns HTTP 200 with rows and does NOT
+    forward an explicit queue/start/end to the plugin.
+    """
+    captured = _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[{'job_id': '999.desched1', 'user': 'benkirk',
+                             'queue': 'main', 'end': '2026-05-01 11:00:00'}],
+    )
+
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        f'?machine=derecho&user=benkirk'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert '999.desched1' in body
+
+    # Filters forwarded to the plugin: user pinned, others None.
+    kw = captured['last_jobs_search_kwargs']
+    assert kw['user']  == 'benkirk'
+    assert kw['queue'] is None
+    assert kw['start'] is None
+    assert kw['end']   is None
+
+
+def test_jobs_fragment_pagination_forwards_offset(
+    app, auth_client, active_project, monkeypatch,
+):
+    """?page=3&per_page=25 => service receives offset=50, limit=25.
+
+    The count call goes to SAM's CompChargeSummary now, not the plugin —
+    a separate test (``…_exit_status_filter_uses_plugin_count``) covers
+    the plugin-fallback shape.
+    """
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_search_return=[_make_row()])
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&page=3&per_page=25'
+    )
+    assert resp.status_code == 200
+    kw = captured['last_jobs_search_kwargs']
+    assert kw['limit']  == 25
+    assert kw['offset'] == 50    # (3 - 1) * 25
+
+
+def test_jobs_fragment_exit_status_filter_uses_plugin_count(
+    app, auth_client, active_project, monkeypatch,
+):
+    """When the request adds a filter outside CompChargeSummary's key set
+    (``exit_status``, ``min_gpus``/``max_gpus``), count_jobs delegates to
+    the plugin's ``jobs_count`` rather than SAM's summary."""
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_search_return=[_make_row()],
+                                    jobs_count_return=42)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&exit_status=1'
+    )
+    assert resp.status_code == 200
+    ckw = captured['last_jobs_count_kwargs']
+    assert ckw is not None
+    # Route now expands the project tree and forwards the descendant
+    # list as `account=[...]`. For a leaf project this is just
+    # [project.projcode]; the membership check is independent of
+    # whether the snapshot picked a leaf or a tree-parent fixture.
+    assert isinstance(ckw['account'], list)
+    assert active_project.projcode in ckw['account']
+    assert ckw['exit_status'] == '1'
+
+
+def test_jobs_fragment_passes_tree_projcodes(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Route expands the project tree (parent + descendants) and forwards
+    every projcode to the plugin as a list. Mirrors what the Historical
+    Usage rollup does for daily totals — so jobs charged to child
+    projcodes show up under the parent's drill-down rows.
+
+    Factory-built projects don't work here: the route's
+    ``@require_project_access`` loads the project via Flask-SQLAlchemy's
+    own db.session (different connection from the test session), so
+    factory rows aren't visible. Instead patch ``Project.get_descendants``
+    at the class level to return a synthetic tree for whatever
+    snapshot project the route resolved. The captured plugin kwargs
+    show whether the route forwarded the full list verbatim.
+    """
+    from sam import Project
+
+    stub_codes = ['CESM0002', 'CESM0002_alpha', 'CESM0002_beta']
+    fake_descendants = [types.SimpleNamespace(projcode=p) for p in stub_codes]
+    monkeypatch.setattr(
+        Project, 'get_descendants',
+        lambda self, include_self=True: fake_descendants,
+    )
+
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_search_return=[_make_row()])
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    assert resp.status_code == 200
+    kw = captured['last_jobs_search_kwargs']
+    assert isinstance(kw['account'], list)
+    assert set(kw['account']) == set(stub_codes)
+
+
+def test_jobs_fragment_sort_param_round_trips(
+    app, auth_client, active_project, monkeypatch,
+):
+    """?sort_by=elapsed&sort_dir=asc renders the active arrow + inverts next click."""
+    _install_mock_plugin(app, monkeypatch, jobs_search_return=[_make_row()])
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&sort_by=elapsed&sort_dir=asc'
+    )
+    body = resp.get_data(as_text=True)
+    # Up-arrow indicates active asc sort.
+    assert 'fa-caret-up' in body
+    # The next-click href on the elapsed header flips to desc.
+    assert 'sort_by=elapsed&sort_dir=desc' in body
+
+
+def test_jobs_fragment_sort_whitelist_rejects_unknown(
+    app, auth_client, active_project, monkeypatch,
+):
+    """?sort_by=garbage silently degrades to default order (no exception)."""
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_search_return=[_make_row()])
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&sort_by=garbage'
+    )
+    assert resp.status_code == 200
+    # Service was called WITHOUT sort_by (caps allow it but route dropped
+    # the value because it wasn't in the whitelist).
+    kw = captured['last_jobs_search_kwargs']
+    assert 'sort_by' not in kw
+
+
+def test_jobs_fragment_suppresses_all_zero_gpu_columns(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Rows with numgpus=gpu_hours=gpu_charges=0 => GPU columns dropped."""
+    rows = [_make_row(numgpus=0, gpu_hours=0, gpu_charges=0)
+            for _ in range(2)]
+    _install_mock_plugin(app, monkeypatch, jobs_search_return=rows)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    # The plugin column headers for the suppressed cols ("GPUs", "GPU chg")
+    # must NOT appear in the table head. Sortable headers are wrapped in
+    # <a>, so check the bare label substring rather than ">LABEL<".
+    assert 'GPUs'    not in body
+    assert 'GPU chg' not in body
+    # CPU column still rendered.
+    assert 'CPUs' in body
+
+
+def test_jobs_fragment_keeps_gpu_columns_when_any_row_nonzero(
+    app, auth_client, active_project, monkeypatch,
+):
+    """One nonzero GPU value => GPU columns stay in the table."""
+    rows = [
+        _make_row(numgpus=0, gpu_hours=0, gpu_charges=0),
+        _make_row(numgpus=4, gpu_hours=16.0, gpu_charges=16.0),
+    ]
+    _install_mock_plugin(app, monkeypatch, jobs_search_return=rows)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'GPUs'    in body
+    assert 'GPU chg' in body
+
+
+def test_jobs_fragment_renders_verbose_drawer(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Per-row drawer renders verbose-extras fields (walltime, mpiprocs, etc.)."""
+    _install_mock_plugin(app, monkeypatch,
+                         jobs_search_return=[_make_row(walltime=7200,
+                                                       mpiprocs=128,
+                                                       cputype='milan')])
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    # The collapse target id pattern + Bootstrap collapse class — confirms
+    # the per-row drawer was emitted.
+    assert 'jobs-expand-toggle' in body
+    assert 'jobs-detail-row' in body
+    # Verbose-column header labels from plugin COLUMNS.
+    assert 'Walltime' in body
+    # hpc-usage-queries 7f4fd7b renamed the mpiprocs header "MPI" -> "Ranks per Node"
+    assert 'Ranks per Node' in body
+    assert 'CPU type' in body
+    # Drawer renders the values.
+    assert 'milan' in body
+
+
+def test_jobs_fragment_qos_column_in_table_and_sortable(
+    app, auth_client, active_project, monkeypatch,
+):
+    """`qos` is in _DEFAULT_COLS and renders as a sortable header when the
+    rows contain at least two distinct QoS values (column suppression
+    rule covered separately)."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='premium'),
+            _make_row(job_id='2.x', qos='regular'),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    # QoS column header is sortable (wrapped in an hx-get link).
+    assert 'sort_by=qos' in body
+    # The QoS values render in the table.
+    assert 'premium' in body
+    assert 'regular' in body
+
+
+def test_jobs_fragment_qos_filter_forwarded_to_service(
+    app, auth_client, active_project, monkeypatch,
+):
+    """?qos=economy => service.search_jobs receives qos='economy' and the
+    request bypasses the SAM-summary fast path on the count side."""
+    captured = _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[_make_row(qos='economy')],
+        jobs_count_return=7,
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&qos=economy'
+    )
+    assert resp.status_code == 200
+    # qos forwarded through to the plugin search call.
+    assert captured['last_jobs_search_kwargs']['qos'] == 'economy'
+    # Count goes through the plugin fallback (qos is not in CompChargeSummary).
+    assert captured['last_jobs_count_kwargs'] is not None
+    assert captured['last_jobs_count_kwargs']['qos'] == 'economy'
+
+
+def test_jobs_fragment_qos_dropdown_pre_selects_active_filter(
+    app, auth_client, active_project, monkeypatch,
+):
+    """When ?qos=premium is set, the dropdown stays visible (so the user
+    can change/reset) and pre-selects the active option — even though
+    the filter naturally yields one distinct QoS in the rows."""
+    _install_mock_plugin(app, monkeypatch,
+                        jobs_search_return=[_make_row(qos='premium')])
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&qos=premium'
+    )
+    body = resp.get_data(as_text=True)
+    # Explicit filter => dropdown visible; pre-selects 'premium'.
+    import re
+    assert 'name="qos"' in body
+    assert re.search(r'value="premium"\s+selected', body), \
+        'QoS dropdown should pre-select the active ?qos= value'
+
+
+def test_jobs_fragment_qos_factor_drawer_after_exit_status(
+    app, auth_client, active_project, monkeypatch,
+):
+    """`qos_factor` is rendered in the drawer immediately after
+    `exit_status` (the re-ordered _VERBOSE_EXTRAS) so the multiplier sits
+    next to the QoS column above the fold of the drawer."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[_make_row(qos='premium', qos_factor=1.5,
+                                      exit_status='1')],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    # Plugin's COLUMNS dict labels: exit_status="Exit", qos_factor="Factor".
+    # The <dt> wraps the label with whitespace, so match the bare text;
+    # neither label appears elsewhere in the jobs fragment, so the first
+    # occurrence is the drawer header.
+    exit_idx = body.find('Exit')
+    factor_idx = body.find('Factor')
+    assert exit_idx >= 0, 'Exit label (exit_status) missing from drawer'
+    assert factor_idx >= 0, 'Factor label (qos_factor) missing from drawer'
+    assert factor_idx > exit_idx, \
+        f'expected Exit (exit_status) before Factor (qos_factor); got {exit_idx=} {factor_idx=}'
+
+
+def test_jobs_fragment_qos_options_populated_from_plugin(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The QoS dropdown is populated from the plugin's list_qos_names()
+    call — a new value added on the peer flows through without a SAM-side
+    change. Needs ≥2 distinct QoS values in rows for the dropdown to
+    appear at all."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='custom-tier'),
+            _make_row(job_id='2.x', qos='regular'),
+        ],
+        qos_names=['custom-tier', 'premium', 'regular'],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    # The non-canonical seed name surfaces in the dropdown options.
+    assert 'custom-tier' in body
+    # And the "All QoS" reset entry is always present.
+    assert 'All QoS' in body
+
+
+def test_jobs_fragment_hides_qos_column_and_dropdown_when_single_value(
+    app, auth_client, active_project, monkeypatch,
+):
+    """When all visible rows share a single QoS (or none have one), the
+    QoS column drops out of the table AND the filter dropdown is hidden.
+    Both UI elements key off the same "distinct QoS in rows" signal so
+    they compose: the legacy queue-suffix inference path (`cpu-special`
+    -> all rows special) naturally yields the same single-value collapse
+    without the URL ever carrying ?qos=."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='special'),
+            _make_row(job_id='2.x', qos='special'),
+            _make_row(job_id='3.x', qos='special'),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    # The sortable header link for the qos column is gone.
+    assert 'sort_by=qos' not in body
+    # The dropdown control is gone (no ?qos= in URL, no variation in rows).
+    assert 'All QoS' not in body
+    # The redundant per-row column/dropdown are suppressed, but the single
+    # shared value is NOT silent — it collapses into a header badge so the
+    # QoS (and its charging factor) stays visible at a glance.
+    assert 'QoS: special' in body
+
+
+def test_jobs_fragment_shows_qos_column_when_rows_have_variation(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Mixed-QoS rows => both column AND dropdown render (no explicit
+    filter required to surface them)."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='premium'),
+            _make_row(job_id='2.x', qos='regular'),
+            _make_row(job_id='3.x', qos='economy'),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    # Column header is present and sortable.
+    assert 'sort_by=qos' in body
+    # Dropdown is present with the reset entry.
+    assert 'All QoS' in body
+
+
+def test_jobs_fragment_keeps_dropdown_when_user_filtered_explicitly(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Explicit ?qos= naturally collapses rows to one distinct value, but
+    the dropdown stays so the user can change or reset the filter. The
+    column itself still goes away (all rows match)."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='premium'),
+            _make_row(job_id='2.x', qos='premium'),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&qos=premium'
+    )
+    body = resp.get_data(as_text=True)
+    # Column header dropped (all rows the same QoS).
+    assert 'sort_by=qos' not in body
+    # Dropdown stays (explicit filter => user needs a way to reset).
+    assert 'All QoS' in body
+
+
+def test_jobs_fragment_single_qos_badge_shows_name_and_factor(
+    app, auth_client, active_project, monkeypatch,
+):
+    """All rows in economy => the suppressed column collapses into a header
+    badge that surfaces both the QoS name and its charging multiplier — the
+    exact case (uniform economy, charges = 0.7× usage) the bare suppression
+    rule made invisible."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='economy', qos_factor=0.7),
+            _make_row(job_id='2.x', qos='economy', qos_factor=0.7),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'QoS: economy' in body
+    assert '×0.70' in body
+
+
+def test_jobs_fragment_drawer_renders_fractional_qos_factor(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The per-row drawer's "Factor" is a fractional charging multiplier
+    and must render with decimals (×0.70 / ×1.50), NOT be rounded to a
+    whole number — the old fmt_number path turned economy's 0.7 into a
+    misleading "1". Two distinct QoS values keep the single-value badge
+    OFF, so the rendered factors must be coming from the drawers."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='economy', qos_factor=0.7),
+            _make_row(job_id='2.x', qos='premium', qos_factor=1.5),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'QoS: ' not in body          # mixed QoS => no badge
+    assert '×0.70' in body              # economy factor, with decimals
+    assert '×1.50' in body              # premium factor, with decimals
+
+
+def test_jobs_fragment_no_qos_badge_when_rows_have_variation(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Mixed-QoS rows render the column/dropdown, NOT the single-value
+    badge."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='premium', qos_factor=1.5),
+            _make_row(job_id='2.x', qos='economy', qos_factor=0.7),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'QoS: ' not in body
+
+
+def test_jobs_fragment_no_qos_badge_when_all_null(
+    app, auth_client, active_project, monkeypatch,
+):
+    """All-NULL (uncharacterized) QoS => no badge — nothing actionable to
+    show."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos=None, qos_factor=None),
+            _make_row(job_id='2.x', qos=None, qos_factor=None),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'QoS: ' not in body
+
+
+def test_jobs_fragment_qos_badge_with_explicit_filter_shows_both(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Explicit ?qos= => the dropdown stays (to reset) AND the badge renders
+    too — a single consistent rule, mild redundancy is fine."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='economy', qos_factor=0.7),
+            _make_row(job_id='2.x', qos='economy', qos_factor=0.7),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&qos=economy'
+    )
+    body = resp.get_data(as_text=True)
+    # Dropdown stays so the user can reset.
+    assert 'All QoS' in body
+    # Badge renders alongside it.
+    assert 'QoS: economy' in body
+
+
+def test_jobs_fragment_qos_badge_name_only_when_factor_varies(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Same QoS name but inconsistent qos_factor across rows => the badge
+    shows the name but omits the multiplier (no single factor to trust)."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[
+            _make_row(job_id='1.x', qos='economy', qos_factor=0.7),
+            _make_row(job_id='2.x', qos='economy', qos_factor=0.5),
+        ],
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'QoS: economy' in body
+    # No "(×…)" multiplier when the factor isn't consistent.
+    assert '(×' not in body
+
+
+def test_resource_details_includes_jobs_fragment_url(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The HPC resource-details page emits hx-get URLs to the jobs route
+    on every user+queue row (when running on a derecho/casper resource)."""
+    # Note: this test exercises the template wire-in only — the daily
+    # drill-down data may be empty depending on the fixture's seed data.
+    # The template still renders the page, just without rows.
+    resp = auth_client.get(
+        f'/user/resource-details/{active_project.projcode}'
+        f'?resource=Derecho'
+    )
+    # Either 200 (page rendered) or a redirect (no matching resource in
+    # fixtures). We only assert the URL pattern when the page renders.
+    if resp.status_code == 200:
+        body = resp.get_data(as_text=True)
+        # The hx-get URL prefix should appear if any user+queue rows
+        # rendered. Don't fail the test when there are no rows — just
+        # confirm the template wire-in is at least syntactically valid
+        # (the page renders without error).
+        if 'fa-list-ul' in body:
+            assert f'/dashboards/user/jobs/{active_project.projcode}' in body
+            assert 'machine=derecho' in body
+
+
+def test_resource_details_user_table_is_sortable(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Usage-by-User table emits the sortable_table.js markup contract:
+
+      - sortable-header class on column <th>s with data-sort=text/numeric
+      - sort-desc on the Charges header (default-sort indicator)
+      - per-user tbody opt-in via class="sortable-group"
+      - data-sort-value="<raw>" on the numeric cells so the JS sees
+        the un-formatted value, not '68.6M'
+
+    The presence of these attributes is the contract; their behavior
+    is verified end-to-end via Playwright. Skip the assertion when
+    the page redirects (no matching resource in the snapshot)."""
+    resp = auth_client.get(
+        f'/user/resource-details/{active_project.projcode}'
+        f'?resource=Derecho'
+    )
+    if resp.status_code != 200:
+        return  # snapshot doesn't have this resource — nothing to check
+    body = resp.get_data(as_text=True)
+
+    # The four column headers all opt in to sorting.
+    assert 'sortable-header' in body, 'sortable-header class missing from page'
+    assert 'data-sort="text"' in body, 'Username column missing data-sort=text'
+    assert 'data-sort="numeric"' in body, 'numeric columns missing data-sort=numeric'
+    # Charges is the default desc sort (visual indicator only — no resort
+    # happens until the user clicks).
+    assert 'sort-desc' in body, 'Charges header missing default sort-desc'
+
+    # Per-user tbodies opt into multi-tbody sortable mode so each user's
+    # row drags its lazy-subtree placeholder along on re-sort. Only
+    # present when the project has data; gate the assertion to avoid
+    # failing on a snapshot project with zero comp_charge_summary rows
+    # for Derecho.
+    if 'sortable-group' in body:
+        assert 'data-sort-value=' in body, \
+            'sortable-group tbody present but cells missing data-sort-value'

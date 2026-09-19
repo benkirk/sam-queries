@@ -5,7 +5,7 @@ CONDA_ROOT := $(shell conda info --base)
 # Common way to initialize environment across various types of systems
 config_env := module load conda >/dev/null 2>&1 || true && . $(CONDA_ROOT)/etc/profile.d/conda.sh
 
-.PHONY: help clean clobber distclean fixperms check perf helm-test deploy-dev refresh-dev sync-dev e2e check-db-vs-orms docker-build docker-up docker-down docker-restart docker-watch docker-pytest \
+.PHONY: help clean clobber distclean fixperms check check-all perf helm-test deploy-dev refresh-dev sync-dev e2e check-db-vs-orms validate_user_proj_usage docker-build docker-up docker-down docker-restart docker-watch docker-pytest \
         pytest-pg docker-pytest-pg \
         conda-env prune-old-envs print-env-hash migrate-legacy-env \
         migrate-status-current migrate-status-up migrate-status-down migrate-status-history migrate-status-revision migrate-status-stamp-head
@@ -160,7 +160,7 @@ SAM_TEST_MYSQL_URL := mysql+pymysql://root:root@127.0.0.1:3307/sam
 check: ## Run tests
 	$(config_env) && source etc/config_env.sh && python3 scripts/orm_inventory.py
 	$(config_env) && source etc/config_env.sh && \
-	    SAM_TEST_DB_URL='$(SAM_TEST_MYSQL_URL)' python3 -m pytest -v -n auto
+	    SAM_TEST_DB_URL='$(SAM_TEST_MYSQL_URL)' python3 -m pytest
 
 # The same default tier on the Postgres copy of the test DB (postgres-test,
 # 5434; built by `make -C containers/sam-sql-dev pg-test-up clone-pg-test`).
@@ -169,7 +169,7 @@ check: ## Run tests
 SAM_TEST_PG_URL := postgresql+psycopg2://sam_test:sam_test@127.0.0.1:5434/sam
 pytest-pg: ## Run the default test tier against postgres-test
 	$(config_env) && source etc/config_env.sh && \
-	    SAM_TEST_DB_URL='$(SAM_TEST_PG_URL)' python3 -m pytest -v -n auto
+	    SAM_TEST_DB_URL='$(SAM_TEST_PG_URL)' python3 -m pytest
 
 # Globs helm/tests/*.sh rather than naming scripts. ci-staging.yaml calls this
 # target, so a new render test runs in CI the moment it exists — the previous
@@ -215,14 +215,7 @@ sync-dev: ## Update all backing dev DBs (local :5433 + CNPG sam_dev + system_sta
 
 perf: ## Run perf regression + benchmark suite (serial)
 	$(config_env) && source etc/config_env.sh && \
-	    python3 -m pytest -m perf -n 0 -v
-
-# `-n 0` matches CI and is faster here (xdist startup dominates 22 tests), but it
-# is a preference, not a requirement — the tier is xdist-safe by design. See
-# tests/xras_audit.py and the `_comment` at the head of tests/stress/scenarios.json.
-stress: ## Run XRAS audit-row stress scenarios (serial; gated off by default)
-	$(config_env) && source etc/config_env.sh && \
-	    python3 -m pytest -m stress -n 0 -v
+	    python3 -m pytest -m perf -n 0
 
 # Where the browser tier points. Defaults to the compose `webapp` service —
 # the gunicorn/production target, and so the more honest thing to smoke.
@@ -240,7 +233,35 @@ e2e: ## Run the Playwright browser console sweep against a running stack (needs 
 	@#   SAM_E2E_BASE_URL=https://samuel-dev.k8s.ucar.edu SAM_E2E_STORAGE_STATE=<file>
 	python3 -m pytest -c e2e/pytest.ini e2e/ --base-url $(SAM_E2E_BASE_URL)
 
-check-db-vs-orms: ## Audit prod DB schema vs ORM models — runs check_db_drift + orm_inventory (skips if PROD_* env unset / VPN unreachable)
+# Everything a laptop can run, composed from the rules above. Self-provisions:
+# `docker-build` first, because the webapp:7050 image BAKES the code (only webdev
+# is code-synced) -- without a rebuild the browser sweep runs whatever code the
+# cached image last had, so a route added since would 404 against current tests.
+# Then `docker-up` (--profile test) brings up webapp:7050 + mysql-test:3307 +
+# postgres-test:5434, and clone-pg-test (re)builds the Postgres test copy, so
+# both host pytest tiers and the browser sweep have their targets.
+#
+# Every stage is HARD and fail-fast -- make aborts on the first red, so
+# check-all means the same full set everywhere. helm-test and e2e need external
+# tooling; if it is missing they fail with a one-line install hint rather than an
+# opaque error, so the fix is obvious.
+#
+# NOT here: `stress` is not a tier (the XRAS audit-row scenarios run inside the
+# default suite, tests/api/xras_audit_rows, so check/pytest-pg already cover
+# them); prod-schema drift is VPN-gated -- run `make check-db-vs-orms` on the VPN.
+check-all: ## Run the lot: both DB backends + perf + helm renders + e2e (all hard; prints an install hint if helm/.[e2e] is missing)
+	@$(MAKE) docker-build
+	@$(MAKE) docker-up
+	@$(MAKE) -C containers/sam-sql-dev clone-pg-test
+	@$(MAKE) check
+	@$(MAKE) pytest-pg
+	@$(MAKE) perf
+	@if command -v helm >/dev/null 2>&1; then $(MAKE) helm-test; \
+	    else echo "helm-test needs helm v3+ -- install it and re-run" >&2; exit 1; fi
+	@if python3 -c "import pytest_playwright" >/dev/null 2>&1; then $(MAKE) e2e; \
+	    else echo "e2e needs the browser tier -- pip install -e '.[e2e]' && playwright install chromium" >&2; exit 1; fi
+
+check-db-vs-orms: ## Audit prod DB schema vs ORM models — runs check_db_drift (skips if PROD_* env unset / VPN unreachable)
 	$(config_env) && source etc/config_env.sh && \
 	    python3 scripts/check_db_drift.py
 

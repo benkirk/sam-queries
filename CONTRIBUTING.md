@@ -382,7 +382,7 @@ pytest-xdist against the isolated `mysql-test` container.
 
 1. **Add functionality** to `src/sam_search_cli.py`
 
-2. **Create integration tests** in `tests/unit/test_sam_search_cli.py`:
+2. **Create integration tests** in `tests/unit/cli/test_sam_search_cli.py`:
    ```python
    def test_new_cli_feature():
        result = subprocess.run(
@@ -400,7 +400,7 @@ pytest-xdist against the isolated `mysql-test` container.
 
 4. **Run CLI test suite**:
    ```bash
-   pytest tests/unit/test_sam_search_cli.py -v
+   pytest tests/unit/cli/test_sam_search_cli.py -v
    ```
 
 ## Code Style & Best Practices
@@ -450,7 +450,7 @@ constraint plus the path.
 non-obvious invariant. Compress it to the constraint; never delete it. The
 budget is about relocating rationale, not discarding it.
 
-**Prose style**, enforced by `tests/unit/test_docs.py`:
+**Prose style**, enforced by `tests/unit/gates/test_docs.py`:
 
 - American spelling. The check reads comments, docstrings and markdown only —
   never identifiers or string literals — so it can never demand a rename.

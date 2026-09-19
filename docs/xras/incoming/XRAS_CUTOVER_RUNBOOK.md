@@ -29,7 +29,7 @@ no code is left.** The design, the measurements and the reasoning live in
 | 2 | ✅ **Done 2026-08-10.** The audit table carries `action_id`, `service`, `outcome_reason` | `SHOW COLUMNS FROM xras_action_log` on the target DB |
 | 2b | ✅ **Done 2026-08-10.** ⚠️ The DDL applied is the **current** `zz-90`/`zz-91`/`zz-92` — **exactly 7** columns must come back utf8mb4: `raw_payload`, `error_messages`, `comment`, `notified_to`, `recipient_name`, `subject`, `error` | `SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_SET_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='sam' AND TABLE_NAME IN ('xras_action_log','xras_activation_event','notification_log') AND CHARACTER_SET_NAME='utf8mb4'` |
 | 3 | `XRAS_ACTIONS_CAPTURE_ONLY` is `"1"` | `helm/values.yaml`, key `XRAS_ACTIONS_CAPTURE_ONLY` — and confirm it in the running pod's env before anything else |
-| 4 | The replay-and-diff oracle passes | `pytest tests/unit/test_xras_oracle.py -q` |
+| 4 | The replay-and-diff oracle passes | `pytest tests/unit/xras/test_xras_oracle.py -q` |
 | 5 | A notification path exists for `active = 0` projects | Sprint B's pending-activation card on the Allocations dashboard |
 
 ⚠️ **This document cites `helm/values.yaml` by key name, never by line number.** Three

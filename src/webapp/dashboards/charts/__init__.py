@@ -8,13 +8,13 @@ Adding a chart: subclass the closest family, set `cache_name`,
 `cache_maxsize`, `empty_message` and `LAYOUTS`; implement `cache_key` as a
 **staticmethod over the raw constructor arguments** so a cache hit never
 constructs the chart; bind it below with `chart_view(...)`, add it to
-`__all__`, and add a case to `tests/unit/chart_samples.py` (a gate requires
+`__all__`, and add a case to `tests/unit/charts/chart_samples.py` (a gate requires
 one). A row drill needs only the row attribute declared at the chart -- no
 JavaScript change; the attribute travels in the href.
 
 WARNING: cache names are Redis key prefixes, and the ORDER of the `chart_view`
 calls below is the row order on the admin Caching card.
-`tests/unit/test_chart_cache_registry.py` pins both.
+`tests/unit/charts/test_chart_cache_registry.py` pins both.
 
 WARNING: cache keys hash input data, not rendering code, so after a deploy warm
 Redis entries serve old-code SVGs until the 600 s TTL expires. Run

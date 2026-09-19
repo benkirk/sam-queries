@@ -10,7 +10,6 @@ from marshmallow import ValidationError
 from sam.schemas.forms import CreateChargeAdjustmentForm
 
 
-pytestmark = pytest.mark.unit
 
 
 def _valid_payload():

@@ -14,7 +14,7 @@ become expressible instead of dangerous.
 
 **This module is pure.** stdlib only — no SQLAlchemy, no config, no clock
 reads, no I/O. Same input, same output, always.
-``tests/unit/test_task_ledger.py`` enforces the import boundary.
+``tests/unit/tasks/test_task_ledger.py`` enforces the import boundary.
 
 See ``docs/plans/implemented/SCHEDULED_TASKS.md`` § 2.
 """

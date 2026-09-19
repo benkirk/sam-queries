@@ -28,7 +28,7 @@ TASK_RUN_RETENTION_DAYS = 180
 
 #: 02:15 Mountain. Deliberately inside the window where both DST transitions
 #: bite: the fold and gap rules are written down and tested
-#: (`tests/unit/test_schedule_predicates.py`), and moving a nightly prune to
+#: (`tests/unit/models/test_schedule_predicates.py`), and moving a nightly prune to
 #: dodge a tested code path is superstition.
 SCHEDULE = Daily(2, 15, tz='America/Denver')
 

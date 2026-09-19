@@ -6,7 +6,7 @@ Allowlisting a mega-CDN would let an injected ``<script src>`` sidestep CSP
 entirely, and cache partitioning removed the shared-CDN benefit years ago.
 
 Each entry pins the sha384 of its entry-point file;
-``tests/unit/test_vendor_assets.py`` re-hashes the committed files, so tampering
+``tests/unit/gates/test_vendor_assets.py`` re-hashes the committed files, so tampering
 or an accidental edit fails CI. Compute with::
 
     openssl dgst -sha384 -binary <file> | openssl base64 -A

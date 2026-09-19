@@ -4,7 +4,7 @@ Catches what the Python tier structurally cannot — dangling ``hx-target``
 (htmx emits ``console.error("htmx:targetError")``), uncaught JS exceptions, and
 script-order breakage. It does *not* catch a dangling ``data-bs-target``, which
 is completely silent in the browser; that is what
-``tests/unit/test_modal_shell_contract.py`` is for. The two layers are
+``tests/unit/gates/test_modal_shell_contract.py`` is for. The two layers are
 complementary by design, not redundant.
 
 Deliberately not an exhaustive crawl. A short list of declared flows keeps the

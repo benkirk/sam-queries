@@ -22,7 +22,7 @@ Two scenarios, both chosen because they are about what the operator actually
 Everything else about this feature is cheaper and less fragile at the unit
 tier: the ``unavailable`` degrade needs a table-less database (there is no
 monkeypatch here — this tier drives a live stack over HTTP), and the 403
-boundary is covered by ``tests/unit/test_admin_scheduled_tasks_page.py``'s
+boundary is covered by ``tests/unit/tasks/test_admin_scheduled_tasks_page.py``'s
 ``config_only_client``.
 
 To exercise scenario 2 locally the stack has to actually carry the switch.

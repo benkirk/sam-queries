@@ -20,7 +20,6 @@ from sam.integration.xras_views import (
 from sam.activity.computational import CompActivityChargeView
 
 
-pytestmark = pytest.mark.integration
 
 
 # ============================================================================

@@ -139,7 +139,7 @@ class SAMWebappConfig(SAMConfig):
     # is generated from webapp.vendor_assets (webapp/utils/csp.py) and, with
     # every asset vendored, is essentially all-'self'. 'report-only' is the
     # no-rebuild rollback knob: violations log to the console, nothing is
-    # blocked. tests/unit/test_template_csp_lint.py keeps templates inline-free.
+    # blocked. tests/unit/gates/test_template_csp_lint.py keeps templates inline-free.
     CSP_MODE = os.getenv('CSP_MODE', 'enforce')
 
     # Flask-Cache default TTL (seconds) — used by @cache.cached / @cache.memoize

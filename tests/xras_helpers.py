@@ -72,7 +72,7 @@ def wire_resource(key, amount='250000', comments=None):
 
     WARNING: ``resourceRepositoryKey``. **Not** ``key`` — no XRAS payload has ever carried
     a field by that name, and this helper claiming otherwise is how the handlers came
-    to read one for a sprint. ``tests/unit/test_xras_wire_vocabulary.py`` now proves
+    to read one for a sprint. ``tests/unit/xras/test_xras_wire_vocabulary.py`` now proves
     every field the handlers read is one a schema declares, from both directions.
 
     ``amount`` is a **string** because the wire sends strings.
@@ -102,7 +102,7 @@ def committing(session, monkeypatch):
     drove more than one handler had to patch five of them — a missed one commits for
     real while the assertions still pass, which is the silent version of this failure
     and has already leaked rows once. ``management_transaction`` is imported only by
-    ``sam.xras.handlers.base``, and ``tests/unit/test_xras_transaction_seam.py``
+    ``sam.xras.handlers.base``, and ``tests/unit/xras/test_xras_transaction_seam.py``
     enforces that by scanning module globals at runtime.
 
     WARNING: It is also **one definition** now. Seven copies of a fixture whose entire job

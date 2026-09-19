@@ -16,7 +16,7 @@ from webapp.utils.config_inspect import (
 )
 
 # mysql_only until config_inspect.schema_drift stops calling DATABASE().
-pytestmark = [pytest.mark.integration, pytest.mark.mysql_only]
+pytestmark = pytest.mark.mysql_only
 
 
 @pytest.fixture(autouse=True)

@@ -113,6 +113,10 @@ where = ["src"]
 
 [tool.coverage.run]
 source = ["src/querykit", "src/sam", "src/scheduling", "src/system_status", "src/webapp"]
+# Branch (decision) coverage: count both edges of every if/for/while/except, not
+# just whether the line ran. Only engages under `--cov` (the CI coverage job),
+# so the default `pytest` fast loop is unaffected. See fail_under below.
+branch = true
 omit = [
     "src/sam/queries/examples.py",
         "src/webapp/utils/project_permissions.py",
@@ -174,11 +178,12 @@ exclude_lines = [
 ]
 show_missing = true
 precision = 2
-# 75.0 gives a ~7-point safety margin below the current 81.90% baseline
-# (after the deferred admin/user HTMX dashboard routes were moved to
-# `omit` and Bucket-3 targeted tests landed). Bump this as we add
-# coverage, don't drop it.
-fail_under = 75.0
+# With branch coverage on (see [tool.coverage.run]), this gates the BLENDED
+# line+branch figure, not line-only. 85.0 keeps a ~2.4-point margin below the
+# 87.38% blended baseline (measured 2026-09-19); line coverage alone is ~89.5%
+# and stays protected as the bulk of the blend. Bump this as we add coverage,
+# don't drop it.
+fail_under = 85.0
 
 [tool.coverage.html]
 directory = "htmlcov"
