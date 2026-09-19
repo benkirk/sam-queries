@@ -160,6 +160,17 @@ class TestMnemonicReportMode:
 
 class TestIdentityReportMode:
 
+    @pytest.fixture(autouse=True)
+    def _hold_off_committed_placeholder(self, serial_file_lock):
+        """The identity report reads Feed A (committed `xras_action_log` rows) in
+        aggregate. `test_xras_accounts_card.py` COMMITs a placeholder whose email
+        a committed SAM user holds -- i.e. a merge *target* -- under this same
+        lock name; share it or that row bleeds in as a stray target from another
+        xdist worker. Observed on Postgres CI as `placeholder38-user-00038`
+        surfacing in `targets`. Same guard as `test_xras_accounts_query.py`."""
+        with serial_file_lock('xras_accounts_committed_fixtures'):
+            yield
+
     @staticmethod
     def _feed(monkeypatch, rows):
         from sam.queries.xras_accounts import PendingFeed
