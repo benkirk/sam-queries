@@ -3,7 +3,7 @@
 Transactions, Adjustments and the XRAS action log present their time window as
 an `age_band_range` ladder rather than a bare From/To pair. These are the
 markup-level guards, mirroring the equivalents for the disk-scans explorer in
-``test_webapp_disk_scans.py``; the arithmetic behind the control lives in
+``test_disk_scans_entity_user.py``; the arithmetic behind the control lives in
 ``test_audit_window_filters.py``.
 """
 
