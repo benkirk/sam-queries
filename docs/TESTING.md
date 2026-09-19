@@ -337,7 +337,7 @@ make docker-pytest-pg                                      # the same inside the
   (or a `file::Class` prefix) per line with a `# reason`. On the Postgres
   target each entry becomes `xfail(strict=True)`, so a test that starts passing
   **fails the run** until its line is removed, and
-  `tests/unit/test_postgres_expected_failures.py` fails on an entry that no
+  `tests/unit/models/test_postgres_expected_failures.py` fails on an entry that no
   longer names a collected test. The `sam-dev` deployment waits for the list to
   be empty. Same house pattern as `tests/perf/baselines.json`.
 - The perf and stress tiers stay MySQL-only: their baselines are MySQL
@@ -371,10 +371,10 @@ make docker-pytest-pg                                      # the same inside the
 ### Running Specific Areas
 
 ```bash
-pytest tests/unit/test_query_functions.py -v      # query functions
+pytest tests/unit/queries/test_query_functions.py -v      # query functions
 pytest tests/integration/test_schema_validation.py # ORM/DB drift
 pytest tests/api/ -v                              # all API tests
-pytest tests/unit/test_sam_search_cli.py -v       # CLI integration
+pytest tests/unit/cli/test_sam_search_cli.py -v       # CLI integration
 make perf                                         # performance suite
 ```
 
@@ -393,7 +393,7 @@ Two complementary layers, both driven by pytest:
 
 | Layer | Where | Catches |
 |---|---|---|
-| Shell contracts | `tests/unit/test_modal_shell_contract.py` | dangling `data-bs-target` — **completely silent in the browser** |
+| Shell contracts | `tests/unit/gates/test_modal_shell_contract.py` | dangling `data-bs-target` — **completely silent in the browser** |
 | Console sweep | `e2e/` (Playwright) | dangling `hx-target`, uncaught JS exceptions, script-order breaks |
 
 Neither subsumes the other. htmx *does* `console.error("htmx:targetError")` on a

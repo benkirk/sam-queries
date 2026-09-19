@@ -1,7 +1,7 @@
 """Which backend the suite is running against, and the Postgres burn-down list.
 
 Shared by conftest.py (strict xfails, marker skips) and
-tests/unit/test_postgres_expected_failures.py (the list stays honest).
+tests/unit/models/test_postgres_expected_failures.py (the list stays honest).
 """
 import os
 from pathlib import Path

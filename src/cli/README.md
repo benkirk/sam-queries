@@ -167,7 +167,7 @@ Two conventions coexist deliberately, and `cli/contracts/` holds one of each:
        sys.exit(NewUserCommand(ctx).execute(flag=flag))
    ```
 
-4. **Write tests** following `tests/unit/test_sam_search_cli.py`
+4. **Write tests** following `tests/unit/cli/test_sam_search_cli.py`
    (CliRunner-based) and the subprocess smoke tests in
    `tests/integration/`.
 
@@ -178,7 +178,7 @@ from `cli.cmds.search`, so historical imports keep working.
 
 ## Testing
 
-CLI coverage lives in `tests/unit/test_sam_search_cli.py`,
-`tests/unit/test_cli_json_builders.py`, and the entry-point smoke tests
+CLI coverage lives in `tests/unit/cli/test_sam_search_cli.py`,
+`tests/unit/cli/test_cli_json_builders.py`, and the entry-point smoke tests
 under `tests/integration/`. See `docs/TESTING.md` for how to run the
 suite (isolated `mysql-test` container, xdist parallelism).

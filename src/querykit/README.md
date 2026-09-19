@@ -26,7 +26,7 @@ query half is not webapp-only. `src/cli/xras/builders.py` already imports
 `summarize_xras_actions`, the function this facade is meant to absorb when XRAS
 is retrofitted. After that retrofit, `sam-admin xras --summary` would import
 `webapp`. That is free today — `webapp/__init__.py` is docstring-only — but it
-is a landmine: `tests/unit/test_notify_import_graph.py` exists because this
+is a landmine: `tests/unit/gates/test_notify_import_graph.py` exists because this
 exact class of coupling already produced a real `ImportError` in this repo
 (`sam.fmt` → the top-level `config`, shadowed by `webapp/config.py` when
 `src/webapp` lands at `sys.path[0]`).
@@ -78,6 +78,6 @@ Two clients is a coincidence. Three is a pattern.
 
 ## The contract is gated, not merely documented
 
-`tests/unit/test_faceted_queries.py` runs a subprocess import-graph check:
+`tests/unit/models/test_faceted_queries.py` runs a subprocess import-graph check:
 importing `querykit` must not pull in `flask`, `sam`, or `system_status`.
 Without it, "imports only SQLAlchemy" is a comment — and comments drift.

@@ -14,7 +14,7 @@ Design constraints (see docs/plans/implemented/CSP-discussion.md):
   nonce would go stale on every cache hit. Instead, the
   templates carry zero inline executable scripts — behavior lives in
   static JS, dynamic data rides data-* attributes or non-executable
-  <script type="application/json"> blocks. tests/unit/test_template_csp_lint.py
+  <script type="application/json"> blocks. tests/unit/gates/test_template_csp_lint.py
   enforces this at CI time.
 - style-src keeps 'unsafe-inline': ~245 inline style= attributes
   (widths, tree-depth padding, ellipsis) are an accepted pragmatic

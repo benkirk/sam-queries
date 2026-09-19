@@ -13,7 +13,7 @@ three backends.
 
 WARNING: no dialect-specific SQL may enter this module -- no ``ON CONFLICT``,
 no ``INSERT IGNORE``, no ``ON DUPLICATE KEY``. CI runs SQLite and production
-runs Postgres; the AST guard in ``tests/unit/test_task_ledger.py`` is the only
+runs Postgres; the AST guard in ``tests/unit/tasks/test_task_ledger.py`` is the only
 thing standing between those two facts.
 
 WARNING: every method opens its OWN short-lived session, commits and closes --

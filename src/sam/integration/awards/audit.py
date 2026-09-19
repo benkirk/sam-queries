@@ -35,7 +35,7 @@ from sam.projects.contracts import normalize_contract_number
 # Reached through the module object rather than ``from ... import resolve_award``
 # so that ``patch('sam.integration.awards.resolve_award')`` takes effect here —
 # the patch target the existing award tests already use
-# (tests/unit/test_contract_create_modes.py).  A ``from`` import would bind the
+# (tests/unit/webapp/test_contract_create_modes.py).  A ``from`` import would bind the
 # original function into this module's namespace at import time and silently
 # ignore the patch.
 

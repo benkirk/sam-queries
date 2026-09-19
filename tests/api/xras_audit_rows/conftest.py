@@ -117,7 +117,7 @@ def committing_route(monkeypatch):
     themselves; the ones that do not use this.
 
     One patch point, because C.1a collapsed five import sites to one — see
-    ``tests/unit/test_xras_transaction_seam.py``, which keeps it that way.
+    ``tests/unit/xras/test_xras_transaction_seam.py``, which keeps it that way.
     """
     from contextlib import contextmanager
 

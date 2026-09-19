@@ -107,7 +107,7 @@ def pytest_configure(config):
     # so a developer's `.env` — which supplies `XRAS_OUTGOING_ENABLED=1` and a
     # real `XRAS_API_KEY` — lands in `os.environ` during collection. Measured
     # 2026-08-21: `xras_api_configured()` returned **True** inside the suite,
-    # and `tests/unit/test_xras_accounts_card.py` was previously observed
+    # and `tests/unit/xras/test_xras_accounts_card.py` was previously observed
     # making real `GET https://api.xras.org/v1/people/<username>` calls
     # (docs/plans/XRAS_ACCOUNT_QUEUE.md).
     #
@@ -274,7 +274,7 @@ def _no_smtp_sockets(monkeypatch):
 # leak which usernames the suite tests to a third party and make the suite
 # depend on a remote host. Outbound XRAS *writes* are worse: the same key can
 # merge one person into another, which **deletes** the source account in
-# production, and there is no undo. `tests/unit/test_xras_admin_client.py`
+# production, and there is no undo. `tests/unit/gates/test_xras_admin_client.py`
 # pins single-attempt-no-retry, which means such a call would not even be
 # retried into visibility — it would simply happen, once, silently.
 #

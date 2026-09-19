@@ -460,7 +460,7 @@ What we worry about, what we don't, and why.
   immediately, even if their UCAR account is still alive.
 - **Open-redirect protection.** The `?next=` query param is validated
   to reject external hosts (no `?next=https://evil.com/`), tested at
-  [`tests/unit/test_oidc_auth.py`](../tests/unit/test_oidc_auth.py)
+  [`tests/unit/webapp/test_oidc_auth.py`](../tests/unit/webapp/test_oidc_auth.py)
   lines 319-353.
 - **VPN gating.** The Fargate ALB is restricted to the UCAR VPN CIDR
   (`128.117.0.0/16`), so external attackers can't reach its login page.
@@ -516,7 +516,7 @@ In rough priority order:
    HTTP-only behind UCAR VPN. Will need to be set when HTTPS is added
    on staging.
 3. **Mock OIDC IdP for integration tests.** Today the tests at
-   [`tests/unit/test_oidc_auth.py`](../tests/unit/test_oidc_auth.py)
+   [`tests/unit/webapp/test_oidc_auth.py`](../tests/unit/webapp/test_oidc_auth.py)
    mock Authlib at the function boundary -- they catch code-path
    regressions but don't validate the actual OIDC protocol round-trip.
    Adding a `dexidp/dex` or `navikt/mock-oauth2-server` Docker service
@@ -587,5 +587,5 @@ A few terms that get used a lot:
   `/auth/logout`).
 - [`src/webapp/auth/providers.py`](../src/webapp/auth/providers.py) --
   the `OIDCAuthProvider` claim-to-user mapping.
-- [`tests/unit/test_oidc_auth.py`](../tests/unit/test_oidc_auth.py) --
+- [`tests/unit/webapp/test_oidc_auth.py`](../tests/unit/webapp/test_oidc_auth.py) --
   46 tests covering the full auth surface.

@@ -1146,7 +1146,7 @@ class TestRecheck:
 
     Exercised at the function level rather than through the dashboard route: the
     route is a five-line wrapper whose interesting behavior is the permission
-    gate (covered in ``tests/unit/test_xras_dashboard.py``), while everything that
+    gate (covered in ``tests/unit/xras/test_xras_dashboard.py``), while everything that
     can actually go wrong lives here.
 
     Every row these tests create is minted through ``actions._record``, so the

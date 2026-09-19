@@ -17,7 +17,7 @@ submodules eagerly, so listing this one would put ``sam.notify.base`` into the
 import graph of every ``from sam.queries import ...`` in the tree. Import it by
 full path. The trap is that :mod:`sam.queries.xras_activation` IS exported, and
 safely, because it imports no ``sam.notify``. The two look alike and must be
-treated differently; ``tests/unit/test_notify_import_graph.py`` is the gate.
+treated differently; ``tests/unit/gates/test_notify_import_graph.py`` is the gate.
 
 See ``docs/plans/XRAS_AUTO_NOTICES.md`` commit 2.
 """

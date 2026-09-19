@@ -1,6 +1,6 @@
 /* Delegated action dispatch — the CSP-safe replacement for inline
  * on*= handler attributes (script-src 'self' forbids them; see
- * webapp/utils/csp.py and tests/unit/test_template_csp_lint.py).
+ * webapp/utils/csp.py and tests/unit/gates/test_template_csp_lint.py).
  *
  * Templates declare intent with data attributes:
  *
