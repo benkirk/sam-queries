@@ -172,6 +172,16 @@ class ExtendAllocationsForm(HtmxFormSchema):
         return data
 
 
+class AlignAllocationsForm(HtmxFormSchema):
+    """Validate the admin 'Align Allocations' form (Edit Project -> Allocations tab).
+
+    Align sets every dated resource to one [min(start), max(end)] window. The
+    target is computed server-side from ``source_active_at``; the client submits
+    only that date.
+    """
+    source_active_at = f.Date('%Y-%m-%d', required=True)
+
+
 class ExchangeAllocationForm(HtmxFormSchema):
     """Move ``amount`` from one dedicated allocation to another.
 

@@ -4,13 +4,12 @@
     <p>Dear {{ recipient_name }},</p>
 
     <div class="callout good">
-        Your project <strong>{{ project_code }}</strong>{% if project_title %} - "{{ project_title }}"{% endif %}
-        has been {{ action or 'renewed' }} on NSF NCAR computing resources{% if has_subtree %},
-        along with its sub-projects{% endif %}.
+        The allocations for your project <strong>{{ project_code }}</strong>{% if project_title %} - "{{ project_title }}"{% endif %}
+        have been updated on NSF NCAR computing resources.
     </div>
 
     {% if resources %}
-    <h3>Allocations and their end dates</h3>
+    <h3>Your current allocations</h3>
     <table class="data">
         <tr><th>Resource</th><th>Amount</th><th>Through</th></tr>
         {% for r in resources %}

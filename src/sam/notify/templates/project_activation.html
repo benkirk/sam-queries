@@ -5,12 +5,12 @@
 
     <div class="callout good">
         Your project <strong>{{ project_code }}</strong>{% if project_title %} - "{{ project_title }}"{% endif %}
-        has been {{ action or 'renewed' }} on NSF NCAR computing resources{% if has_subtree %},
+        is now active and ready to use on NSF NCAR computing resources{% if has_subtree %},
         along with its sub-projects{% endif %}.
     </div>
 
     {% if resources %}
-    <h3>Allocations and their end dates</h3>
+    <h3>Your allocations</h3>
     <table class="data">
         <tr><th>Resource</th><th>Amount</th><th>Through</th></tr>
         {% for r in resources %}
@@ -22,6 +22,9 @@
         {% endfor %}
     </table>
     {% endif %}
+
+    <p>To get started, log in with your NSF NCAR credentials and charge work to
+        your project code <strong>{{ project_code }}</strong>.</p>
 
 {% include "_project_onboarding.html" %}
 {% endblock %}

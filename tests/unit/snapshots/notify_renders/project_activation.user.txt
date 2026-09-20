@@ -1,0 +1,30 @@
+Dear Sam User,
+
+Your project SCSG0001 - "Sample Project Title"
+is now active and ready to use on NSF NCAR computing resources,
+along with its sub-projects.
+
+Your allocations:
+
+  - Casper: 50,000 hours through 2027-09-30
+  - Derecho: 1.15M hours through 2027-09-30
+
+To get started, log in with your NSF NCAR credentials and charge work to your
+project code SCSG0001.
+
+What you can do in SAM (new this year):
+
+  - See your project and its allocations, and manage who is on it:
+    https://sam.hpc.ucar.edu/admin/project/SCSG0001/edit?active_at=2026-10-01&tab=allocations
+
+  - Move allocations between your sub-projects yourself, without asking for
+    new quota — open your project above and use the allocations tab.
+
+  - Documentation: https://ncar-hpc-docs.readthedocs.io/
+
+Your project lead (Jane Lead /
+jane.lead@example.edu) can also manage membership and allocations.
+
+--
+This is an automated notification from the NSF NCAR Systems Accounting Manager.
+If you believe you received this message in error, please contact help@ucar.edu.

@@ -1,15 +1,18 @@
 Dear {{ recipient_name }},
 
 Your project {{ project_code }}{% if project_title %} - "{{ project_title }}"{% endif %}
-has been {{ action or 'renewed' }} on NSF NCAR computing resources{% if has_subtree %},
+is now active and ready to use on NSF NCAR computing resources{% if has_subtree %},
 along with its sub-projects{% endif %}.
 {% if resources %}
-Allocations and their end dates:
+Your allocations:
 {% for r in resources %}
   - {{ r.resource_name }}: {{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}
     {%- if r.end_date %} through {{ r.end_date }}{% endif %}
 {%- endfor %}
 {% endif %}
+To get started, log in with your NSF NCAR credentials and charge work to your
+project code {{ project_code }}.
+
 {% include "_project_onboarding.txt" %}
 --
 This is an automated notification from the NSF NCAR Systems Accounting Manager.

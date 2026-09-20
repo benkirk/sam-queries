@@ -49,7 +49,7 @@ FAMILIES: Mapping[str, NotificationFamily] = {
         # A request has no project until it is fulfilled, and the digest is
         # about a queue; neither kind previews against a project.
         NotificationFamily('account', 'HPC account requests', about_project=False),
-        NotificationFamily('renewal', 'Project renewal / extension notices'),
+        NotificationFamily('lifecycle', 'Project lifecycle notices'),
     )
 }
 
@@ -219,19 +219,40 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
         facility_aware=False,
         family='account',
     ),
-    # The manual Renew/Extend action's optional lead notification. Distinct
-    # from the XRAS-driven xras_update/xras_extension above: this one is
-    # operator-initiated from the Edit page, fans out one personalized copy
-    # per project in the tree, and is onboarding-rich (it introduces the
-    # in-tree allocation-adjustment and member-management surfaces that did
-    # not exist a year ago). One kind, `action` in {renewed, extended}.
+    # The `lifecycle` family: operator-initiated, tree-aware, onboarding-rich
+    # project notices, distinct from the XRAS-driven xras_* kinds above. They
+    # introduce the in-tree allocation-adjustment and member-management surfaces
+    # that did not exist a year ago.
+    #
+    # project_renewal — the optional lead notice on the Renew/Extend actions,
+    # `action` in {renewed, extended}.
     NotificationKind(
         key='project_renewal',
         label='Project renewal / extension notice',
         template_base='project_renewal',
         default_subscribed=True,
         facility_aware=False,
-        family='renewal',
+        family='lifecycle',
+    ),
+    # project_activation — the manual "Notify" button's first-contact welcome:
+    # a project (or sub-project) that became active and has not been told yet.
+    NotificationKind(
+        key='project_activation',
+        label='Project activation notice',
+        template_base='project_activation',
+        default_subscribed=True,
+        facility_aware=False,
+        family='lifecycle',
+    ),
+    # project_adjustment — the manual "Notify" button's change notice: an
+    # already-active project whose allocations changed since its last notice.
+    NotificationKind(
+        key='project_adjustment',
+        label='Project allocation adjustment notice',
+        template_base='project_adjustment',
+        default_subscribed=True,
+        facility_aware=False,
+        family='lifecycle',
     ),
 )
 
