@@ -1,0 +1,108 @@
+{#
+  Admin: Edit Project — Align Allocations modal form. Loaded into
+  #alignAllocationsFormContainer by GET htmx_align_allocations_form.
+
+  Context:
+    project, root       the edited project and its tree root
+    source_active_at    YYYY-MM-DD string (the "Active at" filter)
+    candidates          per-resource rows: resource_name, resource_type,
+                        start_date, end_date, is_open_ended
+    target_start/_end   the computed [min(start), max(end)] window, or None
+    misaligned          True when a dated resource differs from the target
+    errors              validation-error strings (on re-render)
+#}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_align_allocations', projcode=project.projcode),
+    '#alignAllocationsFormContainer',
+    'Make consistent',
+    submit_icon='arrows-left-right-to-line',
+    submit_class='btn-warning',
+    errors=errors,
+    submit_disabled=(not misaligned),
+    submit_disabled_title='Resources already share one period (or fewer than two dated resources).'
+) %}
+
+  <div class="alert alert-info small mb-3">
+    <i class="fa-solid fa-circle-info"></i>
+    Aligning allocations for <strong>{{ root.projcode }}</strong>
+    {% if root.project_id != project.project_id %}
+    (tree root of <code>{{ project.projcode }}</code>)
+    {% endif %}
+    based on allocations active at <strong>{{ source_active_at }}</strong>.
+    A uniform period of performance is typical but not required —
+    "Make consistent" sets every dated resource to one window; amounts are
+    unchanged.
+  </div>
+
+  {# Preserve source date for the POST — not user-editable. #}
+  <input type="hidden" name="source_active_at" value="{{ source_active_at }}">
+
+  {% if not candidates %}
+  <div class="alert alert-warning mb-0">
+    <i class="fa-solid fa-triangle-exclamation"></i>
+    No allocations are active at <strong>{{ source_active_at }}</strong>.
+    Try a different "Active at" date on the Allocations tab.
+  </div>
+  {% else %}
+
+  {% if misaligned %}
+  <div class="alert alert-warning small">
+    Resource periods differ. <strong>Make consistent</strong> will set every
+    dated resource to
+    <strong>{{ target_start | fmt_date }} → {{ target_end | fmt_date }}</strong>.
+  </div>
+  {% else %}
+  <div class="alert alert-success small">
+    <i class="fa-solid fa-circle-check"></i>
+    All dated resources already share
+    {% if target_start %}<strong>{{ target_start | fmt_date }} → {{ target_end | fmt_date }}</strong>{% else %}one period{% endif %}.
+  </div>
+  {% endif %}
+
+  <div class="border rounded">
+    <table class="table table-sm mb-0">
+      <thead class="table-subtle">
+        <tr>
+          <th>Resource</th>
+          <th class="text-end">Start</th>
+          <th class="text-end">End</th>
+          <th style="width:2rem;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in candidates %}
+        {%- set row_off = misaligned and not c.is_open_ended
+              and (c.start_date != target_start or c.end_date != target_end) -%}
+        <tr{% if c.is_open_ended %} class="text-muted"{% endif %}>
+          <td style="vertical-align:middle;">
+            <i class="fa-solid fa-server me-1 small
+                      {% if c.is_open_ended %}text-muted{% else %}text-primary{% endif %}"></i>
+            <strong>{{ c.resource_name }}</strong>
+            {% if c.resource_type %}
+            <span class="badge bg-secondary bg-opacity-25 text-body-emphasis border small ms-1">
+              {{ c.resource_type }}</span>
+            {% endif %}
+          </td>
+          <td class="text-end small {% if row_off %}text-warning-emphasis fw-semibold{% else %}text-muted{% endif %}"
+              style="vertical-align:middle;">{{ c.start_date | fmt_date }}</td>
+          <td class="text-end small {% if row_off %}text-warning-emphasis fw-semibold{% else %}text-muted{% endif %}"
+              style="vertical-align:middle;">
+            {% if c.is_open_ended %}<span class="fst-italic">open — left as is</span>
+            {% else %}{{ c.end_date | fmt_date }}{% endif %}
+          </td>
+          <td class="text-end" style="vertical-align:middle;">
+            {% if row_off %}
+            <i class="fa-solid fa-arrow-right-arrow-left text-warning small" title="will change"></i>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% endif %}
+
+{% endcall %}

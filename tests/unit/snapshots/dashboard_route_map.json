@@ -414,6 +414,20 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_align_allocations",
+    "/admin/htmx/align-allocations/<projcode>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_align_allocations_form",
+    "/admin/htmx/align-allocations-form/<projcode>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_alloc_types_for_panel",
     "/admin/htmx/alloc-types-for-panel",
     [

@@ -40,7 +40,7 @@ from sam.core.groups import GidAllocation, NoAvailableGidError
 from sam.schemas.forms import (
     AccessGridToggleForm, AddAllocationForm, AllocateResidualForm,
     EditAllocationForm, EditProjectForm, ExchangeAllocationForm,
-    ExtendAllocationsForm, RenewAllocationsForm,
+    ExtendAllocationsForm, RenewAllocationsForm, AlignAllocationsForm,
 )
 from sam.schemas.forms.projects import (
     AddLinkedContractForm, AddLinkedDirectoryForm, AddLinkedOrganizationForm,
@@ -2030,6 +2030,93 @@ def htmx_extend_allocations(project):
     """Push end_date forward on the selected allocations."""
     root = project.get_root() if hasattr(project, 'get_root') else project
     return _ExtendAllocationsHandler(project=project, root=root).handle()
+
+
+# ---------------------------------------------------------------------------
+# Align allocations — one uniform [min(start), max(end)] period of performance
+# ---------------------------------------------------------------------------
+
+def _align_context(project, root, source_dt):
+    """Grid rows + computed target for the Align modal (GET and error re-render)."""
+    from sam.manage.allocations import alignment_target
+    from sam.manage.renew import find_source_allocations_at
+    sources = find_source_allocations_at(db.session, root, source_dt)
+    candidates = sorted((
+        {'resource_name': s.account.resource.resource_name,
+         'resource_type': (s.account.resource.resource_type.resource_type
+                           if s.account.resource.resource_type else ''),
+         'start_date': s.start_date, 'end_date': s.end_date,
+         'is_open_ended': s.end_date is None}
+        for s in sources), key=lambda c: c['resource_name'])
+    target = alignment_target(sources)
+    misaligned = target is not None and any(
+        not c['is_open_ended'] and (c['start_date'], c['end_date']) != target
+        for c in candidates)
+    return {
+        'project': project, 'root': root,
+        'source_active_at': source_dt.strftime('%Y-%m-%d'),
+        'candidates': candidates,
+        'target_start': target[0] if target else None,
+        'target_end': target[1] if target else None,
+        'misaligned': misaligned,
+    }
+
+
+@bp.route('/htmx/align-allocations-form/<projcode>')
+@login_required
+@require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_align_allocations_form(project):
+    """Return the Align Allocations modal form fragment."""
+    root = project.get_root() if hasattr(project, 'get_root') else project
+    source_dt = _parse_active_at_arg(request.args.get('active_at', ''))
+    return render_template(
+        'dashboards/admin/fragments/align_allocations_form_htmx.html',
+        **_align_context(project, root, source_dt))
+
+
+class _AlignAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
+    """Set every dated resource to one uniform period of performance."""
+
+    schema_cls = AlignAllocationsForm
+    template = 'dashboards/admin/fragments/align_allocations_form_htmx.html'
+    error_prefix = 'Error aligning allocations'
+    success_message = 'Allocations aligned successfully.'
+
+    def clean(self, data):
+        self.source_dt = datetime.combine(
+            data['source_active_at'], datetime.min.time())
+        return data
+
+    def perform(self, data):
+        from sam.manage.allocations import align_project_allocations
+        changed = align_project_allocations(
+            db.session, root_project_id=self.root.project_id,
+            source_active_at=self.source_dt, user_id=current_user.user_id)
+        if not changed:
+            raise FormError(
+                'Nothing to align — the resources already share a period, or '
+                'there are fewer than two dated resources.')
+        return changed
+
+    def context(self):
+        return _align_context(self.project, self.root, self.source_dt)
+
+    def triggers(self, result):
+        return {'closeActiveModal': {}, 'reloadAllocationTree': self.project.projcode}
+
+    def detail(self, changed):
+        start, end = changed[0].start_date, changed[0].end_date
+        return (f'{self.root.projcode}: aligned {len(changed)} resource(s) to '
+                f'{start.strftime("%Y-%m-%d")} → {end.strftime("%Y-%m-%d")}')
+
+
+@bp.route('/htmx/align-allocations/<projcode>', methods=['POST'])
+@login_required
+@require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_align_allocations(project):
+    """Set every dated resource to one uniform period of performance."""
+    root = project.get_root() if hasattr(project, 'get_root') else project
+    return _AlignAllocationsHandler(project=project, root=root).handle()
 
 
 # ---------------------------------------------------------------------------
