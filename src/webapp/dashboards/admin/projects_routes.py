@@ -1676,7 +1676,7 @@ def _maybe_notify_renewal(root, *, action, new_end, active_at, touched,
     if not notify_leads:
         return None
     try:
-        from sam.queries.renewal_notices import build_renewal_messages
+        from sam.queries.lifecycle_notices import build_renewal_messages
         from webapp.utils.notify import get_notifier, notify_summary
         stamp = active_at.date().isoformat()
         messages = build_renewal_messages(
@@ -2030,6 +2030,108 @@ def htmx_extend_allocations(project):
     """Push end_date forward on the selected allocations."""
     root = project.get_root() if hasattr(project, 'get_root') else project
     return _ExtendAllocationsHandler(project=project, root=root).handle()
+
+
+# ---------------------------------------------------------------------------
+# Manual "Notify" — tell the lead/admin of each changed project in the tree
+# ---------------------------------------------------------------------------
+
+def _notify_url_builder():
+    """projcode -> that project's Edit-page allocations deep link (external)."""
+    return lambda pc: url_for('admin_dashboard.edit_project_page',
+                              projcode=pc, tab='allocations', _external=True)
+
+
+@bp.route('/htmx/notify-project-form/<projcode>')
+@login_required
+@require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_notify_project_form(project):
+    """The manual Notify modal: the project tree with per-row New/Adjustment/Skip."""
+    from sam.queries.lifecycle_notices import classify_tree_for_notice
+    from webapp.utils.notify import get_notifier
+    root = project.get_root() if hasattr(project, 'get_root') else project
+    active_at = _parse_active_at_arg(request.args.get('active_at', ''))
+    notices = classify_tree_for_notice(db.session, root, active_at=active_at)
+    cfg = get_notifier(ledger=False).config
+    return render_template(
+        'dashboards/admin/fragments/notify_project_form_htmx.html',
+        project=project, root=root, active_at=active_at.strftime('%Y-%m-%d'),
+        notices=notices, notify_enabled=cfg.enabled,
+        redirect_to=cfg.redirect_to or None)
+
+
+@bp.route('/htmx/notify-project-preview/<projcode>')
+@login_required
+@require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_notify_project_preview(project):
+    """Render one project's lifecycle message for the modal's preview pane."""
+    from sam.queries.lifecycle_notices import (
+        build_lifecycle_messages, notice_for_project)
+    from webapp.utils.notify import get_notifier
+    # The changed row includes only itself, so the lone action_* param is the
+    # selection; 'skip' (or none) means nothing to preview.
+    action = next((v for k, v in request.args.items()
+                   if k.startswith('action_') and v in ('activated', 'adjusted')),
+                  request.args.get('action', 'activated'))
+    active_at = _parse_active_at_arg(request.args.get('active_at', ''))
+    preview = preview_error = None
+    if action in ('activated', 'adjusted'):
+        notice = notice_for_project(db.session, project, active_at=active_at)
+        item = notice.item_for(action) if notice else None
+        if item is not None:
+            messages = build_lifecycle_messages(
+                db.session, per_project=[item],
+                requested_by=current_user.username,
+                url_builder=_notify_url_builder())
+            if messages:
+                try:
+                    preview = get_notifier(ledger=False).preview(messages[0])
+                except Exception as e:  # noqa: BLE001 — a bad template is not a 500
+                    preview_error = str(e)
+    return render_template(
+        'dashboards/admin/fragments/notify_project_preview_htmx.html',
+        preview=preview, preview_error=preview_error,
+        action=action, projcode=project.projcode)
+
+
+@bp.route('/htmx/notify-project/<projcode>', methods=['POST'])
+@login_required
+@require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_notify_project(project):
+    """Send the manual lifecycle notices per the operator's per-row choices."""
+    from sam.queries.lifecycle_notices import (
+        build_lifecycle_messages, classify_tree_for_notice)
+    from webapp.utils.notify import get_notifier, notify_summary
+    root = project.get_root() if hasattr(project, 'get_root') else project
+    active_at = _parse_active_at_arg(request.form.get('active_at', ''))
+    notices = classify_tree_for_notice(db.session, root, active_at=active_at)
+
+    # Each row's chosen action defaults to its auto_action. A row the operator
+    # includes that the classifier had marked 'skip' (dedup-spent) is a
+    # deliberate resend -> the force pass.
+    auto_items, forced_items = [], []
+    for n in notices:
+        chosen = request.form.get(f'action_{n.project.project_id}', n.auto_action)
+        item = n.item_for(chosen) if chosen in ('activated', 'adjusted') else None
+        if item is None:
+            continue
+        (forced_items if n.auto_action == 'skip' else auto_items).append(item)
+
+    url_builder = _notify_url_builder()
+
+    def _send(items, *, force):
+        if not items:
+            return []
+        msgs = build_lifecycle_messages(
+            db.session, per_project=items,
+            requested_by=current_user.username, url_builder=url_builder)
+        return get_notifier().send_many(msgs, force=force) if msgs else []
+
+    summary = notify_summary(_send(auto_items, force=False)
+                             + _send(forced_items, force=True))
+    return render_template(
+        'dashboards/admin/fragments/notify_project_result_htmx.html',
+        summary=summary, projcode=root.projcode)
 
 
 @bp.route('/htmx/edit-allocation-form/<int:allocation_id>')

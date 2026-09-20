@@ -1,0 +1,13 @@
+What you can do in SAM (new this year):
+
+  - See your project and its allocations, and manage who is on it:
+    {{ manage_url or 'https://sam.hpc.ucar.edu/' }}
+{% if has_subtree %}
+  - Move allocations between your sub-projects yourself, without asking for
+    new quota — open your project above and use the allocations tab.
+{% endif %}
+  - Documentation: https://ncar-hpc-docs.readthedocs.io/
+{% if recipient_role != 'lead' %}
+Your project lead ({{ project_lead }}{% if project_lead_email %} /
+{{ project_lead_email }}{% endif %}) can also manage membership and allocations.
+{% endif %}

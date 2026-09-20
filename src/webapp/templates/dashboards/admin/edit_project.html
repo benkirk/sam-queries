@@ -159,6 +159,15 @@
                 data-bs-target="#addAllocationModal">
           <i class="fa-solid fa-circle-plus"></i> Add Allocation
         </button>
+        <button class="btn  btn-outline-primary"
+                hx-get="{{ url_for('admin_dashboard.htmx_notify_project_form', projcode=project.projcode) }}"
+                hx-target="#notifyProjectFormContainer"
+                hx-include="#alloc-active-at"
+                hx-trigger="click"
+                data-bs-toggle="modal"
+                data-bs-target="#notifyProjectModal">
+          <i class="fa-solid fa-envelope"></i> Notify
+        </button>
       </div>
     </div>
     {% endif %}
@@ -281,6 +290,24 @@
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <div id="renewAllocationsFormContainer">
+        <div class="modal-body text-center text-muted py-3">
+          <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
+          <p class="mt-2">Loading…</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Notify Project Modal (lazy-loaded) -->
+<div class="modal fade" id="notifyProjectModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-fullscreen-sm-down">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title"><i class="fa-solid fa-envelope"></i> Notify Project Leads</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div id="notifyProjectFormContainer">
         <div class="modal-body text-center text-muted py-3">
           <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
           <p class="mt-2">Loading…</p>

@@ -1,0 +1,48 @@
+{#
+  Outcome of the manual Notify send. Rendered into #notifyProjectFormContainer
+  by POST htmx_notify_project.
+
+  Context: summary (notify_summary dict: sent/redirected/suppressed/failed/
+  delivered/ok lists), projcode
+#}
+<div class="modal-body">
+  {% if not summary.ok %}
+  <div class="alert alert-secondary mb-0">
+    <i class="fa-solid fa-circle-info"></i>
+    Nothing was sent for <strong>{{ projcode }}</strong>.
+    {% if summary.suppressed %}
+    {{ summary.suppressed | length }} message(s) were suppressed as already
+    sent — reopen and set a row past "Skip" to resend.
+    {% else %}
+    No recipients were eligible.
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="alert {{ 'alert-warning' if summary.failed else 'alert-success' }} mb-2">
+    <i class="fa-solid {{ 'fa-triangle-exclamation' if summary.failed else 'fa-circle-check' }}"></i>
+    {% if summary.failed %}Partially sent{% else %}Sent{% endif %}
+    for <strong>{{ projcode }}</strong>.
+  </div>
+  <ul class="list-unstyled small mb-0">
+    {% if summary.sent %}
+    <li><strong>Delivered ({{ summary.sent | length }}):</strong>
+      {% for r in summary.sent %}<code>{{ r.recipient }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</li>
+    {% endif %}
+    {% if summary.redirected %}
+    <li><strong>Redirected ({{ summary.redirected | length }}):</strong>
+      {% for r in summary.redirected %}<code>{{ r.recipient }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</li>
+    {% endif %}
+    {% if summary.failed %}
+    <li class="text-danger"><strong>Failed ({{ summary.failed | length }}):</strong>
+      {% for r in summary.failed %}<code>{{ r.recipient }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</li>
+    {% endif %}
+    {% if summary.suppressed %}
+    <li class="text-muted"><strong>Suppressed ({{ summary.suppressed | length }}):</strong>
+      already sent</li>
+    {% endif %}
+  </ul>
+  {% endif %}
+</div>
+<div class="modal-footer">
+  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+</div>

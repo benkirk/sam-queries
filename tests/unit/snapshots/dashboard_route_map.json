@@ -974,6 +974,27 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_notify_project",
+    "/admin/htmx/notify-project/<projcode>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_notify_project_form",
+    "/admin/htmx/notify-project-form/<projcode>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_notify_project_preview",
+    "/admin/htmx/notify-project-preview/<projcode>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_nsf_program_create",
     "/admin/htmx/nsf-program-create",
     [

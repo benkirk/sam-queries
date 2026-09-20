@@ -1,0 +1,21 @@
+    <h3>What you can do in SAM</h3>
+    <p>SAM is new this year — a few things you can now do yourself:</p>
+    <ul>
+        <li><strong>See your project and manage who is on it</strong> —
+            <a href="{{ manage_url or 'https://sam.hpc.ucar.edu/' }}">open your project in SAM</a>.</li>
+        {% if has_subtree %}
+        <li><strong>Move allocations between your sub-projects</strong> yourself,
+            without requesting new quota — from your project above, use the
+            <em>Allocations</em> tab.</li>
+        {% endif %}
+        <li>Documentation:
+            <a href="https://ncar-hpc-docs.readthedocs.io/">ncar-hpc-docs.readthedocs.io</a>.</li>
+    </ul>
+
+    {% if recipient_role != 'lead' %}
+    <p>
+        Your project lead ({{ project_lead }}{% if project_lead_email %} /
+        {{ project_lead_email }}{% endif %}) can also manage membership and
+        allocations for this project.
+    </p>
+    {% endif %}

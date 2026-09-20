@@ -36,6 +36,8 @@ _SUBJECTS = {
     'account_verify': 'Verify your email address for your NCAR HPC account request',
     'account_rejected': 'Your NCAR HPC account request',
     'project_renewal': 'Your NSF NCAR project SCSG0001 has been renewed',
+    'project_activation': 'Your NSF NCAR project SCSG0001 is now active',
+    'project_adjustment': 'Your NSF NCAR project SCSG0001 allocations have been updated',
 }
 
 _XRAS_ACTION_TYPES = {
@@ -161,10 +163,18 @@ def _account_queue_summary() -> Dict[str, Any]:
     }
 
 
-def _renewal() -> Dict[str, Any]:
+#: action word by lifecycle kind, for the sample context.
+_LIFECYCLE_ACTIONS = {
+    'project_renewal': 'renewed',
+    'project_activation': 'activated',
+    'project_adjustment': 'adjusted',
+}
+
+
+def _lifecycle(kind: str) -> Dict[str, Any]:
     return {
         **_PROJECT,
-        'action': 'renewed',
+        'action': _LIFECYCLE_ACTIONS[kind],
         'has_subtree': True,
         'resources': [
             {'resource_name': 'Casper', 'amount': '50,000', 'units': 'hours',
@@ -209,8 +219,8 @@ def sample_context(kind: str, facility: Optional[str] = None) -> Dict[str, Any]:
         return _account_verify()
     if key == 'account_rejected':
         return _account_rejected()
-    if key == 'project_renewal':
-        return _renewal()
+    if key in _LIFECYCLE_ACTIONS:
+        return _lifecycle(key)
     return _xras(key)
 
 

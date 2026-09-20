@@ -1,4 +1,5 @@
-"""`sam.queries.renewal_notices` — the manual renew/extend fan-out builder."""
+"""`sam.queries.lifecycle_notices` — the project lifecycle notice builders:
+the Renew/Extend fan-out (#581) and the manual Notify classifier."""
 
 from datetime import datetime, timedelta
 
@@ -8,7 +9,11 @@ from factories.projects import make_account, make_allocation, make_project
 from factories.resources import make_resource
 
 from sam.core.users import EmailAddress
-from sam.queries.renewal_notices import build_renewal_messages, renewal_dedup_key
+from sam.notify.models import NotificationLog
+from sam.queries.lifecycle_notices import (
+    build_lifecycle_messages, build_renewal_messages, classify_tree_for_notice,
+    renewal_dedup_key,
+)
 
 
 def _with_email(session, user, address):
@@ -114,3 +119,71 @@ class TestEmptyStates:
             session, root, action='renewed', new_end=None,
             touched_allocations=[], requested_by='pytest', url_builder=_url)
         assert messages == []
+
+
+def _seed_notice(session, projcode, when, kind='project_activation'):
+    NotificationLog.create(
+        session, kind=kind, channel='email', transport='smtp', status='sent',
+        recipient='seed@example.edu', requested_by='pytest', projcode=projcode,
+        when=when)
+    session.flush()
+
+
+@pytest.fixture
+def single(session):
+    """One project with a lead-on-file and one live allocation."""
+    lead = _with_email(session, make_user(session), 'lead@example.edu')
+    proj = make_project(session, lead=lead)
+    acct = make_account(session, project=proj, resource=make_resource(session))
+    alloc = make_allocation(session, account=acct, amount=1_000.0)
+    session.flush()
+    return {'project': proj, 'alloc': alloc}
+
+
+class TestClassifier:
+
+    def test_never_notified_defaults_to_activated(self, session, single):
+        (row,) = classify_tree_for_notice(
+            session, single['project'], active_at=datetime.now())
+        assert row.auto_action == 'activated'
+
+    def test_notified_then_changed_is_adjusted(self, session, single):
+        _seed_notice(session, single['project'].projcode,
+                     single['alloc'].creation_time - timedelta(hours=1))
+        (row,) = classify_tree_for_notice(
+            session, single['project'], active_at=datetime.now())
+        assert row.auto_action == 'adjusted'
+
+    def test_notified_and_unchanged_is_skip(self, session, single):
+        _seed_notice(session, single['project'].projcode,
+                     single['alloc'].creation_time + timedelta(hours=1))
+        (row,) = classify_tree_for_notice(
+            session, single['project'], active_at=datetime.now())
+        assert row.auto_action == 'skip'
+
+    def test_no_live_allocations_yields_no_row(self, session):
+        lead = _with_email(session, make_user(session), 'l@example.edu')
+        proj = make_project(session, lead=lead)   # no allocations
+        assert classify_tree_for_notice(
+            session, proj, active_at=datetime.now()) == []
+
+    def test_item_for_maps_action_to_kind(self, session, single):
+        (row,) = classify_tree_for_notice(
+            session, single['project'], active_at=datetime.now())
+        assert row.item_for('activated')['kind'] == 'project_activation'
+        assert row.item_for('adjusted')['kind'] == 'project_adjustment'
+        assert row.item_for('skip') is None
+
+
+class TestManualBuild:
+
+    def test_activation_messages_carry_the_right_kind_and_subject(
+            self, session, single):
+        (row,) = classify_tree_for_notice(
+            session, single['project'], active_at=datetime.now())
+        messages = build_lifecycle_messages(
+            session, per_project=[row.item_for('activated')],
+            requested_by='pytest', url_builder=_url)
+        assert messages and all(m.kind == 'project_activation' for m in messages)
+        assert 'is now active' in messages[0].subject
+        assert messages[0].dedup_key.startswith('project_activation:')

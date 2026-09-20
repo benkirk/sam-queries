@@ -1,10 +1,10 @@
 Dear {{ recipient_name }},
 
-Your project {{ project_code }}{% if project_title %} - "{{ project_title }}"{% endif %}
-has been {{ action or 'renewed' }} on NSF NCAR computing resources{% if has_subtree %},
-along with its sub-projects{% endif %}.
+The allocations for your project {{ project_code }}{% if project_title %} -
+"{{ project_title }}"{% endif %} have been updated on NSF NCAR computing
+resources.
 {% if resources %}
-Allocations and their end dates:
+Your current allocations:
 {% for r in resources %}
   - {{ r.resource_name }}: {{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}
     {%- if r.end_date %} through {{ r.end_date }}{% endif %}

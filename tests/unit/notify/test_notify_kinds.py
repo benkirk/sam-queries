@@ -21,7 +21,7 @@ class TestTheRegistry:
 
     def test_families_is_the_sorted_registry(self):
         assert families() == tuple(sorted(FAMILIES)) == (
-            'account', 'expiration', 'renewal', 'task', 'xras')
+            'account', 'expiration', 'lifecycle', 'task', 'xras')
 
     def test_the_task_and_account_families_are_not_about_a_project(self):
         # A task summary is about the system; an account request has no
@@ -31,7 +31,7 @@ class TestTheRegistry:
 
     def test_an_unknown_family_raises_with_the_vocabulary(self):
         with pytest.raises(ValueError,
-                           match='account, expiration, renewal, task, xras'):
+                           match='account, expiration, lifecycle, task, xras'):
             get_family('nope')
 
 
