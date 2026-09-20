@@ -263,6 +263,15 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: "root"
       MYSQL_DATABASE: "sam"
+      # SAM's columns are naive-Mountain, and sam_now() / CURRENT_TIMESTAMP
+      # resolve in the SERVER zone (mysqld system_time_zone follows the
+      # container's TZ). Prod runs Mountain (sam-sql.ucar.edu); a UTC dev
+      # container put every server-stamped column and every is_active compare
+      # ~6h ahead of the app. Match prod, like the webapp/webdev and postgres
+      # services already do. (system_status shares this container and is
+      # naive-UTC, but stamps from the app via utcnow_naive; its few
+      # server-default rows shift to Mountain in dev only, which is immaterial.)
+      TZ: ${TZ:-America/Denver}
     volumes:
       - mysql-data:/var/lib/mysql
       - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/backup.sql.xz:ro
@@ -309,6 +318,10 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: "root"
       MYSQL_DATABASE: "sam"
+      # Match prod's Mountain zone — see the `mysql` service above. The test
+      # DB must agree with the app clock or sam_now()/CURRENT_TIMESTAMP compares
+      # run 6h off in CI too; tests/integration/test_db_timezone.py guards it.
+      TZ: ${TZ:-America/Denver}
     volumes:
       - mysql-test-data:/var/lib/mysql
       - ./containers/sam-sql-dev/backups/sam-obfuscated.sql.xz:/backup.sql.xz:ro
