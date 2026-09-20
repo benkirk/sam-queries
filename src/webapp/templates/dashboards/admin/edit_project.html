@@ -134,6 +134,14 @@
       </div>
       <div class="d-flex gap-2">
         <button class="btn  btn-primary"
+                hx-get="{{ url_for('admin_dashboard.htmx_add_allocation_form', projcode=project.projcode) }}"
+                hx-target="#addAllocationFormContainer"
+                hx-trigger="click"
+                data-bs-toggle="modal"
+                data-bs-target="#addAllocationModal">
+          <i class="fa-solid fa-circle-plus"></i> Add
+        </button>
+        <button class="btn  btn-primary"
                 hx-get="{{ url_for('admin_dashboard.htmx_extend_allocations_form', projcode=project.projcode) }}"
                 hx-target="#extendAllocationsFormContainer"
                 hx-include="#alloc-active-at"
@@ -150,14 +158,6 @@
                 data-bs-toggle="modal"
                 data-bs-target="#renewAllocationsModal">
           <i class="fa-solid fa-rotate"></i> Renew
-        </button>
-        <button class="btn  btn-primary"
-                hx-get="{{ url_for('admin_dashboard.htmx_add_allocation_form', projcode=project.projcode) }}"
-                hx-target="#addAllocationFormContainer"
-                hx-trigger="click"
-                data-bs-toggle="modal"
-                data-bs-target="#addAllocationModal">
-          <i class="fa-solid fa-circle-plus"></i> Add Allocation
         </button>
         <button class="btn  btn-outline-warning"
                 hx-get="{{ url_for('admin_dashboard.htmx_align_allocations_form', projcode=project.projcode) }}"
