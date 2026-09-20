@@ -24,6 +24,7 @@ __all__ = [
     'create_allocation',
     'update_allocation',
     'alignment_target',
+    'alignment_conflicts',
     'align_project_allocations',
     'exchange_allocations',
     'propagate_allocation_to_subprojects',
@@ -450,6 +451,27 @@ def alignment_target(sources) -> Optional[tuple]:
     return (min(s.start_date for s in dated), max(s.end_date for s in dated))
 
 
+def alignment_conflicts(source, start, end) -> List[Allocation]:
+    """Other live allocations that widening ``source`` (and its inheriting
+    children) to ``[start, end]`` would overlap on the same account.
+
+    ``update_allocation`` checks only start <= end; two overlapping rows on one
+    account are both active at once and their usage windows double-count.
+    """
+    class _Range:
+        start_date, end_date = start, end
+
+    nodes: List[Allocation] = []
+    source._walk_tree(nodes.append)
+    own = {n.allocation_id for n in nodes}
+    return [
+        other for node in nodes if node.account is not None
+        for other in node.account.allocations
+        if not other.deleted and other.allocation_id not in own
+        and date_ranges_overlap(other, _Range)
+    ]
+
+
 def align_project_allocations(
     session: Session,
     *,
@@ -468,6 +490,10 @@ def align_project_allocations(
     commit.
 
     Returns the root allocations actually changed (already-aligned ones skipped).
+
+    Raises:
+        ValueError: a widened window would overlap another allocation on the
+            same account (see ``alignment_conflicts``).
     """
     from sam.projects.projects import Project
     from sam.manage.renew import find_source_allocations_at
@@ -488,6 +514,11 @@ def align_project_allocations(
             continue
         if (src.start_date, src.end_date) == (min_start, max_end):
             continue
+        if alignment_conflicts(src, min_start, max_end):
+            raise ValueError(
+                f"Aligning {src.account.resource.resource_name} to "
+                f"{min_start:%Y-%m-%d} - {max_end:%Y-%m-%d} would overlap "
+                f"another allocation on the same account.")
         update_allocation(
             session, src.allocation_id, user_id,
             start_date=min_start, end_date=max_end,

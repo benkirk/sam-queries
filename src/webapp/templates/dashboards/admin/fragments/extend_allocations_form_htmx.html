@@ -158,6 +158,14 @@
     </label>
   </div>
 
+  <div class="mt-2 ms-4">
+    <label class="form-label small mb-1" for="extendOperatorComment">
+      Comments <span class="text-muted">(optional — included in the email)</span>
+    </label>
+    <textarea class="form-control form-control-sm" rows="2" maxlength="1000"
+              name="operator_comment" id="extendOperatorComment">{{ form.get('operator_comment', '') if form else '' }}</textarea>
+  </div>
+
   {% endif %}
 
 {% endcall %}

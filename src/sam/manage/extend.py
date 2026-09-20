@@ -53,6 +53,7 @@ def extend_project_allocations(
     new_end: datetime,
     resource_ids: List[int],
     user_id: int,
+    touched: Optional[List[Allocation]] = None,
 ) -> List[Allocation]:
     """Push ``end_date`` forward on every source allocation in the project
     tree for the selected resources.
@@ -64,7 +65,8 @@ def extend_project_allocations(
     Runs inside the caller's ``management_transaction()`` — does NOT commit.
 
     Returns the list of root allocations actually updated (one per resource
-    that had a real extension applied).
+    that had a real extension applied). ``touched``, when given, collects
+    every extended allocation, roots and descendants alike.
     """
     root_project = session.get(Project, root_project_id)
     if root_project is None:
@@ -102,6 +104,8 @@ def extend_project_allocations(
             propagated=False,
         )
         updated_roots.append(source_root)
+        if touched is not None:
+            touched.append(source_root)
 
         for descendant in all_descendants:
             if not descendant.active:
@@ -131,6 +135,8 @@ def extend_project_allocations(
                 ),
                 propagated=True,
             )
+            if touched is not None:
+                touched.append(source_child)
 
     session.flush()
     return updated_roots

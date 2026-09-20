@@ -41,6 +41,7 @@ from sam.schemas.forms import (
     AccessGridToggleForm, AddAllocationForm, AllocateResidualForm,
     EditAllocationForm, EditProjectForm, ExchangeAllocationForm,
     ExtendAllocationsForm, RenewAllocationsForm, AlignAllocationsForm,
+    NotifyProjectForm,
 )
 from sam.schemas.forms.projects import (
     AddLinkedContractForm, AddLinkedDirectoryForm, AddLinkedOrganizationForm,
@@ -1666,7 +1667,7 @@ def htmx_renew_allocations_form(project):
 
 
 def _maybe_notify_renewal(root, *, action, new_end, active_at, touched,
-                          notify_leads):
+                          notify_leads, comment=None):
     """Optionally mail each project lead/admin about a renew/extend.
 
     Post-commit and best-effort: a mail failure must never fail (or roll back)
@@ -1682,6 +1683,7 @@ def _maybe_notify_renewal(root, *, action, new_end, active_at, touched,
         messages = build_renewal_messages(
             db.session, root, action=action, new_end=new_end,
             touched_allocations=touched,
+            operator_comment=comment,
             requested_by=current_user.username,
             url_builder=lambda pc: url_for(
                 'admin_dashboard.edit_project_page', projcode=pc,
@@ -1785,6 +1787,8 @@ class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
         from sam.manage.renew import renew_project_allocations
         self.replace_existing = data.get('replace_existing', False)
         self.notify_leads = data.get('notify_leads', False)
+        self.operator_comment = data.get('operator_comment')
+        self.touched = []
         created = renew_project_allocations(
             db.session,
             root_project_id=self.root.project_id,
@@ -1795,6 +1799,7 @@ class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
             scales=data.get('scales') or {},
             user_id=current_user.user_id,
             replace_existing=self.replace_existing,
+            touched=self.touched,
         )
         if not created:
             # Defensive fallback — preconditions said 'ok' for at least one,
@@ -1821,8 +1826,8 @@ class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
         # link opens on what was just created.
         self._notified = _maybe_notify_renewal(
             self.root, action='renewed', new_end=self.new_end,
-            active_at=self.new_start, touched=created,
-            notify_leads=self.notify_leads)
+            active_at=self.new_start, touched=self.touched,
+            notify_leads=self.notify_leads, comment=self.operator_comment)
 
     def triggers(self, result):
         return {'closeActiveModal': {}, 'reloadAllocationTree': self.project.projcode}
@@ -1957,6 +1962,7 @@ class _ExtendAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
     def clean(self, data):
         self.new_end = data['new_end_date']   # datetime via post_load
         self.notify_leads = data.get('notify_leads', False)
+        self.operator_comment = data.get('operator_comment')
         self.source_dt = datetime.combine(
             data['source_active_at'], datetime.min.time())
 
@@ -1978,6 +1984,7 @@ class _ExtendAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
 
     def perform(self, data):
         from sam.manage.extend import extend_project_allocations
+        self.touched = []
         updated = extend_project_allocations(
             db.session,
             root_project_id=self.root.project_id,
@@ -1985,6 +1992,7 @@ class _ExtendAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
             new_end=self.new_end,
             resource_ids=data['resource_ids'],
             user_id=current_user.user_id,
+            touched=self.touched,
         )
         if not updated:
             raise FormError(
@@ -2009,8 +2017,8 @@ class _ExtendAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
         # where the now-extended allocations live.
         self._notified = _maybe_notify_renewal(
             self.root, action='extended', new_end=self.new_end,
-            active_at=self.source_dt, touched=updated,
-            notify_leads=self.notify_leads)
+            active_at=self.source_dt, touched=self.touched,
+            notify_leads=self.notify_leads, comment=self.operator_comment)
 
     def triggers(self, result):
         return {'closeActiveModal': {}, 'reloadAllocationTree': self.project.projcode}
@@ -2038,17 +2046,20 @@ def htmx_extend_allocations(project):
 
 def _align_context(project, root, source_dt):
     """Grid rows + computed target for the Align modal (GET and error re-render)."""
-    from sam.manage.allocations import alignment_target
+    from sam.manage.allocations import alignment_conflicts, alignment_target
     from sam.manage.renew import find_source_allocations_at
     sources = find_source_allocations_at(db.session, root, source_dt)
+    target = alignment_target(sources)
     candidates = sorted((
         {'resource_name': s.account.resource.resource_name,
          'resource_type': (s.account.resource.resource_type.resource_type
                            if s.account.resource.resource_type else ''),
          'start_date': s.start_date, 'end_date': s.end_date,
-         'is_open_ended': s.end_date is None}
+         'is_open_ended': s.end_date is None,
+         'conflict': bool(target and s.end_date is not None
+                          and (s.start_date, s.end_date) != target
+                          and alignment_conflicts(s, *target))}
         for s in sources), key=lambda c: c['resource_name'])
-    target = alignment_target(sources)
     misaligned = target is not None and any(
         not c['is_open_ended'] and (c['start_date'], c['end_date']) != target
         for c in candidates)
@@ -2059,6 +2070,7 @@ def _align_context(project, root, source_dt):
         'target_start': target[0] if target else None,
         'target_end': target[1] if target else None,
         'misaligned': misaligned,
+        'blocked': any(c['conflict'] for c in candidates),
     }
 
 
@@ -2169,7 +2181,8 @@ def htmx_notify_project_preview(project):
             messages = build_lifecycle_messages(
                 db.session, per_project=[item],
                 requested_by=current_user.username,
-                url_builder=_notify_url_builder())
+                url_builder=_notify_url_builder(),
+                operator_comment=request.args.get('operator_comment', '')[:1000])
             if messages:
                 try:
                     preview = get_notifier(ledger=False).preview(messages[0])
@@ -2188,10 +2201,22 @@ def htmx_notify_project(project):
     """Send the manual lifecycle notices per the operator's per-row choices."""
     from sam.queries.lifecycle_notices import (
         build_lifecycle_messages, classify_tree_for_notice)
+    from marshmallow import ValidationError
     from webapp.utils.notify import get_notifier, notify_summary
     root = project.get_root() if hasattr(project, 'get_root') else project
     active_at = _parse_active_at_arg(request.form.get('active_at', ''))
     notices = classify_tree_for_notice(db.session, root, active_at=active_at)
+    try:
+        comment = NotifyProjectForm().load(request.form)['operator_comment']
+    except ValidationError as e:
+        cfg = get_notifier(ledger=False).config
+        return render_template(
+            'dashboards/admin/fragments/notify_project_form_htmx.html',
+            project=project, root=root, notices=notices,
+            active_at=active_at.strftime('%Y-%m-%d'),
+            notify_enabled=cfg.enabled, redirect_to=cfg.redirect_to or None,
+            errors=NotifyProjectForm.flatten_errors(e.messages),
+            operator_comment=request.form.get('operator_comment', ''))
 
     # Each row's chosen action defaults to its auto_action. A row the operator
     # includes that the classifier had marked 'skip' (dedup-spent) is a
@@ -2211,7 +2236,8 @@ def htmx_notify_project(project):
             return []
         msgs = build_lifecycle_messages(
             db.session, per_project=items,
-            requested_by=current_user.username, url_builder=url_builder)
+            requested_by=current_user.username, url_builder=url_builder,
+            operator_comment=comment)
         return get_notifier().send_many(msgs, force=force) if msgs else []
 
     summary = notify_summary(_send(auto_items, force=False)

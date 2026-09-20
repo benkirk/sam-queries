@@ -12,6 +12,10 @@ Your allocations:
 To get started, log in with your NSF NCAR credentials and charge work to your
 project code SCSG0001.
 
+Note from NSF NCAR allocations staff:
+
+Your Casper hours were added per your request.
+
 What you can do in SAM (new this year):
 
   - See your project and its allocations, and manage who is on it:

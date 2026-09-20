@@ -184,6 +184,7 @@ def _lifecycle(kind: str) -> Dict[str, Any]:
         ],
         'manage_url': 'https://sam.hpc.ucar.edu/admin/project/SCSG0001/edit'
                       '?active_at=2026-10-01&tab=allocations',
+        'operator_comment': 'Your Casper hours were added per your request.',
     }
 
 
@@ -279,6 +280,7 @@ VARIABLE_NOTES: Dict[str, str] = {
     'has_subtree': 'True when this project has sub-projects (shows the in-tree '
                    'allocation-adjustment note).',
     'manage_url': "Deep link to this project's Edit page (allocations tab).",
+    'operator_comment': "The sending operator's optional note, or empty.",
     'task_name': 'The scheduled task that ran.',
     'occurrence': 'The scheduled slot this run filled, ISO-8601.',
     'headline': 'One-line outcome, also used in the subject.',

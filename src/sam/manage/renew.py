@@ -184,44 +184,6 @@ def analyze_renew_preconditions(
                     range overlaps [new_start, new_end] (idempotent skip —
                     usually indicates renew was applied previously)
 
-    Callers use this to produce accurate messages instead of a single
-    catch-all "nothing was renewed" string.
-    """
-    root = session.get(Project, root_project_id)
-    if root is None:
-        raise ValueError(f"Project {root_project_id} not found")
-
-    result: Dict[int, str] = {}
-    for rid in resource_ids:
-        src = find_source_alloc_at(root, rid, source_active_at)
-        if src is None or src.is_inheriting:
-            result[rid] = 'no_source'
-        elif _account_has_overlapping_alloc(root, rid, new_start, new_end):
-            result[rid] = 'overlap'
-        else:
-            result[rid] = 'ok'
-    return result
-
-
-def analyze_renew_preconditions(
-    session: Session,
-    *,
-    root_project_id: int,
-    source_active_at: datetime,
-    new_start: datetime,
-    new_end: datetime,
-    resource_ids: List[int],
-) -> Dict[int, str]:
-    """Classify each requested resource for a Renew request WITHOUT mutating.
-
-    Returns a dict mapping resource_id -> one of:
-      'ok'        — renew will create new allocations for this resource
-      'no_source' — root has no non-inheriting allocation active at
-                    ``source_active_at`` (renew would silently skip)
-      'overlap'   — root already has a non-deleted allocation whose date
-                    range overlaps [new_start, new_end] (idempotent skip —
-                    usually indicates renew was applied previously)
-
     Callers use this to produce accurate user-facing messages instead of
     the old catch-all "nothing was renewed" string, and to decide whether
     to prompt for the ``replace_existing`` override.
@@ -268,6 +230,7 @@ def renew_project_allocations(
     user_id: int,
     scales: Optional[Dict[int, float]] = None,
     replace_existing: bool = False,
+    touched: Optional[List[Allocation]] = None,
 ) -> List[Allocation]:
     """Clone a project tree's active-at-a-date allocations into a new period.
 
@@ -296,7 +259,8 @@ def renew_project_allocations(
     Runs inside the caller's ``management_transaction()`` — does NOT commit.
 
     Returns the list of newly-created root allocations (one per renewed
-    resource).
+    resource). ``touched``, when given, collects every created allocation,
+    roots and descendants alike.
     """
     validate_allocation_dates(new_start, new_end)
 
@@ -370,6 +334,8 @@ def renew_project_allocations(
             old_values={},
         )
         created_roots.append(new_root)
+        if touched is not None:
+            touched.append(new_root)
 
         # project_id -> new allocation_id (for re-wiring inheriting children).
         alloc_map: Dict[int, int] = {
@@ -435,5 +401,7 @@ def renew_project_allocations(
                 propagated=propagated,
             )
             alloc_map[descendant.project_id] = new_child.allocation_id
+            if touched is not None:
+                touched.append(new_child)
 
     return created_roots

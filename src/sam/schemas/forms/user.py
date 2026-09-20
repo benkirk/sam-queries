@@ -141,6 +141,8 @@ class RenewAllocationsForm(HtmxFormSchema):
     # an unchecked box sends no key, so load_default is False and the route
     # injects presence explicitly (see form_input).
     notify_leads = f.Bool(load_default=False)
+    # Optional operator note rendered in the lead/admin email.
+    operator_comment = f.Str(load_default=None, validate=v.Length(max=1000))
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
@@ -165,6 +167,8 @@ class ExtendAllocationsForm(HtmxFormSchema):
     # See RenewAllocationsForm.notify_leads — default ON in the UI, absent
     # when unchecked, so load_default False + explicit presence in the route.
     notify_leads = f.Bool(load_default=False)
+    # Optional operator note rendered in the lead/admin email.
+    operator_comment = f.Str(load_default=None, validate=v.Length(max=1000))
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
@@ -180,6 +184,12 @@ class AlignAllocationsForm(HtmxFormSchema):
     only that date.
     """
     source_active_at = f.Date('%Y-%m-%d', required=True)
+
+
+class NotifyProjectForm(HtmxFormSchema):
+    """The manual Notify modal's note; the per-row ``action_<id>`` choices
+    are dynamic and read by the route."""
+    operator_comment = f.Str(load_default=None, validate=v.Length(max=1000))
 
 
 class ExchangeAllocationForm(HtmxFormSchema):

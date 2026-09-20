@@ -1,4 +1,8 @@
-What you can do in SAM (new this year):
+{% if operator_comment %}Note from NSF NCAR allocations staff:
+
+{{ operator_comment }}
+
+{% endif %}What you can do in SAM (new this year):
 
   - See your project and its allocations, and manage who is on it:
     {{ manage_url or 'https://sam.hpc.ucar.edu/' }}

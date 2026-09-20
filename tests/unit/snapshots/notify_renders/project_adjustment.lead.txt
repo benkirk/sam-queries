@@ -9,6 +9,10 @@ Your current allocations:
   - Casper: 50,000 hours through 2027-09-30
   - Derecho: 1.15M hours through 2027-09-30
 
+Note from NSF NCAR allocations staff:
+
+Your Casper hours were added per your request.
+
 What you can do in SAM (new this year):
 
   - See your project and its allocations, and manage who is on it:

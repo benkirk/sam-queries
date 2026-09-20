@@ -57,11 +57,13 @@ def lifecycle_dedup_key(kind: str, projcode: str, action: Optional[str],
                         stamp: Optional[datetime], address: str) -> str:
     """Suppress an exact re-send, but not a genuinely new state.
 
-    ``stamp`` is date-granularity (keeps the key within ``dedup_key``'s 128
-    chars): the target end date for renewal/activation, the latest change date
-    for adjustment. project_renewal keeps its #581 shape (action in the key).
+    ``stamp`` is the target end date for renewal/activation (date granularity)
+    and the latest change time for adjustment. Adjustment is minute-granular:
+    a second change on the same day is a new state, and a date-only key would
+    have the ledger suppress its notice. project_renewal keeps its #581 shape.
     """
-    s = stamp.strftime('%Y-%m-%d') if stamp else 'none'
+    layout = '%Y-%m-%dT%H:%M' if kind == 'project_adjustment' else '%Y-%m-%d'
+    s = stamp.strftime(layout) if stamp else 'none'
     if kind == 'project_renewal':
         return f'project_renewal:{action}:{projcode}:{s}:{address}'
     return f'{kind}:{projcode}:{s}:{address}'
@@ -91,8 +93,10 @@ def _resource_rows(allocations) -> List[dict]:
     return rows
 
 
-def _context(project, action, has_subtree, allocations, manage_url) -> dict:
+def _context(project, action, has_subtree, allocations, manage_url,
+             operator_comment=None) -> dict:
     return {
+        'operator_comment': (operator_comment or '').strip() or None,
         'project_code': project.projcode,
         'project_title': project.title,
         'project_lead': (project.lead.display_name
@@ -108,7 +112,9 @@ def _context(project, action, has_subtree, allocations, manage_url) -> dict:
 
 def build_lifecycle_messages(session: Session, *, per_project: Sequence[dict],
                              requested_by: str,
-                             url_builder: Callable[[str], str]) -> List[Message]:
+                             url_builder: Callable[[str], str],
+                             operator_comment: Optional[str] = None,
+                             ) -> List[Message]:
     """One Message per (project × lead/admin) for the given per-project items.
 
     Each item is a dict with keys ``project``, ``kind``, ``action``,
@@ -129,7 +135,8 @@ def build_lifecycle_messages(session: Session, *, per_project: Sequence[dict],
             continue
         kind, action = it['kind'], it.get('action')
         context = _context(project, action, it['has_subtree'],
-                           it['allocations'], url_builder(project.projcode))
+                           it['allocations'], url_builder(project.projcode),
+                           operator_comment)
         subject = _subject(kind, project.projcode, action)
         for recipient in to_recipients(people):
             messages.append(Message(
@@ -152,9 +159,12 @@ def build_renewal_messages(session: Session, root_project, *,
                            new_end: Optional[datetime],
                            touched_allocations: Sequence,
                            requested_by: str,
-                           url_builder: Callable[[str], str]) -> List[Message]:
-    """The Renew/Extend notice (#581): fan out over the tree from the touched
-    allocations, grouped by owning project."""
+                           url_builder: Callable[[str], str],
+                           operator_comment: Optional[str] = None,
+                           ) -> List[Message]:
+    """The Renew/Extend notice (#581): one copy per project that owns a
+    touched allocation. An untouched descendant (inactive, no source, already
+    long enough) is not told it was renewed."""
     by_project: dict[int, list] = {}
     for alloc in touched_allocations:
         pid = alloc.account.project_id if alloc.account else None
@@ -166,10 +176,12 @@ def build_renewal_messages(session: Session, root_project, *,
          'allocations': by_project.get(project.project_id, []),
          'has_subtree': not project.is_leaf(), 'dedup_stamp': new_end}
         for project in root_project.get_descendants(include_self=True)
+        if project.project_id in by_project
     ]
     return build_lifecycle_messages(session, per_project=per_project,
                                     requested_by=requested_by,
-                                    url_builder=url_builder)
+                                    url_builder=url_builder,
+                                    operator_comment=operator_comment)
 
 
 # --------------------------------------------------------------------------- #
@@ -212,14 +224,14 @@ def _live_allocations_at(project, active_at: datetime) -> list:
 
 
 def _last_lifecycle_notice_times(session, projcodes) -> dict:
-    """{projcode: newest delivered activation/adjustment notice time}."""
+    """{projcode: newest delivered lifecycle notice time}. A renewal notice
+    counts: a project told it was renewed has been contacted."""
     if not projcodes:
         return {}
     when = func.coalesce(NotificationLog.sent_time, NotificationLog.creation_time)
     rows = (session.query(NotificationLog.projcode, func.max(when))
             .filter(NotificationLog.projcode.in_(projcodes),
-                    NotificationLog.kind.in_(('project_activation',
-                                              'project_adjustment')),
+                    NotificationLog.kind.in_(tuple(_ACTION_KIND.values())),
                     NotificationLog.status.in_(SUPPRESSING_STATUSES))
             .group_by(NotificationLog.projcode).all())
     return {projcode: t for projcode, t in rows}
