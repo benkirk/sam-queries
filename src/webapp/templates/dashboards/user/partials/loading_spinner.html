@@ -2,7 +2,7 @@
 {% macro loading_spinner(message='Loading...', size='md') %}
 <div class="loading-spinner">
     <div class="spinner-border text-primary {% if size == 'sm' %}spinner-border-sm{% elif size == 'lg' %}loading-spinner-lg{% endif %}" role="status">
-        <span class="sr-only">{{ message }}</span>
+        <span class="visually-hidden">{{ message }}</span>
     </div>
     {% if message %}
     <p class="mt-2 text-muted">{{ message }}</p>
