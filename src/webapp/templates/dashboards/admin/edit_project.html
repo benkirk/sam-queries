@@ -159,7 +159,7 @@
                 data-bs-target="#renewAllocationsModal">
           <i class="fa-solid fa-rotate"></i> Renew
         </button>
-        <button class="btn  btn-outline-warning"
+        <button class="btn  btn-primary"
                 hx-get="{{ url_for('admin_dashboard.htmx_align_allocations_form', projcode=project.projcode) }}"
                 hx-target="#alignAllocationsFormContainer"
                 hx-include="#alloc-active-at"
@@ -168,7 +168,7 @@
                 data-bs-target="#alignAllocationsModal">
           <i class="fa-solid fa-arrows-left-right-to-line"></i> Align
         </button>
-        <button class="btn  btn-outline-primary"
+        <button class="btn  btn-primary"
                 hx-get="{{ url_for('admin_dashboard.htmx_notify_project_form', projcode=project.projcode) }}"
                 hx-target="#notifyProjectFormContainer"
                 hx-include="#alloc-active-at"
