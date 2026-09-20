@@ -49,6 +49,7 @@ FAMILIES: Mapping[str, NotificationFamily] = {
         # A request has no project until it is fulfilled, and the digest is
         # about a queue; neither kind previews against a project.
         NotificationFamily('account', 'HPC account requests', about_project=False),
+        NotificationFamily('renewal', 'Project renewal / extension notices'),
     )
 }
 
@@ -217,6 +218,20 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
         default_subscribed=True,
         facility_aware=False,
         family='account',
+    ),
+    # The manual Renew/Extend action's optional lead notification. Distinct
+    # from the XRAS-driven xras_update/xras_extension above: this one is
+    # operator-initiated from the Edit page, fans out one personalized copy
+    # per project in the tree, and is onboarding-rich (it introduces the
+    # in-tree allocation-adjustment and member-management surfaces that did
+    # not exist a year ago). One kind, `action` in {renewed, extended}.
+    NotificationKind(
+        key='project_renewal',
+        label='Project renewal / extension notice',
+        template_base='project_renewal',
+        default_subscribed=True,
+        facility_aware=False,
+        family='renewal',
     ),
 )
 

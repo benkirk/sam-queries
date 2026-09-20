@@ -1665,6 +1665,43 @@ def htmx_renew_allocations_form(project):
     )
 
 
+def _maybe_notify_renewal(root, *, action, new_end, active_at, touched,
+                          notify_leads):
+    """Optionally mail each project lead/admin about a renew/extend.
+
+    Post-commit and best-effort: a mail failure must never fail (or roll back)
+    the allocation write. Returns a `notify_summary` dict, or None when the
+    operator left the box unchecked or nothing could be sent.
+    """
+    if not notify_leads:
+        return None
+    try:
+        from sam.queries.renewal_notices import build_renewal_messages
+        from webapp.utils.notify import get_notifier, notify_summary
+        stamp = active_at.date().isoformat()
+        messages = build_renewal_messages(
+            db.session, root, action=action, new_end=new_end,
+            touched_allocations=touched,
+            requested_by=current_user.username,
+            url_builder=lambda pc: url_for(
+                'admin_dashboard.edit_project_page', projcode=pc,
+                active_at=stamp, tab='allocations', _external=True),
+        )
+        return notify_summary(get_notifier().send_many(messages))
+    except Exception:  # noqa: BLE001 — never let a mail failure fail the write
+        current_app.logger.exception(
+            'renewal notice send failed for %s', root.projcode)
+        return None
+
+
+def _notified_suffix(summary) -> str:
+    """`'; notified N recipient(s)'` for the success line, or '' when none."""
+    if not summary:
+        return ''
+    n = len(summary['delivered'])
+    return f'; notified {n} recipient{"" if n == 1 else "s"}' if n else ''
+
+
 class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
     """Create renewed allocations for the selected resources."""
 
@@ -1687,6 +1724,8 @@ class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
             for k, v in request.form.items()
             if k.startswith('scale_') and v.strip()
         }
+        # Default-ON checkbox: absent means unchecked, so read presence.
+        data['notify_leads'] = 'notify_leads' in request.form
         return data
 
     def clean(self, data):
@@ -1745,6 +1784,7 @@ class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
     def perform(self, data):
         from sam.manage.renew import renew_project_allocations
         self.replace_existing = data.get('replace_existing', False)
+        self.notify_leads = data.get('notify_leads', False)
         created = renew_project_allocations(
             db.session,
             root_project_id=self.root.project_id,
@@ -1776,6 +1816,14 @@ class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
             'default_end': request.form.get('new_end_date', ''),
         }
 
+    def after_commit(self, created):
+        # New allocations start at new_start; land the PI there so the deep
+        # link opens on what was just created.
+        self._notified = _maybe_notify_renewal(
+            self.root, action='renewed', new_end=self.new_end,
+            active_at=self.new_start, touched=created,
+            notify_leads=self.notify_leads)
+
     def triggers(self, result):
         return {'closeActiveModal': {}, 'reloadAllocationTree': self.project.projcode}
 
@@ -1792,7 +1840,8 @@ class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
             detail_parts.append(
                 f'skipped (no source at {self.source_dt.strftime("%Y-%m-%d")}): '
                 f'{self._names(self.no_source_ids)}')
-        return '; '.join(detail_parts)
+        return '; '.join(detail_parts) + _notified_suffix(
+            getattr(self, '_notified', None))
 
 
 @bp.route('/htmx/renew-allocations/<projcode>', methods=['POST'])
@@ -1901,10 +1950,13 @@ class _ExtendAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
         data['resource_ids'] = [
             int(v) for v in request.form.getlist('resource_ids') if v
         ]
+        # Default-ON checkbox: absent means unchecked, so read presence.
+        data['notify_leads'] = 'notify_leads' in request.form
         return data
 
     def clean(self, data):
         self.new_end = data['new_end_date']   # datetime via post_load
+        self.notify_leads = data.get('notify_leads', False)
         self.source_dt = datetime.combine(
             data['source_active_at'], datetime.min.time())
 
@@ -1952,6 +2004,14 @@ class _ExtendAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
             'default_end': request.form.get('new_end_date', ''),
         }
 
+    def after_commit(self, updated):
+        # Extend leaves start dates alone; land the PI on the source date
+        # where the now-extended allocations live.
+        self._notified = _maybe_notify_renewal(
+            self.root, action='extended', new_end=self.new_end,
+            active_at=self.source_dt, touched=updated,
+            notify_leads=self.notify_leads)
+
     def triggers(self, result):
         return {'closeActiveModal': {}, 'reloadAllocationTree': self.project.projcode}
 
@@ -1959,6 +2019,7 @@ class _ExtendAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
         return (
             f'{self.root.projcode}: extended {len(updated)} allocation(s) to '
             f'{self.new_end.strftime("%Y-%m-%d")}'
+            + _notified_suffix(getattr(self, '_notified', None))
         )
 
 

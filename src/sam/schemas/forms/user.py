@@ -137,6 +137,10 @@ class RenewAllocationsForm(HtmxFormSchema):
     # Route injects explicit False when the checkbox is unchecked (absent
     # from request.form).
     replace_existing = f.Bool(load_default=False)
+    # Optional email to each project's lead/admin. Default ON in the UI, but
+    # an unchecked box sends no key, so load_default is False and the route
+    # injects presence explicitly (see form_input).
+    notify_leads = f.Bool(load_default=False)
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
@@ -158,6 +162,9 @@ class ExtendAllocationsForm(HtmxFormSchema):
     source_active_at = f.Date('%Y-%m-%d', required=True)
     new_end_date = f.Str(required=True)   # 23:59:59 convention applied in post_load
     resource_ids = f.List(f.Int(), required=True, validate=v.Length(min=1))
+    # See RenewAllocationsForm.notify_leads — default ON in the UI, absent
+    # when unchecked, so load_default False + explicit presence in the route.
+    notify_leads = f.Bool(load_default=False)
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):

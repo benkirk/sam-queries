@@ -1,0 +1,28 @@
+Dear {{ recipient_name }},
+
+Your project {{ project_code }}{% if project_title %} - "{{ project_title }}"{% endif %}
+has been {{ action or 'renewed' }} on NSF NCAR computing resources{% if has_subtree %},
+along with its sub-projects{% endif %}.
+{% if resources %}
+Allocations and their end dates:
+{% for r in resources %}
+  - {{ r.resource_name }}: {{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}
+    {%- if r.end_date %} through {{ r.end_date }}{% endif %}
+{%- endfor %}
+{% endif %}
+What you can do in SAM (new this year):
+
+  - See your project and its allocations, and manage who is on it:
+    {{ manage_url or 'https://sam.hpc.ucar.edu/' }}
+{% if has_subtree %}
+  - Move allocations between your sub-projects yourself, without asking for
+    new quota — open your project above and use the allocations tab.
+{% endif %}
+  - Documentation: https://ncar-hpc-docs.readthedocs.io/
+{% if recipient_role != 'lead' %}
+Your project lead ({{ project_lead }}{% if project_lead_email %} /
+{{ project_lead_email }}{% endif %}) can also manage membership and allocations.
+{% endif %}
+--
+This is an automated notification from the NSF NCAR Systems Accounting Manager.
+If you believe you received this message in error, please contact help@ucar.edu.

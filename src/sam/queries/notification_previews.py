@@ -16,6 +16,7 @@ from sam.integration.xras_api.comments import approver_comment_for_action
 from sam.notify.base import Message
 from sam.notify.kinds import get_family, get_kind
 from sam.queries.expiration_notices import MILESTONES, build_expiration_messages
+from sam.queries.renewal_notices import build_renewal_messages
 from sam.queries.xras_activation import (
     get_latest_xras_action_id, get_xras_pending_recipients,
 )
@@ -66,6 +67,16 @@ def messages_for_project(session: Session, kind: str, project, *,
             return []
         return build_expiration_messages(rows, milestone=MILESTONES[0],
                                          requested_by=requested_by)
+    if get_kind(kind).family == 'renewal':
+        touched = [a for acct in project.accounts if not acct.deleted
+                   for a in acct.live_allocations]
+        ends = [a.end_date for a in touched if a.end_date is not None]
+        return build_renewal_messages(
+            session, project, action='renewed',
+            new_end=max(ends) if ends else None,
+            touched_allocations=touched, requested_by=requested_by,
+            url_builder=lambda pc:
+                f'https://sam.hpc.ucar.edu/admin/project/{pc}/edit?tab=allocations')
     people = get_xras_pending_recipients(
         session, [project.project_id]).get(project.project_id, [])
     if not people:
