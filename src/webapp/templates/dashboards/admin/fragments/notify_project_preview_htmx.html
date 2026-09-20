@@ -22,8 +22,7 @@
   </div>
   <div class="stat-item">
     <span class="text-muted">Template{{ 's' if preview.template_html }}</span>
-    <strong>{{ preview.template_text }}{% if preview.template_html %}
-      &middot; {{ preview.template_html }}{% endif %}</strong>
+    <strong>{{ preview.template_text }}{% if preview.template_html %}<br>{{ preview.template_html }}{% endif %}</strong>
   </div>
 </div>
 {% if preview.html %}

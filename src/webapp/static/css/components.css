@@ -149,6 +149,22 @@
     height: 3rem;
 }
 
+/* FontAwesome 7 spin-wobble fix. FA7 lays every icon out in a padded 1.25em
+   box and sets no transform-origin, so fa-spin pivots on the box center, not
+   the glyph — the icon orbits like a clock hand instead of spinning in place
+   (visible on every "Loading…" indicator after the FA6 -> FA7 upgrade).
+   Center the glyph in a square em box so the pivot is the glyph's own center. */
+.fa-spin,
+.fa-spin-pulse,
+.fa-pulse {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.125em;
+}
+
 /* ===================================================================
    Spacing Utilities
    =================================================================== */
