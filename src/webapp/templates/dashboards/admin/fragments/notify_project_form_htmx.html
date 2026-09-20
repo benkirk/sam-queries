@@ -16,6 +16,7 @@
   A real send is irreversible, so this is a look-before-you-send preview, the
   same reasoning as the XRAS Notify button.
 #}
+{% from 'dashboards/fragments/help.html' import help_icon, term with context %}
 {% set new_n = notices | selectattr('auto_action', 'equalto', 'activated') | list | length %}
 {% set adj_n = notices | selectattr('auto_action', 'equalto', 'adjusted') | list | length %}
 {% set skip_n = notices | selectattr('auto_action', 'equalto', 'skip') | list | length %}
@@ -63,10 +64,9 @@
       <thead class="table-subtle">
         <tr>
           <th>Project</th>
-          <th>Recipients</th>
+          <th>Recipients {{ help_icon('Lead first, then the project admin if one is on file. Both get their own copy.', rich=True, title='Recipients', icon='circle-info') }}</th>
           <th>Since last notice</th>
-          <th style="width:12rem;">Notify as</th>
-          <th style="width:5rem;"></th>
+          <th style="width:9rem;">Notify as {{ help_icon('The message each recipient receives:<br>&bull; <strong>New</strong> — the project is now active<br>&bull; <strong>Adjustment</strong> — its allocations changed since the last notice<br>&bull; <strong>Skip</strong> — send nothing for this project', rich=True, title='Notify as', icon='circle-info') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -76,27 +76,21 @@
           <td style="padding-left: {{ 0.5 + n.depth * 1.25 }}rem;">
             <i class="fa-solid fa-diagram-project text-muted me-1 small"></i>
             <strong>{{ n.project.projcode }}</strong>
-            {% if n.has_subtree %}
-            <span class="badge bg-secondary bg-opacity-25 text-body-emphasis border small ms-1">tree</span>
-            {% endif %}
           </td>
-          <td class="small">
+          <td class="small text-nowrap">
             {% if n.recipients %}
-            {% for p in n.recipients %}
-            <div><code class="user-select-all">{{ p.email }}</code>
-              <span class="text-muted">({{ p.role }})</span></div>
-            {% endfor %}
+            <code class="user-select-all">{{ n.recipients | map(attribute='email') | join(', ') }}</code>
             {% else %}
             <span class="text-danger-emphasis">no lead/admin on file</span>
             {% endif %}
           </td>
-          <td class="small text-muted">
+          <td class="small text-muted text-nowrap">
             {% if n.auto_action == 'activated' %}
-            <span class="text-success">new — never notified</span>
+            <span class="text-success">never notified</span>
             {% elif n.auto_action == 'adjusted' %}
-            changed {{ n.latest_change | fmt_date }} (last notified {{ n.last_notified | fmt_date }})
+            {{ term('changed ' ~ (n.latest_change | fmt_date), 'Last notified ' ~ (n.last_notified | fmt_date)) }}
             {% else %}
-            no change since {{ n.last_notified | fmt_date }}
+            {{ term('no change', 'Last notified ' ~ (n.last_notified | fmt_date)) }}
             {% endif %}
           </td>
           <td>
@@ -108,12 +102,11 @@
                     hx-target="#notifyPreviewPane"
                     hx-swap="innerHTML"
                     {% if not n.recipients %}disabled{% endif %}>
-              <option value="activated" {{ 'selected' if n.auto_action == 'activated' }}>New — is now active</option>
-              <option value="adjusted" {{ 'selected' if n.auto_action == 'adjusted' }}>Adjustment — updated</option>
+              <option value="activated" {{ 'selected' if n.auto_action == 'activated' }}>New</option>
+              <option value="adjusted" {{ 'selected' if n.auto_action == 'adjusted' }}>Adjustment</option>
               <option value="skip" {{ 'selected' if n.auto_action == 'skip' }}>Skip</option>
             </select>
           </td>
-          <td class="text-end"></td>
         </tr>
         {% endfor %}
       </tbody>
