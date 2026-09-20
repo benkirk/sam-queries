@@ -43,7 +43,9 @@ class TestIsProjectKind:
 
     @pytest.mark.parametrize('kind,expected', [
         ('expiration', True), ('xras_activation', True),
-        ('xras_supplement', True), ('task_summary', False),
+        ('xras_supplement', True), ('project_renewal', True),
+        ('project_activation', True), ('project_adjustment', True),
+        ('task_summary', False),
     ])
     def test_families(self, kind, expected):
         assert is_project_kind(kind) is expected
@@ -128,3 +130,28 @@ class TestMessagesForProject:
                                         requested_by='pytest')
         assert messages[0].kind == 'xras_update'
         assert messages[0].context['action_type'] is None
+
+    def test_renewal_previews_the_leads_copy(self, session, project):
+        _dated_allocation(session, project, days=200)
+        session.expire(project)
+        messages = messages_for_project(session, 'project_renewal', project,
+                                        requested_by='pytest')
+        (message,) = [m for m in messages if m.recipient.role == 'lead']
+        assert message.kind == 'project_renewal'
+        assert message.recipient.address == 'lead@example.edu'
+        assert message.context['action'] == 'renewed'
+        assert message.context['project_code'] == project.projcode
+
+    @pytest.mark.parametrize('kind,action', [
+        ('project_activation', 'activated'), ('project_adjustment', 'adjusted'),
+    ])
+    def test_lifecycle_kinds_preview_the_leads_copy(self, session, project,
+                                                    kind, action):
+        _dated_allocation(session, project, days=200)
+        session.expire(project)
+        messages = messages_for_project(session, kind, project,
+                                        requested_by='pytest')
+        (message,) = [m for m in messages if m.recipient.role == 'lead']
+        assert message.kind == kind
+        assert message.context['action'] == action
+        assert message.context['project_code'] == project.projcode

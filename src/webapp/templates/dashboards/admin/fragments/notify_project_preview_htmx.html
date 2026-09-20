@@ -1,0 +1,60 @@
+{#
+  One project's rendered lifecycle message, for the Notify modal's preview
+  pane. Rendered by GET htmx_notify_project_preview.
+
+  Context: preview (RenderedMessage|None), preview_error (str|None), action, projcode
+#}
+{% if action == 'skip' %}
+<p class="text-muted small mb-0"><em>{{ projcode }}</em> is set to Skip — it will not be notified.</p>
+{% elif preview_error %}
+<div class="alert alert-danger mb-0">
+  <strong>The message could not be rendered.</strong>
+  <div class="small mt-1"><code>{{ preview_error }}</code></div>
+</div>
+{% elif not preview %}
+<p class="text-muted small mb-0">Nothing to preview for <em>{{ projcode }}</em>
+  (no recipient on file).</p>
+{% else %}
+<div class="project-stats-box mb-2">
+  <div class="stat-item">
+    <span class="text-muted">Subject</span>
+    <strong>{{ preview.subject }}</strong>
+  </div>
+  <div class="stat-item">
+    <span class="text-muted">Template{{ 's' if preview.template_html }}</span>
+    <strong>{{ preview.template_text }}{% if preview.template_html %}
+      &middot; {{ preview.template_html }}{% endif %}</strong>
+  </div>
+</div>
+{% if preview.html %}
+<ul class="nav nav-tabs small" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="notifyPreviewHtmlTab" data-bs-toggle="tab"
+            data-bs-target="#notifyPreviewHtml" type="button" role="tab"
+            aria-controls="notifyPreviewHtml" aria-selected="true">HTML</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="notifyPreviewTextTab" data-bs-toggle="tab"
+            data-bs-target="#notifyPreviewText" type="button" role="tab"
+            aria-controls="notifyPreviewText" aria-selected="false">Plain text</button>
+  </li>
+</ul>
+<div class="tab-content border border-top-0 rounded-bottom">
+  <div class="tab-pane fade show active" id="notifyPreviewHtml" role="tabpanel"
+       aria-labelledby="notifyPreviewHtmlTab">
+    {# Sandboxed: the email is a whole page with its own <style>; its links are
+       inert in a preview by design. #}
+    <iframe title="HTML preview" sandbox srcdoc="{{ preview.html }}"
+            class="w-100 border-0 rounded-bottom bg-white" style="height: 22rem;"></iframe>
+  </div>
+  <div class="tab-pane fade" id="notifyPreviewText" role="tabpanel"
+       aria-labelledby="notifyPreviewTextTab">
+    <pre class="p-3 small mb-0"
+         style="max-height: 22rem; overflow: auto; white-space: pre-wrap;">{{ preview.text }}</pre>
+  </div>
+</div>
+{% else %}
+<pre class="border rounded p-3 small mb-0"
+     style="max-height: 22rem; overflow: auto; white-space: pre-wrap;">{{ preview.text }}</pre>
+{% endif %}
+{% endif %}

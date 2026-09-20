@@ -40,7 +40,7 @@ from sam.core.groups import GidAllocation, NoAvailableGidError
 from sam.schemas.forms import (
     AccessGridToggleForm, AddAllocationForm, AllocateResidualForm,
     EditAllocationForm, EditProjectForm, ExchangeAllocationForm,
-    ExtendAllocationsForm, RenewAllocationsForm,
+    ExtendAllocationsForm, RenewAllocationsForm, AlignAllocationsForm,
 )
 from sam.schemas.forms.projects import (
     AddLinkedContractForm, AddLinkedDirectoryForm, AddLinkedOrganizationForm,
@@ -1665,6 +1665,43 @@ def htmx_renew_allocations_form(project):
     )
 
 
+def _maybe_notify_renewal(root, *, action, new_end, active_at, touched,
+                          notify_leads):
+    """Optionally mail each project lead/admin about a renew/extend.
+
+    Post-commit and best-effort: a mail failure must never fail (or roll back)
+    the allocation write. Returns a `notify_summary` dict, or None when the
+    operator left the box unchecked or nothing could be sent.
+    """
+    if not notify_leads:
+        return None
+    try:
+        from sam.queries.lifecycle_notices import build_renewal_messages
+        from webapp.utils.notify import get_notifier, notify_summary
+        stamp = active_at.date().isoformat()
+        messages = build_renewal_messages(
+            db.session, root, action=action, new_end=new_end,
+            touched_allocations=touched,
+            requested_by=current_user.username,
+            url_builder=lambda pc: url_for(
+                'admin_dashboard.edit_project_page', projcode=pc,
+                active_at=stamp, tab='allocations', _external=True),
+        )
+        return notify_summary(get_notifier().send_many(messages))
+    except Exception:  # noqa: BLE001 — never let a mail failure fail the write
+        current_app.logger.exception(
+            'renewal notice send failed for %s', root.projcode)
+        return None
+
+
+def _notified_suffix(summary) -> str:
+    """`'; notified N recipient(s)'` for the success line, or '' when none."""
+    if not summary:
+        return ''
+    n = len(summary['delivered'])
+    return f'; notified {n} recipient{"" if n == 1 else "s"}' if n else ''
+
+
 class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
     """Create renewed allocations for the selected resources."""
 
@@ -1687,6 +1724,8 @@ class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
             for k, v in request.form.items()
             if k.startswith('scale_') and v.strip()
         }
+        # Default-ON checkbox: absent means unchecked, so read presence.
+        data['notify_leads'] = 'notify_leads' in request.form
         return data
 
     def clean(self, data):
@@ -1745,6 +1784,7 @@ class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
     def perform(self, data):
         from sam.manage.renew import renew_project_allocations
         self.replace_existing = data.get('replace_existing', False)
+        self.notify_leads = data.get('notify_leads', False)
         created = renew_project_allocations(
             db.session,
             root_project_id=self.root.project_id,
@@ -1776,6 +1816,14 @@ class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
             'default_end': request.form.get('new_end_date', ''),
         }
 
+    def after_commit(self, created):
+        # New allocations start at new_start; land the PI there so the deep
+        # link opens on what was just created.
+        self._notified = _maybe_notify_renewal(
+            self.root, action='renewed', new_end=self.new_end,
+            active_at=self.new_start, touched=created,
+            notify_leads=self.notify_leads)
+
     def triggers(self, result):
         return {'closeActiveModal': {}, 'reloadAllocationTree': self.project.projcode}
 
@@ -1792,7 +1840,8 @@ class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
             detail_parts.append(
                 f'skipped (no source at {self.source_dt.strftime("%Y-%m-%d")}): '
                 f'{self._names(self.no_source_ids)}')
-        return '; '.join(detail_parts)
+        return '; '.join(detail_parts) + _notified_suffix(
+            getattr(self, '_notified', None))
 
 
 @bp.route('/htmx/renew-allocations/<projcode>', methods=['POST'])
@@ -1901,10 +1950,13 @@ class _ExtendAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
         data['resource_ids'] = [
             int(v) for v in request.form.getlist('resource_ids') if v
         ]
+        # Default-ON checkbox: absent means unchecked, so read presence.
+        data['notify_leads'] = 'notify_leads' in request.form
         return data
 
     def clean(self, data):
         self.new_end = data['new_end_date']   # datetime via post_load
+        self.notify_leads = data.get('notify_leads', False)
         self.source_dt = datetime.combine(
             data['source_active_at'], datetime.min.time())
 
@@ -1952,6 +2004,14 @@ class _ExtendAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
             'default_end': request.form.get('new_end_date', ''),
         }
 
+    def after_commit(self, updated):
+        # Extend leaves start dates alone; land the PI on the source date
+        # where the now-extended allocations live.
+        self._notified = _maybe_notify_renewal(
+            self.root, action='extended', new_end=self.new_end,
+            active_at=self.source_dt, touched=updated,
+            notify_leads=self.notify_leads)
+
     def triggers(self, result):
         return {'closeActiveModal': {}, 'reloadAllocationTree': self.project.projcode}
 
@@ -1959,6 +2019,7 @@ class _ExtendAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
         return (
             f'{self.root.projcode}: extended {len(updated)} allocation(s) to '
             f'{self.new_end.strftime("%Y-%m-%d")}'
+            + _notified_suffix(getattr(self, '_notified', None))
         )
 
 
@@ -1969,6 +2030,195 @@ def htmx_extend_allocations(project):
     """Push end_date forward on the selected allocations."""
     root = project.get_root() if hasattr(project, 'get_root') else project
     return _ExtendAllocationsHandler(project=project, root=root).handle()
+
+
+# ---------------------------------------------------------------------------
+# Align allocations — one uniform [min(start), max(end)] period of performance
+# ---------------------------------------------------------------------------
+
+def _align_context(project, root, source_dt):
+    """Grid rows + computed target for the Align modal (GET and error re-render)."""
+    from sam.manage.allocations import alignment_target
+    from sam.manage.renew import find_source_allocations_at
+    sources = find_source_allocations_at(db.session, root, source_dt)
+    candidates = sorted((
+        {'resource_name': s.account.resource.resource_name,
+         'resource_type': (s.account.resource.resource_type.resource_type
+                           if s.account.resource.resource_type else ''),
+         'start_date': s.start_date, 'end_date': s.end_date,
+         'is_open_ended': s.end_date is None}
+        for s in sources), key=lambda c: c['resource_name'])
+    target = alignment_target(sources)
+    misaligned = target is not None and any(
+        not c['is_open_ended'] and (c['start_date'], c['end_date']) != target
+        for c in candidates)
+    return {
+        'project': project, 'root': root,
+        'source_active_at': source_dt.strftime('%Y-%m-%d'),
+        'candidates': candidates,
+        'target_start': target[0] if target else None,
+        'target_end': target[1] if target else None,
+        'misaligned': misaligned,
+    }
+
+
+@bp.route('/htmx/align-allocations-form/<projcode>')
+@login_required
+@require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_align_allocations_form(project):
+    """Return the Align Allocations modal form fragment."""
+    root = project.get_root() if hasattr(project, 'get_root') else project
+    source_dt = _parse_active_at_arg(request.args.get('active_at', ''))
+    return render_template(
+        'dashboards/admin/fragments/align_allocations_form_htmx.html',
+        **_align_context(project, root, source_dt))
+
+
+class _AlignAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
+    """Set every dated resource to one uniform period of performance."""
+
+    schema_cls = AlignAllocationsForm
+    template = 'dashboards/admin/fragments/align_allocations_form_htmx.html'
+    error_prefix = 'Error aligning allocations'
+    success_message = 'Allocations aligned successfully.'
+
+    def clean(self, data):
+        self.source_dt = datetime.combine(
+            data['source_active_at'], datetime.min.time())
+        return data
+
+    def perform(self, data):
+        from sam.manage.allocations import align_project_allocations
+        changed = align_project_allocations(
+            db.session, root_project_id=self.root.project_id,
+            source_active_at=self.source_dt, user_id=current_user.user_id)
+        if not changed:
+            raise FormError(
+                'Nothing to align — the resources already share a period, or '
+                'there are fewer than two dated resources.')
+        return changed
+
+    def context(self):
+        return _align_context(self.project, self.root, self.source_dt)
+
+    def triggers(self, result):
+        return {'closeActiveModal': {}, 'reloadAllocationTree': self.project.projcode}
+
+    def detail(self, changed):
+        start, end = changed[0].start_date, changed[0].end_date
+        return (f'{self.root.projcode}: aligned {len(changed)} resource(s) to '
+                f'{start.strftime("%Y-%m-%d")} → {end.strftime("%Y-%m-%d")}')
+
+
+@bp.route('/htmx/align-allocations/<projcode>', methods=['POST'])
+@login_required
+@require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_align_allocations(project):
+    """Set every dated resource to one uniform period of performance."""
+    root = project.get_root() if hasattr(project, 'get_root') else project
+    return _AlignAllocationsHandler(project=project, root=root).handle()
+
+
+# ---------------------------------------------------------------------------
+# Manual "Notify" — tell the lead/admin of each changed project in the tree
+# ---------------------------------------------------------------------------
+
+def _notify_url_builder():
+    """projcode -> that project's Edit-page allocations deep link (external)."""
+    return lambda pc: url_for('admin_dashboard.edit_project_page',
+                              projcode=pc, tab='allocations', _external=True)
+
+
+@bp.route('/htmx/notify-project-form/<projcode>')
+@login_required
+@require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_notify_project_form(project):
+    """The manual Notify modal: the project tree with per-row New/Adjustment/Skip."""
+    from sam.queries.lifecycle_notices import classify_tree_for_notice
+    from webapp.utils.notify import get_notifier
+    root = project.get_root() if hasattr(project, 'get_root') else project
+    active_at = _parse_active_at_arg(request.args.get('active_at', ''))
+    notices = classify_tree_for_notice(db.session, root, active_at=active_at)
+    cfg = get_notifier(ledger=False).config
+    return render_template(
+        'dashboards/admin/fragments/notify_project_form_htmx.html',
+        project=project, root=root, active_at=active_at.strftime('%Y-%m-%d'),
+        notices=notices, notify_enabled=cfg.enabled,
+        redirect_to=cfg.redirect_to or None)
+
+
+@bp.route('/htmx/notify-project-preview/<projcode>')
+@login_required
+@require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_notify_project_preview(project):
+    """Render one project's lifecycle message for the modal's preview pane."""
+    from sam.queries.lifecycle_notices import (
+        build_lifecycle_messages, notice_for_project)
+    from webapp.utils.notify import get_notifier
+    # The changed row includes only itself, so the lone action_* param is the
+    # selection; 'skip' (or none) means nothing to preview.
+    action = next((v for k, v in request.args.items()
+                   if k.startswith('action_') and v in ('activated', 'adjusted')),
+                  request.args.get('action', 'activated'))
+    active_at = _parse_active_at_arg(request.args.get('active_at', ''))
+    preview = preview_error = None
+    if action in ('activated', 'adjusted'):
+        notice = notice_for_project(db.session, project, active_at=active_at)
+        item = notice.item_for(action) if notice else None
+        if item is not None:
+            messages = build_lifecycle_messages(
+                db.session, per_project=[item],
+                requested_by=current_user.username,
+                url_builder=_notify_url_builder())
+            if messages:
+                try:
+                    preview = get_notifier(ledger=False).preview(messages[0])
+                except Exception as e:  # noqa: BLE001 — a bad template is not a 500
+                    preview_error = str(e)
+    return render_template(
+        'dashboards/admin/fragments/notify_project_preview_htmx.html',
+        preview=preview, preview_error=preview_error,
+        action=action, projcode=project.projcode)
+
+
+@bp.route('/htmx/notify-project/<projcode>', methods=['POST'])
+@login_required
+@require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_notify_project(project):
+    """Send the manual lifecycle notices per the operator's per-row choices."""
+    from sam.queries.lifecycle_notices import (
+        build_lifecycle_messages, classify_tree_for_notice)
+    from webapp.utils.notify import get_notifier, notify_summary
+    root = project.get_root() if hasattr(project, 'get_root') else project
+    active_at = _parse_active_at_arg(request.form.get('active_at', ''))
+    notices = classify_tree_for_notice(db.session, root, active_at=active_at)
+
+    # Each row's chosen action defaults to its auto_action. A row the operator
+    # includes that the classifier had marked 'skip' (dedup-spent) is a
+    # deliberate resend -> the force pass.
+    auto_items, forced_items = [], []
+    for n in notices:
+        chosen = request.form.get(f'action_{n.project.project_id}', n.auto_action)
+        item = n.item_for(chosen) if chosen in ('activated', 'adjusted') else None
+        if item is None:
+            continue
+        (forced_items if n.auto_action == 'skip' else auto_items).append(item)
+
+    url_builder = _notify_url_builder()
+
+    def _send(items, *, force):
+        if not items:
+            return []
+        msgs = build_lifecycle_messages(
+            db.session, per_project=items,
+            requested_by=current_user.username, url_builder=url_builder)
+        return get_notifier().send_many(msgs, force=force) if msgs else []
+
+    summary = notify_summary(_send(auto_items, force=False)
+                             + _send(forced_items, force=True))
+    return render_template(
+        'dashboards/admin/fragments/notify_project_result_htmx.html',
+        summary=summary, projcode=root.projcode)
 
 
 @bp.route('/htmx/edit-allocation-form/<int:allocation_id>')
