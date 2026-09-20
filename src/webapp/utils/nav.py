@@ -221,7 +221,7 @@ NAV_SECTIONS = (
              'icon': 'fa-solid fa-file-signature'},
             {'endpoint': 'admin_dashboard.facilities', 'label': 'Facilities & Allocations',
              'icon': 'fa-solid fa-building'},
-            {'endpoint': 'admin_dashboard.account_requests', 'label': 'Accounts',
+            {'endpoint': 'admin_dashboard.account_requests', 'label': 'Account Requests',
              'icon': 'fa-solid fa-user-plus', 'visible': _can_manage_account_requests},
             {'endpoint': 'admin_dashboard.events', 'label': 'Events',
              'icon': 'fa-solid fa-calendar-days', 'visible': _can_manage_events},
