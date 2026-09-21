@@ -148,7 +148,7 @@ Facts worth having in front of you:
 | Consumers | `handlers/new.py:108,200` and `handlers/update.py:159,280` → `project.allocation_type_id` |
 | Also | `handlers/new.py:175` → `facility_id = self.allocation_type.panel.facility_id` → `next_projcode(..., allocate=True)` |
 | On failure | `errs.report(...)` then a hard **422**: `raise_if_any()` fires *before* any transaction opens, action recorded `failed`, nothing written |
-| Coverage | **5 of 11** strategies are exercised by all 41 committed fixtures (`tests/unit/test_xras_extractors.py::EXPECTED`, pinned by `test_five_distinct_strategies_are_exercised`) |
+| Coverage | **5 of 11** strategies are exercised by all 41 committed fixtures (`tests/unit/xras/test_xras_extractors.py::EXPECTED`, pinned by `test_five_distinct_strategies_are_exercised`) |
 
 ### The field nobody reads
 
@@ -357,7 +357,7 @@ FK; this table has one.
 ## 7. Verification
 
 - **The additivity guarantee, as a test.** With the table **empty**, the full
-  `EXPECTED` corpus in `tests/unit/test_xras_extractors.py` (41 entries, 5
+  `EXPECTED` corpus in `tests/unit/xras/test_xras_extractors.py` (41 entries, 5
   distinct pairs) is unchanged and `test_five_distinct_strategies_are_exercised`
   still passes. This is the literal statement of "does not break anything in its
   absence" — write it first.
@@ -374,7 +374,7 @@ FK; this table has one.
   `tests/integration/test_schema_validation.py:561` (the existing
   `test_xras_resource_repository_key_resource_schema`, which exists because that
   model *was wrong once, with 5 columns instead of 2*).
-- **Wire vocabulary.** Add the new read to `tests/unit/test_xras_wire_vocabulary.py`.
+- **Wire vocabulary.** Add the new read to `tests/unit/xras/test_xras_wire_vocabulary.py`.
   ⚠️ Read `handlers/_fields.py:150-163` first: the resource resolver read
   `'key'` instead of `'resourceRepositoryKey'` for an entire sprint, so **every
   resource on every action** silently reported `No resource found in SAM

@@ -164,7 +164,7 @@ def _access_strategy(action) -> Optional[SelectionParms]:
     WARNING: The corpus reaches **5 of the 11 strategies**, and growing it 8 -> 41 did not
     move that number at all — so it is a measurement, not a small sample. The other six
     see no traffic at this site and are pinned only by unit tests. See
-    ``tests/unit/test_xras_extractors.py::test_five_distinct_strategies_are_exercised``.
+    ``tests/unit/xras/test_xras_extractors.py::test_five_distinct_strategies_are_exercised``.
     """
     allocation_type = _clean(get_field(action, 'allocationType'))
     if allocation_type is not None:
@@ -452,7 +452,7 @@ def resolve_area_of_interest(session, action, errs: ActionErrors,
     takes. It is the name fallback that would bite: ``area_of_interest`` is
     ``utf8mb3_bin``, so the comparison is case-**sensitive** and a wire spelling that
     differs only in case finds nothing. Pinned by
-    ``tests/unit/test_xras_extractors.py::KNOWN_FOS_CASE_DIFFERENCES``.
+    ``tests/unit/xras/test_xras_extractors.py::KNOWN_FOS_CASE_DIFFERENCES``.
     """
     fos = primary_fos_num(action, warnings=warnings)
     if fos is None:

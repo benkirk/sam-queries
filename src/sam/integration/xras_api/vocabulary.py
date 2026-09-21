@@ -26,7 +26,7 @@ from typing import Any, Tuple
 #: every XRAS payload (``resources[].resourceRepositoryKey``) and in the SQL
 #: aliases/ORM columns that mirror it. A single symbol for the **dict-key
 #: reads** in the outbound parsers; the value is pinned by
-#: ``tests/unit/test_xras_wire_vocabulary.py``. Definitional sites (ORM
+#: ``tests/unit/xras/test_xras_wire_vocabulary.py``. Definitional sites (ORM
 #: ``Column`` names, ``AS resourceRepositoryKey`` in raw SQL, the marshmallow
 #: field name) keep the literal, where it reads as schema rather than a lookup.
 RESOURCE_REPOSITORY_KEY = 'resourceRepositoryKey'

@@ -229,7 +229,7 @@ scopes the PKCE verifier / state cookie to the origin the login **started** on,
 so a cross-host return cannot see that cookie and fails with
 `MismatchingStateError`. Two guards exist — `helm/tests/test-oidc-render.sh`
 asserts the var does not render, and
-`tests/unit/test_oidc_auth.py::test_oidc_login_callback_follows_forwarded_host`
+`tests/unit/webapp/test_oidc_auth.py::test_oidc_login_callback_follows_forwarded_host`
 pins the derivation for both hosts.
 
 Logout needs no equivalent setting: it already derives

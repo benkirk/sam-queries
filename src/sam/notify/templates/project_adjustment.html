@@ -1,0 +1,31 @@
+{% extends "_email_base.html" %}
+
+{% block content %}
+    <p>Dear {{ recipient_name }},</p>
+
+    <div class="callout good">
+        The allocations for your project <strong>{{ project_code }}</strong>{% if project_title %} - "{{ project_title }}"{% endif %}
+        have been updated on NSF NCAR computing resources.
+    </div>
+
+    {% if resources %}
+    <h3>Your current allocations</h3>
+    <table class="data">
+        <tr><th>Resource</th><th>Amount</th><th>Through</th></tr>
+        {% for r in resources %}
+        <tr>
+            <td>{% if r.details_url %}<a href="{{ r.details_url }}">{{ r.resource_name }}</a>{% else %}{{ r.resource_name }}{% endif %}</td>
+            <td>{{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}</td>
+            <td>{{ r.end_date or '—' }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% endif %}
+
+{% include "_project_onboarding.html" %}
+{% endblock %}
+
+{% block footer_extra %}
+        <p>If you believe you received this message in error, please contact
+            <a href="mailto:help@ucar.edu">help@ucar.edu</a>.</p>
+{% endblock %}

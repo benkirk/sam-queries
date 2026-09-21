@@ -414,6 +414,20 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_align_allocations",
+    "/admin/htmx/align-allocations/<projcode>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_align_allocations_form",
+    "/admin/htmx/align-allocations-form/<projcode>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_alloc_types_for_panel",
     "/admin/htmx/alloc-types-for-panel",
     [
@@ -969,6 +983,27 @@
   [
     "admin_dashboard.htmx_mnemonic_suggest_codes",
     "/admin/htmx/mnemonic-suggest-codes",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_notify_project",
+    "/admin/htmx/notify-project/<projcode>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_notify_project_form",
+    "/admin/htmx/notify-project-form/<projcode>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_notify_project_preview",
+    "/admin/htmx/notify-project-preview/<projcode>",
     [
       "GET"
     ]

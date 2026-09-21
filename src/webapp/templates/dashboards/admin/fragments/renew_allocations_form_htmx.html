@@ -171,6 +171,28 @@
     </label>
   </div>
 
+  <!-- Optional email to each project's lead/admin (default on) -->
+  <div class="form-check mt-2 mb-0">
+    {%- set notify_checked = (form.get('notify_leads') == '1') if form else true -%}
+    <input class="form-check-input" type="checkbox"
+           name="notify_leads" id="renewNotifyLeads"
+           value="1"
+           {% if notify_checked %}checked{% endif %}>
+    <label class="form-check-label small" for="renewNotifyLeads">
+      <i class="fa-solid fa-envelope text-primary me-1"></i>
+      <strong>Email the lead and admin</strong> of each project in the tree
+      that it has been renewed, with a link back to manage it.
+    </label>
+  </div>
+
+  <div class="mt-2 ms-4">
+    <label class="form-label small mb-1" for="renewOperatorComment">
+      Comments <span class="text-muted">(optional — included in the email)</span>
+    </label>
+    <textarea class="form-control form-control-sm" rows="2" maxlength="1000"
+              name="operator_comment" id="renewOperatorComment">{{ form.get('operator_comment', '') if form else '' }}</textarea>
+  </div>
+
   {% endif %}
 
 {% endcall %}

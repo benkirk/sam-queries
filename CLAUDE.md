@@ -110,7 +110,10 @@ sam-queries/
 ├── migrations/           # Alembic (system_status DB only)
 ├── compose.yaml          # Docker Compose (webapp:7050, webdev:5050, DBs, cache)
 └── tests/                # See docs/TESTING.md for suite size/timings
-    ├── unit/  integration/  api/  perf/   # perf/ gated behind -m perf
+    ├── unit/<domain>/       # per-domain dirs (gates xras notify tasks charts
+    │                        #   cli webapp models queries manage); the matching
+    │                        #   marker is auto-applied from the directory (C4)
+    ├── integration/ api/ perf/   # perf/ gated behind -m perf; api/ has xras_audit_rows/
     └── factories/           # Layer-2 builders (core, resources, projects,
                              #   operational, security, summaries, _seq)
 ```
@@ -429,7 +432,7 @@ modal — Bootstrap fires the toggle on the open modal and hides it, so the
 control looks dead with nothing in the console. Openers live on the *card*
 (modal closed); in-modal controls only `hx-target` the body. A fragment that
 reaches for a host-page shell id is pinned in `HTMX_FRAGMENT_SHELL_DEPS`
-(`tests/unit/test_modal_shell_contract.py`); the `wire-dashboard-feature` skill
+(`tests/unit/gates/test_modal_shell_contract.py`); the `wire-dashboard-feature` skill
 (`.claude/skills/`) carries the author-time checklist for wiring dashboard UI.
 
 **PUT (partial update) gating:** load with `partial=True`, then gate the
@@ -491,7 +494,7 @@ no `url_for` can reach: relative `url()` targets inside a stylesheet
   until they expire. Covered by the existing post-deploy step,
   `sam-admin cache --refresh`. The asset is never unreachable — `v` is a cache
   key, not a lookup key.
-- Gates in `tests/unit/test_static_assets.py`: a real rendered page must emit
+- Gates in `tests/unit/gates/test_static_assets.py`: a real rendered page must emit
   **only** versioned static URLs, no template may hardcode `/static/`, and no
   template may append `?`/`#` after `url_for('static')` (that one is a
   correctness bug — the URL already carries a query string).
@@ -515,7 +518,7 @@ Anything longer is a design doc: put it in `docs/` and leave the constraint
 plus the path. **Always keep** a comment recording a real trap, a past
 production bug, or a non-obvious invariant — compress it, never delete it.
 
-Enforced by `tests/unit/test_docs.py` (spelling, markdown links, cited paths,
+Enforced by `tests/unit/gates/test_docs.py` (spelling, markdown links, cited paths,
 changelog phrasing, doc length). Measured by `scripts/doc_ratio.py`. Full
 rules and the cleanup sprint: `docs/plans/DOC_SLIMMING.md`.
 
@@ -577,7 +580,7 @@ docker compose --profile test up -d mysql-test
 export SAM_TEST_DB_URL='mysql+pymysql://root:root@127.0.0.1:3307/sam'
 
 source etc/config_env.sh && pytest          # parallel (-n auto from pytest.ini)
-pytest tests/unit/test_query_functions.py -v
+pytest tests/unit/queries/test_query_functions.py -v
 pytest -n 0                                 # force serial
 ```
 
@@ -589,19 +592,26 @@ pytest -n 0                                 # force serial
   **before** `load_dotenv` can supply the real ones. ⚠️ That key is
   write-provisioned — a person merge deletes an account in production with no
   undo — so config alone is not enough: config is a value a test can override
-  and a fixture can forget. Gates: `tests/unit/test_outbound_guards.py`.
+  and a fixture can forget. Gates: `tests/unit/models/test_outbound_guards.py`.
   Tests drive the configured path with fakes, patching the transport on the
   *instance* (which shadows the guard) or replacing `from_environment`.
 - **Isolation**: per-test SAVEPOINT rollback
   (`join_transaction_mode="create_savepoint"`) — xdist workers share one DB
   safely. **Safety guard**: `tests/conftest.py` refuses any database other
   than the allowlisted mysql-test container (host port 3307).
-- **pytest.ini gates**: `-m "not perf and not stress"` — both tiers run only on
-  request (`pytest -m perf -n 0`, `pytest -m stress`) — plus `--maxfail=5`,
-  300 s per-test timeout, `-n auto`. Each gated tier owns a declaration file the
-  tests check themselves against: `tests/perf/baselines.json` for query-count
-  limits, `tests/stress/scenarios.json` for what each scenario expects the
-  `xras_action_log` row to say.
+- **pytest.ini gates**: `-m "not perf"` — the `perf` tier runs only on request
+  (`pytest -m perf -n 0`) — plus `--maxfail=5`, 300 s per-test timeout, `-n auto`.
+  The perf tier owns `tests/perf/baselines.json` for query-count limits. The
+  former `stress` tier now runs in the default suite as
+  `tests/api/xras_audit_rows/` (xdist-safe; rows cleaned up by captured PK), and
+  its `scenarios.json` records what each scenario expects the `xras_action_log`
+  row to say.
+- **Domain markers are derived from the directory**, not hand-applied:
+  `pytest_collection_modifyitems` tags each `tests/unit/<domain>/` test with its
+  domain marker (`gate` for `gates/`), and `tests/api`/`tests/integration` with
+  `api`/`integration`. So `pytest -m xras` (or gate/notify/tasks/charts/cli/
+  webapp/models/queries/manage) selects a directory and cannot drift. Registered
+  in `pytest.ini`; identical fixtures live in the domain's `conftest.py`.
 - **Route handlers use Flask-SQLAlchemy's `db.session`** (its own connection) —
   they only see committed snapshot rows, and route-level writes would COMMIT.
   House convention: HTTP-layer tests cover auth/validation/404/render smoke;
@@ -624,7 +634,7 @@ resolves at import time — without it, module-level
 `from system_status import DerechoStatus` during collection binds to a
 standalone declarative_base and the bind routing never engages.
 
-**Route-map parity**: `tests/unit/test_route_map_parity.py` pins all dashboard
+**Route-map parity**: `tests/unit/gates/test_route_map_parity.py` pins all dashboard
 `(endpoint, rule, methods)` triples to `tests/unit/snapshots/`; regen with
 `ROUTE_MAP_REGEN=1` and commit the diff when routes intentionally change.
 
@@ -807,7 +817,7 @@ and asserts the inequality.
 ❌ **DON'T** add eager imports to `sam/notify/__init__.py` — `sam/__init__.py`
 exports `NotificationLog`, so eager imports there put jinja2 and the
 transports into every ORM consumer's import graph.
-`tests/unit/test_notify_import_graph.py` is the gate.
+`tests/unit/gates/test_notify_import_graph.py` is the gate.
 ❌ **DON'T** export `sam/queries/expiration_notices.py`,
 `sam/queries/xras_notices.py` **or `sam/queries/account_notices.py`** from
 `sam/queries/__init__.py` — that file
@@ -892,7 +902,7 @@ and all the measurements: `docs/plans/implemented/CHART_ARCHITECTURE.md`,
    whatever the light rcParams baked in.
 ✅ **DO** regenerate the fingerprint snapshot in the *same commit* as an
    intentional visual change:
-   `CHART_FINGERPRINT_REGEN=1 pytest tests/unit/test_chart_fingerprints.py`.
+   `CHART_FINGERPRINT_REGEN=1 pytest tests/unit/charts/test_chart_fingerprints.py`.
    A fingerprint delta in a commit that didn't declare one is a bug. **A
    desktop-light delta in a mobile- or dark-tuning commit always is.**
 ✅ **DO** run `sam-admin cache --refresh --category chart` after deploying a

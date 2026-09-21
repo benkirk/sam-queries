@@ -12,7 +12,7 @@
   *initial* state — it is passed `theme` from the context processor, the same
   value already on <html data-bs-theme>.
 
-  External JS, not an inline handler: tests/unit/test_template_csp_lint.py
+  External JS, not an inline handler: tests/unit/gates/test_template_csp_lint.py
   forbids on*= attributes, and correctly so — the CSP is nonce-free by design.
 
   Args:

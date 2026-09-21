@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from flask import current_app, request, url_for
 from sqlalchemy.orm import Session
 
 from sam.notify import Notifier
@@ -24,6 +25,18 @@ from sam.notify.ledger import NotificationLedger
 from webapp.extensions import db
 
 logger = logging.getLogger(__name__)
+
+
+def public_url_root() -> str:
+    """Root for links in outgoing mail: PUBLIC_BASE_URL, else this request's
+    host. An operator on the cluster hostname must not mail that name to PIs."""
+    base = current_app.config.get('PUBLIC_BASE_URL') or request.url_root
+    return base.rstrip('/') + '/'
+
+
+def public_url_for(endpoint: str, **values) -> str:
+    """``url_for`` rooted at :func:`public_url_root`."""
+    return public_url_root() + url_for(endpoint, **values).lstrip('/')
 
 
 def get_notifier(*, ledger: bool = True) -> Notifier:

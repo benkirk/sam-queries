@@ -168,6 +168,29 @@ _schema_drift_memo: Optional[Tuple[float, Dict[str, Any]]] = None
 _SCHEMA_DRIFT_TTL_SECONDS = 60.0
 
 
+#: DB-vs-app clock skew tolerated before the Database card flags it.
+CLOCK_SKEW_LIMIT_SECONDS = 300
+
+
+def clock_skew(engine) -> Optional[Dict[str, Any]]:
+    """The SAM DB clock against this process's clock, or None when unreadable.
+
+    SAM is naive-Mountain and compares app-stamped values with the DB clock
+    (`is_active`, `modified_time`), so a server on another zone is silently
+    wrong by the offset. The runtime twin of tests/integration/test_db_timezone.py.
+    """
+    from sqlalchemy import select
+    from sam.sqlcompat import sam_now
+    try:
+        with engine.connect() as conn:
+            db_now = conn.execute(select(sam_now())).scalar()
+        skew = abs((db_now - datetime.now()).total_seconds())
+    except Exception:
+        return None
+    return {'db_now': db_now, 'skew_seconds': round(skew),
+            'ok': skew < CLOCK_SKEW_LIMIT_SECONDS}
+
+
 def _mapped_tables() -> Dict[str, set]:
     """Return {table_name: {column_names}} for models on the default bind.
 
@@ -523,7 +546,9 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         }
 
     for name, engine in engines.items():
-        databases.append(_health_row(name, engine))
+        # The clock invariant is SAM's alone: system_status is app-stamped UTC.
+        extra = {'clock': clock_skew(engine)} if name == 'sam' else {}
+        databases.append(_health_row(name, engine, **extra))
 
     # hpc-usage-queries plugin (one engine per configured machine).
     # Registered on app.extensions by webapp.jobs.init_job_history at

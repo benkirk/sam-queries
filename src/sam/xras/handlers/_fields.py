@@ -159,7 +159,7 @@ def resolve_resource(session, wire_resource, errs: ActionErrors) -> Optional[Res
 
     It survived because every test built its own ``resources[]`` entries as
     ``{'key': ...}``, including the oracle's re-targeting helper. The name is now
-    pinned by ``tests/unit/test_xras_wire_vocabulary.py``, which checks the whole
+    pinned by ``tests/unit/xras/test_xras_wire_vocabulary.py``, which checks the whole
     read-vocabulary against the schema rather than this one field.
 
     WARNING: Only **13** mapping rows exist and 11 active SAM resources have none, so this is

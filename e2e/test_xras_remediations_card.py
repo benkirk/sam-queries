@@ -1,6 +1,6 @@
 """The XRAS Remediations card, in a real browser.
 
-Complements `tests/unit/test_xras_remediations.py`: those assert what the
+Complements `tests/unit/xras/test_xras_remediations.py`: those assert what the
 response body carries, this asserts the card renders into its host page, that
 adding it did not turn the three-pane worklist into four, and that its chips
 filter without a page reload.

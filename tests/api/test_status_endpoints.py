@@ -11,7 +11,6 @@ routes and the test fixture now route through Flask-SQLAlchemy's
 
 from datetime import datetime
 
-import pytest
 
 from system_status import (
     DerechoStatus,
@@ -26,7 +25,6 @@ from system_status import (
 )
 
 
-pytestmark = pytest.mark.integration
 
 
 # ============================================================================

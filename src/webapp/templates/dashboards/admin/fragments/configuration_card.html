@@ -397,6 +397,13 @@
                         {% else %}
                             {{ stat('Pool',  '—') }}
                         {% endif %}
+                        {% if db_info.clock %}
+                            {{ stat('DB clock',
+                                    (db_info.clock.db_now | fmt_date(fmt='%Y-%m-%d %H:%M:%S')) ~ ' · '
+                                    ~ (db_info.clock.skew_seconds | fmt_number) ~ ' s from app'
+                                    ~ ('' if db_info.clock.ok else ' — server timezone does not match the app'),
+                                    '' if db_info.clock.ok else 'text-danger') }}
+                        {% endif %}
                         {% if db_info.error %}
                             {{ stat('Error', db_info.error, 'text-danger') }}
                             {% if db_info.error_detail and db_info.error_detail.hint %}

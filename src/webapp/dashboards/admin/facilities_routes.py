@@ -173,7 +173,7 @@ def _alloc_type_create_context():
 #
 # Endpoints, URL rules, templates, permissions, and not-found messages are
 # identical to the hand-written routes these replace (pinned by
-# tests/unit/test_admin_facilities_resources_crud.py and the route-map
+# tests/unit/webapp/test_admin_facilities_resources_crud.py and the route-map
 # parity snapshot). Panel edit gained schema validation (EditPanelForm) —
 # it previously coerced request.form inline.
 

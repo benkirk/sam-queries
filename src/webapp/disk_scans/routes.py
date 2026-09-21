@@ -742,7 +742,7 @@ def directories_user_page(resource):
 # Every fragment route was the same four lines (build ctx, build fragment_url,
 # build the scope, call the shared renderer), differing only by mode and
 # panel. `register_panels` generates them from these specs; the endpoint names
-# it derives are pinned by tests/unit/test_route_map_parity.py.
+# it derives are pinned by tests/unit/gates/test_route_map_parity.py.
 #
 # The three `explore` PAGES stay hand-written below: their rules are irregular
 # (project mode is /<projcode>/directories/explore, the others /…/explore) and

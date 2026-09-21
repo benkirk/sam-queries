@@ -616,10 +616,12 @@ sam-queries/
 ├── tests/                       # Test suite (see docs/TESTING.md)
 │   ├── conftest.py              # Safety guard + session/app/client fixtures
 │   ├── factories/               # Layer-2 builder functions for write-path tests
-│   ├── unit/                    # Unit tests (ORM, queries, CLI, webapp)
+│   ├── unit/                    # Unit tests, one directory per domain:
+│   │                            #   gates/ xras/ notify/ tasks/ charts/ cli/
+│   │                            #   webapp/ models/ queries/ manage/
 │   ├── integration/             # Integration tests (schema validation, views,
 │   │                            #   status tier, CLI entry-point smoke)
-│   └── api/                     # API endpoint + schema tests
+│   └── api/                     # API endpoint + schema tests (+ xras_audit_rows/)
 │
 └── utils/                       # Miscellaneous utilities
     ├── run-webui-dbg.sh         # Debug launcher for Web UI
@@ -715,10 +717,10 @@ pytest --cov=src --cov-report=html
 
 **Test specific areas:**
 ```bash
-pytest tests/unit/test_query_functions.py -v      # query functions
+pytest tests/unit/queries/test_query_functions.py -v      # query functions
 pytest tests/integration/test_schema_validation.py -v  # ORM/DB drift
 pytest tests/api/test_schemas.py -v               # Marshmallow schemas
-pytest tests/unit/test_sam_search_cli.py -v       # CLI integration
+pytest tests/unit/cli/test_sam_search_cli.py -v       # CLI integration
 pytest tests/unit/ -v                             # all unit tests
 pytest tests/integration/ -v                      # all integration tests
 pytest tests/api/ -v                              # all API tests

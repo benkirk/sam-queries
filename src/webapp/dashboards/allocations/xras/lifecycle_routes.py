@@ -31,7 +31,7 @@ from sam.queries.xras_activation import (
 )
 # Full dotted path, never through `sam.queries` — that package imports its
 # submodules eagerly, and this one imports `sam.notify`. See the module
-# docstring; `tests/unit/test_notify_import_graph.py` is the gate.
+# docstring; `tests/unit/gates/test_notify_import_graph.py` is the gate.
 from sam.integration.xras_api import approver_comment_for_action
 from sam.queries.xras_notices import build_xras_messages, load_xras_action
 from sam.schemas.forms import XrasActivationEventForm, XrasDismissForm

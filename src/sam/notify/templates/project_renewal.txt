@@ -1,0 +1,16 @@
+Dear {{ recipient_name }},
+
+Your project {{ project_code }}{% if project_title %} - "{{ project_title }}"{% endif %}
+has been {{ action or 'renewed' }} on NSF NCAR computing resources{% if has_subtree %},
+along with its sub-projects{% endif %}.
+{% if resources %}
+Allocations and their end dates:
+{% for r in resources %}
+  - {{ r.resource_name }}: {{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}
+    {%- if r.end_date %} through {{ r.end_date }}{% endif %}
+{%- endfor %}
+{% endif %}
+{% include "_project_onboarding.txt" %}
+--
+This is an automated notification from the NSF NCAR Systems Accounting Manager.
+If you believe you received this message in error, please contact help@ucar.edu.

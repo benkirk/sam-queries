@@ -644,7 +644,7 @@ def htmx_mnemonic_suggest_codes():
 #
 # Endpoints, URL rules, templates, permissions, and not-found messages are
 # identical to the hand-written routes these replace (pinned by
-# tests/unit/test_admin_orgs_crud.py and the route-map parity snapshot).
+# tests/unit/webapp/test_admin_orgs_crud.py and the route-map parity snapshot).
 
 _org_spec = partial(
     CrudSpec,

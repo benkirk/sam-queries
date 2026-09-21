@@ -23,6 +23,9 @@ __all__ = [
     'log_allocation_transaction',
     'create_allocation',
     'update_allocation',
+    'alignment_target',
+    'alignment_conflicts',
+    'align_project_allocations',
     'exchange_allocations',
     'propagate_allocation_to_subprojects',
     'detach_allocation',
@@ -433,6 +436,97 @@ def update_allocation(
         session.flush()
 
     return allocation
+
+
+def alignment_target(sources) -> Optional[tuple]:
+    """The ``(min start, max end)`` window across the dated allocations, or
+    None when fewer than two are dated (nothing to align).
+
+    Open-ended allocations (``end_date is None``) have no defined end and are
+    excluded from the window.
+    """
+    dated = [s for s in sources if s.end_date is not None]
+    if len(dated) < 2:
+        return None
+    return (min(s.start_date for s in dated), max(s.end_date for s in dated))
+
+
+def alignment_conflicts(source, start, end) -> List[Allocation]:
+    """Other live allocations that widening ``source`` (and its inheriting
+    children) to ``[start, end]`` would overlap on the same account.
+
+    ``update_allocation`` checks only start <= end; two overlapping rows on one
+    account are both active at once and their usage windows double-count.
+    """
+    class _Range:
+        start_date, end_date = start, end
+
+    nodes: List[Allocation] = []
+    source._walk_tree(nodes.append)
+    own = {n.allocation_id for n in nodes}
+    return [
+        other for node in nodes if node.account is not None
+        for other in node.account.allocations
+        if not other.deleted and other.allocation_id not in own
+        and date_ranges_overlap(other, _Range)
+    ]
+
+
+def align_project_allocations(
+    session: Session,
+    *,
+    root_project_id: int,
+    source_active_at: datetime,
+    user_id: int,
+) -> List[Allocation]:
+    """Set every dated resource's root allocation to one uniform
+    ``[min(start), max(end)]`` period of performance.
+
+    The target is the *widest* window across resources, so each change only
+    widens a resource's period — inheriting children stay within their parent
+    and are updated by ``update_allocation``'s cascade (a zero-delta EDIT audit
+    row per touched node; the amount is untouched). Open-ended allocations are
+    left as-is. Runs inside the caller's ``management_transaction()`` — does NOT
+    commit.
+
+    Returns the root allocations actually changed (already-aligned ones skipped).
+
+    Raises:
+        ValueError: a widened window would overlap another allocation on the
+            same account (see ``alignment_conflicts``).
+    """
+    from sam.projects.projects import Project
+    from sam.manage.renew import find_source_allocations_at
+
+    root_project = session.get(Project, root_project_id)
+    if root_project is None:
+        raise ValueError(f"Project {root_project_id} not found")
+
+    sources = find_source_allocations_at(session, root_project, source_active_at)
+    target = alignment_target(sources)
+    if target is None:
+        return []
+    min_start, max_end = target
+
+    changed: List[Allocation] = []
+    for src in sources:
+        if src.end_date is None:
+            continue
+        if (src.start_date, src.end_date) == (min_start, max_end):
+            continue
+        if alignment_conflicts(src, min_start, max_end):
+            raise ValueError(
+                f"Aligning {src.account.resource.resource_name} to "
+                f"{min_start:%Y-%m-%d} - {max_end:%Y-%m-%d} would overlap "
+                f"another allocation on the same account.")
+        update_allocation(
+            session, src.allocation_id, user_id,
+            start_date=min_start, end_date=max_end,
+            comment="Aligned to a uniform period of performance",
+        )
+        changed.append(src)
+    session.flush()
+    return changed
 
 
 def exchange_allocations(

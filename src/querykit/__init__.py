@@ -11,7 +11,7 @@ from each other. Putting the shared code inside either one would create that
 edge. So it lives here, imports **only SQLAlchemy**, and creates no edges at
 all.
 
-``tests/unit/test_faceted_queries.py`` holds a subprocess import-graph gate
+``tests/unit/models/test_faceted_queries.py`` holds a subprocess import-graph gate
 that enforces the "only SQLAlchemy" half of that contract.
 """
 

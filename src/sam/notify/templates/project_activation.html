@@ -1,0 +1,35 @@
+{% extends "_email_base.html" %}
+
+{% block content %}
+    <p>Dear {{ recipient_name }},</p>
+
+    <div class="callout good">
+        Your project <strong>{{ project_code }}</strong>{% if project_title %} - "{{ project_title }}"{% endif %}
+        is now active and ready to use on NSF NCAR computing resources{% if has_subtree %},
+        along with its sub-projects{% endif %}.
+    </div>
+
+    {% if resources %}
+    <h3>Your allocations</h3>
+    <table class="data">
+        <tr><th>Resource</th><th>Amount</th><th>Through</th></tr>
+        {% for r in resources %}
+        <tr>
+            <td>{% if r.details_url %}<a href="{{ r.details_url }}">{{ r.resource_name }}</a>{% else %}{{ r.resource_name }}{% endif %}</td>
+            <td>{{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}</td>
+            <td>{{ r.end_date or '—' }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% endif %}
+
+    <p>To get started, log in with your NSF NCAR credentials and charge work to
+        your project code <strong>{{ project_code }}</strong>.</p>
+
+{% include "_project_onboarding.html" %}
+{% endblock %}
+
+{% block footer_extra %}
+        <p>If you believe you received this message in error, please contact
+            <a href="mailto:help@ucar.edu">help@ucar.edu</a>.</p>
+{% endblock %}

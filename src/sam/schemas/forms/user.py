@@ -137,6 +137,12 @@ class RenewAllocationsForm(HtmxFormSchema):
     # Route injects explicit False when the checkbox is unchecked (absent
     # from request.form).
     replace_existing = f.Bool(load_default=False)
+    # Optional email to each project's lead/admin. Default ON in the UI, but
+    # an unchecked box sends no key, so load_default is False and the route
+    # injects presence explicitly (see form_input).
+    notify_leads = f.Bool(load_default=False)
+    # Optional operator note rendered in the lead/admin email.
+    operator_comment = f.Str(load_default=None, validate=v.Length(max=1000))
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
@@ -158,11 +164,32 @@ class ExtendAllocationsForm(HtmxFormSchema):
     source_active_at = f.Date('%Y-%m-%d', required=True)
     new_end_date = f.Str(required=True)   # 23:59:59 convention applied in post_load
     resource_ids = f.List(f.Int(), required=True, validate=v.Length(min=1))
+    # See RenewAllocationsForm.notify_leads — default ON in the UI, absent
+    # when unchecked, so load_default False + explicit presence in the route.
+    notify_leads = f.Bool(load_default=False)
+    # Optional operator note rendered in the lead/admin email.
+    operator_comment = f.Str(load_default=None, validate=v.Length(max=1000))
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
         data['new_end_date'] = self.normalize_end_date(data['new_end_date'])
         return data
+
+
+class AlignAllocationsForm(HtmxFormSchema):
+    """Validate the admin 'Align Allocations' form (Edit Project -> Allocations tab).
+
+    Align sets every dated resource to one [min(start), max(end)] window. The
+    target is computed server-side from ``source_active_at``; the client submits
+    only that date.
+    """
+    source_active_at = f.Date('%Y-%m-%d', required=True)
+
+
+class NotifyProjectForm(HtmxFormSchema):
+    """The manual Notify modal's note; the per-row ``action_<id>`` choices
+    are dynamic and read by the route."""
+    operator_comment = f.Str(load_default=None, validate=v.Length(max=1000))
 
 
 class ExchangeAllocationForm(HtmxFormSchema):

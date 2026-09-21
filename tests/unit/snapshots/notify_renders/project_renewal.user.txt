@@ -1,0 +1,51 @@
+Dear Sam User,
+
+Your project SCSG0001 - "Sample Project Title"
+has been renewed on NSF NCAR computing resources,
+along with its sub-projects.
+
+Allocations and their end dates:
+
+  - Casper: 50,000 hours through 2027-09-30
+  - Derecho: 1.15M hours through 2027-09-30
+
+You are receiving this as the project's contact.
+The project lead is Jane Lead (jane.lead@example.edu).
+
+Note from NSF NCAR allocations staff:
+
+Your Casper hours were added per your request.
+
+Take a look at the new SAM
+
+SAM, the Systems Accounting Manager, was rebuilt from the ground up this year.
+Much of what used to take a help-desk ticket you can now see, and do, yourself:
+
+  - Manage your project yourself: add and remove members.
+    https://sam.hpc.ucar.edu/admin/project/SCSG0001/edit?active_at=2026-10-01&tab=allocations
+
+  - Move allocations between your sub-projects yourself, without asking for
+    new quota — open your project above and use the allocations tab.
+
+  - See where your allocation is going: usage against each allocation, how
+    your burn rate compares with the time remaining, and a breakdown by user.
+    https://sam.hpc.ucar.edu/user/accounts
+
+  - Job history: every job charged to your project, by user, queue and date,
+    with wait-time, job-size and run-time distributions. My Jobs shows your
+    own jobs across all of your projects.
+    https://sam.hpc.ucar.edu/user/jobs
+
+  - Disk usage in detail, for Campaign Storage: usage over time by user, your
+    largest directories, and data nobody has touched in a long time.
+    https://sam.hpc.ucar.edu/user/data
+
+  - System status: Derecho, Casper and JupyterHub queues, node health and
+    scheduled maintenance, no login required.
+    https://sam.hpc.ucar.edu/status/derecho
+
+  - Documentation: https://ncar-hpc-docs.readthedocs.io/
+
+--
+This is an automated notification from the NSF NCAR Systems Accounting Manager.
+If you believe you received this message in error, please contact help@ucar.edu.

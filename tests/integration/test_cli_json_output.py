@@ -6,7 +6,7 @@ Drive the Click CLIs end-to-end with `CliRunner`, asserting:
   - the envelope has a `kind` field plus the documented top-level keys
   - progress bars (UserAbandonedCommand etc.) don't corrupt stdout
 
-The `mock_db_session` pattern matches tests/unit/test_sam_search_cli.py:
+The `mock_db_session` pattern matches tests/unit/cli/test_sam_search_cli.py:
 patch `cli.core.context.Session` (and `cli.core.context.Session`) so the
 CLI runs against the SAVEPOINT'd test session.
 """
@@ -20,7 +20,6 @@ from cli.cmds.search import cli as search_cli
 from cli.cmds.admin import cli as admin_cli
 
 
-pytestmark = pytest.mark.integration
 
 
 @pytest.fixture

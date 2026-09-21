@@ -209,7 +209,7 @@ def nsf_program_contracts(nsf_program_id):
 # a unique index, and an IntegrityError surfaces as an unreadable 500-ish
 # error string). Both halves are therefore hand-written here, keeping the
 # endpoint names and URL rules the spec would have generated so the card's
-# url_for() calls and tests/unit/test_admin_orgs_crud.py are untouched.
+# url_for() calls and tests/unit/webapp/test_admin_orgs_crud.py are untouched.
 #
 # The form has two modes. They are *presentational*: "look up" adds a Fetch
 # button that prefills the field block via htmx, and Create then submits

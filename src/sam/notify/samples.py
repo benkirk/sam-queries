@@ -35,6 +35,9 @@ _SUBJECTS = {
     'account_queue_summary': 'NCAR HPC account requests: 4 waiting, 3 new',
     'account_verify': 'Verify your email address for your NCAR HPC account request',
     'account_rejected': 'Your NCAR HPC account request',
+    'project_renewal': 'Your NSF NCAR project SCSG0001 has been renewed',
+    'project_activation': 'Your NSF NCAR project SCSG0001 is now active',
+    'project_adjustment': 'Your NSF NCAR project SCSG0001 allocations have been updated',
 }
 
 _XRAS_ACTION_TYPES = {
@@ -160,6 +163,41 @@ def _account_queue_summary() -> Dict[str, Any]:
     }
 
 
+#: action word by lifecycle kind, for the sample context.
+_LIFECYCLE_ACTIONS = {
+    'project_renewal': 'renewed',
+    'project_activation': 'activated',
+    'project_adjustment': 'adjusted',
+}
+
+
+def _lifecycle(kind: str) -> Dict[str, Any]:
+    return {
+        **_PROJECT,
+        'action': _LIFECYCLE_ACTIONS[kind],
+        'has_subtree': True,
+        'resources': [
+            {'resource_name': 'Casper', 'amount': '50,000', 'units': 'hours',
+             'end_date': '2027-09-30',
+             'details_url': 'https://sam.hpc.ucar.edu/user/resource-details/'
+                            'SCSG0001?resource=Casper'},
+            {'resource_name': 'Derecho', 'amount': '1.15M', 'units': 'hours',
+             'end_date': '2027-09-30',
+             'details_url': 'https://sam.hpc.ucar.edu/user/resource-details/'
+                            'SCSG0001?resource=Derecho'},
+        ],
+        'links': {
+            'accounts': 'https://sam.hpc.ucar.edu/user/accounts',
+            'jobs': 'https://sam.hpc.ucar.edu/user/jobs',
+            'data': 'https://sam.hpc.ucar.edu/user/data',
+            'status': 'https://sam.hpc.ucar.edu/status/derecho',
+        },
+        'manage_url': 'https://sam.hpc.ucar.edu/admin/project/SCSG0001/edit'
+                      '?active_at=2026-10-01&tab=allocations',
+        'operator_comment': 'Your Casper hours were added per your request.',
+    }
+
+
 def _account_verify() -> Dict[str, Any]:
     return {
         'verify_url': 'https://sam.hpc.ucar.edu/register/verify/eyJpZCI6NDF9.abc.def',
@@ -192,6 +230,8 @@ def sample_context(kind: str, facility: Optional[str] = None) -> Dict[str, Any]:
         return _account_verify()
     if key == 'account_rejected':
         return _account_rejected()
+    if key in _LIFECYCLE_ACTIONS:
+        return _lifecycle(key)
     return _xras(key)
 
 
@@ -246,6 +286,13 @@ VARIABLE_NOTES: Dict[str, str] = {
     'changes.units': 'Unit label or empty.',
     'action_type': 'The XRAS action type as received, or empty.',
     'approver_comment': "The XRAS approver's note, or empty when there is none.",
+    'action': "The lifecycle action word: 'renewed' or 'extended'.",
+    'has_subtree': 'True when this project has sub-projects (shows the in-tree '
+                   'allocation-adjustment note).',
+    'manage_url': "Deep link to this project's Edit page (allocations tab).",
+    'operator_comment': "The sending operator's optional note, or empty.",
+    'resources.details_url': "Lifecycle kinds: this project's page for the resource.",
+    'links': 'Lifecycle kinds: landing pages, keys accounts, jobs, data, status.',
     'task_name': 'The scheduled task that ran.',
     'occurrence': 'The scheduled slot this run filled, ISO-8601.',
     'headline': 'One-line outcome, also used in the subject.',

@@ -294,7 +294,7 @@ source ../.env && pytest tests/ --no-cov
 source ../.env && pytest tests/
 
 # Specific test file
-source ../.env && pytest tests/unit/test_basic_read.py -v
+source ../.env && pytest tests/unit/models/test_basic_read.py -v
 
 # Run only marked tests
 source ../.env && pytest -m "not slow"
@@ -768,7 +768,7 @@ mysql -u root -h 127.0.0.1 -proot sam
 ### Common Commands
 ```bash
 # Run specific test file
-pytest tests/unit/test_basic_read.py -v
+pytest tests/unit/models/test_basic_read.py -v
 
 # Run tests matching pattern
 pytest -k "test_user" -v

@@ -7,7 +7,7 @@ bridging between the raw test `session` fixture and Flask-SQLAlchemy's
 `db.session` — a successful PUT would mutate the snapshot for real.
 
 The `update_allocation` service function itself is exercised at the
-service layer by tests/unit/test_management_functions.py.
+service layer by tests/unit/manage/test_management_functions.py.
 """
 import os
 
@@ -16,7 +16,6 @@ import pytest
 from sam import Allocation
 
 
-pytestmark = pytest.mark.integration
 
 
 @pytest.fixture

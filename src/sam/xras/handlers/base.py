@@ -16,7 +16,7 @@ what makes "nothing was written" true -- and
 and re-raises. A ``try`` here turns either into a silent partial write.
 
 WARNING: ``management_transaction`` is imported HERE AND NOWHERE ELSE under
-``sam.xras``; ``tests/unit/test_xras_transaction_seam.py`` scans module globals
+``sam.xras``; ``tests/unit/xras/test_xras_transaction_seam.py`` scans module globals
 at runtime to enforce it. Handler tests neutralize the commit by monkeypatching
 that name in module globals, and per-test isolation is a SAVEPOINT that a real
 COMMIT releases, leaking rows into the shared xdist database. While five modules

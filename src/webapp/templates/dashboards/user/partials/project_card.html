@@ -297,7 +297,7 @@
              data-load-url="{{ url_for('project_members.members_fragment', projcode=project.projcode) }}"
              data-loaded="false">
             <div class="spinner-border spinner-border-sm text-primary" role="status">
-                <span class="sr-only">Loading members...</span>
+                <span class="visually-hidden">Loading members...</span>
             </div>
         </div>
     </div>
@@ -482,7 +482,7 @@
                              data-load-url="{{ url_for('user_dashboard.tree_fragment', projcode=project.projcode, active_only=1) }}"
                              data-loaded="false">
                             <div class="spinner-border spinner-border-sm text-primary" role="status">
-                                <span class="sr-only">Loading tree...</span>
+                                <span class="visually-hidden">Loading tree...</span>
                             </div>
                         </div>
                     </div>
