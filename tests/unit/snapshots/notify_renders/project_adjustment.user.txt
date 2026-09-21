@@ -9,6 +9,9 @@ Your current allocations:
   - Casper: 50,000 hours through 2027-09-30
   - Derecho: 1.15M hours through 2027-09-30
 
+You are receiving this as the project's contact.
+The project lead is Jane Lead (jane.lead@example.edu).
+
 Note from NSF NCAR allocations staff:
 
 Your Casper hours were added per your request.
@@ -18,8 +21,7 @@ Take a look at the new SAM
 SAM, the Systems Accounting Manager, was rebuilt from the ground up this year.
 Much of what used to take a help-desk ticket you can now see, and do, yourself:
 
-  - Manage your project yourself: add and remove members and set your
-    project admin.
+  - Manage your project yourself: add and remove members.
     https://sam.hpc.ucar.edu/admin/project/SCSG0001/edit?active_at=2026-10-01&tab=allocations
 
   - Move allocations between your sub-projects yourself, without asking for
@@ -43,10 +45,6 @@ Much of what used to take a help-desk ticket you can now see, and do, yourself:
     https://sam.hpc.ucar.edu/status/derecho
 
   - Documentation: https://ncar-hpc-docs.readthedocs.io/
-
-Your project lead (Jane Lead /
-jane.lead@example.edu) can also manage membership and allocations.
-
 --
 This is an automated notification from the NSF NCAR Systems Accounting Manager.
 If you believe you received this message in error, please contact help@ucar.edu.

@@ -43,7 +43,6 @@ Much of what used to take a help-desk ticket you can now see, and do, yourself:
     https://sam.hpc.ucar.edu/status/derecho
 
   - Documentation: https://ncar-hpc-docs.readthedocs.io/
-
 --
 This is an automated notification from the NSF NCAR Systems Accounting Manager.
 If you believe you received this message in error, please contact help@ucar.edu.

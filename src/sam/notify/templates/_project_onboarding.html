@@ -1,3 +1,10 @@
+    {% if recipient_role != 'lead' %}
+    <p>You are receiving this as the project's
+        {{ 'administrator' if recipient_role == 'admin' else 'contact' }}.
+        The project lead is {{ project_lead }}{% if project_lead_email %}
+        ({{ project_lead_email }}){% endif %}.</p>
+    {% endif %}
+
     {% if operator_comment %}
     <div class="callout note">
         <strong>Note from NSF NCAR allocations staff</strong>
@@ -11,7 +18,7 @@
         do, yourself:</p>
     <ul>
         <li><strong>Manage your project yourself</strong> — add and remove
-            members and set your project admin:
+            members{% if recipient_role == 'lead' %} and set your project admin{% endif %}:
             <a href="{{ manage_url or 'https://sam.hpc.ucar.edu/' }}">open your project in SAM</a>.</li>
         {% if has_subtree %}
         <li><strong>Move allocations between your sub-projects</strong> yourself,
@@ -37,11 +44,3 @@
         <li>Documentation:
             <a href="https://ncar-hpc-docs.readthedocs.io/">ncar-hpc-docs.readthedocs.io</a>.</li>
     </ul>
-
-    {% if recipient_role != 'lead' %}
-    <p>
-        Your project lead ({{ project_lead }}{% if project_lead_email %} /
-        {{ project_lead_email }}{% endif %}) can also manage membership and
-        allocations for this project.
-    </p>
-    {% endif %}
