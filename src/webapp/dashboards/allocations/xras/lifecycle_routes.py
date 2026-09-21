@@ -15,7 +15,7 @@ from webapp.utils.htmx import (
     handle_htmx_form_post, htmx_modal_not_found, htmx_not_found, htmx_success,
     htmx_success_message,
 )
-from webapp.utils.notify import get_notifier, notify_summary
+from webapp.utils.notify import get_notifier, notify_summary, public_url_root
 from webapp.utils.project_permissions import can_edit_project_governance
 from webapp.utils.rbac import Permission, has_permission, require_permission
 from sam.integration.xras import XrasActivationEvent
@@ -105,7 +105,8 @@ def _xras_messages(project, people, *, action=None):
     """
     return build_xras_messages(db.session, project, people, action=action,
                                requested_by=current_user.username,
-                               approver_comment=approver_comment_for_action(action))
+                               approver_comment=approver_comment_for_action(action),
+                               site_url=public_url_root())
 
 
 @bp.route('/xras_notify_form/<int:project_id>')

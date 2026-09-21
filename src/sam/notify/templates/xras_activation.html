@@ -14,7 +14,7 @@
         <tr><th>Resource</th><th>Amount</th><th>Through</th></tr>
         {% for r in resources %}
         <tr>
-            <td>{{ r.resource_name }}</td>
+            <td>{% if r.details_url %}<a href="{{ r.details_url }}">{{ r.resource_name }}</a>{% else %}{{ r.resource_name }}{% endif %}</td>
             <td>{{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}</td>
             <td>{{ r.end_date or '—' }}</td>
         </tr>
@@ -22,20 +22,20 @@
     </table>
     {% endif %}
 
-    <h3>Getting started</h3>
-    <ul>
-        <li>Documentation:
-            <a href="https://ncar-hpc-docs.readthedocs.io/">ncar-hpc-docs.readthedocs.io</a></li>
-        <li>Manage your project and its members at
-            <a href="https://sam.hpc.ucar.edu/">sam.hpc.ucar.edu</a></li>
-    </ul>
-
     {% if approver_comment %}
     <div class="callout note">
         <strong>Note from the reviewer</strong>
         <p>{{ approver_comment }}</p>
     </div>
     {% endif %}
+
+    <h3>Getting started</h3>
+    <ul>
+        <li>Documentation:
+            <a href="https://ncar-hpc-docs.readthedocs.io/">ncar-hpc-docs.readthedocs.io</a></li>
+        <li>See your allocations and usage, and manage who is on your project:
+            <a href="{{ manage_url or 'https://sam.hpc.ucar.edu/' }}">open {{ project_code }} in SAM</a></li>
+    </ul>
 
     {% if recipient_role == 'lead' %}
     <p>

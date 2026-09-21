@@ -13,12 +13,13 @@ Your project now holds:
   - Casper: 50,000 hours through 2027-09-30
   - Derecho: 1.15M hours through 2027-09-30
 
+
 The revised balances are in effect now; no change to how you submit work.
 If this does not look right, please contact help@ucar.edu.
 
   - Documentation: https://ncar-hpc-docs.readthedocs.io/
-  - Manage your project and its members at https://sam.hpc.ucar.edu/
-
+  - See your allocations and usage, and manage who is on your project:
+    https://sam.hpc.ucar.edu/admin/project/SCSG0001/edit
 
 Your project lead (Jane Lead /
 jane.lead@example.edu) and the project administrator manage

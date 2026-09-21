@@ -9,14 +9,15 @@ Allocations:
     {%- if r.end_date %} through {{ r.end_date }}{% endif %}
 {% endfor %}
 {% endif %}
-Getting started:
-  - Documentation: https://ncar-hpc-docs.readthedocs.io/
-  - Manage your project and its members at https://sam.hpc.ucar.edu/
 {% if approver_comment %}
 Note from the reviewer:
 
 {{ approver_comment }}
 {% endif %}
+Getting started:
+  - Documentation: https://ncar-hpc-docs.readthedocs.io/
+  - See your allocations and usage, and manage who is on your project:
+    {{ manage_url or 'https://sam.hpc.ucar.edu/' }}
 {% if recipient_role == 'lead' %}
 As project lead you can add and remove project members, designate a project
 administrator (who can also manage members), and request extensions or

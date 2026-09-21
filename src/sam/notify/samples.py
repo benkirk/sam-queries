@@ -81,10 +81,15 @@ def _xras(kind: str) -> Dict[str, Any]:
         **_PROJECT,
         'resources': [
             {'resource_name': 'Casper', 'amount': '50,000', 'units': 'hours',
-             'end_date': '2027-09-30'},
+             'end_date': '2027-09-30',
+             'details_url': 'https://sam.hpc.ucar.edu/user/resource-details/'
+                            'SCSG0001?resource=Casper'},
             {'resource_name': 'Derecho', 'amount': '1.15M', 'units': 'hours',
-             'end_date': '2027-09-30'},
+             'end_date': '2027-09-30',
+             'details_url': 'https://sam.hpc.ucar.edu/user/resource-details/'
+                            'SCSG0001?resource=Derecho'},
         ],
+        'manage_url': 'https://sam.hpc.ucar.edu/admin/project/SCSG0001/edit',
         'added': ([{'resource_name': 'Derecho', 'amount': '150,000',
                     'units': 'hours'}]
                   if kind == 'xras_supplement' else []),
@@ -291,7 +296,7 @@ VARIABLE_NOTES: Dict[str, str] = {
                    'allocation-adjustment note).',
     'manage_url': "Deep link to this project's Edit page (allocations tab).",
     'operator_comment': "The sending operator's optional note, or empty.",
-    'resources.details_url': "Lifecycle kinds: this project's page for the resource.",
+    'resources.details_url': "This project's page for the resource (usage, jobs, disk).",
     'links': 'Lifecycle kinds: landing pages, keys accounts, jobs, data, status.',
     'task_name': 'The scheduled task that ran.',
     'occurrence': 'The scheduled slot this run filled, ISO-8601.',
