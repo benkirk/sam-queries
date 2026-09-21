@@ -7,6 +7,7 @@ is replaced with a null transport and no ledger, so no notification_log row
 leaks into the shared test database.
 """
 
+import re
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from uuid import uuid4
@@ -111,6 +112,167 @@ class TestTheFlag:
             assert ProductionConfig.ACCOUNT_REGISTRATION_ENABLED is False
             assert DevelopmentConfig.ACCOUNT_REGISTRATION_ENABLED is True
             assert TestingConfig.ACCOUNT_REGISTRATION_ENABLED is True
+
+
+class TestTheFormShell:
+    def test_country_is_a_datalist_of_display_cased_names(self, client):
+        html = client.get('/register/').get_data(as_text=True)
+        assert 'list="residence_country-list"' in html
+        assert '<option value="United States">' in html
+        assert '<option value="Korea, Republic of">' in html
+        assert 'UNITED STATES' not in html and '\u00c3' not in html, 'raw or mojibake name'
+
+    def test_the_shell_loads_htmx_for_the_institution_search(self, client):
+        html = client.get('/register/').get_data(as_text=True)
+        assert 'hx-get="/register/institutions"' in html
+        assert re.search(r'<script[^>]+htmx', html), 'the Institution datalist is dead without htmx'
+
+
+class TestTheEventPicker:
+    """The open form offers the publicly listed events as an optional select;
+    an unlisted event is reachable by its link only."""
+
+    LISTED = [{'event_code': 'ZZ-LISTED', 'name': 'ZZ Listed Workshop'}]
+
+    @pytest.fixture
+    def listed(self, monkeypatch):
+        monkeypatch.setattr('webapp.register.blueprint.upcoming_events_data',
+                            lambda: self.LISTED)
+
+    def test_listed_events_are_the_options(self, client, listed):
+        html = client.get('/register/').get_data(as_text=True)
+        assert '<select' in html and 'name="event_code"' in html
+        assert 'value="ZZ-LISTED"' in html and 'ZZ Listed Workshop (ZZ-LISTED)' in html
+
+    def test_no_listed_events_means_no_picker(self, client, monkeypatch):
+        monkeypatch.setattr('webapp.register.blueprint.upcoming_events_data', lambda: [])
+        assert 'name="event_code"' not in client.get('/register/').get_data(as_text=True)
+
+    def test_an_unlisted_locked_code_survives_an_error_re_render(self, client, listed,
+                                                                 committed_event):
+        code, _ = committed_event
+        resp = client.post('/register/', data={**GOOD, 'email': 'not-an-address',
+                                               'event_code': code, 'event_locked': '1'})
+        html = resp.get_data(as_text=True)
+        assert resp.status_code == 200
+        assert f'name="event_code" value="{code}"' in html, 'the locked code was dropped'
+        assert 'value="ZZ-LISTED"' not in html
+
+
+class TestTheAcceptGate:
+    """ACCOUNT_REGISTRATION_GATE_ENABLED: a terms acceptance + a human-check
+    stub must pass, server-side, before the open form is reachable. Off in
+    TestingConfig so the form tests above stay direct; this class builds an app
+    with it on."""
+
+    @pytest.fixture(scope='class')
+    def gate_app(self, test_db_url, status_db_url):
+        from webapp.run import create_app
+        return create_app(config_overrides={
+            'SQLALCHEMY_DATABASE_URI': test_db_url,
+            'SQLALCHEMY_BINDS': {'system_status': status_db_url},
+            'ACCOUNT_REGISTRATION_GATE_ENABLED': True,
+        })
+
+    @staticmethod
+    def _gate_token(html):
+        import re
+        m = re.search(r'name="hc_token"\s+value="([^"]+)"', html)
+        assert m, 'the gate did not render an hc_token'
+        return m.group(1)
+
+    def _accept(self, client):
+        """Pass the gate on `client`; returns the accept response."""
+        html = client.get('/register/').get_data(as_text=True)
+        return client.post('/register/accept', data={
+            'accept': '1', 'confirm': '1', 'hc_token': self._gate_token(html)})
+
+    def test_default_is_on_outside_testing(self):
+        import os
+        from webapp.config import DevelopmentConfig, ProductionConfig, TestingConfig
+        if 'ACCOUNT_REGISTRATION_GATE_ENABLED' not in os.environ:
+            assert ProductionConfig.ACCOUNT_REGISTRATION_GATE_ENABLED is True
+            assert DevelopmentConfig.ACCOUNT_REGISTRATION_GATE_ENABLED is True
+        assert TestingConfig.ACCOUNT_REGISTRATION_GATE_ENABLED is False
+
+    def test_get_shows_the_gate_not_the_form(self, gate_app):
+        html = gate_app.test_client().get('/register/').get_data(as_text=True)
+        assert 'Accept and continue' in html
+        assert 'name="hc_token"' in html
+        assert 'name="email"' not in html, 'the open form must be gated'
+
+    def test_post_without_accepting_is_bounced_and_writes_nothing(self, gate_app, app,
+                                                                  null_notifier):
+        from sam.core.account_requests import AccountRequest
+        from webapp.extensions import db
+        email = 'zz.gate.bounce@example.invalid'
+        resp = gate_app.test_client().post('/register/', data={**GOOD, 'email': email})
+        assert resp.status_code == 200
+        assert 'Accept and continue' in resp.get_data(as_text=True), 'the open POST is re-gated'
+        with app.app_context():
+            assert db.session.query(AccountRequest).filter_by(email=email).count() == 0
+
+    def test_missing_acceptance_re_renders_with_an_error(self, gate_app):
+        client = gate_app.test_client()
+        html = client.get('/register/').get_data(as_text=True)
+        resp = client.post('/register/accept',
+                           data={'confirm': '1', 'hc_token': self._gate_token(html)})
+        assert resp.status_code == 200
+        assert 'accept the terms' in resp.get_data(as_text=True)
+
+    def test_a_tampered_human_check_is_refused(self, gate_app):
+        resp = gate_app.test_client().post('/register/accept',
+                                           data={'accept': '1', 'confirm': '1',
+                                                 'hc_token': 'not-a-real-token'})
+        assert resp.status_code == 200
+        assert 'expired' in resp.get_data(as_text=True)
+
+    def test_accepting_opens_the_form_then_submit_succeeds(self, gate_app, app,
+                                                           null_notifier):
+        from sam.core.account_requests import AccountRequest
+        from webapp.extensions import db
+        # Its own address: the shared GOOD one races other workers' committed rows.
+        email = f'zz.gate.{uuid4().hex[:8]}@example.invalid'
+        client = gate_app.test_client()
+        accepted = self._accept(client)
+        assert accepted.status_code == 302 and accepted.headers['Location'].endswith('/register/')
+        # The session now carries the marker, so the open form renders...
+        form_html = client.get('/register/').get_data(as_text=True)
+        assert 'name="email"' in form_html and 'Send me the confirmation' in form_html
+        # ...and the write goes through.
+        try:
+            resp = client.post('/register/', data={**GOOD, 'email': email})
+            assert resp.status_code == 302 and '/register/pending/' in resp.headers['Location']
+            with app.app_context():
+                assert db.session.query(AccountRequest).filter_by(email=email).count() == 1
+        finally:
+            with app.app_context():
+                db.session.query(AccountRequest).filter_by(email=email).delete()
+                db.session.commit()
+        # The marker is cleared after a submission: a second one re-gates.
+        assert 'Accept and continue' in client.post(
+            '/register/', data={**GOOD, 'email': 'zz.gate.second@example.invalid'}
+        ).get_data(as_text=True)
+
+    def test_a_stale_accept_is_bounced(self, gate_app, monkeypatch):
+        from datetime import timedelta
+        from webapp.register import blueprint
+        client = gate_app.test_client()
+        self._accept(client)
+        monkeypatch.setattr(blueprint, '_GATE_TTL', timedelta(seconds=-1))
+        assert 'Accept and continue' in client.get('/register/').get_data(as_text=True)
+
+    def test_an_event_locked_accept_returns_to_the_event_form(self, gate_app,
+                                                              committed_event):
+        open_event, _ = committed_event
+        client = gate_app.test_client()
+        html = client.get(f'/register/{open_event}').get_data(as_text=True)
+        assert f'name="event_code" value="{open_event}"' in html
+        resp = client.post('/register/accept', data={
+            'accept': '1', 'confirm': '1', 'event_code': open_event,
+            'hc_token': self._gate_token(html)})
+        assert resp.status_code == 302
+        assert resp.headers['Location'].endswith(f'/register/{open_event}')
 
 
 class TestTheLoginGate:
@@ -466,6 +628,62 @@ def enabled_limiter(app):
             facade.limiter.enabled = False
             app.config['RATELIMIT_ENABLED'] = False
             _clear()
+
+
+class TestTheHumanCheckStub:
+    """webapp.register.human_check: a signed nonce today, the seam a real
+    challenge (Turnstile/hCaptcha) replaces. Signed on SECRET_KEY, so a token
+    from this app verifies and a made-up one does not."""
+
+    def test_an_issued_token_verifies(self, app):
+        from webapp.register import human_check
+        with app.app_context():
+            assert human_check.verify(human_check.issue()) is True
+
+    def test_a_missing_or_tampered_token_fails(self, app):
+        from webapp.register import human_check
+        with app.app_context():
+            assert human_check.verify(None) is False
+            assert human_check.verify('') is False
+            assert human_check.verify('not-a-real-token') is False
+
+    def test_an_expired_token_fails(self, app, monkeypatch):
+        from webapp.register import human_check
+        with app.app_context():
+            token = human_check.issue()
+            monkeypatch.setattr(human_check, 'MAX_AGE_SECONDS', -1)
+            assert human_check.verify(token) is False
+
+
+class TestTheEula:
+    """webapp.register.eula: the vendored NWSC agreement rendered from markdown.
+    The .md is vendored verbatim from NCAR/HPC-Docs; the render maps its
+    relative doc links onto the published site and emits no raw script."""
+
+    def test_it_renders_the_agreement(self):
+        from markupsafe import Markup
+        from webapp.register.eula import eula_html
+        html = eula_html()
+        assert isinstance(html, Markup)
+        assert '<h1>NWSC End User Agreement</h1>' in html
+        assert '<li>' in html and '<strong>' in html
+
+    def test_relative_doc_links_are_absolutised_and_no_script(self):
+        from webapp.register.eula import eula_html
+        html = str(eula_html())
+        assert 'href="acknowledging-ncar-and-cisl.md"' not in html
+        assert ('https://ncar-hpc-docs.readthedocs.io/en/latest/getting-started/'
+                'acknowledging-ncar-and-cisl/') in html
+        assert 'https://rchelp.ucar.edu/' in html, 'an absolute link is left alone'
+        assert '<script' not in html.lower()
+
+    def test_the_gate_embeds_the_agreement(self, app):
+        """The gate route passes the rendered agreement into the panel."""
+        from webapp.register import blueprint
+        with app.test_request_context():
+            html = blueprint._render_gate()
+        assert 'NWSC End User Agreement' in html
+        assert 'eula-panel' in html
 
 
 class TestRateLimits:

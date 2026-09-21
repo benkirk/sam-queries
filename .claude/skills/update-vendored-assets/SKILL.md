@@ -2,11 +2,12 @@
 name: update-vendored-assets
 description: >-
   Checking for, assessing, and applying updates to the webapp's vendored
-  front-end assets (Bootstrap, htmx, Font Awesome, Poppins). Load
-  before bumping a vendored library to read the changelog against our real
-  usage and documented workarounds — so a bump that fixes a bug we work around
-  or breaks one we rely on is caught on purpose, not by luck — then apply it
-  through the registry and run the right gates.
+  front-end assets (Bootstrap, htmx, Font Awesome, Poppins) and the vendored
+  NWSC end-user agreement shown on the /register gate. Load before bumping a
+  vendored library to read the changelog against our real usage and documented
+  workarounds — so a bump that fixes a bug we work around or breaks one we rely
+  on is caught on purpose, not by luck — then apply it through the registry and
+  run the right gates. Also load to check or refresh the vendored EULA text.
 ---
 
 # Update vendored front-end assets
@@ -32,6 +33,10 @@ header banner can lie, the registry cannot. The libraries: `bootstrap-css` /
 **Font Awesome Free** (not Pro) — assess only the Free tier. (jQuery was
 vendored through 3.7.1 but removed entirely once its sole consumer was
 rewritten in vanilla JS — there is no jQuery to bump.)
+
+One vendored file lives **outside** the registry: the NWSC end-user agreement,
+`src/webapp/register/eula.md` — legal text, so steps 2–9 do not apply. Include
+it in every inventory pass; see "The vendored EULA" below.
 
 ## 2. Check upstream for newer releases
 
@@ -180,6 +185,17 @@ Redis-cached pages (`CACHE_DEFAULT_TIMEOUT=300s`) may reference the old path
 until they expire; run `sam-admin cache --refresh` at rollout (the same flush
 the CSP rollout calls for). Browsers cache by URL, so the new filename is a
 clean cache-bust for free.
+
+## The vendored EULA
+
+The agreement accepted on the `/register` gate, vendored verbatim from
+`NCAR/HPC-Docs`. Check for drift with `python scripts/update_eula.py` then
+`git diff src/webapp/register/eula.md`; no diff means current. **Any** wording
+change alters what people agree to, so never auto-apply: report the diff and
+stop for a human decision. Never hand-edit the file; commit a refresh alone,
+with the blob SHA the script prints. The review checklist (raw HTML, mkdocs-only
+syntax, relative links), gates and smoke are in
+`docs/plans/implemented/ACCOUNT_REGISTRATION.md` § 6.2 "Refreshing the EULA".
 
 ## Known version-tied workarounds to re-check on a bump
 

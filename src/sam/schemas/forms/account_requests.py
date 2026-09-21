@@ -145,6 +145,26 @@ class RegisterForm(HtmxFormSchema):
         return data
 
 
+class RegisterGateForm(HtmxFormSchema):
+    """The accept-first gate: both boxes ticked; the route verifies ``hc_token``."""
+
+    accept = f.Bool(load_default=False)
+    confirm = f.Bool(load_default=False)
+    hc_token = f.Str(required=True,
+                     error_messages={'required': 'Complete the verification.'})
+
+    @post_load
+    def _require(self, data, **kwargs):
+        errors = {}
+        if not data['accept']:
+            errors['accept'] = ['Please accept the terms of use to continue.']
+        if not data['confirm']:
+            errors['confirm'] = ['Please confirm you are not a robot.']
+        if errors:
+            raise ValidationError(errors)
+        return data
+
+
 class VerifyCodeForm(HtmxFormSchema):
     code = f.Str(required=True, validate=v.Regexp(r'^\s*\d{6}\s*$'))
 

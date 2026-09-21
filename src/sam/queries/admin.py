@@ -40,6 +40,25 @@ def get_institution_type_tree(session):
     return session.query(InstitutionType).order_by(InstitutionType.type).all()
 
 
+#: Two names are stored double-encoded (mojibake) in `country`; the database is
+#: the source of truth, so they are corrected for display here, by ISO code.
+_COUNTRY_NAME_FIXES = {'AX': 'Åland Islands', 'CI': "Côte d'Ivoire"}
+
+
+def country_names(session):
+    """Live country names for a datalist, display-cased (the table is upper case)."""
+    import re
+    from sam.geography import Country
+
+    def _display(name):
+        words = re.sub(r"[A-Za-z]+('[A-Za-z]+)?", lambda m: m.group(0).capitalize(), name)
+        return re.sub(r'(?<=\S )(Of|And|The)\b', lambda m: m.group(0).lower(), words)
+
+    rows = (session.query(Country.code, Country.name)
+            .filter(Country.is_active).order_by(Country.name).all())
+    return sorted(_COUNTRY_NAME_FIXES.get(code) or _display(name) for code, name in rows)
+
+
 def search_institutions(session, q, *, limit=10):
     """Live institution names containing ``q`` (case-insensitive), prefix hits first."""
     from sam.core.organizations import Institution

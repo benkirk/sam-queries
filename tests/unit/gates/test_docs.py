@@ -32,7 +32,11 @@ RECORD_PREFIXES = (PLANS_DIR, "docs/nrit-review-", "docs/presentations/")
 # Records that live outside those trees. The reimplementation doc is both the
 # port plan and the reference for the legacy Java system, so it names Maven
 # paths that are not in this repo and template names it intended to create.
-RECORD_FILES = {"docs/xras/incoming/XRAS_REIMPLEMENTATION.md"}
+RECORD_FILES = {"docs/xras/incoming/XRAS_REIMPLEMENTATION.md",
+                # Vendored verbatim from NCAR/HPC-Docs (refreshed by
+                # scripts/update_eula.py): upstream legal text, not ours to
+                # reword or relink, so it is exempt from the prose and link gates.
+                "src/webapp/register/eula.md"}
 
 
 def is_record(rel):
