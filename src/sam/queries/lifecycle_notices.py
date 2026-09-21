@@ -21,6 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable, List, Optional, Sequence
+from urllib.parse import quote
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -43,6 +44,20 @@ _ACTION_KIND = {
     'activated': 'project_activation',
     'adjusted': 'project_adjustment',
 }
+
+
+#: Where mail links land when the caller has no request to read a root from.
+DEFAULT_SITE_URL = 'https://sam.hpc.ucar.edu/'
+
+#: Pages the onboarding block links to, relative to the site root. Gated
+#: against the route map by tests/unit/gates/test_lifecycle_notice_links.py.
+ONBOARDING_PATHS = {
+    'accounts': 'user/accounts',
+    'jobs': 'user/jobs',
+    'data': 'user/data',
+    'status': 'status/derecho',
+}
+RESOURCE_DETAILS_PATH = 'user/resource-details'
 
 
 def _subject(kind: str, projcode: str, action: Optional[str]) -> str:
@@ -74,7 +89,7 @@ def renewal_dedup_key(action, projcode, new_end, address):
     return lifecycle_dedup_key('project_renewal', projcode, action, new_end, address)
 
 
-def _resource_rows(allocations) -> List[dict]:
+def _resource_rows(allocations, projcode, site_url) -> List[dict]:
     """Allocations as template rows, sorted by resource."""
     rows = []
     for alloc in allocations:
@@ -88,14 +103,18 @@ def _resource_rows(allocations) -> List[dict]:
             'amount': fmt.number(alloc.amount),
             'units': ResourceTypeName.allocation_unit(rtype, alloc.amount),
             'end_date': fmt.date_str(alloc.end_date, null=None),
+            'details_url': (f'{site_url}{RESOURCE_DETAILS_PATH}/{projcode}'
+                            f'?resource={quote(resource.resource_name)}'),
         })
     rows.sort(key=lambda r: r['resource_name'])
     return rows
 
 
 def _context(project, action, has_subtree, allocations, manage_url,
-             operator_comment=None) -> dict:
+             operator_comment=None, site_url=None) -> dict:
+    site_url = (site_url or DEFAULT_SITE_URL).rstrip('/') + '/'
     return {
+        'links': {k: site_url + path for k, path in ONBOARDING_PATHS.items()},
         'operator_comment': (operator_comment or '').strip() or None,
         'project_code': project.projcode,
         'project_title': project.title,
@@ -105,7 +124,7 @@ def _context(project, action, has_subtree, allocations, manage_url,
                                if project.lead else None),
         'action': action,
         'has_subtree': has_subtree,
-        'resources': _resource_rows(allocations),
+        'resources': _resource_rows(allocations, project.projcode, site_url),
         'manage_url': manage_url,
     }
 
@@ -114,6 +133,7 @@ def build_lifecycle_messages(session: Session, *, per_project: Sequence[dict],
                              requested_by: str,
                              url_builder: Callable[[str], str],
                              operator_comment: Optional[str] = None,
+                             site_url: Optional[str] = None,
                              ) -> List[Message]:
     """One Message per (project × lead/admin) for the given per-project items.
 
@@ -136,7 +156,7 @@ def build_lifecycle_messages(session: Session, *, per_project: Sequence[dict],
         kind, action = it['kind'], it.get('action')
         context = _context(project, action, it['has_subtree'],
                            it['allocations'], url_builder(project.projcode),
-                           operator_comment)
+                           operator_comment, site_url)
         subject = _subject(kind, project.projcode, action)
         for recipient in to_recipients(people):
             messages.append(Message(
@@ -161,6 +181,7 @@ def build_renewal_messages(session: Session, root_project, *,
                            requested_by: str,
                            url_builder: Callable[[str], str],
                            operator_comment: Optional[str] = None,
+                           site_url: Optional[str] = None,
                            ) -> List[Message]:
     """The Renew/Extend notice (#581): one copy per project that owns a
     touched allocation. An untouched descendant (inactive, no source, already
@@ -181,7 +202,8 @@ def build_renewal_messages(session: Session, root_project, *,
     return build_lifecycle_messages(session, per_project=per_project,
                                     requested_by=requested_by,
                                     url_builder=url_builder,
-                                    operator_comment=operator_comment)
+                                    operator_comment=operator_comment,
+                                    site_url=site_url)
 
 
 # --------------------------------------------------------------------------- #

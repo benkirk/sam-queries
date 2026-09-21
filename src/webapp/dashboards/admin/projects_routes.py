@@ -1684,6 +1684,7 @@ def _maybe_notify_renewal(root, *, action, new_end, active_at, touched,
             db.session, root, action=action, new_end=new_end,
             touched_allocations=touched,
             operator_comment=comment,
+            site_url=request.url_root,
             requested_by=current_user.username,
             url_builder=lambda pc: url_for(
                 'admin_dashboard.edit_project_page', projcode=pc,
@@ -2182,7 +2183,8 @@ def htmx_notify_project_preview(project):
                 db.session, per_project=[item],
                 requested_by=current_user.username,
                 url_builder=_notify_url_builder(),
-                operator_comment=request.args.get('operator_comment', '')[:1000])
+                operator_comment=request.args.get('operator_comment', '')[:1000],
+                site_url=request.url_root)
             if messages:
                 try:
                     preview = get_notifier(ledger=False).preview(messages[0])
@@ -2237,7 +2239,7 @@ def htmx_notify_project(project):
         msgs = build_lifecycle_messages(
             db.session, per_project=items,
             requested_by=current_user.username, url_builder=url_builder,
-            operator_comment=comment)
+            operator_comment=comment, site_url=request.url_root)
         return get_notifier().send_many(msgs, force=force) if msgs else []
 
     summary = notify_summary(_send(auto_items, force=False)

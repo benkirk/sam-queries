@@ -266,3 +266,25 @@ class TestFollowups:
         assert {m.context['operator_comment'] for m in noted} == {'See you at the workshop.'}
         blank = build_renewal_messages(session, tree['root'], operator_comment='  ', **kw)
         assert {m.context['operator_comment'] for m in blank} == {None}
+
+
+class TestLinks:
+
+    def _messages(self, session, tree, **kw):
+        return build_renewal_messages(
+            session, tree['root'], action='renewed', new_end=tree['end'],
+            touched_allocations=tree['touched'], requested_by='pytest',
+            url_builder=_url, **kw)
+
+    def test_resource_rows_link_to_their_own_project_page(self, session, tree):
+        msg = next(m for m in self._messages(session, tree, site_url='http://dev:5050/')
+                   if m.projcode == tree['child_code'])
+        (row,) = msg.context['resources']
+        assert row['details_url'].startswith(
+            f"http://dev:5050/user/resource-details/{tree['child_code']}?resource=")
+        assert ' ' not in row['details_url']
+
+    def test_landing_links_default_to_production(self, session, tree):
+        links = self._messages(session, tree)[0].context['links']
+        assert links['jobs'] == 'https://sam.hpc.ucar.edu/user/jobs'
+        assert set(links) == {'accounts', 'jobs', 'data', 'status'}
