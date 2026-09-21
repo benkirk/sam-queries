@@ -39,17 +39,17 @@
     background-image: linear-gradient(160deg, var(--ncar-navy), var(--ncar-space-blue));
     padding: 1.5rem 2rem;
 }
-.register-org {
-    color: var(--text-on-brand);
-    font-size: var(--font-size-lg);
-    font-weight: var(--font-weight-bold);
-    line-height: 1.1;
+.register-logo {
+    display: block;
+    width: 260px;
+    max-width: 78%;
+    height: auto;
+    margin-bottom: 0.5rem;
 }
 .register-product {
     color: var(--text-on-brand);
     opacity: 0.72;
     font-size: var(--font-size-xxsm);
-    margin-top: 0.15rem;
 }
 
 .register-body {
@@ -152,6 +152,7 @@
 
 @media (max-width: 575.98px) {
     .register-masthead { padding: 1.25rem; }
+    .register-logo { width: 220px; }
     .register-body { padding: 1.25rem 1.25rem 0.5rem; }
     .register-footer { padding: 1rem 1.25rem 1.25rem; }
 }

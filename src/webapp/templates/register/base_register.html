@@ -22,7 +22,10 @@
     <main class="register-sheet">
         <header class="register-masthead">
             {% block masthead %}
-            <div class="register-org">NSF NCAR</div>
+            {# The reversed lockup (light NCAR on transparent) — the masthead is
+               navy in both themes, so it is theme-invariant here, unlike login. #}
+            <img class="register-logo" alt="NSF NCAR — operated by UCAR"
+                 src="{{ url_for('static', filename='img/logo-ncar-reversed.png') }}">
             <div class="register-product">Systems Accounting Manager</div>
             {% endblock %}
         </header>
