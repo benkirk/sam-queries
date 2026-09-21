@@ -419,9 +419,23 @@ into. It is *not* the § 6.1 #1 human challenge: wiring Turnstile/hCaptcha there
 still needs the CSP allowance and, with #2, remains the precondition before
 `ACCOUNT_REGISTRATION_ENABLED=1` in prod.
 
-**Open follow-up:** stamp the accepted EULA version/hash onto the
-`account_request` row at accept time (the gate sets only a session marker
-today), so an acceptance is auditable as "v X, dated Y".
+**Open follow-up — recording EULA acceptance.** The gate sets only a session
+marker today; nothing records *which* agreement was accepted. Stamping the
+upstream blob SHA (`update_eula.py` prints it) onto the request makes an
+acceptance auditable as "version X, at `creation_time`" (the gate is accepted
+moments before the row is created, so no separate timestamp is needed). No
+existing `account_request` column fits — `purpose_note`/`comment` are the
+visitor's and the operator's own text — so this is **one additive nullable
+column** (e.g. `eula_sha`), plus the model field, the schema-validation rerun,
+and a CI-blob regen in the same PR. Deferred until consumed rather than added
+speculatively.
+
+This points at a larger, separate project: EULA acceptance is **not
+registration-only**. Eventually *every* user may need to accept — and
+**re-accept annually** as the terms are revised — which belongs on the
+user/account, not the request row, with its own currency check ("accepted the
+current version within the last year?") gating access. The registration gate is
+the first, narrow instance of that.
 
 **The shell.** `templates/register/base_register.html` (cloned from
 `auth/login.html`) + a thin token-only `static/css/register.css`; every
