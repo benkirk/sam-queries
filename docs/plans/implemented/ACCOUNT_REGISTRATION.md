@@ -417,6 +417,14 @@ reachable only through its `/register/<code>` link, whose hidden code also posts
 the select cannot show. `submit()` still validates through `_open_event` —
 hand-posting an unlisted code is equivalent to holding the link.
 
+**Country of residence is a datalist.** `country_names()` (`sam/queries/admin.py`)
+feeds all 224 live `country` names into a static `<datalist>` — pick or type,
+no round trip, still free text in a string column. The table is upper case, so
+names are display-cased; two rows are stored double-encoded and are corrected by
+ISO code there rather than in the database. The shell loads htmx **only** for
+the Institution search (1,400 names, so that one stays a typeahead); a test pins
+it, because the search dies silently without the script.
+
 **The EULA is the real NWSC agreement**, vendored verbatim from `NCAR/HPC-Docs`
 (`docs/getting-started/end-user-agreement.md`) as `webapp/register/eula.md` and
 rendered from markdown at request time (`webapp/register/eula.py`, cached;

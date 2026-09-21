@@ -8,6 +8,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="htmx-config" content='{"allowEval": false, "selfRequestsOnly": true}'>
     <title>{% block title %}Request an NCAR HPC account{% endblock %} · NSF NCAR</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     {% from 'fragments/vendor_assets.html' import vendor_css, vendor_js with context %}
@@ -45,7 +46,8 @@
         </footer>
     </main>
 
-    {{ vendor_js(['bootstrap-js']) }}
+    {# htmx only feeds the Institution datalist; the forms themselves are plain PRG. #}
+    {{ vendor_js(['bootstrap-js', 'htmx']) }}
     <script src="{{ url_for('static', filename='js/theme-toggle.js') }}"></script>
     <script src="{{ url_for('static', filename='js/register.js') }}"></script>
 </body>

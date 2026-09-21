@@ -7,7 +7,8 @@
   re-checks it).
 
   Context: event (locked code) | None, locked_code, form, errors, field_errors,
-           academic_options, event_options (listed events; empty when locked)
+           academic_options, event_options (listed events; empty when locked),
+           country_options
 #}
 {% block title %}Request an NCAR HPC account{% endblock %}
 
@@ -59,7 +60,9 @@
             {{ select_field('academic_status', 'Academic status', required=True,
                             options=academic_options, placeholder='— choose —') }}
         </div>
-        <div class="col-md-6">{{ text_field('residence_country', 'Country of residence', required=True, maxlength=64) }}</div>
+        <div class="col-md-6">{{ datalist_field('residence_country', 'Country of residence', options=country_options,
+                                                required=True, maxlength=64,
+                                                help='Start typing to pick a country, or enter yours.') }}</div>
     </div>
     <div class="row">
         <div class="col-md-6">{{ text_field('phone', 'Phone', required=True, maxlength=32,

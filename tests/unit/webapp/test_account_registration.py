@@ -7,6 +7,7 @@ is replaced with a null transport and no ledger, so no notification_log row
 leaks into the shared test database.
 """
 
+import re
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from uuid import uuid4
@@ -111,6 +112,20 @@ class TestTheFlag:
             assert ProductionConfig.ACCOUNT_REGISTRATION_ENABLED is False
             assert DevelopmentConfig.ACCOUNT_REGISTRATION_ENABLED is True
             assert TestingConfig.ACCOUNT_REGISTRATION_ENABLED is True
+
+
+class TestTheFormShell:
+    def test_country_is_a_datalist_of_display_cased_names(self, client):
+        html = client.get('/register/').get_data(as_text=True)
+        assert 'list="residence_country-list"' in html
+        assert '<option value="United States">' in html
+        assert '<option value="Korea, Republic of">' in html
+        assert 'UNITED STATES' not in html and '\u00c3' not in html, 'raw or mojibake name'
+
+    def test_the_shell_loads_htmx_for_the_institution_search(self, client):
+        html = client.get('/register/').get_data(as_text=True)
+        assert 'hx-get="/register/institutions"' in html
+        assert re.search(r'<script[^>]+htmx', html), 'the Institution datalist is dead without htmx'
 
 
 class TestTheEventPicker:

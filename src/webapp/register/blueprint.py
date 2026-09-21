@@ -23,6 +23,7 @@ from sam.manage import management_transaction
 from sam.manage.account_requests import enroll_user_in_event, register_request
 from sam.projects.projects import Project
 from sam.queries.account_notices import build_verify_message
+from sam.queries.admin import country_names
 from sam.schemas.forms import RegisterForm, RegisterGateForm, VerifyCodeForm
 from webapp.dashboards.event_lifecycle import upcoming_events_data
 from webapp.extensions import db
@@ -114,6 +115,7 @@ def _render_form(event=None, *, form=None, errors=(), field_errors=None, locked_
                            errors=list(errors), field_errors=field_errors or {},
                            locked_code=locked_code,
                            event_options=[] if locked_code else _event_options(),
+                           country_options=country_names(db.session),
                            academic_options=[(s, s) for s in ACADEMIC_STATUSES])
 
 

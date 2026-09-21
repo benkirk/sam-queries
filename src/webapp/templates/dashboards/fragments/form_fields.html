@@ -87,8 +87,8 @@
    that htmx refills from `search_url` as the person types (htmx sends the
    input's own name=value, so the endpoint reads the field name). Free text
    still submits; without htmx it is a plain text input. #}
-{% macro datalist_field(name, label, search_url, required=False, optional_text='(optional)',
-                        maxlength=None, placeholder=None, help=None,
+{% macro datalist_field(name, label, search_url=None, options=None, required=False,
+                        optional_text='(optional)', maxlength=None, placeholder=None, help=None,
                         default='', id=None, label_class='form-label') %}
 {%- set _id = id or name -%}
 {%- set _value = form.get(name) if form else default -%}
@@ -96,14 +96,18 @@
     {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class) }}
     <input type="text" class="form-control{{ _invalid(name) }}" id="{{ _id }}"
            name="{{ name }}" list="{{ _id }}-list" autocomplete="off"
+           {%- if search_url %}
            hx-get="{{ search_url }}" hx-trigger="input changed delay:250ms"
            hx-target="#{{ _id }}-list" hx-swap="innerHTML"
+           {%- endif %}
            {%- if required %} required{% endif -%}
            {%- if maxlength %} maxlength="{{ maxlength }}"{% endif %}
            value="{{ _value if _value is not none else '' }}"
            {%- if placeholder %} placeholder="{{ placeholder }}"{% endif %}
            {{- _aria(name, _id) }}>
-    <datalist id="{{ _id }}-list"></datalist>
+    <datalist id="{{ _id }}-list">
+        {%- for opt in options or [] %}<option value="{{ opt }}"></option>{% endfor -%}
+    </datalist>
     {{ _field_error(name, _id) }}
     {%- if help %}<small class="form-text text-muted">{{ help }}</small>{% endif %}
 </div>
