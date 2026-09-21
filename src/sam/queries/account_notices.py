@@ -18,6 +18,7 @@ from typing import Any, Dict, Optional, Sequence
 
 from sqlalchemy.orm import Session
 
+from sam import fmt
 from sam.core.account_requests import CREATED_BY_SELF, AccountRequest
 from sam.notify import Message, Recipient
 
@@ -31,6 +32,9 @@ ACCOUNT_KIND_SUBJECTS = {
     'account_rejected': 'Your NCAR HPC account request',
 }
 
+
+#: How the digest prints its as-of time; the task passes local (Mountain) time.
+_STAMP = '%Y-%m-%d %H:%M'
 
 def queue_summary_context(session: Session, rows: Sequence[AccountRequest], *,
                           occurrence: datetime, queue_url: str = '') -> Dict[str, Any]:
@@ -66,7 +70,7 @@ def queue_summary_context(session: Session, rows: Sequence[AccountRequest], *,
                 'event_code': event.event_code,
                 'event_name': event.name,
                 'project_code': group['project_code'],
-                'deadline': event.accounts_needed_by.isoformat(),
+                'deadline': fmt.date_str(event.accounts_needed_by),
                 'count': len(group['rows']),
             })
         out_rows.extend(_row(v) for v in group['rows'])
@@ -75,7 +79,7 @@ def queue_summary_context(session: Session, rows: Sequence[AccountRequest], *,
         by_purpose[r.purpose] = by_purpose.get(r.purpose, 0) + 1
     today = occurrence.date()
     return {
-        'occurrence': occurrence.isoformat(timespec='seconds'),
+        'occurrence': fmt.date_str(occurrence, fmt=_STAMP),
         'total': len(rows),
         'new_count': sum(1 for r in rows if r.requested_at is None),
         'waiting_count': sum(1 for r in rows if r.requested_at is not None),

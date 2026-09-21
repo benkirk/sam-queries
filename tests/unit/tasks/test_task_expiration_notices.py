@@ -556,7 +556,9 @@ class TestTheRunSummary:
         assert summary.context['sent'] == 1
         assert summary.context['selected'] == 1
         assert summary.context['suppressed'] == 0
-        assert summary.context['window_start'] == START.isoformat()
+        # Readable in the mail; ISO stays in `detail`, the ledger's JSON.
+        assert summary.context['window_start'] == START.strftime('%Y-%m-%d')
+        assert summary.context['occurrence'].endswith(' Mountain')
 
     def test_a_quiet_week_still_gets_one(self, session, wire, ctx, transport):
         """"No summary" must not mean both "nothing was due" and "the task

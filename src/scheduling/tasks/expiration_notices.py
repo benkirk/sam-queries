@@ -294,6 +294,7 @@ def _send_summary(notifier, ctx, *, detail: dict, messages: List,
     The dedup key is the *occurrence*, so a reclaimed or manually re-run slot
     does not send a second summary. `--force` still overrides, as everywhere.
     """
+    from sam import fmt
     from sam.notify import Message, Recipient
 
     recipient = summary_recipient()
@@ -323,7 +324,6 @@ def _send_summary(notifier, ctx, *, detail: dict, messages: List,
             subject=f'[SAM] {ctx.task_name}: {headline}',
             context={
                 'task_name': ctx.task_name,
-                'occurrence': ctx.occurrence.isoformat(),
                 'headline': headline,
                 'aborted': aborted,
                 'abort_reason': abort_reason,
@@ -333,6 +333,14 @@ def _send_summary(notifier, ctx, *, detail: dict, messages: List,
                               'detail': r.detail or '(no detail)'}
                              for r in failures],
                 **detail,
+                # Readable strings for the mail; `detail` keeps ISO because it
+                # is also the ledger's JSON. The slot is naive UTC, so show it
+                # in the schedule's zone like the window bounds (local midnights).
+                'occurrence': fmt.date_str(
+                    to_local_naive(ctx.occurrence, ZoneInfo(SCHEDULE.tz)),
+                    fmt='%Y-%m-%d %H:%M') + ' Mountain',
+                **{k: fmt.date_str(datetime.fromisoformat(detail[k]))
+                   for k in ('window_start', 'window_end') if detail.get(k)},
             },
             # Keyed on the occurrence, not the clock: a reclaimed run filling
             # the same slot reports once.

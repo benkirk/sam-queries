@@ -19,9 +19,9 @@ Getting started:
   - See your allocations and usage, and manage who is on your project:
     {{ manage_url or 'https://sam.hpc.ucar.edu/' }}
 {% if recipient_role == 'lead' %}
-As project lead you can add and remove project members, designate a project
-administrator (who can also manage members), and request extensions or
-supplements through the SAM portal.
+As project lead you can add and remove project members, and designate a
+project administrator (who can also manage members), in SAM. Request extensions
+or supplements through ARC, at https://arc.ucar.edu/
 {% else %}
 Your project lead ({{ project_lead }}{% if project_lead_email %} /
 {{ project_lead_email }}{% endif %}) and the project administrator manage
