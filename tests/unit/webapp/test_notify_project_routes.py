@@ -40,3 +40,16 @@ def test_an_overlong_comment_rerenders_the_form_and_sends_nothing(
     html = resp.get_data(as_text=True)
     assert 'Longer than maximum length' in html
     assert 'notifyOperatorComment' in html or 'nothing to notify about' in html
+
+
+def test_a_rendered_preview_refetches_itself_on_a_comment_change(
+        auth_client, active_project):
+    resp = auth_client.get(
+        f'/admin/htmx/notify-project-preview/{active_project.projcode}'
+        '?action=adjusted&active_at=2026-09-20')
+    html = resp.get_data(as_text=True)
+    if 'Subject' not in html:   # nobody on file for this snapshot row
+        return
+    assert 'from:#notifyOperatorComment' in html
+    assert 'action=adjusted&amp;active_at=2026-09-20' in html
+    assert 'hx-target="this"' in html

@@ -1290,6 +1290,13 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     padding: 0.875rem 1.25rem;
 }
 
+/* Phone width: two footer buttons must share one line. */
+@media (max-width: 575.98px) {
+    .modal-footer .btn {
+        padding-inline: 1rem;
+    }
+}
+
 /* Cancel button — scoped to .modal-footer so .btn-secondary used as a toggle
    active-state in time-range / date-range pickers stays Bootstrap-stock. */
 .modal-footer .btn-secondary {
