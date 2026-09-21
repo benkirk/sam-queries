@@ -370,3 +370,30 @@ class TestAForcedKind:
         (own,) = build_xras_messages(session, project, PEOPLE, action=action,
                                      requested_by='t')
         assert own.kind == 'xras_adjustment' and own.context['changes']
+
+
+class TestLinks:
+    """The mail's links: production by default (the task has no request host),
+    the caller's root when one is given."""
+
+    def _message(self, session, **kw):
+        lead = make_user(session)
+        session.add(EmailAddress(user_id=lead.user_id, is_primary=True, active=True,
+                                 email_address='links-lead@example.edu'))
+        session.flush()
+        session.refresh(lead)
+        project = make_project(session, lead=lead)
+        people = [{'name': 'L', 'email': 'links-lead@example.edu', 'role': 'lead'}]
+        (msg,) = build_xras_messages(session, project, people,
+                                     kind='xras_activation',
+                                     requested_by='pytest', **kw)
+        return project, msg
+
+    def test_the_default_root_is_production(self, session):
+        project, msg = self._message(session)
+        assert msg.context['manage_url'] == (
+            f'https://sam.hpc.ucar.edu/admin/project/{project.projcode}/edit')
+
+    def test_a_given_root_is_used(self, session):
+        project, msg = self._message(session, site_url='http://dev:5050')
+        assert msg.context['manage_url'].startswith('http://dev:5050/admin/project/')

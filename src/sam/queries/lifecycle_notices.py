@@ -21,7 +21,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable, List, Optional, Sequence
-from urllib.parse import quote
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -32,6 +31,7 @@ from sam.notify.audience import to_recipients
 from sam.notify.base import Message
 from sam.notify.ledger import SUPPRESSING_STATUSES
 from sam.notify.models import NotificationLog
+from sam.queries.notice_links import landing_links, resource_details_url
 from sam.queries.xras_activation import get_xras_pending_recipients
 
 #: The manual button's classification vocabulary; 'skip' never sends.
@@ -44,20 +44,6 @@ _ACTION_KIND = {
     'activated': 'project_activation',
     'adjusted': 'project_adjustment',
 }
-
-
-#: Where mail links land when the caller has no request to read a root from.
-DEFAULT_SITE_URL = 'https://sam.hpc.ucar.edu/'
-
-#: Pages the onboarding block links to, relative to the site root. Gated
-#: against the route map by tests/unit/gates/test_lifecycle_notice_links.py.
-ONBOARDING_PATHS = {
-    'accounts': 'user/accounts',
-    'jobs': 'user/jobs',
-    'data': 'user/data',
-    'status': 'status/derecho',
-}
-RESOURCE_DETAILS_PATH = 'user/resource-details'
 
 
 def _subject(kind: str, projcode: str, action: Optional[str]) -> str:
@@ -103,8 +89,8 @@ def _resource_rows(allocations, projcode, site_url) -> List[dict]:
             'amount': fmt.number(alloc.amount),
             'units': ResourceTypeName.allocation_unit(rtype, alloc.amount),
             'end_date': fmt.date_str(alloc.end_date, null=None),
-            'details_url': (f'{site_url}{RESOURCE_DETAILS_PATH}/{projcode}'
-                            f'?resource={quote(resource.resource_name)}'),
+            'details_url': resource_details_url(
+                site_url, projcode, resource.resource_name),
         })
     rows.sort(key=lambda r: r['resource_name'])
     return rows
@@ -112,9 +98,8 @@ def _resource_rows(allocations, projcode, site_url) -> List[dict]:
 
 def _context(project, action, has_subtree, allocations, manage_url,
              operator_comment=None, site_url=None) -> dict:
-    site_url = (site_url or DEFAULT_SITE_URL).rstrip('/') + '/'
     return {
-        'links': {k: site_url + path for k, path in ONBOARDING_PATHS.items()},
+        'links': landing_links(site_url),
         'operator_comment': (operator_comment or '').strip() or None,
         'project_code': project.projcode,
         'project_title': project.title,

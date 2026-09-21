@@ -81,10 +81,15 @@ def _xras(kind: str) -> Dict[str, Any]:
         **_PROJECT,
         'resources': [
             {'resource_name': 'Casper', 'amount': '50,000', 'units': 'hours',
-             'end_date': '2027-09-30'},
+             'end_date': '2027-09-30',
+             'details_url': 'https://sam.hpc.ucar.edu/user/resource-details/'
+                            'SCSG0001?resource=Casper'},
             {'resource_name': 'Derecho', 'amount': '1.15M', 'units': 'hours',
-             'end_date': '2027-09-30'},
+             'end_date': '2027-09-30',
+             'details_url': 'https://sam.hpc.ucar.edu/user/resource-details/'
+                            'SCSG0001?resource=Derecho'},
         ],
+        'manage_url': 'https://sam.hpc.ucar.edu/admin/project/SCSG0001/edit',
         'added': ([{'resource_name': 'Derecho', 'amount': '150,000',
                     'units': 'hours'}]
                   if kind == 'xras_supplement' else []),
@@ -99,7 +104,7 @@ def _xras(kind: str) -> Dict[str, Any]:
 def _task_summary() -> Dict[str, Any]:
     return {
         'task_name': 'expiration_notices',
-        'occurrence': '2026-09-07T15:00:00',
+        'occurrence': '2026-09-07 09:00 Mountain',
         'headline': '11 sent, 1 FAILED',
         'aborted': False,
         'abort_reason': None,
@@ -107,8 +112,8 @@ def _task_summary() -> Dict[str, Any]:
                         {'projcode': 'UCUB0001', 'count': 2}],
         'failures': [{'recipient': 'bounced@example.edu',
                       'detail': '550 5.1.1 mailbox unavailable'}],
-        'window_start': '2026-09-07T00:00:00',
-        'window_end': '2026-10-17T00:00:00',
+        'window_start': '2026-09-07',
+        'window_end': '2026-10-17',
         'milestones': ['expiring'],
         'projects': 5,
         'selected': 40,
@@ -122,7 +127,7 @@ def _task_summary() -> Dict[str, Any]:
 
 def _account_queue_summary() -> Dict[str, Any]:
     return {
-        'occurrence': '2026-09-14T08:00:00',
+        'occurrence': '2026-09-14 08:00',
         'total': 4,
         'new_count': 3,
         'waiting_count': 1,
@@ -291,10 +296,10 @@ VARIABLE_NOTES: Dict[str, str] = {
                    'allocation-adjustment note).',
     'manage_url': "Deep link to this project's Edit page (allocations tab).",
     'operator_comment': "The sending operator's optional note, or empty.",
-    'resources.details_url': "Lifecycle kinds: this project's page for the resource.",
+    'resources.details_url': "This project's page for the resource (usage, jobs, disk).",
     'links': 'Lifecycle kinds: landing pages, keys accounts, jobs, data, status.',
     'task_name': 'The scheduled task that ran.',
-    'occurrence': 'The scheduled slot this run filled, ISO-8601.',
+    'occurrence': 'The scheduled slot this run filled, as local time.',
     'headline': 'One-line outcome, also used in the subject.',
     'aborted': 'True when the run sent nothing because a guard tripped.',
     'abort_reason': 'Why the run aborted, or empty.',
@@ -304,8 +309,8 @@ VARIABLE_NOTES: Dict[str, str] = {
     'failures': 'One entry per delivery that failed.',
     'failures.recipient': 'The address that failed.',
     'failures.detail': "The transport's error text.",
-    'window_start': 'Start of the selection window, ISO-8601.',
-    'window_end': 'End of the selection window, ISO-8601.',
+    'window_start': 'First day of the selection window.',
+    'window_end': 'Last day (exclusive) of the selection window.',
     'milestones': 'Rung labels the run selected for.',
     'projects': 'Distinct projects in the selection.',
     'selected': 'Allocations matching the window.',
