@@ -582,6 +582,37 @@ class TestTheHumanCheckStub:
             assert human_check.verify(token) is False
 
 
+class TestTheEula:
+    """webapp.register.eula: the vendored NWSC agreement rendered from markdown.
+    The .md is vendored verbatim from NCAR/HPC-Docs; the render maps its
+    relative doc links onto the published site and emits no raw script."""
+
+    def test_it_renders_the_agreement(self):
+        from markupsafe import Markup
+        from webapp.register.eula import eula_html
+        html = eula_html()
+        assert isinstance(html, Markup)
+        assert '<h1>NWSC End User Agreement</h1>' in html
+        assert '<li>' in html and '<strong>' in html
+
+    def test_relative_doc_links_are_absolutised_and_no_script(self):
+        from webapp.register.eula import eula_html
+        html = str(eula_html())
+        assert 'href="acknowledging-ncar-and-cisl.md"' not in html
+        assert ('https://ncar-hpc-docs.readthedocs.io/en/latest/getting-started/'
+                'acknowledging-ncar-and-cisl/') in html
+        assert 'https://rchelp.ucar.edu/' in html, 'an absolute link is left alone'
+        assert '<script' not in html.lower()
+
+    def test_the_gate_embeds_the_agreement(self, app):
+        """The gate route passes the rendered agreement into the panel."""
+        from webapp.register import blueprint
+        with app.test_request_context():
+            html = blueprint._render_gate()
+        assert 'NWSC End User Agreement' in html
+        assert 'eula-panel' in html
+
+
 class TestRateLimits:
 
     def test_the_post_carries_the_login_tier_per_ip(self, client, app, enabled_limiter,

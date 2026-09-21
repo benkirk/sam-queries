@@ -1,27 +1,4 @@
-{#- Placeholder terms-of-use copy for the registration gate. Real EULA wording
-    to follow from the account team; swap the body here without touching the
-    gate wiring in blueprint.py. -#}
-<h2>Terms of use — placeholder</h2>
-<p>This is placeholder copy for the NSF NCAR high-performance computing account
-   terms of use. Final wording will be provided by the account team before this
-   form is opened to the public.</p>
-
-<h2>1. Eligibility and intended use</h2>
-<p>Accounts are provided for research and education on NSF NCAR systems.
-   You agree to use the resources only for their authorized purpose and in
-   accordance with your institution's and NSF NCAR's acceptable-use policies.</p>
-
-<h2>2. Your information</h2>
-<p>The details you provide are used to create and support your account. We will
-   email the address you enter to confirm it before your request is acted on,
-   and we will not share your information beyond what account provisioning
-   requires.</p>
-
-<h2>3. Security and conduct</h2>
-<p>You are responsible for safeguarding your credentials, enrolling in
-   multi-factor authentication, and reporting suspected misuse. Accounts may be
-   suspended for policy violations.</p>
-
-<h2>4. No warranty</h2>
-<p>The systems are provided on a best-effort basis for research computing.
-   Availability, capacity, and data retention are not guaranteed.</p>
+{#- The NWSC end-user agreement, rendered from the vendored markdown
+    (webapp/register/eula.py; source NCAR/HPC-Docs). `eula_html` is passed by
+    the gate route and is trusted, pre-sanitized markup. -#}
+{{ eula_html }}

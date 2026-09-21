@@ -29,7 +29,7 @@ from webapp.limiter import limiter as _rate_limit
 from webapp.utils.htmx import institution_options
 from webapp.utils.notify import get_notifier
 
-from . import human_check, tokens
+from . import eula, human_check, tokens
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('register', __name__, url_prefix='/register')
@@ -133,7 +133,8 @@ def _gate_passed():
 def _render_gate(event=None, *, locked_code=None, form=None, errors=(), field_errors=None):
     return render_template('register/gate.html', event=event, locked_code=locked_code,
                            form=form or {}, errors=list(errors),
-                           field_errors=field_errors or {}, hc_token=human_check.issue())
+                           field_errors=field_errors or {}, hc_token=human_check.issue(),
+                           eula_html=eula.eula_html())
 
 
 @bp.route('/', strict_slashes=False)

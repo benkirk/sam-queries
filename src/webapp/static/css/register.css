@@ -90,13 +90,20 @@
     font-size: var(--font-size-xsm);
     color: var(--text-primary);
 }
-.eula-panel h2 {
+.eula-panel h1 {
     font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-heading);
+    margin: 0 0 0.6rem;
+}
+.eula-panel h2 {
+    font-size: var(--font-size-xsm);
     color: var(--text-heading);
     margin: 1rem 0 0.4rem;
 }
-.eula-panel h2:first-child { margin-top: 0; }
 .eula-panel p { margin-bottom: 0.6rem; }
+.eula-panel ul { margin: 0 0 0.6rem; padding-left: 1.2rem; }
+.eula-panel li { margin-bottom: 0.4rem; }
 
 /* Human-check stub — a calm bordered slot that reads as a widget; the real
    challenge (Turnstile/hCaptcha) drops in here later. */

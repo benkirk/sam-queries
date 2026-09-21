@@ -403,12 +403,25 @@ without it, so the gate is not merely a hidden UI. `POST /register/accept`
 validates `RegisterGateForm` (both boxes) and `webapp/register/human_check.py`,
 then sets the marker (cleared after a submission, so each request re-accepts).
 
-**Both pieces are placeholders.** The EULA copy is a swappable partial
-(`templates/register/_eula.html`) pending real wording. The human check is a
-same-origin **stub** (`human_check.py`: a SECRET_KEY-signed nonce) — the seam a
-real challenge drops into. It is *not* the § 6.1 #1 human challenge: wiring
-Turnstile/hCaptcha there still needs the CSP allowance and, with #2, remains the
-precondition before `ACCOUNT_REGISTRATION_ENABLED=1` in prod.
+**The EULA is the real NWSC agreement**, vendored verbatim from `NCAR/HPC-Docs`
+(`docs/getting-started/end-user-agreement.md`) as `webapp/register/eula.md` and
+rendered from markdown at request time (`webapp/register/eula.py`, cached; the
+`_eula.html` partial just emits it). mkdocs uses the same python-markdown
+engine, so the site's markdown reproduces here; relative doc links are mapped
+onto the published site. Refresh with `scripts/update_eula.py` and review the
+diff in a PR — the accepted legal text is what changed — the same discipline as
+the vendored front-end assets. Vendoring (not a live import) keeps the build
+deterministic and records exactly what a visitor accepted.
+
+**The human check is still a placeholder** — a same-origin **stub**
+(`human_check.py`: a SECRET_KEY-signed nonce), the seam a real challenge drops
+into. It is *not* the § 6.1 #1 human challenge: wiring Turnstile/hCaptcha there
+still needs the CSP allowance and, with #2, remains the precondition before
+`ACCOUNT_REGISTRATION_ENABLED=1` in prod.
+
+**Open follow-up:** stamp the accepted EULA version/hash onto the
+`account_request` row at accept time (the gate sets only a session marker
+today), so an acceptance is auditable as "v X, dated Y".
 
 **The shell.** `templates/register/base_register.html` (cloned from
 `auth/login.html`) + a thin token-only `static/css/register.css`; every
