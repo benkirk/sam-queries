@@ -222,20 +222,6 @@ _SQL_FSTREE_USERS = text("""
     ORDER BY au.account_id, u.username
 """)
 
-# Query 3b: Users for Expired accounts — no date filter on account_user,
-# matching legacy Java getUsersAssignedToProjectOnResource() which returned
-# all users ever on the account regardless of end_date.
-_SQL_FSTREE_EXPIRED_USERS = text("""
-    SELECT
-        au.account_id,
-        u.username,
-        u.unix_uid
-    FROM account_user  au
-    JOIN users         u   ON (u.user_id   = au.user_id)
-    WHERE au.account_id IN :account_ids
-    ORDER BY au.account_id, u.username
-""")
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -648,7 +634,10 @@ def get_fstree_data(
 
     # ------------------------------------------------------------------
     # Query 3 — Users per account
-    # Active users (skeleton rows) + all-time users (Expired lifecycle rows)
+    # Roster on EVERY node (Expired included) is the current membership window:
+    # _SQL_FSTREE_USERS filters account_user by start/end date and needs no active
+    # allocation, so it covers expired accounts. Matches legacy; do NOT re-add an
+    # unfiltered all-time roster for expired nodes — it resurfaces departed users.
     # ------------------------------------------------------------------
     user_rows = session.execute(_SQL_FSTREE_USERS, params).fetchall()
     user_map: Dict[int, List[Dict]] = {}
@@ -657,23 +646,6 @@ def get_fstree_data(
             'username': row.username,
             'uid':      row.unix_uid,
         })
-
-    # Fetch users for Expired accounts (no date filter — matches legacy behavior)
-    expired_acct_ids = [
-        row.account_id for row in lifecycle_rows
-        if row.lifecycle_status == 'Expired' and row.account_id is not None
-    ]
-    if expired_acct_ids:
-        expired_user_rows = session.execute(
-            _SQL_FSTREE_EXPIRED_USERS,
-            {'account_ids': tuple(expired_acct_ids)},
-        ).fetchall()
-        for row in expired_user_rows:
-            if row.account_id not in user_map:  # don't overwrite active-user entries
-                user_map.setdefault(row.account_id, []).append({
-                    'username': row.username,
-                    'uid':      row.unix_uid,
-                })
 
     # ------------------------------------------------------------------
     # Python assembly — skeleton rows (normal / overspent / threshold)

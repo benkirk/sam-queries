@@ -20,7 +20,7 @@ Ported from tests/unit/queries/test_fstree_queries.py. Transformations:
   drops the cost back to one call per module.
 """
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy.orm import sessionmaker
@@ -716,5 +716,69 @@ class TestFacilityResourceOverride:
         restored = self._facility_fsp(session, resource_name, facility_name)
         expected = float(default) if default is not None else 0.0
         assert restored == expected
+
+        session.rollback()
+
+
+class TestExpiredNodeRosterHonorsMembershipWindow:
+    """An Expired node lists only current-window members, matching legacy.
+
+    Regression for the bug where _SQL_FSTREE_EXPIRED_USERS re-attached every
+    all-time member (departed users included) onto Expired nodes; legacy
+    ``getUsersAssignedToProjectOnResource`` filters to the account_user window.
+    """
+
+    def _resource_node(self, tree, projcode, resource_name):
+        for fac in tree['facilities']:
+            for at in fac['allocationTypes']:
+                for proj in at['projects']:
+                    if proj['projectCode'] != projcode:
+                        continue
+                    for res in proj['resources']:
+                        if res['name'] == resource_name:
+                            return res
+        return None
+
+    def test_ended_member_dropped_and_all_ended_node_is_empty(self, session, hpc_resource):
+        from sam import AccountUser
+        from factories.projects import (
+            make_account, make_allocation, make_allocation_type, make_project,
+        )
+        from factories.core import make_user
+
+        resource_name = hpc_resource.resource_name
+        now = datetime.now()
+        past_start, past_end = now - timedelta(days=30), now - timedelta(days=1)
+        at = make_allocation_type(session)  # fresh active facility -> panel -> type
+
+        # Project 1 — Expired account with one active + one ended member.
+        lead = make_user(session)
+        p_expired = make_project(session, allocation_type=at, lead=lead)
+        acct1 = make_account(session, project=p_expired, resource=hpc_resource)
+        make_allocation(session, account=acct1, start_date=past_start, end_date=past_end)
+        ghost = make_user(session)
+        session.add(AccountUser(account_id=acct1.account_id, user_id=ghost.user_id,
+                                start_date=past_start, end_date=now - timedelta(days=2)))
+        session.flush()
+
+        # Project 2 — Expired account whose sole member's window has ended.
+        p_allended = make_project(session, allocation_type=at, lead=make_user(session))
+        acct2 = make_account(session, project=p_allended, resource=hpc_resource)
+        make_allocation(session, account=acct2, start_date=past_start, end_date=past_end)
+        for au in session.query(AccountUser).filter_by(account_id=acct2.account_id):
+            au.end_date = now - timedelta(days=2)
+        session.flush()
+
+        tree = get_fstree_data(session, resource_name=resource_name)
+
+        node1 = self._resource_node(tree, p_expired.projcode, resource_name)
+        assert node1 is not None and node1['accountStatus'] == 'Expired'
+        names1 = {u['username'] for u in node1['users']}
+        assert lead.username in names1          # active member kept
+        assert ghost.username not in names1     # ended member dropped
+
+        node2 = self._resource_node(tree, p_allended.projcode, resource_name)
+        assert node2 is not None and node2['accountStatus'] == 'Expired'
+        assert node2['users'] == []             # node present, roster empty
 
         session.rollback()
