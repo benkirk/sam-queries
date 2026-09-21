@@ -1,0 +1,12 @@
+{#- Table cells for the account-request digest. Developer-owned (underscore),
+    so the editable template stays a plain table. One person per row: a narrow
+    table survives a phone; eight columns do not. -#}
+{% macro person(r) %}
+        <td>{{ r.name }}<br><small>{{ r.email }}{% if r.organization %}<br>{{ r.organization }}{% endif %}
+            {%- if r.desired_username %}<br>wants {{ r.desired_username }}{% endif %}</small>
+            {%- if r.note %}<br><small><em>{{ r.note }}</em></small>{% endif %}</td>
+{% endmacro %}
+{% macro status(r) %}
+        <td class="num">{{ r.waiting_days }} d</td>
+        <td>{% if r.assignee %}claimed by {{ r.assignee }}{% else %}{{ r.state }}{% endif %}</td>
+{% endmacro %}

@@ -37,6 +37,16 @@ FLOAT = ('allocated', 'used', 'remaining', 'percent_used', 'adjustments', 'elaps
 OPTIONAL_FLOAT = ('self_used', 'self_percent_used')
 
 
+def _one_day_pct(row) -> float:
+    """One day as a share of the row's period, in percent, plus rounding slack.
+    A row without both dates has a fixed elapsed_pct (0, 50 or 100): no slack."""
+    start, end = row.get('start_date'), row.get('end_date')
+    if not start or not end:
+        return 1e-6
+    days = max((end - start).days, 1)
+    return 100.0 / days + 0.11
+
+
 def assert_resources_equal(live, served):
     assert [r['resource_name'] for r in live] == [r['resource_name'] for r in served]
     for a, b in zip(live, served):
@@ -51,6 +61,11 @@ def assert_resources_equal(live, served):
             else:
                 assert a[f] == b[f], (ctx, f, a[f], b[f])
         for f in FLOAT:
+            if f == 'elapsed_pct':
+                # Now-relative too: whole days elapsed over the period length,
+                # so the same one-day straddle moves it by up to one day's share.
+                assert abs(float(a[f]) - float(b[f])) <= _one_day_pct(a), (ctx, f, a[f], b[f])
+                continue
             assert float(a[f]) == pytest.approx(float(b[f])), (ctx, f)
         for f in OPTIONAL_FLOAT:
             if a[f] is None or b[f] is None:

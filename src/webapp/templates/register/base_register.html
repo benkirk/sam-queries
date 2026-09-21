@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+{# Standalone branded shell for the anonymous /register flow. Its own <html>,
+   theme attribute and toggle (like auth/login.html), carrying the #589 email
+   "sheet" onto the web: a navy masthead over a centered card, so the page and
+   the confirmation mail read as one thing. Blocks: masthead, step, content,
+   footer_extra. #}
+<html lang="en" data-bs-theme="{{ theme }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="htmx-config" content='{"allowEval": false, "selfRequestsOnly": true}'>
+    <title>{% block title %}Request an NCAR HPC account{% endblock %} · NSF NCAR</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
+    {% from 'fragments/vendor_assets.html' import vendor_css, vendor_js with context %}
+    {{ vendor_css(['poppins', 'bootstrap-css', 'fontawesome-css']) }}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/variables.css') }}">
+    {# dashboard.css supplies the Unity .btn / .form-control / .alert / typography;
+       register.css is a thin sheet-and-callout layer on top. #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/register.css') }}">
+</head>
+<body class="register-page">
+    <main class="register-sheet">
+        <header class="register-masthead">
+            {% block masthead %}
+            {# The reversed lockup (light NCAR on transparent) — the masthead is
+               navy in both themes, so it is theme-invariant here, unlike login. #}
+            <img class="register-logo" alt="NSF NCAR — operated by UCAR"
+                 src="{{ url_for('static', filename='img/logo-ncar-reversed.png') }}">
+            <div class="register-product">Systems Accounting Manager</div>
+            {% endblock %}
+        </header>
+
+        <div class="register-body">
+            {% block step %}{% endblock %}
+            {% block content %}{% endblock %}
+        </div>
+
+        <footer class="register-footer">
+            {% block footer_extra %}{% endblock %}
+            {% from 'dashboards/fragments/theme_toggle.html' import theme_toggle %}
+            {{ theme_toggle(theme, labelled=true) }}
+            <small class="register-fineprint">
+                NSF NCAR · Need help? <a href="mailto:help@ucar.edu">help@ucar.edu</a>
+            </small>
+        </footer>
+    </main>
+
+    {# htmx only feeds the Institution datalist; the forms themselves are plain PRG. #}
+    {{ vendor_js(['bootstrap-js', 'htmx']) }}
+    <script src="{{ url_for('static', filename='js/theme-toggle.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/register.js') }}"></script>
+</body>
+</html>

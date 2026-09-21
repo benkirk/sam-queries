@@ -2,7 +2,8 @@
 
 {% block content %}
     {# Aborted runs get the distinct red box: a no-op run must never read like a normal one. #}
-    <div class="callout {% if aborted %}aborted{% else %}good{% endif %}">
+    {# A run with failures is not a good run, even though it completed. #}
+    <div class="callout {% if aborted %}urgent{% elif failed %}warn{% else %}good{% endif %}">
         <strong>{{ task_name }}</strong> — {{ headline }}
         {% if aborted %}
         <p><strong>This run sent nothing.</strong> {{ abort_reason }}</p>
@@ -31,7 +32,7 @@
     {% if per_project %}
     <h3>Recipients by project</h3>
     <table class="data">
-        <tr><th>Project</th><th>Recipients</th></tr>
+        <tr><th>Project</th><th class="num">Recipients</th></tr>
         {% for row in per_project %}
         <tr><td>{{ row.projcode }}</td><td class="num">{{ row.count }}</td></tr>
         {% endfor %}

@@ -387,6 +387,108 @@ every issue — so the limiter, not the ledger, is what caps repeats. (1) + (2)
 are the pair that actually closes the gap; this subsection is the "hardening
 pass" the § 6 bullet names.
 
+### 6.2 The accept-first gate and the branded flow (follow-on)
+
+A proof-of-concept follow-on puts the public form behind an accept-first gate
+and restyles the whole `/register` flow onto a standalone branded shell that
+carries the shared email design (the navy "sheet" of `_email_base.html`), so
+the page and the confirmation mail read as one thing.
+
+**The gate** (`ACCOUNT_REGISTRATION_GATE_ENABLED`, on by default; off in
+`TestingConfig`). One URL, dynamic content: `GET /register/` renders a
+terms-of-use (EULA) acceptance plus a human-verification check, and only a
+recent accept in the session lets the open form through. It is **enforced
+server-side** — `submit()` re-checks the session marker and writes nothing
+without it, so the gate is not merely a hidden UI. `POST /register/accept`
+validates `RegisterGateForm` (both boxes) and `webapp/register/human_check.py`,
+then sets the marker (cleared after a submission, so each request re-accepts).
+The marker lasts two hours: an expiry at submit bounces to the gate and the
+typed form is lost, so the window is generous. Clearing it is best effort — the
+session is a client-held cookie, so a saved post-accept cookie replays inside
+the window; the rate limits are the bound. A real challenge should be verified
+**at submit** (or the marker made single-use server-side) rather than lean on it.
+
+**The event code is a picker, not free text.** The open form offers the
+publicly `listed` open events as an optional select, fed by the memoized
+`upcoming_events_data()` the status page already uses (every lifecycle write
+invalidates it); with nothing listed the field is absent. An unlisted event is
+reachable only through its `/register/<code>` link, whose hidden code also posts
+`event_locked`, so an error re-render stays locked instead of dropping a code
+the select cannot show. `submit()` still validates through `_open_event` —
+hand-posting an unlisted code is equivalent to holding the link.
+
+**Country of residence is a datalist.** `country_names()` (`sam/queries/admin.py`)
+feeds all 224 live `country` names into a static `<datalist>` — pick or type,
+no round trip, still free text in a string column. The table is upper case, so
+names are display-cased; two rows are stored double-encoded and are corrected by
+ISO code there rather than in the database. The shell loads htmx **only** for
+the Institution search (1,400 names, so that one stays a typeahead); a test pins
+it, because the search dies silently without the script.
+
+**The EULA is the real NWSC agreement**, vendored verbatim from `NCAR/HPC-Docs`
+(`docs/getting-started/end-user-agreement.md`) as `webapp/register/eula.md` and
+rendered from markdown at request time (`webapp/register/eula.py`, cached;
+`gate.html` emits it). mkdocs uses the same python-markdown
+engine, so the site's markdown reproduces here; relative doc links are mapped
+onto the published site. Refresh with `scripts/update_eula.py` and review the
+diff in a PR — the accepted legal text is what changed — the same discipline as
+the vendored front-end assets. Vendoring (not a live import) keeps the build
+deterministic and records exactly what a visitor accepted.
+
+**Refreshing the EULA.** Driven by the `update-vendored-assets` skill.
+`python scripts/update_eula.py [--ref <tag|sha>]` overwrites `eula.md` and
+prints the upstream blob SHA; `git diff` is then the review, and no diff means
+current. There is no safe/high-risk split as for a library — any wording change
+alters what people agree to, so a human decides. When approved:
+
+- Never hand-edit `eula.md`, not even a typo or a link; it is exempt from the
+  prose and link gates for that reason (`RECORD_FILES` in
+  `tests/unit/gates/test_docs.py`). A wording problem is fixed upstream, then
+  re-pulled.
+- Record the blob SHA and the upstream ref in the commit message — the SHA is
+  the only version identifier the text has, and the acceptance record below
+  will stamp it. Commit the refresh alone so it reverts alone.
+- The output is injected **unescaped** on the premise that the source carries no
+  raw HTML; if upstream adds any, that premise needs a fresh look first.
+  mkdocs-only syntax (admonitions, attribute lists, snippets) renders as literal
+  text under plain python-markdown, and a new relative link must match the
+  sibling `*.md` pattern `eula.py` rewrites or it 404s from our page.
+- Gates: `pytest tests/unit/webapp/test_account_registration.py -k "Eula or Gate"`
+  and `tests/unit/gates/test_docs.py`. Then look at the gate on webdev in both
+  themes. `eula_html()` is `lru_cache`d per process, so restart webdev to see
+  new text; a deploy restarts the workers and the gate page is not in the Redis
+  page cache, so no cache refresh is needed.
+
+**The human check is still a placeholder** — a same-origin **stub**
+(`human_check.py`: a SECRET_KEY-signed nonce), the seam a real challenge drops
+into. It is *not* the § 6.1 #1 human challenge: wiring Turnstile/hCaptcha there
+still needs the CSP allowance and, with #2, remains the precondition before
+`ACCOUNT_REGISTRATION_ENABLED=1` in prod.
+
+**Open follow-up — recording EULA acceptance.** The gate sets only a session
+marker today; nothing records *which* agreement was accepted. Stamping the
+upstream blob SHA (`update_eula.py` prints it) onto the request makes an
+acceptance auditable as "version X, at `creation_time`" (the gate is accepted
+moments before the row is created, so no separate timestamp is needed). No
+existing `account_request` column fits — `purpose_note`/`comment` are the
+visitor's and the operator's own text — so this is **one additive nullable
+column** (e.g. `eula_sha`), plus the model field, the schema-validation rerun,
+and a CI-blob regen in the same PR. Deferred until consumed rather than added
+speculatively.
+
+This points at a larger, separate project: EULA acceptance is **not
+registration-only**. Eventually *every* user may need to accept — and
+**re-accept annually** as the terms are revised — which belongs on the
+user/account, not the request row, with its own currency check ("accepted the
+current version within the last year?") gating access. The registration gate is
+the first, narrow instance of that.
+
+**The shell.** `templates/register/base_register.html` (cloned from
+`auth/login.html`) + a thin token-only `static/css/register.css`; every
+`register/*` template re-parents onto it. Behavior is `static/js/register.js`
+(disables the CTA until both boxes are ticked — nicety only; the server
+enforces). Design language: docs/plans/EMAIL_STYLING.md.
+
 ## 7. References
 
 | | |

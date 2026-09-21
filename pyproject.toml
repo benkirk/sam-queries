@@ -40,6 +40,9 @@ dependencies = [
     # waiting for someone to try it.
     "jinja2",
     "limits[redis]",
+    # Renders the vendored NWSC end-user agreement (webapp/register/eula.py);
+    # mkdocs uses the same engine, so the site's markdown reproduces here.
+    "markdown",
     "marshmallow-sqlalchemy",
     "matplotlib",
     "psycopg2-binary",

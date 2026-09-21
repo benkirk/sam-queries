@@ -15,16 +15,17 @@ Your project now holds:
     {%- if r.end_date %} through {{ r.end_date }}{% endif %}
 {%- endfor %}
 {% endif %}
-The revised balances are in effect now; no change to how you submit work.
-If this does not look right, please contact help@ucar.edu.
-
-  - Documentation: https://ncar-hpc-docs.readthedocs.io/
-  - Manage your project and its members at https://sam.hpc.ucar.edu/
 {% if approver_comment %}
 Note from the reviewer:
 
 {{ approver_comment }}
 {% endif %}
+The revised balances are in effect now; no change to how you submit work.
+If this does not look right, please contact help@ucar.edu.
+
+  - Documentation: https://ncar-hpc-docs.readthedocs.io/
+  - See your allocations and usage, and manage who is on your project:
+    {{ manage_url or 'https://sam.hpc.ucar.edu/' }}
 {% if recipient_role != 'lead' %}
 Your project lead ({{ project_lead }}{% if project_lead_email %} /
 {{ project_lead_email }}{% endif %}) and the project administrator manage

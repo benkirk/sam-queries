@@ -34,6 +34,7 @@ from sam.enums import ResourceTypeName
 from sam.integration.xras import XrasActionLog, XrasResourceRepositoryKeyResource
 from sam.notify import Message, to_recipients
 
+from .notice_links import manage_project_url, resource_details_url
 from .xras_activation import (
     XRAS_SERVICE_KINDS,
     get_latest_xras_action_id,
@@ -141,7 +142,8 @@ def build_xras_messages(session: Session, project,
                         people: Sequence[Mapping[str, str]], *,
                         action=None, kind: Optional[str] = None,
                         requested_by: str,
-                        approver_comment: Optional[str] = None) -> List[Message]:
+                        approver_comment: Optional[str] = None,
+                        site_url: Optional[str] = None) -> List[Message]:
     """Build one :class:`~sam.notify.Message` per recipient for one XRAS action.
 
     ``approver_comment`` is the XRAS reviewer's note (``adminComments``),
@@ -166,6 +168,9 @@ def build_xras_messages(session: Session, project,
     to that same kind, so a forced supplement never presents an
     adjustment's amounts as "added".
 
+    ``site_url`` roots the mail's links; None is production, which is what the
+    scheduled task (no request to read a host from) wants.
+
     ``requested_by`` is what lands in ``notification_log.requested_by``, which
     the admin card renders as "who asked". The route passes
     ``current_user.username``; the task passes ``task:xras_notices``. Required
@@ -189,6 +194,7 @@ def build_xras_messages(session: Session, project,
         'units': ResourceTypeName.allocation_unit(info.get('resource_type'),
                                                   info.get('allocated')),
         'end_date': fmt.date_str(info.get('end_date'), null=None),
+        'details_url': resource_details_url(site_url, project.projcode, name),
     } for name, info in sorted(usage.items())]
 
     lead_email = project.lead.primary_email if project.lead else None
@@ -198,6 +204,7 @@ def build_xras_messages(session: Session, project,
         'project_lead': project.lead.display_name if project.lead else 'Project Lead',
         'project_lead_email': lead_email,
         'resources': resources,
+        'manage_url': manage_project_url(site_url, project.projcode),
         # Only one template reads each of these, but every kind carries both —
         # a template that renders an undefined name renders nothing, silently,
         # so the cheapest guard is for the key to always exist.

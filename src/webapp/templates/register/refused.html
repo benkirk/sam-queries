@@ -1,15 +1,13 @@
-{% extends 'dashboards/base.html' %}
+{% extends 'register/base_register.html' %}
 {% block title %}Event code not accepted{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-<div class="col-12 col-lg-6">
-    <h2 class="mb-1"><i class="fa-solid fa-ban text-muted"></i> That event code is not accepted</h2>
-    <p class="text-muted">{{ reason }}</p>
-    <p class="text-muted">
-        Check the code with whoever gave it to you, or
-        <a href="{{ url_for('register.form') }}">register without one</a>.
-    </p>
+<h1>That event code is not accepted</h1>
+<div class="register-callout warn">
+    <p><i class="fa-solid fa-ban" aria-hidden="true"></i> {{ reason }}</p>
 </div>
-</div>
+<p class="register-lede">
+    Check the code with whoever gave it to you, or
+    <a href="{{ url_for('register.form') }}">register without one</a>.
+</p>
 {% endblock %}
