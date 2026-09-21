@@ -408,6 +408,15 @@ session is a client-held cookie, so a saved post-accept cookie replays inside
 the window; the rate limits are the bound. A real challenge should be verified
 **at submit** (or the marker made single-use server-side) rather than lean on it.
 
+**The event code is a picker, not free text.** The open form offers the
+publicly `listed` open events as an optional select, fed by the memoized
+`upcoming_events_data()` the status page already uses (every lifecycle write
+invalidates it); with nothing listed the field is absent. An unlisted event is
+reachable only through its `/register/<code>` link, whose hidden code also posts
+`event_locked`, so an error re-render stays locked instead of dropping a code
+the select cannot show. `submit()` still validates through `_open_event` —
+hand-posting an unlisted code is equivalent to holding the link.
+
 **The EULA is the real NWSC agreement**, vendored verbatim from `NCAR/HPC-Docs`
 (`docs/getting-started/end-user-agreement.md`) as `webapp/register/eula.md` and
 rendered from markdown at request time (`webapp/register/eula.py`, cached;

@@ -113,6 +113,37 @@ class TestTheFlag:
             assert TestingConfig.ACCOUNT_REGISTRATION_ENABLED is True
 
 
+class TestTheEventPicker:
+    """The open form offers the publicly listed events as an optional select;
+    an unlisted event is reachable by its link only."""
+
+    LISTED = [{'event_code': 'ZZ-LISTED', 'name': 'ZZ Listed Workshop'}]
+
+    @pytest.fixture
+    def listed(self, monkeypatch):
+        monkeypatch.setattr('webapp.register.blueprint.upcoming_events_data',
+                            lambda: self.LISTED)
+
+    def test_listed_events_are_the_options(self, client, listed):
+        html = client.get('/register/').get_data(as_text=True)
+        assert '<select' in html and 'name="event_code"' in html
+        assert 'value="ZZ-LISTED"' in html and 'ZZ Listed Workshop (ZZ-LISTED)' in html
+
+    def test_no_listed_events_means_no_picker(self, client, monkeypatch):
+        monkeypatch.setattr('webapp.register.blueprint.upcoming_events_data', lambda: [])
+        assert 'name="event_code"' not in client.get('/register/').get_data(as_text=True)
+
+    def test_an_unlisted_locked_code_survives_an_error_re_render(self, client, listed,
+                                                                 committed_event):
+        code, _ = committed_event
+        resp = client.post('/register/', data={**GOOD, 'email': 'not-an-address',
+                                               'event_code': code, 'event_locked': '1'})
+        html = resp.get_data(as_text=True)
+        assert resp.status_code == 200
+        assert f'name="event_code" value="{code}"' in html, 'the locked code was dropped'
+        assert 'value="ZZ-LISTED"' not in html
+
+
 class TestTheAcceptGate:
     """ACCOUNT_REGISTRATION_GATE_ENABLED: a terms acceptance + a human-check
     stub must pass, server-side, before the open form is reachable. Off in

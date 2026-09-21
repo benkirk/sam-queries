@@ -24,6 +24,7 @@ from sam.manage.account_requests import enroll_user_in_event, register_request
 from sam.projects.projects import Project
 from sam.queries.account_notices import build_verify_message
 from sam.schemas.forms import RegisterForm, RegisterGateForm, VerifyCodeForm
+from webapp.dashboards.event_lifecycle import upcoming_events_data
 from webapp.extensions import db
 from webapp.limiter import limiter as _rate_limit
 from webapp.utils.htmx import institution_options
@@ -102,11 +103,26 @@ def _open_event(code):
     return event, None
 
 
+def _event_options():
+    """The publicly listed open events; an unlisted event is reachable by link only."""
+    return [(e['event_code'], f"{e['name']} ({e['event_code']})")
+            for e in upcoming_events_data()]
+
+
 def _render_form(event=None, *, form=None, errors=(), field_errors=None, locked_code=None):
     return render_template('register/form.html', event=event, form=form or {},
                            errors=list(errors), field_errors=field_errors or {},
                            locked_code=locked_code,
+                           event_options=[] if locked_code else _event_options(),
                            academic_options=[(s, s) for s in ACADEMIC_STATUSES])
+
+
+def _rerender(raw, **kwargs):
+    """An error re-render. A link-locked form stays locked: an unlisted code
+    is not among the select's options and would otherwise drop silently."""
+    event = _open_event(raw.get('event_code'))[0] if raw.get('event_locked') else None
+    return _render_form(event, form=raw,
+                        locked_code=event.event_code if event else None, **kwargs)
 
 
 #: The gate marker, set on accept, lets the open form through for one form-fill
@@ -244,13 +260,13 @@ def submit():
         data = RegisterForm().load(raw)
     except ValidationError as exc:
         field_errors, form_level = RegisterForm.split_errors(exc.messages)
-        return _render_form(form=raw, errors=form_level, field_errors=field_errors)
+        return _rerender(raw, errors=form_level, field_errors=field_errors)
 
     event, refusal = _open_event(data.get('event_code'))
     if refusal:
-        return _render_form(form=raw, errors=[refusal])
+        return _rerender(raw, errors=[refusal])
     if event is None and not data.get('purpose_note'):
-        return _render_form(form=raw, field_errors={
+        return _rerender(raw, field_errors={
             'purpose_note': ['Tell us briefly what you need the account for.']})
 
     now = datetime.now()

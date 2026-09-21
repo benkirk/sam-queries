@@ -7,7 +7,7 @@
   re-checks it).
 
   Context: event (locked code) | None, locked_code, form, errors, field_errors,
-           academic_options
+           academic_options, event_options (listed events; empty when locked)
 #}
 {% block title %}Request an NCAR HPC account{% endblock %}
 
@@ -70,12 +70,15 @@
                   help='A preference only; the account team assigns the username.') }}
     {% if locked_code %}
     <input type="hidden" name="event_code" value="{{ locked_code }}">
+    <input type="hidden" name="event_locked" value="1">
     {% else %}
-    {{ text_field('event_code', 'Event code', maxlength=32,
-                  placeholder='WRF-TUTORIAL-2026-10',
-                  help='If a workshop or class gave you one.') }}
+    {# Listed events only; an unlisted one arrives by its /register/<code> link. #}
+    {% if event_options %}
+    {{ select_field('event_code', 'Event', options=event_options, placeholder='— none —',
+                    help='If you are registering for a workshop or class.') }}
+    {% endif %}
     {{ textarea_field('purpose_note', 'What do you need the account for?', rows=3, maxlength=500,
-                      help='Required when you have no event code. One or two sentences.') }}
+                      help='Required when you are not registering for an event. One or two sentences.') }}
     {% endif %}
 
     {% if errors %}
