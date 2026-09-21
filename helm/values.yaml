@@ -201,6 +201,9 @@ webapp:
     # system_status keeps its own explicit naive-UTC clock
     # (system_status.timeutil.utcnow_naive — there is no such symbol in sam.fmt).
     TZ: "America/Denver"
+    # Links in outgoing mail use this host, whichever name the sending
+    # operator browsed (samuel.k8s.ucar.edu serves the same app).
+    PUBLIC_BASE_URL: "https://sam.hpc.ucar.edu/"
     # Notifications (sam.notify)
     # Relay facts MEASURED from a pod on nwc1, 2026-08-09
     # (docs/plans/implemented/NOTIFICATION_FRAMEWORK.md § 9):

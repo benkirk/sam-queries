@@ -1678,17 +1678,18 @@ def _maybe_notify_renewal(root, *, action, new_end, active_at, touched,
         return None
     try:
         from sam.queries.lifecycle_notices import build_renewal_messages
-        from webapp.utils.notify import get_notifier, notify_summary
+        from webapp.utils.notify import (
+            get_notifier, notify_summary, public_url_for, public_url_root)
         stamp = active_at.date().isoformat()
         messages = build_renewal_messages(
             db.session, root, action=action, new_end=new_end,
             touched_allocations=touched,
             operator_comment=comment,
-            site_url=request.url_root,
+            site_url=public_url_root(),
             requested_by=current_user.username,
-            url_builder=lambda pc: url_for(
+            url_builder=lambda pc: public_url_for(
                 'admin_dashboard.edit_project_page', projcode=pc,
-                active_at=stamp, tab='allocations', _external=True),
+                active_at=stamp, tab='allocations'),
         )
         return notify_summary(get_notifier().send_many(messages))
     except Exception:  # noqa: BLE001 — never let a mail failure fail the write
@@ -2136,10 +2137,16 @@ def htmx_align_allocations(project):
 # Manual "Notify" — tell the lead/admin of each changed project in the tree
 # ---------------------------------------------------------------------------
 
+def _public_root():
+    from webapp.utils.notify import public_url_root
+    return public_url_root()
+
+
 def _notify_url_builder():
     """projcode -> that project's Edit-page allocations deep link (external)."""
-    return lambda pc: url_for('admin_dashboard.edit_project_page',
-                              projcode=pc, tab='allocations', _external=True)
+    from webapp.utils.notify import public_url_for
+    return lambda pc: public_url_for('admin_dashboard.edit_project_page',
+                                     projcode=pc, tab='allocations')
 
 
 @bp.route('/htmx/notify-project-form/<projcode>')
@@ -2184,7 +2191,7 @@ def htmx_notify_project_preview(project):
                 requested_by=current_user.username,
                 url_builder=_notify_url_builder(),
                 operator_comment=request.args.get('operator_comment', '')[:1000],
-                site_url=request.url_root)
+                site_url=_public_root())
             if messages:
                 try:
                     preview = get_notifier(ledger=False).preview(messages[0])
@@ -2239,7 +2246,7 @@ def htmx_notify_project(project):
         msgs = build_lifecycle_messages(
             db.session, per_project=items,
             requested_by=current_user.username, url_builder=url_builder,
-            operator_comment=comment, site_url=request.url_root)
+            operator_comment=comment, site_url=_public_root())
         return get_notifier().send_many(msgs, force=force) if msgs else []
 
     summary = notify_summary(_send(auto_items, force=False)

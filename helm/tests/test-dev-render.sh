@@ -89,6 +89,7 @@ check_dev() {
   same_on_both "$deploy" "$cron" XRAS_OUTGOING_ENABLED "0"
   [[ "$(env_value "$deploy" XRAS_WRITE_ENABLED)" == "0" ]] || { red "FAIL: XRAS_WRITE_ENABLED must be 0 on dev"; return 1; }
   [[ "$(env_value "$deploy" XRAS_ACTIONS_CAPTURE_ONLY)" == "1" ]] || { red "FAIL: XRAS_ACTIONS_CAPTURE_ONLY must be 1 on dev"; return 1; }
+  assert_not_contains "$whole" "sam.hpc.ucar.edu" "dev must not mail links to the production host"
   assert_not_contains "$whole" "name: XRAS_API_KEY" "dev must not hold the XRAS API key"
   assert_not_contains "$whole" "xras-api-credentials" "dev must not sync the XRAS key from OpenBao"
 
