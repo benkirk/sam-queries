@@ -2176,9 +2176,9 @@ def htmx_notify_project_preview(project):
         build_lifecycle_messages, notice_for_project)
     from webapp.utils.notify import get_notifier
     # The changed row includes only itself, so the lone action_* param is the
-    # selection; 'skip' (or none) means nothing to preview.
-    action = next((v for k, v in request.args.items()
-                   if k.startswith('action_') and v in ('activated', 'adjusted')),
+    # selection ('skip' included: the pane then says so); the self-refresh
+    # passes a plain ?action=.
+    action = next((v for k, v in request.args.items() if k.startswith('action_')),
                   request.args.get('action', 'activated'))
     active_at = _parse_active_at_arg(request.args.get('active_at', ''))
     preview = preview_error = None
@@ -2200,7 +2200,8 @@ def htmx_notify_project_preview(project):
     return render_template(
         'dashboards/admin/fragments/notify_project_preview_htmx.html',
         preview=preview, preview_error=preview_error,
-        action=action, projcode=project.projcode)
+        action=action, projcode=project.projcode,
+        active_at=active_at.strftime('%Y-%m-%d'))
 
 
 @bp.route('/htmx/notify-project/<projcode>', methods=['POST'])

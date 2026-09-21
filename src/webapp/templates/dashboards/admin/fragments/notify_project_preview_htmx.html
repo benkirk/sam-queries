@@ -2,7 +2,11 @@
   One project's rendered lifecycle message, for the Notify modal's preview
   pane. Rendered by GET htmx_notify_project_preview.
 
-  Context: preview (RenderedMessage|None), preview_error (str|None), action, projcode
+  Context: preview (RenderedMessage|None), preview_error (str|None), action,
+  projcode, active_at (YYYY-MM-DD)
+
+  A rendered preview re-fetches itself when the modal's Comments box changes:
+  only this fragment knows which project and action are on screen.
 #}
 {% if action == 'skip' %}
 <p class="text-muted small mb-0"><em>{{ projcode }}</em> is set to Skip — it will not be notified.</p>
@@ -15,6 +19,10 @@
 <p class="text-muted small mb-0">Nothing to preview for <em>{{ projcode }}</em>
   (no recipient on file).</p>
 {% else %}
+<div hx-get="{{ url_for('admin_dashboard.htmx_notify_project_preview', projcode=projcode) }}?action={{ action }}&amp;active_at={{ active_at }}"
+     hx-trigger="keyup changed delay:700ms from:#notifyOperatorComment, change from:#notifyOperatorComment"
+     hx-include="#notifyOperatorComment"
+     hx-target="this" hx-swap="outerHTML">
 <div class="project-stats-box mb-2">
   <div class="stat-item">
     <span class="text-muted">Subject</span>
@@ -56,4 +64,5 @@
 <pre class="border rounded p-3 small mb-0"
      style="max-height: 22rem; overflow: auto; white-space: pre-wrap;">{{ preview.text }}</pre>
 {% endif %}
+</div>
 {% endif %}
