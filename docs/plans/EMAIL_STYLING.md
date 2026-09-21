@@ -12,11 +12,23 @@ plain: paragraphs, headings, lists, links, and a small class vocabulary.
 | class | meaning |
 |---|---|
 | `callout good` | the headline of a message: something was done |
-| `callout expiring` / `callout aborted` | the headline of a message: urgent or failed |
-| `callout grace` | a secondary warning |
-| `callout note` | a marginal aside, keeps the writer's line breaks |
+| `callout urgent` | the headline of a message: urgent, or a run that sent nothing |
+| `callout warn` | a warning: a grace period, a run with failures, an open queue |
+| `callout note` | a marginal aside; keeps the line breaks someone typed |
 | `table.data`, `td.num`, `.failed` | a plain table, right-aligned figures, a failed count |
+| `<small>` | a quieter second line inside a table cell |
 | `code` | a verification code or similar, set apart |
+
+`expiring`, `aborted` (= `urgent`) and `grace` (= `warn`) are earlier names. The
+base still styles them, because an override an operator saved may use them.
+
+Use `note` only for text a person typed. It preserves whitespace, so a
+paragraph written across two source lines renders with the source indentation.
+
+Anything more involved than this vocabulary goes in a developer-owned
+underscore file and is imported, so the editable template stays plain:
+`_project_onboarding.*` (the new-SAM block) and `_account_cells.html` (the
+digest's table cells).
 
 ## Mail-client rules that shape the base
 
