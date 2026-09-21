@@ -21,6 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable, List, Optional, Sequence
+from urllib.parse import quote
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -45,6 +46,20 @@ _ACTION_KIND = {
 }
 
 
+#: Where mail links land when the caller has no request to read a root from.
+DEFAULT_SITE_URL = 'https://sam.hpc.ucar.edu/'
+
+#: Pages the onboarding block links to, relative to the site root. Gated
+#: against the route map by tests/unit/gates/test_lifecycle_notice_links.py.
+ONBOARDING_PATHS = {
+    'accounts': 'user/accounts',
+    'jobs': 'user/jobs',
+    'data': 'user/data',
+    'status': 'status/derecho',
+}
+RESOURCE_DETAILS_PATH = 'user/resource-details'
+
+
 def _subject(kind: str, projcode: str, action: Optional[str]) -> str:
     if kind == 'project_renewal':
         return f'Your NSF NCAR project {projcode} has been {action}'
@@ -57,11 +72,13 @@ def lifecycle_dedup_key(kind: str, projcode: str, action: Optional[str],
                         stamp: Optional[datetime], address: str) -> str:
     """Suppress an exact re-send, but not a genuinely new state.
 
-    ``stamp`` is date-granularity (keeps the key within ``dedup_key``'s 128
-    chars): the target end date for renewal/activation, the latest change date
-    for adjustment. project_renewal keeps its #581 shape (action in the key).
+    ``stamp`` is the target end date for renewal/activation (date granularity)
+    and the latest change time for adjustment. Adjustment is minute-granular:
+    a second change on the same day is a new state, and a date-only key would
+    have the ledger suppress its notice. project_renewal keeps its #581 shape.
     """
-    s = stamp.strftime('%Y-%m-%d') if stamp else 'none'
+    layout = '%Y-%m-%dT%H:%M' if kind == 'project_adjustment' else '%Y-%m-%d'
+    s = stamp.strftime(layout) if stamp else 'none'
     if kind == 'project_renewal':
         return f'project_renewal:{action}:{projcode}:{s}:{address}'
     return f'{kind}:{projcode}:{s}:{address}'
@@ -72,7 +89,7 @@ def renewal_dedup_key(action, projcode, new_end, address):
     return lifecycle_dedup_key('project_renewal', projcode, action, new_end, address)
 
 
-def _resource_rows(allocations) -> List[dict]:
+def _resource_rows(allocations, projcode, site_url) -> List[dict]:
     """Allocations as template rows, sorted by resource."""
     rows = []
     for alloc in allocations:
@@ -86,13 +103,19 @@ def _resource_rows(allocations) -> List[dict]:
             'amount': fmt.number(alloc.amount),
             'units': ResourceTypeName.allocation_unit(rtype, alloc.amount),
             'end_date': fmt.date_str(alloc.end_date, null=None),
+            'details_url': (f'{site_url}{RESOURCE_DETAILS_PATH}/{projcode}'
+                            f'?resource={quote(resource.resource_name)}'),
         })
     rows.sort(key=lambda r: r['resource_name'])
     return rows
 
 
-def _context(project, action, has_subtree, allocations, manage_url) -> dict:
+def _context(project, action, has_subtree, allocations, manage_url,
+             operator_comment=None, site_url=None) -> dict:
+    site_url = (site_url or DEFAULT_SITE_URL).rstrip('/') + '/'
     return {
+        'links': {k: site_url + path for k, path in ONBOARDING_PATHS.items()},
+        'operator_comment': (operator_comment or '').strip() or None,
         'project_code': project.projcode,
         'project_title': project.title,
         'project_lead': (project.lead.display_name
@@ -101,14 +124,17 @@ def _context(project, action, has_subtree, allocations, manage_url) -> dict:
                                if project.lead else None),
         'action': action,
         'has_subtree': has_subtree,
-        'resources': _resource_rows(allocations),
+        'resources': _resource_rows(allocations, project.projcode, site_url),
         'manage_url': manage_url,
     }
 
 
 def build_lifecycle_messages(session: Session, *, per_project: Sequence[dict],
                              requested_by: str,
-                             url_builder: Callable[[str], str]) -> List[Message]:
+                             url_builder: Callable[[str], str],
+                             operator_comment: Optional[str] = None,
+                             site_url: Optional[str] = None,
+                             ) -> List[Message]:
     """One Message per (project × lead/admin) for the given per-project items.
 
     Each item is a dict with keys ``project``, ``kind``, ``action``,
@@ -129,7 +155,8 @@ def build_lifecycle_messages(session: Session, *, per_project: Sequence[dict],
             continue
         kind, action = it['kind'], it.get('action')
         context = _context(project, action, it['has_subtree'],
-                           it['allocations'], url_builder(project.projcode))
+                           it['allocations'], url_builder(project.projcode),
+                           operator_comment, site_url)
         subject = _subject(kind, project.projcode, action)
         for recipient in to_recipients(people):
             messages.append(Message(
@@ -152,9 +179,13 @@ def build_renewal_messages(session: Session, root_project, *,
                            new_end: Optional[datetime],
                            touched_allocations: Sequence,
                            requested_by: str,
-                           url_builder: Callable[[str], str]) -> List[Message]:
-    """The Renew/Extend notice (#581): fan out over the tree from the touched
-    allocations, grouped by owning project."""
+                           url_builder: Callable[[str], str],
+                           operator_comment: Optional[str] = None,
+                           site_url: Optional[str] = None,
+                           ) -> List[Message]:
+    """The Renew/Extend notice (#581): one copy per project that owns a
+    touched allocation. An untouched descendant (inactive, no source, already
+    long enough) is not told it was renewed."""
     by_project: dict[int, list] = {}
     for alloc in touched_allocations:
         pid = alloc.account.project_id if alloc.account else None
@@ -166,10 +197,13 @@ def build_renewal_messages(session: Session, root_project, *,
          'allocations': by_project.get(project.project_id, []),
          'has_subtree': not project.is_leaf(), 'dedup_stamp': new_end}
         for project in root_project.get_descendants(include_self=True)
+        if project.project_id in by_project
     ]
     return build_lifecycle_messages(session, per_project=per_project,
                                     requested_by=requested_by,
-                                    url_builder=url_builder)
+                                    url_builder=url_builder,
+                                    operator_comment=operator_comment,
+                                    site_url=site_url)
 
 
 # --------------------------------------------------------------------------- #
@@ -212,14 +246,14 @@ def _live_allocations_at(project, active_at: datetime) -> list:
 
 
 def _last_lifecycle_notice_times(session, projcodes) -> dict:
-    """{projcode: newest delivered activation/adjustment notice time}."""
+    """{projcode: newest delivered lifecycle notice time}. A renewal notice
+    counts: a project told it was renewed has been contacted."""
     if not projcodes:
         return {}
     when = func.coalesce(NotificationLog.sent_time, NotificationLog.creation_time)
     rows = (session.query(NotificationLog.projcode, func.max(when))
             .filter(NotificationLog.projcode.in_(projcodes),
-                    NotificationLog.kind.in_(('project_activation',
-                                              'project_adjustment')),
+                    NotificationLog.kind.in_(tuple(_ACTION_KIND.values())),
                     NotificationLog.status.in_(SUPPRESSING_STATUSES))
             .group_by(NotificationLog.projcode).all())
     return {projcode: t for projcode, t in rows}

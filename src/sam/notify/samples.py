@@ -178,12 +178,23 @@ def _lifecycle(kind: str) -> Dict[str, Any]:
         'has_subtree': True,
         'resources': [
             {'resource_name': 'Casper', 'amount': '50,000', 'units': 'hours',
-             'end_date': '2027-09-30'},
+             'end_date': '2027-09-30',
+             'details_url': 'https://sam.hpc.ucar.edu/user/resource-details/'
+                            'SCSG0001?resource=Casper'},
             {'resource_name': 'Derecho', 'amount': '1.15M', 'units': 'hours',
-             'end_date': '2027-09-30'},
+             'end_date': '2027-09-30',
+             'details_url': 'https://sam.hpc.ucar.edu/user/resource-details/'
+                            'SCSG0001?resource=Derecho'},
         ],
+        'links': {
+            'accounts': 'https://sam.hpc.ucar.edu/user/accounts',
+            'jobs': 'https://sam.hpc.ucar.edu/user/jobs',
+            'data': 'https://sam.hpc.ucar.edu/user/data',
+            'status': 'https://sam.hpc.ucar.edu/status/derecho',
+        },
         'manage_url': 'https://sam.hpc.ucar.edu/admin/project/SCSG0001/edit'
                       '?active_at=2026-10-01&tab=allocations',
+        'operator_comment': 'Your Casper hours were added per your request.',
     }
 
 
@@ -279,6 +290,9 @@ VARIABLE_NOTES: Dict[str, str] = {
     'has_subtree': 'True when this project has sub-projects (shows the in-tree '
                    'allocation-adjustment note).',
     'manage_url': "Deep link to this project's Edit page (allocations tab).",
+    'operator_comment': "The sending operator's optional note, or empty.",
+    'resources.details_url': "Lifecycle kinds: this project's page for the resource.",
+    'links': 'Lifecycle kinds: landing pages, keys accounts, jobs, data, status.',
     'task_name': 'The scheduled task that ran.',
     'occurrence': 'The scheduled slot this run filled, ISO-8601.',
     'headline': 'One-line outcome, also used in the subject.',

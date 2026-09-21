@@ -187,3 +187,104 @@ class TestManualBuild:
         assert messages and all(m.kind == 'project_activation' for m in messages)
         assert 'is now active' in messages[0].subject
         assert messages[0].dedup_key.startswith('project_activation:')
+
+
+class TestRealCallerSeam:
+    """The builder fed by what Extend really reports, not a hand-built list."""
+
+    @pytest.fixture
+    def shared(self, session):
+        """Root and child both hold the same resource; a bystander child holds
+        none, so Extend never touches it."""
+        root = make_project(
+            session, lead=_with_email(session, make_user(session), 'r@example.edu'))
+        child = make_project(
+            session, parent=root,
+            lead=_with_email(session, make_user(session), 'c@example.edu'))
+        bystander = make_project(
+            session, parent=root,
+            lead=_with_email(session, make_user(session), 'b@example.edu'))
+        resource = make_resource(session)
+        start, end = datetime(2026, 10, 1), datetime(2027, 9, 30)
+        for proj in (root, child):
+            make_allocation(
+                session, account=make_account(session, project=proj, resource=resource),
+                amount=1_000.0, start_date=start, end_date=end)
+        for proj in (root, child, bystander):
+            session.expire(proj)
+        return {'root': root, 'child': child, 'bystander': bystander,
+                'resource': resource}
+
+    def _extend(self, session, shared):
+        from sam.manage.extend import extend_project_allocations
+        touched = []
+        roots = extend_project_allocations(
+            session, root_project_id=shared['root'].project_id,
+            source_active_at=datetime(2027, 1, 1), new_end=datetime(2028, 9, 30),
+            resource_ids=[shared['resource'].resource_id], user_id=1,
+            touched=touched)
+        return roots, touched
+
+    def test_touched_reports_descendants_the_return_value_omits(self, session, shared):
+        roots, touched = self._extend(session, shared)
+        assert len(roots) == 1
+        assert len(touched) == 2
+
+    def test_child_mail_lists_its_resources_and_bystander_gets_none(self, session, shared):
+        _, touched = self._extend(session, shared)
+        messages = build_renewal_messages(
+            session, shared['root'], action='extended',
+            new_end=datetime(2028, 9, 30), touched_allocations=touched,
+            requested_by='pytest', url_builder=_url)
+        by_code = {m.projcode: m for m in messages}
+        assert set(by_code) == {shared['root'].projcode, shared['child'].projcode}
+        assert by_code[shared['child'].projcode].context['resources']
+
+
+class TestFollowups:
+
+    def test_a_renewal_notice_counts_as_contacted(self, session, single):
+        _seed_notice(session, single['project'].projcode,
+                     single['alloc'].creation_time + timedelta(hours=1),
+                     kind='project_renewal')
+        (row,) = classify_tree_for_notice(
+            session, single['project'], active_at=datetime.now())
+        assert row.auto_action == 'skip'
+
+    def test_two_same_day_adjustments_have_distinct_keys(self):
+        from sam.queries.lifecycle_notices import lifecycle_dedup_key
+        morning, later = datetime(2026, 9, 20, 9, 5), datetime(2026, 9, 20, 14, 30)
+        assert (lifecycle_dedup_key('project_adjustment', 'P1', 'adjusted', morning, 'x@y.edu')
+                != lifecycle_dedup_key('project_adjustment', 'P1', 'adjusted', later, 'x@y.edu'))
+
+    def test_operator_comment_reaches_every_copy_and_blank_is_none(self, session, tree):
+        kw = dict(action='renewed', new_end=tree['end'],
+                  touched_allocations=tree['touched'], requested_by='pytest',
+                  url_builder=_url)
+        noted = build_renewal_messages(session, tree['root'],
+                                       operator_comment=' See you at the workshop. ', **kw)
+        assert {m.context['operator_comment'] for m in noted} == {'See you at the workshop.'}
+        blank = build_renewal_messages(session, tree['root'], operator_comment='  ', **kw)
+        assert {m.context['operator_comment'] for m in blank} == {None}
+
+
+class TestLinks:
+
+    def _messages(self, session, tree, **kw):
+        return build_renewal_messages(
+            session, tree['root'], action='renewed', new_end=tree['end'],
+            touched_allocations=tree['touched'], requested_by='pytest',
+            url_builder=_url, **kw)
+
+    def test_resource_rows_link_to_their_own_project_page(self, session, tree):
+        msg = next(m for m in self._messages(session, tree, site_url='http://dev:5050/')
+                   if m.projcode == tree['child_code'])
+        (row,) = msg.context['resources']
+        assert row['details_url'].startswith(
+            f"http://dev:5050/user/resource-details/{tree['child_code']}?resource=")
+        assert ' ' not in row['details_url']
+
+    def test_landing_links_default_to_production(self, session, tree):
+        links = self._messages(session, tree)[0].context['links']
+        assert links['jobs'] == 'https://sam.hpc.ucar.edu/user/jobs'
+        assert set(links) == {'accounts', 'jobs', 'data', 'status'}

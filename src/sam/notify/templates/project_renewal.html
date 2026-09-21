@@ -15,7 +15,7 @@
         <tr><th>Resource</th><th>Amount</th><th>Through</th></tr>
         {% for r in resources %}
         <tr>
-            <td>{{ r.resource_name }}</td>
+            <td>{% if r.details_url %}<a href="{{ r.details_url }}">{{ r.resource_name }}</a>{% else %}{{ r.resource_name }}{% endif %}</td>
             <td>{{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}</td>
             <td>{{ r.end_date or '—' }}</td>
         </tr>

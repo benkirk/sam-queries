@@ -12,6 +12,8 @@
                        latest_change
     notify_enabled     NotifyConfig.enabled
     redirect_to        NOTIFY_REDIRECT_TO, or None
+    errors             validation-error strings (on re-render), or undefined
+    operator_comment   the note typed so far (on re-render), or undefined
 
   A real send is irreversible, so this is a look-before-you-send preview, the
   same reasoning as the XRAS Notify button.
@@ -22,6 +24,12 @@
 {% set skip_n = notices | selectattr('auto_action', 'equalto', 'skip') | list | length %}
 
 <div class="modal-body">
+
+  {% if errors %}
+  <div class="alert alert-danger small">
+    {% for e in errors %}<div>{{ e }}</div>{% endfor %}
+  </div>
+  {% endif %}
 
   {% if not notify_enabled %}
   <div class="alert alert-warning d-flex align-items-start gap-2">
@@ -98,7 +106,7 @@
                     name="action_{{ pid }}"
                     hx-get="{{ url_for('admin_dashboard.htmx_notify_project_preview', projcode=n.project.projcode) }}?active_at={{ active_at }}"
                     hx-trigger="change{{ ', load' if loop.first }}"
-                    hx-include="this"
+                    hx-include="this, #notifyOperatorComment"
                     hx-target="#notifyPreviewPane"
                     hx-swap="innerHTML"
                     {% if not n.recipients %}disabled{% endif %}>
@@ -116,6 +124,11 @@
   {# Preserve Active-at for the POST (pulled in by the Send button's hx-include). #}
   <input type="hidden" name="active_at" value="{{ active_at }}">
 
+  <label class="form-label small mb-1" for="notifyOperatorComment">
+    Comments <span class="text-muted">(optional — included in every message sent)</span>
+  </label>
+  <textarea class="form-control form-control-sm mb-3" rows="2" maxlength="1000"
+            name="operator_comment" id="notifyOperatorComment">{{ operator_comment or '' }}</textarea>
 
   <h6 class="text-muted text-uppercase small mb-2">Preview</h6>
   <div id="notifyPreviewPane" class="mb-2">
@@ -130,7 +143,7 @@
   {% if notices %}
   <button type="button" class="btn btn-primary"
           hx-post="{{ url_for('admin_dashboard.htmx_notify_project', projcode=root.projcode) }}"
-          hx-include="#notifyProjectRows, [name='active_at']"
+          hx-include="#notifyProjectRows, [name='active_at'], #notifyOperatorComment"
           hx-target="#notifyProjectFormContainer"
           hx-swap="innerHTML">
     <i class="fa-solid fa-paper-plane"></i> Send notifications

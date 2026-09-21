@@ -68,6 +68,9 @@ class SAMWebappConfig(SAMConfig):
     # XRAS mirroring only (the sweep-fed Accounts queue); the Accounts queue and
     # the XRAS Pending-Users card stay live regardless.
     ACCOUNT_INVITATIONS_ENABLED = os.getenv('ACCOUNT_INVITATIONS_ENABLED', '1').lower() in ('1', 'true', 'yes')
+    # Host that links in outgoing mail point at, e.g. https://sam.hpc.ucar.edu/.
+    # Empty: the host of the request that sent the mail.
+    PUBLIC_BASE_URL = os.getenv('PUBLIC_BASE_URL', '')
     # How long a verification link and code stay valid.
     ACCOUNT_VERIFY_TTL_HOURS = int(os.getenv('ACCOUNT_VERIFY_TTL_HOURS', 48))
     # Limit /register to signed-in users (a redirect to login, and a preview

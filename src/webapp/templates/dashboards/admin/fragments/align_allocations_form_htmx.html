@@ -9,6 +9,8 @@
                         start_date, end_date, is_open_ended
     target_start/_end   the computed [min(start), max(end)] window, or None
     misaligned          True when a dated resource differs from the target
+    blocked             True when a candidate's widened window would overlap
+                        another allocation on its account (row: c.conflict)
     errors              validation-error strings (on re-render)
 #}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
@@ -20,8 +22,10 @@
     submit_icon='arrows-left-right-to-line',
     submit_class='btn-warning',
     errors=errors,
-    submit_disabled=(not misaligned),
-    submit_disabled_title='Resources already share one period (or fewer than two dated resources).'
+    submit_disabled=(not misaligned or blocked),
+    submit_disabled_title=('A widened period would overlap another allocation on the same account.'
+                           if blocked else
+                           'Resources already share one period (or fewer than two dated resources).')
 ) %}
 
   <div class="alert alert-info small mb-3">
@@ -52,7 +56,15 @@
     Resource periods differ. <strong>Make consistent</strong> will set every
     dated resource to
     <strong>{{ target_start | fmt_date }} → {{ target_end | fmt_date }}</strong>.
+    A wider period also widens the window usage is charged against.
   </div>
+  {% if blocked %}
+  <div class="alert alert-danger small">
+    <i class="fa-solid fa-triangle-exclamation"></i>
+    Cannot align: the resources marked below would overlap another allocation
+    on the same account (a prior or later period). Adjust those dates first.
+  </div>
+  {% endif %}
   {% else %}
   <div class="alert alert-success small">
     <i class="fa-solid fa-circle-check"></i>
@@ -93,7 +105,9 @@
             {% else %}{{ c.end_date | fmt_date }}{% endif %}
           </td>
           <td class="text-end" style="vertical-align:middle;">
-            {% if row_off %}
+            {% if c.conflict %}
+            <i class="fa-solid fa-triangle-exclamation text-danger small" title="would overlap another allocation"></i>
+            {% elif row_off %}
             <i class="fa-solid fa-arrow-right-arrow-left text-warning small" title="will change"></i>
             {% endif %}
           </td>

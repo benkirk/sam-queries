@@ -29,3 +29,14 @@ def test_preview_renders_for_an_admin(auth_client, active_project):
 def test_form_is_forbidden_without_permission(non_admin_client, active_project):
     resp = non_admin_client.get(_form_url(active_project.projcode))
     assert resp.status_code in (403, 302)
+
+
+def test_an_overlong_comment_rerenders_the_form_and_sends_nothing(
+        auth_client, active_project):
+    resp = auth_client.post(
+        f'/admin/htmx/notify-project/{active_project.projcode}',
+        data={'operator_comment': 'x' * 1001})
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert 'Longer than maximum length' in html
+    assert 'notifyOperatorComment' in html or 'nothing to notify about' in html

@@ -126,3 +126,41 @@ class TestAlign:
             AllocationTransaction.allocation_id == a.allocation_id).all()
         # a date-only edit logs a row, and it carries no amount delta
         assert any(r.transaction_amount == 0 for r in rows)
+
+
+class TestOverlapGuard:
+
+    def test_widening_into_a_prior_period_is_refused(self, session):
+        # `a` would be pulled back to b's 2026-07-01 start, across the prior
+        # period that ends 2026-09-30 on a's own account.
+        proj = make_project(session)
+        acct = _acct(session, proj)
+        make_allocation(session, account=acct,
+                        start_date=datetime(2025, 10, 1), end_date=datetime(2026, 9, 30))
+        a = make_allocation(session, account=acct,
+                            start_date=datetime(2026, 10, 1), end_date=datetime(2027, 9, 30))
+        _dated(session, proj, datetime(2026, 7, 1), datetime(2027, 9, 30))
+        session.flush()
+        session.expire(proj)
+        with pytest.raises(ValueError, match='overlap'):
+            align_project_allocations(
+                session, root_project_id=proj.project_id,
+                source_active_at=datetime(2027, 2, 1), user_id=1)
+        session.refresh(a)
+        assert a.start_date == datetime(2026, 10, 1)
+
+    def test_a_deleted_neighbor_does_not_block(self, session):
+        proj = make_project(session)
+        acct = _acct(session, proj)
+        old = make_allocation(session, account=acct,
+                              start_date=datetime(2025, 10, 1), end_date=datetime(2026, 9, 30))
+        old.deleted = True
+        make_allocation(session, account=acct,
+                        start_date=datetime(2026, 10, 1), end_date=datetime(2027, 9, 30))
+        _dated(session, proj, datetime(2026, 7, 1), datetime(2027, 9, 30))
+        session.flush()
+        session.expire(proj)
+        changed = align_project_allocations(
+            session, root_project_id=proj.project_id,
+            source_active_at=datetime(2027, 2, 1), user_id=1)
+        assert len(changed) == 1
