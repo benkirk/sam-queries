@@ -114,20 +114,19 @@ def _render_form(event=None, *, form=None, errors=(), field_errors=None, locked_
 #: without an accept in this session is bounced -- the gate is enforced, not
 #: merely hidden. Design: docs/plans/implemented/ACCOUNT_REGISTRATION.md.
 _GATE_KEY = 'register_gate_at'
-_GATE_TTL = timedelta(minutes=30)
+# Generous: an expiry at submit bounces to the gate and the typed form is lost.
+_GATE_TTL = timedelta(hours=2)
 
 
-def _gate_required():
-    return current_app.config.get('ACCOUNT_REGISTRATION_GATE_ENABLED', False)
-
-
-def _gate_passed():
-    """A recent accept in this session lets the open form through."""
+def _gate_blocks():
+    """True when the gate is on and this session has no recent accept."""
+    if not current_app.config.get('ACCOUNT_REGISTRATION_GATE_ENABLED', False):
+        return False
     try:
         accepted = datetime.fromisoformat(session.get(_GATE_KEY) or '')
     except (TypeError, ValueError):
-        return False
-    return datetime.now() - accepted <= _GATE_TTL
+        return True
+    return datetime.now() - accepted > _GATE_TTL
 
 
 def _render_gate(event=None, *, locked_code=None, form=None, errors=(), field_errors=None):
@@ -140,7 +139,7 @@ def _render_gate(event=None, *, locked_code=None, form=None, errors=(), field_er
 @bp.route('/', strict_slashes=False)
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
 def form():
-    if _gate_required() and not _gate_passed():
+    if _gate_blocks():
         return _render_gate()
     return _render_form()
 
@@ -164,7 +163,7 @@ def form_for_event(event_code):
         return render_template('register/refused.html', reason=refusal)
     if current_user.is_authenticated:
         return _render_self_enroll(event)
-    if _gate_required() and not _gate_passed():
+    if _gate_blocks():
         return _render_gate(event, locked_code=event.event_code)
     return _render_form(event, locked_code=event.event_code)
 
@@ -238,7 +237,7 @@ def submit():
         return redirect(url_for('register.pending', token=tokens.page_token(0)))
     # The gate is enforced here, not just in the UI: the open inputs cannot be
     # submitted until the terms + human check passed in this session.
-    if _gate_required() and not _gate_passed():
+    if _gate_blocks():
         event, _refusal = _open_event(raw.get('event_code'))
         return _render_gate(event, locked_code=(event.event_code if event else None))
     try:
@@ -274,7 +273,7 @@ def submit():
     result = get_notifier().send(message)
     logger.info('registration %s for %s: verification mail %s',
                 row.account_request_id, row.email, result.status)
-    session.pop(_GATE_KEY, None)  # a fresh request re-accepts
+    session.pop(_GATE_KEY, None)  # best effort: a cookie session cannot revoke
     return redirect(url_for('register.pending', token=tokens.page_token(row.account_request_id),
                             sent=int(result.status in ('sent', 'redirected'))))
 

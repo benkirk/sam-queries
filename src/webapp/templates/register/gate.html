@@ -31,7 +31,8 @@
     <input type="hidden" name="hc_token" value="{{ hc_token }}">
 
     <div class="eula-panel" tabindex="0" aria-label="Terms of use">
-        {% include 'register/_eula.html' %}
+        {# Trusted markup from the vendored agreement (webapp/register/eula.py). #}
+        {{ eula_html }}
     </div>
 
     <div class="form-check">

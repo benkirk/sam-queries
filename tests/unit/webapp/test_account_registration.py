@@ -182,9 +182,11 @@ class TestTheAcceptGate:
         assert 'expired' in resp.get_data(as_text=True)
 
     def test_accepting_opens_the_form_then_submit_succeeds(self, gate_app, app,
-                                                           null_notifier, cleanup_address):
+                                                           null_notifier):
         from sam.core.account_requests import AccountRequest
         from webapp.extensions import db
+        # Its own address: the shared GOOD one races other workers' committed rows.
+        email = f'zz.gate.{uuid4().hex[:8]}@example.invalid'
         client = gate_app.test_client()
         accepted = self._accept(client)
         assert accepted.status_code == 302 and accepted.headers['Location'].endswith('/register/')
@@ -192,14 +194,39 @@ class TestTheAcceptGate:
         form_html = client.get('/register/').get_data(as_text=True)
         assert 'name="email"' in form_html and 'Send me the confirmation' in form_html
         # ...and the write goes through.
-        resp = client.post('/register/', data=GOOD)
-        assert resp.status_code == 302 and '/register/pending/' in resp.headers['Location']
-        with app.app_context():
-            assert db.session.query(AccountRequest).filter_by(email=GOOD['email']).count() == 1
+        try:
+            resp = client.post('/register/', data={**GOOD, 'email': email})
+            assert resp.status_code == 302 and '/register/pending/' in resp.headers['Location']
+            with app.app_context():
+                assert db.session.query(AccountRequest).filter_by(email=email).count() == 1
+        finally:
+            with app.app_context():
+                db.session.query(AccountRequest).filter_by(email=email).delete()
+                db.session.commit()
         # The marker is cleared after a submission: a second one re-gates.
         assert 'Accept and continue' in client.post(
             '/register/', data={**GOOD, 'email': 'zz.gate.second@example.invalid'}
         ).get_data(as_text=True)
+
+    def test_a_stale_accept_is_bounced(self, gate_app, monkeypatch):
+        from datetime import timedelta
+        from webapp.register import blueprint
+        client = gate_app.test_client()
+        self._accept(client)
+        monkeypatch.setattr(blueprint, '_GATE_TTL', timedelta(seconds=-1))
+        assert 'Accept and continue' in client.get('/register/').get_data(as_text=True)
+
+    def test_an_event_locked_accept_returns_to_the_event_form(self, gate_app,
+                                                              committed_event):
+        open_event, _ = committed_event
+        client = gate_app.test_client()
+        html = client.get(f'/register/{open_event}').get_data(as_text=True)
+        assert f'name="event_code" value="{open_event}"' in html
+        resp = client.post('/register/accept', data={
+            'accept': '1', 'confirm': '1', 'event_code': open_event,
+            'hc_token': self._gate_token(html)})
+        assert resp.status_code == 302
+        assert resp.headers['Location'].endswith(f'/register/{open_event}')
 
 
 class TestTheLoginGate:

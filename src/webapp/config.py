@@ -88,14 +88,9 @@ class SAMWebappConfig(SAMConfig):
     # low so enabling the form cannot open an unbounded mailer; raise it by env
     # once the human-challenge gate lands (docs/plans/implemented/ACCOUNT_REGISTRATION.md 6).
     RATELIMIT_REGISTER_GLOBAL = os.getenv('RATELIMIT_REGISTER_GLOBAL', '10 per hour; 30 per day')
-    # Put the public form behind an accept-first gate: a terms-of-use (EULA)
-    # acceptance and a human-verification check must both pass, server-side,
-    # before the open input fields can be submitted. ON by default. The
-    # human check is a same-origin STUB (webapp/register/human_check.py) with
-    # a seam for a real challenge (Turnstile/hCaptcha), which is what actually
-    # satisfies docs/plans/implemented/ACCOUNT_REGISTRATION.md 6.1; this flag
-    # gates the placeholder. TestingConfig turns it off so the direct-submit
-    # tests keep exercising the form; the gate has its own tests.
+    # Accept-first gate (EULA + human-check STUB) in front of the public form;
+    # 1/true/yes or off. Not the 6.1 human challenge:
+    # docs/plans/implemented/ACCOUNT_REGISTRATION.md 6.2.
     ACCOUNT_REGISTRATION_GATE_ENABLED = os.getenv('ACCOUNT_REGISTRATION_GATE_ENABLED', '1').lower() in ('1', 'true', 'yes')
 
     # Create Project workflow. When off, the modal still renders with all inputs

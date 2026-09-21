@@ -146,17 +146,12 @@ class RegisterForm(HtmxFormSchema):
 
 
 class RegisterGateForm(HtmxFormSchema):
-    """The accept-first gate in front of the public form: a terms-of-use
-    acceptance and a human-verification response, both required before the
-    open input fields are reachable. ``hc_token`` is checked against
-    webapp.register.human_check by the route; the two booleans are the
-    unchecked-is-absent checkboxes (``load_default`` is the right False)."""
+    """The accept-first gate: both boxes ticked; the route verifies ``hc_token``."""
 
     accept = f.Bool(load_default=False)
     confirm = f.Bool(load_default=False)
     hc_token = f.Str(required=True,
                      error_messages={'required': 'Complete the verification.'})
-    event_code = f.Str(load_default=None, validate=v.Length(max=32))
 
     @post_load
     def _require(self, data, **kwargs):
@@ -167,8 +162,6 @@ class RegisterGateForm(HtmxFormSchema):
             errors['confirm'] = ['Please confirm you are not a robot.']
         if errors:
             raise ValidationError(errors)
-        if data.get('event_code'):
-            data['event_code'] = data['event_code'].strip().upper()
         return data
 
 

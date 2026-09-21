@@ -402,11 +402,16 @@ server-side** — `submit()` re-checks the session marker and writes nothing
 without it, so the gate is not merely a hidden UI. `POST /register/accept`
 validates `RegisterGateForm` (both boxes) and `webapp/register/human_check.py`,
 then sets the marker (cleared after a submission, so each request re-accepts).
+The marker lasts two hours: an expiry at submit bounces to the gate and the
+typed form is lost, so the window is generous. Clearing it is best effort — the
+session is a client-held cookie, so a saved post-accept cookie replays inside
+the window; the rate limits are the bound. A real challenge should be verified
+**at submit** (or the marker made single-use server-side) rather than lean on it.
 
 **The EULA is the real NWSC agreement**, vendored verbatim from `NCAR/HPC-Docs`
 (`docs/getting-started/end-user-agreement.md`) as `webapp/register/eula.md` and
-rendered from markdown at request time (`webapp/register/eula.py`, cached; the
-`_eula.html` partial just emits it). mkdocs uses the same python-markdown
+rendered from markdown at request time (`webapp/register/eula.py`, cached;
+`gate.html` emits it). mkdocs uses the same python-markdown
 engine, so the site's markdown reproduces here; relative doc links are mapped
 onto the published site. Refresh with `scripts/update_eula.py` and review the
 diff in a PR — the accepted legal text is what changed — the same discipline as
