@@ -43,7 +43,8 @@
                   (expiring, aborted = urgent and grace = warn: earlier names,
                   kept because saved operator overrides may use them.)
            Small: <small> = a quieter second line inside a table cell
-           Table: table.data  (td.num = right-aligned figures; .failed = red)
+           Table: table.data  (class num on a td and its th = right-aligned
+                  figures; .failed = red)
            Text:  .code = a verification code or similar, set apart */
         .callout {
             border-left: 4px solid #97999b;
@@ -83,7 +84,12 @@
             font-weight: 600;
         }
         small  { color: #5b6573; font-size: 14px; }
-        td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        /* Qualified with table.data: a bare td.num loses to the rule above. */
+        table.data td.num, table.data th.num {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            padding-right: 16px;
+        }
         .failed { color: #c4161c; font-weight: 600; }
         .code {
             font-size: 26px;
@@ -160,7 +166,7 @@
     
     <h3>Recipients by project</h3>
     <table class="data">
-        <tr><th>Project</th><th>Recipients</th></tr>
+        <tr><th>Project</th><th class="num">Recipients</th></tr>
         
         <tr><td>SCSG0001</td><td class="num">3</td></tr>
         

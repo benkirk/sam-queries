@@ -9,7 +9,7 @@
 
     {% if by_purpose %}
     <table class="data">
-        <tr><th>Purpose</th><th>Open</th></tr>
+        <tr><th>Purpose</th><th class="num">Open</th></tr>
         {% for p in by_purpose %}
         <tr><td>{{ p.purpose }}</td><td class="num">{{ p.count }}</td></tr>
         {% endfor %}
@@ -20,7 +20,7 @@
     <h3>{{ e.event_code }} — {{ e.event_name }} ({{ e.project_code }})</h3>
     <p>{{ e.count }} account(s) needed by <strong>{{ e.deadline }}</strong></p>
     <table class="data">
-        <tr><th>Person</th><th>Sponsor</th><th>Waiting</th><th>Status</th></tr>
+        <tr><th>Person</th><th>Sponsor</th><th class="num">Waiting</th><th>Status</th></tr>
         {% for r in rows if r.event_code == e.event_code %}
         <tr>{{ person(r) }}
             <td>{{ r.sponsor }}</td>{{ status(r) }}
@@ -33,7 +33,7 @@
     {% if loose %}
     <h3>Other requests</h3>
     <table class="data">
-        <tr><th>Person</th><th>Request</th><th>Waiting</th><th>Status</th></tr>
+        <tr><th>Person</th><th>Request</th><th class="num">Waiting</th><th>Status</th></tr>
         {% for r in loose %}
         <tr>{{ person(r) }}
             <td>{{ r.purpose }}{% if r.project_code or r.sponsor %}<br><small>

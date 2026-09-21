@@ -43,7 +43,8 @@
                   (expiring, aborted = urgent and grace = warn: earlier names,
                   kept because saved operator overrides may use them.)
            Small: <small> = a quieter second line inside a table cell
-           Table: table.data  (td.num = right-aligned figures; .failed = red)
+           Table: table.data  (class num on a td and its th = right-aligned
+                  figures; .failed = red)
            Text:  .code = a verification code or similar, set apart */
         .callout {
             border-left: 4px solid #97999b;
@@ -83,7 +84,12 @@
             font-weight: 600;
         }
         small  { color: #5b6573; font-size: 14px; }
-        td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        /* Qualified with table.data: a bare td.num loses to the rule above. */
+        table.data td.num, table.data th.num {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            padding-right: 16px;
+        }
         .failed { color: #c4161c; font-weight: 600; }
         .code {
             font-size: 26px;
@@ -138,7 +144,7 @@
 
     
     <table class="data">
-        <tr><th>Purpose</th><th>Open</th></tr>
+        <tr><th>Purpose</th><th class="num">Open</th></tr>
         
         <tr><td>enrollment</td><td class="num">3</td></tr>
         
@@ -151,7 +157,7 @@
     <h3>WRF-TUTORIAL-2026-10 — WRF Tutorial, October 2026 (SCSG0001)</h3>
     <p>2 account(s) needed by <strong>2026-10-05</strong></p>
     <table class="data">
-        <tr><th>Person</th><th>Sponsor</th><th>Waiting</th><th>Status</th></tr>
+        <tr><th>Person</th><th>Sponsor</th><th class="num">Waiting</th><th>Status</th></tr>
         
         <tr>
         <td>Ada Lovelace<br><small>ada@example.edu<br>University of Example<br>wants ada</small><br><small><em>Visiting for the tutorial week.</em></small></td>
@@ -178,7 +184,7 @@
     
     <h3>Other requests</h3>
     <table class="data">
-        <tr><th>Person</th><th>Request</th><th>Waiting</th><th>Status</th></tr>
+        <tr><th>Person</th><th>Request</th><th class="num">Waiting</th><th>Status</th></tr>
         
         <tr>
         <td>Grace Hopper<br><small>grace@example.edu<br>NCAR</small></td>

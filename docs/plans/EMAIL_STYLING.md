@@ -15,7 +15,7 @@ plain: paragraphs, headings, lists, links, and a small class vocabulary.
 | `callout urgent` | the headline of a message: urgent, or a run that sent nothing |
 | `callout warn` | a warning: a grace period, a run with failures, an open queue |
 | `callout note` | a marginal aside; keeps the line breaks someone typed |
-| `table.data`, `td.num`, `.failed` | a plain table, right-aligned figures, a failed count |
+| `table.data`, `num`, `.failed` | a plain table; `num` on a `td` and on its `th` right-aligns a figures column; a failed count |
 | `<small>` | a quieter second line inside a table cell |
 | `code` | a verification code or similar, set apart |
 

@@ -32,7 +32,7 @@
     {% if per_project %}
     <h3>Recipients by project</h3>
     <table class="data">
-        <tr><th>Project</th><th>Recipients</th></tr>
+        <tr><th>Project</th><th class="num">Recipients</th></tr>
         {% for row in per_project %}
         <tr><td>{{ row.projcode }}</td><td class="num">{{ row.count }}</td></tr>
         {% endfor %}
