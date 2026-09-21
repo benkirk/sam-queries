@@ -427,6 +427,30 @@ diff in a PR — the accepted legal text is what changed — the same discipline
 the vendored front-end assets. Vendoring (not a live import) keeps the build
 deterministic and records exactly what a visitor accepted.
 
+**Refreshing the EULA.** Driven by the `update-vendored-assets` skill.
+`python scripts/update_eula.py [--ref <tag|sha>]` overwrites `eula.md` and
+prints the upstream blob SHA; `git diff` is then the review, and no diff means
+current. There is no safe/high-risk split as for a library — any wording change
+alters what people agree to, so a human decides. When approved:
+
+- Never hand-edit `eula.md`, not even a typo or a link; it is exempt from the
+  prose and link gates for that reason (`RECORD_FILES` in
+  `tests/unit/gates/test_docs.py`). A wording problem is fixed upstream, then
+  re-pulled.
+- Record the blob SHA and the upstream ref in the commit message — the SHA is
+  the only version identifier the text has, and the acceptance record below
+  will stamp it. Commit the refresh alone so it reverts alone.
+- The output is injected **unescaped** on the premise that the source carries no
+  raw HTML; if upstream adds any, that premise needs a fresh look first.
+  mkdocs-only syntax (admonitions, attribute lists, snippets) renders as literal
+  text under plain python-markdown, and a new relative link must match the
+  sibling `*.md` pattern `eula.py` rewrites or it 404s from our page.
+- Gates: `pytest tests/unit/webapp/test_account_registration.py -k "Eula or Gate"`
+  and `tests/unit/gates/test_docs.py`. Then look at the gate on webdev in both
+  themes. `eula_html()` is `lru_cache`d per process, so restart webdev to see
+  new text; a deploy restarts the workers and the gate page is not in the Redis
+  page cache, so no cache refresh is needed.
+
 **The human check is still a placeholder** — a same-origin **stub**
 (`human_check.py`: a SECRET_KEY-signed nonce), the seam a real challenge drops
 into. It is *not* the § 6.1 #1 human challenge: wiring Turnstile/hCaptcha there
