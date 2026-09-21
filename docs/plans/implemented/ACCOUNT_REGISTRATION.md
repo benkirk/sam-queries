@@ -387,6 +387,35 @@ every issue — so the limiter, not the ledger, is what caps repeats. (1) + (2)
 are the pair that actually closes the gap; this subsection is the "hardening
 pass" the § 6 bullet names.
 
+### 6.2 The accept-first gate and the branded flow (follow-on)
+
+A proof-of-concept follow-on puts the public form behind an accept-first gate
+and restyles the whole `/register` flow onto a standalone branded shell that
+carries the shared email design (the navy "sheet" of `_email_base.html`), so
+the page and the confirmation mail read as one thing.
+
+**The gate** (`ACCOUNT_REGISTRATION_GATE_ENABLED`, on by default; off in
+`TestingConfig`). One URL, dynamic content: `GET /register/` renders a
+terms-of-use (EULA) acceptance plus a human-verification check, and only a
+recent accept in the session lets the open form through. It is **enforced
+server-side** — `submit()` re-checks the session marker and writes nothing
+without it, so the gate is not merely a hidden UI. `POST /register/accept`
+validates `RegisterGateForm` (both boxes) and `webapp/register/human_check.py`,
+then sets the marker (cleared after a submission, so each request re-accepts).
+
+**Both pieces are placeholders.** The EULA copy is a swappable partial
+(`templates/register/_eula.html`) pending real wording. The human check is a
+same-origin **stub** (`human_check.py`: a SECRET_KEY-signed nonce) — the seam a
+real challenge drops into. It is *not* the § 6.1 #1 human challenge: wiring
+Turnstile/hCaptcha there still needs the CSP allowance and, with #2, remains the
+precondition before `ACCOUNT_REGISTRATION_ENABLED=1` in prod.
+
+**The shell.** `templates/register/base_register.html` (cloned from
+`auth/login.html`) + a thin token-only `static/css/register.css`; every
+`register/*` template re-parents onto it. Behavior is `static/js/register.js`
+(disables the CTA until both boxes are ticked — nicety only; the server
+enforces). Design language: docs/plans/EMAIL_STYLING.md.
+
 ## 7. References
 
 | | |

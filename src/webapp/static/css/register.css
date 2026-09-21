@@ -1,0 +1,157 @@
+/**
+ * SAM registration flow — standalone branded shell.
+ *
+ * Thin token-only layer on dashboard.css (which supplies .btn / .form-control /
+ * .alert / typography). Carries the #589 email "sheet" onto the web: a navy
+ * masthead over a centered white card on a cool page, flat, with the same
+ * role-named callouts. Colours are tokens only (test_css_tokens); behaviour is
+ * in static/js/register.js (no inline script — nonce-free CSP).
+ */
+
+.register-page {
+    background-color: var(--surface-page);
+    background-image: url('../img/UCAR-Waves-Lines-Only-66.png');
+    background-position: 150% 0%;
+    background-repeat: repeat-y;
+    background-size: 53%;
+    min-height: 100vh;
+    margin: 0;
+    padding: 2rem 1rem;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    font-family: var(--font-family-default);
+    color: var(--text-primary);
+}
+
+.register-sheet {
+    width: 100%;
+    max-width: 640px;
+    background: var(--surface-card);
+    border: 1px solid var(--border-default);
+    box-shadow: var(--shadow-md);
+}
+
+/* The masthead is the one bold thing: type, not a logo, like the mail. The navy
+   is a brand band in both themes, so it uses the invariant ink-on-brand token. */
+.register-masthead {
+    background-color: var(--ncar-navy);
+    background-image: linear-gradient(160deg, var(--ncar-navy), var(--ncar-space-blue));
+    padding: 1.5rem 2rem;
+}
+.register-org {
+    color: var(--text-on-brand);
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-bold);
+    line-height: 1.1;
+}
+.register-product {
+    color: var(--text-on-brand);
+    opacity: 0.72;
+    font-size: var(--font-size-xxsm);
+    margin-top: 0.15rem;
+}
+
+.register-body {
+    padding: 1.75rem 2rem 0.5rem;
+}
+.register-body h1 {
+    color: var(--text-heading);
+    font-size: var(--font-size-xlg);
+    font-weight: var(--font-weight-bold);
+    line-height: 1.15;
+    margin: 0 0 0.75rem;
+}
+.register-lede {
+    color: var(--text-secondary);
+    max-width: 60ch;
+}
+
+/* Step marker — the flow IS a sequence (accept -> describe -> confirm), so a
+   quiet marker is honest signposting, not decorative numbering. */
+.register-step {
+    color: var(--text-secondary);
+    font-size: var(--font-size-xxsm);
+    font-weight: var(--font-weight-semi-bold);
+    margin-bottom: 0.75rem;
+}
+.register-step-num {
+    color: var(--ncar-teal);
+}
+
+/* EULA panel — a bordered scroll box so long terms never push the CTA away. */
+.eula-panel {
+    max-height: 15rem;
+    overflow-y: auto;
+    border: 1px solid var(--border-default);
+    background: var(--surface-tertiary);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.25rem;
+    font-size: var(--font-size-xsm);
+    color: var(--text-primary);
+}
+.eula-panel h2 {
+    font-size: var(--font-size-sm);
+    color: var(--text-heading);
+    margin: 1rem 0 0.4rem;
+}
+.eula-panel h2:first-child { margin-top: 0; }
+.eula-panel p { margin-bottom: 0.6rem; }
+
+/* Human-check stub — a calm bordered slot that reads as a widget; the real
+   challenge (Turnstile/hCaptcha) drops in here later. */
+.human-check {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    border: 1px solid var(--border-default);
+    background: var(--surface-raised);
+    padding: 0.85rem 1rem;
+    margin-bottom: 1.25rem;
+}
+.human-check-hint {
+    color: var(--text-tertiary);
+    font-size: var(--font-size-xxsm);
+    margin-left: auto;
+}
+
+/* Role-named callouts carried from the mail: a left border + a tinted body.
+   good = done, warn = attention, urgent = blocked. */
+.register-callout {
+    border-left: 4px solid var(--ncar-gray);
+    background: var(--surface-tertiary);
+    padding: 0.85rem 1.1rem;
+    margin-bottom: 1.25rem;
+}
+.register-callout p:last-child { margin-bottom: 0; }
+.register-callout.good {
+    border-left-color: var(--ncar-teal);
+    background: rgba(var(--ncar-teal-rgb), 0.08);
+}
+.register-callout.warn {
+    border-left-color: var(--ncar-orange);
+}
+.register-callout.urgent {
+    border-left-color: var(--danger-color);
+}
+
+.register-footer {
+    border-top: 1px solid var(--border-default);
+    margin-top: 1.5rem;
+    padding: 1rem 2rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+.register-fineprint {
+    color: var(--text-tertiary);
+    margin-left: auto;
+}
+.register-footer a { color: inherit; }
+
+@media (max-width: 575.98px) {
+    .register-masthead { padding: 1.25rem; }
+    .register-body { padding: 1.25rem 1.25rem 0.5rem; }
+    .register-footer { padding: 1rem 1.25rem 1.25rem; }
+}

@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timedelta
 
 from flask import (Blueprint, current_app, redirect, render_template, request,
-                   url_for)
+                   session, url_for)
 from flask_limiter.util import get_remote_address
 from flask_login import current_user
 from marshmallow import ValidationError
@@ -23,13 +23,13 @@ from sam.manage import management_transaction
 from sam.manage.account_requests import enroll_user_in_event, register_request
 from sam.projects.projects import Project
 from sam.queries.account_notices import build_verify_message
-from sam.schemas.forms import RegisterForm, VerifyCodeForm
+from sam.schemas.forms import RegisterForm, RegisterGateForm, VerifyCodeForm
 from webapp.extensions import db
 from webapp.limiter import limiter as _rate_limit
 from webapp.utils.htmx import institution_options
 from webapp.utils.notify import get_notifier
 
-from . import tokens
+from . import human_check, tokens
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('register', __name__, url_prefix='/register')
@@ -109,9 +109,38 @@ def _render_form(event=None, *, form=None, errors=(), field_errors=None, locked_
                            academic_options=[(s, s) for s in ACADEMIC_STATUSES])
 
 
+#: The gate marker, set on accept, lets the open form through for one form-fill
+#: window. Session-backed (signed on SECRET_KEY), so a direct POST to the form
+#: without an accept in this session is bounced -- the gate is enforced, not
+#: merely hidden. Design: docs/plans/implemented/ACCOUNT_REGISTRATION.md.
+_GATE_KEY = 'register_gate_at'
+_GATE_TTL = timedelta(minutes=30)
+
+
+def _gate_required():
+    return current_app.config.get('ACCOUNT_REGISTRATION_GATE_ENABLED', False)
+
+
+def _gate_passed():
+    """A recent accept in this session lets the open form through."""
+    try:
+        accepted = datetime.fromisoformat(session.get(_GATE_KEY) or '')
+    except (TypeError, ValueError):
+        return False
+    return datetime.now() - accepted <= _GATE_TTL
+
+
+def _render_gate(event=None, *, locked_code=None, form=None, errors=(), field_errors=None):
+    return render_template('register/gate.html', event=event, locked_code=locked_code,
+                           form=form or {}, errors=list(errors),
+                           field_errors=field_errors or {}, hc_token=human_check.issue())
+
+
 @bp.route('/', strict_slashes=False)
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
 def form():
+    if _gate_required() and not _gate_passed():
+        return _render_gate()
     return _render_form()
 
 
@@ -134,7 +163,33 @@ def form_for_event(event_code):
         return render_template('register/refused.html', reason=refusal)
     if current_user.is_authenticated:
         return _render_self_enroll(event)
+    if _gate_required() and not _gate_passed():
+        return _render_gate(event, locked_code=event.event_code)
     return _render_form(event, locked_code=event.event_code)
+
+
+@bp.route('/accept', methods=['POST'], strict_slashes=False)
+@_rate_limit.limiter.limit(_post_tier, key_func=_ip_key, methods=['POST'])
+def accept():
+    """The accept-first gate: a terms acceptance plus a human check. On success
+    the open form is reachable for one fill window (re-checked in submit)."""
+    event, refusal = _open_event(request.form.get('event_code'))
+    if refusal:
+        return render_template('register/refused.html', reason=refusal)
+    locked = event.event_code if event else None
+    try:
+        data = RegisterGateForm().load(request.form)
+    except ValidationError as exc:
+        field_errors, form_level = RegisterGateForm.split_errors(exc.messages)
+        return _render_gate(event, locked_code=locked, form=request.form,
+                            errors=form_level, field_errors=field_errors)
+    if not human_check.verify(data['hc_token']):
+        return _render_gate(event, locked_code=locked, form=request.form,
+                            errors=['That verification expired. Please try again.'])
+    session[_GATE_KEY] = datetime.now().isoformat()
+    if locked:
+        return redirect(url_for('register.form_for_event', event_code=locked))
+    return redirect(url_for('register.form'))
 
 
 def _render_self_enroll(event, *, error=None):
@@ -180,6 +235,11 @@ def submit():
     if (raw.get('website') or '').strip():
         logger.warning('registration honeypot tripped from %s', get_remote_address())
         return redirect(url_for('register.pending', token=tokens.page_token(0)))
+    # The gate is enforced here, not just in the UI: the open inputs cannot be
+    # submitted until the terms + human check passed in this session.
+    if _gate_required() and not _gate_passed():
+        event, _refusal = _open_event(raw.get('event_code'))
+        return _render_gate(event, locked_code=(event.event_code if event else None))
     try:
         data = RegisterForm().load(raw)
     except ValidationError as exc:
@@ -213,6 +273,7 @@ def submit():
     result = get_notifier().send(message)
     logger.info('registration %s for %s: verification mail %s',
                 row.account_request_id, row.email, result.status)
+    session.pop(_GATE_KEY, None)  # a fresh request re-accepts
     return redirect(url_for('register.pending', token=tokens.page_token(row.account_request_id),
                             sent=int(result.status in ('sent', 'redirected'))))
 

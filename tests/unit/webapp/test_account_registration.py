@@ -113,6 +113,95 @@ class TestTheFlag:
             assert TestingConfig.ACCOUNT_REGISTRATION_ENABLED is True
 
 
+class TestTheAcceptGate:
+    """ACCOUNT_REGISTRATION_GATE_ENABLED: a terms acceptance + a human-check
+    stub must pass, server-side, before the open form is reachable. Off in
+    TestingConfig so the form tests above stay direct; this class builds an app
+    with it on."""
+
+    @pytest.fixture(scope='class')
+    def gate_app(self, test_db_url, status_db_url):
+        from webapp.run import create_app
+        return create_app(config_overrides={
+            'SQLALCHEMY_DATABASE_URI': test_db_url,
+            'SQLALCHEMY_BINDS': {'system_status': status_db_url},
+            'ACCOUNT_REGISTRATION_GATE_ENABLED': True,
+        })
+
+    @staticmethod
+    def _gate_token(html):
+        import re
+        m = re.search(r'name="hc_token"\s+value="([^"]+)"', html)
+        assert m, 'the gate did not render an hc_token'
+        return m.group(1)
+
+    def _accept(self, client):
+        """Pass the gate on `client`; returns the accept response."""
+        html = client.get('/register/').get_data(as_text=True)
+        return client.post('/register/accept', data={
+            'accept': '1', 'confirm': '1', 'hc_token': self._gate_token(html)})
+
+    def test_default_is_on_outside_testing(self):
+        import os
+        from webapp.config import DevelopmentConfig, ProductionConfig, TestingConfig
+        if 'ACCOUNT_REGISTRATION_GATE_ENABLED' not in os.environ:
+            assert ProductionConfig.ACCOUNT_REGISTRATION_GATE_ENABLED is True
+            assert DevelopmentConfig.ACCOUNT_REGISTRATION_GATE_ENABLED is True
+        assert TestingConfig.ACCOUNT_REGISTRATION_GATE_ENABLED is False
+
+    def test_get_shows_the_gate_not_the_form(self, gate_app):
+        html = gate_app.test_client().get('/register/').get_data(as_text=True)
+        assert 'Accept and continue' in html
+        assert 'name="hc_token"' in html
+        assert 'name="email"' not in html, 'the open form must be gated'
+
+    def test_post_without_accepting_is_bounced_and_writes_nothing(self, gate_app, app,
+                                                                  null_notifier):
+        from sam.core.account_requests import AccountRequest
+        from webapp.extensions import db
+        email = 'zz.gate.bounce@example.invalid'
+        resp = gate_app.test_client().post('/register/', data={**GOOD, 'email': email})
+        assert resp.status_code == 200
+        assert 'Accept and continue' in resp.get_data(as_text=True), 'the open POST is re-gated'
+        with app.app_context():
+            assert db.session.query(AccountRequest).filter_by(email=email).count() == 0
+
+    def test_missing_acceptance_re_renders_with_an_error(self, gate_app):
+        client = gate_app.test_client()
+        html = client.get('/register/').get_data(as_text=True)
+        resp = client.post('/register/accept',
+                           data={'confirm': '1', 'hc_token': self._gate_token(html)})
+        assert resp.status_code == 200
+        assert 'accept the terms' in resp.get_data(as_text=True)
+
+    def test_a_tampered_human_check_is_refused(self, gate_app):
+        resp = gate_app.test_client().post('/register/accept',
+                                           data={'accept': '1', 'confirm': '1',
+                                                 'hc_token': 'not-a-real-token'})
+        assert resp.status_code == 200
+        assert 'expired' in resp.get_data(as_text=True)
+
+    def test_accepting_opens_the_form_then_submit_succeeds(self, gate_app, app,
+                                                           null_notifier, cleanup_address):
+        from sam.core.account_requests import AccountRequest
+        from webapp.extensions import db
+        client = gate_app.test_client()
+        accepted = self._accept(client)
+        assert accepted.status_code == 302 and accepted.headers['Location'].endswith('/register/')
+        # The session now carries the marker, so the open form renders...
+        form_html = client.get('/register/').get_data(as_text=True)
+        assert 'name="email"' in form_html and 'Send me the confirmation' in form_html
+        # ...and the write goes through.
+        resp = client.post('/register/', data=GOOD)
+        assert resp.status_code == 302 and '/register/pending/' in resp.headers['Location']
+        with app.app_context():
+            assert db.session.query(AccountRequest).filter_by(email=GOOD['email']).count() == 1
+        # The marker is cleared after a submission: a second one re-gates.
+        assert 'Accept and continue' in client.post(
+            '/register/', data={**GOOD, 'email': 'zz.gate.second@example.invalid'}
+        ).get_data(as_text=True)
+
+
 class TestTheLoginGate:
     """ACCOUNT_REGISTRATION_LOGIN_REQUIRED: the preview posture. Off in
     TestingConfig so the anonymous-form tests above stay the public path;
@@ -466,6 +555,31 @@ def enabled_limiter(app):
             facade.limiter.enabled = False
             app.config['RATELIMIT_ENABLED'] = False
             _clear()
+
+
+class TestTheHumanCheckStub:
+    """webapp.register.human_check: a signed nonce today, the seam a real
+    challenge (Turnstile/hCaptcha) replaces. Signed on SECRET_KEY, so a token
+    from this app verifies and a made-up one does not."""
+
+    def test_an_issued_token_verifies(self, app):
+        from webapp.register import human_check
+        with app.app_context():
+            assert human_check.verify(human_check.issue()) is True
+
+    def test_a_missing_or_tampered_token_fails(self, app):
+        from webapp.register import human_check
+        with app.app_context():
+            assert human_check.verify(None) is False
+            assert human_check.verify('') is False
+            assert human_check.verify('not-a-real-token') is False
+
+    def test_an_expired_token_fails(self, app, monkeypatch):
+        from webapp.register import human_check
+        with app.app_context():
+            token = human_check.issue()
+            monkeypatch.setattr(human_check, 'MAX_AGE_SECONDS', -1)
+            assert human_check.verify(token) is False
 
 
 class TestRateLimits:

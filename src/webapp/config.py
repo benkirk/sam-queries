@@ -88,6 +88,15 @@ class SAMWebappConfig(SAMConfig):
     # low so enabling the form cannot open an unbounded mailer; raise it by env
     # once the human-challenge gate lands (docs/plans/implemented/ACCOUNT_REGISTRATION.md 6).
     RATELIMIT_REGISTER_GLOBAL = os.getenv('RATELIMIT_REGISTER_GLOBAL', '10 per hour; 30 per day')
+    # Put the public form behind an accept-first gate: a terms-of-use (EULA)
+    # acceptance and a human-verification check must both pass, server-side,
+    # before the open input fields can be submitted. ON by default. The
+    # human check is a same-origin STUB (webapp/register/human_check.py) with
+    # a seam for a real challenge (Turnstile/hCaptcha), which is what actually
+    # satisfies docs/plans/implemented/ACCOUNT_REGISTRATION.md 6.1; this flag
+    # gates the placeholder. TestingConfig turns it off so the direct-submit
+    # tests keep exercising the form; the gate has its own tests.
+    ACCOUNT_REGISTRATION_GATE_ENABLED = os.getenv('ACCOUNT_REGISTRATION_GATE_ENABLED', '1').lower() in ('1', 'true', 'yes')
 
     # Create Project workflow. When off, the modal still renders with all inputs
     # editable but its submit button is replaced with a disabled indicator, and
@@ -336,6 +345,9 @@ class ProductionConfig(SAMWebappConfig):
 
     # Default OFF in production -- the anonymous registration form ships dark
     # and is enabled per deployment (docs/plans/implemented/ACCOUNT_REGISTRATION.md).
+    # The accept-first gate (ACCOUNT_REGISTRATION_GATE_ENABLED, on by default)
+    # rides along, but its human check is a stub: a real challenge + client-IP
+    # forwarding are still the 6.1 preconditions before enabling this in prod.
     ACCOUNT_REGISTRATION_ENABLED = os.getenv('ACCOUNT_REGISTRATION_ENABLED', '0').lower() in ('1', 'true', 'yes')
     # Default OFF in production -- the invitation workflows ship dark so the
     # initial prod capability is the XRAS-mirrored queue only; enabled per
@@ -415,6 +427,7 @@ class TestingConfig(SAMWebappConfig):
     WTF_CSRF_ENABLED = False
     # The public-form tests exercise the anonymous path; the gate has its own.
     ACCOUNT_REGISTRATION_LOGIN_REQUIRED = False
+    ACCOUNT_REGISTRATION_GATE_ENABLED = False
 
     # Low-cost bcrypt hash for fast test execution (rounds=4)
     # Key value: 'test-api-key'
