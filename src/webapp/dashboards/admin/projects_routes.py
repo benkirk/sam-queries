@@ -1770,7 +1770,7 @@ class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
                     f'Already has allocations overlapping '
                     f'{self.new_start.strftime("%Y-%m-%d")} → '
                     f'{self.new_end.strftime("%Y-%m-%d")}: {names}. '
-                    f'Tick "Replace existing" to supersede them.'
+                    f'Tick "Truncate existing" to hand them off to the new period.'
                 )
             if self.no_source_ids:
                 msgs.append(
@@ -1842,7 +1842,7 @@ class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
         ]
         if self.replace_existing and self.overlap_ids:
             detail_parts.append(
-                f'replaced overlapping allocations for: {self._names(self.overlap_ids)}')
+                f'truncated overlapping allocations for: {self._names(self.overlap_ids)}')
         if self.no_source_ids:
             detail_parts.append(
                 f'skipped (no source at {self.source_dt.strftime("%Y-%m-%d")}): '

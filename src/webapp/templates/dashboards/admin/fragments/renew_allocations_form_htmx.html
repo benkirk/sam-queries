@@ -156,7 +156,7 @@
     </div>
   </div>
 
-  <!-- Replace-existing override -->
+  <!-- Truncate-existing override -->
   <div class="form-check mt-3 mb-0">
     {%- set replace_checked = form.get('replace_existing') == 'true' if form else false -%}
     <input class="form-check-input" type="checkbox"
@@ -165,9 +165,10 @@
            {% if replace_checked %}checked{% endif %}>
     <label class="form-check-label small" for="renewReplaceExisting">
       <i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>
-      <strong>Replace existing</strong> — retire any allocations that
-      already overlap the target period before renewing. Use to correct
-      a prior accidental renew onto the same dates.
+      <strong>Truncate existing</strong> — for any allocation that already
+      overlaps the target period, end it the day before the new start so
+      coverage hands off cleanly (no gap). Use to renew an FY-crossing
+      allocation, or to correct a prior renew onto the same dates.
     </label>
   </div>
 

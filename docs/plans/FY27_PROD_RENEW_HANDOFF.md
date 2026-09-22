@@ -43,7 +43,12 @@ Compute resource IDs: Casper 21, Casper GPU 24, Derecho 25, Derecho GPU 26.
 Admin → project `/admin/project/<ROOT>/edit` → Allocations tab → **Renew**:
 - New Start `10/01/2026`, New End `09/30/2027` (auto-proposed — verify).
 - Leave all compute resources checked; Scale = `1` (verbatim copy).
-- Do NOT check **Replace existing** (only for correcting a prior accidental renew).
+- **Truncate existing** (was "Replace existing"): safe now — for an allocation
+  that overlaps the target period (e.g. an FY-crossing grant) it ends the old
+  row the day before the new start so coverage hands off with no gap, instead of
+  deleting it. Check it only when the root genuinely has an overlap to hand off;
+  leave it unchecked for a clean renew. (Behavior fixed after the FY27 gap;
+  see reconcile_fy27_renew_gap.sql.)
 - Click **Renew Allocations**. Renew walks the whole tree (root + descendants).
 
 ## Verification (read-only) — run after EACH root

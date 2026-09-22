@@ -21,7 +21,7 @@ date, which mirrors the "Active At" filter on the Admin > Edit Project >
 Allocations tab: renew renews what the admin sees.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
@@ -35,6 +35,7 @@ from sam.projects.projects import Project
 from sam.manage.allocations import (
     date_ranges_overlap,
     log_allocation_transaction,
+    update_allocation,
     validate_allocation_dates,
 )
 
@@ -115,31 +116,62 @@ def _account_has_overlapping_alloc(
     return bool(_find_overlapping_allocs(project, resource_id, new_start, new_end))
 
 
-def _soft_delete_overlapping_allocs(
+def _truncate_overlapping_allocs(
     session: Session,
     project: Project,
     resource_id: int,
     new_start: datetime,
     new_end: datetime,
     user_id: int,
-    reason: str,
 ) -> List[Allocation]:
-    """Mark overlapping allocations as ``deleted=True`` and log a DELETE
-    transaction on each. Returns the list of deleted allocations.
+    """Clear the way for a renewed allocation covering [new_start, new_end].
+
+    An overlap that **starts before** ``new_start`` (the FY-crossing case) is
+    **truncated**: its ``end_date`` is pulled back to ``new_start - 1s`` via
+    ``update_allocation`` (an EDIT->ADJUSTMENT carrying ``transaction_amount``
+    0 — a replay no-op), so coverage hands off to the new row with no gap and
+    the old row survives. This replaces the old delete-and-recreate behavior,
+    which left the account with no current allocation between now and the new
+    start (fstree ``Waiting``); see docs/plans/FY27_PROD_RENEW_HANDOFF.md.
+
+    An overlap that starts on/after ``new_start`` sits fully inside the new
+    window and cannot be truncated (``end < start``); it is genuinely
+    superseded, so it is soft-deleted — the double-click-same-period case.
+    Inheriting children of that fully-contained case ARE soft-deleted here (a
+    soft-delete does not cascade). In the truncate branch they are instead
+    skipped: ``update_allocation`` refuses an inheriting child, and the
+    master's truncation already cascades the child's ``end_date``.
+
+    Returns the list of touched (truncated or soft-deleted) allocations.
     """
-    deleted: List[Allocation] = []
+    touched: List[Allocation] = []
+    handoff_end = new_start - timedelta(seconds=1)
+    period = (
+        f"{new_start.strftime('%Y-%m-%d')} → {new_end.strftime('%Y-%m-%d')}"
+    )
     for alloc in _find_overlapping_allocs(project, resource_id, new_start, new_end):
-        alloc.deleted = True
-        log_allocation_transaction(
-            session,
-            alloc,
-            user_id,
-            AllocationTransactionType.DELETE,
-            comment=reason,
-            old_values={},
-        )
-        deleted.append(alloc)
-    return deleted
+        if alloc.start_date < new_start:
+            if alloc.is_inheriting:
+                continue
+            update_allocation(
+                session,
+                alloc.allocation_id,
+                user_id,
+                end_date=handoff_end,
+                comment=f"Truncated by renew to hand off to {period}",
+            )
+        else:
+            alloc.deleted = True
+            log_allocation_transaction(
+                session,
+                alloc,
+                user_id,
+                AllocationTransactionType.DELETE,
+                comment=f"Superseded by renew on {period}",
+                old_values={},
+            )
+        touched.append(alloc)
+    return touched
 
 
 def find_source_allocations_at(
@@ -252,9 +284,13 @@ def renew_project_allocations(
       4. Skip any target account that already has an overlapping
          non-deleted allocation in [new_start, new_end] — renew is
          idempotent on double-click. When ``replace_existing=True`` the
-         overlapping allocations are soft-deleted (``deleted=True``, DELETE
-         transaction logged) BEFORE the new row is created, which lets an
-         admin correct an accidental prior renew onto the same period.
+         overlapping allocations are cleared BEFORE the new row is created
+         (see ``_truncate_overlapping_allocs``): a crossing allocation that
+         starts before ``new_start`` is *truncated* to the handoff boundary
+         so coverage is contiguous, while one fully inside the new window is
+         soft-deleted. This lets an admin renew an FY-crossing allocation, or
+         correct an accidental prior renew onto the same period, without
+         leaving a coverage gap.
 
     Runs inside the caller's ``management_transaction()`` — does NOT commit.
 
@@ -288,13 +324,10 @@ def renew_project_allocations(
             if not replace_existing:
                 # Already renewed — nothing to do for this resource.
                 continue
-            _soft_delete_overlapping_allocs(
+            # Superseded rows are NOT added to ``touched`` — that list drives
+            # the "renewed" notice, which should name only the new rows.
+            _truncate_overlapping_allocs(
                 session, root_project, resource_id, new_start, new_end, user_id,
-                reason=(
-                    f"Superseded by renew on "
-                    f"{new_start.strftime('%Y-%m-%d')} → "
-                    f"{new_end.strftime('%Y-%m-%d')} (replace_existing=True)"
-                ),
             )
 
         # Scale + round to SAM_SIG_FIGS (allocations are human-defined at
@@ -357,13 +390,8 @@ def renew_project_allocations(
             ):
                 if not replace_existing:
                     continue
-                _soft_delete_overlapping_allocs(
+                _truncate_overlapping_allocs(
                     session, descendant, resource_id, new_start, new_end, user_id,
-                    reason=(
-                        f"Superseded by renew on "
-                        f"{new_start.strftime('%Y-%m-%d')} → "
-                        f"{new_end.strftime('%Y-%m-%d')} (replace_existing=True)"
-                    ),
                 )
 
             if source_child.is_inheriting:
