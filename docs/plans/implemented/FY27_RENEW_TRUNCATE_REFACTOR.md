@@ -36,17 +36,29 @@ and whether truncating them preserves coverage. The modal control
 recomputed **live** via htmx as the operator edits the proposed dates or
 resource selection:
 
+`analyze_renew_overlap` classifies each overlap three ways against the proposed
+window, and the control renders accordingly:
+
 - **No overlap** → control hidden (the default proposed period is contiguous, so
   this is the normal case).
-- **Coverage-preserving overlap** (every overlap ends on/before `new_end`) →
-  shown, **checked** by default, positive label.
-- **Coverage-shrinking overlap** (any overlap ends past `new_end`, or is
-  open-ended) → shown, **unchecked**, with a warning naming the resources whose
-  coverage would be lost. This is the one case where truncating is wrong — it
-  would delete future coverage — so the operator must opt in consciously.
+- **Coverage-preserving** (starts before `new_start`, ends on/before `new_end`)
+  → shown, **checked** by default, positive "hands off cleanly" label.
+- **Coverage-shrinking** (starts before `new_start` but ends past `new_end`, or
+  open-ended) → shown, **unchecked**, warning names the resources whose coverage
+  would be lost. Truncating here deletes future coverage.
+- **Collision** (an existing allocation starts **at/after** `new_start` — the
+  period is already (partly) renewed) → shown, **unchecked**, warning names the
+  existing allocation and *when it was created*. This is the two-operator case
+  (A renews FY27, B proposes the same FY27 an hour later); replacing it is a
+  destructive delete+recreate that loses changes made since. Leaving the box
+  unchecked is the safe idempotent no-op.
 
-Single global flag (option a): default-on only when *all* overlaps are
-coverage-preserving. `replace_existing` param/field name kept.
+`preserving` (the only default-ON state) requires no collisions and none
+shrinking. Single global flag (option a). `replace_existing` param/field kept.
+
+Residual (out of scope): a truly *simultaneous* two-operator submit is a
+check-then-create write race that predates this work — a DB-level uniqueness
+guard would be its own change.
 
 ---
 
