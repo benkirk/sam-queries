@@ -1338,6 +1338,13 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_renew_truncate_control",
+    "/admin/htmx/renew-truncate-control/<projcode>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_resource_create",
     "/admin/htmx/resource-create",
     [

@@ -27,6 +27,27 @@
   safe for FY-crossing). Remediation record committed:
   `scripts/repair/reconcile_fy27_renew_gap.sql`.
 
+### Contextual "Truncate existing" control (follow-up in the same PR)
+
+The checkbox is no longer static. `analyze_renew_overlap` (renew.py) censuses,
+tree-wide, the allocations a renew into `[new_start, new_end]` would supersede
+and whether truncating them preserves coverage. The modal control
+(`renew_truncate_control_htmx.html`, route `htmx_renew_truncate_control`) is
+recomputed **live** via htmx as the operator edits the proposed dates or
+resource selection:
+
+- **No overlap** → control hidden (the default proposed period is contiguous, so
+  this is the normal case).
+- **Coverage-preserving overlap** (every overlap ends on/before `new_end`) →
+  shown, **checked** by default, positive label.
+- **Coverage-shrinking overlap** (any overlap ends past `new_end`, or is
+  open-ended) → shown, **unchecked**, with a warning naming the resources whose
+  coverage would be lost. This is the one case where truncating is wrong — it
+  would delete future coverage — so the operator must opt in consciously.
+
+Single global flag (option a): default-on only when *all* overlaps are
+coverage-preserving. `replace_existing` param/field name kept.
+
 ---
 
 ## Original handoff (below, for reference)

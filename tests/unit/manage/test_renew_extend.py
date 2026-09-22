@@ -25,6 +25,7 @@ from sam.accounting.allocations import (
 )
 from sam.manage.extend import extend_project_allocations
 from sam.manage.renew import (
+    analyze_renew_overlap,
     analyze_renew_preconditions,
     find_renewable_descendants,
     find_source_alloc_at,
@@ -1232,6 +1233,82 @@ class TestRenewTruncatesFYCrossing:
             old = session.get(Allocation, old_id)
             assert old.deleted is False, f"alloc {old_id} was deleted, expected truncated"
             assert old.end_date == NEW_START - timedelta(seconds=1)
+
+
+# ---------------------------------------------------------------------------
+# analyze_renew_overlap — drives the modal's contextual Truncate control
+# ---------------------------------------------------------------------------
+
+
+class TestAnalyzeRenewOverlap:
+
+    def _analyze(self, session, project, resource, new_start, new_end):
+        return analyze_renew_overlap(
+            session,
+            root_project_id=project.project_id,
+            source_active_at=FY_SRC_ACTIVE_AT,
+            new_start=new_start,
+            new_end=new_end,
+            resource_ids=[resource.resource_id],
+        )
+
+    def test_no_overlap_when_new_period_is_contiguous(
+        self, session, standalone_project, derecho,
+    ):
+        # Source [2099-05-01 → 2100-05-31]; renew to the following period.
+        _seed_standalone_source(
+            session, standalone_project, derecho,
+            start=FY_SRC_START, end=FY_SRC_END)
+        out = self._analyze(
+            session, standalone_project, derecho,
+            datetime(2100, 6, 1), datetime(2101, 5, 31, 23, 59, 59))
+        assert out['count'] == 0
+        assert out['preserving'] is False
+        assert out['shrinking'] == []
+
+    def test_crossing_overlap_is_coverage_preserving(
+        self, session, standalone_project, derecho,
+    ):
+        # new_end (2100-12-31) is past the source end (2100-05-31): no loss.
+        _seed_standalone_source(
+            session, standalone_project, derecho,
+            start=FY_SRC_START, end=FY_SRC_END)
+        out = self._analyze(
+            session, standalone_project, derecho,
+            datetime(2100, 1, 1), datetime(2100, 12, 31, 23, 59, 59))
+        assert out['count'] == 1
+        assert out['preserving'] is True
+        assert out['shrinking'] == []
+
+    def test_overlap_running_past_new_end_is_shrinking(
+        self, session, standalone_project, derecho,
+    ):
+        # new_end (2100-03-31) is BEFORE the source end (2100-05-31): truncating
+        # would drop [2100-04-01 → 2100-05-31].
+        _seed_standalone_source(
+            session, standalone_project, derecho,
+            start=FY_SRC_START, end=FY_SRC_END)
+        out = self._analyze(
+            session, standalone_project, derecho,
+            datetime(2099, 10, 1), datetime(2100, 3, 31, 23, 59, 59))
+        assert out['count'] == 1
+        assert out['preserving'] is False
+        assert len(out['shrinking']) == 1
+        assert out['shrinking'][0]['resource_name'] == derecho.resource_name
+        assert out['shrinking'][0]['end_date'] == FY_SRC_END
+
+    def test_open_ended_overlap_is_shrinking(
+        self, session, standalone_project, derecho,
+    ):
+        _seed_standalone_source(
+            session, standalone_project, derecho,
+            start=FY_SRC_START, end=None)
+        out = self._analyze(
+            session, standalone_project, derecho,
+            datetime(2100, 1, 1), datetime(2100, 12, 31, 23, 59, 59))
+        assert out['count'] == 1
+        assert out['preserving'] is False
+        assert out['shrinking'][0]['end_date'] is None
 
 
 # ---------------------------------------------------------------------------

@@ -45,6 +45,7 @@ __all__ = [
     'find_renewable_descendants',
     'renew_project_allocations',
     'analyze_renew_preconditions',
+    'analyze_renew_overlap',
 ]
 
 
@@ -249,6 +250,74 @@ def find_renewable_descendants(
         d for d in root_project.get_descendants()
         if d.active and find_source_alloc_at(d, resource_id, check_date) is not None
     ]
+
+
+def analyze_renew_overlap(
+    session: Session,
+    *,
+    root_project_id: int,
+    source_active_at: datetime,
+    new_start: datetime,
+    new_end: datetime,
+    resource_ids: List[int],
+) -> Dict[str, object]:
+    """Census the allocations across the whole tree that a renew into
+    [new_start, new_end] would supersede, and whether truncating them
+    preserves coverage.
+
+    Drives the Renew modal's contextual "Truncate existing" control. Mirrors
+    renew's own gating: a resource counts only when the root has a
+    non-inheriting source active at ``source_active_at`` (renew skips it
+    otherwise), and descendant overlaps are counted only on the projects renew
+    would create rows on (``find_renewable_descendants``).
+
+    Returns a dict:
+      ``count``      — overlapping allocations renew would supersede (tree-wide)
+      ``preserving`` — True iff ``count > 0`` and every overlap ends on/before
+                       ``new_end`` (none open-ended); truncation loses no
+                       coverage, so the control can default ON
+      ``shrinking``  — ``[{resource_name, end_date}]`` (``end_date`` None means
+                       open-ended) for resources whose existing coverage runs
+                       past ``new_end``; non-empty ⇒ not ``preserving`` ⇒ the
+                       control defaults OFF with a warning
+    """
+    root = session.get(Project, root_project_id)
+    if root is None:
+        raise ValueError(f"Project {root_project_id} not found")
+
+    count = 0
+    lossy = False
+    worst_end: Dict[str, Optional[datetime]] = {}
+    for rid in resource_ids:
+        src = find_source_alloc_at(root, rid, source_active_at)
+        if src is None or src.is_inheriting:
+            continue
+        projects = [root] + find_renewable_descendants(root, rid, source_active_at)
+        for proj in projects:
+            for alloc in _find_overlapping_allocs(proj, rid, new_start, new_end):
+                count += 1
+                if alloc.end_date is not None and alloc.end_date <= new_end:
+                    continue
+                # Ends past the new end (or open-ended): truncating loses the tail.
+                lossy = True
+                name = alloc.account.resource.resource_name
+                if name not in worst_end:
+                    worst_end[name] = alloc.end_date
+                elif worst_end[name] is not None:
+                    worst_end[name] = (
+                        None if alloc.end_date is None
+                        else max(worst_end[name], alloc.end_date)
+                    )
+
+    shrinking = [
+        {'resource_name': name, 'end_date': end}
+        for name, end in sorted(worst_end.items())
+    ]
+    return {
+        'count': count,
+        'preserving': count > 0 and not lossy,
+        'shrinking': shrinking,
+    }
 
 
 def renew_project_allocations(

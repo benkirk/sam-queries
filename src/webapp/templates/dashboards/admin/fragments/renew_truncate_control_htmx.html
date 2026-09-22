@@ -1,0 +1,40 @@
+{#
+  Renew modal: the contextual "Truncate existing" control.
+
+  Rendered inside the form at modal open and re-fetched live (swapped by id)
+  whenever the proposed dates or resource selection change. Hidden when nothing
+  overlaps; checked when truncation is coverage-preserving; unchecked with a
+  warning when it would shrink coverage past the new end.
+
+  Context:
+    overlap — analyze_renew_overlap() dict {count, preserving, shrinking}, or None
+    form    — request.form on a validation-error re-render (preserves the box)
+#}
+<div id="renewTruncateControl">
+{% if overlap and overlap.count > 0 %}
+  {%- set was_checked = (form.get('replace_existing') == 'true') if form else overlap.preserving -%}
+  <div class="form-check mt-3 mb-0">
+    <input class="form-check-input" type="checkbox"
+           name="replace_existing" id="renewReplaceExisting" value="true"
+           {% if was_checked %}checked{% endif %}>
+    <label class="form-check-label small" for="renewReplaceExisting">
+      {% if overlap.preserving %}
+      <i class="fa-solid fa-scissors text-primary me-1"></i>
+      <strong>Truncate existing</strong> — end
+      {{ overlap.count | fmt_plural('overlapping allocation', 'overlapping allocations') }}
+      the day before the new start so coverage hands off cleanly (no gap).
+      {% else %}
+      <i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>
+      <strong>Truncate existing</strong> — this would <strong>remove coverage</strong>
+      after your new end date, because existing coverage runs longer:
+      {% for s in overlap.shrinking -%}
+        {{ s.resource_name }}
+        {%- if s.end_date %} to {{ s.end_date | fmt_date }}{% else %} open-ended{% endif %}
+        {{- ',' if not loop.last }}
+      {%- endfor %}.
+      Leave unchecked unless you intend to shorten it.
+      {% endif %}
+    </label>
+  </div>
+{% endif %}
+</div>
