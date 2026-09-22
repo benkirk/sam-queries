@@ -271,23 +271,34 @@ def analyze_renew_overlap(
     otherwise), and descendant overlaps are counted only on the projects renew
     would create rows on (``find_renewable_descendants``).
 
+    Classifies each overlap three ways against ``[new_start, new_end]``:
+      - starts **before** new_start, ends on/before new_end → cleanly
+        truncatable (hand-off, no loss)
+      - starts **before** new_start, ends **past** new_end (or open-ended) →
+        *shrinking*: truncating would drop the tail
+      - starts **at/after** new_start → *collision*: an allocation already
+        occupies the target window (the period was likely already renewed by
+        someone else), so replacing it is a soft-delete + recreate that loses
+        that row's later changes
+
     Returns a dict:
       ``count``      — overlapping allocations renew would supersede (tree-wide)
-      ``preserving`` — True iff ``count > 0`` and every overlap ends on/before
-                       ``new_end`` (none open-ended); truncation loses no
-                       coverage, so the control can default ON
+      ``preserving`` — True iff ``count > 0`` and every overlap is cleanly
+                       truncatable (no collisions, none shrinking); only then
+                       does the control default ON
+      ``collisions`` — ``[{resource_name, start_date, end_date, created}]`` for
+                       resources already covered in the target window
       ``shrinking``  — ``[{resource_name, end_date}]`` (``end_date`` None means
-                       open-ended) for resources whose existing coverage runs
-                       past ``new_end``; non-empty ⇒ not ``preserving`` ⇒ the
-                       control defaults OFF with a warning
+                       open-ended) for resources whose coverage runs past
+                       ``new_end``
     """
     root = session.get(Project, root_project_id)
     if root is None:
         raise ValueError(f"Project {root_project_id} not found")
 
     count = 0
-    lossy = False
     worst_end: Dict[str, Optional[datetime]] = {}
+    collided: Dict[str, Dict[str, object]] = {}
     for rid in resource_ids:
         src = find_source_alloc_at(root, rid, source_active_at)
         if src is None or src.is_inheriting:
@@ -296,26 +307,44 @@ def analyze_renew_overlap(
         for proj in projects:
             for alloc in _find_overlapping_allocs(proj, rid, new_start, new_end):
                 count += 1
-                if alloc.end_date is not None and alloc.end_date <= new_end:
-                    continue
-                # Ends past the new end (or open-ended): truncating loses the tail.
-                lossy = True
                 name = alloc.account.resource.resource_name
-                if name not in worst_end:
-                    worst_end[name] = alloc.end_date
-                elif worst_end[name] is not None:
-                    worst_end[name] = (
-                        None if alloc.end_date is None
-                        else max(worst_end[name], alloc.end_date)
-                    )
+                if alloc.start_date >= new_start:
+                    # Already occupies the target window — the period was likely
+                    # renewed already. Keep the most-recently-created collider.
+                    prev = collided.get(name)
+                    if prev is None or (
+                        alloc.creation_time is not None
+                        and (prev['created'] is None
+                             or alloc.creation_time > prev['created'])
+                    ):
+                        collided[name] = {
+                            'start_date': alloc.start_date,
+                            'end_date': alloc.end_date,
+                            'created': alloc.creation_time,
+                        }
+                elif alloc.end_date is None or alloc.end_date > new_end:
+                    # Front overlap running past the new end: truncating drops
+                    # the tail [new_end + 1 .. old_end].
+                    if name not in worst_end:
+                        worst_end[name] = alloc.end_date
+                    elif worst_end[name] is not None:
+                        worst_end[name] = (
+                            None if alloc.end_date is None
+                            else max(worst_end[name], alloc.end_date)
+                        )
+                # else: front overlap ending on/before new_end — clean truncate.
 
+    collisions = [
+        {'resource_name': name, **info} for name, info in sorted(collided.items())
+    ]
     shrinking = [
         {'resource_name': name, 'end_date': end}
         for name, end in sorted(worst_end.items())
     ]
     return {
         'count': count,
-        'preserving': count > 0 and not lossy,
+        'preserving': count > 0 and not collisions and not shrinking,
+        'collisions': collisions,
         'shrinking': shrinking,
     }
 

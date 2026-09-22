@@ -25,14 +25,29 @@
       the day before the new start so coverage hands off cleanly (no gap).
       {% else %}
       <i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>
-      <strong>Truncate existing</strong> — this would <strong>remove coverage</strong>
-      after your new end date, because existing coverage runs longer:
+      <strong>Truncate existing</strong>
+      {% if overlap.collisions %}
+      — this period is <strong>already covered</strong>. Checking this will
+      <strong>delete and recreate</strong>
+      {% for c in overlap.collisions -%}
+        {{ c.resource_name }}
+        {%- if c.end_date %} ({{ c.start_date | fmt_date }} → {{ c.end_date | fmt_date }}{% if c.created %}, created {{ c.created | fmt_date }}{% endif %}){% endif %}
+        {{- ',' if not loop.last }}
+      {%- endfor %}.
+      Someone may have already renewed this period — leave unchecked unless you
+      mean to replace it (you will lose any changes made since).
+      {% endif %}
+      {% if overlap.shrinking %}
+      {% if overlap.collisions %}<br>Also,{% else %}—{% endif %} this would
+      <strong>remove coverage</strong> after your new end date, because existing
+      coverage runs longer:
       {% for s in overlap.shrinking -%}
         {{ s.resource_name }}
         {%- if s.end_date %} to {{ s.end_date | fmt_date }}{% else %} open-ended{% endif %}
         {{- ',' if not loop.last }}
       {%- endfor %}.
       Leave unchecked unless you intend to shorten it.
+      {% endif %}
       {% endif %}
     </label>
   </div>

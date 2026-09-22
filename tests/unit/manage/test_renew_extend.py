@@ -1310,6 +1310,38 @@ class TestAnalyzeRenewOverlap:
         assert out['preserving'] is False
         assert out['shrinking'][0]['end_date'] is None
 
+    def test_already_renewed_period_is_a_collision(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        """Two-operator race: A renews FY26->FY27; B then proposes the SAME
+        FY27 period. B's overlap starts at new_start (A's fresh row), so it is
+        a collision — not a clean truncate — and must not default to ON.
+        """
+        _seed_standalone_source(session, standalone_project, derecho)  # [SRC_START, SRC_END]
+        # Operator A renews into [NEW_START, NEW_END] (no overlap with the
+        # FY26 source, which ends before NEW_START).
+        renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START, new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+        )
+        session.expire_all()
+        # Operator B proposes the identical period.
+        out = analyze_renew_overlap(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START, new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+        )
+        assert out['count'] == 1
+        assert out['preserving'] is False
+        assert [c['resource_name'] for c in out['collisions']] == [derecho.resource_name]
+        assert out['shrinking'] == []
+
 
 # ---------------------------------------------------------------------------
 # extend_project_allocations
