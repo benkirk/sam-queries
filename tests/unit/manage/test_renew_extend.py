@@ -11,7 +11,7 @@ allocations. The legacy helper functions (_seed_standalone_source,
 _seed_inheriting_tree, _seed_divergent_tree) are reused as-is — they were
 already factory-pattern code, just operating on snapshot-fetched roots.
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -21,9 +21,11 @@ from sam.accounting.allocations import (
     AllocationTransaction,
     AllocationTransactionType,
     intent_filter,
+    replay_amount,
 )
 from sam.manage.extend import extend_project_allocations
 from sam.manage.renew import (
+    analyze_renew_overlap,
     analyze_renew_preconditions,
     find_renewable_descendants,
     find_source_alloc_at,
@@ -47,6 +49,14 @@ NEW_START = datetime(2100, 1, 1)
 NEW_END = datetime(2100, 12, 31, 23, 59, 59)
 
 EXTENDED_END = datetime(2100, 6, 30, 23, 59, 59)
+
+# FY-crossing source: starts before NEW_START and runs past it (into the new
+# period), mirroring the NCGD0073/NMMM0082 prod case that a replace-and-delete
+# renew left with a coverage gap. source_active_at sits before NEW_START, as an
+# operator renewing "now" for the upcoming period would set it.
+FY_SRC_START = datetime(2099, 5, 1)
+FY_SRC_END = datetime(2100, 5, 31, 23, 59, 59)
+FY_SRC_ACTIVE_AT = datetime(2099, 9, 15)
 
 ROOT_AMOUNT = 1_000_000.0
 CHILD_BASE_AMOUNT = 100_000.0
@@ -77,9 +87,11 @@ def _seed_standalone_source(session, project, resource, *, amount=ROOT_AMOUNT,
     return alloc
 
 
-def _seed_inheriting_tree(session, root, resource, *, amount=ROOT_AMOUNT):
+def _seed_inheriting_tree(session, root, resource, *, amount=ROOT_AMOUNT,
+                          start=SRC_START, end=SRC_END):
     """Build a root + inheriting children chain over `root.get_descendants()`."""
-    root_alloc = _seed_standalone_source(session, root, resource, amount=amount)
+    root_alloc = _seed_standalone_source(
+        session, root, resource, amount=amount, start=start, end=end)
     alloc_map = {root.project_id: root_alloc}
     for descendant in _active_descendants(root):
         parent_alloc = alloc_map.get(descendant.parent_id)
@@ -88,8 +100,8 @@ def _seed_inheriting_tree(session, root, resource, *, amount=ROOT_AMOUNT):
             project_id=descendant.project_id,
             resource_id=resource.resource_id,
             amount=amount,
-            start_date=SRC_START,
-            end_date=SRC_END,
+            start_date=start,
+            end_date=end,
             parent_allocation_id=parent_alloc.allocation_id if parent_alloc else None,
         )
         alloc_map[descendant.project_id] = child
@@ -1071,6 +1083,326 @@ class TestRenewReplaceExisting:
         )
         old = session.get(Allocation, old_id)
         assert old.deleted is False
+
+
+# ---------------------------------------------------------------------------
+# renew_project_allocations — FY-crossing truncate (regression for the FY27
+# renew coverage-gap; see docs/plans/FY27_PROD_RENEW_HANDOFF.md)
+# ---------------------------------------------------------------------------
+
+
+class TestRenewTruncatesFYCrossing:
+    """A crossing source (starts before new_start, runs into the new period)
+    renewed with replace_existing=True must be TRUNCATED to the handoff
+    boundary — never deleted — so coverage is contiguous.
+    """
+
+    def _renew_crossing(self, session, project, resource, user):
+        # Seed via create_allocation so the source carries its CREATE->NEW
+        # audit row (Allocation.create alone logs none) — the replay invariant
+        # is only meaningful against a real history, as in production.
+        from sam.manage.allocations import create_allocation
+        src = create_allocation(
+            session,
+            project_id=project.project_id,
+            resource_id=resource.resource_id,
+            amount=ROOT_AMOUNT,
+            start_date=FY_SRC_START,
+            end_date=FY_SRC_END,
+            user_id=user.user_id,
+        )
+        session.flush()
+        session.expire_all()
+        src_id = src.allocation_id
+        created = renew_project_allocations(
+            session,
+            root_project_id=project.project_id,
+            source_active_at=FY_SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[resource.resource_id],
+            user_id=user.user_id,
+            replace_existing=True,
+        )
+        assert len(created) == 1
+        return src_id, created[0]
+
+    def test_old_row_truncated_not_deleted(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        src_id, _ = self._renew_crossing(
+            session, standalone_project, derecho, acting_user)
+        session.expire_all()
+        old = session.get(Allocation, src_id)
+        assert old.deleted is False
+        assert old.end_date == NEW_START - timedelta(seconds=1)
+
+    def test_coverage_is_contiguous_no_gap_no_overlap(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        src_id, new_alloc = self._renew_crossing(
+            session, standalone_project, derecho, acting_user)
+        new_id = new_alloc.allocation_id
+        session.expire_all()
+        old = session.get(Allocation, src_id)
+        new = session.get(Allocation, new_id)
+        assert new.start_date == NEW_START
+        assert new.end_date == NEW_END
+        # Old ends exactly 1s before new starts: no gap, no double-coverage.
+        assert old.end_date < new.start_date
+        assert new.start_date - old.end_date == timedelta(seconds=1)
+
+    def test_replay_invariant_holds_on_both_rows(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        src_id, new_alloc = self._renew_crossing(
+            session, standalone_project, derecho, acting_user)
+        new_id = new_alloc.allocation_id
+        session.expire_all()
+        for alloc_id in (src_id, new_id):
+            txns = (
+                session.query(AllocationTransaction)
+                .filter(AllocationTransaction.allocation_id == alloc_id)
+                .all()
+            )
+            alloc = session.get(Allocation, alloc_id)
+            assert replay_amount(txns) == pytest.approx(alloc.amount)
+
+    def test_truncation_logs_zero_amount_adjustment_not_delete(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        src_id, _ = self._renew_crossing(
+            session, standalone_project, derecho, acting_user)
+        session.expire_all()
+        # No DELETE row on the truncated source.
+        deletes = (
+            session.query(AllocationTransaction)
+            .filter(
+                AllocationTransaction.allocation_id == src_id,
+                intent_filter(AllocationTransactionType.DELETE),
+            )
+            .all()
+        )
+        assert deletes == []
+        # The corrective row is a zero-delta EDIT->ADJUSTMENT (a replay no-op).
+        latest = (
+            session.query(AllocationTransaction)
+            .filter(AllocationTransaction.allocation_id == src_id)
+            .order_by(AllocationTransaction.allocation_transaction_id.desc())
+            .first()
+        )
+        assert 'Truncated by renew' in (latest.transaction_comment or '')
+        assert float(latest.transaction_amount) == 0.0
+
+    def test_divergent_child_crossing_also_truncated(
+        self, session, tree_root_with_children, derecho, acting_user,
+    ):
+        """A divergent tree (each project owns a standalone allocation) renews
+        each crossing row by truncation, leaving every node covered.
+        """
+        descendants = _active_descendants(tree_root_with_children)
+        # Seed root + standalone children, all crossing the FY boundary.
+        root_alloc = _seed_standalone_source(
+            session, tree_root_with_children, derecho,
+            start=FY_SRC_START, end=FY_SRC_END,
+        )
+        old_ids = [root_alloc.allocation_id]
+        for d in descendants:
+            child = Allocation.create(
+                session,
+                project_id=d.project_id,
+                resource_id=derecho.resource_id,
+                amount=CHILD_BASE_AMOUNT,
+                start_date=FY_SRC_START,
+                end_date=FY_SRC_END,
+            )
+            old_ids.append(child.allocation_id)
+        session.flush()
+        session.expire_all()
+
+        renew_project_allocations(
+            session,
+            root_project_id=tree_root_with_children.project_id,
+            source_active_at=FY_SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+            replace_existing=True,
+        )
+        session.expire_all()
+        for old_id in old_ids:
+            old = session.get(Allocation, old_id)
+            assert old.deleted is False, f"alloc {old_id} was deleted, expected truncated"
+            assert old.end_date == NEW_START - timedelta(seconds=1)
+
+    def test_inheriting_child_crossing_truncated_via_master(
+        self, session, tree_root_with_children, derecho, acting_user,
+    ):
+        """An inheriting tree crossing the boundary: renew skips the children
+        in the truncate branch and relies on the master's cascade, so each
+        child must still end at the handoff, survive, carry a propagated
+        ADJUSTMENT, and sit under exactly one live row for the new period.
+        """
+        descendants = _active_descendants(tree_root_with_children)
+        root_alloc, alloc_map = _seed_inheriting_tree(
+            session, tree_root_with_children, derecho,
+            start=FY_SRC_START, end=FY_SRC_END,
+        )
+        old_ids = {pid: a.allocation_id for pid, a in alloc_map.items()}
+
+        renew_project_allocations(
+            session,
+            root_project_id=tree_root_with_children.project_id,
+            source_active_at=FY_SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+            replace_existing=True,
+        )
+        session.expire_all()
+
+        handoff = NEW_START - timedelta(seconds=1)
+        for descendant in descendants:
+            old = session.get(Allocation, old_ids[descendant.project_id])
+            assert old.deleted is False, f"{descendant.projcode} child was deleted"
+            assert old.end_date == handoff
+            assert old.is_inheriting
+            cascade = (
+                session.query(AllocationTransaction)
+                .filter(
+                    AllocationTransaction.allocation_id == old.allocation_id,
+                    AllocationTransaction.propagated == True,   # noqa: E712
+                )
+                .all()
+            )
+            assert cascade, f"{descendant.projcode} child has no propagated cascade row"
+            # Zero-delta on the CHILD too: a date-only cascade must not write
+            # child.amount as an additive row (that doubles it on replay).
+            assert all(float(t.transaction_amount) == 0.0 for t in cascade)
+
+            live = (
+                session.query(Allocation)
+                .join(Account, Allocation.account_id == Account.account_id)
+                .filter(
+                    Account.project_id == descendant.project_id,
+                    Account.resource_id == derecho.resource_id,
+                    Allocation.deleted == False,   # noqa: E712
+                    Allocation.start_date == NEW_START,
+                )
+                .all()
+            )
+            assert len(live) == 1, f"{descendant.projcode} expected 1 live new row, got {len(live)}"
+            assert live[0].is_inheriting
+
+
+# ---------------------------------------------------------------------------
+# analyze_renew_overlap — drives the modal's contextual Truncate control
+# ---------------------------------------------------------------------------
+
+
+class TestAnalyzeRenewOverlap:
+
+    def _analyze(self, session, project, resource, new_start, new_end):
+        return analyze_renew_overlap(
+            session,
+            root_project_id=project.project_id,
+            source_active_at=FY_SRC_ACTIVE_AT,
+            new_start=new_start,
+            new_end=new_end,
+            resource_ids=[resource.resource_id],
+        )
+
+    def test_no_overlap_when_new_period_is_contiguous(
+        self, session, standalone_project, derecho,
+    ):
+        # Source [2099-05-01 → 2100-05-31]; renew to the following period.
+        _seed_standalone_source(
+            session, standalone_project, derecho,
+            start=FY_SRC_START, end=FY_SRC_END)
+        out = self._analyze(
+            session, standalone_project, derecho,
+            datetime(2100, 6, 1), datetime(2101, 5, 31, 23, 59, 59))
+        assert out['count'] == 0
+        assert out['preserving'] is False
+        assert out['shrinking'] == []
+
+    def test_crossing_overlap_is_coverage_preserving(
+        self, session, standalone_project, derecho,
+    ):
+        # new_end (2100-12-31) is past the source end (2100-05-31): no loss.
+        _seed_standalone_source(
+            session, standalone_project, derecho,
+            start=FY_SRC_START, end=FY_SRC_END)
+        out = self._analyze(
+            session, standalone_project, derecho,
+            datetime(2100, 1, 1), datetime(2100, 12, 31, 23, 59, 59))
+        assert out['count'] == 1
+        assert out['preserving'] is True
+        assert out['shrinking'] == []
+
+    def test_overlap_running_past_new_end_is_shrinking(
+        self, session, standalone_project, derecho,
+    ):
+        # new_end (2100-03-31) is BEFORE the source end (2100-05-31): truncating
+        # would drop [2100-04-01 → 2100-05-31].
+        _seed_standalone_source(
+            session, standalone_project, derecho,
+            start=FY_SRC_START, end=FY_SRC_END)
+        out = self._analyze(
+            session, standalone_project, derecho,
+            datetime(2099, 10, 1), datetime(2100, 3, 31, 23, 59, 59))
+        assert out['count'] == 1
+        assert out['preserving'] is False
+        assert len(out['shrinking']) == 1
+        assert out['shrinking'][0]['resource_name'] == derecho.resource_name
+        assert out['shrinking'][0]['end_date'] == FY_SRC_END
+
+    def test_open_ended_overlap_is_shrinking(
+        self, session, standalone_project, derecho,
+    ):
+        _seed_standalone_source(
+            session, standalone_project, derecho,
+            start=FY_SRC_START, end=None)
+        out = self._analyze(
+            session, standalone_project, derecho,
+            datetime(2100, 1, 1), datetime(2100, 12, 31, 23, 59, 59))
+        assert out['count'] == 1
+        assert out['preserving'] is False
+        assert out['shrinking'][0]['end_date'] is None
+
+    def test_already_renewed_period_is_a_collision(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        """Two-operator race: A renews FY26->FY27; B then proposes the SAME
+        FY27 period. B's overlap starts at new_start (A's fresh row), so it is
+        a collision — not a clean truncate — and must not default to ON.
+        """
+        _seed_standalone_source(session, standalone_project, derecho)  # [SRC_START, SRC_END]
+        # Operator A renews into [NEW_START, NEW_END] (no overlap with the
+        # FY26 source, which ends before NEW_START).
+        renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START, new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+        )
+        session.expire_all()
+        # Operator B proposes the identical period.
+        out = analyze_renew_overlap(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START, new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+        )
+        assert out['count'] == 1
+        assert out['preserving'] is False
+        assert [c['resource_name'] for c in out['collisions']] == [derecho.resource_name]
+        assert out['shrinking'] == []
 
 
 # ---------------------------------------------------------------------------

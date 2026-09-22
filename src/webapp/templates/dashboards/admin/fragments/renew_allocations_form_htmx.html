@@ -65,7 +65,10 @@
         </label>
         <input type="date" class="form-control" id="renewStart"
                name="new_start_date" required
-               value="{{ form.get('new_start_date', default_start) if form else default_start }}">
+               value="{{ form.get('new_start_date', default_start) if form else default_start }}"
+               hx-get="{{ url_for('admin_dashboard.htmx_renew_truncate_control', projcode=project.projcode) }}"
+               hx-target="#renewTruncateControl" hx-swap="outerHTML"
+               hx-trigger="change" hx-include="closest form">
       </div>
     </div>
     <div class="col-md-6">
@@ -75,7 +78,10 @@
         </label>
         <input type="date" class="form-control" id="renewEnd"
                name="new_end_date" required
-               value="{{ form.get('new_end_date', default_end) if form else default_end }}">
+               value="{{ form.get('new_end_date', default_end) if form else default_end }}"
+               hx-get="{{ url_for('admin_dashboard.htmx_renew_truncate_control', projcode=project.projcode) }}"
+               hx-target="#renewTruncateControl" hx-swap="outerHTML"
+               hx-trigger="change" hx-include="closest form">
         <small class="form-text text-muted">
           Default: contiguous with latest source end date, same period length.
         </small>
@@ -114,7 +120,10 @@
                      name="resource_ids"
                      id="renewRes{{ c.resource_id }}"
                      value="{{ c.resource_id }}"
-                     {% if checked_default %}checked{% endif %}>
+                     {% if checked_default %}checked{% endif %}
+                     hx-get="{{ url_for('admin_dashboard.htmx_renew_truncate_control', projcode=project.projcode) }}"
+                     hx-target="#renewTruncateControl" hx-swap="outerHTML"
+                     hx-trigger="change" hx-include="closest form">
             </td>
             <td style="vertical-align:middle;">
               <label class="mb-0" for="renewRes{{ c.resource_id }}">
@@ -156,20 +165,10 @@
     </div>
   </div>
 
-  <!-- Replace-existing override -->
-  <div class="form-check mt-3 mb-0">
-    {%- set replace_checked = form.get('replace_existing') == 'true' if form else false -%}
-    <input class="form-check-input" type="checkbox"
-           name="replace_existing" id="renewReplaceExisting"
-           value="true"
-           {% if replace_checked %}checked{% endif %}>
-    <label class="form-check-label small" for="renewReplaceExisting">
-      <i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>
-      <strong>Replace existing</strong> — retire any allocations that
-      already overlap the target period before renewing. Use to correct
-      a prior accidental renew onto the same dates.
-    </label>
-  </div>
+  {# Contextual "Truncate existing" control — appears only when the proposed
+     period overlaps existing coverage, and is recomputed live (see the hx-get
+     on the date inputs / resource checkboxes). #}
+  {% include 'dashboards/admin/fragments/renew_truncate_control_htmx.html' %}
 
   <!-- Optional email to each project's lead/admin (default on) -->
   <div class="form-check mt-2 mb-0">

@@ -282,6 +282,31 @@ class TestUpdateAllocationCascade:
         assert txn is not None
         assert txn.propagated is True
 
+    def test_date_only_cascade_is_zero_delta_on_children(
+        self, session, parent_allocation, acting_user,
+    ):
+        """Truncating a master's end_date must cascade a 0-amount row to each
+        child. Without 'amount' in the captured old values the fallback writes
+        child.amount as an additive delta, doubling the child on replay.
+        """
+        child_ids = [c.allocation_id for c in parent_allocation.children]
+        new_end = parent_allocation.end_date - timedelta(days=30)
+        update_allocation(
+            session, parent_allocation.allocation_id, acting_user.user_id,
+            end_date=new_end,
+        )
+        for child_id in child_ids:
+            child = session.get(Allocation, child_id)
+            assert child.end_date == new_end
+            txn = (
+                session.query(AllocationTransaction)
+                .filter_by(allocation_id=child_id, propagated=True)
+                .order_by(AllocationTransaction.allocation_transaction_id.desc())
+                .first()
+            )
+            assert txn is not None
+            assert float(txn.transaction_amount) == 0.0
+
     def test_no_cascade_for_flat_allocation(self, session, flat_root_allocation, acting_user):
         new_amount = flat_root_allocation.amount + 1.0
         result = update_allocation(

@@ -420,7 +420,11 @@ def update_allocation(
             # and the child's ADJUSTMENT.transaction_amount must be
             # (new − child_old), not (new − parent_old) — otherwise legacy
             # replay of the child's history doesn't reproduce its amount.
-            child_specific_old = {f: getattr(child, f) for f in cascadable}
+            # WARNING: 'amount' is always captured. Without it a date-only
+            # cascade falls through to transaction_amount = child.amount, an
+            # additive row that doubles the child on replay.
+            child_specific_old = {
+                f: getattr(child, f) for f in cascadable | {'amount'}}
             for field, value in child_updates.items():
                 setattr(child, field, value)
             log_allocation_transaction(
