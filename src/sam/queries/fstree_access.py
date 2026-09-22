@@ -106,21 +106,63 @@ _SQL_FSTREE_SKELETON = text("""
     ORDER BY f.facility_name, at.allocation_type, p.projcode, r.resource_name
 """)
 
-# Query 2: Lifecycle rows — "Expired" and "No Account".
+# Query 2: Lifecycle rows — "Waiting", "Expired", "No Account".
 # Fetches the minority of projects whose status is NOT driven by a current
 # active allocation.  Runs after the skeleton so we know which (project, resource)
 # pairs are already covered.
 #
-# Returns one row per (facility, alloc_type, project, resource) for:
-#   a. Projects with an account on this resource but NO current active allocation
-#      — "Expired" if they have any prior ended allocation, else omitted.
-#   b. Projects in the AllocationType with NO account at all on HPC/DAV resources
-#      — "No Account".
-#
-# "Waiting" (future allocation only) is explicitly excluded — legacy does not
-# surface it in the fstree output.
+# For an account on this resource with NO current active allocation: "Waiting"
+# if it has a future allocation, else "Expired" if it has a prior ended one —
+# future takes precedence, matching legacy DefaultAccountStatusCalculator. A
+# project in the AllocationType with NO account at all on HPC/DAV is "No Account".
 _SQL_FSTREE_LIFECYCLE = text("""
-    -- Part A: Expired — account exists, no current allocation, has prior allocation
+    -- Part A1: Waiting — account exists, no current allocation, has a future allocation
+    SELECT
+        f.facility_name,
+        f.code                                                AS facility_code,
+        COALESCE(fr.fair_share_percentage,
+                 f.fair_share_percentage)                     AS facility_fsp,
+        at.allocation_type_id,
+        at.allocation_type,
+        at.fair_share_percentage                              AS type_fsp,
+        p.project_id,
+        p.projcode,
+        p.active                                              AS project_active,
+        p.parent_id,
+        a.account_id,
+        r.resource_name,
+        'Waiting'                                             AS lifecycle_status
+    FROM facility f
+    JOIN panel             pa  ON (pa.facility_id  = f.facility_id AND pa.active IS TRUE)
+    JOIN allocation_type   at  ON (at.panel_id     = pa.panel_id  AND at.active IS TRUE)
+    JOIN project           p   ON (p.allocation_type_id = at.allocation_type_id
+                                    AND p.active    IS TRUE)
+    JOIN account           a   ON (a.project_id    = p.project_id AND a.deleted IS FALSE)
+    JOIN resources         r   ON (r.resource_id   = a.resource_id AND r.configurable IS TRUE)
+    JOIN resource_type     rt  ON (rt.resource_type_id = r.resource_type_id
+                                    AND rt.resource_type IN ('HPC', 'DAV'))
+    LEFT JOIN facility_resource fr
+                               ON (fr.facility_id  = f.facility_id AND fr.resource_id = r.resource_id)
+    WHERE f.active IS TRUE
+      AND (:resource IS NULL OR r.resource_name = :resource)
+      -- No current active allocation
+      AND NOT EXISTS (
+          SELECT 1 FROM allocation al
+          WHERE al.account_id = a.account_id AND al.deleted IS FALSE
+            AND al.start_date <= NOW()
+            AND (al.end_date IS NULL OR al.end_date >= NOW())
+      )
+      -- But has at least one future allocation
+      AND EXISTS (
+          SELECT 1 FROM allocation al3
+          WHERE al3.account_id = a.account_id AND al3.deleted IS FALSE
+            AND al3.start_date > NOW()
+          LIMIT 1
+      )
+
+    UNION ALL
+
+    -- Part A2: Expired — account exists, no current + no future allocation, has prior
     SELECT
         f.facility_name,
         f.code                                                AS facility_code,
@@ -155,6 +197,13 @@ _SQL_FSTREE_LIFECYCLE = text("""
           WHERE al.account_id = a.account_id AND al.deleted IS FALSE
             AND al.start_date <= NOW()
             AND (al.end_date IS NULL OR al.end_date >= NOW())
+      )
+      -- No future allocation (Waiting takes precedence, matching legacy)
+      AND NOT EXISTS (
+          SELECT 1 FROM allocation al3
+          WHERE al3.account_id = a.account_id AND al3.deleted IS FALSE
+            AND al3.start_date > NOW()
+          LIMIT 1
       )
       -- But has at least one prior ended allocation
       AND EXISTS (

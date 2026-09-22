@@ -77,10 +77,10 @@ class TestFstreeSingleResource:
 
     def test_active_rows_expose_iso_date_window(self, auth_client):
         """Active rows carry ISO startDate/endDate through jsonify; lifecycle
-        rows (Expired / No Account) omit the keys."""
+        rows (Waiting / Expired / No Account) omit the keys."""
         from datetime import datetime
         data = auth_client.get('/api/v1/fstree_access/Derecho').get_json()
-        lifecycle = {'Expired', 'No Account'}
+        lifecycle = {'Waiting', 'Expired', 'No Account'}
         checked = 0
         for fac in data['facilities']:
             for at in fac['allocationTypes']:

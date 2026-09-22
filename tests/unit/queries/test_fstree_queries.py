@@ -262,7 +262,7 @@ class TestProjectHierarchy:
 
 class TestResourceStructure:
 
-    _LIFECYCLE = {'Expired', 'No Account'}
+    _LIFECYCLE = {'Waiting', 'Expired', 'No Account'}
 
     @staticmethod
     def _first_resources(fstree, n=20):
@@ -295,6 +295,7 @@ class TestResourceStructure:
             'Overspent',
             'Exceed One Threshold',
             'Exceed Two Thresholds',
+            'Waiting',
             'Expired',
             'No Account',
         }
@@ -474,13 +475,13 @@ class TestThresholdData:
                     assert isinstance(period['useLimitCharges'], int)
 
     def test_lifecycle_rows_have_null_thresholds(self, fstree_hpc):
-        """Expired and No Account rows must always have thresholds=null."""
+        """Waiting / Expired / No Account rows must always have thresholds=null."""
         result, _ = fstree_hpc
         for fac in result['facilities']:
             for at in fac['allocationTypes']:
                 for proj in at['projects']:
                     for res in proj['resources']:
-                        if res['accountStatus'] in ('Expired', 'No Account'):
+                        if res['accountStatus'] in ('Waiting', 'Expired', 'No Account'):
                             assert res['thresholds'] is None
 
 
@@ -493,7 +494,7 @@ class TestParentStatusPropagation:
 
     def test_status_values_are_all_valid(self, fstree_hpc):
         valid = {'Normal', 'Overspent', 'Exceed One Threshold', 'Exceed Two Thresholds',
-                 'Expired', 'No Account'}
+                 'Waiting', 'Expired', 'No Account'}
         result, _ = fstree_hpc
         for fac in result['facilities']:
             for at in fac['allocationTypes']:
@@ -759,6 +760,10 @@ class TestExpiredNodeRosterHonorsMembershipWindow:
         ghost = make_user(session)
         session.add(AccountUser(account_id=acct1.account_id, user_id=ghost.user_id,
                                 start_date=past_start, end_date=now - timedelta(days=2)))
+        # Backdate the auto-seeded lead (start_date defaults to "now") so its
+        # membership window is unambiguously open regardless of DB-vs-app clock skew.
+        session.query(AccountUser).filter_by(
+            account_id=acct1.account_id, user_id=lead.user_id).update({'start_date': past_start})
         session.flush()
 
         # Project 2 — Expired account whose sole member's window has ended.
@@ -780,5 +785,66 @@ class TestExpiredNodeRosterHonorsMembershipWindow:
         node2 = self._resource_node(tree, p_allended.projcode, resource_name)
         assert node2 is not None and node2['accountStatus'] == 'Expired'
         assert node2['users'] == []             # node present, roster empty
+
+        session.rollback()
+
+
+class TestWaitingLifecycleNode:
+    """A future-only allocation surfaces as a 'Waiting' node with its members;
+    future takes precedence over a prior ended allocation (matches legacy
+    DefaultAccountStatusCalculator, which legacy fstree surfaces).
+    """
+
+    def _node(self, tree, projcode, resource_name):
+        for fac in tree['facilities']:
+            for at in fac['allocationTypes']:
+                for proj in at['projects']:
+                    if proj['projectCode'] != projcode:
+                        continue
+                    for res in proj['resources']:
+                        if res['name'] == resource_name:
+                            return res
+        return None
+
+    def test_future_only_is_waiting_and_future_beats_prior(self, session, hpc_resource):
+        from sam import AccountUser
+        from factories.projects import (
+            make_account, make_allocation, make_allocation_type, make_project,
+        )
+        from factories.core import make_user
+
+        resource_name = hpc_resource.resource_name
+        now = datetime.now()
+        future_start, future_end = now + timedelta(days=30), now + timedelta(days=395)
+        at = make_allocation_type(session)
+
+        # Future-only allocation -> Waiting, carrying the account's active members.
+        lead = make_user(session)
+        p_wait = make_project(session, allocation_type=at, lead=lead)
+        acct = make_account(session, project=p_wait, resource=hpc_resource)
+        make_allocation(session, account=acct, start_date=future_start, end_date=future_end)
+
+        # Prior ended + future on one account -> Waiting wins over Expired.
+        p_both = make_project(session, allocation_type=at, lead=make_user(session))
+        acct2 = make_account(session, project=p_both, resource=hpc_resource)
+        make_allocation(session, account=acct2, start_date=now - timedelta(days=60),
+                        end_date=now - timedelta(days=1))
+        make_allocation(session, account=acct2, start_date=future_start, end_date=future_end)
+        # Backdate the auto-seeded memberships (start_date defaults to "now") so their
+        # windows are unambiguously open regardless of DB-vs-app clock skew.
+        session.query(AccountUser).filter(
+            AccountUser.account_id.in_([acct.account_id, acct2.account_id])).update(
+            {'start_date': now - timedelta(days=1)}, synchronize_session=False)
+        session.flush()
+
+        tree = get_fstree_data(session, resource_name=resource_name)
+
+        n1 = self._node(tree, p_wait.projcode, resource_name)
+        assert n1 is not None and n1['accountStatus'] == 'Waiting'
+        assert lead.username in {u['username'] for u in n1['users']}  # members carried
+        assert n1['allocationAmount'] == 0 and n1['thresholds'] is None  # lifecycle shape
+
+        n2 = self._node(tree, p_both.projcode, resource_name)
+        assert n2 is not None and n2['accountStatus'] == 'Waiting'  # future beats prior
 
         session.rollback()
