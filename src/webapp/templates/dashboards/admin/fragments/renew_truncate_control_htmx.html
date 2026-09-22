@@ -4,10 +4,12 @@
   Rendered inside the form at modal open and re-fetched live (swapped by id)
   whenever the proposed dates or resource selection change. Hidden when nothing
   overlaps; checked when truncation is coverage-preserving; unchecked with a
-  warning when it would shrink coverage past the new end.
+  warning on a collision (period already covered) or when truncating would
+  shrink coverage past the new end.
 
   Context:
-    overlap — analyze_renew_overlap() dict {count, preserving, shrinking}, or None
+    overlap — analyze_renew_overlap() dict
+              {count, preserving, collisions, shrinking}, or None
     form    — request.form on a validation-error re-render (preserves the box)
 #}
 <div id="renewTruncateControl">

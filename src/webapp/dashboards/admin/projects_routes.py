@@ -1700,8 +1700,9 @@ def htmx_renew_truncate_control(project):
 
     Recomputed live as the operator edits the proposed dates or resource
     selection: hidden when nothing overlaps, checked when truncation is
-    coverage-preserving, unchecked with a warning when it would shrink
-    coverage past the new end.
+    coverage-preserving, unchecked with a warning on a collision (the period
+    is already covered) or when truncating would shrink coverage past the
+    new end.
     """
     root = project.get_root() if hasattr(project, 'get_root') else project
     source_active_at = _parse_active_at_arg(request.args.get('source_active_at', ''))
@@ -1819,7 +1820,7 @@ class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
                     f'Already has allocations overlapping '
                     f'{self.new_start.strftime("%Y-%m-%d")} → '
                     f'{self.new_end.strftime("%Y-%m-%d")}: {names}. '
-                    f'Tick "Truncate existing" to hand them off to the new period.'
+                    f'Tick "Truncate existing" to supersede them.'
                 )
             if self.no_source_ids:
                 msgs.append(
@@ -1894,9 +1895,12 @@ class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
             f'{self.new_start.strftime("%Y-%m-%d")} → '
             f'{self.new_end.strftime("%Y-%m-%d")}'
         ]
-        if self.replace_existing and self.overlap_ids:
+        if self.overlap_ids:
+            # A skipped overlap is the idempotent path; say so, or a mixed
+            # tree reports one renewal and hides the rest.
+            verb = 'superseded' if self.replace_existing else 'skipped (already covered)'
             detail_parts.append(
-                f'truncated overlapping allocations for: {self._names(self.overlap_ids)}')
+                f'{verb} overlapping allocations for: {self._names(self.overlap_ids)}')
         if self.no_source_ids:
             detail_parts.append(
                 f'skipped (no source at {self.source_dt.strftime("%Y-%m-%d")}): '

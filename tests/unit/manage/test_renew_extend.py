@@ -87,9 +87,11 @@ def _seed_standalone_source(session, project, resource, *, amount=ROOT_AMOUNT,
     return alloc
 
 
-def _seed_inheriting_tree(session, root, resource, *, amount=ROOT_AMOUNT):
+def _seed_inheriting_tree(session, root, resource, *, amount=ROOT_AMOUNT,
+                          start=SRC_START, end=SRC_END):
     """Build a root + inheriting children chain over `root.get_descendants()`."""
-    root_alloc = _seed_standalone_source(session, root, resource, amount=amount)
+    root_alloc = _seed_standalone_source(
+        session, root, resource, amount=amount, start=start, end=end)
     alloc_map = {root.project_id: root_alloc}
     for descendant in _active_descendants(root):
         parent_alloc = alloc_map.get(descendant.parent_id)
@@ -98,8 +100,8 @@ def _seed_inheriting_tree(session, root, resource, *, amount=ROOT_AMOUNT):
             project_id=descendant.project_id,
             resource_id=resource.resource_id,
             amount=amount,
-            start_date=SRC_START,
-            end_date=SRC_END,
+            start_date=start,
+            end_date=end,
             parent_allocation_id=parent_alloc.allocation_id if parent_alloc else None,
         )
         alloc_map[descendant.project_id] = child
@@ -1233,6 +1235,66 @@ class TestRenewTruncatesFYCrossing:
             old = session.get(Allocation, old_id)
             assert old.deleted is False, f"alloc {old_id} was deleted, expected truncated"
             assert old.end_date == NEW_START - timedelta(seconds=1)
+
+    def test_inheriting_child_crossing_truncated_via_master(
+        self, session, tree_root_with_children, derecho, acting_user,
+    ):
+        """An inheriting tree crossing the boundary: renew skips the children
+        in the truncate branch and relies on the master's cascade, so each
+        child must still end at the handoff, survive, carry a propagated
+        ADJUSTMENT, and sit under exactly one live row for the new period.
+        """
+        descendants = _active_descendants(tree_root_with_children)
+        root_alloc, alloc_map = _seed_inheriting_tree(
+            session, tree_root_with_children, derecho,
+            start=FY_SRC_START, end=FY_SRC_END,
+        )
+        old_ids = {pid: a.allocation_id for pid, a in alloc_map.items()}
+
+        renew_project_allocations(
+            session,
+            root_project_id=tree_root_with_children.project_id,
+            source_active_at=FY_SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+            replace_existing=True,
+        )
+        session.expire_all()
+
+        handoff = NEW_START - timedelta(seconds=1)
+        for descendant in descendants:
+            old = session.get(Allocation, old_ids[descendant.project_id])
+            assert old.deleted is False, f"{descendant.projcode} child was deleted"
+            assert old.end_date == handoff
+            assert old.is_inheriting
+            cascade = (
+                session.query(AllocationTransaction)
+                .filter(
+                    AllocationTransaction.allocation_id == old.allocation_id,
+                    AllocationTransaction.propagated == True,   # noqa: E712
+                )
+                .all()
+            )
+            assert cascade, f"{descendant.projcode} child has no propagated cascade row"
+            # Zero-delta on the CHILD too: a date-only cascade must not write
+            # child.amount as an additive row (that doubles it on replay).
+            assert all(float(t.transaction_amount) == 0.0 for t in cascade)
+
+            live = (
+                session.query(Allocation)
+                .join(Account, Allocation.account_id == Account.account_id)
+                .filter(
+                    Account.project_id == descendant.project_id,
+                    Account.resource_id == derecho.resource_id,
+                    Allocation.deleted == False,   # noqa: E712
+                    Allocation.start_date == NEW_START,
+                )
+                .all()
+            )
+            assert len(live) == 1, f"{descendant.projcode} expected 1 live new row, got {len(live)}"
+            assert live[0].is_inheriting
 
 
 # ---------------------------------------------------------------------------

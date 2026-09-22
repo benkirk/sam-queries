@@ -60,6 +60,34 @@ Residual (out of scope): a truly *simultaneous* two-operator submit is a
 check-then-create write race that predates this work — a DB-level uniqueness
 guard would be its own change.
 
+### Retrospective pass (seams between the three steps)
+
+A read of the three commits as one design found no gap in the write path and
+four seams in text, reporting and coverage, all closed in the same PR:
+
+- **Runbook / docstrings** described the commit-1 static checkbox after commit 2
+  made it contextual, and the two-state model after commit 3 added collisions.
+- **Mixed trees reported partially.** Classification is per resource but the flag
+  is global, so an unchecked box in a mixed tree skips the overlapping resources
+  on the idempotent path; the success line named only the renewed ones. `detail()`
+  now reports `skipped (already covered): …` (or `superseded …` when the box was
+  ticked), and the error text no longer promises a hand-off for a collider.
+- **Inheriting-tree crossing was untested** — the exact case the truncate
+  branch's `continue` exists for. The new test exposed a pre-existing bug in
+  `update_allocation`'s cascade: a date-only edit captured only the changed
+  fields as the child's old values, so the amount fallback wrote `child.amount`
+  as an additive ADJUSTMENT, doubling the child on replay. Every date-only edit
+  on a master with inheriting children (admin Edit Allocation modal, API `PUT`,
+  CLI, and this renew path) was exposed to it; the 2026-09-22 snapshot holds no
+  affected row (no propagated date-only ADJUSTMENT with a non-zero amount), so
+  nothing to remediate. Fixed by always capturing `amount`;
+  regression in `test_allocation_tree.py::test_date_only_cascade_is_zero_delta_on_children`.
+- **The fragment route** had only the route-map pin; it now has render / bad-input
+  / 404 / anonymous smoke.
+
+Accepted as-is: the PI's renewal notice does not mention that the existing
+allocation was shortened. Continuity is the point; the extra mail is noise.
+
 ---
 
 ## Original handoff (below, for reference)
