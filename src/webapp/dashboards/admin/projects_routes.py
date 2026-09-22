@@ -1655,6 +1655,10 @@ def htmx_renew_allocations_form(project):
         [c['source_alloc'] for c in candidates]
     )
 
+    overlap = _renew_overlap(
+        root, source_active_at, default_start, default_end,
+        [c['resource_id'] for c in candidates])
+
     return render_template(
         'dashboards/admin/fragments/renew_allocations_form_htmx.html',
         project=project,
@@ -1663,7 +1667,53 @@ def htmx_renew_allocations_form(project):
         source_active_at=source_active_at.strftime('%Y-%m-%d'),
         default_start=default_start,
         default_end=default_end,
+        overlap=overlap,
     )
+
+
+def _renew_overlap(root, source_active_at, new_start_str, new_end_str, resource_ids):
+    """Overlap census for the Renew modal's Truncate control, or None when the
+    inputs are incomplete/unparseable (e.g. a half-typed date). ``new_end`` is
+    normalized to end-of-day to match the POST path's ``normalize_end_date``.
+    """
+    from sam.manage.renew import analyze_renew_overlap
+    try:
+        new_start = datetime.strptime(new_start_str, '%Y-%m-%d')
+        new_end = datetime.strptime(new_end_str, '%Y-%m-%d').replace(
+            hour=23, minute=59, second=59)
+        rids = [int(v) for v in resource_ids if str(v).strip()]
+    except (TypeError, ValueError):
+        return None
+    if not rids:
+        return None
+    return analyze_renew_overlap(
+        db.session, root_project_id=root.project_id,
+        source_active_at=source_active_at, new_start=new_start,
+        new_end=new_end, resource_ids=rids)
+
+
+@bp.route('/htmx/renew-truncate-control/<projcode>')
+@login_required
+@require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_renew_truncate_control(project):
+    """Contextual "Truncate existing" control for the Renew modal.
+
+    Recomputed live as the operator edits the proposed dates or resource
+    selection: hidden when nothing overlaps, checked when truncation is
+    coverage-preserving, unchecked with a warning on a collision (the period
+    is already covered) or when truncating would shrink coverage past the
+    new end.
+    """
+    root = project.get_root() if hasattr(project, 'get_root') else project
+    source_active_at = _parse_active_at_arg(request.args.get('source_active_at', ''))
+    overlap = _renew_overlap(
+        root, source_active_at,
+        request.args.get('new_start_date', ''),
+        request.args.get('new_end_date', ''),
+        request.args.getlist('resource_ids'))
+    return render_template(
+        'dashboards/admin/fragments/renew_truncate_control_htmx.html',
+        overlap=overlap)
 
 
 def _maybe_notify_renewal(root, *, action, new_end, active_at, touched,
@@ -1770,7 +1820,7 @@ class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
                     f'Already has allocations overlapping '
                     f'{self.new_start.strftime("%Y-%m-%d")} → '
                     f'{self.new_end.strftime("%Y-%m-%d")}: {names}. '
-                    f'Tick "Replace existing" to supersede them.'
+                    f'Tick "Truncate existing" to supersede them.'
                 )
             if self.no_source_ids:
                 msgs.append(
@@ -1821,6 +1871,11 @@ class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
             'source_active_at': source_dt.strftime('%Y-%m-%d'),
             'default_start': request.form.get('new_start_date', ''),
             'default_end': request.form.get('new_end_date', ''),
+            'overlap': _renew_overlap(
+                self.root, source_dt,
+                request.form.get('new_start_date', ''),
+                request.form.get('new_end_date', ''),
+                request.form.getlist('resource_ids')),
         }
 
     def after_commit(self, created):
@@ -1840,9 +1895,12 @@ class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
             f'{self.new_start.strftime("%Y-%m-%d")} → '
             f'{self.new_end.strftime("%Y-%m-%d")}'
         ]
-        if self.replace_existing and self.overlap_ids:
+        if self.overlap_ids:
+            # A skipped overlap is the idempotent path; say so, or a mixed
+            # tree reports one renewal and hides the rest.
+            verb = 'superseded' if self.replace_existing else 'skipped (already covered)'
             detail_parts.append(
-                f'replaced overlapping allocations for: {self._names(self.overlap_ids)}')
+                f'{verb} overlapping allocations for: {self._names(self.overlap_ids)}')
         if self.no_source_ids:
             detail_parts.append(
                 f'skipped (no source at {self.source_dt.strftime("%Y-%m-%d")}): '

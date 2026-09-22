@@ -152,6 +152,40 @@ class TestAdminAllocationHandlers:
         assert 'HX-Trigger' not in resp.headers
 
 
+class TestRenewTruncateControl:
+    """The live-recomputed fragment: always answers with its swap target."""
+
+    URL = '/admin/htmx/renew-truncate-control/{}'
+
+    def test_renders_swap_target(self, auth_client, snapshot_projcode):
+        resp = auth_client.get(
+            self.URL.format(snapshot_projcode),
+            query_string={'source_active_at': '2026-09-15',
+                          'new_start_date': '2026-10-01',
+                          'new_end_date': '2027-09-30',
+                          'resource_ids': ['1']})
+        assert resp.status_code == 200
+        assert 'id="renewTruncateControl"' in resp.get_data(as_text=True)
+
+    def test_half_typed_date_hides_control(self, auth_client, snapshot_projcode):
+        resp = auth_client.get(
+            self.URL.format(snapshot_projcode),
+            query_string={'new_start_date': '2026-1', 'new_end_date': '',
+                          'resource_ids': ['1']})
+        assert resp.status_code == 200
+        body = resp.get_data(as_text=True)
+        assert 'id="renewTruncateControl"' in body
+        assert 'name="replace_existing"' not in body
+
+    def test_unknown_project_404(self, auth_client):
+        resp = auth_client.get(self.URL.format('ZZZZ9999'))
+        assert resp.status_code == 404
+
+    def test_unauthenticated_rejected(self, client, snapshot_projcode):
+        resp = client.get(self.URL.format(snapshot_projcode))
+        assert resp.status_code in (302, 401)
+
+
 class TestProjectUpdate:
 
     def test_overlong_title_rerenders_with_field_error(self, auth_client,
