@@ -16,13 +16,17 @@ every descendant project and renews whichever source allocation that
 project had at ``source_active_at``, preserving each row's own amount
 and its original parent-link style.
 
+Each resource is walked from its *anchors* (``find_renew_anchors``): the root
+when it holds the resource, else the topmost sub-projects that do. Without
+the fallback a sub-project-only resource was skipped as ``no_source``.
+
 The source snapshot is determined by the caller-supplied ``source_active_at``
 date, which mirrors the "Active At" filter on the Admin > Edit Project >
 Allocations tab: renew renews what the admin sees.
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -43,6 +47,8 @@ from sam.manage.allocations import (
 __all__ = [
     'find_source_allocations_at',
     'find_renewable_descendants',
+    'find_renew_anchors',
+    'find_child_only_resources',
     'renew_project_allocations',
     'analyze_renew_preconditions',
     'analyze_renew_overlap',
@@ -211,11 +217,11 @@ def analyze_renew_preconditions(
 
     Returns a dict mapping resource_id -> one of:
       'ok'        — renew will create new allocations for this resource
-      'no_source' — root has no non-inheriting allocation active at
-                    ``source_active_at`` (renew would silently skip)
-      'overlap'   — root already has a non-deleted allocation whose date
-                    range overlaps [new_start, new_end] (idempotent skip —
-                    usually indicates renew was applied previously)
+      'no_source' — no project in the tree has a non-inheriting allocation
+                    active at ``source_active_at`` (renew would skip it)
+      'overlap'   — every anchor already has a non-deleted allocation whose
+                    date range overlaps [new_start, new_end] (idempotent
+                    skip — usually indicates renew was applied previously)
 
     Callers use this to produce accurate user-facing messages instead of
     the old catch-all "nothing was renewed" string, and to decide whether
@@ -227,10 +233,11 @@ def analyze_renew_preconditions(
 
     result: Dict[int, str] = {}
     for rid in resource_ids:
-        src = find_source_alloc_at(root, rid, source_active_at)
-        if src is None or src.is_inheriting:
+        anchors = find_renew_anchors(root, rid, source_active_at)
+        if not anchors:
             result[rid] = 'no_source'
-        elif _account_has_overlapping_alloc(root, rid, new_start, new_end):
+        elif all(_account_has_overlapping_alloc(p, rid, new_start, new_end)
+                 for p, _ in anchors):
             result[rid] = 'overlap'
         else:
             result[rid] = 'ok'
@@ -252,6 +259,56 @@ def find_renewable_descendants(
     ]
 
 
+def _is_ancestor(ancestor: Project, node: Project) -> bool:
+    return ancestor.tree_left < node.tree_left and node.tree_right < ancestor.tree_right
+
+
+def find_renew_anchors(
+    root_project: Project,
+    resource_id: int,
+    check_date: datetime,
+) -> List[Tuple[Project, Allocation]]:
+    """Return the ``(project, source)`` pairs a Renew/Extend of ``resource_id``
+    walks from: the root when it has a non-inheriting source at
+    ``check_date``, else the topmost active sub-projects that do.
+    """
+    src = find_source_alloc_at(root_project, resource_id, check_date)
+    if src is not None and not src.is_inheriting:
+        return [(root_project, src)]
+    anchors: List[Tuple[Project, Allocation]] = []
+    for d in root_project.get_descendants():
+        if not d.active or any(_is_ancestor(a, d) for a, _ in anchors):
+            continue
+        src = find_source_alloc_at(d, resource_id, check_date)
+        if src is not None and not src.is_inheriting:
+            anchors.append((d, src))
+    return anchors
+
+
+def find_child_only_resources(
+    root_project: Project,
+    check_date: datetime,
+) -> Dict[int, List[Tuple[Project, Allocation]]]:
+    """Map resource_id -> anchors for each resource the root has no source
+    for but some sub-project does (the resources a root-only walk misses)."""
+    root_rids = {
+        a.account.resource_id
+        for a in find_source_allocations_at(None, root_project, check_date)
+    }
+    candidate_rids = sorted({
+        acc.resource_id
+        for d in root_project.get_descendants() if d.active
+        for acc in d.accounts
+        if acc.resource_id not in root_rids
+    })
+    result: Dict[int, List[Tuple[Project, Allocation]]] = {}
+    for rid in candidate_rids:
+        anchors = find_renew_anchors(root_project, rid, check_date)
+        if anchors:
+            result[rid] = anchors
+    return result
+
+
 def analyze_renew_overlap(
     session: Session,
     *,
@@ -266,10 +323,9 @@ def analyze_renew_overlap(
     preserves coverage.
 
     Drives the Renew modal's contextual "Truncate existing" control. Mirrors
-    renew's own gating: a resource counts only when the root has a
-    non-inheriting source active at ``source_active_at`` (renew skips it
-    otherwise), and descendant overlaps are counted only on the projects renew
-    would create rows on (``find_renewable_descendants``).
+    renew's own gating: a resource counts only when it has anchors
+    (``find_renew_anchors``), and overlaps are counted only on the anchors and
+    the projects under them renew would create rows on.
 
     Classifies each overlap three ways against ``[new_start, new_end]``:
       - starts **before** new_start, ends on/before new_end → cleanly
@@ -300,10 +356,11 @@ def analyze_renew_overlap(
     worst_end: Dict[str, Optional[datetime]] = {}
     collided: Dict[str, Dict[str, object]] = {}
     for rid in resource_ids:
-        src = find_source_alloc_at(root, rid, source_active_at)
-        if src is None or src.is_inheriting:
-            continue
-        projects = [root] + find_renewable_descendants(root, rid, source_active_at)
+        projects = [
+            p
+            for anchor, _ in find_renew_anchors(root, rid, source_active_at)
+            for p in [anchor] + find_renewable_descendants(anchor, rid, source_active_at)
+        ]
         for proj in projects:
             for alloc in _find_overlapping_allocs(proj, rid, new_start, new_end):
                 count += 1
@@ -349,6 +406,133 @@ def analyze_renew_overlap(
     }
 
 
+def _renew_subtree(
+    session: Session,
+    anchor: Project,
+    source: Allocation,
+    resource_id: int,
+    *,
+    source_active_at: datetime,
+    new_start: datetime,
+    new_end: datetime,
+    user_id: int,
+    scale: float,
+    replace_existing: bool,
+    touched: Optional[List[Allocation]],
+) -> Optional[Allocation]:
+    """Renew one anchor's allocation and every descendant source under it.
+
+    Returns the new anchor allocation, or None when the anchor already
+    overlaps the new period and ``replace_existing`` is off.
+    """
+    if _account_has_overlapping_alloc(anchor, resource_id, new_start, new_end):
+        if not replace_existing:
+            # Already renewed — nothing to do for this subtree.
+            return None
+        # Superseded rows are NOT added to ``touched`` — that list drives
+        # the "renewed" notice, which should name only the new rows.
+        _truncate_overlapping_allocs(
+            session, anchor, resource_id, new_start, new_end, user_id,
+        )
+
+    # Scale + round to SAM_SIG_FIGS (allocations are human-defined at
+    # ~3 sig figs). Guarded so scale=1.0 renewals stay byte-identical
+    # to pre-scale behavior.
+    scaled_amount = source.amount * scale
+    if scale != 1.0:
+        scaled_amount = round_to_sig_figs(scaled_amount)
+
+    # One row via the model classmethod plus exactly ONE RENEW transaction;
+    # manage.create_allocation() would add a second (CREATE) audit row.
+    new_anchor = Allocation.create(
+        session,
+        project_id=anchor.project_id,
+        resource_id=resource_id,
+        amount=scaled_amount,
+        start_date=new_start,
+        end_date=new_end,
+        description=source.description,
+        allow_zero=True,  # mirror a 0-amount source (e.g. a 0 reserve)
+    )
+    log_allocation_transaction(
+        session,
+        new_anchor,
+        user_id,
+        AllocationTransactionType.RENEW,
+        comment=(
+            f"Renewed from allocation #{source.allocation_id} "
+            f"({source.start_date.strftime('%Y-%m-%d')} → "
+            f"{source.end_date.strftime('%Y-%m-%d') if source.end_date else 'open'})"
+            + (f" — scaled ×{scale:g}" if scale != 1.0 else "")
+        ),
+        old_values={},
+    )
+    if touched is not None:
+        touched.append(new_anchor)
+
+    # project_id -> new allocation_id (for re-wiring inheriting children).
+    alloc_map: Dict[int, int] = {anchor.project_id: new_anchor.allocation_id}
+
+    for descendant in anchor.get_descendants():
+        if not descendant.active:
+            continue
+
+        source_child = find_source_alloc_at(
+            descendant, resource_id, source_active_at
+        )
+        if source_child is None:
+            continue
+
+        if _account_has_overlapping_alloc(
+            descendant, resource_id, new_start, new_end
+        ):
+            if not replace_existing:
+                continue
+            _truncate_overlapping_allocs(
+                session, descendant, resource_id, new_start, new_end, user_id,
+            )
+
+        if source_child.is_inheriting:
+            new_parent_id = alloc_map.get(descendant.parent_id)
+            propagated = new_parent_id is not None
+        else:
+            new_parent_id = None
+            propagated = False
+
+        scaled_child_amount = source_child.amount * scale
+        if scale != 1.0:
+            scaled_child_amount = round_to_sig_figs(scaled_child_amount)
+
+        new_child = Allocation.create(
+            session,
+            project_id=descendant.project_id,
+            resource_id=resource_id,
+            amount=scaled_child_amount,
+            start_date=new_start,
+            end_date=new_end,
+            description=source_child.description,
+            parent_allocation_id=new_parent_id,
+            allow_zero=True,  # mirror a 0-amount source (e.g. a 0 reserve)
+        )
+        log_allocation_transaction(
+            session,
+            new_child,
+            user_id,
+            AllocationTransactionType.RENEW,
+            comment=(
+                f"Renewed from allocation #{source_child.allocation_id}"
+                + (f" — scaled ×{scale:g}" if scale != 1.0 else "")
+            ),
+            old_values={},
+            propagated=propagated,
+        )
+        alloc_map[descendant.project_id] = new_child.allocation_id
+        if touched is not None:
+            touched.append(new_child)
+
+    return new_anchor
+
+
 def renew_project_allocations(
     session: Session,
     *,
@@ -364,13 +548,12 @@ def renew_project_allocations(
 ) -> List[Allocation]:
     """Clone a project tree's active-at-a-date allocations into a new period.
 
-    Per resource:
-      1. Locate the root-project non-inheriting allocation active at
-         ``source_active_at``. Skip the resource if the root has none.
-      2. Create a new root allocation with the same amount/description and
+    Per resource, for each anchor (``find_renew_anchors``: the root, or the
+    topmost sub-projects when only they hold the resource):
+      1. Create a new anchor allocation with the same amount/description and
          log a ``RENEW`` transaction referencing the source.
-      3. Walk descendants in DFS pre-order. For each descendant project
-         that had a source allocation for this resource at
+      2. Walk the anchor's descendants in DFS pre-order. For each descendant
+         project that had a source allocation for this resource at
          ``source_active_at``:
            - **Inheriting source**: create a new inheriting allocation
              linked to the renewed immediate project-parent (preserves
@@ -379,22 +562,21 @@ def renew_project_allocations(
              that project with the *child's own* source amount.
          Each child mutation is logged as ``RENEW`` (``propagated=True``
          when inheriting).
-      4. Skip any target account that already has an overlapping
+      3. Skip any target account that already has an overlapping
          non-deleted allocation in [new_start, new_end] — renew is
-         idempotent on double-click. When ``replace_existing=True`` the
-         overlapping allocations are cleared BEFORE the new row is created
-         (see ``_truncate_overlapping_allocs``): a crossing allocation that
+         idempotent on double-click; an overlapping anchor skips its whole
+         subtree. When ``replace_existing=True`` the overlapping
+         allocations are cleared BEFORE the new row is created (see
+         ``_truncate_overlapping_allocs``): a crossing allocation that
          starts before ``new_start`` is *truncated* to the handoff boundary
          so coverage is contiguous, while one fully inside the new window is
-         soft-deleted. This lets an admin renew an FY-crossing allocation, or
-         correct an accidental prior renew onto the same period, without
-         leaving a coverage gap.
+         soft-deleted.
 
     Runs inside the caller's ``management_transaction()`` — does NOT commit.
 
-    Returns the list of newly-created root allocations (one per renewed
-    resource). ``touched``, when given, collects every created allocation,
-    roots and descendants alike.
+    Returns the newly-created anchor allocations (one per renewed anchor).
+    ``touched``, when given, collects every created allocation, anchors and
+    descendants alike.
     """
     validate_allocation_dates(new_start, new_end)
 
@@ -402,132 +584,22 @@ def renew_project_allocations(
     if root_project is None:
         raise ValueError(f"Project {root_project_id} not found")
 
-    all_descendants = root_project.get_descendants()
-    requested = set(resource_ids)
     scales = scales or {}
-    created_roots: List[Allocation] = []
-
-    for resource_id in requested:
-        scale = scales.get(resource_id, 1.0)
-
-        source_root = find_source_alloc_at(
+    created: List[Allocation] = []
+    for resource_id in set(resource_ids):
+        for anchor, source in find_renew_anchors(
             root_project, resource_id, source_active_at
-        )
-        if source_root is None or source_root.is_inheriting:
-            continue
-
-        if _account_has_overlapping_alloc(
-            root_project, resource_id, new_start, new_end
         ):
-            if not replace_existing:
-                # Already renewed — nothing to do for this resource.
-                continue
-            # Superseded rows are NOT added to ``touched`` — that list drives
-            # the "renewed" notice, which should name only the new rows.
-            _truncate_overlapping_allocs(
-                session, root_project, resource_id, new_start, new_end, user_id,
+            new_anchor = _renew_subtree(
+                session, anchor, source, resource_id,
+                source_active_at=source_active_at,
+                new_start=new_start,
+                new_end=new_end,
+                user_id=user_id,
+                scale=scales.get(resource_id, 1.0),
+                replace_existing=replace_existing,
+                touched=touched,
             )
-
-        # Scale + round to SAM_SIG_FIGS (allocations are human-defined at
-        # ~3 sig figs). Guarded so scale=1.0 renewals stay byte-identical
-        # to pre-scale behavior.
-        scaled_root_amount = source_root.amount * scale
-        if scale != 1.0:
-            scaled_root_amount = round_to_sig_figs(scaled_root_amount)
-
-        # Create the new root allocation row directly via the model
-        # classmethod, then log exactly ONE RENEW transaction. We previously
-        # called manage.create_allocation() (which logs a CREATE) AND then
-        # logged a second RENEW row for the same allocation; that left two
-        # NEW rows in the audit trail per renewed root. Mirrors the child-
-        # allocation pattern below.
-        new_root = Allocation.create(
-            session,
-            project_id=root_project_id,
-            resource_id=resource_id,
-            amount=scaled_root_amount,
-            start_date=new_start,
-            end_date=new_end,
-            description=source_root.description,
-            allow_zero=True,  # mirror a 0-amount source (e.g. a 0 reserve)
-        )
-        log_allocation_transaction(
-            session,
-            new_root,
-            user_id,
-            AllocationTransactionType.RENEW,
-            comment=(
-                f"Renewed from allocation #{source_root.allocation_id} "
-                f"({source_root.start_date.strftime('%Y-%m-%d')} → "
-                f"{source_root.end_date.strftime('%Y-%m-%d') if source_root.end_date else 'open'})"
-                + (f" — scaled ×{scale:g}" if scale != 1.0 else "")
-            ),
-            old_values={},
-        )
-        created_roots.append(new_root)
-        if touched is not None:
-            touched.append(new_root)
-
-        # project_id -> new allocation_id (for re-wiring inheriting children).
-        alloc_map: Dict[int, int] = {
-            root_project.project_id: new_root.allocation_id,
-        }
-
-        for descendant in all_descendants:
-            if not descendant.active:
-                continue
-
-            source_child = find_source_alloc_at(
-                descendant, resource_id, source_active_at
-            )
-            if source_child is None:
-                continue
-
-            if _account_has_overlapping_alloc(
-                descendant, resource_id, new_start, new_end
-            ):
-                if not replace_existing:
-                    continue
-                _truncate_overlapping_allocs(
-                    session, descendant, resource_id, new_start, new_end, user_id,
-                )
-
-            if source_child.is_inheriting:
-                new_parent_id = alloc_map.get(descendant.parent_id)
-                propagated = new_parent_id is not None
-            else:
-                new_parent_id = None
-                propagated = False
-
-            scaled_child_amount = source_child.amount * scale
-            if scale != 1.0:
-                scaled_child_amount = round_to_sig_figs(scaled_child_amount)
-
-            new_child = Allocation.create(
-                session,
-                project_id=descendant.project_id,
-                resource_id=resource_id,
-                amount=scaled_child_amount,
-                start_date=new_start,
-                end_date=new_end,
-                description=source_child.description,
-                parent_allocation_id=new_parent_id,
-                allow_zero=True,  # mirror a 0-amount source (e.g. a 0 reserve)
-            )
-            log_allocation_transaction(
-                session,
-                new_child,
-                user_id,
-                AllocationTransactionType.RENEW,
-                comment=(
-                    f"Renewed from allocation #{source_child.allocation_id}"
-                    + (f" — scaled ×{scale:g}" if scale != 1.0 else "")
-                ),
-                old_values={},
-                propagated=propagated,
-            )
-            alloc_map[descendant.project_id] = new_child.allocation_id
-            if touched is not None:
-                touched.append(new_child)
-
-    return created_roots
+            if new_anchor is not None:
+                created.append(new_anchor)
+    return created

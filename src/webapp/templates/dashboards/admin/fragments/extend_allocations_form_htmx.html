@@ -10,10 +10,12 @@
   Context variables:
     project           — Project ORM object (the one being edited)
     root              — Root of the project tree (what extension operates on)
-    candidates        — list of dicts: one per extendable root allocation.
+    candidates        — list of dicts from _build_alloc_candidates: one per
+                        root allocation, then one per sub-project-only resource.
                         Keys: source_alloc, resource_id, resource_name,
-                              resource_type, amount, end_date, is_open_ended,
-                              descendant_count
+                              resource_type, amount (None = varies), end_date,
+                              is_open_ended, descendant_count, child_only,
+                              anchor_projcodes
     source_active_at  — YYYY-MM-DD string (the "Active At" filter value)
     default_end       — YYYY-MM-DD string — proposed new end date
     errors            — list of validation error strings (on re-render)
@@ -121,7 +123,7 @@
               </label>
             </td>
             <td class="text-end small text-muted" style="vertical-align:middle;">
-              {{ c.amount | fmt_number }}
+              {% if c.amount is none %}varies{% else %}{{ c.amount | fmt_number }}{% endif %}
             </td>
             <td class="text-end small text-muted" style="vertical-align:middle;">
               {% if c.is_open_ended %}
@@ -131,7 +133,14 @@
               {% endif %}
             </td>
             <td class="text-end small text-muted" style="vertical-align:middle;">
-              {% if c.descendant_count > 0 %}
+              {% if c.child_only %}
+              <span class="badge bg-secondary bg-opacity-25 text-body-emphasis border"
+                    title="Only sub-projects hold this resource; each is renewed from its own allocation">
+                sub-project only:
+                {% if c.anchor_projcodes | length > 2 %}{{ c.anchor_projcodes | length }} projects{% else %}{{ c.anchor_projcodes | join(', ') }}{% endif %}
+              </span>
+              {% if c.descendant_count > 0 %}+ {{ c.descendant_count }} below{% endif %}
+              {% elif c.descendant_count > 0 %}
               1 root + {{ c.descendant_count }} sub-project{{ 's' if c.descendant_count != 1 else '' }}
               {% else %}
               1 root
