@@ -277,6 +277,8 @@ static / CSP / modal-shell gates (they scan all templates automatically). Do
   Highest-leverage next step once the gallery lands.
 - **Component-index doc** (direction 4): a one-page "need X → macro Y, rules Z"
   map (the rules currently live as inline template comments and in the skill).
+- **Visual snapshots of the gallery**: evaluated and deferred 2026-09-23 —
+  rationale and the as-planned design in `docs/plans/GALLERY_VISUAL_SNAPSHOTS.md`.
 
 **Reference example:** PR #464 (branch `xras_ux`) is the concrete case the skill
 encodes — the table modal-links, the collapsible-section cards, the inline
