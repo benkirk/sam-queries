@@ -312,6 +312,39 @@ def test_explore_card_rejects_an_unknown_active_tab(
     assert jobs_btn and 'active' in jobs_btn.group(0)
 
 
+def test_explore_card_falls_back_to_jobs_when_the_active_tab_is_hidden(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Picking a user hides By User; a card still told to open it rendered
+    with no active tab and no panel ever loaded."""
+    import re
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/card'
+        '?machine=derecho&surface=explorer&active_tab=byuser&user=someone'
+    ).get_data(as_text=True)
+
+    assert 'data-jobs-tab="byuser"' not in body
+    jobs_btn = re.search(r'<button[^>]*data-jobs-tab="jobs".*?>', body, re.S)
+    assert jobs_btn and 'active' in jobs_btn.group(0)
+    assert 'hx-trigger="load once"' in jobs_btn.group(0)
+
+
+def test_explore_card_takes_unpicked_search_text_as_the_username(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Enter in the user picker submits its text (``q``) with no user_id;
+    that must filter, not silently widen to every job."""
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/card'
+        '?machine=derecho&surface=explorer&user_id=&q=someone'
+    ).get_data(as_text=True)
+
+    assert 'user=someone' in body
+    assert 'data-jobs-tab="byuser"' not in body
+
+
 def test_explore_page_round_trips_the_active_tab_through_the_form(
     app, auth_client, active_project, monkeypatch,
 ):
@@ -416,6 +449,9 @@ def test_explore_page_user_mode_still_ignores_a_crafted_user(
 
     auth_client.get(
         '/dashboards/user/jobs/user/derecho?user=someone_else&machine=derecho')
+    assert captured['last_jobs_search_kwargs']['user'] == 'benkirk'
+    auth_client.get(
+        '/dashboards/user/jobs/user/derecho?q=someone_else&machine=derecho')
     assert captured['last_jobs_search_kwargs']['user'] == 'benkirk'
 
 
