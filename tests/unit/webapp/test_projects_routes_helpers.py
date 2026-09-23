@@ -9,6 +9,8 @@ from datetime import datetime
 
 
 from webapp.dashboards.admin.projects_routes import (
+    _build_alloc_candidates,
+    _proposal_sources,
     _propose_extend_end,
     _propose_renew_dates,
     _resources_with_allocation,
@@ -207,3 +209,55 @@ class TestResourcesWithAllocation:
         session.flush()
 
         assert resource.resource_id not in _resources_with_allocation(project)
+
+
+# ---------------------------------------------------------------------------
+# Sub-project-only resources in the Renew/Extend candidate list
+# ---------------------------------------------------------------------------
+
+
+class TestProposalSources:
+
+    def test_root_sources_win_over_a_partial_child_only_period(self):
+        # NTMA0002/Destor shape: a Feb -> Sep child-only source must not drag
+        # the proposed period away from the root's fiscal year.
+        root = _Alloc(datetime(2025, 10, 1), datetime(2026, 9, 30))
+        child = _Alloc(datetime(2026, 2, 25), datetime(2026, 9, 30))
+        candidates = [
+            {'source_alloc': child, 'child_only': True},
+            {'source_alloc': root, 'child_only': False},
+        ]
+        assert _proposal_sources(candidates) == [root]
+        assert _propose_renew_dates(_proposal_sources(candidates)) == (
+            '2026-10-01', '2027-09-30')
+
+    def test_child_only_sources_used_when_the_root_has_none(self):
+        child = _Alloc(datetime(2025, 10, 1), datetime(2026, 9, 30))
+        assert _proposal_sources([{'source_alloc': child, 'child_only': True}]) == [child]
+
+
+class TestBuildAllocCandidates:
+
+    def test_lists_child_only_resource_with_its_anchor(self, app, session):
+        root = make_project(session)
+        child = make_project(session, parent=root)
+        session.expire_all()
+        root = session.get(type(root), root.project_id)
+        root_res, child_res = make_resource(session), make_resource(session)
+        make_allocation(session, account=make_account(session, project=root, resource=root_res),
+                        start_date=datetime(2099, 1, 1), end_date=datetime(2099, 12, 31))
+        make_allocation(session, account=make_account(session, project=child, resource=child_res),
+                        amount=300.0,
+                        start_date=datetime(2099, 1, 1), end_date=datetime(2099, 12, 31))
+        session.expire_all()
+        root = session.get(type(root), root.project_id)
+
+        with app.app_context():
+            rows = {c['resource_id']: c
+                    for c in _build_alloc_candidates(root, datetime(2099, 6, 15))}
+        assert set(rows) == {root_res.resource_id, child_res.resource_id}
+        assert rows[root_res.resource_id]['child_only'] is False
+        child_row = rows[child_res.resource_id]
+        assert child_row['child_only'] is True
+        assert child_row['anchor_projcodes'] == [child.projcode]
+        assert child_row['amount'] == 300.0

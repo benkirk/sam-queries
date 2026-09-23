@@ -79,6 +79,41 @@ def test_user_directories_pins_owner_ignoring_query(
     assert captured['owner_uid'] != 999999       # NOT the tampered value
 
 
+def test_directories_take_unpicked_search_text_as_the_owner(
+        app, auth_client, session, monkeypatch):
+    """Enter in the owner picker submits its text (``q``) with no id; it must
+    resolve to that user's uid, not silently widen to every owner."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    captured = {}
+
+    def fake(scope, **kw):
+        captured.update(kw)
+        return []
+    monkeypatch.setattr(service, 'scan_directories', fake)
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/resource/{_RES}/directories'
+        '?owner_user_id=&q=benkirk')
+    assert resp.status_code == 200
+    assert captured['owner_uid'] == _benkirk_uid(session)
+
+
+def test_directories_unknown_search_text_does_not_scan(
+        app, auth_client, monkeypatch):
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    calls = []
+    monkeypatch.setattr(service, 'scan_directories',
+                        lambda scope, **kw: calls.append(kw) or [])
+
+    body = auth_client.get(
+        f'/dashboards/user/disk-scans/resource/{_RES}/directories'
+        '?q=no_such_user_xyz').get_data(as_text=True)
+    assert calls == []
+    assert "no user &#39;no_such_user_xyz&#39;" in body
+
+
 @pytest.mark.parametrize('endpoint', ['access-history', 'file-sizes'])
 def test_user_distribution_pins_owner_ignoring_query(
         app, auth_client, session, monkeypatch, endpoint):

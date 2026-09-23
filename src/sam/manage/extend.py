@@ -6,9 +6,10 @@ shows up as a silent no-op:
 * :func:`extend_project_allocations` -- project-tree scoped, driven by resource
   ids, and FORGIVING: it skips anything it cannot extend. Right for the
   operator-facing Extend flow, where a partial extension beats an error dialog.
-  It skips when a resource has no root-project source active at
-  ``source_active_at``, when a source allocation is open-ended, and when one
-  already ends on or after the requested date.
+  It walks each resource from its renew anchors (the root, or the topmost
+  sub-projects when only they hold it) and skips a resource with none, a
+  source allocation that is open-ended, and one already ending on or after
+  the requested date.
 * :func:`extend_account_allocation` -- single-allocation scoped and STRICT: a
   shrink or a null end date raises. What the XRAS integration needs, because
   legacy errors where the operator flow shrugs, and because legacy walks
@@ -36,13 +37,85 @@ from sam.manage.allocations import (
     log_integration_transaction,
     validate_allocation_dates,
 )
-from sam.manage.renew import find_source_alloc_at
+from sam.manage.renew import find_renew_anchors, find_source_alloc_at
 
 
 __all__ = [
     'extend_project_allocations',
     'extend_account_allocation',
 ]
+
+
+def _extend_subtree(
+    session: Session,
+    anchor: Project,
+    source: Allocation,
+    resource_id: int,
+    *,
+    source_active_at: datetime,
+    new_end: datetime,
+    user_id: int,
+    touched: Optional[List[Allocation]],
+) -> Optional[Allocation]:
+    """Extend one anchor's source and every descendant source under it.
+
+    Returns the anchor allocation, or None when it is open-ended or already
+    ends on/after ``new_end`` (its subtree is then left alone too).
+    """
+    if source.end_date is None or source.end_date >= new_end:
+        return None
+
+    validate_allocation_dates(source.start_date, new_end)
+
+    old_end = source.end_date
+    source.end_date = new_end
+    log_allocation_transaction(
+        session,
+        source,
+        user_id,
+        AllocationTransactionType.EXTENSION,
+        comment=(
+            f"End date extended "
+            f"{old_end.strftime('%Y-%m-%d')} → "
+            f"{new_end.strftime('%Y-%m-%d')}"
+        ),
+        propagated=False,
+    )
+    if touched is not None:
+        touched.append(source)
+
+    for descendant in anchor.get_descendants():
+        if not descendant.active:
+            continue
+
+        source_child = find_source_alloc_at(
+            descendant, resource_id, source_active_at
+        )
+        if source_child is None:
+            continue
+        if source_child.end_date is None:
+            continue
+        if source_child.end_date >= new_end:
+            continue
+
+        old_child_end = source_child.end_date
+        source_child.end_date = new_end
+        log_allocation_transaction(
+            session,
+            source_child,
+            user_id,
+            AllocationTransactionType.EXTENSION,
+            comment=(
+                f"End date extended "
+                f"{old_child_end.strftime('%Y-%m-%d')} → "
+                f"{new_end.strftime('%Y-%m-%d')}"
+            ),
+            propagated=True,
+        )
+        if touched is not None:
+            touched.append(source_child)
+
+    return source
 
 
 def extend_project_allocations(
@@ -58,88 +131,37 @@ def extend_project_allocations(
     """Push ``end_date`` forward on every source allocation in the project
     tree for the selected resources.
 
-    Walks every descendant project (not just inheriting allocation children)
-    so both NMMM-style shared trees and CESM-style divergent trees are
-    updated in lock-step.
+    Walks every descendant of each anchor (not just inheriting allocation
+    children) so both NMMM-style shared trees and CESM-style divergent trees
+    are updated in lock-step.
 
     Runs inside the caller's ``management_transaction()`` — does NOT commit.
 
-    Returns the list of root allocations actually updated (one per resource
-    that had a real extension applied). ``touched``, when given, collects
-    every extended allocation, roots and descendants alike.
+    Returns the anchor allocations actually updated (one per extended
+    anchor). ``touched``, when given, collects every extended allocation,
+    anchors and descendants alike.
     """
     root_project = session.get(Project, root_project_id)
     if root_project is None:
         raise ValueError(f"Project {root_project_id} not found")
 
-    all_descendants = root_project.get_descendants()
-    requested = set(resource_ids)
-    updated_roots: List[Allocation] = []
-
-    for resource_id in requested:
-        source_root = find_source_alloc_at(
+    updated: List[Allocation] = []
+    for resource_id in set(resource_ids):
+        for anchor, source in find_renew_anchors(
             root_project, resource_id, source_active_at
-        )
-        if source_root is None or source_root.is_inheriting:
-            continue
-        if source_root.end_date is None:
-            continue
-        if source_root.end_date >= new_end:
-            continue
-
-        validate_allocation_dates(source_root.start_date, new_end)
-
-        old_root_end = source_root.end_date
-        source_root.end_date = new_end
-        log_allocation_transaction(
-            session,
-            source_root,
-            user_id,
-            AllocationTransactionType.EXTENSION,
-            comment=(
-                f"End date extended "
-                f"{old_root_end.strftime('%Y-%m-%d')} → "
-                f"{new_end.strftime('%Y-%m-%d')}"
-            ),
-            propagated=False,
-        )
-        updated_roots.append(source_root)
-        if touched is not None:
-            touched.append(source_root)
-
-        for descendant in all_descendants:
-            if not descendant.active:
-                continue
-
-            source_child = find_source_alloc_at(
-                descendant, resource_id, source_active_at
+        ):
+            extended = _extend_subtree(
+                session, anchor, source, resource_id,
+                source_active_at=source_active_at,
+                new_end=new_end,
+                user_id=user_id,
+                touched=touched,
             )
-            if source_child is None:
-                continue
-            if source_child.end_date is None:
-                continue
-            if source_child.end_date >= new_end:
-                continue
-
-            old_child_end = source_child.end_date
-            source_child.end_date = new_end
-            log_allocation_transaction(
-                session,
-                source_child,
-                user_id,
-                AllocationTransactionType.EXTENSION,
-                comment=(
-                    f"End date extended "
-                    f"{old_child_end.strftime('%Y-%m-%d')} → "
-                    f"{new_end.strftime('%Y-%m-%d')}"
-                ),
-                propagated=True,
-            )
-            if touched is not None:
-                touched.append(source_child)
+            if extended is not None:
+                updated.append(extended)
 
     session.flush()
-    return updated_roots
+    return updated
 
 
 def extend_account_allocation(
