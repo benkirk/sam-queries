@@ -5,6 +5,8 @@
 # state file, so it can be run every ~30 min from a scheduler.
 #
 # What it looks at, in one pass:
+#   - /api/v1/health/ready over HTTPS — the outside-in check, and the only
+#     live signal when kubectl RBAC is missing in the namespace
 #   - XRAS xras_action_log — new rows since the last tick (classify per the
 #     watch-prod skill), read from the prod DB (skipped when the env has no
 #     DB host: dev SAM is Postgres and XRAS never posts to dev)
@@ -23,7 +25,8 @@
 #
 # Options:
 #       --env       ENV  Which release: prod | dev          (default: $SAM_ENV or prod)
-#   -n, --namespace NS   Namespace the release lives in    (default: sam-queries)
+#   -n, --namespace NS   Namespace the release lives in    (default: per --env,
+#                        sam-queries | sam-queries-dev)
 #   -r, --release   REL  Helm release name                 (default: per --env)
 #       --context   CTX  kubectl context to target         (default: current)
 #       --window    DUR  Web-log lookback window           (default: 35m)
@@ -114,6 +117,32 @@ if ! python3 -c "import socket; socket.setdefaulttimeout(4); socket.create_conne
     exit 0
 fi
 
+# --- 0b. outside-in health + kubectl RBAC -----------------------------------
+HTTP_OUT=$(curl -s -m 10 -w '\n%{http_code} %{time_total}' "https://${INGRESS_HOST}${HEALTH_PATH}" 2>/dev/null || true)
+read -r HTTP_CODE HTTP_T <<<"${HTTP_OUT##*$'\n'}"
+HTTP_BODY="${HTTP_OUT%$'\n'*}"
+HTTP_STATUS=$(jq -r '.status // "?"' <<<"$HTTP_BODY" 2>/dev/null || echo "?")
+HTTP_SAM=$(jq -r '.checks.sam.status // "?"' <<<"$HTTP_BODY" 2>/dev/null || echo "?")
+HTTP_CHECKS=$(jq -r '[.checks // {} | to_entries[] | "\(.key)=\(.value.status)"] | join(" ")' <<<"$HTTP_BODY" 2>/dev/null || true)
+echo "http: ready ${HTTP_CODE:-000} in $(awk -v t="${HTTP_T:-0}" 'BEGIN{printf "%.0f", t*1000}')ms  status=$HTTP_STATUS  $HTTP_CHECKS"
+if [[ "$HTTP_CODE" != "200" || "$HTTP_SAM" != "healthy" ]]; then
+    fail "https://${INGRESS_HOST}${HEALTH_PATH} is not serving (http=${HTTP_CODE:-000}, sam=$HTTP_SAM)"
+elif [[ "$HTTP_STATUS" != "healthy" ]]; then
+    warn "readiness $HTTP_STATUS (still serving) — a secondary bind is down"
+fi
+
+# One probe instead of four "unreachable" warns. Missing RBAC is expected on dev
+# while access is pending; on prod it is a fault.
+K8S_OK=1
+if [[ "$("${KCTL_NS[@]}" --request-timeout=10s auth can-i list pods 2>/dev/null || true)" != "yes" ]]; then
+    K8S_OK=0
+    if [[ "$SAM_ENV" == "prod" ]]; then
+        warn "k8s: no RBAC in $NAMESPACE — web/pods/cache/tasks skipped"
+    else
+        echo "k8s: no RBAC in $NAMESPACE — web/pods/cache/tasks skipped"
+    fi
+fi
+
 # --- 1. XRAS action_log (delta on LASTID) -----------------------------------
 # mysql reads ~/.my.cnf on its own; fall back to SAM_DB_* if that file is absent.
 MYSQL=(mysql --connect-timeout=8 -h "$DBHOST")
@@ -150,7 +179,9 @@ fi
 # --tail=-1 or the web section undercounts to ~10 lines/pod.
 LOGS=$("${KCTL_NS[@]}" --request-timeout=15s logs -l "app=${WEBAPP_NAME}" \
        --since="$WINDOW" --tail=-1 --all-containers=true --timestamps=false 2>/dev/null || true)
-if [[ -z "$LOGS" ]]; then
+if [[ "$K8S_OK" -eq 0 ]]; then
+    :
+elif [[ -z "$LOGS" ]]; then
     warn "web: kubectl logs unreachable (VPN/RBAC?)"
 else
     # Aggregates from gunicorn access lines (they carry the quoted request field;
@@ -279,9 +310,9 @@ fi
 # --- 2b. load context (DB tier + app-pod CPU) -------------------------------
 # The discriminator for a slow expensive endpoint: DB-bound vs app queueing.
 # Fail-soft: a missing metric prints n/a, never aborts the tick.
-CUR_SLOWQ=$(q "SHOW GLOBAL STATUS WHERE Variable_name='Slow_queries'" | awk '{print $2}')
-TR=$(q "SHOW GLOBAL STATUS WHERE Variable_name='Threads_running'" | awk '{print $2}')
-TC=$(q "SHOW GLOBAL STATUS WHERE Variable_name='Threads_connected'" | awk '{print $2}')
+CUR_SLOWQ=$(q "SHOW GLOBAL STATUS WHERE Variable_name='Slow_queries'" | awk '{print $2}' || true)
+TR=$(q "SHOW GLOBAL STATUS WHERE Variable_name='Threads_running'" | awk '{print $2}' || true)
+TC=$(q "SHOW GLOBAL STATUS WHERE Variable_name='Threads_connected'" | awk '{print $2}' || true)
 if [[ -z "$DBHOST" ]]; then
     DBLOAD="dbload: skipped (no DB host)"
 elif [[ -n "$TR" ]]; then
@@ -293,7 +324,7 @@ else
 fi
 PODCPU=$("${KCTL_NS[@]}" top pods -l "app=${WEBAPP_NAME}" --no-headers 2>/dev/null \
          | awk '{c=$2; sub(/m$/,"",c); s+=c+0; if(c+0>mx)mx=c+0}
-                END{ if(NR) printf "podcpu: sum=%dm max=%dm (%d pods)", s, mx, NR; else print "podcpu: n/a" }')
+                END{ if(NR) printf "podcpu: sum=%dm max=%dm (%d pods)", s, mx, NR; else print "podcpu: n/a" }' || true)
 [[ -z "$PODCPU" ]] && PODCPU="podcpu: n/a"
 echo "  $DBLOAD | $PODCPU"
 
@@ -301,7 +332,9 @@ echo "  $DBLOAD | $PODCPU"
 PODS=$("${KCTL_NS[@]}" --request-timeout=10s get pods -l "app=${WEBAPP_NAME}" \
   -o jsonpath='{range .items[*]}{.metadata.name}={.status.phase}/r{.status.containerStatuses[0].restartCount}/{.spec.containers[0].image}{"\n"}{end}' 2>/dev/null || true)
 SHA=""
-if [[ -z "$PODS" ]]; then
+if [[ "$K8S_OK" -eq 0 ]]; then
+    :
+elif [[ -z "$PODS" ]]; then
     warn "pods: kubectl unreachable (VPN/RBAC?)"
 else
     SHA=$(echo "$PODS" | grep -oE 'sha-[0-9a-f]+' | sort -u | tr '\n' ' ' | sed 's/ $//' || true)
@@ -318,7 +351,9 @@ fi
 # that means live entries are being dropped -> raise cache.maxmemoryMB.
 CUR_EVICTED=""; CUR_HITS=""; CUR_MISSES=""
 RPOD=$("${KCTL_NS[@]}" --request-timeout=10s get pods -l "app=${REDIS_NAME}" -o name 2>/dev/null | head -1 || true)
-if [[ -z "$RPOD" ]]; then
+if [[ "$K8S_OK" -eq 0 ]]; then
+    :
+elif [[ -z "$RPOD" ]]; then
     warn "cache: redis pod not found (VPN/RBAC?)"
 else
     RINFO=$("${KCTL_NS[@]}" --request-timeout=15s exec "$RPOD" -- redis-cli INFO 2>/dev/null || true)
@@ -353,7 +388,9 @@ fi
 # so "is it alive?" is answerable only from the CronJob object + its Jobs. We
 # REPORT problems here; remediation (kubectl create job --from=cronjob/...) is a
 # human decision (Ben owns deploy mechanics), never automated by this watch.
-if ! "${KCTL_NS[@]}" get cronjob "$TASKS_NAME" >/dev/null 2>&1; then
+if [[ "$K8S_OK" -eq 0 ]]; then
+    :
+elif ! "${KCTL_NS[@]}" get cronjob "$TASKS_NAME" >/dev/null 2>&1; then
     echo "tasks: CronJob '$TASKS_NAME' not found (helm tasks.enabled=false?)"
 else
     CJ_JSON=$("${KCTL_NS[@]}" get cronjob "$TASKS_NAME" -o json 2>/dev/null || echo '{}')

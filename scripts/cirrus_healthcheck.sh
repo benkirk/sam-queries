@@ -3,7 +3,8 @@
 # prod ('samuel', the default) or dev ('samuel-dev', --env dev / SAM_ENV=dev).
 #
 # Inspects the objects the Helm chart in ./helm/ renders (webapp Deployment +
-# Redis Deployment + tasks CronJob, in namespace 'sam-queries' by default).
+# Redis Deployment + tasks CronJob, in namespace 'sam-queries' for prod and
+# 'sam-queries-dev' for dev).
 # Designed to be read top-to-bottom by someone new to Kubernetes: each section
 # prints what it's checking, the raw kubectl/helm output, a short explanation,
 # and a PASS / WARN / FAIL line.
@@ -15,7 +16,7 @@
 #
 # Options:
 #       --env        ENV  Which release: prod | dev           (default: $SAM_ENV or prod)
-#   -n, --namespace NS    Namespace the release lives in   (default: sam-queries)
+#   -n, --namespace NS    Namespace the release lives in   (default: per --env)
 #   -r, --release    REL  Helm release name                (default: per --env)
 #       --context    CTX  kubectl context to target       (default: current)
 #       --ingress-host H  Check only this host at the edge (default: every host
@@ -81,7 +82,8 @@ explain "kubectl needs a 'context' to know which cluster to talk to. We expect '
 if "${KCTL[@]}" get namespace "$NAMESPACE" >/dev/null 2>&1; then
     pass "namespace '$NAMESPACE' exists"
 else
-    fail "namespace '$NAMESPACE' not found"
+    # nwc1 reports a namespace this user has no RBAC in as NotFound, not Forbidden.
+    fail "namespace '$NAMESPACE' not found (or not visible: no RBAC there yet?)"
     exit 1
 fi
 
@@ -90,10 +92,8 @@ echo "  environment: $SAM_ENV (webapp '$WEBAPP_NAME', release '$RELEASE')"
 # would probe one release's objects under the other's name.
 if helm status -n "$NAMESPACE" "$RELEASE" >/dev/null 2>&1; then
     pass "helm release '$RELEASE' present in '$NAMESPACE'"
-elif [[ "$SAM_ENV" == "prod" ]]; then
-    info "no helm release named '$RELEASE' in '$NAMESPACE' — Argo CD applies the chart directly (normal)"
 else
-    warn "no helm release named '$RELEASE' in '$NAMESPACE' — not deployed yet, or adopted by Argo CD"
+    info "no helm release named '$RELEASE' in '$NAMESPACE' — Argo CD applies the chart directly (normal)"
 fi
 
 # ============================================================================
