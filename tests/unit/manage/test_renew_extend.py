@@ -1820,3 +1820,40 @@ class TestExtendChildOnlyResource:
         for key in ('child_a', 'grandchild'):
             alloc = _find_test_alloc(session, t[key], casper.resource_id, SRC_ACTIVE_AT)
             assert alloc.end_date == EXTENDED_END
+
+
+class TestOverlapGroups:
+    """The modal lists collisions/shrinking per shared period, not per resource."""
+
+    def test_whole_tree_already_renewed_is_one_group(
+            self, session, child_only_tree, derecho, casper, acting_user):
+        t = child_only_tree
+        rids = [derecho.resource_id, casper.resource_id]
+        renew_project_allocations(
+            session, root_project_id=t['root'].project_id,
+            source_active_at=SRC_ACTIVE_AT, new_start=NEW_START, new_end=NEW_END,
+            resource_ids=rids, user_id=acting_user.user_id)
+        session.flush()
+        session.expire_all()
+        overlap = analyze_renew_overlap(
+            session, root_project_id=t['root'].project_id,
+            source_active_at=SRC_ACTIVE_AT, new_start=NEW_START, new_end=NEW_END,
+            resource_ids=rids)
+        assert len(overlap['collisions']) == 2
+        [group] = overlap['collision_groups']
+        assert (group['start_date'], group['end_date']) == (NEW_START, NEW_END)
+        assert sorted(group['resource_names']) == sorted(
+            [derecho.resource_name, casper.resource_name])
+        assert overlap['shrinking_groups'] == []
+
+    def test_group_by_period_splits_on_any_key_and_created_day(self):
+        from sam.manage.renew import _group_by_period
+        rows = [
+            {'resource_name': 'A', 'end_date': NEW_END, 'created': datetime(2026, 9, 22, 7, 6, 48)},
+            {'resource_name': 'B', 'end_date': NEW_END, 'created': datetime(2026, 9, 22, 7, 6, 49)},
+            {'resource_name': 'C', 'end_date': None, 'created': None},
+            {'resource_name': 'D', 'end_date': NEW_END, 'created': datetime(2026, 9, 23)},
+        ]
+        groups = _group_by_period(rows, ('end_date', 'created'))
+        assert [g['resource_names'] for g in groups] == [['A', 'B'], ['C'], ['D']]
+        assert groups[0]['created'] == datetime(2026, 9, 22).date()

@@ -8,8 +8,8 @@
   shrink coverage past the new end.
 
   Context:
-    overlap — analyze_renew_overlap() dict
-              {count, preserving, collisions, shrinking}, or None
+    overlap — analyze_renew_overlap() dict {count, preserving, collisions,
+              shrinking, collision_groups, shrinking_groups}, or None
     form    — request.form on a validation-error re-render (preserves the box)
 #}
 <div id="renewTruncateControl">
@@ -30,12 +30,14 @@
       <strong>Truncate existing</strong>
       {% if overlap.collisions %}
       — this period is <strong>already covered</strong>. Checking this will
-      <strong>delete and recreate</strong>
-      {% for c in overlap.collisions -%}
-        {{ c.resource_name }}
-        {%- if c.end_date %} ({{ c.start_date | fmt_date }} → {{ c.end_date | fmt_date }}{% if c.created %}, created {{ c.created | fmt_date }}{% endif %}){% endif %}
-        {{- ',' if not loop.last }}
-      {%- endfor %}.
+      <strong>delete and recreate</strong>:
+      {% for g in overlap.collision_groups %}
+      <span class="d-block ps-3 mt-1">
+        <span class="text-nowrap fw-semibold">{{ g.start_date | fmt_date }} → {% if g.end_date %}{{ g.end_date | fmt_date }}{% else %}open{% endif %}</span>
+        {% if g.created %}<span class="text-nowrap text-body-secondary">(created {{ g.created | fmt_date }})</span>{% endif %}
+        <span class="d-block">{{ g.resource_names | join(', ') }}</span>
+      </span>
+      {% endfor %}
       Someone may have already renewed this period — leave unchecked unless you
       mean to replace it (you will lose any changes made since).
       {% endif %}
@@ -43,11 +45,12 @@
       {% if overlap.collisions %}<br>Also,{% else %}—{% endif %} this would
       <strong>remove coverage</strong> after your new end date, because existing
       coverage runs longer:
-      {% for s in overlap.shrinking -%}
-        {{ s.resource_name }}
-        {%- if s.end_date %} to {{ s.end_date | fmt_date }}{% else %} open-ended{% endif %}
-        {{- ',' if not loop.last }}
-      {%- endfor %}.
+      {% for g in overlap.shrinking_groups %}
+      <span class="d-block ps-3 mt-1">
+        <span class="text-nowrap fw-semibold">{% if g.end_date %}until {{ g.end_date | fmt_date }}{% else %}open-ended{% endif %}</span>
+        <span class="d-block">{{ g.resource_names | join(', ') }}</span>
+      </span>
+      {% endfor %}
       Leave unchecked unless you intend to shorten it.
       {% endif %}
       {% endif %}

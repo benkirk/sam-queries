@@ -347,6 +347,11 @@ def analyze_renew_overlap(
       ``shrinking``  — ``[{resource_name, end_date}]`` (``end_date`` None means
                        open-ended) for resources whose coverage runs past
                        ``new_end``
+      ``collision_groups`` / ``shrinking_groups`` — the same rows collapsed
+                       per shared period (collisions by start, end and creation
+                       day; shrinking by end) into ``{..., resource_names}``, so
+                       the common "whole tree already renewed" case reads as
+                       one line
     """
     root = session.get(Project, root_project_id)
     if root is None:
@@ -403,7 +408,25 @@ def analyze_renew_overlap(
         'preserving': count > 0 and not collisions and not shrinking,
         'collisions': collisions,
         'shrinking': shrinking,
+        'collision_groups': _group_by_period(collisions, (
+            'start_date', 'end_date', 'created')),
+        'shrinking_groups': _group_by_period(shrinking, ('end_date',)),
     }
+
+
+def _group_by_period(rows: List[Dict[str, object]], keys) -> List[Dict[str, object]]:
+    """Collapse rows sharing ``keys`` into ``{**keys, 'resource_names': [...]}``,
+    in first-seen order. ``created`` groups by day, as the modal shows it."""
+    groups: Dict[tuple, Dict[str, object]] = {}
+    for row in rows:
+        values = {
+            k: (row[k].date() if k == 'created' and row[k] is not None else row[k])
+            for k in keys
+        }
+        group = groups.setdefault(
+            tuple(values.values()), {**values, 'resource_names': []})
+        group['resource_names'].append(row['resource_name'])
+    return list(groups.values())
 
 
 def _renew_subtree(
