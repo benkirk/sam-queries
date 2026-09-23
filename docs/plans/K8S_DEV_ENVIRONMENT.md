@@ -2,8 +2,10 @@
 
 **Status: IN PROGRESS.** Written 2026-09-12 as the implementation handoff; the repo
 side (§4) landed the same day as eight commits on `k8s_dev_plan` → `staging`, each
-leaving the prod render byte-identical. §5 (outside the repo) and §7 steps 2–5 are
-open — see §10. This is Stage 5 of `docs/plans/implemented/POSTGRES_MIGRATION.md`:
+leaving the prod render byte-identical. Since 2026-09-23 Argo CD application
+`sam-query-dev` (AppProject `csg`) deploys samuel-dev into its own namespace,
+`sam-queries-dev`, and `make deploy-dev` is retired. Open: kubectl RBAC in
+`sam-queries-dev` and the separate Entra registration — see §10. This is Stage 5 of `docs/plans/implemented/POSTGRES_MIGRATION.md`:
 a second install of the `samuel` chart on nwc1, serving `samuel-dev.k8s.ucar.edu`
 from the CNPG `sam_dev` Postgres copy, deployable from any branch without touching
 production.
@@ -28,8 +30,8 @@ the GitOps controller, the safety gates, and the runbook.
 | Question | Decision | Why |
 |---|---|---|
 | Same chart or a second app | **Same chart, a `values-dev.yaml` overlay** | Every object name already comes from values (`webapp.name`, `cache.name`, `tasks.name`), never `.Release.Name`. A second chart would copy ten templates to change six values. |
-| Namespace | **Same `sam-queries`** | Ben's RBAC covers every kind the chart creates there. A new namespace needs a platform ticket for the namespace, RBAC, and the ESO `SecretStore csg-ro`. |
-| Deploy path | **Bootstrap now, GitOps later** | CI grows a `target` and pins a locked `cirrus-dev` branch. A self-retiring `make deploy-dev` runs helm from a laptop until the platform team adds Argo Application `sam-query-dev`. Same value files both ways. |
+| Namespace | **Own `sam-queries-dev`** (bootstrapped in `sam-queries`; CIRRUS moved it 2026-09-23 when Argo adopted it) | Ben's RBAC covered every kind the chart creates in `sam-queries`, so the laptop bootstrap went there. The platform team provisioned `sam-queries-dev` with the Argo app; kubectl RBAC there is a separate request. |
+| Deploy path | **Bootstrap, then GitOps** (done) | CI grows a `target` and pins a locked `cirrus-dev` branch. A laptop `make deploy-dev` bootstrapped it; Argo Application `sam-query-dev` deploys it since 2026-09-23 and the make target is gone. Same value files both ways. |
 | What reaches dev | **push to `staging` → dev; `gh workflow run --ref <branch>` → dev by default** | Staging regains a real deploy target. Prod only from push to `main`, `v*` tags, or an explicit `target=prod`. |
 | SAM database | CNPG `sam_dev` on Postgres | The Stage 5 premise. Postgres-dev / MySQL-prod skew is accepted. |
 | system_status | **New `system_status_dev` on the same CNPG cluster, seeded at each refresh** | Same host, so cheap; gives dev its own `task_run` ledger, so the dev dispatcher never settles a prod slot. |
@@ -245,7 +247,8 @@ value, nothing more.
   9. `samuel-dev-sam-db-credentials` referenced by both; ExternalSecret `remoteRef.key`
      = `csg/sam-dev-pg` and `csg/sam-dev-oidc`; `csg/sam-writeuser` and `csg/sam-oidc`
      absent from the whole dev render.
-  10. `CACHE_REDIS_URL` on both contains `samuel-dev-redis.sam-queries.svc`;
+  10. `CACHE_REDIS_URL` on both contains `samuel-dev-redis.` (the namespace comes
+      from `.Release.Namespace`, `sam-queries-dev` under Argo);
       NetworkPolicy `samuel-dev-redis-allow-webapp` admits `app: samuel-dev` and
       `app: samuel-dev-tasks`.
   11. Exactly two `image: ghcr.io/.../webapp:` refs in the dev render and zero `image:`
@@ -318,6 +321,10 @@ value, nothing more.
 - `scripts/README.md`: document `SAM_ENV=dev` / `--env dev`.
 
 ### 4.6 Phase-1 laptop deploy: `scripts/deploy_dev.sh (new)` + `make deploy-dev`
+
+**Retired 2026-09-23.** Argo `sam-query-dev` owns samuel-dev; the script and make
+target are deleted. Its render gates all live in `helm/tests/test-dev-render.sh`,
+which `ci-staging` runs via `make helm-test`. As built, for the record:
 
 The header says TEMPORARY until Argo Application `sam-query-dev` exists. Literals, not
 flags: release `samuel-dev`, namespace `sam-queries`, context `nwc1`, source
@@ -403,7 +410,7 @@ make target.
 | 5 | UCAR IT (Andrew Tamagni) | Entra app registration "SAM dev": reply URL `https://samuel-dev.k8s.ucar.edu/auth/oidc/callback`, post-logout `https://samuel-dev.k8s.ucar.edu/status/`, scopes `openid email profile`, claims `preferred_username`, `email`, `sub` (checklist in `infrastructure/README.md`). Interim: add both dev URLs to the prod registration. | browser login only |
 | 6 | automatic (verify) | DNS `samuel-dev.k8s.ucar.edu` → `128.117.41.126`, expected to appear from the Ingress host. If it has not resolved a few minutes after the first apply, it becomes a platform ticket. | cert, reachability |
 | 7 | automatic | cert-manager issues `incommon-cert-samuel-dev` from the Ingress annotation once DNS resolves. | — |
-| 8 | CSG platform | Argo Application `sam-query-dev` (§6.3) | Phase 2 only |
+| 8 | CSG platform | Argo Application `sam-query-dev` (§6.3) — done 2026-09-23, namespace `sam-queries-dev`; Ben has Argo UI access, kubectl RBAC there requested | Phase 2 only |
 
 **Entra is not a blocker for the first deploy.** With item 3 filled from prod's values
 the pods start, health is green, API-key access and anonymous pages work; only browser
@@ -449,7 +456,7 @@ metadata:
   name: sam-query-dev
   namespace: argocd                 # wherever sam-query lives
 spec:
-  project: <same as sam-query>
+  project: csg
   source:
     repoURL: https://github.com/benkirk/sam-queries.git
     targetRevision: cirrus-dev
@@ -459,12 +466,14 @@ spec:
       valueFiles: [values.yaml, values-dev.yaml]
   destination:
     server: https://kubernetes.default.svc
-    namespace: sam-queries
+    namespace: sam-queries-dev
   syncPolicy:                       # mirror sam-query's
     automated: {prune: true, selfHeal: true}
 ```
 
-Argo adopts the Phase-1 objects by name. Afterwards retire `deploy-dev` (§4.6).
+As applied, CIRRUS deployed it into a new namespace rather than adopting the
+Phase-1 objects in `sam-queries`; the old release and its `incommon-cert-samuel-dev`
+Secret were removed from `sam-queries` (2026-09-23), and `deploy-dev` is retired (§4.6).
 
 ### 6.4 Fresh install: the Redis race
 
@@ -473,9 +482,9 @@ and its NetworkPolicy answered and logged `Redis is unreachable (Error 1 … Ope
 not permitted)`. `Caching.__init__` and `Limiting.init_app`
 (`src/webapp/caching/__init__.py`, `src/webapp/limiter/__init__.py`) decide the
 fallback once per process, so the pod ran on per-worker caches and `memory://`
-limits until `kubectl -n sam-queries rollout restart deploy/samuel-dev`. Later
-deploys find Redis already up; `deploy_dev.sh` prints the restart command when it
-sees the log line. Not chart-fixed on purpose: the fallback is load-bearing and the
+limits until `kubectl -n sam-queries-dev rollout restart deploy/samuel-dev`. Later
+deploys find Redis already up; after a fresh install, look for that log line and
+restart once. Not chart-fixed on purpose: the fallback is load-bearing and the
 race is one-time per fresh install.
 
 ### 6.5 Hammering dev
@@ -500,10 +509,10 @@ clients). Numbers from the campaigns: `DEV_LOAD_CAMPAIGN.md`.
    behavior: the workflow (a `staging` push now builds images; `target` plumbing in
    `update-helm`). Item 1 of §5 before merging the workflow change.
 2. Merge to `staging` = the first automatic `cirrus-dev` pin.
-3. §5 items 2–4, then `make deploy-dev`, then watch item 6 resolve and item 7 issue.
+3. §5 items 2–4, then `make deploy-dev` (since retired), then watch item 6 resolve and item 7 issue.
 4. Promote `staging → main` so `-f target=...` becomes usable and push-to-main runs the
    new file (Ben owns the mechanics).
-5. Phase 2: item 8, adoption, retirement.
+5. Phase 2: item 8, adoption, retirement — done 2026-09-23.
 
 ## 8. Verification
 
@@ -512,18 +521,18 @@ Before merge:
 ```bash
 helm template samuel helm -f helm/values.yaml -n sam-queries | diff -u <before> - && echo PROD-IDENTICAL
 helm lint helm/
-helm template samuel-dev helm -f helm/values.yaml -f helm/values-dev.yaml -n sam-queries > dev.yaml
+helm template samuel-dev helm -f helm/values.yaml -f helm/values-dev.yaml -n sam-queries-dev > dev.yaml
 grep -E '^kind:|^  name:' dev.yaml | paste - - | sort        # eyeball the object set once
 make helm-test                                               # incl. the negative loop
 python -m pytest tests/unit/test_xras_admin_client.py tests/unit/test_task_*.py tests/unit/test_docs.py -q
-bash -n scripts/lib/cirrus_common.sh scripts/cirrus_healthcheck.sh scripts/cirrus_watch.sh scripts/deploy_dev.sh
-SAM_ENV=dev bash -c 'source scripts/lib/cirrus_common.sh; echo $RELEASE $WEBAPP_NAME $TASKS_NAME $INGRESS_HOST $TLS_SECRET'
+bash -n scripts/lib/cirrus_common.sh scripts/cirrus_healthcheck.sh scripts/cirrus_watch.sh
+SAM_ENV=dev bash -c 'source scripts/lib/cirrus_common.sh; echo $NAMESPACE $RELEASE $WEBAPP_NAME $TASKS_NAME $INGRESS_HOST $TLS_SECRET'
 bash -c 'source scripts/lib/cirrus_common.sh; echo $RELEASE $WEBAPP_NAME'   # prod unchanged
 ```
 
 After the first deploy:
 
-- `kubectl -n sam-queries get externalsecret,certificate -l group=samuel-dev`: all Ready.
+- `kubectl -n sam-queries-dev get externalsecret,certificate -l group=samuel-dev`: all Ready.
 - `dig +short samuel-dev.k8s.ucar.edu` = `128.117.41.126`.
 - `SAM_ENV=dev scripts/cirrus_healthcheck.sh -v` passes; plain
   `scripts/cirrus_healthcheck.sh` never mentions `samuel-dev`.
@@ -532,7 +541,7 @@ After the first deploy:
 - Browser: login → Entra → back on `samuel-dev` (no AADSTS50011, no
   MismatchingStateError); logout lands on `/status/`. Admin → Configuration shows
   `SAM_DB_NAME=sam_dev`, `STATUS_DB_NAME=system_status_dev`, notify and XRAS levers off.
-- `kubectl -n sam-queries create job --from=cronjob/samuel-dev-tasks samuel-dev-tasks-smoke`:
+- `kubectl -n sam-queries-dev create job --from=cronjob/samuel-dev-tasks samuel-dev-tasks-smoke`:
   `task_run` rows appear in `system_status_dev`, and prod `system_status` has none with a
   `samuel-dev-tasks-*` runner.
 - Isolation, in `pg_stat_activity` as postgres: `application_name like 'sam-webapp:samuel-dev%'`
@@ -560,11 +569,12 @@ Steve) in `XRAS_SUBMISSION.md` § 5 (this directory).
 |---|---|---|
 | Plan written, decisions taken | done | 2026-09-12 |
 | §4 implemented, eight commits on `k8s_dev_plan`; prod render byte-identical | done | 2026-09-12 |
-| Living PR opened (`k8s_dev_plan` → `staging`) | — | |
+| Living PR opened (`k8s_dev_plan` → `staging`) | done (#555) | 2026-09-13 |
 | Ruleset covers `cirrus-dev` (before the CI commit merges) | done; negative push test rejected (GH013), branch not created | 2026-09-13 |
 | OpenBao `csg/sam-dev-pg` (`username`, `password`), `csg/sam-dev-oidc` (`client_id`, `client_secret`, `issuer`, `flask_secret_key`) | done | 2026-09-13 |
 | `system_status_dev` created and seeded (§6.1) | done; 18 tables, alembic `0006_task_run`, `task_run` empty, 1m49s | 2026-09-13 |
 | Living PR merged (#555); first automatic `cirrus-dev` pin (sha-4d30e9d, `target=dev`) | done | 2026-09-13 |
 | First `make deploy-dev`; DNS + cert live | done 15:04Z; 6 ExternalSecrets synced, cert Ready <1 min, A record by external-dns, `/` + `/ready` healthy on `sam_dev` + `system_status_dev` (101 models, no drift), `pg_stat_activity` isolation clean, first CronJob run touched dev only; one `rollout restart` for §6.4 | 2026-09-13 |
 | Entra dev registration | interim: dev reply URL on prod's registration, verified (no AADSTS error); separate registration open | 2026-09-13 |
-| Argo `sam-query-dev`; `deploy-dev` retired | — | |
+| Argo `sam-query-dev`; `deploy-dev` retired | done; own namespace `sam-queries-dev`, auto-follows the `cirrus-dev` pin; stale `incommon-cert-samuel-dev` Secret deleted from `sam-queries`; scripts' `--env dev` targets the new namespace | 2026-09-23 |
+| kubectl RBAC in `sam-queries-dev` | requested; until then `cirrus_watch.sh --env dev` reads `/ready` over HTTPS only (the `watch-dev` skill) | |

@@ -401,8 +401,9 @@ the release. OpenBao credentials are unaffected.
 
 ## samuel-dev (CIRRUS dev)
 
-A second install of the same chart in the same namespace, rendered with
-`helm/values-dev.yaml` on top of `values.yaml`: every object is named
+A second install of the same chart in its own namespace, `sam-queries-dev`,
+deployed by Argo CD application `sam-query-dev` from the `cirrus-dev` pin and
+rendered with `helm/values-dev.yaml` on top of `values.yaml`: every object is named
 `samuel-dev*`, it serves `https://samuel-dev.k8s.ucar.edu`, reads the Postgres
 `sam_dev` copy and its own `system_status_dev`, sends no mail, never holds the
 XRAS API key, and accepts only its own collector API key.
@@ -412,7 +413,6 @@ outside-the-repo checklist: `docs/plans/K8S_DEV_ENVIRONMENT.md`.
 
 ```bash
 gh workflow run "Publish Images and CIRRUS Deploy" --ref <branch>   # builds + pins cirrus-dev (docs/CIRRUS_PUBLISHING.md)
-make deploy-dev                                  # phase 1: laptop helm from origin/cirrus-dev (until Argo adopts it)
 PGPASSWORD=... make refresh-dev                  # rebuild sam_dev + reseed system_status_dev + refresh dev caches
 scripts/cirrus_healthcheck.sh --env dev          # every cirrus script takes --env dev / SAM_ENV=dev
 scripts/cirrus_watch.sh --env dev

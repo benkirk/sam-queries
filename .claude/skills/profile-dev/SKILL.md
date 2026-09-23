@@ -12,7 +12,7 @@ description: >-
 # Profile dev interactively
 
 An ordered procedure for characterizing the `samuel-dev` `@login_required`
-surface (namespace `sam-queries`, cluster `nwc1`, host `samuel-dev.k8s.ucar.edu`)
+surface (namespace `sam-queries-dev`, cluster `nwc1`, host `samuel-dev.k8s.ucar.edu`)
 with one captured browser session replayed at concurrency. The mechanics live in
 two scripts — `scripts/dev_capture_session.py` and `scripts/dev_session_load.py`
 — plus the two existing watchers. This skill carries the judgment they can't:
@@ -77,12 +77,14 @@ scripts/cirrus_watch.sh --env dev                                   # app / pod 
 ```
 
 `cirrus_watch --env dev` skips the XRAS/db-load reads (dev SAM is Postgres) and
-prints the web line + a `↳ split` on any slow (>5 s) request. **Most profiling
+prints the web line + a `↳ split` on any slow (>5 s) request. Those pod-log
+sections need kubectl RBAC in `sam-queries-dev`; without it the tick says
+`k8s: no RBAC` and only the `http:` line is live (see the `watch-dev` skill). **Most profiling
 targets are sub-second and never trip that split** — grep the pod log directly
 for one request's tokens by its `rid` (= the driver's `X-Request-ID`):
 
 ```bash
-kubectl -n sam-queries logs deploy/samuel-dev --tail=1500 | grep '<rid or route>'
+kubectl -n sam-queries-dev logs deploy/samuel-dev --tail=1500 | grep '<rid or route>'
 ```
 
 Read `total ~= cpu + Σ <db>=Xms/Nq + pool + rest`, where the DB labels are
