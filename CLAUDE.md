@@ -929,9 +929,11 @@ see docs/AUTHENTICATION.md § Local development.
 
 **samuel-dev** (`https://samuel-dev.k8s.ucar.edu`) is a second install of the
 prod chart on nwc1 with `helm/values-dev.yaml` — Postgres `sam_dev`, own
-`system_status_dev`, mail and XRAS levers off. `gh workflow run "Publish Images
-and CIRRUS Deploy" --ref <branch>` pins it; `make deploy-dev` / `make
-refresh-dev`; every `scripts/cirrus_*.sh` takes `--env dev`. Limiter tiers are
+`system_status_dev`, mail and XRAS levers off. Argo app `sam-query-dev` deploys
+it into namespace `sam-queries-dev` from the `cirrus-dev` pin (every staging
+push, or `gh workflow run "Publish Images and CIRRUS Deploy" --ref <branch>`);
+`make refresh-dev` reloads its data; every `scripts/cirrus_*.sh` takes
+`--env dev`; the `watch-dev` skill reads it. Limiter tiers are
 effectively off on dev (load-test target), login tier excepted. Record:
 `docs/plans/K8S_DEV_ENVIRONMENT.md`; `helm/tests/test-dev-render.sh` is the gate.
 
