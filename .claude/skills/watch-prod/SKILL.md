@@ -15,7 +15,8 @@ An ordered procedure for keeping an eye on the public `samuel` release
 (namespace `sam-queries`, cluster `nwc1`) between deploys. The mechanics live in
 `scripts/cirrus_watch.sh` — a read-only *delta* tick. This skill carries the
 judgment the script can't: what a line means, what to flag vs let ride, and how
-to run the recurring wake without piling up duplicate timers.
+to run the recurring wake without piling up duplicate timers. For samuel-dev
+(`--env dev`), the `watch-dev` skill carries the differences.
 
 Work top to bottom. Step 1 runs a tick; steps 2–5 read it; step 6 schedules the
 recurring wake; step 7 is the traps.
@@ -35,6 +36,10 @@ automatically, else set `SAM_DB_USERNAME`/`SAM_DB_PASSWORD`). Exit code is
 `0` quiet / `1` warn / `2` fail, so a scheduler can alert on it. State (the
 last-seen XRAS id, image sha, and Redis counters) lives outside the repo under
 `$XDG_STATE_HOME/sam-watch/`.
+
+The first line after the header, `http: ready …`, is the outside-in
+`/api/v1/health/ready` read over HTTPS: FAIL on non-200 or `sam` unhealthy, WARN
+on `degraded` (a secondary bind down, still serving — correlate as in §2).
 
 **Report only what changed since the last tick.** A quiet tick is one terse
 line per section; escalate a *trend across ticks*, not a single outlier.
