@@ -224,7 +224,6 @@ _ALLOCATION_ADMIN: Set[Permission] = (
         # The account-request queue is NUSD's worklist by design -- they are
         # the team that creates the accounts.
         Permission.MANAGE_ACCOUNT_REQUESTS,
-        Permission.MANAGE_EVENTS,
     }
 )
 
@@ -239,9 +238,10 @@ GROUP_PERMISSIONS: Dict[str, Set[Permission]] = {
     'nusd': _ALLOCATION_ADMIN,
 
     # csg: the allocation-administrator tier PLUS edit on resources — CSG runs
-    # the plant. Create/delete of resources stays withheld (ssg holds
-    # CREATE_RESOURCES).
-    'csg': _ALLOCATION_ADMIN | {Permission.EDIT_RESOURCES},
+    # the plant — and the event lifecycle, which is CSG's alone. Create/delete
+    # of resources stays withheld (ssg holds CREATE_RESOURCES).
+    'csg': _ALLOCATION_ADMIN | {Permission.EDIT_RESOURCES,
+                                Permission.MANAGE_EVENTS},
 
     # ssg: read-only across the board, plus resource create/edit and
     # edit system status (for outages...)
