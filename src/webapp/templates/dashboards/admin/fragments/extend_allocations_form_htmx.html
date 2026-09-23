@@ -13,7 +13,7 @@
     candidates        — list of dicts from _build_alloc_candidates: one per
                         root allocation, then one per sub-project-only resource.
                         Keys: source_alloc, resource_id, resource_name,
-                              resource_type, amount (None = varies), end_date,
+                              amount (None = varies), end_date,
                               is_open_ended, descendant_count, child_only,
                               anchor_projcodes
     source_active_at  — YYYY-MM-DD string (the "Active At" filter value)
@@ -111,15 +111,10 @@
                      {% if c.is_open_ended %}disabled{% endif %}>
             </td>
             <td style="vertical-align:middle;">
-              <label class="mb-0" for="extendRes{{ c.resource_id }}">
+              <label class="mb-0 text-nowrap" for="extendRes{{ c.resource_id }}">
                 <i class="fa-solid fa-server me-1 small
                           {% if c.is_open_ended %}text-muted{% else %}text-primary{% endif %}"></i>
                 <strong>{{ c.resource_name }}</strong>
-                {% if c.resource_type %}
-                <span class="badge bg-secondary bg-opacity-25 text-body-emphasis border small ms-1">
-                  {{ c.resource_type }}
-                </span>
-                {% endif %}
               </label>
             </td>
             <td class="text-end small text-muted" style="vertical-align:middle;">

@@ -12,7 +12,7 @@
     candidates        — list of dicts from _build_alloc_candidates: one per
                         root allocation, then one per sub-project-only resource.
                         Keys: source_alloc, resource_id, resource_name,
-                              resource_type, amount (None = varies), start_date,
+                              amount (None = varies), start_date,
                               end_date, descendant_count, child_only,
                               anchor_projcodes
     source_active_at  — YYYY-MM-DD string (the "Active At" filter value)
@@ -128,14 +128,9 @@
                      hx-trigger="change" hx-include="closest form">
             </td>
             <td style="vertical-align:middle;">
-              <label class="mb-0" for="renewRes{{ c.resource_id }}">
+              <label class="mb-0 text-nowrap" for="renewRes{{ c.resource_id }}">
                 <i class="fa-solid fa-server text-primary me-1 small"></i>
                 <strong>{{ c.resource_name }}</strong>
-                {% if c.resource_type %}
-                <span class="badge bg-secondary bg-opacity-25 text-body-emphasis border small ms-1">
-                  {{ c.resource_type }}
-                </span>
-                {% endif %}
               </label>
             </td>
             <td class="text-end small text-muted" style="vertical-align:middle;">

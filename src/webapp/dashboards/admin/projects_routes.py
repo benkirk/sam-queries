@@ -1613,10 +1613,6 @@ def _build_alloc_candidates(project, source_active_at):
             'source_alloc': src,
             'resource_id': resource.resource_id,
             'resource_name': resource.resource_name,
-            'resource_type': (
-                resource.resource_type.resource_type
-                if resource.resource_type else ''
-            ),
             'amount': src.amount if len(anchors) == 1 else None,
             'start_date': src.start_date,
             'end_date': src.end_date,
