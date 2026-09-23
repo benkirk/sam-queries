@@ -73,6 +73,8 @@ check_dev() {
   # The project Invitations tab is live on dev and dark in prod (initial prod
   # capability is the XRAS-mirrored Accounts queue only).
   [[ "$(env_value "$deploy" ACCOUNT_INVITATIONS_ENABLED)" == "1" ]] || { red "FAIL: ACCOUNT_INVITATIONS_ENABLED must be 1 on dev"; return 1; }
+  # The /dev/gallery component gallery is live on dev and dark in prod.
+  [[ "$(env_value "$deploy" COMPONENT_GALLERY_ENABLED)" == "1" ]] || { red "FAIL: COMPONENT_GALLERY_ENABLED must be 1 on dev"; return 1; }
   # The signed-in preview of /register runs under a low site-wide POST ceiling.
   grep -A1 'name: RATELIMIT_REGISTER_GLOBAL' <<<"$deploy" | grep -q 'value: "5 per hour; 20 per day"' \
     || { red "FAIL: dev must pin RATELIMIT_REGISTER_GLOBAL low for the registration preview"; return 1; }
@@ -186,6 +188,8 @@ prod_deploy=$(render prod -s templates/deployment.yaml)
   red "FAIL: the anonymous /register form must ship dark in prod (ACCOUNT_REGISTRATION_ENABLED=0)"; exit 1; }
 [[ "$(env_value "$prod_deploy" ACCOUNT_INVITATIONS_ENABLED)" == "0" ]] || {
   red "FAIL: the project Invitations tab must ship dark in prod (ACCOUNT_INVITATIONS_ENABLED=0)"; exit 1; }
+[[ "$(env_value "$prod_deploy" COMPONENT_GALLERY_ENABLED)" == "0" ]] || {
+  red "FAIL: the component gallery must ship dark in prod (COMPONENT_GALLERY_ENABLED=0)"; exit 1; }
 
 # --- the negative loop: each prod value must be refused ----------------------
 # `set +e` around a `( set -e; ... )` subshell keeps errexit live inside it;
@@ -200,6 +204,7 @@ expect_reject() {
 expect_reject --set webapp.env.DISABLE_AUTH=1
 expect_reject --set webapp.env.ACCOUNT_REGISTRATION_ENABLED=0
 expect_reject --set webapp.env.ACCOUNT_INVITATIONS_ENABLED=0
+expect_reject --set webapp.env.COMPONENT_GALLERY_ENABLED=0
 expect_reject --set webapp.env.FLASK_CONFIG=development
 expect_reject --set webapp.env.AUTH_PROVIDER=stub
 expect_reject --set webapp.env.NOTIFY_ENABLED=1
