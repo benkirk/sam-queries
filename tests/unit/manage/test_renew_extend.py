@@ -27,6 +27,8 @@ from sam.manage.extend import extend_project_allocations
 from sam.manage.renew import (
     analyze_renew_overlap,
     analyze_renew_preconditions,
+    find_child_only_resources,
+    find_renew_anchors,
     find_renewable_descendants,
     find_source_alloc_at,
     find_source_allocations_at,
@@ -1604,3 +1606,254 @@ class TestExtendResourceSelection:
 
         assert derecho_src.end_date == EXTENDED_END
         assert casper_src.end_date == SRC_END
+
+
+# ---------------------------------------------------------------------------
+# Sub-project-only resources (the FY27 NTMA0002/Destor case): the root holds
+# `derecho`, child A alone holds `casper` with an inheriting grandchild under it.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def child_only_tree(session, derecho, casper):
+    root = make_project(session)
+    child_a = make_project(session, parent=root)
+    child_b = make_project(session, parent=root)
+    # Re-fetch before nesting: placement reads the parent's in-memory
+    # tree_right, and a stale one lands the node in the wrong subtree.
+    session.expire_all()
+    child_a = session.get(type(root), child_a.project_id)
+    grandchild = make_project(session, parent=child_a)
+    session.expire_all()
+    root = session.get(type(root), root.project_id)
+    _seed_standalone_source(session, root, derecho)
+    a_src = _seed_standalone_source(session, child_a, casper, amount=300.0)
+    Allocation.create(
+        session,
+        project_id=grandchild.project_id,
+        resource_id=casper.resource_id,
+        amount=300.0,
+        start_date=SRC_START,
+        end_date=SRC_END,
+        parent_allocation_id=a_src.allocation_id,
+    )
+    session.flush()
+    session.expire_all()
+    return {
+        'root': session.get(type(root), root.project_id),
+        'child_a': session.get(type(root), child_a.project_id),
+        'grandchild': session.get(type(root), grandchild.project_id),
+        'child_b': session.get(type(root), child_b.project_id),
+        'a_src_id': a_src.allocation_id,
+    }
+
+
+class TestFindRenewAnchors:
+
+    def test_root_holder_is_the_only_anchor(self, session, child_only_tree, derecho):
+        t = child_only_tree
+        anchors = find_renew_anchors(t['root'], derecho.resource_id, SRC_ACTIVE_AT)
+        assert [p.project_id for p, _ in anchors] == [t['root'].project_id]
+
+    def test_child_only_anchors_on_topmost_holder(self, session, child_only_tree, casper):
+        t = child_only_tree
+        anchors = find_renew_anchors(t['root'], casper.resource_id, SRC_ACTIVE_AT)
+        assert [(p.project_id, a.allocation_id) for p, a in anchors] == [
+            (t['child_a'].project_id, t['a_src_id'])]
+
+    def test_sibling_holders_are_both_anchors(self, session, child_only_tree, casper):
+        t = child_only_tree
+        _seed_standalone_source(session, t['child_b'], casper, amount=50.0)
+        anchors = find_renew_anchors(t['root'], casper.resource_id, SRC_ACTIVE_AT)
+        assert {p.project_id for p, _ in anchors} == {
+            t['child_a'].project_id, t['child_b'].project_id}
+
+    def test_inactive_holder_is_not_an_anchor(self, session, child_only_tree, casper):
+        t = child_only_tree
+        t['child_a'].active = False
+        session.flush()
+        anchors = find_renew_anchors(t['root'], casper.resource_id, SRC_ACTIVE_AT)
+        # The inheriting grandchild is never an anchor on its own.
+        assert anchors == []
+
+    def test_no_holder_no_anchors(self, session, child_only_tree):
+        other = make_resource(session)
+        assert find_renew_anchors(
+            child_only_tree['root'], other.resource_id, SRC_ACTIVE_AT) == []
+
+
+class TestFindChildOnlyResources:
+
+    def test_lists_only_resources_the_root_lacks(self, session, child_only_tree,
+                                                 derecho, casper):
+        t = child_only_tree
+        result = find_child_only_resources(t['root'], SRC_ACTIVE_AT)
+        assert set(result) == {casper.resource_id}
+        assert [p.project_id for p, _ in result[casper.resource_id]] == [
+            t['child_a'].project_id]
+
+    def test_expired_child_source_not_listed(self, session, child_only_tree):
+        assert find_child_only_resources(
+            child_only_tree['root'], datetime(2098, 6, 15)) == {}
+
+
+class TestRenewChildOnlyResource:
+
+    def _renew(self, session, t, rids, user, **kw):
+        touched = []
+        created = renew_project_allocations(
+            session,
+            root_project_id=t['root'].project_id,
+            source_active_at=kw.pop('source_active_at', SRC_ACTIVE_AT),
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=rids,
+            user_id=user.user_id,
+            touched=touched,
+            **kw,
+        )
+        session.flush()
+        session.expire_all()
+        return created, touched
+
+    def test_child_only_resource_is_renewed_on_the_child(
+            self, session, child_only_tree, derecho, casper, acting_user):
+        t = child_only_tree
+        created, touched = self._renew(
+            session, t, [derecho.resource_id, casper.resource_id], acting_user)
+
+        new_a = _find_test_alloc(session, t['child_a'], casper.resource_id, NEW_START)
+        new_g = _find_test_alloc(session, t['grandchild'], casper.resource_id, NEW_START)
+        assert new_a is not None and new_a.amount == 300.0
+        assert new_a.parent_allocation_id is None
+        assert new_g.parent_allocation_id == new_a.allocation_id
+        # Nothing on the root for the resource it never held.
+        assert _find_test_alloc(session, t['root'], casper.resource_id, NEW_START) is None
+        assert {a.allocation_id for a in created} == {
+            new_a.allocation_id,
+            _find_test_alloc(session, t['root'], derecho.resource_id, NEW_START).allocation_id,
+        }
+        assert {new_a.allocation_id, new_g.allocation_id} <= {a.allocation_id for a in touched}
+
+        g_txn = session.query(AllocationTransaction).filter_by(
+            allocation_id=new_g.allocation_id).one()
+        assert g_txn.propagated
+        assert replay_amount(new_a.transactions) == new_a.amount
+
+    def test_second_renew_is_idempotent(self, session, child_only_tree, casper,
+                                        acting_user):
+        t = child_only_tree
+        self._renew(session, t, [casper.resource_id], acting_user)
+        created, touched = self._renew(session, t, [casper.resource_id], acting_user)
+        assert created == [] and touched == []
+
+    def test_replace_existing_truncates_crossing_child_source(
+            self, session, derecho, casper, acting_user):
+        root = make_project(session)
+        child = make_project(session, parent=root)
+        session.expire_all()
+        root = session.get(type(root), root.project_id)
+        _seed_standalone_source(session, root, derecho,
+                                start=FY_SRC_START, end=FY_SRC_END)
+        crossing = _seed_standalone_source(session, child, casper, amount=300.0,
+                                           start=FY_SRC_START, end=FY_SRC_END)
+        t = {'root': root}
+        created, _ = self._renew(session, t, [casper.resource_id], acting_user,
+                                 source_active_at=FY_SRC_ACTIVE_AT,
+                                 replace_existing=True)
+
+        old = session.get(Allocation, crossing.allocation_id)
+        assert not old.deleted
+        assert old.end_date == NEW_START - timedelta(seconds=1)
+        assert len(created) == 1
+        assert created[0].account.project_id == child.project_id
+
+
+class TestAnalyzeChildOnlyResource:
+
+    def _pre(self, session, t, rids):
+        return analyze_renew_preconditions(
+            session, root_project_id=t['root'].project_id,
+            source_active_at=SRC_ACTIVE_AT, new_start=NEW_START, new_end=NEW_END,
+            resource_ids=rids)
+
+    def test_child_only_is_ok_then_overlap(self, session, child_only_tree, casper,
+                                           acting_user):
+        t = child_only_tree
+        other = make_resource(session)
+        assert self._pre(session, t, [casper.resource_id, other.resource_id]) == {
+            casper.resource_id: 'ok', other.resource_id: 'no_source'}
+
+        renew_project_allocations(
+            session, root_project_id=t['root'].project_id,
+            source_active_at=SRC_ACTIVE_AT, new_start=NEW_START, new_end=NEW_END,
+            resource_ids=[casper.resource_id], user_id=acting_user.user_id)
+        session.flush()
+        session.expire_all()
+        assert self._pre(session, t, [casper.resource_id]) == {
+            casper.resource_id: 'overlap'}
+
+        overlap = analyze_renew_overlap(
+            session, root_project_id=t['root'].project_id,
+            source_active_at=SRC_ACTIVE_AT, new_start=NEW_START, new_end=NEW_END,
+            resource_ids=[casper.resource_id])
+        # Child A and its inheriting grandchild both already occupy the window.
+        assert overlap['count'] == 2
+        assert [c['resource_name'] for c in overlap['collisions']] == [
+            casper.resource_name]
+
+
+class TestExtendChildOnlyResource:
+
+    def test_extends_child_only_subtree(self, session, child_only_tree, casper,
+                                        acting_user):
+        t = child_only_tree
+        touched = []
+        updated = extend_project_allocations(
+            session, root_project_id=t['root'].project_id,
+            source_active_at=SRC_ACTIVE_AT, new_end=EXTENDED_END,
+            resource_ids=[casper.resource_id], user_id=acting_user.user_id,
+            touched=touched)
+        assert [a.allocation_id for a in updated] == [t['a_src_id']]
+        assert len(touched) == 2
+        session.expire_all()
+        for key in ('child_a', 'grandchild'):
+            alloc = _find_test_alloc(session, t[key], casper.resource_id, SRC_ACTIVE_AT)
+            assert alloc.end_date == EXTENDED_END
+
+
+class TestOverlapGroups:
+    """The modal lists collisions/shrinking per shared period, not per resource."""
+
+    def test_whole_tree_already_renewed_is_one_group(
+            self, session, child_only_tree, derecho, casper, acting_user):
+        t = child_only_tree
+        rids = [derecho.resource_id, casper.resource_id]
+        renew_project_allocations(
+            session, root_project_id=t['root'].project_id,
+            source_active_at=SRC_ACTIVE_AT, new_start=NEW_START, new_end=NEW_END,
+            resource_ids=rids, user_id=acting_user.user_id)
+        session.flush()
+        session.expire_all()
+        overlap = analyze_renew_overlap(
+            session, root_project_id=t['root'].project_id,
+            source_active_at=SRC_ACTIVE_AT, new_start=NEW_START, new_end=NEW_END,
+            resource_ids=rids)
+        assert len(overlap['collisions']) == 2
+        [group] = overlap['collision_groups']
+        assert (group['start_date'], group['end_date']) == (NEW_START, NEW_END)
+        assert sorted(group['resource_names']) == sorted(
+            [derecho.resource_name, casper.resource_name])
+        assert overlap['shrinking_groups'] == []
+
+    def test_group_by_period_splits_on_any_key_and_created_day(self):
+        from sam.manage.renew import _group_by_period
+        rows = [
+            {'resource_name': 'A', 'end_date': NEW_END, 'created': datetime(2026, 9, 22, 7, 6, 48)},
+            {'resource_name': 'B', 'end_date': NEW_END, 'created': datetime(2026, 9, 22, 7, 6, 49)},
+            {'resource_name': 'C', 'end_date': None, 'created': None},
+            {'resource_name': 'D', 'end_date': NEW_END, 'created': datetime(2026, 9, 23)},
+        ]
+        groups = _group_by_period(rows, ('end_date', 'created'))
+        assert [g['resource_names'] for g in groups] == [['A', 'B'], ['C'], ['D']]
+        assert groups[0]['created'] == datetime(2026, 9, 22).date()

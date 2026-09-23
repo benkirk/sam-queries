@@ -52,6 +52,12 @@ Admin → project `/admin/project/<ROOT>/edit` → Allocations tab → **Renew**
   end. Leave a warned box unchecked unless you mean it. (Behavior fixed after
   the FY27 gap; see reconcile_fy27_renew_gap.sql.)
 - Click **Renew Allocations**. Renew walks the whole tree (root + descendants).
+- Resources that only sub-projects hold are listed too, badged **sub-project
+  only: <projcode>**, and are renewed from those sub-projects' own allocations.
+  The default dates come from the root's allocations, not the sub-project's.
+  Extend behaves the same way. The three FY27 cases the root-only walk missed
+  (NTMA0002 Destor, NRAL0031 GLADE user, NCIS0014 Data_Access) were created
+  by `scripts/repair/fy27_renew_child_only_resources.sql` on 2026-09-23.
 
 ## Verification (read-only) — run after EACH root
 

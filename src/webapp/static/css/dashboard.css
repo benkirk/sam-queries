@@ -1238,6 +1238,16 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     box-shadow: var(--shadow-md);
 }
 
+/* On a phone the fullscreen dialog pins .modal-content to the viewport, and
+   Bootstrap scrolls only a direct-child .modal-body. The htmx form containers
+   sit in between, so without this a tall form spills past the background. */
+@media (max-width: 575.98px) {
+    .modal-fullscreen-sm-down .modal-content > :not(.modal-header):not(.modal-footer) {
+        min-height: 0;
+        overflow-y: auto;
+    }
+}
+
 /* Create variant + hand-coded bg-primary (e.g. user/allocation_modals.html). */
 .modal-header.bg-success,
 .modal-header.bg-primary {

@@ -188,6 +188,10 @@ def pytest_configure(config):
     tests_path = str(Path(__file__).parent)
     if tests_path not in sys.path:
         sys.path.insert(0, tests_path)
+    # Repo root, appended, for `from scripts.x import ...`. A third-party
+    # site-packages/scripts/ otherwise claims the name when a test runs alone.
+    if str(proj_root) not in sys.path:
+        sys.path.append(str(proj_root))
 
 
 #: Domain marker derived from a test's location. Keyed on the first path
