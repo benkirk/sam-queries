@@ -159,6 +159,7 @@ def _dir_filters() -> dict:
 
     owner_uid, owner_user_id, owner_label = _resolve_owner()
     owner_gid, group_label = _resolve_group()
+    typed = (request.args.get('q') or '').strip()
 
     return {
         'sort_by': sort_by,
@@ -166,6 +167,9 @@ def _dir_filters() -> dict:
         'owner_uid': owner_uid,
         'owner_user_id': owner_user_id,
         'owner_label': owner_label,
+        # Picker text that resolved to no uid; the fragment says so rather
+        # than run an unfiltered scan.
+        'owner_unmatched': (typed if owner_uid is None else ''),
         'owner_gid': owner_gid,
         'group_label': group_label,
         'accessed_before': _query_date('accessed_before'),
@@ -245,6 +249,13 @@ def _resolve_owner() -> Tuple[Optional[int], Optional[int], str]:
     owner_uid = request.args.get('owner_uid', type=int)
     owner_user_id = request.args.get('owner_user_id', type=int)
     user = None
+    typed = (request.args.get('q') or '').strip()
+    if owner_uid is None and owner_user_id is None and typed:
+        # The picker's search text, typed but never picked (Enter, or Apply
+        # before results arrive): resolve it as a username.
+        user = User.get_by_username(db.session, typed)
+        if user is not None:
+            owner_user_id = user.user_id
     if owner_user_id is not None:
         user = db.session.get(User, owner_user_id)
         if user is not None and owner_uid is None:
@@ -462,6 +473,7 @@ def _render_directories_fragment(ctx, fragment_url, *, mode, scope_for,
     if forced_owner_uid is not None:
         flt['owner_uid'] = forced_owner_uid
         flt['owner_user_id'] = None
+        flt['owner_unmatched'] = ''
     breadcrumb_items = (_dir_breadcrumb(mode, ctx, fragment_url, flt)
                         if browse and is_enabled() else None)
     base = dict(
@@ -477,6 +489,12 @@ def _render_directories_fragment(ctx, fragment_url, *, mode, scope_for,
         )
 
     rows, error = [], None
+    if flt['owner_unmatched']:
+        return render_template(
+            'dashboards/user/partials/disk_scans_directories.html', rows=rows,
+            enabled=True, error=f"no user '{flt['owner_unmatched']}' with a unix uid",
+            **base,
+        )
     try:
         rows = service.scan_directories(
             scope_for(ctx['fileset']),

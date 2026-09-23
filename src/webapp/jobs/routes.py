@@ -186,6 +186,11 @@ def _resolve_user_filter() -> tuple:
         u = db.session.get(User, int(uid_raw))
         if u is not None:
             return u.username, int(uid_raw), u.username
+    # The picker's search text (``q``), typed but never picked -- Enter, or
+    # Apply before results arrive. Dropping it silently showed every job.
+    typed = (request.args.get('q') or '').strip()
+    if typed:
+        return typed, None, typed
     return None, None, ''
 
 
@@ -1570,7 +1575,7 @@ def _explorer_card_context(*, mode: str, machine: str, project=None,
     panel.update(_age_band_ctx(panel))
     panel['numeric_ladders'] = _numeric_ladder_ctx(machine)
     panel['numeric_open'] = _numeric_filters_in_force()
-    return panel, _card_context(
+    card = _card_context(
         active_tab=active_tab,
         mode=mode, machine=machine,
         cid=_EXPLORER_CID, tablist_id=_EXPLORER_TABLIST,
@@ -1596,6 +1601,8 @@ def _explorer_card_context(*, mode: str, machine: str, project=None,
         timeline_open=True,
         load_trigger='load once',
     )
+    panel['active_tab'] = card['active_tab']   # a hidden tab fell back to Jobs
+    return panel, card
 
 
 def _user_search_url() -> str:
@@ -1776,6 +1783,13 @@ def _card_context(*, mode: str, machine: str, panel_params=None,
         'show_by_project': rel['show_by_project'],
     }
     ctx.update(extra)
+    # A filter can hide the tab the viewer had open (By User once a user is
+    # picked); an active tab that isn't rendered leaves the card blank.
+    hidden = {key for key, shown in (('byuser', rel['show_by_user']),
+                                     ('byproj', rel['show_by_project']))
+              if not shown}
+    if ctx.get('active_tab') in hidden:
+        ctx['active_tab'] = 'jobs'
     return ctx
 
 
