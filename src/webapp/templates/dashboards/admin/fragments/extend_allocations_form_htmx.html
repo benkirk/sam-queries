@@ -134,7 +134,7 @@
             </td>
             <td class="text-end small text-muted" style="vertical-align:middle;">
               {% if c.child_only %}
-              <span class="badge bg-secondary bg-opacity-25 text-body-emphasis border"
+              <span class="badge bg-secondary bg-opacity-25 text-body-emphasis border text-wrap"
                     title="Only sub-projects hold this resource; each is renewed from its own allocation">
                 sub-project only:
                 {% if c.anchor_projcodes | length > 2 %}{{ c.anchor_projcodes | length }} projects{% else %}{{ c.anchor_projcodes | join(', ') }}{% endif %}
