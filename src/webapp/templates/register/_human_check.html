@@ -1,0 +1,20 @@
+{#
+  The human-check widget slot (webapp/utils/human_check.py). Renders nothing
+  when HUMAN_CHECK_PROVIDER is 'none'. The provider's loader fills the div and
+  writes its token into a hidden field of the enclosing form; register.js holds
+  the submit button until the widget's callback fires. Context: human_check
+  (Provider | None), human_check_site_key, theme.
+#}
+{% if human_check %}
+<div class="human-check" data-human-check>
+    <div class="{{ human_check.widget_class }}"
+         data-sitekey="{{ human_check_site_key }}"
+         data-action="register"
+         data-theme="{{ theme or 'auto' }}"
+         data-size="flexible"
+         data-callback="samHumanCheckPassed"
+         data-expired-callback="samHumanCheckReset"
+         data-error-callback="samHumanCheckReset"></div>
+</div>
+<script src="{{ human_check.script }}" async defer></script>
+{% endif %}

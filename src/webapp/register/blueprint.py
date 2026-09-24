@@ -28,10 +28,11 @@ from sam.schemas.forms import RegisterForm, RegisterGateForm, VerifyCodeForm
 from webapp.dashboards.event_lifecycle import upcoming_events_data
 from webapp.extensions import db
 from webapp.limiter import limiter as _rate_limit
+from webapp.utils import human_check
 from webapp.utils.htmx import institution_options
 from webapp.utils.notify import get_notifier
 
-from . import eula, human_check, tokens
+from . import eula, tokens
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('register', __name__, url_prefix='/register')
@@ -114,6 +115,8 @@ def _render_form(event=None, *, form=None, errors=(), field_errors=None, locked_
     return render_template('register/form.html', event=event, form=form or {},
                            errors=list(errors), field_errors=field_errors or {},
                            locked_code=locked_code,
+                           human_check=human_check.provider(),
+                           human_check_site_key=current_app.config.get('HUMAN_CHECK_SITE_KEY', ''),
                            event_options=[] if locked_code else _event_options(),
                            country_options=country_names(db.session),
                            academic_options=[(s, s) for s in ACADEMIC_STATUSES])
@@ -150,7 +153,7 @@ def _gate_blocks():
 def _render_gate(event=None, *, locked_code=None, form=None, errors=(), field_errors=None):
     return render_template('register/gate.html', event=event, locked_code=locked_code,
                            form=form or {}, errors=list(errors),
-                           field_errors=field_errors or {}, hc_token=human_check.issue(),
+                           field_errors=field_errors or {},
                            eula_html=eula.eula_html())
 
 
@@ -160,6 +163,14 @@ def form():
     if _gate_blocks():
         return _render_gate()
     return _render_form()
+
+
+@bp.route('/terms')
+@_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
+def terms():
+    """The agreement on a page of its own (the gate links it in a new tab).
+    Read-only: accepting still happens on the gate."""
+    return render_template('register/terms.html', eula_html=eula.eula_html())
 
 
 @bp.route('/institutions')
@@ -189,21 +200,18 @@ def form_for_event(event_code):
 @bp.route('/accept', methods=['POST'], strict_slashes=False)
 @_rate_limit.limiter.limit(_post_tier, key_func=_ip_key, methods=['POST'])
 def accept():
-    """The accept-first gate: a terms acceptance plus a human check. On success
-    the open form is reachable for one fill window (re-checked in submit)."""
+    """The accept-first gate: the terms acceptance. On success the open form
+    is reachable for one fill window (re-checked in submit)."""
     event, refusal = _open_event(request.form.get('event_code'))
     if refusal:
         return render_template('register/refused.html', reason=refusal)
     locked = event.event_code if event else None
     try:
-        data = RegisterGateForm().load(request.form)
+        RegisterGateForm().load(request.form)
     except ValidationError as exc:
         field_errors, form_level = RegisterGateForm.split_errors(exc.messages)
         return _render_gate(event, locked_code=locked, form=request.form,
                             errors=form_level, field_errors=field_errors)
-    if not human_check.verify(data['hc_token']):
-        return _render_gate(event, locked_code=locked, form=request.form,
-                            errors=['That verification expired. Please try again.'])
     session[_GATE_KEY] = datetime.now().isoformat()
     if locked:
         return redirect(url_for('register.form_for_event', event_code=locked))
@@ -254,7 +262,7 @@ def submit():
         logger.warning('registration honeypot tripped from %s', get_remote_address())
         return redirect(url_for('register.pending', token=tokens.page_token(0)))
     # The gate is enforced here, not just in the UI: the open inputs cannot be
-    # submitted until the terms + human check passed in this session.
+    # submitted until the terms were accepted in this session.
     if _gate_blocks():
         event, _refusal = _open_event(raw.get('event_code'))
         return _render_gate(event, locked_code=(event.event_code if event else None))
@@ -270,6 +278,10 @@ def submit():
     if event is None and not data.get('purpose_note'):
         return _rerender(raw, field_errors={
             'purpose_note': ['Tell us briefly what you need the account for.']})
+    # Last before the write, so a typo elsewhere never spends the one-use token.
+    human_error = human_check.verify(raw)
+    if human_error:
+        return _rerender(raw, errors=[human_error])
 
     now = datetime.now()
     ttl = int(current_app.config.get('ACCOUNT_VERIFY_TTL_HOURS', 48))
