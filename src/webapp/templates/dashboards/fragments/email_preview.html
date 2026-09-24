@@ -1,0 +1,182 @@
+{#
+  The one email preview: a DeliveryPreview (sam.notify) shown as it will be
+  delivered. Built by webapp/utils/email_preview.py; every preview route renders
+  email_preview_pane.html, which calls email_preview().
+
+  DO NOT emit a <form> here (the pane sits inside the send form) or a
+  data-bs-toggle="modal" (the pane swaps into an open modal; PR #464).
+#}
+
+{% macro email_preview(p, id_prefix, pane_id, picker_url=None, picker_method='post',
+                       picker_include=None, notes=(), empty=None, mode_banner=True) %}
+{% if not mode_banner %}
+{% elif p.mode == 'disabled' %}
+<div class="alert alert-warning d-flex align-items-start gap-2">
+    <i class="fa-solid fa-triangle-exclamation mt-1"></i>
+    <div>
+        <strong>Email delivery is not enabled on this deployment.</strong>
+        <div>Sending will record the attempt and deliver nothing. The preview
+            shows what would be sent.</div>
+    </div>
+</div>
+{% elif p.mode == 'redirected' %}
+{# A staging box quietly swallowing mail while the UI reports success is the
+   failure this banner exists to prevent. #}
+<div class="alert alert-warning d-flex align-items-start gap-2">
+    <i class="fa-solid fa-shuffle mt-1"></i>
+    <div>
+        <strong>All mail on this deployment is redirected.</strong>
+        {% if p.outgoing %}
+        <div>This will be delivered to <code>{{ p.outgoing.recipient.address }}</code>,
+            not to the recipients listed.</div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% if p.mode != 'disabled' and p.transport in ('console', 'null') %}
+<div class="alert alert-info small d-flex align-items-start gap-2">
+    <i class="fa-solid fa-terminal mt-1"></i>
+    <div>The <code>{{ p.transport }}</code> transport is configured:
+        {{ 'mail is written to the server log' if p.transport == 'console' else 'mail is discarded' }},
+        not delivered.</div>
+</div>
+{% endif %}
+
+{% for note in notes %}
+<p class="text-muted small mb-2"><i class="fa-solid fa-circle-info me-1"></i>{{ note }}</p>
+{% endfor %}
+
+{% if not p.recipients %}
+<p class="text-muted small mb-0">{{ empty or 'Nothing to preview.' }}</p>
+{% else %}
+
+{% if p.selected.last_sent %}
+<p class="small mb-2">
+    <i class="fa-solid fa-clock-rotate-left me-1"></i>
+    Already sent to <code>{{ p.selected.address }}</code> on
+    {{ p.selected.last_sent | fmt_date(fmt='%Y-%m-%d %H:%M') }}.
+</p>
+{% endif %}
+
+{% if picker_url and p.recipients | length > 1 %}
+<div class="d-flex align-items-center gap-2 mb-2">
+    <label class="form-label small text-muted mb-0 text-nowrap"
+           for="{{ id_prefix }}Recipient">Preview as</label>
+    <select class="form-select form-select-sm" id="{{ id_prefix }}Recipient"
+            name="preview_recipient"
+            hx-{{ picker_method }}="{{ picker_url }}"
+            hx-trigger="change"
+            hx-include="this{% if picker_include %}, {{ picker_include }}{% endif %}"
+            hx-target="#{{ pane_id }}"
+            hx-swap="innerHTML">
+        {% for r in p.recipients %}
+        <option value="{{ r.address }}" {{ 'selected' if r.address == p.selected.address }}>
+            {{ r.name or r.address }}{% if r.role %} ({{ r.role }}){% endif %} &lt;{{ r.address }}&gt;{% if r.last_sent %} · sent{% endif %}
+        </option>
+        {% endfor %}
+    </select>
+</div>
+{% endif %}
+
+<div class="project-stats-box mb-2">
+    <div class="stat-item">
+        <span class="text-muted">From</span>
+        <strong>{{ p.sender }}</strong>
+    </div>
+    <div class="stat-item">
+        <span class="text-muted">To</span>
+        <strong>
+            {{ p.outgoing.recipient.address }}
+            {% if p.outgoing.intended_recipient %}
+            <span class="text-muted fw-normal small">(for {{ p.outgoing.intended_recipient }})</span>
+            {% endif %}
+        </strong>
+    </div>
+    {% if p.reply_to %}
+    <div class="stat-item">
+        <span class="text-muted">Reply-To</span>
+        <strong>{{ p.reply_to }}</strong>
+    </div>
+    {% endif %}
+    {% if p.cc %}
+    <div class="stat-item">
+        <span class="text-muted">Cc</span>
+        <strong>{{ p.cc | join(', ') }}</strong>
+    </div>
+    {% endif %}
+    {% if p.bcc %}
+    <div class="stat-item">
+        <span class="text-muted">Bcc</span>
+        <strong>{{ p.bcc | join(', ') }}</strong>
+    </div>
+    {% endif %}
+    <div class="stat-item">
+        <span class="text-muted">Subject</span>
+        <strong>{{ p.rendered.subject if p.rendered else p.outgoing.subject }}</strong>
+    </div>
+    {% if p.rendered %}
+    <div class="stat-item">
+        {# Both names: they show the text and HTML parts resolved to the SAME
+           facility variant, the failure this line exists to make visible. #}
+        <span class="text-muted">Template{{ 's' if p.rendered.template_html }}</span>
+        <strong>
+            {{ p.rendered.template_text }}{% if p.rendered.template_html %}
+            &middot; {{ p.rendered.template_html }}{% endif %}
+        </strong>
+    </div>
+    {% endif %}
+</div>
+
+{% if p.rendered and p.rendered.html %}
+{# Blue = INACTIVE: dashboard.css inverts .nav-tabs on purpose (Unity). #}
+<ul class="nav nav-tabs small" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="{{ id_prefix }}HtmlTab"
+                data-bs-toggle="tab" data-bs-target="#{{ id_prefix }}Html"
+                type="button" role="tab" aria-controls="{{ id_prefix }}Html"
+                aria-selected="true">HTML</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="{{ id_prefix }}TextTab"
+                data-bs-toggle="tab" data-bs-target="#{{ id_prefix }}Text"
+                type="button" role="tab" aria-controls="{{ id_prefix }}Text"
+                aria-selected="false">Plain text</button>
+    </li>
+</ul>
+<div class="tab-content p-0 mb-2">
+    <div class="tab-pane fade show active" id="{{ id_prefix }}Html" role="tabpanel"
+         aria-labelledby="{{ id_prefix }}HtmlTab">
+        {# WARNING: an iframe, never inline. The emails are whole pages whose
+           <style> uses bare selectors (body, h3, .footer) that would restyle the
+           dashboard. A bare `sandbox` (no scripts, no same-origin) makes links
+           inert, which is right for a preview; the white page is what the
+           recipient sees. CSP img-src blocks remote images here, as it should. #}
+        <iframe title="HTML preview" class="notify-preview-frame" sandbox
+                srcdoc="{{ p.rendered.html }}"></iframe>
+    </div>
+    <div class="tab-pane fade" id="{{ id_prefix }}Text" role="tabpanel"
+         aria-labelledby="{{ id_prefix }}TextTab">
+        <pre class="notify-preview-text border rounded p-3 mb-0">{{ p.rendered.text }}</pre>
+    </div>
+</div>
+{% elif p.rendered %}
+<pre class="notify-preview-text border rounded p-3 mb-2">{{ p.rendered.text }}</pre>
+{% endif %}
+
+{% if p.error %}
+<div class="alert alert-danger mb-2">
+    <strong>The message could not be rendered.</strong>
+    <div class="small mt-1"><code>{{ p.error }}</code></div>
+</div>
+{% endif %}
+{% endif %}
+{% endmacro %}
+
+
+{# Inside a form, hx-post sends the form's current values to the preview route. #}
+{% macro preview_button(url, pane_id, label='Preview email') %}
+<button type="button" class="btn btn-link btn-sm p-0 align-baseline"
+        hx-post="{{ url }}" hx-target="#{{ pane_id }}" hx-swap="innerHTML">
+    <i class="fa-solid fa-eye me-1"></i>{{ label }}
+</button>
+{% endmacro %}

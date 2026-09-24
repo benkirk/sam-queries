@@ -1,0 +1,15 @@
+{#
+  The body every preview route renders; see webapp/utils/email_preview.py.
+  Context: p (DeliveryPreview) plus the email_preview() arguments, or
+  info + level for a pane that only explains why there is nothing to show.
+#}
+{% from 'dashboards/fragments/email_preview.html' import email_preview %}
+{% if info %}
+<div class="alert alert-{{ level or 'info' }} small mb-0">
+    <i class="fa-solid fa-circle-info me-1"></i>{{ info }}
+</div>
+{% elif p %}
+{{ email_preview(p, id_prefix, pane_id, picker_url, picker_method,
+                 picker_include, notes or (), empty,
+                 mode_banner is not defined or mode_banner) }}
+{% endif %}

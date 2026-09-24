@@ -50,7 +50,7 @@ class ConsoleTransport(Transport):
         out.write(f'to:        {message.recipient.address}\n')
         if message.reply_to:
             out.write(f'reply-to:  {message.reply_to}\n')
-        cc, bcc = message.copies()
+        cc, bcc = self.envelope_copies(message)
         if cc:
             out.write(f'cc:        {", ".join(cc)}\n')
         if bcc:

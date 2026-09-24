@@ -15,6 +15,9 @@ from webapp.utils.htmx import (
     handle_htmx_form_post, htmx_modal_not_found, htmx_not_found, htmx_success,
     htmx_success_message,
 )
+from webapp.utils.email_preview import (
+    PANE_TEMPLATE, email_preview_context, render_preview_info,
+)
 from webapp.utils.notify import get_notifier, notify_summary, public_url_root
 from webapp.utils.project_permissions import can_edit_project_governance
 from webapp.utils.rbac import Permission, has_permission, require_permission
@@ -109,84 +112,77 @@ def _xras_messages(project, people, *, action=None):
                                site_url=public_url_root())
 
 
+def _xras_preview_ctx(project, action, messages):
+    """The shared pane's context for one project's XRAS notice."""
+    picker_url = url_for('allocations_dashboard.xras_notify_preview',
+                         project_id=project.project_id,
+                         **({'action_id': action.xras_action_log_id}
+                            if action is not None else {}))
+    return email_preview_context(
+        messages, id_prefix='xrasPreview', pane_id='xrasPreviewPane',
+        picker_url=picker_url, picker_method='get',
+        empty='No lead or admin email address is on file: nobody to send to.')
+
+
+def _xras_notify_inputs(project_id):
+    """``(project, action, people, messages)`` for the form, the pane and the send."""
+    project = _load_pending_project(project_id)
+    if project is None:
+        return None, None, [], []
+    action = load_xras_action(db.session,
+                              request.args.get('action_id', type=int))
+    people = get_xras_pending_recipients(db.session, [project_id]).get(project_id, [])
+    return project, action, people, _xras_messages(project, people, action=action)
+
+
 @bp.route('/xras_notify_form/<int:project_id>')
 @login_required
 @require_permission(Permission.MANAGE_XRAS)
 def xras_notify_form(project_id: int):
     """Modal body: **what these people will actually receive**, plus Send.
 
-    A real send is irreversible, so the one-click POST became two steps — the
-    same reasoning that already puts an ``hx-confirm`` on ``xras_activate``.
-    A preview beats a confirm dialog because it also answers "and what does
-    it say", which is the question an operator actually has.
+    A real send is irreversible, so Notify is two steps, and a preview beats
+    an ``hx-confirm`` because it also answers "and what does it say". The pane
+    also reports which recipients were already sent this action, which is the
+    only thing that reveals the force toggle.
 
-    ``preview()`` writes **no** ledger row: a preview is not an attempt, and a
-    stray row would poison the dedup query for the send that follows.
-
-    The ledger is attached here even though a preview does not need one: it
-    answers *"would this send be suppressed as a duplicate"* **before** the
-    operator clicks, so the modal can offer the override up front rather than
-    reporting "nothing was sent" afterwards and leaving SQL as the only
-    recovery. Asking is cheap — one indexed lookup per recipient — and it is
-    the same predicate ``send_many`` will apply.
-
-    ``?action_id=`` names *which* outcome to report, which is what lets a
-    Supplement be notified separately from the New before it. It is a query
-    param rather than a second path segment deliberately: absent means "the
-    newest action", so the bare URL keeps working and no route-map entry moved.
+    ``?action_id=`` names *which* outcome to report, so a Supplement can be
+    notified separately from the New before it; absent means the newest.
     """
-    project = _load_pending_project(project_id)
+    project, action, people, messages = _xras_notify_inputs(project_id)
     if project is None:
         return htmx_modal_not_found('Project')
 
-    action = load_xras_action(db.session,
-                              request.args.get('action_id', type=int))
-    people = get_xras_pending_recipients(db.session, [project_id]).get(project_id, [])
-    messages = _xras_messages(project, people, action=action)
-
-    notifier = get_notifier()
-    preview = None
-    preview_error = None
-    if messages:
-        try:
-            preview = notifier.preview(messages[0])
-        except Exception as exc:            # a template problem, not a send
-            current_app.logger.warning(
-                'XRAS notify preview failed for %s: %s', project.projcode, exc)
-            preview_error = str(exc)
-
-    # A notifier without a ledger cannot answer "was this already sent", and
-    # that is a legitimate configuration — `get_notifier(ledger=False)` exists
-    # for a pure preview. No ledger means no duplicate to override, so the
-    # force toggle simply does not appear.
-    already_notified = [
-        m.recipient for m in messages
-        if m.dedup_key and notifier.ledger is not None
-        and notifier.ledger.already_sent(m.dedup_key)
-    ]
-
+    pane = _xras_preview_ctx(project, action, messages)
     return render_template(
         'dashboards/allocations/partials/xras_notify_form.html',
         project=project,
         people=people,
-        preview=preview,
-        preview_error=preview_error,
-        already_notified=already_notified,
-        notify_enabled=notifier.config.enabled,
-        redirect_to=notifier.config.redirect_to or None,
-        # Every one of these notices tells a PI their allocation is usable —
-        # the activation one says "is now active" in as many words. Nothing
-        # orders Notify after Activate, and in the pre-deploy smoke a notice
-        # went out 64 seconds before the project was activated. The operator
-        # keeps the choice; it just stops being invisible.
+        already_notified=[r for r in pane['p'].recipients if r.last_sent],
+        # The activation notice says "is now active", and nothing orders
+        # Notify after Activate: a pre-deploy smoke sent one 64 s early. The
+        # operator keeps the choice; it just stops being invisible.
         project_inactive=not project.is_active,
         # The action travels to the POST so the send reports the same outcome
-        # the operator just previewed — not whatever is newest by then.
+        # the operator just previewed, not whatever is newest by then.
         post_url=url_for('allocations_dashboard.xras_notify',
                          project_id=project_id,
                          **({'action_id': action.xras_action_log_id}
                             if action is not None else {})),
+        **pane,
     )
+
+
+@bp.route('/xras_notify_preview/<int:project_id>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_notify_preview(project_id: int):
+    """The Notify modal's preview pane, for the picker's chosen recipient."""
+    project, action, _people, messages = _xras_notify_inputs(project_id)
+    if project is None:
+        return render_preview_info('Project not found.', 'warning')
+    return render_template(PANE_TEMPLATE,
+                           **_xras_preview_ctx(project, action, messages))
 
 
 @bp.route('/xras_notify/<int:project_id>', methods=['POST'])
@@ -229,14 +225,9 @@ def xras_notify(project_id: int):
     A forced send is stamped on the activation event, because "we told them
     twice" is exactly the kind of thing the timeline exists to explain.
     """
-    project = _load_pending_project(project_id)
+    project, action, people, messages = _xras_notify_inputs(project_id)
     if project is None:
         return htmx_not_found('Project')
-
-    action = load_xras_action(db.session,
-                              request.args.get('action_id', type=int))
-    people = get_xras_pending_recipients(db.session, [project_id]).get(project_id, [])
-    messages = _xras_messages(project, people, action=action)
 
     # Unchecked checkboxes are omitted from the request entirely, so presence
     # is the signal — never a value comparison. See CLAUDE.md § 10.

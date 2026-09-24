@@ -47,9 +47,9 @@
 </div>
 {% endif %}
 {% if text is not none %}
-<pre class="notify-preview-text mb-0">{{ text }}</pre>
+<pre class="notify-preview-text notify-preview-text-tall mb-0">{{ text }}</pre>
 {% endif %}
 {% if html is not none %}
-<iframe class="notify-preview-frame" sandbox srcdoc="{{ html }}"
+<iframe class="notify-preview-frame notify-preview-frame-tall" sandbox srcdoc="{{ html }}"
         title="Rendered HTML preview"></iframe>
 {% endif %}

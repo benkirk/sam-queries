@@ -159,6 +159,17 @@ class TestBcc:
         _, to_addrs, _ = smtp.sendmail.call_args[0]
         assert to_addrs == ['pi@x.edu', 'ops@x.edu']
 
+    def test_envelope_copies_carry_the_global_bcc_deduplicated(self):
+        transport = SmtpTransport(_config(bcc='ops@x.edu, cc@x.edu, pi@x.edu'))
+        message = _message('pi@x.edu', cc=('cc@x.edu',), bcc=('ops@x.edu',))
+        assert transport.envelope_copies(message) == (('cc@x.edu',), ('ops@x.edu',))
+
+    def test_the_global_bcc_survives_a_redirect(self):
+        transport = SmtpTransport(_config(bcc='ops@x.edu'))
+        message = _message('me@x.edu', intended_recipient='pi@x.edu',
+                           cc=('cc@x.edu',))
+        assert transport.envelope_copies(message) == ((), ('ops@x.edu',))
+
     def test_bcc_is_never_emitted_as_a_header(self, smtp):
         transport = SmtpTransport(_config(bcc='ops@x.edu'))
         transport.open()
