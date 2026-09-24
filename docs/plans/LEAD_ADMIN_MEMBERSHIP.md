@@ -1,15 +1,15 @@
 # Lead and admin membership: assigning a lead or admin makes them a member
 
-**Status: planned, not started.** Handoff for a fresh session.
+**Status: in progress.** Handoff for a fresh session.
 **Branch:** `lead-admin-membership`, from `origin/staging`. One PR against `staging`, opened only after `make check-all` passes and a local smoke test is done.
 
 ## Progress
 
-- [ ] 1. `Project.ensure_members(*user_ids)` choke point, with `_seed_members` reusing its insert helper
-- [ ] 2. `Project.update` seeds a new lead or admin when the value changes
-- [ ] 3. `change_project_admin` routes through `Project.update` (clearing the admin stays a direct write)
-- [ ] 4. XRAS role endpoint: reword the comment and the warning (behavior is inherited from 2)
-- [ ] 5. `revoke_user_resource_access` refuses the admin, the same way it refuses the lead
+- [x] 1. `Project.ensure_members(*user_ids)` choke point, with `_seed_members` reusing its insert helper
+- [x] 2. `Project.update` seeds a new lead or admin when the value changes
+- [x] 3. `change_project_admin` routes through `Project.update` (clearing the admin stays a direct write)
+- [x] 4. XRAS role endpoint: reword the comment and the warning (behavior is inherited from 2)
+- [x] 5. `revoke_user_resource_access` refuses the admin, the same way it refuses the lead
 - [ ] 6. CLI: `--reconcile` really reconciles and reports what it added; `--validate` flags a lead or admin who is not a live member
 - [ ] 7. Docs: CLAUDE.md CLI line and the §7 invariant note
 - [ ] 8. Tests (model, XRAS, CLI), `make check-all`, local smoke test

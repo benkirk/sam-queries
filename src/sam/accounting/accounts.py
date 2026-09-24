@@ -140,19 +140,12 @@ class Account(Base, SoftDeleteMixin, SessionMixin):
         return existing
 
     @classmethod
-    def _seed_members(cls, session, account: 'Account') -> None:
-        """Populate open-ended AccountUser rows for a (new or revived) account.
+    def _seed_members(cls, session, account: 'Account') -> List['AccountUser']:
+        """Give the lead, admin and every open-ended sibling member a live row on *account*.
 
-        Adds start_date=now, end_date=None membership rows for:
-          - The project lead
-          - The project admin (if set)
-          - Every user currently active (end_date IS NULL) on any sibling
-            Account of the same project
-
-        Enforces the invariant that a project's lead, admin, and existing members
-        become members of every Account added to the project. Skips users who are
-        already active members of this account (so reviving an account is safe to
-        re-run). Does NOT commit.
+        Enforces the invariant that a project's lead, admin and existing members
+        belong to every Account of the project. Safe to re-run; returns the rows
+        added. Does NOT commit.
         """
         from sam.projects.projects import Project
 
@@ -166,7 +159,7 @@ class Account(Base, SoftDeleteMixin, SessionMixin):
         if project.project_admin_user_id is not None:
             propagate_user_ids.add(project.project_admin_user_id)
 
-        sibling_members = session.query(AccountUser).join(
+        sibling_members = session.query(AccountUser.user_id).join(
             Account, AccountUser.account_id == Account.account_id
         ).filter(
             Account.project_id == account.project_id,
@@ -174,30 +167,35 @@ class Account(Base, SoftDeleteMixin, SessionMixin):
             Account.is_active,
             AccountUser.end_date.is_(None),
         ).all()
-        for au in sibling_members:
-            propagate_user_ids.add(au.user_id)
+        propagate_user_ids.update(uid for (uid,) in sibling_members)
 
-        # Don't duplicate members already active on this account (revive path).
-        existing_member_ids = {
-            au.user_id for au in session.query(AccountUser).filter(
-                AccountUser.account_id == account.account_id,
-                AccountUser.end_date.is_(None),
-            ).all()
-        }
-        propagate_user_ids -= existing_member_ids
+        return cls._add_live_members(session, account, propagate_user_ids)
+
+    @classmethod
+    def _add_live_members(cls, session, account: 'Account', user_ids) -> List['AccountUser']:
+        """Add an open-ended row for each user without an unended row on *account*; flush, return them."""
+        user_ids = set(user_ids)
+        if not user_ids:
+            return []
+        now = datetime.now()
+        live = {uid for (uid,) in session.query(AccountUser.user_id).filter(
+            AccountUser.account_id == account.account_id,
+            AccountUser.user_id.in_(user_ids),
+            or_(AccountUser.end_date.is_(None), AccountUser.end_date > now),
+        )}
 
         # Floor to the second: MySQL DATETIME has no fractional part and rounds
         # half-up, which can push a microsecond-stamped "now" into the next
         # second and make a just-seeded member briefly is_active=False.
-        now = datetime.now().replace(microsecond=0)
-        for user_id in propagate_user_ids:
-            session.add(AccountUser(
-                account_id=account.account_id,
-                user_id=user_id,
-                start_date=now,
-                end_date=None,
-            ))
+        start = now.replace(microsecond=0)
+        added = [
+            AccountUser(account_id=account.account_id, user_id=uid,
+                        start_date=start, end_date=None)
+            for uid in sorted(user_ids - live)
+        ]
+        session.add_all(added)
         session.flush()
+        return added
 
     @classmethod
     def get_by_project_and_resource(cls, session, project_id: int, resource_id: int,

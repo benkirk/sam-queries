@@ -335,8 +335,8 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
             area_of_interest_id:   FK to AreaOfInterest.
             allocation_type_id:    FK to AllocationType.
             charging_exempt:       If True, charges are not assessed.
-            project_lead_user_id:  FK to lead User.
-            project_admin_user_id: FK to admin User.
+            project_lead_user_id:  FK to lead User; a new lead gains live rows (ensure_members).
+            project_admin_user_id: FK to admin User; same, and None cannot clear it.
             unix_gid:              Unix group ID.
             ext_alias:             External alias string (pass ``''`` to clear).
             active:                Active flag.
@@ -354,10 +354,14 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
             self.allocation_type_id = allocation_type_id
         if charging_exempt is not None:
             self.charging_exempt = charging_exempt
-        if project_lead_user_id is not None:
+        # The lead and admin must be live members; seed only on a change.
+        seed = []
+        if project_lead_user_id is not None and project_lead_user_id != self.project_lead_user_id:
             self.project_lead_user_id = project_lead_user_id
-        if project_admin_user_id is not None:
+            seed.append(project_lead_user_id)
+        if project_admin_user_id is not None and project_admin_user_id != self.project_admin_user_id:
             self.project_admin_user_id = project_admin_user_id
+            seed.append(project_admin_user_id)
         if unix_gid is not None:
             self.unix_gid = unix_gid
         if ext_alias is not None:
@@ -365,6 +369,8 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         if active is not None:
             self.active = active
         self.session.flush()
+        if seed:
+            self.ensure_members(*seed)
         return self
 
     def reactivate(self) -> 'Project':
@@ -440,6 +446,14 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
     # def users(self) -> List['User']:
     #     """Return a deduplicated list of active users on this project."""
     #     return list({au.user for au in self.account_users if au.user is not None})
+
+    def ensure_members(self, *user_ids: int) -> List['AccountUser']:
+        """Give each user a live row on every non-deleted account; flush, return the rows added."""
+        added = []
+        for account in self.accounts:
+            if account.is_active:
+                added.extend(Account._add_live_members(self.session, account, user_ids))
+        return added
 
     def active_account_users(self, as_of: Optional[datetime] = None) -> List['AccountUser']:
         """Get currently active account users."""
