@@ -8,7 +8,7 @@
 
   Context: event (locked code) | None, locked_code, form, errors, field_errors,
            academic_options, event_options (listed events; empty when locked),
-           country_options
+           country_options, human_check, human_check_site_key
 #}
 {% block title %}Request an NCAR HPC account{% endblock %}
 
@@ -84,12 +84,14 @@
                       help='Required when you are not registering for an event. One or two sentences.') }}
     {% endif %}
 
+    {% include 'register/_human_check.html' %}
+
     {% if errors %}
     <div class="register-callout urgent">
         {% for error in errors %}<p><i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> {{ error }}</p>{% endfor %}
     </div>
     {% endif %}
 
-    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-paper-plane"></i> Send me the confirmation</button>
+    <button type="submit" class="btn btn-primary" data-human-check-submit><i class="fa-solid fa-paper-plane"></i> Send me the confirmation</button>
 </form>
 {% endblock %}

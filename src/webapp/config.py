@@ -75,8 +75,7 @@ class SAMWebappConfig(SAMConfig):
     ACCOUNT_VERIFY_TTL_HOURS = int(os.getenv('ACCOUNT_VERIFY_TTL_HOURS', 48))
     # Limit /register to signed-in users (a redirect to login, and a preview
     # banner on the form). ON by default: the form is shared with authenticated
-    # testers on dev before the human-challenge gate exists; switch it off per
-    # deployment to open the form to the public.
+    # testers on dev; switch it off per deployment to open the form to the public.
     ACCOUNT_REGISTRATION_LOGIN_REQUIRED = os.getenv('ACCOUNT_REGISTRATION_LOGIN_REQUIRED', '1').lower() in ('1', 'true', 'yes')
     # Per-address cap on the registration POST, on top of the per-IP login
     # tier: nobody can flood a stranger's inbox with verification mail.
@@ -86,12 +85,32 @@ class SAMWebappConfig(SAMConfig):
     # the per-IP tier is blind until the platform forwards the client IP, so
     # this is the only cap on breadth abuse (one attacker, many victims). Kept
     # low so enabling the form cannot open an unbounded mailer; raise it by env
-    # once the human-challenge gate lands (docs/plans/implemented/ACCOUNT_REGISTRATION.md 6).
+    # once the human check has soaked (docs/plans/implemented/ACCOUNT_REGISTRATION.md 6).
     RATELIMIT_REGISTER_GLOBAL = os.getenv('RATELIMIT_REGISTER_GLOBAL', '10 per hour; 30 per day')
-    # Accept-first gate (EULA + human-check STUB) in front of the public form;
-    # 1/true/yes or off. Not the 6.1 human challenge:
+    # Accept-first EULA gate in front of the public form; 1/true/yes or off.
     # docs/plans/implemented/ACCOUNT_REGISTRATION.md 6.2.
     ACCOUNT_REGISTRATION_GATE_ENABLED = os.getenv('ACCOUNT_REGISTRATION_GATE_ENABLED', '1').lower() in ('1', 'true', 'yes')
+    # Human check (CAPTCHA) on the registration submit: 'none' | 'turnstile'
+    # (webapp/utils/human_check.py). A provider other than 'none' needs both keys.
+    HUMAN_CHECK_PROVIDER   = os.getenv('HUMAN_CHECK_PROVIDER', 'none')
+    HUMAN_CHECK_SITE_KEY   = os.getenv('HUMAN_CHECK_SITE_KEY', '')
+    HUMAN_CHECK_SECRET_KEY = os.getenv('HUMAN_CHECK_SECRET_KEY', '')
+
+    @classmethod
+    def validate(cls):
+        super().validate()
+        cls.validate_human_check()
+
+    @classmethod
+    def validate_human_check(cls):
+        from webapp.utils.human_check import CHOICES, provider_name
+        name = provider_name({'HUMAN_CHECK_PROVIDER': cls.HUMAN_CHECK_PROVIDER})
+        if name not in CHOICES:
+            raise EnvironmentError(
+                f"HUMAN_CHECK_PROVIDER={cls.HUMAN_CHECK_PROVIDER!r}; expected one of {CHOICES}.")
+        if name != 'none' and not (cls.HUMAN_CHECK_SITE_KEY and cls.HUMAN_CHECK_SECRET_KEY):
+            raise EnvironmentError(
+                f"HUMAN_CHECK_PROVIDER={name} needs HUMAN_CHECK_SITE_KEY and HUMAN_CHECK_SECRET_KEY.")
 
     # Create Project workflow. When off, the modal still renders with all inputs
     # editable but its submit button is replaced with a disabled indicator, and
@@ -340,9 +359,8 @@ class ProductionConfig(SAMWebappConfig):
 
     # Default OFF in production -- the anonymous registration form ships dark
     # and is enabled per deployment (docs/plans/implemented/ACCOUNT_REGISTRATION.md).
-    # The accept-first gate (ACCOUNT_REGISTRATION_GATE_ENABLED, on by default)
-    # rides along, but its human check is a stub: a real challenge + client-IP
-    # forwarding are still the 6.1 preconditions before enabling this in prod.
+    # The EULA gate and the human check (HUMAN_CHECK_PROVIDER) ride along;
+    # client-IP forwarding is still a 6.1 precondition for a public prod form.
     ACCOUNT_REGISTRATION_ENABLED = os.getenv('ACCOUNT_REGISTRATION_ENABLED', '0').lower() in ('1', 'true', 'yes')
     # Default OFF in production -- the invitation workflows ship dark so the
     # initial prod capability is the XRAS-mirrored queue only; enabled per
@@ -362,6 +380,15 @@ class ProductionConfig(SAMWebappConfig):
                 "ACCOUNT_REGISTRATION_ENABLED is on but NOTIFY_ENABLED is not: "
                 "public registrations cannot verify their address by mail and "
                 "will wait for an operator to mark them verified.",
+                stacklevel=2,
+            )
+        if (cls.ACCOUNT_REGISTRATION_ENABLED and not cls.ACCOUNT_REGISTRATION_LOGIN_REQUIRED
+                and (cls.HUMAN_CHECK_PROVIDER or 'none').strip().lower() == 'none'):
+            import warnings
+            warnings.warn(
+                "The registration form is public (LOGIN_REQUIRED off) with "
+                "HUMAN_CHECK_PROVIDER=none: nothing but the rate limits stands "
+                "between a bot and the verification mailer.",
                 stacklevel=2,
             )
         key = os.getenv('FLASK_SECRET_KEY', '')
@@ -420,9 +447,11 @@ class TestingConfig(SAMWebappConfig):
     DEBUG = False
     SESSION_COOKIE_SECURE = False
     WTF_CSRF_ENABLED = False
-    # The public-form tests exercise the anonymous path; the gate has its own.
+    # The public-form tests exercise the anonymous path; the gate and the human
+    # check have their own.
     ACCOUNT_REGISTRATION_LOGIN_REQUIRED = False
     ACCOUNT_REGISTRATION_GATE_ENABLED = False
+    HUMAN_CHECK_PROVIDER = 'none'
 
     # Low-cost bcrypt hash for fast test execution (rounds=4)
     # Key value: 'test-api-key'
