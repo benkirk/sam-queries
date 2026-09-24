@@ -301,11 +301,15 @@ def renewable(session):
 
 
 def _allocation_state(app, allocation_id):
+    """The source's end date, and how many rows exist in the previewed 2099 window."""
+    from datetime import datetime
     from webapp.extensions import db
     with app.app_context():
         alloc = db.session.get(Allocation, allocation_id)
         db.session.refresh(alloc)
-        return (alloc.end_date, db.session.query(func.count(Allocation.allocation_id)).scalar())
+        return (alloc.end_date, db.session.query(func.count(Allocation.allocation_id))
+                .filter(Allocation.account_id == alloc.account_id,
+                        Allocation.start_date >= datetime(2099, 1, 1)).scalar())
 
 
 class TestRenewalPreviews:

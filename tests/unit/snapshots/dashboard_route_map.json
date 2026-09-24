@@ -78,7 +78,7 @@
   ],
   [
     "admin_dashboard.account_requests_digest_preview",
-    "/admin/account-requests/digest-preview",
+    "/admin/htmx/account-requests/digest-preview",
     [
       "GET"
     ]

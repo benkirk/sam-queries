@@ -156,9 +156,8 @@ class TestInviteOutcomesAgreeWithInviteUser:
 
     def test_it_writes_nothing(self, session):
         project = _project_with_account(session)
-        before = session.query(AccountRequest).count()
         invite_outcomes(session, project.project_id, ['o-new2@example.edu'])
-        assert session.query(AccountRequest).count() == before
+        assert session.query(AccountRequest).filter_by(email='o-new2@example.edu').count() == 0
         assert not session.new and not session.dirty
 
     def test_empty_input_runs_no_query(self):

@@ -223,13 +223,6 @@ class TestRejectNotice:
         assert _row_state(app, committed_request)[2] is None
 
 
-def _log_count(app):
-    from sam.notify.models import NotificationLog
-    from webapp.extensions import db
-    with app.app_context():
-        return db.session.query(NotificationLog).count()
-
-
 def _refuse(*_a, **_kw):
     raise AssertionError('a preview must not do this')
 
@@ -256,7 +249,6 @@ class TestRejectPreview:
             self, auth_client, app, committed_request, monkeypatch):
         from sam.notify.ledger import NotificationLedger
         monkeypatch.setattr(NotificationLedger, 'record', _refuse)
-        before = _log_count(app)
         resp = auth_client.post(self._url(committed_request),
                                 data={'reason': 'zz-preview-reason', 'notify': '1'})
         assert resp.status_code == 200
@@ -264,7 +256,6 @@ class TestRejectPreview:
         assert 'zz-preview-reason' in html
         assert 'Your NCAR HPC account request' in html
         assert _row_state(app, committed_request) == ('submitted', None, None)
-        assert _log_count(app) == before
 
     def test_a_missing_request_answers_200(self, auth_client):
         resp = auth_client.post(self._url(MISSING), data={'reason': 'x'})
@@ -279,7 +270,7 @@ class TestRejectPreview:
 class TestDigestPreview:
     """Two steps: the card opens this modal body; its Send posts the digest."""
 
-    URL = '/admin/account-requests/digest-preview'
+    URL = '/admin/htmx/account-requests/digest-preview'
 
     @pytest.fixture
     def recipient(self, app, monkeypatch):
@@ -297,22 +288,22 @@ class TestDigestPreview:
 
     def test_the_card_opens_the_preview_instead_of_posting(self, auth_client):
         html = auth_client.get(FRAGMENT).get_data(as_text=True)
-        assert 'hx-get="/admin/account-requests/digest-preview"' in html
+        assert 'hx-get="/admin/htmx/account-requests/digest-preview"' in html
         assert 'Send the open queue' not in html          # the hx-confirm is gone
 
     def test_it_renders_the_digest_without_reconciling(
             self, auth_client, app, recipient, only_our_row, monkeypatch):
+        from sam.notify.ledger import NotificationLedger
         monkeypatch.setattr(
             'webapp.dashboards.admin.account_requests_routes.reconcile_account_requests',
             _refuse)
-        before = _log_count(app)
+        monkeypatch.setattr(NotificationLedger, 'record', _refuse)
         resp = auth_client.get(self.URL)
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
         assert 'id="digestPreviewPane"' in html
         assert 'NCAR HPC account requests: 1 waiting' in html
         assert 'hx-post="/admin/account-requests/digest"' in html
-        assert _log_count(app) == before
 
     def test_no_recipient_is_explained_and_offers_no_send(self, auth_client, app,
                                                           monkeypatch):

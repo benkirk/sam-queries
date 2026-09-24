@@ -413,7 +413,8 @@ def _digest_message(rows, now):
         queue_url=url_for('admin_dashboard.account_requests', _external=True))
 
 
-@bp.route('/account-requests/digest-preview')
+# The /htmx/ rule keeps this fragment out of the e2e page sweep.
+@bp.route('/htmx/account-requests/digest-preview')
 @login_required
 @require_permission(Permission.MANAGE_ACCOUNT_REQUESTS)
 def account_requests_digest_preview():

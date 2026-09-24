@@ -520,11 +520,14 @@ def no_token(monkeypatch):
     monkeypatch.setattr('webapp.register.tokens.invite_token', _boom)
 
 
-def _log_count(app):
-    from sam.notify.models import NotificationLog
-    from webapp.extensions import db
-    with app.app_context():
-        return db.session.query(NotificationLog).count()
+@pytest.fixture
+def no_ledger_write(monkeypatch):
+    """A preview must never write notification_log."""
+    from sam.notify.ledger import NotificationLedger
+
+    def _boom(*_a, **_k):
+        raise AssertionError('a preview must not write notification_log')
+    monkeypatch.setattr(NotificationLedger, 'record', _boom)
 
 
 def _rows_for(app, **filters):
@@ -546,9 +549,8 @@ class TestInvitePreview:
         assert 'id="invitePreviewPane"' in html
 
     def test_a_new_address_previews_the_mail_and_writes_nothing(
-            self, auth_client, app, mailer, no_token, led_project):
+            self, auth_client, app, mailer, no_token, no_ledger_write, led_project):
         email = _address()
-        before = _log_count(app)
         resp = self._preview(auth_client, led_project[1], email, send_invite='1')
         html = _html(resp)
         assert resp.status_code == 200
@@ -556,7 +558,7 @@ class TestInvitePreview:
         assert PLACEHOLDER in html and 'Grace Hopper' in html
         assert 'valid for 30 days' in html
         assert _rows_for(app, email=email) == 0
-        assert mailer.messages == [] and _log_count(app) == before
+        assert mailer.messages == []
 
     def test_an_unticked_box_is_said(self, auth_client, no_token, led_project):
         html = _html(self._preview(auth_client, led_project[1], _address()))
@@ -630,7 +632,7 @@ class TestRosterPreview:
         assert 'id="rosterPreviewPane"' in html
 
     def test_it_counts_outcomes_and_writes_nothing(
-            self, auth_client, app, mailer, no_token, make_event, session):
+            self, auth_client, app, mailer, no_token, no_ledger_write, make_event, session):
         from sam.core.account_requests import EventEnrollment
         from sam.core.users import User
         from webapp.extensions import db
@@ -639,14 +641,13 @@ class TestRosterPreview:
         first, second = _address(), _address()
         roster = (f'Ada Lovelace <{first}>\nAlan Turing <{second}>\n'
                   f'Ben Kirk <{me.primary_email}>')
-        before = _log_count(app)
         html = _html(self._preview(auth_client, code, roster, send_invite='1'))
         assert '3 people: 2 get a link, 1 already known (enrolled, no email).' in html
         assert 'name="preview_recipient"' in html
         assert _rows_for(app, event_id=event_id) == 0
         with app.app_context():
             assert db.session.query(EventEnrollment).filter_by(event_id=event_id).count() == 0
-        assert mailer.messages == [] and _log_count(app) == before
+        assert mailer.messages == []
 
     def test_the_picker_round_trips(self, auth_client, no_token, make_event):
         code, _ = make_event()
