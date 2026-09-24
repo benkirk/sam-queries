@@ -18,10 +18,9 @@
        hx-swap="innerHTML"
        hx-push-url="{{ url_for('admin_dashboard.notifications', tab='templates', name=row.name) }}">
         <span class="font-monospace small">{{ row.name }}</span>
+        {# Only a customized row is badged; unmarked means the shipped default. #}
         {% if row.customized %}
         <span class="badge text-bg-warning">customized</span>
-        {% else %}
-        <span class="badge text-bg-secondary">default</span>
         {% endif %}
     </a>
     {% endfor %}
