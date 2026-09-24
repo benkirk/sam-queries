@@ -53,7 +53,7 @@ spec:
           {{- toYaml . | nindent 10 }}
         {{- end }}
         {{- end }}
-        {{- if or .Values.webapp.env (or .Values.webapp.dbCredentials.enabled (or .Values.webapp.samDbCredentials.enabled (or .Values.webapp.jupyterhubCredentials.enabled (or .Values.webapp.oidcCredentials.enabled (or .Values.webapp.jhDbCredentials.enabled (or .Values.webapp.fsDbCredentials.enabled .Values.webapp.xrasApiCredentials.enabled)))))) }}
+        {{- if or .Values.webapp.env (or .Values.webapp.dbCredentials.enabled (or .Values.webapp.samDbCredentials.enabled (or .Values.webapp.jupyterhubCredentials.enabled (or .Values.webapp.oidcCredentials.enabled (or .Values.webapp.jhDbCredentials.enabled (or .Values.webapp.fsDbCredentials.enabled .Values.webapp.xrasApiCredentials.enabled .Values.webapp.humanCheckCredentials.enabled)))))) }}
         env:
           {{- range $key, $value := .Values.webapp.env }}
           - name: {{ $key }}
@@ -194,6 +194,18 @@ spec:
               secretKeyRef:
                 name: {{ .Values.webapp.name }}-oidc-credentials
                 key: flask_secret_key
+          {{- end }}
+          {{- if .Values.webapp.humanCheckCredentials.enabled }}
+          - name: HUMAN_CHECK_SITE_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.webapp.name }}-human-check-credentials
+                key: site_key
+          - name: HUMAN_CHECK_SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.webapp.name }}-human-check-credentials
+                key: secret_key
           {{- end }}
         {{- end }}
         resources:

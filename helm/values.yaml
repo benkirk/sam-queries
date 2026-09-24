@@ -180,6 +180,7 @@ webapp:
     FLASK_ADMIN_ENABLED: "0"              # Flask-Admin /database browser stays unmounted on the public deploy
     COMPONENT_GALLERY_ENABLED: "0"        # the /dev/gallery component gallery stays unmounted; values-dev.yaml turns it on
     ACCOUNT_REGISTRATION_ENABLED: "0"     # the anonymous /register form ships dark; values-dev.yaml turns it on
+    HUMAN_CHECK_PROVIDER: "turnstile"     # CAPTCHA on the /register submit ('none' | 'turnstile'); keys from humanCheckCredentials
     ACCOUNT_INVITATIONS_ENABLED: "0"      # the project Invitations tab ships dark (initial prod capability is the XRAS-mirrored queue only); values-dev.yaml turns it on
     READ_MODEL_ENABLED: "1"               # serve allocation usage from account_allocation_state when fresh; "0" = live path (docs/plans/READ_MODEL.md)
     FLASK_DEBUG: "0"
@@ -472,6 +473,18 @@ webapp:
     clientSecretKey: client_secret
     issuerKey: issuer                     # OIDC issuer URL (e.g. https://login.microsoftonline.com/{tenant}/v2.0)
     flaskSecretKeyKey: flask_secret_key   # Per-environment Flask session signing key (32-byte hex)
+
+  # Human-check (Cloudflare Turnstile) widget keys for the /register form.
+  # ONE widget lists all three hostnames, so dev inherits this path by decision.
+  # Must exist in OpenBao before the chart deploys: a missing path means no
+  # Secret, and new pods stall in CreateContainerConfigError.
+  humanCheckCredentials:
+    enabled: true
+    useExternalSecret: true
+    secretStoreRefName: csg-ro
+    secretPath: csg/sam-turnstile
+    siteKeyKey: site_key                  # public; rendered into the page
+    secretKeyKey: secret_key              # server-side siteverify only
 
 # Scheduled tasks
 # ONE CronJob for all tasks. Each task's schedule lives in

@@ -44,6 +44,7 @@ webapp:
     OIDC_REDIRECT_URI: ""
     OIDC_USERNAME_CLAIM: ""
     OIDC_SCOPES: ""
+    HUMAN_CHECK_PROVIDER: "none"          # no OpenBao locally; webdev uses Cloudflare's dummy keys via .env
 
   dbCredentials:
     enabled: true
@@ -59,6 +60,9 @@ webapp:
 
   oidcCredentials:
     enabled: false                        # Local k8s uses DISABLE_AUTH=1 stub; no OpenBao/OIDC dependency
+
+  humanCheckCredentials:
+    enabled: false
 
 # Scheduled tasks: OFF on Docker Desktop. Nothing should silently DELETE local
 # data. Enable for a smoke test with:
