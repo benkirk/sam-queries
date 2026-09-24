@@ -38,7 +38,7 @@ from sam.sqlcompat import ci_like
 from sam.accounting.allocations import InheritingAllocationException
 from sam.core.groups import GidAllocation, NoAvailableGidError
 from sam.schemas.forms import (
-    AccessGridToggleForm, AddAllocationForm, AllocateResidualForm,
+    AccessGridToggleForm, AddAllocationsForm, AllocateResidualForm,
     EditAllocationForm, EditProjectForm, ExchangeAllocationForm,
     ExtendAllocationsForm, RenewAllocationsForm, AlignAllocationsForm,
     NotifyProjectForm,
@@ -192,7 +192,7 @@ def _project_form_data(form=None) -> dict:
 def _resources_with_allocation(project) -> set:
     """resource_ids the project already holds an allocation on (via a live account).
 
-    Used to filter the "Add Allocation" resource dropdown. We exclude by
+    Used to disable rows in the "Add Allocations" grid. We exclude by
     *allocation*, not by *account*: an empty account (synced or member-only,
     with no allocation yet) must NOT hide its resource — the admin still needs
     to grant that first allocation. Soft-deleted accounts are also excluded
@@ -1022,121 +1022,167 @@ def htmx_project_allocation_tree(project):
     )
 
 
+# Resources a new project usually gets; every other active resource sits behind
+# the Add Allocations grid's "Show everything" switch. Names, not ids.
+COMMON_ALLOCATION_RESOURCES = (
+    'Derecho', 'Derecho GPU', 'Casper', 'Casper GPU',
+    'Campaign_Store', 'Destor', 'Data_Access',
+)
+_RESOURCE_TYPE_ORDER = ('HPC', 'DAV', 'DISK', 'ARCHIVE', 'DATA ACCESS')
+
+
+def _existing_allocation_ends(project) -> dict:
+    """``{resource_id: latest end_date or None (open)}`` for resources already held."""
+    held = _resources_with_allocation(project)
+    ends = {}
+    for acct in project.accounts:
+        if acct.deleted or acct.resource_id not in held:
+            continue
+        dates = [a.end_date for a in (acct.live_allocations or acct.allocations)]
+        ends[acct.resource_id] = None if None in dates else max(dates)
+    return ends
+
+
+def _add_allocation_context(project) -> dict:
+    """Template context for the Add Allocations grid (GET and error re-render)."""
+    from sam.enums import ResourceTypeName
+    from sam.resources.resources import Resource
+
+    existing = _existing_allocation_ends(project)
+    resources = (project.session.query(Resource)
+                 .filter(Resource.is_active)
+                 .order_by(Resource.resource_name)
+                 .all())
+    groups = {}
+    for r in resources:
+        rtype = r.resource_type.resource_type if r.resource_type else 'Other'
+        held = r.resource_id in existing
+        groups.setdefault(rtype, []).append({
+            'resource': r,
+            'held': held,
+            'existing_end': existing.get(r.resource_id),
+            'optional': not held and r.resource_name not in COMMON_ALLOCATION_RESOURCES,
+        })
+    rank = {name: i for i, name in enumerate(_RESOURCE_TYPE_ORDER)}
+    resource_groups = [
+        {'type_name': rtype,
+         'unit': ResourceTypeName.allocation_unit(rtype),
+         'rows': rows,
+         'optional': all(row['optional'] for row in rows)}
+        for rtype, rows in sorted(groups.items(),
+                                  key=lambda kv: (rank.get(kv[0], len(rank)), kv[0]))
+    ]
+    all_rows = [row for g in resource_groups for row in g['rows']]
+    optional_count = sum(row['optional'] for row in all_rows)
+
+    now = datetime.now()
+    last_day = calendar.monthrange(now.year + 1, now.month)[1]
+    return {
+        'project': project,
+        'resource_groups': resource_groups,
+        'any_available': any(not row['held'] for row in all_rows),
+        'optional_count': optional_count,
+        # A stale COMMON list must not leave an empty grid: show everything.
+        'show_all_default': optional_count == len(all_rows),
+        'today': now.strftime('%Y-%m-%d'),
+        # Last day of the same month, one year out (2026-04-13 -> 2027-04-30).
+        'default_end_date': f'{now.year + 1:04d}-{now.month:02d}-{last_day:02d}',
+        'project_has_children': project.has_children,
+        'child_count': len([d for d in project.get_descendants() if d.active]),
+    }
+
+
 @bp.route('/htmx/add-allocation-form/<projcode>')
 @login_required
 @require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_add_allocation_form(project):
-    """Return the add-allocation sub-form (loaded into modal on button click)."""
-    import calendar
-    from sam.resources.resources import Resource
-
-    # Resources the project already holds an allocation on (empty accounts don't count).
-    linked_resource_ids = _resources_with_allocation(project)
-
-    # Offer all active resources the project doesn't yet have an allocation on.
-    available_resources = (
-        db.session.query(Resource)
-        .filter(Resource.is_active)
-        .order_by(Resource.resource_name)
-        .all()
-    )
-    available_resources = [r for r in available_resources
-                           if r.resource_id not in linked_resource_ids]
-
-    active_descendants = [d for d in project.get_descendants() if d.active]
-
-    # Default end date = last day of the same month, one year out.
-    # (E.g. today 2026-04-13 -> default end 2027-04-30.) User can override.
-    now = datetime.now()
-    target_year = now.year + 1
-    last_day = calendar.monthrange(target_year, now.month)[1]
-    default_end_date = f'{target_year:04d}-{now.month:02d}-{last_day:02d}'
-
+    """Return the Add Allocations grid (loaded into modal on button click)."""
     return render_template(
         'dashboards/admin/fragments/add_allocation_form_htmx.html',
-        project=project,
-        available_resources=available_resources,
-        today=now.strftime('%Y-%m-%d'),
-        default_end_date=default_end_date,
-        project_has_children=project.has_children,
-        child_count=len(active_descendants),
+        **_add_allocation_context(project),
     )
 
 
-class _AddAllocationHandler(HtmxFormHandler):
-    """Create a new account + allocation for the project, optionally
-    propagating to active sub-projects."""
+class _AddAllocationsHandler(HtmxFormHandler):
+    """Create an account + allocation for each resource given an amount, all
+    over one date range, optionally propagating each to active sub-projects."""
 
-    schema_cls = AddAllocationForm
+    schema_cls = AddAllocationsForm
     template = 'dashboards/admin/fragments/add_allocation_form_htmx.html'
-    error_prefix = 'Error creating allocation'
-    success_message = 'Allocation created successfully.'
+    error_prefix = 'Error creating allocations'
+    success_message = 'Allocations created successfully.'
+
+    def form_input(self):
+        data = {k: v for k, v in request.form.items() if not k.startswith('amount_')}
+        amounts = {k.removeprefix('amount_'): v for k, v in request.form.items()
+                   if k.startswith('amount_') and v.strip()}
+        if amounts:
+            data['amounts'] = amounts
+        return data
 
     def clean(self, data):
-        # FK existence check — requires DB access, stays out of the schema.
         from sam.resources.resources import Resource
-        self.resource = db.session.get(Resource, data['resource_id'])
-        if not self.resource:
+        ids = list(data['amounts'])
+        found = {r.resource_id: r for r in
+                 db.session.query(Resource).filter(Resource.resource_id.in_(ids))}
+        if any(rid not in found or not found[rid].is_active for rid in ids):
             raise FormError('Selected resource does not exist.')
+        held = _resources_with_allocation(self.project) & set(ids)
+        if held:
+            names = ', '.join(sorted(found[rid].resource_name for rid in held))
+            raise FormError(f'{self.project.projcode} already has an allocation on {names}.')
+        self.resources = sorted(found.values(), key=lambda r: r.resource_name)
+        data['amounts'] = {r.resource_id: data['amounts'][r.resource_id]
+                           for r in self.resources}
         return data
 
     def perform(self, data):
-        from sam.manage.allocations import (
-            create_allocation, propagate_allocation_to_subprojects,
-        )
-        start_date = (
-            datetime.combine(data['start_date'], datetime.min.time())
-            if data.get('start_date') else None
-        )
-        parent_alloc = create_allocation(
+        from sam.manage.allocations import create_allocations
+        propagate_to = ()
+        if data.get('apply_to_subprojects') and self.project.has_children:
+            propagate_to = [d for d in self.project.get_descendants() if d.active]
+        return create_allocations(
             db.session,
             project_id=self.project.project_id,
-            resource_id=self.resource.resource_id,
-            amount=data.get('amount'),
-            start_date=start_date,
+            amounts=data['amounts'],
+            start_date=datetime.combine(data['start_date'], datetime.min.time()),
             end_date=data.get('end_date'),
             description=data.get('description'),
             user_id=current_user.user_id,
+            propagate_to=propagate_to,
         )
-        if data.get('apply_to_subprojects', False) and self.project.has_children:
-            descendants = [d for d in self.project.get_descendants() if d.active]
-            return propagate_allocation_to_subprojects(
-                db.session, parent_alloc, descendants,
-                user_id=current_user.user_id, skip_existing=True,
-            )
-        return [], []
+
+    def render_errors(self, errors, field_errors=None):
+        # Amount inputs have no form_fields macro; name the resource in the panel.
+        from sam.resources.resources import Resource
+        field_errors = dict(field_errors or {})
+        amount_errors = field_errors.pop('amounts', [])
+        errors = list(errors)
+        for entry in amount_errors:
+            if isinstance(entry, str):
+                errors.append(entry)
+                continue
+            for rid, detail in entry.items():
+                resource = (db.session.get(Resource, int(rid))
+                            if str(rid).isdigit() else None)
+                label = resource.resource_name if resource else f'Resource {rid}'
+                errors.extend(f'{label}: {m}' for msgs in detail.values() for m in msgs)
+        return super().render_errors(errors, field_errors)
 
     def context(self):
-        from sam.resources.resources import Resource
-        linked_ids = _resources_with_allocation(self.project)
-        available = [
-            r for r in (db.session.query(Resource)
-                        .filter(Resource.is_active)
-                        .order_by(Resource.resource_name)
-                        .all())
-            if r.resource_id not in linked_ids
-        ]
-        now = datetime.now()
-        last_day = calendar.monthrange(now.year + 1, now.month)[1]
-        return {
-            'project': self.project,
-            'available_resources': available,
-            'today': now.strftime('%Y-%m-%d'),
-            'default_end_date': f'{now.year + 1:04d}-{now.month:02d}-{last_day:02d}',
-            'project_has_children': self.project.has_children,
-            'child_count': len([d for d in self.project.get_descendants() if d.active]),
-        }
+        return _add_allocation_context(self.project)
 
     def triggers(self, result):
         return {'closeActiveModal': {}, 'reloadAllocationTree': self.project.projcode}
 
     def detail(self, result):
-        child_created, child_skipped = result
-        detail = f'{self.project.projcode} — {self.resource.resource_name}'
+        _created, child_created, child_skipped = result
+        detail = (f'{self.project.projcode} — '
+                  + ', '.join(r.resource_name for r in self.resources))
         if child_created or child_skipped:
             detail += (
-                f'. Propagated to {len(child_created)} sub-project(s)'
-                + (f'; {len(child_skipped)} already had an allocation (skipped).'
+                f'. Propagated {len(child_created)} sub-project allocation(s)'
+                + (f'; {len(child_skipped)} already existed (skipped).'
                    if child_skipped else '.')
             )
         return detail
@@ -1146,8 +1192,8 @@ class _AddAllocationHandler(HtmxFormHandler):
 @login_required
 @require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_add_allocation(project):
-    """Create a new account + allocation for the project."""
-    return _AddAllocationHandler(project=project).handle()
+    """Create allocations on one or more resources for the project."""
+    return _AddAllocationsHandler(project=project).handle()
 
 
 # ---------------------------------------------------------------------------

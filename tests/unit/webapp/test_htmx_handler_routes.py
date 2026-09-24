@@ -47,6 +47,25 @@ def snapshot_allocation_id(session):
     return alloc_id
 
 
+@pytest.fixture
+def held_allocation(session):
+    """(projcode, resource) for a committed live allocation on an active resource."""
+    from sam.resources.resources import Resource
+    row = (
+        session.query(Project.projcode, Resource)
+        .join(Account, Account.project_id == Project.project_id)
+        .join(Resource, Resource.resource_id == Account.resource_id)
+        .join(Allocation, Allocation.account_id == Account.account_id)
+        .filter(Project.is_active, Resource.is_active,
+                Allocation.deleted == False,   # noqa: E712
+                Account.deleted == False)      # noqa: E712
+        .order_by(Project.project_id)
+        .first()
+    )
+    assert row, 'snapshot has no live allocation on an active resource'
+    return row
+
+
 class TestAddMember:
 
     def test_missing_username_error_surfaces_in_panel(self, auth_client,
@@ -114,15 +133,45 @@ class TestAdminAllocationHandlers:
                                 data={})
         assert resp.status_code == 200
         assert 'HX-Trigger' not in resp.headers
+        assert 'Enter an amount for at least one resource.' in resp.get_data(as_text=True)
 
     def test_add_allocation_unknown_resource(self, auth_client,
                                              snapshot_projcode):
         resp = auth_client.post(
             f'/admin/htmx/add-allocation/{snapshot_projcode}',
-            data={'resource_id': str(MISSING_ID), 'amount': '100',
-                  'start_date': '2026-01-01'})
+            data={f'amount_{MISSING_ID}': '100', 'start_date': '2026-01-01'})
         assert resp.status_code == 200
         assert 'Selected resource does not exist.' in resp.get_data(as_text=True)
+
+    def test_add_allocation_bad_amount_names_the_resource(self, auth_client,
+                                                          held_allocation):
+        projcode, resource = held_allocation
+        resp = auth_client.post(
+            f'/admin/htmx/add-allocation/{projcode}',
+            data={f'amount_{resource.resource_id}': '-5', 'start_date': '2026-01-01'})
+        body = resp.get_data(as_text=True)
+        assert 'HX-Trigger' not in resp.headers
+        assert f'{resource.resource_name}: Must be greater than 0.' in body
+
+    def test_add_allocation_rejects_resource_already_held(self, auth_client,
+                                                          held_allocation):
+        projcode, resource = held_allocation
+        resp = auth_client.post(
+            f'/admin/htmx/add-allocation/{projcode}',
+            data={f'amount_{resource.resource_id}': '100', 'start_date': '2026-01-01'})
+        assert 'HX-Trigger' not in resp.headers
+        assert (f'{projcode} already has an allocation on {resource.resource_name}.'
+                in resp.get_data(as_text=True))
+
+    def test_add_allocation_form_disables_held_resource(self, auth_client,
+                                                        held_allocation):
+        projcode, resource = held_allocation
+        resp = auth_client.get(f'/admin/htmx/add-allocation-form/{projcode}')
+        body = resp.get_data(as_text=True)
+        assert resp.status_code == 200
+        assert 'has allocation' in body
+        assert f'name="amount_{resource.resource_id}"' not in body
+        assert 'name="amount_' in body
 
     def test_exchange_requires_resource(self, auth_client, snapshot_projcode):
         resp = auth_client.post(

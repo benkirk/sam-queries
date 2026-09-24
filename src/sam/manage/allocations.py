@@ -22,6 +22,7 @@ __all__ = [
     'validate_allocation_dates',
     'log_allocation_transaction',
     'create_allocation',
+    'create_allocations',
     'update_allocation',
     'alignment_target',
     'alignment_conflicts',
@@ -291,6 +292,42 @@ def create_allocation(
     )
 
     return allocation
+
+
+def create_allocations(
+    session: Session,
+    *,
+    project_id: int,
+    amounts: Dict[int, float],
+    start_date: datetime,
+    end_date: Optional[datetime] = None,
+    description: Optional[str] = None,
+    user_id: int,
+    propagate_to=(),
+):
+    """Create one allocation per ``{resource_id: amount}``, all over one date range.
+
+    Each goes through `create_allocation` (one CREATE audit row apiece) and, when
+    ``propagate_to`` names active descendants in DFS order, is propagated to them
+    with ``skip_existing=True``. Does NOT commit.
+
+    Returns ``(created, child_created, child_skipped)``.
+    """
+    validate_allocation_dates(start_date, end_date)
+    created, child_created, child_skipped = [], [], []
+    for resource_id, amount in amounts.items():
+        alloc = create_allocation(
+            session, project_id=project_id, resource_id=resource_id,
+            amount=amount, start_date=start_date, end_date=end_date,
+            description=description, user_id=user_id,
+        )
+        created.append(alloc)
+        if propagate_to:
+            made, skipped = propagate_allocation_to_subprojects(
+                session, alloc, propagate_to, user_id=user_id, skip_existing=True)
+            child_created.extend(made)
+            child_skipped.extend(skipped)
+    return created, child_created, child_skipped
 
 
 def update_allocation(

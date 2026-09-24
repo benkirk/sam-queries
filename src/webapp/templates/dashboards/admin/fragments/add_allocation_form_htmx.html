@@ -1,29 +1,16 @@
 {#
-  Admin: Edit Project — Add Allocation modal form.
-  Loaded lazily into #addAllocationFormContainer when button clicked.
+  Admin: Edit Project — Add Allocations modal form.
+  Loaded lazily into #addAllocationFormContainer when the button is clicked.
+  One date range + description apply to every resource given an amount; a
+  blank amount skips that row.
 
-  Context variables:
-    project             — Project ORM object
-    available_resources — list of Resource objects not yet linked to this project
-    today               — date string 'YYYY-MM-DD' for default start date
-    default_end_date    — date string 'YYYY-MM-DD' for default end date
-                          (last day of same month one year out)
-    errors              — list of validation error strings (on re-render)
-    form                — request.form on validation error re-render
-    project_has_children — bool: project has active sub-projects
-    child_count          — int: number of active sub-projects
+  Context: see _add_allocation_context() in admin/projects_routes.py.
 
-  Intentional exceptions to the field-macro pattern:
-    * Resource select — option label is
-      `{{ resource_name }} ({{ resource_type }})` with the suffix conditional
-      on `resource_type is not none`. select_field's label_attrs joins
-      unconditionally, so expressing this cleanly requires macro extension.
-    * Amount number input — the sibling `<span class="number-preview">`
-      lives inside a custom `form-text` container alongside explanatory
-      helper text. number_field's `help=` slot renders a bare <small>,
-      which would misplace the preview span relative to number-preview.js.
-    * apply_to_subprojects stylized card — bespoke form-check card with
-      icon + count badge + help text; not a plain checkbox.
+  Intentional exception to the field-macro pattern: the resource grid (one
+  amount input per row, named amount_<rid>) has no macro; its errors are
+  rerouted to the top panel by _AddAllocationsHandler.render_errors.
+  NOTE: no ancestor of a grid input may carry .mb-3 — number-preview.js
+  resolves its preview span via closest('.mb-3') and would find row one's.
 #}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
 {% from 'dashboards/fragments/form_fields.html'
@@ -34,55 +21,12 @@
 {% call htmx_form(
     url_for('admin_dashboard.htmx_add_allocation', projcode=project.projcode),
     '#addAllocationFormContainer',
-    'Create',
+    'Create allocations',
     submit_icon='plus-circle',
+    submit_class='btn-success',
     errors=errors
 ) %}
 
-  {% if not available_resources %}
-  <div class="alert alert-info mb-3">
-    <i class="fa-solid fa-circle-info"></i>
-    All active resources are already linked to this project.
-    To add a sub-project allocation, first create the sub-project.
-  </div>
-  {% else %}
-
-  <!-- Resource -->
-  <div class="mb-3">
-    <label for="addAllocResource" class="form-label fw-semibold">
-      Resource <span class="text-danger">*</span>
-    </label>
-    <select class="form-select" id="addAllocResource" name="resource_id" required>
-      <option value="">— Select resource —</option>
-      {% for resource in available_resources %}
-      <option value="{{ resource.resource_id }}"
-          {% if form and form.get('resource_id') == resource.resource_id|string %}selected{% endif %}>
-        {{ resource.resource_name }}
-        {% if resource.resource_type %} ({{ resource.resource_type.resource_type }}){% endif %}
-      </option>
-      {% endfor %}
-    </select>
-  </div>
-
-  {# Amount — live comma-preview rendered by static/js/number-preview.js,
-     which listens on the data-number-preview attribute and writes into
-     the sibling .number-preview span. #}
-  <div class="mb-3">
-    <label for="addAllocAmount" class="form-label fw-semibold">
-      Amount <span class="text-danger">*</span>
-    </label>
-    <input type="number" class="form-control" id="addAllocAmount"
-           name="amount" min="0.01" step="any" required
-           data-number-preview
-           value="{{ form.get('amount', '') if form else '' }}"
-           placeholder="e.g. 500000">
-    <div class="form-text">
-      <span class="number-preview text-primary fw-semibold"></span>
-      <span class="text-muted">Core-hours for HPC; TiB for storage resources.</span>
-    </div>
-  </div>
-
-  <!-- Dates (side-by-side; stack on narrow viewports) -->
   <div class="row">
     <div class="col-md-6">
       {{ date_field('start_date', 'Start Date',
@@ -99,11 +43,81 @@
   </div>
 
   {{ text_field('description', 'Description',
-                placeholder='e.g. FY2025 allocation',
+                placeholder='e.g. FY2027 allocation',
                 id='addAllocDescription') }}
 
+  <div class="alloc-grid mb-2">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
+      <span class="form-label fw-semibold mb-0">
+        Resources <span class="text-danger">*</span>
+      </span>
+      {% if optional_count %}
+      <div class="form-check form-switch mb-0 small">
+        {# No name: the switch only changes what is shown, never what is posted. #}
+        <input class="form-check-input alloc-show-all" type="checkbox" role="switch"
+               id="addAllocShowAll"{% if show_all_default %} checked{% endif %}>
+        <label class="form-check-label" for="addAllocShowAll">
+          Show everything <span class="text-muted">({{ optional_count }} more)</span>
+        </label>
+      </div>
+      {% endif %}
+    </div>
+    <div class="form-text mt-0 mb-2">
+      Enter an amount for each resource to allocate; blank rows are skipped.
+    </div>
+
+    {% if not any_available %}
+    <div class="alert alert-info py-2 small mb-2">
+      <i class="fa-solid fa-circle-info"></i>
+      All active resources are already allocated on this project.
+      To add a sub-project allocation, first create the sub-project.
+    </div>
+    {% endif %}
+
+    <div class="border rounded table-responsive">
+      <table class="table table-sm mb-0 align-middle">
+        {% for g in resource_groups %}
+        <tbody class="alloc-group{% if g.optional %} alloc-optional{% endif %}">
+          <tr class="alloc-group-head">
+            <th class="small text-uppercase text-muted fw-semibold">{{ g.type_name }}</th>
+            <th class="small text-muted fw-normal">{{ g.unit or '' }}</th>
+          </tr>
+          {% for row in g.rows %}
+          {%- set rid = row.resource.resource_id -%}
+          <tr class="{{ 'alloc-optional' if row.optional }}">
+            <td class="ps-3">
+              <label class="mb-0 text-nowrap{{ ' text-muted' if row.held }}" for="addAllocAmt{{ rid }}">
+                <i class="fa-solid fa-server text-primary me-1 small"></i>
+                <strong>{{ row.resource.resource_name }}</strong>
+              </label>
+            </td>
+            <td>
+              {% if row.held %}
+              <span class="badge bg-secondary bg-opacity-25 text-body-emphasis border text-wrap text-start">
+                has allocation ·
+                {% if row.existing_end %}to {{ row.existing_end | fmt_date }}{% else %}open-ended{% endif %}
+              </span>
+              {% else %}
+              <div class="d-flex flex-wrap align-items-center column-gap-2">
+                <input type="number" class="form-control form-control-sm text-end alloc-amount"
+                       id="addAllocAmt{{ rid }}" name="amount_{{ rid }}"
+                       min="0.01" step="any" inputmode="decimal" placeholder=" "
+                       data-number-preview
+                       value="{{ form.get('amount_' ~ rid, '') if form else '' }}">
+                <span class="number-preview small text-primary fw-semibold text-nowrap"></span>
+              </div>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+
   {% if project_has_children %}
-  <div class="mb-3 border rounded p-3 bg-body-tertiary">
+  <div class="mt-3 border rounded p-3 bg-body-tertiary">
     <div class="form-check">
       <input class="form-check-input" type="checkbox" id="applyToSubprojects"
              name="apply_to_subprojects"
@@ -112,27 +126,25 @@
         <i class="fa-solid fa-sitemap me-1 text-info"></i>
         Apply to sub-projects
         <span class="badge bg-info text-dark ms-1">
-          {{ child_count }} active sub-project{{ 's' if child_count != 1 else '' }}
+          {{ child_count | fmt_plural('active sub-project', 'active sub-projects') }}
         </span>
       </label>
       {{ help_icon(g_shared_alloc(), rich=True, title='Shared allocation', placement='right') }}
     </div>
     <div class="form-text mt-1 ms-4">
-      Creates a <strong>shared allocation</strong> for each active sub-project,
-      linked to this one with the same amount and dates. The allocation tree
-      mirrors the project tree — each sub-project's allocation is linked to its
-      immediate parent's. Sub-projects that already have an allocation for this
+      Creates a <strong>shared allocation</strong> for each active sub-project
+      from each new allocation, with the same amount and dates. The allocation
+      tree mirrors the project tree — each sub-project's allocation is linked to
+      its immediate parent's. Sub-projects that already have an allocation for a
       resource are skipped.
     </div>
   </div>
   {% else %}
-  <div class="alert alert-info py-2 mb-0 small">
+  <div class="alert alert-info py-2 mt-3 mb-0 small">
     <i class="fa-solid fa-circle-info"></i>
     To allocate to a sub-project, add the parent allocation here first,
     then return to add the sub-project's own allocation directly.
   </div>
-  {% endif %}
-
   {% endif %}
 
 {% endcall %}
