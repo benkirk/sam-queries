@@ -165,7 +165,7 @@ helm install samuel ./helm -f helm/values.yaml -n <namespace>
 
 ### How Secrets Work on CIRRUS
 
-The `ExternalSecret` CRD resources rendered by the chart (seven for prod, six for
+The `ExternalSecret` CRD resources rendered by the chart (eight for prod, seven for
 dev) instruct ESO to pull credentials from OpenBao and create k8s Secrets
 automatically. Names are `<webapp.name>-<block>-credentials`:
 
@@ -178,6 +178,7 @@ automatically. Names are `<webapp.name>-<block>-credentials`:
 | `…-jh-credentials` | `csg/jh-api-token` | same | `JUPYTERHUB_API_TOKEN` |
 | `…-xras-api-credentials` | `csg/xras-api-key` | not synced | `XRAS_API_KEY` |
 | `…-oidc-credentials` | `csg/sam-oidc` | `csg/sam-dev-oidc` | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_ISSUER`, `FLASK_SECRET_KEY` |
+| `…-human-check-credentials` | `csg/sam-turnstile` | same | `HUMAN_CHECK_SITE_KEY`, `HUMAN_CHECK_SECRET_KEY` (setup: `docs/plans/implemented/ACCOUNT_REGISTRATION.md` §6.3) |
 
 ESO refreshes these every hour (`refreshInterval: 1h`). You never manage these secrets
 manually on CIRRUS — rotating credentials in OpenBao is sufficient.

@@ -53,9 +53,10 @@ clear `account_requests_reconcile` and then `account_queue_digest` from
 
 **Future work, for a follow-up:**
 
-- **The human-challenge gate (CAPTCHA) on the anonymous form** -- § 6.1. Until it
-  lands `ACCOUNT_REGISTRATION_LOGIN_REQUIRED` stays on, and the client IP still
-  has to reach the app through the ingress for the per-IP tier to mean anything.
+- **Real client-IP forwarding** -- § 6.1 #2. The human challenge (#1) is in
+  (§ 6.3); the client IP still has to reach the app through the ingress for the
+  per-IP tier to mean anything, and until then `ACCOUNT_REGISTRATION_LOGIN_REQUIRED`
+  stays on in prod.
 - **The production config switch.** `ACCOUNT_REGISTRATION_ENABLED=1` with
   `ACCOUNT_REGISTRATION_LOGIN_REQUIRED=1` lights self-enroll, the public Upcoming
   Events card and the enrolled counts with no anonymous mailer; the write-up and
@@ -368,13 +369,8 @@ until deliberately raised.
 **Gaps the ceiling does not close — deferred because each needs an external
 dependency, and required before `ACCOUNT_REGISTRATION_ENABLED=1` in prod:**
 
-1. **A human challenge** (Cloudflare Turnstile, hCaptcha, or reCAPTCHA) — the
-   real fix for breadth abuse. Verify the token server-side before the mail is
-   sent. Cost: a `script-src` / `connect-src` allowance in
-   `webapp/utils/csp.py` (today `script-src 'self'`, no inline, no nonces) and a
-   test fake for the outbound verify call (tests block outbound). Confirm which
-   provider the organization already has — Turnstile if Cloudflare is in the
-   stack. Decide fail-open vs fail-closed if the provider is unreachable.
+1. **A human challenge — DONE (§ 6.3).** Cloudflare Turnstile on the form's
+   submit, verified server-side before the write and the mail, failing closed.
 2. **A real client IP** — the per-IP tier is blind behind the load balancer
    (D12): `get_remote_address()` collapses to the ingress address. Confirm the
    proxy chain and set `PROXYFIX_X_FOR`, or have the ingress forward a trusted
@@ -396,17 +392,19 @@ the page and the confirmation mail read as one thing.
 
 **The gate** (`ACCOUNT_REGISTRATION_GATE_ENABLED`, on by default; off in
 `TestingConfig`). One URL, dynamic content: `GET /register/` renders a
-terms-of-use (EULA) acceptance plus a human-verification check, and only a
-recent accept in the session lets the open form through. It is **enforced
+terms-of-use (EULA) acceptance, and only a recent accept in the session lets
+the open form through. It is **enforced
 server-side** — `submit()` re-checks the session marker and writes nothing
 without it, so the gate is not merely a hidden UI. `POST /register/accept`
-validates `RegisterGateForm` (both boxes) and `webapp/register/human_check.py`,
-then sets the marker (cleared after a submission, so each request re-accepts).
+validates `RegisterGateForm` (the terms box), then sets the marker (cleared after a submission, so each request re-accepts).
 The marker lasts two hours: an expiry at submit bounces to the gate and the
 typed form is lost, so the window is generous. Clearing it is best effort — the
 session is a client-held cookie, so a saved post-accept cookie replays inside
-the window; the rate limits are the bound. A real challenge should be verified
-**at submit** (or the marker made single-use server-side) rather than lean on it.
+the window; the rate limits are the bound. That is why the human check is
+verified **at submit**, not here (§ 6.3). The terms box stays disabled until the
+end of the agreement has been scrolled into view (`register.js`, an
+`IntersectionObserver` on a sentinel after the text) — a reading aid, not a
+control: the server only checks `accept=1`, and with JS off the box is live.
 
 **The event code is a picker, not free text.** The open form offers the
 publicly `listed` open events as an optional select, fed by the memoized
@@ -459,12 +457,6 @@ alters what people agree to, so a human decides. When approved:
   new text; a deploy restarts the workers and the gate page is not in the Redis
   page cache, so no cache refresh is needed.
 
-**The human check is still a placeholder** — a same-origin **stub**
-(`human_check.py`: a SECRET_KEY-signed nonce), the seam a real challenge drops
-into. It is *not* the § 6.1 #1 human challenge: wiring Turnstile/hCaptcha there
-still needs the CSP allowance and, with #2, remains the precondition before
-`ACCOUNT_REGISTRATION_ENABLED=1` in prod.
-
 **Open follow-up — recording EULA acceptance.** The gate sets only a session
 marker today; nothing records *which* agreement was accepted. Stamping the
 upstream blob SHA (`update_eula.py` prints it) onto the request makes an
@@ -486,8 +478,68 @@ the first, narrow instance of that.
 **The shell.** `templates/register/base_register.html` (cloned from
 `auth/login.html`) + a thin token-only `static/css/register.css`; every
 `register/*` template re-parents onto it. Behavior is `static/js/register.js`
-(disables the CTA until both boxes are ticked — nicety only; the server
-enforces). Design language: docs/plans/EMAIL_STYLING.md.
+(the scroll-to-end hold on the terms box, and the form's submit held until the
+human-check widget reports — niceties only; the server enforces). Design language: docs/plans/EMAIL_STYLING.md.
+
+### 6.3 The human check (Cloudflare Turnstile)
+
+**Where.** On the open form, verified in `submit()` after the schema, event and
+purpose checks and immediately before the write and the mail — so a typo never
+spends the single-use token, and every mail-sending POST costs a fresh solve
+(the gate's replayable cookie buys nothing). The gate carried a same-origin
+stub until this landed; it was removed, not kept as a fallback.
+
+**Provider-neutral by construction.** Turnstile, hCaptcha and reCAPTCHA share
+the protocol: a widget `<div class=… data-sitekey data-callback>` plus one
+`<script src>`, and a server-side `siteverify` form POST of `secret` + `response`
+returning `{"success": …, "error-codes": […]}`. So `webapp/utils/human_check.py`
+holds a `PROVIDERS` table of static facts (script, verify URL, response field,
+widget class, CSP origins) and one generic `verify()`. Adding hCaptcha is one
+row; the env names (`HUMAN_CHECK_PROVIDER`, `HUMAN_CHECK_SITE_KEY`,
+`HUMAN_CHECK_SECRET_KEY`) and the chart block (`humanCheckCredentials`) do not
+change. `webapp/utils/csp.py` adds the active provider's origins to
+`script-src`/`frame-src` site-wide (the policy is built once, like the calendar
+iframe's).
+
+**Behavior.** No token → "complete the verification", no outbound call.
+`success: false` → re-render with the typed form kept, `error-codes` logged at
+WARNING. Transport error or bad JSON → **fail closed** ("service unavailable"),
+nothing written, nothing mailed. `remoteip` is not sent: the ingress collapses
+every client to one address (§ 6.1 #2), and a wrong IP is worse than none.
+`validate()` refuses to start on an unknown provider or a provider without both
+keys; ProductionConfig warns when the form is public with provider `none`.
+
+**Configuration.**
+
+| | `HUMAN_CHECK_PROVIDER` | keys from |
+|---|---|---|
+| prod (`values.yaml`) | `turnstile` | OpenBao `csg/sam-turnstile` → `site_key`, `secret_key` |
+| samuel-dev | inherited | the same path, **shared by decision** |
+| local k8s (`values-local.yaml`) | `none` | — |
+| webdev / tests | `none` by default | `.env`; tests patch `human_check._siteverify` |
+
+**Operator setup (one widget for every deployment).**
+
+1. Cloudflare dashboard → Turnstile → Add widget. Name it for SAM registration;
+   hostnames `sam.hpc.ucar.edu`, `samuel.k8s.ucar.edu`,
+   `samuel-dev.k8s.ucar.edu` (the zones need not be on Cloudflare); mode
+   **Managed**; pre-clearance **off**. Copy the site key and secret key.
+2. Write both to OpenBao `csg/sam-turnstile` as `site_key` / `secret_key`
+   (readable through the `csg-ro` SecretStore). **Before** the chart deploys:
+   a missing path means no Secret, and new pods stall in
+   `CreateContainerConfigError` while the old ones keep serving.
+3. After a deploy, force-sync if needed
+   (`kubectl annotate externalsecret <name>-human-check-credentials-esos force-sync=$(date +%s) --overwrite`),
+   then `/register` shows the widget. The widget's Cloudflare analytics show
+   solves per hostname.
+
+**Rotation.** Rotate the secret in the widget's settings, update
+`csg/sam-turnstile.secret_key`, force-sync, `kubectl rollout restart`.
+
+**Local.** Cloudflare's published dummy keys render a "testing only" widget on
+any host, localhost included: site `1x00000000000000000000AA` with secret
+`1x0000000000000000000000000000000AA` (always passes) or
+`2x0000000000000000000000000000000AA` (always fails). See `.env.example`.
 
 ## 7. References
 
