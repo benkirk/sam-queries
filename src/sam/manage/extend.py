@@ -22,7 +22,7 @@ push on the current grant.
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Iterator, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -37,85 +37,63 @@ from sam.manage.allocations import (
     log_integration_transaction,
     validate_allocation_dates,
 )
-from sam.manage.renew import find_renew_anchors, find_source_alloc_at
+from sam.base import normalize_end_date
+from sam.manage.renew import PlannedAllocation, find_renew_anchors, find_source_alloc_at
 
 
 __all__ = [
     'extend_project_allocations',
+    'plan_extend_allocations',
     'extend_account_allocation',
 ]
 
 
-def _extend_subtree(
-    session: Session,
-    anchor: Project,
-    source: Allocation,
+def _extend_steps(
+    root_project: Project,
     resource_id: int,
     *,
     source_active_at: datetime,
     new_end: datetime,
-    user_id: int,
-    touched: Optional[List[Allocation]],
-) -> Optional[Allocation]:
-    """Extend one anchor's source and every descendant source under it.
+) -> Iterator[Tuple[Allocation, bool]]:
+    """``(allocation, is_anchor)`` for each row an Extend of one resource pushes.
 
-    Returns the anchor allocation, or None when it is open-ended or already
-    ends on/after ``new_end`` (its subtree is then left alone too).
+    Read-only. An anchor that is open-ended or already ends on/after
+    ``new_end`` is skipped with its subtree; so is any such descendant.
     """
-    if source.end_date is None or source.end_date >= new_end:
-        return None
-
-    validate_allocation_dates(source.start_date, new_end)
-
-    old_end = source.end_date
-    source.end_date = new_end
-    log_allocation_transaction(
-        session,
-        source,
-        user_id,
-        AllocationTransactionType.EXTENSION,
-        comment=(
-            f"End date extended "
-            f"{old_end.strftime('%Y-%m-%d')} → "
-            f"{new_end.strftime('%Y-%m-%d')}"
-        ),
-        propagated=False,
-    )
-    if touched is not None:
-        touched.append(source)
-
-    for descendant in anchor.get_descendants():
-        if not descendant.active:
+    for anchor, source in find_renew_anchors(root_project, resource_id, source_active_at):
+        if source.end_date is None or source.end_date >= new_end:
             continue
+        yield source, True
+        for descendant in anchor.get_descendants():
+            if not descendant.active:
+                continue
+            source_child = find_source_alloc_at(descendant, resource_id, source_active_at)
+            if source_child is None or source_child.end_date is None:
+                continue
+            if source_child.end_date >= new_end:
+                continue
+            yield source_child, False
 
-        source_child = find_source_alloc_at(
-            descendant, resource_id, source_active_at
-        )
-        if source_child is None:
-            continue
-        if source_child.end_date is None:
-            continue
-        if source_child.end_date >= new_end:
-            continue
 
-        old_child_end = source_child.end_date
-        source_child.end_date = new_end
-        log_allocation_transaction(
-            session,
-            source_child,
-            user_id,
-            AllocationTransactionType.EXTENSION,
-            comment=(
-                f"End date extended "
-                f"{old_child_end.strftime('%Y-%m-%d')} → "
-                f"{new_end.strftime('%Y-%m-%d')}"
-            ),
-            propagated=True,
-        )
-        if touched is not None:
-            touched.append(source_child)
-
-    return source
+def plan_extend_allocations(
+    session: Session,
+    *,
+    root_project_id: int,
+    source_active_at: datetime,
+    new_end: datetime,
+    resource_ids: List[int],
+) -> List[PlannedAllocation]:
+    """What :func:`extend_project_allocations` would put in ``touched``. Writes nothing."""
+    root_project = session.get(Project, root_project_id)
+    if root_project is None:
+        raise ValueError(f"Project {root_project_id} not found")
+    return [
+        PlannedAllocation(account=alloc.account, amount=alloc.amount,
+                          start_date=alloc.start_date, end_date=normalize_end_date(new_end))
+        for resource_id in set(resource_ids)
+        for alloc, _ in _extend_steps(root_project, resource_id,
+                                      source_active_at=source_active_at, new_end=new_end)
+    ]
 
 
 def extend_project_allocations(
@@ -147,18 +125,29 @@ def extend_project_allocations(
 
     updated: List[Allocation] = []
     for resource_id in set(resource_ids):
-        for anchor, source in find_renew_anchors(
-            root_project, resource_id, source_active_at
-        ):
-            extended = _extend_subtree(
-                session, anchor, source, resource_id,
-                source_active_at=source_active_at,
-                new_end=new_end,
-                user_id=user_id,
-                touched=touched,
+        for alloc, is_anchor in _extend_steps(root_project, resource_id,
+                                              source_active_at=source_active_at,
+                                              new_end=new_end):
+            if is_anchor:
+                validate_allocation_dates(alloc.start_date, new_end)
+            old_end = alloc.end_date
+            alloc.end_date = new_end
+            log_allocation_transaction(
+                session,
+                alloc,
+                user_id,
+                AllocationTransactionType.EXTENSION,
+                comment=(
+                    f"End date extended "
+                    f"{old_end.strftime('%Y-%m-%d')} → "
+                    f"{new_end.strftime('%Y-%m-%d')}"
+                ),
+                propagated=not is_anchor,
             )
-            if extended is not None:
-                updated.append(extended)
+            if touched is not None:
+                touched.append(alloc)
+            if is_anchor:
+                updated.append(alloc)
 
     session.flush()
     return updated

@@ -771,6 +771,13 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_extend_allocations_preview",
+    "/admin/htmx/extend-allocations-preview/<projcode>",
+    [
+      "POST"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_facilities_card",
     "/admin/htmx/facilities",
     [
@@ -1356,6 +1363,13 @@
     "/admin/htmx/renew-allocations-form/<projcode>",
     [
       "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_renew_allocations_preview",
+    "/admin/htmx/renew-allocations-preview/<projcode>",
+    [
+      "POST"
     ]
   ],
   [

@@ -1726,6 +1726,23 @@ def htmx_renew_truncate_control(project):
         overlap=overlap)
 
 
+def _renewal_messages(root, *, action, new_end, active_at, touched, comment=None):
+    """The renew/extend notices; ``touched`` is the write's rows or a plan's."""
+    from sam.queries.lifecycle_notices import build_renewal_messages
+    from webapp.utils.notify import public_url_for, public_url_root
+    stamp = active_at.date().isoformat()
+    return build_renewal_messages(
+        db.session, root, action=action, new_end=new_end,
+        touched_allocations=touched,
+        operator_comment=comment,
+        site_url=public_url_root(),
+        requested_by=current_user.username,
+        url_builder=lambda pc: public_url_for(
+            'admin_dashboard.edit_project_page', projcode=pc,
+            active_at=stamp, tab='allocations'),
+    )
+
+
 def _maybe_notify_renewal(root, *, action, new_end, active_at, touched,
                           notify_leads, comment=None):
     """Optionally mail each project lead/admin about a renew/extend.
@@ -1737,20 +1754,10 @@ def _maybe_notify_renewal(root, *, action, new_end, active_at, touched,
     if not notify_leads:
         return None
     try:
-        from sam.queries.lifecycle_notices import build_renewal_messages
-        from webapp.utils.notify import (
-            get_notifier, notify_summary, public_url_for, public_url_root)
-        stamp = active_at.date().isoformat()
-        messages = build_renewal_messages(
-            db.session, root, action=action, new_end=new_end,
-            touched_allocations=touched,
-            operator_comment=comment,
-            site_url=public_url_root(),
-            requested_by=current_user.username,
-            url_builder=lambda pc: public_url_for(
-                'admin_dashboard.edit_project_page', projcode=pc,
-                active_at=stamp, tab='allocations'),
-        )
+        from webapp.utils.notify import get_notifier, notify_summary
+        messages = _renewal_messages(root, action=action, new_end=new_end,
+                                     active_at=active_at, touched=touched,
+                                     comment=comment)
         return notify_summary(get_notifier().send_many(messages))
     except Exception:  # noqa: BLE001 — never let a mail failure fail the write
         current_app.logger.exception(
@@ -1766,6 +1773,123 @@ def _notified_suffix(summary) -> str:
     return f'; notified {n} recipient{"" if n == 1 else "s"}' if n else ''
 
 
+def _renew_form_input():
+    """The Renew form as its schema wants it, for the save and the preview.
+
+    Collects multi-valued resource_ids and flattens scale_<rid> inputs into
+    the 'scales' dict; missing/blank scales default to 1.0 in the write.
+    """
+    data = {k: v for k, v in request.form.items()
+            if v != '' and not k.startswith('scale_')}
+    data['resource_ids'] = [
+        int(v) for v in request.form.getlist('resource_ids') if v
+    ]
+    data['scales'] = {
+        int(k.removeprefix('scale_')): v
+        for k, v in request.form.items()
+        if k.startswith('scale_') and v.strip()
+    }
+    # Default-ON checkbox: absent means unchecked, so read presence.
+    data['notify_leads'] = 'notify_leads' in request.form
+    return data
+
+
+def _extend_form_input():
+    """The Extend form as its schema wants it, for the save and the preview."""
+    data = {k: v for k, v in request.form.items() if v != ''}
+    data['resource_ids'] = [
+        int(v) for v in request.form.getlist('resource_ids') if v
+    ]
+    data['notify_leads'] = 'notify_leads' in request.form
+    return data
+
+
+def _resource_names(names, resource_ids):
+    return ', '.join(sorted(names.get(r, f'#{r}') for r in resource_ids))
+
+
+def _renew_preconditions(root, source_dt, new_start, new_end, resource_ids,
+                         replace_existing):
+    """Renew's pre-flight, shared with its preview: which resources have no
+    source or already overlap, and the errors when NOTHING can be renewed."""
+    from sam.manage.renew import analyze_renew_preconditions
+    from sam.resources.resources import Resource
+    preconditions = analyze_renew_preconditions(
+        db.session, root_project_id=root.project_id, source_active_at=source_dt,
+        new_start=new_start, new_end=new_end, resource_ids=resource_ids)
+    names = {r.resource_id: r.resource_name for r in
+             db.session.query(Resource).filter(Resource.resource_id.in_(resource_ids))}
+    no_source = [rid for rid, s in preconditions.items() if s == 'no_source']
+    overlap = [rid for rid, s in preconditions.items() if s == 'overlap']
+    errors = []
+    if (not any(s == 'ok' for s in preconditions.values())
+            and not (replace_existing and overlap)):
+        if overlap:
+            errors.append(
+                f'Already has allocations overlapping '
+                f'{new_start.strftime("%Y-%m-%d")} → {new_end.strftime("%Y-%m-%d")}: '
+                f'{_resource_names(names, overlap)}. '
+                f'Tick "Truncate existing" to supersede them.')
+        if no_source:
+            errors.append(
+                f'No active allocation anywhere in the tree at '
+                f'{source_dt.strftime("%Y-%m-%d")} for: '
+                f'{_resource_names(names, no_source)}.')
+    return {'names': names, 'no_source': no_source, 'overlap': overlap,
+            'errors': errors}
+
+
+def _extend_shortening_error(root, resource_ids, source_dt, new_end):
+    """Extend's refusal, shared with its preview: new_end must strictly exceed
+    every selected resource's current end date at the source."""
+    from sam.manage.renew import find_renew_anchors
+    latest_current_end = None
+    for rid in resource_ids:
+        for _, src in find_renew_anchors(root, rid, source_dt):
+            if src.end_date is None:
+                continue
+            if latest_current_end is None or src.end_date > latest_current_end:
+                latest_current_end = src.end_date
+    if latest_current_end is not None and new_end <= latest_current_end:
+        return (f'New end date must be later than the current latest end date '
+                f'({latest_current_end.strftime("%Y-%m-%d")}).')
+    return None
+
+
+def _renewal_preview(project, root, *, action, schema_cls, form_input, plan, active_at,
+                     endpoint, prefix, refusal=None):
+    """The renew/extend preview pane: plan the write, then build its notices.
+
+    Read-only: ``plan`` walks the same steps the write does and creates nothing.
+    ``refusal`` returns the error the save would raise, if any.
+    """
+    from marshmallow import ValidationError
+    from webapp.utils.email_preview import render_email_preview, render_preview_info
+    try:
+        data = schema_cls().load(form_input())
+    except ValidationError:
+        return render_preview_info('Set the dates and pick at least one resource to '
+                                   'preview the email.')
+    source_dt = datetime.combine(data['source_active_at'], datetime.min.time())
+    refused = refusal(data, source_dt) if refusal else None
+    if refused:
+        return render_preview_info(refused, 'warning')
+    planned = plan(data, source_dt)
+    if not planned:
+        return render_preview_info(f'Nothing would be {action}, so no email is sent.')
+    messages = _renewal_messages(root, action=action, new_end=data['new_end_date'],
+                                 active_at=active_at(data, source_dt), touched=planned,
+                                 comment=data.get('operator_comment'))
+    if not messages:
+        return render_preview_info('No lead or admin email is on file for the '
+                                   'projects this would change.')
+    notes = ([] if data.get('notify_leads') else
+             ['The box is unticked: saving sends no email.'])
+    return render_email_preview(
+        messages, id_prefix=prefix, pane_id=f'{prefix}Pane', notes=notes,
+        picker_url=url_for(endpoint, projcode=project.projcode))
+
+
 class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
     """Create renewed allocations for the selected resources."""
 
@@ -1775,75 +1899,24 @@ class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
     success_message = 'Allocations renewed successfully.'
 
     def form_input(self):
-        # Collect multi-valued resource_ids + flatten scale_<rid> inputs into
-        # the 'scales' dict the schema expects. Missing/blank scale entries
-        # default to 1.0 inside renew_project_allocations().
-        data = {k: v for k, v in request.form.items()
-                if v != '' and not k.startswith('scale_')}
-        data['resource_ids'] = [
-            int(v) for v in request.form.getlist('resource_ids') if v
-        ]
-        data['scales'] = {
-            int(k.removeprefix('scale_')): v
-            for k, v in request.form.items()
-            if k.startswith('scale_') and v.strip()
-        }
-        # Default-ON checkbox: absent means unchecked, so read presence.
-        data['notify_leads'] = 'notify_leads' in request.form
-        return data
+        return _renew_form_input()
 
     def clean(self, data):
         self.new_start = datetime.combine(data['new_start_date'], datetime.min.time())
         self.new_end = data['new_end_date']   # already datetime via post_load
         self.source_dt = datetime.combine(data['source_active_at'], datetime.min.time())
 
-        # Pre-flight: classify each requested resource so we can produce
-        # accurate error messages and (when needed) prompt the admin to set
-        # replace_existing.
-        from sam.manage.renew import analyze_renew_preconditions
-        from sam.resources.resources import Resource
-        preconditions = analyze_renew_preconditions(
-            db.session,
-            root_project_id=self.root.project_id,
-            source_active_at=self.source_dt,
-            new_start=self.new_start,
-            new_end=self.new_end,
-            resource_ids=data['resource_ids'],
-        )
-        self.resource_name = {
-            r.resource_id: r.resource_name
-            for r in db.session.query(Resource).filter(
-                Resource.resource_id.in_(data['resource_ids'])
-            )
-        }
-        self.no_source_ids = [rid for rid, s in preconditions.items() if s == 'no_source']
-        self.overlap_ids = [rid for rid, s in preconditions.items() if s == 'overlap']
-        replace_existing = data.get('replace_existing', False)
-
-        # Bail early with a specific error when NOTHING can be renewed.
-        if (not any(s == 'ok' for s in preconditions.values())
-                and not (replace_existing and self.overlap_ids)):
-            msgs = []
-            if self.overlap_ids:
-                names = self._names(self.overlap_ids)
-                msgs.append(
-                    f'Already has allocations overlapping '
-                    f'{self.new_start.strftime("%Y-%m-%d")} → '
-                    f'{self.new_end.strftime("%Y-%m-%d")}: {names}. '
-                    f'Tick "Truncate existing" to supersede them.'
-                )
-            if self.no_source_ids:
-                msgs.append(
-                    f'No active allocation anywhere in the tree at '
-                    f'{self.source_dt.strftime("%Y-%m-%d")} for: '
-                    f'{self._names(self.no_source_ids)}.'
-                )
-            raise FormError(*msgs)
+        pre = _renew_preconditions(self.root, self.source_dt, self.new_start,
+                                   self.new_end, data['resource_ids'],
+                                   data.get('replace_existing', False))
+        self.resource_name = pre['names']
+        self.no_source_ids, self.overlap_ids = pre['no_source'], pre['overlap']
+        if pre['errors']:
+            raise FormError(*pre['errors'])
         return data
 
     def _names(self, resource_ids):
-        return ', '.join(sorted(self.resource_name.get(r, f'#{r}')
-                                for r in resource_ids))
+        return _resource_names(self.resource_name, resource_ids)
 
     def perform(self, data):
         from sam.manage.renew import renew_project_allocations
@@ -1928,6 +2001,37 @@ def htmx_renew_allocations(project):
     return _RenewAllocationsHandler(project=project, root=root).handle()
 
 
+@bp.route('/htmx/renew-allocations-preview/<projcode>', methods=['POST'])
+@login_required
+@require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_renew_allocations_preview(project):
+    """The renewal notice the Renew form would send, from its current values."""
+    from sam.manage.renew import plan_renew_allocations
+    root = project.get_root() if hasattr(project, 'get_root') else project
+
+    def plan(data, source_dt):
+        return plan_renew_allocations(
+            db.session, root_project_id=root.project_id, source_active_at=source_dt,
+            new_start=datetime.combine(data['new_start_date'], datetime.min.time()),
+            new_end=data['new_end_date'], resource_ids=data['resource_ids'],
+            scales=data.get('scales') or {},
+            replace_existing=data.get('replace_existing', False))
+
+    def refusal(data, source_dt):
+        errors = _renew_preconditions(
+            root, source_dt, datetime.combine(data['new_start_date'], datetime.min.time()),
+            data['new_end_date'], data['resource_ids'],
+            data.get('replace_existing', False))['errors']
+        return ' '.join(errors) or None
+
+    return _renewal_preview(
+        project, root, action='renewed', schema_cls=RenewAllocationsForm,
+        form_input=_renew_form_input, plan=plan, refusal=refusal,
+        active_at=lambda data, _src: datetime.combine(data['new_start_date'],
+                                                      datetime.min.time()),
+        endpoint='admin_dashboard.htmx_renew_allocations_preview', prefix='renewPreview')
+
+
 # ---------------------------------------------------------------------------
 # Extend allocations (Edit Project -> Allocations tab)
 # ---------------------------------------------------------------------------
@@ -1981,13 +2085,7 @@ class _ExtendAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
     success_message = 'Allocations extended successfully.'
 
     def form_input(self):
-        data = {k: v for k, v in request.form.items() if v != ''}
-        data['resource_ids'] = [
-            int(v) for v in request.form.getlist('resource_ids') if v
-        ]
-        # Default-ON checkbox: absent means unchecked, so read presence.
-        data['notify_leads'] = 'notify_leads' in request.form
-        return data
+        return _extend_form_input()
 
     def clean(self, data):
         self.new_end = data['new_end_date']   # datetime via post_load
@@ -1996,20 +2094,10 @@ class _ExtendAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
         self.source_dt = datetime.combine(
             data['source_active_at'], datetime.min.time())
 
-        # Block shortening: new_end must strictly exceed every selected
-        # resource's current end date at the source.
-        from sam.manage.renew import find_renew_anchors
-        latest_current_end = None
-        for rid in data['resource_ids']:
-            for _, src in find_renew_anchors(self.root, rid, self.source_dt):
-                if src.end_date is None:
-                    continue
-                if latest_current_end is None or src.end_date > latest_current_end:
-                    latest_current_end = src.end_date
-        if latest_current_end is not None and self.new_end <= latest_current_end:
-            raise FormError(
-                f'New end date must be later than the current latest end date '
-                f'({latest_current_end.strftime("%Y-%m-%d")}).')
+        error = _extend_shortening_error(self.root, data['resource_ids'],
+                                         self.source_dt, self.new_end)
+        if error:
+            raise FormError(error)
         return data
 
     def perform(self, data):
@@ -2068,6 +2156,27 @@ def htmx_extend_allocations(project):
     """Push end_date forward on the selected allocations."""
     root = project.get_root() if hasattr(project, 'get_root') else project
     return _ExtendAllocationsHandler(project=project, root=root).handle()
+
+
+@bp.route('/htmx/extend-allocations-preview/<projcode>', methods=['POST'])
+@login_required
+@require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_extend_allocations_preview(project):
+    """The extension notice the Extend form would send, from its current values."""
+    from sam.manage.extend import plan_extend_allocations
+    root = project.get_root() if hasattr(project, 'get_root') else project
+
+    def plan(data, source_dt):
+        return plan_extend_allocations(
+            db.session, root_project_id=root.project_id, source_active_at=source_dt,
+            new_end=data['new_end_date'], resource_ids=data['resource_ids'])
+
+    return _renewal_preview(
+        project, root, action='extended', schema_cls=ExtendAllocationsForm,
+        form_input=_extend_form_input, plan=plan, active_at=lambda _data, src: src,
+        endpoint='admin_dashboard.htmx_extend_allocations_preview', prefix='extendPreview',
+        refusal=lambda data, src: _extend_shortening_error(
+            root, data['resource_ids'], src, data['new_end_date']))
 
 
 # ---------------------------------------------------------------------------

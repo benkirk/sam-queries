@@ -29,8 +29,9 @@ def email_preview_context(messages: Sequence, *, id_prefix: str, pane_id: str,
     ``mode_banner=False`` is for a host that already shows the disabled or
     redirected banner above the pane.
     """
-    p = get_notifier(read_only=True).preview_delivery(
-        messages, selected=request.values.get('preview_recipient') or None)
+    raw = request.values.get('preview_recipient') or None
+    selected = int(raw) if raw and raw.isdigit() else raw
+    p = get_notifier(read_only=True).preview_delivery(messages, selected=selected)
     return {'p': p, 'id_prefix': id_prefix, 'pane_id': pane_id,
             'picker_url': picker_url, 'picker_method': picker_method,
             'picker_include': picker_include, 'notes': list(notes),

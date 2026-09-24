@@ -990,6 +990,13 @@ class TestPreviewDelivery:
             assert p.selected.address == 'a@x.edu'
         assert [r.address for r in p.recipients] == ['a@x.edu', 'b@x.edu']
 
+    def test_selected_by_position_tells_one_address_apart(self, xras_renderer):
+        """One lead on two sub-projects: two messages, one address."""
+        batch = [self._xras('a@x.edu', projcode='P1'), self._xras('a@x.edu', projcode='P2')]
+        p = _notifier(xras_renderer).preview_delivery(batch, selected=1)
+        assert (p.selected_index, p.selected.projcode) == (1, 'P2')
+        assert _notifier(xras_renderer).preview_delivery(batch, selected=7).selected_index == 0
+
     def test_a_render_error_is_captured_not_raised(self, tmp_path):
         (tmp_path / 'xras_extension.txt').write_text('{{ broken(')
         p = _notifier(TemplateRenderer(template_dir=tmp_path)) \

@@ -69,9 +69,10 @@
             hx-include="this{% if picker_include %}, {{ picker_include }}{% endif %}"
             hx-target="#{{ pane_id }}"
             hx-swap="innerHTML">
+        {% set by_project = p.recipients | map(attribute='projcode') | unique | list | length > 1 %}
         {% for r in p.recipients %}
-        <option value="{{ r.address }}" {{ 'selected' if r.address == p.selected.address }}>
-            {{ r.name or r.address }}{% if r.role %} ({{ r.role }}){% endif %} &lt;{{ r.address }}&gt;{% if r.last_sent %} · sent{% endif %}
+        <option value="{{ loop.index0 }}" {{ 'selected' if loop.index0 == p.selected_index }}>
+            {% if by_project and r.projcode %}{{ r.projcode }}: {% endif %}{{ r.name or r.address }}{% if r.role %} ({{ r.role }}){% endif %} &lt;{{ r.address }}&gt;{% if r.last_sent %} · sent{% endif %}
         </option>
         {% endfor %}
     </select>

@@ -206,7 +206,7 @@ class TestThePreviewPane:
         second = 'admin@example.edu'
         resp = auth_client.get(self.URL, query_string={'preview_recipient': second})
         body = resp.get_data(as_text=True)
-        assert f'<option value="{second}" selected' in body
+        assert '<option value="1" selected' in body
         assert second in body.split('>To<')[1].split('</div>')[0]
 
     def test_a_missing_project_answers_200_in_the_pane(self, auth_client, notifier):

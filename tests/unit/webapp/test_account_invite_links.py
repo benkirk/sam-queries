@@ -653,7 +653,7 @@ class TestRosterPreview:
         first, second = _address(), _address()
         roster = f'Ada Lovelace <{first}>\nAlan Turing <{second}>'
         html = _html(self._preview(auth_client, code, roster, preview_recipient=second))
-        assert f'<option value="{second}" selected' in html
+        assert '<option value="1" selected' in html
         assert second in html.split('>To<')[1].split('</div>')[0]
 
     def test_the_admin_copy_previews_too(self, auth_client, no_token, make_event):

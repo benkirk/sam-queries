@@ -187,6 +187,7 @@ class PreviewRecipient:
     name: Optional[str] = None
     role: Optional[str] = None
     last_sent: Optional[datetime] = None
+    projcode: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -196,13 +197,15 @@ class DeliveryPreview:
     ``mode`` is ``'disabled' | 'redirected' | 'live'``. ``outgoing`` is the
     message after the redirect and addressing; ``cc``/``bcc`` are what the
     transport puts on the envelope. ``rendered`` is ``None`` when ``error`` is set
-    or there is nothing to preview.
+    or there is nothing to preview. ``selected_index`` is the picker's value:
+    one address can appear once per project in a batch.
     """
 
     mode: str
     transport: str
     recipients: Tuple[PreviewRecipient, ...] = ()
     selected: Optional[PreviewRecipient] = None
+    selected_index: Optional[int] = None
     outgoing: Optional[Message] = None
     sender: Optional[str] = None
     reply_to: Optional[str] = None
