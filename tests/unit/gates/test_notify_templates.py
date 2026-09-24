@@ -196,3 +196,44 @@ class TestFacilityVariantsRenderDistinctly:
             if rendered.template_html:
                 assert (rendered.template_text.rsplit('.', 1)[0]
                         == rendered.template_html.rsplit('.', 1)[0])
+
+
+def _kind_of(name):
+    """``(kind_key, facility)`` for a shipped file, as the template editor maps it."""
+    stem = name.rsplit('.', 1)[0]
+    kind = next((k for k in NOTIFICATION_KINDS.values()
+                 if stem == k.template_base or stem.startswith(k.template_base + '-')),
+                None)
+    return (kind.key, stem[len(kind.template_base) + 1:] or None) if kind else (None, None)
+
+
+EDITABLE = [n for n in shipped_template_names() if _kind_of(n)[0]]
+
+
+class TestEveryReferenceResolves:
+    """What the editor's "Unknown variables" warning and a strict render say
+    about the SHIPPED files: nothing. A misspelled loop field (``r.resource_nam``)
+    escapes the static check but not StrictUndefined against the sample."""
+
+    @pytest.mark.parametrize('name', EDITABLE)
+    def test_no_unknown_variable(self, renderer, name):
+        from sam.notify.samples import preview_context
+        kind, facility = _kind_of(name)
+        assert renderer.undeclared_names(renderer.source(name),
+                                         preview_context(kind, facility)) == set()
+
+    @pytest.mark.parametrize('name', EDITABLE)
+    @pytest.mark.parametrize('role', ['lead', 'admin', 'user'])
+    def test_it_renders_strictly_for_every_role(self, renderer, name, role):
+        import jinja2
+        from sam.notify.samples import preview_context
+        kind, facility = _kind_of(name)
+        strict = renderer.env.overlay(undefined=jinja2.StrictUndefined)
+        strict.get_template(name).render(**preview_context(kind, facility, role))
+
+    def test_an_import_at_the_top_is_not_unknown_inside_a_block(self, renderer):
+        """The false positive on account_queue_summary.html: `person`/`status`."""
+        source = ('{% extends "_email_base.html" %}'
+                  '{% from "_account_cells.html" import person, status %}'
+                  '{% block content %}{{ person(r) }}{{ status(r) }}{{ nope }}{% endblock %}')
+        assert renderer.undeclared_names(source, {'r'}) == {'nope'}

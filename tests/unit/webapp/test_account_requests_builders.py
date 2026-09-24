@@ -156,6 +156,22 @@ class TestRejectionMessage:
         assert build_rejection_message(row, requested_by='op').dedup_key != first
 
 
+    def test_a_preview_overrides_reason_and_closure_on_an_open_row(self, session):
+        row = make_account_request(session)
+        when = datetime(2026, 9, 24, 10, 0)
+        preview = build_rejection_message(row, requested_by='op', reason='Typed',
+                                          closed_at=when)
+        assert preview.context['reason'] == 'Typed'
+        assert preview.dedup_key == (
+            f'account_rejected:{row.account_request_id}:2026-09-24T10:00:00')
+        assert (row.state, row.closed_reason, row.closed_at) == ('submitted', None, None)
+
+    def test_the_defaults_match_the_rows_own_values(self, session):
+        row = make_account_request(session).reject('op', 'no', clock=datetime(2026, 9, 1))
+        assert build_rejection_message(row, requested_by='op') == build_rejection_message(
+            row, requested_by='op', reason='no', closed_at=datetime(2026, 9, 1))
+
+
 class TestInviteMessage:
     SENT = datetime(2026, 9, 24, 9, 15, 30)
 

@@ -413,6 +413,7 @@ class TestResend:
         row_id, old = make_invite()
         resp = self._resend(auth_client, led_project[1], row_id)
         assert resp.status_code == 200 and 'Invitation link sent' in _html(resp)
+        assert 'closeActiveModal' in resp.headers.get('HX-Trigger', '')
         message, = mailer.messages
         assert _row(app, row_id).invite_sent_at != SENT, "a resend re-stamps"
         assert 'A newer invitation was sent' in _html(client.get(f'/register/invite/{old}'))
@@ -435,7 +436,7 @@ class TestResend:
                                                        led_project):
         row_id, _ = make_invite()
         html = _html(auth_client.get(f'/project-invitations/{led_project[1]}/invitations'))
-        assert f'/requests/{row_id}/resend-invite' in html
+        assert f'/requests/{row_id}/invite-preview' in html
         assert 'awaiting invitee' in html
 
 
@@ -504,6 +505,174 @@ class TestRosterPaste:
         with app.app_context():
             row = db.session.query(AccountRequest).filter_by(email=email).one()
             assert row.completed_at is not None and row.event_id == event_id
+
+
+# -- previews -----------------------------------------------------------------
+
+PLACEHOLDER = 'PREVIEW-link-is-created-when-sent'
+
+
+@pytest.fixture
+def no_token(monkeypatch):
+    """A preview must never sign a real link."""
+    def _boom(*_a, **_k):
+        raise AssertionError('a preview must not sign an invite token')
+    monkeypatch.setattr('webapp.register.tokens.invite_token', _boom)
+
+
+@pytest.fixture
+def no_ledger_write(monkeypatch):
+    """A preview must never write notification_log."""
+    from sam.notify.ledger import NotificationLedger
+
+    def _boom(*_a, **_k):
+        raise AssertionError('a preview must not write notification_log')
+    monkeypatch.setattr(NotificationLedger, 'record', _boom)
+
+
+def _rows_for(app, **filters):
+    from sam.core.account_requests import AccountRequest
+    from webapp.extensions import db
+    with app.app_context():
+        return db.session.query(AccountRequest).filter_by(**filters).count()
+
+
+class TestInvitePreview:
+
+    def _preview(self, auth_client, projcode, email, **extra):
+        return auth_client.post(f'/project-invitations/{projcode}/invite-preview', data={
+            'email': email, 'first_name': 'Grace', 'last_name': 'Hopper', **extra})
+
+    def test_the_form_carries_the_button_and_pane(self, auth_client, led_project):
+        html = _html(auth_client.get(f'/project-invitations/{led_project[1]}/invite-form'))
+        assert f'hx-post="/project-invitations/{led_project[1]}/invite-preview"' in html
+        assert 'id="invitePreviewPane"' in html
+
+    def test_a_new_address_previews_the_mail_and_writes_nothing(
+            self, auth_client, app, mailer, no_token, no_ledger_write, led_project):
+        email = _address()
+        resp = self._preview(auth_client, led_project[1], email, send_invite='1')
+        html = _html(resp)
+        assert resp.status_code == 200
+        assert 'You are invited to request an NCAR HPC account' in html
+        assert PLACEHOLDER in html and 'Grace Hopper' in html
+        assert 'valid for 30 days' in html
+        assert _rows_for(app, email=email) == 0
+        assert mailer.messages == []
+
+    def test_an_unticked_box_is_said(self, auth_client, no_token, led_project):
+        html = _html(self._preview(auth_client, led_project[1], _address()))
+        assert 'The box is unticked' in html
+
+    def test_a_known_user_gets_an_info_panel(self, auth_client, led_project, session):
+        from sam.core.users import User
+        me = User.get_by_username(session, 'benkirk')
+        html = _html(self._preview(auth_client, led_project[1], me.primary_email))
+        assert 'already has an active account (benkirk)' in html
+        assert 'srcdoc' not in html
+
+    def test_a_waiting_address_gets_an_info_panel(self, app, auth_client, make_invite,
+                                                  led_project):
+        row_id, _ = make_invite()
+        html = _html(self._preview(auth_client, led_project[1], _row(app, row_id).email))
+        assert 'already waiting' in html
+
+    def test_an_incomplete_form_asks_for_more(self, auth_client, led_project):
+        resp = auth_client.post(f'/project-invitations/{led_project[1]}/invite-preview',
+                                data={'email': 'x'})
+        assert resp.status_code == 200 and 'Fill in the email' in _html(resp)
+
+    def test_it_is_guarded_like_the_send(self, non_admin_client, led_project):
+        resp = non_admin_client.post(
+            f'/project-invitations/{led_project[1]}/invite-preview', data={})
+        assert resp.status_code in (302, 403)
+
+
+class TestResendPreview:
+
+    def _get(self, auth_client, projcode, row_id):
+        return auth_client.get(f'/project-invitations/{projcode}/requests/{row_id}'
+                               f'/invite-preview')
+
+    def test_it_shows_the_mail_and_a_send_button(self, app, auth_client, make_invite,
+                                                 led_project, request):
+        row_id, _ = make_invite()
+        request.getfixturevalue('no_token')     # after the fixture signed its own link
+        html = _html(self._get(auth_client, led_project[1], row_id))
+        assert PLACEHOLDER in html and 'stops working' in html
+        assert f'/requests/{row_id}/resend-invite' in html and 'Send link' in html
+        assert 'data-bs-toggle="modal"' not in html
+        assert _row(app, row_id).invite_sent_at == SENT
+
+    def test_a_completed_row_offers_no_send(self, app, auth_client, make_invite, led_project):
+        row_id, _ = make_invite()
+        _set(app, row_id, completed_at=datetime.now())
+        html = _html(self._get(auth_client, led_project[1], row_id))
+        assert 'cannot be sent an invitation link' in html
+        assert 'resend-invite' not in html
+
+    def test_a_row_of_another_project_is_not_found(self, auth_client, make_invite,
+                                                   snapshot_other):
+        row_id, _ = make_invite()
+        resp = self._get(auth_client, snapshot_other, row_id)
+        assert resp.status_code == 200 and 'not found' in _html(resp)
+
+
+class TestRosterPreview:
+
+    def _preview(self, auth_client, code, roster, admin=False, **extra):
+        url = (f'/admin/htmx/events/{code}/roster-preview' if admin
+               else f'/project-invitations/events/{code}/roster-preview')
+        return auth_client.post(url, data={'roster': roster, **extra})
+
+    def test_the_form_carries_the_button_and_pane(self, auth_client, make_event):
+        code, _ = make_event()
+        html = _html(auth_client.get(f'/project-invitations/events/{code}/roster-form'))
+        assert f'/project-invitations/events/{code}/roster-preview' in html
+        assert 'id="rosterPreviewPane"' in html
+
+    def test_it_counts_outcomes_and_writes_nothing(
+            self, auth_client, app, mailer, no_token, no_ledger_write, make_event, session):
+        from sam.core.account_requests import EventEnrollment
+        from sam.core.users import User
+        from webapp.extensions import db
+        code, event_id = make_event()
+        me = User.get_by_username(session, 'benkirk')
+        first, second = _address(), _address()
+        roster = (f'Ada Lovelace <{first}>\nAlan Turing <{second}>\n'
+                  f'Ben Kirk <{me.primary_email}>')
+        html = _html(self._preview(auth_client, code, roster, send_invite='1'))
+        assert '3 people: 2 get a link, 1 already known (enrolled, no email).' in html
+        assert 'name="preview_recipient"' in html
+        assert _rows_for(app, event_id=event_id) == 0
+        with app.app_context():
+            assert db.session.query(EventEnrollment).filter_by(event_id=event_id).count() == 0
+        assert mailer.messages == []
+
+    def test_the_picker_round_trips(self, auth_client, no_token, make_event):
+        code, _ = make_event()
+        first, second = _address(), _address()
+        roster = f'Ada Lovelace <{first}>\nAlan Turing <{second}>'
+        html = _html(self._preview(auth_client, code, roster, preview_recipient=second))
+        assert '<option value="1" selected' in html
+        assert second in html.split('>To<')[1].split('</div>')[0]
+
+    def test_the_admin_copy_previews_too(self, auth_client, no_token, make_event):
+        code, _ = make_event()
+        html = _html(self._preview(auth_client, code, f'Ada Lovelace <{_address()}>',
+                                   admin=True))
+        assert PLACEHOLDER in html
+
+    def test_links_off_is_explained(self, auth_client, app, make_event, monkeypatch):
+        code, _ = make_event()
+        monkeypatch.setitem(app.config, 'ACCOUNT_INVITATIONS_ENABLED', False)
+        html = _html(self._preview(auth_client, code, 'Ada Lovelace <a@b.edu>', admin=True))
+        assert 'Invitation links are off' in html
+
+    def test_bad_lines_are_named(self, auth_client, make_event):
+        code, _ = make_event()
+        html = _html(self._preview(auth_client, code, 'just-an-address@example.edu'))
+        assert 'Fix these lines first' in html and 'line 1' in html
 
 
 # -- invitation-only events ---------------------------------------------------

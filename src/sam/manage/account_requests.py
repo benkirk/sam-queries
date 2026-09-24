@@ -31,6 +31,7 @@ from . import add_user_to_project
 OUTCOME_ADDED = 'added'          # SAM already knew the address: member now
 OUTCOME_QUEUED = 'queued'        # a new row for NUSD
 OUTCOME_DUPLICATE = 'duplicate'  # an open row for this address + project exists
+OUTCOME_AMBIGUOUS = 'ambiguous'  # two active holders: invite_user refuses
 
 
 def _open_request_for(session: Session, email: str,
@@ -42,6 +43,37 @@ def _open_request_for(session: Session, email: str,
     if project_id is not None:
         query = query.filter(AccountRequest.project_id == project_id)
     return query.first()
+
+
+def invite_outcomes(session: Session, project_id: Optional[int],
+                    emails: Iterable[str]) -> Dict[str, Tuple[str, Optional[str]]]:
+    """``{email: (outcome, username)}``: what :func:`invite_user` would do, read-only.
+
+    ``username`` is the active holder for ``added`` and the inactive holder
+    (named in the queued row's comment) for ``queued``. Two batched queries.
+    """
+    addresses = list(dict.fromkeys(e.strip().lower() for e in emails if e))
+    if not addresses:
+        return {}
+    targets = sam_merge_targets(session, addresses)
+    query = session.query(AccountRequest.email).filter(
+        AccountRequest.email.in_(addresses), AccountRequest.is_open,
+        AccountRequest.user_id.is_(None))
+    if project_id is not None:
+        query = query.filter(AccountRequest.project_id == project_id)
+    waiting = {email.lower() for (email,) in query.all()}
+    out: Dict[str, Tuple[str, Optional[str]]] = {}
+    for address in addresses:
+        target = targets.get(address)
+        if target and target.get('ambiguous'):
+            out[address] = (OUTCOME_AMBIGUOUS, None)
+        elif target and target['active']:
+            out[address] = (OUTCOME_ADDED, target['username'])
+        elif address in waiting:
+            out[address] = (OUTCOME_DUPLICATE, None)
+        else:
+            out[address] = (OUTCOME_QUEUED, target['username'] if target else None)
+    return out
 
 
 def enroll_user_in_event(session: Session, *, event: AccountRequestEvent,
@@ -71,25 +103,24 @@ def invite_user(session: Session, *, project_id: int, sponsor: User, email: str,
     the sponsor should pick the user by name.
     """
     address = email.strip().lower()
-    target = sam_merge_targets(session, [address]).get(address)
-    if target and target.get('ambiguous'):
+    outcome, username = invite_outcomes(session, project_id, [address])[address]
+    if outcome == OUTCOME_AMBIGUOUS:
         raise ValueError(
             f'{address} belongs to more than one active SAM user; add the '
             f'member by username instead')
-    if target and target['active']:
-        user = User.get_by_username(session, target['username'])
+    if outcome == OUTCOME_ADDED:
+        user = User.get_by_username(session, username)
         if event is not None:
             enroll_user_in_event(session, event=event, user=user, source=source,
                                  by=sponsor.username, clock=clock)
         else:
             add_user_to_project(session, project_id, user.user_id)
         return OUTCOME_ADDED, user
-    existing = _open_request_for(session, address, project_id)
-    if existing is not None:
-        return OUTCOME_DUPLICATE, existing
+    if outcome == OUTCOME_DUPLICATE:
+        return OUTCOME_DUPLICATE, _open_request_for(session, address, project_id)
     comment = note
-    if target:
-        held = f'SAM holds this address on inactive account {target["username"]}'
+    if username:
+        held = f'SAM holds this address on inactive account {username}'
         comment = f'{note}\n{held}' if note else held
     row = AccountRequest.create(
         session,

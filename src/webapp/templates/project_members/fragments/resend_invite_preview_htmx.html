@@ -1,0 +1,40 @@
+{#
+  Send or resend an invitation link: the preview, then Send. Lands in
+  #invitationFormContainer; the tab's button opened the modal while it was
+  closed, so nothing here toggles it. Send posts with hx-swap="none" and a
+  delivered link closes the modal.
+
+  Context: project, row (AccountRequest or None), and email_preview_context()
+           when the row can be sent a link.
+#}
+<h5 class="modal-title" id="invitationModalLabel" hx-swap-oob="true">
+    <i class="fa-solid fa-paper-plane"></i>
+    {{ 'Resend' if row and row.invite_sent_at else 'Send' }} an invitation link
+</h5>
+
+<div class="modal-body">
+    {% if p %}
+    <div id="resendPreviewPane">
+        {% include 'dashboards/fragments/email_preview_pane.html' %}
+    </div>
+    {% elif row %}
+    <div class="alert alert-info small mb-0">
+        <i class="fa-solid fa-circle-info me-1"></i>{{ row.email }} cannot be sent an invitation link now.
+    </div>
+    {% else %}
+    <div class="alert alert-warning small mb-0">
+        <i class="fa-solid fa-circle-info me-1"></i>Invitation not found.
+    </div>
+    {% endif %}
+</div>
+
+<div class="modal-footer">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+    {% if p %}
+    <button type="button" class="btn btn-primary"
+            hx-post="{{ url_for('project_invites.htmx_resend_invite', projcode=project.projcode, request_id=row.account_request_id) }}"
+            hx-swap="none">
+        <i class="fa-solid fa-paper-plane me-1"></i>Send link
+    </button>
+    {% endif %}
+</div>

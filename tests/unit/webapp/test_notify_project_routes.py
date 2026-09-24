@@ -83,7 +83,7 @@ def test_the_recipient_picker_round_trips(auth_client, active_project, monkeypat
     html = auth_client.get(url, query_string={
         'action': 'activated', 'preview_recipient': 'admin@example.edu',
     }).get_data(as_text=True)
-    assert '<option value="admin@example.edu" selected' in html
+    assert '<option value="1" selected' in html
     assert 'Active (admin)' in html
 
 

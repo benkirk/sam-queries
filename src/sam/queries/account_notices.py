@@ -146,19 +146,24 @@ def build_verify_message(row: AccountRequest, *, verify_url: str, code: str,
 
 
 def build_rejection_message(row: AccountRequest, *, requested_by: str,
-                            event_name: str = '', project_code: str = '') -> Message:
+                            event_name: str = '', project_code: str = '',
+                            reason: Optional[str] = None,
+                            closed_at: Optional[datetime] = None) -> Message:
     """The notice an operator chose to send on Reject. The address is verified
     or sponsor-vouched, so naming the person and echoing the operator's reason
     is fine here (the "nothing typed" rule is the verify mail's). Keyed on the
-    closure time, so a reopen and a second reject can notify again."""
-    closed = (row.closed_at.isoformat(timespec='seconds') if row.closed_at else 'open')
+    closure time, so a reopen and a second reject can notify again.
+    ``reason`` / ``closed_at`` default to the row's; a preview passes them."""
+    closed_at = closed_at or row.closed_at
+    closed = closed_at.isoformat(timespec='seconds') if closed_at else 'open'
+    reason = row.closed_reason if reason is None else reason
     return Message(
         kind='account_rejected',
         recipient=Recipient(row.email, name=row.display_name, role='user'),
         subject=ACCOUNT_KIND_SUBJECTS['account_rejected'],
         context={
             'name': row.display_name,
-            'reason': row.closed_reason or '',
+            'reason': reason or '',
             'event_name': event_name or '',
             'project_code': project_code or '',
         },

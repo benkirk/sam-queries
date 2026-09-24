@@ -1857,3 +1857,119 @@ class TestOverlapGroups:
         groups = _group_by_period(rows, ('end_date', 'created'))
         assert [g['resource_names'] for g in groups] == [['A', 'B'], ['C'], ['D']]
         assert groups[0]['created'] == datetime(2026, 9, 22).date()
+
+
+# ---------------------------------------------------------------------------
+# The preview's plan: computed before the write, it must equal what the write
+# puts in ``touched`` (the rows the renewal notice names).
+# ---------------------------------------------------------------------------
+
+
+def _sig(allocs):
+    return sorted((a.account.project_id, a.account.resource_id, float(a.amount),
+                   a.start_date, a.end_date) for a in allocs)
+
+
+class TestPlanMatchesTouched:
+
+    def _renew(self, session, root, rids, user, **kw):
+        from sam.manage.renew import plan_renew_allocations
+        args = dict(root_project_id=root.project_id,
+                    source_active_at=kw.pop('source_active_at', SRC_ACTIVE_AT),
+                    new_start=NEW_START, new_end=NEW_END, resource_ids=rids, **kw)
+        plan = _sig(plan_renew_allocations(session, **args))
+        assert not session.new and not session.dirty, 'the plan must not write'
+        touched = []
+        renew_project_allocations(session, user_id=user.user_id, touched=touched, **args)
+        session.flush()
+        return plan, _sig(touched)
+
+    def _extend(self, session, root, rids, user, new_end=EXTENDED_END):
+        from sam.manage.extend import plan_extend_allocations
+        args = dict(root_project_id=root.project_id, source_active_at=SRC_ACTIVE_AT,
+                    new_end=new_end, resource_ids=rids)
+        plan = _sig(plan_extend_allocations(session, **args))
+        assert not session.new and not session.dirty, 'the plan must not write'
+        touched = []
+        extend_project_allocations(session, user_id=user.user_id,
+                                   touched=touched, **args)
+        return plan, _sig(touched)
+
+    def test_renew_standalone(self, session, standalone_project, derecho, acting_user):
+        _seed_standalone_source(session, standalone_project, derecho)
+        plan, touched = self._renew(session, standalone_project, [derecho.resource_id],
+                                    acting_user)
+        assert plan == touched and len(plan) == 1
+
+    def test_renew_inheriting_tree(self, session, tree_root_with_children, derecho,
+                                   acting_user):
+        _seed_inheriting_tree(session, tree_root_with_children, derecho)
+        plan, touched = self._renew(session, tree_root_with_children,
+                                    [derecho.resource_id], acting_user)
+        assert plan == touched and len(plan) == 4
+
+    def test_renew_divergent_tree_scaled(self, session, tree_root_with_children, derecho,
+                                         acting_user):
+        _seed_divergent_tree(session, tree_root_with_children, derecho)
+        plan, touched = self._renew(session, tree_root_with_children,
+                                    [derecho.resource_id], acting_user,
+                                    scales={derecho.resource_id: 0.4567})
+        assert plan == touched and len(plan) == 4
+
+    def test_renew_child_only_anchors(self, session, child_only_tree, derecho, casper,
+                                      acting_user):
+        plan, touched = self._renew(session, child_only_tree['root'],
+                                    [derecho.resource_id, casper.resource_id], acting_user)
+        assert plan == touched and len(plan) == 3
+
+    @pytest.mark.parametrize('replace', [False, True])
+    def test_renew_over_an_existing_renewal(self, session, tree_root_with_children,
+                                            derecho, acting_user, replace):
+        _seed_inheriting_tree(session, tree_root_with_children, derecho)
+        self._renew(session, tree_root_with_children, [derecho.resource_id], acting_user)
+        session.expire_all()
+        plan, touched = self._renew(session, tree_root_with_children,
+                                    [derecho.resource_id], acting_user,
+                                    replace_existing=replace)
+        assert plan == touched and len(plan) == (4 if replace else 0)
+
+    @pytest.mark.parametrize('replace', [False, True])
+    def test_renew_fy_crossing_inheriting_tree(self, session, tree_root_with_children,
+                                               derecho, acting_user, replace):
+        """The master's truncation cascades into the children mid-write; the
+        plan, which sees none of it, must still name the same rows."""
+        _seed_inheriting_tree(session, tree_root_with_children, derecho,
+                              start=FY_SRC_START, end=FY_SRC_END)
+        plan, touched = self._renew(session, tree_root_with_children,
+                                    [derecho.resource_id], acting_user,
+                                    source_active_at=FY_SRC_ACTIVE_AT,
+                                    replace_existing=replace)
+        assert plan == touched and len(plan) == (4 if replace else 0)
+
+    def test_extend_inheriting_tree(self, session, tree_root_with_children, derecho,
+                                    acting_user):
+        _seed_inheriting_tree(session, tree_root_with_children, derecho)
+        plan, touched = self._extend(session, tree_root_with_children,
+                                     [derecho.resource_id], acting_user)
+        assert plan == touched and len(plan) == 4
+
+    def test_extend_divergent_and_child_only(self, session, child_only_tree, derecho,
+                                             casper, acting_user):
+        plan, touched = self._extend(session, child_only_tree['root'],
+                                     [derecho.resource_id, casper.resource_id],
+                                     acting_user)
+        assert plan == touched and len(plan) == 3
+
+    def test_extend_open_ended_plans_nothing(self, session, standalone_project, derecho,
+                                             acting_user):
+        _seed_standalone_source(session, standalone_project, derecho, end=None)
+        plan, touched = self._extend(session, standalone_project, [derecho.resource_id],
+                                     acting_user)
+        assert plan == touched == []
+
+    def test_extend_already_long_plans_nothing(self, session, standalone_project,
+                                               derecho, acting_user):
+        _seed_standalone_source(session, standalone_project, derecho)
+        plan, touched = self._extend(session, standalone_project, [derecho.resource_id],
+                                     acting_user, new_end=SRC_END)
+        assert plan == touched == []

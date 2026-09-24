@@ -8,7 +8,7 @@ one line naming the actor: the table has no ``modified_by``.
 """
 
 import logging
-from datetime import date
+from datetime import date, datetime
 
 from flask import current_app, request, url_for
 from flask_login import current_user
@@ -18,7 +18,8 @@ from sam.core.account_requests import AccountRequest, AccountRequestEvent
 from sam.core.users import User
 from sam.manage import management_transaction
 from sam.manage.account_requests import (
-    OUTCOME_ADDED, OUTCOME_DUPLICATE, OUTCOME_QUEUED, parse_roster, paste_roster,
+    OUTCOME_ADDED, OUTCOME_AMBIGUOUS, OUTCOME_DUPLICATE, OUTCOME_QUEUED,
+    invite_outcomes, parse_roster, paste_roster,
 )
 from sam.queries.account_requests import upcoming_listed_events
 from sam.schemas.forms import (
@@ -26,6 +27,7 @@ from sam.schemas.forms import (
 )
 from sam.schemas.forms.account_requests import PAST_DEADLINE_MSG, deadline_notice
 from webapp.extensions import cache, db
+from webapp.utils.email_preview import render_email_preview, render_preview_info
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import htmx_success, htmx_success_message
 from webapp.utils.project_permissions import can_create_events
@@ -194,12 +196,62 @@ def switch_event(event, verb, triggers):
         triggers, f'{event.event_code} {"closed" if verb == "close" else "reopened"}.')
 
 
+def roster_preview(event, preview_url):
+    """The invitation a pasted roster would send, for the picked new person.
+
+    Read-only: classifies with ``invite_outcomes`` and renders transient rows,
+    so nothing is created, enrolled or signed.
+    """
+    from webapp.register.invite_mail import (   # webapp.register imports this module
+        invite_messages, placeholder_link, preview_invite_rows)
+    if not current_app.config.get('ACCOUNT_INVITATIONS_ENABLED', False):
+        return render_preview_info('Invitation links are off on this deployment: '
+                                   'a pasted roster is queued and nobody is mailed.')
+    try:
+        data = RosterPasteForm().load(request.form)
+    except ValidationError:
+        return render_preview_info('Paste at least one "Name <email>" line to preview.')
+    entries, errors = parse_roster(data['roster'])
+    if errors:
+        return render_preview_info('Fix these lines first: ' + '; '.join(errors[:5]),
+                                   'warning')
+    if not entries:
+        return render_preview_info('No people found; one "Name <email>" per line.')
+    outcomes = invite_outcomes(db.session, event.project_id, [e['email'] for e in entries])
+    by = {}
+    for e in entries:
+        by.setdefault(outcomes[e['email']][0], []).append(e)
+    queued = by.get(OUTCOME_QUEUED, [])
+    parts = [f'{len(queued)} get a link']
+    if by.get(OUTCOME_ADDED):
+        parts.append(f'{len(by[OUTCOME_ADDED])} already known (enrolled, no email)')
+    if by.get(OUTCOME_DUPLICATE):
+        parts.append(f'{len(by[OUTCOME_DUPLICATE])} already waiting')
+    if by.get(OUTCOME_AMBIGUOUS):
+        parts.append(f'{len(by[OUTCOME_AMBIGUOUS])} on more than one account (refused)')
+    header = f'{len(entries)} people: ' + ', '.join(parts) + '.'
+    if not queued:
+        return render_preview_info(header + ' Nobody new gets a link.')
+    rows = preview_invite_rows(queued, project_id=event.project_id,
+                               sponsor=db.session.get(User, current_user.user_id),
+                               event=event)
+    notes = [header, 'Each link is created when you click Invite everyone.']
+    if not data.get('send_invite'):
+        notes.append('The box is unticked: Invite everyone queues them and mails nobody.')
+    return render_email_preview(
+        invite_messages(rows, sent_at=datetime.now(), requested_by=_actor(),
+                        link_for=placeholder_link),
+        id_prefix='rosterPreview', pane_id='rosterPreviewPane',
+        picker_url=preview_url, notes=notes)
+
+
 class RosterHandler(HtmxFormHandler):
     """Paste a roster under ``self.event``. Subclasses name ``post_endpoint``
-    (takes ``event_code``) and the success ``triggers``."""
+    and ``preview_endpoint`` (both take ``event_code``) and the ``triggers``."""
     schema_cls = RosterPasteForm
     template = ROSTER_FORM
     post_endpoint = None
+    preview_endpoint = None
     triggers = {}
 
     def clean(self, data):
@@ -241,7 +293,9 @@ class RosterHandler(HtmxFormHandler):
     def context(self):
         return {'project': self.project, 'event': self.event,
                 'post_url': url_for(self.post_endpoint,
-                                    event_code=self.event.event_code)}
+                                    event_code=self.event.event_code),
+                'preview_url': url_for(self.preview_endpoint,
+                                       event_code=self.event.event_code)}
 
     def on_success(self, result):
         # The summary replaces the form inside the still-open modal: an

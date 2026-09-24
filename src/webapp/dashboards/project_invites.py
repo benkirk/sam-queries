@@ -11,16 +11,21 @@ MANAGE_ACCOUNT_REQUESTS (MANAGE_EVENTS for an event's own lifecycle). Design: do
 """
 
 import logging
+from datetime import datetime
 
 from flask import Blueprint, current_app, render_template, request, url_for
 from flask_login import current_user, login_required
+from marshmallow import ValidationError
 
+from sam import fmt
 from sam.core.account_requests import OPEN_STATES, AccountRequest, AccountRequestEvent
 from sam.core.users import User
 from sam.manage.account_requests import (
     OUTCOME_ADDED,
+    OUTCOME_AMBIGUOUS,
     OUTCOME_DUPLICATE,
     OUTCOME_QUEUED,
+    invite_outcomes,
     invite_user,
 )
 from sam.queries.account_requests import (
@@ -34,10 +39,16 @@ from webapp.api.access_control import (
 )
 from webapp.dashboards.event_lifecycle import (
     EVENT_FORM, ROSTER_FORM, EventCreateHandler, EventEditHandler, RosterHandler,
-    date_floor, sponsor_context, switch_event,
+    date_floor, roster_preview, sponsor_context, switch_event,
 )
 from webapp.extensions import db
-from webapp.register.invite_mail import DELIVERED, can_send_invite, send_invite_links
+from webapp.register.invite_mail import (
+    DELIVERED, can_send_invite, invite_messages, placeholder_link, preview_invite_rows,
+    send_invite_links,
+)
+from webapp.utils.email_preview import (
+    email_preview_context, render_email_preview, render_preview_info,
+)
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import (
     htmx_not_found, htmx_success, htmx_success_message, institution_options,
@@ -50,6 +61,7 @@ bp = Blueprint('project_invites', __name__, url_prefix='/project-invitations')
 
 _TAB = 'project_members/fragments/invitations_tab_htmx.html'
 _INVITE_FORM = 'project_members/fragments/invite_form_htmx.html'
+_RESEND_PREVIEW = 'project_members/fragments/resend_invite_preview_htmx.html'
 _FORM_TARGET = '#invitationFormContainer'
 _TRIGGERS = {'closeActiveModal': {}, 'refreshInvitations': {}, 'refreshAccountQueue': {}}
 
@@ -173,7 +185,9 @@ class _InviteUserHandler(HtmxFormHandler):
         return {'project': self.project, 'events': events, 'invite_ttl_days': _ttl_days(),
                 'default_event_code': _default_event_code(events),
                 'post_url': url_for('project_invites.htmx_invite_user',
-                                    projcode=self.project.projcode)}
+                                    projcode=self.project.projcode),
+                'preview_url': url_for('project_invites.htmx_invite_preview',
+                                       projcode=self.project.projcode)}
 
     def on_success(self, result):
         outcome, obj = result
@@ -215,7 +229,9 @@ def htmx_invite_form(project):
                            invite_ttl_days=_ttl_days(),
                            default_event_code=_default_event_code(events),
                            post_url=url_for('project_invites.htmx_invite_user',
-                                            projcode=project.projcode), errors=[])
+                                            projcode=project.projcode),
+                           preview_url=url_for('project_invites.htmx_invite_preview',
+                                               projcode=project.projcode), errors=[])
 
 
 @bp.route('/<projcode>/invite', methods=['POST'])
@@ -225,13 +241,78 @@ def htmx_invite_user(project):
     return _InviteUserHandler(project=project).handle()
 
 
+_NO_INVITE_MAIL = {
+    OUTCOME_ADDED: ('{email} already has an active account ({username}): Invite '
+                    'adds them to {projcode} at once and sends no email.', 'info'),
+    OUTCOME_DUPLICATE: ('{email} is already waiting on {projcode}: Invite adds '
+                        'nothing and sends no email.', 'info'),
+    OUTCOME_AMBIGUOUS: ('{email} belongs to more than one active SAM user: add '
+                        'the member by username instead.', 'warning'),
+}
+
+
+@bp.route('/<projcode>/invite-preview', methods=['POST'])
+@login_required
+@_GUARD
+def htmx_invite_preview(project):
+    """The invitation Invite would send, from the form as typed. Writes nothing."""
+    try:
+        data = InviteUserForm().load(request.form)
+    except ValidationError:
+        return render_preview_info('Fill in the email and both names to preview '
+                                   'the invitation.')
+    event = _event_for(project, data.get('event_code'))
+    if data.get('event_code') and event is None:
+        return render_preview_info(f'{data["event_code"]} is not an event on '
+                                   f'{project.projcode}.', 'warning')
+    email = data['email']
+    outcome, username = invite_outcomes(db.session, project.project_id, [email])[email]
+    if outcome != OUTCOME_QUEUED:
+        text, level = _NO_INVITE_MAIL[outcome]
+        return render_preview_info(
+            text.format(email=email, username=username, projcode=project.projcode), level)
+    rows = preview_invite_rows([data], project_id=project.project_id,
+                               sponsor=_sponsor(), event=event)
+    notes = [f'The link is created when you click Invite and is valid for '
+             f'{_ttl_days()} days.']
+    if not data.get('send_invite'):
+        notes.append('The box is unticked: Invite queues the request and sends no email.')
+    return render_email_preview(
+        invite_messages(rows, sent_at=datetime.now(), requested_by=current_user.username,
+                        link_for=placeholder_link),
+        id_prefix='invitePreview', pane_id='invitePreviewPane', notes=notes)
+
+
+def _resend_target(project, request_id):
+    row = db.session.get(AccountRequest, request_id)
+    return row if row is not None and row.project_id == project.project_id else None
+
+
+@bp.route('/<projcode>/requests/<int:request_id>/invite-preview')
+@login_required
+@_GUARD
+def htmx_resend_invite_preview(project, request_id):
+    """Modal body: the link mail as Send link would mail it, plus Send."""
+    row = _resend_target(project, request_id)
+    pane = None
+    if row is not None and can_send_invite(row):
+        notes = ([f'The link sent {fmt.date_str(row.invite_sent_at)} stops working '
+                  'when you send this one.'] if row.invite_sent_at else [])
+        pane = email_preview_context(
+            invite_messages([row], sent_at=datetime.now(),
+                            requested_by=current_user.username,
+                            link_for=placeholder_link),
+            id_prefix='resendPreview', pane_id='resendPreviewPane', notes=notes)
+    return render_template(_RESEND_PREVIEW, project=project, row=row, **(pane or {}))
+
+
 @bp.route('/<projcode>/requests/<int:request_id>/resend-invite', methods=['POST'])
 @login_required
 @_GUARD
 def htmx_resend_invite(project, request_id):
     """Mail a fresh link; re-stamping ``invite_sent_at`` voids every older one."""
-    row = db.session.get(AccountRequest, request_id)
-    if row is None or row.project_id != project.project_id:
+    row = _resend_target(project, request_id)
+    if row is None:
         return htmx_not_found('Invitation')
     if not can_send_invite(row):
         return _toast_error(f'{row.email} cannot be sent an invitation link now.')
@@ -239,8 +320,9 @@ def htmx_resend_invite(project, request_id):
     logger.info('invite link for request %s: %s by %s', row.account_request_id,
                 result.status, current_user.username)
     if result.status in DELIVERED:
-        return htmx_success_message({'refreshInvitations': {}, 'refreshAccountQueue': {}},
-                                    f'Invitation link {result.status} to {row.email}.')
+        return htmx_success_message(
+            {'closeActiveModal': {}, 'refreshInvitations': {}, 'refreshAccountQueue': {}},
+            f'Invitation link {result.status} to {row.email}.')
     return _toast_error(_invite_detail(result, row))
 
 
@@ -327,6 +409,7 @@ def htmx_event_reopen(event, project):
 
 class _RosterHandler(RosterHandler):
     post_endpoint = 'project_invites.htmx_roster_paste'
+    preview_endpoint = 'project_invites.htmx_roster_preview'
     triggers = {'refreshInvitations': {}, 'refreshAccountQueue': {}}
 
 
@@ -336,7 +419,9 @@ class _RosterHandler(RosterHandler):
 def htmx_roster_form(event, project):
     return render_template(ROSTER_FORM, project=project, event=event,
                            post_url=url_for('project_invites.htmx_roster_paste',
-                                            event_code=event.event_code), errors=[])
+                                            event_code=event.event_code),
+                           preview_url=url_for('project_invites.htmx_roster_preview',
+                                               event_code=event.event_code), errors=[])
 
 
 @bp.route('/events/<event_code>/roster', methods=['POST'])
@@ -344,3 +429,11 @@ def htmx_roster_form(event, project):
 @_EVENT_GUARD
 def htmx_roster_paste(event, project):
     return _RosterHandler(event=event, project=project).handle()
+
+
+@bp.route('/events/<event_code>/roster-preview', methods=['POST'])
+@login_required
+@_EVENT_GUARD
+def htmx_roster_preview(event, project):
+    return roster_preview(event, url_for('project_invites.htmx_roster_preview',
+                                         event_code=event.event_code))

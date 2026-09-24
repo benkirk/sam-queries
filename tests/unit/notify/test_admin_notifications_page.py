@@ -226,6 +226,11 @@ class TestTheEditorFragment:
         assert 'kind=expiration' in html
         assert 'hx-swap-oob="true"' in html
 
+    def test_the_picker_badges_only_customized_rows(self, auth_client):
+        html = auth_client.get(EDITOR).data.decode()
+        picker = html[html.index('id="templatePicker"'):]
+        assert '>default</span>' not in picker
+
     def test_the_source_is_editable_and_the_default_has_no_reset(self, auth_client):
         html = auth_client.get(EDITOR).data.decode()
         assert 'readonly' not in html

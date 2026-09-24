@@ -25,8 +25,9 @@ date, which mirrors the "Active At" filter on the Admin > Edit Project >
 Allocations tab: renew renews what the admin sees.
 """
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -42,6 +43,7 @@ from sam.manage.allocations import (
     update_allocation,
     validate_allocation_dates,
 )
+from sam.base import normalize_end_date
 
 
 __all__ = [
@@ -50,6 +52,8 @@ __all__ = [
     'find_renew_anchors',
     'find_child_only_resources',
     'renew_project_allocations',
+    'plan_renew_allocations',
+    'PlannedAllocation',
     'analyze_renew_preconditions',
     'analyze_renew_overlap',
 ]
@@ -429,131 +433,95 @@ def _group_by_period(rows: List[Dict[str, object]], keys) -> List[Dict[str, obje
     return list(groups.values())
 
 
-def _renew_subtree(
-    session: Session,
-    anchor: Project,
-    source: Allocation,
+@dataclass(frozen=True)
+class PlannedAllocation:
+    """An allocation a Renew or Extend would leave behind; never persisted.
+
+    Carries the attributes the renewal notice reads (``account``, ``amount``,
+    ``end_date``), so a preview can build the same message the write does.
+    """
+
+    account: Any
+    amount: float
+    start_date: datetime
+    end_date: Optional[datetime]
+
+
+@dataclass(frozen=True)
+class _RenewStep:
+    project: Project
+    source: Allocation
+    overlaps: bool          # the target account already overlaps the new period
+    is_anchor: bool
+
+
+def _renew_steps(
+    root_project: Project,
     resource_id: int,
     *,
     source_active_at: datetime,
     new_start: datetime,
     new_end: datetime,
-    user_id: int,
-    scale: float,
     replace_existing: bool,
-    touched: Optional[List[Allocation]],
-) -> Optional[Allocation]:
-    """Renew one anchor's allocation and every descendant source under it.
+) -> Iterator[_RenewStep]:
+    """The rows a Renew of one resource creates, anchors first then each
+    anchor's descendants (DFS pre-order). Read-only and LAZY: the write
+    mutates between steps and later steps see it; a plan sees none of it.
 
-    Returns the new anchor allocation, or None when the anchor already
-    overlaps the new period and ``replace_existing`` is off.
+    An overlapping target is skipped unless ``replace_existing``; an
+    overlapping anchor skips its whole subtree.
     """
-    if _account_has_overlapping_alloc(anchor, resource_id, new_start, new_end):
-        if not replace_existing:
-            # Already renewed — nothing to do for this subtree.
-            return None
-        # Superseded rows are NOT added to ``touched`` — that list drives
-        # the "renewed" notice, which should name only the new rows.
-        _truncate_overlapping_allocs(
-            session, anchor, resource_id, new_start, new_end, user_id,
-        )
-
-    # Scale + round to SAM_SIG_FIGS (allocations are human-defined at
-    # ~3 sig figs). Guarded so scale=1.0 renewals stay byte-identical
-    # to pre-scale behavior.
-    scaled_amount = source.amount * scale
-    if scale != 1.0:
-        scaled_amount = round_to_sig_figs(scaled_amount)
-
-    # One row via the model classmethod plus exactly ONE RENEW transaction;
-    # manage.create_allocation() would add a second (CREATE) audit row.
-    new_anchor = Allocation.create(
-        session,
-        project_id=anchor.project_id,
-        resource_id=resource_id,
-        amount=scaled_amount,
-        start_date=new_start,
-        end_date=new_end,
-        description=source.description,
-        allow_zero=True,  # mirror a 0-amount source (e.g. a 0 reserve)
-    )
-    log_allocation_transaction(
-        session,
-        new_anchor,
-        user_id,
-        AllocationTransactionType.RENEW,
-        comment=(
-            f"Renewed from allocation #{source.allocation_id} "
-            f"({source.start_date.strftime('%Y-%m-%d')} → "
-            f"{source.end_date.strftime('%Y-%m-%d') if source.end_date else 'open'})"
-            + (f" — scaled ×{scale:g}" if scale != 1.0 else "")
-        ),
-        old_values={},
-    )
-    if touched is not None:
-        touched.append(new_anchor)
-
-    # project_id -> new allocation_id (for re-wiring inheriting children).
-    alloc_map: Dict[int, int] = {anchor.project_id: new_anchor.allocation_id}
-
-    for descendant in anchor.get_descendants():
-        if not descendant.active:
+    for anchor, source in find_renew_anchors(root_project, resource_id, source_active_at):
+        overlaps = _account_has_overlapping_alloc(anchor, resource_id, new_start, new_end)
+        if overlaps and not replace_existing:
             continue
-
-        source_child = find_source_alloc_at(
-            descendant, resource_id, source_active_at
-        )
-        if source_child is None:
-            continue
-
-        if _account_has_overlapping_alloc(
-            descendant, resource_id, new_start, new_end
-        ):
-            if not replace_existing:
+        yield _RenewStep(anchor, source, overlaps, True)
+        for descendant in anchor.get_descendants():
+            if not descendant.active:
                 continue
-            _truncate_overlapping_allocs(
-                session, descendant, resource_id, new_start, new_end, user_id,
-            )
+            source_child = find_source_alloc_at(descendant, resource_id, source_active_at)
+            if source_child is None:
+                continue
+            overlaps = _account_has_overlapping_alloc(
+                descendant, resource_id, new_start, new_end)
+            if overlaps and not replace_existing:
+                continue
+            yield _RenewStep(descendant, source_child, overlaps, False)
 
-        if source_child.is_inheriting:
-            new_parent_id = alloc_map.get(descendant.parent_id)
-            propagated = new_parent_id is not None
-        else:
-            new_parent_id = None
-            propagated = False
 
-        scaled_child_amount = source_child.amount * scale
-        if scale != 1.0:
-            scaled_child_amount = round_to_sig_figs(scaled_child_amount)
+def _scaled_amount(amount: float, scale: float) -> float:
+    """Scale and round to SAM_SIG_FIGS; ``scale == 1.0`` stays byte-identical."""
+    scaled = amount * scale
+    return round_to_sig_figs(scaled) if scale != 1.0 else scaled
 
-        new_child = Allocation.create(
-            session,
-            project_id=descendant.project_id,
-            resource_id=resource_id,
-            amount=scaled_child_amount,
-            start_date=new_start,
-            end_date=new_end,
-            description=source_child.description,
-            parent_allocation_id=new_parent_id,
-            allow_zero=True,  # mirror a 0-amount source (e.g. a 0 reserve)
-        )
-        log_allocation_transaction(
-            session,
-            new_child,
-            user_id,
-            AllocationTransactionType.RENEW,
-            comment=(
-                f"Renewed from allocation #{source_child.allocation_id}"
-                + (f" — scaled ×{scale:g}" if scale != 1.0 else "")
-            ),
-            old_values={},
-            propagated=propagated,
-        )
-        alloc_map[descendant.project_id] = new_child.allocation_id
-        if touched is not None:
-            touched.append(new_child)
 
-    return new_anchor
+def plan_renew_allocations(
+    session: Session,
+    *,
+    root_project_id: int,
+    source_active_at: datetime,
+    new_start: datetime,
+    new_end: datetime,
+    resource_ids: List[int],
+    scales: Optional[Dict[int, float]] = None,
+    replace_existing: bool = False,
+) -> List[PlannedAllocation]:
+    """What :func:`renew_project_allocations` would put in ``touched``. Writes nothing."""
+    root_project = session.get(Project, root_project_id)
+    if root_project is None:
+        raise ValueError(f"Project {root_project_id} not found")
+    scales = scales or {}
+    return [
+        PlannedAllocation(account=step.source.account,
+                          amount=_scaled_amount(step.source.amount,
+                                                scales.get(resource_id, 1.0)),
+                          start_date=new_start, end_date=normalize_end_date(new_end))
+        for resource_id in set(resource_ids)
+        for step in _renew_steps(root_project, resource_id,
+                                 source_active_at=source_active_at,
+                                 new_start=new_start, new_end=new_end,
+                                 replace_existing=replace_existing)
+    ]
 
 
 def renew_project_allocations(
@@ -610,19 +578,65 @@ def renew_project_allocations(
     scales = scales or {}
     created: List[Allocation] = []
     for resource_id in set(resource_ids):
-        for anchor, source in find_renew_anchors(
-            root_project, resource_id, source_active_at
-        ):
-            new_anchor = _renew_subtree(
-                session, anchor, source, resource_id,
-                source_active_at=source_active_at,
-                new_start=new_start,
-                new_end=new_end,
-                user_id=user_id,
-                scale=scales.get(resource_id, 1.0),
-                replace_existing=replace_existing,
-                touched=touched,
-            )
-            if new_anchor is not None:
-                created.append(new_anchor)
+        scale = scales.get(resource_id, 1.0)
+        alloc_map: Dict[int, int] = {}      # project_id -> new allocation_id
+        for step in _renew_steps(root_project, resource_id,
+                                 source_active_at=source_active_at,
+                                 new_start=new_start, new_end=new_end,
+                                 replace_existing=replace_existing):
+            if step.overlaps:
+                # Superseded rows are NOT added to ``touched`` -- that list
+                # drives the "renewed" notice, which names only the new rows.
+                _truncate_overlapping_allocs(
+                    session, step.project, resource_id, new_start, new_end, user_id)
+            if step.is_anchor:
+                alloc_map = {}
+                parent_id, propagated = None, False
+            elif step.source.is_inheriting:
+                parent_id = alloc_map.get(step.project.parent_id)
+                propagated = parent_id is not None
+            else:
+                parent_id, propagated = None, False
+            new_alloc = _create_renewed(session, step, resource_id, new_start, new_end,
+                                        user_id, scale, parent_id, propagated)
+            alloc_map[step.project.project_id] = new_alloc.allocation_id
+            if touched is not None:
+                touched.append(new_alloc)
+            if step.is_anchor:
+                created.append(new_alloc)
     return created
+
+
+def _create_renewed(session, step, resource_id, new_start, new_end, user_id,
+                    scale, parent_id, propagated) -> Allocation:
+    """One row via the model classmethod plus exactly ONE RENEW transaction;
+    manage.create_allocation() would add a second (CREATE) audit row."""
+    source = step.source
+    new_alloc = Allocation.create(
+        session,
+        project_id=step.project.project_id,
+        resource_id=resource_id,
+        amount=_scaled_amount(source.amount, scale),
+        start_date=new_start,
+        end_date=new_end,
+        description=source.description,
+        parent_allocation_id=parent_id,
+        allow_zero=True,  # mirror a 0-amount source (e.g. a 0 reserve)
+    )
+    if step.is_anchor:
+        comment = (
+            f"Renewed from allocation #{source.allocation_id} "
+            f"({source.start_date.strftime('%Y-%m-%d')} → "
+            f"{source.end_date.strftime('%Y-%m-%d') if source.end_date else 'open'})")
+    else:
+        comment = f"Renewed from allocation #{source.allocation_id}"
+    log_allocation_transaction(
+        session,
+        new_alloc,
+        user_id,
+        AllocationTransactionType.RENEW,
+        comment=comment + (f" — scaled ×{scale:g}" if scale != 1.0 else ""),
+        old_values={},
+        propagated=propagated,
+    )
+    return new_alloc

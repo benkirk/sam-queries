@@ -30,6 +30,7 @@ def _preview(*, mode='live', html=EMAIL_HTML, recipients=(LEAD,), selected=0,
         template_html='xras_activation.html' if html else None)
     return DeliveryPreview(mode=mode, transport=transport,
                            recipients=tuple(recipients), selected=who,
+                           selected_index=selected if who else None,
                            outgoing=outgoing if who else None,
                            sender='sam-admin@ucar.edu', cc=(), bcc=tuple(bcc),
                            rendered=rendered if who else None, error=error)
@@ -92,7 +93,20 @@ class TestThePicker:
         assert 'name="preview_recipient"' in select
         assert 'hx-get="/preview/7"' in select
         assert 'hx-target="#tstPane"' in select
-        assert '<option value="admin@example.edu" selected' in body
+        assert '<option value="1" selected' in body
+
+
+    def test_a_batch_across_projects_labels_each_option(self, render):
+        from dataclasses import replace
+        body = render(_preview(recipients=(replace(LEAD, projcode='AAA0001'),
+                                           replace(LEAD, projcode='BBB0002'))))
+        assert 'AAA0001: A PI' in body and 'BBB0002: A PI' in body
+
+    def test_one_project_needs_no_label(self, render):
+        from dataclasses import replace
+        body = render(_preview(recipients=(replace(LEAD, projcode='AAA0001'),
+                                           replace(ADMIN, projcode='AAA0001'))))
+        assert 'AAA0001:' not in body
 
 
 class TestBanners:

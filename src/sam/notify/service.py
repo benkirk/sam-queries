@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import replace
-from typing import Callable, Iterable, List, Optional, Sequence, Set
+from typing import Callable, Iterable, List, Optional, Sequence, Set, Union
 
 from sam.notify.base import (
     DeliveryPreview, DeliveryResult, Message, PreviewRecipient, Recipient,
@@ -102,13 +102,13 @@ class Notifier:
         return self.renderer.render(message)
 
     def preview_delivery(self, messages: Sequence[Message], *,
-                         selected: Optional[str] = None) -> DeliveryPreview:
+                         selected: Union[int, str, None] = None) -> DeliveryPreview:
         """Show one message of a batch exactly as the send would deliver it.
 
         Mirrors :meth:`_deliver_one` (redirect, addressing, banner, the
         transport's envelope copies) and reads when each key was last sent.
-        Never records: a preview is not an attempt. ``selected`` is an
-        intended address; unknown or ``None`` falls back to the first message.
+        Never records: a preview is not an attempt. ``selected`` is a position
+        or an intended address; anything else falls back to the first message.
         """
         messages = list(messages)
         for message in messages:
@@ -121,13 +121,16 @@ class Notifier:
         recipients = tuple(
             PreviewRecipient(address=m.recipient.address, name=m.recipient.name,
                              role=m.recipient.role,
-                             last_sent=last_sent.get(m.dedup_key))
+                             last_sent=last_sent.get(m.dedup_key), projcode=m.projcode)
             for m in messages)
         if not messages:
             return DeliveryPreview(mode=mode, transport=cfg.transport)
 
-        index = next((i for i, m in enumerate(messages)
-                      if m.recipient.address == selected), 0)
+        if isinstance(selected, int) and 0 <= selected < len(messages):
+            index = selected
+        else:
+            index = next((i for i, m in enumerate(messages)
+                          if m.recipient.address == selected), 0)
         outgoing = self._outgoing(messages[index])
         cc, bcc = self.transport.envelope_copies(outgoing)
         rendered = error = None
@@ -139,7 +142,7 @@ class Notifier:
             error = str(exc)
         return DeliveryPreview(
             mode=mode, transport=cfg.transport, recipients=recipients,
-            selected=recipients[index], outgoing=outgoing,
+            selected=recipients[index], selected_index=index, outgoing=outgoing,
             sender=cfg.sender_for(outgoing), reply_to=outgoing.reply_to,
             cc=cc, bcc=bcc, rendered=rendered, error=error)
 

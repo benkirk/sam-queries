@@ -26,6 +26,7 @@ from typing import Optional
 
 import jinja2
 import jinja2.meta
+import jinja2.nodes
 from jinja2 import ChoiceLoader, DictLoader, FileSystemLoader, select_autoescape
 from jinja2.sandbox import ImmutableSandboxedEnvironment
 from sqlalchemy import select
@@ -104,6 +105,19 @@ class OverrideLoader(jinja2.BaseLoader):
 
     def list_templates(self):
         return sorted(set(self.fs.list_templates()) | set(self.overrides))
+
+
+def _top_level_definitions(ast) -> set[str]:
+    """Names a template defines outside any block: imports and macros."""
+    names = set()
+    for node in ast.body:
+        if isinstance(node, jinja2.nodes.FromImport):
+            names |= {n if isinstance(n, str) else n[1] for n in node.names}
+        elif isinstance(node, jinja2.nodes.Import):
+            names.add(node.target)
+        elif isinstance(node, jinja2.nodes.Macro):
+            names.add(node.name)
+    return names
 
 
 class TemplateRenderer:
@@ -259,6 +273,13 @@ class TemplateRenderer:
         self._overlay(name, source).get_template(name)
 
     def undeclared_names(self, source: str, known) -> set[str]:
-        """Top-level names ``source`` reads that are not in ``known`` or the globals."""
-        found = jinja2.meta.find_undeclared_variables(self.env.parse(source))
-        return set(found) - set(known) - set(self.env.globals)
+        """Top-level names ``source`` reads that are not in ``known`` or the globals.
+
+        WARNING: ``find_undeclared_variables`` analyses each ``{% block %}`` on
+        its own, so a macro imported at the top of a child template reads as
+        undeclared inside the block, though it resolves at render time.
+        """
+        ast = self.env.parse(source)
+        found = jinja2.meta.find_undeclared_variables(ast)
+        return (set(found) - set(known) - set(self.env.globals)
+                - _top_level_definitions(ast))

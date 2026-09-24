@@ -50,9 +50,9 @@
             <button type="button" class="btn btn-outline-primary"
                     {% if not digest_recipient %}disabled title="No digest recipient is configured (NOTIFY_ACCOUNT_QUEUE_TO)."{% else %}
                     title="Mail the open queue to {{ digest_recipient }} now. Once per day; the weekly task sends the same digest."{% endif %}
-                    hx-post="{{ url_for('admin_dashboard.account_requests_digest') }}"
-                    hx-confirm="Send the open queue to {{ digest_recipient or 'NUSD' }} now?"
-                    hx-swap="none"><i class="fa-solid fa-paper-plane me-1"></i>Send to NUSD</button>
+                    hx-get="{{ url_for('admin_dashboard.account_requests_digest_preview') }}"
+                    hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                    data-bs-toggle="modal" data-bs-target="#auditDetailsModal"><i class="fa-solid fa-paper-plane me-1"></i>Send to NUSD</button>
         </div>
     </div>
 
