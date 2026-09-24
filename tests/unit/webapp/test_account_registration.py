@@ -191,6 +191,17 @@ class TestTheAcceptGate:
         assert 'Accept and continue' in html
         assert 'name="email"' not in html, 'the open form must be gated'
 
+    def test_the_gate_links_the_full_terms_in_a_new_tab(self, gate_app):
+        html = gate_app.test_client().get('/register/').get_data(as_text=True)
+        assert 'href="/register/terms" target="_blank" rel="noopener"' in html
+
+    def test_the_full_terms_page_is_readable_without_accepting(self, gate_app):
+        from webapp.register.eula import eula_html
+        resp = gate_app.test_client().get('/register/terms')
+        html = resp.get_data(as_text=True)
+        assert resp.status_code == 200 and str(eula_html()) in html
+        assert 'name="accept"' not in html, 'read-only: acceptance stays on the gate'
+
     def test_the_gate_carries_the_scroll_to_end_hooks(self, gate_app):
         """register.js holds the accept box until the end sentinel is seen."""
         html = gate_app.test_client().get('/register/').get_data(as_text=True)

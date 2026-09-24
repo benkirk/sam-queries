@@ -35,9 +35,16 @@
         {{ eula_html }}
         <div class="eula-end" data-eula-end aria-hidden="true"></div>
     </div>
-    <p class="eula-scroll-hint" data-eula-hint hidden>
-        <i class="fa-solid fa-arrow-down" aria-hidden="true"></i> Scroll to the end of the terms to accept.
-    </p>
+    <div class="eula-tools">
+        <p class="eula-scroll-hint" data-eula-hint hidden>
+            <i class="fa-solid fa-arrow-down" aria-hidden="true"></i> Scroll to the end of the terms to accept.
+        </p>
+        <a class="eula-open" href="{{ url_for('register.terms') }}" target="_blank" rel="noopener"
+           title="Open the full terms of use in a new tab">
+            <i class="fa-solid fa-up-right-from-square" aria-hidden="true"></i> Open full terms
+            <span class="visually-hidden">(opens in a new tab)</span>
+        </a>
+    </div>
 
     <div class="form-check mb-3">
         <input class="form-check-input" type="checkbox" id="accept" name="accept" value="1" data-gate-check>

@@ -107,10 +107,24 @@
 
 /* The end-of-terms sentinel register.js watches, and its prompt. */
 .eula-end { height: 1px; }
+/* Under the panel: the scroll prompt on the left, the new-tab link pinned right. */
+.eula-tools {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    margin: -0.75rem 0 0.75rem;
+    font-size: var(--font-size-xxsm);
+}
 .eula-scroll-hint {
     color: var(--text-tertiary);
-    font-size: var(--font-size-xxsm);
-    margin: -0.75rem 0 0.75rem;
+    margin: 0;
+}
+.eula-open { margin-left: auto; white-space: nowrap; }
+
+/* /register/terms: the same agreement styling at full height. */
+.eula-panel.eula-full {
+    max-height: none;
+    overflow: visible;
 }
 
 /* The human-check widget slot (templates/register/_human_check.html); the

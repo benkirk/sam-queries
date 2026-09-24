@@ -405,6 +405,8 @@ verified **at submit**, not here (§ 6.3). The terms box stays disabled until th
 end of the agreement has been scrolled into view (`register.js`, an
 `IntersectionObserver` on a sentinel after the text) — a reading aid, not a
 control: the server only checks `accept=1`, and with JS off the box is live.
+Below the panel, "Open full terms" opens `GET /register/terms` in a new tab: the
+same vendored text at full height, read-only (accepting stays on the gate).
 
 **The event code is a picker, not free text.** The open form offers the
 publicly `listed` open events as an optional select, fed by the memoized

@@ -165,6 +165,14 @@ def form():
     return _render_form()
 
 
+@bp.route('/terms')
+@_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
+def terms():
+    """The agreement on a page of its own (the gate links it in a new tab).
+    Read-only: accepting still happens on the gate."""
+    return render_template('register/terms.html', eula_html=eula.eula_html())
+
+
 @bp.route('/institutions')
 @_rate_limit.limiter.limit(_anon_tier, key_func=_ip_key)
 def institutions_fragment():
