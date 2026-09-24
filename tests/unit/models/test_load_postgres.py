@@ -130,7 +130,10 @@ class TestSchema:
         assert t.c.username.type.collation == 'sam_ci' and t.c.username.type.length == 35
         assert t.c.email.type.collation is None
         ddl = str(CreateTable(t).compile(dialect=postgresql.dialect()))
-        assert 'username VARCHAR(35) COLLATE "sam_ci"' in ddl and 'notes TEXT COLLATE "sam_ci"' in ddl
+        # SQLAlchemy >= 2.1 leaves a collation name unquoted when it needs no
+        # quoting; unquoted lowercase resolves to the same collation in Postgres.
+        assert re.search(r'username VARCHAR\(35\) COLLATE "?sam_ci"?,', ddl)
+        assert re.search(r'notes TEXT COLLATE "?sam_ci"?,', ddl)
         assert 'email VARCHAR(100),' in ddl
         assert loader.collation_sql() == ('CREATE COLLATION "sam_ci" (provider = icu, '
                                           "locale = 'und-u-ks-level1', deterministic = false)")

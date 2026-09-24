@@ -134,3 +134,26 @@
 .notify-vars-table th:nth-child(1) { width: 26%; }
 .notify-vars-table th:nth-child(2) { width: 12%; }
 .notify-vars-table th:nth-child(3) { width: 22%; }
+
+/* ===================================================================
+   Add Allocations grid (Edit Project > Allocations)
+   =================================================================== */
+
+/* "Show everything" off: hide specialty rows/groups, but never one holding a
+   typed amount — a hidden row would still be posted. */
+.alloc-grid:not(:has(.alloc-show-all:checked))
+    .alloc-optional:not(:has(.alloc-amount:not(:placeholder-shown))) {
+    display: none;
+}
+
+.alloc-grid .alloc-group-head th {
+    background-color: var(--surface-tertiary);
+}
+
+.alloc-grid tr:has(.alloc-amount:not(:placeholder-shown)) td {
+    background-color: var(--surface-accent);
+}
+
+.alloc-grid .alloc-amount {
+    width: 9rem;
+}
