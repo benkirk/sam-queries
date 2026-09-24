@@ -11,8 +11,9 @@
 - [x] 4. XRAS role endpoint: reword the comment and the warning (behavior is inherited from 2)
 - [x] 5. `revoke_user_resource_access` refuses the admin, the same way it refuses the lead
 - [x] 6. CLI: `--reconcile` really reconciles and reports what it added; `--validate` flags a lead or admin who is not a live member
-- [ ] 7. Docs: CLAUDE.md CLI line and the §7 invariant note
+- [x] 7. Docs: CLAUDE.md CLI line and the §7 invariant note
 - [ ] 8. Tests (model, XRAS, CLI), `make check-all`, local smoke test
+- [x] 9. `Project.users` = lead + admin + row holders; the access grid shows the lead and admin with their true state
 
 ## Context: the incident (2026-09-24)
 
@@ -81,9 +82,10 @@ Already safe:
 
 Not covered, and accepted: Flask-Admin `ProjectAdmin` (`src/webapp/admin/custom_model_views.py:72-100`) bypasses `update()`, but it is off in prod (`config.py:356`).
 
-Blind spot, noted but not in scope:
+Blind spot, brought into scope as item 9 (Ben, 2026-09-24):
 - `Project.get_members_access_status` (`projects.py:573+`) and the members page "Grant access" look only at `self.users`, the people who already have rows, so a lead with no rows never appears there;
-- the access grid's "Reconcile all" button renders only when `member_rows` is non-empty.
+- the access grid's "Reconcile all" button renders only when `member_rows` is non-empty;
+- the grid rendered every lead cell `checked disabled` whatever the real state, so a lead with gaps also looked healthy.
 
 ## Decisions (Ben, 2026-09-24)
 
@@ -139,6 +141,26 @@ The access-grid toggle (`projects_routes.py:3505-3512`) already turns that `Valu
 - add an issue per role that names the resources, e.g. `Project lead yeager is not a member on: Casper, Derecho, ...`, and suggest `--reconcile`;
 - exit EXIT_ERROR (2), as the existing issues do.
 
+### 9. `Project.users` means everyone on the project
+
+It is systemic. `Project.users` meant "holds an unended row". Its consumers mostly wanted "who belongs", and three hand-rolled unions had grown around it: `roster`, `get_users_on_project`, and the members API's separate lead and admin. `User.active_projects` already counts a project the user leads or administers with no rows.
+
+- **`users`** is lead + admin + `account_linked_users`, deduplicated.
+- **`account_linked_users`** is the old body, rows only. `has_user`, which the XRAS role warning uses, reads it.
+- **`roster`** is deleted and its four callers use `users`.
+- **Knock-on effects**:
+  - The detector gains `is_admin`.
+  - The provisioning check, the CLI `--list-users` and `active_user_count` now include a lead or admin with no rows.
+  - `GET /api/v1/projects/<projcode>/members` `total_members` is `len(project.users)`. It used to add the lead and admin on top of their own rows, counting them twice.
+- **Grid** (`project_access_grid_htmx.html`):
+  - an admin badge;
+  - a lead or admin cell shows its real state;
+  - an unchecked cell stays clickable, so it can be granted;
+  - a checked cell is locked, because revoking it is refused.
+- **Members page** (`members_table.html`): the partial-access warning no longer skips the lead.
+- **Not changed.** "Every member on every resource" stays the expected shape, surfaced by the grid and `--validate` and fixed by the reconcile paths. It is not enforced in code. Only the lead and admin are enforced.
+- **Open.** `account_linked_users` still ignores `start_date` and deleted accounts, where `AccountUser.is_active` and the feed do not. Aligning them is a separate change to the predicate.
+
 ### 7. Docs
 
 - **CLAUDE.md** CLI block: `sam-admin project X --reconcile` now means the membership reconcile.
@@ -175,6 +197,10 @@ The access-grid toggle (`projects_routes.py:3505-3512`) already turns that `Valu
 - `--validate` flags a lead-less factory project and exits 2;
 - `--reconcile` fixes it and exits 0;
 - a second `--validate` passes.
+
+**What changed from this plan in the tests.**
+- The XRAS roles route test stays write-free (`no_write`). A route write commits on `db.session`, outside the SAVEPOINT, so the lead's new rows are asserted at the model layer, in `tests/unit/manage/test_project_lead_membership.py`.
+- The provisioning tests use fake project objects, so the change in what `users` means is covered by `TestProjectUsers` instead.
 
 ## Verification
 

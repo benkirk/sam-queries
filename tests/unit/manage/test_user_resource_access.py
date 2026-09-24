@@ -191,6 +191,48 @@ class TestGetMembersAccessStatus:
         )
         assert row['is_lead'] is True
 
+    def _drop_rows(self, session, user_id):
+        session.query(AccountUser).filter_by(user_id=user_id).delete()
+        session.flush()
+        session.expire_all()
+
+    def test_rowless_lead_is_still_a_row(self, session):
+        # The CESM0020 shape: the lead FK is set, no account_user row exists.
+        project, r1, r2, _, _ = self._project_two_active_resources(session)
+        self._drop_rows(session, project.project_lead_user_id)
+
+        row = self._row_for(
+            project.get_members_access_status(), project.project_lead_user_id
+        )
+        assert row['is_lead'] is True
+        assert row['status'] == 'none'
+        assert {m['resource_name'] for m in row['missing']} == {
+            r1.resource_name, r2.resource_name}
+        assert not any(c['checked'] for c in row['cells'])
+
+    def test_rowless_admin_is_still_a_row(self, session):
+        project, *_ = self._project_two_active_resources(session)
+        admin = make_user(session)
+        project.project_admin_user_id = admin.user_id  # bare FK, no seeding
+        session.flush()
+        session.expire_all()
+
+        row = self._row_for(project.get_members_access_status(), admin.user_id)
+        assert row['is_admin'] is True
+        assert row['is_lead'] is False
+        assert row['status'] == 'none'
+
+    def test_lead_who_is_also_admin_is_one_row(self, session):
+        project, *_ = self._project_two_active_resources(session)
+        project.project_admin_user_id = project.project_lead_user_id
+        session.flush()
+        session.expire_all()
+
+        rows = [r for r in project.get_members_access_status()['members']
+                if r['user'].user_id == project.project_lead_user_id]
+        assert len(rows) == 1
+        assert rows[0]['is_lead'] and rows[0]['is_admin']
+
     def test_active_only_denominator(self, session):
         # r2's account has no active allocation -> excluded when active_only,
         # included when active_only=False.
@@ -276,3 +318,31 @@ class TestReconcileProjectAccess:
         # And the grid view agrees: no inaccessible resources remain.
         session.expire_all()
         assert project.get_user_inaccessible_resources(member) == set()
+
+
+class TestProjectUsers:
+    """``users`` is everyone on the project; ``account_linked_users`` is rows only."""
+
+    def test_rowless_lead_and_admin_are_users_but_not_account_linked(self, session):
+        project = make_project(session)
+        make_allocation(session, account=make_account(session, project=project))
+        admin = make_user(session)
+        project.project_admin_user_id = admin.user_id
+        session.query(AccountUser).filter_by(
+            user_id=project.project_lead_user_id).delete()
+        session.flush()
+        session.expire_all()
+
+        assert {u.user_id for u in project.users} == {
+            project.project_lead_user_id, admin.user_id}
+        assert project.account_linked_users == []
+        assert project.get_user_count() == 2
+        assert not project.has_user(project.lead)
+        assert not project.has_user(admin)
+
+    def test_users_dedupes_the_lead_with_rows(self, session):
+        project = make_project(session)
+        make_account(session, project=project)
+        session.expire_all()
+        assert [u.user_id for u in project.users] == [project.project_lead_user_id]
+        assert project.has_user(project.lead)

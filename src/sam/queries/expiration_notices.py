@@ -207,9 +207,9 @@ def build_expiration_messages(
             })
 
         # Build recipients dict: email -> (name, role)
-        # Start with roster (all users default to 'user' role)
+        # Start with every project user (lead and admin included), role 'user'
         recipients = {}
-        for user in project.roster:
+        for user in project.users:
             if user.primary_email:
                 recipients[user.primary_email] = (user.display_name, 'user')
 

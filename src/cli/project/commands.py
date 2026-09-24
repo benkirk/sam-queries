@@ -198,7 +198,7 @@ class ProjectExpirationCommand(BaseProjectCommand):
                 # Extract users if needed (business logic)
                 if list_users:
                     for proj, alloc, res_name, days_expired in expiring:
-                        all_users.update(proj.roster)
+                        all_users.update(proj.users)
                         expiring_projects.add(proj.projcode)
 
                     for user in track(all_users, description="Determining abandoned users..."):

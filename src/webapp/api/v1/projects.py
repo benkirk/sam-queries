@@ -279,7 +279,7 @@ def get_project_members(project):
     lead = schema.dump(project.lead) if project.lead else None
     admin = schema.dump(project.admin) if project.admin else None
 
-    # Get all project users (excluding lead and admin from members list)
+    # project.users already includes the lead and admin; members lists everyone else.
     all_users = project.users
     members = [
         schema.dump(u) for u in all_users
@@ -291,7 +291,7 @@ def get_project_members(project):
         'lead': lead,
         'admin': admin,
         'members': members,
-        'total_members': len(all_users) + (1 if project.lead else 0) + (1 if project.admin else 0)
+        'total_members': len(all_users)
     })
 
 

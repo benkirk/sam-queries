@@ -465,25 +465,24 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         ]
 
     @property
-    def users(self) -> List['User']:
-        """Return deduplicated list of active users."""
+    def account_linked_users(self) -> List['User']:
+        """Deduplicated users holding an unended ``account_user`` row; excludes a rowless lead or admin."""
         return list({au.user for au in self.active_account_users() if au.user})
 
     @property
-    def roster(self) -> List['User']:
-        """Return the project lead, admin, and any users."""
-        s = set(self.users)
-        s.add(self.lead)
-        if self.admin: s.add(self.admin)
+    def users(self) -> List['User']:
+        """Everyone who belongs to the project: the lead, the admin, and every account-linked user."""
+        s = set(self.account_linked_users)
+        s.update(u for u in (self.lead, self.admin) if u is not None)
         return list(s)
 
     def get_user_count(self) -> int:
-        """Return the number of active users on this project."""
+        """Return the number of users on this project, lead and admin included."""
         return len(self.users)
 
     def has_user(self, user: 'User') -> bool:
-        """Check if a user is active on this project."""
-        return user in self.users
+        """True when *user* holds an unended row on this project (being lead or admin is not enough)."""
+        return user in self.account_linked_users
 
     @property
     def facility_name(self) -> Optional[str]:
@@ -602,8 +601,9 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
 
         A member has *partial* access when they hold an active
         ``AccountUser`` on some but not all columns, *none* when they hold
-        none, *full* otherwise. The project lead is flagged (``is_lead``) so
-        callers can apply the "lead always has access" business rule.
+        none, *full* otherwise. The lead and admin are always rows, flagged
+        ``is_lead`` / ``is_admin``; one with no live row reads ``none``, which
+        is exactly the gap the directory feed would expose.
 
         Returns a dict::
 
@@ -613,7 +613,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
               ],                                          # sorted by resource_name
               'members': [
                 {
-                  'user': User, 'is_lead': bool,
+                  'user': User, 'is_lead': bool, 'is_admin': bool,
                   'has': set[str],                        # resource_names with access
                   'missing': [ {account_id, resource_id, resource_name}, ... ],
                   'status': 'full' | 'partial' | 'none',
@@ -691,6 +691,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
             member_rows.append({
                 'user': user,
                 'is_lead': user.user_id == lead_user_id,
+                'is_admin': user.user_id == self.project_admin_user_id,
                 'has': has,
                 'missing': missing,
                 'status': status,

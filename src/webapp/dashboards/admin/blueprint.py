@@ -507,7 +507,7 @@ def _get_abandoned_users_data(expired_results: List[Tuple]) -> List[Dict]:
 
     # Collect all users from expired projects
     for proj, alloc, res_name, days in expired_results:
-        all_users.update(proj.roster)
+        all_users.update(proj.users)
         expired_projcodes.add(proj.projcode)
 
     # Find users whose active projects are all in the expired set
