@@ -221,3 +221,118 @@ class TestRejectNotice:
         assert resp.status_code == 200
         assert 'mail is off' in resp.get_data(as_text=True)
         assert _row_state(app, committed_request)[2] is None
+
+
+def _log_count(app):
+    from sam.notify.models import NotificationLog
+    from webapp.extensions import db
+    with app.app_context():
+        return db.session.query(NotificationLog).count()
+
+
+def _refuse(*_a, **_kw):
+    raise AssertionError('a preview must not do this')
+
+
+class TestRejectPreview:
+    """POSTed from the open reject form with its current values; writes nothing."""
+
+    def _url(self, request_id):
+        return f'/admin/account-requests/{request_id}/reject-preview'
+
+    def test_the_form_carries_a_preview_button_and_pane(self, auth_client,
+                                                        committed_request):
+        html = auth_client.get(
+            f'/admin/account-requests/{committed_request}/reject-form').get_data(as_text=True)
+        assert f'hx-post="{self._url(committed_request)}"' in html
+        assert 'id="rejectPreviewPane"' in html
+
+    def test_no_reason_asks_for_one(self, auth_client, committed_request):
+        resp = auth_client.post(self._url(committed_request), data={'reason': ' '})
+        assert resp.status_code == 200
+        assert 'Type a reason' in resp.get_data(as_text=True)
+
+    def test_it_renders_the_typed_reason_and_writes_nothing(
+            self, auth_client, app, committed_request, monkeypatch):
+        from sam.notify.ledger import NotificationLedger
+        monkeypatch.setattr(NotificationLedger, 'record', _refuse)
+        before = _log_count(app)
+        resp = auth_client.post(self._url(committed_request),
+                                data={'reason': 'zz-preview-reason', 'notify': '1'})
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert 'zz-preview-reason' in html
+        assert 'Your NCAR HPC account request' in html
+        assert _row_state(app, committed_request) == ('submitted', None, None)
+        assert _log_count(app) == before
+
+    def test_a_missing_request_answers_200(self, auth_client):
+        resp = auth_client.post(self._url(MISSING), data={'reason': 'x'})
+        assert resp.status_code == 200
+        assert 'not found' in resp.get_data(as_text=True).lower()
+
+    def test_it_is_guarded_like_the_send(self, no_queue_client):
+        assert no_queue_client.post(self._url(MISSING),
+                                    data={'reason': 'x'}).status_code == 403
+
+
+class TestDigestPreview:
+    """Two steps: the card opens this modal body; its Send posts the digest."""
+
+    URL = '/admin/account-requests/digest-preview'
+
+    @pytest.fixture
+    def recipient(self, app, monkeypatch):
+        monkeypatch.setitem(app.config, 'NOTIFY_ACCOUNT_QUEUE_TO', 'nusd@example.invalid')
+        return 'nusd@example.invalid'
+
+    @pytest.fixture
+    def only_our_row(self, app, committed_request, monkeypatch):
+        """Scope the queue to the committed row, so no snapshot row is touched."""
+        from sam.core.account_requests import AccountRequest
+        monkeypatch.setattr(
+            'webapp.dashboards.admin.account_requests_routes.queue_requests',
+            lambda session: [session.get(AccountRequest, committed_request)])
+        return committed_request
+
+    def test_the_card_opens_the_preview_instead_of_posting(self, auth_client):
+        html = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'hx-get="/admin/account-requests/digest-preview"' in html
+        assert 'Send the open queue' not in html          # the hx-confirm is gone
+
+    def test_it_renders_the_digest_without_reconciling(
+            self, auth_client, app, recipient, only_our_row, monkeypatch):
+        monkeypatch.setattr(
+            'webapp.dashboards.admin.account_requests_routes.reconcile_account_requests',
+            _refuse)
+        before = _log_count(app)
+        resp = auth_client.get(self.URL)
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert 'id="digestPreviewPane"' in html
+        assert 'NCAR HPC account requests: 1 waiting' in html
+        assert 'hx-post="/admin/account-requests/digest"' in html
+        assert _log_count(app) == before
+
+    def test_no_recipient_is_explained_and_offers_no_send(self, auth_client, app,
+                                                          monkeypatch):
+        monkeypatch.delenv('NOTIFY_ACCOUNT_QUEUE_TO', raising=False)
+        monkeypatch.setitem(app.config, 'NOTIFY_ACCOUNT_QUEUE_TO', '')
+        html = auth_client.get(self.URL).get_data(as_text=True)
+        assert 'No digest recipient' in html
+        assert 'hx-post' not in html
+
+    def test_it_is_guarded_like_the_send(self, no_queue_client):
+        assert no_queue_client.get(self.URL).status_code == 403
+
+    def test_a_successful_send_closes_the_modal(self, auth_client, recipient,
+                                                only_our_row, sending_notifier,
+                                                monkeypatch):
+        monkeypatch.setattr(
+            'webapp.dashboards.admin.account_requests_routes.reconcile_account_requests',
+            lambda *a, **k: None)
+        resp = auth_client.post('/admin/account-requests/digest')
+        assert resp.status_code == 200
+        triggers = resp.headers.get('HX-Trigger', '')
+        assert 'closeActiveModal' in triggers and 'refreshAccountQueue' in triggers
+        assert len(sending_notifier.delivered) == 1

@@ -13,6 +13,7 @@ import os
 from datetime import datetime
 
 from flask import current_app, render_template, request, url_for
+from marshmallow import ValidationError
 from flask_login import current_user, login_required
 
 from sam.core.account_requests import (
@@ -42,6 +43,9 @@ from webapp.utils.form_handler import HtmxFormHandler
 from webapp.utils.htmx import (
     handle_htmx_form_post, htmx_modal_not_found, htmx_not_found, htmx_success,
     htmx_success_message, modal_triggers, read_flag, read_sort,
+)
+from webapp.utils.email_preview import (
+    email_preview_context, render_email_preview, render_preview_info,
 )
 from webapp.utils.notify import get_notifier, notify_config
 from webapp.utils.rbac import (
@@ -297,6 +301,34 @@ def account_request_reject_form(request_id):
     return _reason_form(request_id, 'reject')
 
 
+def _rejection_message(row, *, reason=None, closed_at=None):
+    """The reject notice, for the send (row values) and the preview (form values)."""
+    event = events_for(db.session, [row]).get(row.event_id)
+    view, = request_views(db.session, [row], resolutions={},
+                          events={row.event_id: event} if event else {})
+    return build_rejection_message(
+        row, requested_by=current_user.username,
+        event_name=event.name if event else '',
+        project_code=view['project_code'], reason=reason, closed_at=closed_at)
+
+
+@bp.route('/account-requests/<int:request_id>/reject-preview', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_ACCOUNT_REQUESTS)
+def account_request_reject_preview(request_id):
+    """The rejection notice as it would leave, from the reason typed so far."""
+    row = _load(request_id)
+    if row is None:
+        return render_preview_info('Account request not found.', 'warning')
+    try:
+        data = AccountRequestReasonForm().load(request.form)
+    except ValidationError:
+        return render_preview_info('Type a reason to preview the email.')
+    return render_email_preview(
+        [_rejection_message(row, reason=data['reason'], closed_at=datetime.now())],
+        id_prefix='rejectPreview', pane_id='rejectPreviewPane')
+
+
 class _RejectHandler(HtmxFormHandler):
     """Reject, and mail the reason only when the operator ticked the box.
     Send after the commit, stamp after the send, so the row never claims a
@@ -316,14 +348,7 @@ class _RejectHandler(HtmxFormHandler):
         self.notice = None
         if not self.notify:
             return
-        event = events_for(db.session, [row]).get(row.event_id)
-        view, = request_views(db.session, [row], resolutions={},
-                              events={row.event_id: event} if event else {})
-        message = build_rejection_message(
-            row, requested_by=current_user.username,
-            event_name=event.name if event else '',
-            project_code=view['project_code'])
-        self.notice = get_notifier().send(message)
+        self.notice = get_notifier().send(_rejection_message(row))
         if self.notice.status in ('sent', 'redirected'):
             with management_transaction(db.session):
                 row.mark_closure_notified()
@@ -380,6 +405,34 @@ def _digest_recipient() -> str:
     return str(raw).strip()
 
 
+def _digest_message(rows, now):
+    """The digest the Send button mails; the weekly task builds the same one."""
+    return build_queue_summary(
+        db.session, rows, recipient=_digest_recipient(), occurrence=now,
+        requested_by=current_user.username,
+        queue_url=url_for('admin_dashboard.account_requests', _external=True))
+
+
+@bp.route('/account-requests/digest-preview')
+@login_required
+@require_permission(Permission.MANAGE_ACCOUNT_REQUESTS)
+def account_requests_digest_preview():
+    """Modal body: the digest as it would leave now, plus Send. Never reconciles."""
+    recipient = _digest_recipient()
+    rows = queue_requests(db.session) if recipient else []
+    pane = None
+    if rows:
+        ready = queue_counts(rows, resolve_requests(db.session, rows))['ready']
+        notes = ([f'Send reconciles first: up to {ready} request(s) whose account '
+                  'now exists drop out of the digest.'] if ready else [])
+        pane = email_preview_context([_digest_message(rows, datetime.now())],
+                                     id_prefix='digestPreview',
+                                     pane_id='digestPreviewPane', notes=notes)
+    return render_template(
+        'dashboards/admin/fragments/account_requests_digest_preview_htmx.html',
+        recipient=recipient, count=len(rows), **(pane or {}))
+
+
 @bp.route('/account-requests/digest', methods=['POST'])
 @login_required
 @require_permission(Permission.MANAGE_ACCOUNT_REQUESTS)
@@ -395,17 +448,14 @@ def account_requests_digest():
     rows = queue_requests(db.session)
     if not rows:
         return _toast_error('The queue is empty; nothing to send.')
-    message = build_queue_summary(
-        db.session, rows, recipient=recipient, occurrence=now,
-        requested_by=current_user.username,
-        queue_url=url_for('admin_dashboard.account_requests', _external=True))
-    result = get_notifier().send(message)
+    result = get_notifier().send(_digest_message(rows, now))
     if result.status in ('sent', 'redirected'):
         with management_transaction(db.session):
             for row in rows:
                 row.mark_requested(now)
         return htmx_success_message(
-            _TRIGGERS, f'Digest of {len(rows)} request(s) {result.status} to {recipient}.')
+            _MODAL_TRIGGERS,
+            f'Digest of {len(rows)} request(s) {result.status} to {recipient}.')
     if result.status == 'suppressed':
         return _toast_error('A digest already went to NUSD today; not sent again.')
     return _toast_error(f'Digest not sent: {result.detail or result.status}.')

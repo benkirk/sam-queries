@@ -35,6 +35,13 @@
     ]
   ],
   [
+    "admin_dashboard.account_request_reject_preview",
+    "/admin/account-requests/<int:request_id>/reject-preview",
+    [
+      "POST"
+    ]
+  ],
+  [
     "admin_dashboard.account_request_reopen",
     "/admin/account-requests/<int:request_id>/reopen",
     [
@@ -67,6 +74,13 @@
     "/admin/account-requests/digest",
     [
       "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.account_requests_digest_preview",
+    "/admin/account-requests/digest-preview",
+    [
+      "GET"
     ]
   ],
   [
@@ -326,6 +340,13 @@
     "/admin/htmx/events/<event_code>/roster-form",
     [
       "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_admin_event_roster_preview",
+    "/admin/htmx/events/<event_code>/roster-preview",
+    [
+      "POST"
     ]
   ],
   [
@@ -2501,6 +2522,13 @@
     ]
   ],
   [
+    "project_invites.htmx_invite_preview",
+    "/project-invitations/<projcode>/invite-preview",
+    [
+      "POST"
+    ]
+  ],
+  [
     "project_invites.htmx_invite_user",
     "/project-invitations/<projcode>/invite",
     [
@@ -2515,6 +2543,13 @@
     ]
   ],
   [
+    "project_invites.htmx_resend_invite_preview",
+    "/project-invitations/<projcode>/requests/<int:request_id>/invite-preview",
+    [
+      "GET"
+    ]
+  ],
+  [
     "project_invites.htmx_roster_form",
     "/project-invitations/events/<event_code>/roster-form",
     [
@@ -2524,6 +2559,13 @@
   [
     "project_invites.htmx_roster_paste",
     "/project-invitations/events/<event_code>/roster",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "project_invites.htmx_roster_preview",
+    "/project-invitations/events/<event_code>/roster-preview",
     [
       "POST"
     ]

@@ -175,9 +175,9 @@
                     <button type="button" class="btn btn-outline-primary"
                             title="{{ 'Resend the invitation link — the old link stops working' if r.invite_sent_at else 'Email an invitation link to finish the request' }}"
                             aria-label="{{ 'Resend invitation' if r.invite_sent_at else 'Send invitation' }}"
-                            hx-post="{{ url_for('project_invites.htmx_resend_invite', projcode=project.projcode, request_id=r.account_request_id) }}"
-                            {% if r.invite_sent_at %}hx-confirm="Send {{ r.email }} a new link? The one sent {{ r.invite_sent_at | fmt_date }} stops working."{% endif %}
-                            hx-swap="none"><i class="fa-solid fa-paper-plane"></i></button>
+                            hx-get="{{ url_for('project_invites.htmx_resend_invite_preview', projcode=project.projcode, request_id=r.account_request_id) }}"
+                            hx-target="#invitationFormContainer" hx-swap="innerHTML"
+                            data-bs-toggle="modal" data-bs-target="#invitationModal"><i class="fa-solid fa-paper-plane"></i></button>
                 </div>
                 {% endif %}
             </td>

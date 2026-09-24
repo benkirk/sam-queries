@@ -16,7 +16,7 @@ from sam.queries.account_requests import all_events, enrollees_for_event
 from sam.schemas.forms import AccountRequestEventAdminForm
 from webapp.dashboards.event_lifecycle import (
     EVENT_FORM, ROSTER_FORM, EventCreateHandler, EventEditHandler, RosterHandler,
-    date_floor, sponsor_context, switch_event,
+    date_floor, roster_preview, sponsor_context, switch_event,
 )
 from webapp.extensions import db
 from webapp.utils.form_handler import FormError
@@ -179,6 +179,7 @@ def htmx_admin_event_enrollees(event_code):
 
 class _AdminRosterHandler(RosterHandler):
     post_endpoint = 'admin_dashboard.htmx_admin_event_roster'
+    preview_endpoint = 'admin_dashboard.htmx_admin_event_roster_preview'
     triggers = {'refreshEvents': {}, 'refreshAccountQueue': {}}
 
 
@@ -197,7 +198,9 @@ def htmx_admin_event_roster_form(event_code):
     return render_template(
         ROSTER_FORM, project=project, event=event, errors=[],
         post_url=url_for('admin_dashboard.htmx_admin_event_roster',
-                         event_code=event.event_code))
+                         event_code=event.event_code),
+        preview_url=url_for('admin_dashboard.htmx_admin_event_roster_preview',
+                            event_code=event.event_code))
 
 
 @bp.route('/htmx/events/<event_code>/roster', methods=['POST'])
@@ -206,6 +209,15 @@ def htmx_admin_event_roster_form(event_code):
 def htmx_admin_event_roster(event_code):
     event, project = _roster_target(event_code)
     return _AdminRosterHandler(event=event, project=project).handle()
+
+
+@bp.route('/htmx/events/<event_code>/roster-preview', methods=['POST'])
+@login_required
+@_ROSTER_GUARD
+def htmx_admin_event_roster_preview(event_code):
+    event, _project = _roster_target(event_code)
+    return roster_preview(event, url_for('admin_dashboard.htmx_admin_event_roster_preview',
+                                         event_code=event.event_code))
 
 
 def _search_projects(q, active_only):

@@ -22,9 +22,11 @@ from sam.core.account_requests import (
 )
 from sam.manage.account_requests import (
     OUTCOME_ADDED,
+    OUTCOME_AMBIGUOUS,
     OUTCOME_DUPLICATE,
     OUTCOME_QUEUED,
     enroll_user_in_event,
+    invite_outcomes,
     invite_user,
     parse_roster,
     paste_roster,
@@ -116,6 +118,51 @@ class TestInviteUser:
                 session, project_id=project.project_id, sponsor=sponsor,
                 email='twice@example.edu', first_name='T', last_name='Wice')
             assert outcome == OUTCOME_QUEUED
+
+
+class TestInviteOutcomesAgreeWithInviteUser:
+    """The preview's read and the write classify an address the same way."""
+
+    def test_every_outcome_is_predicted_before_the_write(self, session):
+        project = _project_with_account(session)
+        sponsor = make_user(session)
+        known = _user_with_email(session, 'o-known@example.edu')
+        locked = _user_with_email(session, 'o-locked@example.edu', active=False)
+        _user_with_email(session, 'o-shared@example.edu')
+        _user_with_email(session, 'o-shared@example.edu')
+        invite_user(session, project_id=project.project_id, sponsor=sponsor,
+                    email='o-dup@example.edu', first_name='D', last_name='Up')
+        emails = ['O-Known@example.edu', 'o-locked@example.edu', 'o-shared@example.edu',
+                  'o-dup@example.edu', 'o-new@example.edu']
+        predicted = invite_outcomes(session, project.project_id, emails)
+        assert predicted == {
+            'o-known@example.edu': (OUTCOME_ADDED, known.username),
+            'o-locked@example.edu': (OUTCOME_QUEUED, locked.username),
+            'o-shared@example.edu': (OUTCOME_AMBIGUOUS, None),
+            'o-dup@example.edu': (OUTCOME_DUPLICATE, None),
+            'o-new@example.edu': (OUTCOME_QUEUED, None),
+        }
+        for email in emails:
+            expected = predicted[email.lower()][0]
+            if expected == OUTCOME_AMBIGUOUS:
+                with pytest.raises(ValueError):
+                    invite_user(session, project_id=project.project_id, sponsor=sponsor,
+                                email=email, first_name='A', last_name='B')
+                continue
+            outcome, _ = invite_user(session, project_id=project.project_id,
+                                     sponsor=sponsor, email=email,
+                                     first_name='A', last_name='B')
+            assert outcome == expected, email
+
+    def test_it_writes_nothing(self, session):
+        project = _project_with_account(session)
+        before = session.query(AccountRequest).count()
+        invite_outcomes(session, project.project_id, ['o-new2@example.edu'])
+        assert session.query(AccountRequest).count() == before
+        assert not session.new and not session.dirty
+
+    def test_empty_input_runs_no_query(self):
+        assert invite_outcomes(None, 1, []) == {}
 
 
 class TestParseRoster:

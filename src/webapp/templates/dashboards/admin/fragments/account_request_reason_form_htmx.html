@@ -9,6 +9,7 @@
     notify_enabled  whether mail leaves this deployment (reject only)
 #}
 {% from 'dashboards/fragments/form_fields.html' import textarea_field, checkbox_field, form_errors_panel with context %}
+{% from 'dashboards/fragments/email_preview.html' import preview_button %}
 
 <h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
     {{ verb | capitalize }} the request from {{ row.display_name }}
@@ -33,9 +34,13 @@
                       placeholder='Why?',
                       help='Recorded on the request with your username.') }}
     {% if verb == 'reject' %}
-    {{ checkbox_field('notify', 'Email this reason to ' ~ row.email,
-                      help=('Sent as you wrote it, from the account team.' if notify_enabled
-                            else 'Mail is off on this deployment; the attempt is recorded and nothing leaves.')) }}
+    {% call checkbox_field('notify', 'Email this reason to ' ~ row.email,
+                           help=('Sent as you wrote it, from the account team.' if notify_enabled
+                                 else 'Mail is off on this deployment; the attempt is recorded and nothing leaves.')) %}
+    {{ preview_button(url_for('admin_dashboard.account_request_reject_preview',
+                              request_id=row.account_request_id), 'rejectPreviewPane') }}
+    {% endcall %}
+    <div id="rejectPreviewPane" class="mb-2"></div>
     {% endif %}
     {{ form_errors_panel() }}
     <div class="d-flex justify-content-end gap-2 mt-3">
