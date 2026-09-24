@@ -1,6 +1,9 @@
 """Form schemas for the HPC account-request queue and invitation surfaces."""
 
-from marshmallow import ValidationError, fields as f, post_load, validate as v
+from datetime import date
+from typing import Optional
+
+from marshmallow import ValidationError, fields as f, post_load, validate as v, validates
 
 from . import HtmxFormSchema
 
@@ -25,6 +28,24 @@ class AccountRequestReasonForm(HtmxFormSchema):
 #: HTML datetime-local wire format, as sam.schemas.forms.status uses it.
 _DATETIME_LOCAL = '%Y-%m-%dT%H:%M'
 
+#: Lead time the account team asks for; a nearer deadline saves with a warning.
+DEADLINE_LEAD_DAYS = 28
+PAST_DEADLINE_MSG = 'The date accounts are needed by cannot be in the past.'
+
+
+def deadline_notice(needed_by: Optional[date], today: Optional[date] = None) -> Optional[str]:
+    """The warning for a deadline 0 to ``DEADLINE_LEAD_DAYS`` away; None otherwise
+    (a past date is refused on entry, and an old event re-saved is not news)."""
+    if needed_by is None:
+        return None
+    days = (needed_by - (today or date.today())).days
+    if not 0 <= days < DEADLINE_LEAD_DAYS:
+        return None
+    when = 'today' if days == 0 else f'in {days} day{"" if days == 1 else "s"}'
+    return (f'Accounts are needed {when}; the account team asks for at least '
+            f'{DEADLINE_LEAD_DAYS // 7} weeks.')
+
+
 _EVENT_CODE_RE = r'^[A-Za-z0-9][A-Za-z0-9-]{2,31}$'
 _EVENT_CODE_MSG = ('3-32 letters, digits or dashes, starting with a letter or '
                    'digit (e.g. WRF-TUTORIAL-2026-10).')
@@ -32,7 +53,8 @@ _EVENT_CODE_MSG = ('3-32 letters, digits or dashes, starting with a letter or '
 
 class InviteUserForm(HtmxFormSchema):
     """One person invited onto a project by a steward. The email is the one
-    key that resolves later, so it is lower-cased here."""
+    key that resolves later, so it is lower-cased here. ``send_invite`` is a
+    checkbox the route injects explicitly (absent means unchecked)."""
 
     email = f.Email(required=True, validate=v.Length(max=255))
     first_name = f.Str(required=True, validate=v.Length(min=1, max=64))
@@ -40,6 +62,7 @@ class InviteUserForm(HtmxFormSchema):
     organization = f.Str(load_default=None, validate=v.Length(max=128))
     note = f.Str(load_default=None, validate=v.Length(max=255))
     event_code = f.Str(load_default=None, validate=v.Length(max=32))
+    send_invite = f.Bool(load_default=False)
 
     @post_load
     def _normalize(self, data, **kwargs):
@@ -65,6 +88,12 @@ class AccountRequestEventForm(HtmxFormSchema):
     closes_at = f.DateTime(_DATETIME_LOCAL, load_default=None)
     extra_sponsor_user_id = f.Int(load_default=None)
     listed = f.Bool(load_default=False)
+    invite_only = f.Bool(load_default=False)
+
+    @validates('accounts_needed_by')
+    def _not_past(self, value, **kwargs):
+        if value < date.today():
+            raise ValidationError(PAST_DEADLINE_MSG)
 
     @post_load
     def _normalize(self, data, **kwargs):
@@ -108,6 +137,7 @@ class RosterPasteForm(HtmxFormSchema):
 
     roster = f.Str(required=True, validate=v.Length(min=1, max=20_000),
                    error_messages={'required': 'Paste at least one line.'})
+    send_invite = f.Bool(load_default=False)
 
 
 class RegisterForm(HtmxFormSchema):

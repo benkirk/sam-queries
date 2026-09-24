@@ -12,7 +12,7 @@ By purpose
 {{ e.count }} account(s) needed by {{ e.deadline }}
 ------------------------------------------------------------------------
 {% for r in rows if r.event_code == e.event_code %}  {{ r.name }} <{{ r.email }}>{% if r.organization %}, {{ r.organization }}{% endif %}{% if r.desired_username %} — wants "{{ r.desired_username }}"{% endif %}
-    {{ r.purpose }}{% if r.sponsor %}, invited by {{ r.sponsor }}{% endif %}; waiting {{ r.waiting_days }} day(s){% if r.assignee %}; claimed by {{ r.assignee }}{% endif %}
+    {{ r.purpose }}{% if r.sponsor %}, invited by {{ r.sponsor }}{% endif %}; waiting {{ r.waiting_days }} day(s){% if r.assignee %}; claimed by {{ r.assignee }}{% endif %}{% if r.invite %}; {{ r.invite }}{% endif %}
 {% if r.note %}    note: {{ r.note }}
 {% endif %}{% endfor %}
 {% endfor %}
@@ -21,7 +21,7 @@ By purpose
 Other requests
 ------------------------------------------------------------------------
 {% for r in loose %}  {{ r.name }} <{{ r.email }}>{% if r.organization %}, {{ r.organization }}{% endif %}{% if r.desired_username %} — wants "{{ r.desired_username }}"{% endif %}
-    {{ r.purpose }}{% if r.project_code %} on {{ r.project_code }}{% endif %}{% if r.sponsor %}, invited by {{ r.sponsor }}{% endif %}; waiting {{ r.waiting_days }} day(s){% if r.assignee %}; claimed by {{ r.assignee }}{% endif %}
+    {{ r.purpose }}{% if r.project_code %} on {{ r.project_code }}{% endif %}{% if r.sponsor %}, invited by {{ r.sponsor }}{% endif %}; waiting {{ r.waiting_days }} day(s){% if r.assignee %}; claimed by {{ r.assignee }}{% endif %}{% if r.invite %}; {{ r.invite }}{% endif %}
 {% if r.note %}    note: {{ r.note }}
 {% endif %}{% endfor %}
 {% endif %}

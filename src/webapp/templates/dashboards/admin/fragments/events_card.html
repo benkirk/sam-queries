@@ -32,7 +32,7 @@
             <td class="cursor-pointer" title="Who has enrolled" {{ collapse_toggle(eid) }}><i class="fa-solid fa-chevron-right small text-muted collapse-icon"></i></td>
             <td class="font-monospace text-nowrap">
                 {{ e.event_code }}
-                {{ copy_button(r.reg_url, label='Copy registration link', icon='fa-solid fa-link', compact=true, done='Registration link copied.') }}
+                {% if not e.invite_only %}{{ copy_button(r.reg_url, label='Copy registration link', icon='fa-solid fa-link', compact=true, done='Registration link copied.') }}{% endif %}
             </td>
             <td>{{ e.name }}</td>
             <td class="text-nowrap">{{ project_link(r.project_code, can_view_projects, admin=True) }}
@@ -49,6 +49,7 @@
             <td class="text-nowrap">
                 {% if e.active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Closed</span>{% endif %}
                 {% if e.listed %}<span class="badge bg-info" title="Shown on the public Upcoming Events card">Listed</span>{% endif %}
+                {% if e.invite_only %}<span class="badge bg-body-secondary text-body-secondary border" title="The code, the picker and self-enroll are closed; only people on a pasted roster join, from their emailed link">By invitation</span>{% endif %}
             </td>
             <td class="text-end text-nowrap">
                 {% if has_permission_any_facility(Permission.MANAGE_EVENTS) %}

@@ -2501,6 +2501,13 @@
     ]
   ],
   [
+    "project_invites.htmx_resend_invite",
+    "/project-invitations/<projcode>/requests/<int:request_id>/resend-invite",
+    [
+      "POST"
+    ]
+  ],
+  [
     "project_invites.htmx_roster_form",
     "/project-invitations/events/<event_code>/roster-form",
     [
@@ -2566,6 +2573,48 @@
   [
     "project_members.members_fragment",
     "/project-members/<projcode>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "register_invite.accept",
+    "/register/invite/<token>/accept",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "register_invite.complete",
+    "/register/invite/complete",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "register_invite.institutions_fragment",
+    "/register/invite/institutions",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "register_invite.page",
+    "/register/invite/<token>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "register_invite.submit",
+    "/register/invite/<token>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "register_invite.terms",
+    "/register/invite/terms",
     [
       "GET"
     ]

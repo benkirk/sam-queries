@@ -198,7 +198,7 @@ class TestValidation:
     def test_a_bad_event_code_is_refused(self, auth_client, snapshot_projcode):
         resp = auth_client.post(f'/project-invitations/{snapshot_projcode}/events',
                                 data={'event_code': 'has space', 'name': 'x',
-                                      'accounts_needed_by': '2026-10-05'})
+                                      'accounts_needed_by': '2030-01-01'})
         assert resp.status_code == 200
         assert 'letters, digits or dashes' in resp.get_data(as_text=True)
         assert 'HX-Trigger' not in resp.headers
@@ -206,7 +206,7 @@ class TestValidation:
     def test_an_unknown_sponsor_id_is_refused(self, auth_client, snapshot_projcode):
         resp = auth_client.post(f'/project-invitations/{snapshot_projcode}/events',
                                 data={'event_code': 'SPN-2026', 'name': 'x',
-                                      'accounts_needed_by': '2026-10-05',
+                                      'accounts_needed_by': '2030-01-01',
                                       'extra_sponsor_user_id': '999999999'})
         assert resp.status_code == 200
         assert 'not an active SAM user' in resp.get_data(as_text=True)
@@ -215,7 +215,7 @@ class TestValidation:
     def test_a_backwards_window_is_refused(self, auth_client, snapshot_projcode):
         resp = auth_client.post(f'/project-invitations/{snapshot_projcode}/events',
                                 data={'event_code': 'WIN-2026', 'name': 'x',
-                                      'accounts_needed_by': '2026-10-05',
+                                      'accounts_needed_by': '2030-01-01',
                                       'opens_at': '2026-10-02T09:00',
                                       'closes_at': '2026-10-01T09:00'})
         assert resp.status_code == 200

@@ -1,0 +1,15 @@
+{% extends 'register/base_register.html' %}
+{# After the invitee submits, or on revisiting a completed link (already). #}
+{% block title %}Request received{% endblock %}
+
+{% block content %}
+<h1>{% if already %}We already have your details{% else %}Thank you — your request is complete{% endif %}</h1>
+<div class="register-callout good">
+    <p><i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+    Your request is with the team that creates NCAR HPC accounts.</p>
+</div>
+<p class="register-lede">
+    They will contact you at the address you were invited at. Nothing more is
+    needed from you for now.
+</p>
+{% endblock %}

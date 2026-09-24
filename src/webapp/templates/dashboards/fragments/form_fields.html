@@ -170,7 +170,7 @@
 #}
 {% macro date_field(name, label, required=False, optional_text='(optional)',
                     help=None, default='', id=None, label_class='form-label',
-                    disabled=False) %}
+                    disabled=False, min=None) %}
 {%- set _id = id or name -%}
 {%- set _form_value = form.get(name) if form else None -%}
 {%- if _form_value is not none -%}
@@ -185,7 +185,8 @@
     <input type="date" class="form-control{{ _invalid(name) }}" id="{{ _id }}"
            name="{{ name }}"
            {%- if required %} required{% endif -%}
-           {%- if disabled %} disabled{% endif %}
+           {%- if disabled %} disabled{% endif -%}
+           {%- if min %} min="{{ min }}"{% endif %}
            value="{{ _value }}"
            {{- _aria(name, _id) }}>
     {{ _field_error(name, _id) }}

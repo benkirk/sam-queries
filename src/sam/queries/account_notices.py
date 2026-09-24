@@ -19,7 +19,7 @@ from typing import Any, Dict, Optional, Sequence
 from sqlalchemy.orm import Session
 
 from sam import fmt
-from sam.core.account_requests import CREATED_BY_SELF, AccountRequest
+from sam.core.account_requests import CREATED_BY_SELF, AccountRequest, AccountRequestEvent
 from sam.notify import Message, Recipient
 
 from .account_requests import events_for, group_by_event, request_views, waiting_days
@@ -30,11 +30,20 @@ ACCOUNT_KIND_SUBJECTS = {
     'account_queue_summary': 'NCAR HPC account requests: {total} waiting, {new} new',
     'account_verify': 'Verify your email address for your NCAR HPC account request',
     'account_rejected': 'Your NCAR HPC account request',
+    'account_invite': 'You are invited to request an NCAR HPC account',
 }
 
 
 #: How the digest prints its as-of time; the task passes local (Mountain) time.
 _STAMP = '%Y-%m-%d %H:%M'
+
+
+def invite_label(row: AccountRequest) -> str:
+    """The queue badge text: 'awaiting invitee', 'completed <date>', or ''."""
+    if row.invite_state == 'completed':
+        return f'completed {fmt.date_str(row.completed_at)}'
+    return 'awaiting invitee' if row.invite_state == 'awaiting' else ''
+
 
 def queue_summary_context(session: Session, rows: Sequence[AccountRequest], *,
                           occurrence: datetime, queue_url: str = '') -> Dict[str, Any]:
@@ -60,6 +69,7 @@ def queue_summary_context(session: Session, rows: Sequence[AccountRequest], *,
             'state': v['state'],
             'assignee': r.assignee or '',
             'note': note[0] if note else '',
+            'invite': invite_label(r),
         }
 
     out_events, out_rows = [], []
@@ -154,5 +164,33 @@ def build_rejection_message(row: AccountRequest, *, requested_by: str,
         },
         entity=('account_request', row.account_request_id),
         dedup_key=f'account_rejected:{row.account_request_id}:{closed}',
+        requested_by=requested_by,
+    )
+
+
+def build_invite_message(row: AccountRequest, *, invite_url: str, sent_at: datetime,
+                         sponsor_name: str, projcode: str, expires_days: int,
+                         event: Optional[AccountRequestEvent] = None,
+                         requested_by: str) -> Message:
+    """The sponsor-chosen link; never the sponsor's note (that is NUSD's).
+    Keyed on ``sent_at``, the stamp the link is signed with, so a resend is a new key."""
+    return Message(
+        kind='account_invite',
+        recipient=Recipient(row.email, name=row.display_name, role='user'),
+        subject=ACCOUNT_KIND_SUBJECTS['account_invite'],
+        context={
+            'name': row.display_name,
+            'sponsor_name': sponsor_name or '',
+            'project_code': projcode or '',
+            'event_name': event.name if event else '',
+            'event_instructions': (event.instructions or '') if event else '',
+            'accounts_needed_by': fmt.date_str(event.accounts_needed_by) if event else '',
+            'invite_url': invite_url,
+            'expires_days': expires_days,
+        },
+        entity=('account_request', row.account_request_id),
+        projcode=projcode or None,
+        dedup_key=f'account_invite:{row.account_request_id}:'
+                  f'{sent_at.isoformat(timespec="seconds")}',
         requested_by=requested_by,
     )

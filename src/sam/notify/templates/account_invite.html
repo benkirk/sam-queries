@@ -1,0 +1,29 @@
+{% extends "_email_base.html" %}
+
+{% block content %}
+    <p>Hello {{ name }},</p>
+
+    <p>{% if sponsor_name %}{{ sponsor_name }} has invited you{% else %}You have been
+        invited{% endif %} to request an NCAR HPC account{% if project_code %} on project
+        <strong>{{ project_code }}</strong>{% endif %}{% if event_name %}, for
+        <strong>{{ event_name }}</strong>{% endif %}.</p>
+
+    {% if accounts_needed_by %}
+    <p>Accounts are needed by <strong>{{ accounts_needed_by }}</strong>.</p>
+    {% endif %}
+    {% if event_instructions %}
+    <div class="callout note">
+        <p>{{ event_instructions }}</p>
+    </div>
+    {% endif %}
+
+    <div class="callout good">
+        <p>To finish your request, open this link, accept the terms of use, and
+            fill in the few details the account team needs (phone, country,
+            academic status):</p>
+        <p><a href="{{ invite_url }}">{{ invite_url }}</a></p>
+    </div>
+
+    <p>The link is yours alone and expires in {{ expires_days }} days. If you
+        did not expect this invitation, ignore this message.</p>
+{% endblock %}

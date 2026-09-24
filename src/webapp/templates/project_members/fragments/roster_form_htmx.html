@@ -1,4 +1,4 @@
-{% from 'dashboards/fragments/form_fields.html' import textarea_field, form_errors_panel with context %}
+{% from 'dashboards/fragments/form_fields.html' import textarea_field, checkbox_field, form_errors_panel with context %}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
 {#
   Paste a roster under an event. Lands in #invitationFormContainer; on
@@ -20,4 +20,10 @@
     </p>
     {{ textarea_field('roster', 'Roster', required=True, rows=10,
                       placeholder='Ada Lovelace <ada@example.edu>') }}
+    {# The link route is mounted with the invitations switch; Admin -> Events is not. #}
+    {% if config.ACCOUNT_INVITATIONS_ENABLED %}
+    {{ checkbox_field('send_invite', 'Email each new person a link to finish their request',
+                      default=True,
+                      help='People SAM already knows are enrolled and get no link.') }}
+    {% endif %}
 {% endcall %}

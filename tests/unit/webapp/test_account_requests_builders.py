@@ -19,9 +19,11 @@ from factories import (
 from sam.notify.samples import sample_context
 from sam.queries.account_notices import (
     ACCOUNT_KIND_SUBJECTS,
+    build_invite_message,
     build_queue_summary,
     build_rejection_message,
     build_verify_message,
+    invite_label,
     queue_summary_context,
 )
 
@@ -80,6 +82,17 @@ class TestQueueSummary:
         assert message.dedup_key == 'account_queue_summary:2026-09-14:nusd@example.edu'
         assert message.subject == 'NCAR HPC account requests: 1 waiting, 1 new'
         assert message.requested_by == 'task:account_queue_digest'
+
+    def test_rows_carry_the_invitation_status(self, session):
+        awaiting = make_account_request(session).mark_invite_sent(datetime(2026, 9, 20, 10))
+        done = make_account_request(session).mark_invite_sent(datetime(2026, 9, 20, 10))
+        done.completed_at = datetime(2026, 9, 21, 11)
+        plain = make_account_request(session)
+        assert [invite_label(r) for r in (awaiting, done, plain)] == [
+            'awaiting invitee', 'completed 2026-09-21', '']
+        context = queue_summary_context(session, [awaiting, done, plain], occurrence=OCC)
+        assert [r['invite'] for r in context['rows']] == [
+            'awaiting invitee', 'completed 2026-09-21', '']
 
     def test_an_empty_queue_still_builds(self, session):
         context = queue_summary_context(session, [], occurrence=OCC)
@@ -141,3 +154,44 @@ class TestRejectionMessage:
         first = build_rejection_message(row, requested_by='op').dedup_key
         row.reopen().reject('op', 'still no', clock=datetime(2026, 9, 2))
         assert build_rejection_message(row, requested_by='op').dedup_key != first
+
+
+class TestInviteMessage:
+    SENT = datetime(2026, 9, 24, 9, 15, 30)
+
+    def _build(self, row, event=None, **kw):
+        return build_invite_message(
+            row, invite_url='https://sam/register/invite/t', sent_at=self.SENT,
+            sponsor_name='Jane Lead', projcode='SCSG0001', expires_days=30,
+            event=event, requested_by='jlead', **kw)
+
+    def test_the_context_matches_the_sample_and_leaves_the_note_out(self, session):
+        row = make_account_request(session, first_name='Ada', last_name='Lovelace',
+                                   comment='PRIVATE: for NUSD only')
+        message = self._build(row)
+        assert set(message.context) == set(sample_context('account_invite'))
+        assert 'PRIVATE' not in ' '.join(str(v) for v in message.context.values())
+        assert message.context['name'] == 'Ada Lovelace'
+        assert message.context['sponsor_name'] == 'Jane Lead'
+        assert message.context['event_name'] == '' and message.context['accounts_needed_by'] == ''
+
+    def test_an_event_invite_carries_its_instructions_and_deadline(self, session):
+        event = make_account_request_event(session, accounts_needed_by=date(2026, 10, 5),
+                                           instructions='Bring a laptop.')
+        row = make_account_request(session, purpose='enrollment', event=event)
+        context = self._build(row, event=event).context
+        assert context['event_name'] == event.name
+        assert context['event_instructions'] == 'Bring a laptop.'
+        assert context['accounts_needed_by'] == '2026-10-05'
+
+    def test_keyed_on_the_stamp_the_link_is_bound_to(self, session):
+        row = make_account_request(session, email='inv@example.edu')
+        message = self._build(row)
+        assert message.kind == 'account_invite'
+        assert message.dedup_key == (
+            f'account_invite:{row.account_request_id}:2026-09-24T09:15:30')
+        assert message.recipient.address == 'inv@example.edu'
+        assert message.recipient.role == 'user'
+        assert message.entity == ('account_request', row.account_request_id)
+        assert message.projcode == 'SCSG0001' and message.requested_by == 'jlead'
+        assert message.subject == ACCOUNT_KIND_SUBJECTS['account_invite']

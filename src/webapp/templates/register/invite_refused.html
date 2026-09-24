@@ -1,0 +1,13 @@
+{% extends 'register/base_register.html' %}
+{# An invitation link that cannot be used; the reason is safe to show. #}
+{% block title %}Invitation link not accepted{% endblock %}
+
+{% block content %}
+<h1>That invitation link cannot be used</h1>
+<div class="register-callout warn">
+    <p><i class="fa-solid fa-ban" aria-hidden="true"></i> {{ reason }}</p>
+</div>
+<p class="register-lede">
+    Questions? Write to <a href="mailto:help@ucar.edu">help@ucar.edu</a>.
+</p>
+{% endblock %}

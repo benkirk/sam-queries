@@ -1,0 +1,17 @@
+Hello Ada Lovelace,
+
+Jane Lead has invited you to request an NCAR HPC account on project SCSG0001, for "WRF Tutorial, October 2026".
+
+Accounts are needed by 2026-10-05.
+
+Bring a laptop; the exercises run on Casper.
+
+To finish your request, open this link, accept the terms of use, and fill in
+the few details the account team needs (phone, country, academic status):
+
+    https://sam.hpc.ucar.edu/register/invite/eyJpZCI6NDF9.abc.def
+
+The link is yours alone and expires in 30 days. If you did not
+expect this invitation, ignore this message.
+--
+NSF NCAR Systems Accounting Manager
