@@ -2183,11 +2183,11 @@ def _notify_url_builder():
 def htmx_notify_project_form(project):
     """The manual Notify modal: the project tree with per-row New/Adjustment/Skip."""
     from sam.queries.lifecycle_notices import classify_tree_for_notice
-    from webapp.utils.notify import get_notifier
+    from webapp.utils.notify import notify_config
     root = project.get_root() if hasattr(project, 'get_root') else project
     active_at = _parse_active_at_arg(request.args.get('active_at', ''))
     notices = classify_tree_for_notice(db.session, root, active_at=active_at)
-    cfg = get_notifier(ledger=False).config
+    cfg = notify_config()
     return render_template(
         'dashboards/admin/fragments/notify_project_form_htmx.html',
         project=project, root=root, active_at=active_at.strftime('%Y-%m-%d'),
@@ -2202,34 +2202,37 @@ def htmx_notify_project_preview(project):
     """Render one project's lifecycle message for the modal's preview pane."""
     from sam.queries.lifecycle_notices import (
         build_lifecycle_messages, notice_for_project)
-    from webapp.utils.notify import get_notifier
+    from webapp.utils.email_preview import (
+        email_preview_context, render_preview_info)
     # The changed row includes only itself, so the lone action_* param is the
     # selection ('skip' included: the pane then says so); the self-refresh
-    # passes a plain ?action=.
+    # and the recipient picker pass a plain ?action=.
     action = next((v for k, v in request.args.items() if k.startswith('action_')),
                   request.args.get('action', 'activated'))
+    if action not in ('activated', 'adjusted'):
+        return render_preview_info(
+            f'{project.projcode} is set to Skip: it will not be notified.',
+            'secondary')
     active_at = _parse_active_at_arg(request.args.get('active_at', ''))
-    preview = preview_error = None
-    if action in ('activated', 'adjusted'):
-        notice = notice_for_project(db.session, project, active_at=active_at)
-        item = notice.item_for(action) if notice else None
-        if item is not None:
-            messages = build_lifecycle_messages(
-                db.session, per_project=[item],
-                requested_by=current_user.username,
-                url_builder=_notify_url_builder(),
-                operator_comment=request.args.get('operator_comment', '')[:1000],
-                site_url=_public_root())
-            if messages:
-                try:
-                    preview = get_notifier(ledger=False).preview(messages[0])
-                except Exception as e:  # noqa: BLE001 — a bad template is not a 500
-                    preview_error = str(e)
+    notice = notice_for_project(db.session, project, active_at=active_at)
+    item = notice.item_for(action) if notice else None
+    messages = build_lifecycle_messages(
+        db.session, per_project=[item],
+        requested_by=current_user.username,
+        url_builder=_notify_url_builder(),
+        operator_comment=request.args.get('operator_comment', '')[:1000],
+        site_url=_public_root()) if item is not None else []
+    refresh_url = url_for('admin_dashboard.htmx_notify_project_preview',
+                          projcode=project.projcode, action=action,
+                          active_at=active_at.strftime('%Y-%m-%d'))
+    pane = email_preview_context(
+        messages, id_prefix='notifyPreview', pane_id='notifyPreviewPane',
+        picker_url=refresh_url, picker_method='get',
+        picker_include='#notifyOperatorComment', mode_banner=False,
+        empty=f'Nothing to preview for {project.projcode} (no recipient on file).')
     return render_template(
         'dashboards/admin/fragments/notify_project_preview_htmx.html',
-        preview=preview, preview_error=preview_error,
-        action=action, projcode=project.projcode,
-        active_at=active_at.strftime('%Y-%m-%d'))
+        refresh_url=refresh_url, **pane)
 
 
 @bp.route('/htmx/notify-project/<projcode>', methods=['POST'])
@@ -2240,14 +2243,14 @@ def htmx_notify_project(project):
     from sam.queries.lifecycle_notices import (
         build_lifecycle_messages, classify_tree_for_notice)
     from marshmallow import ValidationError
-    from webapp.utils.notify import get_notifier, notify_summary
+    from webapp.utils.notify import get_notifier, notify_config, notify_summary
     root = project.get_root() if hasattr(project, 'get_root') else project
     active_at = _parse_active_at_arg(request.form.get('active_at', ''))
     notices = classify_tree_for_notice(db.session, root, active_at=active_at)
     try:
         comment = NotifyProjectForm().load(request.form)['operator_comment']
     except ValidationError as e:
-        cfg = get_notifier(ledger=False).config
+        cfg = notify_config()
         return render_template(
             'dashboards/admin/fragments/notify_project_form_htmx.html',
             project=project, root=root, notices=notices,

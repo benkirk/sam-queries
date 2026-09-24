@@ -20,7 +20,7 @@ from typing import Optional
 from flask import current_app, request, url_for
 from sqlalchemy.orm import Session
 
-from sam.notify import Notifier
+from sam.notify import Notifier, NotifyConfig
 from sam.notify.ledger import NotificationLedger
 from webapp.extensions import db
 
@@ -39,22 +39,22 @@ def public_url_for(endpoint: str, **values) -> str:
     return public_url_root() + url_for(endpoint, **values).lstrip('/')
 
 
-def get_notifier(*, ledger: bool = True) -> Notifier:
+def get_notifier(*, read_only: bool = False) -> Notifier:
     """Build a :class:`~sam.notify.Notifier` for this request.
 
-    Config comes from ``app.config`` via ``NotifyConfig`` (the Flask half of
-    the framework-agnostic seam), so ``NOTIFY_ENABLED`` and friends are read
-    per call rather than memoised at import — a `Notifier` cached at module
-    scope would outlive a config override in a test and, worse, would hold a
-    transport whose socket had long since closed.
-
-    Args:
-        ledger: set False only for a pure ``preview()``, which writes no row
-            and so needs no database at all.
+    Config is read per call from ``app.config``, never memoised: a cached
+    notifier would outlive a test's config override and hold a dead socket.
+    The ledger is always session-backed, because its factory is also what loads
+    operator template overrides and addressing rows; ``read_only`` is for
+    previews, whose notifier cannot record and therefore cannot send.
     """
-    return Notifier(
-        ledger=NotificationLedger(lambda: Session(db.engine)) if ledger else None
-    )
+    return Notifier(ledger=NotificationLedger(lambda: Session(db.engine),
+                                              read_only=read_only))
+
+
+def notify_config() -> NotifyConfig:
+    """The notify config alone, for callers that only show enabled/redirect."""
+    return NotifyConfig.from_environment()
 
 
 def notify_summary(results) -> dict:

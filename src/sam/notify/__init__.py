@@ -29,10 +29,12 @@ Design and measurements: ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md``.
 
 from sam.notify.base import (
     Channel,
+    DeliveryPreview,
     DeliveryResult,
     Message,
     NOTIFICATION_STATUSES,
     NotifyError,
+    PreviewRecipient,
     Recipient,
     RenderedMessage,
     Transport,
@@ -111,6 +113,7 @@ __all__ = [
     'ConsoleTransport',
     'DEDUP_CHUNK',
     'DEFAULT_FACILITY_TEMPLATE',
+    'DeliveryPreview',
     'DeliveryResult',
     'FACILITY_VARIANTS',
     'FAMILIES',
@@ -130,6 +133,7 @@ __all__ = [
     'NotifyError',
     'NullTransport',
     'ORIGINAL_TO_HEADER',
+    'PreviewRecipient',
     'REDIRECT_BANNER',
     'Recipient',
     'RenderedMessage',

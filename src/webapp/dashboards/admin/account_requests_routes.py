@@ -43,7 +43,7 @@ from webapp.utils.htmx import (
     handle_htmx_form_post, htmx_modal_not_found, htmx_not_found, htmx_success,
     htmx_success_message, modal_triggers, read_flag, read_sort,
 )
-from webapp.utils.notify import get_notifier
+from webapp.utils.notify import get_notifier, notify_config
 from webapp.utils.rbac import (
     Permission, has_permission_any_facility, require_permission,
 )
@@ -246,7 +246,7 @@ def account_request_reopen(request_id):
 
 def _reason_context(row, verb):
     return {'row': row, 'verb': verb,
-            'notify_enabled': get_notifier(ledger=False).config.enabled,
+            'notify_enabled': notify_config().enabled,
             'post_url': url_for(f'admin_dashboard.account_request_{verb}',
                                 request_id=row.account_request_id)}
 

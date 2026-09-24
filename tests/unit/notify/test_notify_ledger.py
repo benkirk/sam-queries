@@ -314,6 +314,15 @@ class TestTheSingleAndBatchFormsAgree:
         make_notification_log(session, status=status, dedup_key=key, age=age)
         assert ledger.already_sent(key) is suppresses
         assert (key in ledger.already_sent_many([key])) is suppresses
+        assert (key in ledger.last_sent_many([key])) is suppresses
+
+    def test_last_sent_many_has_exactly_the_suppressed_keys(self, ledger, session):
+        keys = []
+        for status, age, _ in SUPPRESSION_CASES:
+            key = f'DATED:{status}:{age}'
+            make_notification_log(session, status=status, dedup_key=key, age=age)
+            keys.append(key)
+        assert set(ledger.last_sent_many(keys)) == ledger.already_sent_many(keys)
 
     def test_a_mixed_batch_partitions_exactly_as_the_single_form_does(
             self, ledger, session):
@@ -456,3 +465,63 @@ class TestAlreadySentManyFailsOpenPerChunk:
         found = ledger.already_sent_many([f'F{i}' for i in range(4)],
                                          chunk_size=2)
         assert found == {'F0', 'F1'}
+
+
+class TestLastSentMany:
+
+    def test_it_reports_the_latest_suppressing_time(self, ledger, session):
+        make_notification_log(session, status='sent', dedup_key='LS',
+                              age=timedelta(days=10))
+        newest = make_notification_log(session, status='redirected',
+                                       dedup_key='LS', age=timedelta(days=2))
+        make_notification_log(session, status='failed', dedup_key='LS')
+        session.refresh(newest)             # the column's stored precision
+        assert ledger.last_sent_many(['LS']) == {'LS': newest.creation_time}
+
+    def test_an_empty_batch_never_opens_a_session(self):
+        def exploding_factory():
+            raise AssertionError('session_factory must not be called')
+
+        ledger = NotificationLedger(exploding_factory, config=NotifyConfig())
+        assert ledger.last_sent_many([None, '']) == {}
+
+    def test_a_broken_query_fails_open(self):
+        def broken_factory():
+            raise RuntimeError('read replica down')
+
+        ledger = NotificationLedger(broken_factory, config=NotifyConfig())
+        assert ledger.last_sent_many(['K1']) == {}
+
+    @pytest.mark.parametrize('chunk_size', [1, 2, 500])
+    def test_chunking_is_invisible(self, ledger, session, chunk_size):
+        for i in range(3):
+            make_notification_log(session, status='sent', dedup_key=f'LC{i}')
+        keys = [f'LC{i}' for i in range(3)] + ['LC-absent']
+        assert set(ledger.last_sent_many(keys, chunk_size=chunk_size)) == \
+            {f'LC{i}' for i in range(3)}
+
+
+class TestReadOnly:
+    """A preview's ledger: reads work, nothing can be written."""
+
+    def test_record_raises_and_writes_nothing(self, session, ledger):
+        read_only = NotificationLedger(ledger.session_factory,
+                                       config=NotifyConfig(), read_only=True)
+        before = session.query(NotificationLog).count()
+        with pytest.raises(LedgerError):
+            read_only.record(_message(), status='queued', transport='null')
+        assert session.query(NotificationLog).count() == before
+
+    def test_resolve_does_nothing(self):
+        def exploding_factory():
+            raise AssertionError('a read-only resolve must not open a session')
+
+        NotificationLedger(exploding_factory, config=NotifyConfig(),
+                           read_only=True).resolve(1, status='sent')
+
+    def test_reads_still_work(self, session, ledger):
+        make_notification_log(session, status='sent', dedup_key='RO')
+        read_only = NotificationLedger(ledger.session_factory,
+                                       config=NotifyConfig(), read_only=True)
+        assert read_only.already_sent('RO') is True
+        assert 'RO' in read_only.last_sent_many(['RO'])

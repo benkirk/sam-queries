@@ -366,7 +366,8 @@
 {# checkbox #}
 {#
   Bootstrap form-check pattern. `default` is the initial checked state (bool).
-  On error re-render, uses presence of name in form.
+  On error re-render, uses presence of name in form. Used with {% call %},
+  the caller's markup renders inline after the label (e.g. a preview button).
 #}
 {% macro checkbox_field(name, label, default=False, help=None, id=None) %}
 {%- set _id = id or name -%}
@@ -380,6 +381,7 @@
            name="{{ name }}" value="1"{% if _checked %} checked{% endif %}
            {{- _aria(name, _id) }}>
     <label class="form-check-label" for="{{ _id }}">{{ label }}</label>
+    {%- if caller is defined %} {{ caller() }}{% endif %}
     {{ _field_error(name, _id) }}
     {%- if help %}<small class="form-text text-muted d-block">{{ help }}</small>{% endif %}
 </div>

@@ -2003,6 +2003,13 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_notify_preview",
+    "/allocations/xras_notify_preview/<int:project_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_opportunity_detail",
     "/allocations/xras_opportunity_detail/<int:opportunity_id>",
     [
