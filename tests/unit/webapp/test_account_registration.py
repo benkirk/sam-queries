@@ -372,6 +372,27 @@ class TestSubmit:
         assert resp.status_code == 200
         assert 'what you need the account for' in resp.get_data(as_text=True)
 
+    def test_the_reason_label_is_not_marked_optional(self, client):
+        html = client.get('/register/').get_data(as_text=True)
+        label = html[html.index('for="purpose_note"'):]
+        assert '(optional)' not in label[:label.index('</label>')]
+        assert 'new collaborator to be added on project' in html
+
+    def test_an_event_code_needs_no_reason(self, client, app, null_notifier, committed_event):
+        from sam.core.account_requests import AccountRequest
+        from webapp.extensions import db
+        code, _ = committed_event
+        email = f'zz.evt.{uuid4().hex[:8]}@example.invalid'
+        data = {**GOOD, 'email': email, 'event_code': code}
+        data.pop('purpose_note')
+        try:
+            resp = client.post('/register/', data=data)
+            assert resp.status_code == 302 and '/register/pending/' in resp.headers['Location']
+        finally:
+            with app.app_context():
+                db.session.query(AccountRequest).filter_by(email=email).delete()
+                db.session.commit()
+
     def test_the_honeypot_pretends_and_writes_nothing(self, client, app, null_notifier):
         from sam.core.account_requests import AccountRequest
         from webapp.extensions import db

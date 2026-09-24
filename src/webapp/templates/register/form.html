@@ -80,8 +80,10 @@
     {{ select_field('event_code', 'Event', options=event_options, placeholder='— none —',
                     help='If you are registering for a workshop or class.') }}
     {% endif %}
+    {# Required only without an event (blueprint.submit), so no asterisk and no "(optional)". #}
     {{ textarea_field('purpose_note', 'What do you need the account for?', rows=3, maxlength=500,
-                      help='Required when you are not registering for an event. One or two sentences.') }}
+                      optional_text='',
+                      help='Required when you are not registering for an event. For example, new collaborator to be added on project ABCD1234 etc...') }}
     {% endif %}
 
     {% include 'register/_human_check.html' %}
