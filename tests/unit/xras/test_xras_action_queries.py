@@ -7,6 +7,8 @@ to the HTTP tier, whose handlers read through Flask-SQLAlchemy's own connection)
 
 from datetime import datetime, timedelta
 
+import uuid
+
 import pytest
 from factories.core import make_user
 from factories.projects import make_project
@@ -183,13 +185,17 @@ class TestFilters:
         assert with_errors + without == count_recent_xras_actions(session)
 
     def test_replays_only_is_tri_state(self, session):
-        original = _action(session)
+        # Scoped to this test's rows: three unscoped counts of a table other
+        # xdist workers commit to can disagree between queries.
+        rn = f'TRI{uuid.uuid4().hex[:8].upper()}'
+        original = _action(session, request_number=rn)
         _action(session, source_action_id=original.xras_action_log_id,
-                status='rechecked')
-        only = count_recent_xras_actions(session, replays_only=True)
-        originals = count_recent_xras_actions(session, replays_only=False)
-        assert only >= 1 and originals >= 1
-        assert only + originals == count_recent_xras_actions(session)
+                status='rechecked', request_number=rn)
+        only = count_recent_xras_actions(session, replays_only=True, request_number=rn)
+        originals = count_recent_xras_actions(session, replays_only=False,
+                                              request_number=rn)
+        assert (only, originals) == (1, 1)
+        assert only + originals == count_recent_xras_actions(session, request_number=rn)
 
     def test_replay_of_finds_the_children_of_one_row(self, session):
         parent = _action(session)
