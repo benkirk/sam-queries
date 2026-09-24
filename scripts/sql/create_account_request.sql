@@ -63,6 +63,11 @@ CREATE TABLE IF NOT EXISTS account_request (
   fulfill_error        VARCHAR(255)      NULL,   -- the account exists but the enrollment failed
   closure_notified_at  DATETIME          NULL,   -- when the requester was told of a rejection
   merged_at            DATETIME          NULL,   -- when the XRAS placeholder was merged into the real person
+  -- Invitation link and agreement acceptance.
+  invite_sent_at       DATETIME          NULL,   -- last invite mail; also the link binding (a resend invalidates older links)
+  completed_at         DATETIME          NULL,   -- the invitee finished the form
+  eula_sha             VARCHAR(40)       NULL,   -- git blob SHA of the accepted agreement (src/webapp/register/eula.md)
+  eula_accepted_at     DATETIME          NULL,
   PRIMARY KEY (account_request_id),
   -- Index names live in one namespace with table names on Postgres (the
   -- dual-backend clone builds from the ORM), so none may equal a table name.

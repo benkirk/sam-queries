@@ -309,7 +309,8 @@ def upcoming_listed_events(session: Session, *,
                            now: Optional[datetime] = None) -> List[Dict[str, Any]]:
     """Listed events whose form is open and whose deadline has not passed,
     soonest first, as plain dicts (the caller caches them). Keys: ``event_id
-    event_code name instructions project_code accounts_needed_by closes_at``.
+    event_code name instructions project_code accounts_needed_by closes_at
+    invite_only``.
 
     ``now`` is naive-Mountain like the columns it is compared to, NOT the status
     page's naive-UTC clock. The window mirrors AccountRequestEvent.is_open_at.
@@ -328,7 +329,8 @@ def upcoming_listed_events(session: Session, *,
              'name': e.name, 'instructions': e.instructions,
              'project_code': projcode or '',
              'accounts_needed_by': e.accounts_needed_by,
-             'closes_at': e.closes_at} for e, projcode in rows]
+             'closes_at': e.closes_at,
+             'invite_only': bool(e.invite_only)} for e, projcode in rows]
 
 
 def enrolled_event_ids(session: Session, user_id: int) -> set:

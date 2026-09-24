@@ -4,7 +4,8 @@
   blueprint.accept/submit) before the open form is reachable. register.js holds
   the box until the reader scrolls to the data-eula-end sentinel. The human
   check sits on the form itself. Context: event | None, locked_code, errors,
-  field_errors.
+  field_errors, accept_url, terms_url (either blueprint's), invite (a row, on
+  the invitation link).
 #}
 {% block title %}Before you begin{% endblock %}
 
@@ -13,7 +14,7 @@
 {% endblock %}
 
 {% block content %}
-<h1>Before you request an account</h1>
+<h1>{% if invite %}Before you finish your request{% else %}Before you request an account{% endif %}</h1>
 <p class="register-lede">
     NSF NCAR HPC resources are shared federal research systems. Please read and
     accept the terms of use to continue.
@@ -26,7 +27,7 @@
 </div>
 {% endif %}
 
-<form method="post" action="{{ url_for('register.accept') }}" data-register-gate novalidate>
+<form method="post" action="{{ accept_url }}" data-register-gate novalidate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% if locked_code %}<input type="hidden" name="event_code" value="{{ locked_code }}">{% endif %}
 
@@ -39,7 +40,7 @@
         <p class="eula-scroll-hint" data-eula-hint hidden>
             <i class="fa-solid fa-arrow-down" aria-hidden="true"></i> Scroll to the end of the terms to accept.
         </p>
-        <a class="eula-open" href="{{ url_for('register.terms') }}" target="_blank" rel="noopener"
+        <a class="eula-open" href="{{ terms_url }}" target="_blank" rel="noopener"
            title="Open the full terms of use in a new tab">
             <i class="fa-solid fa-up-right-from-square" aria-hidden="true"></i> Open full terms
             <span class="visually-hidden">(opens in a new tab)</span>

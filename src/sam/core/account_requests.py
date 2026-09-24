@@ -80,6 +80,8 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
     closes_at = Column(DateTime)
     #: Opt-in public discoverability; an unlisted event is reachable by link only.
     listed = Column(Boolean, nullable=False, default=False)
+    #: Closes every self-service path (code, picker, self-enroll): roster only.
+    invite_only = Column(Boolean, nullable=False, default=False)
     created_by = Column(String(35), nullable=False)
     #: App clock, never a DB default -- SAM's convention is naive-Mountain.
     creation_time = Column(DateTime, nullable=False)
@@ -93,7 +95,7 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
         return f"<AccountRequestEvent {self.event_code!r} project={self.project_id}>"
 
     def is_open_at(self, now: Optional[datetime] = None) -> bool:
-        """Whether the public form accepts this code at ``now``."""
+        """Whether the schedule accepts this code at ``now``; ``invite_only`` is separate."""
         now = now or datetime.now()
         if not self.active:
             return False
@@ -116,7 +118,8 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
     @classmethod
     def create(cls, session, *, event_code, name, project_id, accounts_needed_by,
                created_by, instructions=None, extra_sponsor_user_id=None,
-               opens_at=None, closes_at=None, listed=False, clock=None):
+               opens_at=None, closes_at=None, listed=False, invite_only=False,
+               clock=None):
         """Flushes, does not commit; the caller owns the transaction."""
         name = _clean(name, width=128)
         if not name:
@@ -136,6 +139,7 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
             opens_at=opens_at,
             closes_at=closes_at,
             listed=bool(listed),
+            invite_only=bool(invite_only),
             created_by=_clean(created_by, width=35),
             creation_time=now,
             modified_time=now,
@@ -148,7 +152,7 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
 
     def update(self, *, name=None, accounts_needed_by=None, instructions=_UNSET,
                opens_at=_UNSET, closes_at=_UNSET, extra_sponsor_user_id=_UNSET,
-               listed=None):
+               listed=None, invite_only=None):
         """Sentinel-gated so a caller can clear the window, sponsor or instructions."""
         if name is not None:
             cleaned = _clean(name, width=128)
@@ -169,6 +173,8 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
             self.extra_sponsor_user_id = extra_sponsor_user_id
         if listed is not None:
             self.listed = bool(listed)
+        if invite_only is not None:
+            self.invite_only = bool(invite_only)
         self.session.flush()
         return self
 
@@ -265,6 +271,14 @@ class AccountRequest(Base, SessionMixin):
     #: Not written yet: the XRAS placeholder merge (phase 3).
     merged_at = Column(DateTime)
 
+    # Invitation link and agreement acceptance.
+    #: Last invite mail; also the link binding, so a resend invalidates older links.
+    invite_sent_at = Column(DateTime)
+    completed_at = Column(DateTime)
+    #: Git blob SHA of the accepted src/webapp/register/eula.md.
+    eula_sha = Column(String(40))
+    eula_accepted_at = Column(DateTime)
+
     def __str__(self):
         return f"{self.email} ({self.display_name}, {self.purpose}, {self.state})"
 
@@ -299,7 +313,8 @@ class AccountRequest(Base, SessionMixin):
                residence_country=None, orcid=None, phone=None,
                desired_username=None, project_id=None, sponsor_user_id=None,
                event_id=None, xras_username=None, comment=None, purpose_note=None,
-               verified_by=None, source_ip=None, clock=None):
+               verified_by=None, source_ip=None, eula_sha=None,
+               eula_accepted_at=None, clock=None):
         """Flushes, does not commit.
 
         ``verified_by`` set means the row is visible to the queue at once: a
@@ -354,6 +369,8 @@ class AccountRequest(Base, SessionMixin):
             verified_at=now if verified_by else None,
             verified_by=_clean(verified_by, width=35),
             source_ip=_clean(source_ip, width=45),
+            eula_sha=_clean(eula_sha, width=40) if eula_accepted_at else None,
+            eula_accepted_at=eula_accepted_at,
             creation_time=now,
             modified_time=now,
         )
@@ -435,6 +452,51 @@ class AccountRequest(Base, SessionMixin):
         self.verified_by = _clean(by, width=35)
         self.verify_code_hash = None
         self.verify_expires_at = None
+        self.session.flush()
+        return self
+
+    # -- invitation link -----------------------------------------------------
+
+    @property
+    def invite_state(self) -> Optional[str]:
+        """``'completed'``, ``'awaiting'`` (a link is out), or None (never invited)."""
+        if self.completed_at is not None:
+            return 'completed'
+        if self.invite_sent_at is not None:
+            return 'awaiting'
+        return None
+
+    def mark_invite_sent(self, clock=None):
+        """The invite mail left (send first, stamp second). Re-stamping voids older links."""
+        self.invite_sent_at = clock or datetime.now()
+        self.session.flush()
+        return self
+
+    #: What the invitee may fill in or correct; the email is what the sponsor vouched for.
+    INVITE_FIELDS = {'first_name': 64, 'middle_name': 64, 'last_name': 64,
+                     'organization': 128, 'academic_status': 64,
+                     'residence_country': 64, 'orcid': 19, 'phone': 32,
+                     'desired_username': 64}
+
+    def complete_invite(self, *, fields, eula_sha, accepted_at, source_ip=None, clock=None):
+        """The invitee's own details, written onto this row in place. Flushes.
+
+        Raises:
+            ValueError: the row is closed or fulfilled, or a name went blank.
+        """
+        self._require_open('complete')
+        if self.is_fulfilled:
+            raise ValueError('cannot complete a fulfilled request')
+        for key, width in self.INVITE_FIELDS.items():
+            if key in fields:
+                setattr(self, key, _clean(fields[key], width=width))
+        if not self.first_name or not self.last_name:
+            raise ValueError('first_name and last_name are required')
+        self.completed_at = clock or datetime.now()
+        self.eula_sha = _clean(eula_sha, width=40)
+        self.eula_accepted_at = accepted_at
+        if source_ip:
+            self.source_ip = _clean(source_ip, width=45)
         self.session.flush()
         return self
 

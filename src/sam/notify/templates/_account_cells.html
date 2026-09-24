@@ -8,5 +8,6 @@
 {% endmacro %}
 {% macro status(r) %}
         <td class="num">{{ r.waiting_days }} d</td>
-        <td>{% if r.assignee %}claimed by {{ r.assignee }}{% else %}{{ r.state }}{% endif %}</td>
+        <td>{% if r.assignee %}claimed by {{ r.assignee }}{% else %}{{ r.state }}{% endif %}
+            {%- if r.invite %}<br><small>{{ r.invite }}</small>{% endif %}</td>
 {% endmacro %}

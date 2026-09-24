@@ -27,14 +27,19 @@
                 </div>
             </div>
             <div class="text-nowrap">
-                {% if ev.event_id not in enrolled_event_ids %}
+                {% if ev.invite_only %}
+                <span class="badge bg-body-secondary text-body-secondary border"
+                      title="Participants join from the personal link in their invitation email.">By invitation</span>
+                {% elif ev.event_id not in enrolled_event_ids %}
                 <a class="btn btn-sm btn-primary" href="{{ reg_url }}">
                     <i class="fa-solid fa-user-plus me-1"></i>
                     {%- if not current_user.is_authenticated and config.ACCOUNT_REGISTRATION_LOGIN_REQUIRED %} Sign in to register
                     {%- else %} Register{% endif %}
                 </a>
                 {% endif %}
+                {% if not ev.invite_only %}
                 {{ copy_button(reg_url, label='Copy registration link', icon='fa-solid fa-link', compact=true, done='Registration link copied.') }}
+                {% endif %}
             </div>
         </div>
         {% if ev.instructions %}

@@ -8,18 +8,23 @@ one line naming the actor: the table has no ``modified_by``.
 """
 
 import logging
+from datetime import date
 
-from flask import request, url_for
+from flask import current_app, request, url_for
 from flask_login import current_user
+from marshmallow import ValidationError
 
-from sam.core.account_requests import AccountRequestEvent
+from sam.core.account_requests import AccountRequest, AccountRequestEvent
 from sam.core.users import User
 from sam.manage import management_transaction
 from sam.manage.account_requests import (
     OUTCOME_ADDED, OUTCOME_DUPLICATE, OUTCOME_QUEUED, parse_roster, paste_roster,
 )
 from sam.queries.account_requests import upcoming_listed_events
-from sam.schemas.forms import AccountRequestEventEditForm, RosterPasteForm
+from sam.schemas.forms import (
+    AccountRequestEventEditForm, AccountRequestEventForm, RosterPasteForm,
+)
+from sam.schemas.forms.account_requests import PAST_DEADLINE_MSG, deadline_notice
 from webapp.extensions import cache, db
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import htmx_success, htmx_success_message
@@ -66,16 +71,16 @@ def invalidate_upcoming_events():
 
 
 def create_event(data, project):
-    """The event_code uniqueness check is global: a code is typed by strangers.
-    Callers pass ``after_commit=lambda _: invalidate_upcoming_events()``."""
+    """The event_code uniqueness check is global: a code is typed by strangers."""
     if not project.is_active:
         raise FormError(f'{project.projcode} is not an active project.')
     code = data['event_code']
     if db.session.query(AccountRequestEvent).filter_by(event_code=code).first():
         raise FormError(f'The code {code} is already in use.')
     sponsor = resolve_sponsor(data.get('extra_sponsor_user_id'))
-    logger.info('event create: code=%s project=%s listed=%s by=%s', code,
-                project.projcode, bool(data.get('listed')), _actor())
+    logger.info('event create: code=%s project=%s listed=%s invite_only=%s by=%s', code,
+                project.projcode, bool(data.get('listed')), bool(data.get('invite_only')),
+                _actor())
     return AccountRequestEvent.create(
         db.session, event_code=code, name=data['name'],
         instructions=data.get('instructions'),
@@ -84,7 +89,46 @@ def create_event(data, project):
         opens_at=data.get('opens_at'), closes_at=data.get('closes_at'),
         extra_sponsor_user_id=sponsor.user_id if sponsor else None,
         listed=data.get('listed', False),
+        invite_only=data.get('invite_only', False),
         created_by=current_user.username)
+
+
+def date_floor(event=None) -> str:
+    """The date picker's ``min``: today, or an old event's own date so it stays editable."""
+    today = date.today()
+    return min(today, event.accounts_needed_by).isoformat() if event else today.isoformat()
+
+
+def saved_response(triggers, message, event):
+    """The success toast; a short-notice deadline turns it into a warning."""
+    notice = deadline_notice(event.accounts_needed_by)
+    if notice is None:
+        return htmx_success_message(triggers, message)
+    return htmx_success('dashboards/fragments/htmx_success.html', triggers,
+                        toast=f'{message} {notice}', toast_variant='warning',
+                        message=message, detail=notice)
+
+
+class EventCreateHandler(HtmxFormHandler):
+    """Create an event. Subclasses supply ``triggers``, ``context()`` and, for a
+    picked project, ``target_project(data)``."""
+    schema_cls = AccountRequestEventForm
+    template = EVENT_FORM
+    error_prefix = 'Error creating event'
+    triggers = {}
+    message = 'Event created.'
+
+    def target_project(self, data):
+        return self.project
+
+    def perform(self, data):
+        return create_event(data, self.target_project(data))
+
+    def after_commit(self, result):
+        invalidate_upcoming_events()
+
+    def on_success(self, event):
+        return saved_response(self.triggers, self.message, event)
 
 
 class EventEditHandler(HtmxFormHandler):
@@ -95,6 +139,14 @@ class EventEditHandler(HtmxFormHandler):
     template = EVENT_FORM
     partial = True
     triggers = {}
+
+    def clean(self, data):
+        # Only a changed date is checked, so an old event stays editable.
+        needed_by = data.get('accounts_needed_by')
+        if (needed_by and needed_by != self.event.accounts_needed_by
+                and needed_by < date.today()):
+            raise ValidationError({'accounts_needed_by': [PAST_DEADLINE_MSG]})
+        return data
 
     def perform(self, data):
         sent = request.form
@@ -119,6 +171,8 @@ class EventEditHandler(HtmxFormHandler):
         # a steward's edit must not publish (or unpublish).
         if 'listed_present' in sent and can_create_events(current_user, self.project):
             updates['listed'] = 'listed' in sent
+        if 'invite_only_present' in sent:
+            updates['invite_only'] = 'invite_only' in sent
         logger.info('event edit: code=%s fields=%s listed=%s->%s by=%s',
                     self.event.event_code, sorted(updates), self.event.listed,
                     updates.get('listed', self.event.listed), _actor())
@@ -128,7 +182,7 @@ class EventEditHandler(HtmxFormHandler):
         invalidate_upcoming_events()
 
     def on_success(self, result):
-        return htmx_success_message(self.triggers, f'Saved {self.event.event_code}.')
+        return saved_response(self.triggers, f'Saved {self.event.event_code}.', self.event)
 
 
 def switch_event(event, verb, triggers):
@@ -160,8 +214,29 @@ class RosterHandler(HtmxFormHandler):
     def perform(self, data):
         # The acting user is the sponsor recorded on every row written here.
         sponsor = db.session.get(User, current_user.user_id)
+        self.send_invite = (bool(data.get('send_invite'))
+                            and current_app.config.get('ACCOUNT_INVITATIONS_ENABLED', False))
         return paste_roster(db.session, event=self.event, sponsor=sponsor,
                             entries=data['entries'])
+
+    def after_commit(self, result):
+        """One invitation link per newly queued person; known users got none."""
+        self.invites = None
+        if not self.send_invite:
+            return
+        # Here, not at the top: webapp.register imports this module.
+        from webapp.register.invite_mail import (
+            DELIVERED, can_send_invite, send_invite_links)
+        queued = result[OUTCOME_QUEUED]
+        rows = (db.session.query(AccountRequest)
+                .filter(AccountRequest.event_id == self.event.account_request_event_id,
+                        AccountRequest.email.in_(queued)).all()) if queued else []
+        rows = [r for r in rows if can_send_invite(r) and r.invite_sent_at is None]
+        results = send_invite_links(rows, requested_by=_actor())
+        self.invites = {
+            'delivered': [r.recipient for r in results if r.status in DELIVERED],
+            'undelivered': [(r.recipient, r.detail or r.status)
+                            for r in results if r.status not in DELIVERED]}
 
     def context(self):
         return {'project': self.project, 'event': self.event,
@@ -172,11 +247,14 @@ class RosterHandler(HtmxFormHandler):
         # The summary replaces the form inside the still-open modal: an
         # operator pasting thirty lines wants to see which three were known.
         counts = {k: len(v) for k, v in result.items()}
-        logger.info('event roster: code=%s queued=%d added=%d duplicate=%d by=%s',
+        links = len(self.invites['delivered']) if self.invites else 0
+        logger.info('event roster: code=%s queued=%d added=%d duplicate=%d links=%d by=%s',
                     self.event.event_code, counts[OUTCOME_QUEUED], counts[OUTCOME_ADDED],
-                    counts[OUTCOME_DUPLICATE], _actor())
-        return htmx_success(ROSTER_RESULT, self.triggers,
-                            toast=(f"{counts[OUTCOME_QUEUED]} queued, "
-                                   f"{counts[OUTCOME_ADDED]} added, "
-                                   f"{counts[OUTCOME_DUPLICATE]} already waiting"),
-                            event=self.event, project=self.project, outcomes=result)
+                    counts[OUTCOME_DUPLICATE], links, _actor())
+        toast = (f"{counts[OUTCOME_QUEUED]} queued, {counts[OUTCOME_ADDED]} added, "
+                 f"{counts[OUTCOME_DUPLICATE]} already waiting")
+        if self.invites is not None:
+            toast += f", {links} invitation link(s) sent"
+        return htmx_success(ROSTER_RESULT, self.triggers, toast=toast,
+                            event=self.event, project=self.project, outcomes=result,
+                            invites=self.invites)

@@ -1,0 +1,25 @@
+{#
+  Invitation-link bits for an account_request row, shared by the project
+  Invitations tab and the Admin -> Accounts queue card. `r` is the ORM row.
+#}
+{% macro invite_badge(r) %}
+{%- if r.invite_state == 'completed' -%}
+<span class="badge bg-success-subtle text-success-emphasis border border-success-subtle"
+      title="The invitee finished the form from their link">completed {{ r.completed_at | fmt_date }}</span>
+{%- elif r.invite_state == 'awaiting' -%}
+<span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+      title="Invitation link sent {{ r.invite_sent_at | fmt_date }}; the invitee has not finished the form">awaiting invitee</span>
+{%- endif -%}
+{% endmacro %}
+
+{#- dt/dd pairs for a `dl.row`; empty when the row has neither stamp. #}
+{% macro invite_details(r) %}
+{% if r.invite_sent_at %}
+<dt class="col-sm-3">Invitation</dt>
+<dd class="col-sm-9">link sent {{ r.invite_sent_at | fmt_date(fmt='%Y-%m-%d %H:%M') }}{% if r.completed_at %}; completed by the invitee {{ r.completed_at | fmt_date(fmt='%Y-%m-%d %H:%M') }}{% endif %}</dd>
+{% endif %}
+{% if r.eula_sha %}
+<dt class="col-sm-3">Terms of use</dt>
+<dd class="col-sm-9">EULA <span class="font-monospace" title="{{ r.eula_sha }}">{{ r.eula_sha[:7] }}</span> @ {{ r.eula_accepted_at | fmt_date(fmt='%Y-%m-%d %H:%M') }}</dd>
+{% endif %}
+{% endmacro %}

@@ -23,7 +23,6 @@ from sam.manage import management_transaction
 from sam.manage.account_requests import enroll_user_in_event, register_request
 from sam.projects.projects import Project
 from sam.queries.account_notices import build_verify_message
-from sam.queries.admin import country_names
 from sam.schemas.forms import RegisterForm, RegisterGateForm, VerifyCodeForm
 from webapp.dashboards.event_lifecycle import upcoming_events_data
 from webapp.extensions import db
@@ -33,6 +32,8 @@ from webapp.utils.htmx import institution_options
 from webapp.utils.notify import get_notifier
 
 from . import eula, tokens
+from .common import (ACADEMIC_STATUSES, GATE_TTL, anon_tier as _anon_tier,  # noqa: F401
+                     ip_key as _ip_key, person_form_context, post_tier as _post_tier)
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('register', __name__, url_prefix='/register')
@@ -49,15 +50,6 @@ def _login_gate():
     return None
 
 
-#: The choices the form offers; free text would be a relay vector like the rest.
-ACADEMIC_STATUSES = ('Faculty', 'Staff', 'Postdoc', 'Graduate Student',
-                     'Undergraduate', 'Other')
-
-
-def _ip_key():
-    return f'ip:{get_remote_address()}'
-
-
 def _email_key():
     # Raw input, so bounded to the column width before it becomes a Redis key.
     return 'email:' + (request.form.get('email') or '').strip().lower()[:255]
@@ -71,14 +63,6 @@ def _global_key():
 
 def _user_key():
     return f'user:{getattr(current_user, "user_id", None)}'
-
-
-def _anon_tier():
-    return current_app.config['RATELIMIT_ANON']
-
-
-def _post_tier():
-    return current_app.config['RATELIMIT_AUTH_LOGIN']
 
 
 def _email_tier():
@@ -100,6 +84,9 @@ def _open_event(code):
     event = db.session.query(AccountRequestEvent).filter_by(event_code=normalized).first()
     if event is None:
         return None, f'{normalized} is not a known event code.'
+    if event.invite_only:
+        return None, (f'{event.event_code} is by invitation only; use the link in '
+                      f'your invitation email.')
     if not event.is_open_at(datetime.now()):
         return None, f'{event.event_code} is not accepting registrations right now.'
     return event, None
@@ -108,7 +95,7 @@ def _open_event(code):
 def _event_options():
     """The publicly listed open events; an unlisted event is reachable by link only."""
     return [(e['event_code'], f"{e['name']} ({e['event_code']})")
-            for e in upcoming_events_data()]
+            for e in upcoming_events_data() if not e.get('invite_only')]
 
 
 def _render_form(event=None, *, form=None, errors=(), field_errors=None, locked_code=None):
@@ -118,8 +105,9 @@ def _render_form(event=None, *, form=None, errors=(), field_errors=None, locked_
                            human_check=human_check.provider(),
                            human_check_site_key=current_app.config.get('HUMAN_CHECK_SITE_KEY', ''),
                            event_options=[] if locked_code else _event_options(),
-                           country_options=country_names(db.session),
-                           academic_options=[(s, s) for s in ACADEMIC_STATUSES])
+                           form_action=url_for('register.submit'),
+                           institutions_url=url_for('register.institutions_fragment'),
+                           **person_form_context())
 
 
 def _rerender(raw, **kwargs):
@@ -135,25 +123,31 @@ def _rerender(raw, **kwargs):
 #: without an accept in this session is bounced -- the gate is enforced, not
 #: merely hidden. Design: docs/plans/implemented/ACCOUNT_REGISTRATION.md.
 _GATE_KEY = 'register_gate_at'
-# Generous: an expiry at submit bounces to the gate and the typed form is lost.
-_GATE_TTL = timedelta(hours=2)
+_GATE_TTL = GATE_TTL
+
+
+def _gate_accepted_at():
+    """This session's gate acceptance while still inside the window, else None."""
+    try:
+        accepted = datetime.fromisoformat(session.get(_GATE_KEY) or '')
+    except (TypeError, ValueError):
+        return None
+    return accepted if datetime.now() - accepted <= _GATE_TTL else None
 
 
 def _gate_blocks():
     """True when the gate is on and this session has no recent accept."""
     if not current_app.config.get('ACCOUNT_REGISTRATION_GATE_ENABLED', False):
         return False
-    try:
-        accepted = datetime.fromisoformat(session.get(_GATE_KEY) or '')
-    except (TypeError, ValueError):
-        return True
-    return datetime.now() - accepted > _GATE_TTL
+    return _gate_accepted_at() is None
 
 
 def _render_gate(event=None, *, locked_code=None, form=None, errors=(), field_errors=None):
     return render_template('register/gate.html', event=event, locked_code=locked_code,
                            form=form or {}, errors=list(errors),
                            field_errors=field_errors or {},
+                           accept_url=url_for('register.accept'),
+                           terms_url=url_for('register.terms'),
                            eula_html=eula.eula_html())
 
 
@@ -286,9 +280,12 @@ def submit():
     now = datetime.now()
     ttl = int(current_app.config.get('ACCOUNT_VERIFY_TTL_HOURS', 48))
     code = tokens.new_code()
+    accepted_at = _gate_accepted_at()
     with management_transaction(db.session):
         row = register_request(db.session, event=event, clock=now,
-                               source_ip=get_remote_address(), **{
+                               source_ip=get_remote_address(),
+                               eula_sha=eula.eula_sha() if accepted_at else None,
+                               eula_accepted_at=accepted_at, **{
             k: data.get(k) for k in ('email', 'first_name', 'last_name', 'middle_name',
                                      'organization', 'academic_status',
                                      'residence_country', 'orcid', 'phone',

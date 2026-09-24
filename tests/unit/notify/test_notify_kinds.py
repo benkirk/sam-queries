@@ -29,6 +29,12 @@ class TestTheRegistry:
         assert {k for k, f in FAMILIES.items() if not f.about_project} == {
             'account', 'task'}
 
+    def test_the_account_family_carries_the_invitation_link(self):
+        assert [k.key for k in kinds_in_family('account')] == [
+            'account_queue_summary', 'account_verify', 'account_rejected', 'account_invite']
+        stems = {name.rsplit('.', 1)[0] for name in shipped_template_names()}
+        assert 'account_invite' in stems
+
     def test_an_unknown_family_raises_with_the_vocabulary(self):
         with pytest.raises(ValueError,
                            match='account, expiration, lifecycle, task, xras'):

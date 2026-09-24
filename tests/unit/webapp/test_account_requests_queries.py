@@ -310,7 +310,8 @@ class TestCrossProjectEventReads:
         rows = upcoming_listed_events(session, now=now)
         assert rows and pickle.loads(pickle.dumps(rows)) == rows
         assert set(rows[0]) == {'event_id', 'event_code', 'name', 'instructions',
-                                'project_code', 'accounts_needed_by', 'closes_at'}
+                                'project_code', 'accounts_needed_by', 'closes_at',
+                                'invite_only'}
 
     def test_enrolled_event_ids(self, session):
         user = make_user(session)

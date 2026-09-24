@@ -10,7 +10,9 @@ stewards (tree walked) or the event's extra sponsor, or
 MANAGE_ACCOUNT_REQUESTS (MANAGE_EVENTS for an event's own lifecycle). Design: docs/plans/implemented/ACCOUNT_REGISTRATION.md 3.1.
 """
 
-from flask import Blueprint, render_template, request, url_for
+import logging
+
+from flask import Blueprint, current_app, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from sam.core.account_requests import OPEN_STATES, AccountRequest, AccountRequestEvent
@@ -18,32 +20,32 @@ from sam.core.users import User
 from sam.manage.account_requests import (
     OUTCOME_ADDED,
     OUTCOME_DUPLICATE,
+    OUTCOME_QUEUED,
     invite_user,
 )
 from sam.queries.account_requests import (
     enrollees_for_event, event_sponsors, events_for, request_views,
     resolve_requests,
 )
-from sam.schemas.forms import (
-    AccountRequestEventForm,
-    InviteUserForm,
-)
+from sam.schemas.forms import InviteUserForm
 from webapp.api.access_control import (
     require_event_sponsor_access, require_project_facility_permission,
     require_project_permission,
 )
 from webapp.dashboards.event_lifecycle import (
-    EVENT_FORM, ROSTER_FORM, EventEditHandler, RosterHandler, create_event,
-    invalidate_upcoming_events, sponsor_context, switch_event,
+    EVENT_FORM, ROSTER_FORM, EventCreateHandler, EventEditHandler, RosterHandler,
+    date_floor, sponsor_context, switch_event,
 )
 from webapp.extensions import db
+from webapp.register.invite_mail import DELIVERED, can_send_invite, send_invite_links
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import (
-    handle_htmx_form_post, htmx_success_message, institution_options,
+    htmx_not_found, htmx_success, htmx_success_message, institution_options,
 )
 from webapp.utils.project_permissions import can_create_events
 from webapp.utils.rbac import Permission, has_permission_any_facility
 
+logger = logging.getLogger(__name__)
 bp = Blueprint('project_invites', __name__, url_prefix='/project-invitations')
 
 _TAB = 'project_members/fragments/invitations_tab_htmx.html'
@@ -82,6 +84,10 @@ def _default_event_code(events):
     when there are zero or several active events, where a guess could misfile."""
     active = [e for e in events if e.active]
     return active[0].event_code if len(active) == 1 else ''
+
+
+def _ttl_days():
+    return int(current_app.config.get('ACCOUNT_INVITE_TTL_DAYS', 30))
 
 
 def _event_for(project, code):
@@ -124,6 +130,8 @@ def invitations_fragment(project):
         })
     views = request_views(db.session, rows, resolutions=resolutions,
                           events=events_for(db.session, rows))
+    for v in views:
+        v['can_invite'] = can_send_invite(v['row'])
     return render_template(_TAB, project=project, events=event_rows, rows=views,
                            can_view_users=has_permission_any_facility(
                                current_user, Permission.VIEW_USERS),
@@ -139,6 +147,7 @@ class _InviteUserHandler(HtmxFormHandler):
 
     def clean(self, data):
         self.event = None
+        self.send_invite = bool(data.get('send_invite'))
         if data.get('event_code'):
             self.event = _event_for(self.project, data['event_code'])
             if self.event is None:
@@ -153,9 +162,15 @@ class _InviteUserHandler(HtmxFormHandler):
             last_name=data['last_name'], note=data.get('note'),
             organization=data.get('organization'), event=self.event)
 
+    def after_commit(self, result):
+        outcome, obj = result
+        self.invite = None
+        if outcome == OUTCOME_QUEUED and self.send_invite:
+            self.invite, = send_invite_links([obj], requested_by=current_user.username)
+
     def context(self):
         events = _project_events(self.project)
-        return {'project': self.project, 'events': events,
+        return {'project': self.project, 'events': events, 'invite_ttl_days': _ttl_days(),
                 'default_event_code': _default_event_code(events),
                 'post_url': url_for('project_invites.htmx_invite_user',
                                     projcode=self.project.projcode)}
@@ -168,7 +183,18 @@ class _InviteUserHandler(HtmxFormHandler):
             message = f'{obj.email} is already waiting on this project; nothing added.'
         else:
             message = f'Queued {obj.display_name} for an account; NUSD will be told.'
-        return htmx_success_message(_TRIGGERS, message)
+        return htmx_success_message(_TRIGGERS, message, detail=_invite_detail(self.invite, obj))
+
+
+def _invite_detail(result, row):
+    """One line on the invitation link, or None when none was asked for."""
+    if result is None:
+        return None
+    if result.status in DELIVERED:
+        return f'Invitation link {result.status} to {row.email}.'
+    if result.status == 'suppressed':
+        return 'No invitation link sent: mail is off on this deployment.'
+    return f'No invitation link sent: {result.detail or result.status}.'
 
 
 @bp.route('/institutions')
@@ -186,6 +212,7 @@ def institutions_fragment():
 def htmx_invite_form(project):
     events = _project_events(project)
     return render_template(_INVITE_FORM, project=project, events=events,
+                           invite_ttl_days=_ttl_days(),
                            default_event_code=_default_event_code(events),
                            post_url=url_for('project_invites.htmx_invite_user',
                                             projcode=project.projcode), errors=[])
@@ -198,6 +225,31 @@ def htmx_invite_user(project):
     return _InviteUserHandler(project=project).handle()
 
 
+@bp.route('/<projcode>/requests/<int:request_id>/resend-invite', methods=['POST'])
+@login_required
+@_GUARD
+def htmx_resend_invite(project, request_id):
+    """Mail a fresh link; re-stamping ``invite_sent_at`` voids every older one."""
+    row = db.session.get(AccountRequest, request_id)
+    if row is None or row.project_id != project.project_id:
+        return htmx_not_found('Invitation')
+    if not can_send_invite(row):
+        return _toast_error(f'{row.email} cannot be sent an invitation link now.')
+    result, = send_invite_links([row], requested_by=current_user.username)
+    logger.info('invite link for request %s: %s by %s', row.account_request_id,
+                result.status, current_user.username)
+    if result.status in DELIVERED:
+        return htmx_success_message({'refreshInvitations': {}, 'refreshAccountQueue': {}},
+                                    f'Invitation link {result.status} to {row.email}.')
+    return _toast_error(_invite_detail(result, row))
+
+
+def _toast_error(message):
+    """A danger toast for an ``hx-swap="none"`` button; no reload trigger."""
+    return htmx_success('dashboards/fragments/htmx_success.html', {},
+                        toast=message, toast_variant='danger', message=message)
+
+
 # -- events -------------------------------------------------------------------
 # The lifecycle itself lives in event_lifecycle.py, shared with Admin -> Events.
 
@@ -206,7 +258,8 @@ def _event_form_context(project, event=None):
                 if event else
                 url_for('project_invites.htmx_event_create', projcode=project.projcode))
     return {'project': project, 'event': event, 'post_url': post_url,
-            'can_list': can_create_events(current_user, project)}
+            'can_list': can_create_events(current_user, project),
+            'date_floor': date_floor(event)}
 
 
 @bp.route('/<projcode>/events/new-form')
@@ -216,20 +269,19 @@ def htmx_event_form(project):
     return render_template(EVENT_FORM, errors=[], **_event_form_context(project))
 
 
+class _EventCreateHandler(EventCreateHandler):
+    triggers = _TRIGGERS
+    message = 'Event created. Hand the code out; registrations and pasted rosters land under it.'
+
+    def context(self):
+        return _event_form_context(self.project)
+
+
 @bp.route('/<projcode>/events', methods=['POST'])
 @login_required
 @_CREATE_GUARD
 def htmx_event_create(project):
-    return handle_htmx_form_post(
-        schema_cls=AccountRequestEventForm, template=EVENT_FORM,
-        do_action=lambda data: create_event(data, project),
-        success_triggers=_TRIGGERS,
-        success_message='Event created. Hand the code out; registrations '
-                        'and pasted rosters land under it.',
-        error_prefix='Error creating event',
-        extra_context=_event_form_context(project),
-        after_commit=lambda _event: invalidate_upcoming_events(),
-    )
+    return _EventCreateHandler(project=project).handle()
 
 
 class _EventEditHandler(EventEditHandler):

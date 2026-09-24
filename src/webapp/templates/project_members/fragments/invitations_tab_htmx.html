@@ -1,6 +1,7 @@
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/contract_bits.html' import contract_user_link %}
 {% from 'dashboards/fragments/clipboard.html' import copy_button %}
+{% from 'dashboards/fragments/account_request_bits.html' import invite_badge, invite_details %}
 {#
   The Invitations tab: people invited onto this project who have NO SAM
   account yet, the events (workshops, classes) they register under, and who
@@ -9,7 +10,7 @@
   Context:
     project     the Project
     events      [{event, total, fulfilled, open, sponsor, enrollees, reg_url}] active first
-    rows        [{row, readiness, event, waiting_days}] newest first
+    rows        [{row, readiness, event, waiting_days, can_invite}] newest first
     open_count  rows still waiting on an account
 
   Every opener targets the shared #invitationModal shell the host page
@@ -62,9 +63,13 @@
         {% set eid = 'event-enrollees-' ~ e.event.account_request_event_id %}
         <tr{% if not e.event.active %} class="text-muted"{% endif %}>
             <td class="cursor-pointer" {{ collapse_toggle(eid) }}><i class="fa-solid fa-chevron-right small text-muted collapse-icon"></i></td>
-            <td class="font-monospace text-nowrap">
-                {{ e.event.event_code }}
+            <td class="text-nowrap">
+                <span class="font-monospace">{{ e.event.event_code }}</span>
+                {% if e.event.invite_only %}
+                <span class="badge bg-body-secondary text-body-secondary border" title="Only people on a pasted roster join, from their emailed link">by invitation</span>
+                {% else %}
                 {{ copy_button(e.reg_url, label='Copy registration link', icon='fa-solid fa-link', compact=true, done='Registration link copied.') }}
+                {% endif %}
             </td>
             <td class="cursor-pointer" {{ collapse_toggle(eid) }}>{{ e.event.name }}</td>
             <td class="text-nowrap cursor-pointer" {{ collapse_toggle(eid) }}>{{ e.event.accounts_needed_by | fmt_date }}</td>
@@ -105,9 +110,13 @@
             <td></td>
             <td colspan="6" class="small">
                 <div class="mb-2">
+                    {% if e.event.invite_only %}
+                    <span class="text-muted">Invitation only: paste a roster to invite people; the code is not accepted on its own.</span>
+                    {% else %}
                     <span class="text-muted">Registration link:</span>
                     <a href="{{ e.reg_url }}" class="font-monospace">{{ e.reg_url }}</a>
                     {{ copy_button(e.reg_url, label='Copy registration link', icon='fa-regular fa-copy', compact=true, done='Registration link copied.') }}
+                    {% endif %}
                 </div>
                 {% with enrollees = e.enrollees %}{% include 'project_members/fragments/event_enrollees_htmx.html' %}{% endwith %}
             </td>
@@ -129,6 +138,7 @@
             <th style="width:1.5rem;"></th>
             <th>Person</th><th>Email</th><th>Event</th>
             <th>Status</th><th class="text-nowrap">Waiting</th>
+            <th class="text-end">Actions</th>
         </tr>
     </thead>
     <tbody>
@@ -156,14 +166,30 @@
                 {% else %}
                 <span class="badge bg-body-secondary text-body-secondary border" title="Waiting for the account to be created{% if r.requested_at %}; sent to NUSD {{ r.requested_at | fmt_date }}{% endif %}">waiting</span>
                 {% endif %}
+                {{ invite_badge(r) }}
             </td>
             <td class="cursor-pointer text-nowrap text-muted" title="{{ r.creation_time | fmt_date }}" {{ collapse_toggle(body_id) }}>{{ v.waiting_days }} d</td>
+            <td class="text-end text-nowrap">
+                {% if v.can_invite %}
+                <div class="btn-group btn-group-sm flex-nowrap">
+                    <button type="button" class="btn btn-outline-primary"
+                            title="{{ 'Resend the invitation link — the old link stops working' if r.invite_sent_at else 'Email an invitation link to finish the request' }}"
+                            aria-label="{{ 'Resend invitation' if r.invite_sent_at else 'Send invitation' }}"
+                            hx-post="{{ url_for('project_invites.htmx_resend_invite', projcode=project.projcode, request_id=r.account_request_id) }}"
+                            {% if r.invite_sent_at %}hx-confirm="Send {{ r.email }} a new link? The one sent {{ r.invite_sent_at | fmt_date }} stops working."{% endif %}
+                            hx-swap="none"><i class="fa-solid fa-paper-plane"></i></button>
+                </div>
+                {% endif %}
+            </td>
         </tr>
         <tr class="collapse" id="{{ body_id }}">
             <td></td>
-            <td colspan="5" class="small">
+            <td colspan="6" class="small">
                 <dl class="row mb-0">
-                    {% if r.organization %}<dt class="col-sm-3">Institution</dt><dd class="col-sm-9">{{ r.organization }}</dd>{% endif %}
+                    {% if r.organization %}<dt class="col-sm-3">Institution</dt><dd class="col-sm-9">{{ r.organization }}{% if r.academic_status %} · {{ r.academic_status }}{% endif %}{% if r.residence_country %} · {{ r.residence_country }}{% endif %}</dd>{% endif %}
+                    {% if r.phone or r.orcid %}<dt class="col-sm-3">Contact</dt><dd class="col-sm-9">{{ r.phone or '' }}{% if r.orcid %} · ORCID {{ r.orcid }}{% endif %}</dd>{% endif %}
+                    {% if r.desired_username %}<dt class="col-sm-3">Wants username</dt><dd class="col-sm-9 font-monospace">{{ r.desired_username }}</dd>{% endif %}
+                    {{ invite_details(r) }}
                     <dt class="col-sm-3">Invited</dt>
                     <dd class="col-sm-9">{{ r.creation_time | fmt_date }} by <span class="font-monospace">{{ r.created_by }}</span>{% if r.requested_at %}; sent to NUSD {{ r.requested_at | fmt_date }}{% endif %}</dd>
                     {% if r.comment %}<dt class="col-sm-3">Note</dt><dd class="col-sm-9" style="white-space: pre-wrap;">{{ r.comment }}</dd>{% endif %}

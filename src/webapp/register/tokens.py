@@ -6,6 +6,8 @@ page URL therefore cannot confirm an address. The six-digit code is stored
 as an HMAC of ``row id : code`` -- constant-time comparison, fixed width,
 and a database read alone cannot validate a code. The brute-force bound is
 the rate limit on the page, not hash cost, so no slow hash is wanted here.
+The INVITE token is its own salt and carries the row's ``invite_sent_at``, so
+a resend (which re-stamps it) invalidates every older link.
 """
 
 from __future__ import annotations
@@ -14,13 +16,14 @@ import hashlib
 import hmac
 import secrets
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Tuple
 
 from flask import current_app
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 SALT_PAGE = 'account-verify-page'
 SALT_LINK = 'account-verify-link'
+SALT_INVITE = 'account-invite'
 
 
 def _serializer(salt: str) -> URLSafeTimedSerializer:
@@ -56,6 +59,31 @@ def read_page_token(token: str) -> Optional[int]:
 def read_link_token(token: str) -> Optional[int]:
     """The row a verification link confirms, or None when bad or expired."""
     return _read(token, SALT_LINK)
+
+
+def invite_stamp(sent_at: datetime) -> str:
+    """The ``sent`` binding: seconds only, which is what a DATETIME column keeps."""
+    return sent_at.isoformat(timespec='seconds')
+
+
+def invite_token(row_id: int, sent_at: datetime) -> str:
+    return _serializer(SALT_INVITE).dumps({'id': int(row_id), 'sent': invite_stamp(sent_at)})
+
+
+def read_invite_token(token: str) -> Tuple[Optional[int], Optional[str], str]:
+    """``(row_id, sent, problem)``; ``problem`` is '', ``'expired'`` or ``'invalid'``."""
+    max_age = int(current_app.config.get('ACCOUNT_INVITE_TTL_DAYS', 30)) * 86400
+    try:
+        payload = _serializer(SALT_INVITE).loads(token, max_age=max_age)
+    except SignatureExpired:
+        return None, None, 'expired'
+    except (BadSignature, TypeError, ValueError):
+        return None, None, 'invalid'
+    row_id = payload.get('id') if isinstance(payload, dict) else None
+    sent = payload.get('sent') if isinstance(payload, dict) else None
+    if not isinstance(row_id, int) or not isinstance(sent, str):
+        return None, None, 'invalid'
+    return row_id, sent, ''
 
 
 def new_code() -> str:

@@ -12,6 +12,7 @@ is the review gate, so the converted output is injected without escaping.
 from __future__ import annotations
 
 import functools
+import hashlib
 import re
 from pathlib import Path
 
@@ -32,3 +33,10 @@ def eula_html() -> Markup:
                              extensions=['sane_lists'], output_format='html5')
     html = _REL_MD_LINK.sub(lambda m: f'href="{_RTD_BASE}{m.group(1)}/"', html)
     return Markup(html)
+
+
+@functools.lru_cache(maxsize=1)
+def eula_sha() -> str:
+    """Git blob SHA of the vendored text: what `git hash-object` and update_eula.py print."""
+    data = _SOURCE.read_bytes()
+    return hashlib.sha1(b'blob %d\0' % len(data) + data).hexdigest()

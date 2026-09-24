@@ -219,6 +219,16 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
         facility_aware=False,
         family='account',
     ),
+    # Sponsor-chosen (the invite form's checkbox, or Resend): a signed link to
+    # finish the request. Carries only what the sponsor and operators know.
+    NotificationKind(
+        key='account_invite',
+        label='Account-request invitation link',
+        template_base='account_invite',
+        default_subscribed=True,
+        facility_aware=False,
+        family='account',
+    ),
     # The `lifecycle` family: operator-initiated, tree-aware, onboarding-rich
     # project notices, distinct from the XRAS-driven xras_* kinds above. They
     # introduce the in-tree allocation-adjustment and member-management surfaces

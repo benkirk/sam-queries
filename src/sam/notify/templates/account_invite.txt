@@ -1,0 +1,17 @@
+Hello {{ name }},
+
+{% if sponsor_name %}{{ sponsor_name }} has invited you{% else %}You have been invited{% endif %} to request an NCAR HPC account{% if project_code %} on project {{ project_code }}{% endif %}{% if event_name %}, for "{{ event_name }}"{% endif %}.
+{% if accounts_needed_by %}
+Accounts are needed by {{ accounts_needed_by }}.
+{% endif %}{% if event_instructions %}
+{{ event_instructions }}
+{% endif %}
+To finish your request, open this link, accept the terms of use, and fill in
+the few details the account team needs (phone, country, academic status):
+
+    {{ invite_url }}
+
+The link is yours alone and expires in {{ expires_days }} days. If you did not
+expect this invitation, ignore this message.
+--
+NSF NCAR Systems Accounting Manager
