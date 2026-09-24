@@ -10,7 +10,7 @@
 - [x] 3. `change_project_admin` routes through `Project.update` (clearing the admin stays a direct write)
 - [x] 4. XRAS role endpoint: reword the comment and the warning (behavior is inherited from 2)
 - [x] 5. `revoke_user_resource_access` refuses the admin, the same way it refuses the lead
-- [ ] 6. CLI: `--reconcile` really reconciles and reports what it added; `--validate` flags a lead or admin who is not a live member
+- [x] 6. CLI: `--reconcile` really reconciles and reports what it added; `--validate` flags a lead or admin who is not a live member
 - [ ] 7. Docs: CLAUDE.md CLI line and the §7 invariant note
 - [ ] 8. Tests (model, XRAS, CLI), `make check-all`, local smoke test
 

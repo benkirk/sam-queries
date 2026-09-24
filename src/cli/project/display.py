@@ -440,6 +440,22 @@ def display_abandoned_users_from_expired_projects(ctx: Context, abandoned_users)
     ctx.console.print(table)
 
 
+def display_reconcile_results(ctx: Context, projcode: str, added: list):
+    """Render the (username, resource) rows ``--reconcile`` added."""
+    if not added:
+        ctx.console.print(f"✅ Project {projcode}: nothing to add", style="green")
+        return
+    table = Table(box=box.SIMPLE, show_header=True)
+    table.add_column("User")
+    table.add_column("Resource")
+    for username, resource_name in added:
+        table.add_row(username, resource_name)
+    ctx.console.print(table)
+    ctx.console.print(
+        f"✅ Project {projcode}: added {fmt.plural(len(added), 'membership', 'memberships')}",
+        style="green")
+
+
 def display_tree_audit(ctx: Context, violations: list, bad_dates: list):
     """Render the project-tree data-quality audit.
 
