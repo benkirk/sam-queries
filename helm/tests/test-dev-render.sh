@@ -73,6 +73,8 @@ check_dev() {
   # The project Invitations tab is live on dev and dark in prod (initial prod
   # capability is the XRAS-mirrored Accounts queue only).
   [[ "$(env_value "$deploy" ACCOUNT_INVITATIONS_ENABLED)" == "1" ]] || { red "FAIL: ACCOUNT_INVITATIONS_ENABLED must be 1 on dev"; return 1; }
+  # The /dev/gallery component gallery is live on dev and dark in prod.
+  [[ "$(env_value "$deploy" COMPONENT_GALLERY_ENABLED)" == "1" ]] || { red "FAIL: COMPONENT_GALLERY_ENABLED must be 1 on dev"; return 1; }
   # The signed-in preview of /register runs under a low site-wide POST ceiling.
   grep -A1 'name: RATELIMIT_REGISTER_GLOBAL' <<<"$deploy" | grep -q 'value: "5 per hour; 20 per day"' \
     || { red "FAIL: dev must pin RATELIMIT_REGISTER_GLOBAL low for the registration preview"; return 1; }
@@ -136,6 +138,9 @@ check_dev() {
   assert_contains "$whole" "key: csg/sam-dev-pg"   "SAM credentials come from csg/sam-dev-pg"
   assert_contains "$whole" "key: csg/sam-dev-oidc" "OIDC credentials come from csg/sam-dev-oidc"
   assert_contains "$whole" "key: csg/jh-api-token" "the JupyterHub token is inherited from prod by decision"
+  assert_contains "$whole" "key: csg/sam-turnstile" "the Turnstile widget is shared with prod by decision (one widget, three hostnames)"
+  assert_contains "$deploy" "name: samuel-dev-human-check-credentials" "webapp reads the human-check keys Secret"
+  [[ "$(env_value "$deploy" HUMAN_CHECK_PROVIDER)" == "turnstile" ]] || { red "FAIL: dev must run the real human check"; return 1; }
   assert_not_contains "$whole" "csg/sam-writeuser" "dev must never sync the production SAM write credential"
   assert_not_contains "$whole" "csg/sam-oidc"      "dev must never sync the production OIDC registration"
 
@@ -186,6 +191,16 @@ prod_deploy=$(render prod -s templates/deployment.yaml)
   red "FAIL: the anonymous /register form must ship dark in prod (ACCOUNT_REGISTRATION_ENABLED=0)"; exit 1; }
 [[ "$(env_value "$prod_deploy" ACCOUNT_INVITATIONS_ENABLED)" == "0" ]] || {
   red "FAIL: the project Invitations tab must ship dark in prod (ACCOUNT_INVITATIONS_ENABLED=0)"; exit 1; }
+[[ "$(env_value "$prod_deploy" COMPONENT_GALLERY_ENABLED)" == "0" ]] || {
+  red "FAIL: the component gallery must ship dark in prod (COMPONENT_GALLERY_ENABLED=0)"; exit 1; }
+[[ "$(env_value "$prod_deploy" HUMAN_CHECK_PROVIDER)" == "turnstile" ]] || {
+  red "FAIL: prod must run the Turnstile human check (HUMAN_CHECK_PROVIDER=turnstile)"; exit 1; }
+assert_contains "$prod_deploy" "name: HUMAN_CHECK_SECRET_KEY" "prod injects the human-check secret key"
+assert_contains "$(render prod -s templates/external_secret.yaml)" "key: csg/sam-turnstile" "prod syncs csg/sam-turnstile"
+local_whole=$(render local)
+assert_not_contains "$local_whole" "human-check-credentials" "local k8s has no OpenBao: no human-check Secret"
+[[ "$(env_value "$(render local -s templates/deployment.yaml)" HUMAN_CHECK_PROVIDER)" == "none" ]] || {
+  red "FAIL: local k8s must run with HUMAN_CHECK_PROVIDER=none"; exit 1; }
 
 # --- the negative loop: each prod value must be refused ----------------------
 # `set +e` around a `( set -e; ... )` subshell keeps errexit live inside it;
@@ -200,6 +215,8 @@ expect_reject() {
 expect_reject --set webapp.env.DISABLE_AUTH=1
 expect_reject --set webapp.env.ACCOUNT_REGISTRATION_ENABLED=0
 expect_reject --set webapp.env.ACCOUNT_INVITATIONS_ENABLED=0
+expect_reject --set webapp.env.COMPONENT_GALLERY_ENABLED=0
+expect_reject --set webapp.env.HUMAN_CHECK_PROVIDER=none
 expect_reject --set webapp.env.FLASK_CONFIG=development
 expect_reject --set webapp.env.AUTH_PROVIDER=stub
 expect_reject --set webapp.env.NOTIFY_ENABLED=1
@@ -222,4 +239,4 @@ expect_reject --set tasks.env.SAM_TASKS_DISABLED=xras_notices
 expect_reject --set podDisruptionBudget.enabled=true
 expect_reject --set-string "webapp.env.API_KEYS_COLLECTOR=${prod_hash}"
 
-green "OK: samuel-dev renders authenticated, mute, on its own data, disjoint from prod (24 rejections proven)"
+green "OK: samuel-dev renders authenticated, mute, on its own data, disjoint from prod (25 rejections proven)"

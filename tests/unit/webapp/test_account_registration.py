@@ -160,8 +160,8 @@ class TestTheEventPicker:
 
 
 class TestTheAcceptGate:
-    """ACCOUNT_REGISTRATION_GATE_ENABLED: a terms acceptance + a human-check
-    stub must pass, server-side, before the open form is reachable. Off in
+    """ACCOUNT_REGISTRATION_GATE_ENABLED: a terms acceptance must pass,
+    server-side, before the open form is reachable. Off in
     TestingConfig so the form tests above stay direct; this class builds an app
     with it on."""
 
@@ -174,18 +174,9 @@ class TestTheAcceptGate:
             'ACCOUNT_REGISTRATION_GATE_ENABLED': True,
         })
 
-    @staticmethod
-    def _gate_token(html):
-        import re
-        m = re.search(r'name="hc_token"\s+value="([^"]+)"', html)
-        assert m, 'the gate did not render an hc_token'
-        return m.group(1)
-
     def _accept(self, client):
         """Pass the gate on `client`; returns the accept response."""
-        html = client.get('/register/').get_data(as_text=True)
-        return client.post('/register/accept', data={
-            'accept': '1', 'confirm': '1', 'hc_token': self._gate_token(html)})
+        return client.post('/register/accept', data={'accept': '1'})
 
     def test_default_is_on_outside_testing(self):
         import os
@@ -198,8 +189,24 @@ class TestTheAcceptGate:
     def test_get_shows_the_gate_not_the_form(self, gate_app):
         html = gate_app.test_client().get('/register/').get_data(as_text=True)
         assert 'Accept and continue' in html
-        assert 'name="hc_token"' in html
         assert 'name="email"' not in html, 'the open form must be gated'
+
+    def test_the_gate_links_the_full_terms_in_a_new_tab(self, gate_app):
+        html = gate_app.test_client().get('/register/').get_data(as_text=True)
+        assert 'href="/register/terms" target="_blank" rel="noopener"' in html
+
+    def test_the_full_terms_page_is_readable_without_accepting(self, gate_app):
+        from webapp.register.eula import eula_html
+        resp = gate_app.test_client().get('/register/terms')
+        html = resp.get_data(as_text=True)
+        assert resp.status_code == 200 and str(eula_html()) in html
+        assert 'name="accept"' not in html, 'read-only: acceptance stays on the gate'
+
+    def test_the_gate_carries_the_scroll_to_end_hooks(self, gate_app):
+        """register.js holds the accept box until the end sentinel is seen."""
+        html = gate_app.test_client().get('/register/').get_data(as_text=True)
+        assert 'data-eula-scroll' in html and 'data-eula-end' in html
+        assert 'data-eula-hint' in html
 
     def test_post_without_accepting_is_bounced_and_writes_nothing(self, gate_app, app,
                                                                   null_notifier):
@@ -213,19 +220,9 @@ class TestTheAcceptGate:
             assert db.session.query(AccountRequest).filter_by(email=email).count() == 0
 
     def test_missing_acceptance_re_renders_with_an_error(self, gate_app):
-        client = gate_app.test_client()
-        html = client.get('/register/').get_data(as_text=True)
-        resp = client.post('/register/accept',
-                           data={'confirm': '1', 'hc_token': self._gate_token(html)})
+        resp = gate_app.test_client().post('/register/accept', data={})
         assert resp.status_code == 200
         assert 'accept the terms' in resp.get_data(as_text=True)
-
-    def test_a_tampered_human_check_is_refused(self, gate_app):
-        resp = gate_app.test_client().post('/register/accept',
-                                           data={'accept': '1', 'confirm': '1',
-                                                 'hc_token': 'not-a-real-token'})
-        assert resp.status_code == 200
-        assert 'expired' in resp.get_data(as_text=True)
 
     def test_accepting_opens_the_form_then_submit_succeeds(self, gate_app, app,
                                                            null_notifier):
@@ -268,9 +265,7 @@ class TestTheAcceptGate:
         client = gate_app.test_client()
         html = client.get(f'/register/{open_event}').get_data(as_text=True)
         assert f'name="event_code" value="{open_event}"' in html
-        resp = client.post('/register/accept', data={
-            'accept': '1', 'confirm': '1', 'event_code': open_event,
-            'hc_token': self._gate_token(html)})
+        resp = client.post('/register/accept', data={'accept': '1', 'event_code': open_event})
         assert resp.status_code == 302
         assert resp.headers['Location'].endswith(f'/register/{open_event}')
 
@@ -387,6 +382,27 @@ class TestSubmit:
         resp = client.post('/register/', data=data)
         assert resp.status_code == 200
         assert 'what you need the account for' in resp.get_data(as_text=True)
+
+    def test_the_reason_label_is_not_marked_optional(self, client):
+        html = client.get('/register/').get_data(as_text=True)
+        label = html[html.index('for="purpose_note"'):]
+        assert '(optional)' not in label[:label.index('</label>')]
+        assert 'new collaborator to be added on project' in html
+
+    def test_an_event_code_needs_no_reason(self, client, app, null_notifier, committed_event):
+        from sam.core.account_requests import AccountRequest
+        from webapp.extensions import db
+        code, _ = committed_event
+        email = f'zz.evt.{uuid4().hex[:8]}@example.invalid'
+        data = {**GOOD, 'email': email, 'event_code': code}
+        data.pop('purpose_note')
+        try:
+            resp = client.post('/register/', data=data)
+            assert resp.status_code == 302 and '/register/pending/' in resp.headers['Location']
+        finally:
+            with app.app_context():
+                db.session.query(AccountRequest).filter_by(email=email).delete()
+                db.session.commit()
 
     def test_the_honeypot_pretends_and_writes_nothing(self, client, app, null_notifier):
         from sam.core.account_requests import AccountRequest
@@ -630,29 +646,149 @@ def enabled_limiter(app):
             _clear()
 
 
-class TestTheHumanCheckStub:
-    """webapp.register.human_check: a signed nonce today, the seam a real
-    challenge (Turnstile/hCaptcha) replaces. Signed on SECRET_KEY, so a token
-    from this app verifies and a made-up one does not."""
+class TestTheHumanCheck:
+    """webapp.utils.human_check on the form POST. Provider switched on per test
+    with Cloudflare's published dummy keys; `_siteverify` is the one outbound
+    call and is always replaced (tests block real HTTP)."""
 
-    def test_an_issued_token_verifies(self, app):
-        from webapp.register import human_check
-        with app.app_context():
-            assert human_check.verify(human_check.issue()) is True
+    SECRET = '1x0000000000000000000000000000000AA'
+    SITE = '1x00000000000000000000AA'
 
-    def test_a_missing_or_tampered_token_fails(self, app):
-        from webapp.register import human_check
-        with app.app_context():
-            assert human_check.verify(None) is False
-            assert human_check.verify('') is False
-            assert human_check.verify('not-a-real-token') is False
+    @pytest.fixture
+    def turnstile(self, app, monkeypatch):
+        """Turn the provider on; yields the list of siteverify calls, whose
+        reply is `calls.reply` (a dict, or an exception to raise)."""
+        from webapp.utils import human_check
+        monkeypatch.setitem(app.config, 'HUMAN_CHECK_PROVIDER', 'turnstile')
+        monkeypatch.setitem(app.config, 'HUMAN_CHECK_SITE_KEY', self.SITE)
+        monkeypatch.setitem(app.config, 'HUMAN_CHECK_SECRET_KEY', self.SECRET)
 
-    def test_an_expired_token_fails(self, app, monkeypatch):
-        from webapp.register import human_check
+        class Calls(list):
+            reply = {'success': True}
+
+        calls = Calls()
+
+        def fake(url, data):
+            calls.append((url, data))
+            if isinstance(calls.reply, Exception):
+                raise calls.reply
+            return calls.reply
+
+        monkeypatch.setattr(human_check, '_siteverify', fake)
+        return calls
+
+    @pytest.fixture
+    def form(self, app):
+        """GOOD under its own address: committed rows are visible to every
+        xdist worker, so the shared one races the other submit tests."""
+        from sam.core.account_requests import AccountRequest
+        from webapp.extensions import db
+        data = {**GOOD, 'email': f'zz.hc.{uuid4().hex[:8]}@example.invalid'}
+        yield data
         with app.app_context():
-            token = human_check.issue()
-            monkeypatch.setattr(human_check, 'MAX_AGE_SECONDS', -1)
-            assert human_check.verify(token) is False
+            db.session.query(AccountRequest).filter_by(email=data['email']).delete()
+            db.session.commit()
+
+    @staticmethod
+    def _count(app, email):
+        from sam.core.account_requests import AccountRequest
+        from webapp.extensions import db
+        with app.app_context():
+            return db.session.query(AccountRequest).filter_by(email=email).count()
+
+    def test_the_form_renders_the_widget_but_never_the_secret(self, client, turnstile):
+        html = client.get('/register/').get_data(as_text=True)
+        assert 'class="cf-turnstile"' in html
+        assert f'data-sitekey="{self.SITE}"' in html
+        assert 'https://challenges.cloudflare.com/turnstile/v0/api.js' in html
+        assert 'data-human-check-submit' in html
+        assert self.SECRET not in html
+
+    def test_off_renders_no_widget(self, client):
+        html = client.get('/register/').get_data(as_text=True)
+        assert 'cf-turnstile' not in html and 'challenges.cloudflare.com' not in html
+
+    def test_a_missing_token_is_refused_and_writes_nothing(self, client, app, turnstile,
+                                                           null_notifier, form):
+        resp = client.post('/register/', data=form)
+        assert resp.status_code == 200
+        assert 'complete the verification' in resp.get_data(as_text=True)
+        assert turnstile == [], 'no token, no outbound call'
+        assert self._count(app, form['email']) == 0
+
+    def test_a_passed_check_writes_the_row(self, client, app, turnstile,
+                                           null_notifier, form):
+        resp = client.post('/register/', data={**form, 'cf-turnstile-response': 'tok'})
+        assert resp.status_code == 302 and '/register/pending/' in resp.headers['Location']
+        assert self._count(app, form['email']) == 1
+        (url, sent), = turnstile
+        assert url.endswith('/turnstile/v0/siteverify')
+        assert sent == {'secret': self.SECRET, 'response': 'tok'}
+
+    def test_a_failed_check_keeps_the_typed_values_and_writes_nothing(
+            self, client, app, turnstile, null_notifier, form):
+        turnstile.reply = {'success': False, 'error-codes': ['invalid-input-response']}
+        resp = client.post('/register/', data={**form, 'cf-turnstile-response': 'bad'})
+        html = resp.get_data(as_text=True)
+        assert resp.status_code == 200 and 'Verification failed' in html
+        assert GOOD['organization'] in html, 'the typed form survives the re-render'
+        assert self._count(app, form['email']) == 0
+
+    def test_an_unreachable_provider_fails_closed(self, client, app, turnstile,
+                                                  null_notifier, form):
+        import requests
+        turnstile.reply = requests.ConnectionError('boom')
+        resp = client.post('/register/', data={**form, 'cf-turnstile-response': 'tok'})
+        assert resp.status_code == 200
+        assert 'verification service is unavailable' in resp.get_data(as_text=True)
+        assert self._count(app, form['email']) == 0
+
+    def test_an_invalid_form_never_spends_the_token(self, client, turnstile, null_notifier, form):
+        data = {**form, 'cf-turnstile-response': 'tok'}
+        data.pop('phone')
+        assert client.post('/register/', data=data).status_code == 200
+        assert turnstile == []
+
+    def test_the_real_transport_is_a_bounded_post(self, monkeypatch):
+        from webapp.utils import human_check
+
+        class Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {'success': True}
+
+        seen = {}
+        monkeypatch.setattr(human_check.requests, 'post',
+                            lambda url, **kw: seen.update(url=url, **kw) or Resp())
+        assert human_check._siteverify('https://x.invalid/v', {'a': 1}) == {'success': True}
+        assert seen['timeout'] == human_check.SITEVERIFY_TIMEOUT and seen['data'] == {'a': 1}
+
+
+class TestTheHumanCheckConfig:
+
+    def _cfg(self, monkeypatch, **attrs):
+        from webapp.config import SAMWebappConfig
+        for k, v in attrs.items():
+            monkeypatch.setattr(SAMWebappConfig, k, v)
+        return SAMWebappConfig
+
+    def test_an_unknown_provider_refuses_to_start(self, monkeypatch):
+        cfg = self._cfg(monkeypatch, HUMAN_CHECK_PROVIDER='recaptcha-v9')
+        with pytest.raises(EnvironmentError, match='HUMAN_CHECK_PROVIDER'):
+            cfg.validate_human_check()
+
+    def test_a_provider_without_keys_refuses_to_start(self, monkeypatch):
+        cfg = self._cfg(monkeypatch, HUMAN_CHECK_PROVIDER='turnstile',
+                        HUMAN_CHECK_SITE_KEY='site', HUMAN_CHECK_SECRET_KEY='')
+        with pytest.raises(EnvironmentError, match='HUMAN_CHECK_SECRET_KEY'):
+            cfg.validate_human_check()
+
+    def test_none_and_a_keyed_provider_validate(self, monkeypatch):
+        self._cfg(monkeypatch, HUMAN_CHECK_PROVIDER='none').validate_human_check()
+        self._cfg(monkeypatch, HUMAN_CHECK_PROVIDER='Turnstile',
+                  HUMAN_CHECK_SITE_KEY='s', HUMAN_CHECK_SECRET_KEY='k').validate_human_check()
 
 
 class TestTheEula:

@@ -35,6 +35,7 @@ webapp:
     DISABLE_AUTH: "0"
     ACCOUNT_REGISTRATION_ENABLED: "1"     # the anonymous /register form, live here and dark in prod
     ACCOUNT_INVITATIONS_ENABLED: "1"      # the project Invitations tab, live here and dark in prod
+    COMPONENT_GALLERY_ENABLED: "1"        # the /dev/gallery component gallery, live here and dark in prod
     SAM_DB_DRIVER: "postgresql"
     SAM_DB_SERVER: "csg-postgres.k8s.ucar.edu"
     SAM_DB_PORT: "5432"

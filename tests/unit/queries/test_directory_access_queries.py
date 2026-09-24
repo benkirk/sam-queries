@@ -7,11 +7,14 @@ structural tests over snapshot data — no hardcoded identifiers, no writes.
 `TestAdhocDependentAccountGate` is the exception: it uses Layer-2 factories to
 build an isolated access branch so the gate can be asserted on exact counts.
 """
+from datetime import datetime, timedelta
+
 import pytest
 
 from sam import (
     AccessBranch,
     AccessBranchResource,
+    AccountUser,
     AdhocGroupTag,
     AdhocSystemAccountEntry,
 )
@@ -228,6 +231,12 @@ class TestAdhocDependentAccountGate:
         project = make_project(session)
         account = make_account(session, project=project, resource=resource)
         make_allocation(session, account=account)
+        # Postgres NOW() is this test's outer-transaction start, and Account.create
+        # stamps start_date on a whole second that can land after it: the member
+        # then fails `au.start_date <= NOW()` and the branch has no 'ncar' group.
+        session.query(AccountUser).filter_by(account_id=account.account_id).update(
+            {'start_date': datetime.now() - timedelta(days=1)})
+        session.flush()
 
         adhoc_group = make_adhoc_group(session)
         session.add(AdhocGroupTag(group_id=adhoc_group.group_id, tag=branch_name))

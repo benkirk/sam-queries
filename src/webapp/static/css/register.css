@@ -105,21 +105,33 @@
 .eula-panel ul { margin: 0 0 0.6rem; padding-left: 1.2rem; }
 .eula-panel li { margin-bottom: 0.4rem; }
 
-/* Human-check stub — a calm bordered slot that reads as a widget; the real
-   challenge (Turnstile/hCaptcha) drops in here later. */
-.human-check {
+/* The end-of-terms sentinel register.js watches, and its prompt. */
+.eula-end { height: 1px; }
+/* Under the panel: the scroll prompt on the left, the new-tab link pinned right. */
+.eula-tools {
     display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    border: 1px solid var(--border-default);
-    background: var(--surface-raised);
-    padding: 0.85rem 1rem;
-    margin-bottom: 1.25rem;
-}
-.human-check-hint {
-    color: var(--text-tertiary);
+    align-items: baseline;
+    gap: 1rem;
+    margin: -0.75rem 0 0.75rem;
     font-size: var(--font-size-xxsm);
-    margin-left: auto;
+}
+.eula-scroll-hint {
+    color: var(--text-tertiary);
+    margin: 0;
+}
+.eula-open { margin-left: auto; white-space: nowrap; }
+
+/* /register/terms: the same agreement styling at full height. */
+.eula-panel.eula-full {
+    max-height: none;
+    overflow: visible;
+}
+
+/* The human-check widget slot (templates/register/_human_check.html); the
+   provider's iframe sizes itself inside it. */
+.human-check {
+    margin-bottom: 1.25rem;
+    min-height: 65px;
 }
 
 /* Role-named callouts carried from the mail: a left border + a tinted body.

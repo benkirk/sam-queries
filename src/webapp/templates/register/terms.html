@@ -1,0 +1,20 @@
+{% extends 'register/base_register.html' %}
+{#
+  The end-user agreement on its own page, opened in a new tab from the gate's
+  "Open full terms" link. Read-only: acceptance is recorded only on the gate.
+  Context: eula_html.
+#}
+{% block title %}Terms of use{% endblock %}
+
+{% block content %}
+<h1>NSF NCAR HPC terms of use</h1>
+<p class="register-lede">
+    This is the same agreement shown on the registration page. To accept it,
+    return to that tab and tick the box below the terms.
+</p>
+
+<div class="eula-panel eula-full" aria-label="Terms of use">
+    {# Trusted markup from the vendored agreement (webapp/register/eula.py). #}
+    {{ eula_html }}
+</div>
+{% endblock %}

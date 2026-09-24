@@ -23,9 +23,13 @@ Design constraints (see docs/plans/implemented/CSP-discussion.md):
   autoescaping prevents.
 - frame-src widens to the GOOGLE_CALENDAR_EMBED_URL origin when that
   iframe is configured (status dashboard Events tab).
+- The HUMAN_CHECK_PROVIDER widget's origins (webapp/utils/human_check.py)
+  join script-src/frame-src when a provider is configured.
 """
 
 from urllib.parse import urlsplit
+
+from webapp.utils import human_check
 
 SELF = "'self'"
 
@@ -83,6 +87,9 @@ def build_csp_directives(vendor_assets, config):
     calendar_url = config.get('GOOGLE_CALENDAR_EMBED_URL', '')
     if calendar_url:
         _add(directives, 'frame-src', _origin(calendar_url))
+
+    for directive, source in human_check.csp_sources(config).items():
+        _add(directives, directive, source)
 
     return directives
 

@@ -730,7 +730,11 @@ class TestListing:
                                     request_number='NEW00001',
                                     operation='withdraw_action')
         found = _rows(session, operation='withdraw_action')
-        assert found[0].request_number == 'NEW00001'
+        # Only this test's rows: other xdist workers commit withdraw_action rows
+        # (test_xras_admin_client's EXAM0001) that can be newer than ours.
+        mine = [e.request_number for e in found
+                if e.request_number in ('OLD00001', 'NEW00001')]
+        assert mine == ['NEW00001', 'OLD00001']
 
     def test_the_summary_counts_what_needs_a_human(self, session):
         events = [

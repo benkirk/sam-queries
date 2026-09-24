@@ -255,13 +255,11 @@ _OPERATOR_ONLY = [Permission.MANAGE_ACCOUNT_REQUESTS, Permission.MANAGE_EVENTS]
 
 @pytest.mark.parametrize('perm', _OPERATOR_ONLY, ids=lambda p: p.name)
 class TestAccountRequestGrants:
-    """The HPC account-request queue and the event lifecycle are NUSD's work, so
-    the allocation-admin tier holds both. ``manage_`` is matched by no ALL_*
+    """Both surfaces are operator-only. ``manage_`` is matched by no ALL_*
     aggregate, so each grant is explicit and cannot be swept into ssg."""
 
-    @pytest.mark.parametrize('bundle', ['nusd', 'csg'])
-    def test_allocation_admin_bundles_hold_it(self, bundle, perm):
-        assert perm in GROUP_PERMISSIONS[bundle]
+    def test_csg_holds_it(self, perm):
+        assert perm in GROUP_PERMISSIONS['csg']
 
     def test_ssg_does_not(self, perm):
         assert perm not in GROUP_PERMISSIONS['ssg']
@@ -274,6 +272,17 @@ class TestAccountRequestGrants:
         # facility-scoped, so the facility-scoped manager gets it only if
         # someone adds it deliberately.
         assert perm not in rbac.USER_FACILITY_PERMISSIONS['sureshm']['WNA']
+
+
+class TestAccountRequestAndEventSplit:
+    """NUSD works the account-request queue and invitations; the event
+    lifecycle is CSG's alone."""
+
+    def test_nusd_holds_account_requests(self):
+        assert Permission.MANAGE_ACCOUNT_REQUESTS in GROUP_PERMISSIONS['nusd']
+
+    def test_nusd_does_not_hold_events(self):
+        assert Permission.MANAGE_EVENTS not in GROUP_PERMISSIONS['nusd']
 
 
 class TestOrgMetadataGrants:

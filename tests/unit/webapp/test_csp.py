@@ -60,6 +60,22 @@ class TestCalendarEmbed:
         assert d['frame-src'] == ["'self'", 'https://calendar.google.com']
 
 
+class TestHumanCheck:
+    """The configured human-check widget's origin joins script-src/frame-src."""
+
+    CF = 'https://challenges.cloudflare.com'
+
+    def test_turnstile_adds_its_origin(self):
+        d = _build(HUMAN_CHECK_PROVIDER='turnstile')
+        assert d['script-src'] == ["'self'", self.CF]
+        assert d['frame-src'] == ["'self'", self.CF]
+        assert d['connect-src'] == ["'self'"]
+
+    def test_none_adds_nothing(self):
+        d = _build(HUMAN_CHECK_PROVIDER='none')
+        assert d['script-src'] == ["'self'"] and d['frame-src'] == ["'self'"]
+
+
 class TestFutureExternalAssets:
     """A registry entry with url= / csp_extra= flows into the policy."""
 
