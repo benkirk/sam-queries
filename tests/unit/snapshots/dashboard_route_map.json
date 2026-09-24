@@ -35,6 +35,13 @@
     ]
   ],
   [
+    "admin_dashboard.account_request_reject_preview",
+    "/admin/account-requests/<int:request_id>/reject-preview",
+    [
+      "POST"
+    ]
+  ],
+  [
     "admin_dashboard.account_request_reopen",
     "/admin/account-requests/<int:request_id>/reopen",
     [
@@ -67,6 +74,13 @@
     "/admin/account-requests/digest",
     [
       "POST"
+    ]
+  ],
+  [
+    "admin_dashboard.account_requests_digest_preview",
+    "/admin/htmx/account-requests/digest-preview",
+    [
+      "GET"
     ]
   ],
   [
@@ -326,6 +340,13 @@
     "/admin/htmx/events/<event_code>/roster-form",
     [
       "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_admin_event_roster_preview",
+    "/admin/htmx/events/<event_code>/roster-preview",
+    [
+      "POST"
     ]
   ],
   [
@@ -747,6 +768,13 @@
     "/admin/htmx/extend-allocations-form/<projcode>",
     [
       "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_extend_allocations_preview",
+    "/admin/htmx/extend-allocations-preview/<projcode>",
+    [
+      "POST"
     ]
   ],
   [
@@ -1335,6 +1363,13 @@
     "/admin/htmx/renew-allocations-form/<projcode>",
     [
       "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_renew_allocations_preview",
+    "/admin/htmx/renew-allocations-preview/<projcode>",
+    [
+      "POST"
     ]
   ],
   [
@@ -2003,6 +2038,13 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_notify_preview",
+    "/allocations/xras_notify_preview/<int:project_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_opportunity_detail",
     "/allocations/xras_opportunity_detail/<int:opportunity_id>",
     [
@@ -2494,10 +2536,31 @@
     ]
   ],
   [
+    "project_invites.htmx_invite_preview",
+    "/project-invitations/<projcode>/invite-preview",
+    [
+      "POST"
+    ]
+  ],
+  [
     "project_invites.htmx_invite_user",
     "/project-invitations/<projcode>/invite",
     [
       "POST"
+    ]
+  ],
+  [
+    "project_invites.htmx_resend_invite",
+    "/project-invitations/<projcode>/requests/<int:request_id>/resend-invite",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "project_invites.htmx_resend_invite_preview",
+    "/project-invitations/<projcode>/requests/<int:request_id>/invite-preview",
+    [
+      "GET"
     ]
   ],
   [
@@ -2510,6 +2573,13 @@
   [
     "project_invites.htmx_roster_paste",
     "/project-invitations/events/<event_code>/roster",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "project_invites.htmx_roster_preview",
+    "/project-invitations/events/<event_code>/roster-preview",
     [
       "POST"
     ]
@@ -2566,6 +2636,48 @@
   [
     "project_members.members_fragment",
     "/project-members/<projcode>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "register_invite.accept",
+    "/register/invite/<token>/accept",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "register_invite.complete",
+    "/register/invite/complete",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "register_invite.institutions_fragment",
+    "/register/invite/institutions",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "register_invite.page",
+    "/register/invite/<token>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "register_invite.submit",
+    "/register/invite/<token>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "register_invite.terms",
+    "/register/invite/terms",
     [
       "GET"
     ]

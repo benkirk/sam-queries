@@ -53,3 +53,43 @@ def test_a_rendered_preview_refetches_itself_on_a_comment_change(
     assert 'from:#notifyOperatorComment' in html
     assert 'action=adjusted&amp;active_at=2026-09-20' in html
     assert 'hx-target="this"' in html
+
+
+def _two_recipients(monkeypatch):
+    """Stub the notice and builder so the preview has a lead and an admin."""
+    from types import SimpleNamespace
+    from sam.notify import Message, Recipient
+    import sam.queries.lifecycle_notices as ln
+
+    def _build(session, *, per_project, operator_comment='', **_):
+        return [Message(kind='project_activation', subject=f'Active ({role})',
+                        recipient=Recipient(addr, name=role.title(), role=role),
+                        context={'operator_comment': operator_comment},
+                        dedup_key=f'test:{addr}')
+                for addr, role in (('lead@example.edu', 'lead'),
+                                   ('admin@example.edu', 'admin'))]
+
+    monkeypatch.setattr(ln, 'notice_for_project', lambda *a, **k: SimpleNamespace(
+        item_for=lambda action: object()))
+    monkeypatch.setattr(ln, 'build_lifecycle_messages', _build)
+
+
+def test_the_recipient_picker_round_trips(auth_client, active_project, monkeypatch):
+    _two_recipients(monkeypatch)
+    url = f'/admin/htmx/notify-project-preview/{active_project.projcode}'
+    html = auth_client.get(url + '?action=activated').get_data(as_text=True)
+    assert 'id="notifyPreviewRecipient"' in html
+    assert 'hx-include="#notifyOperatorComment, #notifyPreviewRecipient"' in html
+    html = auth_client.get(url, query_string={
+        'action': 'activated', 'preview_recipient': 'admin@example.edu',
+    }).get_data(as_text=True)
+    assert '<option value="1" selected' in html
+    assert 'Active (admin)' in html
+
+
+def test_skip_answers_with_an_info_panel(auth_client, active_project):
+    resp = auth_client.get(
+        f'/admin/htmx/notify-project-preview/{active_project.projcode}'
+        '?action=skip')
+    assert resp.status_code == 200
+    assert 'will not be notified' in resp.get_data(as_text=True)

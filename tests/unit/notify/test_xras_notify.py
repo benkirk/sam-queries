@@ -18,7 +18,7 @@ import pytest
 
 from sam.notify import (
     DeliveryResult, Message, Notifier, NotifyConfig, NullTransport, Recipient,
-    TransportError,
+    RenderedMessage, TransportError,
 )
 from webapp.utils.rbac import Permission
 
@@ -34,12 +34,34 @@ def notifier(monkeypatch, transport):
     `ledger=None` keeps the route off the database entirely: the ledger
     commits by design, which would escape the per-test SAVEPOINT.
     """
-    from webapp.dashboards.allocations.xras import lifecycle_routes as blueprint
-
     built = Notifier(config=NotifyConfig(enabled=True), transport=transport,
                      ledger=None)
-    monkeypatch.setattr(blueprint, 'get_notifier', lambda **kw: built)
+    _install(monkeypatch, built)
     return built
+
+
+def _install(monkeypatch, built):
+    """Route the send and the shared preview pane to ``built``."""
+    from webapp.dashboards.allocations.xras import lifecycle_routes as blueprint
+    monkeypatch.setattr(blueprint, 'get_notifier', lambda **kw: built)
+    monkeypatch.setattr('webapp.utils.email_preview.get_notifier',
+                        lambda **kw: built)
+
+
+def _pane_context(rendered, *, mode='live', recipients=None):
+    """The pane context the form route spreads into the template."""
+    from sam.notify import DeliveryPreview, PreviewRecipient
+    recipients = recipients or (PreviewRecipient('pi@example.edu', 'A PI', 'lead'),)
+    outgoing = Message(kind='xras_activation', subject='s',
+                       recipient=Recipient(recipients[0].address))
+    return {'p': DeliveryPreview(mode=mode, transport='smtp',
+                                 recipients=tuple(recipients),
+                                 selected=recipients[0], outgoing=outgoing,
+                                 sender='sam-admin@ucar.edu', rendered=rendered),
+            'id_prefix': 'xrasPreview', 'pane_id': 'xrasPreviewPane',
+            'picker_url': '/allocations/xras_notify_preview/7',
+            'picker_method': 'get', 'picker_include': None, 'notes': [],
+            'empty': None}
 
 
 @pytest.fixture
@@ -140,10 +162,9 @@ class TestPreviewForm:
 
     def test_a_disabled_deployment_says_so_before_the_operator_clicks_send(
             self, auth_client, monkeypatch, transport):
-        from webapp.dashboards.allocations.xras import lifecycle_routes as blueprint
         built = Notifier(config=NotifyConfig(enabled=False),
                          transport=transport, ledger=None)
-        monkeypatch.setattr(blueprint, 'get_notifier', lambda **kw: built)
+        _install(monkeypatch, built)
 
         resp = auth_client.get(f'/allocations/xras_notify_form/{PROJECT_ID}')
         assert b'not enabled' in resp.data
@@ -152,15 +173,63 @@ class TestPreviewForm:
             self, auth_client, monkeypatch, transport):
         """A staging box quietly swallowing mail is the failure mode this
         line exists to prevent."""
-        from webapp.dashboards.allocations.xras import lifecycle_routes as blueprint
         built = Notifier(config=NotifyConfig(enabled=True,
                                              redirect_to='staging@example.edu'),
                          transport=transport, ledger=None)
-        monkeypatch.setattr(blueprint, 'get_notifier', lambda **kw: built)
+        _install(monkeypatch, built)
 
         resp = auth_client.get(f'/allocations/xras_notify_form/{PROJECT_ID}')
         assert b'staging@example.edu' in resp.data
         assert b'redirected' in resp.data.lower()
+
+
+class TestThePreviewPane:
+    """The picker's endpoint: the same pane, for another recipient."""
+
+    URL = f'/allocations/xras_notify_preview/{PROJECT_ID}'
+
+    def test_it_renders_the_message(self, auth_client, notifier):
+        resp = auth_client.get(self.URL)
+        assert resp.status_code == 200
+        assert 'is now active' in resp.get_data(as_text=True)
+
+    def test_the_picker_round_trips_to_the_chosen_recipient(
+            self, auth_client, notifier, monkeypatch):
+        from webapp.dashboards.allocations.xras import lifecycle_routes as blueprint
+        people = [{'name': 'A PI', 'email': 'pi@example.edu', 'role': 'lead'},
+                  {'name': 'An Admin', 'email': 'admin@example.edu', 'role': 'admin'}]
+        monkeypatch.setattr(blueprint, 'get_xras_pending_recipients',
+                            lambda session, ids: {ids[0]: people})
+        html = auth_client.get(
+            f'/allocations/xras_notify_form/{PROJECT_ID}').get_data(as_text=True)
+        assert 'name="preview_recipient"' in html and self.URL in html
+        second = 'admin@example.edu'
+        resp = auth_client.get(self.URL, query_string={'preview_recipient': second})
+        body = resp.get_data(as_text=True)
+        assert '<option value="1" selected' in body
+        assert second in body.split('>To<')[1].split('</div>')[0]
+
+    def test_a_missing_project_answers_200_in_the_pane(self, auth_client, notifier):
+        resp = auth_client.get('/allocations/xras_notify_preview/999999999')
+        assert resp.status_code == 200
+        assert b'not found' in resp.data.lower()
+
+    def test_it_needs_manage_xras(self, non_admin_client):
+        resp = non_admin_client.get(self.URL)
+        assert resp.status_code in (403, 302)
+
+    def test_the_preview_records_nothing(self, auth_client, monkeypatch):
+        """The real read-only notifier, enabled: no ledger row."""
+        from sam.notify.ledger import NotificationLedger
+        monkeypatch.setattr(NotificationLedger, 'record', _refuse)
+        monkeypatch.setitem(auth_client.application.config, 'NOTIFY_ENABLED', True)
+        resp = auth_client.get(self.URL)
+        assert resp.status_code == 200
+        assert 'is now active' in resp.get_data(as_text=True)
+
+
+def _refuse(*_a, **_kw):
+    raise AssertionError('a preview must never record')
 
 
 class TestTheNoticeMayContradictTheProject:
@@ -187,15 +256,12 @@ class TestTheNoticeMayContradictTheProject:
                 project=SimpleNamespace(projcode='UHSS0004', project_id=7),
                 people=[SimpleNamespace(name='A PI', email='pi@example.edu',
                                         role='lead')],
-                preview=SimpleNamespace(subject='… is now active',
-                                        body='Your project … is now active',
-                                        template='xras_activation.txt'),
-                preview_error=None,
                 already_notified=[],
-                notify_enabled=True,
-                redirect_to=None,
                 project_inactive=project_inactive,
-                post_url='/allocations/xras_notify/7')
+                post_url='/allocations/xras_notify/7',
+                **_pane_context(RenderedMessage(
+                    subject='… is now active', text='Your project … is now active',
+                    template_text='xras_activation.txt')))
 
     def test_an_inactive_project_is_called_out_before_the_operator_sends(
             self, app):
@@ -240,13 +306,12 @@ class TestThePreviewShowsBothParts:
                 project=SimpleNamespace(projcode='UHSS0004', project_id=7),
                 people=[SimpleNamespace(name='A PI', email='pi@example.edu',
                                         role='lead')],
-                preview=SimpleNamespace(
+                already_notified=[], project_inactive=False,
+                post_url='/allocations/xras_notify/7',
+                **_pane_context(RenderedMessage(
                     subject='s', text='Dear A PI,\n\nplain text part.',
                     html=html, template_text='xras_activation.txt',
-                    template_html='xras_activation.html' if html else None),
-                preview_error=None, already_notified=[], notify_enabled=True,
-                redirect_to=None, project_inactive=False,
-                post_url='/allocations/xras_notify/7')
+                    template_html='xras_activation.html' if html else None)))
 
     def test_both_parts_are_offered(self, app):
         body = self._render(app)
@@ -359,10 +424,9 @@ class TestNothingDeliveredWritesNoEvent:
 
     def test_notify_disabled_writes_no_event(self, auth_client, monkeypatch,
                                              events, transport):
-        from webapp.dashboards.allocations.xras import lifecycle_routes as blueprint
         built = Notifier(config=NotifyConfig(enabled=False),
                          transport=transport, ledger=None)
-        monkeypatch.setattr(blueprint, 'get_notifier', lambda **kw: built)
+        _install(monkeypatch, built)
 
         resp = auth_client.post(f'/allocations/xras_notify/{PROJECT_ID}')
         assert resp.status_code == 200

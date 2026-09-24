@@ -15,14 +15,12 @@ from sam.projects.projects import Project
 from sam.queries.account_requests import all_events, enrollees_for_event
 from sam.schemas.forms import AccountRequestEventAdminForm
 from webapp.dashboards.event_lifecycle import (
-    EVENT_FORM, ROSTER_FORM, EventEditHandler, RosterHandler, create_event,
-    invalidate_upcoming_events, sponsor_context, switch_event,
+    EVENT_FORM, ROSTER_FORM, EventCreateHandler, EventEditHandler, RosterHandler,
+    date_floor, roster_preview, sponsor_context, switch_event,
 )
 from webapp.extensions import db
 from webapp.utils.form_handler import FormError
-from webapp.utils.htmx import (
-    handle_htmx_form_post, read_active_only, register_typeahead,
-)
+from webapp.utils.htmx import read_active_only, register_typeahead
 from webapp.utils.rbac import (
     Permission, has_permission_any_facility, has_permission_for_facility,
     require_permission_any_facility, user_facility_scope,
@@ -57,6 +55,7 @@ def _event_or_404(event_code, permission=Permission.MANAGE_EVENTS):
 def _form_context(event=None, project=None):
     return {
         'event': event, 'project': project, 'can_list': True,
+        'date_floor': date_floor(event),
         'project_search_url': (None if event else
                                url_for('admin_dashboard.htmx_project_search_for_event')),
         'post_url': (url_for('admin_dashboard.htmx_admin_event_update',
@@ -102,26 +101,28 @@ def htmx_admin_event_form():
     return render_template(EVENT_FORM, errors=[], **_form_context())
 
 
-@bp.route('/htmx/events/new', methods=['POST'])
-@login_required
-@_GUARD
-def htmx_admin_event_create():
-    def _create(data):
+class _AdminEventCreateHandler(EventCreateHandler):
+    schema_cls = AccountRequestEventAdminForm
+    triggers = _TRIGGERS
+    message = 'Event created. Hand the code out.'
+
+    def target_project(self, data):
         project = db.session.get(Project, data['project_id'])
         if project is None:
             raise FormError('That project does not exist.')
         if not _in_scope(project, Permission.MANAGE_EVENTS):
             raise FormError(f'{project.projcode} is outside your facilities.')
-        return create_event(data, project)
+        return project
 
-    return handle_htmx_form_post(
-        schema_cls=AccountRequestEventAdminForm, template=EVENT_FORM,
-        do_action=_create, success_triggers=_TRIGGERS,
-        success_message='Event created. Hand the code out.',
-        error_prefix='Error creating event',
-        extra_context=_form_context(),
-        after_commit=lambda _event: invalidate_upcoming_events(),
-    )
+    def context(self):
+        return _form_context()
+
+
+@bp.route('/htmx/events/new', methods=['POST'])
+@login_required
+@_GUARD
+def htmx_admin_event_create():
+    return _AdminEventCreateHandler().handle()
 
 
 class _AdminEventEditHandler(EventEditHandler):
@@ -178,6 +179,7 @@ def htmx_admin_event_enrollees(event_code):
 
 class _AdminRosterHandler(RosterHandler):
     post_endpoint = 'admin_dashboard.htmx_admin_event_roster'
+    preview_endpoint = 'admin_dashboard.htmx_admin_event_roster_preview'
     triggers = {'refreshEvents': {}, 'refreshAccountQueue': {}}
 
 
@@ -196,7 +198,9 @@ def htmx_admin_event_roster_form(event_code):
     return render_template(
         ROSTER_FORM, project=project, event=event, errors=[],
         post_url=url_for('admin_dashboard.htmx_admin_event_roster',
-                         event_code=event.event_code))
+                         event_code=event.event_code),
+        preview_url=url_for('admin_dashboard.htmx_admin_event_roster_preview',
+                            event_code=event.event_code))
 
 
 @bp.route('/htmx/events/<event_code>/roster', methods=['POST'])
@@ -205,6 +209,15 @@ def htmx_admin_event_roster_form(event_code):
 def htmx_admin_event_roster(event_code):
     event, project = _roster_target(event_code)
     return _AdminRosterHandler(event=event, project=project).handle()
+
+
+@bp.route('/htmx/events/<event_code>/roster-preview', methods=['POST'])
+@login_required
+@_ROSTER_GUARD
+def htmx_admin_event_roster_preview(event_code):
+    event, _project = _roster_target(event_code)
+    return roster_preview(event, url_for('admin_dashboard.htmx_admin_event_roster_preview',
+                                         event_code=event.event_code))
 
 
 def _search_projects(q, active_only):

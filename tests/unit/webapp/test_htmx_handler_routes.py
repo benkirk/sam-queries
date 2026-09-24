@@ -279,3 +279,105 @@ class TestAccessGridToggle:
         resp = auth_client.post(
             f'/admin/htmx/access-grid/{snapshot_projcode}/toggle', data={})
         assert resp.status_code == 200
+
+
+@pytest.fixture
+def renewable(session):
+    """``(projcode, resource_id, allocation_id, end_date)`` of a root project's
+    standalone allocation active today, whose lead has an email on file."""
+    from datetime import datetime
+    now = datetime.now()
+    rows = (session.query(Project, Account.resource_id, Allocation)
+            .join(Account, Account.project_id == Project.project_id)
+            .join(Allocation, Allocation.account_id == Account.account_id)
+            .filter(Project.is_active, Project.parent_id.is_(None),
+                    Allocation.deleted.is_(False), Allocation.parent_allocation_id.is_(None),
+                    Allocation.start_date <= now, Allocation.end_date >= now)
+            .order_by(Project.project_id).limit(50).all())
+    for project, resource_id, alloc in rows:
+        if project.lead is not None and project.lead.primary_email:
+            return project.projcode, resource_id, alloc.allocation_id, alloc.end_date
+    pytest.skip('no renewable root allocation in this snapshot')
+
+
+def _allocation_state(app, allocation_id):
+    """The source's end date, and how many rows exist in the previewed 2099 window."""
+    from datetime import datetime
+    from webapp.extensions import db
+    with app.app_context():
+        alloc = db.session.get(Allocation, allocation_id)
+        db.session.refresh(alloc)
+        return (alloc.end_date, db.session.query(func.count(Allocation.allocation_id))
+                .filter(Allocation.account_id == alloc.account_id,
+                        Allocation.start_date >= datetime(2099, 1, 1)).scalar())
+
+
+class TestRenewalPreviews:
+    """Renew / Extend: the notice from a read-only plan of the write."""
+
+    def _post(self, auth_client, verb, projcode, **data):
+        return auth_client.post(f'/admin/htmx/{verb}-allocations-preview/{projcode}',
+                                data=data)
+
+    @pytest.mark.parametrize('verb', ['renew', 'extend'])
+    def test_the_form_carries_the_button_and_pane(self, auth_client, verb, renewable):
+        html = auth_client.get(
+            f'/admin/htmx/{verb}-allocations-form/{renewable[0]}').get_data(as_text=True)
+        assert f'/admin/htmx/{verb}-allocations-preview/{renewable[0]}' in html
+        assert f'id="{verb}PreviewPane"' in html
+
+    @pytest.mark.parametrize('verb', ['renew', 'extend'])
+    def test_an_incomplete_form_asks_for_more(self, auth_client, verb, snapshot_projcode):
+        resp = self._post(auth_client, verb, snapshot_projcode)
+        assert resp.status_code == 200
+        assert 'Set the dates' in resp.get_data(as_text=True)
+
+    def test_renew_previews_the_notice_and_writes_nothing(self, app, auth_client,
+                                                          renewable):
+        from datetime import date
+        projcode, rid, alloc_id, _ = renewable
+        before = _allocation_state(app, alloc_id)
+        resp = self._post(auth_client, 'renew', projcode,
+                          source_active_at=date.today().isoformat(),
+                          new_start_date='2099-01-01', new_end_date='2099-12-31',
+                          resource_ids=str(rid), operator_comment='zz-renew-note')
+        html = resp.get_data(as_text=True)
+        assert resp.status_code == 200
+        assert f'Your NSF NCAR project {projcode} has been renewed' in html
+        assert 'zz-renew-note' in html and 'The box is unticked' in html
+        assert _allocation_state(app, alloc_id) == before
+
+    def test_extend_previews_the_notice_and_writes_nothing(self, app, auth_client,
+                                                           renewable):
+        from datetime import date
+        projcode, rid, alloc_id, _ = renewable
+        before = _allocation_state(app, alloc_id)
+        resp = self._post(auth_client, 'extend', projcode,
+                          source_active_at=date.today().isoformat(),
+                          new_end_date='2099-12-31', resource_ids=str(rid),
+                          notify_leads='1')
+        html = resp.get_data(as_text=True)
+        assert f'Your NSF NCAR project {projcode} has been extended' in html
+        assert 'The box is unticked' not in html
+        assert _allocation_state(app, alloc_id) == before
+
+    def test_extend_shows_the_refusal_the_save_would_raise(self, auth_client, renewable):
+        from datetime import date
+        projcode, rid, _, end = renewable
+        resp = self._post(auth_client, 'extend', projcode,
+                          source_active_at=date.today().isoformat(),
+                          new_end_date=end.date().isoformat(), resource_ids=str(rid))
+        assert 'must be later than the current latest end date' in resp.get_data(as_text=True)
+
+    def test_renew_shows_the_refusal_the_save_would_raise(self, auth_client, renewable):
+        projcode, rid, _, _ = renewable
+        resp = self._post(auth_client, 'renew', projcode, source_active_at='1990-01-01',
+                          new_start_date='2099-01-01', new_end_date='2099-12-31',
+                          resource_ids=str(rid))
+        assert 'No active allocation anywhere in the tree at 1990-01-01' in \
+            resp.get_data(as_text=True)
+
+    @pytest.mark.parametrize('verb', ['renew', 'extend'])
+    def test_it_is_guarded_like_the_save(self, non_admin_client, verb, snapshot_projcode):
+        resp = self._post(non_admin_client, verb, snapshot_projcode)
+        assert resp.status_code in (302, 403)

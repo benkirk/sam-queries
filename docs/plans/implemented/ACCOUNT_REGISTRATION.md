@@ -42,6 +42,7 @@ Pending Users link → the Invitations tab → the flag and the public form.
 | D19 | **`copy_button` (`fragments/clipboard.html` + `static/js/clipboard.js`) is the app's first shared copy-to-clipboard control.** CSP-safe: one delegated `[data-copy]` listener, feedback on the `showToast` channel. Its first use is the Invitations tab's Event Registration URL. Backport candidates (not done here): "copy link to this view" on the routable/deep-linked dashboards, and the XRAS operator identifiers pasted back into XRAS. | Operators asked for a shareable event link; the control is built reusable so the deep-link and XRAS copies are one macro call each on their own tracks. 2026-09-18. |
 | D15 | **The rejection notice is the operator's choice.** The reject form carries an "Email this reason" checkbox; ticked, `build_rejection_message` (kind `account_rejected`, family `account`) mails the recorded reason to the requester after the commit and stamps `closure_notified_at` only on a delivered send. Unticked, nothing leaves. A reopen clears the stamp and a second reject mints a new key. | The queue copy promised a notice that did not exist; a mail nobody chose would surprise both the operator and a sweep-derived stranger. |
 | D12 | The pre-production retrospective. Every person-typed or person-echoing column is utf8mb4 (`academic_status` widened to 64, `residence_country`, `fulfill_error`); `xras_username` is stored lower-cased and matched with a plain `IN`; `requested_at` is *first told* and never moves; `modified_time` is `NOT NULL`, stamped at create. Added now so no later `ALTER` is needed: `account_request_event.instructions` (sponsor prose on the public form), `verify_sent_count` + `source_ip` (the abuse signals; the ingress address today, the client's once the platform forwards it), `closure_notified_at` (D15), `merged_at` (phase 3). The unused `account_request_event_deadline` index is gone. | `fulfill_error` holds `str(ValueError)` with interpolated names, and a 4-byte character there failed the reconcile pass outside its savepoint; the rest is the design's own rule, every column from the start. |
+| D20 | **The sponsor may mail the invitee a link to finish their own row** (§ 3.6). A checkbox on Invite and on roster paste, ticked by default, plus a Resend action; kind `account_invite`, sent first and stamped second (`invite_sent_at`). The link opens the terms gate, then a pre-filled form; submitting updates the same row (phone, country, academic status, ORCID, preferred username) and stamps `completed_at`, `eula_sha`, `eula_accepted_at`. The row is in NUSD's queue from the start, badged *awaiting invitee* until then. Events gain `invite_only`, which closes every self-service path. Amends § 3.1's "no mail to the invitee". | NUSD received a name and an email only: no phone for Duo, no country, no academic status, and no recorded terms acceptance. The invitee is the one person who knows those. Record: `docs/plans/implemented/ACCOUNT_INVITE_LINKS.md`. 2026-09-24. |
 
 **Operator handoffs, not automated:** apply `scripts/sql/create_account_request_event.sql`
 then `create_account_request.sql` to production and read the columns back by
@@ -197,9 +198,10 @@ has three ways to the same rows:
   SAM user skip the queue and go straight to membership.
 
 A sponsor-created row is `submitted` with `verified_at` set at creation: the sponsor
-is authenticated and vouching, and NUSD contacts the invitee anyway, so no mail to
-the invitee is needed for the queue to see the row. A workshop is therefore nothing
-special — an invitation with a code and a deadline attached, grouped for NUSD.
+is authenticated and vouching, so the queue sees the row at once, with no mail round
+trip. The sponsor may also mail the invitee a link to fill in the rest of the row
+themselves (§ 3.6, D20). A workshop is therefore nothing special — an invitation
+with a code and a deadline attached, grouped for NUSD.
 
 The event card on the project page lists its sponsors and its open rows, so any of
 them can see progress. On fulfillment the observer calls `add_user_to_project`
@@ -298,6 +300,43 @@ the open event link is the capability, the session is the identity. Registering
 *others* is unchanged — the RBAC'd Invitations panel (§ 3.1) — so the lowest
 tier self-enrolls but cannot enroll anyone else. The anonymous creation form is
 still what an unauthenticated visitor sees when `LOGIN_REQUIRED` is off.
+
+### 3.6 The invitation link and invitation-only events (D20)
+
+**The link.** Invite and roster paste carry a *send a link* checkbox, ticked by
+default; the Invitations list has a Resend action per open, uncompleted sponsor
+row. `webapp/register/invite_mail.py` builds one `account_invite` message per row
+(no sponsor note: that is addressed to NUSD), sends, and stamps `invite_sent_at`
+only on a delivered message. The token (salt `account-invite`, max age
+`ACCOUNT_INVITE_TTL_DAYS`, default 30) carries that stamp, so a resend voids
+every older link.
+
+**The page.** `register_invite` (`webapp/register/invite.py`, `/register/invite/`)
+is mounted with the invitations switch and has **no login hook**: the invitee has
+no account, the token is the capability, and the route sends no mail, so it
+cannot relay. It shares `form.html`, `gate.html` and the form context
+(`webapp/register/common.py`) with the public form. A bad, expired or superseded
+token, or a closed or fulfilled row, gets a refusal page at 200; a completed row
+gets *already received*. Otherwise the terms gate (an accept bound to this link),
+then the form pre-filled from the row with the email read-only. Submitting runs
+`AccountRequest.complete_invite()`: the same row, updated in place. No verify
+mail: opening the link proved the address. The event window does not apply, since
+the row already exists.
+
+**Recording the terms.** Both flows stamp `eula_sha` (the git blob SHA of
+`webapp/register/eula.md`, `eula.eula_sha()`) and `eula_accepted_at` (the gate's
+accept time). The public form stamps them only when its gate was passed.
+
+**`invite_only` events.** `_open_event` refuses such a code with "by invitation
+only", which closes `/register/<code>`, a posted `event_code` and signed-in
+self-enroll; the event is left out of the form's picker, and the public card
+shows *By invitation* where the register button would be (`listed` still decides
+whether it appears at all). Personal links ignore the flag: the roster is the way
+in. The event form's box posts an `invite_only_present` sentinel, like `listed`.
+
+**Queue surfaces.** The *awaiting invitee* / *completed &lt;date&gt;* badge is on
+the Invitations list, the Accounts queue card and the digest rows; the request
+detail shows the invite stamps and `EULA <sha7> @ <time>`.
 
 ## 4. The XRAS phase-3 link
 
@@ -459,16 +498,10 @@ alters what people agree to, so a human decides. When approved:
   new text; a deploy restarts the workers and the gate page is not in the Redis
   page cache, so no cache refresh is needed.
 
-**Open follow-up — recording EULA acceptance.** The gate sets only a session
-marker today; nothing records *which* agreement was accepted. Stamping the
-upstream blob SHA (`update_eula.py` prints it) onto the request makes an
-acceptance auditable as "version X, at `creation_time`" (the gate is accepted
-moments before the row is created, so no separate timestamp is needed). No
-existing `account_request` column fits — `purpose_note`/`comment` are the
-visitor's and the operator's own text — so this is **one additive nullable
-column** (e.g. `eula_sha`), plus the model field, the schema-validation rerun,
-and a CI-blob regen in the same PR. Deferred until consumed rather than added
-speculatively.
+**Recording EULA acceptance (done, D20).** `account_request.eula_sha` holds the
+git blob SHA of the accepted `eula.md` (what `update_eula.py` prints and
+`eula.eula_sha()` computes) and `eula_accepted_at` the gate's accept time, from
+the public form and from the invitation link alike (§ 3.6).
 
 This points at a larger, separate project: EULA acceptance is **not
 registration-only**. Eventually *every* user may need to accept — and

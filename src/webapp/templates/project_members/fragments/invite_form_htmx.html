@@ -1,10 +1,11 @@
-{% from 'dashboards/fragments/form_fields.html' import text_field, datalist_field, textarea_field, select_field, form_errors_panel with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, datalist_field, textarea_field, select_field, checkbox_field, form_errors_panel with context %}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/email_preview.html' import preview_button %}
 {#
   Invite one person who has no account. Lands in #invitationFormContainer.
 
   Context: project, events (this project's events), default_event_code
-           (pre-selected when one active event), post_url, errors
+           (pre-selected when one active event), invite_ttl_days, post_url, preview_url, errors
 #}
 <h5 class="modal-title" id="invitationModalLabel" hx-swap-oob="true">
     <i class="fa-solid fa-user-plus"></i> Invite a person to {{ project.projcode }}
@@ -32,5 +33,13 @@
                     help='Group this invitation under an event (workshop, class).') }}
     {% endif %}
     {{ textarea_field('note', 'Note for the account team', rows=2, maxlength=255,
-                      placeholder='e.g. visiting scholar, needs access before Oct 5') }}
+                      placeholder='e.g. visiting scholar, needs access before Oct 5',
+                      help='Seen by the account team only; never mailed to the person.') }}
+    {% call checkbox_field('send_invite', 'Email them a link to finish the request', default=True,
+                      help='The link asks for their phone, country and academic status and '
+                           'records their acceptance of the terms of use. Valid for '
+                           ~ invite_ttl_days ~ ' days. Nobody is mailed if SAM already knows the address.') %}
+    {% if preview_url %}{{ preview_button(preview_url, 'invitePreviewPane') }}{% endif %}
+    {% endcall %}
+    <div id="invitePreviewPane" class="mb-2"></div>
 {% endcall %}

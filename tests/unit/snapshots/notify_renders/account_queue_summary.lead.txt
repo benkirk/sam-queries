@@ -12,10 +12,10 @@ WRF-TUTORIAL-2026-10 — WRF Tutorial, October 2026 (SCSG0001)
 2 account(s) needed by 2026-10-05
 ------------------------------------------------------------------------
   Ada Lovelace <ada@example.edu>, University of Example — wants "ada"
-    enrollment, invited by Jane Lead; waiting 3 day(s)
+    enrollment, invited by Jane Lead; waiting 3 day(s); completed 2026-09-12
     note: Visiting for the tutorial week.
   Alan Turing <alan@example.edu>
-    enrollment, invited by Jane Lead; waiting 3 day(s); claimed by operator1
+    enrollment, invited by Jane Lead; waiting 3 day(s); claimed by operator1; awaiting invitee
 
 
 Other requests

@@ -23,11 +23,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import replace
-from typing import Callable, Iterable, List, Optional, Set
+from typing import Callable, Iterable, List, Optional, Sequence, Set, Union
 
 from sam.notify.base import (
-    DeliveryResult, Message, Recipient, RenderedMessage, Transport,
-    TransportError,
+    DeliveryPreview, DeliveryResult, Message, PreviewRecipient, Recipient,
+    RenderedMessage, Transport, TransportError,
 )
 from sam.notify.addressing import AddressingStore
 from sam.notify.config import Addressing, NotifyConfig
@@ -93,12 +93,58 @@ class Notifier:
     def preview(self, message: Message) -> RenderedMessage:
         """Render without sending, guarding, or recording.
 
-        Used by the XRAS preview modal and by ``--dry-run``. **Writes no
-        ledger row** — a preview is not an attempt, and a stray ``suppressed``
-        row would poison the dedup query for the real send that follows.
+        Used by ``--dry-run`` and the tasks; the webapp uses
+        :meth:`preview_delivery`. **Writes no ledger row** — a preview is not
+        an attempt, and a stray ``suppressed`` row would poison the dedup
+        query for the real send that follows.
         """
         get_kind(message.kind)          # validate before rendering
         return self.renderer.render(message)
+
+    def preview_delivery(self, messages: Sequence[Message], *,
+                         selected: Union[int, str, None] = None) -> DeliveryPreview:
+        """Show one message of a batch exactly as the send would deliver it.
+
+        Mirrors :meth:`_deliver_one` (redirect, addressing, banner, the
+        transport's envelope copies) and reads when each key was last sent.
+        Never records: a preview is not an attempt. ``selected`` is a position
+        or an intended address; anything else falls back to the first message.
+        """
+        messages = list(messages)
+        for message in messages:
+            get_kind(message.kind)
+        cfg = self.config
+        mode = ('disabled' if not cfg.enabled
+                else 'redirected' if cfg.is_redirecting else 'live')
+        last_sent = (self.ledger.last_sent_many(m.dedup_key for m in messages)
+                     if self.ledger is not None else {})
+        recipients = tuple(
+            PreviewRecipient(address=m.recipient.address, name=m.recipient.name,
+                             role=m.recipient.role,
+                             last_sent=last_sent.get(m.dedup_key), projcode=m.projcode)
+            for m in messages)
+        if not messages:
+            return DeliveryPreview(mode=mode, transport=cfg.transport)
+
+        if isinstance(selected, int) and 0 <= selected < len(messages):
+            index = selected
+        else:
+            index = next((i for i, m in enumerate(messages)
+                          if m.recipient.address == selected), 0)
+        outgoing = self._outgoing(messages[index])
+        cc, bcc = self.transport.envelope_copies(outgoing)
+        rendered = error = None
+        try:
+            rendered = self._render_outgoing(outgoing)
+        except Exception as exc:
+            logger.warning('notify: preview render failed for kind=%s: %s',
+                           outgoing.kind, exc)
+            error = str(exc)
+        return DeliveryPreview(
+            mode=mode, transport=cfg.transport, recipients=recipients,
+            selected=recipients[index], selected_index=index, outgoing=outgoing,
+            sender=cfg.sender_for(outgoing), reply_to=outgoing.reply_to,
+            cc=cc, bcc=bcc, rendered=rendered, error=error)
 
     # ------------------------------------------------------------------ send
     def send(self, message: Message, *, force: bool = False) -> DeliveryResult:
@@ -303,20 +349,28 @@ class Notifier:
         return replace(message, cc=effective.cc, bcc=effective.bcc,
                        sender=effective.sender, reply_to=effective.reply_to)
 
+    def _outgoing(self, message: Message) -> Message:
+        """The message as it leaves: redirected, then addressed."""
+        return self._addressed(self._redirected(message))
+
+    def _render_outgoing(self, outgoing: Message) -> RenderedMessage:
+        """Render, then banner a redirected message. Raises on a render error."""
+        rendered = self.renderer.render(outgoing)
+        if outgoing.intended_recipient:
+            rendered = self._banner(rendered, outgoing.intended_recipient)
+        return rendered
+
     def _deliver_one(self, message: Message,
                      transport: Transport) -> DeliveryResult:
-        outgoing = self._addressed(self._redirected(message))
+        outgoing = self._outgoing(message)
 
         try:
-            rendered = self.renderer.render(outgoing)
+            rendered = self._render_outgoing(outgoing)
         except Exception as exc:
             logger.warning('notify: render failed for kind=%s to=%s: %s',
                            message.kind, message.recipient.address, exc)
             return self._record(outgoing, status='failed',
                                 detail=f'render failed: {exc}')
-
-        if outgoing.intended_recipient:
-            rendered = self._banner(rendered, outgoing.intended_recipient)
 
         # queued FIRST, so a crash between here and the outcome leaves an
         # honest "we do not know" rather than a silent loss. The staleness

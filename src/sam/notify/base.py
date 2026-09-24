@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 from typing import Any, ClassVar, Mapping, Optional, Tuple
 
@@ -178,6 +179,42 @@ class DeliveryResult:
         return self.message.recipient.address if self.message else None
 
 
+@dataclass(frozen=True)
+class PreviewRecipient:
+    """One person in a previewed batch; ``last_sent`` is their key's latest send."""
+
+    address: str
+    name: Optional[str] = None
+    role: Optional[str] = None
+    last_sent: Optional[datetime] = None
+    projcode: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class DeliveryPreview:
+    """What :meth:`Notifier.preview_delivery` shows: the selected message as sent.
+
+    ``mode`` is ``'disabled' | 'redirected' | 'live'``. ``outgoing`` is the
+    message after the redirect and addressing; ``cc``/``bcc`` are what the
+    transport puts on the envelope. ``rendered`` is ``None`` when ``error`` is set
+    or there is nothing to preview. ``selected_index`` is the picker's value:
+    one address can appear once per project in a batch.
+    """
+
+    mode: str
+    transport: str
+    recipients: Tuple[PreviewRecipient, ...] = ()
+    selected: Optional[PreviewRecipient] = None
+    selected_index: Optional[int] = None
+    outgoing: Optional[Message] = None
+    sender: Optional[str] = None
+    reply_to: Optional[str] = None
+    cc: Tuple[str, ...] = ()
+    bcc: Tuple[str, ...] = ()
+    rendered: Optional[RenderedMessage] = None
+    error: Optional[str] = None
+
+
 class Transport(ABC):
     """A way of getting a rendered message to a person.
 
@@ -203,6 +240,10 @@ class Transport(ABC):
 
     def close(self) -> None:
         """Release it. Called in a ``finally``, so it must not raise."""
+
+    def envelope_copies(self, message: Message) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
+        """``(cc, bcc)`` this transport delivers to besides the addressee."""
+        return message.copies()
 
     def check(self) -> Tuple[bool, Optional[str]]:
         """Connectivity probe for the admin card: ``(ok, detail)``.

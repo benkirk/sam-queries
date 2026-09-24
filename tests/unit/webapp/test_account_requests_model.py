@@ -246,6 +246,16 @@ class TestEvents:
         event.update(listed=False)
         assert event.listed is False
 
+    def test_invite_only_is_opt_in_and_round_trips(self, session):
+        event = make_account_request_event(session)
+        assert event.invite_only is False
+        event.update(invite_only=True)
+        event.update(name='Renamed')
+        assert event.invite_only is True, 'an update that does not mention it leaves it'
+        event.update(invite_only=False)
+        assert event.invite_only is False
+        assert make_account_request_event(session, invite_only=True).invite_only is True
+
     def test_update_can_clear_the_sponsor(self, session):
         sponsor = make_user(session)
         event = make_account_request_event(session, extra_sponsor=sponsor)
@@ -267,3 +277,60 @@ class TestEvents:
         row = make_account_request(session, purpose='enrollment', event=event)
         assert row.event_id == event.account_request_event_id
         assert row.project_id == event.project_id
+
+
+class TestTheInvitationLink:
+    SENT = datetime(2026, 9, 24, 9, 0)
+
+    def test_mark_invite_sent_stamps_and_restamps(self, session):
+        row = make_account_request(session)
+        assert row.invite_state is None
+        row.mark_invite_sent(self.SENT)
+        assert row.invite_sent_at == self.SENT and row.invite_state == 'awaiting'
+        row.mark_invite_sent(self.SENT + timedelta(hours=1))
+        assert row.invite_sent_at == self.SENT + timedelta(hours=1), 'a resend re-stamps'
+
+    def test_complete_invite_updates_the_row_in_place(self, session):
+        row = make_account_request(session, first_name='Ada', last_name='Lovelace',
+                                   comment='sponsor note').mark_invite_sent(self.SENT)
+        row_id, before = row.account_request_id, session.query(AccountRequest).count()
+        accepted = self.SENT + timedelta(minutes=5)
+        row.complete_invite(
+            fields={'first_name': ' Augusta ', 'phone': '+1 303 555 0100',
+                    'residence_country': 'United Kingdom', 'academic_status': 'Faculty',
+                    'orcid': '0000-0002-1825-0097', 'desired_username': 'ada',
+                    'email': 'hijack@example.edu'},
+            eula_sha='5c2cca1c8b5180f791670276d5bb55832ba6a2e2', accepted_at=accepted,
+            source_ip='192.0.2.9', clock=accepted + timedelta(minutes=1))
+        assert session.query(AccountRequest).count() == before, 'updates, never inserts'
+        assert row.account_request_id == row_id
+        assert row.first_name == 'Augusta' and row.last_name == 'Lovelace'
+        assert row.phone == '+1 303 555 0100' and row.residence_country == 'United Kingdom'
+        assert row.academic_status == 'Faculty' and row.orcid == '0000-0002-1825-0097'
+        assert row.desired_username == 'ada'
+        assert row.email != 'hijack@example.edu', 'the vouched address is not a form field'
+        assert row.comment == 'sponsor note'
+        assert row.completed_at == accepted + timedelta(minutes=1)
+        assert row.eula_sha.startswith('5c2cca1') and row.eula_accepted_at == accepted
+        assert row.source_ip == '192.0.2.9' and row.invite_state == 'completed'
+
+    def test_a_closed_or_fulfilled_row_cannot_be_completed(self, session):
+        kwargs = dict(fields={}, eula_sha='x', accepted_at=self.SENT)
+        closed = make_account_request(session).dismiss('op', 'dup')
+        with pytest.raises(ValueError, match='complete'):
+            closed.complete_invite(**kwargs)
+        fulfilled = make_account_request(session).fulfill(make_user(session))
+        with pytest.raises(ValueError, match='fulfilled'):
+            fulfilled.complete_invite(**kwargs)
+
+    def test_a_blanked_name_is_refused(self, session):
+        row = make_account_request(session)
+        with pytest.raises(ValueError, match='first_name'):
+            row.complete_invite(fields={'first_name': '  '}, eula_sha='x',
+                                accepted_at=self.SENT)
+
+    def test_create_records_an_acceptance_only_with_its_time(self, session):
+        stamped = make_account_request(session, eula_sha='abc', eula_accepted_at=self.SENT)
+        assert stamped.eula_sha == 'abc' and stamped.eula_accepted_at == self.SENT
+        bare = make_account_request(session, eula_sha='abc')
+        assert bare.eula_sha is None and bare.eula_accepted_at is None

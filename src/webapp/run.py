@@ -424,7 +424,10 @@ def create_app(*, config_overrides: dict | None = None):
     # The project Invitations tab: same shape, its own flag, dark in prod.
     if app.config.get('ACCOUNT_INVITATIONS_ENABLED', False):
         from webapp.dashboards.project_invites import bp as project_invites_bp
+        from webapp.register.invite import bp as register_invite_bp
         app.register_blueprint(project_invites_bp)
+        # The invitee's link: no login hook, whatever the register switches say.
+        app.register_blueprint(register_invite_bp)
     # NOTE: admin_bp blueprint removed - Flask-Admin handles /database routing
     # app.register_blueprint(admin_bp, url_prefix='/database')
 

@@ -19,7 +19,7 @@ from typing import Any, Dict, Optional, Sequence
 from sqlalchemy.orm import Session
 
 from sam import fmt
-from sam.core.account_requests import CREATED_BY_SELF, AccountRequest
+from sam.core.account_requests import CREATED_BY_SELF, AccountRequest, AccountRequestEvent
 from sam.notify import Message, Recipient
 
 from .account_requests import events_for, group_by_event, request_views, waiting_days
@@ -30,11 +30,20 @@ ACCOUNT_KIND_SUBJECTS = {
     'account_queue_summary': 'NCAR HPC account requests: {total} waiting, {new} new',
     'account_verify': 'Verify your email address for your NCAR HPC account request',
     'account_rejected': 'Your NCAR HPC account request',
+    'account_invite': 'You are invited to request an NCAR HPC account',
 }
 
 
 #: How the digest prints its as-of time; the task passes local (Mountain) time.
 _STAMP = '%Y-%m-%d %H:%M'
+
+
+def invite_label(row: AccountRequest) -> str:
+    """The queue badge text: 'awaiting invitee', 'completed <date>', or ''."""
+    if row.invite_state == 'completed':
+        return f'completed {fmt.date_str(row.completed_at)}'
+    return 'awaiting invitee' if row.invite_state == 'awaiting' else ''
+
 
 def queue_summary_context(session: Session, rows: Sequence[AccountRequest], *,
                           occurrence: datetime, queue_url: str = '') -> Dict[str, Any]:
@@ -60,6 +69,7 @@ def queue_summary_context(session: Session, rows: Sequence[AccountRequest], *,
             'state': v['state'],
             'assignee': r.assignee or '',
             'note': note[0] if note else '',
+            'invite': invite_label(r),
         }
 
     out_events, out_rows = [], []
@@ -136,23 +146,56 @@ def build_verify_message(row: AccountRequest, *, verify_url: str, code: str,
 
 
 def build_rejection_message(row: AccountRequest, *, requested_by: str,
-                            event_name: str = '', project_code: str = '') -> Message:
+                            event_name: str = '', project_code: str = '',
+                            reason: Optional[str] = None,
+                            closed_at: Optional[datetime] = None) -> Message:
     """The notice an operator chose to send on Reject. The address is verified
     or sponsor-vouched, so naming the person and echoing the operator's reason
     is fine here (the "nothing typed" rule is the verify mail's). Keyed on the
-    closure time, so a reopen and a second reject can notify again."""
-    closed = (row.closed_at.isoformat(timespec='seconds') if row.closed_at else 'open')
+    closure time, so a reopen and a second reject can notify again.
+    ``reason`` / ``closed_at`` default to the row's; a preview passes them."""
+    closed_at = closed_at or row.closed_at
+    closed = closed_at.isoformat(timespec='seconds') if closed_at else 'open'
+    reason = row.closed_reason if reason is None else reason
     return Message(
         kind='account_rejected',
         recipient=Recipient(row.email, name=row.display_name, role='user'),
         subject=ACCOUNT_KIND_SUBJECTS['account_rejected'],
         context={
             'name': row.display_name,
-            'reason': row.closed_reason or '',
+            'reason': reason or '',
             'event_name': event_name or '',
             'project_code': project_code or '',
         },
         entity=('account_request', row.account_request_id),
         dedup_key=f'account_rejected:{row.account_request_id}:{closed}',
+        requested_by=requested_by,
+    )
+
+
+def build_invite_message(row: AccountRequest, *, invite_url: str, sent_at: datetime,
+                         sponsor_name: str, projcode: str, expires_days: int,
+                         event: Optional[AccountRequestEvent] = None,
+                         requested_by: str) -> Message:
+    """The sponsor-chosen link; never the sponsor's note (that is NUSD's).
+    Keyed on ``sent_at``, the stamp the link is signed with, so a resend is a new key."""
+    return Message(
+        kind='account_invite',
+        recipient=Recipient(row.email, name=row.display_name, role='user'),
+        subject=ACCOUNT_KIND_SUBJECTS['account_invite'],
+        context={
+            'name': row.display_name,
+            'sponsor_name': sponsor_name or '',
+            'project_code': projcode or '',
+            'event_name': event.name if event else '',
+            'event_instructions': (event.instructions or '') if event else '',
+            'accounts_needed_by': fmt.date_str(event.accounts_needed_by) if event else '',
+            'invite_url': invite_url,
+            'expires_days': expires_days,
+        },
+        entity=('account_request', row.account_request_id),
+        projcode=projcode or None,
+        dedup_key=f'account_invite:{row.account_request_id}:'
+                  f'{sent_at.isoformat(timespec="seconds")}',
         requested_by=requested_by,
     )

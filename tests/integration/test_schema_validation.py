@@ -732,10 +732,12 @@ class TestCriticalSchemas:
         expected = {'account_request_event_id', 'event_code', 'name', 'instructions',
                     'project_id',
                     'extra_sponsor_user_id', 'accounts_needed_by', 'opens_at',
-                    'closes_at', 'active', 'listed', 'created_by',
+                    'closes_at', 'active', 'listed', 'invite_only', 'created_by',
                     'creation_time', 'modified_time'}
         assert set(db_cols.keys()) == expected, set(db_cols.keys()) ^ expected
         assert db_cols['account_request_event_id']['key'] == 'PRI'
+        assert db_cols['invite_only']['nullable'] is False, (
+            'invite_only backfills to 0 (scripts/sql/alter_account_request_invites.sql)')
         unique = session.execute(text("""
             SELECT COUNT(*) FROM information_schema.STATISTICS
              WHERE TABLE_SCHEMA = DATABASE()
@@ -769,6 +771,7 @@ class TestCriticalSchemas:
             'creation_time', 'modified_time',
             'user_id', 'upid', 'fulfilled_at', 'fulfill_error',
             'closure_notified_at', 'merged_at',
+            'invite_sent_at', 'completed_at', 'eula_sha', 'eula_accepted_at',
         }
         assert set(db_cols.keys()) == expected, set(db_cols.keys()) ^ expected
         assert db_cols['account_request_id']['key'] == 'PRI'
@@ -780,6 +783,8 @@ class TestCriticalSchemas:
             'XRAS academic statuses are longer than 32 characters')
         assert db_cols['source_ip']['type'] == 'varchar(45)', (
             'an IPv6 address with an IPv4 tail is 45 characters')
+        assert db_cols['eula_sha']['type'] == 'varchar(40)', (
+            'a git blob SHA-1 is 40 hex characters')
         assert db_cols['modified_time']['nullable'] is False, (
             'modified_time is stamped at create, so a row never carries NULL')
         for col in ('creation_time', 'modified_time'):

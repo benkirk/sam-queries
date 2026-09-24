@@ -121,7 +121,7 @@ class SmtpTransport(Transport):
         msg['Subject'] = rendered.subject
         msg['From'] = self.sender_address(message)
         msg['To'] = message.recipient.address
-        cc, _ = self.copies(message)
+        cc, _ = self.envelope_copies(message)
         if cc:
             msg['Cc'] = ', '.join(cc)
         if message.reply_to:
@@ -132,21 +132,32 @@ class SmtpTransport(Transport):
 
     def sender_address(self, message: Message) -> str:
         """Header From and envelope MAIL FROM agree, so an override owns its bounces."""
-        return message.sender or self.config.mail_from
+        return self.config.sender_for(message)
 
     @staticmethod
     def copies(message: Message) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
         """``(cc, bcc)`` for this message -- the message's own redirect rule."""
         return message.copies()
 
-    def envelope_recipients(self, message: Message) -> List[str]:
-        """The addressee, the message's cc and bcc, then the configured Bcc."""
+    def envelope_copies(self, message: Message) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
+        """The message's copies plus ``NOTIFY_BCC``, de-duplicated against To.
+
+        ``NOTIFY_BCC`` survives a redirect, unlike the message's own copies.
+        """
         cc, bcc = self.copies(message)
-        recipients = [message.recipient.address]
-        for address in (*cc, *bcc, *self.config.bcc_addresses):
-            if address not in recipients:
-                recipients.append(address)
-        return recipients
+        seen = [message.recipient.address]
+        out_cc, out_bcc = [], []
+        for group, out in ((cc, out_cc), ((*bcc, *self.config.bcc_addresses), out_bcc)):
+            for address in group:
+                if address not in seen:
+                    seen.append(address)
+                    out.append(address)
+        return tuple(out_cc), tuple(out_bcc)
+
+    def envelope_recipients(self, message: Message) -> List[str]:
+        """The addressee, then :meth:`envelope_copies`."""
+        cc, bcc = self.envelope_copies(message)
+        return [message.recipient.address, *cc, *bcc]
 
     # -------------------------------------------------------------- deliver
     def deliver(self, message: Message, rendered: RenderedMessage) -> None:

@@ -197,6 +197,97 @@ class TestCreateValidation:
         assert f'{projcode} is not an active project' in resp.get_data(as_text=True)
 
 
+class TestTheDeadline:
+    """Past dates are refused; one under DEADLINE_LEAD_DAYS saves with a warning."""
+
+    def _toast(self, resp):
+        import json
+        return json.loads(resp.headers['HX-Trigger'])['showToast']
+
+    def _create(self, auth_client, app, needed_by):
+        from sam.projects.projects import Project
+        from webapp.extensions import db
+        with app.app_context():
+            pid = db.session.query(Project.project_id).filter(Project.is_active).first()[0]
+        code = f'ZZ-{uuid.uuid4().hex[:12].upper()}'
+        resp = auth_client.post('/admin/htmx/events/new', data={
+            'event_code': code, 'name': 'Deadline test', 'project_id': pid,
+            'accounts_needed_by': needed_by.isoformat()})
+        return code, resp
+
+    @pytest.fixture
+    def cleanup_codes(self, app):
+        codes = []
+        yield codes
+        from sam.core.account_requests import AccountRequestEvent
+        from webapp.extensions import db
+        with app.app_context():
+            db.session.query(AccountRequestEvent).filter(
+                AccountRequestEvent.event_code.in_(codes)).delete(synchronize_session=False)
+            db.session.commit()
+
+    def test_the_notice(self):
+        from sam.schemas.forms.account_requests import deadline_notice
+        today = date(2026, 9, 24)
+        assert deadline_notice(date(2026, 10, 22), today) is None, '4 weeks is enough'
+        assert 'in 27 days' in deadline_notice(date(2026, 10, 21), today)
+        assert 'in 1 day;' in deadline_notice(date(2026, 9, 25), today)
+        assert 'needed today' in deadline_notice(today, today)
+        assert deadline_notice(date(2026, 9, 1), today) is None
+        assert deadline_notice(None, today) is None
+
+    def test_a_past_date_is_refused_on_create(self, auth_client, app, cleanup_codes):
+        from sam.core.account_requests import AccountRequestEvent
+        from webapp.extensions import db
+        code, resp = self._create(auth_client, app, date.today() - timedelta(days=1))
+        cleanup_codes.append(code)
+        assert 'cannot be in the past' in resp.get_data(as_text=True)
+        with app.app_context():
+            assert db.session.query(AccountRequestEvent).filter_by(event_code=code).count() == 0
+
+    def test_short_notice_saves_with_a_warning_toast(self, auth_client, app, cleanup_codes):
+        code, resp = self._create(auth_client, app, date.today() + timedelta(days=10))
+        cleanup_codes.append(code)
+        toast = self._toast(resp)
+        assert toast['variant'] == 'warning' and 'in 10 days' in toast['message']
+        code, resp = self._create(auth_client, app, date.today() + timedelta(days=60))
+        cleanup_codes.append(code)
+        assert self._toast(resp)['variant'] == 'success'
+
+    def test_the_picker_floor(self, auth_client, app, committed_event):
+        from sam.core.account_requests import AccountRequestEvent
+        from webapp.extensions import db
+        new_form = auth_client.get('/admin/htmx/events/new-form').get_data(as_text=True)
+        assert f'min="{date.today().isoformat()}"' in new_form
+        code, _ = committed_event
+        with app.app_context():
+            db.session.query(AccountRequestEvent).filter_by(event_code=code).one() \
+                .accounts_needed_by = date(2026, 1, 15)
+            db.session.commit()
+        edit_form = auth_client.get(f'/admin/events/{code}/edit-form').get_data(as_text=True)
+        assert 'min="2026-01-15"' in edit_form, 'an old event keeps its own date'
+
+    def test_an_old_event_stays_editable_but_cannot_move_into_the_past(
+            self, auth_client, app, committed_event):
+        from sam.core.account_requests import AccountRequestEvent
+        from webapp.extensions import db
+        code, _ = committed_event
+        old = date.today() - timedelta(days=30)
+        with app.app_context():
+            db.session.query(AccountRequestEvent).filter_by(event_code=code).one() \
+                .accounts_needed_by = old
+            db.session.commit()
+        resp = auth_client.put(f'/admin/events/{code}',
+                               data={'name': 'Renamed', 'accounts_needed_by': old.isoformat()})
+        assert 'Saved' in resp.get_data(as_text=True)
+        resp = auth_client.put(f'/admin/events/{code}', data={
+            'accounts_needed_by': (old - timedelta(days=1)).isoformat()})
+        assert 'cannot be in the past' in resp.get_data(as_text=True)
+        with app.app_context():
+            assert db.session.query(AccountRequestEvent).filter_by(
+                event_code=code).one().accounts_needed_by == old
+
+
 class TestTheListedSentinel:
     """An unchecked box posts nothing, so its own key cannot say "leave it alone"."""
 

@@ -1,7 +1,8 @@
 {#
   What a pasted roster did, replacing the form inside the open modal.
 
-  Context: event, project, outcomes {added: [...], queued: [...], duplicate: [...], error: [(email, why)]}
+  Context: event, project, outcomes {added: [...], queued: [...], duplicate: [...], error: [(email, why)]},
+           invites (None when no links were asked for) {delivered: [...], undelivered: [(email, why)]}
 #}
 <h5 class="modal-title" id="invitationModalLabel" hx-swap-oob="true">
     <i class="fa-solid fa-list-check"></i> Roster for {{ event.event_code }}
@@ -14,6 +15,16 @@
         <dd class="col-sm-8">{{ outcomes.added | length }}{% if outcomes.added %} <small class="text-muted">— {{ outcomes.added | join(', ') }}</small>{% endif %}</dd>
         <dt class="col-sm-4">Already waiting</dt>
         <dd class="col-sm-8">{{ outcomes.duplicate | length }}{% if outcomes.duplicate %} <small class="text-muted">— {{ outcomes.duplicate | join(', ') }}</small>{% endif %}</dd>
+        {% if invites %}
+        <dt class="col-sm-4">Invitation links sent</dt>
+        <dd class="col-sm-8">{{ invites.delivered | length }}{% if invites.delivered %} <small class="text-muted">— {{ invites.delivered | join(', ') }}</small>{% endif %}</dd>
+        {% if invites.undelivered %}
+        <dt class="col-sm-4 text-warning-emphasis">Links not sent</dt>
+        <dd class="col-sm-8 text-warning-emphasis">
+            {% for email, why in invites.undelivered %}{{ email }}: {{ why }}<br>{% endfor %}
+        </dd>
+        {% endif %}
+        {% endif %}
         {% if outcomes.error %}
         <dt class="col-sm-4 text-danger">Could not invite</dt>
         <dd class="col-sm-8 text-danger">

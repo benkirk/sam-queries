@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS account_request_event (
   closes_at              DATETIME          NULL,
   active                 TINYINT(1)    NOT NULL DEFAULT 1,
   listed                 TINYINT(1)    NOT NULL DEFAULT 0,   -- opt-in: shown on the public Upcoming Events card
+  invite_only            TINYINT(1)    NOT NULL DEFAULT 0,   -- closes every self-service path; roster only
   created_by             VARCHAR(35)   NOT NULL,   -- users.username
   creation_time          DATETIME      NOT NULL,   -- app clock, naive-Mountain
   modified_time          DATETIME      NOT NULL,

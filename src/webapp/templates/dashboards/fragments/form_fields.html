@@ -170,7 +170,7 @@
 #}
 {% macro date_field(name, label, required=False, optional_text='(optional)',
                     help=None, default='', id=None, label_class='form-label',
-                    disabled=False) %}
+                    disabled=False, min=None) %}
 {%- set _id = id or name -%}
 {%- set _form_value = form.get(name) if form else None -%}
 {%- if _form_value is not none -%}
@@ -185,7 +185,8 @@
     <input type="date" class="form-control{{ _invalid(name) }}" id="{{ _id }}"
            name="{{ name }}"
            {%- if required %} required{% endif -%}
-           {%- if disabled %} disabled{% endif %}
+           {%- if disabled %} disabled{% endif -%}
+           {%- if min %} min="{{ min }}"{% endif %}
            value="{{ _value }}"
            {{- _aria(name, _id) }}>
     {{ _field_error(name, _id) }}
@@ -365,7 +366,8 @@
 {# checkbox #}
 {#
   Bootstrap form-check pattern. `default` is the initial checked state (bool).
-  On error re-render, uses presence of name in form.
+  On error re-render, uses presence of name in form. Used with {% call %},
+  the caller's markup renders inline after the label (e.g. a preview button).
 #}
 {% macro checkbox_field(name, label, default=False, help=None, id=None) %}
 {%- set _id = id or name -%}
@@ -379,6 +381,7 @@
            name="{{ name }}" value="1"{% if _checked %} checked{% endif %}
            {{- _aria(name, _id) }}>
     <label class="form-check-label" for="{{ _id }}">{{ label }}</label>
+    {%- if caller is defined %} {{ caller() }}{% endif %}
     {{ _field_error(name, _id) }}
     {%- if help %}<small class="form-text text-muted d-block">{{ help }}</small>{% endif %}
 </div>

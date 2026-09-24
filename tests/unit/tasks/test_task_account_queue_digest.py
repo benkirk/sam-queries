@@ -42,6 +42,28 @@ LOCAL = datetime(2026, 9, 14, 8, 0)
 HELM = REPO_ROOT / 'helm'
 
 
+@pytest.fixture(autouse=True)
+def this_tests_queue(monkeypatch):
+    """Scope the queue to the rows this test made. The DB is shared by every
+    xdist worker and route tests commit real requests; unscoped, another
+    worker's row joins the digest (wrong counts) or vanishes mid-run (StaleDataError)."""
+    import sam.manage.account_requests as manage
+    import sam.queries.account_requests as queries
+    made, real_make, real_queue = set(), make_account_request, queries.queue_requests
+
+    def make(session, **kwargs):
+        row = real_make(session, **kwargs)
+        made.add(row.account_request_id)
+        return row
+
+    def queue(session):
+        return [r for r in real_queue(session) if r.account_request_id in made]
+
+    monkeypatch.setitem(globals(), 'make_account_request', make)
+    monkeypatch.setattr(queries, 'queue_requests', queue)
+    monkeypatch.setattr(manage, 'queue_requests', queue)
+
+
 @pytest.fixture
 def ledger(session):
     @contextmanager

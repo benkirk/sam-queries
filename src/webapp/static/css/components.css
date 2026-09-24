@@ -328,3 +328,43 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
 .alert code {
     color: inherit;
 }
+
+/* ===================================================================
+   Email previews (fragments/email_preview.html, the template editor)
+   =================================================================== */
+
+.notify-preview-text {
+    font-size: 0.8125rem;
+    white-space: pre-wrap;
+    max-height: 22rem;
+    overflow: auto;
+}
+
+/* Mail clients paint on white whatever the reader's theme; so does the
+   preview. sandbox blocks scripts, so the frame cannot size itself. */
+.notify-preview-frame {
+    display: block;
+    width: 100%;
+    height: 22rem;
+    border: 1px solid var(--border-default);
+    border-radius: 0.25rem;
+    background: var(--surface-email);
+}
+
+/* An envelope is a mail header: one label/value pair per row at every width.
+   The stats box's multi-pair grid squeezed long addresses mid-word. */
+.project-stats-box.notify-envelope {
+    grid-template-columns: auto minmax(0, 1fr);
+}
+
+.notify-envelope strong {
+    overflow-wrap: anywhere;
+}
+
+.notify-preview-frame-tall {
+    height: 32rem;
+}
+
+.notify-preview-text-tall {
+    max-height: 32rem;
+}

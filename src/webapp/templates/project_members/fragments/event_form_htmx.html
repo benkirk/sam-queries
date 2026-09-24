@@ -5,7 +5,8 @@
 
   Context: project (None on the Admin -> Events create form, which sets
   project_search_url and picks one), event (None on create), sponsor_id +
-  sponsor_label (edit), post_url, can_list (draw the Listed checkbox), errors.
+  sponsor_label (edit), post_url, can_list (draw the Listed checkbox), date_floor
+  (the picker's earliest date: today, or an old event's own date), errors.
   On edit the form PUTs; the handler gates updates on the keys present.
 #}
 <h5 class="modal-title" id="invitationModalLabel" hx-swap-oob="true">
@@ -36,7 +37,8 @@
                       help='Shown to participants on the registration form, under the event name.') }}
     {{ date_field('accounts_needed_by', 'Accounts needed by', required=not event,
                   default=event.accounts_needed_by.strftime('%Y-%m-%d') if event else '',
-                  help='The deadline the account team works to.') }}
+                  min=date_floor,
+                  help='The deadline the account team works to. Give them at least 4 weeks; a nearer date saves with a warning.') }}
     <div class="row">
         <div class="col-md-6">{{ datetime_field('opens_at', 'Registration opens', default=event.opens_at if event else '', help='Blank: open now.') }}</div>
         <div class="col-md-6">{{ datetime_field('closes_at', 'Registration closes', default=event.closes_at if event else '', help='Blank: no end.') }}</div>
@@ -55,4 +57,8 @@
                       default=event.listed if event else False,
                       help='Unlisted events stay reachable by their registration link only.') }}
     {% endif %}
+    <input type="hidden" name="invite_only_present" value="1">
+    {{ checkbox_field('invite_only', 'Invitation only',
+                      default=event.invite_only if event else False,
+                      help='Close the code, the event picker and self-enroll: only people on a pasted roster, using their emailed link, can join.') }}
 {% endcall %}

@@ -1,10 +1,11 @@
-{% from 'dashboards/fragments/form_fields.html' import textarea_field, form_errors_panel with context %}
+{% from 'dashboards/fragments/form_fields.html' import textarea_field, checkbox_field, form_errors_panel with context %}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/email_preview.html' import preview_button %}
 {#
   Paste a roster under an event. Lands in #invitationFormContainer; on
   success the outcome summary (roster_result_htmx.html) replaces it.
 
-  Context: project, event, post_url, errors
+  Context: project, event, post_url, preview_url, errors
 #}
 <h5 class="modal-title" id="invitationModalLabel" hx-swap-oob="true">
     <i class="fa-solid fa-list-ul"></i> Paste a roster under {{ event.event_code }}
@@ -20,4 +21,13 @@
     </p>
     {{ textarea_field('roster', 'Roster', required=True, rows=10,
                       placeholder='Ada Lovelace <ada@example.edu>') }}
+    {# The link route is mounted with the invitations switch; Admin -> Events is not. #}
+    {% if config.ACCOUNT_INVITATIONS_ENABLED %}
+    {% call checkbox_field('send_invite', 'Email each new person a link to finish their request',
+                      default=True,
+                      help='People SAM already knows are enrolled and get no link.') %}
+    {% if preview_url %}{{ preview_button(preview_url, 'rosterPreviewPane') }}{% endif %}
+    {% endcall %}
+    <div id="rosterPreviewPane" class="mb-2"></div>
+    {% endif %}
 {% endcall %}

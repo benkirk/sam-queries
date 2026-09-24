@@ -2,6 +2,7 @@
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {% from 'dashboards/fragments/project_bits.html' import project_link %}
+{% from 'dashboards/fragments/account_request_bits.html' import invite_badge, invite_details %}
 {#
   The account-request queue card.
 
@@ -49,9 +50,9 @@
             <button type="button" class="btn btn-outline-primary"
                     {% if not digest_recipient %}disabled title="No digest recipient is configured (NOTIFY_ACCOUNT_QUEUE_TO)."{% else %}
                     title="Mail the open queue to {{ digest_recipient }} now. Once per day; the weekly task sends the same digest."{% endif %}
-                    hx-post="{{ url_for('admin_dashboard.account_requests_digest') }}"
-                    hx-confirm="Send the open queue to {{ digest_recipient or 'NUSD' }} now?"
-                    hx-swap="none"><i class="fa-solid fa-paper-plane me-1"></i>Send to NUSD</button>
+                    hx-get="{{ url_for('admin_dashboard.account_requests_digest_preview') }}"
+                    hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                    data-bs-toggle="modal" data-bs-target="#auditDetailsModal"><i class="fa-solid fa-paper-plane me-1"></i>Send to NUSD</button>
         </div>
     </div>
 
@@ -178,6 +179,7 @@
                         <span class="badge bg-secondary">No account yet</span>
                         {% endif %}
                         {% if not v.verified %}<br><small class="text-warning-emphasis">unverified</small>{% endif %}
+                        {% if r.invite_state %}<br>{{ invite_badge(r) }}{% endif %}
                     </td>
                     <td class="cursor-pointer text-nowrap text-muted" title="{{ r.creation_time | fmt_date }}" {{ collapse_toggle(body_id) }}>{{ v.waiting_days }} d</td>
                     <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
@@ -246,6 +248,7 @@
                                 {%- if v.verified %}; verified {{ r.verified_at | fmt_date }}{% if r.verified_by %} by {{ r.verified_by }}{% endif %}{% else %}; <span class="text-warning-emphasis">address not verified</span>{% endif %}
                                 {%- if r.source_ip %}; from <span class="font-monospace">{{ r.source_ip }}</span>{% if (r.verify_sent_count or 0) > 1 %}, {{ r.verify_sent_count }} verification mails{% endif %}{% endif %}
                             </dd>
+                            {{ invite_details(r) }}
                             {% if r.xras_username %}
                             <dt class="col-sm-3">XRAS placeholder</dt><dd class="col-sm-9"><span class="font-monospace">{{ r.xras_username }}</span></dd>
                             {% endif %}

@@ -177,6 +177,11 @@ sam-queries/
   and carries the enrollee list and roster paste; a roster is an account-request
   write, so its routes stay `MANAGE_ACCOUNT_REQUESTS`. Records:
   `docs/plans/implemented/EVENTS_VIEWS.md`, `EVENTS_FOLLOWUPS.md`.
+  The sponsor's **invitation link** is `register_invite` (`/register/invite/`),
+  mounted with `ACCOUNT_INVITATIONS_ENABLED` and with **no login hook** (the
+  signed token, bound to `invite_sent_at`, is the capability); submitting
+  updates the sponsor's row in place. `invite_only` events close every
+  self-service path. Record: `docs/plans/implemented/ACCOUNT_INVITE_LINKS.md`.
 
 ### Security / Integration
 - **Role**, **ApiCredentials** (bcrypt-hashed), **RoleApiCredentials**
@@ -412,6 +417,10 @@ stay in the route/handler — use
    `render_errors()`. Raise `FormError('msg')` from `clean()`/`perform()` for
    user-facing rejections. Routes stay 2 lines: load entities,
    `return _XHandler(entity=obj).handle()`.
+
+**Business rules live below the webapp** — `clean()` maps a domain error, it
+doesn't define the rule, so a JSON API can reuse the handler's logic. Which
+handlers already do: `docs/plans/HTMX_API_READINESS.md`.
 
 **Error rendering is inline field errors** (`split_errors` → the
 `form_fields.html` macros). Two caveats: (a) a template without those macros
@@ -732,12 +741,13 @@ makes `smtplib.SMTP` raise so no test can open a socket whatever its config.
 | **The key is pre-redirect** | built from the *intended* recipient, so `NOTIFY_REDIRECT_TO` cannot collapse a staging run onto one key. |
 | **Ledger transactions** | `notification_log` commits on its **own** session — mail cannot be un-sent by a rollback. This is the inverse of `xras_activation_event`, which commits *inside* `management_transaction`. |
 | **`preview()` writes no row** | a preview is not an attempt; a stray row would poison the dedup query. |
+| **Preview** | every operator send point (XRAS and Project Notify, invite, resend, roster ×2, reject, digest, renew/extend) previews through `webapp/utils/email_preview.py` → `Notifier.preview_delivery()` on `get_notifier(read_only=True)`, building with the send's own builder (`invite_messages`, `plan_renew_allocations`, ...): the same redirect, addressing, `NOTIFY_BCC` (`Transport.envelope_copies`) and overrides as the send, plus "already sent on" from `last_sent_many`. A read-only ledger's `record` raises, so that notifier cannot send. One pane: `dashboards/fragments/email_preview.html` (never a `<form>` or modal toggle; always 200). Spec: `docs/plans/MAIL_PREVIEW.md`. |
 | **Templates** | `src/sam/notify/templates/`, resolved `{base}-{facility}` → `{base}-UNIV` → `{base}`. Text selects the variant and HTML follows it — never resolved independently, or a WNA recipient gets UNIV HTML. |
 | **Visibility** | Admin → Configuration → Notifications (`VIEW_SYSTEM_CONFIG`, counts only) → `Details »` (`SYSTEM_ADMIN`, rows name real addresses). |
 | **Approver's note** | `adminComments` from the XRAS reports feed (`src/sam/integration/xras_api/comments.py`, keyed by projcode + `actionId`), resolved by the Notify route and the `xras_notices` task and handed to `build_xras_messages(approver_comment=...)`. Fail-open: unconfigured/XRAS down/no match → `None` + one log line, never a withheld mail. Rendered on the **PI's copy only** — `build_xras_messages` sets the note on the lead's message and `None` on a non-lead's, so the admin's mail never carries it. |
 | **Family addressing** | `NOTIFY_<FAMILY>_{CC,BCC,FROM,REPLY_TO}` (family = a `FAMILIES` key in `kinds.py`) is filled onto empty `Message` fields by the `Notifier`; a builder-set cc/bcc replaces the env default. On top, `notification_addressing` rows (scope = family, kind, or `{kind}-{facility}` stem, e.g. `expiration-WNA`) **always add**, read once per `Notifier` through the ledger's session factory, fail-open. Admin → Notifications → **Addressing** (`SYSTEM_ADMIN`) adds/removes rows; deployment defaults are shown read-only. `Message.copies()` is the one redirect-drop rule (transports and ledger read it); what left is recorded in `notification_log.copies` as `cc:a@x;bcc:b@y`. The CronJob forwards every non-empty `NOTIFY_*` by prefix. `NOTIFY_BCC` is the kind-blind global. |
-| **Account family** | `account_queue_summary` (the open queue to `NOTIFY_ACCOUNT_QUEUE_TO`, keyed on the day so the Send button and the weekly `account_queue_digest` task cannot both send it) `account_verify` (the public form's link + code; its context carries **nothing the visitor typed**) and `account_rejected` (the reject form's checkbox, operator-chosen, keyed on `closed_at` so a reopen can notify again). Keep `NOTIFY_ACCOUNT_CC` empty — it would copy every verification mail; a copy on the digest alone is a kind-scoped Addressing row. |
-| **Templates / overrides** | Admin → Notifications → **Templates** (`SYSTEM_ADMIN`) edits any of the 22 shipped files; a save writes `notification_template_override` (keyed by file name) and the renderer prefers the row on the **next** renderer build, one `SELECT` per `Notifier`. Reset deletes the row. `sam/notify/samples.py` is both the preview input and the variables table; `_email_base.html` (underscore = developer-owned) is never editable. Save **renders** the body against the sample context, because a sandbox refusal is a runtime error. "Preview for" a real project goes through `sam/queries/notification_previews.py` (`build_xras_messages(kind=)` forces the template's kind). Record: `docs/plans/implemented/NOTIFICATION_TEMPLATE_EDITOR.md`. |
+| **Account family** | `account_queue_summary` (the open queue to `NOTIFY_ACCOUNT_QUEUE_TO`, keyed on the day so the Send button and the weekly `account_queue_digest` task cannot both send it) `account_verify` (the public form's link + code; its context carries **nothing the visitor typed**) `account_rejected` (the reject form's checkbox, operator-chosen, keyed on `closed_at` so a reopen can notify again) and `account_invite` (the sponsor's checkbox or Resend, keyed on `invite_sent_at`, the stamp its link is signed with; never carries the sponsor's note). Keep `NOTIFY_ACCOUNT_CC` empty — it would copy every verification mail; a copy on the digest alone is a kind-scoped Addressing row. |
+| **Templates / overrides** | Admin → Notifications → **Templates** (`SYSTEM_ADMIN`) edits any of the 30 shipped files; a save writes `notification_template_override` (keyed by file name) and the renderer prefers the row on the **next** renderer build, one `SELECT` per `Notifier`. Reset deletes the row. `sam/notify/samples.py` is both the preview input and the variables table; `_email_base.html` (underscore = developer-owned) is never editable. Save **renders** the body against the sample context, because a sandbox refusal is a runtime error. "Preview for" a real project goes through `sam/queries/notification_previews.py` (`build_xras_messages(kind=)` forces the template's kind). Record: `docs/plans/implemented/NOTIFICATION_TEMPLATE_EDITOR.md`. |
 
 **Batch knobs**: `send_many(chunk_size=N)` opens one transport connection per N
 *delivered* messages (`None` = one chunk, byte-identical to a plain batch) —

@@ -899,3 +899,172 @@ class TestOperatorAddressing:
             'from': None, 'reply_to': 'alloc@x.edu'}
         assert notifier.addressing_for('xras_extension').cc == ('env@x.edu',)
         assert notifier.addressing_for('expiration', 'WNA').is_empty
+
+
+class _DatedLedger(_StubLedger):
+    """A stub ledger that also answers ``last_sent_many``; records are spied."""
+
+    def __init__(self, sent_at=None):
+        super().__init__(())
+        self.sent_at = dict(sent_at or {})
+        self.recorded = []
+
+    def last_sent_many(self, dedup_keys, *, chunk_size=None):
+        return {k: self.sent_at[k] for k in dedup_keys if k in self.sent_at}
+
+    def record(self, message, **kw):
+        self.recorded.append(message)
+        return 0
+
+
+class TestPreviewDelivery:
+    """`preview_delivery` shows the selected message exactly as it would leave."""
+
+    @pytest.fixture
+    def xras_renderer(self, tmp_path):
+        (tmp_path / 'xras_extension.txt').write_text('Extended for {{ recipient_name }}.')
+        (tmp_path / 'xras_extension.html').write_text('<p>Extended.</p>')
+        (tmp_path / 'expiration-UNIV.txt').write_text('Dear {{ recipient_name }},')
+        return TemplateRenderer(template_dir=tmp_path)
+
+    @pytest.fixture(autouse=True)
+    def _clean_env(self, monkeypatch):
+        for family in ('XRAS', 'EXPIRATION'):
+            for suffix in ('CC', 'BCC', 'FROM', 'REPLY_TO'):
+                monkeypatch.delenv(f'NOTIFY_{family}_{suffix}', raising=False)
+
+    def _xras(self, address='pi@x.edu', **kw):
+        return _message(address, kind='xras_extension', facility=None,
+                        dedup_key=f'k:{address}', **kw)
+
+    def test_live_mode_shows_the_message_as_addressed(self, xras_renderer):
+        p = _notifier(xras_renderer).preview_delivery([self._xras()])
+        assert p.mode == 'live' and p.error is None
+        assert p.outgoing.recipient.address == 'pi@x.edu'
+        assert p.sender == 'sam-admin@ucar.edu'
+        assert p.rendered.text == 'Extended for A PI.'
+        assert p.rendered.html == '<p>Extended.</p>'
+
+    def test_a_redirect_rewrites_to_banners_and_drops_the_messages_copies(
+            self, xras_renderer):
+        from sam.notify import SmtpTransport
+        config = NotifyConfig(enabled=True, redirect_to='me@x.edu',
+                              bcc='audit@x.edu')
+        notifier = Notifier(config=config, renderer=xras_renderer,
+                            transport=SmtpTransport(config))
+        p = notifier.preview_delivery([self._xras(cc=('ops@x.edu',),
+                                                  bcc=('b@x.edu',))])
+        assert p.mode == 'redirected'
+        assert p.outgoing.recipient.address == 'me@x.edu'
+        assert p.outgoing.intended_recipient == 'pi@x.edu'
+        assert 'pi@x.edu' in p.rendered.text.split('\n')[0]
+        assert p.rendered.html.startswith('<p><strong>*** SAM NOTIFY REDIRECT')
+        assert p.cc == () and p.bcc == ('audit@x.edu',)
+
+    def test_family_env_and_operator_rows_are_applied(self, xras_renderer,
+                                                      monkeypatch):
+        from sam.notify import AddressingStore
+        monkeypatch.setenv('NOTIFY_XRAS_CC', 'env@x.edu')
+        monkeypatch.setenv('NOTIFY_XRAS_REPLY_TO', 'alloc@x.edu')
+        monkeypatch.setenv('NOTIFY_XRAS_FROM', 'xras@x.edu')
+        notifier = _notifier(xras_renderer)
+        notifier.addressing_store = AddressingStore(
+            _AddressingFactory([_AddressingRow('xras', 'bcc', 'audit@x.edu')]))
+        p = notifier.preview_delivery([self._xras()])
+        assert p.cc == ('env@x.edu',) and p.bcc == ('audit@x.edu',)
+        assert (p.sender, p.reply_to) == ('xras@x.edu', 'alloc@x.edu')
+
+    def test_disabled_mode_still_renders(self, xras_renderer):
+        p = _notifier(xras_renderer, enabled=False).preview_delivery([self._xras()])
+        assert p.mode == 'disabled'
+        assert p.rendered is not None
+
+    def test_selected_picks_by_address_and_falls_back_to_the_first(
+            self, xras_renderer):
+        notifier = _notifier(xras_renderer)
+        batch = [self._xras('a@x.edu'), self._xras('b@x.edu')]
+        assert notifier.preview_delivery(batch, selected='b@x.edu') \
+            .outgoing.recipient.address == 'b@x.edu'
+        for selected in (None, 'nobody@x.edu'):
+            p = notifier.preview_delivery(batch, selected=selected)
+            assert p.selected.address == 'a@x.edu'
+        assert [r.address for r in p.recipients] == ['a@x.edu', 'b@x.edu']
+
+    def test_selected_by_position_tells_one_address_apart(self, xras_renderer):
+        """One lead on two sub-projects: two messages, one address."""
+        batch = [self._xras('a@x.edu', projcode='P1'), self._xras('a@x.edu', projcode='P2')]
+        p = _notifier(xras_renderer).preview_delivery(batch, selected=1)
+        assert (p.selected_index, p.selected.projcode) == (1, 'P2')
+        assert _notifier(xras_renderer).preview_delivery(batch, selected=7).selected_index == 0
+
+    def test_a_render_error_is_captured_not_raised(self, tmp_path):
+        (tmp_path / 'xras_extension.txt').write_text('{{ broken(')
+        p = _notifier(TemplateRenderer(template_dir=tmp_path)) \
+            .preview_delivery([self._xras()])
+        assert p.rendered is None and p.error
+
+    def test_an_unknown_kind_raises(self, xras_renderer):
+        with pytest.raises(ValueError, match="unknown notification kind"):
+            _notifier(xras_renderer).preview_delivery(
+                [_message(kind='no_such_kind')])
+
+    def test_an_empty_batch_has_nothing_selected(self, xras_renderer):
+        p = _notifier(xras_renderer).preview_delivery([])
+        assert p.recipients == () and p.selected is None and p.rendered is None
+
+    def test_it_never_records(self, xras_renderer):
+        ledger = _DatedLedger()
+        for enabled in (True, False):
+            notifier = Notifier(config=NotifyConfig(enabled=enabled),
+                                renderer=xras_renderer, transport=NullTransport(),
+                                ledger=ledger)
+            notifier.preview_delivery([self._xras()])
+        assert ledger.recorded == []
+
+    def test_last_sent_is_populated_per_recipient(self, xras_renderer):
+        from datetime import datetime
+        when = datetime(2026, 9, 1, 12, 0)
+        notifier = Notifier(config=NotifyConfig(enabled=True),
+                            renderer=xras_renderer, transport=NullTransport(),
+                            ledger=_DatedLedger({'k:b@x.edu': when}))
+        p = notifier.preview_delivery([self._xras('a@x.edu'), self._xras('b@x.edu')])
+        assert [r.last_sent for r in p.recipients] == [None, when]
+
+
+class TestPreviewAndSendAgree:
+    """The preview reads the same helpers and transport the send does."""
+
+    def test_the_transport_sees_what_the_preview_showed(self, tmp_path, monkeypatch):
+        from sam.notify import SmtpTransport
+        (tmp_path / 'xras_extension.txt').write_text('Extended.')
+        (tmp_path / 'xras_extension.html').write_text('<p>Extended.</p>')
+        monkeypatch.setenv('NOTIFY_XRAS_CC', 'env@x.edu')
+        config = NotifyConfig(enabled=True, bcc='audit@x.edu, env@x.edu')
+
+        class Capturing(SmtpTransport):
+            def __init__(self, cfg):
+                super().__init__(cfg)
+                self.sent = []
+
+            def open(self):
+                pass
+
+            def close(self):
+                pass
+
+            def deliver(self, message, rendered):
+                self.sent.append((message, rendered))
+
+        transport = Capturing(config)
+        notifier = Notifier(config=config, transport=transport,
+                            renderer=TemplateRenderer(template_dir=tmp_path))
+        message = _message(kind='xras_extension', facility=None,
+                           bcc=('b@x.edu',))
+        p = notifier.preview_delivery([message])
+        notifier.send(message)
+        (outgoing, rendered), = transport.sent
+        assert outgoing == p.outgoing and rendered == p.rendered
+        assert transport.envelope_copies(outgoing) == (p.cc, p.bcc)
+        assert p.bcc == ('b@x.edu', 'audit@x.edu')
+        assert transport.envelope_recipients(outgoing) == \
+            [outgoing.recipient.address, *p.cc, *p.bcc]

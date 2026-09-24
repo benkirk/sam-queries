@@ -35,6 +35,7 @@ _SUBJECTS = {
     'account_queue_summary': 'NCAR HPC account requests: 4 waiting, 3 new',
     'account_verify': 'Verify your email address for your NCAR HPC account request',
     'account_rejected': 'Your NCAR HPC account request',
+    'account_invite': 'You are invited to request an NCAR HPC account',
     'project_renewal': 'Your NSF NCAR project SCSG0001 has been renewed',
     'project_activation': 'Your NSF NCAR project SCSG0001 is now active',
     'project_adjustment': 'Your NSF NCAR project SCSG0001 allocations have been updated',
@@ -144,25 +145,26 @@ def _account_queue_summary() -> Dict[str, Any]:
              'purpose': 'enrollment', 'project_code': 'SCSG0001',
              'event_code': 'WRF-TUTORIAL-2026-10', 'sponsor': 'Jane Lead',
              'waiting_days': 3, 'state': 'submitted', 'assignee': '',
-             'note': 'Visiting for the tutorial week.'},
+             'note': 'Visiting for the tutorial week.',
+             'invite': 'completed 2026-09-12'},
             {'name': 'Alan Turing', 'email': 'alan@example.edu',
              'organization': '', 'desired_username': '',
              'purpose': 'enrollment', 'project_code': 'SCSG0001',
              'event_code': 'WRF-TUTORIAL-2026-10', 'sponsor': 'Jane Lead',
              'waiting_days': 3, 'state': 'claimed', 'assignee': 'operator1',
-             'note': ''},
+             'note': '', 'invite': 'awaiting invitee'},
             {'name': 'Grace Hopper', 'email': 'grace@example.edu',
              'organization': 'NCAR', 'desired_username': '',
              'purpose': 'enrollment', 'project_code': 'UCUB0001',
              'event_code': '', 'sponsor': 'Alex Admin',
              'waiting_days': 1, 'state': 'submitted', 'assignee': '',
-             'note': ''},
+             'note': '', 'invite': ''},
             {'name': 'Linus Torvalds', 'email': 'linus@example.edu',
              'organization': '', 'desired_username': '',
              'purpose': 'submission', 'project_code': '',
              'event_code': '', 'sponsor': '',
              'waiting_days': 37, 'state': 'submitted', 'assignee': '',
-             'note': 'XRAS placeholder linus-user-8f2a'},
+             'note': 'XRAS placeholder linus-user-8f2a', 'invite': ''},
         ],
         'queue_url': 'https://sam.hpc.ucar.edu/dashboards/admin/account-requests',
     }
@@ -222,6 +224,19 @@ def _account_rejected() -> Dict[str, Any]:
     }
 
 
+def _account_invite() -> Dict[str, Any]:
+    return {
+        'name': 'Ada Lovelace',
+        'sponsor_name': 'Jane Lead',
+        'project_code': 'SCSG0001',
+        'event_name': 'WRF Tutorial, October 2026',
+        'event_instructions': 'Bring a laptop; the exercises run on Casper.',
+        'accounts_needed_by': '2026-10-05',
+        'invite_url': 'https://sam.hpc.ucar.edu/register/invite/eyJpZCI6NDF9.abc.def',
+        'expires_days': 30,
+    }
+
+
 def sample_context(kind: str, facility: Optional[str] = None) -> Dict[str, Any]:
     """A builder-shaped context for ``kind``; raises ValueError on an unknown kind."""
     key = get_kind(kind).key
@@ -235,6 +250,8 @@ def sample_context(kind: str, facility: Optional[str] = None) -> Dict[str, Any]:
         return _account_verify()
     if key == 'account_rejected':
         return _account_rejected()
+    if key == 'account_invite':
+        return _account_invite()
     if key in _LIFECYCLE_ACTIONS:
         return _lifecycle(key)
     return _xras(key)
@@ -345,6 +362,7 @@ VARIABLE_NOTES: Dict[str, str] = {
     'rows.state': "'submitted' or 'claimed'.",
     'rows.assignee': 'The operator who claimed it, or empty.',
     'rows.note': "The sponsor's or requester's note, one line, or empty.",
+    'rows.invite': "Invitation link status: 'awaiting invitee', 'completed <date>', or empty.",
     'queue_url': 'Link to the queue in SAM, or empty.',
     'verify_url': 'The signed verification link.',
     'code': 'The six-digit code to type on the page the requester is on.',
@@ -352,6 +370,11 @@ VARIABLE_NOTES: Dict[str, str] = {
     'event_name': 'The event the request is for, or empty.',
     'name': "The requester's name.",
     'reason': "The operator's reason, as written on the reject form.",
+    'sponsor_name': 'Display name of the sponsor who sent the invitation, or empty.',
+    'event_instructions': "The event's instructions for participants, or empty.",
+    'accounts_needed_by': "The event's deadline, formatted, or empty.",
+    'invite_url': 'The signed invitation link; opening it needs no login.',
+    'expires_days': 'Days until the invitation link expires.',
 }
 
 

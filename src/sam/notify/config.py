@@ -172,6 +172,10 @@ class NotifyConfig:
                 out[family] = addressing.as_dict()
         return out
 
+    def sender_for(self, message) -> str:
+        """The From a message leaves with: its own override, else ``MAIL_DEFAULT_FROM``."""
+        return message.sender or self.mail_from
+
     @property
     def is_redirecting(self) -> bool:
         return bool(self.redirect_to)

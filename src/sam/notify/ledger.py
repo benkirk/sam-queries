@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import Callable, Iterable, List, Optional, Set
+from typing import Callable, Dict, Iterable, List, Optional, Set
 
 from sqlalchemy import and_, func, or_, select
 
@@ -74,12 +74,16 @@ class NotificationLedger:
             a ledger write never holds a connection across a send.
         config: supplies ``queued_stale_seconds``. Defaults to the
             environment, like :class:`~sam.notify.service.Notifier`'s.
+        read_only: reads only. :meth:`record` raises and :meth:`resolve` does
+            nothing, so a preview notifier built on it refuses to deliver.
     """
 
     def __init__(self, session_factory: Callable[[], object], *,
-                 config: Optional[NotifyConfig] = None) -> None:
+                 config: Optional[NotifyConfig] = None,
+                 read_only: bool = False) -> None:
         self.session_factory = session_factory
         self.config = config or NotifyConfig.from_environment()
+        self.read_only = read_only
 
     # ----------------------------------------------------------------- write
     def record(self, message: Message, *, status: str, transport: str,
@@ -88,9 +92,11 @@ class NotificationLedger:
         """Append one attempt and commit it. Returns the new row's id.
 
         Raises:
-            LedgerError: on any database failure. See the class docstring for
-                why this is not swallowed.
+            LedgerError: on any database failure, and always when read-only.
+                See the class docstring for why this is not swallowed.
         """
+        if self.read_only:
+            raise LedgerError('read-only ledger: nothing may be recorded or sent')
         try:
             with self.session_factory() as session:
                 row = NotificationLog.create(
@@ -132,6 +138,8 @@ class NotificationLedger:
         :meth:`already_sent` and the card's "Queued (stuck)" counter exist to
         surface.
         """
+        if self.read_only:
+            return
         try:
             with self.session_factory() as session:
                 row = session.get(NotificationLog, log_id)
@@ -272,6 +280,38 @@ class NotificationLedger:
             # recipients we had already proved were done.
             logger.warning('notify: batch suppression query failed after %d '
                            'of %d keys (%s); not suppressing the remainder',
+                           len(found), len(keys), exc)
+        return found
+
+    def last_sent_many(self, dedup_keys: Iterable[str], *,
+                       chunk_size: int = DEDUP_CHUNK) -> Dict[str, datetime]:
+        """``{key: latest suppressing creation_time}`` for the suppressed keys.
+
+        The dated form of :meth:`already_sent_many`, on the same predicate, so
+        its key set is exactly that method's answer. Fails open the same way.
+        """
+        keys: List[str] = list(dict.fromkeys(k for k in dedup_keys if k))
+        if not keys:
+            return {}
+        if chunk_size is None or chunk_size < 1:
+            chunk_size = DEDUP_CHUNK
+        horizon = self._horizon()
+        found: Dict[str, datetime] = {}
+        try:
+            with self.session_factory() as session:
+                for start in range(0, len(keys), chunk_size):
+                    conditions = self._suppression_conditions(
+                        NotificationLog.dedup_key.in_(keys[start:start + chunk_size]),
+                        horizon=horizon)
+                    found.update(session.execute(
+                        select(NotificationLog.dedup_key,
+                               func.max(NotificationLog.creation_time))
+                        .where(*conditions)
+                        .group_by(NotificationLog.dedup_key)
+                    ).tuples().all())
+        except Exception as exc:
+            logger.warning('notify: last-sent query failed after %d of %d keys '
+                           '(%s); reporting none for the remainder',
                            len(found), len(keys), exc)
         return found
 

@@ -1,0 +1,40 @@
+{#
+  The digest's two-step send, rendered into #auditDetailsModalBody by GET
+  account_requests_digest_preview (opened from the card, where the modal is
+  closed). Send posts with hx-swap="none"; success closes the modal.
+
+  Context: recipient, count, and email_preview_context() when there is a digest.
+#}
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    Send the queue digest to NUSD
+</h5>
+
+{% if not recipient %}
+<div class="alert alert-info small mb-0">
+    <i class="fa-solid fa-circle-info me-1"></i>No digest recipient is configured
+    (<code>NOTIFY_ACCOUNT_QUEUE_TO</code>).
+</div>
+{% elif not count %}
+<div class="alert alert-info small mb-0">
+    <i class="fa-solid fa-circle-info me-1"></i>The queue is empty; there is nothing to send.
+</div>
+{% else %}
+<p class="text-muted small">
+    {{ count | fmt_plural('request', 'requests') }} in the queue. The digest goes
+    once a day; the weekly task sends the same one.
+</p>
+<div id="digestPreviewPane" class="mb-2">
+    {% include 'dashboards/fragments/email_preview_pane.html' %}
+</div>
+{% endif %}
+
+<div class="d-flex justify-content-end gap-2 mt-3">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+    {% if recipient and count %}
+    <button type="button" class="btn btn-primary"
+            hx-post="{{ url_for('admin_dashboard.account_requests_digest') }}"
+            hx-swap="none">
+        <i class="fa-solid fa-paper-plane me-1"></i>Send
+    </button>
+    {% endif %}
+</div>

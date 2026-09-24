@@ -22,6 +22,7 @@
     form              — request.form on validation error re-render
 #}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/email_preview.html' import preview_button %}
 {% from 'dashboards/fragments/help.html' import help_icon, term with context %}
 {% from 'dashboards/fragments/glossary.html' import g_renew_vs_extend, g_renew_scale with context %}
 
@@ -186,6 +187,7 @@
       <strong>Email the lead and admin</strong> of each project in the tree
       that it has been renewed, with a link back to manage it.
     </label>
+    {{ preview_button(url_for('admin_dashboard.htmx_renew_allocations_preview', projcode=project.projcode), 'renewPreviewPane') }}
   </div>
 
   <div class="mt-2 ms-4">
@@ -195,6 +197,8 @@
     <textarea class="form-control form-control-sm" rows="2" maxlength="1000"
               name="operator_comment" id="renewOperatorComment">{{ form.get('operator_comment', '') if form else '' }}</textarea>
   </div>
+
+  <div id="renewPreviewPane" class="mt-2 ms-4"></div>
 
   {% endif %}
 

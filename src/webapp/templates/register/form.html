@@ -1,5 +1,5 @@
 {% extends 'register/base_register.html' %}
-{% from 'dashboards/fragments/form_fields.html' import text_field, datalist_field, select_field, textarea_field with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, datalist_field, select_field, textarea_field, readonly_display with context %}
 {#
   The anonymous account-registration form. Plain PRG, CSRF hidden input as
   auth/login.html, no htmx: a phone-facing page for people with no account.
@@ -8,7 +8,10 @@
 
   Context: event (locked code) | None, locked_code, form, errors, field_errors,
            academic_options, event_options (listed events; empty when locked),
-           country_options, human_check, human_check_site_key
+           country_options, human_check, human_check_site_key, form_action,
+           institutions_url. Invitation mode (register/invite.py) adds invite
+           (the row) and sponsor_name, and drops the email input, the event
+           picker, the purpose note, the honeypot and the human check.
 #}
 {% block title %}Request an NCAR HPC account{% endblock %}
 
@@ -17,8 +20,16 @@
 {% endblock %}
 
 {% block content %}
-<h1>Request an NCAR HPC account</h1>
+<h1>{% if invite %}Finish your NCAR HPC account request{% else %}Request an NCAR HPC account{% endif %}</h1>
+{% if invite %}
+<p class="register-lede">
+    {% if sponsor_name %}{{ sponsor_name }} invited you{% else %}You were invited{% endif %}
+    to request an account{% if project_code %} on project <span class="font-monospace">{{ project_code }}</span>{% endif %}.
+    Check the details below and fill in the rest; the account team takes it from there.
+</p>
+{% else %}
 {% include 'register/_preview_banner.html' %}
+{% endif %}
 {% if event %}
 <p class="register-lede">
     Registering for <strong>{{ event.name }}</strong>
@@ -28,7 +39,7 @@
 {% if event.instructions %}
 <p class="register-lede" style="white-space: pre-wrap;">{{ event.instructions }}</p>
 {% endif %}
-{% else %}
+{% elif not invite %}
 <p class="register-lede">
     Tell us who you are and why you need an account. We'll email you a link and
     a code to confirm the address; the request is not visible to anyone until
@@ -36,8 +47,12 @@
 </p>
 {% endif %}
 
-<form method="post" action="{{ url_for('register.submit') }}" novalidate>
+<form method="post" action="{{ form_action }}" novalidate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if invite %}
+    {# The address the sponsor vouched for: shown, never posted. #}
+    <div class="mb-3">{{ readonly_display('Email address', invite.email, muted=False) }}</div>
+    {% else %}
     {# The honeypot. Hidden from people, filled by bots; the route drops any
        submission that carries a value here. #}
     <div class="d-none" aria-hidden="true">
@@ -47,12 +62,13 @@
 
     {{ text_field('email', 'Email address', required=True, type='email', maxlength=255,
                   help='Your institutional address if you have one. The confirmation goes here.') }}
+    {% endif %}
     <div class="row">
         <div class="col-md-5">{{ text_field('first_name', 'First name', required=True, maxlength=64) }}</div>
         <div class="col-md-2">{{ text_field('middle_name', 'Middle', optional_text='', maxlength=64) }}</div>
         <div class="col-md-5">{{ text_field('last_name', 'Last name', required=True, maxlength=64) }}</div>
     </div>
-    {{ datalist_field('organization', 'Institution', url_for('register.institutions_fragment'),
+    {{ datalist_field('organization', 'Institution', institutions_url,
                       required=True, maxlength=128, placeholder='University, lab or company',
                       help='Start typing to pick a known institution, or enter yours.') }}
     <div class="row">
@@ -71,7 +87,9 @@
     </div>
     {{ text_field('desired_username', 'Preferred username', maxlength=64,
                   help='A preference only; the account team assigns the username.') }}
-    {% if locked_code %}
+    {% if invite %}
+    {# The row already names its event and project. #}
+    {% elif locked_code %}
     <input type="hidden" name="event_code" value="{{ locked_code }}">
     <input type="hidden" name="event_locked" value="1">
     {% else %}
@@ -86,7 +104,7 @@
                       help='Required when you are not registering for an event. For example, new collaborator to be added on project ABCD1234 etc...') }}
     {% endif %}
 
-    {% include 'register/_human_check.html' %}
+    {% if not invite %}{% include 'register/_human_check.html' %}{% endif %}
 
     {% if errors %}
     <div class="register-callout urgent">
@@ -94,6 +112,10 @@
     </div>
     {% endif %}
 
+    {% if invite %}
+    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-paper-plane"></i> Complete my request</button>
+    {% else %}
     <button type="submit" class="btn btn-primary" data-human-check-submit><i class="fa-solid fa-paper-plane"></i> Send me the confirmation</button>
+    {% endif %}
 </form>
 {% endblock %}
