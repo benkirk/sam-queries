@@ -418,6 +418,10 @@ stay in the route/handler — use
    user-facing rejections. Routes stay 2 lines: load entities,
    `return _XHandler(entity=obj).handle()`.
 
+**Business rules live below the webapp** — `clean()` maps a domain error, it
+doesn't define the rule, so a JSON API can reuse the handler's logic. Which
+handlers already do: `docs/plans/HTMX_API_READINESS.md`.
+
 **Error rendering is inline field errors** (`split_errors` → the
 `form_fields.html` macros). Two caveats: (a) a template without those macros
 needs the `FlattenedFieldErrors` mixin so field errors fold into the top panel;
