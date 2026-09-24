@@ -351,6 +351,16 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
     background: var(--surface-email);
 }
 
+/* An envelope is a mail header: one label/value pair per row at every width.
+   The stats box's multi-pair grid squeezed long addresses mid-word. */
+.project-stats-box.notify-envelope {
+    grid-template-columns: auto minmax(0, 1fr);
+}
+
+.notify-envelope strong {
+    overflow-wrap: anywhere;
+}
+
 .notify-preview-frame-tall {
     height: 32rem;
 }

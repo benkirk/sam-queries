@@ -120,6 +120,9 @@ class TestBanners:
 
 class TestEnvelope:
 
+    def test_it_is_a_one_column_header_not_the_stats_grid(self, render):
+        assert 'project-stats-box notify-envelope' in render(_preview())
+
     def test_bcc_is_listed(self, render):
         assert 'audit@example.edu' in render(_preview(bcc=('audit@example.edu',)))
 
