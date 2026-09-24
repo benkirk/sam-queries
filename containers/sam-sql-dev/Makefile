@@ -11,6 +11,15 @@ VERIFY_ARGS ?=
 # A root mysql client on the dev service (3306), stdin-capable.
 MYSQL_DEV := docker compose -f $(COMPOSE_FILE) exec -T -e MYSQL_PWD=root mysql mysql -uroot
 
+# `up -d` a service ($(2), compose flags $(1)); on failure, recreate it once.
+# A stopped container keeps the ID of the network it was created on, so after
+# Docker recreates project-samuel_sam-network `up -d` fails "network ... not
+# found". rm -sf drops the container only; its named volume (the data) stays.
+compose_up = docker compose -f $(COMPOSE_FILE) $(1) up -d $(2) \
+	|| { echo "up -d $(2) failed; recreating the container (volume kept) and retrying"; \
+	     docker compose -f $(COMPOSE_FILE) $(1) rm -sf $(2) \
+	     && docker compose -f $(COMPOSE_FILE) $(1) up -d $(2); }
+
 all: clone
 
 # Subset production into the local container (reads prod as hpc-reader).
@@ -115,7 +124,7 @@ everything-coherent:
 	@echo "✅ coherent: now git add backups/sam-obfuscated.sql.xz (Git LFS) and commit it"
 
 db-up:
-	docker compose -f $(COMPOSE_FILE) up -d mysql
+	$(call compose_up,,mysql)
 	@echo "Waiting for healthy status..."
 	@timeout 600 bash -c 'until docker compose -f $(COMPOSE_FILE) ps mysql | grep -q "healthy"; do sleep 5; done'
 	@echo "✅ MySQL ready!"
@@ -139,7 +148,7 @@ db-reset:
 # The pytest target (3307). test-db-reset drops its volume only, so the next
 # test-db-up restores the committed blob: the clean base for regen-lfs-blob.
 test-db-up:
-	docker compose -f $(COMPOSE_FILE) --profile test up -d mysql-test
+	$(call compose_up,--profile test,mysql-test)
 	@timeout 600 bash -c 'until docker compose -f $(COMPOSE_FILE) --profile test ps mysql-test | grep -q "healthy"; do sleep 5; done'
 	@echo "✅ mysql-test ready on 127.0.0.1:3307"
 
@@ -175,12 +184,12 @@ clone-pg-test:
 	    --source '$(or $(PG_TEST_SOURCE_URL),mysql+pymysql://root:root@127.0.0.1:3307/sam)' $(CLONE_PG_ARGS)
 
 pg-test-up:
-	docker compose -f $(COMPOSE_FILE) --profile test up -d postgres-test
+	$(call compose_up,--profile test,postgres-test)
 	@timeout 120 bash -c 'until docker compose -f $(COMPOSE_FILE) --profile test ps postgres-test | grep -q "healthy"; do sleep 3; done'
 	@echo "✅ postgres-test ready on 127.0.0.1:5434"
 
 pg-up:
-	docker compose -f $(COMPOSE_FILE) --profile pg up -d postgres
+	$(call compose_up,--profile pg,postgres)
 	@echo "Waiting for healthy status..."
 	@timeout 120 bash -c 'until docker compose -f $(COMPOSE_FILE) --profile pg ps postgres | grep -q "healthy"; do sleep 3; done'
 	@echo "✅ Postgres ready on 127.0.0.1:5433"
