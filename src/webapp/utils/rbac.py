@@ -1,7 +1,7 @@
 """Role-Based Access Control for the SAM Web UI.
 
 Permissions, POSIX-group-to-permission bundles, and the access checks used by
-both Flask-Admin views and API endpoints.
+dashboard routes and API endpoints.
 
 A user's permissions are the union of two sources: the ``GROUP_PERMISSIONS``
 bundle of each POSIX group they belong to (read from
@@ -198,8 +198,8 @@ ALL_DELETE = _perms_with_action('delete')
 # sets ``active=False``; the contract delete stamps ``end_date``). The withheld
 # ones are where delete is harsher or machine-shaped: DELETE_RESOURCES
 # (hard-deletes disk-root and fair-share override rows, decommissions
-# machines/queues), DELETE_FACILITIES, and DELETE_USERS / DELETE_GROUPS (hard
-# row deletes via Flask-Admin).
+# machines/queues), DELETE_FACILITIES, and DELETE_USERS / DELETE_GROUPS (no
+# web surface; kept withheld so a future one is granted deliberately).
 #
 # Known limitation (accepted): AllocationType and Panel live under the
 # *_FACILITIES family, so default allocation amounts and fair-share

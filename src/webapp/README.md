@@ -4,8 +4,8 @@ Flask-based web administration interface for the Systems Accounting Manager (SAM
 
 ## Features
 
-- **Flask-Admin Interface**: Full CRUD operations for all SAM database tables
-  (dev-only; gated by the `FLASK_ADMIN_ENABLED` kill-switch, off in production)
+- **Database browser** (`/database`): read-only rows from every database the
+  webapp connects to, for low-level diagnosis (`ADMIN_DATABASE`; see below)
 - **Account registration**: anonymous `/register` form with email verification
   (gated by the `ACCOUNT_REGISTRATION_ENABLED` kill-switch, off in production;
   `docs/plans/implemented/ACCOUNT_REGISTRATION.md`)
@@ -80,7 +80,6 @@ src/webapp/
 ├── config.py                   # Config class hierarchy (Dev/Prod/Testing)
 ├── extensions.py               # Flask extension instances
 ├── auth/                       # Authentication (AuthProvider ABC: stub, LDAP, OIDC)
-├── admin/                      # Flask-Admin views (dev-only, kill-switch gated)
 ├── api/                        # REST API v1 + access-control decorators
 │   ├── access_control.py       # @require_project_access etc.
 │   └── v1/                     # users, projects, charges, allocations, status,
@@ -200,40 +199,25 @@ RBAC testing.
 
 ## Main Features
 
-### Database Admin Interface
+### Database browser (`/database`)
 
-The Flask-Admin database interface provides direct access to database models:
-- Active user count
-- Active project count
-- Active resource count
-- Upcoming expirations (next 30 days)
-- Recently expired projects (last 90 days)
+Read-only rows from every database the webapp holds an engine for: SAM,
+`system_status`, job_history per machine, fs_scans per collection. Tables,
+columns and foreign keys come from reflection, so nothing is registered per
+model. Admin → Database, `http://localhost:5050/database/`.
 
-Access: `http://localhost:5050/database/`
-
-### User Management
-
-View, search, and manage SAM users.
-
-Access: `http://localhost:5050/database/users/`
-
-Permissions required: `VIEW_USERS` (view), `EDIT_USERS` (edit), `CREATE_USERS` (create)
-
-### Project Management
-
-View, search, and manage SAM projects.
-
-Access: `http://localhost:5050/database/projects/`
-
-Permissions required: `VIEW_PROJECTS` (view), `EDIT_PROJECTS` (edit)
-
-### Allocation Management
-
-View and manage resource allocations.
-
-Access: `http://localhost:5050/database/allocations/`
-
-Permissions required: `VIEW_ALLOCATIONS` (view), `EDIT_ALLOCATIONS` (edit)
+- **Table view**: structured filters (`=`, `<`, `like`, `in`, `is null`, ...),
+  sort, column picker, row estimates; an exact count only on click. Every view
+  is a plain URL, so it can be bookmarked or pasted into a ticket.
+- **Row view**: every column, foreign-key links to the referenced row,
+  "referenced by" links to each child table filtered on this row, and
+  "Open in SAM" for users, projects and groups.
+- **Schema tab**: types, indexes, foreign keys both ways, ORM drift.
+- **Safety**: each query runs in a READ ONLY transaction with a statement
+  timeout (`DB_BROWSER_STATEMENT_TIMEOUT_MS`, default 5000); secret columns are
+  redacted (never selected, filtered or sorted).
+- **Access**: `ADMIN_DATABASE` (csg bundle); `DB_BROWSER_ENABLED=0` unmounts it.
+  Design record: `docs/plans/DB_BROWSER.md`.
 
 ### Expiration Monitoring
 
@@ -479,36 +463,6 @@ already modifying, and verify with pytest plus an app boot.
        ...
    ```
 
-### Adding a New Flask-Admin View
-
-In `webapp/admin/__init__.py`:
-
-```python
-from sam.models import MyModel
-from .custom_model_views import SAMModelView
-
-admin.add_view(SAMModelView(MyModel, db.session,
-                            name='My Models',
-                            endpoint='my_models',
-                            category='My Category'))
-```
-
-### Adding RBAC to a View
-
-```python
-class MyModelAdmin(SAMModelView):
-    def is_accessible(self):
-        if not current_user.is_authenticated:
-            return False
-        from webapp.utils.rbac import has_permission, Permission
-        return has_permission(current_user, Permission.VIEW_SOMETHING)
-
-    @property
-    def can_edit(self):
-        from webapp.utils.rbac import has_permission, Permission
-        return has_permission(current_user, Permission.EDIT_SOMETHING)
-```
-
 ## Production Deployment
 
 ### Configuration
@@ -626,7 +580,6 @@ Check:
 - **../../CLAUDE.md**: Project conventions (form validation, route protection,
   display formatting, testing)
 - **../cli/README.md**: CLI architecture (shared conventions with the webapp)
-- **Flask-Admin docs**: https://flask-admin.readthedocs.io/
 - **Flask-Login docs**: https://flask-login.readthedocs.io/
 
 ## Support

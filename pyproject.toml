@@ -27,7 +27,6 @@ dependencies = [
     "click",
     "cryptography",
     "flask",
-    "flask-admin",
     "flask-caching",
     "flask-limiter",
     "flask-login",

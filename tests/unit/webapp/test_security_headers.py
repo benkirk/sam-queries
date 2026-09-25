@@ -61,9 +61,9 @@ class TestCSPModes:
         def ping():
             return 'pong'
 
-        @app.route('/database/table/foo')
-        def admin_table():
-            return 'flask-admin stand-in'
+        @app.route('/database/sam/users')
+        def db_browser_table():
+            return 'db browser stand-in'
 
         init_security_headers(app)
         return app
@@ -91,10 +91,11 @@ class TestCSPModes:
         assert 'X-Frame-Options' not in resp.headers
 
     @pytest.mark.parametrize('mode', ['report-only', 'enforce'])
-    def test_flask_admin_path_carveout(self, mode):
-        resp = self._app(mode).test_client().get('/database/table/foo')
-        assert 'Content-Security-Policy' not in resp.headers
-        assert 'Content-Security-Policy-Report-Only' not in resp.headers
+    def test_database_path_has_no_carveout(self, mode):
+        resp = self._app(mode).test_client().get('/database/sam/users')
+        header = ('Content-Security-Policy' if mode == 'enforce'
+                  else 'Content-Security-Policy-Report-Only')
+        assert "default-src 'self'" in resp.headers[header]
 
     def test_unknown_mode_fails_loud(self):
         with pytest.raises(ValueError, match='CSP_MODE'):

@@ -127,8 +127,7 @@ class TestReadTheme:
 # --------------------------------------------------------------------------
 
 #: Every ``<html>`` tag the app owns. ``errors/429.html`` inherits from the
-#: dashboard base and ``admin/master.html`` is Flask-Admin's own Bootstrap 3
-#: shell (explicitly out of scope — see docs/plans/implemented/DARK_MODE.md).
+#: dashboard base.
 OWNED_SHELLS = ('dashboards/base.html', 'auth/login.html')
 
 

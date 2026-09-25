@@ -409,7 +409,7 @@ class TestAllocationAdminTier:
     @pytest.mark.parametrize('perm', [
         Permission.DELETE_RESOURCES,   # hard-deletes disk roots + overrides
         Permission.DELETE_FACILITIES,
-        Permission.DELETE_USERS,       # hard row delete via Flask-Admin
+        Permission.DELETE_USERS,
         Permission.DELETE_GROUPS,
     ])
     def test_hard_and_machine_deletes_are_withheld(self, bundle, perm):

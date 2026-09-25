@@ -19,14 +19,8 @@ Notes:
 - X-Frame-Options is superseded by the policy's frame-ancestors 'self'
   once CSP enforces; in report-only/off modes it must survive, because
   browsers ignore frame-ancestors in a Report-Only policy.
-- Flask-Admin (/database, dev-only: FLASK_ADMIN_ENABLED defaults OFF in
-  ProductionConfig) ships bundled templates full of inline JS we don't
-  control; CSP is skipped for that path prefix rather than relaxed —
-  a permanently-violating dev-only surface would only generate noise.
 - setdefault() everywhere so an individual route can deliberately override.
 """
-
-from flask import request
 
 from webapp.utils.csp import build_csp_policy
 
@@ -63,6 +57,6 @@ def init_security_headers(app):
         if hsts:
             h.setdefault('Strict-Transport-Security',
                          'max-age=31536000; includeSubDomains')
-        if csp_header and not request.path.startswith('/database'):
+        if csp_header:
             h.setdefault(csp_header, csp_policy)
         return response

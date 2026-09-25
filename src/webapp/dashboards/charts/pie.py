@@ -16,7 +16,7 @@ each subclass:
 
 `FacilityPie` and `AllocationTypePie` end up as attribute-only subclasses,
 which is the declarative tier this repo already reaches for elsewhere
-(`CrudSpec`, the Flask-Admin view promotion dict).
+(`CrudSpec`).
 """
 
 from typing import Dict, List

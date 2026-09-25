@@ -33,7 +33,6 @@ import sam.session
 import system_status.session
 
 from webapp.extensions import db, csrf
-from webapp.admin import admin_bp, init_admin
 from webapp.auth import bp as auth_bp
 from webapp.dashboards.user import bp as user_dashboard_bp
 from webapp.dashboards.admin import bp as admin_dashboard_bp
@@ -413,7 +412,7 @@ def create_app(*, config_overrides: dict | None = None):
     app.register_blueprint(jobs_bp, url_prefix='/dashboards/user/jobs')
     app.register_blueprint(disk_scans_bp, url_prefix='/dashboards/user/disk-scans')
     # Dev-only component gallery (kill-switch: OFF by default in production —
-    # never mounted on the public deploy), mirroring the init_admin gate below.
+    # never mounted on the public deploy).
     if app.config.get('COMPONENT_GALLERY_ENABLED', False):
         app.register_blueprint(component_gallery_bp)
     # The anonymous account-registration form: same kill-switch shape, ships
@@ -430,9 +429,7 @@ def create_app(*, config_overrides: dict | None = None):
         app.register_blueprint(register_invite_bp)
     if app.config.get('DB_BROWSER_ENABLED', False):
         from webapp.db_browser import bp as db_browser_bp
-        app.register_blueprint(db_browser_bp, url_prefix='/dbbrowse')
-    # NOTE: admin_bp blueprint removed - Flask-Admin handles /database routing
-    # app.register_blueprint(admin_bp, url_prefix='/database')
+        app.register_blueprint(db_browser_bp, url_prefix='/database')
 
     # Register API blueprints
     app.register_blueprint(api_projects_bp, url_prefix='/api/v1/projects')
@@ -463,11 +460,6 @@ def create_app(*, config_overrides: dict | None = None):
     # cache in debug so every render re-reads from disk.
     if app.config.get('DEBUG'):
         app.jinja_env.cache = None
-
-    # Initialize Flask-Admin (kill-switch: OFF by default in production —
-    # the /database browser is never mounted on the public deploy)
-    if app.config.get('FLASK_ADMIN_ENABLED', False):
-        init_admin(app)
 
     # Auto-login middleware for development (enabled via DISABLE_AUTH=1)
     from webapp.utils.dev_auth import auto_login_middleware

@@ -1,6 +1,6 @@
 """Component gallery (dev-only /dev/gallery) — flag gating + render smoke.
 
-The flag mirrors FLASK_ADMIN_ENABLED: ON outside production, OFF in production.
+The flag is ON outside production, OFF in production.
 The render test is also the gallery's smoke test — a broken fragment fixture
 500s here rather than only in the browser.
 """
@@ -10,7 +10,7 @@ import pytest
 
 @pytest.fixture(scope="module")
 def gallery_disabled_app(test_db_url, status_db_url):
-    """A second create_app with the gallery flag off (mirrors test_admin_killswitch).
+    """A second create_app with the gallery flag off (same shape as test_db_browser_killswitch).
 
     config_overrides land before the gated register_blueprint runs, so the
     conditional sees the override. Module-scoped: create_app is expensive.

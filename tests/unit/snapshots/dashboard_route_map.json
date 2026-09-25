@@ -2207,63 +2207,63 @@
   ],
   [
     "db_browser.cell_fragment",
-    "/dbbrowse/<source>/<table>/cell",
+    "/database/<source>/<table>/cell",
     [
       "GET"
     ]
   ],
   [
     "db_browser.count_fragment",
-    "/dbbrowse/<source>/<table>/count",
+    "/database/<source>/<table>/count",
     [
       "GET"
     ]
   ],
   [
     "db_browser.index",
-    "/dbbrowse/",
+    "/database/",
     [
       "GET"
     ]
   ],
   [
     "db_browser.refresh",
-    "/dbbrowse/<source>/-/refresh",
+    "/database/<source>/-/refresh",
     [
       "POST"
     ]
   ],
   [
     "db_browser.row",
-    "/dbbrowse/<source>/<table>/row",
+    "/database/<source>/<table>/row",
     [
       "GET"
     ]
   ],
   [
     "db_browser.source",
-    "/dbbrowse/<source>/",
+    "/database/<source>/",
     [
       "GET"
     ]
   ],
   [
     "db_browser.table",
-    "/dbbrowse/<source>/<table>",
+    "/database/<source>/<table>",
     [
       "GET"
     ]
   ],
   [
     "db_browser.table_schema",
-    "/dbbrowse/<source>/<table>/schema",
+    "/database/<source>/<table>/schema",
     [
       "GET"
     ]
   ],
   [
     "db_browser.tables_fragment",
-    "/dbbrowse/<source>/-/tables",
+    "/database/<source>/-/tables",
     [
       "GET"
     ]
