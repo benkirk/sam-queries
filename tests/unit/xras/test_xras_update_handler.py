@@ -38,6 +38,15 @@ from xras_helpers import txns_for, wire_resource
 from xras_helpers import committing  # noqa: F401  — pytest resolves it by name
 
 
+def _has_live_row_everywhere(session, project, user):
+    """True when *user* holds an unended row on every non-deleted account of *project*."""
+    from sam.accounting.accounts import AccountUser
+    now = datetime.now()
+    accounts = [a for a in project.accounts if a.is_active]
+    live = {au.account_id for au in session.query(AccountUser).filter_by(user_id=user.user_id)
+            if au.end_date is None or au.end_date > now}
+    return bool(accounts) and all(a.account_id in live for a in accounts)
+
 
 @pytest.fixture
 def existing(session, mapped_resource):
@@ -336,6 +345,22 @@ class TestTheProjectBugsWeFix:
 
         handle_update(committing, payload)
         assert existing['project'].project_lead_user_id == new_pi.user_id
+        assert _has_live_row_everywhere(committing, existing['project'], new_pi)
+
+    def test_a_lead_left_out_of_the_roster_still_becomes_a_member(
+            self, committing, existing, mapped_resource, session):
+        """Legacy defect 3: a PI role beginning after ``actionBeginDate`` is kept out of
+        the roster but still assigned as lead. ``Project.update`` seeds the rows."""
+        from factories import make_user
+        new_pi = make_user(session)
+        payload = action_for(existing, wire_resource(mapped_resource.xras_key,
+                                                     '250000'))
+        payload['roles'] = [{'roleType': 'PI', 'username': new_pi.username,
+                             'beginDate': '2026-03-01', 'endDate': None}]
+
+        handle_update(committing, payload)
+        assert existing['project'].project_lead_user_id == new_pi.user_id
+        assert _has_live_row_everywhere(committing, existing['project'], new_pi)
 
     def test_the_admin_is_actually_updated(self, committing, existing,
                                            mapped_resource, session):
@@ -349,6 +374,7 @@ class TestTheProjectBugsWeFix:
 
         handle_update(committing, payload)
         assert existing['project'].project_admin_user_id == manager.user_id
+        assert _has_live_row_everywhere(committing, existing['project'], manager)
 
     def test_the_title_and_abstract_move(self, committing, existing,
                                          mapped_resource):

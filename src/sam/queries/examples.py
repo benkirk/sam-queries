@@ -77,7 +77,7 @@ def example_usage():  # pragma: no cover
             print(f"  {resource_name}: {alloc.amount:,.2f} (expires {alloc.end_date})")
 
             # Show users on project (including lead/admin)
-            usernames = [u.username for u in project.roster]
+            usernames = [u.username for u in project.users]
             print(f"Roster ({len(usernames)}):");
             for u in usernames: print(u);
 

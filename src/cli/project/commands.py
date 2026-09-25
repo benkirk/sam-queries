@@ -23,10 +23,14 @@ from cli.project.display import (
     display_notification_results,
     display_notification_preview,
     display_tree_audit,
+    display_reconcile_results,
     notification_progress,
 )
+from sqlalchemy import or_
+
 from sam import Project
-from sam.manage import deactivate_projects, management_transaction
+from sam.accounting.accounts import AccountUser
+from sam.manage import deactivate_projects, management_transaction, reconcile_project_access
 from sam.queries.expiration_notices import MILESTONES, build_expiration_messages
 from sam.queries.expirations import (
     get_projects_by_allocation_end_date,
@@ -194,7 +198,7 @@ class ProjectExpirationCommand(BaseProjectCommand):
                 # Extract users if needed (business logic)
                 if list_users:
                     for proj, alloc, res_name, days_expired in expiring:
-                        all_users.update(proj.roster)
+                        all_users.update(proj.users)
                         expiring_projects.add(proj.projcode)
 
                     for user in track(all_users, description="Determining abandoned users..."):
@@ -412,12 +416,21 @@ class ProjectAdminCommand(ProjectSearchCommand):
         project = self.get_project(projcode)
         self.console.print(f"[dim]Validating project {projcode}...[/dim]")
 
-        # Placeholder validation logic
         issues = []
         if not project.lead:
             issues.append("Missing project lead")
         if not project.allocation_type:
             issues.append("Missing allocation type")
+        roles = [('lead', project.lead)]
+        if project.admin is not None and project.admin != project.lead:
+            roles.append(('admin', project.admin))
+        for role, user in roles:
+            if user is None:
+                continue
+            missing = _resources_without_live_row(self.session, project, user.user_id)
+            if missing:
+                issues.append(f"Project {role} {user.username} is not a member on: "
+                              f"{', '.join(missing)} (fix with --reconcile)")
 
         if issues:
             self.console.print(f"⚠️  Validation issues:", style="yellow")
@@ -429,9 +442,24 @@ class ProjectAdminCommand(ProjectSearchCommand):
         return EXIT_SUCCESS
 
     def _reconcile_project(self, projcode: str) -> int:
-        """Admin-only: reconcile project allocations."""
-        self.console.print(f"[dim]Reconciling allocations for {projcode}...[/dim]")
-
-        # Placeholder reconciliation logic
-        self.console.print(f"✅ Project {projcode} reconciled", style="green")
+        """Admin-only: give the lead, admin and every member access to every project resource."""
+        project = self.get_project(projcode)
+        with management_transaction(self.session):
+            added = [(au.user.username, au.account.resource.resource_name)
+                     for au in reconcile_project_access(self.session, project.project_id)]
+        display_reconcile_results(self.ctx, projcode, sorted(added))
         return EXIT_SUCCESS
+
+
+def _resources_without_live_row(session, project, user_id: int) -> list:
+    """Resource names of the project's non-deleted accounts where *user_id* has no live row."""
+    now = datetime.now()
+    accounts = [a for a in project.accounts if a.is_active]
+    live = {aid for (aid,) in session.query(AccountUser.account_id).filter(
+        AccountUser.user_id == user_id,
+        AccountUser.account_id.in_([a.account_id for a in accounts]),
+        AccountUser.start_date <= now,
+        or_(AccountUser.end_date.is_(None), AccountUser.end_date > now),
+    )}
+    return sorted(a.resource.resource_name for a in accounts
+                  if a.account_id not in live and a.resource)

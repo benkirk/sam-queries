@@ -17,7 +17,8 @@
     project       : Project
     projcode      : str
     columns       : list[{account_id, resource_id, resource_name, has_active_alloc}]
-    member_rows   : list[{user, is_lead, cells:[{column, checked}]}]
+    member_rows   : list[{user, is_lead, is_admin, cells:[{column, checked}]}]
+                    (the lead and admin are always rows, even with no access)
     active_only   : bool
     errors        : list[str]
 #}
@@ -47,7 +48,7 @@
             hx-include="#accessGridActiveOnly"
             hx-target="#accessGridContainer"
             hx-swap="innerHTML"
-            hx-confirm="Give every member access to every resource shown on this project?">
+            hx-confirm="Give the lead, admin and every member access to every resource on this project?">
       <i class="fa-solid fa-wand-magic"></i> Reconcile all
     </button>
     {{ help_icon(
@@ -98,14 +99,17 @@
             {% if row.is_lead %}
             <span class="badge bg-info text-dark fw-normal ms-1">lead</span>
             {% endif %}
+            {% if row.is_admin %}
+            <span class="badge bg-info text-dark fw-normal ms-1">admin</span>
+            {% endif %}
           </td>
           {% for cell in row.cells %}
           <td class="text-center">
             <input type="checkbox" class="form-check-input"
                    name="grant" value="1"
                    {% if cell.checked %}checked{% endif %}
-                   {% if row.is_lead %}checked disabled
-                     title="The project lead always has access and cannot be revoked here."
+                   {% if (row.is_lead or row.is_admin) and cell.checked %}disabled
+                     title="The project {{ 'lead' if row.is_lead else 'admin' }} cannot be revoked here."
                    {% else %}
                      hx-post="{{ url_for('admin_dashboard.htmx_access_grid_toggle', projcode=projcode) }}"
                      hx-vals='{"user_id": {{ row.user.user_id }}, "resource_id": {{ cell.column.resource_id }}}'

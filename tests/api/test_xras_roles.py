@@ -265,9 +265,9 @@ class TestSuccess:
     def test_success_asks_for_the_right_write(
             self, xras_client, action_log, no_write, capture_off,
             active_project, multi_project_user):
-        """Exactly ``project_lead_user_id`` and nothing else — legacy's ``transact()``
-        sets the lead and the modified time, no roster insert and no allocation touch.
-        ``modified_time`` comes from ``TimestampMixin``'s ``onupdate``.
+        """Exactly ``project_lead_user_id`` and nothing else. ``Project.update`` itself
+        seeds the new lead's rows, which legacy never did; that half is covered in
+        ``tests/unit/manage/test_project_lead_membership.py``.
         """
         xras_client.post(
             _path(request_number=active_project.projcode,
