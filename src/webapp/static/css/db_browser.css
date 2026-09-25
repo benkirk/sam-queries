@@ -114,6 +114,14 @@
     overflow-y: auto;
     margin-top: 0.25rem;
     box-shadow: var(--bs-box-shadow);
+    /* Sits inside the filter panel, whose light text would otherwise inherit onto a light card. */
+    color: var(--text-primary);
+    background: var(--surface-card);
+}
+
+/* Outranks `.filter-sidebar .form-check-label`, which paints every panel label --text-on-brand. */
+.db-columns .db-columns-menu .form-check-label {
+    color: inherit;
 }
 
 /* Identifiers are case-sensitive: undo the theme's uppercase on headers and link buttons. */
