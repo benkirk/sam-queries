@@ -1,26 +1,35 @@
 {# Top values of one column under the current filters. Context: col, filtered, items, error.
-   Dismissed by Bootstrap's alert plugin, so it needs no script of its own. #}
+   Collapses to its header and closes via Bootstrap's alert plugin: no script of its own.
+   The toggle and the close button are siblings; neither sits inside the other (collapse.html). #}
 {% from 'db_browser/_cells.html' import cell %}
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 <div class="alert p-0 border-0 mb-3" role="region" aria-label="Top values of {{ col }}">
     <div class="card db-values-card">
-        <div class="card-header py-2 d-flex align-items-center gap-2">
-            <span class="fw-semibold">Top values: <span class="font-monospace">{{ col }}</span></span>
-            <span class="small text-body-secondary">{{ 'within the current filters · ' if filtered }}click one to filter</span>
+        <div class="card-header py-1 d-flex flex-nowrap align-items-center gap-2">
+            <button type="button" class="btn btn-link btn-sm p-0 text-reset text-decoration-none text-start text-truncate db-values-toggle"
+                    {{ collapse_toggle('db-values-body', expanded=true) }} aria-controls="db-values-body">
+                <i class="fa-solid fa-chevron-right small text-body-secondary me-1 collapse-icon"></i>
+                <span class="fw-semibold">Top values: <span class="font-monospace">{{ col }}</span></span>
+                <span class="small text-body-secondary ms-1">{{ items | length }} value{{ '' if items | length == 1 else 's' }}{{ ' within the current filters' if filtered }}</span>
+            </button>
             <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
-        {% if error %}
-        <div class="card-body small text-danger-emphasis">{{ error }}</div>
-        {% else %}
-        <div class="list-group list-group-flush">
-            {% for it in items %}
-            <a class="list-group-item list-group-item-action d-flex justify-content-between gap-3 py-1 text-decoration-none" href="{{ it.url }}">
-                <span class="text-truncate">{{ cell(it.cell) }}</span>
-                <span class="small text-nowrap db-num">{{ it.n | fmt_number(raw=true) }}</span>
-            </a>
+        <div id="db-values-body" class="collapse show">
+            {% if error %}
+            <div class="card-body small text-danger-emphasis">{{ error }}</div>
             {% else %}
-            <div class="list-group-item small text-body-secondary">No rows.</div>
-            {% endfor %}
+            <div class="list-group list-group-flush db-values-list">
+                {% for it in items %}
+                <a class="list-group-item list-group-item-action d-flex justify-content-between gap-3 py-1 text-decoration-none"
+                   href="{{ it.url }}" title="Filter to this value">
+                    <span class="text-truncate">{{ cell(it.cell) }}</span>
+                    <span class="small text-nowrap db-num">{{ it.n | fmt_number(raw=true) }}</span>
+                </a>
+                {% else %}
+                <div class="list-group-item small text-body-secondary">No rows.</div>
+                {% endfor %}
+            </div>
+            {% endif %}
         </div>
-        {% endif %}
     </div>
 </div>

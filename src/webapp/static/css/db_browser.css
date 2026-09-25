@@ -128,3 +128,8 @@
 .db-grid th .btn.db-icon:focus-visible {
     color: var(--text-link);
 }
+
+/* Let the label truncate so the close button keeps its row on a phone. */
+.db-values-toggle {
+    min-width: 0;
+}
