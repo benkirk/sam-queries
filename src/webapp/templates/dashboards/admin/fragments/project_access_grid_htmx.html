@@ -48,12 +48,13 @@
             hx-include="#accessGridActiveOnly"
             hx-target="#accessGridContainer"
             hx-swap="innerHTML"
-            hx-confirm="Give the lead, admin and every member access to every resource on this project?">
+            hx-confirm="Give the lead, admin and every member access to every active resource on this project?">
       <i class="fa-solid fa-wand-magic"></i> Reconcile all
     </button>
     {{ help_icon(
-         'Approves every user for every resource on this project. This is typically '
-         'the intended state; partial user resource access is most typically a mistake.',
+         'Approves every active user for every active resource on this project; '
+         'decommissioned resources and inactive or locked users are left alone. This is '
+         'typically the intended state; partial user resource access is most typically a mistake.',
          rich=True,
          title='Reconcile all',
          placement='left') }}

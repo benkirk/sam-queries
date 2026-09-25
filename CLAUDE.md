@@ -346,9 +346,11 @@ runs inside `management_transaction(db.session)`** — it drives the implicit
 audit logging; the form-handling helpers in §9 enforce this by construction.
 Allocation invariant: every `allocation_transaction` write must keep
 replay(history) == amount.
-Membership invariant: the lead and admin hold a live row on every non-deleted
-account; `Project.update` seeds a new one (`ensure_members`). `Project.users`
-is lead + admin + row holders; `account_linked_users` is rows only.
+Membership invariant: the lead and admin hold a live row on every live account
+(`Project.live_accounts`: non-deleted, on an active resource; `account.deleted` is
+never set in practice); `Project.update` seeds a new one (`ensure_members`).
+`Project.users` is lead + admin + row holders; `account_linked_users` is rows only.
+Reconcile (`reconcile_project_access`, CLI and web) skips users who are not `User.is_active`.
 
 ### 8. API Route Protection (webapp)
 
@@ -678,6 +680,7 @@ sam-search --format json project SCSG0001 | jq          # JSON envelopes everywh
 # Admin (superset of search)
 sam-admin user benkirk --validate
 sam-admin project SCSG0001 --validate ; sam-admin project SCSG0001 --reconcile   # reconcile = everyone on every resource
+sam-admin project --reconcile-lead-admin --all --dry-run   # bulk, active resources only; drop --dry-run to write
 sam-admin accounting --disk --dry-run                   # summary rebuild/reconcile ops
 sam-admin xras --readiness | --mnemonic-report | --contract-report | --identity-report   # XRAS boards (docs/xras/)
 # Cache refresh — HTTP client for POST /api/v1/admin/cache/refresh (caches live

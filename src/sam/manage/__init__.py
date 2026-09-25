@@ -333,21 +333,20 @@ def revoke_user_resource_access(
     session.flush()
 
 
-def reconcile_project_access(session: Session, project_id: int) -> list[AccountUser]:
+def reconcile_project_access(session: Session, project_id: int, *,
+                             lead_admin_only: bool = False) -> list[AccountUser]:
     """
-    Give every project member access to every project resource.
+    Give active project members access to every project resource that is still active.
 
-    Fills the user×resource access grid by re-running the membership-seeding
-    invariant (Account._seed_members) over each non-deleted account, so the
-    lead, admin, and all existing members become members of every account.
-    Only adds access; never revokes. Returns the AccountUser rows it added.
+    Covers the non-deleted accounts on an active resource (``Project.live_accounts``).
+    By default it re-runs the membership-seeding invariant (``Account._seed_members``)
+    on each, so the lead, admin and every open-ended member hold a row everywhere.
+    ``lead_admin_only`` seeds just the lead and admin (``Project.ensure_members``).
+    Users who are not ``User.is_active`` (inactive or locked) are skipped. Only adds
+    access; never revokes. Returns the AccountUser rows it added.
 
     NOTE: This function does NOT commit the session. The caller is responsible
     for wrapping it in management_transaction().
-
-    Args:
-        session: SQLAlchemy session
-        project_id: Project ID
 
     Raises:
         ValueError: If the project does not exist
@@ -356,14 +355,14 @@ def reconcile_project_access(session: Session, project_id: int) -> list[AccountU
     if not project:
         raise ValueError(f"Project {project_id} not found")
 
-    accounts = session.query(Account).filter(
-        Account.project_id == project_id,
-        Account.is_active,
-    ).all()
+    if lead_admin_only:
+        ids = [uid for uid in (project.project_lead_user_id, project.project_admin_user_id)
+               if uid is not None]
+        return project.ensure_members(*ids, active_users_only=True)
 
     added = []
-    for account in accounts:
-        added.extend(Account._seed_members(session, account))
+    for account in project.live_accounts:
+        added.extend(Account._seed_members(session, account, active_users_only=True))
 
     session.flush()
     return added
