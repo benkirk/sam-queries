@@ -92,7 +92,12 @@ class TestRevokeUserResourceAccess:
             session, project.project_id, user.user_id, account.resource_id
         )
 
-        assert _membership_rows(session, account.account_id, user.user_id) == []
+        # The row is history, not gone: end-dated just before now.
+        rows = _membership_rows(session, account.account_id, user.user_id)
+        assert len(rows) == 1
+        assert rows[0].end_date is not None
+        assert rows[0].end_date < datetime.now()
+        assert not rows[0].is_active
 
     def test_revoke_lead_raises(self, session):
         project = make_project(session)
