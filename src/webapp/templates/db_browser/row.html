@@ -1,11 +1,11 @@
 {% extends 'db_browser/base.html' %}
-{% from 'db_browser/_cells.html' import cell %}
+{% from 'db_browser/_cells.html' import cell with context %}
 {% from 'dashboards/fragments/clipboard.html' import copy_button %}
 {% block db_title %}{{ t.name }} row · Database{% endblock %}
 {% block db_main %}
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
     <h1 class="h4 mb-0 font-monospace">{{ t.name }}</h1>
-    {% if orm_class %}<span class="badge text-bg-light border font-monospace">{{ orm_class }}</span>{% endif %}
+    {% if orm_class %}<span class="badge bg-body-secondary text-body-secondary border font-monospace">{{ orm_class }}</span>{% endif %}
     <span class="font-monospace small text-body-secondary">{% for k, v in key.items() %}{{ k }}={{ v }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
     <span class="ms-auto d-flex gap-2">
         {% if sam_link %}<a class="btn btn-sm btn-outline-primary" href="{{ sam_link }}"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i>Open in SAM</a>{% endif %}
@@ -26,7 +26,7 @@
                         <tr>
                             <th scope="row" class="font-monospace text-nowrap fw-normal text-body-secondary">{{ f.col.name }}</th>
                             <td id="db-cell-{{ loop.index }}">
-                                {{ cell(f.cell, f.link) }}
+                                {{ cell(f.cell, f.link, entity_cols.get(f.col.name), f.raw) }}
                                 {% if f.cell.truncated %}
                                 <button type="button" class="btn btn-link btn-sm p-0 ms-1"
                                         hx-get="{{ url_for('db_browser.cell_fragment', source=src.key, table=t.name, col=f.col.name, **key_args) }}"
@@ -37,7 +37,7 @@
                         {% endfor %}
                         {% for name in hidden %}
                         <tr><th scope="row" class="font-monospace text-nowrap fw-normal text-body-secondary">{{ name }}</th>
-                            <td><span class="badge text-bg-warning">redacted</span></td></tr>
+                            <td><span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">redacted</span></td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -62,5 +62,10 @@
         </div>
     </div>
 </div>
+{% endif %}
+{# Shells for the entity links on SAM username / projcode cells (_cells.html). #}
+{% if entity_cols %}
+{% include 'dashboards/user/fragments/user_details_modal.html' %}
+{% include 'dashboards/shared/project_details_modal.html' %}
 {% endif %}
 {% endblock %}

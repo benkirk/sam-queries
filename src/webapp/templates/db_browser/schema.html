@@ -18,7 +18,7 @@
                     <td class="small">{{ 'yes' if c.col.nullable else 'no' }}</td>
                     <td class="font-monospace small">{{ c.default if c.default is not none else '' }}</td>
                     <td class="small text-body-secondary">{{ c.ops | join(' · ') }}</td>
-                    <td>{% if c.hidden %}<span class="badge text-bg-warning">redacted</span>{% endif %}</td>
+                    <td>{% if c.hidden %}<span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">redacted</span>{% endif %}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -33,7 +33,7 @@
             <ul class="list-group list-group-flush small">
                 {% for ix in indexes %}
                 <li class="list-group-item font-monospace">{{ ix.name }} ({{ ix.columns | join(', ') }})
-                    {% if ix.unique %}<span class="badge text-bg-light border">unique</span>{% endif %}</li>
+                    {% if ix.unique %}<span class="badge bg-body-secondary text-body-secondary border">unique</span>{% endif %}</li>
                 {% else %}
                 <li class="list-group-item text-body-secondary">No secondary indexes{% if pk %}; primary key ({{ pk | join(', ') }}){% endif %}.</li>
                 {% endfor %}
@@ -47,12 +47,12 @@
                 {% for e in outgoing %}
                 <li class="list-group-item font-monospace">({{ e.columns | join(', ') }}) →
                     <a href="{{ url_for('db_browser.table', source=src.key, table=e.ref_table) }}">{{ e.ref_table }}</a>({{ e.ref_columns | join(', ') }})
-                    {% if e.origin == 'orm' %}<span class="badge text-bg-light border" title="Declared by the ORM, not the database">orm</span>{% endif %}</li>
+                    {% if e.origin == 'orm' %}<span class="badge bg-body-secondary text-body-secondary border" title="Declared by the ORM, not the database">orm</span>{% endif %}</li>
                 {% endfor %}
                 {% for e in incoming %}
                 <li class="list-group-item font-monospace">
                     <a href="{{ url_for('db_browser.table', source=src.key, table=e.table) }}">{{ e.table }}</a>({{ e.columns | join(', ') }}) → ({{ e.ref_columns | join(', ') }})
-                    {% if e.origin == 'orm' %}<span class="badge text-bg-light border" title="Declared by the ORM, not the database">orm</span>{% endif %}</li>
+                    {% if e.origin == 'orm' %}<span class="badge bg-body-secondary text-body-secondary border" title="Declared by the ORM, not the database">orm</span>{% endif %}</li>
                 {% endfor %}
                 {% if not outgoing and not incoming %}<li class="list-group-item text-body-secondary">None.</li>{% endif %}
             </ul>

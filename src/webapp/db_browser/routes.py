@@ -23,6 +23,10 @@ from .sources import (CACHE, browse_sources, catalog, connect, fk_graph, get_sou
 
 logger = logging.getLogger(__name__)
 
+# SAM columns rendered with the shared entity-modal links (user_link / project_link).
+ENTITY_COLUMNS = {'username': 'user', 'act_username': 'user',
+                  'projcode': 'project', 'act_projcode': 'project'}
+
 # SAM tables with a dashboard page: table -> (endpoint, query arg, column).
 SAM_PAGES = {
     'users': ('admin_dashboard.users_groups', 'username', 'username'),
@@ -39,6 +43,17 @@ def _db_error(exc: BaseException) -> str:
     message = str(getattr(exc, 'orig', None) or exc).splitlines()[0][:500]
     hint = (classify_connection_error(message) or {}).get('hint')
     return f'{message} {hint}' if hint else message
+
+
+def _entity_context(src):
+    """Entity-link columns and the two permissions their macros take (SAM only)."""
+    if src.family != 'sam':
+        return {'entity_cols': {}, 'can_view_users': False, 'can_view_projects': False}
+    return {
+        'entity_cols': ENTITY_COLUMNS,
+        'can_view_users': has_permission_any_facility(current_user, Permission.VIEW_USERS),
+        'can_view_projects': has_permission_any_facility(current_user, Permission.VIEW_PROJECTS),
+    }
 
 
 def _crumbs(src=None, table=None, extra=None):
@@ -184,7 +199,7 @@ def table(source, table):
             rows.append({
                 'url': _row_url(src, t, pk, row),
                 'cells': [(render_cell(row[c.name], column_kind(c), chars=GRID_CHARS),
-                           links.get(c.name)) for c in visible],
+                           links.get(c.name), row[c.name]) for c in visible],
             })
 
     def view_url(**changes):
@@ -202,7 +217,7 @@ def table(source, table):
         ops=list(Op), op_labels=OP_LABELS, null_ops=NULL_OPS, per_page_choices=PER_PAGE_CHOICES,
         view_url=view_url, count_args=canonical_args(state.with_(sort=None, page=1, after=None,
                                                                  cols=())),
-        crumbs=_crumbs(src, t.name), tab='data')
+        crumbs=_crumbs(src, t.name), tab='data', **_entity_context(src))
 
 
 @bp.route('/<source>/<table>/schema')
@@ -273,6 +288,7 @@ def row(source, table):
     fields = [{
         'col': c, 'kind': column_kind(c), 'link': links.get(c.name),
         'cell': render_cell(values.get(c.name), column_kind(c), chars=DETAIL_CHARS, pretty=True),
+        'raw': values.get(c.name),
     } for c in shown] if values else []
 
     names = {e.name for e in catalog(src)}
@@ -289,7 +305,8 @@ def row(source, table):
         referenced_by=referenced_by, error=error, hidden=sorted(hidden),
         sam_link=_sam_link(src, t.name, values) if values else None,
         orm_class=overlay(src).classes.get(t.name),
-        crumbs=_crumbs(src, t.name, ', '.join(f'{k}={v}' for k, v in key.items())))
+        crumbs=_crumbs(src, t.name, ', '.join(f'{k}={v}' for k, v in key.items())),
+        **_entity_context(src))
 
 
 @bp.route('/<source>/<table>/count')

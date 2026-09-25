@@ -34,13 +34,22 @@
     hx_swap   — swap mode. 'innerHTML' for a panel that replaces a table body;
                 'outerHTML' where the response is the whole card (the jobs
                 explorer, which re-renders its card rather than its table).
+    action    — render a plain GET form to this URL instead of the htmx one
+                (the /database browser, whose state is the page URL)
+    clear_url — "Clear filters" navigates here instead of resetting the form,
+                which would restore the server-rendered values, not clear them
 #}
-{% macro filter_panel_shell(form_id, hx_get, hx_target, hx_swap='innerHTML') %}
+{% macro filter_panel_shell(form_id, hx_get=none, hx_target=none, hx_swap='innerHTML',
+                            action=none, clear_url=none) %}
+{% if action %}
+<form id="{{ form_id }}" method="get" action="{{ action }}">
+{% else %}
 <form id="{{ form_id }}"
       hx-get="{{ hx_get }}"
       hx-target="#{{ hx_target }}"
       hx-swap="{{ hx_swap }}"
       hx-trigger="submit">
+{% endif %}
   <div class="filter-sidebar-header">
     <h2 class="filter-sidebar-title">
       <button class="filter-sidebar-toggle" type="button"
@@ -53,8 +62,12 @@
        and re-triggers its htmx submit — no inline onclick. Where the panel
        carries an fk-picker, fk-picker.js also clears its badge on the native
        reset event, so the picker clears with everything else. #}
+    {% if clear_url %}
+    <a class="filter-sidebar-clear" href="{{ clear_url }}">Clear filters</a>
+    {% else %}
     <a class="filter-sidebar-clear" style="cursor: pointer;"
        data-action="form-reset-submit" data-form-id="{{ form_id }}">Clear filters</a>
+    {% endif %}
   </div>
 
   {# Collapsed by default on phones (dashboard-init.js strips .show below md).

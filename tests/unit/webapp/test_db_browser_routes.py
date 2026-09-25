@@ -87,7 +87,14 @@ class TestPages:
                                     **{'f0.col': 'username', 'f0.op': 'eq', 'f0.v': 'benkirk'}))
         html = resp.get_data(as_text=True)
         assert resp.status_code == 200
-        assert '>benkirk<' in html and '1 row by user_id' in html
+        assert '1 row by user_id' in html
+        assert 'data-action="show-user-details"' in html   # username renders as the entity link
+
+    def test_non_sam_sources_get_no_entity_links(self, app, auth_client):
+        html = auth_client.get(_url(app, 'db_browser.table', source='system_status',
+                                    table='task_run')).get_data(as_text=True)
+        assert 'data-action="show-user-details"' not in html
+        assert 'id="userDetailsModal"' not in html and 'id="projectDetailsModal"' not in html
 
     def test_row_page_links_back_to_referencing_tables(self, auth_client, benkirk_row_url):
         html = auth_client.get(benkirk_row_url).get_data(as_text=True)
