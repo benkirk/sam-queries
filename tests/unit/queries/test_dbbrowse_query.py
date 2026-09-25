@@ -37,6 +37,15 @@ def test_column_kinds():
     assert column_kind(Column('x', String(4000))) == 'long'
 
 
+@pytest.mark.mysql_only
+def test_reflected_mysql_tinyint1_is_a_bool(engine):
+    with read_only_connection(engine) as conn:
+        users = reflect_table(conn, None, 'users')
+    assert column_kind(users.c.active) == 'bool'
+    filters, errors = parse_filters([RawFilter('active', 'eq', 'yes')], users)
+    assert not errors and filters[0].value is True
+
+
 def test_parse_coerces_every_type():
     raw = [RawFilter('id', 'in', '1, 2,3'), RawFilter('amount', 'ge', '1.50'),
            RawFilter('active', 'eq', 'yes'), RawFilter('created', 'lt', '2026-09-01'),

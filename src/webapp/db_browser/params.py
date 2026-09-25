@@ -11,10 +11,7 @@ from datetime import date, datetime, time
 from typing import Dict, List, Optional, Tuple
 
 from dbbrowse import MAX_FILTERS, RawFilter
-from webapp.utils.htmx import read_page
-
-PER_PAGE_CHOICES = (25, 50, 100, 200)
-DEFAULT_PER_PAGE = 50
+from webapp.utils.htmx import DEFAULT_PER_PAGE, PER_PAGE_CHOICES, read_page, read_sort
 
 
 @dataclass(frozen=True)
@@ -31,19 +28,21 @@ class ViewState:
         return replace(self, **changes)
 
 
-def read_view(args) -> ViewState:
+def read_view(args, sortable=()) -> ViewState:
+    """``sortable`` is the sort whitelist; a sort outside it reads as no sort."""
     filters = []
     for i in range(MAX_FILTERS + 1):
         col = (args.get(f'f{i}.col') or '').strip()
         if col:
             filters.append(RawFilter(col, args.get(f'f{i}.op') or 'eq', args.get(f'f{i}.v') or ''))
-    page = read_page(args, default=DEFAULT_PER_PAGE, minimum=10, maximum=max(PER_PAGE_CHOICES))
+    page = read_page(args)
+    sort = read_sort(args, sortable, default_dir='asc')
     return ViewState(
         filters=tuple(filters),
-        sort=args.get('sort_by') or None,
-        desc=args.get('sort_dir') == 'desc',
+        sort=sort['sort_by'],
+        desc=sort['sort_by'] is not None and sort['sort_dir'] == 'desc',
         page=page['n'],
-        per_page=page['per_page'],
+        per_page=min(PER_PAGE_CHOICES, key=lambda n: abs(n - page['per_page'])),
         after=args.get('after') or None,
         cols=tuple(c for c in args.getlist('cols') if c),
     )

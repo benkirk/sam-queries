@@ -10,7 +10,7 @@
                     {{ collapse_toggle('db-values-body', expanded=true) }} aria-controls="db-values-body">
                 <i class="fa-solid fa-chevron-right small text-body-secondary me-1 collapse-icon"></i>
                 <span class="fw-semibold">Top values: <span class="font-monospace">{{ col }}</span></span>
-                <span class="small text-body-secondary ms-1">{{ items | length }} value{{ '' if items | length == 1 else 's' }}{{ ' within the current filters' if filtered }}</span>
+                <span class="small text-body-secondary ms-1">{{ items | length | fmt_plural('value', raw=true) }}{{ ' within the current filters' if filtered }}</span>
             </button>
             <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>

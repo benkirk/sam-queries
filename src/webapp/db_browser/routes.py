@@ -1,27 +1,24 @@
 """/database pages and fragments. Every data read goes through ``sources.connect``."""
 from __future__ import annotations
 
-import logging
-
 from flask import abort, current_app, redirect, render_template, request, url_for
 from flask_login import current_user
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 
-from dbbrowse import (DETAIL_CHARS, GRID_CHARS, NULL_OPS, OP_LABELS, Op, OffsetTooDeep,
-                      PageRequest, RawFilter, coerce, column_kind, exact_count, fetch_by_key,
-                      fetch_cell, fetch_page, is_timeout, ops_for, parse_filters, render_cell,
-                      top_values)
+from dbbrowse import (CELL_MAX_CHARS, DETAIL_CHARS, GRID_CHARS, MAX_FILTERS, NULL_OPS,
+                      OP_LABELS, FilterError, Op, OffsetTooDeep, PageRequest, RawFilter, coerce,
+                      column_kind, exact_count, fetch_by_key, fetch_cell, fetch_page, is_timeout,
+                      ops_for, parse_filters, render_cell, top_values)
 from webapp.utils.config_inspect import classify_connection_error, format_db_url_safe
+from webapp.utils.htmx import PER_PAGE_CHOICES
 from webapp.utils.rbac import Permission, has_permission_any_facility
 
 from . import bp
-from .params import (PER_PAGE_CHOICES, ViewState, args_match, canonical_args, eq_filter_args,
-                     key_args, read_key, read_view, url_value)
+from .params import (args_match, canonical_args, eq_filter_args, key_args, read_key, read_view,
+                     url_value)
 from .sources import (CACHE, browse_sources, catalog, connect, fk_graph, get_source, get_table,
                       hidden_columns, indexed_columns, overlay, primary_key, sortable,
                       table_entry)
-
-logger = logging.getLogger(__name__)
 
 # SAM columns rendered with the shared entity-modal links (user_link / project_link).
 ENTITY_COLUMNS = {'username': 'user', 'act_username': 'user',
@@ -115,7 +112,7 @@ def index():
 def source(source):
     srcs = browse_sources()
     if source not in srcs:
-        # /database/<table>/ from a bookmark: assume the SAM database.
+        # A bare /database/<table>/ means the SAM database.
         if any(e.name == source for e in catalog(srcs['sam'])):
             return redirect(url_for('db_browser.table', source='sam', table=source))
         abort(404)
@@ -152,16 +149,15 @@ def table(source, table):
     entry = table_entry(src, table)
     hidden = hidden_columns(t)
     shown_names = [c.name for c in t.c if c.name not in hidden]
-    state = read_view(request.args)
-
     pk = primary_key(src, t)
     can_sort = sortable(t, hidden)
-    if state.sort not in can_sort:
-        state = state.with_(sort=None, desc=False)
+    state = read_view(request.args, sortable=can_sort)
+
     cols = tuple(c for c in state.cols if c in shown_names)
     if set(cols) | set(pk) >= set(shown_names):   # PK boxes are disabled, so never submitted
         cols = ()
-    state = state.with_(cols=cols)
+    keyset = len(pk) == 1 and state.sort is None
+    state = state.with_(cols=cols, after=state.after if keyset else None)
     canonical = canonical_args(state, shown_names)
     if not args_match(request.args, canonical):
         return redirect(url_for('db_browser.table', source=src.key, table=t.name, **canonical))
@@ -170,19 +166,16 @@ def table(source, table):
     visible = [c for c in t.c if c.name in shown_names
                and (not state.cols or c.name in state.cols or c.name in pk)]
     after = None
-    if state.after and len(pk) == 1 and state.sort is None:
+    if state.after:
         try:
             after = coerce(t.c[pk[0]], state.after)
         except ValueError:
-            errors.append(None)
+            errors.append(FilterError(None, 'Invalid page cursor.'))
 
     page = error = None
     if not errors:
         req = PageRequest(filters=filters, sort=state.sort, desc=state.desc, page=state.page,
                           per_page=state.per_page, after=after)
-        logger.info('db_browser user=%s source=%s table=%s filters=%s sort=%s',
-                    current_user.username, src.key, t.name,
-                    [(f.column.name, f.op.value) for f in filters], state.sort)
         try:
             with connect(src) as conn:
                 page = fetch_page(conn, t, visible, req, pk)
@@ -206,17 +199,18 @@ def table(source, table):
         return url_for('db_browser.table', source=src.key, table=t.name,
                        **canonical_args(state.with_(**changes), shown_names))
 
-    field_errors = {e.index: e.message for e in errors if e is not None and e.index is not None}
     return render_template(
         'db_browser/table.html', src=src, t=t, entry=entry, state=state, page=page, rows=rows,
         visible=visible, visible_names={c.name for c in visible}, pk=pk, error=error,
-        field_errors=field_errors,
-        form_errors=[e.message for e in errors if e is None or e.index is None],
+        field_errors={e.index: e.message for e in errors if e.index is not None},
+        form_errors=[e.message for e in errors if e.index is None],
         shown=[t.c[n] for n in shown_names], hidden=hidden, can_sort=can_sort,
+        can_add_filter=len(state.filters) < MAX_FILTERS,
         indexed=indexed_columns(t), orm_class=overlay(src).classes.get(t.name),
         ops=list(Op), op_labels=OP_LABELS, null_ops=NULL_OPS, per_page_choices=PER_PAGE_CHOICES,
         view_url=view_url, count_args=canonical_args(state.with_(sort=None, page=1, after=None,
                                                                  cols=())),
+        values_args=canonical_args(state.with_(page=1, after=None), shown_names),
         crumbs=_crumbs(src, t.name), tab='data', **_entity_context(src))
 
 
@@ -333,7 +327,10 @@ def values_fragment(source, table):
     if col_name not in sortable(t, hidden):
         abort(404)
     col = t.c[col_name]
-    raw = read_view(request.args).filters
+    state = read_view(request.args, sortable=sortable(t, hidden))
+    raw = state.filters
+    if len(raw) >= MAX_FILTERS:
+        abort(404)   # a value link would need one more filter than the cap
     filters, errors = parse_filters(raw, t, hidden=hidden)
     ctx = {'col': col_name, 'filtered': bool(raw), 'items': [], 'error': None}
     if errors:
@@ -349,7 +346,7 @@ def values_fragment(source, table):
         ctx['items'].append({
             'cell': render_cell(value, column_kind(col), chars=GRID_CHARS), 'n': n,
             'url': url_for('db_browser.table', source=src.key, table=t.name,
-                           **canonical_args(ViewState(filters=(*raw, rf)))),
+                           **canonical_args(state.with_(filters=(*raw, rf), page=1, after=None))),
         })
     return render_template('db_browser/_values.html', **ctx)
 
@@ -368,5 +365,5 @@ def cell_fragment(source, table):
             value = fetch_cell(conn, t, t.c[col_name], key)
     except DBAPIError as exc:
         return render_template('db_browser/_cell_full.html', cell=None, error=_db_error(exc))
-    cell = render_cell(value, column_kind(t.c[col_name]), chars=10 ** 6, pretty=True)
+    cell = render_cell(value, column_kind(t.c[col_name]), chars=CELL_MAX_CHARS, pretty=True)
     return render_template('db_browser/_cell_full.html', cell=cell, error=None)

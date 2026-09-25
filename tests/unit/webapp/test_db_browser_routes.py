@@ -137,6 +137,24 @@ class TestPages:
         assert resp.status_code == 200
         assert 'is-invalid' in resp.get_data(as_text=True)
 
+    def test_bad_cursor_is_inline_not_500(self, app, auth_client):
+        resp = auth_client.get(_url(app, 'db_browser.table', source='sam', table='users',
+                                    after='abc'))
+        assert resp.status_code == 200
+        assert 'Invalid page cursor.' in resp.get_data(as_text=True)
+
+    def test_cursor_is_dropped_when_a_sort_makes_it_meaningless(self, app, auth_client):
+        resp = auth_client.get(_url(app, 'db_browser.table', source='sam', table='users',
+                                    after='5', sort_by='username', sort_dir='asc'))
+        assert resp.status_code == 302
+        assert 'after=' not in resp.headers['Location']
+        assert 'sort_by=username' in resp.headers['Location']
+
+    def test_per_page_snaps_to_a_choice(self, app, auth_client):
+        resp = auth_client.get(_url(app, 'db_browser.table', source='sam', table='users',
+                                    per_page=37))
+        assert resp.status_code == 302 and 'per_page=25' in resp.headers['Location']
+
     @pytest.mark.parametrize('source, table', [
         ('sam', 'no_such_table'), ('nowhere', 'users'), ('sam', 'users; DROP TABLE users'),
     ])

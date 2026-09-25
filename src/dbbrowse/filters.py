@@ -5,6 +5,7 @@ coerced by the column's type and always bound.
 """
 from __future__ import annotations
 
+import operator
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from decimal import Decimal, InvalidOperation
@@ -12,6 +13,7 @@ from enum import Enum
 from typing import Any, Iterable, List, Optional, Tuple
 
 from sqlalchemy import Column, Table
+from sqlalchemy.dialects.mysql import TINYINT
 from sqlalchemy.sql import sqltypes
 
 MAX_FILTERS = 10
@@ -50,7 +52,8 @@ _OPS_BY_KIND = {
 def column_kind(col: Column) -> str:
     """One of int num bool datetime date time text long json binary other."""
     t = col.type
-    if isinstance(t, sqltypes.Boolean):
+    # MySQL reflects BOOLEAN as TINYINT(1); the width is the only trace of it.
+    if isinstance(t, sqltypes.Boolean) or (isinstance(t, TINYINT) and t.display_width == 1):
         return 'bool'
     if isinstance(t, sqltypes.Integer):
         return 'int'
@@ -84,6 +87,13 @@ class RawFilter:
     value: str = ''
 
 
+_CLAUSES = {
+    Op.eq: operator.eq, Op.ne: operator.ne, Op.lt: operator.lt, Op.le: operator.le,
+    Op.gt: operator.gt, Op.ge: operator.ge, Op.like: Column.like, Op.in_: Column.in_,
+    Op.isnull: lambda c, _: c.is_(None), Op.notnull: lambda c, _: c.is_not(None),
+}
+
+
 @dataclass(frozen=True)
 class Filter:
     column: Column
@@ -91,14 +101,7 @@ class Filter:
     value: Any = None
 
     def clause(self):
-        c, v = self.column, self.value
-        return {
-            Op.eq: lambda: c == v, Op.ne: lambda: c != v,
-            Op.lt: lambda: c < v, Op.le: lambda: c <= v,
-            Op.gt: lambda: c > v, Op.ge: lambda: c >= v,
-            Op.like: lambda: c.like(v), Op.in_: lambda: c.in_(v),
-            Op.isnull: lambda: c.is_(None), Op.notnull: lambda: c.is_not(None),
-        }[self.op]()
+        return _CLAUSES[self.op](self.column, self.value)
 
 
 class FilterError(ValueError):

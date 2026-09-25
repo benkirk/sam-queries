@@ -94,6 +94,6 @@ browser needs no new JS.
 ## Deliberately not done
 
 - **Writes and a SQL console** (decisions above).
-- **Cluster-wide cache refresh.** Only the current worker is cleared; the TTL bounds staleness on the others.
+- **Cluster-wide cache refresh.** Only the current worker is cleared; the TTL bounds staleness on the others. The metadata cache is not on the Admin Caching card and `sam-admin cache --refresh` does not reach it, so after a DDL change other workers may reflect the old columns for up to 15 min (a dropped column then shows as a query error, not a wrong value).
 - **An ORM overlay for the plugin databases.** Their reflected PKs and FKs are enough.
 - **A `sam-admin db` CLI.** `dbbrowse` is Flask-free so one can be added.

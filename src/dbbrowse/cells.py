@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import date, datetime, time
+from decimal import Decimal
 from typing import Any
 
 from .query import truncated
@@ -26,7 +27,7 @@ def render_cell(value: Any, column_kind: str, *, chars: int, pretty: bool = Fals
         return CellView(f'<binary {len(bytes(value))} bytes>', 'binary')
     if isinstance(value, bool):
         return CellView('true' if value else 'false', 'bool')
-    if isinstance(value, (int, float)) or type(value).__name__ == 'Decimal':
+    if isinstance(value, (int, float, Decimal)):
         return CellView(str(value), 'num')
     if isinstance(value, datetime):
         return CellView(value.isoformat(sep=' '), 'date')

@@ -4,12 +4,15 @@ Mounted when ``DB_BROWSER_ENABLED``; every route is gated here by
 ``Permission.ADMIN_DATABASE``, so no route can forget the check. Query logic
 lives in ``dbbrowse`` (Flask-free); design record: docs/plans/DB_BROWSER.md.
 """
-from flask import Blueprint, abort, current_app
+import logging
+
+from flask import Blueprint, abort, current_app, request
 from flask_login import current_user
 
 from webapp.utils.rbac import Permission, has_permission
 
 bp = Blueprint('db_browser', __name__)
+logger = logging.getLogger(__name__)
 
 
 @bp.before_request
@@ -18,6 +21,9 @@ def _gate():
         return current_app.login_manager.unauthorized()
     if not has_permission(current_user, Permission.ADMIN_DATABASE):
         abort(403)
+    # Who read what: every route, names only, never filter or key values.
+    logger.info('db_browser user=%s %s %s', current_user.username, request.endpoint,
+                ' '.join(f'{k}={v}' for k, v in sorted(request.view_args.items())))
 
 
 @bp.context_processor

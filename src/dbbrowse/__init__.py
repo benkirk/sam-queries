@@ -5,14 +5,14 @@ from .cells import CellView, render_cell
 from .filters import (MAX_FILTERS, NULL_OPS, OP_LABELS, Filter, FilterError, Op, RawFilter,
                       coerce, column_kind, ops_for, parse_filters)
 from .overlay import OrmOverlay
-from .query import (DETAIL_CHARS, GRID_CHARS, MAX_OFFSET, OffsetTooDeep, Page, PageRequest,
-                    exact_count, fetch_by_key, fetch_cell, fetch_page, top_values)
+from .query import (CELL_MAX_CHARS, DETAIL_CHARS, GRID_CHARS, MAX_OFFSET, OffsetTooDeep, Page,
+                    PageRequest, exact_count, fetch_by_key, fetch_cell, fetch_page, top_values)
 from .readonly import (ReadOnlyNotEngaged, UnsupportedDialect, is_read_only_violation,
                        is_timeout, read_only_connection)
 from .redact import DEFAULT_POLICY, RedactionPolicy
 
 __all__ = [
-    'CellView', 'DEFAULT_POLICY', 'DETAIL_CHARS', 'FkEdge', 'FkGraph', 'Filter', 'FilterError',
+    'CELL_MAX_CHARS', 'CellView', 'DEFAULT_POLICY', 'DETAIL_CHARS', 'FkEdge', 'FkGraph', 'Filter', 'FilterError',
     'GRID_CHARS', 'MAX_FILTERS', 'MAX_OFFSET', 'MetadataCache', 'NULL_OPS', 'OP_LABELS', 'Op',
     'OffsetTooDeep', 'OrmOverlay', 'Page', 'PageRequest', 'RawFilter', 'ReadOnlyNotEngaged',
     'RedactionPolicy', 'TableEntry', 'UnsupportedDialect', 'coerce', 'column_kind',

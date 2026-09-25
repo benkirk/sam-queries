@@ -163,6 +163,8 @@ def read_active_only(args, default=False):
 DEFAULT_PER_PAGE = 50
 MIN_PER_PAGE = 10
 MAX_PER_PAGE = 200
+#: The choices a rows-per-page selector offers (jobs explorer, /database).
+PER_PAGE_CHOICES = (25, 50, 100, 200)
 
 
 def read_page(args, *, default=DEFAULT_PER_PAGE,

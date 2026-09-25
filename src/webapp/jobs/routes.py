@@ -49,7 +49,7 @@ from webapp.jobs.scope import (
 from webapp.utils.scope import resolve_scope_project as _scope_project
 from webapp.jobs.session import is_enabled
 from webapp.utils import age_bands, ladders
-from webapp.utils.htmx import read_flag, read_layout, read_page, read_sort
+from webapp.utils.htmx import PER_PAGE_CHOICES, read_flag, read_layout, read_page, read_sort
 from webapp.utils.rbac import (
     Permission,
     has_permission_any_facility,
@@ -1290,9 +1290,6 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
 # Explorer full view (project mode) + machine-wide family (operator surfaces)
 # ---------------------------------------------------------------------------
 
-# Row-count choices offered by the explorer's per-page selector.
-_PER_PAGE_OPTIONS = (25, 50, 100, 200)
-
 
 def _machine_or_404(machine: str) -> str:
     """Validate a path ``<machine>`` against the warmed engines -> 404 unknown.
@@ -1662,7 +1659,7 @@ def explore_page(project):
                                     projcode=project.projcode, scope=scope),
         layout=read_layout(),
         filters=panel, user_search_url=_user_search_url(),
-        per_page_options=_PER_PAGE_OPTIONS, card=card,
+        per_page_options=PER_PAGE_CHOICES, card=card,
     )
 
 
@@ -1688,7 +1685,7 @@ def explore_machine_page(machine):
         card_url=_explorer_card_url('machine', machine),
         layout=read_layout(),
         filters=panel, user_search_url=_user_search_url(),
-        per_page_options=_PER_PAGE_OPTIONS, card=card,
+        per_page_options=PER_PAGE_CHOICES, card=card,
     )
 
 
@@ -1725,7 +1722,7 @@ def explore_user_page(machine):
         card_url=_explorer_card_url('user', machine),
         layout=read_layout(),
         filters=panel, user_search_url=_user_search_url(),
-        per_page_options=_PER_PAGE_OPTIONS, card=card,
+        per_page_options=PER_PAGE_CHOICES, card=card,
     )
 
 

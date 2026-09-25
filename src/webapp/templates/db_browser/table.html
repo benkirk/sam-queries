@@ -48,7 +48,7 @@
         </div>
     </div>
     {% endfor %}
-    {% for msg in form_errors %}<div class="small mb-2"><i class="fa-solid fa-circle-exclamation me-1"></i>{{ msg or 'Invalid page cursor.' }}</div>{% endfor %}
+    {% for msg in form_errors %}<div class="small mb-2"><i class="fa-solid fa-circle-exclamation me-1"></i>{{ msg }}</div>{% endfor %}
     <div class="d-flex flex-wrap align-items-center gap-2">
         <button type="submit" class="btn btn-sm btn-outline-white"><i class="fa-solid fa-filter me-1"></i>Apply</button>
         <details class="db-columns">
@@ -78,9 +78,9 @@
 {% elif page is not none %}
 <div class="d-flex flex-wrap align-items-center gap-2 mb-2 small">
     <span class="text-body-secondary">
-        {% if page.keyset %}{{ rows | length }} row{{ '' if rows | length == 1 else 's' }} by {{ pk[0] }}
+        {% if page.keyset %}{{ rows | length | fmt_plural('row', raw=true) }} by {{ pk[0] }}
         {% else %}rows {{ page.offset + 1 if rows else 0 }}–{{ page.offset + rows | length }}{% endif %}
-        {% if state.filters %} matching {{ state.filters | length }} filter{{ '' if state.filters | length == 1 else 's' }}{% endif %}
+        {% if state.filters %} matching {{ state.filters | length | fmt_plural('filter', raw=true) }}{% endif %}
     </span>
     <button type="button" class="btn btn-link btn-sm p-0"
             hx-get="{{ url_for('db_browser.count_fragment', source=src.key, table=t.name, **count_args) }}"
@@ -101,8 +101,8 @@
                         {{ c.name }}{% if active %}<i class="fa-solid fa-caret-{{ 'down' if state.desc else 'up' }} ms-1"></i>{% endif %}
                     </a>
                     {% else %}{{ c.name }}{% endif %}
-                    {% if c.name in can_sort %}<button type="button" class="btn btn-link btn-sm p-0 db-icon" title="Top values" aria-label="Top values of {{ c.name }}"
-                            hx-get="{{ url_for('db_browser.values_fragment', source=src.key, table=t.name, col=c.name, **count_args) }}"
+                    {% if c.name in can_sort and can_add_filter %}<button type="button" class="btn btn-link btn-sm p-0 db-icon" title="Top values" aria-label="Top values of {{ c.name }}"
+                            hx-get="{{ url_for('db_browser.values_fragment', source=src.key, table=t.name, col=c.name, **values_args) }}"
                             hx-target="#db-values"><i class="fa-solid fa-chart-simple"></i></button>{% endif %}
                     {% if c.name in pk %}<i class="fa-solid fa-key db-icon" title="Primary key"></i>
                     {% elif c.name in indexed %}<i class="fa-solid fa-bolt db-icon" title="Indexed: cheap to sort"></i>{% endif %}
