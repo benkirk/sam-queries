@@ -153,21 +153,27 @@ class TestErrorSplitting:
         assert got[0]['errors'] == ['a: x', 'b: y']
 
 
+def _unique_request_number():
+    """Scope counts to one test's rows: other xdist workers commit to this table."""
+    return f'TRI{uuid.uuid4().hex[:8].upper()}'
+
+
 class TestFilters:
     def test_status_accepts_a_scalar_or_a_list(self, session):
-        _action(session, status='failed')
-        _action(session, status='manual')
-        base = count_recent_xras_actions(session)
-        assert count_recent_xras_actions(session, status='failed') >= 1
+        rn = _unique_request_number()
+        _action(session, status='failed', request_number=rn)
+        _action(session, status='manual', request_number=rn)
+        _action(session, request_number=rn)
+        assert count_recent_xras_actions(session, status='failed', request_number=rn) == 1
         assert count_recent_xras_actions(
-            session, status=['failed', 'manual']) <= base
+            session, status=['failed', 'manual'], request_number=rn) == 2
 
     def test_an_empty_list_is_not_a_filter(self, session):
         """An empty multi-select must mean "no filter", not "match nothing" —
         htmx omits an unselected multi-select entirely."""
-        _action(session)
-        assert (count_recent_xras_actions(session, status=[])
-                == count_recent_xras_actions(session))
+        rn = _unique_request_number()
+        _action(session, request_number=rn)
+        assert count_recent_xras_actions(session, status=[], request_number=rn) == 1
 
     def test_http_status_separates_400_from_422(self, session):
         """The whole reason the column exists: both are status='failed'."""
@@ -177,17 +183,16 @@ class TestFilters:
         assert count_recent_xras_actions(session, http_status=422) >= 1
 
     def test_has_errors_is_tri_state(self, session):
-        _action(session, status='failed', errors=['x: y'])
-        _action(session)
-        with_errors = count_recent_xras_actions(session, has_errors=True)
-        without = count_recent_xras_actions(session, has_errors=False)
-        assert with_errors >= 1 and without >= 1
-        assert with_errors + without == count_recent_xras_actions(session)
+        rn = _unique_request_number()
+        _action(session, status='failed', errors=['x: y'], request_number=rn)
+        _action(session, request_number=rn)
+        with_errors = count_recent_xras_actions(session, has_errors=True, request_number=rn)
+        without = count_recent_xras_actions(session, has_errors=False, request_number=rn)
+        assert (with_errors, without) == (1, 1)
+        assert count_recent_xras_actions(session, request_number=rn) == 2
 
     def test_replays_only_is_tri_state(self, session):
-        # Scoped to this test's rows: three unscoped counts of a table other
-        # xdist workers commit to can disagree between queries.
-        rn = f'TRI{uuid.uuid4().hex[:8].upper()}'
+        rn = _unique_request_number()
         original = _action(session, request_number=rn)
         _action(session, source_action_id=original.xras_action_log_id,
                 status='rechecked', request_number=rn)
@@ -219,10 +224,12 @@ class TestFilters:
         assert len(got) == 1
 
     def test_count_matches_the_row_query(self, session):
-        _action(session, status='failed')
-        _action(session, status='failed')
-        rows = get_recent_xras_actions(session, status='failed')
-        assert count_recent_xras_actions(session, status='failed') == len(rows)
+        rn = _unique_request_number()
+        _action(session, status='failed', request_number=rn)
+        _action(session, status='failed', request_number=rn)
+        rows = get_recent_xras_actions(session, status='failed', request_number=rn)
+        assert len(rows) == 2
+        assert count_recent_xras_actions(session, status='failed', request_number=rn) == len(rows)
 
 
 class TestSorting:
