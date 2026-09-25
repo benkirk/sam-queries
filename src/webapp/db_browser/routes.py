@@ -68,12 +68,17 @@ def _row_url(src, table, pk, row):
                    **key_args({c: row[c] for c in pk}))
 
 
-def _fk_links(src, table_name, row):
-    """{column: url} for each outgoing FK whose values are all present in ``row``."""
+def _fk_edges(src, table_name):
+    """Outgoing FKs whose target table exists in this source."""
     names = {e.name for e in catalog(src)}
+    return [e for e in fk_graph(src).outgoing.get(table_name, ()) if e.ref_table in names]
+
+
+def _fk_links(src, edges, row):
+    """{column: url} for each FK in ``edges`` whose values are all present in ``row``."""
     links = {}
-    for edge in fk_graph(src).outgoing.get(table_name, ()):
-        if edge.ref_table not in names or any(row.get(c) is None for c in edge.columns):
+    for edge in edges:
+        if any(row.get(c) is None for c in edge.columns):
             continue
         links.setdefault(edge.columns[0], url_for(
             'db_browser.row', source=src.key, table=edge.ref_table,
@@ -121,7 +126,7 @@ def tables_fragment(source):
 def refresh(source):
     src = get_source(source)
     CACHE.invalidate((src.key,))
-    return redirect(request.form.get('next') or url_for('db_browser.source', source=src.key))
+    return redirect(url_for('db_browser.source', source=src.key))
 
 
 @bp.route('/<source>/<table>')
@@ -172,8 +177,9 @@ def table(source, table):
 
     rows = []
     if page is not None:
+        edges = _fk_edges(src, t.name)
         for row in page.rows:
-            links = _fk_links(src, t.name, row)
+            links = _fk_links(src, edges, row)
             rows.append({
                 'url': _row_url(src, t, pk, row),
                 'cells': [(render_cell(row[c.name], column_kind(c), chars=GRID_CHARS),
@@ -262,7 +268,7 @@ def row(source, table):
         abort(404)
 
     values = rows[0] if rows else {}
-    links = _fk_links(src, t.name, values) if values else {}
+    links = _fk_links(src, _fk_edges(src, t.name), values) if values else {}
     fields = [{
         'col': c, 'kind': column_kind(c), 'link': links.get(c.name),
         'cell': render_cell(values.get(c.name), column_kind(c), chars=DETAIL_CHARS, pretty=True),
