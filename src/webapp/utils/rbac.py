@@ -155,6 +155,10 @@ class Permission(Enum):
     # close / reopen on a project's Invitations tab. Inviting people and
     # pasting rosters stay on MANAGE_ACCOUNT_REQUESTS.
     MANAGE_EVENTS = "manage_events"
+    # The read-only /database row browser over every engine the webapp holds
+    # (webapp/db_browser). ``admin_`` so no ALL_* aggregate grants it: rows
+    # include PII, and redaction covers secrets, not people.
+    ADMIN_DATABASE = "admin_database"
     SYSTEM_ADMIN = "system_admin"  # Full access to everything
 
 
@@ -238,10 +242,12 @@ GROUP_PERMISSIONS: Dict[str, Set[Permission]] = {
     'nusd': _ALLOCATION_ADMIN,
 
     # csg: the allocation-administrator tier PLUS edit on resources — CSG runs
-    # the plant — and the event lifecycle, which is CSG's alone. Create/delete
-    # of resources stays withheld (ssg holds CREATE_RESOURCES).
+    # the plant — the event lifecycle and the /database browser, which are
+    # CSG's alone. Create/delete of resources stays withheld (ssg holds
+    # CREATE_RESOURCES).
     'csg': _ALLOCATION_ADMIN | {Permission.EDIT_RESOURCES,
-                                Permission.MANAGE_EVENTS},
+                                Permission.MANAGE_EVENTS,
+                                Permission.ADMIN_DATABASE},
 
     # ssg: read-only across the board, plus resource create/edit and
     # edit system status (for outages...)
