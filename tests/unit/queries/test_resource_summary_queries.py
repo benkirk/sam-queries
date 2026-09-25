@@ -27,6 +27,7 @@ from sam.queries.charges import (
     get_monthly_user_counts_for_project,
     get_user_queue_breakdown_for_project,
     get_user_summary_for_project,
+    query_comp_charge_summaries,
 )
 from sam.summaries.comp_summaries import CompChargeSummary
 
@@ -45,7 +46,7 @@ from factories import (
 
 def _add_summary_row(
     session, *, project, resource, machine, username,
-    queue_name, activity_date, num_jobs, core_hours, charges,
+    queue_name, activity_date, num_jobs, core_hours, charges, account,
 ):
     """Insert a single comp_charge_summary row directly.
 
@@ -63,6 +64,7 @@ def _add_summary_row(
         machine_id=machine.machine_id,
         queue=queue_name,
         resource=resource.resource_name,
+        account_id=account.account_id if account is not None else None,
         num_jobs=num_jobs,
         core_hours=core_hours,
         charges=charges,
@@ -87,38 +89,40 @@ def comp_fixture(session):
     project = make_project(session, lead=user_a)
     rt = make_resource_type(session, resource_type=next_seq('HPCRT'))
     resource = make_resource(session, resource_type=rt)
-    make_account(session, project=project, resource=resource)
+    account = make_account(session, project=project, resource=resource)
     machine = make_machine(session, resource=resource)
     queue_main = make_queue(session, resource=resource, queue_name='main_' + next_seq('x'))
     queue_gpu  = make_queue(session, resource=resource, queue_name='gpu_'  + next_seq('x'))
 
     # alice — single (queue, date)
     _add_summary_row(session, project=project, resource=resource, machine=machine,
-                     username=user_a.username, queue_name=queue_main.queue_name,
+                     account=account, username=user_a.username, queue_name=queue_main.queue_name,
                      activity_date=date(2099, 1, 15),
                      num_jobs=10, core_hours=100.0, charges=50.0)
     # bob — two queues, one date
     _add_summary_row(session, project=project, resource=resource, machine=machine,
-                     username=user_b.username, queue_name=queue_main.queue_name,
+                     account=account, username=user_b.username, queue_name=queue_main.queue_name,
                      activity_date=date(2099, 1, 15),
                      num_jobs=5, core_hours=20.0, charges=10.0)
     _add_summary_row(session, project=project, resource=resource, machine=machine,
-                     username=user_b.username, queue_name=queue_gpu.queue_name,
+                     account=account, username=user_b.username, queue_name=queue_gpu.queue_name,
                      activity_date=date(2099, 1, 15),
                      num_jobs=3, core_hours=30.0, charges=15.0)
     # carol — one queue, two dates (Jan + Feb)
     _add_summary_row(session, project=project, resource=resource, machine=machine,
-                     username=user_c.username, queue_name=queue_main.queue_name,
+                     account=account, username=user_c.username, queue_name=queue_main.queue_name,
                      activity_date=date(2099, 1, 15),
                      num_jobs=4, core_hours=40.0, charges=20.0)
     _add_summary_row(session, project=project, resource=resource, machine=machine,
-                     username=user_c.username, queue_name=queue_main.queue_name,
+                     account=account, username=user_c.username, queue_name=queue_main.queue_name,
                      activity_date=date(2099, 2, 10),
                      num_jobs=6, core_hours=60.0, charges=30.0)
     session.flush()
     return {
         'project': project,
         'resource': resource,
+        'account': account,
+        'machine': machine,
         'users': {'alice': user_a, 'bob': user_b, 'carol': user_c},
         'queues': {'main': queue_main.queue_name, 'gpu': queue_gpu.queue_name},
         'start': date(2099, 1, 1),
@@ -302,3 +306,46 @@ class TestMonthlyUserCounts:
             date(2050, 1, 1), date(2050, 12, 31),
         )
         assert counts == {}
+
+
+# ---------------------------------------------------------------------------
+# Rows are matched by account_id, not by the projcode/resource text columns
+# ---------------------------------------------------------------------------
+
+class TestAccountFilter:
+
+    @pytest.fixture
+    def orphan_row(self, session, comp_fixture):
+        """A row naming the fixture project and resource but carrying no account."""
+        return _add_summary_row(
+            session, project=comp_fixture['project'], resource=comp_fixture['resource'],
+            machine=comp_fixture['machine'], account=None,
+            username='orphan_' + next_seq('x'), queue_name=comp_fixture['queues']['main'],
+            activity_date=date(2099, 1, 20), num_jobs=1, core_hours=1.0, charges=99.0,
+        )
+
+    def test_summary_excludes_row_without_account(self, session, comp_fixture, orphan_row):
+        rows = get_user_summary_for_project(
+            session, [comp_fixture['project'].projcode],
+            comp_fixture['resource'].resource_name,
+            comp_fixture['start'], comp_fixture['end'],
+        )
+        assert orphan_row.username not in {r['username'] for r in rows}
+
+    def test_exact_filters_use_the_account(self, session, comp_fixture, orphan_row):
+        rows = query_comp_charge_summaries(
+            session, comp_fixture['start'], comp_fixture['end'],
+            projcode=comp_fixture['project'].projcode,
+            resource=comp_fixture['resource'].resource_name,
+        )
+        usernames = {r['username'] for r in rows}
+        assert comp_fixture['users']['bob'].username in usernames
+        assert orphan_row.username not in usernames
+
+    def test_wildcard_filters_match_the_text_columns(self, session, comp_fixture, orphan_row):
+        rows = query_comp_charge_summaries(
+            session, comp_fixture['start'], comp_fixture['end'],
+            projcode=comp_fixture['project'].projcode[:-1] + '%',
+            resource=comp_fixture['resource'].resource_name,
+        )
+        assert orphan_row.username in {r['username'] for r in rows}
