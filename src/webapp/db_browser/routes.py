@@ -8,14 +8,15 @@ from flask_login import current_user
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 
 from dbbrowse import (DETAIL_CHARS, GRID_CHARS, NULL_OPS, OP_LABELS, Op, OffsetTooDeep,
-                      PageRequest, coerce, column_kind, exact_count, fetch_by_key, fetch_cell,
-                      fetch_page, is_timeout, ops_for, parse_filters, render_cell)
+                      PageRequest, RawFilter, coerce, column_kind, exact_count, fetch_by_key,
+                      fetch_cell, fetch_page, is_timeout, ops_for, parse_filters, render_cell,
+                      top_values)
 from webapp.utils.config_inspect import classify_connection_error, format_db_url_safe
 from webapp.utils.rbac import Permission, has_permission_any_facility
 
 from . import bp
-from .params import (PER_PAGE_CHOICES, args_match, canonical_args, eq_filter_args, key_args,
-                     read_key, read_view)
+from .params import (PER_PAGE_CHOICES, ViewState, args_match, canonical_args, eq_filter_args,
+                     key_args, read_key, read_view, url_value)
 from .sources import (CACHE, browse_sources, catalog, connect, fk_graph, get_source, get_table,
                       hidden_columns, indexed_columns, overlay, primary_key, sortable,
                       table_entry)
@@ -304,6 +305,36 @@ def count_fragment(source, table):
     except DBAPIError as exc:
         return render_template('db_browser/_count.html', n=None, error=_db_error(exc))
     return render_template('db_browser/_count.html', n=n, error=None)
+
+
+@bp.route('/<source>/<table>/values')
+def values_fragment(source, table):
+    src = get_source(source)
+    t = get_table(src, table)
+    hidden = hidden_columns(t)
+    col_name = request.args.get('col', '')
+    if col_name not in sortable(t, hidden):
+        abort(404)
+    col = t.c[col_name]
+    raw = read_view(request.args).filters
+    filters, errors = parse_filters(raw, t, hidden=hidden)
+    ctx = {'col': col_name, 'filtered': bool(raw), 'items': [], 'error': None}
+    if errors:
+        return render_template('db_browser/_values.html', **{**ctx, 'error': errors[0].message})
+    try:
+        with connect(src) as conn:
+            pairs = top_values(conn, t, col, filters)
+    except DBAPIError as exc:
+        return render_template('db_browser/_values.html', **{**ctx, 'error': _db_error(exc)})
+    for value, n in pairs:
+        rf = (RawFilter(col_name, 'isnull') if value is None
+              else RawFilter(col_name, 'eq', url_value(value)))
+        ctx['items'].append({
+            'cell': render_cell(value, column_kind(col), chars=GRID_CHARS), 'n': n,
+            'url': url_for('db_browser.table', source=src.key, table=t.name,
+                           **canonical_args(ViewState(filters=(*raw, rf)))),
+        })
+    return render_template('db_browser/_values.html', **ctx)
 
 
 @bp.route('/<source>/<table>/cell')

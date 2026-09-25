@@ -118,3 +118,13 @@
         max-height: 40vh;
     }
 }
+
+.db-grid th .btn.db-icon {
+    color: var(--text-tertiary);
+    vertical-align: baseline;
+}
+
+.db-grid th .btn.db-icon:hover,
+.db-grid th .btn.db-icon:focus-visible {
+    color: var(--text-link);
+}

@@ -2269,6 +2269,13 @@
     ]
   ],
   [
+    "db_browser.values_fragment",
+    "/database/<source>/<table>/values",
+    [
+      "GET"
+    ]
+  ],
+  [
     "disk_scans.access_history_fragment",
     "/dashboards/user/disk-scans/<projcode>/access-history",
     [

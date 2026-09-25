@@ -207,8 +207,9 @@ columns and foreign keys come from reflection, so nothing is registered per
 model. Admin → Database, `http://localhost:5050/database/`.
 
 - **Table view**: structured filters (`=`, `<`, `like`, `in`, `is null`, ...),
-  sort, column picker, row estimates; an exact count only on click. Every view
-  is a plain URL, so it can be bookmarked or pasted into a ticket.
+  sort, column picker, row estimates; an exact count only on click; a column's
+  top values (click one to filter). Every view is a plain URL, so it can be
+  bookmarked or pasted into a ticket.
 - **Row view**: every column, foreign-key links to the referenced row,
   "referenced by" links to each child table filtered on this row, and
   "Open in SAM" for users, projects and groups.

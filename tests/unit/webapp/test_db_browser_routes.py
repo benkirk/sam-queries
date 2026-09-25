@@ -103,6 +103,19 @@ class TestPages:
                                     col='username', **{'k.user_id': uid}))
         assert 'benkirk' in cell.get_data(as_text=True)
 
+    def test_top_values_fragment_links_back_with_the_value_filter(self, app, auth_client):
+        html = auth_client.get(_url(app, 'db_browser.values_fragment', source='sam', table='users',
+                                    col='username', **{'f0.col': 'username', 'f0.op': 'like',
+                                                       'f0.v': 'benkirk'})).get_data(as_text=True)
+        assert 'within the current filters' in html
+        assert 'f1.col=username&amp;f1.op=eq&amp;f1.v=benkirk' in html
+
+    @pytest.mark.parametrize('col', ['no_such_column', 'password'])
+    def test_top_values_refuses_unknown_and_redacted_columns(self, app, auth_client, col):
+        table = 'api_credentials' if col == 'password' else 'users'
+        assert auth_client.get(_url(app, 'db_browser.values_fragment', source='sam', table=table,
+                                    col=col)).status_code == 404
+
     def test_messy_form_submission_redirects_to_canonical(self, app, auth_client):
         url = _url(app, 'db_browser.table', source='sam', table='users',
                    **{'f0.col': 'username', 'f0.op': 'eq', 'f0.v': 'benkirk',

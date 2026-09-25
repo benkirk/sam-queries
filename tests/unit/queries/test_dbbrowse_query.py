@@ -9,7 +9,8 @@ from sqlalchemy.dialects import mysql, postgresql
 
 from dbbrowse import (GRID_CHARS, MAX_FILTERS, OffsetTooDeep, Op, PageRequest, RawFilter,
                       column_kind, exact_count, fetch_by_key, fetch_cell, fetch_page,
-                      parse_filters, read_only_connection, reflect_table, render_cell)
+                      parse_filters, read_only_connection, reflect_table, render_cell,
+                      top_values)
 from dbbrowse.query import build_page_select
 
 T = Table(
@@ -112,6 +113,17 @@ def test_fetch_against_the_test_db(engine):
         rows = fetch_by_key(conn, users, list(users.c), {'user_id': uid})
         assert len(rows) == 1 and rows[0]['username'] == 'benkirk'
         assert fetch_cell(conn, users, users.c.username, {'user_id': uid}) == 'benkirk'
+
+
+def test_top_values_orders_by_frequency_under_filters(engine):
+    with read_only_connection(engine) as conn:
+        users = reflect_table(conn, None, 'users')
+        pairs = top_values(conn, users, users.c.locked, [], limit=5)
+        filters, _ = parse_filters([RawFilter('username', 'eq', 'benkirk')], users)
+        one = top_values(conn, users, users.c.username, filters)
+    counts = [n for _, n in pairs]
+    assert counts == sorted(counts, reverse=True) and sum(counts) > 1
+    assert one == [('benkirk', 1)]
 
 
 def test_keyset_pages_do_not_overlap(engine):

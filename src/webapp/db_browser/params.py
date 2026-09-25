@@ -84,17 +84,18 @@ def read_key(args) -> Dict[str, str]:
 
 
 def key_args(key: Dict[str, object]) -> Dict[str, str]:
-    return {f'k.{col}': _url_value(v) for col, v in key.items()}
+    return {f'k.{col}': url_value(v) for col, v in key.items()}
 
 
 def eq_filter_args(pairs: List[Tuple[str, object]]) -> Dict[str, str]:
     args = {}
     for i, (col, value) in enumerate(pairs):
-        args.update({f'f{i}.col': col, f'f{i}.op': 'eq', f'f{i}.v': _url_value(value)})
+        args.update({f'f{i}.col': col, f'f{i}.op': 'eq', f'f{i}.v': url_value(value)})
     return args
 
 
-def _url_value(value) -> str:
+def url_value(value) -> str:
+    """A value as the string ``coerce`` parses back."""
     if isinstance(value, datetime):
         return value.isoformat(sep=' ')
     if isinstance(value, (date, time)):

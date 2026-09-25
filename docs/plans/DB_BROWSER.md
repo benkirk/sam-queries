@@ -36,7 +36,8 @@ src/dbbrowse/          SQLAlchemy only (gate: tests/unit/gates/test_dbbrowse_imp
   overlay.py           ORM knowledge (class names, view PKs, ORM-only FKs) from a registry argument
   filters.py query.py  (column, op, value) -> bound WHERE; keyset / capped-OFFSET paging
   redact.py cells.py   what is never selected; how a value displays
-src/webapp/utils/engine_inventory.py   the engine list (also feeds the Configuration card)
+src/webapp/utils/engine_inventory.py   the engine list (also feeds the Configuration card and
+                                       /api/v1/health/db-pool)
 src/webapp/db_browser/                 blueprint: gate, sources + cache, URL state, routes
 ```
 
@@ -60,6 +61,13 @@ It always calls `engine.connect()` and never uses `db.session`, so the audit hoo
 - **Metadata** (catalog, reflected tables, FK graph) is cached per process with a 15 min TTL and an RLock. The gunicorn gthread workers share the process. "Refresh metadata" clears it for this worker.
 - **Reflection** uses `resolve_fks=False`, and the MySQL FK graph is one `KEY_COLUMN_USAGE` query.
 - **Measured locally:** a warm table page runs exactly one page SELECT, and `test_warm_page_runs_one_select_and_no_count` pins that. Pages took 0.06–0.38 s on webdev, with the 506k-row `comp_charge_summary` sorted by date the slowest.
+
+### Top values
+
+The chart icon on a sortable column header runs `dbbrowse.top_values`: a
+GROUP BY under the current filters, the 20 most frequent values, NULL included,
+under the same timeout. Each value links to the table filtered on it. It is
+not offered on long, JSON, binary or redacted columns.
 
 ### Redaction
 
@@ -88,5 +96,4 @@ browser needs no new JS.
 - **Writes and a SQL console** (decisions above).
 - **Cluster-wide cache refresh.** Only the current worker is cleared; the TTL bounds staleness on the others.
 - **An ORM overlay for the plugin databases.** Their reflected PKs and FKs are enough.
-- **"Top values" per column.** It would be a GROUP BY on demand, reusing `facet_chips.html`.
 - **A `sam-admin db` CLI.** `dbbrowse` is Flask-free so one can be added.

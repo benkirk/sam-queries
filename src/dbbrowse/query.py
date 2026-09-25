@@ -18,6 +18,7 @@ MAX_OFFSET = 10_000
 GRID_CHARS = 200
 DETAIL_CHARS = 4_000
 CELL_MAX_CHARS = 1_000_000
+TOP_VALUES = 20
 
 
 class OffsetTooDeep(ValueError):
@@ -99,6 +100,15 @@ def fetch_page(conn: Connection, table: Table, columns: Sequence[Column],
                     next_after=rows[-1].get(key.name) if has_next and rows else None)
     return Page(list(columns), rows, has_next, keyset=False,
                 offset=(max(req.page, 1) - 1) * req.per_page)
+
+
+def top_values(conn: Connection, table: Table, column: Column, filters: Sequence[Filter],
+               *, limit: int = TOP_VALUES) -> List[Tuple[Any, int]]:
+    """The ``limit`` most frequent values of ``column`` under ``filters``, NULL included."""
+    n = func.count().label('n')
+    stmt = (select(column, n).select_from(table).where(*(f.clause() for f in filters))
+            .group_by(column).order_by(n.desc(), column).limit(limit))
+    return [(row[0], row[1]) for row in conn.execute(stmt)]
 
 
 def exact_count(conn: Connection, table: Table, filters: Sequence[Filter]) -> int:

@@ -86,6 +86,7 @@
             hx-swap="outerHTML">count exactly</button>
     <span class="ms-auto">{{ copy_button(request.url, label='Copy link', icon='fa-solid fa-link', compact=true) }}</span>
 </div>
+<div id="db-values"></div>
 <div class="table-responsive db-grid">
     <table class="table table-sm table-hover align-top mb-2">
         <thead>
@@ -99,6 +100,9 @@
                         {{ c.name }}{% if active %}<i class="fa-solid fa-caret-{{ 'down' if state.desc else 'up' }} ms-1"></i>{% endif %}
                     </a>
                     {% else %}{{ c.name }}{% endif %}
+                    {% if c.name in can_sort %}<button type="button" class="btn btn-link btn-sm p-0 db-icon" title="Top values" aria-label="Top values of {{ c.name }}"
+                            hx-get="{{ url_for('db_browser.values_fragment', source=src.key, table=t.name, col=c.name, **count_args) }}"
+                            hx-target="#db-values"><i class="fa-solid fa-chart-simple"></i></button>{% endif %}
                     {% if c.name in pk %}<i class="fa-solid fa-key db-icon" title="Primary key"></i>
                     {% elif c.name in indexed %}<i class="fa-solid fa-bolt db-icon" title="Indexed: cheap to sort"></i>{% endif %}
                 </th>
