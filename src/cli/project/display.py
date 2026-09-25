@@ -440,20 +440,37 @@ def display_abandoned_users_from_expired_projects(ctx: Context, abandoned_users)
     ctx.console.print(table)
 
 
-def display_reconcile_results(ctx: Context, projcode: str, added: list):
-    """Render the (username, resource) rows ``--reconcile`` added."""
-    if not added:
-        ctx.console.print(f"✅ Project {projcode}: nothing to add", style="green")
+def display_reconcile_results(ctx: Context, result: dict):
+    """Render a ``project_reconcile`` result: one row per (project, user) added, then totals."""
+    rows = result['added']
+    verb = 'Would add' if result['dry_run'] else 'Added'
+    who = 'lead/admin' if result['mode'] == 'lead_admin' else 'member'
+    if not rows:
+        ctx.console.print(f"✅ {result['scope']}: nothing to add ({who} reconcile, active resources)",
+                          style="green")
         return
     table = Table(box=box.SIMPLE, show_header=True)
-    table.add_column("User")
-    table.add_column("Resource")
-    for username, resource_name in added:
-        table.add_row(username, resource_name)
+    for col in ("Project", "User", "Role", "History", "Resources"):
+        table.add_column(col)
+    for r in rows:
+        table.add_row(r['projcode'], r['username'], r['role'], r['history'],
+                      ', '.join(r['resources']))
     ctx.console.print(table)
+
+    memberships = sum(len(r['resources']) for r in rows)
+    projects = len({r['projcode'] for r in rows})
+    histories = defaultdict(int)
+    for r in rows:
+        histories[r['history'] if not r['history'].startswith('ended') else 'ended'] += 1
     ctx.console.print(
-        f"✅ Project {projcode}: added {fmt.plural(len(added), 'membership', 'memberships')}",
-        style="green")
+        f"{'🔎' if result['dry_run'] else '✅'} {verb} "
+        f"{fmt.plural(memberships, 'membership', 'memberships')} for "
+        f"{fmt.plural(len(rows), 'user', 'users')} on "
+        f"{fmt.plural(projects, 'project', 'projects')} "
+        f"({who} reconcile, active resources)",
+        style="yellow" if result['dry_run'] else "green")
+    ctx.console.print("  by history: " + ', '.join(
+        f"{k} {fmt.number(v)}" for k, v in sorted(histories.items())), style="dim")
 
 
 def display_tree_audit(ctx: Context, violations: list, bad_dates: list):

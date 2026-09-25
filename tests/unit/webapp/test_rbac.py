@@ -250,7 +250,8 @@ class TestXrasAdminTierRidesWithSystemAdmin:
         assert Permission.ADMIN_XRAS in GROUP_PERMISSIONS['admin-testing-only']
 
 
-_OPERATOR_ONLY = [Permission.MANAGE_ACCOUNT_REQUESTS, Permission.MANAGE_EVENTS]
+_OPERATOR_ONLY = [Permission.MANAGE_ACCOUNT_REQUESTS, Permission.MANAGE_EVENTS,
+                  Permission.ADMIN_DATABASE]
 
 
 @pytest.mark.parametrize('perm', _OPERATOR_ONLY, ids=lambda p: p.name)
@@ -283,6 +284,13 @@ class TestAccountRequestAndEventSplit:
 
     def test_nusd_does_not_hold_events(self):
         assert Permission.MANAGE_EVENTS not in GROUP_PERMISSIONS['nusd']
+
+
+def test_database_browser_is_csg_only():
+    """The /database browser shows raw rows (PII); no allocation bundle gets it."""
+    holders = {name for name, perms in GROUP_PERMISSIONS.items()
+               if Permission.ADMIN_DATABASE in perms} - {'admin-testing-only'}
+    assert holders == {'csg'}
 
 
 class TestOrgMetadataGrants:
@@ -401,7 +409,7 @@ class TestAllocationAdminTier:
     @pytest.mark.parametrize('perm', [
         Permission.DELETE_RESOURCES,   # hard-deletes disk roots + overrides
         Permission.DELETE_FACILITIES,
-        Permission.DELETE_USERS,       # hard row delete via Flask-Admin
+        Permission.DELETE_USERS,
         Permission.DELETE_GROUPS,
     ])
     def test_hard_and_machine_deletes_are_withheld(self, bundle, perm):

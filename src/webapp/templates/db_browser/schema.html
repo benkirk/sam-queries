@@ -1,0 +1,72 @@
+{% extends 'db_browser/base.html' %}
+{% block db_title %}{{ t.name }} schema · Database{% endblock %}
+{% block db_main %}
+{% include 'db_browser/_table_header.html' %}
+
+<div class="card mb-3">
+    <div class="card-header py-2 fw-semibold">Columns</div>
+    <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle">
+            <thead><tr><th>Column</th><th>Type</th><th>Null</th><th>Default</th><th>Filter ops</th><th></th></tr></thead>
+            <tbody>
+                {% for c in columns %}
+                <tr>
+                    <td class="font-monospace text-nowrap">{{ c.col.name }}
+                        {% if c.col.name in pk %}<i class="fa-solid fa-key db-icon" title="Primary key"></i>
+                        {% elif c.col.name in indexed %}<i class="fa-solid fa-bolt db-icon" title="Leads an index"></i>{% endif %}</td>
+                    <td class="font-monospace small">{{ c.type }}</td>
+                    <td class="small">{{ 'yes' if c.col.nullable else 'no' }}</td>
+                    <td class="font-monospace small">{{ c.default if c.default is not none else '' }}</td>
+                    <td class="small text-body-secondary">{{ c.ops | join(' · ') }}</td>
+                    <td>{% if c.hidden %}<span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">redacted</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-xl-6">
+        <div class="card h-100">
+            <div class="card-header py-2 fw-semibold">Indexes</div>
+            <ul class="list-group list-group-flush small">
+                {% for ix in indexes %}
+                <li class="list-group-item font-monospace">{{ ix.name }} ({{ ix.columns | join(', ') }})
+                    {% if ix.unique %}<span class="badge bg-body-secondary text-body-secondary border">unique</span>{% endif %}</li>
+                {% else %}
+                <li class="list-group-item text-body-secondary">No secondary indexes{% if pk %}; primary key ({{ pk | join(', ') }}){% endif %}.</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    <div class="col-xl-6">
+        <div class="card h-100">
+            <div class="card-header py-2 fw-semibold">Foreign keys</div>
+            <ul class="list-group list-group-flush small">
+                {% for e in outgoing %}
+                <li class="list-group-item font-monospace">({{ e.columns | join(', ') }}) →
+                    <a href="{{ url_for('db_browser.table', source=src.key, table=e.ref_table) }}">{{ e.ref_table }}</a>({{ e.ref_columns | join(', ') }})
+                    {% if e.origin == 'orm' %}<span class="badge bg-body-secondary text-body-secondary border" title="Declared by the ORM, not the database">orm</span>{% endif %}</li>
+                {% endfor %}
+                {% for e in incoming %}
+                <li class="list-group-item font-monospace">
+                    <a href="{{ url_for('db_browser.table', source=src.key, table=e.table) }}">{{ e.table }}</a>({{ e.columns | join(', ') }}) → ({{ e.ref_columns | join(', ') }})
+                    {% if e.origin == 'orm' %}<span class="badge bg-body-secondary text-body-secondary border" title="Declared by the ORM, not the database">orm</span>{% endif %}</li>
+                {% endfor %}
+                {% if not outgoing and not incoming %}<li class="list-group-item text-body-secondary">None.</li>{% endif %}
+            </ul>
+        </div>
+    </div>
+</div>
+
+{% if orm_only or db_only %}
+<div class="card mt-3">
+    <div class="card-header py-2 fw-semibold">ORM drift ({{ orm_class }})</div>
+    <div class="card-body small">
+        {% if orm_only %}<div>In the ORM, not the database: <span class="font-monospace">{{ orm_only | join(', ') }}</span></div>{% endif %}
+        {% if db_only %}<div>In the database, not the ORM: <span class="font-monospace">{{ db_only | join(', ') }}</span></div>{% endif %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

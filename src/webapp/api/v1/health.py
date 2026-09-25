@@ -30,6 +30,7 @@ from webapp.utils.config_inspect import (
     pool_stats,
     schema_drift,
 )
+from webapp.utils.engine_inventory import engine_sources
 
 bp = Blueprint('api_health', __name__)
 register_error_handlers(bp)
@@ -175,30 +176,24 @@ def readiness():
     return _health_response(include_schema=False, strict=strict)
 
 
+def _pool_name(src) -> str:
+    if src.family == 'fs_scans':
+        return f'fs_scans:{src.database or "fs_scans"}/{src.collection}'
+    return src.key.replace('.', ':', 1)
+
+
 @bp.route('/db-pool', methods=['GET'])
 @login_required
 @require_permission(Permission.SYSTEM_ADMIN)
 def db_pool():
-    """Connection pool statistics for all configured DB engines.
+    """Connection pool statistics for every engine in ``engine_sources()``.
 
-    Returns pool size, utilization, overflow, and a health assessment
-    for each configured engine bind. Includes the hpc-usage-queries
-    plugin engines (``job_history:<machine>``) when the plugin is loaded.
-    Each entry includes an ``error_detail`` classifier when the engine
-    cannot be pinged, distinguishing server-side slot exhaustion (which
-    pool tuning will *not* fix) from local pool exhaustion.
-    Requires SYSTEM_ADMIN permission.
+    Keys: ``sam``, ``system_status``, ``job_history:<machine>`` and
+    ``fs_scans:<database>/<collection>`` (one pool per collection engine).
+    ``error_detail`` tells server-side slot exhaustion (pool tuning will *not*
+    fix it) from local pool exhaustion. Requires SYSTEM_ADMIN.
     """
-    engines = {'sam': db.engine}
-    ss_engine = db.engines.get('system_status')
-    if ss_engine:
-        engines['system_status'] = ss_engine
-
-    # hpc-usage-queries plugin engines (registered on app.extensions
-    # by webapp.jobs.init_job_history at startup; empty when disabled).
-    jh_state = current_app.extensions.get('hpc_usage_queries') or {}
-    for machine, engine in (jh_state.get('engines') or {}).items():
-        engines[f'job_history:{machine}'] = engine
+    engines = {_pool_name(src): src.engine for src in engine_sources(current_app, db)}
 
     pools = {}
     for name, engine in engines.items():

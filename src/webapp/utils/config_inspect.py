@@ -23,6 +23,7 @@ import socket
 import time
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
+from itertools import groupby
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -467,6 +468,29 @@ def gather_server_info() -> Dict[str, Any]:
     }
 
 
+def _fs_scan_freshness(fs_mod, members) -> Dict[str, Any]:
+    """Latest scan date per collection of one fs_scans database; a failing collection reports None."""
+    collections = []
+    for src in members:
+        scan_date = None
+        try:
+            dates = fs_mod.FsScanQueries(
+                filesystems=[src.collection], database=src.database,
+            ).scan_dates()
+            if dates:
+                scan_date = max(dates).date().isoformat()
+        except Exception:
+            scan_date = None
+        collections.append({'name': src.collection, 'scan_date': scan_date})
+    present = [c['scan_date'] for c in collections if c['scan_date']]
+    return {
+        'collection_count': len(collections),
+        'collections':      collections,
+        'oldest_scan':      min(present) if present else None,
+        'newest_scan':      max(present) if present else None,
+    }
+
+
 def gather_runtime_state(app, db) -> Dict[str, Any]:
     """Collect runtime state for the Admin Configuration page.
 
@@ -512,23 +536,12 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
     # --- Server Information (worker-scoped runtime facts)
     server = gather_server_info()
 
-    # --- Database (per bind)
-    databases = []
-    engines = {'sam': db.engine}
-    ss_engine = db.engines.get('system_status') if hasattr(db, 'engines') else None
-    if ss_engine:
-        engines['system_status'] = ss_engine
-
-    # Lazy-import to avoid circulars
-    from webapp.api.v1.health import _ping_engine
+    # --- Database: one row per engine_sources() entry
+    from webapp.api.v1.health import _ping_engine   # lazy: avoids a circular import
+    from webapp.utils.engine_inventory import engine_sources
 
     def _health_row(name: str, engine, **extra) -> dict:
-        """One Database-card row: ping + pool stats + safe URL.
-
-        The single row shape for SAM's own binds and for every plugin engine,
-        so a new plugin surfaces on the card by calling this rather than
-        re-deriving 'healthy' if ok else 'unhealthy' for the fourth time.
-        """
+        """One Database-card row: ping + pool stats + safe URL."""
         ok, latency_ms, err = _ping_engine(engine)
         try:
             stats = pool_stats(engine.pool)
@@ -545,62 +558,18 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
             **extra,
         }
 
-    for name, engine in engines.items():
-        # The clock invariant is SAM's alone: system_status is app-stamped UTC.
-        extra = {'clock': clock_skew(engine)} if name == 'sam' else {}
-        databases.append(_health_row(name, engine, **extra))
-
-    # hpc-usage-queries plugin (one engine per configured machine).
-    # Registered on app.extensions by webapp.jobs.init_job_history at
-    # startup; absent / empty when the plugin is disabled or not
-    # installed, in which case no rows are added.
-    jh_state = app.extensions.get('hpc_usage_queries') or {}
-    for machine, engine in (jh_state.get('engines') or {}).items():
-        databases.append(_health_row(f'job_history ({machine})', engine))
-
-    # fs-scans collections are *schemas* within one CNPG database per disk
-    # resource, so this renders ONE health row per database with per-collection
-    # scan-date freshness hung off it. Registered on app.extensions by
-    # webapp.disk_scans.init_fs_scans; empty when the plugin is disabled.
-    fs_state = app.extensions.get('fs_scans') or {}
-    fs_databases = fs_state.get('databases') or {}
-    if fs_databases:
-        fs_mod = fs_state.get('module')
-        # One health row per backing CNPG database (campaign -> Campaign_Store,
-        # desc1 -> Destor); the warmed state is already grouped by database.
-        for dbname, db_state in sorted(fs_databases.items()):
-            engines = db_state.get('engines') or {}
-            if not engines:
-                continue
-            items = sorted(engines.items())
-            display_db = dbname or 'fs_scans'
-            # Health from one representative engine — all share host + db.
-            rep_engine = items[0][1]
-            # Per-collection scan-date freshness (best-effort; one tiny
-            # scan_metadata read each, pinned to THIS database). A failing
-            # collection reports None rather than sinking the whole card.
-            collections = []
-            for collection, _engine in items:
-                scan_date = None
-                try:
-                    dates = fs_mod.FsScanQueries(
-                        filesystems=[collection], database=dbname,
-                    ).scan_dates()
-                    if dates:
-                        scan_date = max(dates).date().isoformat()
-                except Exception:
-                    scan_date = None
-                collections.append({'name': collection, 'scan_date': scan_date})
-            present = [c['scan_date'] for c in collections if c['scan_date']]
-            databases.append(_health_row(
-                f'fs_scans ({display_db})', rep_engine,
-                scans={
-                    'collection_count': len(collections),
-                    'collections':      collections,
-                    'oldest_scan':      min(present) if present else None,
-                    'newest_scan':      max(present) if present else None,
-                },
-            ))
+    fs_mod = (app.extensions.get('fs_scans') or {}).get('module')
+    databases = []
+    for label, members in groupby(engine_sources(app, db), key=lambda s: s.label):
+        members = list(members)
+        src = members[0]   # one row per label; fs_scans collections share host and database
+        extra = {}
+        if src.family == 'sam':
+            # The clock invariant is SAM's alone: system_status is app-stamped UTC.
+            extra['clock'] = clock_skew(src.engine)
+        elif src.family == 'fs_scans':
+            extra['scans'] = _fs_scan_freshness(fs_mod, members)
+        databases.append(_health_row(label, src.engine, **extra))
 
     # --- Authentication
     auth = {

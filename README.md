@@ -42,9 +42,10 @@ This repository provides tools to interact with SAM data programmatically, repla
 - Built with [Click](https://click.palletsprojects.com/) using modular architecture
 - Installed via pyproject.toml entry points
 
-### Web UI (Flask-Admin)
-- Admin dashboard with CRUD operations for SAM tables
+### Web UI
+- User, allocation, status and admin dashboards (Flask + htmx)
 - Role-based access control
+- `/database`: a read-only row browser over every database the webapp connects to
 - Bootstrap 5 interface (vendored assets)
 
 ### REST API
@@ -599,7 +600,7 @@ sam-queries/
 │   └── webapp/                   # Flask web application
 │       ├── run.py               # Development server
 │       ├── auth/                # Authentication
-│       ├── admin/               # Flask-Admin database interface (/database/)
+│       ├── db_browser/          # Read-only row browser (/database/)
 │       ├── dashboards/          # Dashboard blueprints
 │       │   ├── admin/           # Admin dashboard (/admin/ - impersonation, expirations)
 │       │   ├── user/            # User dashboard (projects, allocations)
@@ -677,7 +678,7 @@ sam-queries/
 ## Testing
 
 A comprehensive suite covers the ORM, query layer, CLI, API endpoints,
-webapp routes, and Flask-Admin — see **[docs/TESTING.md](docs/TESTING.md)**
+webapp routes, and the browser tier — see **[docs/TESTING.md](docs/TESTING.md)**
 for current size, tier breakdown, and timings (parallel via xdist).
 
 The test suite runs against an **isolated `mysql-test` container**
@@ -928,7 +929,6 @@ For additional troubleshooting, see **[CONTRIBUTING.md](CONTRIBUTING.md#troubles
 - **SQLAlchemy 2.0** - Declarative ORM with relationship navigation
 - **MySQL/MariaDB** - Production database (~100 tables mirrored by ORM models)
 - **Flask** - Web framework for admin UI and REST API
-- **Flask-Admin** - Admin interface with CRUD operations
 - **Flask-Login** - Session-based authentication (browser clients)
 - **bcrypt** - Password/API key hashing for machine-to-machine auth
 - **Marshmallow-SQLAlchemy** - JSON serialization schemas

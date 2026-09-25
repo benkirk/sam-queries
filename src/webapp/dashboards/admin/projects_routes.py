@@ -3538,7 +3538,7 @@ def htmx_access_grid_toggle(project):
 @login_required
 @require_project_operator_access
 def htmx_access_grid_reconcile(project):
-    """Give every project member access to every project resource."""
+    """Give every project member access to every active project resource."""
     from sam.manage import reconcile_project_access
 
     active_only = _access_grid_active_only(request.form)

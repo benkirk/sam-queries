@@ -14,7 +14,6 @@ from config import SAMConfig
 class SAMWebappConfig(SAMConfig):
     """All webapp-layer config that extends the base DB + mail config."""
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    FLASK_ADMIN_SWATCH = 'lumen'
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB
 
     # API key authentication for machine-to-machine routes (status collectors, etc.)
@@ -43,21 +42,21 @@ class SAMWebappConfig(SAMConfig):
     # still requires the DISABLE_AUTH=1 env var (see webapp.utils.dev_auth).
     DEV_AUTO_LOGIN_ALLOWED = False
 
-    # Flask-Admin DB browser (/database). When off, init_admin() never runs
-    # and the blueprint is not mounted. ProductionConfig flips the default
-    # OFF so the public deploy never serves it [PR295 P0-3]; helm sets the
-    # env var explicitly either way.
-    FLASK_ADMIN_ENABLED = os.getenv('FLASK_ADMIN_ENABLED', '1').lower() in ('1', 'true', 'yes')
+    # The read-only /database row browser (webapp/db_browser). On in every
+    # environment, prod included: the ADMIN_DATABASE permission gates it.
+    # Set '0' to unmount it. Timeout is per statement, in milliseconds.
+    DB_BROWSER_ENABLED = os.getenv('DB_BROWSER_ENABLED', '1').lower() in ('1', 'true', 'yes')
+    DB_BROWSER_STATEMENT_TIMEOUT_MS = int(os.getenv('DB_BROWSER_STATEMENT_TIMEOUT_MS', '5000'))
 
     # Dev-only component gallery (/dev/gallery). When off, the blueprint is not
     # mounted. ProductionConfig flips the default OFF so the public deploy never
-    # serves it — same idiom and posture as FLASK_ADMIN_ENABLED above.
+    # serves it [PR295 P0-3]; helm sets the env var explicitly either way.
     COMPONENT_GALLERY_ENABLED = os.getenv('COMPONENT_GALLERY_ENABLED', '1').lower() in ('1', 'true', 'yes')
 
     # The anonymous HPC account-registration form (/register). When off, the
     # blueprint is not mounted and the URL 404s. ProductionConfig flips the
     # default OFF: it ships dark and is switched on per deployment (the k8s
-    # dev overlay). Same idiom as FLASK_ADMIN_ENABLED. The Admin -> Accounts
+    # dev overlay). Same idiom as COMPONENT_GALLERY_ENABLED. The Admin -> Accounts
     # queue is not behind any flag; the project Invitations tab is gated by
     # ACCOUNT_INVITATIONS_ENABLED (below), separately.
     ACCOUNT_REGISTRATION_ENABLED = os.getenv('ACCOUNT_REGISTRATION_ENABLED', '1').lower() in ('1', 'true', 'yes')
@@ -350,10 +349,6 @@ class DevelopmentConfig(SAMWebappConfig):
 class ProductionConfig(SAMWebappConfig):
     DEBUG = False
     SESSION_COOKIE_SECURE = True    # HTTPS only
-
-    # Default OFF in production — the public deploy doesn't mount /database;
-    # full-CRUD admin stays available locally (webdev/webapp compose).
-    FLASK_ADMIN_ENABLED = os.getenv('FLASK_ADMIN_ENABLED', '0').lower() in ('1', 'true', 'yes')
 
     # Default OFF in production — the dev-only component gallery is never mounted
     # on the public deploy.

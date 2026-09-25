@@ -17,7 +17,7 @@ LOG_DIR=${ROOT_DIR}/logs
 ENV_NAME=conda-env
 ENV_DIR=${ROOT_DIR}/${ENV_NAME}
 
-module try-load conda > /dev/null 2>&1
+module try-load conda > /dev/null 2>&1 || true   # no module system on laptops
 conda --version > /dev/null 2>&1 || {
     echo "Cannot locate conda?"
     exit 1

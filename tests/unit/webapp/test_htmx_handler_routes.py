@@ -88,6 +88,17 @@ class TestAddMember:
         resp = client.post(f'/project-members/{snapshot_projcode}/add', data={})
         assert resp.status_code in (302, 401)
 
+    def test_form_prefills_today_and_discourages_an_end_date(self, auth_client,
+                                                             snapshot_projcode):
+        from datetime import date
+        html = auth_client.get(
+            f'/project-members/{snapshot_projcode}/add-form').get_data(as_text=True)
+        start = html.split('id="htmxStartDate"')[1].split('>')[0]
+        assert f'value="{date.today():%Y-%m-%d}"' in start
+        end = html.split('id="htmxEndDate"')[1].split('>')[0]
+        assert 'value=""' in end
+        assert 'Usually blank; access follows the allocation duration' in html
+
 
 class TestShellAndPrimaryGid:
 

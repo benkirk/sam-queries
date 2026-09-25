@@ -1,0 +1,140 @@
+{% extends 'db_browser/base.html' %}
+{% from 'db_browser/_cells.html' import cell with context %}
+{% from 'dashboards/fragments/clipboard.html' import copy_button %}
+{% from 'dashboards/fragments/filter_panel.html' import filter_panel_shell %}
+{% block db_title %}{{ t.name }} · Database{% endblock %}
+{% block db_main %}
+{% include 'db_browser/_table_header.html' %}
+
+{# Plain GET form (action=): the route redirects to the canonical URL, so every view is
+   bookmarkable. Hidden inputs stay inside the call body (filter_panel.html). #}
+{% set table_url = url_for('db_browser.table', source=src.key, table=t.name) %}
+<div class="filter-sidebar mb-3 db-filters">
+{% call filter_panel_shell('db-filter-form', action=table_url, clear_url=table_url) %}
+    {% if state.sort %}
+    <input type="hidden" name="sort_by" value="{{ state.sort }}">
+    <input type="hidden" name="sort_dir" value="{{ 'desc' if state.desc else 'asc' }}">
+    {% endif %}
+    {% for f in state.filters | list + [none] %}
+    {% set i = loop.index0 %}
+    <div class="row g-2 align-items-start mb-2 db-filter-row">
+        <div class="col-sm-4">
+            <select name="f{{ i }}.col" class="form-select form-select-sm" aria-label="Filter column">
+                {% if f is none %}<option value="">Add a filter on…</option>{% endif %}
+                {% for c in shown %}
+                <option value="{{ c.name }}"{% if f and f.col == c.name %} selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-sm-2">
+            <select name="f{{ i }}.op" class="form-select form-select-sm" aria-label="Operator">
+                {% for op in ops %}
+                <option value="{{ op.value }}"{% if f and f.op == op.value %} selected{% endif %}>{{ op_labels[op] }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col">
+            <input type="text" name="f{{ i }}.v" value="{{ f.value if f else '' }}"
+                   class="form-control form-control-sm font-monospace{% if i in field_errors %} is-invalid{% endif %}"
+                   placeholder="value · like: % wildcard · in: a,b,c" aria-label="Value">
+            {% if i in field_errors %}<div class="small mt-1"><i class="fa-solid fa-circle-exclamation me-1"></i>{{ field_errors[i] }}</div>{% endif %}
+        </div>
+        <div class="col-auto">
+            {% if f %}
+            <a class="btn btn-sm btn-link text-reset px-1" title="Remove filter" aria-label="Remove filter"
+               href="{{ view_url(filters=state.filters[:i] + state.filters[i + 1:], page=1, after=none) }}">
+                <i class="fa-solid fa-xmark"></i></a>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+    {% for msg in form_errors %}<div class="small mb-2"><i class="fa-solid fa-circle-exclamation me-1"></i>{{ msg }}</div>{% endfor %}
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        <button type="submit" class="btn btn-sm btn-outline-white"><i class="fa-solid fa-filter me-1"></i>Apply</button>
+        <details class="db-columns">
+            <summary class="btn btn-sm btn-outline-white">Columns ({{ visible | length }}/{{ shown | length }})</summary>
+            <div class="db-columns-menu card card-body py-2">
+                {% for c in shown %}
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="cols" value="{{ c.name }}" id="col-{{ loop.index }}"
+                           {% if c.name in visible_names %}checked{% endif %}{% if c.name in pk %} disabled{% endif %}>
+                    <label class="form-check-label small font-monospace" for="col-{{ loop.index }}">{{ c.name }}</label>
+                </div>
+                {% endfor %}
+            </div>
+        </details>
+        <label class="small ms-auto" for="db-per-page">Rows</label>
+        <select name="per_page" id="db-per-page" class="form-select form-select-sm w-auto">
+            {% for n in per_page_choices %}<option value="{{ n }}"{% if n == state.per_page %} selected{% endif %}>{{ n }}</option>{% endfor %}
+        </select>
+        {% if hidden %}<span class="small" title="{{ hidden | sort | join(', ') }}">
+            <i class="fa-solid fa-eye-slash me-1"></i>{{ hidden | length }} redacted</span>{% endif %}
+    </div>
+{% endcall %}
+</div>
+
+{% if error %}
+<div class="alert alert-warning small"><i class="fa-solid fa-triangle-exclamation me-1"></i>{{ error }}</div>
+{% elif page is not none %}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-2 small">
+    <span class="text-body-secondary">
+        {% if page.keyset %}{{ rows | length | fmt_plural('row', raw=true) }} by {{ pk[0] }}
+        {% else %}rows {{ page.offset + 1 if rows else 0 }}–{{ page.offset + rows | length }}{% endif %}
+        {% if state.filters %} matching {{ state.filters | length | fmt_plural('filter', raw=true) }}{% endif %}
+    </span>
+    <button type="button" class="btn btn-link btn-sm p-0"
+            hx-get="{{ url_for('db_browser.count_fragment', source=src.key, table=t.name, **count_args) }}"
+            hx-swap="outerHTML">count exactly</button>
+    <span class="ms-auto">{{ copy_button(request.url, label='Copy link', icon='fa-solid fa-link', compact=true) }}</span>
+</div>
+<div id="db-values"></div>
+<div class="table-responsive db-grid">
+    <table class="table table-sm table-hover align-top mb-2">
+        <thead>
+            <tr>
+                <th scope="col" class="db-rowlink"><span class="visually-hidden">Open row</span></th>
+                {% for c in visible %}
+                <th scope="col" class="text-nowrap font-monospace">
+                    {% if c.name in can_sort %}
+                    {% set active = state.sort == c.name %}
+                    <a class="text-decoration-none" href="{{ view_url(sort=c.name, desc=(active and not state.desc), page=1, after=none) }}">
+                        {{ c.name }}{% if active %}<i class="fa-solid fa-caret-{{ 'down' if state.desc else 'up' }} ms-1"></i>{% endif %}
+                    </a>
+                    {% else %}{{ c.name }}{% endif %}
+                    {% if c.name in can_sort and can_add_filter %}<button type="button" class="btn btn-link btn-sm p-0 db-icon" title="Top values" aria-label="Top values of {{ c.name }}"
+                            hx-get="{{ url_for('db_browser.values_fragment', source=src.key, table=t.name, col=c.name, **values_args) }}"
+                            hx-target="#db-values"><i class="fa-solid fa-chart-simple"></i></button>{% endif %}
+                    {% if c.name in pk %}<i class="fa-solid fa-key db-icon" title="Primary key"></i>
+                    {% elif c.name in indexed %}<i class="fa-solid fa-bolt db-icon" title="Indexed: cheap to sort"></i>{% endif %}
+                </th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            <tr>
+                <td class="db-rowlink">{% if r.url %}<a href="{{ r.url }}" title="Open row" aria-label="Open row"><i class="fa-solid fa-up-right-from-square"></i></a>{% endif %}</td>
+                {% for name, view, link, raw in r.cells %}<td>{{ cell(view, link, entity_cols.get(name), raw) }}</td>{% endfor %}
+            </tr>
+            {% else %}
+            <tr><td colspan="{{ visible | length + 1 }}" class="text-body-secondary small">No rows.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<nav class="d-flex gap-2 small" aria-label="Pages">
+    {% if page.keyset %}
+        {% if state.after %}<a class="btn btn-sm btn-outline-secondary" href="{{ view_url(after=none) }}"><i class="fa-solid fa-backward-step me-1"></i>First</a>{% endif %}
+        {% if page.has_next %}<a class="btn btn-sm btn-outline-secondary" href="{{ view_url(after=page.next_after | string) }}">Next<i class="fa-solid fa-chevron-right ms-1"></i></a>{% endif %}
+    {% else %}
+        {% if state.page > 1 %}<a class="btn btn-sm btn-outline-secondary" href="{{ view_url(page=state.page - 1) }}"><i class="fa-solid fa-chevron-left me-1"></i>Prev</a>{% endif %}
+        {% if page.has_next %}<a class="btn btn-sm btn-outline-secondary" href="{{ view_url(page=state.page + 1) }}">Next<i class="fa-solid fa-chevron-right ms-1"></i></a>{% endif %}
+    {% endif %}
+</nav>
+{% endif %}
+{# Shells for the entity links on SAM username / projcode cells (_cells.html). #}
+{% if entity_cols %}
+{% include 'dashboards/user/fragments/user_details_modal.html' %}
+{% include 'dashboards/shared/project_details_modal.html' %}
+{% endif %}
+{% endblock %}

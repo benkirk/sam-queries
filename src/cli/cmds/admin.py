@@ -16,6 +16,7 @@ from cli.core.utils import EXIT_SUCCESS, EXIT_ERROR, configure_logging
 from cli.user.commands import UserAdminCommand
 from cli.project.commands import (
     ProjectAdminCommand,
+    ProjectReconcileCommand,
     ProjectExpirationCommand,
     ProjectTreeAuditCommand,
 )
@@ -83,7 +84,11 @@ def user(ctx: Context, username, validate, list_projects, verbose, provisioning)
 @click.argument('projcode', required=False)
 @click.option('--validate', is_flag=True, help='Validate project data')
 @click.option('--reconcile', is_flag=True,
-              help='Give the lead, admin and every member access to every project resource')
+              help='Give the lead, admin and every member access to every active project resource')
+@click.option('--reconcile-lead-admin', 'reconcile_lead_admin', is_flag=True,
+              help='Like --reconcile, but only the lead and admin')
+@click.option('--all', 'all_projects', is_flag=True,
+              help='With --reconcile/--reconcile-lead-admin: every active project (no projcode)')
 @click.option('--audit-trees', 'audit_trees', is_flag=True,
               help='Audit project allocation trees DB-wide (no projcode needed)')
 @click.option('--resource', 'audit_resource', type=str, default=None,
@@ -91,7 +96,9 @@ def user(ctx: Context, username, validate, list_projects, verbose, provisioning)
 @click.option('--upcoming-expirations', is_flag=True, help='Search for upcoming project expirations')
 @click.option('--recent-expirations', is_flag=True, help='Show recently expired projects')
 @click.option('--notify', is_flag=True, help='Send email notifications (requires --upcoming-expirations)')
-@click.option('--dry-run', is_flag=True, help='Preview emails without sending (requires --notify)')
+@click.option('--dry-run', is_flag=True,
+              help='With --notify: preview emails without sending. '
+                   'With a reconcile flag: report what would be added, write nothing.')
 @click.option('--email-list', type=str, help='Comma-separated list of additional email recipients')
 @click.option('--deactivate', is_flag=True, help='Deactivate expired projects (requires --recent-expirations)')
 @click.option('--force', is_flag=True,
@@ -106,7 +113,7 @@ def user(ctx: Context, username, validate, list_projects, verbose, provisioning)
 @click.option('--provisioning/--no-provisioning', default=None,
               help='Cross-check host provisioning (auto-on on a provisioned host)')
 @pass_context
-def project(ctx: Context, projcode, validate, reconcile, audit_trees, audit_resource,
+def project(ctx: Context, projcode, validate, reconcile, reconcile_lead_admin, all_projects, audit_trees, audit_resource,
             upcoming_expirations, recent_expirations,
             notify, dry_run, email_list, deactivate, force, since, list_users, facilities, verbose, provisioning):
     """Administrative project commands."""
@@ -126,10 +133,27 @@ def project(ctx: Context, projcode, validate, reconcile, audit_trees, audit_reso
         ctx.console.print("Error: --notify requires --upcoming-expirations", style="bold red")
         sys.exit(1)
 
-    # Validate that --dry-run requires --notify
-    if dry_run and not notify:
-        ctx.console.print("Error: --dry-run requires --notify", style="bold red")
+    any_reconcile = reconcile or reconcile_lead_admin
+    if reconcile and reconcile_lead_admin:
+        ctx.console.print("Error: use one of --reconcile / --reconcile-lead-admin", style="bold red")
         sys.exit(1)
+    if all_projects and not any_reconcile:
+        ctx.console.print("Error: --all requires --reconcile or --reconcile-lead-admin",
+                          style="bold red")
+        sys.exit(1)
+    if all_projects and projcode:
+        ctx.console.print("Error: give a projcode or --all, not both", style="bold red")
+        sys.exit(1)
+
+    # Validate that --dry-run requires --notify or a reconcile flag
+    if dry_run and not (notify or any_reconcile):
+        ctx.console.print("Error: --dry-run requires --notify, --reconcile or --reconcile-lead-admin",
+                          style="bold red")
+        sys.exit(1)
+
+    if all_projects:
+        sys.exit(ProjectReconcileCommand(ctx).execute(
+            None, lead_admin_only=reconcile_lead_admin, dry_run=dry_run))
 
     # Validate that --deactivate requires --recent-expirations
     if deactivate and not recent_expirations:
@@ -182,14 +206,15 @@ def project(ctx: Context, projcode, validate, reconcile, audit_trees, audit_reso
     if not projcode:
         ctx.console.print(
             "Error: projcode argument is required unless using --upcoming-expirations, "
-            "--recent-expirations, or --audit-trees",
+            "--recent-expirations, --audit-trees, or --all",
             style="bold red"
         )
         click.echo(click.get_current_context().get_help())
         sys.exit(1)
 
     command = ProjectAdminCommand(ctx)
-    exit_code = command.execute(projcode, validate=validate, reconcile=reconcile,
+    exit_code = command.execute(projcode, validate=validate, reconcile=any_reconcile,
+                                lead_admin_only=reconcile_lead_admin, dry_run=dry_run,
                                 list_users=list_users)
     sys.exit(exit_code)
 

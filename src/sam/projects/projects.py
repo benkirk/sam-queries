@@ -447,12 +447,18 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
     #     """Return a deduplicated list of active users on this project."""
     #     return list({au.user for au in self.account_users if au.user is not None})
 
-    def ensure_members(self, *user_ids: int) -> List['AccountUser']:
-        """Give each user a live row on every non-deleted account; flush, return the rows added."""
+    @property
+    def live_accounts(self) -> List['Account']:
+        """Non-deleted accounts on an active (commissioned, not decommissioned) resource."""
+        return [a for a in self.accounts
+                if a.is_active and a.resource is not None and a.resource.is_active]
+
+    def ensure_members(self, *user_ids: int, active_users_only: bool = False) -> List['AccountUser']:
+        """Give each user a live row on every live account; flush, return the rows added."""
         added = []
-        for account in self.accounts:
-            if account.is_active:
-                added.extend(Account._add_live_members(self.session, account, user_ids))
+        for account in self.live_accounts:
+            added.extend(Account._add_live_members(self.session, account, user_ids,
+                                                   active_users_only=active_users_only))
         return added
 
     def active_account_users(self, as_of: Optional[datetime] = None) -> List['AccountUser']:

@@ -81,10 +81,8 @@ def init_static_assets(app):
 
     @app.url_defaults
     def _add_static_version(endpoint, values):
-        # Only the app's own static endpoint. Flask-Admin registers an
-        # `admin.static` served from *its* package directory, so app.static_folder
-        # would be the wrong root for it — and it is dev-only anyway
-        # (FLASK_ADMIN_ENABLED is off in ProductionConfig).
+        # Only the app's own static endpoint: a blueprint's static folder has
+        # its own root, which app.static_folder would get wrong.
         if endpoint != 'static':
             return
         filename = values.get('filename')
