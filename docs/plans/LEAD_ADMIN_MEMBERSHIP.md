@@ -1,6 +1,6 @@
 # Lead and admin membership: assigning a lead or admin makes them a member
 
-**Status: in progress.** Handoff for a fresh session.
+**Status: implemented (PR #616); bulk remediation not started.** Handoff for a fresh session.
 **Branch:** `lead-admin-membership`, from `origin/staging`. One PR against `staging`, opened only after `make check-all` passes and a local smoke test is done.
 
 ## Progress
@@ -12,7 +12,7 @@
 - [x] 5. `revoke_user_resource_access` refuses the admin, the same way it refuses the lead
 - [x] 6. CLI: `--reconcile` really reconciles and reports what it added; `--validate` flags a lead or admin who is not a live member
 - [x] 7. Docs: CLAUDE.md CLI line and the §7 invariant note
-- [ ] 8. Tests (model, XRAS, CLI), `make check-all`, local smoke test
+- [x] 8. Tests (model, XRAS, CLI), `make check-all`, local smoke test
 - [x] 9. `Project.users` = lead + admin + row holders; the access grid shows the lead and admin with their true state
 
 ## Context: the incident (2026-09-24)
