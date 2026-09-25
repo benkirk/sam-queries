@@ -115,7 +115,7 @@ where = ["src"]
 "sam.notify" = ["templates/*"]
 
 [tool.coverage.run]
-source = ["src/querykit", "src/sam", "src/scheduling", "src/system_status", "src/webapp"]
+source = ["src/dbbrowse", "src/querykit", "src/sam", "src/scheduling", "src/system_status", "src/webapp"]
 # Branch (decision) coverage: count both edges of every if/for/while/except, not
 # just whether the line ran. Only engages under `--cov` (the CI coverage job),
 # so the default `pytest` fast loop is unaffected. See fail_under below.
