@@ -5,6 +5,9 @@
   row data (PII) into sessionStorage.
 #}
 {% block title %}{% block db_title %}Database{% endblock %} · SAM{% endblock %}
+{# The one full-width surface: a wide window shows more columns, not more margin. #}
+{% block flash_container_class %}container-fluid{% endblock %}
+{% block content_container_class %}container-fluid{% endblock %}
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/db_browser.css') }}">
 {% endblock %}
@@ -16,11 +19,11 @@
 {% set show_rail = t is defined %}
 <div class="db-browser row g-3" hx-history="false">
     {% if show_rail %}
-    <aside class="col-lg-3 col-xxl-2 order-last order-lg-first db-rail">
+    <aside class="col-lg-3 order-last order-lg-first db-rail">
         {% include 'db_browser/_rail.html' %}
     </aside>
     {% endif %}
-    <div class="{{ 'col-lg-9 col-xxl-10' if show_rail else 'col-12' }} db-main">
+    <div class="{{ 'col-lg-9' if show_rail else 'col-12' }} db-main">
         {% block db_main %}{% endblock %}
     </div>
 </div>
