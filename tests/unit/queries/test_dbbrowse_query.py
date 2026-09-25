@@ -8,9 +8,9 @@ from sqlalchemy import (JSON, Boolean, Column, Date, DateTime, Integer, LargeBin
 from sqlalchemy.dialects import mysql, postgresql
 
 from dbbrowse import (GRID_CHARS, MAX_FILTERS, OffsetTooDeep, Op, PageRequest, RawFilter,
-                      column_kind, exact_count, fetch_by_key, fetch_cell, fetch_page,
+                      coerce, column_kind, exact_count, fetch_by_key, fetch_cell, fetch_page,
                       parse_filters, read_only_connection, reflect_table, render_cell,
-                      top_values)
+                      top_values, url_value)
 from dbbrowse.query import build_page_select
 
 T = Table(
@@ -44,6 +44,14 @@ def test_reflected_mysql_tinyint1_is_a_bool(engine):
     assert column_kind(users.c.active) == 'bool'
     filters, errors = parse_filters([RawFilter('active', 'eq', 'yes')], users)
     assert not errors and filters[0].value is True
+
+
+@pytest.mark.parametrize('column, value', [
+    ('id', 7), ('resourceRepositoryKey', 'a b'), ('amount', Decimal('1.50')), ('active', True),
+    ('active', False), ('created', datetime(2026, 9, 1, 8, 30, 15)), ('day', date(2026, 9, 1)),
+])
+def test_url_value_round_trips_through_coerce(column, value):
+    assert coerce(T.c[column], url_value(value)) == value
 
 
 def test_parse_coerces_every_type():

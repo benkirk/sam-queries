@@ -140,6 +140,15 @@ def coerce(col: Column, raw: str) -> Any:
     return raw
 
 
+def url_value(value: Any) -> str:
+    """A value as the string ``coerce`` parses back."""
+    if isinstance(value, datetime):
+        return value.isoformat(sep=' ')
+    if isinstance(value, (date, time)):
+        return value.isoformat()
+    return str(value)
+
+
 def parse_filters(raw: Iterable[RawFilter], table: Table, *,
                   hidden: frozenset = frozenset()) -> Tuple[List[Filter], List[FilterError]]:
     """Validate every row; return the good filters and one error per bad row."""

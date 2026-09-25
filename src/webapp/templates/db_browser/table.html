@@ -114,7 +114,7 @@
             {% for r in rows %}
             <tr>
                 <td class="db-rowlink">{% if r.url %}<a href="{{ r.url }}" title="Open row" aria-label="Open row"><i class="fa-solid fa-up-right-from-square"></i></a>{% endif %}</td>
-                {% for view, link, raw in r.cells %}<td>{{ cell(view, link, entity_cols.get(visible[loop.index0].name), raw) }}</td>{% endfor %}
+                {% for name, view, link, raw in r.cells %}<td>{{ cell(view, link, entity_cols.get(name), raw) }}</td>{% endfor %}
             </tr>
             {% else %}
             <tr><td colspan="{{ visible | length + 1 }}" class="text-body-secondary small">No rows.</td></tr>

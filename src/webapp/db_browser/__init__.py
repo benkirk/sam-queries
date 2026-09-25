@@ -28,8 +28,8 @@ def _gate():
 
 @bp.context_processor
 def _rail_context():
-    from .sources import browse_sources, catalog
-    return {'sources_menu': lambda: list(browse_sources().values()), 'catalog_of': catalog}
+    from .sources import browse_sources
+    return {'sources_menu': lambda: list(browse_sources().values())}
 
 
 @bp.after_request

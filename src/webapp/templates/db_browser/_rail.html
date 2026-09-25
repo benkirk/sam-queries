@@ -4,12 +4,12 @@
         <div class="dropdown">
             <button class="btn btn-sm btn-outline-secondary dropdown-toggle w-100 text-start text-truncate"
                     type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="fa-solid fa-database me-1"></i>{{ src.label }}
+                <i class="fa-solid fa-database me-1"></i>{{ src.title }}
             </button>
             <ul class="dropdown-menu">
                 {% for other in sources_menu() %}
                 <li><a class="dropdown-item{% if other.key == src.key %} active{% endif %}"
-                       href="{{ url_for('db_browser.source', source=other.key) }}">{{ other.label }}</a></li>
+                       href="{{ url_for('db_browser.source', source=other.key) }}">{{ other.title }}</a></li>
                 {% endfor %}
             </ul>
         </div>
@@ -20,7 +20,7 @@
                hx-target="#db-rail-tables">
     </div>
     <div id="db-rail-tables" class="db-rail-tables">
-        {% with entries = catalog_of(src), current = t.name %}
+        {% with entries = src.catalog(), current = t.name %}
         {% include 'db_browser/_rail_tables.html' %}
         {% endwith %}
     </div>

@@ -23,6 +23,7 @@ import socket
 import time
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
+from itertools import groupby
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -467,20 +468,20 @@ def gather_server_info() -> Dict[str, Any]:
     }
 
 
-def _fs_scan_freshness(fs_mod, src) -> Dict[str, Any]:
-    """Per-collection latest scan date for one fs_scans database; a failing collection reports None."""
+def _fs_scan_freshness(fs_mod, members) -> Dict[str, Any]:
+    """Latest scan date per collection of one fs_scans database; a failing collection reports None."""
     collections = []
-    for collection in src.engines:
+    for src in members:
         scan_date = None
         try:
             dates = fs_mod.FsScanQueries(
-                filesystems=[collection], database=src.database,
+                filesystems=[src.collection], database=src.database,
             ).scan_dates()
             if dates:
                 scan_date = max(dates).date().isoformat()
         except Exception:
             scan_date = None
-        collections.append({'name': collection, 'scan_date': scan_date})
+        collections.append({'name': src.collection, 'scan_date': scan_date})
     present = [c['scan_date'] for c in collections if c['scan_date']]
     return {
         'collection_count': len(collections),
@@ -559,14 +560,16 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
 
     fs_mod = (app.extensions.get('fs_scans') or {}).get('module')
     databases = []
-    for src in engine_sources(app, db):
+    for label, members in groupby(engine_sources(app, db), key=lambda s: s.label):
+        members = list(members)
+        src = members[0]   # one row per label; fs_scans collections share host and database
         extra = {}
         if src.family == 'sam':
             # The clock invariant is SAM's alone: system_status is app-stamped UTC.
             extra['clock'] = clock_skew(src.engine)
         elif src.family == 'fs_scans':
-            extra['scans'] = _fs_scan_freshness(fs_mod, src)
-        databases.append(_health_row(src.label, src.engine, **extra))
+            extra['scans'] = _fs_scan_freshness(fs_mod, members)
+        databases.append(_health_row(label, src.engine, **extra))
 
     # --- Authentication
     auth = {

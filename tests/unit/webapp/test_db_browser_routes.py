@@ -178,6 +178,20 @@ class TestPages:
         resp = auth_client.get(_url(app, 'db_browser.table', source='sam', table='users'))
         assert resp.status_code == 200 and 's limit' in resp.get_data(as_text=True)
 
+    def test_unreachable_source_is_a_503_page_not_a_500(self, app, auth_client, monkeypatch):
+        from sqlalchemy.exc import OperationalError
+        from webapp.db_browser.sources import CACHE
+
+        def down(*a, **kw):
+            raise OperationalError('SELECT', {}, Exception('connection refused'))
+        monkeypatch.setattr('webapp.db_browser.sources.load_catalog', down)
+        CACHE.invalidate(('sam',))
+        resp = auth_client.get(_url(app, 'db_browser.table', source='sam', table='users'))
+        assert resp.status_code == 503 and 'connection refused' in resp.get_data(as_text=True)
+        resp = auth_client.get(_url(app, 'db_browser.count_fragment', source='sam', table='users'),
+                               headers={'HX-Request': 'true'})
+        assert resp.status_code == 200 and 'connection refused' in resp.get_data(as_text=True)
+
     def test_refresh_clears_the_source_cache(self, app, auth_client):
         from webapp.db_browser.sources import CACHE
         auth_client.get(_url(app, 'db_browser.source', source='sam'))
