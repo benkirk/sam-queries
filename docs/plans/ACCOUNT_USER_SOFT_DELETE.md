@@ -10,7 +10,7 @@
 - [x] 3. Confirm the UI/API re-render hides the removed member; no reader changes (`test_re_render_sources_drop_the_member`).
 - [x] 4. Tests: update the three that assume a delete or expired-row admin; add the new cases (`tests/unit/manage/test_membership_soft_delete.py`).
 - [x] 5. Docs: CLAUDE.md §7 line; tick this checklist.
-- [ ] 6. `make check-all` and the local smoke test.
+- [x] 6. `make check-all` and the local smoke test (2026-09-24: MySQL 9724 passed, Postgres 9687 passed, perf 57, e2e 109; all four webdev steps verified against the DB, the audit log, `directory_access`, the user card and the CLI).
 
 ## Context
 
@@ -94,7 +94,7 @@ Every live-path read already filters to live or unended rows. Legacy and the rep
 
 ### 4. Behavior changes to accept and mention in the PR
 
-- **Former projects.** A removed member's project now shows under "Inactive / Former Projects" on the admin user card (`src/webapp/templates/dashboards/user/partials/user_card.html`), and in `sam-search user X --inactive-projects --list-projects` (Membership column "Ended"), where it used to vanish. That matches the `g_former_projects` glossary text.
+- **Former projects.** A removed member's project now shows under "Inactive / Former Projects" on the admin user card (`src/webapp/templates/dashboards/user/partials/user_card.html`), and in `sam-search --inactive-projects user X --list-projects` (a global flag; the Membership column reads "Ended"), where it used to vanish. That matches the `g_former_projects` glossary text.
 - **Audit log.** Removals log as UPDATE instead of DELETE (`src/webapp/audit/events.py`). A never-started row still logs DELETE.
 - **UI text is unchanged.** The members page confirm ("will remove them from all resources") is still true.
 
