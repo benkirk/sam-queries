@@ -38,7 +38,13 @@ src/dbbrowse/          SQLAlchemy only (gate: tests/unit/gates/test_dbbrowse_imp
   redact.py cells.py   what is never selected; how a value displays
 src/webapp/utils/engine_inventory.py   the engine list (also feeds the Configuration card and
                                        /api/v1/health/db-pool)
-src/webapp/db_browser/                 blueprint: gate, sources + cache, URL state, routes
+src/webapp/db_browser/                 blueprint: gate + access log, sources, URL state, routes
+  sources.py           BrowseSource (an EngineSource that can connect and reflect, cached per process)
+                       and BrowsedTable (one table as this request's user may see it: pk, hidden,
+                       sortable, FK links); every table route resolves one and reads from it
+  params.py            ViewState: the query string as a value (from_args / to_args / matches)
+  routes.py            views; one errorhandler turns any database failure into a 503 page or a
+                       fragment message, so only the table page's own query is caught inline
 ```
 
 ### Safety, per dialect (`readonly.py`)

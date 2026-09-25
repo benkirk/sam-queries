@@ -1,7 +1,6 @@
 """engine_sources(): the one enumeration behind the Configuration card and /database."""
 import types
 from datetime import datetime
-from unittest.mock import MagicMock
 
 from sqlalchemy import create_engine
 
@@ -50,12 +49,13 @@ def test_plugins_in_card_order(app, monkeypatch):
         sources = engine_sources(app, db)
     assert [s.key for s in sources] == [
         'sam', 'system_status', 'job_history.derecho', 'job_history.casper',
-        'fs_scans.campaign', 'fs_scans.desc1',
+        'fs_scans.campaign.broken', 'fs_scans.campaign.cisl', 'fs_scans.campaign.univ',
+        'fs_scans.desc1.scratch',
     ]
-    campaign = sources[4]
-    assert campaign.label == 'fs_scans (campaign)'
-    assert campaign.database == 'campaign'
-    assert list(campaign.engines) == ['broken', 'cisl', 'univ']
+    univ = sources[6]
+    assert (univ.label, univ.title) == ('fs_scans (campaign)', 'fs_scans (campaign) / univ')
+    assert (univ.database, univ.collection, univ.schema) == ('campaign', 'univ', None)  # sqlite
+    assert sources[0].title == 'sam' and sources[2].title == 'job_history (derecho)'
 
 
 def test_configuration_card_rows_follow_inventory(app, monkeypatch):
@@ -74,9 +74,3 @@ def test_configuration_card_rows_follow_inventory(app, monkeypatch):
     assert {c['name']: c['scan_date'] for c in scans['collections']} == {
         'broken': None, 'cisl': '2026-09-20', 'univ': '2026-09-20'}
     assert scans['oldest_scan'] == scans['newest_scan'] == '2026-09-20'
-
-
-def test_representative_engine_is_first_schema():
-    from webapp.utils.engine_inventory import EngineSource
-    a, b = MagicMock(), MagicMock()
-    assert EngineSource('k', 'k', 'fs_scans', {'a': a, 'b': b}).engine is a

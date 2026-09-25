@@ -1,0 +1,6 @@
+{% extends 'db_browser/base.html' %}
+{% block db_title %}Unavailable · Database{% endblock %}
+{% block db_main %}
+<h1 class="h4 mb-3">Database unavailable</h1>
+<div class="alert alert-warning small"><i class="fa-solid fa-triangle-exclamation me-1"></i>{{ error }}</div>
+{% endblock %}

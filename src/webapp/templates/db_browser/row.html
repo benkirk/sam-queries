@@ -13,9 +13,6 @@
     </span>
 </div>
 
-{% if error %}
-<div class="alert alert-warning small"><i class="fa-solid fa-triangle-exclamation me-1"></i>{{ error }}</div>
-{% else %}
 <div class="row g-3">
     <div class="col-xl-8">
         <div class="card">
@@ -35,7 +32,7 @@
                             </td>
                         </tr>
                         {% endfor %}
-                        {% for name in hidden %}
+                        {% for name in hidden | sort %}
                         <tr><th scope="row" class="font-monospace text-nowrap fw-normal text-body-secondary">{{ name }}</th>
                             <td><span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">redacted</span></td></tr>
                         {% endfor %}
@@ -62,7 +59,6 @@
         </div>
     </div>
 </div>
-{% endif %}
 {# Shells for the entity links on SAM username / projcode cells (_cells.html). #}
 {% if entity_cols %}
 {% include 'dashboards/user/fragments/user_details_modal.html' %}

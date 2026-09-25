@@ -3,7 +3,7 @@ from .catalog import (FkEdge, FkGraph, MetadataCache, TableEntry, load_catalog,
                       load_fk_graph, reflect_table)
 from .cells import CellView, render_cell
 from .filters import (MAX_FILTERS, NULL_OPS, OP_LABELS, Filter, FilterError, Op, RawFilter,
-                      coerce, column_kind, ops_for, parse_filters)
+                      coerce, column_kind, ops_for, parse_filters, url_value)
 from .overlay import OrmOverlay
 from .query import (CELL_MAX_CHARS, DETAIL_CHARS, GRID_CHARS, MAX_OFFSET, OffsetTooDeep, Page,
                     PageRequest, exact_count, fetch_by_key, fetch_cell, fetch_page, top_values)
@@ -18,5 +18,5 @@ __all__ = [
     'RedactionPolicy', 'TableEntry', 'UnsupportedDialect', 'coerce', 'column_kind',
     'exact_count', 'fetch_by_key', 'fetch_cell', 'fetch_page', 'is_read_only_violation',
     'is_timeout', 'load_catalog', 'load_fk_graph', 'ops_for', 'parse_filters',
-    'read_only_connection', 'reflect_table', 'render_cell', 'top_values',
+    'read_only_connection', 'reflect_table', 'render_cell', 'top_values', 'url_value',
 ]

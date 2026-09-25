@@ -176,6 +176,12 @@ def readiness():
     return _health_response(include_schema=False, strict=strict)
 
 
+def _pool_name(src) -> str:
+    if src.family == 'fs_scans':
+        return f'fs_scans:{src.database or "fs_scans"}/{src.collection}'
+    return src.key.replace('.', ':', 1)
+
+
 @bp.route('/db-pool', methods=['GET'])
 @login_required
 @require_permission(Permission.SYSTEM_ADMIN)
@@ -187,11 +193,7 @@ def db_pool():
     ``error_detail`` tells server-side slot exhaustion (pool tuning will *not*
     fix it) from local pool exhaustion. Requires SYSTEM_ADMIN.
     """
-    engines = {}
-    for src in engine_sources(current_app, db):
-        for schema, engine in src.engines.items():
-            name = src.key.replace('.', ':', 1)
-            engines[f'{name}/{schema}' if schema else name] = engine
+    engines = {_pool_name(src): src.engine for src in engine_sources(current_app, db)}
 
     pools = {}
     for name, engine in engines.items():
