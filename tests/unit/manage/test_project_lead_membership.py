@@ -101,12 +101,23 @@ class TestUpdateSeedsLeadAndAdmin:
 
 
 class TestChangeProjectAdmin:
-    def test_former_member_with_only_expired_rows_gets_live_rows(self, session, two_accounts):
+    def test_former_member_with_only_expired_rows_is_refused(self, session, two_accounts):
         project, a1, a2 = two_accounts
         user = make_user(session)
         project.ensure_members(user.user_id)
         _expire(session, a1, user)
         _expire(session, a2, user)
+        with pytest.raises(ValueError, match="must be a project member"):
+            change_project_admin(session, project.project_id, user.user_id)
+        assert project.project_admin_user_id != user.user_id
+        assert _live(session, a1, user) == []
+        assert _live(session, a2, user) == []
+
+    def test_unended_member_is_promoted_and_seeded(self, session, two_accounts):
+        project, a1, a2 = two_accounts
+        user = make_user(session)
+        project.ensure_members(user.user_id)
+        _expire(session, a1, user)
         change_project_admin(session, project.project_id, user.user_id)
         assert project.project_admin_user_id == user.user_id
         assert len(_live(session, a1, user)) == 1

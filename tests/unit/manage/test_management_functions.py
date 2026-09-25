@@ -212,11 +212,13 @@ class TestRemoveUserFromProject:
 
         remove_user_from_project(session, project.project_id, member.user_id)
 
-        after = session.query(AccountUser).filter(
+        # Rows stay as history; every one is end-dated and no longer live.
+        rows = session.query(AccountUser).filter(
             AccountUser.account_id.in_(account_ids),
             AccountUser.user_id == member.user_id,
-        ).count()
-        assert after == 0
+        ).all()
+        assert len(rows) == before
+        assert all(r.end_date is not None and not r.is_active for r in rows)
 
     def test_clears_admin_role_when_removing_admin(self, session):
         """Removing the admin user from the project clears project_admin_user_id."""

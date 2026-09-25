@@ -6,7 +6,7 @@ These are write operations that modify the database, as opposed to
 read-only query functions in sam.queries.
 """
 
-from datetime import datetime
+from datetime import datetime, time, timedelta
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -88,11 +88,11 @@ def add_user_to_project(
     Raises:
         ValueError: If the project has no accounts
     """
-    # Default start_date to now if not provided
-    if start_date is None:
-        start_date = datetime.now()
-
     now = datetime.now()
+    if start_date is None:
+        # Floor to the second: MySQL DATETIME rounds half-up, and a start that
+        # lands in the next second reads as "not started yet" to a removal.
+        start_date = now.replace(microsecond=0)
 
     accounts = session.query(Account).filter(
         Account.project_id == project_id,
@@ -130,12 +130,36 @@ def add_user_to_project(
     session.flush()
 
 
+def _unended(now: datetime):
+    """Rows still open at *now*: no end, or an end at/after it (same test as add_user_to_project)."""
+    return or_(AccountUser.end_date.is_(None), AccountUser.end_date >= now)
+
+
+def _end_membership(session: Session, row: AccountUser, now: datetime) -> None:
+    """End an AccountUser row as of *now*; a row that has not started yet is deleted instead."""
+    if row.start_date > now:
+        # Never effective, so there is no history to keep, and end < start is nonsense.
+        session.delete(row)
+        return
+    # Floor to the second: MySQL DATETIME rounds half-up, so a microsecond "now"
+    # can land in the next second and leave the row live for a moment.
+    # Minus 1 s: the same-request re-render tests end_date >= now, inclusive.
+    cutoff = now.replace(microsecond=0) - timedelta(seconds=1)
+    # Exactly-midnight ends become 23:59:59 the SAME day (normalize_end_date,
+    # sam/base.py), which would keep the member live all day. Step back once more.
+    if cutoff.time() == time(0, 0, 0):
+        cutoff -= timedelta(seconds=1)
+    row.end_date = cutoff
+
+
 def remove_user_from_project(session: Session, project_id: int, user_id: int) -> None:
     """
     Remove a user from all accounts in a project.
 
-    Also clears the admin role if the user being removed is the project admin.
-    Cannot remove the project lead.
+    Every unended row the user holds on the project is end-dated as of now
+    (rows are history, mirroring legacy SAM); a row that has not started yet
+    is deleted. Also clears the admin role if the user being removed is the
+    project admin. Cannot remove the project lead.
 
     NOTE: This function does NOT commit the session. The caller is responsible
     for calling session.commit() or session.flush() as appropriate.
@@ -163,15 +187,16 @@ def remove_user_from_project(session: Session, project_id: int, user_id: int) ->
         Account.project_id == project_id
     ).subquery()
 
-    # Remove from all accounts (ORM-style to trigger audit events)
-    # Load objects first so they appear in session.deleted
+    now = datetime.now()
+    # Load the rows so the update/delete goes through the session (audit events)
     account_users = session.query(AccountUser).filter(
         AccountUser.account_id.in_(select(account_ids)),
-        AccountUser.user_id == user_id
+        AccountUser.user_id == user_id,
+        _unended(now),
     ).all()
 
     for account_user in account_users:
-        session.delete(account_user)
+        _end_membership(session, account_user, now)
 
     # Clear admin role if they had it
     if project.project_admin_user_id == user_id:
@@ -190,8 +215,9 @@ def change_project_admin(
     """
     Change the project admin to a different user.
 
-    The new admin must hold some row on the project, even an expired one, or be
-    the lead; ``Project.update`` then gives them a live row on every account.
+    The new admin must hold an unended row on the project, or be the lead;
+    ``Project.update`` then gives them a live row on every account. An
+    ex-member whose rows have all ended must be re-added first.
 
     NOTE: This function does NOT commit the session. The caller is responsible
     for calling session.commit() or session.flush() as appropriate.
@@ -210,10 +236,11 @@ def change_project_admin(
         raise ValueError(f"Project {project_id} not found")
 
     if new_admin_user_id:
-        # Ensure new admin is a member of the project (on ANY account)
+        # Ensure new admin holds an unended row on the project (on ANY account)
         member = session.query(AccountUser).join(Account).filter(
             Account.project_id == project_id,
-            AccountUser.user_id == new_admin_user_id
+            AccountUser.user_id == new_admin_user_id,
+            _unended(datetime.now()),
         ).first()
 
         # Also allow if they are the lead
@@ -291,9 +318,9 @@ def revoke_user_resource_access(
     """
     Revoke a single user's access to a single project resource.
 
-    Deletes the user's AccountUser row(s) on the (project, resource) account
-    (ORM delete to trigger audit events, mirroring remove_user_from_project).
-    The project lead and admin cannot be revoked.
+    Ends the user's unended AccountUser row(s) on the (project, resource)
+    account as of now (a row that has not started yet is deleted), mirroring
+    remove_user_from_project. The project lead and admin cannot be revoked.
 
     NOTE: This function does NOT commit the session. The caller is responsible
     for wrapping it in management_transaction().
@@ -322,13 +349,15 @@ def revoke_user_resource_access(
             f"Project {project_id} has no account for resource {resource_id}"
         )
 
+    now = datetime.now()
     account_users = session.query(AccountUser).filter(
         AccountUser.account_id == account.account_id,
         AccountUser.user_id == user_id,
+        _unended(now),
     ).all()
 
     for account_user in account_users:
-        session.delete(account_user)
+        _end_membership(session, account_user, now)
 
     session.flush()
 

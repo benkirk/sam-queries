@@ -351,6 +351,7 @@ Membership invariant: the lead and admin hold a live row on every live account
 never set in practice); `Project.update` seeds a new one (`ensure_members`).
 `Project.users` is lead + admin + row holders; `account_linked_users` is rows only.
 Reconcile (`reconcile_project_access`, CLI and web) skips users who are not `User.is_active`.
+Removal is a soft delete: started rows get `end_date` = now floored − 1 s (never-started rows are deleted, ended rows are history); `change_project_admin` needs an unended row.
 
 ### 8. API Route Protection (webapp)
 
