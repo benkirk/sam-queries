@@ -82,7 +82,8 @@ def user(ctx: Context, username, validate, list_projects, verbose, provisioning)
 @cli.command()
 @click.argument('projcode', required=False)
 @click.option('--validate', is_flag=True, help='Validate project data')
-@click.option('--reconcile', is_flag=True, help='Reconcile allocations')
+@click.option('--reconcile', is_flag=True,
+              help='Give the lead, admin and every member access to every project resource')
 @click.option('--audit-trees', 'audit_trees', is_flag=True,
               help='Audit project allocation trees DB-wide (no projcode needed)')
 @click.option('--resource', 'audit_resource', type=str, default=None,

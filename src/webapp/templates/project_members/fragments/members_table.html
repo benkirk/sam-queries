@@ -61,7 +61,7 @@ hx-target="#userDetailsModalBody" hx-swap="innerHTML"
                     {% else %}
                     <strong>{{ member.display_name }}</strong>
                     {% endif %}
-                    {% if acc and acc.status != 'full' and not acc.is_lead %}
+                    {% if acc and acc.status != 'full' %}
                         {% set missing_str = acc.missing_names | join(', ') %}
                         {% if can_manage %}
                         {# Actionable partial-access warning: click to grant the missing resources. #}

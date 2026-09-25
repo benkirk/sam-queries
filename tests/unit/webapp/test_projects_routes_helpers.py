@@ -8,7 +8,9 @@ stub and avoid the DB.
 from datetime import datetime
 
 
+from webapp.dashboards.admin import projects_routes
 from webapp.dashboards.admin.projects_routes import (
+    _add_allocation_context,
     _build_alloc_candidates,
     _proposal_sources,
     _propose_extend_end,
@@ -261,3 +263,67 @@ class TestBuildAllocCandidates:
         assert child_row['child_only'] is True
         assert child_row['anchor_projcodes'] == [child.projcode]
         assert child_row['amount'] == 300.0
+
+
+# ---------------------------------------------------------------------------
+# _add_allocation_context (the Add Allocations grid)
+# ---------------------------------------------------------------------------
+
+
+def _grid_rows(ctx):
+    return {row['resource'].resource_id: row
+            for g in ctx['resource_groups'] for row in g['rows']}
+
+
+class TestAddAllocationContext:
+
+    def test_common_resource_is_shown_specialty_is_optional(self, session, monkeypatch):
+        project = make_project(session)
+        common, special = make_resource(session), make_resource(session)
+        monkeypatch.setattr(projects_routes, 'COMMON_ALLOCATION_RESOURCES',
+                            (common.resource_name,))
+
+        rows = _grid_rows(_add_allocation_context(project))
+
+        assert rows[common.resource_id]['optional'] is False
+        assert rows[special.resource_id]['optional'] is True
+        assert not rows[special.resource_id]['held']
+
+    def test_held_specialty_resource_is_always_shown(self, session, monkeypatch):
+        project = make_project(session)
+        special = make_resource(session)
+        end = datetime(2027, 9, 30, 23, 59, 59)
+        make_allocation(session, end_date=end,
+                        account=make_account(session, project=project, resource=special))
+        monkeypatch.setattr(projects_routes, 'COMMON_ALLOCATION_RESOURCES', ())
+
+        row = _grid_rows(_add_allocation_context(project))[special.resource_id]
+
+        assert row['held'] is True
+        assert row['optional'] is False
+        assert row['existing_end'] == end
+
+    def test_group_is_optional_only_when_every_row_is(self, session, monkeypatch):
+        project = make_project(session)
+        common = make_resource(session)
+        special = make_resource(session, resource_type=common.resource_type)
+        lone = make_resource(session)
+        monkeypatch.setattr(projects_routes, 'COMMON_ALLOCATION_RESOURCES',
+                            (common.resource_name,))
+
+        groups = {g['type_name']: g for g in
+                  _add_allocation_context(project)['resource_groups']}
+
+        assert groups[common.resource_type.resource_type]['optional'] is False
+        assert groups[lone.resource_type.resource_type]['optional'] is True
+        assert special.resource_id in {
+            r['resource'].resource_id
+            for r in groups[common.resource_type.resource_type]['rows']}
+
+    def test_stale_common_list_shows_everything(self, session, monkeypatch):
+        project = make_project(session)
+        make_resource(session)
+        monkeypatch.setattr(projects_routes, 'COMMON_ALLOCATION_RESOURCES',
+                            ('no-such-resource',))
+
+        assert _add_allocation_context(project)['show_all_default'] is True

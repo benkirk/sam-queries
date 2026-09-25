@@ -20,6 +20,7 @@ from sam.accounting.allocations import (
 )
 from sam.manage.allocations import (
     create_allocation,
+    create_allocations,
     log_allocation_transaction,
     update_allocation,
 )
@@ -423,3 +424,67 @@ class TestAccountGetOrCreate:
         # Allocation hangs off the revived (single) account.
         assert alloc.account.account_id == acct.account_id
         assert alloc.account.deleted is False
+
+
+class TestCreateAllocations:
+    """The Add Allocations grid's write: N resources over one date range."""
+
+    START = datetime(2026, 10, 1)
+    END = datetime(2027, 9, 30, 23, 59, 59)
+
+    @pytest.fixture
+    def acting_user(self, session):
+        return make_user(session)
+
+    def _create(self, session, project, amounts, user, **kw):
+        return create_allocations(
+            session, project_id=project.project_id, amounts=amounts,
+            start_date=self.START, end_date=self.END, description='FY27',
+            user_id=user.user_id, **kw)
+
+    def test_one_allocation_per_resource_with_shared_dates(self, session, acting_user):
+        project = make_project(session)
+        resources = [make_resource(session) for _ in range(3)]
+        amounts = {r.resource_id: 100.0 * (i + 1) for i, r in enumerate(resources)}
+
+        created, child_created, child_skipped = self._create(
+            session, project, amounts, acting_user)
+
+        assert (child_created, child_skipped) == ([], [])
+        assert {a.account.resource_id: a.amount for a in created} == amounts
+        assert {(a.start_date, a.end_date, a.description) for a in created} == {
+            (self.START, self.END, 'FY27')}
+        for alloc in created:
+            txns = session.query(AllocationTransaction).filter_by(
+                allocation_id=alloc.allocation_id).all()
+            assert [t.transaction_type for t in txns] == [
+                LEGACY_TYPE_MAP[AllocationTransactionType.CREATE][0]]
+
+    def test_propagates_each_allocation_and_skips_existing(self, session, acting_user):
+        parent = make_project(session)
+        child = make_project(session, parent=parent)
+        res_a, res_b = make_resource(session), make_resource(session)
+        held = make_allocation(
+            session, account=make_account(session, project=child, resource=res_b))
+
+        created, child_created, child_skipped = self._create(
+            session, parent, {res_a.resource_id: 10.0, res_b.resource_id: 20.0},
+            acting_user, propagate_to=[child])
+
+        assert len(created) == 2
+        assert [a.account.resource_id for a in child_created] == [res_a.resource_id]
+        assert child_created[0].parent_allocation_id == created[0].allocation_id
+        assert child_skipped == [child]
+        assert held.parent_allocation_id is None
+
+    def test_bad_date_range_writes_nothing(self, session, acting_user):
+        project = make_project(session)
+        resource = make_resource(session)
+        with pytest.raises(ValueError):
+            create_allocations(
+                session, project_id=project.project_id,
+                amounts={resource.resource_id: 1.0},
+                start_date=self.END, end_date=self.START,
+                user_id=acting_user.user_id)
+        assert not session.query(Account).filter_by(
+            project_id=project.project_id, resource_id=resource.resource_id).count()

@@ -242,16 +242,20 @@ class AllocateResidualForm(HtmxFormSchema):
         return data
 
 
-class AddAllocationForm(HtmxFormSchema):
-    """Validate the admin 'Add Allocation' form (Edit Project -> Allocations tab).
+class AddAllocationsForm(HtmxFormSchema):
+    """Validate the admin 'Add Allocations' grid (Edit Project -> Allocations tab).
 
-    All core fields are required. ``apply_to_subprojects`` is an admin checkbox
-    that triggers a DFS propagation of the new allocation to the full descendant
-    tree — unchecked boxes send nothing, so the route must inject an explicit
-    ``False`` before calling ``.load()``.
+    One date range and description apply to every resource given an amount;
+    the route flattens the per-row ``amount_<rid>`` inputs into ``amounts``.
+    Unchecked boxes send nothing, so ``apply_to_subprojects`` defaults False.
     """
-    resource_id = f.Int(required=True)
-    amount = f.Float(required=True, validate=v.Range(min=0, min_inclusive=False))
+    amounts = f.Dict(
+        keys=f.Int(),
+        values=f.Float(validate=v.Range(min=0, min_inclusive=False)),
+        required=True,
+        validate=v.Length(min=1, error='Enter an amount for at least one resource.'),
+        error_messages={'required': 'Enter an amount for at least one resource.'},
+    )
     start_date = f.Date('%Y-%m-%d', required=True)
     end_date = f.Str(load_default=None)   # 23:59:59 convention applied in post_load
     description = f.Str(load_default=None)

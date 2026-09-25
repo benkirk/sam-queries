@@ -188,6 +188,13 @@ class TestProjectMembersEndpoint:
         assert 'members' in data
         assert 'total_members' in data
 
+    def test_total_members_counts_each_person_once(self, auth_client):
+        """The lead and admin are counted once each, never on top of their own member rows."""
+        data = auth_client.get('/api/v1/projects/SCSG0001/members').get_json()
+        people = {m['username'] for m in data['members']}
+        people.update(r['username'] for r in (data['lead'], data['admin']) if r)
+        assert data['total_members'] == len(people)
+
     def test_get_project_members_not_found(self, auth_client):
         """Test 404 for non-existent project."""
         response = auth_client.get('/api/v1/projects/INVALID999/members')

@@ -101,12 +101,11 @@ def set_user_role(request_number, role, username):
     if not user.is_active:
         _reject('inactive user', 409)
 
-    # Legacy inserts no roster row, so neither do we — but a lead who is not a member is
-    # worth saying out loud, because `project.lead` is a bare FK with no membership
-    # constraint behind it and nothing else would ever mention it.
+    # The lead must be a live member; Project.update seeds the rows. Legacy inserted
+    # none (the CESM0020 incident), so this deliberately departs from it.
     if not project.has_user(user):
         current_app.logger.warning(
-            'XRAS set a project lead who is not a project member: '
+            'XRAS set a project lead who is not a project member; adding them as one: '
             'id=%s projcode=%s user=%s', log_id, project.projcode, username)
 
     with management_transaction(db.session):

@@ -190,7 +190,8 @@ def change_project_admin(
     """
     Change the project admin to a different user.
 
-    The new admin must already be a member of the project (unless clearing admin).
+    The new admin must hold some row on the project, even an expired one, or be
+    the lead; ``Project.update`` then gives them a live row on every account.
 
     NOTE: This function does NOT commit the session. The caller is responsible
     for calling session.commit() or session.flush() as appropriate.
@@ -219,7 +220,11 @@ def change_project_admin(
         if not member and project.project_lead_user_id != new_admin_user_id:
             raise ValueError("User must be a project member before becoming admin")
 
-    project.project_admin_user_id = new_admin_user_id
+    if new_admin_user_id:
+        project.update(project_admin_user_id=new_admin_user_id)
+    else:
+        # update() reads None as "no change", so clearing stays a direct write.
+        project.project_admin_user_id = None
 
     # Flush changes but do not commit
     # Caller is responsible for committing
@@ -288,7 +293,7 @@ def revoke_user_resource_access(
 
     Deletes the user's AccountUser row(s) on the (project, resource) account
     (ORM delete to trigger audit events, mirroring remove_user_from_project).
-    The project lead cannot be revoked.
+    The project lead and admin cannot be revoked.
 
     NOTE: This function does NOT commit the session. The caller is responsible
     for wrapping it in management_transaction().
@@ -300,7 +305,7 @@ def revoke_user_resource_access(
         resource_id: Resource ID whose project account the user should leave
 
     Raises:
-        ValueError: If the user is the project lead, or no account exists
+        ValueError: If the user is the project lead or admin, or no account exists
     """
     project = session.get(Project, project_id)
     if not project:
@@ -308,6 +313,8 @@ def revoke_user_resource_access(
 
     if project.project_lead_user_id == user_id:
         raise ValueError("Cannot revoke the project lead's access")
+    if project.project_admin_user_id == user_id:
+        raise ValueError("Cannot revoke the project admin's access")
 
     account = Account.get_by_project_and_resource(session, project_id, resource_id)
     if account is None:
@@ -326,14 +333,14 @@ def revoke_user_resource_access(
     session.flush()
 
 
-def reconcile_project_access(session: Session, project_id: int) -> None:
+def reconcile_project_access(session: Session, project_id: int) -> list[AccountUser]:
     """
     Give every project member access to every project resource.
 
     Fills the user×resource access grid by re-running the membership-seeding
     invariant (Account._seed_members) over each non-deleted account, so the
     lead, admin, and all existing members become members of every account.
-    Only adds access; never revokes.
+    Only adds access; never revokes. Returns the AccountUser rows it added.
 
     NOTE: This function does NOT commit the session. The caller is responsible
     for wrapping it in management_transaction().
@@ -354,7 +361,9 @@ def reconcile_project_access(session: Session, project_id: int) -> None:
         Account.is_active,
     ).all()
 
+    added = []
     for account in accounts:
-        Account._seed_members(session, account)
+        added.extend(Account._seed_members(session, account))
 
     session.flush()
+    return added
