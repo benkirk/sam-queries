@@ -82,6 +82,13 @@ class TestPages:
         assert resp.status_code == 200
         assert resp.headers['Cache-Control'] == 'private, no-store'
 
+    def test_only_the_browser_drops_the_page_width_cap(self, app, auth_client):
+        main = re.compile(r'<div class="main-content">\s*<div class="([^"]*)"')
+        browser = auth_client.get(_url(app, 'db_browser.table', source='sam', table='users'))
+        other = auth_client.get('/admin/projects')
+        assert main.search(browser.get_data(as_text=True)).group(1) == 'container-fluid'
+        assert 'sam-fluid-1800' in main.search(other.get_data(as_text=True)).group(1)
+
     def test_filtered_table(self, app, auth_client):
         resp = auth_client.get(_url(app, 'db_browser.table', source='sam', table='users',
                                     **{'f0.col': 'username', 'f0.op': 'eq', 'f0.v': 'benkirk'}))
