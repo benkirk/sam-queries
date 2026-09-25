@@ -159,10 +159,14 @@ fixperms: ## Fix file permissions for .env
 	done
 
 # Each runner pins its own SAM_TEST_DB_URL so an exported Postgres URL cannot
-# redirect `make check`, or the reverse.
+# redirect `make check`, or the reverse. orm_inventory reads SAM_DB_* instead,
+# so it is pinned to the same container; a blank .env must not fail the run.
 SAM_TEST_MYSQL_URL := mysql+pymysql://root:root@127.0.0.1:3307/sam
 check: ## Run tests
-	$(config_env) && source etc/config_env.sh && python3 scripts/orm_inventory.py
+	$(config_env) && source etc/config_env.sh && \
+	    SAM_DB_DRIVER=mysql SAM_DB_USERNAME=root SAM_DB_PASSWORD=root SAM_DB_SERVER=127.0.0.1 \
+	    SAM_DB_PORT=3307 SAM_DB_NAME=sam SAM_DB_REQUIRE_SSL=false \
+	    python3 scripts/orm_inventory.py
 	$(config_env) && source etc/config_env.sh && \
 	    SAM_TEST_DB_URL='$(SAM_TEST_MYSQL_URL)' python3 -m pytest
 

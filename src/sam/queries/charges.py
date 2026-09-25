@@ -17,7 +17,7 @@ Functions:
 from datetime import datetime
 from typing import Any, List, Optional, Dict, Union
 
-from sqlalchemy import String, distinct, func
+from sqlalchemy import String, distinct, func, select
 from sqlalchemy.orm import Session
 
 from sam.core.users import User
@@ -34,6 +34,21 @@ from sam.resources.resources import Resource
 # ============================================================================
 # Charge Aggregation Queries
 # ============================================================================
+
+def _account_filter(projcode: Union[str, List[str]], resource: str):
+    """Rows for these projects on *resource*, matched through the indexed ``account_id``.
+
+    comp_charge_summary has no index leading on projcode, so filtering on
+    ``projcode``/``resource`` scans every project's rows in the date window.
+    """
+    codes = projcode if isinstance(projcode, list) else [projcode]
+    return CompChargeSummary.account_id.in_(
+        select(Account.account_id)
+        .join(Project, Account.project_id == Project.project_id)
+        .join(Resource, Account.resource_id == Resource.resource_id)
+        .where(Project.projcode.in_(codes), Resource.resource_name == resource)
+    )
+
 
 def get_adjustment_totals_by_date(
     session: Session,
@@ -469,10 +484,9 @@ def get_user_breakdown_for_project(session, projcode: str,
     ).outerjoin(
         User, CompChargeSummary.user_id == User.user_id
     ).filter(
-        CompChargeSummary.projcode == projcode,
+        _account_filter(projcode, resource),
         CompChargeSummary.activity_date >= start_date,
         CompChargeSummary.activity_date <= end_date,
-        CompChargeSummary.resource == resource
     ).group_by(
         CompChargeSummary.username,
         CompChargeSummary.user_id,
@@ -565,12 +579,8 @@ def get_user_summary_for_project(
     ).filter(
         CompChargeSummary.activity_date >= start_date,
         CompChargeSummary.activity_date <= end_date,
-        CompChargeSummary.resource == resource,
+        _account_filter(projcode, resource),
     )
-    if isinstance(projcode, list):
-        query = query.filter(CompChargeSummary.projcode.in_(projcode))
-    else:
-        query = query.filter(CompChargeSummary.projcode == projcode)
 
     query = query.group_by(CompChargeSummary.username).having(
         func.sum(CompChargeSummary.charges) > 0
@@ -702,12 +712,8 @@ def get_daily_summary_for_project(
     ).filter(
         CompChargeSummary.activity_date >= start_date,
         CompChargeSummary.activity_date <= end_date,
-        CompChargeSummary.resource == resource,
+        _account_filter(projcode, resource),
     )
-    if isinstance(projcode, list):
-        query = query.filter(CompChargeSummary.projcode.in_(projcode))
-    else:
-        query = query.filter(CompChargeSummary.projcode == projcode)
 
     query = query.group_by(CompChargeSummary.activity_date).having(
         func.sum(CompChargeSummary.charges) > 0
@@ -761,12 +767,8 @@ def get_monthly_user_counts_for_project(
     ).filter(
         CompChargeSummary.activity_date >= start_date,
         CompChargeSummary.activity_date <= end_date,
-        CompChargeSummary.resource == resource,
+        _account_filter(projcode, resource),
     )
-    if isinstance(projcode, list):
-        query = query.filter(CompChargeSummary.projcode.in_(projcode))
-    else:
-        query = query.filter(CompChargeSummary.projcode == projcode)
 
     query = query.group_by(month_expr).having(
         func.sum(CompChargeSummary.charges) > 0
@@ -984,11 +986,15 @@ def query_comp_charge_summaries(
         query = query.filter(col.like(val) if '%' in val else col == val)
 
     _apply_filter(CompChargeSummary.username, username)
-    if isinstance(projcode, list):
-        query = query.filter(CompChargeSummary.projcode.in_(projcode))
+    exact_projcode = isinstance(projcode, list) or (projcode is not None and '%' not in projcode)
+    if exact_projcode and resource is not None and '%' not in resource:
+        query = query.filter(_account_filter(projcode, resource))
     else:
-        _apply_filter(CompChargeSummary.projcode, projcode)
-    _apply_filter(CompChargeSummary.resource, resource)
+        if isinstance(projcode, list):
+            query = query.filter(CompChargeSummary.projcode.in_(projcode))
+        else:
+            _apply_filter(CompChargeSummary.projcode, projcode)
+        _apply_filter(CompChargeSummary.resource, resource)
     _apply_filter(CompChargeSummary.machine, machine)
     if queue is not None:
         query = query.filter(CompChargeSummary.queue == queue)
