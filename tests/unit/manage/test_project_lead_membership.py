@@ -137,3 +137,51 @@ def test_reconcile_returns_the_rows_it_added(session, two_accounts):
     assert [(au.account_id, au.user_id) for au in added] == [
         (a2.account_id, project.project_lead_user_id)]
     assert reconcile_project_access(session, project.project_id) == []
+
+
+class TestActiveResourcesOnly:
+    """Decommissioned resources are left alone; ``account.deleted`` is never set in practice."""
+
+    def _retire(self, session, account):
+        account.resource.decommission_date = datetime.now() - timedelta(days=30)
+        session.flush()
+        session.expire_all()
+
+    def test_ensure_members_skips_a_decommissioned_resource(self, session, two_accounts):
+        project, a1, a2 = two_accounts
+        self._retire(session, a2)
+        user = make_user(session)
+        added = project.ensure_members(user.user_id)
+        assert [au.account_id for au in added] == [a1.account_id]
+        assert _rows(session, a2, user) == []
+
+    def test_reconcile_skips_a_decommissioned_resource(self, session, two_accounts):
+        project, a1, a2 = two_accounts
+        _expire(session, a1, project.lead)
+        _expire(session, a2, project.lead)
+        self._retire(session, a2)
+        added = reconcile_project_access(session, project.project_id)
+        assert [au.account_id for au in added] == [a1.account_id]
+
+    def test_lead_admin_only_leaves_other_members_alone(self, session, two_accounts):
+        project, a1, a2 = two_accounts
+        member = make_user(session)
+        project.ensure_members(member.user_id)
+        _expire(session, a2, member)
+        _expire(session, a2, project.lead)
+        added = reconcile_project_access(session, project.project_id, lead_admin_only=True)
+        assert [(au.account_id, au.user_id) for au in added] == [
+            (a2.account_id, project.project_lead_user_id)]
+
+
+@pytest.mark.parametrize('lead_admin_only', [False, True])
+def test_reconcile_skips_an_inactive_user(session, two_accounts, lead_admin_only):
+    project, a1, a2 = two_accounts
+    retired = make_user(session, active=False)
+    project.update(project_admin_user_id=retired.user_id)  # an explicit assignment still seeds
+    _expire(session, a1, retired)
+    _expire(session, a1, project.lead)
+    added = reconcile_project_access(session, project.project_id, lead_admin_only=lead_admin_only)
+    assert [(au.account_id, au.user_id) for au in added] == [
+        (a1.account_id, project.project_lead_user_id)]
+    assert _live(session, a1, retired) == []

@@ -140,7 +140,8 @@ class Account(Base, SoftDeleteMixin, SessionMixin):
         return existing
 
     @classmethod
-    def _seed_members(cls, session, account: 'Account') -> List['AccountUser']:
+    def _seed_members(cls, session, account: 'Account', *,
+                      active_users_only: bool = False) -> List['AccountUser']:
         """Give the lead, admin and every open-ended sibling member a live row on *account*.
 
         Enforces the invariant that a project's lead, admin and existing members
@@ -169,12 +170,18 @@ class Account(Base, SoftDeleteMixin, SessionMixin):
         ).all()
         propagate_user_ids.update(uid for (uid,) in sibling_members)
 
-        return cls._add_live_members(session, account, propagate_user_ids)
+        return cls._add_live_members(session, account, propagate_user_ids,
+                                     active_users_only=active_users_only)
 
     @classmethod
-    def _add_live_members(cls, session, account: 'Account', user_ids) -> List['AccountUser']:
+    def _add_live_members(cls, session, account: 'Account', user_ids, *,
+                          active_users_only: bool = False) -> List['AccountUser']:
         """Add an open-ended row for each user without an unended row on *account*; flush, return them."""
         user_ids = set(user_ids)
+        if user_ids and active_users_only:
+            from sam.core.users import User
+            user_ids = {uid for (uid,) in session.query(User.user_id).filter(
+                User.user_id.in_(user_ids), User.is_active)}
         if not user_ids:
             return []
         now = datetime.now()

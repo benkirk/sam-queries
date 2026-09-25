@@ -1,5 +1,6 @@
 """Project command classes."""
 
+from collections import defaultdict
 from datetime import datetime, timedelta
 from cli.core.base import BaseProjectCommand
 from cli.core.output import output_json
@@ -394,7 +395,8 @@ class ProjectAdminCommand(ProjectSearchCommand):
     """Admin command for projects - extends search with validation."""
 
     def execute(self, projcode: str, validate: bool = False,
-                reconcile: bool = False, **kwargs) -> int:
+                reconcile: bool = False, lead_admin_only: bool = False,
+                dry_run: bool = False, **kwargs) -> int:
         # First run base search
         exit_code = super().execute(projcode, **kwargs)
         if exit_code != EXIT_SUCCESS:
@@ -407,7 +409,8 @@ class ProjectAdminCommand(ProjectSearchCommand):
                 return exit_code
 
         if reconcile:
-            return self._reconcile_project(projcode)
+            return ProjectReconcileCommand(self.ctx).execute(
+                projcode, lead_admin_only=lead_admin_only, dry_run=dry_run)
 
         return EXIT_SUCCESS
 
@@ -425,7 +428,8 @@ class ProjectAdminCommand(ProjectSearchCommand):
         if project.admin is not None and project.admin != project.lead:
             roles.append(('admin', project.admin))
         for role, user in roles:
-            if user is None:
+            # Reconcile skips inactive or locked users, so validate does too.
+            if user is None or not user.is_active:
                 continue
             missing = _resources_without_live_row(self.session, project, user.user_id)
             if missing:
@@ -441,20 +445,107 @@ class ProjectAdminCommand(ProjectSearchCommand):
         self.console.print(f"✅ Project {projcode} validated", style="green")
         return EXIT_SUCCESS
 
-    def _reconcile_project(self, projcode: str) -> int:
-        """Admin-only: give the lead, admin and every member access to every project resource."""
-        project = self.get_project(projcode)
-        with management_transaction(self.session):
-            added = [(au.user.username, au.account.resource.resource_name)
-                     for au in reconcile_project_access(self.session, project.project_id)]
-        display_reconcile_results(self.ctx, projcode, sorted(added))
+
+class ProjectReconcileCommand(BaseProjectCommand):
+    """Admin: give members access to every active resource, for one project or all active ones."""
+
+    def execute(self, projcode: str = None, lead_admin_only: bool = False,
+                dry_run: bool = False) -> int:
+        if projcode:
+            project = self.get_project(projcode)
+            if project is None:
+                self.console.print(f"Project {projcode} not found", style="bold red")
+                return EXIT_NOT_FOUND
+            projects = [project]
+        else:
+            projects = self._active_projects()
+
+        json_mode = self.ctx.output_format == 'json'
+        if len(projects) > 1 and not json_mode:
+            projects = track(projects, description="Reconciling...",
+                             console=self.ctx.stderr_console, transient=True)
+        rows = []
+        if dry_run:
+            # A savepoint, not session.rollback(): only this run's inserts are discarded.
+            savepoint = self.session.begin_nested()
+            try:
+                for project in projects:
+                    rows.extend(self._reconcile_one(project, lead_admin_only))
+            finally:
+                savepoint.rollback()
+        else:
+            for project in projects:
+                with management_transaction(self.session):
+                    rows.extend(self._reconcile_one(project, lead_admin_only))
+
+        result = {
+            'kind': 'project_reconcile',
+            'scope': projcode or 'all active projects',
+            'mode': 'lead_admin' if lead_admin_only else 'all_members',
+            'dry_run': dry_run,
+            'added': rows,
+        }
+        if json_mode:
+            output_json(result)
+        else:
+            display_reconcile_results(self.ctx, result)
         return EXIT_SUCCESS
+
+    def _active_projects(self) -> list:
+        return (self.session.query(Project).filter(Project.is_active)
+                .order_by(Project.projcode).all())
+
+    def _reconcile_one(self, project, lead_admin_only: bool) -> list:
+        added = reconcile_project_access(self.session, project.project_id,
+                                         lead_admin_only=lead_admin_only)
+        return _describe_additions(self.session, project, added)
+
+
+def _describe_additions(session, project, added) -> list:
+    """One dict per (project, user) added: role, prior history on the project, resources."""
+    if not added:
+        return []
+    by_user = defaultdict(list)
+    for au in added:
+        by_user[au.user_id].append(au)
+    added_ids = {au.account_user_id for au in added}
+    prior = defaultdict(list)
+    for au in session.query(AccountUser).filter(
+            AccountUser.account_id.in_([a.account_id for a in project.accounts]),
+            AccountUser.user_id.in_(list(by_user))):
+        if au.account_user_id not in added_ids:
+            prior[au.user_id].append(au)
+
+    now = datetime.now()
+    out = []
+    for user_id, rows in by_user.items():
+        old = prior[user_id]
+        if not old:
+            history = 'never a member'
+        elif any(au.end_date is None or au.end_date > now for au in old):
+            history = 'partial'
+        else:
+            history = f"ended {max(au.end_date for au in old).date().isoformat()}"
+        if user_id == project.project_lead_user_id:
+            role = 'lead'
+        elif user_id == project.project_admin_user_id:
+            role = 'admin'
+        else:
+            role = 'member'
+        out.append({
+            'projcode': project.projcode,
+            'username': rows[0].user.username,
+            'role': role,
+            'history': history,
+            'resources': sorted(au.account.resource.resource_name for au in rows),
+        })
+    return sorted(out, key=lambda r: r['username'])
 
 
 def _resources_without_live_row(session, project, user_id: int) -> list:
-    """Resource names of the project's non-deleted accounts where *user_id* has no live row."""
+    """Resource names of the project's live accounts where *user_id* has no live row."""
     now = datetime.now()
-    accounts = [a for a in project.accounts if a.is_active]
+    accounts = project.live_accounts
     live = {aid for (aid,) in session.query(AccountUser.account_id).filter(
         AccountUser.user_id == user_id,
         AccountUser.account_id.in_([a.account_id for a in accounts]),
@@ -462,4 +553,4 @@ def _resources_without_live_row(session, project, user_id: int) -> list:
         or_(AccountUser.end_date.is_(None), AccountUser.end_date > now),
     )}
     return sorted(a.resource.resource_name for a in accounts
-                  if a.account_id not in live and a.resource)
+                  if a.account_id not in live)
