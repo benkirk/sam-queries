@@ -49,6 +49,12 @@ class SAMWebappConfig(SAMConfig):
     # env var explicitly either way.
     FLASK_ADMIN_ENABLED = os.getenv('FLASK_ADMIN_ENABLED', '1').lower() in ('1', 'true', 'yes')
 
+    # The read-only /database row browser (webapp/db_browser). On in every
+    # environment, prod included: the ADMIN_DATABASE permission gates it.
+    # Set '0' to unmount it. Timeout is per statement, in milliseconds.
+    DB_BROWSER_ENABLED = os.getenv('DB_BROWSER_ENABLED', '1').lower() in ('1', 'true', 'yes')
+    DB_BROWSER_STATEMENT_TIMEOUT_MS = int(os.getenv('DB_BROWSER_STATEMENT_TIMEOUT_MS', '5000'))
+
     # Dev-only component gallery (/dev/gallery). When off, the blueprint is not
     # mounted. ProductionConfig flips the default OFF so the public deploy never
     # serves it — same idiom and posture as FLASK_ADMIN_ENABLED above.

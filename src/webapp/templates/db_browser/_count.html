@@ -1,0 +1,2 @@
+{# Exact COUNT result, swapped over the button that asked for it. #}
+<span class="small">{% if error %}<span class="text-danger-emphasis">{{ error }}</span>{% else %}{{ n | fmt_plural('row', 'rows', raw=true) }}{% endif %}</span>

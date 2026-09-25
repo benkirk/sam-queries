@@ -1,0 +1,27 @@
+{% extends 'db_browser/base.html' %}
+{% block db_title %}{{ src.label }} · Database{% endblock %}
+{% block db_main %}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <h1 class="h4 mb-0">{{ src.label }}</h1>
+    <span class="small text-body-secondary">{{ entries | length }} tables and views{% if src.note %} · {{ src.note }}{% endif %}</span>
+    <form method="post" action="{{ url_for('db_browser.refresh', source=src.key) }}" class="ms-auto">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-sm btn-outline-secondary" title="Re-read table list, columns and foreign keys (this worker)">
+            <i class="fa-solid fa-rotate me-1"></i>Refresh metadata</button>
+    </form>
+</div>
+{% if error %}
+<div class="alert alert-warning small"><i class="fa-solid fa-triangle-exclamation me-1"></i>{{ error }}</div>
+{% else %}
+<div class="card db-source-card">
+    <div class="card-header py-2">
+        <input type="search" name="q" class="form-control form-control-sm" placeholder="Filter tables" aria-label="Filter tables"
+               hx-get="{{ url_for('db_browser.tables_fragment', source=src.key) }}"
+               hx-trigger="input changed delay:200ms, search" hx-target="#db-source-tables">
+    </div>
+    <div id="db-source-tables">
+        {% with current = none %}{% include 'db_browser/_rail_tables.html' %}{% endwith %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

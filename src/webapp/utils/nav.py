@@ -15,7 +15,7 @@ Register in the app factory:
     app.context_processor(nav_context_processor)
 """
 
-from flask import request
+from flask import current_app, request
 from flask_login import current_user
 
 from webapp.utils.rbac import (
@@ -65,6 +65,13 @@ def _can_manage_account_requests():
 def _can_manage_events():
     return (current_user.is_authenticated
             and has_permission_any_facility(current_user, Permission.MANAGE_EVENTS))
+
+
+def _can_browse_database():
+    # The blueprint check keeps url_for from raising when DB_BROWSER_ENABLED is off.
+    return (current_user.is_authenticated
+            and 'db_browser' in current_app.blueprints
+            and has_permission(current_user, Permission.ADMIN_DATABASE))
 
 
 def _can_view_fs_scans():
@@ -227,6 +234,10 @@ NAV_SECTIONS = (
              'icon': 'fa-solid fa-calendar-days', 'visible': _can_manage_events},
             {'endpoint': 'admin_dashboard.configuration', 'label': 'Configuration',
              'icon': 'fa-solid fa-sliders', 'visible': _can_view_config},
+            {'endpoint': 'db_browser.index', 'label': 'Database',
+             'icon': 'fa-solid fa-database', 'visible': _can_browse_database,
+             'active_endpoints': ('db_browser.source', 'db_browser.table',
+                                  'db_browser.table_schema', 'db_browser.row')},
         ),
     },
 )
@@ -265,7 +276,8 @@ def resolve_nav_sections():
             'key': s['key'],
             'label': s['label'],
             'endpoint': s['endpoint'],
-            'active': request.blueprint == s['blueprint'],
+            'active': (request.blueprint == s['blueprint']
+                       or any(i['active'] for i in items)),
             'pages': items,
         })
     return sections

@@ -1,0 +1,12 @@
+{# One rendered value. `view` is a dbbrowse CellView; `link` an optional FK row URL. #}
+{% macro cell(view, link=none) -%}
+{%- if view.kind == 'null' -%}
+<span class="db-null">NULL</span>
+{%- elif view.multiline -%}
+<pre class="db-pre mb-0">{{ view.text }}</pre>
+{%- else -%}
+{%- if link %}<a href="{{ link }}" class="db-v db-{{ view.kind }}" title="Open referenced row">{{ view.text }}</a>
+{%- else %}<span class="db-v db-{{ view.kind }}">{{ view.text }}</span>{% endif -%}
+{%- if view.truncated %}<span class="db-more" title="Truncated">…</span>{% endif -%}
+{%- endif -%}
+{%- endmacro %}

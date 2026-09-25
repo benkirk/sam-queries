@@ -428,6 +428,9 @@ def create_app(*, config_overrides: dict | None = None):
         app.register_blueprint(project_invites_bp)
         # The invitee's link: no login hook, whatever the register switches say.
         app.register_blueprint(register_invite_bp)
+    if app.config.get('DB_BROWSER_ENABLED', False):
+        from webapp.db_browser import bp as db_browser_bp
+        app.register_blueprint(db_browser_bp, url_prefix='/dbbrowse')
     # NOTE: admin_bp blueprint removed - Flask-Admin handles /database routing
     # app.register_blueprint(admin_bp, url_prefix='/database')
 

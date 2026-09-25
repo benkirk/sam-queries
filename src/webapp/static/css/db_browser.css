@@ -1,0 +1,120 @@
+/* /database browser (templates/db_browser/). Tokens only; see test_css_tokens. */
+
+.db-rail-card {
+    position: sticky;
+    top: 0.75rem;
+}
+
+.db-rail-tables {
+    max-height: calc(100vh - 12rem);
+    overflow-y: auto;
+}
+
+.db-source-card #db-source-tables {
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.db-table-list .list-group-item.active .db-estimate {
+    color: inherit;
+}
+
+.db-estimate {
+    color: var(--text-tertiary);
+}
+
+.db-grid table {
+    font-size: var(--font-size-sm);
+}
+
+.db-grid td {
+    max-width: 28rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.db-grid th {
+    position: sticky;
+    top: 0;
+    background: var(--surface-card);
+}
+
+.db-rowlink {
+    width: 1.5rem;
+}
+
+.db-v {
+    font-family: var(--font-family-code);
+}
+
+.db-num {
+    font-variant-numeric: tabular-nums;
+}
+
+.db-null,
+.db-binary,
+.db-more {
+    color: var(--text-tertiary);
+    font-style: italic;
+    font-family: var(--font-family-code);
+}
+
+.db-icon {
+    color: var(--text-tertiary);
+    font-size: 0.7em;
+    margin-left: 0.2rem;
+}
+
+.db-pre {
+    font-family: var(--font-family-code);
+    font-size: var(--font-size-sm);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 32rem;
+    overflow: auto;
+}
+
+.db-row td {
+    word-break: break-word;
+}
+
+.db-columns {
+    position: relative;
+}
+
+.db-columns summary {
+    list-style: none;
+}
+
+.db-columns summary::-webkit-details-marker {
+    display: none;
+}
+
+.db-columns-menu {
+    position: absolute;
+    z-index: 10;
+    min-width: 16rem;
+    max-height: 22rem;
+    overflow-y: auto;
+    margin-top: 0.25rem;
+    box-shadow: var(--bs-box-shadow);
+}
+
+/* Identifiers are case-sensitive: undo the theme's uppercase on headers and link buttons. */
+.db-grid .table thead th,
+.db-browser .btn-link,
+.db-rail-card .dropdown-toggle {
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+@media (max-width: 991.98px) {
+    .db-rail-card {
+        position: static;
+    }
+
+    .db-rail-tables {
+        max-height: 40vh;
+    }
+}

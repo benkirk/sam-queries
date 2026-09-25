@@ -178,6 +178,7 @@ webapp:
   env:
     DISABLE_AUTH: "0"                     # Explicitly disabled — must remain 0 in production
     FLASK_ADMIN_ENABLED: "0"              # Flask-Admin /database browser stays unmounted on the public deploy
+    DB_BROWSER_ENABLED: "1"               # read-only /database row browser; ADMIN_DATABASE (csg) gates it. "0" unmounts
     COMPONENT_GALLERY_ENABLED: "0"        # the /dev/gallery component gallery stays unmounted; values-dev.yaml turns it on
     ACCOUNT_REGISTRATION_ENABLED: "0"     # the anonymous /register form ships dark; values-dev.yaml turns it on
     HUMAN_CHECK_PROVIDER: "turnstile"     # CAPTCHA on the /register submit ('none' | 'turnstile'); keys from humanCheckCredentials

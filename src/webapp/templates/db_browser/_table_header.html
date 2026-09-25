@@ -1,0 +1,20 @@
+{# Title row + Data/Schema tabs shared by table.html and schema.html. #}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+    <h1 class="h4 mb-0 font-monospace">{{ t.name }}</h1>
+    {% if entry.kind == 'view' %}<span class="badge text-bg-secondary">view</span>{% endif %}
+    {% if orm_class %}<span class="badge text-bg-light border font-monospace" title="ORM class">{{ orm_class }}</span>{% endif %}
+    <span class="small text-body-secondary ms-lg-2">
+        {% if entry.estimate is not none %}~{{ entry.estimate | fmt_number }} rows (estimate){% endif %}
+        {% if src.note %} · {{ src.note }}{% endif %}
+    </span>
+</div>
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <a class="nav-link{% if tab == 'data' %} active{% endif %}"
+           href="{{ url_for('db_browser.table', source=src.key, table=t.name) }}">Data</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link{% if tab == 'schema' %} active{% endif %}"
+           href="{{ url_for('db_browser.table_schema', source=src.key, table=t.name) }}">Schema</a>
+    </li>
+</ul>
