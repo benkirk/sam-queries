@@ -337,6 +337,20 @@ class TestDbPoolEndpoint:
 
         assert 'sam' in data['pools']
 
+    def test_db_pool_covers_every_inventoried_engine(self, app, auth_client, monkeypatch, tmp_path):
+        """Plugin engines appear under stable keys: one per machine, one per collection."""
+        from itertools import count
+        from sqlalchemy import create_engine
+        n = count()
+        eng = lambda: create_engine(f'sqlite:///{tmp_path}/e{next(n)}.db')   # file DB: QueuePool
+        monkeypatch.setitem(app.extensions, 'hpc_usage_queries', {'engines': {'derecho': eng()}})
+        monkeypatch.setitem(app.extensions, 'fs_scans', {
+            'databases': {'campaign': {'engines': {'univ': eng(), 'cisl': eng()}}}})
+        pools = auth_client.get('/api/v1/health/db-pool').get_json()['pools']
+        assert set(pools) == {'sam', 'system_status', 'job_history:derecho',
+                              'fs_scans:campaign/cisl', 'fs_scans:campaign/univ'}
+        assert pools['fs_scans:campaign/univ']['reachable'] is True
+
     def test_db_pool_stats_keys(self, auth_client):
         """Each pool entry contains all expected stat keys."""
         response = auth_client.get('/api/v1/health/db-pool')

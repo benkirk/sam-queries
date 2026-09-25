@@ -95,9 +95,9 @@ an artifact ("New account", "Reactivation") rather than an action, and why the c
 carries a banner saying SAM cannot perform either.
 
 ⚠️ **Reactivation is upstream too.** It is tempting to read "Reactivate" as something a
-SAM admin does, because Flask-Admin's `UserAdmin` exposes `active`/`locked` and the
-`nusd`/`csg` bundles hold `EDIT_USERS`. That surface is kill-switched off in production
-(`FLASK_ADMIN_ENABLED`) and is not the sanctioned mechanism. Both remedies land upstream.
+SAM admin does, because `users` carries `active`/`locked` and the `nusd`/`csg` bundles
+hold `EDIT_USERS`. SAM has no web surface that writes them (`/database` is read-only),
+and editing them directly is not the sanctioned mechanism. Both remedies land upstream.
 
 ### The one thing SAM *can* do about it
 

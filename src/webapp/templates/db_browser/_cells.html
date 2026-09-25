@@ -1,0 +1,19 @@
+{# One rendered value. `view` is a dbbrowse CellView; `link` an optional FK row URL;
+   `entity` 'user' | 'project' renders the shared entity-modal link (shells: table.html, row.html). #}
+{% from 'dashboards/fragments/user_rows.html' import user_link %}
+{% from 'dashboards/fragments/project_bits.html' import project_link %}
+{% macro cell(view, link=none, entity=none, raw=none) -%}
+{%- if entity == 'user' and raw -%}
+{{ user_link(raw, can_view_users, compact=True) }}
+{%- elif entity == 'project' and raw -%}
+{{ project_link(raw, can_view_projects, admin=True, compact=True) }}
+{%- elif view.kind == 'null' -%}
+<span class="db-null">NULL</span>
+{%- elif view.multiline -%}
+<pre class="db-pre mb-0">{{ view.text }}</pre>
+{%- else -%}
+{%- if link %}<a href="{{ link }}" class="db-v db-{{ view.kind }}" title="Open referenced row">{{ view.text }}</a>
+{%- else %}<span class="db-v db-{{ view.kind }}">{{ view.text }}</span>{% endif -%}
+{%- if view.truncated %}<span class="db-more" title="Truncated">…</span>{% endif -%}
+{%- endif -%}
+{%- endmacro %}

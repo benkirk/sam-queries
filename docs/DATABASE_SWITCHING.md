@@ -67,7 +67,6 @@ SAM_DB_REQUIRE_SSL=true
 ### ❌ Doesn't Work
 
 - **Webapp CRUD operations** - Create/Update/Delete will fail (read-only)
-- **Flask-Admin write operations** - Will show errors
 - **Test suite CRUD tests** - Will be skipped (expected)
 
 ## Use Cases

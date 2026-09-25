@@ -101,7 +101,7 @@ sam-queries/
 │   ├── api/v1/              # REST blueprints (+ legacy-compat, see §API below)
 │   ├── dashboards/          # user/, admin/, allocations/, status/ + project_members
 │   │   └── admin/crud.py    # CrudSpec + register_crud (CRUD route generator)
-│   ├── admin/               # Flask-Admin (auto-detected model views)
+│   ├── db_browser/          # /database read-only row browser (query half: src/dbbrowse/)
 │   ├── auth/ audit/ caching/ disk_scans/ jobs/ limiter/ utils/
 │   │   └── utils/form_handler.py   # HtmxFormHandler lifecycle class
 │   └── templates/ static/   # Jinja2 + vendored assets
@@ -548,16 +548,16 @@ rules and the cleanup sprint: `docs/plans/DOC_SLIMMING.md`.
 
 ---
 
-## Flask-Admin (`src/webapp/admin/`)
+## Database browser (`/database`)
 
-- Gated by the `FLASK_ADMIN_ENABLED` kill-switch (off in prod/public).
-- **Model views are auto-detected**: `add_default_models.py` enumerates every
-  ORM class on the SAM declarative Base (excluding `__bind_key__` models, i.e.
-  system_status) and registers a `SAMModelView` under the "Everything"
-  category. Adding an ORM model surfaces an admin view with no edit here.
-- Endpoint slugs derive from the class name (`_camel_to_snake`) — stable URLs.
-- To customize one model's view: subclass `SAMModelView` and add it to the
-  `_CUSTOM_VIEWS` promotion dict; don't create per-model empty classes.
+Read-only rows from **every** engine (`webapp/utils/engine_inventory.py`),
+found by reflection, so a new table needs no edit. `src/dbbrowse/` (SQLAlchemy
+only) + `src/webapp/db_browser/`; gate `ADMIN_DATABASE`, kill-switch
+`DB_BROWSER_ENABLED`. Every query runs in `read_only_connection` (READ ONLY,
+statement timeout, rollback; never `db.session`), no `COUNT(*)` on the page path.
+❌ **DON'T** add a secret-shaped column undecided — `test_dbbrowse_redact.py` fails
+until `dbbrowse/redact.py` redacts it or its `_KNOWN_SAFE` lists it.
+Record: `docs/plans/DB_BROWSER.md`.
 
 ---
 
@@ -955,7 +955,7 @@ effectively off on dev (load-test target), login tier excepted. Record:
 ### Adding New ORM Models
 1. Create the model in the matching domain module; add `SessionMixin` if it
    needs write methods; add `update()` / `create()` per §7.
-2. Add to `sam/__init__.py` imports (this also auto-registers a Flask-Admin view).
+2. Add to `sam/__init__.py` imports (`/database` picks the table up by reflection).
 3. Add tests; run schema validation
    (`pytest tests/integration/test_schema_validation.py`), then the full suite.
 

@@ -1,0 +1,27 @@
+{# Source switcher + filterable table list. Context: src, t. #}
+<div class="card db-rail-card">
+    <div class="card-header py-2">
+        <div class="dropdown">
+            <button class="btn btn-sm btn-outline-secondary dropdown-toggle w-100 text-start text-truncate"
+                    type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fa-solid fa-database me-1"></i>{{ src.label }}
+            </button>
+            <ul class="dropdown-menu">
+                {% for other in sources_menu() %}
+                <li><a class="dropdown-item{% if other.key == src.key %} active{% endif %}"
+                       href="{{ url_for('db_browser.source', source=other.key) }}">{{ other.label }}</a></li>
+                {% endfor %}
+            </ul>
+        </div>
+        <input type="search" name="q" class="form-control form-control-sm mt-2"
+               placeholder="Filter tables" aria-label="Filter tables"
+               hx-get="{{ url_for('db_browser.tables_fragment', source=src.key, current=t.name) }}"
+               hx-trigger="input changed delay:200ms, search"
+               hx-target="#db-rail-tables">
+    </div>
+    <div id="db-rail-tables" class="db-rail-tables">
+        {% with entries = catalog_of(src), current = t.name %}
+        {% include 'db_browser/_rail_tables.html' %}
+        {% endwith %}
+    </div>
+</div>

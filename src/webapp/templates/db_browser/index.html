@@ -1,0 +1,26 @@
+{% extends 'db_browser/base.html' %}
+{% block db_main %}
+<h1 class="h4 mb-1">Database</h1>
+<p class="text-body-secondary small mb-3">
+    Read-only rows from every database this webapp holds a connection to. Each query runs in
+    a read-only transaction with a time limit; secret columns are redacted.
+</p>
+<div class="row g-3">
+    {% for family, items in groups.items() %}
+    <div class="col-md-6 col-xl-4">
+        <div class="card h-100">
+            <div class="card-header py-2 fw-semibold font-monospace">{{ family }}</div>
+            <div class="list-group list-group-flush">
+                {% for it in items %}
+                <a class="list-group-item list-group-item-action" href="{{ url_for('db_browser.source', source=it.src.key) }}">
+                    <div class="fw-semibold">{{ it.src.label }}</div>
+                    <div class="small text-body-secondary font-monospace text-truncate">{{ it.url }}{% if it.src.schema %} · schema {{ it.src.schema }}{% endif %}</div>
+                    {% if it.src.note %}<div class="small text-body-secondary">{{ it.src.note }}</div>{% endif %}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

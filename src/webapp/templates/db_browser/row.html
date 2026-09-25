@@ -1,0 +1,71 @@
+{% extends 'db_browser/base.html' %}
+{% from 'db_browser/_cells.html' import cell with context %}
+{% from 'dashboards/fragments/clipboard.html' import copy_button %}
+{% block db_title %}{{ t.name }} row · Database{% endblock %}
+{% block db_main %}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <h1 class="h4 mb-0 font-monospace">{{ t.name }}</h1>
+    {% if orm_class %}<span class="badge bg-body-secondary text-body-secondary border font-monospace">{{ orm_class }}</span>{% endif %}
+    <span class="font-monospace small text-body-secondary">{% for k, v in key.items() %}{{ k }}={{ v }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
+    <span class="ms-auto d-flex gap-2">
+        {% if sam_link %}<a class="btn btn-sm btn-outline-primary" href="{{ sam_link }}"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i>Open in SAM</a>{% endif %}
+        {{ copy_button(request.url, label='Copy link', icon='fa-solid fa-link') }}
+    </span>
+</div>
+
+{% if error %}
+<div class="alert alert-warning small"><i class="fa-solid fa-triangle-exclamation me-1"></i>{{ error }}</div>
+{% else %}
+<div class="row g-3">
+    <div class="col-xl-8">
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 align-top db-row">
+                    <tbody>
+                        {% for f in fields %}
+                        <tr>
+                            <th scope="row" class="font-monospace text-nowrap fw-normal text-body-secondary">{{ f.col.name }}</th>
+                            <td id="db-cell-{{ loop.index }}">
+                                {{ cell(f.cell, f.link, entity_cols.get(f.col.name), f.raw) }}
+                                {% if f.cell.truncated %}
+                                <button type="button" class="btn btn-link btn-sm p-0 ms-1"
+                                        hx-get="{{ url_for('db_browser.cell_fragment', source=src.key, table=t.name, col=f.col.name, **key_args) }}"
+                                        hx-target="#db-cell-{{ loop.index }}">load full value</button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% for name in hidden %}
+                        <tr><th scope="row" class="font-monospace text-nowrap fw-normal text-body-secondary">{{ name }}</th>
+                            <td><span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">redacted</span></td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4">
+        <div class="card">
+            <div class="card-header py-2 fw-semibold">Referenced by</div>
+            <ul class="list-group list-group-flush small">
+                {% for ref in referenced_by %}
+                <li class="list-group-item d-flex justify-content-between align-items-center gap-2">
+                    <a class="font-monospace text-truncate" href="{{ ref.url }}">{{ ref.edge.table }}.{{ ref.edge.columns | join(', ') }}</a>
+                    <button type="button" class="btn btn-link btn-sm p-0 text-nowrap"
+                            hx-get="{{ url_for('db_browser.count_fragment', source=src.key, table=ref.edge.table, **ref.args) }}"
+                            hx-swap="outerHTML">count</button>
+                </li>
+                {% else %}
+                <li class="list-group-item text-body-secondary">No foreign keys point at this table.</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+</div>
+{% endif %}
+{# Shells for the entity links on SAM username / projcode cells (_cells.html). #}
+{% if entity_cols %}
+{% include 'dashboards/user/fragments/user_details_modal.html' %}
+{% include 'dashboards/shared/project_details_modal.html' %}
+{% endif %}
+{% endblock %}

@@ -111,13 +111,13 @@ SAM uses a modern Python web stack with focus on:
 - **Blueprints** for organizing routes by feature
 - **Request/Response cycle**: `request`, `g`, `session` objects
 - **Templates with Jinja2**: Template inheritance, filters, context
-- **Flask extensions**: Flask-Login, Flask-Admin, Flask-SQLAlchemy
+- **Flask extensions**: Flask-Login, Flask-SQLAlchemy, Flask-Caching
 
 **Project-specific patterns**:
 - **Application factory**: `src/webapp/run.py` - how we create and configure the app
 - **Blueprints**: `src/webapp/api/v1/` - organized by feature (users, projects, allocations, admin)
 - **Authentication**: Flask-Login with custom user loader
-- **Admin interface**: Flask-Admin with custom ModelViews
+- **Database browser**: `/database`, a read-only row browser (`src/webapp/db_browser/`)
 
 **Directory structure**:
 ```
@@ -129,7 +129,7 @@ src/webapp/
 │       ├── projects.py
 │       ├── allocations.py
 │       └── status.py
-├── admin/             # Flask-Admin custom views
+├── db_browser/        # /database read-only row browser
 ├── templates/         # Jinja2 templates
 ├── static/            # CSS, JavaScript, images
 └── utils/             # Helper functions
@@ -483,7 +483,7 @@ asset inventory; no CDN dependency, required for the CSP policy)
 **Project-specific**:
 - Templates in: `src/webapp/templates/`
 - Custom CSS in: `src/webapp/static/css/`
-- Theme: Lumen (via Flask-Admin swatch)
+- Theme: role tokens in `src/webapp/static/css/variables.css` (light + dark)
 
 ---
 
@@ -573,20 +573,18 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 
 ## Specialized Libraries
 
-### 16. Flask-Admin
+### 16. SQLAlchemy reflection (the `/database` browser)
 
-**What we use**: Flask-Admin 2.0.2 for database admin interface
+**What we use**: SQLAlchemy's `Inspector` and `Table(..., autoload_with=...)`
+to browse any database without an ORM model.
 
 **Learning Resources**:
-- [Flask-Admin Documentation](https://flask-admin.readthedocs.io/) - Complete reference
-- [Flask-Admin Quickstart](https://flask-admin.readthedocs.io/en/latest/introduction/#getting-started) - Getting started
-- [Custom Views](https://flask-admin.readthedocs.io/en/latest/introduction/#customizing-built-in-views) - Customization
+- [Reflecting Database Objects](https://docs.sqlalchemy.org/en/20/core/reflection.html) - Complete reference
 
 **Project-specific**:
-- **Admin interface**: Available at `/admin` (requires authentication)
-- **Custom ModelViews**: `src/webapp/admin/` - customized CRUD interfaces
-- **Theme**: Bootstrap 5 (vendored)
-- Includes expiration monitoring dashboards
+- **Browser**: `/database` (Admin -> Database; needs `ADMIN_DATABASE`), read-only
+- **Query layer**: `src/dbbrowse/` - reflection, filters, paging, redaction (SQLAlchemy only)
+- **Blueprint**: `src/webapp/db_browser/` - pages and the permission gate
 
 ---
 
@@ -998,7 +996,6 @@ for result in expiring_projects:
 | **Frontend CSS** | Bootstrap | 4.6.2 | UI framework |
 | **Templates** | Jinja2 | 3.1.6 | HTML templating |
 | **Environment** | Conda | latest | Env management |
-| **Admin UI** | Flask-Admin | 2.0.2 | Database admin |
 | **Auth** | Flask-Login | 0.6.3 | Authentication |
 
 ---

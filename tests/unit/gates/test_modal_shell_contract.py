@@ -463,6 +463,7 @@ PAGES_WITH_PROJECT_MODAL = {
     '/status/events': 'dashboards/status/events_page.html',
     '/status/filesystem-scans': 'dashboards/status/filesystem_scans_page.html',
     '/status/job-history': 'dashboards/status/job_history_page.html',
+    '/database/sam/project': 'db_browser/table.html',
 }
 
 
@@ -485,6 +486,7 @@ def test_project_modal_page_list_is_complete():
         'dashboards/user/resource_details.html',    # /user/resource/<name>
         'dashboards/user/jobs_explore_page.html',   # /user/jobs/explore
         'dashboards/status/queue_history.html',     # /status/<machine>/queues
+        'db_browser/row.html',                      # /database/<source>/<table>/row?k.<col>=
     }
     missing = sorted(shipped - NOT_TOP_LEVEL - set(PAGES_WITH_PROJECT_MODAL.values()))
     assert not missing, (
@@ -511,9 +513,14 @@ def test_project_modal_pages_ship_the_allocation_modal(auth_client, url):
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 
-    assert html.count(PROJECT_MODAL_ID) == 1, f'{url}: project modal shell'
-    assert html.count(EDIT_MODAL_ID) == 1, f'{url}: edit-allocation shell'
-    assert html.count(EDIT_CONTAINER_ID) == 1, f'{url}: htmx target container'
+    assert _id_count(html, PROJECT_MODAL_ID) == 1, f'{url}: project modal shell'
+    assert _id_count(html, EDIT_MODAL_ID) == 1, f'{url}: edit-allocation shell'
+    assert _id_count(html, EDIT_CONTAINER_ID) == 1, f'{url}: htmx target container'
+
+
+def _id_count(html, id_attr):
+    """Occurrences of ``id="x"`` as an attribute, not inside ``data-modal-id="x"``."""
+    return len(re.findall(r'(?<![\w-])' + re.escape(id_attr), html))
 
 
 def test_edit_project_page_ships_one_of_each(auth_client, active_project):

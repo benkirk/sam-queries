@@ -38,6 +38,7 @@ SNAPSHOT = SNAPSHOTS / 'dashboard_route_map.json'
 DASHBOARD_BLUEPRINTS = (
     'admin_dashboard',
     'allocations_dashboard',
+    'db_browser',
     'disk_scans',
     'jobs',
     'project_invites',
