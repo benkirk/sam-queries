@@ -1,15 +1,15 @@
 # Membership removal: soft-delete by end date instead of hard delete
 
-**Status: planned, not started.** Handoff for a fresh session.
-**Branch:** `account-user-soft-delete`, from `origin/staging` **after PR #617 has merged**. #617 adds `Project.live_accounts` and the reconcile changes this builds on. One PR against `staging`, opened only after `make check-all` passes and a local smoke test is done.
+**Status: implemented on `account-user-soft-delete` (PR #618), 2026-09-24.**
+**Branch:** `account-user-soft-delete`, from `origin/staging` after PR #617 merged (`6451c978`). #617 adds `Project.live_accounts` and the reconcile changes this builds on. One PR against `staging`.
 
 ## Progress
 
-- [ ] 1. One removal primitive: end-date a started row, delete a never-started row. `remove_user_from_project` and `revoke_user_resource_access` both use it.
-- [ ] 2. The `change_project_admin` guard requires an unended row.
-- [ ] 3. Confirm the UI/API re-render hides the removed member; no reader changes.
-- [ ] 4. Tests: update the three that assume a delete or expired-row admin; add the new cases.
-- [ ] 5. Docs: CLAUDE.md §7 line; tick this checklist.
+- [x] 1. One removal primitive: end-date a started row, delete a never-started row. `remove_user_from_project` and `revoke_user_resource_access` both use it (`_end_membership` in `src/sam/manage/__init__.py`).
+- [x] 2. The `change_project_admin` guard requires an unended row.
+- [x] 3. Confirm the UI/API re-render hides the removed member; no reader changes (`test_re_render_sources_drop_the_member`).
+- [x] 4. Tests: update the three that assume a delete or expired-row admin; add the new cases (`tests/unit/manage/test_membership_soft_delete.py`).
+- [x] 5. Docs: CLAUDE.md §7 line; tick this checklist.
 - [ ] 6. `make check-all` and the local smoke test.
 
 ## Context
@@ -37,6 +37,8 @@ Ben's convention, and legacy SAM's, is that `account_user.end_date` stays empty 
 
 - **Removal end-dates every unended row that has already started.**
   - Its `end_date` becomes now, floored to the second, minus 1 second. See the traps below for why.
+  - **Amendment (Ben, 2026-09-24):** if that lands exactly on midnight, step back one more second. `normalize_end_date` only rewrites an exact 00:00:00, so the 1-second back-off alone moves the hole from the first second after midnight to the second one; with the extra step a removal at 00:00:01.x ends at 23:59:59 of the previous day, like one at 00:00:00.x.
+  - A membership shorter than a second ends before it started (end = start − 1 s). Harmless: no reader treats a row live when end < start. `add_user_to_project` now floors its default `start_date` like `grant_user_resource_access` and `_add_live_members` do; without that, MySQL rounding could push a just-added row's start past the removal's "now" and the row would be deleted as never-started (the updated `test_removes_user_from_all_accounts` catches this).
 - **A row that never started is still hard-deleted.** That is a row whose `start_date` is in the future, which the Add member modal allows. It was never effective, so no history is lost, and end-dating it would store end < start.
 - **Rows that already ended are left untouched.** They are history. Today `remove_user_from_project` deletes *every* row the user has on the project, including old ended ones.
 - **`change_project_admin` requires an unended row**, meaning `end_date` null or in the future. That is the same test `add_user_to_project` uses to skip. The lead is still allowed.
@@ -86,11 +88,13 @@ Every live-path read already filters to live or unended rows. Legacy and the rep
 | `User.all_projects` / `_projects_w_dups` / `former_projects` (`src/sam/core/users.py`) | **d** | a removed project now **stays**, under `former_projects['ended']`: see below |
 | `_describe_additions` history label (`src/cli/project/commands.py`, from #617) | d | an ex-member reads `ended DATE`, not `never a member`; label only |
 
-**Nothing else reads `account_user`.** Checked: XRAS (`roster`, `preflight`, `sam_merge_targets`, `merge_person`), account requests, charges (which count users from `CompChargeSummary.username`), and `src/scheduling/`. Nothing in `src/` reassigns rows between users.
+**Re-verified against `origin/staging` on 2026-09-24.** Additional direct readers, none needing a change: `get_project_members` (`src/sam/queries/projects.py`, b), `get_user_project_access` (`src/sam/queries/statistics.py`, b), `membership_active` in `build_user_projects` (`src/cli/user/builders.py`, b), the `get_user_inaccessible_resources` fallback (`src/sam/projects/projects.py`, a), `get_user_with_details` (`src/sam/queries/users.py`, d, export only), and the `Account.users` relationship cascade. The unended operator drifts: `_add_live_members`, `_resources_without_live_row` and `directory_access` use `>`, the rest `>=`, and `fstree` also accepts a NULL start; a cutoff strictly before now satisfies all of them.
+
+**Nothing else reads the table directly.** XRAS (`api/xras/roles.py` → `has_user`; the New/Update handlers → `add_user_to_project`), account requests (enroll/invite/reconcile → `add_user_to_project`) and `src/scheduling/` (`expiration_notices` → `project.users`) reach it only through the (b) readers above. Charges count users from `CompChargeSummary.username`; `roster`, `preflight`, `sam_merge_targets` and `merge_person` never touch it. Nothing in `src/` reassigns rows between users.
 
 ### 4. Behavior changes to accept and mention in the PR
 
-- **Former projects.** A removed member's project now shows under "Inactive / Former Projects" on the admin user card (`src/webapp/templates/dashboards/user/partials/user_card.html`), and in `sam-search user X --inactive`, where it used to vanish. That matches the `g_former_projects` glossary text.
+- **Former projects.** A removed member's project now shows under "Inactive / Former Projects" on the admin user card (`src/webapp/templates/dashboards/user/partials/user_card.html`), and in `sam-search user X --inactive-projects --list-projects` (Membership column "Ended"), where it used to vanish. That matches the `g_former_projects` glossary text.
 - **Audit log.** Removals log as UPDATE instead of DELETE (`src/webapp/audit/events.py`). A never-started row still logs DELETE.
 - **UI text is unchanged.** The members page confirm ("will remove them from all resources") is still true.
 
@@ -107,7 +111,7 @@ Every live-path read already filters to live or unended rows. Legacy and the rep
 - rows that already ended are untouched, with the same `end_date` and the same count;
 - a re-add after removal inserts a fresh open row and keeps the ended one (2 rows);
 - revoke end-dates only that account's row;
-- **midnight edge:** with "now" patched to `00:00:00.4`, the stored end is 23:59:59 of the *previous* day, not today's;
+- **midnight edge:** with "now" patched to `00:00:00.4` **and** to `00:00:01.4`, the stored end is 23:59:59 of the *previous* day, not today's;
 - the removed member lands in `User.former_projects()['ended']` (next to the existing `tests/unit/manage/test_user_former_projects.py`);
 - `change_project_admin` rejects an ex-member whose rows are all ended, and accepts an unended member;
 - the htmx `DELETE /project-members/<projcode>/<username>` re-render no longer lists the user. There is no success-path test for it today. Route writes commit on `db.session`, so follow the house convention (model-layer happy path plus render smoke).
