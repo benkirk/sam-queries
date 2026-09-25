@@ -1,5 +1,9 @@
 .ONESHELL:
 SHELL := /bin/bash
+# -e is load-bearing: .ONESHELL runs each recipe as ONE script, so without it a
+# recipe's status is only its last line's and a failing check-all stage would
+# not stop the run. A line allowed to fail says so with `|| true`.
+.SHELLFLAGS := -ec
 CONDA_ROOT := $(shell conda info --base)
 
 # Common way to initialize environment across various types of systems
@@ -126,7 +130,7 @@ $(ENV_STAMP):
 	@touch $(ENV_STAMP)
 
 prune-old-envs: ## Keep current + most-recent-previous conda-env-*; remove older
-	@current=$$(readlink conda-env 2>/dev/null); \
+	@current=$$(readlink conda-env 2>/dev/null || true); \
 	ls -1dt conda-env-* 2>/dev/null \
 	    | grep -v "^$$current$$" \
 	    | tail -n +2 \
