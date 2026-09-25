@@ -157,7 +157,7 @@ webapp:
       capabilities:
         drop: ["ALL"]
   container:
-    image: ghcr.io/benkirk/sam-queries/webapp:main
+    image: ghcr.io/benkirk/sam-queries/webapp:sha-d4020ea
     port: 5050
     requests:
       memory: 4096M
