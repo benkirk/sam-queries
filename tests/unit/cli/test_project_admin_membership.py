@@ -103,7 +103,9 @@ def test_all_reconciles_every_active_project(runner, mock_db_session, monkeypatc
     result = runner.invoke(cli, ['--format', 'json', 'project', '--reconcile-lead-admin',
                                  '--all', '--dry-run'])
     assert result.exit_code == 0, result.output
-    data = json.loads(result.output)
+    # stdout only: `result.output` also carries stderr (Click 8.2+), where the
+    # CLI logs, and a webapp created earlier in the worker makes every flush log.
+    data = json.loads(result.stdout)
     assert (data['kind'], data['mode'], data['dry_run']) == ('project_reconcile', 'lead_admin', True)
     [row] = data['added']
     assert (row['projcode'], row['role'], row['history']) == (project.projcode, 'lead', 'never a member')
