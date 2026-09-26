@@ -18,7 +18,7 @@ SENT = datetime(2026, 9, 24, 9, 0, 0)
 PERSON = {'first_name': 'Ada', 'middle_name': '', 'last_name': 'Lovelace',
           'organization': 'University of Example', 'academic_status': 'Faculty',
           'residence_country': 'United Kingdom', 'phone': '+44 20 7946 0000',
-          'orcid': '0000-0002-1825-0097', 'desired_username': 'ada'}
+          'orcid': '0000-0002-1825-0097'}
 
 
 def _address():
@@ -267,7 +267,7 @@ class TestCompleting:
         assert row.email == email, 'the vouched address is not a form field'
         assert (row.phone, row.residence_country, row.academic_status) == (
             PERSON['phone'], 'United Kingdom', 'Faculty')
-        assert row.orcid == PERSON['orcid'] and row.desired_username == 'ada'
+        assert row.orcid == PERSON['orcid'] and row.desired_username is None
         assert row.completed_at is not None
         assert row.eula_sha == eula_sha() and row.eula_accepted_at is not None
         assert row.event_id is None and row.comment == 'visiting scholar'

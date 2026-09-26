@@ -216,8 +216,7 @@ def submit():
                                eula_accepted_at=accepted_at, **{
             k: data.get(k) for k in ('email', 'first_name', 'last_name', 'middle_name',
                                      'organization', 'academic_status',
-                                     'residence_country', 'orcid', 'phone',
-                                     'desired_username', 'purpose_note')})
+                                     'residence_country', 'orcid', 'phone', 'purpose_note')})
         row.set_verification(tokens.code_hash(row.account_request_id, code),
                              now + timedelta(hours=ttl))
 
