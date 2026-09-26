@@ -4,7 +4,10 @@
 `legacy_sam/container_zoo/`, and every claim checked against the production stack on
 sam-app.ucar.edu: the running image is `sam-ldap-syncd` commit 6c0fd35 (2026-08-27), and the
 scripts inside all three production images are byte-identical to the checkouts in
-`~swes/<repo>` on that host. Bugs in §4 carry a production-status column.
+`~swes/<repo>` on that host. The SAM end of the wire was checked on 2026-09-26 on
+sam-tomcat.ucar.edu, the legacy SAM host (§2.5): its access and application logs cover
+every request the daemon has made since 2026-07-31. Bugs in §4 carry a production-status
+column.
 **Companion:** `docs/plans/LDAP_SYNC_API.md` scopes serving this daemon from the new
 SAM and holds the exact HTTP contract (§2 there); this document explains what the
 daemon *is* and how it works, for a reader who knows SAM well and LDAP little.
@@ -182,8 +185,9 @@ sam-idms-ldap ── writes ──▶ auditlog.d/  <dumpTs>Z-1-slapcat, auditlog
 sam-ldap-transformer ── writes ──▶ syncd/  <dumpTs>Z-full.ldif, <dumpTs>Z-inc0.ldif (portable LDIF),
    │                                       <dumpTs>Z-add.jsl (full), <ts>Z-mod.jsl (changes)
    ▼
-sam-ldap-syncd ── HTTP PUT/GET/DELETE ──▶ SAM  /api/protected/admin/{ldapsync,*Purge*,userlifecycle}
-        │
+sam-ldap-syncd ── HTTP PUT/GET/DELETE ──▶  https://sam.ucar.edu (VIP) ─▶ Apache proxies
+        │                                  (prod-staticweb14/15) ─▶ Tomcat on sam-tomcat.ucar.edu:8443
+        │                                  /api/protected/admin/{ldapsync,*Purge*,userlifecycle}
         └── ldapmodify ──▶ fdbstage.ucar.edu (LDAP staging: project groups, collaborator end dates)
 ```
 
@@ -358,6 +362,45 @@ The subject of §3.
 - A second compose file, `sam-idms-ldap/prod/docker-compose.yml`, defines standalone
   `ldap` and `ldapx` services on the same host ports and RID 167, on an external network
   `shared-ldap` that does not exist on the host; it is a parked experiment.
+
+### 2.5 The SAM end: sam-tomcat.ucar.edu
+
+- **Host and service.** `sam.ucar.edu` is a VIP (128.117.225.232) in front of two Apache
+  reverse proxies, `prod-staticweb14/15.ucar.edu` (128.117.224.190/.191), which forward to
+  Tomcat's only connector, `sam-tomcat.ucar.edu:8443` (APR, HTTPS). Tomcat 9.0.58
+  (Ubuntu), OpenJDK 11, `-Duser.timezone=America/Denver`, `CATALINA_BASE=/tomcat/tomcat-sam`,
+  unit `tomcat-sam.service` (Puppet-managed, `Restart=on-failure`, waits for the database
+  `sam-sql.ucar.edu:3306`). The deployed WAR is SAM Web Application **2.0.4**, built
+  2026-08-10 14:56 and installed at 09:28 that morning; Tomcat restarted on Jul 30,
+  Aug 10, Aug 17, Aug 31 and Sep 14 without the daemon ever receiving a 404 (§4.2, N2).
+- **Logs.** Tomcat writes to FIFOs in `/var/log/tomcat/`; syslog-ng copies them to
+  `/tomcat/tomcat-sam/logs/access.log` (logrotate daily to `access.log-YYYYMMDD.gz`, about
+  30 days on disk; the NetApp `/tomcat/.snapshot/weekly.*` copies reach back to 2026-08-01)
+  and `catalina.out` (rotated at each restart, kept). Logback writes `sam.log` (30 days),
+  `sam-xras-actions.log` and `sam-login.log`, and its EMAIL appender **mails every ERROR
+  line to sweg-notify@ucar.edu**, so each rejected PUT is also a mail. All are readable by
+  group `tomcat-sam`; `var/sam.complete.properties` (database credentials) is not.
+- **Reading the daemon in the access log.** The pattern is
+  `%{x-forwarded-for}i %h %l %u %t "%m %U%q %H" %s %b %D "%{User-Agent}i"`: the first
+  column is the real client (`128.117.177.140` = sam-app), `%h` the proxy, `%u` always
+  `-` (the credential is not recorded), `%D` milliseconds. The daemon is `libwww-perl/6.52`.
+  Its first request in each process is a 401 (LWP learns the realm once), answered with
+  the same request plus credentials within 0–5 s: 26 such pairs between 2026-07-31 and
+  2026-09-26, 14 of them heading a full download (`GET institution, organization, user,
+  projectGroup, groupTag, group, gidAllocation`, in that order, in under a minute). Those
+  14 date the rebuilds from SAM: Aug 10 15:00 and 15:16 (the 5cb852d deploy), Aug 11 14:25
+  and 14:31, Aug 17 21:11–21:51 (eight starts of the restart loop; six `user` downloads
+  cut off by the client at 11–14 MB, logged 200 with a `ClientAbortException` in
+  `sam.log`), Aug 27 10:07 and 11:18 (the 6c0fd35 deploy; the second is the running
+  process).
+- **What 57 days of traffic look like.** 14,233 family requests: `PUT user` 13,566,
+  `PUT group` 458, `PUT institution` 55, `PUT organization` 50, 11 `userPurgePermit`
+  reads, **no DELETE of any kind**, **no `userlifecycle/*` request**, no `projectGroup`
+  or `groupTag` read outside the 14 startups, one `ldapsync/status` (a curl on Sep 3,
+  answered 500). A quiet day is 8–62 requests; the add-file replay of Aug 10 was 6,329
+  PUTs in 27 minutes at up to 347 per minute. Legacy answers a `PUT user` in 151 ms on
+  average, the `user` collection (24.3 MB) in 30–35 s, `projectGroup` (1.03 MB) in 10–14 s.
+  The full table and the error breakdown are in `LDAP_SYNC_API.md` §1 and §2.5.
 
 ---
 
@@ -556,9 +599,14 @@ which logs "Pausing and continuing after exception", sleeps a literal 300 s
 (`lib/Synchronizer.pm:266`) and replays from the last checkpoint. The consequence that
 matters here: the IMDB is updated **before** the PUT (`:571-576`) and the journal is
 appended only after success (`SamUpdatePropagator.pm:118`), so the replay compares the
-record as a no-op and it is never retried (bug 15). Production sees this a few times a
-month (two 400s and two 500s in September 2026); the 400s are the "Upid N matches
-username N" placeholder-account rejections tracked in the operations notes.
+record as a no-op and it is never retried (bug 15). The server side shows what those
+answers were (`LDAP_SYNC_API.md` §2.5): in September 2026 two 400s (Sep 1, the "Upid N
+matches username N" placeholder-account rejections tracked in the operations notes) and
+three 500s (Sep 2, 18, 26, each `Synchronization UserOrganization object for user upid N
+had unknown id: M`, a SAM position id the daemon holds that SAM has since replaced, bug
+N21); in August 70 of those position-id 500s, mostly on Aug 9–10 under the earlier image,
+and four institution 500s for an acronym longer than the 40-character column (bug N22).
+Each rejected record is seen once per process, and again after the next rebuild from SAM.
 
 ### 3.6 Project groups → LDAP staging
 
@@ -593,7 +641,9 @@ central directory's group membership follows SAM (`lib/ProjectGroupUpdater.pm:13
   (`lib/ProjectGroupUpdater.pm:33-38`).
 - The production directory replica contains no group or person attribute with
   `x-ucar-source: SAM:*`, so no write from this job (or §3.7) has become visible in
-  fdb. Whether fdbstage forwards such writes cannot be observed from sam-app.
+  fdb. The SAM server explains why: the scheduled job has never fetched
+  `ldapsync/projectGroup` (every read on record belongs to a daemon start, §2.5), so it
+  dies before it has anything to send and fdbstage has received nothing from it.
 
 ### 3.7 Collaborator lifecycle → LDAP staging
 
@@ -620,7 +670,9 @@ date, pushes the later date to staging. It **only ever extends**
   That half dies at its first statement (bugs 3, 2, 8, N2, in a chain). The visible
   result in SAM: users stamped `users.deactivate` by `PUT ldapsync/user` since
   2026-08-10 accumulate while staying `active=1` — 140 of them on 2026-09-25, holding
-  724 open `account_user` rows — and none is ever finished.
+  724 open `account_user` rows — and none is ever finished. The SAM server has never
+  received a `collabexpiryupdates`, `pendingdeactivations` or `deactivate` request
+  (§2.5), so neither half of this job has ever run to its first HTTP call.
 
 ### 3.8 The LDAP staging client
 
@@ -667,7 +719,9 @@ names that nothing reads (bug 13). Three traps:
   STDOUT and `chdir`s to `/` (`Schedule/Cron.pm:936-964`). Nothing the jobs print
   reaches `log-syncd.e`, and relative paths such as the trigger files resolve in `/`.
   The only trace of the jobs in the daemon log is the endpoint configuration dumped at
-  startup; whether a slot fired, and what it did, is invisible from the host.
+  startup. The SAM server settles what they do: nothing reaches it. In 57 days of access
+  logs there is no `GET projectGroup` outside a daemon start and no
+  `GET collabexpiryupdates` at all, so every child dies before its first request.
 
 ### 3.10 Logging and observability
 
@@ -701,6 +755,11 @@ names that nothing reads (bug 13). Three traps:
   (`lib/SamDataManager.pm:681-766`).
 - No metrics, no status endpoint. Health = `podman ps`, `podman top`, the log, and
   `--display-dump`. The production daemon runs at ~99 % of one CPU continuously (bug N15).
+- From the SAM side (§2.5): `/tomcat/tomcat-sam/logs/access.log*` gives every request
+  with its status and timing, and `sam.log` gives the reason for every 4xx/5xx
+  (`ApiController:handleUnexpectedException` followed by `SamExceptionHandler` with the
+  stack). `grep libwww-perl access.log` is the quickest way to see whether the daemon is
+  alive and pushing.
 
 ### 3.11 Tests and CI
 
@@ -738,7 +797,8 @@ operations topics) and PR #1 merged; none covers the rows below. Severity: **blo
 data or behavior), **cosmetic** (latent or minor). The **Prod** column says what the
 production host shows: *observed* (the effect is visible there), *latent* (the code path
 exists but the triggering data or event has not occurred), *invisible* (the effect happens
-in the detached cron children, whose output is discarded).
+in the detached cron children, whose output is discarded), *observed (server)* (seen in
+the SAM host's logs, §2.5).
 
 **Root cause shared by several rows:** no module under `lib/` has `use strict` or
 `use warnings`; the Dockerfile's `PERL5OPT="-Mv5.20 -Mstrict -Mwarnings … -Mautodie
@@ -753,9 +813,9 @@ file-scoped. Misspelled or undeclared variables silently become package globals 
 |---|---|---|---|---|---|---|
 | N15 | main loop polls continuously instead of blocking | wrong (load) | observed: syncd at ~99 % CPU since 2026-08-27, 29 CPU-days | `sweet-pl5/lib/FileUtil/SpoolDirectory.pm:310-351` | `getFilenames` blocks on the FIFO only when no matching file exists (`:324,335`); the add file is always present, so `SYNCD_LOOP_WAIT_SECS` never applies and `runSyncToSamLoop` spins | block when no file is newer than the checkpoint |
 | N20 | daily mod-file consolidation always dies | wrong (leak) | observed: 1,212 `*-mod.jsl` and 30 `*-mod.jsl.new` retained; one 300 s pause per day | `lib/IDMSFileManager.pm:205-276`; caller `lib/Synchronizer.pm:629` | `_copyFile` does `print $outHandle $line` on a `FileUtil::Handle` object ("Not a GLOB reference at line 266"); `$inHandle` is undeclared; the catch runs `unlink $tmpfile` (undeclared, should be `$tmpname`) so the `.new` file stays. The snapshot has already been written, so nothing is lost, but no mod file is ever removed until the next add file | use the handle's print method (or `$outHandle->{fh}`), declare the variables, unlink `$tmpname` |
-| 13 | prod `.env` cron "disable" is inert; sixth cron field is seconds | wrong (load) | observed: scheduler on the shipped 22:00 schedule, dispatching one short-lived child per second through the 22:00 minute (`podman top`, 2026-09-25) | `bin/syncd:459-482,195-205`; `prod/.env:72-74`; `lib/Constants.rc:10-11` | `.env` sets `SYNCD_*_CRON_DFLT`, which nothing reads; Schedule::Cron 1.01 documents an optional sixth "seconds" column, so the shipped `0 22 * * * *` fires every second of 22:00 → 60 forked jobs, same at every even hour 04–18 for projects. Had the pin worked it would have silently re-enabled the jobs in December | set `SYNCD_*_CRON` in `.env`; make the sixth field `0` in `Constants.rc` |
-| 15 | a rejected PUT is lost for good | loss | observed: two 400s and two 500s in September 2026, each dropped after the pause | `lib/Synchronizer.pm:568-579,266`; `lib/SamUpdatePropagator.pm:104-118` | the IMDB is updated before the PUT; after the 300 s pause the file replays as a no-op; the next snapshot persists the unsent state; a later full dump diffs against it and does not resend | restore the old record (or invalidate the IMDB) before re-throwing |
-| N4 | cron children run on the IMDB as of daemon start | wrong | invisible | `bin/syncd:416-431,580-591`; `Schedule/Cron.pm:936-964` | groups created after startup are pushed as `changetype: add` forever (fails "Already exists"), so their membership never syncs; lifecycle ignores collaborations added since startup; the detached scheduler discards its output and runs in `/` | have `cronDispatcher` only touch the trigger files so the main process does the work |
+| 13 | prod `.env` cron "disable" is inert; sixth cron field is seconds | wrong (load) | observed: scheduler on the shipped 22:00 schedule, dispatching one short-lived child per second through the 22:00 minute (`podman top`, 2026-09-25); observed (server): none of those children has ever made a request to SAM | `bin/syncd:459-482,195-205`; `prod/.env:72-74`; `lib/Constants.rc:10-11` | `.env` sets `SYNCD_*_CRON_DFLT`, which nothing reads; Schedule::Cron 1.01 documents an optional sixth "seconds" column, so the shipped `0 22 * * * *` fires every second of 22:00 → 60 forked jobs, same at every even hour 04–18 for projects. Had the pin worked it would have silently re-enabled the jobs in December | set `SYNCD_*_CRON` in `.env`; make the sixth field `0` in `Constants.rc` |
+| 15 | a rejected PUT is lost until the next rebuild from SAM | loss | observed (server): two 400s and three 500s in September 2026, each seen once; the Aug 27 institution rejection recurred three minutes after each of that day's two rebuilds from SAM | `lib/Synchronizer.pm:568-579,266`; `lib/SamUpdatePropagator.pm:104-118` | the IMDB is updated before the PUT; after the 300 s pause the file replays as a no-op; the next snapshot persists the unsent state; a later full dump diffs against it and does not resend; only a rebuild from SAM (snapshot or journal missing) resends it | restore the old record (or invalidate the IMDB) before re-throwing |
+| N4 | cron children run on the IMDB as of daemon start | wrong | invisible; observed (server): no child has reached SAM, so they die even before the stale data would matter | `bin/syncd:416-431,580-591`; `Schedule/Cron.pm:936-964` | groups created after startup are pushed as `changetype: add` forever (fails "Already exists"), so their membership never syncs; lifecycle ignores collaborations added since startup; the detached scheduler discards its output and runs in `/` | have `cronDispatcher` only touch the trigger files so the main process does the work |
 
 ### 4.2 The deactivation chain (each fix exposes the next)
 
@@ -764,7 +824,7 @@ file-scoped. Misspelled or undeclared variables silently become package globals 
 | 3 | `$samClient` undefined in `_serviceSamLifecycle` | blocks | observed indirectly: 140 users pending deactivation since 2026-08-10, none finished | `lib/LifecycleUpdater.pm:289-305` | dies after the collaborator pass; pending deactivations never finish; IDMS-inactive users stay active in SAM | `my $samClient = $self->{'samClient'};` |
 | 2 | path key `'deactivation'` vs registered `'deactivate'` | blocks | latent | `lib/SamClient.pm:367` vs `:95`; throws at `:390-393` | BUG exception once row 3 is fixed (in a cron child it kills the child; from a trigger it aborts the daemon) | use `'deactivate'` |
 | 8 | grace hours appended as `?24` instead of `/24` | blocks | latent | `lib/SamClient.pm:216-217`; `lib/Constants.rc:37`; `lib/LifecycleUpdater.pm:295` | requests `/pendingdeactivations/?24`, a 404, retried forever (N2); 1–9 hour grace fails the `^[1-9][0-9]+$` check | build the path with the hours as a segment |
-| N2 | 404 retried forever | blocks | latent | `lib/SamClient.pm:515-523` | any real 404 hangs the caller silently after four log lines (30 s between tries, `Retry-After` honoured up to 300 s) | cap retries, then `throwError(404, …)` |
+| N2 | 404 retried forever | blocks | latent | `lib/SamClient.pm:515-523` | any real 404 hangs the caller silently after four log lines (30 s between tries, `Retry-After` honored up to 300 s) | cap retries, then `throwError(404, …)` |
 
 ### 4.3 Other defects
 
@@ -782,6 +842,8 @@ file-scoped. Misspelled or undeclared variables silently become package globals 
 | N7 | `$maxLen` vs `$maxlen` in tombstones | wrong | latent (no tombstoned orgs or institutions in the snapshot) | `lib/SamOrganizationData.pm:435-437`; `lib/SamInstitutionData.pm:124-126` | acronyms longer than 11 (org) or 36 (institution) chars become `" --x"`, so tombstoned records collide on acronym | fix the name |
 | N8 | `SAM_UPDATES_STUB` does not stub DELETE | loss (test/dev) | latent (stub unset in prod) | `lib/SamClient.pm:334-350,458-460,480-503` | "non-destructive" stub mode still purges in SAM, and `purgePermit` logs to the stub but still sends the GET | add the stub check to `_delete` and `purge` |
 | N10 | group normalize drops unknown usernames | wrong (transient) | observed at every init ("no user for username X") | `lib/SamGroupData.pm:338-345`; `lib/SamUserData.pm:195-197` | members not yet in the IMDB (ordering, rename, case) are dropped until the next full dump; lookup is exact-case | keep unresolved names; compare case-insensitively |
+| N21 | stale SAM position ids are sent until the next full reload | loss | observed (server): 73 × `PUT user` → 500 "Synchronization UserOrganization object for user upid N had unknown id: M" since 2026-08-01 (62 on Aug 10; one each on Sep 2, 18, 26) | `lib/SamUserEmploymentData.pm` (`positionIdmsUniqueNameToPositionId`), `lib/SamUpdatePropagator.pm` | the IMDB learns SAM-assigned `positionId`s only at a full load; when SAM replaces a `user_organization` row afterwards the daemon keeps PUTting the dead id, legacy 500s, and the whole user update is dropped (bug 15) | send `idmsUniqueName` and let SAM match, or drop the `positionId`s and retry once on that 500; server side, match tolerantly (`LDAP_SYNC_API.md` P1c) |
+| N22 | live institution records are not length-checked | wrong | observed (server): 4 × `PUT institution` → 500 "Data too long for column 'acronym'" (Aug 18, 20, 27 ×2) | `lib/SamInstitutionData.pm` (`:105-138` truncates only the tombstone) | an acronym longer than 40 characters is sent as-is; the database rejects it and the record is dropped until the next rebuild, then rejected again | truncate to the column widths (40 acronym, 128 name) on the live path too; server side, answer 400 |
 | 1 + 7 | `getSAMObject` defined twice (second drops `$id`); `user->` bareword makes `willSamModify` always false | cosmetic, **fix together** | latent | `lib/SamClient.pm:236,260`; `lib/SamUserData.pm:289,295` | the read-back after PUT never runs, so SAM-assigned position ids are never learned; fixing 7 alone turns every user PUT with a new affiliation into a BUG abort via 1 (`SamUpdatePropagator.pm:143-147`) | delete the second definition; use `$user` |
 | 4 + 5 | `since` sent without a name; reads `lastModifiedDate` but SAM sends `lastModified` | cosmetic (perf) | invisible | `lib/SamClient.pm:215-221`; `lib/ProjectGroupUpdater.pm:179-181` | the watermark stays undef, so `since` is never sent and every project-group fetch is full. **Do not "fix"**: SAM's `lastModified` is the project's modified time, which membership changes do not bump, so a working watermark would miss them | delete the incremental logic |
 | N9 | `$ex->isa` on plain-string exceptions | cosmetic (latent) | latent | `lib/Synchronizer.pm:247`; `lib/Misc.pm:182-197` | a `die` with a string starting with a non-identifier character kills the catch block itself | `blessed($ex) && $ex->isa(...)` |
@@ -835,6 +897,7 @@ file-scoped. Misspelled or undeclared variables silently become package globals 
 | project group | a SAM project exposed as a unix group with SAM's members; pushed to staging |
 | all-hpc-users | gid 78426, the computed union of every HPC group's members; staging only |
 | staging service | `fdbstage.ucar.edu`, the LDAP server that accepts SAM's writes for the central directory |
+| sam-tomcat | `sam-tomcat.ucar.edu`, the host running legacy Java SAM behind the `sam.ucar.edu` VIP and the `prod-staticweb14/15` Apache proxies (§2.5) |
 | parmdb | the sweet base image's parameter store (`/tmp/parmdb`), loaded from `*.parm` secrets files at container start; holds `SAM_AUTH_<user>` |
 | syncrepl | OpenLDAP replication: initial refresh then a persistent change stream |
 | slapcat / audit log | full dump / change journal in LDIF (§1.5) |
@@ -876,22 +939,27 @@ upids and uids, and so do the production logs and snapshot. Every sample in this
 document uses invented values or counts. Do not paste fixture or log excerpts into
 issues or shared documents.
 
-## Appendix B — what cannot be seen from sam-app
+## Appendix B — what cannot be seen from sam-app, and what sam-tomcat answered
 
-Everything in §2–§4 was checked on the production host except the following, which
-need access to other systems:
+Everything in §2–§4 was checked on the daemon host; the SAM host (§2.5) then answered
+part of what was left:
 
-- **SAM's side of the wire.** Legacy Java SAM's 404/200-empty behaviour, the exact
-  400 `errorMessage` envelope, and the `collabexpiryupdates` payload shape were taken
-  from the Java source; the admin password is not readable by the operator account, so
-  no request was made by hand. Tomcat logs live on sam.ucar.edu, not here.
-- **What the staging jobs do before they die.** The children fire (§3.9) but exit within
-  seconds, their output is discarded, and no SAM-sourced value exists in the directory
-  replica. Whether any `ldapmodify` ever reaches fdbstage needs fdbstage's own logs.
-- **N14** (all-hpc-users erosion) needs a daemon restart and a before/after count of
+- **SAM's side of the wire.** The 401 challenge and its `realm="Realm"` were observed
+  live; the `errorMessage` envelope, the 400-versus-500 mapping and every rejection since
+  2026-08-01 come from `sam.log` and the deployed classes; the `collabexpiryupdates` key
+  set was introspected with the WAR's own Jackson. Still from the source only: the
+  200-empty answer for an unknown entity, because authentication precedes routing and the
+  admin password is not readable by either operator account.
+- **What the staging jobs do before they die.** Answered: nothing reaches SAM (no job
+  request in 57 days), so no `ldapmodify` was ever queued. fdbstage's logs are no longer
+  needed for that question.
+- **N14** (all-hpc-users erosion) still needs a daemon restart and a before/after count of
   `.[1].projectGroup["78426"].upids | length` in `sam-data.json`.
-- **The pending-deactivation 404** (bug 8) is inferred from the URL shape; the server's
-  answer was not observed.
+- **The pending-deactivation 404** (bug 8) is still inferred from the URL shape; the
+  request has never been made.
+- **The `admin` credentials row** (`api_credentials` + `ROLE_API_ADMIN`) needs the
+  database on `sam-sql.ucar.edu`; the Tomcat host's properties file is readable only by
+  the service account.
 
 ## Appendix C — issue bodies, ready to file (NCAR/sam-ldap-syncd)
 
@@ -1047,6 +1115,21 @@ so a working watermark would miss them. Recommend removing the incremental path.
 `lib/Synchronizer.pm:247` and `Misc::exceptionHasType` (`lib/Misc.pm:182-197`) call
 `->isa` on the caught value; a plain-string `die` beginning with a non-identifier
 character makes the catch block die. Fix: guard with `blessed($ex)`.
+
+**N21 — stale SAM position ids are re-sent until the next full reload**
+The IMDB records SAM-assigned `positionId`s only when it loads `ldapsync/user`. When SAM
+replaces a `user_organization` row afterwards, the next update for that person carries
+the old id and legacy answers 500 "Synchronization UserOrganization object for user upid
+N had unknown id: M"; the daemon drops the whole user update (bug 15). The SAM host's
+`sam.log` shows 73 such rejections since 2026-08-01, 62 of them on 2026-08-10 and one
+each on Sep 2, 18 and 26. Fix: send `idmsUniqueName` and let SAM match the row, or on
+that 500 clear the position ids and retry once.
+
+**N22 — institution acronym not truncated on the live path**
+`SamInstitutionData` cuts the acronym to 40 only when building a tombstone; a live record
+goes out unchanged and the database rejects anything longer ("Data too long for column
+'acronym'", four 500s on 2026-08-18, 08-20 and twice on 08-27, once after each rebuild
+from SAM). Fix: apply the column widths (40 acronym, 128 name) on the live path.
 
 **N16 / N11 / N12 / N13 / N18 / N19 — minor**
 `SAM_USER` default lost (`bin/syncd:494-507`); torn last journal line blocks startup
