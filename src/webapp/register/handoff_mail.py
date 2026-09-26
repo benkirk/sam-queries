@@ -29,7 +29,10 @@ logger = logging.getLogger(__name__)
 
 
 def _setting(key: str) -> str:
-    return str(current_app.config.get(key) or os.environ.get(key) or '').strip()
+    # A key present in app.config wins even when empty: a test or a deployment
+    # that blanks it must not fall through to the developer's .env.
+    value = current_app.config[key] if key in current_app.config else os.environ.get(key)
+    return str(value or '').strip()
 
 
 def ticket_settings() -> tuple[str, str, str]:
