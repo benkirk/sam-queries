@@ -698,7 +698,7 @@ def htmx_project_create():
 
 @bp.route('/project/<projcode>/edit')
 @login_required
-@require_project_permission(Permission.EDIT_PROJECTS)
+@require_project_permission(Permission.EDIT_PROJECTS, include_ancestors=True)
 def edit_project_page(project):
     """Full edit-project page (not a modal).
 

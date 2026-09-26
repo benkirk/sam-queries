@@ -1,5 +1,8 @@
 # Mail preview sweep: preview every webapp email before it is sent
 
+> **Status:** implemented 2026-09-24 (#610 foundation, #611 send sites). The
+> spec below is kept as written; the as-built notes are in the PRs.
+
 ## Handoff prompt (paste into a fresh session)
 
 ```

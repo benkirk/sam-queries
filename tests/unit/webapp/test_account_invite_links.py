@@ -258,7 +258,7 @@ class TestCompleting:
         assert 'value="Ada"' in html and 'value="Lovelace"' in html
         assert email in html and 'name="email"' not in html
         for absent in ('name="website"', 'name="event_code"', 'name="purpose_note"',
-                       'data-human-check-submit', 'temporarily limited'):
+                       'data-human-check-submit', 'limits the form to'):
             assert absent not in html, absent
         assert 'visiting scholar' not in html, "the sponsor's note is for NUSD only"
         assert f'action="/register/invite/{token}"' in html
@@ -391,7 +391,7 @@ class TestMounting:
         accept = client.post(f'/register/invite/{token}/accept', data={'accept': '1'})
         assert accept.status_code == 302 and '/auth/login' not in accept.headers['Location']
         html = _html(client.get(f'/register/invite/{token}'))
-        assert 'name="phone"' in html and 'temporarily limited' not in html
+        assert 'name="phone"' in html and 'limits the form to' not in html
         assert 'hx-get="/register/invite/institutions"' in html
 
     def test_404_when_invitations_are_off(self, no_invitations_app, make_invite):

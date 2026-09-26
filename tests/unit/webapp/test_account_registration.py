@@ -334,12 +334,12 @@ class TestTheLoginGate:
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
         assert 'Request an NCAR HPC account' in html
-        assert 'temporarily limited to signed-in' in html, 'the preview banner'
+        assert 'limits the form to signed-in users' in html, 'the preview banner'
         assert 'name="csrf_token"' in html
 
     def test_off_means_no_banner(self, client):
         html = client.get('/register/').get_data(as_text=True)
-        assert 'temporarily limited to signed-in' not in html
+        assert 'limits the form to signed-in users' not in html
 
 
 class TestTheForm:

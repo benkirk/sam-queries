@@ -26,7 +26,7 @@ Pending Users link → the Invitations tab → the flag and the public form.
 | D1 | **A render never writes.** The queue derives `open / ready / fulfilled` per render; every write goes through `reconcile_account_requests()` in `sam/manage/account_requests.py`, run by the hourly `account_requests_reconcile` task, the queue's *Reconcile now* button, and the digest before it selects. | § 3.3 had every render stamping rows and calling `add_user_to_project`, which raises on a project with no accounts — a membership commit inside a GET. |
 | D2 | `state ∈ submitted · claimed · rejected · dismissed`; `requested_at` is an orthogonal stamp. | A claimed row must be digestable without losing its assignee. |
 | D3 | No "sponsor notified when the last row lands" mail. The event row shows `n of m fulfilled`. | A third kind; "last" is unstable as rosters grow; NOTIFY is off everywhere it would be tested. |
-| D4 | The project surface is a fourth **Manage Project** tab, `?tab=invitations`. The invitation routes walk the project tree; the page gate (`require_project_permission(EDIT_PROJECTS)`) does not, so a tree-ancestor lead reaches the routes but not the page today. Widening `edit_project_page` and the card link with `include_ancestors=True` is a one-line decision left open. | Confirmed with the operator. |
+| D4 | The project surface is a fourth **Manage Project** tab, `?tab=invitations`. The invitation routes walk the project tree; the page gate (`require_project_permission(EDIT_PROJECTS)`) does not, so a tree-ancestor lead reaches the routes but not the page today. Widened 2026-09-26: `edit_project_page` and the card link take `include_ancestors=True`, so a tree-ancestor lead reaches the page too. | Confirmed with the operator. |
 | D5 | `desired_username` is a hint shown to the operator, never a match key. Email through `sam_merge_targets`, honoring `ambiguous`, is the only resolver. Since 2026-09-26 the forms no longer ask for it; the column and the operator display remain for older rows. | A casefolded hit on a stranger's username is a plausible collision. |
 | D6 | The sweep feeds `absent` rows only; `inactive` is the deferred `reactivation`. | § 6. |
 | D7 | The public form is plain PRG with the hidden CSRF input, not an `HtmxFormHandler`. | A phone-facing page for people with no account. |
@@ -43,14 +43,19 @@ Pending Users link → the Invitations tab → the flag and the public form.
 | D15 | **The rejection notice is the operator's choice.** The reject form carries an "Email this reason" checkbox; ticked, `build_rejection_message` (kind `account_rejected`, family `account`) mails the recorded reason to the requester after the commit and stamps `closure_notified_at` only on a delivered send. Unticked, nothing leaves. A reopen clears the stamp and a second reject mints a new key. | The queue copy promised a notice that did not exist; a mail nobody chose would surprise both the operator and a sweep-derived stranger. |
 | D12 | The pre-production retrospective. Every person-typed or person-echoing column is utf8mb4 (`academic_status` widened to 64, `residence_country`, `fulfill_error`); `xras_username` is stored lower-cased and matched with a plain `IN`; `requested_at` is *first told* and never moves; `modified_time` is `NOT NULL`, stamped at create. Added now so no later `ALTER` is needed: `account_request_event.instructions` (sponsor prose on the public form), `verify_sent_count` + `source_ip` (the abuse signals; the ingress address today, the client's once the platform forwards it), `closure_notified_at` (D15), `merged_at` (phase 3). The unused `account_request_event_deadline` index is gone. | `fulfill_error` holds `str(ValueError)` with interpolated names, and a 4-byte character there failed the reconcile pass outside its savepoint; the rest is the design's own rule, every column from the start. |
 | D20 | **The sponsor may mail the invitee a link to finish their own row** (§ 3.6). A checkbox on Invite and on roster paste, ticked by default, plus a Resend action; kind `account_invite`, sent first and stamped second (`invite_sent_at`). The link opens the terms gate, then a pre-filled form; submitting updates the same row (phone, country, academic status, ORCID, preferred username) and stamps `completed_at`, `eula_sha`, `eula_accepted_at`. The row is in NUSD's queue from the start, badged *awaiting invitee* until then. Events gain `invite_only`, which closes every self-service path. Amends § 3.1's "no mail to the invitee". | NUSD received a name and an email only: no phone for Duo, no country, no academic status, and no recorded terms acceptance. The invitee is the one person who knows those. Record: `docs/plans/implemented/ACCOUNT_INVITE_LINKS.md`. 2026-09-24. |
+| D21 | **The event pages are their own blueprint** (`webapp/register/events.py`, `register_events`, same `/register` prefix), mounted by `ACCOUNT_INVITATIONS_ENABLED`. `ACCOUNT_REGISTRATION_ENABLED` mounts the creation form only. An anonymous visitor on `/register/<code>` gets the code-locked form only where that form is mounted and open, else a login redirect. The Upcoming Events card and the copy-link buttons follow the invitations switch. | Production wants events, self-enroll and invitations live with the anonymous creation form absent; one blueprint could not be half-mounted. 2026-09-26. |
+| D22 | **NUSD's handoff is one plain-text ticket per request** (`account_ticket`, `webapp/register/handoff_mail.py`) into Jira-by-email, from a real person (`NOTIFY_ACCOUNT_TICKET_FROM`) to `NOTIFY_ACCOUNT_TICKET_TO`, subject `New HPC User Request '<name>' for <event code | project code>`. Sent in the request that makes the row *ready*: public address verified (link or code), invitee completed the link, sponsor queued someone without a link (invite form, roster paste), operator Verify. With a link out the ticket waits for the invitee. Keyed on the row alone: a reopen never files twice. XRAS-sweep rows never ticket. The weekly digest stays off. | NUSD asked for a ticket per person rather than a digest; the row is only actionable once the invitee's details and agreement are in. 2026-09-26. |
+| D23 | **The accepted agreement travels in the mail.** The verify mail and the new invitee receipt (`account_request_received`, sent on invite completion, keyed on `completed_at`) end with a muted copy of the NWSC agreement under "By requesting an NSF NCAR HPC account you have agreed to the following terms of use", empty for a row that never accepted the gate. `webapp/register/eula.py` gains `eula_text()`; the webapp passes `eula_text`/`eula_html` in through the context because `sam.notify` cannot reach the vendored file. A saved operator override of `account_verify` does not gain the appendix. | The invitee is the one person with no copy of what they agreed to. 2026-09-26. |
+| D24 | The forms no longer ask for a preferred username (`INVITE_FIELDS` drops it too); the column and the operator display stay for older rows. | NUSD assigns usernames. 2026-09-26. |
 
 **Operator handoffs, not automated:** apply `scripts/sql/create_account_request_event.sql`
 then `create_account_request.sql` to production and read the columns back by
 name; regenerate the obfuscated LFS blob afterwards and verify both purges ran;
-clear `account_requests_reconcile` and then `account_queue_digest` from
-`SAM_TASKS_DISABLED` once NUSD confirms `NOTIFY_ACCOUNT_QUEUE_TO`; set
-`ACCOUNT_REGISTRATION_ENABLED` per deployment (dark in `values.yaml`, on in
-`values-dev.yaml`); decide D4; `sam-admin cache --refresh` after deploy.
+`account_requests_reconcile` is live (2026-09-26); clear `account_queue_digest`
+from `SAM_TASKS_DISABLED` only if NUSD ever wants the digest beside the ticket
+(D22); `ACCOUNT_REGISTRATION_ENABLED` stays dark in `values.yaml` and on in
+`values-dev.yaml`, `ACCOUNT_INVITATIONS_ENABLED` is on in both; watch the first
+ticket land in Jira by hand; `sam-admin cache --refresh` after deploy.
 
 **Future work, for a follow-up:**
 
@@ -58,11 +63,8 @@ clear `account_requests_reconcile` and then `account_queue_digest` from
   (§ 6.3); the client IP still has to reach the app through the ingress for the
   per-IP tier to mean anything, and until then `ACCOUNT_REGISTRATION_LOGIN_REQUIRED`
   stays on in prod.
-- **The production config switch.** `ACCOUNT_REGISTRATION_ENABLED=1` with
-  `ACCOUNT_REGISTRATION_LOGIN_REQUIRED=1` lights self-enroll, the public Upcoming
-  Events card and the enrolled counts with no anonymous mailer; the write-up and
-  its caveat are in `EVENTS_FOLLOWUPS.md`. With it go the two task switches in
-  `SAM_TASKS_DISABLED` named above.
+- ~~The production config switch~~ -- superseded by D21: the event pages ride
+  `ACCOUNT_INVITATIONS_ENABLED`, so the creation form stays dark in prod.
 - Phase 3 (§ 4), `reactivation` as a purpose (§ 6), and
   `account_request_event.modified_by` (a prod ALTER; the lifecycle logs the actor
   until then).
@@ -293,7 +295,8 @@ subclass; the write runs inside `management_transaction`. No login means no
 
 **Signed in, the event link is a self-enroll shortcut (D17).** A visitor to
 `/register/<event_code>` who is already authenticated does not need the creation
-form — they have an account. `form_for_event` renders a one-click confirm
+form — they have an account. `form_for_event` (in `webapp/register/events.py`
+since D21) renders a one-click confirm
 instead, and `POST /register/<event_code>/enroll` adds their own account to the
 event's project (`add_user_to_project`, idempotent) with no email round-trip:
 the open event link is the capability, the session is the identity. Registering
