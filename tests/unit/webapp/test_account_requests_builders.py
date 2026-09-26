@@ -24,6 +24,7 @@ from sam.queries.account_notices import (
     build_queue_summary,
     build_receipt_message,
     build_ticket_message,
+    subject_token,
     ticket_subject,
     build_rejection_message,
     build_verify_message,
@@ -265,11 +266,18 @@ class TestTicketMessage:
                              events=events_for(session, [row]))[0]
 
     def test_the_subject_prefers_the_event_code_over_the_project(self):
-        assert ticket_subject('Ada Lovelace', event_code='WRF-OCT', project_code='SCSG0001') == \
-            "New HPC User Request 'Ada Lovelace' for WRF-OCT"
-        assert ticket_subject('Ada Lovelace', project_code='SCSG0001') == \
-            "New HPC User Request 'Ada Lovelace' for SCSG0001"
-        assert ticket_subject('Ada Lovelace') == "New HPC User Request 'Ada Lovelace'"
+        assert ticket_subject('Ada Lovelace', request_id=41, event_code='WRF-OCT',
+                              project_code='SCSG0001') == \
+            "New HPC User Request 'Ada Lovelace' for WRF-OCT [SAM-AR-41]"
+        assert ticket_subject('Ada Lovelace', request_id=41, project_code='SCSG0001') == \
+            "New HPC User Request 'Ada Lovelace' for SCSG0001 [SAM-AR-41]"
+        assert ticket_subject('Ada Lovelace', request_id=41) == \
+            "New HPC User Request 'Ada Lovelace' [SAM-AR-41]"
+
+    def test_the_subject_token_is_the_jql_handle(self):
+        # Jira's phrase search matches whole tokens: "SAM-AR-4" must not find 41.
+        assert subject_token(41) == '[SAM-AR-41]'
+        assert subject_token(4) not in subject_token(41)
 
     def test_the_context_matches_the_sample_and_the_envelope_is_the_configured_person(
             self, session):
@@ -290,7 +298,8 @@ class TestTicketMessage:
         assert message.recipient.address == 'help@example.invalid'
         assert message.recipient.role == 'operator'
         assert message.sender == 'person@ucar.edu'
-        assert message.subject == f"New HPC User Request 'Ada Lovelace' for {event.event_code}"
+        assert message.subject == (f"New HPC User Request 'Ada Lovelace' for {event.event_code}"
+                                   f" [SAM-AR-{row.account_request_id}]")
         ctx = message.context
         assert ctx['requested_via'] == f'invitation by {sponsor.display_name}'
         assert ctx['event_code'] == event.event_code and ctx['deadline']
@@ -305,7 +314,8 @@ class TestTicketMessage:
         row = make_account_request(session, by='self', verified_by='self')
         message = build_ticket_message(row, view=self._view(session, row),
                                        recipient='help@example.invalid', requested_by='self')
-        assert message.subject == f"New HPC User Request '{row.display_name}'"
+        assert message.subject == (f"New HPC User Request '{row.display_name}'"
+                                   f" [SAM-AR-{row.account_request_id}]")
         assert message.context['requested_via'].startswith('self-registration')
         assert message.context['eula_accepted_on'] == '' and message.context['eula_sha7'] == ''
         assert message.sender is None, 'falls back to MAIL_DEFAULT_FROM'

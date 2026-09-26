@@ -318,7 +318,9 @@ class TestCompleting:
                                                       'account_ticket']
         ticket = no_mail.messages[1]
         assert ticket.recipient.address == 'help@example.invalid'
-        assert ticket.subject == f"New HPC User Request 'Ada Lovelace' for {_row(app, row_id).project_id and self._projcode(app, row_id)}"
+        assert ticket.subject == (f"New HPC User Request 'Ada Lovelace' for "
+                                  f"{_row(app, row_id).project_id and self._projcode(app, row_id)}"
+                                  f" [SAM-AR-{row_id}]")
         assert ticket.context['phone'] == PERSON['phone']
         assert ticket.context['requested_via'].startswith('invitation by')
         assert ticket.dedup_key == f'account_ticket:{row_id}'
@@ -448,7 +450,9 @@ class TestInviteForm:
         assert mailer.messages == []
         assert self._row_for(app, email).invite_sent_at is None
         ticket, = _tickets(mailer)
-        assert ticket.subject == f"New HPC User Request 'Grace Hopper' for {led_project[1]}"
+        row_id = self._row_for(app, email).account_request_id
+        assert ticket.subject == (f"New HPC User Request 'Grace Hopper' for {led_project[1]}"
+                                  f" [SAM-AR-{row_id}]")
         assert ticket.context['note'] == 'NUSD: needs Casper'
         assert ticket.context['phone'] == '', 'sparse by the sponsor\'s choice'
         assert ticket.requested_by == 'benkirk'
@@ -553,7 +557,7 @@ class TestRosterPaste:
         assert mailer.messages == []
         tickets = _tickets(mailer)
         assert sorted(t.context['email'] for t in tickets) == sorted([first, second])
-        assert all(t.subject.endswith(f'for {code}') for t in tickets)
+        assert all(f'for {code} [SAM-AR-' in t.subject for t in tickets)
 
     def test_admin_events_copy_sends_too(self, auth_client, mailer, make_event):
         code, _ = make_event()

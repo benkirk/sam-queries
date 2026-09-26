@@ -37,7 +37,7 @@ _SUBJECTS = {
     'account_rejected': 'Your NCAR HPC account request',
     'account_invite': 'You are invited to request an NCAR HPC account',
     'account_request_received': 'Your NCAR HPC account request has been received',
-    'account_ticket': "New HPC User Request 'Ada Lovelace' for WRF-OCT-2026",
+    'account_ticket': "New HPC User Request 'Ada Lovelace' for WRF-OCT-2026 [SAM-AR-41]",
     'project_renewal': 'Your NSF NCAR project SCSG0001 has been renewed',
     'project_activation': 'Your NSF NCAR project SCSG0001 is now active',
     'project_adjustment': 'Your NSF NCAR project SCSG0001 allocations have been updated',
