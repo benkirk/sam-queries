@@ -247,12 +247,21 @@ def build_receipt_message(row: AccountRequest, *, project_code: str = '',
     )
 
 
-def ticket_subject(name: str, *, event_code: str = '', project_code: str = '') -> str:
-    """``New HPC User Request '<name>' for <event code | project code>``; the
-    event wins, and a standalone request carries no suffix."""
+def subject_token(request_id: int) -> str:
+    """``[SAM-AR-<id>]``: the ticket's lookup handle. Jira-by-email keeps the
+    summary verbatim, so ``summary ~ "\\"SAM-AR-<id>\\""`` finds the ticket later
+    (docs/plans/TICKET_PROVIDER.md); the URL in the body is not indexed usefully."""
+    return f'[SAM-AR-{request_id}]'
+
+
+def ticket_subject(name: str, *, request_id: int, event_code: str = '',
+                   project_code: str = '') -> str:
+    """``New HPC User Request '<name>' for <event code | project code> [SAM-AR-<id>]``;
+    the event wins, and a standalone request carries no ``for`` clause."""
     base = ACCOUNT_KIND_SUBJECTS['account_ticket'].format(name=name)
     suffix = event_code or project_code
-    return f'{base} for {suffix}' if suffix else base
+    head = f'{base} for {suffix}' if suffix else base
+    return f'{head} {subject_token(request_id)}'
 
 
 def build_ticket_message(row: AccountRequest, *, view: Dict[str, Any], recipient: str,
@@ -278,7 +287,8 @@ def build_ticket_message(row: AccountRequest, *, view: Dict[str, Any], recipient
     return Message(
         kind='account_ticket',
         recipient=Recipient(recipient.strip(), name='NUSD', role='operator'),
-        subject=ticket_subject(row.display_name, event_code=view['event_code'],
+        subject=ticket_subject(row.display_name, request_id=row.account_request_id,
+                               event_code=view['event_code'],
                                project_code=view['project_code']),
         context={
             'name': row.display_name,

@@ -475,7 +475,7 @@ class TestVerification:
         assert ticket.kind == 'account_ticket'
         assert ticket.recipient.address == 'help@example.invalid'
         assert ticket.sender == 'person@ucar.edu'
-        assert ticket.subject == "New HPC User Request 'Pen Ding'"
+        assert ticket.subject == f"New HPC User Request 'Pen Ding' [SAM-AR-{row_id}]"
         assert ticket.dedup_key == f'account_ticket:{row_id}'
         assert ticket.context['requested_via'].startswith('self-registration')
         assert ticket.context['queue_url'] == \

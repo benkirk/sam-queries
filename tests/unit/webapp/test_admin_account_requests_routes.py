@@ -380,7 +380,7 @@ class TestOperatorVerify:
             assert row.verified_by == 'benkirk'
         ticket, = ticket_mailer.messages
         assert ticket.kind == 'account_ticket'
-        assert ticket.subject == "New HPC User Request 'Vou Ched'"
+        assert ticket.subject == f"New HPC User Request 'Vou Ched' [SAM-AR-{unverified_request}]"
         assert ticket.requested_by == 'benkirk'
 
 
