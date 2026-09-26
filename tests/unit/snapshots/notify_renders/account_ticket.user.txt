@@ -14,6 +14,6 @@ Sponsor:         Jane Lead
 ORCID:           0000-0002-1825-0097
 Middle name:     Augusta
 Note:            Visiting scholar for the fall term.
-SAM request:     #41  https://sam.hpc.ucar.edu/admin/account-requests
+SAM request:     #41  https://sam.hpc.ucar.edu/admin/account-requests?request=41
 
 Sent by the NSF NCAR Systems Accounting Manager when the request became ready.

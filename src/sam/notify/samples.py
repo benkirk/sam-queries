@@ -286,7 +286,7 @@ def _account_ticket() -> Dict[str, Any]:
         'middle_name': 'Augusta',
         'note': 'Visiting scholar for the fall term.',
         'request_id': 41,
-        'queue_url': 'https://sam.hpc.ucar.edu/admin/account-requests',
+        'queue_url': 'https://sam.hpc.ucar.edu/admin/account-requests?request=41',
     }
 
 
@@ -420,7 +420,7 @@ VARIABLE_NOTES: Dict[str, str] = {
     'rows.assignee': 'The operator who claimed it, or empty.',
     'rows.note': "The sponsor's or requester's note, one line, or empty.",
     'rows.invite': "Invitation link status: 'awaiting invitee', 'completed <date>', or empty.",
-    'queue_url': 'Link to the queue in SAM, or empty.',
+    'queue_url': 'Link to the queue in SAM (the ticket: pinned to its request), or empty.',
     'verify_url': 'The signed verification link.',
     'code': 'The six-digit code to type on the page the requester is on.',
     'expires_hours': 'Hours until the link and code expire.',

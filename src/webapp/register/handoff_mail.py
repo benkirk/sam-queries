@@ -21,7 +21,7 @@ from sam.notify.base import DeliveryResult
 from sam.queries.account_notices import build_receipt_message, build_ticket_message
 from sam.queries.account_requests import events_for, request_views
 from webapp.extensions import db
-from webapp.utils.notify import get_notifier
+from webapp.utils.notify import get_notifier, public_url_for
 
 from . import eula
 
@@ -35,10 +35,9 @@ def _setting(key: str) -> str:
     return str(value or '').strip()
 
 
-def ticket_settings() -> tuple[str, str, str]:
-    """``(to, sender, queue_url)``; an empty ``to`` means no ticket is filed."""
-    return (_setting('NOTIFY_ACCOUNT_TICKET_TO'), _setting('NOTIFY_ACCOUNT_TICKET_FROM'),
-            _setting('NOTIFY_ACCOUNT_QUEUE_URL'))
+def ticket_settings() -> tuple[str, str]:
+    """``(to, sender)``; an empty ``to`` means no ticket is filed."""
+    return _setting('NOTIFY_ACCOUNT_TICKET_TO'), _setting('NOTIFY_ACCOUNT_TICKET_FROM')
 
 
 def _view(row: AccountRequest) -> dict:
@@ -49,11 +48,13 @@ def _view(row: AccountRequest) -> dict:
 def send_ticket(row: AccountRequest, *, requested_by: str = CREATED_BY_SELF
                 ) -> Optional[DeliveryResult]:
     """File NUSD's ticket for ``row``; ``None`` when no address is configured."""
-    to, sender, queue_url = ticket_settings()
+    to, sender = ticket_settings()
     if not to:
         return None
+    # The row's own page (Admin > Accounts pinned to it), on the public hostname.
+    link = public_url_for('admin_dashboard.account_requests', request=row.account_request_id)
     message = build_ticket_message(row, view=_view(row), recipient=to, sender=sender,
-                                   queue_url=queue_url, requested_by=requested_by)
+                                   queue_url=link, requested_by=requested_by)
     result = get_notifier().send(message)
     logger.info('request %s: ticket to %s %s', row.account_request_id, to, result.status)
     return result

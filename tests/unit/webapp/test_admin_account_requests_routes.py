@@ -382,3 +382,30 @@ class TestOperatorVerify:
         assert ticket.kind == 'account_ticket'
         assert ticket.subject == "New HPC User Request 'Vou Ched'"
         assert ticket.requested_by == 'benkirk'
+
+
+class TestTheTicketDeepLink:
+    """``?request=<id>``, the link NUSD's ticket carries, pins the card to one row."""
+
+    def test_the_page_shell_carries_the_pin_into_the_first_load(self, auth_client):
+        html = auth_client.get(f'{PAGE}?request=42').get_data(as_text=True)
+        assert f'hx-get="{FRAGMENT}?request=42"' in html
+        assert f'hx-get="{FRAGMENT}"' in auth_client.get(PAGE).get_data(as_text=True)
+
+    def test_a_pinned_row_shows_alone_whatever_its_state(self, auth_client, app,
+                                                         committed_request):
+        from sam.core.account_requests import AccountRequest
+        from webapp.extensions import db
+        with app.app_context():
+            db.session.get(AccountRequest, committed_request).reject('benkirk', 'dup')
+            db.session.commit()
+        html = auth_client.get(f'{FRAGMENT}?request={committed_request}').get_data(as_text=True)
+        assert f'Showing request #{committed_request} only' in html
+        assert f'id="account-request-{committed_request}"' in html
+        assert html.count('id="account-request-') == 1
+        assert 'Show the queue' in html and f'href="{PAGE}"' in html
+
+    def test_a_missing_id_says_so(self, auth_client):
+        html = auth_client.get(f'{FRAGMENT}?request={MISSING}').get_data(as_text=True)
+        assert f'Request #{MISSING} does not exist' in html
+        assert 'id="account-request-' not in html

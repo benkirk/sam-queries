@@ -478,6 +478,8 @@ class TestVerification:
         assert ticket.subject == "New HPC User Request 'Pen Ding'"
         assert ticket.dedup_key == f'account_ticket:{row_id}'
         assert ticket.context['requested_via'].startswith('self-registration')
+        assert ticket.context['queue_url'] == \
+            f'http://localhost/admin/account-requests?request={row_id}'
 
     def test_the_code_files_the_ticket_too(self, client, app, committed_registration,
                                            ticket_mailer):
