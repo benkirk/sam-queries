@@ -36,6 +36,7 @@ _SUBJECTS = {
     'account_verify': 'Verify your email address for your NCAR HPC account request',
     'account_rejected': 'Your NCAR HPC account request',
     'account_invite': 'You are invited to request an NCAR HPC account',
+    'account_request_received': 'Your NCAR HPC account request has been received',
     'project_renewal': 'Your NSF NCAR project SCSG0001 has been renewed',
     'project_activation': 'Your NSF NCAR project SCSG0001 is now active',
     'project_adjustment': 'Your NSF NCAR project SCSG0001 allocations have been updated',
@@ -205,12 +206,39 @@ def _lifecycle(kind: str) -> Dict[str, Any]:
     }
 
 
+#: A two-sentence stand-in for the vendored agreement (webapp/register/eula.py).
+_EULA_TEXT = ('NWSC END USER AGREEMENT\n\nBy requesting and receiving access to NSF NCAR '
+              'computing resources at NWSC, you agree to the following terms and '
+              'conditions.\n\n- You will use NWSC computer and information systems in an '
+              'ethical manner and in compliance with the law.\n')
+_EULA_HTML = ('<h1>NWSC End User Agreement</h1><p>By requesting and receiving access to '
+              'NSF NCAR computing resources at NWSC, you agree to the following terms and '
+              'conditions.</p><ul><li>You will use NWSC computer and information systems '
+              'in an ethical manner and in compliance with the law.</li></ul>')
+
+
+def _agreement() -> Dict[str, Any]:
+    return {'eula_text': _EULA_TEXT, 'eula_html': _EULA_HTML,
+            'eula_accepted_on': '2026-09-24'}
+
+
 def _account_verify() -> Dict[str, Any]:
     return {
         'verify_url': 'https://sam.hpc.ucar.edu/register/verify/eyJpZCI6NDF9.abc.def',
         'code': '493027',
         'expires_hours': 48,
         'event_name': 'WRF Tutorial, October 2026',
+        **_agreement(),
+    }
+
+
+def _account_request_received() -> Dict[str, Any]:
+    return {
+        'name': 'Ada Lovelace',
+        'project_code': 'SCSG0001',
+        'event_name': 'WRF Tutorial, October 2026',
+        'sponsor_name': 'Jane Lead',
+        **_agreement(),
     }
 
 
@@ -252,6 +280,8 @@ def sample_context(kind: str, facility: Optional[str] = None) -> Dict[str, Any]:
         return _account_rejected()
     if key == 'account_invite':
         return _account_invite()
+    if key == 'account_request_received':
+        return _account_request_received()
     if key in _LIFECYCLE_ACTIONS:
         return _lifecycle(key)
     return _xras(key)
@@ -375,6 +405,9 @@ VARIABLE_NOTES: Dict[str, str] = {
     'accounts_needed_by': "The event's deadline, formatted, or empty.",
     'invite_url': 'The signed invitation link; opening it needs no login.',
     'expires_days': 'Days until the invitation link expires.',
+    'eula_text': 'The NWSC end-user agreement as plain text, or empty if the gate was not accepted.',
+    'eula_html': 'The same agreement as HTML, or empty.',
+    'eula_accepted_on': 'The date the requester accepted the agreement, formatted, or empty.',
 }
 
 

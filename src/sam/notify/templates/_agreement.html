@@ -1,0 +1,9 @@
+{#- The muted agreement appendix; `eula_html` is the vendored NWSC text,
+    rendered and trusted upstream (webapp/register/eula.py). -#}
+{% if eula_html %}
+    <div class="agreement">
+        <p><strong>By requesting an NSF NCAR HPC account you have agreed to the
+            following terms of use{% if eula_accepted_on %} (accepted {{ eula_accepted_on }}){% endif %}:</strong></p>
+        {{ eula_html | safe }}
+    </div>
+{% endif %}

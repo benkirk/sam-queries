@@ -1,18 +1,9 @@
-Someone — we hope you — asked for an NCAR HPC account using this email
-address, for "WRF Tutorial, October 2026".
+Hello Ada Lovelace,
 
-To confirm the address, open this link:
+Your request for an NCAR HPC account on project SCSG0001, for "WRF Tutorial, October 2026", has been received (you were invited by Jane Lead).
 
-    https://sam.hpc.ucar.edu/register/verify/eyJpZCI6NDF9.abc.def
-
-or enter this code on the page you were on:
-
-    493027
-
-The link and the code expire in 48 hours.
-
-If you did not make this request, ignore this message. The request is not
-visible to anyone until the address is confirmed, and it will be discarded.
+It is now with the team that creates NCAR HPC accounts. They will contact
+you at this address; nothing more is needed from you for now.
 
 ------------------------------------------------------------------------
 By requesting an NSF NCAR HPC account you have agreed to the following terms

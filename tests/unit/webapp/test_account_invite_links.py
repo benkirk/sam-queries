@@ -51,11 +51,15 @@ def mailer(monkeypatch):
 
 @pytest.fixture
 def no_mail(monkeypatch):
-    """Completing the form must send nothing: any mailer call fails the test."""
+    """The invitee side sends only through handoff_mail (recorded here); any
+    other mailer call fails the test."""
     def _boom(**_):
-        raise AssertionError('the invitee side must not send mail')
+        raise AssertionError('the invitee side must not send through this mailer')
     monkeypatch.setattr('webapp.register.invite_mail.get_notifier', _boom)
     monkeypatch.setattr('webapp.register.blueprint.get_notifier', _boom)
+    fake = FakeNotifier()
+    monkeypatch.setattr('webapp.register.handoff_mail.get_notifier', lambda **_: fake)
+    return fake
 
 
 @pytest.fixture
@@ -275,6 +279,29 @@ class TestCompleting:
             assert db.session.query(AccountRequest).filter_by(email=email).count() == 1
         assert 'We already have your details' in _html(client.get(f'/register/invite/{token}'))
         assert 'request is complete' in _html(client.get('/register/invite/complete'))
+
+    def test_a_submit_mails_the_invitee_a_receipt_with_the_agreement(self, client, app,
+                                                                     make_invite, no_mail):
+        from webapp.register.eula import eula_text
+        row_id, token = make_invite()
+        email = _row(app, row_id).email
+        self._accept(client, token)
+        client.post(f'/register/invite/{token}', data=PERSON)
+        receipt, = [m for m in no_mail.messages if m.kind == 'account_request_received']
+        assert receipt.recipient.address == email
+        assert receipt.context['name'] == 'Ada Lovelace'
+        assert receipt.context['eula_text'] == eula_text()
+        assert 'NWSC End User Agreement' in receipt.context['eula_html']
+        assert receipt.context['eula_accepted_on']
+        assert receipt.dedup_key.startswith(f'account_request_received:{row_id}:2')
+
+    def test_a_failed_submit_mails_nothing(self, client, app, make_invite, no_mail):
+        row_id, token = make_invite()
+        self._accept(client, token)
+        data = dict(PERSON)
+        data.pop('phone')
+        client.post(f'/register/invite/{token}', data=data)
+        assert no_mail.messages == []
 
     def test_a_submit_without_the_gate_is_regated(self, client, app, make_invite, no_mail):
         row_id, token = make_invite()

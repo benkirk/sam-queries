@@ -223,7 +223,8 @@ def submit():
     message = build_verify_message(
         row, verify_url=url_for('register.verify', token=tokens.link_token(row.account_request_id),
                                 _external=True),
-        code=code, expires_hours=ttl, event_name=event.name if event else None)
+        code=code, expires_hours=ttl, event_name=event.name if event else None,
+        eula_text=eula.eula_text(), eula_html=eula.eula_html())
     result = get_notifier().send(message)
     logger.info('registration %s for %s: verification mail %s',
                 row.account_request_id, row.email, result.status)

@@ -682,6 +682,19 @@ class TestTheEula:
         assert 'https://rchelp.ucar.edu/' in html, 'an absolute link is left alone'
         assert '<script' not in html.lower()
 
+    def test_the_plain_text_rendering_keeps_no_markdown(self):
+        """The mail appendix's text part: the same source, links kept as
+        'text (url)', wrapped, with the heading and the bullets readable."""
+        from webapp.register.eula import eula_text
+        text = eula_text()
+        assert text.startswith('NWSC END USER AGREEMENT\n')
+        assert '**' not in text and '](' not in text and '`' not in text
+        assert ('https://ncar-hpc-docs.readthedocs.io/en/latest/getting-started/'
+                'acknowledging-ncar-and-cisl/') in text
+        assert 'rchelp.ucar.edu (https://rchelp.ucar.edu/)' in text
+        assert '\n- You will use NWSC computer' in text
+        assert max(len(line) for line in text.splitlines()) <= 100, 'wrapped; URLs intact'
+
     def test_the_gate_embeds_the_agreement(self, app):
         """The gate route passes the rendered agreement into the panel."""
         from webapp.register import blueprint

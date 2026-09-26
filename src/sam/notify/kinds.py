@@ -229,6 +229,17 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
         facility_aware=False,
         family='account',
     ),
+    # The invitee's receipt on completing the link: the request is with NUSD,
+    # and the terms they accepted on the gate travel with it. Not "fulfilled":
+    # the account does not exist yet.
+    NotificationKind(
+        key='account_request_received',
+        label='Account-request receipt',
+        template_base='account_request_received',
+        default_subscribed=True,
+        facility_aware=False,
+        family='account',
+    ),
     # The `lifecycle` family: operator-initiated, tree-aware, onboarding-rich
     # project notices, distinct from the XRAS-driven xras_* kinds above. They
     # introduce the in-tree allocation-adjustment and member-management surfaces

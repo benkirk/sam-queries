@@ -31,6 +31,7 @@ ACCOUNT_KIND_SUBJECTS = {
     'account_verify': 'Verify your email address for your NCAR HPC account request',
     'account_rejected': 'Your NCAR HPC account request',
     'account_invite': 'You are invited to request an NCAR HPC account',
+    'account_request_received': 'Your NCAR HPC account request has been received',
 }
 
 
@@ -120,8 +121,21 @@ def build_queue_summary(session: Session, rows: Sequence[AccountRequest], *,
     )
 
 
+def agreement_context(row: AccountRequest, *, eula_text: str = '',
+                      eula_html: str = '') -> Dict[str, Any]:
+    """The terms-of-use appendix (``_agreement.{txt,html}``): the vendored
+    text, passed in by the webapp, and empty unless the row accepted the gate."""
+    accepted = row.eula_accepted_at is not None
+    return {
+        'eula_text': eula_text if accepted else '',
+        'eula_html': eula_html if accepted else '',
+        'eula_accepted_on': fmt.date_str(row.eula_accepted_at) if accepted else '',
+    }
+
+
 def build_verify_message(row: AccountRequest, *, verify_url: str, code: str,
                          expires_hours: int, event_name: Optional[str] = None,
+                         eula_text: str = '', eula_html: str = '',
                          requested_by: str = CREATED_BY_SELF) -> Message:
     """The verification mail. Its context carries NOTHING the visitor typed
     -- not even a name -- so SAM cannot be used as a relay with a UCAR
@@ -138,6 +152,7 @@ def build_verify_message(row: AccountRequest, *, verify_url: str, code: str,
             'code': code,
             'expires_hours': expires_hours,
             'event_name': event_name or '',
+            **agreement_context(row, eula_text=eula_text, eula_html=eula_html),
         },
         entity=('account_request', row.account_request_id),
         dedup_key=f'account_verify:{row.account_request_id}:{issued}',
@@ -197,5 +212,32 @@ def build_invite_message(row: AccountRequest, *, invite_url: str, sent_at: datet
         projcode=projcode or None,
         dedup_key=f'account_invite:{row.account_request_id}:'
                   f'{sent_at.isoformat(timespec="seconds")}',
+        requested_by=requested_by,
+    )
+
+
+def build_receipt_message(row: AccountRequest, *, project_code: str = '',
+                          event_name: str = '', sponsor_name: str = '',
+                          eula_text: str = '', eula_html: str = '',
+                          requested_by: str = CREATED_BY_SELF) -> Message:
+    """The invitee's receipt on completing their link. The address is the one
+    the sponsor vouched for and the form keeps read-only, so the only typed
+    text it echoes is the invitee's own name. Keyed on ``completed_at``."""
+    completed = (row.completed_at.isoformat(timespec='seconds')
+                 if row.completed_at else 'open')
+    return Message(
+        kind='account_request_received',
+        recipient=Recipient(row.email, name=row.display_name, role='user'),
+        subject=ACCOUNT_KIND_SUBJECTS['account_request_received'],
+        context={
+            'name': row.display_name,
+            'project_code': project_code or '',
+            'event_name': event_name or '',
+            'sponsor_name': sponsor_name or '',
+            **agreement_context(row, eula_text=eula_text, eula_html=eula_html),
+        },
+        entity=('account_request', row.account_request_id),
+        projcode=project_code or None,
+        dedup_key=f'account_request_received:{row.account_request_id}:{completed}',
         requested_by=requested_by,
     )

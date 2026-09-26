@@ -21,6 +21,7 @@ from sam.queries.account_notices import (
     ACCOUNT_KIND_SUBJECTS,
     build_invite_message,
     build_queue_summary,
+    build_receipt_message,
     build_rejection_message,
     build_verify_message,
     invite_label,
@@ -112,6 +113,19 @@ class TestVerifyMessage:
         rendered_values = ' '.join(str(v) for v in message.context.values())
         assert 'Call' not in rendered_values and 'FREE' not in rendered_values
         assert message.context['event_name'] == 'WRF Tutorial'
+
+    def test_the_agreement_travels_only_when_accepted(self, session):
+        kwargs = dict(verify_url='u', code='000000', expires_hours=1,
+                      eula_text='TERMS', eula_html='<p>TERMS</p>')
+        row = make_account_request(session, verified_by=None)
+        blank = build_verify_message(row, **kwargs).context
+        assert (blank['eula_text'], blank['eula_html'], blank['eula_accepted_on']) == ('', '', '')
+        row = make_account_request(session, verified_by=None,
+                                   eula_accepted_at=datetime(2026, 9, 24, 9, 30),
+                                   eula_sha='a' * 40)
+        full = build_verify_message(row, **kwargs).context
+        assert (full['eula_text'], full['eula_html']) == ('TERMS', '<p>TERMS</p>')
+        assert full['eula_accepted_on'] == '2026-09-24'
 
     def test_the_key_changes_with_every_issue(self, session):
         row = make_account_request(session, verified_by=None)
@@ -211,3 +225,30 @@ class TestInviteMessage:
         assert message.entity == ('account_request', row.account_request_id)
         assert message.projcode == 'SCSG0001' and message.requested_by == 'jlead'
         assert message.subject == ACCOUNT_KIND_SUBJECTS['account_invite']
+
+
+class TestReceiptMessage:
+
+    def test_the_context_matches_the_sample_and_names_the_invitee(self, session):
+        row = make_account_request(session, first_name='Ada', last_name='Lovelace',
+                                   email='ada@example.edu',
+                                   eula_accepted_at=datetime(2026, 9, 24, 9, 30),
+                                   eula_sha='a' * 40)
+        row.completed_at = datetime(2026, 9, 24, 9, 31)
+        message = build_receipt_message(row, project_code='SCSG0001', event_name='WRF',
+                                        sponsor_name='Jane Lead', eula_text='TERMS',
+                                        eula_html='<p>TERMS</p>')
+        assert set(message.context) == set(sample_context('account_request_received'))
+        assert message.recipient.address == 'ada@example.edu'
+        assert message.context['name'] == 'Ada Lovelace'
+        assert message.context['eula_text'] == 'TERMS'
+        assert message.projcode == 'SCSG0001'
+        assert message.entity == ('account_request', row.account_request_id)
+        assert message.dedup_key == (
+            f'account_request_received:{row.account_request_id}:2026-09-24T09:31:00')
+        assert message.subject == ACCOUNT_KIND_SUBJECTS['account_request_received']
+
+    def test_a_transient_row_previews_with_an_open_key(self):
+        from sam.core.account_requests import AccountRequest
+        row = AccountRequest(email='x@example.edu', first_name='X', last_name='Y')
+        assert build_receipt_message(row).dedup_key == 'account_request_received:None:open'
