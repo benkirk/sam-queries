@@ -1,6 +1,7 @@
 # LDAP Sync API — serving `sam-ldap-syncd` from the new SAM
 
-**Status:** scoping / handoff, 2026-09-25. No code yet.
+**Status:** scoping / handoff, 2026-09-25. No code yet. The client-side facts in §1–§2
+were checked against the production daemon on sam-app.ucar.edu (image 6c0fd35).
 **See also:** `SAM_LDAP_SYNCD_REFERENCE.md` for what the daemon is and how it works,
 and its bug list.
 **Goal:** everything the Flask webapp must implement so that flipping one variable
@@ -18,11 +19,16 @@ files) and pushes institutions, organizations, users, unix groups and GID blocks
 SAM over REST. It also reads project groups and collaborator-expiry data back out of
 SAM and writes them into LDAP staging (`fdbstage`).
 
-It went live against legacy Java SAM in August 2026 (the "FI cutover": `sam-app`
-added the stack 2026-06-29, prod service config landed 2026-08-13). The legacy source
-deleted the PeopleDB webhooks it replaced on 2026-07-04 ("Misc mods for new sam sync
-service"). It is the newest production consumer of legacy SAM and the only one whose
-endpoints the new webapp has not ported at all.
+It went live against legacy Java SAM in July 2026: `sam-app` added the stack on
+2026-06-29, the replica was pointed at the production directory on 2026-07-10 (the
+Fischer Identity / IGA cutover), update stubbing was switched off on 2026-07-16 and the
+first production PUT landed that evening. The "post FI cutover fixes" of 2026-08-10
+(5cb852d) added the `users.deactivate` stamping and generalized the placeholder-account
+deferral; the systemd service files of 2026-08-13 exist but are disabled (see
+`SAM_LDAP_SYNCD_REFERENCE.md` §2.4). The legacy source deleted the PeopleDB webhooks it
+replaced on 2026-07-04 ("Misc mods for new sam sync service"). It is the newest
+production consumer of legacy SAM and the only one whose endpoints the new webapp has
+not ported at all.
 
 **Framing.** "SAM never creates users" (`docs/xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md`
 §2, `docs/plans/implemented/ACCOUNT_REGISTRATION.md`, CLAUDE.md) means SAM does not
@@ -34,7 +40,8 @@ Those three passages should say "never originates" once this ships.
 covers 2026-05-14 to 2026-06-12, before the daemon existed. A re-count of all 31
 access logs shows the whole `ldapsync/*`, `*Purge*` and `userlifecycle/*` family at
 ≤ 3 hits each, so `stale_apis.md` marks as stale exactly the endpoints this consumer
-now depends on. Fresh Tomcat logs (post-August) would show the real rate.
+now depends on. Fresh Tomcat logs (from mid-July on) would show the real rate; they
+live on sam.ucar.edu, not on the daemon host.
 
 ---
 
@@ -51,13 +58,13 @@ the 2026-09-24 obfuscated snapshot.
 
 | Aspect | Requirement | Evidence |
 |---|---|---|
-| URL | `SAM_URL` (env) + `api/protected/admin` + per-endpoint rpath. Prefix and rpaths are baked into the image (`lib/Constants.rc:15-38`). | `SamClient.pm:80-111` |
-| Auth | HTTP Basic, **challenge-response**: the first request carries no credentials; the server must answer 401 with `WWW-Authenticate: Basic realm="Realm"`, exact string. LWP matches on the realm; on mismatch it never sends the password and retries forever. | `HttpClient.pm:698-717` |
-| Credential | `api_credentials.username='admin'` holding `role.name='ROLE_API_ADMIN'` (legacy `security-config.xml:32-41`). Secret from env/file `SAM_AUTH_admin`. | `Sweet.pm:260-273` |
+| URL | `SAM_URL` (env; prod `https://sam.ucar.edu:443`) + relative `api/protected/admin` + per-endpoint rpath. Prefix and rpaths are baked into the image (`lib/Constants.rc:15-38`). | `SamClient.pm:80-111` |
+| Auth | HTTP Basic, **challenge-response**: the first request carries no credentials; the server must answer 401 with `WWW-Authenticate: Basic realm="Realm"`, exact string. LWP 6.52 matches on the realm; on mismatch it never sends the password, the 401 is treated like any 300–500 answer (thrown, 300 s pause, replay), and during startup the daemon aborts. | `HttpClient.pm:291,698-717`; `SamClient.pm:541-545` |
+| Credential | `api_credentials.username='admin'` holding `role.name='ROLE_API_ADMIN'` (legacy `security-config.xml:32-41`). Secret `SAM_AUTH_admin` read from the environment or from the container's parmdb store (`PARM_DB=/tmp/parmdb`), which the sweet entrypoint fills from the `sam.parm` secrets file at start; it is not a file in `SECRETS_DIR`. | `Sweet.pm:260-273` |
 | 404 | Means "Tomcat still deploying": **retried forever, silently**. Legacy never 404s on a mapped path; an unknown entity is 200 + empty body. | `SamClient.pm:505-572` |
-| 300–500 | Error logged, 300 s pause, the item is already applied to the daemon's in-memory copy and is lost until the next full dump. Validation is 400 with `{"errorMessage": "..."}`; anything else 500. | same |
+| 300–500 | Thrown; the main loop logs "Pausing and continuing after exception", sleeps a literal 300 s (`Synchronizer.pm:266`) and replays, but the item is already applied to the daemon's in-memory copy and is lost until the next full dump. Exceptions: a 500 whose message says the connection was refused, closed or reset is retried like a 404; codes below 200 or above 500 are retried forever. Validation is 400 with `{"errorMessage": "..."}`; anything else 500. | `SamClient.pm:525-548` |
 | Bodies | Every 2xx GET/PUT body must be valid JSON (`decode_json` dies on empty). PUT echoes a bare integer id. DELETE may return empty. DELETE is never redirect-followed, so no 3xx. | `SamClient.pm:222-223,294-295,344-349` |
-| Requests | PUT sends `Content-Type: application/json`; dates epoch ms; undef keys dropped. `since` is sent as a bare `?<ms>` with no name, so legacy ignores it and returns everything. | `SamClient.pm:214-221,456` |
+| Requests | PUT sends `Content-Type: application/json` (the HttpClient default, `HttpClient.pm:386-393`); dates epoch ms; undef values are dropped only for attributes that have a normalizer, other undef keys go out as `null`. `since` would be sent as a bare `?<ms>` with no name, but the watermark never gets a value (reference bugs 4+5), so it is never sent. | `SamClient.pm:214-221,456`; `SamDataManager.pm:421-437` |
 | Param names | `groupPurgePermit?unixGid=` but `groupPurge?posixGid=` (client literals). | `Constants.rc:28-35` |
 | TLS | Verified only when `HTTPS_CA_DIR`/`HTTPS_CA_FILE` exists (prod sets `/etc/ssl/certs`). | `HttpClient.pm:166-183` |
 | Timeout | LWP default 180 s. | — |
@@ -67,24 +74,25 @@ the 2026-09-24 obfuscated snapshot.
 | Method | Path (under `/api/protected/admin`) | Used for |
 |---|---|---|
 | GET | `ldapsync/status` | `--test-connections` only; body is dumped |
-| GET | `ldapsync/{institution,organization,user,group,gidAllocation,projectGroup,groupTag}` | initial load into the in-memory DB; each type's list **must be non-empty** or the next restart fails (`SamDataUtil.pm:290-305`) |
+| GET | `ldapsync/{institution,organization,user,group,gidAllocation,projectGroup,groupTag}` | initial load into the in-memory DB; each type's list **must be non-empty** or the next restart fails (`SamDataUtil.pm:290-305`). Production sizes at the 2026-08-27 load: 1,384 / 402 / 28,447 / 310 / 1 / 5,832 / 5 |
 | PUT | `ldapsync/{institution,organization,user,group,gidAllocation}` | upsert keyed by the client-supplied id |
 | GET | `{user,group,institution,organization}PurgePermit?<key>=` | reads `purgeable` only |
 | DELETE | `{user,group,institution,organization}Purge?<key>=` | only if purgeable; otherwise a tombstone PUT |
-| GET | `ldapsync/projectGroup?<ms>` and `ldapsync/groupTag` | project-group pass → LDAP `ou=allGroups` (dormant, see §2.4) |
-| GET | `userlifecycle/collabexpiryupdates` | lifecycle pass → LDAP collaboration `x-ucar-endDate` (dormant, see §2.4) |
+| GET | `ldapsync/projectGroup` (always the full list, §2.1) and `ldapsync/groupTag` | project-group pass → LDAP `ou=allGroups` (see §2.4) |
+| GET | `userlifecycle/collabexpiryupdates` | lifecycle pass → LDAP collaboration `x-ucar-endDate` (see §2.4) |
 
 ### 2.3 Calls defined but not reaching SAM (daemon defects)
 
 | Call | Why it never arrives |
 |---|---|
 | `GET userlifecycle/pendingdeactivations/{h}` | sent as `/pendingdeactivations/?24` (bare-`?` quirk); legacy 404s → retry forever |
-| `PUT userlifecycle/deactivate/{username}` | path key `'deactivation'` vs registered `'deactivate'` (`SamClient.pm:366` vs `:95`); `$samClient` unset in `LifecycleUpdater.pm:295` |
-| `GET ldapsync/{type}/{id}` read-back | `willSamModify` is always 0 (`SamUserData.pm:292,298`); duplicate `getSAMObject` (`SamClient.pm:236,260`) would drop the id anyway |
+| `PUT userlifecycle/deactivate/{username}` | path key `'deactivation'` vs registered `'deactivate'` (`SamClient.pm:367` vs `:95`); `$samClient` unset in `LifecycleUpdater.pm:295`. The body would be the JSON string `""` |
+| `GET ldapsync/{type}/{id}` read-back | `willSamModify` is always 0 (`SamUserData.pm:289,295`); duplicate `getSAMObject` (`SamClient.pm:236,260`) would drop the id anyway |
 
-Visible consequence in the snapshot: 143 users carry `users.deactivate` (stamped by
-`PUT ldapsync/user` when IDMS says inactive), all still `active=1, locked=0`, holding
-757 open `account_user` rows; none was ever finished.
+Visible consequence in production (2026-09-25): 140 users carry `users.deactivate`
+(stamped by `PUT ldapsync/user` when IDMS says inactive, the oldest on 2026-08-10, the day
+5cb852d went live), all still `active=1, locked=0`, holding 724 open `account_user` rows;
+none was ever finished, and the count grows.
 
 ### 2.4 The two background passes run on the shipped schedule, on stale data
 
@@ -95,18 +103,24 @@ environment and their defaults from the `_DFLT` lines inside the image's
 `lib/Constants.rc`. So both jobs run on the defaults, and because Schedule::Cron's
 sixth field is seconds, `0 22 * * * *` fires every second of the 22:00 minute, each a
 forked child holding the in-memory database as of daemon start
-(`SAM_LDAP_SYNCD_REFERENCE.md` §3.9, bugs 13 and N4).
+(`SAM_LDAP_SYNCD_REFERENCE.md` §3.9, bugs 13 and N4). On the production host the
+scheduler process is alive (`Schedule::Cron MainLoop - next: … 22:00:00` in `podman top`)
+and during the 22:00 minute its title advances one second at a time while a
+`Dispatched job 1` child appears and exits within seconds. The children's output goes to
+`/dev/null`, so the daemon log shows nothing of them; the ~3,270 log lines that mention
+`collabexpiryupdates` are the endpoint table dumped at each daemon start.
 
-The collaborator end-date extension therefore most likely **does** fire nightly.
-Jackson 2.x accepts an `is` getter returning boxed `Boolean` as an is-getter, so
-legacy's `ActiveUserStatus` serializes `activeCollaborator` and the Perl key matches
-(confirm with one `curl` of `/userlifecycle/collabexpiryupdates`). The new server
-must emit the same key. This is the "identify users on a project and push their LDAP
-end date into the future" function: SAM computes each collaborator's nominal expiry
-(latest end date over their contracts, led/admin projects, membership allocations and
-disk holdings, plus 90 days grace) and the daemon extends, never shortens, the LDAP
-collaboration end date to match. What is broken is the second half of that job,
-finishing deactivations, which dies before it starts (§2.3).
+The collaborator end-date extension therefore fires nightly, but whether it produces a
+directory write is unknown: the children die within seconds, and the production replica
+of the directory holds no attribute with `x-ucar-source: SAM:*`. Jackson 2.x accepts an
+`is` getter returning boxed `Boolean` as an is-getter, so legacy's `ActiveUserStatus`
+serializes `activeCollaborator` and the Perl key matches; the new server must emit the
+same key. This is the "identify users on a project and push their LDAP end date into the
+future" function: SAM computes each collaborator's nominal expiry (latest end date over
+their contracts, led/admin projects, membership allocations and disk holdings, plus 90
+days grace) and the daemon extends, never shortens, the LDAP collaboration end date to
+match. The second half of that job, finishing deactivations, dies at its first statement
+(§2.3).
 
 ---
 
@@ -264,7 +278,7 @@ on both group routes. Responses: permit `{<idField>, purgeable, message}`; purge
   end dates.
 - Cutover checklist item for George: fix the cron configuration (bug 13 in the
   reference: use the non-`_DFLT` names, sixth field `0`) so each job fires once per
-  slot; the jobs are running today on the shipped defaults.
+  slot; the jobs fire today on the shipped defaults, sixty times per slot.
 
 ### P2 — lifecycle finish + parity fillers (gated on client fixes)
 
@@ -335,14 +349,15 @@ on both group routes. Responses: permit `{<idField>, purgeable, message}`; purge
 5. Cutover rehearsal on samuel-dev: a test daemon instance with `SAM_URL` pointed at
    `https://samuel-dev.k8s.ucar.edu`, `--test-connections` first, then one add-file
    replay; watch with `scripts/cirrus_watch.sh --env dev`.
-6. Production cutover: flip `SAM_URL` in `prod/.env`, restart the service, re-enable
-   the two crons, watch the first hourly pass. Rollback is the same variable.
+6. Production cutover: flip `SAM_URL` in `prod/.env`, restart the syncd container
+   (`podman stop`/`start`; the systemd unit is disabled and `podman-compose up` recreates
+   the other containers), watch the first pass. Rollback is the same variable.
 
 ## 7. Risks (ranked)
 
 | # | Risk | Mitigation |
 |---|---|---|
-| 1 | Realm string or role row mismatch: the daemon loops on 401 with no error | byte-exact header test; curl rehearsal without `-u` |
+| 1 | Realm string or role row mismatch: every request ends in a 401, a 300 s pause and a replay, and a fresh start aborts | byte-exact header test; curl rehearsal without `-u` |
 | 2 | Hard-delete purges on Postgres cascade differently | run each purge on :5434 |
 | 3 | Email orphan removal changes `sam_merge_targets` inputs (account requests, XRAS worklist) | expected for a mirror; log counts per PUT |
 | 4 | `deactivate` now written on the new side; pending users stay `is_active` until P2 | document; unchanged from legacy behavior |
@@ -370,14 +385,18 @@ One PR per track; LOC estimates in this repo run about 3x.
 2. Fix the client's `since` / `lastModifiedDate` mismatch (George) so `projectGroup`
    becomes incremental, or keep serving the full list (cheap at ~7k projects)?
 3. Phones: mirror them as legacy does even though nothing downstream reads `phone`?
-4. Confirm with George what the nightly lifecycle job actually does today (it runs,
-   sixty forks per slot, on a stale in-memory copy) and whether the collaborator
-   extension is producing LDAP writes; one `curl` of `collabexpiryupdates` and one
-   look at `fdbstage` `x-ucar-source: SAM:*` values settle it.
-5. Confirm on prod: the `admin` `api_credentials` row with `ROLE_API_ADMIN`, and the
-   `SAM_AUTH_admin` secret (Ben owns deploy mechanics).
-6. Fresh Tomcat access logs from after 2026-08-13 would give the real call rates and
-   the `add`-file replay size; worth pulling before P1c.
+4. Confirm with George what the nightly lifecycle job actually does today. It fires
+   sixty times per slot on a stale in-memory copy and each child exits within seconds;
+   the directory replica shows no `x-ucar-source: SAM:*` value, so either the children
+   die before `ldapmodify` or fdbstage does not forward the writes. fdbstage's logs, or
+   one run of `syncd -l` in the main process with the log open, settle it.
+5. Confirm on prod the `admin` `api_credentials` row with `ROLE_API_ADMIN` (needs the
+   SAM database). The `SAM_AUTH_admin` secret exists in the daemon container's parmdb
+   store, fed from the `sam.parm` secrets file (Ben owns deploy mechanics).
+6. Fresh Tomcat access logs from after 2026-07-16 would give the real call rates and
+   the `add`-file replay size; worth pulling from sam.ucar.edu before P1c. The daemon's
+   own log shows about 1,000 `PUT returned` lines in September 2026, plus a full
+   collection download at each daemon start.
 
 ---
 
@@ -410,7 +429,7 @@ Caller identities are the Tomcat client-IP column of the audited logs.
 |---|---|---|---|---|
 | SSG/sysacct: fairShareTree/v3, wallClockExemption, queue, directoryaccess, groupstatus, dasg/diskquota | 20,920 / 11,803 / 8,697 / 2,839 / 10 / 7 | scheduler hosts (python-requests), `128.117.183.176` (Mojolicious Perl) | `/api/v1/{fstree_access,wallclock_exemption,queue,directory_access,project_access,disk_quota}` | ported (`docs/apis/SYSTEMS_INTEGRATION_APIs.md`) |
 | XRAS `/api/xras/v1/*` | 3,744 | `18.223.62.77` (Ruby broker) | `/api/xras/v1/*` | ported, byte-shape frozen |
-| AMIE `/api/protected/amie/v1/*` | 9,249,045 (99.6%) | `128.117.177.140` (amie-sam-mediator) | none | **not ported, live consumer** |
+| AMIE `/api/protected/amie/v1/*` | 9,249,045 (99.6%) | `128.117.177.140` (amie-sam-mediator on sam-app; its container and systemd unit were not running there on 2026-09-25) | none | **not ported, live consumer** |
 | LDAP sync, purge, userlifecycle | ≤ 3 each (pre-dates the consumer) | sam-ldap-syncd since 2026-08 | none | **not ported, live consumer — this document** |
 | PeopleDB `peoplesearch/sync/*` | 5,195 | `128.117.224.29` (Apache-HttpClient) | none | superseded; controllers deleted from legacy 2026-07-04 |
 | HEUV `/api/protected/heuv/v1/*` | ~2,700 | `54.85.201.121` (Ruby, AWS-hosted portal) | none | not ported, consumer known only by IP |
