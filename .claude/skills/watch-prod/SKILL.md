@@ -15,7 +15,8 @@ An ordered procedure for keeping an eye on the public `samuel` release
 (namespace `sam-queries`, cluster `nwc1`) between deploys. The mechanics live in
 `scripts/cirrus_watch.sh` — a read-only *delta* tick. This skill carries the
 judgment the script can't: what a line means, what to flag vs let ride, and how
-to run the recurring wake without piling up duplicate timers.
+to run the recurring wake without piling up duplicate timers. For samuel-dev
+(`--env dev`), the `watch-dev` skill carries the differences.
 
 Work top to bottom. Step 1 runs a tick; steps 2–5 read it; step 6 schedules the
 recurring wake; step 7 is the traps.
@@ -35,6 +36,10 @@ automatically, else set `SAM_DB_USERNAME`/`SAM_DB_PASSWORD`). Exit code is
 `0` quiet / `1` warn / `2` fail, so a scheduler can alert on it. State (the
 last-seen XRAS id, image sha, and Redis counters) lives outside the repo under
 `$XDG_STATE_HOME/sam-watch/`.
+
+The first line after the header, `http: ready …`, is the outside-in
+`/api/v1/health/ready` read over HTTPS: FAIL on non-200 or `sam` unhealthy, WARN
+on `degraded` (a secondary bind down, still serving — correlate as in §2).
 
 **Report only what changed since the last tick.** A quiet tick is one terse
 line per section; escalate a *trend across ticks*, not a single outlier.
@@ -132,8 +137,12 @@ table and flags any non-2xx. Classify each non-200 by its `err`/`status`:
 | "Username … is missing" (`-user-<hex>` placeholder) | accounts-needed / unreconciled identity |
 | a `rechecked` row | would-succeed now — **"ready for XRAS re-push"** |
 
-Processed (2xx) rows → one line. Carry a short "known-open, don't re-flag" list
-across ticks so the same unresolved rows don't re-alert every wake.
+Processed (2xx) rows → one line. Keep the "known-open, don't re-flag" list
+(unresolved XRAS rows, a stale Job, a scanner already named) in
+`$XDG_STATE_HOME/sam-watch/known-open` (one item per line, `#` comments; dev's is
+`known-open-dev`). The tick prints it back under its header, so edit the file as
+items come and go. Never write the list into a timer's prompt: the prompt outlives
+the item, and a deleted Job stayed "do not re-flag" for the life of one timer.
 
 ## 4. The daily full sweep is expected
 
@@ -174,6 +183,11 @@ NOT a cluster CronJob — the remote cron is hands-off (step 5). Cadence ~30 min
 3. If none exists (or it died), start one: a `CronCreate` cron at ~30-min
    cadence (or `/loop` in dynamic mode) whose prompt runs `scripts/cirrus_watch.sh`
    and reports only the deltas per steps 2–5.
+
+When samuel-dev is watched too, the **same** timer runs both ticks
+(`scripts/cirrus_watch.sh --context nwc1` then `--env dev`) and reports one line
+each; a second timer for dev is a duplicate, not a pair. The known-open list
+belongs in the state-directory file (step 3), not in the prompt.
 
 A dropped VPN makes a tick a clean no-op (step 1), so the timer survives an
 overnight VPN outage without alarms.

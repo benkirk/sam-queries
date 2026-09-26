@@ -10,7 +10,6 @@ scripts/
 ├── cirrus_healthcheck.sh        # CIRRUS/k8s health probe (samuel release)
 ├── cirrus_watch.sh              # CIRRUS/k8s recurring delta watch tick (report-only)
 ├── cirrus_weblog_audit.sh       # CIRRUS/k8s traffic + rate-limit + abuse audit
-├── deploy_dev.sh                # TEMPORARY laptop helm deploy of samuel-dev (make deploy-dev)
 ├── seed_status_dev.sh           # Reseed system_status_dev from prod (make refresh-dev)
 ├── dev_session_load.py          # Load driver for samuel-dev's authed surface (+ dev_capture_session.py)
 ├── zap_probe_docker.sh          # Dockerized OWASP ZAP scan of the webapp
