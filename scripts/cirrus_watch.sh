@@ -191,12 +191,17 @@ fi
 # --- 2. general web traffic (rolling ${WINDOW} snapshot) --------------------
 # NOTE: kubectl logs -l <selector> defaults to --tail=10 PER POD — MUST pass
 # --tail=-1 or the web section undercounts to ~10 lines/pod.
+# An empty read with exit 0 is a quiet pod (dev idles for hours), not an
+# unreachable one; only a non-zero kubectl exit is the fault.
+LOGS_RC=0
 LOGS=$("${KCTL_NS[@]}" --request-timeout=15s logs -l "app=${WEBAPP_NAME}" \
-       --since="$WINDOW" --tail=-1 --all-containers=true --timestamps=false 2>/dev/null || true)
+       --since="$WINDOW" --tail=-1 --all-containers=true --timestamps=false 2>/dev/null) || LOGS_RC=$?
 if [[ "$K8S_OK" -eq 0 ]]; then
     :
-elif [[ -z "$LOGS" ]]; then
+elif [[ "$LOGS_RC" -ne 0 ]]; then
     warn "web: kubectl logs unreachable (VPN/RBAC?)"
+elif [[ -z "$LOGS" ]]; then
+    echo "web: 0 req  (no pod log lines in ${WINDOW})"
 else
     # Aggregates from gunicorn access lines (they carry the quoted request field;
     # app-logger lines do not).
