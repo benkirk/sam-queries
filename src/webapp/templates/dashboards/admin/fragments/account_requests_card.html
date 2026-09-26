@@ -9,6 +9,7 @@
   Context:
     groups          [{event, project_code, rows[]}] deadline-first, loose rows last
     total           rows in view;  scoped_total  rows before search and chips
+    pinned          the ?request=<id> the card is pinned to, or None; queue_page_url
     counts          {open, claimed, ready, failed} over the QUEUE (whatever the view)
     unverified      public-form rows that never verified (never in the queue)
     show_all        everything (every state) vs the queue
@@ -57,6 +58,13 @@
     </div>
 
     <div class="card-body">
+        {% if pinned %}
+        <div class="alert alert-info py-2 d-flex justify-content-between align-items-center mb-3" role="status">
+            <span><i class="fa-solid fa-thumbtack me-1"></i>
+                {% if total %}Showing request #{{ pinned }} only.{% else %}Request #{{ pinned }} does not exist (it may have been purged).{% endif %}</span>
+            <a class="btn btn-sm btn-outline-secondary" href="{{ queue_page_url }}">Show the queue</a>
+        </div>
+        {% endif %}
         <div class="facet-grid mb-3">
             <div class="facet-grid-label">View</div>
             <div class="facet-grid-values">
@@ -149,7 +157,7 @@
                 {% for v in group.rows %}
                 {% set r = v.row %}
                 {% set body_id = 'arq-' ~ v.id %}
-                <tr{% if r.state in ('dismissed', 'rejected') %} class="text-muted"{% endif %}>
+                <tr id="account-request-{{ v.id }}"{% if r.state in ('dismissed', 'rejected') %} class="text-muted"{% endif %}>
                     <td class="cursor-pointer" {{ collapse_toggle(body_id) }}><i class="fa-solid fa-chevron-right small text-muted collapse-icon"></i></td>
                     <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
                         {{ v.name }}

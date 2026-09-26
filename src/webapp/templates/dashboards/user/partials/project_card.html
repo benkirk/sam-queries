@@ -439,7 +439,7 @@
                    project-details modal) so long member lists / trees don't
                    push it out of reach. Leads/admins also see it (they land
                    on the same page with a constrained edit surface). #}
-                {% if can_act_on_project(Permission.EDIT_PROJECTS, project) %}
+                {% if can_act_on_project(Permission.EDIT_PROJECTS, project, include_ancestors=True) %}
                 <div class="d-flex justify-content-end mb-2">
                     <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=project.projcode) }}"
                        class="btn  btn-primary">

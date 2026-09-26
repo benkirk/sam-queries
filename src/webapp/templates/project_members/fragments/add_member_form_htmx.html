@@ -56,6 +56,9 @@
                     data-action="member-clear-user" aria-label="Clear"></button>
         </div>
 
+        {# Dates are an operator's tool; a project lead's add starts today and
+           follows the allocation, and the handler ignores dates from anyone else. #}
+        {% if has_permission_any_facility(Permission.EDIT_PROJECT_MEMBERS) %}
         <div class="row">
             <div class="col-md-6">
                 {{ date_field('start_date', 'Start Date',
@@ -71,6 +74,9 @@
                               id='htmxEndDate') }}
             </div>
         </div>
+        {% else %}
+        <p class="small text-muted">Access starts today and follows the project's allocations.</p>
+        {% endif %}
 
         {{ form_errors_panel() }}
 

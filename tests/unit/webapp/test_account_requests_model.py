@@ -299,7 +299,7 @@ class TestTheInvitationLink:
             fields={'first_name': ' Augusta ', 'phone': '+1 303 555 0100',
                     'residence_country': 'United Kingdom', 'academic_status': 'Faculty',
                     'orcid': '0000-0002-1825-0097', 'desired_username': 'ada',
-                    'email': 'hijack@example.edu'},
+                    'email': 'hijack@example.edu'},  # the last two are not invite fields
             eula_sha='5c2cca1c8b5180f791670276d5bb55832ba6a2e2', accepted_at=accepted,
             source_ip='192.0.2.9', clock=accepted + timedelta(minutes=1))
         assert session.query(AccountRequest).count() == before, 'updates, never inserts'
@@ -307,7 +307,7 @@ class TestTheInvitationLink:
         assert row.first_name == 'Augusta' and row.last_name == 'Lovelace'
         assert row.phone == '+1 303 555 0100' and row.residence_country == 'United Kingdom'
         assert row.academic_status == 'Faculty' and row.orcid == '0000-0002-1825-0097'
-        assert row.desired_username == 'ada'
+        assert row.desired_username is None, 'not an invite field: the column is never written'
         assert row.email != 'hijack@example.edu', 'the vouched address is not a form field'
         assert row.comment == 'sponsor note'
         assert row.completed_at == accepted + timedelta(minutes=1)

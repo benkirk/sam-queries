@@ -9,7 +9,7 @@ leaks into the shared test database.
 
 import re
 from contextlib import contextmanager
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -43,6 +43,24 @@ def null_notifier(monkeypatch):
     monkeypatch.setattr('webapp.register.blueprint.get_notifier',
                         lambda **_: Notifier(config=NotifyConfig(enabled=False),
                                              transport=NullTransport(), ledger=None))
+
+
+@pytest.fixture
+def ticket_mailer(app, monkeypatch):
+    """NUSD's ticket address configured, and the handoff mailer recording."""
+    monkeypatch.setitem(app.config, 'NOTIFY_ACCOUNT_TICKET_TO', 'help@example.invalid')
+    monkeypatch.setitem(app.config, 'NOTIFY_ACCOUNT_TICKET_FROM', 'person@ucar.edu')
+    from sam.notify.base import DeliveryResult
+
+    class _Recorder:
+        messages = []
+
+        def send(self, message, **_):
+            self.messages.append(message)
+            return DeliveryResult(ok=True, status='sent', message=message)
+    recorder = _Recorder()
+    monkeypatch.setattr('webapp.register.handoff_mail.get_notifier', lambda **_: recorder)
+    return recorder
 
 
 @pytest.fixture
@@ -316,12 +334,12 @@ class TestTheLoginGate:
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
         assert 'Request an NCAR HPC account' in html
-        assert 'temporarily limited to signed-in' in html, 'the preview banner'
+        assert 'limits the form to signed-in users' in html, 'the preview banner'
         assert 'name="csrf_token"' in html
 
     def test_off_means_no_banner(self, client):
         html = client.get('/register/').get_data(as_text=True)
-        assert 'temporarily limited to signed-in' not in html
+        assert 'limits the form to signed-in users' not in html
 
 
 class TestTheForm:
@@ -348,16 +366,6 @@ class TestTheForm:
         assert 0 < body.count('<option value="') <= 10
         assert client.get('/register/institutions?organization=u').get_data(as_text=True).strip() == '', \
             'below two characters nothing is suggested'
-
-    def test_an_unknown_code_is_refused_at_200(self, client):
-        resp = client.get('/register/NO-SUCH-EVENT-9999')
-        assert resp.status_code == 200
-        assert 'not a known event code' in resp.get_data(as_text=True)
-
-    def test_a_malformed_code_is_refused_at_200(self, client):
-        resp = client.get('/register/x')
-        assert resp.status_code == 200
-        assert 'not a valid event code' in resp.get_data(as_text=True)
 
 
 class TestSubmit:
@@ -454,6 +462,47 @@ class TestVerification:
         assert state['verified_at'] is not None and state['verified_by'] == 'self'
         assert state['hash'] is None
 
+    def test_the_link_files_one_ticket_for_nusd(self, client, app, committed_registration,
+                                                ticket_mailer):
+        from webapp.register import tokens
+        row_id, _ = committed_registration
+        with app.app_context():
+            token = tokens.link_token(row_id)
+        client.get(f'/register/verify/{token}')
+        client.get(f'/register/verify/{token}')
+        assert len(ticket_mailer.messages) == 1, 'the second visit is not a second ticket'
+        ticket = ticket_mailer.messages[0]
+        assert ticket.kind == 'account_ticket'
+        assert ticket.recipient.address == 'help@example.invalid'
+        assert ticket.sender == 'person@ucar.edu'
+        assert ticket.subject == "New HPC User Request 'Pen Ding'"
+        assert ticket.dedup_key == f'account_ticket:{row_id}'
+        assert ticket.context['requested_via'].startswith('self-registration')
+        assert ticket.context['queue_url'] == \
+            f'http://localhost/admin/account-requests?request={row_id}'
+
+    def test_the_code_files_the_ticket_too(self, client, app, committed_registration,
+                                           ticket_mailer):
+        from webapp.register import tokens
+        row_id, code = committed_registration
+        with app.app_context():
+            page = tokens.page_token(row_id)
+        client.post(f'/register/pending/{page}', data={'code': '000000'})
+        assert ticket_mailer.messages == []
+        client.post(f'/register/pending/{page}', data={'code': code})
+        assert [m.kind for m in ticket_mailer.messages] == ['account_ticket']
+
+    def test_no_ticket_address_means_no_ticket(self, client, app, committed_registration,
+                                               ticket_mailer, monkeypatch):
+        from webapp.register import tokens
+        monkeypatch.setitem(app.config, 'NOTIFY_ACCOUNT_TICKET_TO', '')
+        row_id, _ = committed_registration
+        with app.app_context():
+            token = tokens.link_token(row_id)
+        client.get(f'/register/verify/{token}')
+        assert ticket_mailer.messages == []
+        assert _row(app, row_id)['verified_at'] is not None
+
     def test_a_page_token_cannot_verify(self, client, app, committed_registration):
         from webapp.register import tokens
         row_id, _ = committed_registration
@@ -500,127 +549,6 @@ class TestVerification:
         client.get(f'/register/verify/{link}')
         resp = client.get(f'/register/pending/{page}')
         assert resp.status_code == 302 and resp.headers['Location'].endswith('/register/verified')
-
-
-@pytest.fixture
-def committed_event(app):
-    """A committed, open event on an existing project, visible to db.session."""
-    from sam.core.account_requests import AccountRequestEvent
-    from sam.projects.projects import Project
-    from webapp.extensions import db
-    with app.app_context():
-        project = db.session.query(Project).filter(Project.is_active).first()
-        event = AccountRequestEvent.create(
-            db.session, event_code=f'ZZ-EVT-{uuid4().hex[:8].upper()}',
-            name='ZZ Self-Enroll Test', project_id=project.project_id,
-            accounts_needed_by=date.today() + timedelta(days=30), created_by='benkirk')
-        db.session.commit()
-        code, project_id, event_id = (event.event_code, project.project_id,
-                                      event.account_request_event_id)
-    yield code, project_id
-    with app.app_context():
-        db.session.query(AccountRequestEvent).filter(
-            AccountRequestEvent.account_request_event_id == event_id).delete()
-        db.session.commit()
-
-
-@pytest.fixture
-def signed_in(app, session):
-    """A test client with benkirk's session cookie, and his user row."""
-    from sam import User
-    user = User.get_by_username(session, 'benkirk')
-    client = app.test_client()
-    with client.session_transaction() as sess:
-        sess['_user_id'] = str(user.user_id)
-        sess['_fresh'] = True
-    return client, user
-
-
-class TestAClosedEventIsRefused:
-    """The card and the copied link both outlive the event they point at."""
-
-    def _set(self, app, code, **fields):
-        from sam.core.account_requests import AccountRequestEvent
-        from webapp.extensions import db
-        with app.app_context():
-            event = db.session.query(AccountRequestEvent).filter_by(event_code=code).one()
-            for key, value in fields.items():
-                setattr(event, key, value)
-            db.session.commit()
-
-    def test_a_closed_code_is_refused_at_200(self, client, app, committed_event):
-        code, _ = committed_event
-        self._set(app, code, active=False)
-        resp = client.get(f'/register/{code}')
-        assert resp.status_code == 200
-        assert 'not accepting registrations' in resp.get_data(as_text=True)
-
-    def test_a_code_past_its_window_is_refused_at_200(self, client, app, committed_event):
-        code, _ = committed_event
-        self._set(app, code, closes_at=datetime.now() - timedelta(hours=1))
-        resp = client.get(f'/register/{code}')
-        assert resp.status_code == 200
-        assert 'not accepting registrations' in resp.get_data(as_text=True)
-
-
-class TestTheSignedInSelfEnrollShortcut:
-    """A signed-in visitor to /register/<event> already has an account, so the
-    anonymous creation form is out of context: they get a one-click self-enroll
-    into the event's project instead. Registering others stays in the RBAC'd
-    Invitations panel. Authorization is the open event link itself."""
-
-    def test_a_signed_in_visitor_gets_the_self_enroll_shortcut(self, signed_in, committed_event):
-        code, _ = committed_event
-        client, _ = signed_in
-        html = client.get(f'/register/{code}').get_data(as_text=True)
-        assert 'Enroll me in' in html
-        assert 'name="email"' not in html, 'not the anonymous creation form'
-
-    def test_an_anonymous_visitor_still_gets_the_creation_form(self, client, committed_event):
-        """TestingConfig leaves LOGIN_REQUIRED off, so the anonymous path stays
-        the code-locked creation form -- the signed-in branch must not hijack it."""
-        code, _ = committed_event
-        html = client.get(f'/register/{code}').get_data(as_text=True)
-        assert 'Request an NCAR HPC account' in html and 'name="email"' in html
-        assert 'Enroll me in' not in html
-
-    def test_enroll_records_the_signed_in_user_via_the_helper(
-            self, signed_in, committed_event, monkeypatch):
-        """The write itself is enroll_user_in_event (model/manage-tested); here
-        we prove the route hands it the event, the session's own user, and the
-        'self' source."""
-        code, project_id = committed_event
-        client, user = signed_in
-        calls = []
-        monkeypatch.setattr('webapp.register.blueprint.enroll_user_in_event',
-                            lambda _s, *, event, user, source, by:
-                            calls.append((event.project_id, user.user_id, source, by)))
-        resp = client.post(f'/register/{code}/enroll')
-        assert resp.status_code == 200
-        assert "You're enrolled" in resp.get_data(as_text=True)
-        assert calls == [(project_id, user.user_id, 'self', user.username)]
-
-    def test_a_project_without_accounts_re_renders_the_reason(
-            self, signed_in, committed_event, monkeypatch):
-        code, _ = committed_event
-        client, _ = signed_in
-        def _boom(*_a, **_k):
-            raise ValueError('Project has no accounts')
-        monkeypatch.setattr('webapp.register.blueprint.enroll_user_in_event', _boom)
-        resp = client.post(f'/register/{code}/enroll')
-        assert resp.status_code == 200
-        assert 'Project has no accounts' in resp.get_data(as_text=True)
-
-    def test_enroll_requires_login(self, client):
-        """The self-enroll POST is an authenticated action even with the gate
-        off: an anonymous POST is bounced to login, never a silent write."""
-        resp = client.post('/register/ANY-CODE-1/enroll')
-        assert resp.status_code == 302 and '/auth/login' in resp.headers['Location']
-
-    def test_enroll_refuses_an_unknown_event(self, signed_in):
-        client, _ = signed_in
-        resp = client.post('/register/NO-SUCH-EVENT-9999/enroll')
-        assert resp.status_code == 200 and 'not a known event code' in resp.get_data(as_text=True)
 
 
 @pytest.fixture
@@ -812,6 +740,19 @@ class TestTheEula:
                 'acknowledging-ncar-and-cisl/') in html
         assert 'https://rchelp.ucar.edu/' in html, 'an absolute link is left alone'
         assert '<script' not in html.lower()
+
+    def test_the_plain_text_rendering_keeps_no_markdown(self):
+        """The mail appendix's text part: the same source, links kept as
+        'text (url)', wrapped, with the heading and the bullets readable."""
+        from webapp.register.eula import eula_text
+        text = eula_text()
+        assert text.startswith('NWSC END USER AGREEMENT\n')
+        assert '**' not in text and '](' not in text and '`' not in text
+        assert ('https://ncar-hpc-docs.readthedocs.io/en/latest/getting-started/'
+                'acknowledging-ncar-and-cisl/') in text
+        assert 'rchelp.ucar.edu (https://rchelp.ucar.edu/)' in text
+        assert '\n- You will use NWSC computer' in text
+        assert max(len(line) for line in text.splitlines()) <= 100, 'wrapped; URLs intact'
 
     def test_the_gate_embeds_the_agreement(self, app):
         """The gate route passes the rendered agreement into the panel."""

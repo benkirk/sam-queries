@@ -31,7 +31,8 @@ class TestTheRegistry:
 
     def test_the_account_family_carries_the_invitation_link(self):
         assert [k.key for k in kinds_in_family('account')] == [
-            'account_queue_summary', 'account_verify', 'account_rejected', 'account_invite']
+            'account_queue_summary', 'account_verify', 'account_rejected', 'account_invite',
+            'account_request_received', 'account_ticket']
         stems = {name.rsplit('.', 1)[0] for name in shipped_template_names()}
         assert 'account_invite' in stems
 

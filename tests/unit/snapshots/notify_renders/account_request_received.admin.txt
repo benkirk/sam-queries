@@ -1,0 +1,19 @@
+Hello Ada Lovelace,
+
+Your request for an NCAR HPC account on project SCSG0001, for "WRF Tutorial, October 2026", has been received (you were invited by Jane Lead).
+
+It is now with the team that creates NCAR HPC accounts. They will contact
+you at this address; nothing more is needed from you for now.
+
+------------------------------------------------------------------------
+By requesting an NSF NCAR HPC account you have agreed to the following terms
+of use (accepted 2026-09-24):
+
+NWSC END USER AGREEMENT
+
+By requesting and receiving access to NSF NCAR computing resources at NWSC, you agree to the following terms and conditions.
+
+- You will use NWSC computer and information systems in an ethical manner and in compliance with the law.
+
+--
+NSF NCAR Systems Accounting Manager

@@ -16,11 +16,15 @@ from factories import (
     make_user,
 )
 
+from sam.core.users import User
 from sam.notify.samples import sample_context
 from sam.queries.account_notices import (
     ACCOUNT_KIND_SUBJECTS,
     build_invite_message,
     build_queue_summary,
+    build_receipt_message,
+    build_ticket_message,
+    ticket_subject,
     build_rejection_message,
     build_verify_message,
     invite_label,
@@ -112,6 +116,19 @@ class TestVerifyMessage:
         rendered_values = ' '.join(str(v) for v in message.context.values())
         assert 'Call' not in rendered_values and 'FREE' not in rendered_values
         assert message.context['event_name'] == 'WRF Tutorial'
+
+    def test_the_agreement_travels_only_when_accepted(self, session):
+        kwargs = dict(verify_url='u', code='000000', expires_hours=1,
+                      eula_text='TERMS', eula_html='<p>TERMS</p>')
+        row = make_account_request(session, verified_by=None)
+        blank = build_verify_message(row, **kwargs).context
+        assert (blank['eula_text'], blank['eula_html'], blank['eula_accepted_on']) == ('', '', '')
+        row = make_account_request(session, verified_by=None,
+                                   eula_accepted_at=datetime(2026, 9, 24, 9, 30),
+                                   eula_sha='a' * 40)
+        full = build_verify_message(row, **kwargs).context
+        assert (full['eula_text'], full['eula_html']) == ('TERMS', '<p>TERMS</p>')
+        assert full['eula_accepted_on'] == '2026-09-24'
 
     def test_the_key_changes_with_every_issue(self, session):
         row = make_account_request(session, verified_by=None)
@@ -211,3 +228,94 @@ class TestInviteMessage:
         assert message.entity == ('account_request', row.account_request_id)
         assert message.projcode == 'SCSG0001' and message.requested_by == 'jlead'
         assert message.subject == ACCOUNT_KIND_SUBJECTS['account_invite']
+
+
+class TestReceiptMessage:
+
+    def test_the_context_matches_the_sample_and_names_the_invitee(self, session):
+        row = make_account_request(session, first_name='Ada', last_name='Lovelace',
+                                   email='ada@example.edu',
+                                   eula_accepted_at=datetime(2026, 9, 24, 9, 30),
+                                   eula_sha='a' * 40)
+        row.completed_at = datetime(2026, 9, 24, 9, 31)
+        message = build_receipt_message(row, project_code='SCSG0001', event_name='WRF',
+                                        sponsor_name='Jane Lead', eula_text='TERMS',
+                                        eula_html='<p>TERMS</p>')
+        assert set(message.context) == set(sample_context('account_request_received'))
+        assert message.recipient.address == 'ada@example.edu'
+        assert message.context['name'] == 'Ada Lovelace'
+        assert message.context['eula_text'] == 'TERMS'
+        assert message.projcode == 'SCSG0001'
+        assert message.entity == ('account_request', row.account_request_id)
+        assert message.dedup_key == (
+            f'account_request_received:{row.account_request_id}:2026-09-24T09:31:00')
+        assert message.subject == ACCOUNT_KIND_SUBJECTS['account_request_received']
+
+    def test_a_transient_row_previews_with_an_open_key(self):
+        from sam.core.account_requests import AccountRequest
+        row = AccountRequest(email='x@example.edu', first_name='X', last_name='Y')
+        assert build_receipt_message(row).dedup_key == 'account_request_received:None:open'
+
+
+class TestTicketMessage:
+
+    def _view(self, session, row):
+        from sam.queries.account_requests import events_for, request_views
+        return request_views(session, [row], resolutions={},
+                             events=events_for(session, [row]))[0]
+
+    def test_the_subject_prefers_the_event_code_over_the_project(self):
+        assert ticket_subject('Ada Lovelace', event_code='WRF-OCT', project_code='SCSG0001') == \
+            "New HPC User Request 'Ada Lovelace' for WRF-OCT"
+        assert ticket_subject('Ada Lovelace', project_code='SCSG0001') == \
+            "New HPC User Request 'Ada Lovelace' for SCSG0001"
+        assert ticket_subject('Ada Lovelace') == "New HPC User Request 'Ada Lovelace'"
+
+    def test_the_context_matches_the_sample_and_the_envelope_is_the_configured_person(
+            self, session):
+        from tests.factories.account_requests import make_account_request_event
+        event = make_account_request_event(session)
+        sponsor = session.query(User).filter(User.is_active).first()
+        row = make_account_request(session, first_name='Ada', last_name='Lovelace',
+                                   purpose='enrollment', event=event, sponsor=sponsor,
+                                   phone='+44 20 7946 0000', organization='Example U',
+                                   purpose_note='  two\nlines ', orcid='0000-0002-1825-0097',
+                                   eula_accepted_at=datetime(2026, 9, 24, 9, 30),
+                                   eula_sha='5c2cca1c8b5180f791670276d5bb55832ba6a2e2')
+        message = build_ticket_message(row, view=self._view(session, row),
+                                       recipient=' help@example.invalid ',
+                                       sender='person@ucar.edu', queue_url='https://sam/q',
+                                       requested_by='benkirk')
+        assert set(message.context) == set(sample_context('account_ticket'))
+        assert message.recipient.address == 'help@example.invalid'
+        assert message.recipient.role == 'operator'
+        assert message.sender == 'person@ucar.edu'
+        assert message.subject == f"New HPC User Request 'Ada Lovelace' for {event.event_code}"
+        ctx = message.context
+        assert ctx['requested_via'] == f'invitation by {sponsor.display_name}'
+        assert ctx['event_code'] == event.event_code and ctx['deadline']
+        assert ctx['eula_accepted_on'] == '2026-09-24' and ctx['eula_sha7'] == '5c2cca1'
+        assert ctx['note'] == 'two lines'
+        assert ctx['request_id'] == row.account_request_id
+        assert message.dedup_key == f'account_ticket:{row.account_request_id}'
+        assert message.entity == ('account_request', row.account_request_id)
+        assert message.requested_by == 'benkirk'
+
+    def test_a_self_registration_without_an_agreement(self, session):
+        row = make_account_request(session, by='self', verified_by='self')
+        message = build_ticket_message(row, view=self._view(session, row),
+                                       recipient='help@example.invalid', requested_by='self')
+        assert message.subject == f"New HPC User Request '{row.display_name}'"
+        assert message.context['requested_via'].startswith('self-registration')
+        assert message.context['eula_accepted_on'] == '' and message.context['eula_sha7'] == ''
+        assert message.sender is None, 'falls back to MAIL_DEFAULT_FROM'
+
+    def test_it_renders_as_text_only(self, session):
+        from sam.notify.render import TemplateRenderer
+        row = make_account_request(session, first_name='Ada', last_name='Lovelace')
+        message = build_ticket_message(row, view=self._view(session, row),
+                                       recipient='help@example.invalid', requested_by='x')
+        rendered = TemplateRenderer().render(message)
+        assert rendered.html is None and rendered.template_html is None
+        assert 'Name:            Ada Lovelace' in rendered.text
+        assert 'Sponsor:' not in rendered.text and 'Note:' not in rendered.text

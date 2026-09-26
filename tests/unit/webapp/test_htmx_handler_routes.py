@@ -441,3 +441,58 @@ class TestRenewalPreviews:
     def test_it_is_guarded_like_the_save(self, non_admin_client, verb, snapshot_projcode):
         resp = self._post(non_admin_client, verb, snapshot_projcode)
         assert resp.status_code in (302, 403)
+
+
+class TestAddMemberDatesAreAnOperatorsTool:
+    """The date row renders only for EDIT_PROJECT_MEMBERS holders, and the
+    handler drops posted dates from anyone else."""
+
+    @pytest.fixture
+    def lead_client(self, auth_client, monkeypatch):
+        from webapp.utils import rbac
+        from webapp.utils.rbac import Permission
+        real = rbac.get_user_permissions
+        monkeypatch.setattr(
+            rbac, 'get_user_permissions',
+            lambda user, *a, **k: {p for p in real(user, *a, **k)
+                                   if p not in (Permission.EDIT_PROJECT_MEMBERS,
+                                                Permission.SYSTEM_ADMIN)})
+        return auth_client
+
+    @pytest.fixture
+    def led_projcode(self, session):
+        from sam.core.users import User
+        me = User.get_by_username(session, 'benkirk')
+        project = (session.query(Project)
+                   .filter(Project.project_lead_user_id == me.user_id, Project.is_active)
+                   .order_by(Project.project_id).first())
+        assert project is not None, 'benkirk leads no active snapshot project'
+        return project.projcode
+
+    def test_a_lead_sees_no_date_inputs(self, lead_client, led_projcode):
+        html = lead_client.get(f'/project-members/{led_projcode}/add-form').get_data(as_text=True)
+        assert 'id="htmxStartDate"' not in html and 'id="htmxEndDate"' not in html
+        assert 'Access starts today' in html
+        assert 'id="htmxUsername"' in html or 'name="username"' in html
+
+    def test_a_lead_cannot_post_dates(self, lead_client, led_projcode, monkeypatch):
+        """An end date before the start would fail validation if it were
+        honored; a lead's post reaches the write with both dates dropped."""
+        seen = {}
+
+        def _add(session, project_id, user_id, start_date=None, end_date=None, **kw):
+            seen.update(start_date=start_date, end_date=end_date)  # nothing is written
+        monkeypatch.setattr('webapp.dashboards.project_members.add_user_to_project', _add)
+        resp = lead_client.post(f'/project-members/{led_projcode}/add', data={
+            'username': 'benkirk', 'start_date': '2030-01-01', 'end_date': '2029-01-01'})
+        assert resp.status_code == 200
+        assert seen == {'start_date': None, 'end_date': None}
+
+    def test_an_operator_keeps_the_date_inputs(self, auth_client, led_projcode, monkeypatch):
+        from webapp.utils import rbac
+        from webapp.utils.rbac import Permission
+        real = rbac.get_user_permissions
+        monkeypatch.setattr(rbac, 'get_user_permissions',
+                            lambda user, *a, **k: real(user, *a, **k) | {Permission.EDIT_PROJECT_MEMBERS})
+        html = auth_client.get(f'/project-members/{led_projcode}/add-form').get_data(as_text=True)
+        assert 'id="htmxStartDate"' in html and 'id="htmxEndDate"' in html

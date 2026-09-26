@@ -137,6 +137,9 @@ def pytest_configure(config):
     os.environ["XRAS_API_KEY"] = ""
     os.environ["XRAS_OUTGOING_ENABLED"] = "0"
     os.environ["XRAS_WRITE_ENABLED"] = "0"
+    # NUSD's ticket address: a developer's .env may name the real Jira inbox,
+    # and a route test that reaches a ticket site would write a ledger row.
+    os.environ["NOTIFY_ACCOUNT_TICKET_TO"] = ""
 
     # ---- Per-worker Redis keyspace under xdist ---------------------------
     #

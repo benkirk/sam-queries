@@ -7,7 +7,7 @@ only the events whose project sits in their facilities. A roster creates
 account requests, so its two routes are MANAGE_ACCOUNT_REQUESTS.
 """
 
-from flask import abort, render_template, request, url_for
+from flask import abort, current_app, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from sam.core.account_requests import AccountRequestEvent
@@ -21,6 +21,7 @@ from webapp.dashboards.event_lifecycle import (
 from webapp.extensions import db
 from webapp.utils.form_handler import FormError
 from webapp.utils.htmx import read_active_only, register_typeahead
+from webapp.utils.notify import public_url_for
 from webapp.utils.rbac import (
     Permission, has_permission_any_facility, has_permission_for_facility,
     require_permission_any_facility, user_facility_scope,
@@ -81,10 +82,12 @@ def events_fragment():
     rows = all_events(db.session, facility_names=scope)
     if active_only:
         rows = [r for r in rows if r['event'].is_active]
-    base_url = request.url_root.rstrip('/')
+    # The event pages ride ACCOUNT_INVITATIONS_ENABLED; this card is always mounted.
+    events_mounted = current_app.config.get('ACCOUNT_INVITATIONS_ENABLED', False)
     for r in rows:
-        # By hand, not url_for: the register blueprint is unmounted in prod.
-        r['reg_url'] = f'{base_url}/register/{r["event"].event_code}'
+        r['reg_url'] = (public_url_for('register_events.form_for_event',
+                                       event_code=r['event'].event_code)
+                        if events_mounted else None)
     return render_template(
         'dashboards/admin/fragments/events_card.html', rows=rows,
         active_only=active_only,

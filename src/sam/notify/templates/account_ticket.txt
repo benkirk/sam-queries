@@ -1,0 +1,19 @@
+A new NCAR HPC account request is ready for the account team.
+
+Name:            {{ name }}
+Email:           {{ email }}
+Project:         {{ project_code or 'none (standalone request)' }}
+Requested via:   {{ requested_via }}
+Organization:    {{ organization or 'not given' }}
+Academic status: {{ academic_status or 'not given' }}
+Country:         {{ residence_country or 'not given' }}
+Phone:           {{ phone or 'not given' }}
+Agreement:       {% if eula_accepted_on %}accepted {{ eula_accepted_on }} (text {{ eula_sha7 }}){% else %}not recorded{% endif %}
+{% if event_name %}Event:           {{ event_name }} ({{ event_code }}){% if deadline %}, accounts needed by {{ deadline }}{% endif %}
+{% endif %}{% if sponsor_name %}Sponsor:         {{ sponsor_name }}
+{% endif %}{% if orcid %}ORCID:           {{ orcid }}
+{% endif %}{% if middle_name %}Middle name:     {{ middle_name }}
+{% endif %}{% if note %}Note:            {{ note }}
+{% endif %}SAM request:     #{{ request_id }}{% if queue_url %}  {{ queue_url }}{% endif %}
+
+Sent by the NSF NCAR Systems Accounting Manager when the request became ready.

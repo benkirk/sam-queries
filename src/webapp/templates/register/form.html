@@ -85,8 +85,6 @@
                                             help='Needed to enroll your account in two-factor authentication.') }}</div>
         <div class="col-md-6">{{ text_field('orcid', 'ORCID', maxlength=19, placeholder='0000-0002-1825-0097') }}</div>
     </div>
-    {{ text_field('desired_username', 'Preferred username', maxlength=64,
-                  help='A preference only; the account team assigns the username.') }}
     {% if invite %}
     {# The row already names its event and project. #}
     {% elif locked_code %}
