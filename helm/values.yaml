@@ -249,6 +249,12 @@ webapp:
     NOTIFY_ACCOUNT_BCC: ""
     NOTIFY_ACCOUNT_FROM: ""
     NOTIFY_ACCOUNT_REPLY_TO: ""
+    # NUSD's handoff is one plain-text ticket per request into Jira-by-email,
+    # filed when the request is ready for them; empty means no ticket. The
+    # digest above stays inert. Jira files the ticket under the From, so that
+    # is a real person, and a ucar.edu address for SPF.
+    NOTIFY_ACCOUNT_TICKET_TO: "help@ucar.edu"
+    NOTIFY_ACCOUNT_TICKET_FROM: "benkirk@ucar.edu"
     # WARNING: EXPLICIT, not inherited. NOTIFY_ENABLED is fail-closed everywhere
     #     (sam.notify.NotifyConfig defaults it false) precisely so a dev
     #     container cannot mail real users. Production is the one place that

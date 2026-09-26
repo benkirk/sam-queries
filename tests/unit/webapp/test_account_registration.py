@@ -46,6 +46,24 @@ def null_notifier(monkeypatch):
 
 
 @pytest.fixture
+def ticket_mailer(app, monkeypatch):
+    """NUSD's ticket address configured, and the handoff mailer recording."""
+    monkeypatch.setitem(app.config, 'NOTIFY_ACCOUNT_TICKET_TO', 'help@example.invalid')
+    monkeypatch.setitem(app.config, 'NOTIFY_ACCOUNT_TICKET_FROM', 'person@ucar.edu')
+    from sam.notify.base import DeliveryResult
+
+    class _Recorder:
+        messages = []
+
+        def send(self, message, **_):
+            self.messages.append(message)
+            return DeliveryResult(ok=True, status='sent', message=message)
+    recorder = _Recorder()
+    monkeypatch.setattr('webapp.register.handoff_mail.get_notifier', lambda **_: recorder)
+    return recorder
+
+
+@pytest.fixture
 def cleanup_address(app):
     """Delete whatever a POST created for the test address."""
     from sam.core.account_requests import AccountRequest
@@ -443,6 +461,45 @@ class TestVerification:
         state = _row(app, row_id)
         assert state['verified_at'] is not None and state['verified_by'] == 'self'
         assert state['hash'] is None
+
+    def test_the_link_files_one_ticket_for_nusd(self, client, app, committed_registration,
+                                                ticket_mailer):
+        from webapp.register import tokens
+        row_id, _ = committed_registration
+        with app.app_context():
+            token = tokens.link_token(row_id)
+        client.get(f'/register/verify/{token}')
+        client.get(f'/register/verify/{token}')
+        assert len(ticket_mailer.messages) == 1, 'the second visit is not a second ticket'
+        ticket = ticket_mailer.messages[0]
+        assert ticket.kind == 'account_ticket'
+        assert ticket.recipient.address == 'help@example.invalid'
+        assert ticket.sender == 'person@ucar.edu'
+        assert ticket.subject == "New HPC User Request 'Pen Ding'"
+        assert ticket.dedup_key == f'account_ticket:{row_id}'
+        assert ticket.context['requested_via'].startswith('self-registration')
+
+    def test_the_code_files_the_ticket_too(self, client, app, committed_registration,
+                                           ticket_mailer):
+        from webapp.register import tokens
+        row_id, code = committed_registration
+        with app.app_context():
+            page = tokens.page_token(row_id)
+        client.post(f'/register/pending/{page}', data={'code': '000000'})
+        assert ticket_mailer.messages == []
+        client.post(f'/register/pending/{page}', data={'code': code})
+        assert [m.kind for m in ticket_mailer.messages] == ['account_ticket']
+
+    def test_no_ticket_address_means_no_ticket(self, client, app, committed_registration,
+                                               ticket_mailer, monkeypatch):
+        from webapp.register import tokens
+        monkeypatch.setitem(app.config, 'NOTIFY_ACCOUNT_TICKET_TO', '')
+        row_id, _ = committed_registration
+        with app.app_context():
+            token = tokens.link_token(row_id)
+        client.get(f'/register/verify/{token}')
+        assert ticket_mailer.messages == []
+        assert _row(app, row_id)['verified_at'] is not None
 
     def test_a_page_token_cannot_verify(self, client, app, committed_registration):
         from webapp.register import tokens

@@ -240,6 +240,18 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
         facility_aware=False,
         family='account',
     ),
+    # NUSD's handoff: one plain-text ticket per request into Jira-by-email,
+    # sent the moment the request is ready for them (verified, or the invitee
+    # completed the link). Text-only by design; keyed on the row alone, so a
+    # reopen never files a second ticket. XRAS-sweep rows never ticket.
+    NotificationKind(
+        key='account_ticket',
+        label='Account-request ticket (NUSD)',
+        template_base='account_ticket',
+        default_subscribed=True,
+        facility_aware=False,
+        family='account',
+    ),
     # The `lifecycle` family: operator-initiated, tree-aware, onboarding-rich
     # project notices, distinct from the XRAS-driven xras_* kinds above. They
     # introduce the in-tree allocation-adjustment and member-management surfaces

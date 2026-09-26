@@ -42,6 +42,7 @@ from webapp.dashboards.event_lifecycle import (
     date_floor, roster_preview, sponsor_context, switch_event,
 )
 from webapp.extensions import db
+from webapp.register.handoff_mail import send_ticket
 from webapp.register.invite_mail import (
     DELIVERED, can_send_invite, invite_messages, placeholder_link, preview_invite_rows,
     send_invite_links,
@@ -174,10 +175,15 @@ class _InviteUserHandler(HtmxFormHandler):
             organization=data.get('organization'), event=self.event)
 
     def after_commit(self, result):
+        """With a link, NUSD's ticket waits for the invitee; without, it goes now."""
         outcome, obj = result
         self.invite = None
-        if outcome == OUTCOME_QUEUED and self.send_invite:
+        if outcome != OUTCOME_QUEUED:
+            return
+        if self.send_invite:
             self.invite, = send_invite_links([obj], requested_by=current_user.username)
+        else:
+            send_ticket(obj, requested_by=current_user.username)
 
     def context(self):
         events = _project_events(self.project)

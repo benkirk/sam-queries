@@ -22,7 +22,10 @@ from sam import fmt
 from sam.core.account_requests import CREATED_BY_SELF, AccountRequest, AccountRequestEvent
 from sam.notify import Message, Recipient
 
-from .account_requests import events_for, group_by_event, request_views, waiting_days
+from .account_requests import (
+    ORIGIN_SELF, ORIGIN_SWEEP, events_for, group_by_event, origin_of, request_views,
+    waiting_days,
+)
 
 #: kind -> subject. In Python, not the template: it is also the searchable
 #: ``notification_log.subject`` column.
@@ -32,6 +35,7 @@ ACCOUNT_KIND_SUBJECTS = {
     'account_rejected': 'Your NCAR HPC account request',
     'account_invite': 'You are invited to request an NCAR HPC account',
     'account_request_received': 'Your NCAR HPC account request has been received',
+    'account_ticket': "New HPC User Request '{name}'",
 }
 
 
@@ -240,4 +244,66 @@ def build_receipt_message(row: AccountRequest, *, project_code: str = '',
         projcode=project_code or None,
         dedup_key=f'account_request_received:{row.account_request_id}:{completed}',
         requested_by=requested_by,
+    )
+
+
+def ticket_subject(name: str, *, event_code: str = '', project_code: str = '') -> str:
+    """``New HPC User Request '<name>' for <event code | project code>``; the
+    event wins, and a standalone request carries no suffix."""
+    base = ACCOUNT_KIND_SUBJECTS['account_ticket'].format(name=name)
+    suffix = event_code or project_code
+    return f'{base} for {suffix}' if suffix else base
+
+
+def build_ticket_message(row: AccountRequest, *, view: Dict[str, Any], recipient: str,
+                         sender: Optional[str] = None, queue_url: str = '',
+                         requested_by: str) -> Message:
+    """NUSD's ticket: every field one line, optional ones at the end, no HTML.
+    ``view`` is the row's :func:`request_views` entry. The From is the
+    configured person (Jira files the ticket under the sender). Keyed on the
+    row alone: one ticket per request, ever."""
+    event = view['event']
+    sponsor = view['sponsor'].display_name if view['sponsor'] else ''
+    origin = origin_of(row)
+    if origin == ORIGIN_SELF:
+        via = 'self-registration (email address verified)'
+    elif origin == ORIGIN_SWEEP:
+        via = 'XRAS submission'
+    elif sponsor:
+        via = f'invitation by {sponsor}'
+    else:
+        via = f'operator {row.created_by}'
+    note = (row.purpose_note or row.comment or '').strip()
+    accepted = row.eula_accepted_at is not None
+    return Message(
+        kind='account_ticket',
+        recipient=Recipient(recipient.strip(), name='NUSD', role='operator'),
+        subject=ticket_subject(row.display_name, event_code=view['event_code'],
+                               project_code=view['project_code']),
+        context={
+            'name': row.display_name,
+            'email': row.email,
+            'project_code': view['project_code'],
+            'requested_via': via,
+            'organization': row.organization or '',
+            'academic_status': row.academic_status or '',
+            'residence_country': row.residence_country or '',
+            'phone': row.phone or '',
+            'eula_accepted_on': fmt.date_str(row.eula_accepted_at) if accepted else '',
+            'eula_sha7': (row.eula_sha or '')[:7] if accepted else '',
+            'event_name': event.name if event else '',
+            'event_code': view['event_code'],
+            'deadline': fmt.date_str(event.accounts_needed_by) if event else '',
+            'sponsor_name': sponsor,
+            'orcid': row.orcid or '',
+            'middle_name': row.middle_name or '',
+            'note': ' '.join(note.split()),
+            'request_id': row.account_request_id,
+            'queue_url': queue_url,
+        },
+        entity=('account_request', row.account_request_id),
+        projcode=view['project_code'] or None,
+        dedup_key=f'account_ticket:{row.account_request_id}',
+        requested_by=requested_by,
+        sender=sender or None,
     )

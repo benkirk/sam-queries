@@ -272,17 +272,21 @@ class RosterHandler(HtmxFormHandler):
                             entries=data['entries'])
 
     def after_commit(self, result):
-        """One invitation link per newly queued person; known users got none."""
+        """One invitation link per newly queued person, or NUSD's ticket for
+        each when no link was asked for; known users got neither."""
         self.invites = None
-        if not self.send_invite:
-            return
         # Here, not at the top: webapp.register imports this module.
+        from webapp.register.handoff_mail import send_ticket
         from webapp.register.invite_mail import (
             DELIVERED, can_send_invite, send_invite_links)
         queued = result[OUTCOME_QUEUED]
         rows = (db.session.query(AccountRequest)
                 .filter(AccountRequest.event_id == self.event.account_request_event_id,
                         AccountRequest.email.in_(queued)).all()) if queued else []
+        if not self.send_invite:
+            for row in rows:
+                send_ticket(row, requested_by=_actor())
+            return
         rows = [r for r in rows if can_send_invite(r) and r.invite_sent_at is None]
         results = send_invite_links(rows, requested_by=_actor())
         self.invites = {

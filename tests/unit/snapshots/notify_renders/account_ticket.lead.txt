@@ -1,0 +1,19 @@
+A new NCAR HPC account request is ready for the account team.
+
+Name:            Ada Lovelace
+Email:           ada.lovelace@example.edu
+Project:         SCSG0001
+Requested via:   invitation by Jane Lead
+Organization:    University of Example
+Academic status: Faculty
+Country:         United Kingdom
+Phone:           +44 20 7946 0000
+Agreement:       accepted 2026-09-24 (text 5c2cca1)
+Event:           WRF Tutorial, October 2026 (WRF-OCT-2026), accounts needed by 2026-10-05
+Sponsor:         Jane Lead
+ORCID:           0000-0002-1825-0097
+Middle name:     Augusta
+Note:            Visiting scholar for the fall term.
+SAM request:     #41  https://sam.hpc.ucar.edu/admin/account-requests
+
+Sent by the NSF NCAR Systems Accounting Manager when the request became ready.

@@ -30,6 +30,7 @@ from webapp.utils.htmx import institution_options
 from webapp.utils.notify import get_notifier
 
 from . import eula, tokens
+from .handoff_mail import send_ticket
 from .common import (ACADEMIC_STATUSES, GATE_TTL, anon_tier as _anon_tier,  # noqa: F401
                      ip_key as _ip_key, open_event as _open_event, person_form_context,
                      post_tier as _post_tier, refuse as _refuse)
@@ -273,6 +274,7 @@ def pending_code(token):
                                errors=['That code is wrong or has expired.'])
     with management_transaction(db.session):
         row.mark_verified('self')
+    send_ticket(row)
     return redirect(url_for('register.verified'))
 
 
@@ -288,6 +290,7 @@ def verify(token):
     if not row.is_verified:
         with management_transaction(db.session):
             row.mark_verified('self')
+        send_ticket(row)
     return redirect(url_for('register.verified'))
 
 

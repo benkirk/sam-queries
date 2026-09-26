@@ -16,12 +16,15 @@ from factories import (
     make_user,
 )
 
+from sam.core.users import User
 from sam.notify.samples import sample_context
 from sam.queries.account_notices import (
     ACCOUNT_KIND_SUBJECTS,
     build_invite_message,
     build_queue_summary,
     build_receipt_message,
+    build_ticket_message,
+    ticket_subject,
     build_rejection_message,
     build_verify_message,
     invite_label,
@@ -252,3 +255,67 @@ class TestReceiptMessage:
         from sam.core.account_requests import AccountRequest
         row = AccountRequest(email='x@example.edu', first_name='X', last_name='Y')
         assert build_receipt_message(row).dedup_key == 'account_request_received:None:open'
+
+
+class TestTicketMessage:
+
+    def _view(self, session, row):
+        from sam.queries.account_requests import events_for, request_views
+        return request_views(session, [row], resolutions={},
+                             events=events_for(session, [row]))[0]
+
+    def test_the_subject_prefers_the_event_code_over_the_project(self):
+        assert ticket_subject('Ada Lovelace', event_code='WRF-OCT', project_code='SCSG0001') == \
+            "New HPC User Request 'Ada Lovelace' for WRF-OCT"
+        assert ticket_subject('Ada Lovelace', project_code='SCSG0001') == \
+            "New HPC User Request 'Ada Lovelace' for SCSG0001"
+        assert ticket_subject('Ada Lovelace') == "New HPC User Request 'Ada Lovelace'"
+
+    def test_the_context_matches_the_sample_and_the_envelope_is_the_configured_person(
+            self, session):
+        from tests.factories.account_requests import make_account_request_event
+        event = make_account_request_event(session)
+        sponsor = session.query(User).filter(User.is_active).first()
+        row = make_account_request(session, first_name='Ada', last_name='Lovelace',
+                                   purpose='enrollment', event=event, sponsor=sponsor,
+                                   phone='+44 20 7946 0000', organization='Example U',
+                                   purpose_note='  two\nlines ', orcid='0000-0002-1825-0097',
+                                   eula_accepted_at=datetime(2026, 9, 24, 9, 30),
+                                   eula_sha='5c2cca1c8b5180f791670276d5bb55832ba6a2e2')
+        message = build_ticket_message(row, view=self._view(session, row),
+                                       recipient=' help@example.invalid ',
+                                       sender='person@ucar.edu', queue_url='https://sam/q',
+                                       requested_by='benkirk')
+        assert set(message.context) == set(sample_context('account_ticket'))
+        assert message.recipient.address == 'help@example.invalid'
+        assert message.recipient.role == 'operator'
+        assert message.sender == 'person@ucar.edu'
+        assert message.subject == f"New HPC User Request 'Ada Lovelace' for {event.event_code}"
+        ctx = message.context
+        assert ctx['requested_via'] == f'invitation by {sponsor.display_name}'
+        assert ctx['event_code'] == event.event_code and ctx['deadline']
+        assert ctx['eula_accepted_on'] == '2026-09-24' and ctx['eula_sha7'] == '5c2cca1'
+        assert ctx['note'] == 'two lines'
+        assert ctx['request_id'] == row.account_request_id
+        assert message.dedup_key == f'account_ticket:{row.account_request_id}'
+        assert message.entity == ('account_request', row.account_request_id)
+        assert message.requested_by == 'benkirk'
+
+    def test_a_self_registration_without_an_agreement(self, session):
+        row = make_account_request(session, by='self', verified_by='self')
+        message = build_ticket_message(row, view=self._view(session, row),
+                                       recipient='help@example.invalid', requested_by='self')
+        assert message.subject == f"New HPC User Request '{row.display_name}'"
+        assert message.context['requested_via'].startswith('self-registration')
+        assert message.context['eula_accepted_on'] == '' and message.context['eula_sha7'] == ''
+        assert message.sender is None, 'falls back to MAIL_DEFAULT_FROM'
+
+    def test_it_renders_as_text_only(self, session):
+        from sam.notify.render import TemplateRenderer
+        row = make_account_request(session, first_name='Ada', last_name='Lovelace')
+        message = build_ticket_message(row, view=self._view(session, row),
+                                       recipient='help@example.invalid', requested_by='x')
+        rendered = TemplateRenderer().render(message)
+        assert rendered.html is None and rendered.template_html is None
+        assert 'Name:            Ada Lovelace' in rendered.text
+        assert 'Sponsor:' not in rendered.text and 'Note:' not in rendered.text

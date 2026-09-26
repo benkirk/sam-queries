@@ -79,12 +79,14 @@ def test_render_matches_snapshot(renderer, kind, facility, stem, role):
 
 
 def test_every_stem_is_covered():
-    assert len(STEMS) == 16, STEMS
+    assert len(STEMS) == 17, STEMS
 
 
 @pytest.mark.skipif(REGEN, reason='regenerating')
 def test_no_orphan_snapshots():
+    from sam.notify.render import TEMPLATE_DIR
     expected = {f'{stem}.{role}.{fmt}' for _, _, stem in STEMS
-                for role in ROLES for fmt in ('txt', 'html')}
+                for role in ROLES for fmt in ('txt', 'html')
+                if (TEMPLATE_DIR / f'{stem}.{fmt}').exists()}
     on_disk = {p.name for p in SNAPSHOT_DIR.iterdir()}
     assert on_disk == expected, sorted(on_disk ^ expected)

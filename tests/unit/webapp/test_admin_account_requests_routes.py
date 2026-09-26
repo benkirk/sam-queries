@@ -47,6 +47,43 @@ def sending_notifier(monkeypatch):
     return transport
 
 
+@pytest.fixture
+def unverified_request(app):
+    """A committed self-registration whose address the mail round trip never confirmed."""
+    from sam.core.account_requests import CREATED_BY_SELF, AccountRequest
+    from webapp.extensions import db
+
+    with app.app_context():
+        row = AccountRequest.create(
+            db.session, email='zz.vouch.test@example.invalid', first_name='Vou',
+            last_name='Ched', purpose='standalone', created_by=CREATED_BY_SELF)
+        db.session.commit()
+        row_id = row.account_request_id
+
+    yield row_id
+
+    with app.app_context():
+        db.session.query(AccountRequest).filter(
+            AccountRequest.account_request_id == row_id).delete()
+        db.session.commit()
+
+
+@pytest.fixture
+def ticket_mailer(app, monkeypatch):
+    from sam.notify.base import DeliveryResult
+    monkeypatch.setitem(app.config, 'NOTIFY_ACCOUNT_TICKET_TO', 'help@example.invalid')
+
+    class _Recorder:
+        messages = []
+
+        def send(self, message, **_):
+            self.messages.append(message)
+            return DeliveryResult(ok=True, status='sent', message=message)
+    recorder = _Recorder()
+    monkeypatch.setattr('webapp.register.handoff_mail.get_notifier', lambda **_: recorder)
+    return recorder
+
+
 def _row_state(app, row_id):
     from sam.core.account_requests import AccountRequest
     from webapp.extensions import db
@@ -327,3 +364,21 @@ class TestDigestPreview:
         triggers = resp.headers.get('HX-Trigger', '')
         assert 'closeActiveModal' in triggers and 'refreshAccountQueue' in triggers
         assert len(sending_notifier.delivered) == 1
+
+
+class TestOperatorVerify:
+
+    def test_vouching_puts_the_row_in_the_queue_and_files_the_ticket(
+            self, auth_client, app, unverified_request, ticket_mailer):
+        from sam.core.account_requests import AccountRequest
+        from webapp.extensions import db
+        resp = auth_client.post(f'/admin/account-requests/{unverified_request}/verify')
+        assert resp.status_code == 200 and 'now in the queue' in resp.get_data(as_text=True)
+        with app.app_context():
+            row = db.session.get(AccountRequest, unverified_request)
+            db.session.refresh(row)
+            assert row.verified_by == 'benkirk'
+        ticket, = ticket_mailer.messages
+        assert ticket.kind == 'account_ticket'
+        assert ticket.subject == "New HPC User Request 'Vou Ched'"
+        assert ticket.requested_by == 'benkirk'

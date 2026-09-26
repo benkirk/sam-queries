@@ -27,7 +27,7 @@ from webapp.utils.htmx import institution_options
 
 from . import eula, tokens
 from .common import GATE_TTL, anon_tier, ip_key, person_form_context, post_tier
-from .handoff_mail import send_receipt
+from .handoff_mail import send_completion_mail
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('register_invite', __name__, url_prefix='/register/invite')
@@ -187,6 +187,6 @@ def submit(token):
     except ValueError as exc:
         return _render_form(token, row, form=request.form, errors=[str(exc)])
     logger.info('invite %s completed by the invitee', row.account_request_id)
-    send_receipt(row)
+    send_completion_mail(row)
     session.pop(_GATE_KEY, None)
     return redirect(url_for('register_invite.complete'))

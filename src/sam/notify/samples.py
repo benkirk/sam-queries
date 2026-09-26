@@ -37,6 +37,7 @@ _SUBJECTS = {
     'account_rejected': 'Your NCAR HPC account request',
     'account_invite': 'You are invited to request an NCAR HPC account',
     'account_request_received': 'Your NCAR HPC account request has been received',
+    'account_ticket': "New HPC User Request 'Ada Lovelace' for WRF-OCT-2026",
     'project_renewal': 'Your NSF NCAR project SCSG0001 has been renewed',
     'project_activation': 'Your NSF NCAR project SCSG0001 is now active',
     'project_adjustment': 'Your NSF NCAR project SCSG0001 allocations have been updated',
@@ -265,6 +266,30 @@ def _account_invite() -> Dict[str, Any]:
     }
 
 
+def _account_ticket() -> Dict[str, Any]:
+    return {
+        'name': 'Ada Lovelace',
+        'email': 'ada.lovelace@example.edu',
+        'project_code': 'SCSG0001',
+        'requested_via': 'invitation by Jane Lead',
+        'organization': 'University of Example',
+        'academic_status': 'Faculty',
+        'residence_country': 'United Kingdom',
+        'phone': '+44 20 7946 0000',
+        'eula_accepted_on': '2026-09-24',
+        'eula_sha7': '5c2cca1',
+        'event_name': 'WRF Tutorial, October 2026',
+        'event_code': 'WRF-OCT-2026',
+        'deadline': '2026-10-05',
+        'sponsor_name': 'Jane Lead',
+        'orcid': '0000-0002-1825-0097',
+        'middle_name': 'Augusta',
+        'note': 'Visiting scholar for the fall term.',
+        'request_id': 41,
+        'queue_url': 'https://sam.hpc.ucar.edu/admin/account-requests',
+    }
+
+
 def sample_context(kind: str, facility: Optional[str] = None) -> Dict[str, Any]:
     """A builder-shaped context for ``kind``; raises ValueError on an unknown kind."""
     key = get_kind(kind).key
@@ -282,6 +307,8 @@ def sample_context(kind: str, facility: Optional[str] = None) -> Dict[str, Any]:
         return _account_invite()
     if key == 'account_request_received':
         return _account_request_received()
+    if key == 'account_ticket':
+        return _account_ticket()
     if key in _LIFECYCLE_ACTIONS:
         return _lifecycle(key)
     return _xras(key)
@@ -408,6 +435,19 @@ VARIABLE_NOTES: Dict[str, str] = {
     'eula_text': 'The NWSC end-user agreement as plain text, or empty if the gate was not accepted.',
     'eula_html': 'The same agreement as HTML, or empty.',
     'eula_accepted_on': 'The date the requester accepted the agreement, formatted, or empty.',
+    'eula_sha7': 'The first seven characters of the accepted agreement text\'s SHA, or empty.',
+    'email': "The requester's email address.",
+    'requested_via': "How the request arrived: self-registration, an invitation, XRAS or an operator.",
+    'organization': "The requester's institution, or empty.",
+    'academic_status': "The requester's academic status, or empty.",
+    'residence_country': "The requester's country of residence, or empty.",
+    'phone': "The requester's phone number, or empty.",
+    'event_code': "The event's code, or empty.",
+    'deadline': "The event's accounts-needed-by date, formatted, or empty.",
+    'orcid': "The requester's ORCID, or empty.",
+    'middle_name': "The requester's middle name, or empty.",
+    'note': "The requester's purpose note or the sponsor's comment, one line, or empty.",
+    'request_id': 'The SAM account-request id.',
 }
 
 

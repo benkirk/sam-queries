@@ -201,7 +201,8 @@ def _toast_error(message):
                         toast=message, toast_variant='danger', message=message)
 
 
-def _one_click(request_id, verb, action, done):
+def _one_click(request_id, verb, action, done, after=None):
+    """``after(row)`` runs once the write has committed (a send, never a write)."""
     row = _load(request_id)
     if row is None:
         return htmx_not_found('Account request')
@@ -210,6 +211,8 @@ def _one_click(request_id, verb, action, done):
             action(row)
     except ValueError as exc:
         return _toast_error(f'Cannot {verb}: {exc}')
+    if after is not None:
+        after(row)
     return htmx_success_message(_TRIGGERS, done.format(name=row.display_name))
 
 
@@ -235,9 +238,11 @@ def account_request_unclaim(request_id):
 @require_permission(Permission.MANAGE_ACCOUNT_REQUESTS)
 def account_request_verify(request_id):
     """An operator vouching for an address the mail round trip did not confirm."""
+    from webapp.register.handoff_mail import send_ticket
     return _one_click(request_id, 'verify',
                       lambda row: row.mark_verified(current_user.username),
-                      'Marked {name} verified; the request is now in the queue.')
+                      'Marked {name} verified; the request is now in the queue.',
+                      after=lambda row: send_ticket(row, requested_by=current_user.username))
 
 
 @bp.route('/account-requests/<int:request_id>/reopen', methods=['POST'])
