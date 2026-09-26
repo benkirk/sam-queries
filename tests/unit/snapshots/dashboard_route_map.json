@@ -2711,6 +2711,20 @@
     ]
   ],
   [
+    "register_events.form_for_event",
+    "/register/<event_code>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "register_events.self_enroll",
+    "/register/<event_code>/enroll",
+    [
+      "POST"
+    ]
+  ],
+  [
     "register_invite.accept",
     "/register/invite/<token>/accept",
     [

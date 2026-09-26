@@ -19,7 +19,7 @@ EVENT = {'event_id': 424242, 'event_code': 'ZZ-CARD-TEST', 'name': 'Card test wo
 @pytest.fixture
 def listing(app, monkeypatch):
     """Registration on, one listed event."""
-    monkeypatch.setitem(app.config, 'ACCOUNT_REGISTRATION_ENABLED', True)
+    monkeypatch.setitem(app.config, 'ACCOUNT_INVITATIONS_ENABLED', True)
     monkeypatch.setattr('webapp.dashboards.event_lifecycle.upcoming_events_data',
                         lambda: [EVENT])
 
@@ -53,7 +53,7 @@ class TestTheCard:
         assert 'fa-user-plus me-1' not in body
 
     def test_no_card_without_a_listed_event(self, client, app, monkeypatch):
-        monkeypatch.setitem(app.config, 'ACCOUNT_REGISTRATION_ENABLED', True)
+        monkeypatch.setitem(app.config, 'ACCOUNT_INVITATIONS_ENABLED', True)
         monkeypatch.setattr('webapp.dashboards.event_lifecycle.upcoming_events_data',
                             lambda: [])
         assert 'Upcoming Events' not in _body(client)
@@ -64,7 +64,7 @@ class TestTheGates:
     def test_registration_off_hides_the_card_and_skips_the_query(self, client, app,
                                                                  monkeypatch):
         """The link would 404: the register blueprint is unmounted."""
-        monkeypatch.setitem(app.config, 'ACCOUNT_REGISTRATION_ENABLED', False)
+        monkeypatch.setitem(app.config, 'ACCOUNT_INVITATIONS_ENABLED', False)
 
         def _boom():
             raise AssertionError('queried with registration off')
@@ -73,7 +73,7 @@ class TestTheGates:
 
     def test_a_sam_database_failure_renders_the_page_without_the_card(self, client, app,
                                                                       monkeypatch):
-        monkeypatch.setitem(app.config, 'ACCOUNT_REGISTRATION_ENABLED', True)
+        monkeypatch.setitem(app.config, 'ACCOUNT_INVITATIONS_ENABLED', True)
 
         def _down():
             raise OperationalError('SELECT 1', {}, Exception('SAM is down'))

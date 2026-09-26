@@ -472,11 +472,11 @@ class AccountRequest(Base, SessionMixin):
         self.session.flush()
         return self
 
-    #: What the invitee may fill in or correct; the email is what the sponsor vouched for.
+    #: What the invitee may fill in or correct; the email is what the sponsor vouched
+    #: for. ``desired_username`` is not offered: the column stays, unfilled.
     INVITE_FIELDS = {'first_name': 64, 'middle_name': 64, 'last_name': 64,
                      'organization': 128, 'academic_status': 64,
-                     'residence_country': 64, 'orcid': 19, 'phone': 32,
-                     'desired_username': 64}
+                     'residence_country': 64, 'orcid': 19, 'phone': 32}
 
     def complete_invite(self, *, fields, eula_sha, accepted_at, source_ip=None, clock=None):
         """The invitee's own details, written onto this row in place. Flushes.

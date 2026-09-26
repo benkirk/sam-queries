@@ -1,0 +1,6 @@
+{% if eula_text %}
+------------------------------------------------------------------------
+By requesting an NSF NCAR HPC account you have agreed to the following terms
+of use{% if eula_accepted_on %} (accepted {{ eula_accepted_on }}){% endif %}:
+
+{{ eula_text }}{% endif %}

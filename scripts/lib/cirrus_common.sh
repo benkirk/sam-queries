@@ -4,10 +4,11 @@
 # scripts (cirrus_healthcheck.sh, cirrus_watch.sh, cirrus_weblog_audit.sh).
 #
 # Sits ON TOP of common.sh (sourced automatically here) and adds the bits
-# that know about the 'samuel' (prod) and 'samuel-dev' releases on nwc1:
+# that know about the 'samuel' (prod, namespace sam-queries) and 'samuel-dev'
+# (dev, namespace sam-queries-dev, Argo app sam-query-dev) releases on nwc1:
 #
-#   - cirrus_set_env        release/object names per SAM_ENV (prod | dev),
-#                           applied at source time and again by --env
+#   - cirrus_set_env        namespace + release/object names per SAM_ENV
+#                           (prod | dev), applied at source time and again by --env
 #   - build_kctl            populate KCTL / KCTL_NS command arrays
 #   - handle_common_arg     parse the shared --env/-n/-r/--context/--no-color/-v/-h
 #                           flags; return 1 for flags the caller owns
@@ -28,7 +29,8 @@ source "${_CIRRUS_COMMON_DIR}/common.sh"
 # One row per environment; if you rename objects in the chart, update the row
 # in lockstep. Resource limits are always read live from the pod spec, never
 # hard-coded here.
-NAMESPACE="${NAMESPACE:-sam-queries}"
+# An explicit namespace (env var or -n) wins over the per-env default.
+_NAMESPACE_EXPLICIT="${NAMESPACE:+1}"
 CONTEXT="${CONTEXT:-}"
 WEBAPP_PORT=5050
 REDIS_PORT=6379
@@ -51,6 +53,7 @@ cirrus_set_env() {
     SAM_ENV="$1"
     case "$SAM_ENV" in
         prod)
+            ENV_NAMESPACE="sam-queries"
             RELEASE="samuel"
             WEBAPP_NAME="samuel"
             REDIS_NAME="samuel-redis"
@@ -62,6 +65,7 @@ cirrus_set_env() {
             DEFAULT_WATCH_DB_HOST="sam-sql.ucar.edu"
             ;;
         dev)
+            ENV_NAMESPACE="sam-queries-dev"
             RELEASE="samuel-dev"
             WEBAPP_NAME="samuel-dev"
             REDIS_NAME="samuel-dev-redis"
@@ -75,6 +79,7 @@ cirrus_set_env() {
         *) echo "cirrus_common.sh: unknown SAM_ENV '$SAM_ENV' (prod|dev)" >&2; exit 2;;
     esac
     TASKS_SELECTOR="app=${TASKS_NAME}"
+    [[ -n "$_NAMESPACE_EXPLICIT" ]] || NAMESPACE="$ENV_NAMESPACE"
 }
 cirrus_set_env "${SAM_ENV:-prod}"
 
@@ -113,7 +118,7 @@ handle_common_arg() {
     case "$1" in
         # Re-applies the whole name table, so put --env before -r/--ingress-host.
         --env)          cirrus_set_env "$2"; _CONSUMED=2;;
-        -n|--namespace) NAMESPACE="$2"; _CONSUMED=2;;
+        -n|--namespace) NAMESPACE="$2"; _NAMESPACE_EXPLICIT=1; _CONSUMED=2;;
         -r|--release)   RELEASE="$2";   _CONSUMED=2;;
         --context)      CONTEXT="$2";   _CONSUMED=2;;
         # Narrow edge checks to ONE host (both the canonical name and the

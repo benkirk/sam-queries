@@ -42,7 +42,7 @@ def account_max(env: Optional[dict] = None) -> int:
 
 def digest_recipient(env: Optional[dict] = None) -> str:
     """Where the digest goes. Empty means the task is inert, by design."""
-    return ((env or os.environ).get('NOTIFY_ACCOUNT_QUEUE_TO') or '').strip()
+    return ((os.environ if env is None else env).get('NOTIFY_ACCOUNT_QUEUE_TO') or '').strip()
 
 
 def queue_url(env: Optional[dict] = None) -> str:
@@ -51,7 +51,7 @@ def queue_url(env: Optional[dict] = None) -> str:
     ``NOTIFY_``-prefixed so the CronJob receives it by prefix, beside the
     recipient. Empty means the digest carries no link.
     """
-    return ((env or os.environ).get('NOTIFY_ACCOUNT_QUEUE_URL') or '').strip()
+    return ((os.environ if env is None else env).get('NOTIFY_ACCOUNT_QUEUE_URL') or '').strip()
 
 
 @task(name='account_queue_digest',

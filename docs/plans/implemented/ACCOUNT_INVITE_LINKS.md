@@ -179,7 +179,10 @@ identifier `scripts/update_eula.py` prints.
   - Call `row.complete_invite(...)` inside `management_transaction`, stamping the EULA from
     the session's gate time.
   - Redirect to a "complete" page.
-  - **No verify mail.** Clicking the link already proved the address.
+  - **No verify mail.** Clicking the link already proved the address. Since
+    2026-09-26 the submit mails the invitee a receipt (`account_request_received`,
+    with the accepted agreement appended) and files NUSD's ticket
+    (ACCOUNT_REGISTRATION.md D22, D23).
   - Rate limit: the anonymous tier per IP, plus a per-token limit.
 - **Login gate:** not applicable. `register_invite` has no login hook, and the `register`
   blueprint's `_login_gate` is untouched.

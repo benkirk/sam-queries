@@ -156,9 +156,6 @@ class RegisterForm(HtmxFormSchema):
         r'^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$', error='An ORCID looks like 0000-0002-1825-0097.'))
     #: Required: the account team needs it for Duo enrollment.
     phone = f.Str(required=True, validate=v.Length(min=1, max=32))
-    desired_username = f.Str(load_default=None, validate=v.Regexp(
-        r'^[A-Za-z][A-Za-z0-9._-]{1,63}$',
-        error='Letters, digits, dots, dashes or underscores, starting with a letter.'))
     purpose_note = f.Str(load_default=None, validate=v.Length(max=500))
     event_code = f.Str(load_default=None, validate=v.Length(max=32))
 
@@ -167,7 +164,7 @@ class RegisterForm(HtmxFormSchema):
         data['email'] = data['email'].strip().lower()
         for key in ('first_name', 'middle_name', 'last_name', 'organization',
                     'academic_status', 'residence_country', 'orcid', 'phone',
-                    'desired_username', 'purpose_note'):
+                    'purpose_note'):
             if data.get(key) is not None:
                 data[key] = data[key].strip() or None
         if data.get('event_code'):

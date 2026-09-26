@@ -11,6 +11,16 @@ from sam.accounting.accounts import AccountUser
 from factories import make_account, make_allocation, make_project, make_user
 
 
+# `_project_with_rowless_lead` deletes account_user rows by user_id, a next-key
+# lock at the top of that index that another worker's membership inserts wait
+# on; the resulting deadlock rollback destroys the per-test SAVEPOINT. See
+# `serial_file_lock` in tests/conftest.py.
+@pytest.fixture(autouse=True)
+def _one_worker_at_a_time(serial_file_lock):
+    with serial_file_lock('project_membership_account_user_gap'):
+        yield
+
+
 def _project_with_rowless_lead(session):
     project = make_project(session, facility_name='UNIV')
     for _ in range(2):
@@ -93,7 +103,9 @@ def test_all_reconciles_every_active_project(runner, mock_db_session, monkeypatc
     result = runner.invoke(cli, ['--format', 'json', 'project', '--reconcile-lead-admin',
                                  '--all', '--dry-run'])
     assert result.exit_code == 0, result.output
-    data = json.loads(result.output)
+    # stdout only: `result.output` also carries stderr (Click 8.2+), where the
+    # CLI logs, and a webapp created earlier in the worker makes every flush log.
+    data = json.loads(result.stdout)
     assert (data['kind'], data['mode'], data['dry_run']) == ('project_reconcile', 'lead_admin', True)
     [row] = data['added']
     assert (row['projcode'], row['role'], row['history']) == (project.projcode, 'lead', 'never a member')

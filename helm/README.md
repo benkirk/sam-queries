@@ -11,10 +11,9 @@ only — the full deployment guides live elsewhere:
   merge to `main` (or `staging`) becomes a GHCR image and a force-pushed
   `cirrus` (or `cirrus-dev`) branch that GitOps reconciles onto the cluster.
   **Helm changes reach production only via that `main` → `cirrus` flow** —
-  there is no direct `helm upgrade` against the prod release. The dev
-  release (`samuel-dev`) is the one exception while it awaits its Argo
-  Application: `make deploy-dev` runs helm from a laptop against the
-  `cirrus-dev` tree (see
+  there is no direct `helm upgrade` against either release. The dev
+  release (`samuel-dev`) follows the same flow from `cirrus-dev`, applied by
+  Argo CD application `sam-query-dev` into namespace `sam-queries-dev` (see
   [docs/plans/K8S_DEV_ENVIRONMENT.md](../docs/plans/K8S_DEV_ENVIRONMENT.md)).
 
 ## Layout
@@ -57,9 +56,6 @@ make -C .. helm-test
 # Inspect what production / dev would render
 helm template samuel . -f values.yaml | less
 helm template samuel-dev . -f values.yaml -f values-dev.yaml | less
-
-# Phase-1 dev deploy from a laptop (until Argo adopts samuel-dev)
-make -C .. deploy-dev
 ```
 
 Gunicorn concurrency (worker class/count, threads) is set through

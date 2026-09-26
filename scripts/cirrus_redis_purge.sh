@@ -27,8 +27,9 @@
 #   --yes                 Actually delete (default is dry-run)
 #   --pattern GLOB        Targeted SCAN+DEL of matching keys instead of
 #                         FLUSHDB (e.g. --pattern 'usage:*')
-#   -n, --namespace NS    Namespace the release lives in   (default: sam-queries)
-#   -r, --release    REL  Helm release name                (default: samuel)
+#       --env        ENV  Which release: prod | dev           (default: $SAM_ENV or prod)
+#   -n, --namespace NS    Namespace the release lives in   (default: per --env)
+#   -r, --release    REL  Helm release name                (default: per --env)
 #       --context    CTX  kubectl context to target        (default: current)
 #       --no-color        Disable ANSI color
 #   -v, --verbose         Extra detail

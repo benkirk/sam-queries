@@ -7,7 +7,8 @@
     <p><i class="fa-solid fa-ban" aria-hidden="true"></i> {{ reason }}</p>
 </div>
 <p class="register-lede">
-    Check the code with whoever gave it to you, or
-    <a href="{{ url_for('register.form') }}">register without one</a>.
+    Check the code with whoever gave it to you{% if form_url %}, or
+    <a href="{{ form_url }}">register without one</a>{% elif current_user.is_authenticated %}, or
+    <a href="{{ url_for('index') }}">go back to your dashboard</a>{% endif %}.
 </p>
 {% endblock %}

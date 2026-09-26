@@ -22,12 +22,24 @@
     {{ textarea_field('roster', 'Roster', required=True, rows=10,
                       placeholder='Ada Lovelace <ada@example.edu>') }}
     {# The link route is mounted with the invitations switch; Admin -> Events is not. #}
-    {% if config.ACCOUNT_INVITATIONS_ENABLED %}
+    {% if config.ACCOUNT_INVITATIONS_ENABLED and has_permission_any_facility(Permission.MANAGE_ACCOUNT_REQUESTS) %}
     {% call checkbox_field('send_invite', 'Email each new person a link to finish their request',
                       default=True,
-                      help='People SAM already knows are enrolled and get no link.') %}
+                      help='Recommended. Each link collects the phone, country, academic status and '
+                           'terms acceptance the account team needs, and they are told once the '
+                           'person finishes. Unchecked, the team is told now with names and emails '
+                           'only and must contact each person for the rest, which is slower. '
+                           'People SAM already knows are enrolled and get no link.') %}
     {% if preview_url %}{{ preview_button(preview_url, 'rosterPreviewPane') }}{% endif %}
     {% endcall %}
+    <div id="rosterPreviewPane" class="mb-2"></div>
+    {% elif config.ACCOUNT_INVITATIONS_ENABLED %}
+    <p class="small text-muted mb-2">
+        Each new person is emailed a link to finish their request (phone, country,
+        academic status and the terms of use). People SAM already knows are
+        enrolled and get no link.
+        {% if preview_url %}{{ preview_button(preview_url, 'rosterPreviewPane') }}{% endif %}
+    </p>
     <div id="rosterPreviewPane" class="mb-2"></div>
     {% endif %}
 {% endcall %}

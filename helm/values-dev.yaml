@@ -33,8 +33,8 @@ webapp:
     FLASK_CONFIG: "production"            # ProductionConfig.validate() is the auth interlock
     AUTH_PROVIDER: "oidc"
     DISABLE_AUTH: "0"
-    ACCOUNT_REGISTRATION_ENABLED: "1"     # the anonymous /register form, live here and dark in prod
-    ACCOUNT_INVITATIONS_ENABLED: "1"      # the project Invitations tab, live here and dark in prod
+    ACCOUNT_REGISTRATION_ENABLED: "1"     # the anonymous account-creation form, live here and dark in prod
+    ACCOUNT_INVITATIONS_ENABLED: "1"      # invitations, invite links and the event pages, live here as in prod
     COMPONENT_GALLERY_ENABLED: "1"        # the /dev/gallery component gallery, live here and dark in prod
     SAM_DB_DRIVER: "postgresql"
     SAM_DB_SERVER: "csg-postgres.k8s.ucar.edu"
@@ -46,6 +46,7 @@ webapp:
     PUBLIC_BASE_URL: ""                   # mail links follow the request host, not prod's sam.hpc
     NOTIFY_XRAS_CC: ""
     NOTIFY_XRAS_REPLY_TO: ""
+    NOTIFY_ACCOUNT_TICKET_TO: ""          # dev never files a Jira ticket
     XRAS_OUTGOING_ENABLED: "0"
     XRAS_WRITE_ENABLED: "0"
     XRAS_ACTIONS_CAPTURE_ONLY: "1"

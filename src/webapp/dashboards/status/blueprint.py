@@ -209,26 +209,34 @@ def events():
     return render_template(
         'dashboards/status/events_page.html',
         upcoming_events=upcoming, enrolled_event_ids=enrolled,
-        register_base_url=request.url_root.rstrip('/') + '/register',
+        anonymous_can_register=bool(upcoming) and _anonymous_form_open(),
         **_page_context(db.session),
     )
+
+
+def _anonymous_form_open():
+    from webapp.register.common import anonymous_form_open
+    return anonymous_form_open()
 
 
 def _upcoming_events():
     """``(listed open events, the viewer's enrolled event ids)``.
 
-    Empty while ACCOUNT_REGISTRATION_ENABLED is off: the card links to
+    Empty while ACCOUNT_INVITATIONS_ENABLED is off: the card links to
     /register/<code>, which is unmounted (404) then. This is the status pages'
     only SAM-database read, so it fails soft -- SAM being down must not take
     the public status page with it. The listing is memoized; the failure is not.
     """
-    if not current_app.config.get('ACCOUNT_REGISTRATION_ENABLED', False):
+    if not current_app.config.get('ACCOUNT_INVITATIONS_ENABLED', False):
         return [], set()
     from sqlalchemy.exc import SQLAlchemyError
     from sam.queries.account_requests import enrolled_event_ids
     from webapp.dashboards.event_lifecycle import upcoming_events_data
+    from webapp.utils.notify import public_url_for
     try:
-        upcoming = upcoming_events_data()
+        upcoming = [dict(ev, reg_url=public_url_for('register_events.form_for_event',
+                                                    event_code=ev['event_code']))
+                    for ev in upcoming_events_data()]
         enrolled = (enrolled_event_ids(db.session, current_user.user_id)
                     if upcoming and current_user.is_authenticated else set())
     except SQLAlchemyError:

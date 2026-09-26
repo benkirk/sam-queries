@@ -52,7 +52,8 @@
            Small: <small> = a quieter second line inside a table cell
            Table: table.data  (class num on a td and its th = right-aligned
                   figures; .failed = red)
-           Text:  .code = a verification code or similar, set apart */
+           Text:  .code = a verification code or similar, set apart
+           Appendix: .agreement = the muted terms-of-use copy (_agreement.html) */
         .callout {
             border-left: 4px solid #97999b;
             background-color: #f3f5f8;
@@ -104,6 +105,17 @@
             letter-spacing: 0.2em;
             font-variant-numeric: tabular-nums;
         }
+        .agreement {
+            border-top: 1px solid #d9dde3;
+            color: #5b6573;
+            font-size: 13px;
+            line-height: 1.45;
+            margin-top: 24px;
+            padding-top: 12px;
+        }
+        .agreement h1 { font-size: 15px; font-weight: 600; margin: 8px 0; }
+        .agreement p  { margin: 0 0 8px; }
+        .agreement li { margin-bottom: 4px; }
 {%- block extra_styles %}{% endblock %}
         .footer {
             border-top: 1px solid #d9dde3;
@@ -131,8 +143,8 @@
             a, h3  { color: #8ab8ff; }
             .callout, .callout.good, .callout.urgent, .callout.warn, .callout.expiring,
             .callout.aborted, .callout.grace { background-color: #1e2738; }
-            table.data th, .footer, small { color: #a3adbb; }
-            table.data th, table.data td, .footer { border-color: #2c3750; }
+            table.data th, .footer, small, .agreement { color: #a3adbb; }
+            table.data th, table.data td, .footer, .agreement { border-color: #2c3750; }
         }
     </style>
 </head>

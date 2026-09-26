@@ -21,8 +21,9 @@
 # Options:
 #       --since DURATION  Log look-back window, e.g. 30m, 6h, 2d  (default: 1h)
 #       --top N           How many rows in each "top N" list       (default: 15)
-#   -n, --namespace NS    Namespace the release lives in   (default: sam-queries)
-#   -r, --release    REL  Helm release name                (default: samuel)
+#       --env        ENV  Which release: prod | dev           (default: $SAM_ENV or prod)
+#   -n, --namespace NS    Namespace the release lives in   (default: per --env)
+#   -r, --release    REL  Helm release name                (default: per --env)
 #       --context    CTX  kubectl context to target        (default: current)
 #       --ingress-host H  Canonical host used in printed URLs (default: the
 #                         platform-primary name)

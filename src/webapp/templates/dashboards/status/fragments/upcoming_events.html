@@ -1,14 +1,14 @@
 {% from 'dashboards/fragments/clipboard.html' import copy_button %}
 {#
   Public "Upcoming Events" card: listed, open account-request events.
-  Context: upcoming_events (plain dicts from upcoming_listed_events),
-  enrolled_event_ids (empty for an anonymous viewer), register_base_url.
+  Context: upcoming_events (plain dicts from upcoming_listed_events, plus
+  reg_url), enrolled_event_ids (empty for an anonymous viewer),
+  anonymous_can_register (the creation form is mounted and open).
   Anonymous-safe: names no person. No nav-tabs markup here -- the status tests
   locate the page tab strip as the first one on the page.
 #}
 <h5 class="mb-3"><i class="fa-solid fa-user-graduate"></i> Upcoming Events</h5>
 {% for ev in upcoming_events %}
-{% set reg_url = register_base_url ~ '/' ~ ev.event_code %}
 <div class="card mb-3">
     <div class="card-body">
         <div class="d-flex justify-content-between align-items-start gap-3">
@@ -31,14 +31,14 @@
                 <span class="badge bg-body-secondary text-body-secondary border"
                       title="Participants join from the personal link in their invitation email.">By invitation</span>
                 {% elif ev.event_id not in enrolled_event_ids %}
-                <a class="btn btn-sm btn-primary" href="{{ reg_url }}">
+                <a class="btn btn-sm btn-primary" href="{{ ev.reg_url }}">
                     <i class="fa-solid fa-user-plus me-1"></i>
-                    {%- if not current_user.is_authenticated and config.ACCOUNT_REGISTRATION_LOGIN_REQUIRED %} Sign in to register
+                    {%- if not current_user.is_authenticated and not anonymous_can_register %} Sign in to register
                     {%- else %} Register{% endif %}
                 </a>
                 {% endif %}
                 {% if not ev.invite_only %}
-                {{ copy_button(reg_url, label='Copy registration link', icon='fa-solid fa-link', compact=true, done='Registration link copied.') }}
+                {{ copy_button(ev.reg_url, label='Copy registration link', icon='fa-solid fa-link', compact=true, done='Registration link copied.') }}
                 {% endif %}
             </div>
         </div>

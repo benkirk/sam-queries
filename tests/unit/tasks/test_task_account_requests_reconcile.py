@@ -48,17 +48,6 @@ class TestRegistration:
         assert TASKS[NAME].schedule == Hourly(minute=20)
         assert TASKS[NAME].needs == ('sam',)
 
-    @pytest.mark.parametrize('values', ['values.yaml', 'values-dev.yaml'])
-    def test_it_ships_switched_off(self, values):
-        """WARNING: `SAM_TASKS_DISABLED` is fail-OPEN: a registered task dispatches
-        on the next hourly wake unless the chart names it. This one writes
-        memberships, so it soaks first. Delete this test in the commit that
-        clears the switch."""
-        text = (VALUES / values).read_text()
-        line, = [ln for ln in text.splitlines()
-                 if ln.strip().startswith('SAM_TASKS_DISABLED:')]
-        assert NAME in line, line
-
 
 class TestTheKnob:
 

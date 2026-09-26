@@ -39,9 +39,10 @@ from webapp.api.access_control import (
 )
 from webapp.dashboards.event_lifecycle import (
     EVENT_FORM, ROSTER_FORM, EventCreateHandler, EventEditHandler, RosterHandler,
-    date_floor, roster_preview, sponsor_context, switch_event,
+    can_skip_link, date_floor, roster_preview, sponsor_context, switch_event,
 )
 from webapp.extensions import db
+from webapp.register.handoff_mail import send_ticket
 from webapp.register.invite_mail import (
     DELIVERED, can_send_invite, invite_messages, placeholder_link, preview_invite_rows,
     send_invite_links,
@@ -53,6 +54,7 @@ from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import (
     htmx_not_found, htmx_success, htmx_success_message, institution_options,
 )
+from webapp.utils.notify import public_url_for
 from webapp.utils.project_permissions import can_create_events
 from webapp.utils.rbac import Permission, has_permission_any_facility
 
@@ -125,7 +127,6 @@ def invitations_fragment(project):
     by_event = {}
     for row in rows:
         by_event.setdefault(row.event_id, []).append(row)
-    base_url = request.url_root.rstrip('/')
     event_rows = []
     for event in events:
         members = by_event.get(event.account_request_event_id, [])
@@ -136,9 +137,8 @@ def invitations_fragment(project):
             'open': sum(1 for r in members if r.state in OPEN_STATES),
             'sponsor': sponsors.get(event.extra_sponsor_user_id),
             'enrollees': enrollees_for_event(db.session, event.account_request_event_id),
-            # Built by hand, not url_for: the register blueprint is unmounted in
-            # prod (ACCOUNT_REGISTRATION_ENABLED off), so url_for would BuildError.
-            'reg_url': f'{base_url}/register/{event.event_code}',
+            'reg_url': public_url_for('register_events.form_for_event',
+                                      event_code=event.event_code),
         })
     views = request_views(db.session, rows, resolutions=resolutions,
                           events=events_for(db.session, rows))
@@ -159,7 +159,7 @@ class _InviteUserHandler(HtmxFormHandler):
 
     def clean(self, data):
         self.event = None
-        self.send_invite = bool(data.get('send_invite'))
+        self.send_invite = bool(data.get('send_invite')) or not can_skip_link()
         if data.get('event_code'):
             self.event = _event_for(self.project, data['event_code'])
             if self.event is None:
@@ -175,10 +175,15 @@ class _InviteUserHandler(HtmxFormHandler):
             organization=data.get('organization'), event=self.event)
 
     def after_commit(self, result):
+        """With a link, NUSD's ticket waits for the invitee; without, it goes now."""
         outcome, obj = result
         self.invite = None
-        if outcome == OUTCOME_QUEUED and self.send_invite:
+        if outcome != OUTCOME_QUEUED:
+            return
+        if self.send_invite:
             self.invite, = send_invite_links([obj], requested_by=current_user.username)
+        else:
+            send_ticket(obj, requested_by=current_user.username)
 
     def context(self):
         events = _project_events(self.project)
@@ -275,7 +280,7 @@ def htmx_invite_preview(project):
                                sponsor=_sponsor(), event=event)
     notes = [f'The link is created when you click Invite and is valid for '
              f'{_ttl_days()} days.']
-    if not data.get('send_invite'):
+    if not data.get('send_invite') and can_skip_link():
         notes.append('The box is unticked: Invite queues the request and sends no email.')
     return render_email_preview(
         invite_messages(rows, sent_at=datetime.now(), requested_by=current_user.username,

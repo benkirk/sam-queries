@@ -1,0 +1,9 @@
+Hello {{ name }},
+
+Your request for an NCAR HPC account{% if project_code %} on project {{ project_code }}{% endif %}{% if event_name %}, for "{{ event_name }}"{% endif %}, has been received{% if sponsor_name %} (you were invited by {{ sponsor_name }}){% endif %}.
+
+It is now with the team that creates NCAR HPC accounts. They will contact
+you at this address; nothing more is needed from you for now.
+{% include "_agreement.txt" %}
+--
+NSF NCAR Systems Accounting Manager

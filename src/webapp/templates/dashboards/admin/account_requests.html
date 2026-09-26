@@ -3,7 +3,8 @@
   Admin -> Accounts: the HPC account-request queue NUSD works.
 
   Context:
-    form_id, target_id, fragment_url, facets
+    form_id, target_id, fragment_url, facets, initial_url (fragment_url, or
+    fragment_url?request=<id> when the page was opened from a ticket link)
 
   The card (fragments/account_requests_card.html) is loaded by htmx and
   refreshed by `refreshAccountQueue`. Its facet state lives in the hidden
@@ -38,7 +39,7 @@
 </form>
 
 <div id="{{ target_id }}"
-     hx-get="{{ fragment_url }}"
+     hx-get="{{ initial_url }}"
      hx-trigger="load, refreshAccountQueue from:body, submit from:#{{ form_id }}"
      hx-include="#{{ form_id }}"
      hx-swap="innerHTML">

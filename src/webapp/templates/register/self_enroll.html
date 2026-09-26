@@ -30,7 +30,7 @@
     project{% endif %}, so you can use its resources — no new account request needed.
 </p>
 
-<form method="post" action="{{ url_for('register.self_enroll', event_code=event.event_code) }}">
+<form method="post" action="{{ url_for('register_events.self_enroll', event_code=event.event_code) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn btn-primary">
         <i class="fa-solid fa-user-check"></i> Enroll me in {{ event.name }}

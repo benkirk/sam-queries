@@ -53,19 +53,13 @@ class SAMWebappConfig(SAMConfig):
     # serves it [PR295 P0-3]; helm sets the env var explicitly either way.
     COMPONENT_GALLERY_ENABLED = os.getenv('COMPONENT_GALLERY_ENABLED', '1').lower() in ('1', 'true', 'yes')
 
-    # The anonymous HPC account-registration form (/register). When off, the
-    # blueprint is not mounted and the URL 404s. ProductionConfig flips the
-    # default OFF: it ships dark and is switched on per deployment (the k8s
-    # dev overlay). Same idiom as COMPONENT_GALLERY_ENABLED. The Admin -> Accounts
-    # queue is not behind any flag; the project Invitations tab is gated by
-    # ACCOUNT_INVITATIONS_ENABLED (below), separately.
+    # The anonymous account-creation form: /register/, accept, pending, verify.
+    # Off: those routes 404. The /register/<code> event pages belong to
+    # ACCOUNT_INVITATIONS_ENABLED. ProductionConfig defaults this off.
     ACCOUNT_REGISTRATION_ENABLED = os.getenv('ACCOUNT_REGISTRATION_ENABLED', '1').lower() in ('1', 'true', 'yes')
-    # The internal invitation workflows -- the project Invitations tab: invite
-    # a person, create/edit events, roster paste. Gates the tab and its routes
-    # (a 404 when off, per _invitations_enabled in dashboards/project_invites.py).
-    # ProductionConfig flips the default OFF so the initial prod capability is
-    # XRAS mirroring only (the sweep-fed Accounts queue); the Accounts queue and
-    # the XRAS Pending-Users card stay live regardless.
+    # The invitation workflows: the project Invitations tab, the invitee link
+    # (/register/invite/<token>), the /register/<code> event pages and the
+    # Upcoming Events card. Off: all of them 404. ProductionConfig defaults off.
     ACCOUNT_INVITATIONS_ENABLED = os.getenv('ACCOUNT_INVITATIONS_ENABLED', '1').lower() in ('1', 'true', 'yes')
     # Host that links in outgoing mail point at, e.g. https://sam.hpc.ucar.edu/.
     # Empty: the host of the request that sent the mail.
@@ -359,9 +353,9 @@ class ProductionConfig(SAMWebappConfig):
     # The EULA gate and the human check (HUMAN_CHECK_PROVIDER) ride along;
     # client-IP forwarding is still a 6.1 precondition for a public prod form.
     ACCOUNT_REGISTRATION_ENABLED = os.getenv('ACCOUNT_REGISTRATION_ENABLED', '0').lower() in ('1', 'true', 'yes')
-    # Default OFF in production -- the invitation workflows ship dark so the
-    # initial prod capability is the XRAS-mirrored queue only; enabled per
-    # deployment, like ACCOUNT_REGISTRATION_ENABLED.
+    # Default OFF in production; the chart (helm/values.yaml) opts in, like
+    # ACCOUNT_REGISTRATION_ENABLED. Production serves this on with the
+    # creation form off.
     ACCOUNT_INVITATIONS_ENABLED = os.getenv('ACCOUNT_INVITATIONS_ENABLED', '0').lower() in ('1', 'true', 'yes')
 
     @classmethod
