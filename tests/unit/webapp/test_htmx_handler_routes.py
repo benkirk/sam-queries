@@ -443,31 +443,35 @@ class TestRenewalPreviews:
         assert resp.status_code in (302, 403)
 
 
+@pytest.fixture
+def lead_client(auth_client, monkeypatch):
+    """benkirk with the operator grants stripped: a plain project lead."""
+    from webapp.utils import rbac
+    from webapp.utils.rbac import Permission
+    real = rbac.get_user_permissions
+    monkeypatch.setattr(
+        rbac, 'get_user_permissions',
+        lambda user, *a, **k: {p for p in real(user, *a, **k)
+                               if p not in (Permission.EDIT_PROJECT_MEMBERS,
+                                            Permission.MANAGE_ACCOUNT_REQUESTS,
+                                            Permission.SYSTEM_ADMIN)})
+    return auth_client
+
+
+@pytest.fixture
+def led_projcode(session):
+    from sam.core.users import User
+    me = User.get_by_username(session, 'benkirk')
+    project = (session.query(Project)
+               .filter(Project.project_lead_user_id == me.user_id, Project.is_active)
+               .order_by(Project.project_id).first())
+    assert project is not None, 'benkirk leads no active snapshot project'
+    return project.projcode
+
+
 class TestAddMemberDatesAreAnOperatorsTool:
     """The date row renders only for EDIT_PROJECT_MEMBERS holders, and the
     handler drops posted dates from anyone else."""
-
-    @pytest.fixture
-    def lead_client(self, auth_client, monkeypatch):
-        from webapp.utils import rbac
-        from webapp.utils.rbac import Permission
-        real = rbac.get_user_permissions
-        monkeypatch.setattr(
-            rbac, 'get_user_permissions',
-            lambda user, *a, **k: {p for p in real(user, *a, **k)
-                                   if p not in (Permission.EDIT_PROJECT_MEMBERS,
-                                                Permission.SYSTEM_ADMIN)})
-        return auth_client
-
-    @pytest.fixture
-    def led_projcode(self, session):
-        from sam.core.users import User
-        me = User.get_by_username(session, 'benkirk')
-        project = (session.query(Project)
-                   .filter(Project.project_lead_user_id == me.user_id, Project.is_active)
-                   .order_by(Project.project_id).first())
-        assert project is not None, 'benkirk leads no active snapshot project'
-        return project.projcode
 
     def test_a_lead_sees_no_date_inputs(self, lead_client, led_projcode):
         html = lead_client.get(f'/project-members/{led_projcode}/add-form').get_data(as_text=True)
@@ -496,3 +500,31 @@ class TestAddMemberDatesAreAnOperatorsTool:
                             lambda user, *a, **k: real(user, *a, **k) | {Permission.EDIT_PROJECT_MEMBERS})
         html = auth_client.get(f'/project-members/{led_projcode}/add-form').get_data(as_text=True)
         assert 'id="htmxStartDate"' in html and 'id="htmxEndDate"' in html
+
+
+class TestAddMemberPointsAtInvitations:
+    """The modal is for people who already hold an account. Where the
+    Invitations tab is mounted, the footnote links there; without it, the
+    fallback is the help address."""
+
+    def _form(self, client, projcode):
+        return client.get(f'/project-members/{projcode}/add-form').get_data(as_text=True)
+
+    def test_a_lead_is_pointed_at_the_invitations_tab(self, lead_client, led_projcode):
+        html = self._form(lead_client, led_projcode)
+        assert f'/admin/project/{led_projcode}/edit?tab=invitations' in html
+        assert 'help@ucar.edu' not in html
+
+    def test_without_invitations_the_help_address_stands(self, app, lead_client, led_projcode,
+                                                          monkeypatch):
+        monkeypatch.setitem(app.config, 'ACCOUNT_INVITATIONS_ENABLED', False)
+        html = self._form(lead_client, led_projcode)
+        assert 'help@ucar.edu' in html
+        assert 'tab=invitations' not in html
+
+    def test_the_error_rerender_keeps_the_link(self, lead_client, led_projcode):
+        resp = lead_client.post(f'/project-members/{led_projcode}/add',
+                                data={'username': 'zz.no.such.user'})
+        html = resp.get_data(as_text=True)
+        assert resp.status_code == 200 and 'not found' in html
+        assert 'tab=invitations' in html
