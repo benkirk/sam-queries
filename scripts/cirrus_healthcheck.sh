@@ -306,7 +306,9 @@ else
     PDB_JSON=$("${KCTL_NS[@]}" get pdb -o json 2>/dev/null || echo '{"items":[]}')
     pdb_name=$(echo "$PDB_JSON" | jq -r --arg n "$WEBAPP_NAME" \
                  '.items[] | select(.spec.selector.matchLabels.app==$n) | .metadata.name' | head -1)
-    if [[ -z "$pdb_name" ]]; then
+    if [[ -z "$pdb_name" && "$REPLICAS" -le 1 ]]; then
+        info "no PodDisruptionBudget for app=$WEBAPP_NAME — correct at $REPLICAS replica (one would block node drains)"
+    elif [[ -z "$pdb_name" ]]; then
         warn "no PodDisruptionBudget selects app=$WEBAPP_NAME — a node drain can evict all replicas at once"
     else
         pdb_min=$(echo "$PDB_JSON" | jq -r --arg p "$pdb_name" \

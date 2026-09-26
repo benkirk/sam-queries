@@ -78,8 +78,8 @@ scripts/cirrus_watch.sh --env dev                                   # app / pod 
 
 `cirrus_watch --env dev` skips the XRAS/db-load reads (dev SAM is Postgres) and
 prints the web line + a `↳ split` on any slow (>5 s) request. Those pod-log
-sections need kubectl RBAC in `sam-queries-dev`; without it the tick says
-`k8s: no RBAC` and only the `http:` line is live (see the `watch-dev` skill). **Most profiling
+sections need kubectl RBAC in `sam-queries-dev` (Ben has it; without it the tick
+says `k8s: no RBAC` and only the `http:` line is live, see `watch-dev`). **Most profiling
 targets are sub-second and never trip that split** — grep the pod log directly
 for one request's tokens by its `rid` (= the driver's `X-Request-ID`):
 

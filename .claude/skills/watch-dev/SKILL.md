@@ -25,30 +25,33 @@ scripts/cirrus_watch.sh --context nwc1 --env dev
 `samuel-dev.k8s.ucar.edu` and its own state file (`sam-watch/state-dev`). The
 preflight probes the ingress on 443, not a DB.
 
-## 2. What the tick can see today
+## 2. What the tick can see
 
 | Line | On dev |
 |---|---|
-| `http: ready …` | **The health signal.** `/api/v1/health/ready` over HTTPS: `sam` must be healthy (FAIL otherwise); `system_status` down reads `degraded` (WARN). |
-| `k8s: no RBAC in sam-queries-dev` | Expected while kubectl access is pending. Web, pods, cache and tasks are skipped. Not a fault. |
+| `http: ready …` | **The outside-in health signal.** `/api/v1/health/ready` over HTTPS: `sam` must be healthy (FAIL otherwise); `system_status` down reads `degraded` (WARN). |
+| `web:` / `pods:` / `cache:` / `tasks:` | As on prod (kubectl RBAC in `sam-queries-dev` landed 2026-09-26). One replica, one Redis, the dev dispatcher. |
+| `k8s: no RBAC in sam-queries-dev` | Printed only for a user without kubectl access there: the four pod-log sections are skipped and `http:` is the one live line. Not a fault on dev. |
 | `xras: skipped` / `dbload: skipped` | By design: XRAS never posts to dev, and dev SAM is Postgres. |
 
 For the database side, run the peer repo's `cnpg_watch.sh --database sam_dev`
 (recipe in `profile-dev` §3). nwc1 reports a namespace you have no RBAC in as
-**NotFound**, so `cirrus_healthcheck.sh --env dev` fails at its first check until
-access lands.
+**NotFound**, so without access `cirrus_healthcheck.sh --env dev` fails at its
+first check.
 
 ## 3. Did the pin roll?
 
 A staging merge builds an image and pins `cirrus-dev` about 10 minutes later
 (`git log -1 origin/cirrus-dev` names the sha); Argo then syncs `sam-query-dev`.
-To confirm the served image without kubectl:
+The tick's `pods: sha=` line names the served image; compare it to the pin.
+Without kubectl, the Argo UI `sam-query-dev` app shows the synced revision, or
+probe a route the change added or removed (for example `/dev/gallery/`, mounted
+by #603: 302 to login when live, 404 when not).
 
-- the Argo UI `sam-query-dev` app shows the synced revision and image; or
-- probe a route the change added or removed. For example, #603 mounted
-  `/dev/gallery/`: it answers 302 to login when live and 404 when not.
-
-Once RBAC lands, the `pods: sha=` line answers this directly.
+`cirrus_healthcheck.sh --env dev` reads three WARNs on a healthy dev: the kill
+switch (values-dev disables five tasks on purpose) and, during a roll, a startup
+probe "connection refused" event. A PodDisruptionBudget is not expected at one
+replica and the check says so.
 
 ## 4. What is normal on dev and not on prod
 

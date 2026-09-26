@@ -4,8 +4,8 @@
 side (§4) landed the same day as eight commits on `k8s_dev_plan` → `staging`, each
 leaving the prod render byte-identical. Since 2026-09-23 Argo CD application
 `sam-query-dev` (AppProject `csg`) deploys samuel-dev into its own namespace,
-`sam-queries-dev`, and `make deploy-dev` is retired. Open: kubectl RBAC in
-`sam-queries-dev` and the separate Entra registration — see §10. This is Stage 5 of `docs/plans/implemented/POSTGRES_MIGRATION.md`:
+`sam-queries-dev`, and `make deploy-dev` is retired; kubectl RBAC there landed
+2026-09-26. Open: the separate Entra registration — see §10. This is Stage 5 of `docs/plans/implemented/POSTGRES_MIGRATION.md`:
 a second install of the `samuel` chart on nwc1, serving `samuel-dev.k8s.ucar.edu`
 from the CNPG `sam_dev` Postgres copy, deployable from any branch without touching
 production.
@@ -30,7 +30,7 @@ the GitOps controller, the safety gates, and the runbook.
 | Question | Decision | Why |
 |---|---|---|
 | Same chart or a second app | **Same chart, a `values-dev.yaml` overlay** | Every object name already comes from values (`webapp.name`, `cache.name`, `tasks.name`), never `.Release.Name`. A second chart would copy ten templates to change six values. |
-| Namespace | **Own `sam-queries-dev`** (bootstrapped in `sam-queries`; CIRRUS moved it 2026-09-23 when Argo adopted it) | Ben's RBAC covered every kind the chart creates in `sam-queries`, so the laptop bootstrap went there. The platform team provisioned `sam-queries-dev` with the Argo app; kubectl RBAC there is a separate request. |
+| Namespace | **Own `sam-queries-dev`** (bootstrapped in `sam-queries`; CIRRUS moved it 2026-09-23 when Argo adopted it) | Ben's RBAC covered every kind the chart creates in `sam-queries`, so the laptop bootstrap went there. The platform team provisioned `sam-queries-dev` with the Argo app; kubectl RBAC there followed on 2026-09-26. |
 | Deploy path | **Bootstrap, then GitOps** (done) | CI grows a `target` and pins a locked `cirrus-dev` branch. A laptop `make deploy-dev` bootstrapped it; Argo Application `sam-query-dev` deploys it since 2026-09-23 and the make target is gone. Same value files both ways. |
 | What reaches dev | **push to `staging` → dev; `gh workflow run --ref <branch>` → dev by default** | Staging regains a real deploy target. Prod only from push to `main`, `v*` tags, or an explicit `target=prod`. |
 | SAM database | CNPG `sam_dev` on Postgres | The Stage 5 premise. Postgres-dev / MySQL-prod skew is accepted. |
@@ -410,7 +410,7 @@ make target.
 | 5 | UCAR IT (Andrew Tamagni) | Entra app registration "SAM dev": reply URL `https://samuel-dev.k8s.ucar.edu/auth/oidc/callback`, post-logout `https://samuel-dev.k8s.ucar.edu/status/`, scopes `openid email profile`, claims `preferred_username`, `email`, `sub` (checklist in `infrastructure/README.md`). Interim: add both dev URLs to the prod registration. | browser login only |
 | 6 | automatic (verify) | DNS `samuel-dev.k8s.ucar.edu` → `128.117.41.126`, expected to appear from the Ingress host. If it has not resolved a few minutes after the first apply, it becomes a platform ticket. | cert, reachability |
 | 7 | automatic | cert-manager issues `incommon-cert-samuel-dev` from the Ingress annotation once DNS resolves. | — |
-| 8 | CSG platform | Argo Application `sam-query-dev` (§6.3) — done 2026-09-23, namespace `sam-queries-dev`; Ben has Argo UI access, kubectl RBAC there requested | Phase 2 only |
+| 8 | CSG platform | Argo Application `sam-query-dev` (§6.3) — done 2026-09-23, namespace `sam-queries-dev`; Ben has Argo UI access and, since 2026-09-26, kubectl RBAC there | Phase 2 only |
 
 **Entra is not a blocker for the first deploy.** With item 3 filled from prod's values
 the pods start, health is green, API-key access and anonymous pages work; only browser
@@ -577,4 +577,4 @@ Steve) in `XRAS_SUBMISSION.md` § 5 (this directory).
 | First `make deploy-dev`; DNS + cert live | done 15:04Z; 6 ExternalSecrets synced, cert Ready <1 min, A record by external-dns, `/` + `/ready` healthy on `sam_dev` + `system_status_dev` (101 models, no drift), `pg_stat_activity` isolation clean, first CronJob run touched dev only; one `rollout restart` for §6.4 | 2026-09-13 |
 | Entra dev registration | interim: dev reply URL on prod's registration, verified (no AADSTS error); separate registration open | 2026-09-13 |
 | Argo `sam-query-dev`; `deploy-dev` retired | done; own namespace `sam-queries-dev`, auto-follows the `cirrus-dev` pin; stale `incommon-cert-samuel-dev` Secret deleted from `sam-queries`; scripts' `--env dev` targets the new namespace | 2026-09-23 |
-| kubectl RBAC in `sam-queries-dev` | requested; until then `cirrus_watch.sh --env dev` reads `/ready` over HTTPS only (the `watch-dev` skill) | |
+| kubectl RBAC in `sam-queries-dev` | done; `cirrus_watch.sh --env dev` and `cirrus_healthcheck.sh --env dev` read every section (the `watch-dev` skill) | 2026-09-26 |
