@@ -164,24 +164,25 @@ sam-queries/
   `sam.manage.account_requests.reconcile_account_requests()`; a render never
   writes. Design + as-built record: `docs/plans/implemented/ACCOUNT_REGISTRATION.md`.
   Surfaces: Admin → Accounts (`MANAGE_ACCOUNT_REQUESTS`), Manage Project →
-  Invitations, the Pending Users column, and the anonymous `/register` form
-  behind `ACCOUNT_REGISTRATION_ENABLED` (off in prod, on in dev) and, while
-  `ACCOUNT_REGISTRATION_LOGIN_REQUIRED` is on (the default), signed-in only.
+  Invitations, the Pending Users column, and the anonymous creation form
+  (`/register/`, `ACCOUNT_REGISTRATION_ENABLED`, off in prod). The `/register/<code>`
+  event pages (`register/events.py`) ride `ACCOUNT_INVITATIONS_ENABLED` instead.
   The **event lifecycle** (create/edit/close/reopen) is `MANAGE_EVENTS`
   everywhere: Admin → Events (always mounted) and the Invitations tab share
-  `webapp/dashboards/event_lifecycle.py`. `listed` opts an event onto the
-  public Upcoming Events card on `/status/events`, which renders only while
-  `ACCOUNT_REGISTRATION_ENABLED` is on (its link 404s otherwise); the listing is
-  memoized there and every lifecycle write invalidates it. Admin → Events is
-  facility-scoped (`all_events(facility_names=)` + a per-event facility check)
-  and carries the enrollee list and roster paste; a roster is an account-request
-  write, so its routes stay `MANAGE_ACCOUNT_REQUESTS`. Records:
+  `webapp/dashboards/event_lifecycle.py`. `listed` opts an event onto the public
+  Upcoming Events card on `/status/events` (rendered only while
+  `ACCOUNT_INVITATIONS_ENABLED` is on; memoized, invalidated by every lifecycle
+  write). Admin → Events is facility-scoped (`all_events(facility_names=)` + a
+  per-event check) and carries the enrollee list and roster paste; a roster is an
+  account-request write, so its routes stay `MANAGE_ACCOUNT_REQUESTS`. Records:
   `docs/plans/implemented/EVENTS_VIEWS.md`, `EVENTS_FOLLOWUPS.md`.
   The sponsor's **invitation link** is `register_invite` (`/register/invite/`),
-  mounted with `ACCOUNT_INVITATIONS_ENABLED` and with **no login hook** (the
-  signed token, bound to `invite_sent_at`, is the capability); submitting
-  updates the sponsor's row in place. `invite_only` events close every
+  mounted with `ACCOUNT_INVITATIONS_ENABLED`, **no login hook** (the signed token,
+  bound to `invite_sent_at`, is the capability); submitting updates the sponsor's
+  row in place and mails the invitee a receipt. `invite_only` events close every
   self-service path. Record: `docs/plans/implemented/ACCOUNT_INVITE_LINKS.md`.
+  **NUSD's handoff is one text-only Jira ticket per request** (`account_ticket`,
+  `register/handoff_mail.py`, ACCOUNT_REGISTRATION.md D22); the digest stays off.
 
 ### Security / Integration
 - **Role**, **ApiCredentials** (bcrypt-hashed), **RoleApiCredentials**
@@ -748,12 +749,12 @@ makes `smtplib.SMTP` raise so no test can open a socket whatever its config.
 | **The key is pre-redirect** | built from the *intended* recipient, so `NOTIFY_REDIRECT_TO` cannot collapse a staging run onto one key. |
 | **Ledger transactions** | `notification_log` commits on its **own** session — mail cannot be un-sent by a rollback. This is the inverse of `xras_activation_event`, which commits *inside* `management_transaction`. |
 | **`preview()` writes no row** | a preview is not an attempt; a stray row would poison the dedup query. |
-| **Preview** | every operator send point (XRAS and Project Notify, invite, resend, roster ×2, reject, digest, renew/extend) previews through `webapp/utils/email_preview.py` → `Notifier.preview_delivery()` on `get_notifier(read_only=True)`, building with the send's own builder (`invite_messages`, `plan_renew_allocations`, ...): the same redirect, addressing, `NOTIFY_BCC` (`Transport.envelope_copies`) and overrides as the send, plus "already sent on" from `last_sent_many`. A read-only ledger's `record` raises, so that notifier cannot send. One pane: `dashboards/fragments/email_preview.html` (never a `<form>` or modal toggle; always 200). Spec: `docs/plans/MAIL_PREVIEW.md`. |
+| **Preview** | every operator send point (XRAS and Project Notify, invite, resend, roster ×2, reject, digest, renew/extend) previews through `webapp/utils/email_preview.py` → `Notifier.preview_delivery()` on `get_notifier(read_only=True)`, building with the send's own builder (`invite_messages`, `plan_renew_allocations`, ...): the same redirect, addressing, `NOTIFY_BCC` (`Transport.envelope_copies`) and overrides as the send, plus "already sent on" from `last_sent_many`. A read-only ledger's `record` raises, so that notifier cannot send. One pane: `dashboards/fragments/email_preview.html` (never a `<form>` or modal toggle; always 200). Spec: `docs/plans/implemented/MAIL_PREVIEW.md`. |
 | **Templates** | `src/sam/notify/templates/`, resolved `{base}-{facility}` → `{base}-UNIV` → `{base}`. Text selects the variant and HTML follows it — never resolved independently, or a WNA recipient gets UNIV HTML. |
 | **Visibility** | Admin → Configuration → Notifications (`VIEW_SYSTEM_CONFIG`, counts only) → `Details »` (`SYSTEM_ADMIN`, rows name real addresses). |
 | **Approver's note** | `adminComments` from the XRAS reports feed (`src/sam/integration/xras_api/comments.py`, keyed by projcode + `actionId`), resolved by the Notify route and the `xras_notices` task and handed to `build_xras_messages(approver_comment=...)`. Fail-open: unconfigured/XRAS down/no match → `None` + one log line, never a withheld mail. Rendered on the **PI's copy only** — `build_xras_messages` sets the note on the lead's message and `None` on a non-lead's, so the admin's mail never carries it. |
 | **Family addressing** | `NOTIFY_<FAMILY>_{CC,BCC,FROM,REPLY_TO}` (family = a `FAMILIES` key in `kinds.py`) is filled onto empty `Message` fields by the `Notifier`; a builder-set cc/bcc replaces the env default. On top, `notification_addressing` rows (scope = family, kind, or `{kind}-{facility}` stem, e.g. `expiration-WNA`) **always add**, read once per `Notifier` through the ledger's session factory, fail-open. Admin → Notifications → **Addressing** (`SYSTEM_ADMIN`) adds/removes rows; deployment defaults are shown read-only. `Message.copies()` is the one redirect-drop rule (transports and ledger read it); what left is recorded in `notification_log.copies` as `cc:a@x;bcc:b@y`. The CronJob forwards every non-empty `NOTIFY_*` by prefix. `NOTIFY_BCC` is the kind-blind global. |
-| **Account family** | `account_queue_summary` (the open queue to `NOTIFY_ACCOUNT_QUEUE_TO`, keyed on the day so the Send button and the weekly `account_queue_digest` task cannot both send it) `account_verify` (the public form's link + code; its context carries **nothing the visitor typed**) `account_rejected` (the reject form's checkbox, operator-chosen, keyed on `closed_at` so a reopen can notify again) and `account_invite` (the sponsor's checkbox or Resend, keyed on `invite_sent_at`, the stamp its link is signed with; never carries the sponsor's note). Keep `NOTIFY_ACCOUNT_CC` empty — it would copy every verification mail; a copy on the digest alone is a kind-scoped Addressing row. |
+| **Account family** | `account_queue_summary` (the open queue to `NOTIFY_ACCOUNT_QUEUE_TO`, keyed on the day so the Send button and the weekly `account_queue_digest` task cannot both send it) `account_verify` (the public form's link + code; its context carries **nothing the visitor typed**) `account_rejected` (the reject form's checkbox, operator-chosen, keyed on `closed_at` so a reopen can notify again) `account_invite` (the sponsor's checkbox or Resend, keyed on `invite_sent_at`, the stamp its link is signed with; never carries the sponsor's note) `account_request_received` (the invitee's receipt, keyed on `completed_at`; it and the verify mail append the accepted EULA via `_agreement.{txt,html}`, passed in by the webapp because `sam.notify` cannot import it) and `account_ticket` (NUSD's text-only Jira ticket, keyed on the row, From/To `NOTIFY_ACCOUNT_TICKET_{FROM,TO}`). Keep `NOTIFY_ACCOUNT_CC` empty — it would copy every verification mail; a copy on the digest alone is a kind-scoped Addressing row. |
 | **Templates / overrides** | Admin → Notifications → **Templates** (`SYSTEM_ADMIN`) edits any of the 30 shipped files; a save writes `notification_template_override` (keyed by file name) and the renderer prefers the row on the **next** renderer build, one `SELECT` per `Notifier`. Reset deletes the row. `sam/notify/samples.py` is both the preview input and the variables table; `_email_base.html` (underscore = developer-owned) is never editable. Save **renders** the body against the sample context, because a sandbox refusal is a runtime error. "Preview for" a real project goes through `sam/queries/notification_previews.py` (`build_xras_messages(kind=)` forces the template's kind). Record: `docs/plans/implemented/NOTIFICATION_TEMPLATE_EDITOR.md`. |
 
 **Batch knobs**: `send_many(chunk_size=N)` opens one transport connection per N
@@ -799,12 +800,11 @@ named in `SAM_TASKS_DISABLED`** pending a soak.
 
 ### The account-request tasks
 
-`account_requests_reconcile` (hourly :20, DB-only: stamps fulfilled requests,
-enrolls inside a savepoint so one project without accounts cannot fail the
+`account_requests_reconcile` (hourly :20, DB-only, **live in prod**: stamps fulfilled
+requests, enrolls inside a savepoint so one project without accounts cannot fail the
 pass, purges unverified public rows past `SAM_TASKS_ACCOUNT_PURGE_DAYS`) and
-`account_queue_digest` (Monday 08:00 MT, one message, reconciles first,
-`SAM_TASKS_ACCOUNT_MAX` on the row count, an empty queue sends nothing, no
-summary mail). **Both ship named in `SAM_TASKS_DISABLED`.**
+`account_queue_digest` (Mon 08:00 MT, one message, reconciles first, `SAM_TASKS_ACCOUNT_MAX`
+on the row count, an empty queue sends nothing; **ships named in `SAM_TASKS_DISABLED`**).
 
 ⚠️ **`SAM_TASKS_DISABLED` is fail-OPEN.** Registering a task in
 `src/scheduling/tasks/` puts it into production **live** on the next hourly
@@ -944,13 +944,13 @@ Both show the stub login page with Quick Login buttons (stub auth accepts any
 password; `DISABLE_AUTH=0` is pinned for `webapp`). True auto-login is opt-in —
 see docs/AUTHENTICATION.md § Local development.
 
-**samuel-dev** (`https://samuel-dev.k8s.ucar.edu`) is a second install of the
-prod chart on nwc1 with `helm/values-dev.yaml` — Postgres `sam_dev`, own
-`system_status_dev`, mail and XRAS levers off. `gh workflow run "Publish Images
-and CIRRUS Deploy" --ref <branch>` pins it; `make deploy-dev` / `make
-refresh-dev`; every `scripts/cirrus_*.sh` takes `--env dev`. Limiter tiers are
-effectively off on dev (load-test target), login tier excepted. Record:
-`docs/plans/K8S_DEV_ENVIRONMENT.md`; `helm/tests/test-dev-render.sh` is the gate.
+**samuel-dev** (`https://samuel-dev.k8s.ucar.edu`): the prod chart on nwc1 with
+`helm/values-dev.yaml` — Postgres `sam_dev`, own `system_status_dev`, mail and
+XRAS levers off. Argo app `sam-query-dev` deploys it into `sam-queries-dev` from
+the `cirrus-dev` pin (every staging push, or `gh workflow run "Publish Images and
+CIRRUS Deploy" --ref <branch>`); `make refresh-dev` reloads its data; every
+`scripts/cirrus_*.sh` takes `--env dev` (`watch-dev` skill). Limiter tiers are off
+on dev except login. Record: `docs/plans/K8S_DEV_ENVIRONMENT.md`; gate: `helm/tests/test-dev-render.sh`.
 
 ### Adding New ORM Models
 1. Create the model in the matching domain module; add `SessionMixin` if it

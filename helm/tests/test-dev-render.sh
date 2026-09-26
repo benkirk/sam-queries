@@ -68,10 +68,9 @@ check_dev() {
   [[ "$(env_value "$deploy" FLASK_CONFIG)" == "production" ]] || { red "FAIL: FLASK_CONFIG must be production (the auth interlock)"; return 1; }
   [[ "$(env_value "$deploy" AUTH_PROVIDER)" == "oidc" ]] || { red "FAIL: AUTH_PROVIDER must be oidc"; return 1; }
   [[ "$(env_value "$deploy" DISABLE_AUTH)" == "0" ]] || { red "FAIL: DISABLE_AUTH must be 0 on a routable host"; return 1; }
-  # The anonymous /register form is live on dev (its test bed) and dark in prod.
+  # The anonymous account-creation form is live on dev (its test bed) and dark in prod.
   [[ "$(env_value "$deploy" ACCOUNT_REGISTRATION_ENABLED)" == "1" ]] || { red "FAIL: ACCOUNT_REGISTRATION_ENABLED must be 1 on dev"; return 1; }
-  # The project Invitations tab is live on dev and dark in prod (initial prod
-  # capability is the XRAS-mirrored Accounts queue only).
+  # The invitation workflows (tab, invite links, event pages) are live on dev as in prod.
   [[ "$(env_value "$deploy" ACCOUNT_INVITATIONS_ENABLED)" == "1" ]] || { red "FAIL: ACCOUNT_INVITATIONS_ENABLED must be 1 on dev"; return 1; }
   # The /dev/gallery component gallery is live on dev and dark in prod.
   [[ "$(env_value "$deploy" COMPONENT_GALLERY_ENABLED)" == "1" ]] || { red "FAIL: COMPONENT_GALLERY_ENABLED must be 1 on dev"; return 1; }
@@ -188,9 +187,13 @@ prod_deploy=$(render prod -s templates/deployment.yaml)
 [[ -z "$(env_value_names "$prod_deploy" 'RATELIMIT_(AUTHED|M2M|ANON|AUTH_LOGIN)')" ]] || {
   red "FAIL: prod must not carry a RATELIMIT_ tier override (only the dev overlay raises them)"; exit 1; }
 [[ "$(env_value "$prod_deploy" ACCOUNT_REGISTRATION_ENABLED)" == "0" ]] || {
-  red "FAIL: the anonymous /register form must ship dark in prod (ACCOUNT_REGISTRATION_ENABLED=0)"; exit 1; }
-[[ "$(env_value "$prod_deploy" ACCOUNT_INVITATIONS_ENABLED)" == "0" ]] || {
-  red "FAIL: the project Invitations tab must ship dark in prod (ACCOUNT_INVITATIONS_ENABLED=0)"; exit 1; }
+  red "FAIL: the anonymous account-creation form must ship dark in prod (ACCOUNT_REGISTRATION_ENABLED=0)"; exit 1; }
+[[ "$(env_value "$prod_deploy" ACCOUNT_INVITATIONS_ENABLED)" == "1" ]] || {
+  red "FAIL: prod serves the invitation workflows and event pages (ACCOUNT_INVITATIONS_ENABLED=1)"; exit 1; }
+[[ "$(env_value "$prod_deploy" NOTIFY_ACCOUNT_TICKET_TO)" == "help@ucar.edu" ]] || {
+  red "FAIL: prod files NUSD's ticket into Jira-by-email (NOTIFY_ACCOUNT_TICKET_TO=help@ucar.edu)"; exit 1; }
+[[ -z "$(env_value "$(render dev -s templates/deployment.yaml)" NOTIFY_ACCOUNT_TICKET_TO)" ]] || {
+  red "FAIL: dev must never file a Jira ticket (NOTIFY_ACCOUNT_TICKET_TO empty)"; exit 1; }
 [[ "$(env_value "$prod_deploy" COMPONENT_GALLERY_ENABLED)" == "0" ]] || {
   red "FAIL: the component gallery must ship dark in prod (COMPONENT_GALLERY_ENABLED=0)"; exit 1; }
 [[ "$(env_value "$prod_deploy" HUMAN_CHECK_PROVIDER)" == "turnstile" ]] || {

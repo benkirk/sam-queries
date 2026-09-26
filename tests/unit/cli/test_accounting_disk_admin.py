@@ -15,6 +15,16 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
+
+# Every test here writes disk_charge_summary / disk_activity rows under the
+# same fixed date; two workers deadlock on that index gap and InnoDB's rollback
+# destroys the per-test SAVEPOINT ("sa_savepoint_N does not exist"). See
+# `serial_file_lock` in tests/conftest.py for why a lock, not `--dist loadgroup`.
+@pytest.fixture(autouse=True)
+def _one_worker_at_a_time(serial_file_lock):
+    with serial_file_lock('disk_admin_fixed_dates'):
+        yield
+
 from cli.cmds.admin import cli
 from cli.accounting import disk_usage as disk_usage_mod
 from cli.accounting import quota_readers as quota_readers_mod

@@ -13,5 +13,16 @@ The link and the code expire in 48 hours.
 
 If you did not make this request, ignore this message. The request is not
 visible to anyone until the address is confirmed, and it will be discarded.
+
+------------------------------------------------------------------------
+By requesting an NSF NCAR HPC account you have agreed to the following terms
+of use (accepted 2026-09-24):
+
+NWSC END USER AGREEMENT
+
+By requesting and receiving access to NSF NCAR computing resources at NWSC, you agree to the following terms and conditions.
+
+- You will use NWSC computer and information systems in an ethical manner and in compliance with the law.
+
 --
 NSF NCAR Systems Accounting Manager

@@ -34,7 +34,8 @@ SNAPSHOT = SNAPSHOTS / 'dashboard_route_map.json'
 #: ``dashboards/``, but they render into the user/status dashboards and their
 #: endpoints are named by ``url_for`` in a dozen templates — so their surface
 #: needs the same gate. ``register_invite`` is the invitee's anonymous page,
-#: mounted with ``project_invites``.
+#: mounted with ``project_invites``; ``register_events`` is the event page
+#: beside it.
 DASHBOARD_BLUEPRINTS = (
     'admin_dashboard',
     'allocations_dashboard',
@@ -43,6 +44,7 @@ DASHBOARD_BLUEPRINTS = (
     'jobs',
     'project_invites',
     'project_members',
+    'register_events',
     'register_invite',
     'status_dashboard',
     'user_dashboard',

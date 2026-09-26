@@ -36,6 +36,8 @@ _SUBJECTS = {
     'account_verify': 'Verify your email address for your NCAR HPC account request',
     'account_rejected': 'Your NCAR HPC account request',
     'account_invite': 'You are invited to request an NCAR HPC account',
+    'account_request_received': 'Your NCAR HPC account request has been received',
+    'account_ticket': "New HPC User Request 'Ada Lovelace' for WRF-OCT-2026",
     'project_renewal': 'Your NSF NCAR project SCSG0001 has been renewed',
     'project_activation': 'Your NSF NCAR project SCSG0001 is now active',
     'project_adjustment': 'Your NSF NCAR project SCSG0001 allocations have been updated',
@@ -205,12 +207,39 @@ def _lifecycle(kind: str) -> Dict[str, Any]:
     }
 
 
+#: A two-sentence stand-in for the vendored agreement (webapp/register/eula.py).
+_EULA_TEXT = ('NWSC END USER AGREEMENT\n\nBy requesting and receiving access to NSF NCAR '
+              'computing resources at NWSC, you agree to the following terms and '
+              'conditions.\n\n- You will use NWSC computer and information systems in an '
+              'ethical manner and in compliance with the law.\n')
+_EULA_HTML = ('<h1>NWSC End User Agreement</h1><p>By requesting and receiving access to '
+              'NSF NCAR computing resources at NWSC, you agree to the following terms and '
+              'conditions.</p><ul><li>You will use NWSC computer and information systems '
+              'in an ethical manner and in compliance with the law.</li></ul>')
+
+
+def _agreement() -> Dict[str, Any]:
+    return {'eula_text': _EULA_TEXT, 'eula_html': _EULA_HTML,
+            'eula_accepted_on': '2026-09-24'}
+
+
 def _account_verify() -> Dict[str, Any]:
     return {
         'verify_url': 'https://sam.hpc.ucar.edu/register/verify/eyJpZCI6NDF9.abc.def',
         'code': '493027',
         'expires_hours': 48,
         'event_name': 'WRF Tutorial, October 2026',
+        **_agreement(),
+    }
+
+
+def _account_request_received() -> Dict[str, Any]:
+    return {
+        'name': 'Ada Lovelace',
+        'project_code': 'SCSG0001',
+        'event_name': 'WRF Tutorial, October 2026',
+        'sponsor_name': 'Jane Lead',
+        **_agreement(),
     }
 
 
@@ -237,6 +266,30 @@ def _account_invite() -> Dict[str, Any]:
     }
 
 
+def _account_ticket() -> Dict[str, Any]:
+    return {
+        'name': 'Ada Lovelace',
+        'email': 'ada.lovelace@example.edu',
+        'project_code': 'SCSG0001',
+        'requested_via': 'invitation by Jane Lead',
+        'organization': 'University of Example',
+        'academic_status': 'Faculty',
+        'residence_country': 'United Kingdom',
+        'phone': '+44 20 7946 0000',
+        'eula_accepted_on': '2026-09-24',
+        'eula_sha7': '5c2cca1',
+        'event_name': 'WRF Tutorial, October 2026',
+        'event_code': 'WRF-OCT-2026',
+        'deadline': '2026-10-05',
+        'sponsor_name': 'Jane Lead',
+        'orcid': '0000-0002-1825-0097',
+        'middle_name': 'Augusta',
+        'note': 'Visiting scholar for the fall term.',
+        'request_id': 41,
+        'queue_url': 'https://sam.hpc.ucar.edu/admin/account-requests?request=41',
+    }
+
+
 def sample_context(kind: str, facility: Optional[str] = None) -> Dict[str, Any]:
     """A builder-shaped context for ``kind``; raises ValueError on an unknown kind."""
     key = get_kind(kind).key
@@ -252,6 +305,10 @@ def sample_context(kind: str, facility: Optional[str] = None) -> Dict[str, Any]:
         return _account_rejected()
     if key == 'account_invite':
         return _account_invite()
+    if key == 'account_request_received':
+        return _account_request_received()
+    if key == 'account_ticket':
+        return _account_ticket()
     if key in _LIFECYCLE_ACTIONS:
         return _lifecycle(key)
     return _xras(key)
@@ -363,7 +420,7 @@ VARIABLE_NOTES: Dict[str, str] = {
     'rows.assignee': 'The operator who claimed it, or empty.',
     'rows.note': "The sponsor's or requester's note, one line, or empty.",
     'rows.invite': "Invitation link status: 'awaiting invitee', 'completed <date>', or empty.",
-    'queue_url': 'Link to the queue in SAM, or empty.',
+    'queue_url': 'Link to the queue in SAM (the ticket: pinned to its request), or empty.',
     'verify_url': 'The signed verification link.',
     'code': 'The six-digit code to type on the page the requester is on.',
     'expires_hours': 'Hours until the link and code expire.',
@@ -375,6 +432,22 @@ VARIABLE_NOTES: Dict[str, str] = {
     'accounts_needed_by': "The event's deadline, formatted, or empty.",
     'invite_url': 'The signed invitation link; opening it needs no login.',
     'expires_days': 'Days until the invitation link expires.',
+    'eula_text': 'The NWSC end-user agreement as plain text, or empty if the gate was not accepted.',
+    'eula_html': 'The same agreement as HTML, or empty.',
+    'eula_accepted_on': 'The date the requester accepted the agreement, formatted, or empty.',
+    'eula_sha7': 'The first seven characters of the accepted agreement text\'s SHA, or empty.',
+    'email': "The requester's email address.",
+    'requested_via': "How the request arrived: self-registration, an invitation, XRAS or an operator.",
+    'organization': "The requester's institution, or empty.",
+    'academic_status': "The requester's academic status, or empty.",
+    'residence_country': "The requester's country of residence, or empty.",
+    'phone': "The requester's phone number, or empty.",
+    'event_code': "The event's code, or empty.",
+    'deadline': "The event's accounts-needed-by date, formatted, or empty.",
+    'orcid': "The requester's ORCID, or empty.",
+    'middle_name': "The requester's middle name, or empty.",
+    'note': "The requester's purpose note or the sponsor's comment, one line, or empty.",
+    'request_id': 'The SAM account-request id.',
 }
 
 

@@ -136,10 +136,12 @@ def can_manage_project_members(user, project) -> bool:
     """
     Add/remove members from a project.
 
-    Granted to: system EDIT_PROJECT_MEMBERS holders, project lead,
-    project admin.
+    Granted to: system EDIT_PROJECT_MEMBERS holders, and the lead or admin
+    of the project or of any ancestor (the invitation routes, which add the
+    same rows, already walk the tree).
     """
-    return _is_project_steward(user, project, Permission.EDIT_PROJECT_MEMBERS)
+    return _is_project_steward(user, project, Permission.EDIT_PROJECT_MEMBERS,
+                               include_ancestors=True)
 
 
 def can_change_admin(user, project) -> bool:

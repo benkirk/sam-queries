@@ -32,7 +32,7 @@
             <td class="cursor-pointer" title="Who has enrolled" {{ collapse_toggle(eid) }}><i class="fa-solid fa-chevron-right small text-muted collapse-icon"></i></td>
             <td class="font-monospace text-nowrap">
                 {{ e.event_code }}
-                {% if not e.invite_only %}{{ copy_button(r.reg_url, label='Copy registration link', icon='fa-solid fa-link', compact=true, done='Registration link copied.') }}{% endif %}
+                {% if not e.invite_only and r.reg_url %}{{ copy_button(r.reg_url, label='Copy registration link', icon='fa-solid fa-link', compact=true, done='Registration link copied.') }}{% endif %}
             </td>
             <td>{{ e.name }}</td>
             <td class="text-nowrap">{{ project_link(r.project_code, can_view_projects, admin=True) }}

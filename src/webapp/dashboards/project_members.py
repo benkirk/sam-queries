@@ -15,7 +15,7 @@ Routes:
 
 from datetime import date, datetime
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, current_app, render_template, request, url_for
 from flask_login import login_required, current_user
 from marshmallow import ValidationError
 
@@ -32,6 +32,7 @@ from webapp.api.access_control import (
     require_project_member_access,
 )
 from webapp.utils.project_permissions import (
+    _is_project_steward,
     can_change_admin,
     can_manage_project_members,
 )
@@ -43,7 +44,7 @@ bp = Blueprint('project_members', __name__, url_prefix='/project-members')
 
 @bp.route('/<projcode>')
 @login_required
-@require_project_member_access(Permission.VIEW_PROJECT_MEMBERS)
+@require_project_member_access(Permission.VIEW_PROJECT_MEMBERS, include_ancestors=True)
 def members_fragment(project):
     """
     Lazy-loaded HTML fragment showing project members.
@@ -76,8 +77,21 @@ def htmx_add_member_form(project):
         'project_members/fragments/add_member_form_htmx.html',
         projcode=project.projcode,
         start_date=date.today().strftime('%Y-%m-%d'),
+        invitations_url=_invitations_url(project),
         errors=[]
     )
+
+
+def _invitations_url(project):
+    """The project's Invitations tab when this deployment mounts it and the
+    user would see it (the tab's own gate in edit_project.html), else None."""
+    if not current_app.config.get('ACCOUNT_INVITATIONS_ENABLED'):
+        return None
+    if not _is_project_steward(current_user, project, Permission.MANAGE_ACCOUNT_REQUESTS,
+                               include_ancestors=True):
+        return None
+    return url_for('admin_dashboard.edit_project_page',
+                   projcode=project.projcode, tab='invitations')
 
 
 class _AddMemberHandler(HtmxFormHandler):
@@ -86,6 +100,14 @@ class _AddMemberHandler(HtmxFormHandler):
 
     schema_cls = AddMemberForm
     template = 'project_members/fragments/add_member_form_htmx.html'
+
+    def form_input(self):
+        # Dates are offered to EDIT_PROJECT_MEMBERS holders only; a lead's
+        # form has no date inputs, so anything posted is dropped before
+        # validation rather than trusted.
+        if has_permission_any_facility(current_user, Permission.EDIT_PROJECT_MEMBERS):
+            return request.form
+        return {k: v for k, v in request.form.items() if k not in ('start_date', 'end_date')}
 
     def clean(self, data):
         self.member = db.session.query(User).filter_by(
@@ -107,6 +129,7 @@ class _AddMemberHandler(HtmxFormHandler):
             'projcode': self.project.projcode,
             'start_date': request.form.get('start_date', ''),
             'end_date': request.form.get('end_date', ''),
+            'invitations_url': _invitations_url(self.project),
         }
 
     def render_errors(self, errors, field_errors=None):

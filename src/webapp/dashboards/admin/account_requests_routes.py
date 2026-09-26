@@ -133,11 +133,15 @@ def _sort_views(views, sort):
 @login_required
 @require_permission(Permission.MANAGE_ACCOUNT_REQUESTS)
 def account_requests():
-    """The Accounts page: one card, loaded by htmx."""
+    """The Accounts page: one card, loaded by htmx. ``?request=<id>`` (the
+    link NUSD's ticket carries) pins the card to that one row."""
+    pinned = request.args.get('request', type=int)
     return render_template(
         'dashboards/admin/account_requests.html',
         form_id=_FORM_ID, target_id=_TARGET,
         fragment_url=url_for('admin_dashboard.account_requests_fragment'),
+        initial_url=url_for('admin_dashboard.account_requests_fragment',
+                            request=pinned or None),
         facets=_FACETS,
     )
 
@@ -150,6 +154,11 @@ def account_requests_fragment():
     show_all = read_flag(request.args, 'show_all')
     queue = queue_requests(db.session)
     rows = all_requests(db.session) if show_all else queue
+    # A pinned row shows whatever its state: an old ticket must still resolve.
+    pinned = request.args.get('request', type=int)
+    if pinned:
+        row = db.session.get(AccountRequest, pinned)
+        rows = [row] if row else []
     resolutions = resolve_requests(db.session, rows)
     events = events_for(db.session, rows)
     counts = queue_counts(queue, resolutions if show_all
@@ -179,7 +188,8 @@ def account_requests_fragment():
         groups=group_by_event(views),
         total=len(views), scoped_total=scoped_total,
         counts=counts, unverified=unverified_count(db.session),
-        show_all=show_all, search=search,
+        show_all=show_all, search=search, pinned=pinned,
+        queue_page_url=url_for('admin_dashboard.account_requests'),
         facet_values=facet_values, selected=selected,
         origin_labels=_ORIGIN_LABELS, readiness_labels=_READINESS_LABELS,
         sort=sort, sortable_columns=set(_SORT),
@@ -201,7 +211,8 @@ def _toast_error(message):
                         toast=message, toast_variant='danger', message=message)
 
 
-def _one_click(request_id, verb, action, done):
+def _one_click(request_id, verb, action, done, after=None):
+    """``after(row)`` runs once the write has committed (a send, never a write)."""
     row = _load(request_id)
     if row is None:
         return htmx_not_found('Account request')
@@ -210,6 +221,8 @@ def _one_click(request_id, verb, action, done):
             action(row)
     except ValueError as exc:
         return _toast_error(f'Cannot {verb}: {exc}')
+    if after is not None:
+        after(row)
     return htmx_success_message(_TRIGGERS, done.format(name=row.display_name))
 
 
@@ -235,9 +248,11 @@ def account_request_unclaim(request_id):
 @require_permission(Permission.MANAGE_ACCOUNT_REQUESTS)
 def account_request_verify(request_id):
     """An operator vouching for an address the mail round trip did not confirm."""
+    from webapp.register.handoff_mail import send_ticket
     return _one_click(request_id, 'verify',
                       lambda row: row.mark_verified(current_user.username),
-                      'Marked {name} verified; the request is now in the queue.')
+                      'Marked {name} verified; the request is now in the queue.',
+                      after=lambda row: send_ticket(row, requested_by=current_user.username))
 
 
 @bp.route('/account-requests/<int:request_id>/reopen', methods=['POST'])

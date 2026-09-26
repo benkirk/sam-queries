@@ -18,7 +18,7 @@ SENT = datetime(2026, 9, 24, 9, 0, 0)
 PERSON = {'first_name': 'Ada', 'middle_name': '', 'last_name': 'Lovelace',
           'organization': 'University of Example', 'academic_status': 'Faculty',
           'residence_country': 'United Kingdom', 'phone': '+44 20 7946 0000',
-          'orcid': '0000-0002-1825-0097', 'desired_username': 'ada'}
+          'orcid': '0000-0002-1825-0097'}
 
 
 def _address():
@@ -43,19 +43,37 @@ class FakeNotifier:
 
 
 @pytest.fixture
-def mailer(monkeypatch):
+def mailer(app, monkeypatch):
+    """The invite-link mailer; ``.handoff`` records receipts and NUSD tickets,
+    with the ticket address configured."""
     fake = FakeNotifier()
+    fake.handoff = FakeNotifier()
     monkeypatch.setattr('webapp.register.invite_mail.get_notifier', lambda **_: fake)
+    monkeypatch.setattr('webapp.register.handoff_mail.get_notifier', lambda **_: fake.handoff)
+    monkeypatch.setitem(app.config, 'NOTIFY_ACCOUNT_TICKET_TO', 'help@example.invalid')
     return fake
+
+
+def _tickets(fake):
+    return [m for m in fake.handoff.messages if m.kind == 'account_ticket']
 
 
 @pytest.fixture
 def no_mail(monkeypatch):
-    """Completing the form must send nothing: any mailer call fails the test."""
+    """The invitee side sends only through handoff_mail (recorded here); any
+    other mailer call fails the test."""
     def _boom(**_):
-        raise AssertionError('the invitee side must not send mail')
+        raise AssertionError('the invitee side must not send through this mailer')
     monkeypatch.setattr('webapp.register.invite_mail.get_notifier', _boom)
     monkeypatch.setattr('webapp.register.blueprint.get_notifier', _boom)
+    fake = FakeNotifier()
+    monkeypatch.setattr('webapp.register.handoff_mail.get_notifier', lambda **_: fake)
+    return fake
+
+
+@pytest.fixture
+def ticket_address(app, monkeypatch):
+    monkeypatch.setitem(app.config, 'NOTIFY_ACCOUNT_TICKET_TO', 'help@example.invalid')
 
 
 @pytest.fixture
@@ -240,7 +258,7 @@ class TestCompleting:
         assert 'value="Ada"' in html and 'value="Lovelace"' in html
         assert email in html and 'name="email"' not in html
         for absent in ('name="website"', 'name="event_code"', 'name="purpose_note"',
-                       'data-human-check-submit', 'temporarily limited'):
+                       'data-human-check-submit', 'limits the form to'):
             assert absent not in html, absent
         assert 'visiting scholar' not in html, "the sponsor's note is for NUSD only"
         assert f'action="/register/invite/{token}"' in html
@@ -267,7 +285,7 @@ class TestCompleting:
         assert row.email == email, 'the vouched address is not a form field'
         assert (row.phone, row.residence_country, row.academic_status) == (
             PERSON['phone'], 'United Kingdom', 'Faculty')
-        assert row.orcid == PERSON['orcid'] and row.desired_username == 'ada'
+        assert row.orcid == PERSON['orcid'] and row.desired_username is None
         assert row.completed_at is not None
         assert row.eula_sha == eula_sha() and row.eula_accepted_at is not None
         assert row.event_id is None and row.comment == 'visiting scholar'
@@ -275,6 +293,49 @@ class TestCompleting:
             assert db.session.query(AccountRequest).filter_by(email=email).count() == 1
         assert 'We already have your details' in _html(client.get(f'/register/invite/{token}'))
         assert 'request is complete' in _html(client.get('/register/invite/complete'))
+
+    def test_a_submit_mails_the_invitee_a_receipt_with_the_agreement(self, client, app,
+                                                                     make_invite, no_mail):
+        from webapp.register.eula import eula_text
+        row_id, token = make_invite()
+        email = _row(app, row_id).email
+        self._accept(client, token)
+        client.post(f'/register/invite/{token}', data=PERSON)
+        receipt, = [m for m in no_mail.messages if m.kind == 'account_request_received']
+        assert receipt.recipient.address == email
+        assert receipt.context['name'] == 'Ada Lovelace'
+        assert receipt.context['eula_text'] == eula_text()
+        assert 'NWSC End User Agreement' in receipt.context['eula_html']
+        assert receipt.context['eula_accepted_on']
+        assert receipt.dedup_key.startswith(f'account_request_received:{row_id}:2')
+
+    def test_a_submit_files_the_ticket_after_the_receipt(self, client, app, make_invite,
+                                                         no_mail, ticket_address):
+        row_id, token = make_invite()
+        self._accept(client, token)
+        client.post(f'/register/invite/{token}', data=PERSON)
+        assert [m.kind for m in no_mail.messages] == ['account_request_received',
+                                                      'account_ticket']
+        ticket = no_mail.messages[1]
+        assert ticket.recipient.address == 'help@example.invalid'
+        assert ticket.subject == f"New HPC User Request 'Ada Lovelace' for {_row(app, row_id).project_id and self._projcode(app, row_id)}"
+        assert ticket.context['phone'] == PERSON['phone']
+        assert ticket.context['requested_via'].startswith('invitation by')
+        assert ticket.dedup_key == f'account_ticket:{row_id}'
+
+    def _projcode(self, app, row_id):
+        from sam.projects.projects import Project
+        from webapp.extensions import db
+        with app.app_context():
+            return db.session.get(Project, _row(app, row_id).project_id).projcode
+
+    def test_a_failed_submit_mails_nothing(self, client, app, make_invite, no_mail):
+        row_id, token = make_invite()
+        self._accept(client, token)
+        data = dict(PERSON)
+        data.pop('phone')
+        client.post(f'/register/invite/{token}', data=data)
+        assert no_mail.messages == []
 
     def test_a_submit_without_the_gate_is_regated(self, client, app, make_invite, no_mail):
         row_id, token = make_invite()
@@ -330,7 +391,7 @@ class TestMounting:
         accept = client.post(f'/register/invite/{token}/accept', data={'accept': '1'})
         assert accept.status_code == 302 and '/auth/login' not in accept.headers['Location']
         html = _html(client.get(f'/register/invite/{token}'))
-        assert 'name="phone"' in html and 'temporarily limited' not in html
+        assert 'name="phone"' in html and 'limits the form to' not in html
         assert 'hx-get="/register/invite/institutions"' in html
 
     def test_404_when_invitations_are_off(self, no_invitations_app, make_invite):
@@ -377,13 +438,20 @@ class TestInviteForm:
         row = self._row_for(app, email)
         assert row.invite_sent_at is not None
         assert message.dedup_key.endswith(row.invite_sent_at.isoformat(timespec='seconds'))
+        assert _tickets(mailer) == [], 'with a link out, NUSD waits for the invitee'
 
-    def test_unticked_sends_nothing(self, auth_client, app, mailer, committed, led_project):
+    def test_unticked_sends_no_link_but_files_the_ticket(self, auth_client, app, mailer,
+                                                         committed, led_project):
         email = _address()
         committed['emails'].append(email)
         assert self._post(auth_client, led_project[1], email).status_code == 200
         assert mailer.messages == []
         assert self._row_for(app, email).invite_sent_at is None
+        ticket, = _tickets(mailer)
+        assert ticket.subject == f"New HPC User Request 'Grace Hopper' for {led_project[1]}"
+        assert ticket.context['note'] == 'NUSD: needs Casper'
+        assert ticket.context['phone'] == '', 'sparse by the sponsor\'s choice'
+        assert ticket.requested_by == 'benkirk'
 
     def test_an_undelivered_mail_leaves_the_row_unstamped(self, auth_client, app, mailer,
                                                           committed, led_project):
@@ -464,6 +532,7 @@ class TestRosterPaste:
         html = _html(resp)
         assert resp.status_code == 200 and 'Invitation links sent' in html
         assert sorted(m.recipient.address for m in mailer.messages) == sorted([first, second])
+        assert _tickets(mailer) == [], 'links out: the tickets wait for the invitees'
         for message in mailer.messages:
             assert message.context['event_name'] == 'ZZ Invite Workshop'
             assert message.context['event_instructions'] == 'Bring a laptop.'
@@ -475,11 +544,16 @@ class TestRosterPaste:
             assert db.session.query(EventEnrollment).filter_by(
                 event_id=event_id, user_id=me.user_id).count() == 1
 
-    def test_unticked_sends_nothing(self, auth_client, mailer, make_event):
+    def test_unticked_sends_no_links_but_files_a_ticket_per_person(self, auth_client, mailer,
+                                                                    make_event):
         code, _ = make_event()
+        first, second = _address(), _address()
         auth_client.post(f'/project-invitations/events/{code}/roster',
-                         data={'roster': f'Ada Lovelace <{_address()}>'})
+                         data={'roster': f'Ada Lovelace <{first}>\nAlan Turing <{second}>'})
         assert mailer.messages == []
+        tickets = _tickets(mailer)
+        assert sorted(t.context['email'] for t in tickets) == sorted([first, second])
+        assert all(t.subject.endswith(f'for {code}') for t in tickets)
 
     def test_admin_events_copy_sends_too(self, auth_client, mailer, make_event):
         code, _ = make_event()
@@ -501,7 +575,7 @@ class TestRosterPaste:
         client.post(f'/register/invite/{token}/accept', data={'accept': '1'})
         resp = client.post(f'/register/invite/{token}', data=PERSON)
         assert resp.status_code == 302
-        assert len(mailer.messages) == 1, 'completing sends nothing'
+        assert len(mailer.messages) == 1, 'completing sends no second link'
         with app.app_context():
             row = db.session.query(AccountRequest).filter_by(email=email).one()
             assert row.completed_at is not None and row.event_id == event_id
@@ -714,7 +788,7 @@ class TestInvitationOnlyEvents:
         assert 'value="ZZ-OPEN"' in html and 'ZZ-CLOSED' not in html
 
     def test_the_public_card_says_by_invitation(self, client, app, monkeypatch):
-        monkeypatch.setitem(app.config, 'ACCOUNT_REGISTRATION_ENABLED', True)
+        monkeypatch.setitem(app.config, 'ACCOUNT_INVITATIONS_ENABLED', True)
         monkeypatch.setattr('webapp.dashboards.event_lifecycle.upcoming_events_data', lambda: [{
             'event_id': 1, 'event_code': 'ZZ-ROSTER', 'name': 'Roster only', 'instructions': None,
             'project_code': 'SCSG0001', 'accounts_needed_by': date(2030, 1, 1),
@@ -775,3 +849,63 @@ class TestSelfRegistrationStampsTheAgreement:
         with app.app_context():
             row = db.session.query(AccountRequest).filter_by(email=email).one()
             assert row.eula_sha == eula_sha() and row.eula_accepted_at is not None
+
+
+# -- who may skip the link -----------------------------------------------------
+
+@pytest.fixture
+def lead_client(auth_client, monkeypatch):
+    """benkirk as a plain project lead: no MANAGE_ACCOUNT_REQUESTS, no SYSTEM_ADMIN."""
+    from webapp.utils import rbac
+    from webapp.utils.rbac import Permission
+    real = rbac.get_user_permissions
+    monkeypatch.setattr(
+        rbac, 'get_user_permissions',
+        lambda user, *a, **k: {p for p in real(user, *a, **k)
+                               if p not in (Permission.MANAGE_ACCOUNT_REQUESTS,
+                                            Permission.SYSTEM_ADMIN)})
+    return auth_client
+
+
+@pytest.fixture
+def operator_client(auth_client, monkeypatch):
+    from webapp.utils import rbac
+    from webapp.utils.rbac import Permission
+    real = rbac.get_user_permissions
+    monkeypatch.setattr(rbac, 'get_user_permissions',
+                        lambda user, *a, **k: real(user, *a, **k) | {Permission.MANAGE_ACCOUNT_REQUESTS})
+    return auth_client
+
+
+class TestOnlyTheAccountTeamMaySkipTheLink:
+    """A project lead never sees the box and always sends the link; the
+    account team sees it ticked and may untick it (a sparse ticket they chase)."""
+
+    def test_a_lead_gets_no_box_and_the_link_goes_regardless(self, lead_client, app, mailer,
+                                                              committed, led_project):
+        html = _html(lead_client.get(f'/project-invitations/{led_project[1]}/invite-form'))
+        assert 'name="send_invite"' not in html
+        assert 'will be emailed a link' in html
+        email = _address()
+        committed['emails'].append(email)
+        resp = lead_client.post(f'/project-invitations/{led_project[1]}/invite', data={
+            'email': email, 'first_name': 'Grace', 'last_name': 'Hopper'})
+        assert resp.status_code == 200
+        message, = mailer.messages
+        assert message.kind == 'account_invite' and message.recipient.address == email
+        assert _tickets(mailer) == []
+
+    def test_the_account_team_sees_the_box_ticked(self, operator_client, led_project):
+        html = _html(operator_client.get(f'/project-invitations/{led_project[1]}/invite-form'))
+        box = html[html.index('name="send_invite"'):][:120]
+        assert 'checked' in box
+
+    def test_a_lead_pasting_a_roster_sends_every_link(self, lead_client, mailer, make_event):
+        code, _ = make_event()
+        html = _html(lead_client.get(f'/project-invitations/events/{code}/roster-form'))
+        assert 'name="send_invite"' not in html and 'emailed a link' in html
+        first, second = _address(), _address()
+        lead_client.post(f'/project-invitations/events/{code}/roster',
+                         data={'roster': f'Ada Lovelace <{first}>\nAlan Turing <{second}>'})
+        assert sorted(m.recipient.address for m in mailer.messages) == sorted([first, second])
+        assert _tickets(mailer) == []

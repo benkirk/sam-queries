@@ -253,7 +253,7 @@ Scheduled tasks, by environment:
 |---|---|---|
 | Local Docker Compose (`webdev`) | n/a — no chart | Run by hand: `sam-admin tasks --run-due` |
 | Local k8s (Docker Desktop) | `false` | Nothing should silently DELETE local data |
-| CIRRUS k8s (this chart) | `true`, kill-switched | Staged enable; the switch names what is not yet live. `SAM_TASKS_DISABLED=xras_notices,account_requests_reconcile,account_queue_digest` |
+| CIRRUS k8s (this chart) | `true`, kill-switched | Staged enable; the switch names what is not yet live. `SAM_TASKS_DISABLED=xras_notices,account_queue_digest` |
 | CIRRUS k8s dev (`samuel-dev-tasks`) | `true`, own ledger in `system_status_dev` | Mail tasks, the sweep and the account-request tasks off: `SAM_TASKS_DISABLED=expiration_notices,xras_notices,xras_sweep,account_requests_reconcile,account_queue_digest` |
 
 When the per-environment Entra app strategy is adopted (separate `sam-production`
@@ -337,8 +337,8 @@ of task names to skip, flippable in `values.yaml` with no code deploy. It ships
 until it has been reviewed on its own, so the dispatcher wakes hourly and the
 untried task writes a `skipped` row instead of running. Today
 `cleanup_status_snapshots`, `deactivate_expired_projects`, `xras_sweep`,
-`expiration_notices` and `refresh_allocation_state` are live; `xras_notices`,
-`account_requests_reconcile` and `account_queue_digest` are switched off (on
+`expiration_notices`, `refresh_allocation_state` and `account_requests_reconcile`
+are live; `xras_notices` and `account_queue_digest` are switched off (on
 `samuel-dev` the mail tasks, the sweep and the account-request tasks are off
 as well, in `values-dev.yaml`). Enabling one is a separate, reviewable
 one-line commit.
@@ -401,8 +401,9 @@ the release. OpenBao credentials are unaffected.
 
 ## samuel-dev (CIRRUS dev)
 
-A second install of the same chart in the same namespace, rendered with
-`helm/values-dev.yaml` on top of `values.yaml`: every object is named
+A second install of the same chart in its own namespace, `sam-queries-dev`,
+deployed by Argo CD application `sam-query-dev` from the `cirrus-dev` pin and
+rendered with `helm/values-dev.yaml` on top of `values.yaml`: every object is named
 `samuel-dev*`, it serves `https://samuel-dev.k8s.ucar.edu`, reads the Postgres
 `sam_dev` copy and its own `system_status_dev`, sends no mail, never holds the
 XRAS API key, and accepts only its own collector API key.
@@ -412,7 +413,6 @@ outside-the-repo checklist: `docs/plans/K8S_DEV_ENVIRONMENT.md`.
 
 ```bash
 gh workflow run "Publish Images and CIRRUS Deploy" --ref <branch>   # builds + pins cirrus-dev (docs/CIRRUS_PUBLISHING.md)
-make deploy-dev                                  # phase 1: laptop helm from origin/cirrus-dev (until Argo adopts it)
 PGPASSWORD=... make refresh-dev                  # rebuild sam_dev + reseed system_status_dev + refresh dev caches
 scripts/cirrus_healthcheck.sh --env dev          # every cirrus script takes --env dev / SAM_ENV=dev
 scripts/cirrus_watch.sh --env dev

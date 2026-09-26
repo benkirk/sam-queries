@@ -1,0 +1,16 @@
+{% extends "_email_base.html" %}
+
+{% block content %}
+    <p>Hello {{ name }},</p>
+
+    <div class="callout good">
+        <p>Your request for an NCAR HPC account{% if project_code %} on project
+            <strong>{{ project_code }}</strong>{% endif %}{% if event_name %}, for
+            <strong>{{ event_name }}</strong>{% endif %}, has been received{% if sponsor_name %}
+            (you were invited by {{ sponsor_name }}){% endif %}.</p>
+    </div>
+
+    <p>It is now with the team that creates NCAR HPC accounts. They will
+        contact you at this address; nothing more is needed from you for now.</p>
+{% include "_agreement.html" %}
+{% endblock %}

@@ -44,6 +44,8 @@
     queued for the team that creates accounts and joins the project the moment
     the account exists. An <strong>event</strong> groups a cohort under a code
     with a deadline; hand the code out, or paste a roster under it.
+    To add an <em>existing</em> HPC user to this project, use the
+    <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=project.projcode, tab='members') }}">Members</a> tab.
 </p>
 
 {% if events %}
