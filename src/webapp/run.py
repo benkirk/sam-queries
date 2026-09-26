@@ -415,17 +415,19 @@ def create_app(*, config_overrides: dict | None = None):
     # never mounted on the public deploy).
     if app.config.get('COMPONENT_GALLERY_ENABLED', False):
         app.register_blueprint(component_gallery_bp)
-    # The anonymous account-registration form: same kill-switch shape, ships
+    # The anonymous account-creation form only: same kill-switch shape, ships
     # dark in production (docs/plans/implemented/ACCOUNT_REGISTRATION.md section 3.5).
     if app.config.get('ACCOUNT_REGISTRATION_ENABLED', False):
-        from webapp.register import bp as register_bp
+        from webapp.register.blueprint import bp as register_bp
         app.register_blueprint(register_bp)
-    # The project Invitations tab: same shape, its own flag, dark in prod.
+    # The invitation workflows: the project Invitations tab, the /register/<code>
+    # event pages and the invitee's link (the last two carry no login hook).
     if app.config.get('ACCOUNT_INVITATIONS_ENABLED', False):
         from webapp.dashboards.project_invites import bp as project_invites_bp
+        from webapp.register.events import bp as register_events_bp
         from webapp.register.invite import bp as register_invite_bp
         app.register_blueprint(project_invites_bp)
-        # The invitee's link: no login hook, whatever the register switches say.
+        app.register_blueprint(register_events_bp)
         app.register_blueprint(register_invite_bp)
     if app.config.get('DB_BROWSER_ENABLED', False):
         from webapp.db_browser import bp as db_browser_bp

@@ -714,7 +714,7 @@ class TestInvitationOnlyEvents:
         assert 'value="ZZ-OPEN"' in html and 'ZZ-CLOSED' not in html
 
     def test_the_public_card_says_by_invitation(self, client, app, monkeypatch):
-        monkeypatch.setitem(app.config, 'ACCOUNT_REGISTRATION_ENABLED', True)
+        monkeypatch.setitem(app.config, 'ACCOUNT_INVITATIONS_ENABLED', True)
         monkeypatch.setattr('webapp.dashboards.event_lifecycle.upcoming_events_data', lambda: [{
             'event_id': 1, 'event_code': 'ZZ-ROSTER', 'name': 'Roster only', 'instructions': None,
             'project_code': 'SCSG0001', 'accounts_needed_by': date(2030, 1, 1),
