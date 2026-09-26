@@ -849,3 +849,63 @@ class TestSelfRegistrationStampsTheAgreement:
         with app.app_context():
             row = db.session.query(AccountRequest).filter_by(email=email).one()
             assert row.eula_sha == eula_sha() and row.eula_accepted_at is not None
+
+
+# -- who may skip the link -----------------------------------------------------
+
+@pytest.fixture
+def lead_client(auth_client, monkeypatch):
+    """benkirk as a plain project lead: no MANAGE_ACCOUNT_REQUESTS, no SYSTEM_ADMIN."""
+    from webapp.utils import rbac
+    from webapp.utils.rbac import Permission
+    real = rbac.get_user_permissions
+    monkeypatch.setattr(
+        rbac, 'get_user_permissions',
+        lambda user, *a, **k: {p for p in real(user, *a, **k)
+                               if p not in (Permission.MANAGE_ACCOUNT_REQUESTS,
+                                            Permission.SYSTEM_ADMIN)})
+    return auth_client
+
+
+@pytest.fixture
+def operator_client(auth_client, monkeypatch):
+    from webapp.utils import rbac
+    from webapp.utils.rbac import Permission
+    real = rbac.get_user_permissions
+    monkeypatch.setattr(rbac, 'get_user_permissions',
+                        lambda user, *a, **k: real(user, *a, **k) | {Permission.MANAGE_ACCOUNT_REQUESTS})
+    return auth_client
+
+
+class TestOnlyTheAccountTeamMaySkipTheLink:
+    """A project lead never sees the box and always sends the link; the
+    account team sees it ticked and may untick it (a sparse ticket they chase)."""
+
+    def test_a_lead_gets_no_box_and_the_link_goes_regardless(self, lead_client, app, mailer,
+                                                              committed, led_project):
+        html = _html(lead_client.get(f'/project-invitations/{led_project[1]}/invite-form'))
+        assert 'name="send_invite"' not in html
+        assert 'will be emailed a link' in html
+        email = _address()
+        committed['emails'].append(email)
+        resp = lead_client.post(f'/project-invitations/{led_project[1]}/invite', data={
+            'email': email, 'first_name': 'Grace', 'last_name': 'Hopper'})
+        assert resp.status_code == 200
+        message, = mailer.messages
+        assert message.kind == 'account_invite' and message.recipient.address == email
+        assert _tickets(mailer) == []
+
+    def test_the_account_team_sees_the_box_ticked(self, operator_client, led_project):
+        html = _html(operator_client.get(f'/project-invitations/{led_project[1]}/invite-form'))
+        box = html[html.index('name="send_invite"'):][:120]
+        assert 'checked' in box
+
+    def test_a_lead_pasting_a_roster_sends_every_link(self, lead_client, mailer, make_event):
+        code, _ = make_event()
+        html = _html(lead_client.get(f'/project-invitations/events/{code}/roster-form'))
+        assert 'name="send_invite"' not in html and 'emailed a link' in html
+        first, second = _address(), _address()
+        lead_client.post(f'/project-invitations/events/{code}/roster',
+                         data={'roster': f'Ada Lovelace <{first}>\nAlan Turing <{second}>'})
+        assert sorted(m.recipient.address for m in mailer.messages) == sorted([first, second])
+        assert _tickets(mailer) == []

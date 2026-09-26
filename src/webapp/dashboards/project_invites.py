@@ -39,7 +39,7 @@ from webapp.api.access_control import (
 )
 from webapp.dashboards.event_lifecycle import (
     EVENT_FORM, ROSTER_FORM, EventCreateHandler, EventEditHandler, RosterHandler,
-    date_floor, roster_preview, sponsor_context, switch_event,
+    can_skip_link, date_floor, roster_preview, sponsor_context, switch_event,
 )
 from webapp.extensions import db
 from webapp.register.handoff_mail import send_ticket
@@ -159,7 +159,7 @@ class _InviteUserHandler(HtmxFormHandler):
 
     def clean(self, data):
         self.event = None
-        self.send_invite = bool(data.get('send_invite'))
+        self.send_invite = bool(data.get('send_invite')) or not can_skip_link()
         if data.get('event_code'):
             self.event = _event_for(self.project, data['event_code'])
             if self.event is None:
@@ -280,7 +280,7 @@ def htmx_invite_preview(project):
                                sponsor=_sponsor(), event=event)
     notes = [f'The link is created when you click Invite and is valid for '
              f'{_ttl_days()} days.']
-    if not data.get('send_invite'):
+    if not data.get('send_invite') and can_skip_link():
         notes.append('The box is unticked: Invite queues the request and sends no email.')
     return render_email_preview(
         invite_messages(rows, sent_at=datetime.now(), requested_by=current_user.username,

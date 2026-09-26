@@ -31,6 +31,7 @@ from webapp.utils.email_preview import render_email_preview, render_preview_info
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import htmx_success, htmx_success_message
 from webapp.utils.project_permissions import can_create_events
+from webapp.utils.rbac import Permission, has_permission_any_facility
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,12 @@ ROSTER_RESULT = 'project_members/fragments/roster_result_htmx.html'
 
 def _actor():
     return getattr(current_user, 'username', None)
+
+
+def can_skip_link() -> bool:
+    """Only the account team may queue a person without mailing them the link
+    (a sparse ticket they then chase); a project lead's invite always sends it."""
+    return has_permission_any_facility(current_user, Permission.MANAGE_ACCOUNT_REQUESTS)
 
 
 def resolve_sponsor(user_id):
@@ -236,7 +243,7 @@ def roster_preview(event, preview_url):
                                sponsor=db.session.get(User, current_user.user_id),
                                event=event)
     notes = [header, 'Each link is created when you click Invite everyone.']
-    if not data.get('send_invite'):
+    if not data.get('send_invite') and can_skip_link():
         notes.append('The box is unticked: Invite everyone queues them and mails nobody.')
     return render_email_preview(
         invite_messages(rows, sent_at=datetime.now(), requested_by=_actor(),
@@ -266,7 +273,7 @@ class RosterHandler(HtmxFormHandler):
     def perform(self, data):
         # The acting user is the sponsor recorded on every row written here.
         sponsor = db.session.get(User, current_user.user_id)
-        self.send_invite = (bool(data.get('send_invite'))
+        self.send_invite = ((bool(data.get('send_invite')) or not can_skip_link())
                             and current_app.config.get('ACCOUNT_INVITATIONS_ENABLED', False))
         return paste_roster(db.session, event=self.event, sponsor=sponsor,
                             entries=data['entries'])
