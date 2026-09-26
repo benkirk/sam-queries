@@ -87,6 +87,14 @@ class _AddMemberHandler(HtmxFormHandler):
     schema_cls = AddMemberForm
     template = 'project_members/fragments/add_member_form_htmx.html'
 
+    def form_input(self):
+        # Dates are offered to EDIT_PROJECT_MEMBERS holders only; a lead's
+        # form has no date inputs, so anything posted is dropped before
+        # validation rather than trusted.
+        if has_permission_any_facility(current_user, Permission.EDIT_PROJECT_MEMBERS):
+            return request.form
+        return {k: v for k, v in request.form.items() if k not in ('start_date', 'end_date')}
+
     def clean(self, data):
         self.member = db.session.query(User).filter_by(
             username=data['username']).first()
