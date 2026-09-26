@@ -68,6 +68,15 @@ replica and the check says so.
 ## 5. Timer (only when asked)
 
 Default to one tick after each deploy. If Ben asks for a standing dev watch,
-follow `watch-prod` §6: `CronList` first and never duplicate. Use about 60
-minutes, a prompt that names `--env dev`, and an off-minute distinct from the
-prod timer's.
+follow `watch-prod` §6: `CronList` first and never duplicate. If a prod timer
+exists, add the dev tick to **its** prompt (`scripts/cirrus_watch.sh --context
+nwc1` then `--env dev`, one line each) instead of a second timer. Three wakes an
+hour from two timers was the friction that produced this rule (2026-09-26).
+
+Two habits that keep the dev line honest:
+
+- Run the first tick from the repo checkout with the default state directory,
+  never with a scratch `XDG_STATE_HOME`: the baseline (`state-dev`) is what the
+  cache and image deltas are read against.
+- Dev's "do not re-flag" items go in `$XDG_STATE_HOME/sam-watch/known-open-dev`,
+  printed back by the tick; keep them out of the prompt.

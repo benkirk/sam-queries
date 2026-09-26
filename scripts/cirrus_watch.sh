@@ -35,7 +35,10 @@
 #       --db-host   HOST Prod DB host for the XRAS read     (default: per --env;
 #                        WATCH_DB_HOST overrides, "" skips the DB reads)
 #       --state     FILE State file path                    (default: XDG state dir,
-#                        one file per env)
+#                        one file per env). A sibling known-open[-ENV] file,
+#                        one item per line (# comments), is printed back each
+#                        tick so the "do not re-flag" list lives here, not in
+#                        a timer's prompt
 #       --reset-baseline Forget prior state; seed a fresh baseline this run
 #       --no-color       Disable ANSI color
 #   -v, --verbose        Extra detail
@@ -104,6 +107,17 @@ fi
 
 ENV_TAG=""; [[ "$SAM_ENV" != "prod" ]] && ENV_TAG="  [$SAM_ENV: $WEBAPP_NAME]"
 echo "=== tick $(date -u '+%Y-%m-%d %H:%M:%SZ')  (web window ${WINDOW})${ENV_TAG} ==="
+
+# Known-open items (a stale Job, a scanner already named, ...) are edited in
+# this file as they come and go, never baked into a timer prompt that outlives them.
+KNOWN_OPEN="$(dirname -- "$STATE")/known-open"; [[ "$SAM_ENV" != "prod" ]] && KNOWN_OPEN+="-${SAM_ENV}"
+if [[ -f "$KNOWN_OPEN" ]]; then
+    KNOWN_ITEMS=$(grep -vE '^\s*(#|$)' "$KNOWN_OPEN" || true)
+    if [[ -n "$KNOWN_ITEMS" ]]; then
+        echo "known-open ($(wc -l <<<"$KNOWN_ITEMS" | tr -d ' ') item(s), do not re-flag; edit $KNOWN_OPEN):"
+        sed 's/^/  - /' <<<"$KNOWN_ITEMS"
+    fi
+fi
 
 # --- 0. connectivity preflight ----------------------------------------------
 # A fully-down VPN blackholes DNS/SYN and the mysql/kubectl connect timeouts do
