@@ -15,7 +15,7 @@ Routes:
 
 from datetime import date, datetime
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, current_app, render_template, request, url_for
 from flask_login import login_required, current_user
 from marshmallow import ValidationError
 
@@ -32,6 +32,7 @@ from webapp.api.access_control import (
     require_project_member_access,
 )
 from webapp.utils.project_permissions import (
+    _is_project_steward,
     can_change_admin,
     can_manage_project_members,
 )
@@ -76,8 +77,21 @@ def htmx_add_member_form(project):
         'project_members/fragments/add_member_form_htmx.html',
         projcode=project.projcode,
         start_date=date.today().strftime('%Y-%m-%d'),
+        invitations_url=_invitations_url(project),
         errors=[]
     )
+
+
+def _invitations_url(project):
+    """The project's Invitations tab when this deployment mounts it and the
+    user would see it (the tab's own gate in edit_project.html), else None."""
+    if not current_app.config.get('ACCOUNT_INVITATIONS_ENABLED'):
+        return None
+    if not _is_project_steward(current_user, project, Permission.MANAGE_ACCOUNT_REQUESTS,
+                               include_ancestors=True):
+        return None
+    return url_for('admin_dashboard.edit_project_page',
+                   projcode=project.projcode, tab='invitations')
 
 
 class _AddMemberHandler(HtmxFormHandler):
@@ -115,6 +129,7 @@ class _AddMemberHandler(HtmxFormHandler):
             'projcode': self.project.projcode,
             'start_date': request.form.get('start_date', ''),
             'end_date': request.form.get('end_date', ''),
+            'invitations_url': _invitations_url(self.project),
         }
 
     def render_errors(self, errors, field_errors=None):

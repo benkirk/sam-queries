@@ -81,7 +81,14 @@
         {{ form_errors_panel() }}
 
         <small class="form-text text-muted">
-          The member will have access to all resources associated with this project. This functionality is restricted to users with current HPC accounts.  To add a new external user please send a request to help@ucar.edu.
+          The member will have access to all resources associated with this project.
+          This form is for people who already have an NCAR HPC account.
+          {% if invitations_url %}
+          To bring in someone <em>without</em> one, use the
+          <a href="{{ invitations_url }}">Invitations</a> tab.
+          {% else %}
+          To request an account for someone new, email help@ucar.edu.
+          {% endif %}
         </small>
     </div>
 
