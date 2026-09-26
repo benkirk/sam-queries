@@ -87,6 +87,13 @@ class TestCanManageProjectMembers:
         project = create_mock_project(project_lead_user_id=1, project_admin_user_id=None)
         assert can_manage_project_members(user, project) is True
 
+    def test_an_ancestor_lead_can_manage(self):
+        user = create_mock_user(user_id=7, roles=[])
+        root = create_mock_project(project_lead_user_id=7)
+        parent = create_mock_project(project_lead_user_id=1, parent=root)
+        child = create_mock_project(project_lead_user_id=2, project_admin_user_id=3, parent=parent)
+        assert can_manage_project_members(user, child) is True
+
 
 class TestCanChangeAdmin:
 

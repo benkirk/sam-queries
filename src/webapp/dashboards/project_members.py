@@ -44,7 +44,7 @@ bp = Blueprint('project_members', __name__, url_prefix='/project-members')
 
 @bp.route('/<projcode>')
 @login_required
-@require_project_member_access(Permission.VIEW_PROJECT_MEMBERS)
+@require_project_member_access(Permission.VIEW_PROJECT_MEMBERS, include_ancestors=True)
 def members_fragment(project):
     """
     Lazy-loaded HTML fragment showing project members.

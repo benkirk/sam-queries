@@ -839,7 +839,7 @@ class _ProjectUpdateHandler(HtmxFormHandler):
 
 @bp.route('/htmx/project-update/<projcode>', methods=['POST'])
 @login_required
-@require_project_permission(Permission.EDIT_PROJECTS)
+@require_project_permission(Permission.EDIT_PROJECTS, include_ancestors=True)
 def htmx_project_update(project):
     """Validate and apply project metadata updates.
 
@@ -853,7 +853,7 @@ def htmx_project_update(project):
 
 @bp.route('/htmx/project-allocation-tree/<projcode>')
 @login_required
-@require_project_permission(Permission.EDIT_PROJECTS)
+@require_project_permission(Permission.EDIT_PROJECTS, include_ancestors=True)
 def htmx_project_allocation_tree(project):
     """Lazy-loaded allocation tree for the Edit Project Allocations tab.
 
@@ -2800,7 +2800,7 @@ def _render_linked_elements(project, errors=None):
 
 @bp.route('/htmx/project/<projcode>/linked-elements')
 @login_required
-@require_project_permission(Permission.EDIT_PROJECTS)
+@require_project_permission(Permission.EDIT_PROJECTS, include_ancestors=True)
 def htmx_project_linked_elements(project):
     """Render the linked-elements section for an edit-project page.
 
