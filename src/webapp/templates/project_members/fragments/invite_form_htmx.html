@@ -36,9 +36,12 @@
                       placeholder='e.g. visiting scholar, needs access before Oct 5',
                       help='Seen by the account team only; never mailed to the person.') }}
     {% call checkbox_field('send_invite', 'Email them a link to finish the request', default=True,
-                      help='The link asks for their phone, country and academic status and '
-                           'records their acceptance of the terms of use. Valid for '
-                           ~ invite_ttl_days ~ ' days. Nobody is mailed if SAM already knows the address.') %}
+                      help='Recommended. The link asks for their phone, country and academic status, '
+                           'records their acceptance of the terms of use, and the account team is '
+                           'told once they finish. Valid for ' ~ invite_ttl_days ~ ' days. '
+                           'Unchecked, the account team is told now with only the name and email '
+                           'you give here and must contact the person for the rest, which is slower. '
+                           'Nobody is mailed if SAM already knows the address.') %}
     {% if preview_url %}{{ preview_button(preview_url, 'invitePreviewPane') }}{% endif %}
     {% endcall %}
     <div id="invitePreviewPane" class="mb-2"></div>

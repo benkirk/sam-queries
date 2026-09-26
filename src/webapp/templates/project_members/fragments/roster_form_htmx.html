@@ -25,7 +25,11 @@
     {% if config.ACCOUNT_INVITATIONS_ENABLED %}
     {% call checkbox_field('send_invite', 'Email each new person a link to finish their request',
                       default=True,
-                      help='People SAM already knows are enrolled and get no link.') %}
+                      help='Recommended. Each link collects the phone, country, academic status and '
+                           'terms acceptance the account team needs, and they are told once the '
+                           'person finishes. Unchecked, the team is told now with names and emails '
+                           'only and must contact each person for the rest, which is slower. '
+                           'People SAM already knows are enrolled and get no link.') %}
     {% if preview_url %}{{ preview_button(preview_url, 'rosterPreviewPane') }}{% endif %}
     {% endcall %}
     <div id="rosterPreviewPane" class="mb-2"></div>
