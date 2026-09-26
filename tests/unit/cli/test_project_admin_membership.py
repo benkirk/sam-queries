@@ -11,6 +11,16 @@ from sam.accounting.accounts import AccountUser
 from factories import make_account, make_allocation, make_project, make_user
 
 
+# `_project_with_rowless_lead` deletes account_user rows by user_id, a next-key
+# lock at the top of that index that another worker's membership inserts wait
+# on; the resulting deadlock rollback destroys the per-test SAVEPOINT. See
+# `serial_file_lock` in tests/conftest.py.
+@pytest.fixture(autouse=True)
+def _one_worker_at_a_time(serial_file_lock):
+    with serial_file_lock('project_membership_account_user_gap'):
+        yield
+
+
 def _project_with_rowless_lead(session):
     project = make_project(session, facility_name='UNIV')
     for _ in range(2):
