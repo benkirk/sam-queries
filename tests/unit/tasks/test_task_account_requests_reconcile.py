@@ -101,3 +101,49 @@ class TestTheRun:
         assert result.detail['enroll_failed'] == 1
         assert result.state == 'succeeded'
         assert row.fulfill_error
+
+
+class TestTheTicketPass:
+    """The learn/refresh pass rides the same run and never fails it."""
+
+    def test_the_suite_skips_it_and_says_why(self, ctx, session):
+        result = mod.account_requests_reconcile(ctx())
+        assert result.detail['tickets'] == {'skipped': True,
+                                            'reason': 'TICKET_PROVIDER selects mail'}
+        assert result.message.endswith('tickets skipped (TICKET_PROVIDER selects mail)')
+        for key in ('checked', 'fulfilled', 'purged'):
+            assert key in result.detail, 'the reconcile counts are untouched'
+
+    def test_configured_counts_land_in_the_detail(self, ctx, session, monkeypatch):
+        from factories.tickets import FakeTicketProvider
+        from sam.integration.tickets import learn
+        provider = FakeTicketProvider()
+        monkeypatch.setattr(learn, 'provider_from_environment', lambda: provider)
+        monkeypatch.setenv('SAM_TASKS_TICKET_LOOKUP_MAX', '3')
+        result = mod.account_requests_reconcile(ctx())
+        tickets = result.detail['tickets']
+        assert tickets['skipped'] is False and tickets['limit'] == 3
+        assert set(tickets['learn']) == {'checked', 'learned', 'missed', 'error'}
+        assert set(tickets['refresh']) == {'checked', 'closed', 'missing', 'error'}
+        assert result.state == 'succeeded'
+
+    def test_a_tracker_outage_is_not_a_red_job(self, ctx, session, monkeypatch):
+        from factories.tickets import FakeTicketProvider
+        from sam.integration.tickets import TicketSourceUnavailable, learn
+        from factories import make_notification_log
+        row = make_account_request(session)
+        make_notification_log(session, kind='account_ticket', status='sent',
+                              entity_type='account_request',
+                              entity_id=row.account_request_id,
+                              when=OCC - timedelta(hours=1))
+        provider = FakeTicketProvider()
+        provider.raise_with = TicketSourceUnavailable('ithelp down')
+        monkeypatch.setattr(learn, 'provider_from_environment', lambda: provider)
+        result = mod.account_requests_reconcile(ctx())
+        assert result.state == 'succeeded'
+        assert result.detail['tickets']['learn']['error'] == 'ithelp down'
+
+    @pytest.mark.parametrize('raw,expected', [(None, 25), ('0', 25), ('40', 40)])
+    def test_the_lookup_knob(self, raw, expected):
+        env = {} if raw is None else {'SAM_TASKS_TICKET_LOOKUP_MAX': raw}
+        assert mod.ticket_lookup_max(env) == expected

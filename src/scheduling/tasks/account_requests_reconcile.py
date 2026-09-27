@@ -3,10 +3,13 @@
 The ONE scheduled writer of fulfillment: each open request whose email now
 resolves to exactly one active user is stamped, an ``enrollment`` gets its
 membership, and unverified public rows past the horizon are purged. The
-queue card's "Reconcile now" button runs the same function on demand.
+queue card's "Reconcile now" button runs the same function on demand. Then,
+when ``JIRA_ENABLED``, it learns help-desk ticket keys and refreshes their status.
 
-DB-only, so no ``dry_run`` branch: the runner's rollback is complete coverage
-(``TaskContext.dry_run``). Design: docs/plans/implemented/ACCOUNT_REGISTRATION.md.
+Writes only the database (the ticket pass only *reads* the tracker), so no
+``dry_run`` branch: the runner's rollback is complete coverage. Never a tracker
+write: ``JIRA_WRITE_ENABLED`` is not in the CronJob. Design:
+docs/plans/implemented/ACCOUNT_REGISTRATION.md, docs/plans/TICKET_PROVIDER.md.
 """
 
 from __future__ import annotations
@@ -29,9 +32,17 @@ SCHEDULE = Hourly(minute=20)
 DEFAULT_PURGE_DAYS = 7
 
 
+#: Tracker reads per pass (learn and refresh each); ``$SAM_TASKS_TICKET_LOOKUP_MAX``.
+DEFAULT_TICKET_LOOKUP_MAX = 25
+
+
 def purge_days(env: Optional[dict] = None) -> int:
     """Read per run, like every task knob."""
     return positive_int_env('SAM_TASKS_ACCOUNT_PURGE_DAYS', DEFAULT_PURGE_DAYS, env)
+
+
+def ticket_lookup_max(env: Optional[dict] = None) -> int:
+    return positive_int_env('SAM_TASKS_TICKET_LOOKUP_MAX', DEFAULT_TICKET_LOOKUP_MAX, env)
 
 
 @task(name='account_requests_reconcile',
@@ -52,11 +63,17 @@ def account_requests_reconcile(ctx) -> TaskResult:
     ctx.logger.info('account requests: %(checked)d checked, %(fulfilled)d '
                     'fulfilled, %(enrolled)d enrolled, %(enroll_failed)d '
                     'enrollment failure(s), %(purged)d purged', counts)
+
+    # Fail-open: a tracker outage is a line in the detail, never a red Job.
+    from sam.integration.tickets.learn import describe, sync_tickets
+    tickets = sync_tickets(ctx.sam_session, clock=clock, limit=ticket_lookup_max())
+    ctx.logger.info('account requests: %s', describe(tickets))
     return TaskResult(
-        detail={**counts, 'purge_days': days, 'clock': clock.isoformat()},
+        detail={**counts, 'purge_days': days, 'clock': clock.isoformat(),
+                'tickets': tickets},
         # An enrollment failure is a data condition a human fixes on the card
         # (the row stays in the queue with its reason); it is not a red Job.
         message=(f"{counts['fulfilled']} fulfilled, {counts['enrolled']} "
                  f"enrolled, {counts['enroll_failed']} enrollment failure(s), "
-                 f"{counts['purged']} purged"),
+                 f"{counts['purged']} purged; {describe(tickets)}"),
     )
