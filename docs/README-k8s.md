@@ -314,8 +314,8 @@ curl -s https://samuel.k8s.ucar.edu/api/v1/health/ready | jq .status   # healthy
 
 ### Scheduled tasks
 
-The chart deploys **one** CronJob, `samuel-tasks`, which wakes hourly at `:07`
-and asks each registered task "what slot are we in?". Individual schedules are
+The chart deploys **one** CronJob, `samuel-tasks`, which wakes every 15 min
+(`:07/:22/:37/:52`) and asks each registered task "what slot are we in?". Individual schedules are
 Python declarations in `src/scheduling/tasks/`, not chart values — adding a task
 is a code change. A `task_run` ledger in `system_status` makes a late or
 duplicate dispatch a no-op, so the CronJob's own cron string is arbitrary.
@@ -335,7 +335,7 @@ kubectl logs -n <namespace> job/tasks-manual-1
 ⚠️ **The kill switch.** `tasks.env.SAM_TASKS_DISABLED` is a comma-separated list
 of task names to skip, flippable in `values.yaml` with no code deploy. It ships
 **non-empty** because tasks are enabled in stages: each one stays named here
-until it has been reviewed on its own, so the dispatcher wakes hourly and the
+until it has been reviewed on its own, so the dispatcher wakes as usual and the
 untried task writes a `skipped` row instead of running. Today
 `cleanup_status_snapshots`, `deactivate_expired_projects`, `xras_sweep`,
 `expiration_notices`, `refresh_allocation_state` and `account_requests_reconcile`
@@ -349,7 +349,7 @@ one-line commit.
 keys. There is **no wildcard** — `all`, `*` and `none` are just names that
 match nothing — and an unknown name is never validated or warned about, so a
 typo silently disables nothing. A task added to `src/scheduling/tasks/`
-therefore **dispatches on the next hourly wake** unless its name is added here
+therefore **dispatches on the next wake** unless its name is added here
 in the same change.
 
 Every task named above is exactly that case: each was registered in code, and

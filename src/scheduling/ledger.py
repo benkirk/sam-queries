@@ -47,7 +47,7 @@ MIN_LEASE = timedelta(seconds=900)
 
 #: A run's lease is this multiple of its expected runtime, floored at
 #: :data:`MIN_LEASE`. Generous on purpose: stealing a live run is far worse
-#: than waiting out a dead one, because the next dispatch is only an hour away.
+#: than waiting out a dead one, because the next dispatch is minutes away.
 LEASE_FACTOR = 3
 
 #: ``detail`` is TEXT; a runaway traceback should truncate here rather than

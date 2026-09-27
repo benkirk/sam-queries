@@ -18,7 +18,7 @@ that PR. Two facts shape everything:
   Configuration tab.
 - **The chart ships kill-switched** (`SAM_TASKS_DISABLED: "cleanup_status_snapshots"`,
   `helm/values.yaml:449`). The first thing this card shows in production is a
-  dispatcher running hourly and deliberately doing nothing. If the card does not
+  dispatcher waking on schedule and deliberately doing nothing. If the card does not
   say so loudly, it looks like a healthy system.
 
 I reviewed the source plan against the tree. It is accurate in the large — the
@@ -491,7 +491,7 @@ shell itself.
 
 | Deviation | Why |
 |---|---|
-| **`summarize_task_runs` also returns `last_dispatch_age`** | `fmt_ago` takes a `timedelta`, not a `datetime`. Computing it in the query module keeps the subtraction against `utcnow_naive()`; a template differencing this naive-UTC column against the local clock would report an hourly dispatcher as ~7 hours stale. |
+| **`summarize_task_runs` also returns `last_dispatch_age`** | `fmt_ago` takes a `timedelta`, not a `datetime`. Computing it in the query module keeps the subtraction against `utcnow_naive()`; a template differencing this naive-UTC column against the local clock would report a live dispatcher as ~7 hours stale. |
 | **`last_dispatch` is unwindowed**, like `count_stale_running` | Not called out in the plan. A windowed "when did the dispatcher last wake" reads as *never* once the answer falls off the edge — the same failure mode windowing `stale_running` would cause. |
 | **`observed_task_names` reads the table, not `scheduling.registry.TASKS`** | A task deleted from the registry still has history worth filtering to, and the registry is not what the rows say. |
 | **Runner column is `nowrap`** | Found by the browser smoke, not by any test. The Task column's `width:99%` squeezed Runner to its minimum and a pod name broke at all three hyphens, tripling every row's height. There is no `audit-table` CSS rule anywhere — the class is purely semantic — so this was default table behaviour, not a style regression. |

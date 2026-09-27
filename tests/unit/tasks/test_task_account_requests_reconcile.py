@@ -6,6 +6,7 @@ Mountain clock, the purge knob, and that the ledger detail carries every count.
 """
 
 import logging
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from _paths import REPO_ROOT
@@ -15,7 +16,7 @@ from factories import make_account_request, make_email_address, make_user
 
 from sam.core.account_requests import CREATED_BY_SELF, AccountRequest
 from scheduling.registry import TASKS, TaskContext
-from scheduling.schedules import Hourly, occurrence_key
+from scheduling.schedules import CronExpr, occurrence_key
 from scheduling.tasks import account_requests_reconcile as mod
 
 
@@ -44,9 +45,31 @@ class TestRegistration:
         assert NAME in TASKS
         assert TASKS[NAME].fn is mod.account_requests_reconcile
 
-    def test_it_runs_hourly_at_twenty_past_and_needs_sam_only(self):
-        assert TASKS[NAME].schedule == Hourly(minute=20)
+    def test_it_runs_every_quarter_hour_and_needs_sam_only(self):
+        assert TASKS[NAME].schedule == CronExpr('*/15 * * * *', tz='UTC')
         assert TASKS[NAME].needs == ('sam',)
+
+    def test_the_cronjob_wakes_often_enough_to_claim_every_slot(self):
+        """Four wakes an hour, one per */15 slot; a slot nobody wakes for is
+        never run and never recorded (only the latest occurrence is claimed)."""
+        values = (REPO_ROOT / 'helm' / 'values.yaml').read_text()
+        match = re.search(r'^\s*schedule:\s*"([^"]+)"', values, re.MULTILINE)
+        assert match, 'tasks.schedule vanished from helm/values.yaml'
+        minutes = sorted(int(m) for m in match.group(1).split()[0].split(','))
+        assert len(minutes) == 4 and all(b - a == 15 for a, b in zip(minutes, minutes[1:]))
+
+    def test_the_deadline_sits_under_every_lease(self):
+        """The 2-minute tasks get the 900 s MIN_LEASE floor, so the CronJob's
+        activeDeadlineSeconds must stay under it or a killed run is reclaimed
+        while still alive. The 20-minute tasks pin their own leases elsewhere."""
+        from scheduling.ledger import MIN_LEASE, lease_for
+        values = (REPO_ROOT / 'helm' / 'values.yaml').read_text()
+        match = re.search(r'^\s*activeDeadlineSeconds:\s*(\d+)', values, re.MULTILINE)
+        assert match, 'activeDeadlineSeconds vanished from helm/values.yaml'
+        deadline = int(match.group(1))
+        assert deadline < MIN_LEASE.total_seconds()
+        assert deadline < 15 * 60, 'strictly under the 15-minute interval'
+        assert lease_for(TASKS[NAME].expected_runtime).total_seconds() > deadline
 
 
 class TestTheKnob:

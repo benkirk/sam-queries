@@ -30,7 +30,7 @@ spec:
   # Forbid protects only within THIS CronJob object, not against a future
   # always-on daemon running the same tasks.
   concurrencyPolicy: {{ .Values.tasks.concurrencyPolicy }}
-  # Miss by more than this and skip; the next hour catches up for free. Never
+  # Miss by more than this and skip; the next wake catches up for free. Never
   # leave it unset on a CronJob that might be suspended — >100 missed schedules
   # wedges the controller permanently.
   startingDeadlineSeconds: {{ .Values.tasks.startingDeadlineSeconds }}
@@ -38,7 +38,7 @@ spec:
   failedJobsHistoryLimit: {{ .Values.tasks.failedJobsHistoryLimit }}
   jobTemplate:
     spec:
-      # The next hourly dispatch IS the retry, and the ledger decides whether
+      # The next dispatch IS the retry, and the ledger decides whether
       # re-running is even correct. An immediate retry just re-hits whatever
       # broke five seconds ago.
       backoffLimit: {{ .Values.tasks.backoffLimit }}

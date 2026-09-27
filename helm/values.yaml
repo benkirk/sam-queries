@@ -537,22 +537,27 @@ tasks:
   enabled: true
   name: samuel-tasks
   suspend: false
-  # Offset from :00 to dodge the top-of-hour herd, and disjoint from the
-  # collectors' */5. The exact minute is arbitrary — the ledger keys off each
-  # TASK's schedule, not this one.
-  schedule: "7 * * * *"
+  # Four wakes an hour so account_requests_reconcile's */15 slots are claimed
+  # within minutes; every other task keeps its own hourly-or-slower schedule and
+  # reports already_claimed on the extra wakes. Offset from :00/:15/... to dodge
+  # the herd, and disjoint from the collectors' */5. The exact minutes are
+  # arbitrary — the ledger keys off each TASK's schedule, not this one.
+  schedule: "7,22,37,52 * * * *"
   # Etc/UTC so the controller never sees a DST gap or fold. Requires k8s ≥1.25
   # (GA 1.27); nwc1 is on 1.35.6, verified 2026-08-12. Set to "" to drop the
   # field on an older cluster.
   timeZone: "Etc/UTC"
   concurrencyPolicy: Forbid
-  startingDeadlineSeconds: 600
+  startingDeadlineSeconds: 300
   # Failures are worth keeping longer than successes. Both small, matching the
   # chart's revisionHistoryLimit instinct about ArgoCD clutter.
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 5
   backoffLimit: 0
-  activeDeadlineSeconds: 3000             # 50 min — strictly under the interval
+  # Two constraints: strictly under the 15-min interval, and under the ledger's
+  # MIN_LEASE (900 s) so every task's lease outlives a kill. The worst measured
+  # wake is under 5 min (824 expiration mails in 163 s, full sweep 100 s).
+  activeDeadlineSeconds: 840
   # Appended after `sam-admin --format json tasks`.
   args: ["--run-due"]
   resources:
