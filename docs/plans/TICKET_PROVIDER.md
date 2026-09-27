@@ -268,7 +268,7 @@ dates the row.
 - **JSM customer choice.** Ask NUSD who the customer should be on an API-filed
   request (`raiseOnBehalfOf`): the requester, the sponsor, or nobody.
   `TicketDraft.on_behalf_of` exists and is sent when set; nothing sets it.
-- **Close RC-40274** from the UI.
+- ~~Close RC-40274~~: Canceled as of 2026-09-26.
 - Watch the first real API ticket land (and the first real mail ticket before
   it): request type "Add a user", the internal note, the label, and the
   Accounts card link.
@@ -624,7 +624,7 @@ Rough size: ~900 LOC product, ~700 LOC tests.
 
 - Jira bot account (swap `JIRA_TOKEN`, no code change).
 - Who NUSD wants as the JSM customer (`raiseOnBehalfOf`); the knob is not built.
-- Close RC-40274.
+- ~~Close RC-40274.~~ Canceled.
 
 ## 9. As built (2026-09-26)
 
@@ -659,12 +659,13 @@ Behavior worth knowing:
 - The Configuration tile shows the mode: "mail only", "mail, keys learned
   hourly" (reads alone), or "API create, mail fallback".
 
-Not verified live: the build ran against mocked transports only. A read probe
-with `~/jira_token` line 4 returned a non-JSON body (the line is 64
-characters where § 8.4 says 44), so the § 8.10 webdev smoke is still Ben's to
-run, starting with `GET /rest/api/2/myself` on that token. If the token is wrong in
-production, every filing falls back to mail and the hourly pass logs
-"token rejected"; nothing breaks.
+Verified live, reads only, 2026-09-26: `check()` authenticates as Ben Kirk;
+`find('SAM-AR-0')` returns RC-40274 and `find('SAM-AR-01')` returns nothing;
+`get('RC-40274')` reports Canceled with `closed=True`; an unknown key is `None`.
+`~/jira_token` line 4 carries a label before the 44-character PAT; only the
+PAT belongs in OpenBao. No create or comment has run against the live desk:
+the first filing is the § 8.10 webdev smoke, or the first real request after
+deploy.
 
 Prod DDL (before the deploy):
 
