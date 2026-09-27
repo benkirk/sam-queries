@@ -17,7 +17,8 @@ GET endpoints (status retrieval, public with login):
     GET /api/v1/status/reservations
 """
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
+from marshmallow import ValidationError
 from flask_login import login_required
 from webapp.utils.rbac import require_permission, Permission
 from webapp.utils.api_auth import api_key_required
@@ -51,7 +52,9 @@ from system_status.schemas.status import (
     QueueSchema,
     FilesystemSchema,
     SystemOutageSchema, ResourceReservationSchema,
+    LoginUsersSchema, JupyterHubUserSchema,
 )
+from system_status.queries.last_seen import record_seen
 
 bp = Blueprint('api_status', __name__)
 register_error_handlers(bp)
@@ -141,6 +144,16 @@ def _handle_reservations(reservations_data, system_name):
     return reservation_ids
 
 
+def _record_last_seen(system_name, writes):
+    """Apply last-seen ``(kind, sightings)`` writes in a savepoint; a failure never costs the snapshot."""
+    try:
+        with db.session.begin_nested():
+            for kind, sightings in writes:
+                record_seen(db.session, kind, system_name, sightings)
+    except Exception:
+        current_app.logger.exception("last-seen ledger write failed for %s", system_name)
+
+
 def _ingest_system_status(system_name, StatusSchema, id_mappers):
     """
     Generic helper to ingest system status for Derecho and Casper.
@@ -169,6 +182,14 @@ def _ingest_system_status(system_name, StatusSchema, id_mappers):
         # Extract the qstat -Q queue roster (upserted onto the `queues`
         # lookup, not stored as snapshot rows — see update_queue_definitions).
         queue_definitions = data.pop('queue_definitions', [])
+
+        try:
+            login_users = LoginUsersSchema().load(
+                {'login_users': data.pop('login_users', [])})['login_users']
+        except ValidationError as e:
+            return jsonify({'error': 'Invalid login_users', 'details': e.messages}), 400
+        pbs_users = [r.get('username') for r in data.get('user_project_queues') or []
+                     if isinstance(r, dict)]
 
         # Schema loads EVERYTHING - main status + all nested objects
         data['timestamp'] = timestamp
@@ -212,6 +233,11 @@ def _ingest_system_status(system_name, StatusSchema, id_mappers):
                 db.session, system_name, queue_definitions, timestamp
             )
 
+        _record_last_seen(system_name, [
+            ('pbs', [(u, timestamp, timestamp) for u in pbs_users]),
+            ('login', [(u, timestamp, timestamp) for u in login_users]),
+        ])
+
         db.session.commit()
         return jsonify(result), 201
 
@@ -241,6 +267,7 @@ def ingest_derecho():
         - queues (optional): List of queue status dicts
         - user_project_queues (optional): List of per-user/project/queue rollup dicts
         - queue_definitions (optional): qstat -Q roster dicts (upserted onto the queues lookup)
+        - login_users (optional): usernames with a process on a login node (last-seen ledger)
         - filesystems (optional): List of filesystem status dicts
         - reservations (optional): List of reservation dicts
 
@@ -278,6 +305,7 @@ def ingest_casper():
         - queues (optional): List of queue status dicts
         - user_project_queues (optional): List of per-user/project/queue rollup dicts
         - queue_definitions (optional): qstat -Q roster dicts (upserted onto the queues lookup)
+        - login_users (optional): usernames with a process on a login node (last-seen ledger)
         - reservations (optional): List of reservation dicts
 
     Returns:
@@ -310,6 +338,7 @@ def ingest_jupyterhub():
     JSON body should contain:
         - timestamp (optional): ISO format or 'YYYY-MM-DD HH:MM:SS', defaults to now
         - Basic JupyterHub metrics
+        - users (optional): [{name, last_activity}] for the last-seen ledger
 
     Returns:
         JSON with success status and created record ID
@@ -324,10 +353,20 @@ def ingest_jupyterhub():
         return jsonify({'error': str(e)}), 400
 
     try:
+        hub_users = JupyterHubUserSchema(many=True).load(data.pop('users', None) or [])
+    except ValidationError as e:
+        return jsonify({'error': 'Invalid users', 'details': e.messages}), 400
+
+    try:
         # Create main status record using schema
         data['timestamp'] = timestamp
         jupyterhub_status = JupyterHubStatusSchema().load(data, session=db.session)
         db.session.add(jupyterhub_status)
+        # Clamp to the snapshot: a skewed future last_activity would pin last_seen ahead forever.
+        seen = [min(u['last_activity'] or timestamp, timestamp) for u in hub_users]
+        _record_last_seen('jupyterhub', [
+            ('jupyterhub', [(u['name'], t, t) for u, t in zip(hub_users, seen)]),
+        ])
         db.session.commit()
 
         return jsonify({
