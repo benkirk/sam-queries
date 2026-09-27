@@ -84,6 +84,9 @@ class ExternalTicket(Base, SessionMixin):
         self.session.flush()
         return self
 
+    def __str__(self) -> str:
+        return f'{self.ticket_key} ({self.entity_type} {self.entity_id})'
+
     def __repr__(self) -> str:
         return (f'<ExternalTicket {self.provider} {self.ticket_key} '
                 f'{self.entity_type}:{self.entity_id} {self.origin}>')
