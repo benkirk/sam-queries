@@ -663,9 +663,19 @@ Verified live, reads only, 2026-09-26: `check()` authenticates as Ben Kirk;
 `find('SAM-AR-0')` returns RC-40274 and `find('SAM-AR-01')` returns nothing;
 `get('RC-40274')` reports Canceled with `closed=True`; an unknown key is `None`.
 `~/jira_token` line 4 carries a label before the 44-character PAT; only the
-PAT belongs in OpenBao. No create or comment has run against the live desk:
-the first filing is the § 8.10 webdev smoke, or the first real request after
-deploy.
+PAT belongs in OpenBao.
+
+Live create, 2026-09-26, on local webdev with the PAT: an operator vouch on
+request 900001 (an id far above production's, so its `SAM-AR-900001` handle
+cannot shadow a real request) filed **RC-40275** in 1.4 s. It is an "Add a
+user" request (type 20, desk 3, component NUSD, Support wait) with the
+`sam-account-request` label, the `{noformat}` body with the link below it, and
+the internal note (`public: false`). The ledger row reads `sent`, transport
+`jira-servicedesk`, channel `ticket`, detail `RC-40275`; the link row is
+`created`. A second `send_ticket` was suppressed without a call; the card and
+the Configuration tile rendered the key and "API create, mail fallback"; a
+forced `account_requests_reconcile` refreshed its status. RC-40275 is a test
+ticket to cancel.
 
 Prod DDL (before the deploy):
 
