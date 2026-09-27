@@ -1,183 +1,130 @@
 """Role-Based Access Control for the SAM Web UI.
 
-Permissions, POSIX-group-to-permission bundles, and the access checks used by
-dashboard routes and API endpoints.
+Permissions, the role catalog, and the access checks used by dashboard routes
+and API endpoints. A user's permissions are the union of the grants held by
+their username and by each POSIX group they belong to (read from
+``adhoc_system_account_entry``); a grant is unscoped or names one facility.
 
-A user's permissions are the union of two sources: the ``GROUP_PERMISSIONS``
-bundle of each POSIX group they belong to (read from
-``adhoc_system_account_entry`` in dev, test and production alike), plus any
-``USER_PERMISSION_OVERRIDES`` granted to them by name.
+``RBAC_SOURCE`` picks the catalog: ``defaults`` reads the module dicts below,
+built from ``sam.security.rbac_defaults``; ``db`` reads the ``samuel_role_*``
+tables through a per-process snapshot refreshed every ``RBAC_DB_TTL`` seconds
+and dropped by ``invalidate_catalog()`` on every admin write. In ``db`` mode
+there is NO fallback to the defaults: that would hand a revoked user their old
+grants back whenever the tables are empty.
 
-WARNING: there is NO dependency on the SAM ``role_user`` / ``role`` tables --
-the webapp's RBAC layer never consults them.
-
-``AuthUser.roles`` returns the POSIX group names that have a bundle, which
-keeps ``has_role('csg')`` working as a coarse display label. The source of
-truth for authorization is the permission set, not the role label.
+WARNING: the SAM ``role_user`` / ``role`` tables are never consulted here;
+they carry the API-key role names only (``webapp.utils.api_auth``).
 """
 
-from typing import Set, List, Dict
+import time
+from typing import Set, Dict
 from functools import wraps
-from flask import abort
+from flask import abort, current_app, has_app_context
 from flask_login import current_user
-
 
 from sam.security.permissions import (  # noqa: F401 -- re-exported
     ALL_CREATE, ALL_DELETE, ALL_EDIT, ALL_VIEW, Permission, _perms_with_action,
 )
+from sam.security.rbac_catalog import RoleCatalog, build_catalog
+from sam.security.rbac_defaults import DEFAULT_GRANTS, DEFAULT_ROLES
 
 
-# POSIX-group-to-Permission mapping. A user receives the union over every group
-# they belong to that appears in ``GROUP_PERMISSIONS``; groups absent from it
-# confer nothing.
-
-# ---- The allocation-administrator tier ----
-#
-# Provisions and manages projects, allocations and contracts end to end. The
-# defining exclusion is the **definition layer** — resources, machines, queues
-# and facilities describe the plant, not who may use it.
-#
-# WARNING: deletes are enumerated positively, never as ``ALL_DELETE - {...}``,
-# so a future ``delete_*`` domain must be added deliberately rather than
-# inherited. Every delete granted here is a SOFT retire (the generated CRUD
-# sets ``active=False``; the contract delete stamps ``end_date``). The withheld
-# ones are where delete is harsher or machine-shaped: DELETE_RESOURCES
-# (hard-deletes disk-root and fair-share override rows, decommissions
-# machines/queues), DELETE_FACILITIES, and DELETE_USERS / DELETE_GROUPS (no
-# web surface; kept withheld so a future one is granted deliberately).
-#
-# Known limitation (accepted): AllocationType and Panel live under the
-# *_FACILITIES family, so default allocation amounts and fair-share
-# percentages are NOT editable at this tier — see facilities_routes.py.
-_ALLOCATION_ADMIN: Set[Permission] = (
-    ALL_VIEW
-    | (ALL_EDIT - {Permission.EDIT_RESOURCES, Permission.EDIT_FACILITIES})
-    | {
-        Permission.ACCESS_ADMIN_DASHBOARD,
-        Permission.CREATE_PROJECTS,
-        Permission.CREATE_ALLOCATIONS,
-        Permission.CREATE_ORG_METADATA,
-        Permission.CREATE_CONTRACTS,
-        # Soft retires only — see the note above.
-        Permission.DELETE_PROJECTS,
-        Permission.DELETE_ALLOCATIONS,
-        Permission.DELETE_ORG_METADATA,
-        Permission.DELETE_CONTRACTS,
-        Permission.IMPERSONATE_USERS,
-        # XRAS payloads + replay. Explicit because no ALL_* aggregate matches a
-        # ``manage_`` prefix, which is the behavior we want. This tier is where
-        # it belongs: NUSD fields the XRAS failure mail from hdt@ucar.edu, and
-        # XRAS actions are allocation provisioning by another name. (VIEW_XRAS
-        # needs no entry — ALL_VIEW above already carries it.)
-        Permission.MANAGE_XRAS,
-        # The account-request queue is NUSD's worklist by design -- they are
-        # the team that creates the accounts.
-        Permission.MANAGE_ACCOUNT_REQUESTS,
-    }
+# The three legacy shapes, derived from the factory defaults through the same
+# closure the DB path uses. Mutable on purpose: tests register bundles here,
+# and in ``defaults`` mode the predicates read them live.
+GROUP_PERMISSIONS: Dict[str, Set[Permission]]
+USER_PERMISSION_OVERRIDES: Dict[str, Set[Permission]]
+USER_FACILITY_PERMISSIONS: Dict[str, Dict[str, Set[Permission]]]
+GROUP_PERMISSIONS, USER_PERMISSION_OVERRIDES, USER_FACILITY_PERMISSIONS = (
+    build_catalog(DEFAULT_ROLES, DEFAULT_GRANTS).as_dicts()
 )
 
-
-GROUP_PERMISSIONS: Dict[str, Set[Permission]] = {
-    # ---- Real POSIX group bundles (provisional) ----
-
-    # nusd: the allocation-administrator tier, unmodified — NUSD's job is
-    # allocations and contracts, not machines or queues. A strict subset of
-    # csg, so the can_impersonate no-escalation rule blocks nusd from
-    # impersonating a csg user.
-    'nusd': _ALLOCATION_ADMIN,
-
-    # csg: the allocation-administrator tier PLUS edit on resources — CSG runs
-    # the plant — the event lifecycle and the /database browser, which are
-    # CSG's alone. Create/delete of resources stays withheld (ssg holds
-    # CREATE_RESOURCES).
-    'csg': _ALLOCATION_ADMIN | {Permission.EDIT_RESOURCES,
-                                Permission.MANAGE_EVENTS,
-                                Permission.ADMIN_DATABASE},
-
-    # ssg: read-only across the board, plus resource create/edit and
-    # edit system status (for outages...)
-    'ssg': ALL_VIEW | {
-        Permission.ACCESS_ADMIN_DASHBOARD,
-        Permission.EDIT_RESOURCES, Permission.CREATE_RESOURCES,
-        Permission.EDIT_SYSTEM_STATUS
-    },
-}
-
-# Per-user permission overrides: {username: {Permission, ...}}, additive to
-# whatever the user's group memberships confer. For one-off grants that do not
-# justify touching a bundle or POSIX group membership.
-USER_PERMISSION_OVERRIDES: Dict[str, Set[Permission]] = {
-    # 'someuser': {Permission.EXPORT_DATA, Permission.VIEW_REPORTS},
-    'benkirk' : [p for p in Permission],  # admin-equivalent: full access
-    'mcjones' : ALL_VIEW | {
-        Permission.ACCESS_ADMIN_DASHBOARD,
-    },
-}
-
-# full permissions for some other app/dev/investigators:
-USER_PERMISSION_OVERRIDES['kyledavis'] = USER_PERMISSION_OVERRIDES['benkirk']
-#USER_PERMISSION_OVERRIDES['mtrahan'] = USER_PERMISSION_OVERRIDES['benkirk']
+_DB_CACHE: Dict[str, object] = {'at': None, 'catalog': None}
 
 
-# Per-user, per-facility grants — the third RBAC tier, additive to the two
-# unconditional ones above. ``permission`` applies only when the target
-# project's facility is in the set. Any number of facilities per user.
-#
-# Format: {username: {facility_name: {Permission, ...}}}
-USER_FACILITY_PERMISSIONS: Dict[str, Dict[str, Set[Permission]]] = {
-    # WNA-scoped admin — provisions and manages WNA projects and
-    # allocations. Holds no authority over NCAR/UNIV/CISL/CSL/XSEDE/ASD.
-    'sureshm': {
-        'WNA': {
-            Permission.ACCESS_ADMIN_DASHBOARD,
-            Permission.VIEW_PROJECTS,
-            Permission.EDIT_PROJECTS,
-            Permission.CREATE_PROJECTS,
-            Permission.VIEW_PROJECT_MEMBERS,
-            Permission.EDIT_PROJECT_MEMBERS,
-            Permission.VIEW_ALLOCATIONS,
-            Permission.EDIT_ALLOCATIONS,
-            Permission.CREATE_ALLOCATIONS,
-            # Reference-data + directory viewers, granted globally: directory
-            # lookup is inherently cross-facility, since project membership
-            # spans users outside WNA. Write buttons stay hidden — they gate on
-            # CREATE_/EDIT_/DELETE_, which this tier does not confer.
-            Permission.VIEW_RESOURCES,
-            Permission.VIEW_ORG_METADATA,
-            # Enumerated tiers get no ALL_VIEW auto-pickup, so every new VIEW_*
-            # domain must be added here by hand or this tier silently loses its
-            # card — as *_CONTRACTS nearly did.
-            Permission.VIEW_CONTRACTS,
-            Permission.VIEW_FACILITIES,
-            Permission.VIEW_USERS,
-            Permission.VIEW_GROUPS,
-            # NOTE — VIEW_XRAS / MANAGE_XRAS are deliberately absent: the one
-            # VIEW_* domain the rule above does NOT cover. An XRAS action is not
-            # facility-scopable — a New action has no project yet, only a
-            # requestNumber, and a malformed body has no facility at all. The
-            # XRAS routes therefore gate on plain require_permission(), so a
-            # scoped manager gets a clean 403 rather than a partial, misleading
-            # view of an integration log.
-        },
-    },
-}
+def _db_mode() -> bool:
+    return has_app_context() and current_app.config.get('RBAC_SOURCE') == 'db'
+
+
+def _load_db_catalog() -> RoleCatalog:
+    """One round trip over the samuel_role_* tables; tests patch this name."""
+    from sam.security.samuel_roles import load_catalog
+    from webapp.extensions import db
+    return load_catalog(db.session)
+
+
+def invalidate_catalog() -> None:
+    """Drop this process's snapshot; the next check reloads it."""
+    _DB_CACHE['at'] = None
+
+
+def _db_catalog() -> RoleCatalog:
+    """The TTL snapshot. On a load error the last-good snapshot is served, and
+    with none an empty catalog: nobody holds anything until the DB answers."""
+    ttl = current_app.config.get('RBAC_DB_TTL', 60)
+    now = time.monotonic()
+    last = _DB_CACHE['at']
+    if ttl and last is not None and _DB_CACHE['catalog'] is not None and (now - last) < ttl:
+        return _DB_CACHE['catalog']
+    try:
+        fresh = _load_db_catalog()
+    except Exception:
+        current_app.logger.error('samuel_role_* load failed; serving the last-good '
+                                 'role catalog', exc_info=True)
+        if _DB_CACHE['catalog'] is None:
+            _DB_CACHE['catalog'] = RoleCatalog(roles={}, unscoped={}, scoped={}, source='db')
+        return _DB_CACHE['catalog']
+    _DB_CACHE['at'] = now
+    _DB_CACHE['catalog'] = fresh
+    return fresh
+
+
+def active_catalog() -> RoleCatalog:
+    """The catalog every predicate reads: the module dicts in ``defaults``
+    mode, the TTL snapshot of the tables in ``db`` mode."""
+    if _db_mode():
+        return _db_catalog()
+    return RoleCatalog.from_dicts(GROUP_PERMISSIONS, USER_PERMISSION_OVERRIDES,
+                                  USER_FACILITY_PERMISSIONS)
+
+
+def _resolve(user, catalog: RoleCatalog):
+    """``(unscoped set, {facility: set})`` for ``user``, group grants folded in.
+    Memoized on the user object per catalog snapshot in ``db`` mode only, so a
+    monkeypatched dict in ``defaults`` mode is still read live."""
+    cached = getattr(user, '_rbac_resolved', None)
+    if isinstance(cached, tuple) and cached[0] is catalog:
+        return cached[1], cached[2]
+    username = getattr(user, 'username', None)
+    groups = getattr(user, 'roles', None)
+    groups = tuple(groups) if isinstance(groups, (set, frozenset, list, tuple)) else ()
+    unscoped: Set[Permission] = set()
+    scoped: Dict[str, Set[Permission]] = {}
+    if getattr(user, 'is_authenticated', False) and username is not None:
+        unscoped |= catalog.permissions('user', username)
+        for facility, perms in catalog.facility_permissions('user', username).items():
+            scoped.setdefault(facility, set()).update(perms)
+    for g in groups:
+        unscoped |= catalog.permissions('group', g)
+        for facility, perms in catalog.facility_permissions('group', g).items():
+            scoped.setdefault(facility, set()).update(perms)
+    if catalog.source == 'db':
+        try:
+            user._rbac_resolved = (catalog, unscoped, scoped)
+        except (AttributeError, TypeError):
+            pass
+    return unscoped, scoped
 
 
 def get_user_permissions(user) -> Set[Permission]:
-    """Union of the user's ``GROUP_PERMISSIONS`` bundles (keyed by
-    ``user.roles``) and their ``USER_PERMISSION_OVERRIDES``."""
-    permissions: Set[Permission] = set()
+    """The permissions ``user`` holds unconditionally: their own grants plus
+    those of every POSIX group in ``user.roles``. The predicates below route
+    through this module-level name on purpose; tests patch it."""
+    return set(_resolve(user, active_catalog())[0])
 
-    # An anonymous visitor has no ``roles``: no permissions, not an AttributeError.
-    for group_name in getattr(user, 'roles', ()):
-        if group_name in GROUP_PERMISSIONS:
-            permissions.update(GROUP_PERMISSIONS[group_name])
 
-    overrides = USER_PERMISSION_OVERRIDES.get(getattr(user, 'username', None))
-    if overrides:
-        permissions.update(overrides)
-
-    return permissions
+def _scoped(user) -> Dict[str, Set[Permission]]:
+    return _resolve(user, active_catalog())[1]
 
 
 def has_permission(user, permission: Permission) -> bool:
@@ -187,45 +134,31 @@ def has_permission(user, permission: Permission) -> bool:
 
 def has_permission_for_facility(user, permission: Permission,
                                 facility_name) -> bool:
-    """True if ``user`` holds ``permission`` unconditionally, or holds it for
-    ``facility_name`` via ``USER_FACILITY_PERMISSIONS``.
+    """True if ``user`` holds ``permission`` unconditionally, or for
+    ``facility_name`` through a facility-scoped grant.
 
     ``facility_name`` is ``None`` for orphan projects (no allocation_type
-    chain), which only unscoped system-permission holders can act on.
+    chain), which only unscoped permission holders can act on.
     """
-    # System grant — applies to every facility, including unknown ones.
     if has_permission(user, permission):
         return True
     if facility_name is None:
-        # Orphan projects: only unscoped system-permission holders can act.
         return False
-    if not getattr(user, 'is_authenticated', False):
-        return False
-    username = getattr(user, 'username', None)
-    if username is None:
-        return False
-    scoped = USER_FACILITY_PERMISSIONS.get(username, {})
-    return permission in scoped.get(facility_name, set())
+    return permission in _scoped(user).get(facility_name, ())
 
 
 def has_permission_any_facility(user, permission: Permission) -> bool:
-    """True if ``user`` can exercise ``permission`` **somewhere** — either
+    """True if ``user`` can exercise ``permission`` **somewhere** -- either
     unconditionally or in at least one facility.
 
-    For route-level gates that admit scoped users; the body then intersects
-    their scope against whatever the request targeted. Contrast with
-    ``has_permission``, which asks "unconditionally?" — the right question for
-    routes that must stay pure system-admin domain.
+    For route-level gates that admit scoped users; the route body then
+    intersects their scope against whatever the request targeted. Contrast
+    with ``has_permission``, the right question for routes that must stay
+    pure system-admin domain.
     """
     if has_permission(user, permission):
         return True
-    if not getattr(user, 'is_authenticated', False):
-        return False
-    username = getattr(user, 'username', None)
-    if username is None:
-        return False
-    scoped = USER_FACILITY_PERMISSIONS.get(username, {})
-    return any(permission in perms for perms in scoped.values())
+    return any(permission in perms for perms in _scoped(user).values())
 
 
 def user_facility_scope(user, permission: Permission):
@@ -234,13 +167,7 @@ def user_facility_scope(user, permission: Permission):
     way to exercise it at all."""
     if has_permission(user, permission):
         return None
-    if not getattr(user, 'is_authenticated', False):
-        return set()
-    username = getattr(user, 'username', None)
-    if username is None:
-        return set()
-    scoped = USER_FACILITY_PERMISSIONS.get(username, {})
-    return {f for f, perms in scoped.items() if permission in perms}
+    return {f for f, perms in _scoped(user).items() if permission in perms}
 
 
 def allowed_facility_names(user, permission: Permission, *, active_only=True):
@@ -289,7 +216,7 @@ def filter_rows_by_facility(rows, allowed):
 
     Pass ``None`` for ``allowed`` to skip filtering (unscoped / global
     view). Used by the allocations dashboard's post-fetch scope filter
-    — every row returned by the summary / usage / transactions
+    -- every row returned by the summary / usage / transactions
     queries carries a ``'facility'`` field."""
     if allowed is None:
         return rows
@@ -303,7 +230,7 @@ def can_impersonate(caller, target) -> bool:
     """The no-escalation rule: ``target``'s permissions must be a subset of
     ``caller``'s (equal sets, i.e. peer impersonation, are allowed).
 
-    This does NOT check ``Permission.IMPERSONATE_USERS`` — the route decorator
+    This does NOT check ``Permission.IMPERSONATE_USERS`` -- the route decorator
     gates that. This enforces only the no-escalation invariant.
     """
     return get_user_permissions(target) <= get_user_permissions(caller)
