@@ -269,6 +269,18 @@ dates the row.
   request (`raiseOnBehalfOf`): the requester, the sponsor, or nobody.
   `TicketDraft.on_behalf_of` exists and is sent when set; nothing sets it.
 - ~~Close RC-40274~~: Canceled as of 2026-09-26.
+- **Large rosters (accepted risk at initial deployment).** A roster pasted
+  without invitation links files one ticket per queued name, serially, inside
+  the paste request: about 1.4 s each (measured), so 40 names is roughly a
+  minute. That fits gunicorn's 120 s but may exceed a 60 s ingress read
+  timeout; the tickets still file, the operator just sees an error instead of
+  the result. It also hands NUSD 40 separate tickets for one class. A future
+  redesign (not for initial deployment): **one ticket per roster**, keyed to
+  the event rather than the request, with later roster changes (names added,
+  dropped, fulfilled) posted to that ticket as comments by an update
+  mechanism. `external_ticket` is already polymorphic (`entity_type`), so an
+  `account_request_event` row needs no DDL; the ledger key and the Accounts
+  card would change.
 - Watch the first real API ticket land (and the first real mail ticket before
   it): request type "Add a user", the internal note, the label, and the
   Accounts card link.
@@ -641,11 +653,12 @@ green on MySQL and Postgres; `helm/tests/test-cronjob-render.sh` and
 | `JiraConfig` default timeout 5 | defaults 10 s read / 3.05 s connect / 3 retries; `interactive` = 5 s, one attempt | § 8.1's numbers; the webapp path is `interactive` |
 | `find` trusts the JQL hits | hits are also filtered to the exact handle (`SAM-AR-12` never matches `SAM-AR-123`) | cheap insurance on a phrase match |
 | a process-local miss dict | not built | each request is asked at most once per run anyway; a miss writes nothing |
-| card key link in the status cell | the key as plain text there, the link in the detail list | the status cell is a collapse trigger (CLAUDE.md, wire-dashboard-feature § 6) |
 | — | in-request circuit breaker: after one provider outage, the rest of that request (a roster) files by mail | a 30-row roster against a dead desk would otherwise wait out 30 connect timeouts |
 | — | `request_views` builds each link from the provider the row stores, not the current selector | a link survives `TICKET_PROVIDER` going back to mail |
 | — | refresh stamps a vanished ticket (404) as read; a reopened ticket stays closed in SAM | stops hourly re-asks; reopen is rare |
 | refresh open tickets not read in 6 h; cap 25 per pass | every hourly run (threshold 50 min, since slot stamps are exactly 60 min apart); cap `SAM_TASKS_TICKET_LOOKUP_MAX` 50 per half | Ben, 2026-09-26: a closed-without-account ticket should surface within the hour, and a pasted roster is easily 40 open tickets |
+| card key link in the status cell (as text, since the cell was a collapse trigger) | the Status cell is no longer a collapse trigger, so the key links there too; queue rows are one line, with Kind (purpose, origin) and Ready (readiness, address, invitation) as glyphs whose words sit in `title`/`aria-label`; the full email is in the details | Ben's UX pass after the smoke; rows went from 69 px to 53 px |
+| — | the ticket's "Requested via" line names who verified the address: "self-registration (address vouched for by <operator>)" when an operator vouched | the builder keyed on who created the row, so a vouched self-registration claimed "email address verified" (seen on RC-40275, fixed on RC-40276) |
 | — | anonymizer purges `external_ticket`; healthcheck expects the Jira ExternalSecret on prod only; the notification detail modal shows a sent row's detail neutral, not red | the rows would orphan once `account_request` is purged; the key is recorded as the sent row's detail |
 
 Behavior worth knowing:
@@ -659,7 +672,8 @@ Behavior worth knowing:
   invitation links files serially inside one request, so 40 names is roughly a
   minute: under gunicorn's 120 s, but near a 60 s ingress read timeout if the
   cluster's ingress uses that common default. Tickets still file if the
-  browser gives up; the page just never hears back.
+  browser gives up; the page just never hears back. Accepted for initial
+  deployment; the redesign is in § 7.
 - The Configuration tile shows the mode: "mail only", "mail, keys learned
   hourly" (reads alone), or "API create, mail fallback".
 
