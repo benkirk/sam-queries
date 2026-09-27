@@ -256,9 +256,14 @@ Local webdev: `.env` `RBAC_SOURCE=db` + `sam-admin rbac --seed` to exercise the 
 
 ## 13. Open items
 
-- The prod `collector` key holds `api_admin` (SYSTEM_ADMIN) because `sam-admin cache
-  --refresh` reuses it, which makes the collector credential an all-routes token in `db`
-  mode. Mint a dedicated cache-refresh key with `api_admin` and drop `api_admin` from
-  `collector`.
+- The `collector` key holds `api_admin` (SYSTEM_ADMIN) because `sam-admin cache
+  --refresh` reused it, which made the collector credential an all-routes token in `db`
+  mode. Cutover to a dedicated `cacheref` config key (`API_KEYS_CACHEREF` in both values
+  files, one hash per environment), in this order per environment, dev first: dispatch
+  the image carrying the env var; `sam-admin rbac --grant apikey:cacheref --role
+  api_admin` through the pod; verify `sam-admin cache --refresh` with the new
+  credentials; `sam-admin rbac --revoke <id>` on the collector's `api_admin` grant; point
+  `SAM_API_USER` / `SAM_API_PASS` at `cacheref` wherever the refresh runs. The collector
+  keeps `api_admin` until the verify passes.
 - `--seed-keys` granted `api_legacy` to the XRAS key. Inert: `xras_api_required` passes no
   `Permission`, so `api_key_allowed` never runs there. Harmless; leave it.
