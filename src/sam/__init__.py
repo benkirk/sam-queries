@@ -228,6 +228,7 @@ from .notify.models import NotificationLog
 from .notify.template_store import NotificationTemplateOverride
 from .integration.tickets.models import ExternalTicket
 
+from .security.permissions import Permission
 from .security.roles import Role, RoleUser, ApiCredentials, RoleApiCredentials
 from .security.access import AccessBranch, AccessBranchResource
 
@@ -307,7 +308,7 @@ __all__ = [
     # Help-desk tickets
     'ExternalTicket',
     # Security
-    'Role', 'RoleUser', 'ApiCredentials', 'RoleApiCredentials',
+    'Permission', 'Role', 'RoleUser', 'ApiCredentials', 'RoleApiCredentials',
     'AccessBranch', 'AccessBranchResource',
     # Operational
     'Synchronizer', 'ManualTask', 'Product', 'WallclockExemption',
