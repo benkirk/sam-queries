@@ -247,11 +247,16 @@ def build_receipt_message(row: AccountRequest, *, project_code: str = '',
     )
 
 
+def ticket_handle(request_id: int) -> str:
+    """``SAM-AR-<id>``: the ticket's lookup handle, the one place its format lives.
+    Jira keeps the summary verbatim, so ``summary ~ "\\"SAM-AR-<id>\\""`` finds the
+    ticket later (docs/plans/TICKET_PROVIDER.md)."""
+    return f'SAM-AR-{request_id}'
+
+
 def subject_token(request_id: int) -> str:
-    """``[SAM-AR-<id>]``: the ticket's lookup handle. Jira-by-email keeps the
-    summary verbatim, so ``summary ~ "\\"SAM-AR-<id>\\""`` finds the ticket later
-    (docs/plans/TICKET_PROVIDER.md); the URL in the body is not indexed usefully."""
-    return f'[SAM-AR-{request_id}]'
+    """``[SAM-AR-<id>]``, the handle as it appears in the subject."""
+    return f'[{ticket_handle(request_id)}]'
 
 
 def ticket_subject(name: str, *, request_id: int, event_code: str = '',

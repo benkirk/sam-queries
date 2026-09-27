@@ -9,8 +9,9 @@ from sam.integration.tickets.base import (DEFAULT_AUTOMATION_NOTE, TicketDraft,
                                           TicketNotConfigured, TicketProvider,
                                           TicketRef, TicketRejected,
                                           TicketSourceUnavailable)
+from sam.integration.tickets.models import ExternalTicket
 
 __all__ = [
-    'DEFAULT_AUTOMATION_NOTE', 'TicketDraft', 'TicketNotConfigured',
+    'DEFAULT_AUTOMATION_NOTE', 'ExternalTicket', 'TicketDraft', 'TicketNotConfigured',
     'TicketProvider', 'TicketRef', 'TicketRejected', 'TicketSourceUnavailable',
 ]

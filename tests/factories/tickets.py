@@ -116,3 +116,20 @@ class MinimalProvider(TicketProvider):
 
     def browse_url(self, key: str) -> str:
         return f'https://minimal.example.invalid/{key}'
+
+
+def make_external_ticket(session, *, entity_id, entity_type='account_request',
+                         provider='jira-servicedesk', ticket_key=None,
+                         origin='learned', requested_by='task:test', status=None,
+                         closed=None, synced_at=None, when=None):
+    """One ``external_ticket`` row via the model's ``create()``. The default key
+    derives from ``entity_id`` plus a uuid tail, so xdist workers never collide."""
+    import uuid
+
+    from sam import ExternalTicket
+    key = ticket_key or f'T{entity_id}-{uuid.uuid4().hex[:8].upper()}'
+    return ExternalTicket.create(session, provider=provider, ticket_key=key,
+                                 entity_type=entity_type, entity_id=entity_id,
+                                 origin=origin, requested_by=requested_by,
+                                 status=status, closed=closed, synced_at=synced_at,
+                                 when=when)

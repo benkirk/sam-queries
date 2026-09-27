@@ -44,6 +44,7 @@ _KNOWN_SAFE = {
     ('comp_activity', 'acct_part_key'),
     ('comp_activity', 'era_part_key'),
     ('comp_job', 'era_part_key'),
+    ('external_ticket', 'ticket_key'),     # a tracker issue key, RC-40274
     ('manual_task', 'job_key'),
     ('notification_log', 'dedup_key'),
     ('users', 'token_type'),

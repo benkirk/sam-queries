@@ -827,6 +827,37 @@ class TestCriticalSchemas:
         assert default is None, (
             'modified_time is stamped from the app clock, not CURRENT_TIMESTAMP')
 
+    def test_external_ticket_schema(self, session):
+        """Help-desk ticket links: unique per (provider, key), no FKs, app clock."""
+        db_cols = get_db_columns(session, 'external_ticket')
+        expected = {'external_ticket_id', 'provider', 'ticket_key', 'entity_type',
+                    'entity_id', 'origin', 'requested_by', 'status', 'closed_at',
+                    'synced_at', 'creation_time'}
+        assert set(db_cols.keys()) == expected, set(db_cols.keys()) ^ expected
+        assert db_cols['external_ticket_id']['key'] == 'PRI'
+        assert db_cols['ticket_key']['type'] == 'varchar(32)'
+        for col in ('status', 'closed_at', 'synced_at'):
+            assert db_cols[col]['nullable'] is True, col
+        unique = session.execute(text("""
+            SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX)
+              FROM information_schema.STATISTICS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'external_ticket'
+               AND INDEX_NAME = 'external_ticket_provider_key' AND NON_UNIQUE = 0
+        """)).scalar()
+        assert unique == 'provider,ticket_key'
+        default = session.execute(text("""
+            SELECT COLUMN_DEFAULT FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'external_ticket'
+               AND COLUMN_NAME = 'creation_time'
+        """)).scalar()
+        assert default is None, 'creation_time is stamped from the app clock'
+        fks = session.execute(text("""
+            SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'external_ticket'
+               AND REFERENCED_TABLE_NAME IS NOT NULL
+        """)).scalar()
+        assert fks == 0, 'no foreign keys by design'
+
     def test_notification_addressing_schema(self, session):
         """Operator-added copies: one address per row, unique per scope+field."""
         db_cols = get_db_columns(session, 'notification_addressing')
