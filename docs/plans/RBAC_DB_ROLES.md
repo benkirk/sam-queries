@@ -264,6 +264,9 @@ Local webdev: `.env` `RBAC_SOURCE=db` + `sam-admin rbac --seed` to exercise the 
   api_admin` through the pod; verify `sam-admin cache --refresh` with the new
   credentials; `sam-admin rbac --revoke <id>` on the collector's `api_admin` grant; point
   `SAM_API_USER` / `SAM_API_PASS` at `cacheref` wherever the refresh runs. The collector
-  keeps `api_admin` until the verify passes.
+  keeps `api_admin` until the verify passes. **Done 2026-09-27 on `sha-0900a15`**: dev
+  grant #10 / revoke #9, prod grant #22 / revoke #21, each refresh 200 on the new key;
+  after the snapshot TTL the collector answers 403 on a legacy route and `cacheref` 200.
+  Left: repoint the laptop `.env` and the post-deploy step at `cacheref`.
 - `--seed-keys` granted `api_legacy` to the XRAS key. Inert: `xras_api_required` passes no
   `Permission`, so `api_key_allowed` never runs there. Harmless; leave it.
