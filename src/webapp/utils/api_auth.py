@@ -165,13 +165,28 @@ def _set_api_identity(ident: dict) -> None:
     g.api_key_roles = ident['roles']
 
 
-def api_key_required(f):
+def api_key_allowed(ident: dict, permission: Optional[Permission]) -> bool:
+    """The token-path permission check. Only ``RBAC_SOURCE=db`` enforces it:
+    a key then needs ``permission`` through a ``samuel_role_grant`` row
+    (``sam-admin rbac --seed-keys`` gives every key ``api_legacy``). In
+    ``defaults`` mode any valid key passes, as it always has."""
+    if permission is None or current_app.config.get('RBAC_SOURCE') != 'db':
+        return True
+    from webapp.utils.rbac import active_catalog
+    return permission in active_catalog().permissions('apikey', ident['username'])
+
+
+def api_key_required(f=None, *, permission: Optional[Permission] = None):
     """
     Decorator: requires valid HTTP Basic Auth API key credentials.
 
-    Reads API_KEYS from app config (dict of username -> bcrypt hash).
-    Returns 401 + WWW-Authenticate header on auth failure.
-    Stores authenticated username in g.api_key_user for logging.
+    Usable bare (``@api_key_required``) or with a permission
+    (``@api_key_required(permission=Permission.MANAGE_SYSTEM_STATUS)``), which
+    ``api_key_allowed`` enforces in ``RBAC_SOURCE=db`` mode only.
+    Reads API_KEYS from app config (dict of username -> bcrypt hash), falling
+    back to the ``api_credentials`` rows. Returns 401 + WWW-Authenticate on
+    auth failure, JSON 403 when the key lacks the permission. Stores the
+    authenticated username in g.api_key_user for logging.
 
     Stacks the M2M rate limit (``RATELIMIT_M2M``, per-IP) on every wrapped
     route — Flask-Limiter checks limits in a before_request hook, which
@@ -179,6 +194,9 @@ def api_key_required(f):
     so we pin ``key_func`` to the source IP. 120/min default is enough
     headroom for legitimate collectors while still bounding abuse.
     """
+    if f is None:
+        return lambda func: api_key_required(func, permission=permission)
+
     from webapp.limiter import limiter as _facade
 
     @wraps(f)
@@ -192,6 +210,11 @@ def api_key_required(f):
             return _auth_challenge('Invalid credentials')
 
         _set_api_identity(ident)  # available to view functions for logging
+        if not api_key_allowed(ident, permission):
+            current_app.logger.warning(
+                'API auth denied: user=%r path=%s permission=%s',
+                auth.username, request.path, permission.value)
+            return jsonify({'error': 'Forbidden - insufficient permissions'}), 403
         return f(*args, **kwargs)
 
     return _facade.limiter.limit(
@@ -218,8 +241,10 @@ def login_or_token_required(
       - Validates credentials against config ``API_KEYS`` bcrypt hashes and, as a
         fallback, the enabled ``api_credentials`` DB rows (same as ``api_key_required``)
       - If ``roles`` is given, the caller must hold at least one of them
-        (see below); otherwise any valid key grants access, with the key's role
-        names available on ``g.api_key_roles`` for logging
+        (see below), with the key's role names on ``g.api_key_roles`` for logging
+      - In ``RBAC_SOURCE=db`` mode the key must also hold ``permission`` through
+        a ``samuel_role_grant`` row (``api_key_allowed``); in ``defaults`` mode
+        any valid key passes, as it always has
       - Sets ``g.api_key_user`` / ``g.api_key_source`` for downstream logging
 
     Session path (no ``Authorization`` header):
@@ -228,9 +253,9 @@ def login_or_token_required(
       - Returns HTMX-aware 401 (``HX-Redirect`` to login) or JSON 401; JSON 403 on permission failure
 
     Args:
-        permission: Optional ``Permission`` enum value. Session users must hold this
-                    permission. Token users bypass RBAC entirely — ``roles`` is the
-                    token-path analogue, not a substitute. ``None`` means just be
+        permission: Optional ``Permission`` enum value. Session users must hold it;
+                    token users must hold it too once ``RBAC_SOURCE=db`` (a key with
+                    no grant is denied everywhere). ``None`` means just be
                     authenticated.
         roles:      Optional iterable of API-key role names, as carried by
                     ``api_credentials`` via ``role_api_credentials`` (e.g. ``ROLE_XRAS``).
@@ -313,6 +338,12 @@ def login_or_token_required(
                         'API auth denied: user=%r path=%s roles=%s need=%s',
                         auth.username, request.path, sorted(ident['roles']),
                         sorted(required_roles))
+                    return _deny(403, 'Forbidden - insufficient permissions')
+
+                if not api_key_allowed(ident, permission):
+                    current_app.logger.warning(
+                        'API auth denied: user=%r path=%s permission=%s',
+                        auth.username, request.path, permission.value)
                     return _deny(403, 'Forbidden - insufficient permissions')
 
                 return f(*args, **kwargs)
