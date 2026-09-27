@@ -448,7 +448,7 @@ Three changes to the handoff path, each small, in the order they land:
 
 **The clean loop is samuel-dev ↔ the XRAS test instance.** SAM has the
 internet-reachable development deployment (`https://samuel-dev.k8s.ucar.edu`,
-`K8S_DEV_ENVIRONMENT.md`), and Steve offered "a test instance of xras_admin … against
+`implemented/K8S_DEV_ENVIRONMENT.md`), and Steve offered "a test instance of xras_admin … against
 your new accounting service" on 2026-08-11 (`docs/xras/incoming/XRAS_CUTOVER_RUNBOOK.md`).
 Priced from the chart:
 

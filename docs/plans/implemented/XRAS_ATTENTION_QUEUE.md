@@ -112,7 +112,7 @@ real work the display reports, not a display bug. Separate decision, Ben's.
    auto-notice, leaves the attention queue after 3 days, visible under Everything.
 5. **Docs.** `docs/plans/implemented/XRAS_PENDING_WORK.md` gains a section for this card (the
    rule, no-window decision, undo window, the `xras_notices` interaction). One
-   playbook row. A cutover-log row in `docs/plans/XRAS_TRIAGE_WEEK.md` at deploy.
+   playbook row. A cutover-log row in `docs/plans/implemented/XRAS_TRIAGE_WEEK.md` at deploy.
 
 Verification: `pytest tests/unit/test_xras_action_queries.py
 tests/unit/test_xras_dashboard.py tests/unit/test_xras_remediations.py

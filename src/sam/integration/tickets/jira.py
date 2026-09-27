@@ -6,7 +6,7 @@ create is a duplicate ticket); ``JiraServiceDeskProvider`` composes a
 transport, so tests inject a fake and a future Jira Software provider reuses
 the transport without inheriting from this class. Cloud differs in auth
 (``JIRA_AUTH=basic`` + ``JIRA_USER``) and the search path. Instance facts
-(project RC, desk 3, request type 20): docs/plans/TICKET_PROVIDER.md § 2.
+(project RC, desk 3, request type 20): docs/plans/implemented/TICKET_PROVIDER.md § 2.
 """
 
 from __future__ import annotations

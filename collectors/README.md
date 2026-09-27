@@ -133,6 +133,20 @@ collectors/
 - **Per-login-node**: availability, user count, load averages
 - **Per-filesystem**: capacity, used space, utilization
 
+### Users seen (last-seen ledger)
+
+Each post also names the users observed, which the server folds into
+`system_status.user_last_seen` (see `sam-admin last-seen`):
+
+- `user_project_queues` (existing): job owners, recorded as the `pbs` source.
+- `login_users` (Derecho/Casper): owners of any process on any login node, from
+  `ps -eo uid=,user:32=`, uid >= 1000 (`ssh_utils.MIN_HUMAN_UID`). `ps` rather
+  than `who`, which misses VS Code Remote, non-interactive ssh, scp/sftp and
+  detached tmux. The per-node `user_count` is still `who | wc -l`.
+- `users` (JupyterHub): `[{name, last_activity}]` from the hub API.
+
+The fields are optional, so a collector and the server can be upgraded in either order.
+
 ## Node Type Classification
 
 The collectors intelligently infer node types from PBS `pbsnodes -aj -F json` output:

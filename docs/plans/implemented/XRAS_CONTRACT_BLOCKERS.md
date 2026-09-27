@@ -1,9 +1,10 @@
 # XRAS Contract Blockers — surface, then assist
 
 **Status: Phase 1 BUILT 2026-08-24 on PR #482 (`xras_incoming_triage`),
-smoked against the local sweep in a browser and by `e2e/`.** Sketched during
+smoked against the local sweep in a browser and by `e2e/`.** The Blocker facet
+followed in #504. Phase 2 (assist) is designed below, unbuilt and unscheduled. Sketched during
 cutover week (`XRAS_TRIAGE_WEEK.md`); builds on the grant handling shipped in
-PR #479 (`implemented/XRAS_DATA_MODEL_UPLIFT.md`, Track A commit 1).
+PR #479 (`XRAS_DATA_MODEL_UPLIFT.md`, Track A commit 1).
 
 ## The gap
 

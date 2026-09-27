@@ -250,7 +250,7 @@ def build_receipt_message(row: AccountRequest, *, project_code: str = '',
 def ticket_handle(request_id: int) -> str:
     """``SAM-AR-<id>``: the ticket's lookup handle, the one place its format lives.
     Jira keeps the summary verbatim, so ``summary ~ "\\"SAM-AR-<id>\\""`` finds the
-    ticket later (docs/plans/TICKET_PROVIDER.md)."""
+    ticket later (docs/plans/implemented/TICKET_PROVIDER.md)."""
     return f'SAM-AR-{request_id}'
 
 

@@ -179,7 +179,7 @@ implies everything. `RBAC_SOURCE=defaults` reads the code catalog
 through a per-process snapshot (`RBAC_DB_TTL`) and also holds API keys to
 each token route's permission. The legacy `role_user` table is not
 consulted. Admin -> Roles & access (`MANAGE_ROLES`) and `sam-admin rbac`
-edit the tables; `docs/plans/RBAC_DB_ROLES.md` is the design record.
+edit the tables; `docs/plans/implemented/RBAC_DB_ROLES.md` is the design record.
 
 ### Permissions
 
@@ -217,7 +217,7 @@ model. Admin → Database, `http://localhost:5050/database/`.
   timeout (`DB_BROWSER_STATEMENT_TIMEOUT_MS`, default 5000); secret columns are
   redacted (never selected, filtered or sorted).
 - **Access**: `ADMIN_DATABASE` (csg bundle); `DB_BROWSER_ENABLED=0` unmounts it.
-  Design record: `docs/plans/DB_BROWSER.md`.
+  Design record: `docs/plans/implemented/DB_BROWSER.md`.
 
 ### Expiration Monitoring
 

@@ -5,7 +5,7 @@ answered), ``None`` (it answered and has no such ticket), an exception (we
 could not ask). ``TicketNotConfigured`` and ``TicketRejected`` both subclass
 ``TicketSourceUnavailable`` so a caller that degrades on "could not ask"
 degrades on "may not ask" and "refused" without a second branch.
-Design: docs/plans/TICKET_PROVIDER.md.
+Design: docs/plans/implemented/TICKET_PROVIDER.md.
 """
 
 from __future__ import annotations

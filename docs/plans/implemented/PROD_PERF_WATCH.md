@@ -1,5 +1,8 @@
 # Production performance watch — baseline and follow-ups
 
+**Status: record.** Baseline of 2026-09-02; the follow-ups shipped in #496, #497
+and #500.
+
 A read-only characterization of how the public SAM webapp performs in
 production, captured 2026-09-02 (week 2 of the XRAS cutover, while traffic was
 light and the deployment still new). It records the baseline, the read-only
@@ -29,7 +32,7 @@ entirely the legacy-compat integration endpoints serving large JSON to the
 | `/api/v1/fstree_access/*GPU` | ~960 | 150–350 ms | ~440 |
 
 Every `Slow request:` warning (>5 s, emitted by
-[`src/webapp/run.py`](../../src/webapp/run.py)) in the window is one of
+[`src/webapp/run.py`](../../../src/webapp/run.py)) in the window is one of
 `directory_access` or `fstree_access/Casper`.
 
 ## Read-only signals available in prod
@@ -39,12 +42,12 @@ header. What exists, all read-only:
 
 - **`kubectl logs -l app=samuel --tail=-1`** — two line formats on one stdout:
   - gunicorn access line
-    ([`containers/webapp/gunicorn_config.py`](../../containers/webapp/gunicorn_config.py)):
+    ([`containers/webapp/gunicorn_config.py`](../../../containers/webapp/gunicorn_config.py)):
     carries `%(D)s` response time (microseconds, `µs`-suffixed), response size,
     and a trailing `xff="…"`. Successful `/health` lines are filtered out at the
     source.
-  - app request line ([`src/webapp/run.py`](../../src/webapp/run.py),
-    [`src/webapp/logging_config.py`](../../src/webapp/logging_config.py)):
+  - app request line ([`src/webapp/run.py`](../../../src/webapp/run.py),
+    [`src/webapp/logging_config.py`](../../../src/webapp/logging_config.py)):
     `METHOD path → status (N.N ms cpu=…ms <db>=…ms/…q … [pool=…ms]) rid=…`
     where each `<db>` (sam/status/jobhistory/fsscans) appears only when touched,
     plus a `Slow request: N ms … (same fields)` warning above 5,000 ms.
@@ -52,7 +55,7 @@ header. What exists, all read-only:
   `chart:misses:<name>`); rate-limit events in DB 1 (`ratelimit:events`).
 - **`GET /api/v1/health/`** (public JSON, per-DB `latency_ms` + schema drift)
   and **`/api/v1/health/db-pool`** (admin, connection-pool stats) —
-  [`src/webapp/api/v1/health.py`](../../src/webapp/api/v1/health.py).
+  [`src/webapp/api/v1/health.py`](../../../src/webapp/api/v1/health.py).
 - **`tests/perf/baselines.json`** — per-route SQL query-count baselines, naming
   the heavy routes (`/admin/htmx/institutions-fragment`, `/user/`,
   `/allocations/`, `/api/v1/fstree_access/`).
@@ -63,12 +66,12 @@ equivalent.
 ## Tooling trap fixed here
 
 `kubectl logs -l <selector>` defaults to **`--tail=10` per pod**, and `--since`
-does not lift that cap. [`scripts/cirrus_weblog_audit.sh`](../../scripts/cirrus_weblog_audit.sh)
+does not lift that cap. [`scripts/cirrus_weblog_audit.sh`](../../../scripts/cirrus_weblog_audit.sh)
 omitted `--tail`, so it harvested ~10 lines/pod and undercounted every section
 (a 6h run reported ~10 requests instead of ~3,000). Fixed by adding `--tail=-1`
 to the single harvest, with a comment naming the trap.
 
-**Follow-up:** [`scripts/cirrus_healthcheck.sh`](../../scripts/cirrus_healthcheck.sh)
+**Follow-up:** [`scripts/cirrus_healthcheck.sh`](../../../scripts/cirrus_healthcheck.sh)
 §10 reads "the last 500 webapp lines" through the same selector and may share
 the cap — verify and fix separately.
 
@@ -84,12 +87,12 @@ change, so any remedy is **caching or query-shape**, never a response redesign.
    in prod." Investigate whether the cache is missing (short TTL vs request
    spacing, per-resource key cardinality) or whether the cost is JSON
    serialization of a ~200 MB/16h payload after the cache hit —
-   [`src/webapp/api/v1/fstree_access.py`](../../src/webapp/api/v1/fstree_access.py).
+   [`src/webapp/api/v1/fstree_access.py`](../../../src/webapp/api/v1/fstree_access.py).
 2. **`directory_access/` averaged 6.9 s — ADDRESSED (query optimization).**
    It *is* cached (`@cache.cached`, 300 s), but the `ssg` consumer polls every
    5 min, so the poll cadence matched the TTL and ~98 % of polls paid a cold
    recompute. The recompute was a single mega-join in
-   [`src/sam/queries/directory_access.py`](../../src/sam/queries/directory_access.py)
+   [`src/sam/queries/directory_access.py`](../../../src/sam/queries/directory_access.py)
    `user_populator` that fanned each user ~14× (accounts × allocations × phone ×
    institution × organization) into a ~135 k-row temporary-table `GROUP BY`.
    Rewritten split-and-assemble (per-user bulk lookups + home/shell in Python):

@@ -11,7 +11,7 @@
 -- for every facility or for one. Revocation is a stamp, never a delete.
 -- The legacy `role` / `role_user` tables are untouched. Read only when
 -- RBAC_SOURCE=db. ORM: src/sam/security/samuel_roles.py. Design:
--- docs/plans/RBAC_DB_ROLES.md. Pinned by
+-- docs/plans/implemented/RBAC_DB_ROLES.md. Pinned by
 -- tests/integration/test_schema_validation.py.
 --
 -- NO DROP. Created empty; nothing changes until seeded and RBAC_SOURCE flips.

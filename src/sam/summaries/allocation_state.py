@@ -4,7 +4,7 @@ One row per allocation the dashboards would show, rebuilt hourly by the
 ``refresh_allocation_state`` task from the same batched computation the
 live paths run. Readers consult it through ``sam.queries.allocation_state``
 and fall back to the live computation when the freshness gate says no.
-Design and rollout: ``docs/plans/READ_MODEL.md``.
+Design and rollout: ``docs/plans/implemented/READ_MODEL.md``.
 """
 from datetime import datetime as _datetime
 from typing import Dict, Iterable, Optional

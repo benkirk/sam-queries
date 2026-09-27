@@ -1,6 +1,7 @@
 # Lead and admin membership: assigning a lead or admin makes them a member
 
-**Status: implemented (PR #616); bulk remediation not started.** Handoff for a fresh session.
+**Status: implemented (PR #616, PR #617, 2026-09-25).** The bulk production run of
+`--reconcile-lead-admin` is an operator decision, not open work on this plan.
 **Branch:** `lead-admin-membership`, from `origin/staging`. One PR against `staging`, opened only after `make check-all` passes and a local smoke test is done.
 
 ## Progress

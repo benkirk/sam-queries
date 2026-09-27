@@ -1,6 +1,6 @@
 """Membership removal is a soft delete: rows are end-dated, never-started rows
 are deleted, ended rows are history, and every live-path reader drops the
-member (docs/plans/ACCOUNT_USER_SOFT_DELETE.md)."""
+member (docs/plans/implemented/ACCOUNT_USER_SOFT_DELETE.md)."""
 from datetime import datetime, timedelta
 
 import pytest

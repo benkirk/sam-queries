@@ -272,7 +272,7 @@ Troubleshooting: "no roles assigned" means no grant names the user or any
 of their POSIX groups; missing edit buttons mean the route decorator (or
 the gating macros in `templates/dashboards/fragments/action_buttons.html`)
 requires a permission you don't hold. Design record:
-[`docs/plans/RBAC_DB_ROLES.md`](plans/RBAC_DB_ROLES.md).
+[`docs/plans/implemented/RBAC_DB_ROLES.md`](plans/implemented/RBAC_DB_ROLES.md).
 
 ### Running real OIDC locally (rare)
 

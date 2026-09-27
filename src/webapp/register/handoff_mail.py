@@ -7,7 +7,7 @@ plain-text mail into Jira-by-email (``NOTIFY_ACCOUNT_TICKET_TO``; empty leaves
 mail off). Both paths share the ledger key ``account_ticket:<id>``, so every
 "ready" site may call ``send_ticket`` and only the first filing, in either
 era, leaves. Calls run after the write commits, never inside
-``management_transaction``. Design: docs/plans/TICKET_PROVIDER.md § 8.5.
+``management_transaction``. Design: docs/plans/implemented/TICKET_PROVIDER.md § 8.5.
 """
 
 import logging

@@ -8,7 +8,7 @@
 -- within the last 90 days), holding the rolled-up usage the live paths
 -- otherwise recompute on every cold cache miss. Written ONLY by the hourly
 -- `refresh_allocation_state` task; readers consult it when fresh and fall
--- back to the live computation otherwise. Design: docs/plans/READ_MODEL.md.
+-- back to the live computation otherwise. Design: docs/plans/implemented/READ_MODEL.md.
 --
 -- No foreign keys on purpose: this is a rebuilt-hourly projection, and a
 -- dangling row is harmless (the freshness gate self-heals). Constraining it

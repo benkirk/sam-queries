@@ -19,7 +19,9 @@ attribute; the ``before_flush`` listener in
 ids using ``get_or_create_*`` helpers.
 """
 
-from marshmallow import Schema, fields, post_load
+from datetime import timezone
+
+from marshmallow import EXCLUDE, Schema, fields, post_load, validate
 from . import BaseSchema
 from system_status import *
 
@@ -322,3 +324,31 @@ class ResourceReservationSchema(BaseSchema):
 
     system_name = fields.String(dump_only=True)
     system_id = fields.Integer(dump_only=True)
+
+
+# ============================================================================
+# Last-seen payload fields (popped before the snapshot schema loads)
+# ============================================================================
+
+_USERNAME = fields.String(validate=validate.Length(min=1, max=32))
+
+
+class LoginUsersSchema(Schema):
+    """``login_users``: usernames with a live process on any login node of the system."""
+    login_users = fields.List(_USERNAME, load_default=list)
+
+
+class JupyterHubUserSchema(Schema):
+    """One entry of the JupyterHub payload's ``users`` list; last_activity is normalized to naive UTC."""
+    class Meta:
+        unknown = EXCLUDE
+
+    name = fields.String(required=True, validate=validate.Length(min=1, max=32))
+    last_activity = fields.DateTime(load_default=None, allow_none=True)
+
+    @post_load
+    def _naive_utc(self, data, **kwargs):
+        ts = data.get('last_activity')
+        if ts is not None and ts.tzinfo is not None:
+            data['last_activity'] = ts.astimezone(timezone.utc).replace(tzinfo=None)
+        return data

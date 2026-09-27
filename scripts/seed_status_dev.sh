@@ -7,7 +7,7 @@
 # come across with the dump, so no migration step is needed. Restoring with
 # --no-owner --no-privileges leaves every object owned by the restoring role;
 # the app role gets its access from the database's default privileges (set
-# once, docs/plans/K8S_DEV_ENVIRONMENT.md § 6.1) plus the re-grant below.
+# once, docs/plans/implemented/K8S_DEV_ENVIRONMENT.md § 6.1) plus the re-grant below.
 #
 # Runs from a laptop on the VPN as the Postgres SUPERUSER (OpenBao
 # csg/pg-superuser); the target database must already exist. Standard libpq

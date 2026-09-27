@@ -1,4 +1,4 @@
-"""Help-desk tickets SAM files or learns (docs/plans/TICKET_PROVIDER.md).
+"""Help-desk tickets SAM files or learns (docs/plans/implemented/TICKET_PROVIDER.md).
 
 Import-light on purpose: ``sam/__init__.py`` imports the model, so this file
 pulls in only ``base`` and ``models``. ``registry``, ``jira`` and ``learn``

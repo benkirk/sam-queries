@@ -23,7 +23,7 @@
   `replay==amount` on both rows, zero-delta ADJUSTMENT not DELETE, divergent-tree
   children). Existing `TestRenewReplaceExisting` (same-period double renew) still
   soft-deletes and passes unchanged.
-- Runbook `docs/plans/FY27_PROD_RENEW_HANDOFF.md` updated ("Truncate existing" is
+- Runbook `docs/plans/implemented/FY27_PROD_RENEW_HANDOFF.md` updated ("Truncate existing" is
   safe for FY-crossing). Remediation record committed:
   `scripts/repair/reconcile_fy27_renew_gap.sql`.
 
@@ -106,7 +106,7 @@ NMMM0082); the data was remediated on prod 2026-09-22 via
 delete-and-recreate behavior. **Forward fix: renew should TRUNCATE the
 overlapping allocation to the handoff boundary instead of deleting it.**
 
-Operator guidance already warned against this: `docs/plans/FY27_PROD_RENEW_HANDOFF.md`
+Operator guidance already warned against this: `docs/plans/implemented/FY27_PROD_RENEW_HANDOFF.md`
 ("Do NOT check Replace existing", and it names NMMM0082).
 
 ## Scope (decided with Ben)
@@ -140,7 +140,7 @@ Replace the soft-delete branch of renew's replace path with **truncation**, and
   `replay==amount` on both rows; update any test asserting `deleted=True` on the
   replace path. Add a regression: an FY-crossing renew leaves **no coverage gap**.
 
-- **`docs/plans/FY27_PROD_RENEW_HANDOFF.md`** — update guidance (the "Do NOT check
+- **`docs/plans/implemented/FY27_PROD_RENEW_HANDOFF.md`** — update guidance (the "Do NOT check
   Replace existing" note becomes "Truncate existing is safe for FY-crossing").
 
 - **(Optional)** commit `scripts/repair/reconcile_fy27_renew_gap.sql` as the
@@ -177,4 +177,4 @@ Separate from #594/#595.
 - Session plan: `~/.claude/plans/read-only-in-the-async-parasol.md` (Part 2).
 - Memory: `project_fstree_lifecycle_and_renew_gap`.
 - Remediation applied: `scripts/repair/reconcile_fy27_renew_gap.sql` (prod 2026-09-22).
-- Runbook: `docs/plans/FY27_PROD_RENEW_HANDOFF.md`.
+- Runbook: `docs/plans/implemented/FY27_PROD_RENEW_HANDOFF.md`.

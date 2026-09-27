@@ -7,7 +7,7 @@
 -- Polymorphic over the SAM entity (entity_type/entity_id, like
 -- notification_log), so project- and allocation-level requests can use it
 -- later without another DDL handoff. No URL is stored: it is derived from the
--- provider at render time. Design: docs/plans/TICKET_PROVIDER.md § 8.3.
+-- provider at render time. Design: docs/plans/implemented/TICKET_PROVIDER.md § 8.3.
 -- ORM: src/sam/integration/tickets/models.py. Pinned by
 -- tests/integration/test_schema_validation.py.
 --

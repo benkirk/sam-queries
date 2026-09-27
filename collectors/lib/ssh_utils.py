@@ -18,6 +18,26 @@ except ImportError:
     from parallel_ssh import ParallelSSHCollector
 
 
+#: Lowest uid counted as a person on a login node; below it are system accounts.
+MIN_HUMAN_UID = 1000
+NOBODY_UID = 65534
+
+
+def parse_process_users(ps_output: str) -> List[str]:
+    """Usernames from ``ps -eo uid=,user:32=`` lines, system accounts dropped."""
+    users = set()
+    for line in ps_output.splitlines():
+        fields = line.split()
+        if len(fields) != 2 or not fields[0].isdigit():
+            continue
+        uid, name = int(fields[0]), fields[1]
+        # ps prints the numeric uid when a name will not resolve.
+        if uid < MIN_HUMAN_UID or uid == NOBODY_UID or name.isdigit():
+            continue
+        users.add(name)
+    return sorted(users)
+
+
 class LoginNodeCollector:
     """Collect login node metrics via SSH in parallel."""
 
@@ -107,12 +127,13 @@ class LoginNodeCollector:
         Load averages are stored as CPU utilization percentages:
             load_pct = (raw_load_avg / num_cpus) * 100
         """
-        # SSH through base host to login node, collecting load, users, and CPU count
-        # Example: ssh derecho "ssh derecho1 'cat /proc/loadavg; echo ---; who | wc -l; echo ---; nproc --all'"
-
+        # SSH through base host to login node, collecting load, users, CPU count and process owners.
+        # ps (not who) sees VS Code Remote, non-interactive ssh, scp/sftp and detached tmux;
+        # user:32 widens the column, which otherwise prints a uid for names over 8 characters.
         cmd = (
             f"ssh -o ConnectTimeout={self.timeout} {self.base_host} "
-            f'"ssh {node_name} \'cat /proc/loadavg; echo ---; who | wc -l; echo ---; nproc --all\'" '
+            f'"ssh {node_name} \'cat /proc/loadavg; echo ---; who | wc -l; echo ---; nproc --all; '
+            f'echo ---; ps -eo uid=,user:32= | sort -u\'" '
         )
 
         self.logger.debug(f"Running: {cmd}")
@@ -131,20 +152,23 @@ class LoginNodeCollector:
         if result.returncode != 0:
             raise SSHError(f"Failed to connect to {node_name}: {result.stderr}")
 
-        # Parse output: three sections separated by '---'
+        # Parse output: four sections separated by '---'
         #   Section 0: /proc/loadavg output (load_1min load_5min load_15min ...)
         #   Section 1: user count from 'who | wc -l'
         #   Section 2: CPU count from 'nproc --all'
+        #   Section 3: 'uid user' process owners (popped by the caller into login_users)
         try:
             parts = result.stdout.strip().split('---')
             loadavg = parts[0].strip().split()
             user_count = int(parts[1].strip())
             num_cpus = int(parts[2].strip())
+            users = parse_process_users(parts[3]) if len(parts) > 3 else []
 
             return {
                 'available': True,
                 'degraded': False,
                 'user_count': user_count,
+                'users': users,
                 'num_cpus': num_cpus,
                 'load_1min': (float(loadavg[0]) / num_cpus) * 100,
                 'load_5min': (float(loadavg[1]) / num_cpus) * 100,

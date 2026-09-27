@@ -15,6 +15,7 @@ from .models import (
     UserProjQueueStatus,
     SystemOutage, ResourceReservation,
     TaskRun,
+    AccessSource, UserLastSeen,
 )
 from .cli import main
 
@@ -51,6 +52,10 @@ __all__ = [
 
     # Scheduled tasks
     'TaskRun',
+
+    # Last-seen ledger
+    'AccessSource',
+    'UserLastSeen',
 
     # CLI
     'main',

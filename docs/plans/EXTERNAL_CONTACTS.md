@@ -25,7 +25,7 @@ Two cases make this hurt:
 There is no sanctioned way to add such a person to `users` short of an ad hoc
 backdoor, and that is not an option. The same requirement blocks XRAS: a
 request whose award has no `contract` row stalls
-(`XRAS_CONTRACT_BLOCKERS.md`), and creating that row today needs a SAM-user PI.
+(`implemented/XRAS_CONTRACT_BLOCKERS.md`), and creating that row today needs a SAM-user PI.
 
 ## Measurements
 

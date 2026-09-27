@@ -1,6 +1,7 @@
 # `/database` — the read-only row browser
 
-**Status:** built (branch `db-browser`). Replaces Flask-Admin.
+**Status:** shipped in #620, #622, #625 and #627 (2026-09-25); on in production.
+Replaces Flask-Admin.
 
 ## Why
 

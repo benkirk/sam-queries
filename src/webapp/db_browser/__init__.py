@@ -2,7 +2,7 @@
 
 Mounted when ``DB_BROWSER_ENABLED``; every route is gated here by
 ``Permission.ADMIN_DATABASE``, so no route can forget the check. Query logic
-lives in ``dbbrowse`` (Flask-free); design record: docs/plans/DB_BROWSER.md.
+lives in ``dbbrowse`` (Flask-free); design record: docs/plans/implemented/DB_BROWSER.md.
 """
 import logging
 

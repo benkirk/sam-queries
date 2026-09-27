@@ -3,7 +3,7 @@
 Rebuilds ``account_allocation_state`` from the same batched computation the
 dashboards run, so the table cannot drift from the live answer. Readers
 consult it through the freshness gate in ``sam.queries.allocation_state``
-and fall back to the live path otherwise. Design: ``docs/plans/READ_MODEL.md``.
+and fall back to the live path otherwise. Design: ``docs/plans/implemented/READ_MODEL.md``.
 """
 
 from __future__ import annotations

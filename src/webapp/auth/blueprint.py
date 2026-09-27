@@ -8,6 +8,7 @@ from flask import (
     flash, current_app, session,
 )
 from flask_limiter.util import get_remote_address
+from sqlalchemy.orm import Session
 from flask_login import login_user, logout_user, login_required, current_user
 from webapp.auth.models import AuthUser
 from webapp.auth.providers import get_auth_provider, OIDCAuthProvider
@@ -30,6 +31,22 @@ def _is_safe_redirect(target: str) -> bool:
         return False
     parsed = urlparse(target)
     return not parsed.scheme and not parsed.netloc
+
+
+def _record_login_seen(username):
+    """Stamp the last-seen ledger on its own status session; never blocks a login.
+
+    Called only from real logins: impersonation and dev auto-login also call
+    login_user, which is why this is not a user_logged_in signal handler.
+    """
+    from system_status.queries.last_seen import WEBAPP_SYSTEM, record_seen_at
+    from system_status.timeutil import utcnow_naive
+    try:
+        with Session(db.engines['system_status']) as status_session:
+            record_seen_at(status_session, 'webapp', WEBAPP_SYSTEM, [username], utcnow_naive())
+            status_session.commit()
+    except Exception:
+        logger.exception("last-seen ledger write failed for login: user=%s", username)
 
 
 def _redirect_for_role(auth_user):
@@ -87,6 +104,7 @@ def login():
             remember = request.form.get('remember', False)
             login_user(auth_user, remember=remember)
             logger.info("Login success (stub): user=%s", username)
+            _record_login_seen(sam_user.username)
 
             next_page = request.args.get('next')
             if next_page and _is_safe_redirect(next_page):
@@ -184,6 +202,7 @@ def oidc_callback():
     auth_user = AuthUser(sam_user)
     login_user(auth_user, remember=False)
     logger.info("OIDC login success: user=%s", sam_user.username)
+    _record_login_seen(sam_user.username)
 
     next_page = session.pop('oidc_next', None)
     if next_page and _is_safe_redirect(next_page):

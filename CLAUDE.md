@@ -191,7 +191,7 @@ sam-queries/
   SYSTEM_ADMIN implies everything, a grant names a `user` / `group` / `apikey` (optionally one
   facility), a revoke is a stamp. **`RBAC_SOURCE`** `defaults` (code, tests) | `db` (prod: TTL
   snapshot, NO fallback to code, API keys held to each token route's Permission). Admin → Roles &
-  access (`MANAGE_ROLES`), `sam-admin rbac`; record `docs/plans/RBAC_DB_ROLES.md`.
+  access (`MANAGE_ROLES`), `sam-admin rbac`; record `docs/plans/implemented/RBAC_DB_ROLES.md`.
 - **XrasUserView**, **XrasAllocationView**, etc.: read-only database views
 
 ---
@@ -564,7 +564,7 @@ only) + `src/webapp/db_browser/`; gate `ADMIN_DATABASE`, kill-switch
 statement timeout, rollback; never `db.session`), no `COUNT(*)` on the page path.
 ❌ **DON'T** add a secret-shaped column undecided — `test_dbbrowse_redact.py` fails
 until `dbbrowse/redact.py` redacts it or its `_KNOWN_SAFE` lists it.
-Record: `docs/plans/DB_BROWSER.md`.
+Record: `docs/plans/implemented/DB_BROWSER.md`.
 
 ---
 
@@ -761,7 +761,7 @@ makes `smtplib.SMTP` raise so no test can open a socket whatever its config.
 | **Visibility** | Admin → Configuration → Notifications (`VIEW_SYSTEM_CONFIG`, counts only) → `Details »` (`SYSTEM_ADMIN`, rows name real addresses). |
 | **Approver's note** | `adminComments` from the XRAS reports feed (`src/sam/integration/xras_api/comments.py`, keyed by projcode + `actionId`), resolved by the Notify route and the `xras_notices` task and handed to `build_xras_messages(approver_comment=...)`. Fail-open: unconfigured/XRAS down/no match → `None` + one log line, never a withheld mail. Rendered on the **PI's copy only** — `build_xras_messages` sets the note on the lead's message and `None` on a non-lead's, so the admin's mail never carries it. |
 | **Family addressing** | `NOTIFY_<FAMILY>_{CC,BCC,FROM,REPLY_TO}` (family = a `FAMILIES` key in `kinds.py`) is filled onto empty `Message` fields by the `Notifier`; a builder-set cc/bcc replaces the env default. On top, `notification_addressing` rows (scope = family, kind, or `{kind}-{facility}` stem, e.g. `expiration-WNA`) **always add**, read once per `Notifier` through the ledger's session factory, fail-open. Admin → Notifications → **Addressing** (`SYSTEM_ADMIN`) adds/removes rows; deployment defaults are shown read-only. `Message.copies()` is the one redirect-drop rule (transports and ledger read it); what left is recorded in `notification_log.copies` as `cc:a@x;bcc:b@y`. The CronJob forwards every non-empty `NOTIFY_*` by prefix. `NOTIFY_BCC` is the kind-blind global. |
-| **Account family** | `account_queue_summary` (the open queue to `NOTIFY_ACCOUNT_QUEUE_TO`, keyed on the day so the Send button and the weekly `account_queue_digest` task cannot both send it) `account_verify` (the public form's link + code; its context carries **nothing the visitor typed**) `account_rejected` (the reject form's checkbox, operator-chosen, keyed on `closed_at` so a reopen can notify again) `account_invite` (the sponsor's checkbox or Resend, keyed on `invite_sent_at`, the stamp its link is signed with; never carries the sponsor's note) `account_request_received` (the invitee's receipt, keyed on `completed_at`; it and the verify mail append the accepted EULA via `_agreement.{txt,html}`, passed in by the webapp because `sam.notify` cannot import it) and `account_ticket` (NUSD's text-only Jira ticket, keyed on the row, From/To `NOTIFY_ACCOUNT_TICKET_{FROM,TO}`; its subject ends in `[SAM-AR-<id>]`, the JQL handle a later lookup needs; with `TICKET_PROVIDER=jira-servicedesk` + `JIRA_WRITE_ENABLED` the same key files through the JSM API instead, mail on any failure, and the hourly reconcile learns keys into `external_ticket` under `JIRA_ENABLED` alone — `docs/plans/TICKET_PROVIDER.md` § 9). Keep `NOTIFY_ACCOUNT_CC` empty — it would copy every verification mail; a copy on the digest alone is a kind-scoped Addressing row. |
+| **Account family** | `account_queue_summary` (the open queue to `NOTIFY_ACCOUNT_QUEUE_TO`, keyed on the day so the Send button and the weekly `account_queue_digest` task cannot both send it) `account_verify` (the public form's link + code; its context carries **nothing the visitor typed**) `account_rejected` (the reject form's checkbox, operator-chosen, keyed on `closed_at` so a reopen can notify again) `account_invite` (the sponsor's checkbox or Resend, keyed on `invite_sent_at`, the stamp its link is signed with; never carries the sponsor's note) `account_request_received` (the invitee's receipt, keyed on `completed_at`; it and the verify mail append the accepted EULA via `_agreement.{txt,html}`, passed in by the webapp because `sam.notify` cannot import it) and `account_ticket` (NUSD's text-only Jira ticket, keyed on the row, From/To `NOTIFY_ACCOUNT_TICKET_{FROM,TO}`; its subject ends in `[SAM-AR-<id>]`, the JQL handle a later lookup needs; with `TICKET_PROVIDER=jira-servicedesk` + `JIRA_WRITE_ENABLED` the same key files through the JSM API instead, mail on any failure, and the hourly reconcile learns keys into `external_ticket` under `JIRA_ENABLED` alone — `docs/plans/implemented/TICKET_PROVIDER.md` § 9). Keep `NOTIFY_ACCOUNT_CC` empty — it would copy every verification mail; a copy on the digest alone is a kind-scoped Addressing row. |
 | **Templates / overrides** | Admin → Notifications → **Templates** (`SYSTEM_ADMIN`) edits any of the 30 shipped files; a save writes `notification_template_override` (keyed by file name) and the renderer prefers the row on the **next** renderer build, one `SELECT` per `Notifier`. Reset deletes the row. `sam/notify/samples.py` is both the preview input and the variables table; `_email_base.html` (underscore = developer-owned) is never editable. Save **renders** the body against the sample context, because a sandbox refusal is a runtime error. "Preview for" a real project goes through `sam/queries/notification_previews.py` (`build_xras_messages(kind=)` forces the template's kind). Record: `docs/plans/implemented/NOTIFICATION_TEMPLATE_EDITOR.md`. |
 
 **Batch knobs**: `send_many(chunk_size=N)` opens one transport connection per N
@@ -957,7 +957,7 @@ XRAS levers off. Argo app `sam-query-dev` deploys it into `sam-queries-dev` from
 the `cirrus-dev` pin (every staging push, or `gh workflow run "Publish Images and
 CIRRUS Deploy" --ref <branch>`); `make refresh-dev` reloads its data; every
 `scripts/cirrus_*.sh` takes `--env dev` (`watch-dev` skill). Limiter tiers are off
-on dev except login. Record: `docs/plans/K8S_DEV_ENVIRONMENT.md`; gate: `helm/tests/test-dev-render.sh`.
+on dev except login. Record: `docs/plans/implemented/K8S_DEV_ENVIRONMENT.md`; gate: `helm/tests/test-dev-render.sh`.
 
 ### Adding New ORM Models
 1. Create the model in the matching domain module; add `SessionMixin` if it
@@ -1054,7 +1054,7 @@ and never append `?`/`#` to a `url_for('static')` result, which already carries 
 ❌ **DON'T** hardcode integer PKs from lookup tables in app constants — pair rules with names, resolve IDs at runtime
 ❌ **DON'T** add a secondary bind to `/ready`'s required set (`_REQUIRED_BINDS` in
 `webapp/api/v1/health.py`) — a shared external DB fails every replica at once and
-empties the Service (2026-09-13; `docs/plans/CNPG_ROLL_RESILIENCE.md`)
+empties the Service (2026-09-13; `docs/plans/implemented/CNPG_ROLL_RESILIENCE.md`)
 
 ✅ **DO** run schema-validation tests before committing model changes
 ✅ **DO** check the actual database schema when in doubt

@@ -1089,7 +1089,7 @@ class TestRenewReplaceExisting:
 
 # ---------------------------------------------------------------------------
 # renew_project_allocations — FY-crossing truncate (regression for the FY27
-# renew coverage-gap; see docs/plans/FY27_PROD_RENEW_HANDOFF.md)
+# renew coverage-gap; see docs/plans/implemented/FY27_PROD_RENEW_HANDOFF.md)
 # ---------------------------------------------------------------------------
 
 
