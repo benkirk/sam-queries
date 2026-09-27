@@ -61,6 +61,8 @@ nhd_exec() {
     for d in /ssg/pbs/casper/accounting /ncar/pbs/accounting /local_scratch; do
         [[ -d "${d}" ]] && binds+=(-B "${d}")
     done
+    # Site host keys: without them the collectors' `ssh casper|derecho` fails host-key checks.
+    [[ -r /etc/ssh/ssh_known_hosts ]] && binds+=(-B /etc/ssh/ssh_known_hosts:/etc/ssh/ssh_known_hosts:ro)
     if [[ -n "${NCAR_HPC_DEPLOY_SRC}" ]]; then
         binds+=(-B "$(readlink -f "${NCAR_HPC_DEPLOY_SRC}"):${NHD_IMAGE_SRC}:ro")
     fi

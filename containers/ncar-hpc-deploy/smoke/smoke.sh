@@ -17,6 +17,6 @@ case "$1" in
     accounting-comp) run "$1" bash "${SRC}/jobs/accounting-comp.sh" --last 1d --dry-run ;;
     # NOTE: jobhist-sync --dry-run still runs init_db(), which needs the writer role.
     jobhist-sync)    run "$1" bash "${SRC}/jobs/jobhist-sync.sh" rapid --dry-run ;;
-    collectors)      run "$1" bash "${SRC}/jobs/collectors.sh" --dry-run ;;
+    collectors)      run "$1" bash "${SRC}/jobs/collectors.sh" --strict --dry-run ;;
     *) echo "unknown smoke step '$1'" >&2; exit 2 ;;
 esac
