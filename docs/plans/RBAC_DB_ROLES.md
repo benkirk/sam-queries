@@ -1,8 +1,8 @@
 # DB-backed RBAC: `samuel_role_*` tables and Admin -> Configuration -> Roles & access
 
-Status: built through step 8 on branch `rbac-db-roles` (from `origin/staging`
-da3f9a2f), PR #640 to staging, 2026-09-27; steps 9-10 wait on the dev and prod
-DDL + seed. The commit series is section 9; the
+Status: **live in production in `db` mode since 2026-09-27 12:05 MDT** (PR #640,
+branch `rbac-db-roles` from `origin/staging` da3f9a2f). Section 10 records the
+rollout as run; section 12 the deviations. The commit series is section 9; the
 in-PR rollout, with the dispatch deploys to dev and prod, is section 10. Decisions
 resolved with Ben are in section 11. Deviations from this plan are recorded in
 section 12 as they happen.
@@ -18,7 +18,7 @@ section 12 as they happen.
 - [x] 7. API keys as a grant subject; token-path enforcement in `db` mode; the `api_*` roles.
 - [x] 8. Docs rewrite, CLAUDE.md, `api_auth.py` docstrings.
 - [x] 9. Dev flip (`values-dev.yaml` `RBAC_SOURCE: "db"`), after the dev DDL + seed.
-- [ ] 10. Prod flip (`values.yaml`), after the prod DDL + seed; merge after prod runs it.
+- [x] 10. Prod flip (`values.yaml`), after the prod DDL + seed; merge after prod runs it.
 
 **One PR to staging** carrying the code, the DDL, the prod role seed (users, groups, API
 keys) and, as its final commits, `RBAC_SOURCE=db` in both helm values files. Deploys happen
@@ -192,7 +192,7 @@ untouched. Denials on the token path log the key name, never the route's caller 
 4. Browser smoke of the page at 3 layouts × 2 themes on dev; fix-ups as further commits, re-dispatch.
 5. Prod DDL (**prompt**): `mysql -u "$PROD_SAM_DB_USERNAME" -h sam-sql.ucar.edu -p sam < scripts/sql/create_samuel_roles.sql`; the script's verification SELECTs match. **Done 2026-09-27** (hpc-writer; 0/0/0 rows, 9/2/11 columns, 0 FKs), ahead of the dev steps so `everything-coherent` carries the empty tables into every copy.
 6. Prod seed (**prompt**): `sam-admin rbac --seed`, `--seed-keys`, then `--keys` and `--grant` for the collector and cache-refresh keys, `--effective benkirk`, `--diff` empty. Prod is still running the pre-flip image, so nothing changes yet.
-7. Commit 10 (prod flip); dispatch prod (**prompt**). Verify as in step 3 on prod with `cirrus_watch`; watch the first collector post and the next XRAS action. Rollback is the previous image (the tables and rows are inert under `RBAC_SOURCE=defaults`).
+7. Commit 10 (prod flip, `e5d9a133`); dispatch prod (**prompt**). **Done 2026-09-27 12:05 MDT.** As run: prod first got the branch image in `defaults` mode (`a6c2a2a8`), then `sam-admin rbac --seed` / `--seed-keys` through `kubectl exec -n sam-queries deploy/samuel` (13 keys: config `collector` = api_collector + api_admin for `sam-admin cache --refresh`; 12 `api_credentials` keys = api_legacy), then the flip. On `sha-e5d9a13`: tick clean, 0 `API auth denied`, collector key 200 on `/api/v1/queue/` via the SYSTEM_ADMIN closure, bogus key 401. Rollback is the previous image (the tables and rows are inert under `RBAC_SOURCE=defaults`).
 8. Merge to staging; staging → main promotion as usual. `sam-admin cache --refresh` after each deploy (cached fragments embed permission-gated links).
 
 Local webdev: `.env` `RBAC_SOURCE=db` + `sam-admin rbac --seed` to exercise the UI against 3306.
