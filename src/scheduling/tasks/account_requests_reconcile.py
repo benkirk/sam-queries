@@ -19,13 +19,13 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from scheduling.registry import TaskResult, task
-from scheduling.schedules import DEFAULT_TZ, Hourly, to_local_naive
+from scheduling.schedules import DEFAULT_TZ, CronExpr, to_local_naive
 from scheduling.tasks._notice_common import positive_int_env
 
-#: The minute is cosmetic: the CronJob wakes at :07 and the runner claims the
-#: last occurrence, so this slot runs at the NEXT wake, in registry order
-#: before xras_sweep. Rows the sweep writes reconcile one wake later.
-SCHEDULE = Hourly(minute=20)
+#: Every quarter hour: a new account is usable on its project within ~15 min
+#: of the LDAP mirror landing it, not ~60. The CronJob wakes at :07/:22/:37/:52
+#: (helm tasks.schedule), so each slot is claimed about seven minutes later.
+SCHEDULE = CronExpr('*/15 * * * *', tz='UTC')
 
 #: An unverified public row older than this is a stranger's typo or a bot;
 #: overridable via ``$SAM_TASKS_ACCOUNT_PURGE_DAYS``.

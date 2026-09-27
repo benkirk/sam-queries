@@ -155,7 +155,7 @@ separate CronJob.
 ## 5. The samuel-tasks CronJob — report, never touch
 
 The `tasks:` line reports the dispatcher's liveness: `suspend`,
-`lastScheduleTime` age (stale past ~70 min = it has stopped waking), and failed
+`lastScheduleTime` age (stale past ~25 min — one 15-min wake plus slack — means it has stopped waking), and failed
 Job count. On a wedged state the script FAILs/WARNs and **prints** the manual
 remedy — it never runs it:
 

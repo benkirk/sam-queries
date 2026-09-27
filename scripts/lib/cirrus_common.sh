@@ -34,9 +34,9 @@ _NAMESPACE_EXPLICIT="${NAMESPACE:+1}"
 CONTEXT="${CONTEXT:-}"
 WEBAPP_PORT=5050
 REDIS_PORT=6379
-# The dispatcher wakes hourly (helm tasks.schedule "7 * * * *"), so anything
-# past one interval plus slack means it has stopped being scheduled.
-TASKS_MAX_SILENCE_S=4200
+# The dispatcher wakes every 15 min (helm tasks.schedule "7,22,37,52 * * * *"),
+# so anything past one interval plus slack means it has stopped being scheduled.
+TASKS_MAX_SILENCE_S=1500
 HEALTH_PATH="/api/v1/health/ready"
 
 # cirrus_set_env <prod|dev>

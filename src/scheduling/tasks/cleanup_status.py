@@ -24,7 +24,7 @@ from system_status.retention import DEFAULT_RETENTION_DAYS, cleanup_old_data
 
 #: How long the ledger keeps its own history. The task whose job is bounding
 #: growth bounds it too — four lines, and no second CronJob.
-TASK_RUN_RETENTION_DAYS = 180
+TASK_RUN_RETENTION_DAYS = 60
 
 #: 02:15 Mountain. Deliberately inside the window where both DST transitions
 #: bite: the fold and gap rules are written down and tested

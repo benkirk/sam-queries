@@ -800,7 +800,7 @@ named in `SAM_TASKS_DISABLED`** pending a soak.
 
 ### The account-request tasks
 
-`account_requests_reconcile` (hourly :20, DB-only, **live in prod**: stamps fulfilled
+`account_requests_reconcile` (every 15 min, DB-only, **live in prod**: stamps fulfilled
 requests, enrolls inside a savepoint so one project without accounts cannot fail the
 pass, purges unverified public rows past `SAM_TASKS_ACCOUNT_PURGE_DAYS`) and
 `account_queue_digest` (Mon 08:00 MT, one message, reconciles first, `SAM_TASKS_ACCOUNT_MAX`

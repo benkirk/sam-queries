@@ -72,10 +72,10 @@ fi
 assert_contains "$prod_out" "concurrencyPolicy: Forbid" \
   "Forbid is the belt; the ledger is the suspenders"
 assert_contains "$prod_out" "backoffLimit: 0" \
-  "the next hourly dispatch IS the retry"
-assert_contains "$prod_out" "activeDeadlineSeconds: 3000" \
-  "a wedged run must not coexist with its successor (50min < 60min interval)"
-assert_contains "$prod_out" "startingDeadlineSeconds: 600" \
+  "the next dispatch IS the retry"
+assert_contains "$prod_out" "activeDeadlineSeconds: 840" \
+  "a wedged run must not coexist with its successor (14min < 15min interval, < MIN_LEASE 900s)"
+assert_contains "$prod_out" "startingDeadlineSeconds: 300" \
   "never unset — >100 missed schedules wedges the controller permanently"
 assert_contains "$prod_out" 'timeZone: "Etc/UTC"' \
   "the controller must never see a DST gap or fold; Python handles task-level DST"

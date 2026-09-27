@@ -465,7 +465,8 @@ is the only thing standing between those two facts.
   `retry=(max_attempts, backoff)`, letting primitive B also match
   `state='failed' AND attempt < max AND finished_at < now-backoff`. Nothing uses it
   in phase 1; it exists so the schema needn't change when something does.
-- **Retention.** Rows older than 180 days are pruned by the cleanup task itself,
+- **Retention.** Rows older than 60 days (180 until 2026-09-27; the readers need
+  ~31: the monthly task's gap and the 30-day history page) are pruned by the cleanup task itself,
   guarded `WHERE finished_at IS NOT NULL AND finished_at < cutoff` so a run can
   never delete its own live row — four lines, and the thing whose job is bounding
   growth also bounds the ledger's.
@@ -573,7 +574,7 @@ def cleanup_status_snapshots(ctx: TaskContext) -> TaskResult:
     retention = int(os.getenv('STATUS_RETENTION_DAYS', DEFAULT_RETENTION_DAYS))
     cutoff = ctx.occurrence - timedelta(days=retention)   # NOT utcnow(): keyed to the slot
     counts = cleanup_old_data(cutoff=cutoff, dry_run=ctx.dry_run, session=ctx.status_session)
-    pruned = prune_task_runs(ctx.status_session, older_than=ctx.occurrence - timedelta(days=180))
+    pruned = prune_task_runs(ctx.status_session, older_than=ctx.occurrence - timedelta(days=60))
     return TaskResult(detail={'deleted': counts, 'task_run_pruned': pruned})
 ```
 
@@ -893,7 +894,7 @@ about it in eighteen months.
 
 | Alternative | Why not |
 |---|---|
-| **High-rate polling (`*/5 * * * *`)** | 288 pods/day and 288 connect cycles against `csg-postgres`'s 100-slot cap, for zero benefit — the ledger already makes lateness harmless, so a finer poll buys only punctuality, which nothing here needs |
+| **High-rate polling (`*/5 * * * *`)** | 288 pods/day and 288 connect cycles against `csg-postgres`'s 100-slot cap, for zero benefit — the ledger already makes lateness harmless, so a finer poll buys only punctuality, which nothing here needs. **Revised 2026-09-27:** `account_requests_reconcile` does need it (a new account should be usable on its project within minutes of the LDAP mirror, not an hour), so the wake is now `7,22,37,52` (96 pods/day) with that one task on `*/15`; measured wake 2-7 s to a running container, 46 s wall, 0.56 s for the task. Every other task keeps its schedule and reports `already_claimed` on the extra wakes. The § 10 daemon stays the answer if several tasks want minute-level or event-driven triggers; the end state for this one is the LDAP-sync API (`docs/plans/LDAP_SYNC_API.md`) firing reconcile from the user write |
 | **One CronJob per task** | Two sources of truth per schedule (a cron string and a Python declaration), drifting silently, and every new task becomes a chart change plus an ArgoCD sync — precisely the friction being removed |
 | **APScheduler inside gunicorn** | 18 workers = 18 schedulers = 18 duplicate fires per slot. The ledger would make that *correct*, which is why it is a genuine option — it is rejected on **coupling**: batch DELETEs and SMTP loops would run inside request-serving processes and be killed mid-task by every rolling update |
 | **A dedicated always-on Deployment now** | A pod running 24/7 for ~2 minutes of work a day, plus liveness probes, restart semantics, and a second thing ArgoCD can show as Degraded. § 10 keeps the door open at zero cost today |
@@ -1117,10 +1118,11 @@ The `main` → CI → `cirrus` → ArgoCD path is the only route
 
 ## 14. Flags on the chosen design
 
-1. **Hourly dispatch caps the vocabulary's usefulness at hourly granularity.**
-   `Daily(2, 15)` fires somewhere in `[02:15, 03:07)` Mountain. Fine for pruning
-   and for email; "at 09:00 sharp" is not expressible. If a task ever needs
-   punctuality, the answer is § 10's daemon, not a faster cron.
+1. **Dispatch cadence caps the vocabulary's usefulness at that granularity.**
+   With the 15-min wake (§ 11, revised), `Daily(2, 15)` fires somewhere in
+   `[02:15, 02:22)` Mountain. Fine for pruning and for email; "at 09:00 sharp"
+   is still not expressible. If a task ever needs minute-level punctuality, the
+   answer is § 10's daemon, not an ever-faster cron.
 2. **Nothing alerts.** A failed Job is visible only to someone looking at ArgoCD or
    `kubectl`. The § 9 watchdog is the cheapest fix and should be the second task
    written.

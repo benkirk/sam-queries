@@ -66,9 +66,8 @@ from scheduling.tasks._notice_common import (
 from scheduling.tasks.mail_guards import EmailCapExceeded
 
 #: Ten slots a day, on the hour. `minute=0` rather than an offset because the
-#: CronJob wakes at :07 — a :00 slot is dispatched about seven minutes later,
-#: where a :20 slot would wait until the *next* wake and add ~47 minutes to
-#: every notice.
+#: CronJob's wakes are :07/:22/:37/:52 — a :00 slot is dispatched about seven
+#: minutes later; any other minute waits for the next wake.
 SCHEDULE = BusinessHourly(minute=0, tz='America/Denver')
 
 
