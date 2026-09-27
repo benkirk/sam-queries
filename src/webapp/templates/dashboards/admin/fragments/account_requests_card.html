@@ -2,7 +2,7 @@
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {% from 'dashboards/fragments/project_bits.html' import project_link %}
-{% from 'dashboards/fragments/account_request_bits.html' import invite_badge, invite_details %}
+{% from 'dashboards/fragments/account_request_bits.html' import invite_badge, invite_details, ticket_inline, ticket_details %}
 {#
   The account-request queue card.
 
@@ -199,6 +199,7 @@
                         <span class="badge bg-secondary" title="{{ r.closed_reason }} — {{ r.closed_by }}, {{ r.closed_at | fmt_date }}">{{ r.state }}</span>
                         {% endif %}
                         {% if r.requested_at %}<br><small class="text-muted" title="Included in a digest to NUSD">sent {{ r.requested_at | fmt_date }}</small>{% endif %}
+                        {{ ticket_inline(v) }}
                     </td>
                     <td class="text-end text-nowrap">
                         <div class="btn-group btn-group-sm flex-nowrap">
@@ -257,6 +258,7 @@
                                 {%- if r.source_ip %}; from <span class="font-monospace">{{ r.source_ip }}</span>{% if (r.verify_sent_count or 0) > 1 %}, {{ r.verify_sent_count }} verification mails{% endif %}{% endif %}
                             </dd>
                             {{ invite_details(r) }}
+                            {{ ticket_details(v) }}
                             {% if r.xras_username %}
                             <dt class="col-sm-3">XRAS placeholder</dt><dd class="col-sm-9"><span class="font-monospace">{{ r.xras_username }}</span></dd>
                             {% endif %}

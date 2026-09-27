@@ -1,7 +1,7 @@
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/contract_bits.html' import contract_user_link %}
 {% from 'dashboards/fragments/clipboard.html' import copy_button %}
-{% from 'dashboards/fragments/account_request_bits.html' import invite_badge, invite_details %}
+{% from 'dashboards/fragments/account_request_bits.html' import invite_badge, invite_details, ticket_details %}
 {#
   The Invitations tab: people invited onto this project who have NO SAM
   account yet, the events (workshops, classes) they register under, and who
@@ -192,6 +192,7 @@
                     {% if r.phone or r.orcid %}<dt class="col-sm-3">Contact</dt><dd class="col-sm-9">{{ r.phone or '' }}{% if r.orcid %} · ORCID {{ r.orcid }}{% endif %}</dd>{% endif %}
                     {% if r.desired_username %}<dt class="col-sm-3">Wants username</dt><dd class="col-sm-9 font-monospace">{{ r.desired_username }}</dd>{% endif %}
                     {{ invite_details(r) }}
+                    {{ ticket_details(v) }}
                     <dt class="col-sm-3">Invited</dt>
                     <dd class="col-sm-9">{{ r.creation_time | fmt_date }} by <span class="font-monospace">{{ r.created_by }}</span>{% if r.requested_at %}; sent to NUSD {{ r.requested_at | fmt_date }}{% endif %}</dd>
                     {% if r.comment %}<dt class="col-sm-3">Note</dt><dd class="col-sm-9" style="white-space: pre-wrap;">{{ r.comment }}</dd>{% endif %}

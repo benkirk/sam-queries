@@ -23,3 +23,33 @@
 <dd class="col-sm-9">EULA <span class="font-monospace" title="{{ r.eula_sha }}">{{ r.eula_sha[:7] }}</span> @ {{ r.eula_accepted_at | fmt_date(fmt='%Y-%m-%d %H:%M') }}</dd>
 {% endif %}
 {% endmacro %}
+
+{#-
+  Help-desk ticket bits. `v` is the request_views dict (`v.tickets`, oldest
+  first). `ticket_inline` sits in a collapse-trigger cell, so it is text, never
+  an anchor; the link lives in `ticket_details`, inside the collapsed body.
+#}
+{% macro ticket_inline(v) %}
+{%- set t = v.tickets | first if v.tickets else none -%}
+{%- if t -%}
+<br><small class="font-monospace text-muted" title="Help-desk ticket{% if t.status %}: {{ t.status }}{% endif %}">{{ t.key }}</small>
+{%- if v.tickets | length > 1 %} <small class="text-muted">+{{ v.tickets | length - 1 }}</small>{% endif -%}
+{%- if t.closed_at and not v.row.fulfilled_at %}
+<br><span class="badge bg-warning text-dark" title="The desk closed {{ t.key }} on {{ t.closed_at | fmt_date }} and no SAM account holds this address yet">closed without an account</span>
+{%- endif -%}
+{%- endif -%}
+{% endmacro %}
+
+{#- dt/dd pairs for a `dl.row`; empty when the request has no ticket. #}
+{% macro ticket_details(v) %}
+{% for t in v.tickets or [] %}
+<dt class="col-sm-3">{% if loop.first %}Ticket{% endif %}</dt>
+<dd class="col-sm-9">
+    {%- if t.url %}<a href="{{ t.url }}" target="_blank" rel="noopener" class="font-monospace">{{ t.key }}</a>{% else %}<span class="font-monospace">{{ t.key }}</span>{% endif %}
+    {%- if t.status %} · {{ t.status }}{% endif %}
+    {%- if t.closed_at %}, closed {{ t.closed_at | fmt_date }}{% endif %}
+    <span class="text-muted">({{ 'filed by SAM' if t.origin == 'created' else 'found after the mail' }})</span>
+    {%- if not loop.first %} <span class="badge bg-warning text-dark" title="More than one ticket carries this request's handle">duplicate</span>{% endif %}
+</dd>
+{% endfor %}
+{% endmacro %}
