@@ -50,6 +50,10 @@ def _can_view_xras():
             and has_permission(current_user, Permission.VIEW_XRAS))
 
 
+def _can_manage_roles():
+    return has_permission(current_user, Permission.MANAGE_ROLES)
+
+
 def _can_view_config():
     return (current_user.is_authenticated
             and has_permission(current_user, Permission.VIEW_SYSTEM_CONFIG))
@@ -238,6 +242,8 @@ NAV_SECTIONS = (
                                   'db_browser.table_schema', 'db_browser.row')},
             {'endpoint': 'admin_dashboard.configuration', 'label': 'Configuration',
              'icon': 'fa-solid fa-sliders', 'visible': _can_view_config},
+            {'endpoint': 'admin_dashboard.roles', 'label': 'Roles & access',
+             'icon': 'fa-solid fa-user-shield', 'visible': _can_manage_roles},
         ),
     },
 )

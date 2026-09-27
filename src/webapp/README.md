@@ -10,7 +10,7 @@ Flask-based web administration interface for the Systems Accounting Manager (SAM
   (gated by the `ACCOUNT_REGISTRATION_ENABLED` kill-switch, off in production;
   `docs/plans/implemented/ACCOUNT_REGISTRATION.md`)
 - **Authentication**: Pluggable authentication system (stub, LDAP, OIDC)
-- **Role-Based Access Control (RBAC)**: Permissions from POSIX group bundles + per-user overrides
+- **Role-Based Access Control (RBAC)**: roles and grants to users, POSIX groups and API keys, from code defaults or the `samuel_role_*` tables
 - **Dashboard**: Statistics and monitoring for projects, users, and allocations
 - **Expiration Monitoring**: Track upcoming and expired project allocations
 - **REST API**: Comprehensive JSON API for users, projects, allocations, and expirations
@@ -40,18 +40,15 @@ SAM_DB_PASSWORD=your-password
 
 ### 3. Configure Permissions
 
-The webapp resolves a user's permissions from two sources, unioned:
-
-1. **POSIX group membership** — `get_user_group_access()` reads
-   `adhoc_system_account_entry`. Groups that have a bundle in
-   `GROUP_PERMISSIONS` (currently `csg`, `nusd`, `hsg`) confer that
-   bundle to anyone in the group.
-2. **`USER_PERMISSION_OVERRIDES`** in `webapp/utils/rbac.py` — a
-   per-username dict for one-off grants on top of group bundles.
-
-To grant yourself elevated permissions in dev, add your username to
-`USER_PERMISSION_OVERRIDES` (e.g. `'your_username': set(Permission)`
-for full access). No DB writes, no fake role tables — same code path
+A user's permissions are the union of the grants held by their username and
+by each POSIX group they belong to (`get_user_group_access()` reads
+`adhoc_system_account_entry`). A grant hands out a role or one permission,
+for every facility or for one. `RBAC_SOURCE` picks the catalog: `defaults`
+reads `sam/security/rbac_defaults.py` (the code default), `db` reads the
+`samuel_role_*` tables. To grant yourself elevated permissions in dev, apply
+`scripts/sql/create_samuel_roles.sql` to the local MySQL, `sam-admin rbac
+--seed`, set `RBAC_SOURCE=db`, and add a grant on Admin -> Roles & access
+(or `sam-admin rbac --grant user:you --role system_admin`). Same code path
 as production.
 
 ### 4. Run Development Server
@@ -172,20 +169,22 @@ For detailed schema documentation, see [CLAUDE.md](../../CLAUDE.md#serialization
 
 ## Authentication & Authorization
 
-### Group bundles (not DB roles)
+### Roles and grants
 
-There is no role table behind webapp authorization. A user's permission set
-is the union of:
-
-1. The `GROUP_PERMISSIONS` bundles for POSIX groups they belong to
-   (e.g. `csg`, `nusd`, `ssg`) — see `webapp/utils/rbac.py`.
-2. Any per-user grant in `USER_PERMISSION_OVERRIDES` (same file), including
-   facility-scoped grants via `USER_FACILITY_PERMISSIONS`.
+`webapp/utils/rbac.py` resolves a user's permission set as the union of the
+grants held by their username and by each POSIX group they belong to. A
+role is a permission bundle that may extend one parent; `SYSTEM_ADMIN`
+implies everything. `RBAC_SOURCE=defaults` reads the code catalog
+(`sam/security/rbac_defaults.py`), `db` reads the `samuel_role_*` tables
+through a per-process snapshot (`RBAC_DB_TTL`) and also holds API keys to
+each token route's permission. The legacy `role_user` table is not
+consulted. Admin -> Roles & access (`MANAGE_ROLES`) and `sam-admin rbac`
+edit the tables; `docs/plans/RBAC_DB_ROLES.md` is the design record.
 
 ### Permissions
 
-Permissions are defined in the `Permission` enum in `webapp/utils/rbac.py`
-(user/project/allocation/resource management, reports, system admin, …).
+Permissions are defined in the `Permission` enum in
+`sam/security/permissions.py` (re-exported by `webapp/utils/rbac.py`).
 Route-level enforcement uses `@require_permission(...)` /
 `@require_permission_any_facility(...)` from the same module, plus the
 project-scoped decorators in `webapp/api/access_control.py`.
@@ -447,15 +446,16 @@ already modifying, and verify with pytest plus an app boot.
 
 ### Adding a New Permission
 
-1. Add to `Permission` enum in `webapp/utils/rbac.py`:
+1. Add to the `Permission` enum in `sam/security/permissions.py`:
    ```python
    VIEW_SOMETHING = "view_something"
    ```
 
-2. Add to the group-bundle mappings in `GROUP_PERMISSIONS`:
-   ```python
-   "csg": [Permission.VIEW_SOMETHING, ...],
-   ```
+2. Put it into a role in `sam/security/rbac_defaults.py`, or into
+   `WITHHELD` there; the gate test refuses a third option. On a `db`
+   deployment an operator ticks it into the live roles on
+   Admin -> Roles & access (`sam-admin rbac --diff` shows the gap).
+   `SYSTEM_ADMIN` holders have it at once.
 
 3. Use in views:
    ```python
@@ -566,8 +566,9 @@ This means authentication is required. Navigate to `/auth/login` to log in.
 ### "Forbidden - insufficient permissions"
 
 Your user account doesn't have the required permission for this action. Check:
-1. The user belongs to a POSIX group with a `GROUP_PERMISSIONS` bundle
-2. Or has a per-user grant in `USER_PERMISSION_OVERRIDES` (`webapp/utils/rbac.py`)
+1. A grant names the user or one of their POSIX groups (Admin -> Roles &
+   access, or `sam-admin rbac --effective <username>`)
+2. In `defaults` mode, the code catalog in `sam/security/rbac_defaults.py`
 
 ### Database connection errors
 

@@ -185,7 +185,13 @@ sam-queries/
   `register/handoff_mail.py`, ACCOUNT_REGISTRATION.md D22); the digest stays off.
 
 ### Security / Integration
-- **Role**, **ApiCredentials** (bcrypt-hashed), **RoleApiCredentials**
+- **Role**, **ApiCredentials**, **RoleApiCredentials** — legacy; only the API-key role names (`ROLE_XRAS`) are read
+- **SamuelRole** / **SamuelRolePermission** / **SamuelRoleGrant** (`sam/security/samuel_roles.py`,
+  DDL `scripts/sql/create_samuel_roles.sql`): the RBAC catalog — roles extend one parent,
+  SYSTEM_ADMIN implies everything, a grant names a `user` / `group` / `apikey` (optionally one
+  facility), a revoke is a stamp. **`RBAC_SOURCE`** `defaults` (code, tests) | `db` (prod: TTL
+  snapshot, NO fallback to code, API keys held to each token route's Permission). Admin → Roles &
+  access (`MANAGE_ROLES`), `sam-admin rbac`; record `docs/plans/RBAC_DB_ROLES.md`.
 - **XrasUserView**, **XrasAllocationView**, etc.: read-only database views
 
 ---
@@ -379,8 +385,8 @@ def get_project_allocations(project):   # ← project object, not projcode
     ...
 ```
 
-Note: the Basic-Auth path of `login_or_token_required` bypasses the Permission
-check — it only gates browser sessions.
+Note: the Basic-Auth path of `login_or_token_required` checks the Permission only
+under `RBAC_SOURCE=db` (`api_key_allowed`); in `defaults` mode it gates sessions only.
 
 ### 9. Form Validation & HTMX Handlers
 
@@ -685,6 +691,7 @@ sam-admin project SCSG0001 --validate ; sam-admin project SCSG0001 --reconcile  
 sam-admin project --reconcile-lead-admin --all --dry-run   # bulk, active resources only; drop --dry-run to write
 sam-admin accounting --disk --dry-run                   # summary rebuild/reconcile ops
 sam-admin xras --readiness | --mnemonic-report | --contract-report | --identity-report   # XRAS boards (docs/xras/)
+sam-admin rbac [--seed | --seed-keys | --keys | --effective USER | --diff | --grant SUBJECT --role R | --revoke ID]   # the samuel_role_* catalog
 # Cache refresh — HTTP client for POST /api/v1/admin/cache/refresh (caches live
 # in the running webapp + Redis, NOT the DB). Needs SAM_API_USER / SAM_API_PASS.
 sam-admin cache --refresh [--category flask|chart|usage|scans|jobs]

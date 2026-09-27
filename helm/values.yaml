@@ -283,9 +283,17 @@ webapp:
     # would re-pin every host to one origin and break login on the others.
     OIDC_USERNAME_CLAIM: "preferred_username"
     OIDC_SCOPES: "openid email profile"
+    # Role catalog: "defaults" reads the code bundles, "db" the samuel_role_*
+    # tables (seeded by `sam-admin rbac --seed`, then --seed-keys) with no
+    # fallback, and holds API keys to each token route's Permission. Flip only
+    # after the DDL and the seed have run on this database.
+    RBAC_SOURCE: "db"
     # API keys for HPC status collectors (bcrypt hashes — safe to store here).
     # Generate with: python scripts/gen_api_key.py --username collector
     API_KEYS_COLLECTOR: "$2b$12$X8NQvOUvyrj80Ud3N6Y.0uZs70ZC6lJYy/zfka/v7uQQFKJhds0b2"
+    # sam-admin cache --refresh credential (api_admin grant), so the collector
+    # key is not an all-routes token. Plaintext: SAM_CACHE_REFRESH_API_PASS_PROD.
+    API_KEYS_CACHEREF: "$2b$12$IG8jeBTGz0avfm8SwHwAC.nQAQ/R5wW9nCuFA1Zc/5YkZf8U2JEBG"
     # hpc-usage-queries plugin (per-job drill-down on resource-usage pages).
     # The plugin reads JOB_HISTORY_PG_* at engine-creation time;
     # JOB_HISTORY_PG_USER / JOB_HISTORY_PG_PASSWORD are injected below
