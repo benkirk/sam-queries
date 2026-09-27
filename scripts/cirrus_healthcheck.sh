@@ -57,6 +57,7 @@ for block in db sam-db jh-db jh fs-db oidc; do
     EXTERNAL_SECRETS+=("${WEBAPP_NAME}-${block}-credentials-esos")
 done
 [[ "$XRAS_ES_EXPECTED" -eq 1 ]] && EXTERNAL_SECRETS+=("${WEBAPP_NAME}-xras-api-credentials-esos")
+[[ "$JIRA_ES_EXPECTED" -eq 1 ]] && EXTERNAL_SECRETS+=("${WEBAPP_NAME}-jira-credentials-esos")
 
 # ============================================================================
 section "0. Prerequisites"

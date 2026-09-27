@@ -23,3 +23,88 @@
 <dd class="col-sm-9">EULA <span class="font-monospace" title="{{ r.eula_sha }}">{{ r.eula_sha[:7] }}</span> @ {{ r.eula_accepted_at | fmt_date(fmt='%Y-%m-%d %H:%M') }}</dd>
 {% endif %}
 {% endmacro %}
+
+{#- Help-desk ticket rows for the collapsed body; `v` is the request_views dict. #}
+{#- dt/dd pairs for a `dl.row`; empty when the request has no ticket. #}
+{% macro ticket_details(v) %}
+{% for t in v.tickets or [] %}
+<dt class="col-sm-3">{% if loop.first %}Ticket{% endif %}</dt>
+<dd class="col-sm-9">
+    {%- if t.url %}<a href="{{ t.url }}" target="_blank" rel="noopener" class="font-monospace">{{ t.key }}</a>{% else %}<span class="font-monospace">{{ t.key }}</span>{% endif %}
+    {%- if t.status %} · {{ t.status }}{% endif %}
+    {%- if t.closed_at %}, closed {{ t.closed_at | fmt_date }}{% endif %}
+    <span class="text-muted">({{ 'filed by SAM' if t.origin == 'created' else 'found after the mail' }})</span>
+    {%- if not loop.first %} <span class="badge bg-warning text-dark" title="More than one ticket carries this request's handle">duplicate</span>{% endif %}
+</dd>
+{% endfor %}
+{% endmacro %}
+
+{#-
+  Compact queue-row icons (Admin -> Accounts). Each is one Font Awesome glyph
+  with its words in `title` and `aria-label`, so a row fits on one line and the
+  meaning is a hover away; the facet chips above keep the long labels.
+#}
+{% set _PURPOSE_ICONS = {
+    'standalone': ('fa-user', 'Standalone: an account, no project'),
+    'enrollment': ('fa-chalkboard-user', 'Enrollment: an account plus a project or event membership'),
+    'submission': ('fa-file-signature', 'Submission: named on an XRAS request'),
+} %}
+{% set _ORIGIN_ICONS = {
+    'self': ('fa-globe', 'Public form: the person asked for themselves'),
+    'sponsor': ('fa-envelope-open-text', 'Invited by a sponsor or operator'),
+    'sweep': ('fa-right-left', 'XRAS roster: found by the hourly XRAS sweep'),
+} %}
+{% set _READINESS_ICONS = {
+    'open': ('fa-regular fa-hourglass-half', 'text-body-secondary', 'No account yet'),
+    'ready': ('fa-solid fa-circle-check', 'text-success-emphasis', 'Account exists; Reconcile stamps and enrolls it'),
+    'fulfilled': ('fa-solid fa-user-check', 'text-success-emphasis', 'Fulfilled'),
+    'failed': ('fa-solid fa-triangle-exclamation', 'text-danger-emphasis', 'Enrollment failed'),
+    'inactive': ('fa-solid fa-user-lock', 'text-warning-emphasis', 'Account exists but is inactive; reactivation is NUSD\'s'),
+    'ambiguous': ('fa-solid fa-people-arrows', 'text-body-emphasis', 'More than one active account holds this address; nothing is stamped automatically'),
+} %}
+
+{% macro _icon(classes, label) -%}
+<i class="{{ classes }} fa-fw" title="{{ label }}" aria-label="{{ label }}" role="img"></i>
+{%- endmacro %}
+
+{#- Purpose and origin, two glyphs. #}
+{% macro kind_icons(v) -%}
+{%- set p = _PURPOSE_ICONS.get(v.purpose, ('fa-circle-question', v.purpose)) -%}
+{%- set o = _ORIGIN_ICONS.get(v.origin, ('fa-circle-question', v.origin)) -%}
+<span class="text-nowrap">{{ _icon('fa-solid ' ~ p[0] ~ ' text-body-emphasis', p[1]) }}{{ _icon('fa-solid ' ~ o[0] ~ ' text-body-secondary ms-1', o[1]) }}</span>
+{%- endmacro %}
+
+{#- Readiness, plus the address and invitation state, as glyphs. #}
+{% macro readiness_icons(v) -%}
+{%- set r = v.row -%}
+{%- set spec = _READINESS_ICONS.get(v.readiness, _READINESS_ICONS['open']) -%}
+{%- set label = spec[2] -%}
+{%- if v.readiness in ('ready', 'inactive') and v.resolution %}{% set label = label ~ ' (' ~ v.resolution.username ~ ')' %}{% endif -%}
+{%- if v.readiness == 'failed' and r.fulfill_error %}{% set label = label ~ ': ' ~ r.fulfill_error %}{% endif -%}
+<span class="text-nowrap">{{ _icon(spec[0] ~ ' ' ~ spec[1], label) }}
+{%- if not v.verified %}{{ _icon('fa-solid fa-envelope-circle-check text-warning-emphasis ms-1', 'Address not verified') }}{% endif -%}
+{%- if r.invite_state == 'awaiting' %}{{ _icon('fa-solid fa-paper-plane text-warning-emphasis ms-1', 'Invitation link sent ' ~ (r.invite_sent_at | fmt_date) ~ '; the invitee has not finished the form') }}
+{%- elif r.invite_state == 'completed' %}{{ _icon('fa-solid fa-envelope-open text-success-emphasis ms-1', 'The invitee finished the form ' ~ (r.completed_at | fmt_date)) }}{% endif -%}
+</span>
+{%- endmacro %}
+
+{#- Queue state, the ticket as a link, and the digest stamp. Not a collapse
+    trigger cell: it holds an anchor. #}
+{% macro status_line(v) -%}
+{%- set r = v.row -%}
+{%- set t = v.tickets | first if v.tickets else none -%}
+<span class="text-nowrap">
+{%- if r.state == 'claimed' -%}
+<span class="badge bg-info-subtle text-info-emphasis border border-info-subtle" title="Claimed by {{ r.assignee }}"><i class="fa-solid fa-hand me-1" aria-hidden="true"></i>{{ r.assignee }}</span>
+{%- elif r.state == 'submitted' -%}
+<span class="badge bg-body-secondary text-body-secondary border">open</span>
+{%- else -%}
+<span class="badge bg-secondary" title="{{ r.closed_reason }} — {{ r.closed_by }}, {{ r.closed_at | fmt_date }}">{{ r.state }}</span>
+{%- endif -%}
+{%- if t %} {% if t.url %}<a href="{{ t.url }}" target="_blank" rel="noopener" class="font-monospace small" title="Help-desk ticket{% if t.status %}: {{ t.status }}{% endif %}">{{ t.key }}</a>{% else %}<span class="font-monospace small text-body-secondary">{{ t.key }}</span>{% endif -%}
+{%- if v.tickets | length > 1 %}<small class="text-body-secondary" title="{{ v.tickets | length }} tickets carry this request's handle">+{{ v.tickets | length - 1 }}</small>{% endif -%}
+{%- if t.closed_at and not r.fulfilled_at and r.state in ('submitted', 'claimed') %} {{ _icon('fa-solid fa-triangle-exclamation text-warning-emphasis', 'The desk closed ' ~ t.key ~ ' on ' ~ (t.closed_at | fmt_date) ~ ' and no SAM account holds this address yet: closed without an account') }}{% endif -%}
+{%- endif -%}
+{%- if r.requested_at %} {{ _icon('fa-solid fa-paper-plane text-body-secondary', 'Included in a digest to NUSD ' ~ (r.requested_at | fmt_date)) }}{% endif -%}
+</span>
+{%- endmacro %}

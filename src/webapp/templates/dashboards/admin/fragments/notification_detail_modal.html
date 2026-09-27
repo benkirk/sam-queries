@@ -99,7 +99,7 @@
 </dl>
 
 {% if row.error %}
-<div class="alert alert-danger small mb-0">
+<div class="alert alert-{{ 'danger' if row.status == 'failed' else 'secondary' }} small mb-0">
     <strong>Detail</strong>
     <pre class="mb-0 mt-1" style="white-space: pre-wrap;">{{ row.error }}</pre>
 </div>

@@ -101,3 +101,67 @@ class TestTheRun:
         assert result.detail['enroll_failed'] == 1
         assert result.state == 'succeeded'
         assert row.fulfill_error
+
+
+class TestTheTicketPass:
+    """The learn/refresh pass rides the same run and never fails it."""
+
+    def test_the_suite_skips_it_and_says_why(self, ctx, session):
+        result = mod.account_requests_reconcile(ctx())
+        reason = 'no ticket provider has reads on (JIRA_ENABLED)'
+        assert result.detail['tickets'] == {'skipped': True, 'reason': reason}
+        assert result.message.endswith(f'tickets skipped ({reason})')
+        for key in ('checked', 'fulfilled', 'purged'):
+            assert key in result.detail, 'the reconcile counts are untouched'
+
+    def test_configured_counts_land_in_the_detail(self, ctx, session, monkeypatch):
+        from factories.tickets import FakeTicketProvider
+        from sam.integration.tickets import learn
+        provider = FakeTicketProvider()
+        monkeypatch.setattr(learn, 'read_providers', lambda: [provider])
+        monkeypatch.setenv('SAM_TASKS_TICKET_LOOKUP_MAX', '3')
+        result = mod.account_requests_reconcile(ctx())
+        tickets = result.detail['tickets']
+        assert tickets['skipped'] is False and tickets['limit'] == 3
+        run = tickets['providers']['fake']
+        assert set(run['learn']) == {'checked', 'learned', 'missed', 'error'}
+        assert set(run['refresh']) == {'checked', 'closed', 'missing', 'error'}
+        assert result.state == 'succeeded'
+
+    def test_a_tracker_outage_is_not_a_red_job(self, ctx, session, monkeypatch):
+        from factories.tickets import FakeTicketProvider
+        from sam.integration.tickets import TicketSourceUnavailable, learn
+        from factories import make_notification_log
+        row = make_account_request(session)
+        make_notification_log(session, kind='account_ticket', status='sent',
+                              entity_type='account_request',
+                              entity_id=row.account_request_id,
+                              when=OCC - timedelta(hours=1))
+        provider = FakeTicketProvider()
+        provider.raise_with = TicketSourceUnavailable('ithelp down')
+        monkeypatch.setattr(learn, 'read_providers', lambda: [provider])
+        result = mod.account_requests_reconcile(ctx())
+        assert result.state == 'succeeded'
+        assert result.detail['tickets']['providers']['fake']['learn']['error'] == 'ithelp down'
+
+    def test_a_non_tracker_error_is_not_a_red_job_either(self, ctx, session, monkeypatch):
+        """A JSON-shape surprise or a DB without external_ticket must not roll
+        back the fulfillment stamps made in the same run."""
+        from sam.integration.tickets import learn
+        row = make_account_request(session, email='still@example.edu')
+        make_email_address(session, make_user(session), email='still@example.edu')
+
+        def boom(*a, **k):
+            raise AttributeError("'list' object has no attribute 'get'")
+        monkeypatch.setattr(learn, 'sync_tickets', boom)
+        result = mod.account_requests_reconcile(ctx())
+        assert result.state == 'succeeded' and result.detail['fulfilled'] == 1
+        assert row.fulfilled_at is not None
+        assert result.detail['tickets'] == {
+            'skipped': True, 'reason': "AttributeError: 'list' object has no attribute 'get'"}
+        assert 'tickets skipped (AttributeError' in result.message
+
+    @pytest.mark.parametrize('raw,expected', [(None, 50), ('0', 50), ('40', 40)])
+    def test_the_lookup_knob(self, raw, expected):
+        env = {} if raw is None else {'SAM_TASKS_TICKET_LOOKUP_MAX': raw}
+        assert mod.ticket_lookup_max(env) == expected

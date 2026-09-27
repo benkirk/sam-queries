@@ -53,7 +53,7 @@ spec:
           {{- toYaml . | nindent 10 }}
         {{- end }}
         {{- end }}
-        {{- if or .Values.webapp.env (or .Values.webapp.dbCredentials.enabled (or .Values.webapp.samDbCredentials.enabled (or .Values.webapp.jupyterhubCredentials.enabled (or .Values.webapp.oidcCredentials.enabled (or .Values.webapp.jhDbCredentials.enabled (or .Values.webapp.fsDbCredentials.enabled .Values.webapp.xrasApiCredentials.enabled .Values.webapp.humanCheckCredentials.enabled)))))) }}
+        {{- if or .Values.webapp.env (or .Values.webapp.dbCredentials.enabled (or .Values.webapp.samDbCredentials.enabled (or .Values.webapp.jupyterhubCredentials.enabled (or .Values.webapp.oidcCredentials.enabled (or .Values.webapp.jhDbCredentials.enabled (or .Values.webapp.fsDbCredentials.enabled .Values.webapp.xrasApiCredentials.enabled .Values.webapp.humanCheckCredentials.enabled .Values.webapp.jiraCredentials.enabled)))))) }}
         env:
           {{- range $key, $value := .Values.webapp.env }}
           - name: {{ $key }}
@@ -171,6 +171,14 @@ spec:
             valueFrom:
               secretKeyRef:
                 name: {{ .Values.webapp.name }}-xras-api-credentials
+                key: token
+          {{- end }}
+          {{- if .Values.webapp.jiraCredentials.enabled }}
+          # Help-desk tickets. WARNING: Also needed by the CronJob (the hourly learn).
+          - name: JIRA_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.webapp.name }}-jira-credentials
                 key: token
           {{- end }}
           {{- if .Values.webapp.oidcCredentials.enabled }}

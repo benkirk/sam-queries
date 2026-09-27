@@ -33,10 +33,13 @@ class TransportError(NotifyError):
 
 
 class Channel(StrEnum):
-    """Delivery channels. ``SLACK`` is declared and has no transport."""
+    """Delivery channels. ``SLACK`` is declared and has no transport; ``TICKET``
+    marks ledger rows written by the ticket provider (sam.integration.tickets),
+    which is not a transport."""
 
     EMAIL = 'email'
     SLACK = 'slack'
+    TICKET = 'ticket'
 
 
 #: Every value ``notification_log.status`` may hold.

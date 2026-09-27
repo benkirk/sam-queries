@@ -28,6 +28,7 @@ from sam.core.account_requests import (
 )
 from sam.accounting.allocations import AllocationType
 from sam.core.users import User
+from sam.integration.tickets.queries import ACCOUNT_REQUEST, tickets_for
 from sam.projects.projects import Project
 from sam.resources.facilities import Panel
 
@@ -176,10 +177,10 @@ def request_views(session: Session, rows: Sequence[AccountRequest], *,
                   today: Optional[date] = None) -> List[Dict[str, Any]]:
     """One plain dict per row: what the card, the digest and the tab read.
 
-    Two batched lookups (sponsors, project codes) on top of the row. Order
-    is the input order. Keys: ``id row first_name last_name name email
-    state purpose origin readiness resolution event event_code deadline
-    project_code event_project_code sponsor waiting_days verified``.
+    Three batched lookups (sponsors, project codes, tickets) on top of the
+    row. Order is the input order. Keys: ``id row first_name last_name name
+    email state purpose origin readiness resolution event event_code deadline
+    project_code event_project_code sponsor waiting_days verified tickets``.
     """
     sponsor_ids = sorted({r.sponsor_user_id for r in rows if r.sponsor_user_id})
     sponsors = ({u.user_id: u for u in session.query(User)
@@ -191,6 +192,7 @@ def request_views(session: Session, rows: Sequence[AccountRequest], *,
                      .filter(Project.project_id.in_(project_ids)).all())
                 if project_ids else {})
     today = today or date.today()
+    tickets = ticket_views(session, [r.account_request_id for r in rows])
     views = []
     for r in rows:
         event = events.get(r.event_id) if r.event_id else None
@@ -211,8 +213,31 @@ def request_views(session: Session, rows: Sequence[AccountRequest], *,
             'sponsor': sponsors.get(r.sponsor_user_id),
             'waiting_days': waiting_days(r, today=today),
             'verified': r.is_verified,
+            'tickets': tickets.get(r.account_request_id, []),
         })
     return views
+
+
+def ticket_views(session: Session, request_ids: Iterable[int]
+                 ) -> Dict[int, List[Dict[str, Any]]]:
+    """``{request_id: [{key url status closed_at origin}, ...]}``, oldest first.
+
+    The URL comes from the provider each row names, so a link survives
+    ``TICKET_PROVIDER`` going back to mail; a retired provider gives ``''``.
+    """
+    found = tickets_for(session, ACCOUNT_REQUEST, request_ids)
+    if not found:
+        return {}
+    # By path and lazily: the registry imports requests (tickets/__init__.py).
+    from sam.integration.tickets.registry import provider_for_stored
+    providers = {name: provider_for_stored(name)
+                 for name in {t.provider for ts in found.values() for t in ts}}
+    return {rid: [{'key': t.ticket_key,
+                   'url': providers[t.provider].browse_url(t.ticket_key)
+                          if providers[t.provider] else '',
+                   'status': t.status or '', 'closed_at': t.closed_at,
+                   'origin': t.origin} for t in ts]
+            for rid, ts in found.items()}
 
 
 def enrollees_for_event(session: Session, event_id: int) -> List[Dict[str, Any]]:
