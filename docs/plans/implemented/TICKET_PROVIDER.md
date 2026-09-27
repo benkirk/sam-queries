@@ -1,8 +1,9 @@
 # Ticketing from SAM: the ithelp Jira API and a thin ticket-provider layer
 
-Status: design record and as-built, 2026-09-26. Phase 0 shipped (#634).
-Phases 1-3 are **built** on branch `jira-ticket-provider-build` (seven commits,
-one per step of § 8.9) and run on Ben's PAT; § 8 is the approved plan and
+Status: design record and as-built. Phase 0 shipped in #634 (2026-09-26);
+phases 1-3 **merged** in #636 (2026-09-27), one commit per step of § 8.9, and run
+on Ben's PAT. The open items (bot account, `on_behalf_of`, one ticket per roster)
+stay listed in § 7; § 8 is the approved plan and
 § 9 records where the build departs from it. Section 8 supersedes the
 column-level details in section 5 (the `external_ticket` table replaces the
 four columns). A bot token later is a change to the OpenBao value only.
@@ -292,7 +293,7 @@ Approved plan for phases 1-3. One PR against staging from branch
 
 ### 8.0 Prompt for the build session
 
-> Read `docs/plans/TICKET_PROVIDER.md` on branch `jira-ticket-provider-build`
+> Read `docs/plans/implemented/TICKET_PROVIDER.md` on branch `jira-ticket-provider-build`
 > end to end, especially § 8 "Build plan (handoff)", and follow its build order
 > one commit at a time on that branch. The desk is Jira Service Management at
 > `ithelp.ucar.edu` (project RC, service desk 3, request type 20); the PAT is
@@ -475,7 +476,7 @@ oldest-first).
   rehearsal and before the PR opens, stop and ping Ben with the exact `mysql ...
   < scripts/sql/create_external_ticket.sql` command and the expected
   verification output; Ben applies it. Also on the Postgres dev DB (`sam_dev`,
-  per `docs/plans/K8S_DEV_ENVIRONMENT.md`) if samuel-dev should carry the table.
+  per `docs/plans/implemented/K8S_DEV_ENVIRONMENT.md`) if samuel-dev should carry the table.
 
 ### 8.4 What Ben does (outside the repo)
 
@@ -624,7 +625,7 @@ the provider inside `management_transaction` (docstring rule).
    tests.
 5. Card, bits macro, configuration tile + route tests.
 6. Helm, `.env.example`, conftest pins, gates, `helm/tests` assertions.
-7. `docs/plans/TICKET_PROVIDER.md` updated to as-built (phases 1-3 shipped,
+7. `docs/plans/implemented/TICKET_PROVIDER.md` updated to as-built (phases 1-3 shipped,
    PAT posture, open items: bot account, JSM customer, close RC-40274);
    CLAUDE.md § Account family one line; D22 unchanged.
 

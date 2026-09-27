@@ -143,7 +143,7 @@ def _truncate_overlapping_allocs(
     0 — a replay no-op), so coverage hands off to the new row with no gap and
     the old row survives. This replaces the old delete-and-recreate behavior,
     which left the account with no current allocation between now and the new
-    start (fstree ``Waiting``); see docs/plans/FY27_PROD_RENEW_HANDOFF.md.
+    start (fstree ``Waiting``); see docs/plans/implemented/FY27_PROD_RENEW_HANDOFF.md.
 
     An overlap that starts on/after ``new_start`` sits fully inside the new
     window and cannot be truncated (``end < start``); it is genuinely

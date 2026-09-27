@@ -1083,7 +1083,7 @@ def get_allocation_summary_with_usage(
             else:
                 account_infos.append(info)
 
-    # Read-model short-circuit (docs/plans/READ_MODEL.md): rows the hourly task
+    # Read-model short-circuit (docs/plans/implemented/READ_MODEL.md): rows the hourly task
     # wrote stand in for the batched rollups, the root anchors and the disk
     # snapshot walk when the gate says the scope is fresh.
     state = _read_model_rows(session, all_allocations, active_at, include_adjustments,

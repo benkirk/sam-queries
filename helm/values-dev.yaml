@@ -1,4 +1,4 @@
-# samuel-dev: the routable dev deployment (docs/plans/K8S_DEV_ENVIRONMENT.md).
+# samuel-dev: the routable dev deployment (docs/plans/implemented/K8S_DEV_ENVIRONMENT.md).
 # Layered on values.yaml: helm template samuel-dev helm -f values.yaml -f values-dev.yaml
 # NEVER add an `image:` line here; CI pins the image in values.yaml on cirrus-dev.
 replicaCount: 1

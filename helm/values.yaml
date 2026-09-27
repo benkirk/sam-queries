@@ -182,7 +182,7 @@ webapp:
     ACCOUNT_REGISTRATION_ENABLED: "0"     # the anonymous account-creation form ships dark; values-dev.yaml turns it on
     HUMAN_CHECK_PROVIDER: "turnstile"     # CAPTCHA on the /register submit ('none' | 'turnstile'); keys from humanCheckCredentials
     ACCOUNT_INVITATIONS_ENABLED: "1"      # Invitations tab, invite links, /register/<code> event pages, Upcoming Events card; "0" unmounts them
-    READ_MODEL_ENABLED: "1"               # serve allocation usage from account_allocation_state when fresh; "0" = live path (docs/plans/READ_MODEL.md)
+    READ_MODEL_ENABLED: "1"               # serve allocation usage from account_allocation_state when fresh; "0" = live path (docs/plans/implemented/READ_MODEL.md)
     FLASK_DEBUG: "0"
     FLASK_CONFIG: "production"            # Selects ProductionConfig (DEBUG=False, SESSION_COOKIE_SECURE=True)
     AUDIT_ENABLED: "1"
@@ -394,7 +394,7 @@ webapp:
     # the drift test in tests/unit/gates/test_xras_admin_client.py pins whichever value
     # ships, so a flip in either direction is a reviewed change to both files.
     XRAS_WRITE_ENABLED: "1"
-    # Help-desk tickets (sam/integration/tickets, docs/plans/TICKET_PROVIDER.md).
+    # Help-desk tickets (sam/integration/tickets, docs/plans/implemented/TICKET_PROVIDER.md).
     # Three fail-closed levers:
     #   JIRA_ENABLED        reads: the hourly learn/status pass and the card.
     #   JIRA_WRITE_ENABLED  creates and comments. WEBAPP-ONLY, like XRAS_WRITE_ENABLED:

@@ -484,7 +484,7 @@ def _build_user_projects_resources_batched(
             'end_date':      end_date,
         })
 
-    # Read-model short-circuit (docs/plans/READ_MODEL.md): when the gate says
+    # Read-model short-circuit (docs/plans/implemented/READ_MODEL.md): when the gate says
     # every chosen allocation has a fresh row, phases 4/5 and the disk override
     # read the rows the hourly task wrote from this same builder.
     chosen_ids = [qa.allocation_id for _p, _a, qa, _rt, _ed in chosen.values()]

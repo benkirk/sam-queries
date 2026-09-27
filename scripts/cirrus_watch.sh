@@ -250,7 +250,7 @@ else
         TOP=$(printf '%s\n' "$SLOW" | sed -E 's/.*Slow request: //' | awk '{$1=$1;print $3,$4}' \
               | sort | uniq -c | sort -rn | head -1 | sed 's/^ *//')
         echo "  slow(>5s): $NSLOW  top: $TOP"
-        note "known-slow (under investigation — docs/plans/FSTREE_LATENCY_INVESTIGATION.md): directory_access ~6.9s, fstree/Casper ~3s DB + app tail under load"
+        note "known-slow (under investigation — docs/plans/implemented/FSTREE_LATENCY_INVESTIGATION.md): directory_access ~6.9s, fstree/Casper ~3s DB + app tail under load"
         # Per-endpoint split from the app's per-DB tokens. The line carries
         # cpu=, one <db>=Xms/Nq per database TOUCHED (sam/status/jobhistory/
         # fsscans), and pool= when non-zero; total ~= cpu + Σdb + pool + rest

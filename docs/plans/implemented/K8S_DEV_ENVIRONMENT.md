@@ -1,11 +1,11 @@
 # samuel-dev: a routable k8s dev deployment
 
-**Status: IN PROGRESS.** Written 2026-09-12 as the implementation handoff; the repo
+**Status: shipped** (#555, #559, #632). Written 2026-09-12 as the implementation handoff; the repo
 side (§4) landed the same day as eight commits on `k8s_dev_plan` → `staging`, each
 leaving the prod render byte-identical. Since 2026-09-23 Argo CD application
 `sam-query-dev` (AppProject `csg`) deploys samuel-dev into its own namespace,
 `sam-queries-dev`, and `make deploy-dev` is retired; kubectl RBAC there landed
-2026-09-26. Open: the separate Entra registration — see §10. This is Stage 5 of `docs/plans/implemented/POSTGRES_MIGRATION.md`:
+2026-09-26. One item stays open: the separate Entra registration — see §10. This is Stage 5 of `docs/plans/implemented/POSTGRES_MIGRATION.md`:
 a second install of the `samuel` chart on nwc1, serving `samuel-dev.k8s.ucar.edu`
 from the CNPG `sam_dev` Postgres copy, deployable from any branch without touching
 production.
@@ -561,7 +561,7 @@ overlay edit the test already tolerates); moving the refresh into the cluster (n
 `hpc-reader` MySQL credential in OpenBao); a second namespace; pointing samuel-dev at
 the XRAS test instance — priced side by side (outbound levers, render-test
 assertions, an inbound `ROLE_XRAS` credential that survives the refresh, the ask to
-Steve) in `XRAS_SUBMISSION.md` § 5 (this directory).
+Steve) in `../XRAS_SUBMISSION.md` § 5.
 
 ## 10. Status
 

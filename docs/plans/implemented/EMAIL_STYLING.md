@@ -1,6 +1,7 @@
-# Email styling (exploration)
+# Email styling
 
-Status: exploration on `email-styling-exploration`, not merged.
+Status: shipped via #537 and #589 (2026-09-21), which restyled every notification
+from the shared base.
 
 Every HTML notification extends `src/sam/notify/templates/_email_base.html`,
 which is developer-owned and never editable in Admin -> Notifications ->

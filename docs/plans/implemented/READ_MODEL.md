@@ -1,10 +1,10 @@
 # Allocation/usage read-model — design & implementation handoff
 
-Status: **design approved 2026-09-08, refined 2026-09-09 against the code, being
-built** on branch `allocation_read_model` (PR #534, base `staging`) as ordered
-commits. This doc captures the grain, placement, refresh strategy, and the phased
+Status: **live in production** (`READ_MODEL_ENABLED: "1"` in `helm/values.yaml`),
+shipped in #534, #543 and #546. Design approved 2026-09-08 and refined 2026-09-09
+against the code. This doc captures the grain, placement, refresh strategy, and the phased
 rollout, with the file references a builder needs. Companion:
-`docs/plans/FSTREE_LATENCY_INVESTIGATION.md` (the DB-bound finding that motivates
+`docs/plans/implemented/FSTREE_LATENCY_INVESTIGATION.md` (the DB-bound finding that motivates
 this).
 
 ## Problem
