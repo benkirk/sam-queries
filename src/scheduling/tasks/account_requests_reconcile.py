@@ -33,7 +33,7 @@ DEFAULT_PURGE_DAYS = 7
 
 
 #: Tracker reads per pass (learn and refresh each); ``$SAM_TASKS_TICKET_LOOKUP_MAX``.
-DEFAULT_TICKET_LOOKUP_MAX = 25
+DEFAULT_TICKET_LOOKUP_MAX = 50
 
 
 def purge_days(env: Optional[dict] = None) -> int:

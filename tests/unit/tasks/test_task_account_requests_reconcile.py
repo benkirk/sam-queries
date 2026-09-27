@@ -144,7 +144,7 @@ class TestTheTicketPass:
         assert result.state == 'succeeded'
         assert result.detail['tickets']['providers']['fake']['learn']['error'] == 'ithelp down'
 
-    @pytest.mark.parametrize('raw,expected', [(None, 25), ('0', 25), ('40', 40)])
+    @pytest.mark.parametrize('raw,expected', [(None, 50), ('0', 50), ('40', 40)])
     def test_the_lookup_knob(self, raw, expected):
         env = {} if raw is None else {'SAM_TASKS_TICKET_LOOKUP_MAX': raw}
         assert mod.ticket_lookup_max(env) == expected

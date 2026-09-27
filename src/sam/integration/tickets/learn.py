@@ -27,9 +27,11 @@ logger = logging.getLogger(__name__)
 REQUESTED_BY = 'task:account_requests_reconcile'
 #: A ticket mail older than this is not looked for; the desk never ingested it.
 MAX_AGE_DAYS = 60
-#: An open ticket is re-read at most this often.
-STALE_AFTER = timedelta(hours=6)
-DEFAULT_LOOKUP_MAX = 25
+#: An open ticket is re-read on every hourly run. Under an hour on purpose:
+#: stamps are the slot clock, exactly 60 min apart, and `<` would skip every other run.
+STALE_AFTER = timedelta(minutes=50)
+#: Reads per pass, each half; a pasted roster is easily 40 open tickets.
+DEFAULT_LOOKUP_MAX = 50
 
 
 def learn_ticket_keys(session: Session, provider: TicketProvider, *,

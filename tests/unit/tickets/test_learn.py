@@ -108,10 +108,18 @@ class TestRefresh:
 
     def test_the_throttle(self, session, fake_provider):
         make_external_ticket(session, entity_id=-51, provider='fake', ticket_key='FAKE-51',
-                             synced_at=CLOCK - timedelta(hours=1))
+                             synced_at=CLOCK - timedelta(minutes=30))
         fake_provider.add('h', key='FAKE-51')
         counts = refresh_ticket_status(session, fake_provider, clock=CLOCK, limit=500)
         assert counts['checked'] == 0
+
+    def test_the_previous_hourly_slot_is_re_read(self, session, fake_provider):
+        """Stamps are the slot clock, exactly an hour apart: every run re-reads."""
+        link = make_external_ticket(session, entity_id=-54, provider='fake',
+                                    ticket_key='FAKE-54', synced_at=CLOCK - timedelta(hours=1))
+        fake_provider.add('h', key='FAKE-54')
+        counts = refresh_ticket_status(session, fake_provider, clock=CLOCK, limit=500)
+        assert counts['checked'] == 1 and link.synced_at == CLOCK
 
     def test_a_vanished_ticket_is_stamped_read(self, session, fake_provider):
         link = make_external_ticket(session, entity_id=-52, provider='fake',

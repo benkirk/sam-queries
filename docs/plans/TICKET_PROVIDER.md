@@ -645,6 +645,7 @@ green on MySQL and Postgres; `helm/tests/test-cronjob-render.sh` and
 | — | in-request circuit breaker: after one provider outage, the rest of that request (a roster) files by mail | a 30-row roster against a dead desk would otherwise wait out 30 connect timeouts |
 | — | `request_views` builds each link from the provider the row stores, not the current selector | a link survives `TICKET_PROVIDER` going back to mail |
 | — | refresh stamps a vanished ticket (404) as read; a reopened ticket stays closed in SAM | stops hourly re-asks; reopen is rare |
+| refresh open tickets not read in 6 h; cap 25 per pass | every hourly run (threshold 50 min, since slot stamps are exactly 60 min apart); cap `SAM_TASKS_TICKET_LOOKUP_MAX` 50 per half | Ben, 2026-09-26: a closed-without-account ticket should surface within the hour, and a pasted roster is easily 40 open tickets |
 | — | anonymizer purges `external_ticket`; healthcheck expects the Jira ExternalSecret on prod only; the notification detail modal shows a sent row's detail neutral, not red | the rows would orphan once `account_request` is purged; the key is recorded as the sent row's detail |
 
 Behavior worth knowing:
@@ -654,8 +655,11 @@ Behavior worth knowing:
   in either era. An API failure leaves a `failed` row (transport
   `jira-servicedesk`, channel `ticket`) and then the mail row.
 - A filing costs up to four calls (find, create, labels, note), each at most
-  5 s. A large roster queued without invitation links files serially inside
-  one request.
+  5 s; the live smoke measured 1.4 s per filing. A roster queued without
+  invitation links files serially inside one request, so 40 names is roughly a
+  minute: under gunicorn's 120 s, but near a 60 s ingress read timeout if the
+  cluster's ingress uses that common default. Tickets still file if the
+  browser gives up; the page just never hears back.
 - The Configuration tile shows the mode: "mail only", "mail, keys learned
   hourly" (reads alone), or "API create, mail fallback".
 
@@ -674,8 +678,11 @@ the internal note (`public: false`). The ledger row reads `sent`, transport
 `jira-servicedesk`, channel `ticket`, detail `RC-40275`; the link row is
 `created`. A second `send_ticket` was suppressed without a call; the card and
 the Configuration tile rendered the key and "API create, mail fallback"; a
-forced `account_requests_reconcile` refreshed its status. RC-40275 is a test
-ticket to cancel.
+forced `account_requests_reconcile` refreshed its status. A second ticket,
+RC-40276, confirmed "address vouched for by benkirk". After Ben cancelled both,
+one forced run reported "2 closed of 2 refreshed" (status Resolved,
+`closed_at` stamped), the card showed "closed without an account" on both
+rows, and the next run read neither.
 
 Prod DDL (before the deploy):
 
