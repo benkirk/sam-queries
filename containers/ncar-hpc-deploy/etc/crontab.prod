@@ -1,0 +1,28 @@
+# ncar-hpc-deploy, prod lane — csgteam on the `cron` host.
+# Times match the host-checkout cron entries this replaces; each job flocks itself on /glade,
+# so an overrunning run is skipped, not stacked.
+NHD=/glade/u/apps/opt/CHANGEME/containers/ncar-hpc-deploy/bin/ncar-hpc-deploy
+SSH="ssh -o BatchMode=yes -o LogLevel=error"
+
+# image: pull :main, smoke on casper + derecho, swap on pass (exits 2 and mails on failure)
+30 06 * * *     $SSH casper.hpc.ucar.edu  "$NHD update --lane prod --smoke-hosts derecho.hpc.ucar.edu"
+
+# job_history ingest (hpc-usage-queries)
+*/5 * * * *     $SSH casper.hpc.ucar.edu  "$NHD run --lane prod jobhist-sync rapid  >/dev/null"
+*/5 * * * *     $SSH derecho.hpc.ucar.edu "$NHD run --lane prod jobhist-sync rapid  >/dev/null"
+07 00 * * *     $SSH casper.hpc.ucar.edu  "$NHD run --lane prod jobhist-sync daily  >/dev/null"
+07 00 * * *     $SSH derecho.hpc.ucar.edu "$NHD run --lane prod jobhist-sync daily  >/dev/null"
+15 20 * * SAT   $SSH casper.hpc.ucar.edu  "$NHD run --lane prod jobhist-sync weekly >/dev/null"
+45 20 * * SAT   $SSH derecho.hpc.ucar.edu "$NHD run --lane prod jobhist-sync weekly >/dev/null"
+
+# SAM comp charge summaries
+17 * * * *      $SSH casper.hpc.ucar.edu  "$NHD run --lane prod accounting-comp --last 2d >/dev/null"
+22 * * * *      $SSH derecho.hpc.ucar.edu "$NHD run --lane prod accounting-comp --last 2d >/dev/null"
+33 01 * * *     $SSH casper.hpc.ucar.edu  "$NHD run --lane prod accounting-comp --last 7d >/dev/null"
+38 01 * * *     $SSH derecho.hpc.ucar.edu "$NHD run --lane prod accounting-comp --last 7d >/dev/null"
+
+# SAM disk charge summaries (reruns only when a newer hdig acct file lands)
+27 02 * * *     $SSH casper.hpc.ucar.edu  "$NHD run --lane prod accounting-disk >/dev/null"
+
+# status collectors -> samuel
+*/5 * * * *     $SSH casper.hpc.ucar.edu  "$NHD run --lane prod collectors >/dev/null"

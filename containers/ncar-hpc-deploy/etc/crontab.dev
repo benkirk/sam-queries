@@ -1,0 +1,11 @@
+# ncar-hpc-deploy, dev lane — writes sam_dev and posts to samuel-dev; tracks :staging.
+# No jobhist-sync: the job_history DBs are shared with prod, which owns the ingest.
+NHD=/glade/u/apps/opt/CHANGEME/containers/ncar-hpc-deploy/bin/ncar-hpc-deploy
+SSH="ssh -o BatchMode=yes -o LogLevel=error"
+
+45 * * * *      $SSH casper.hpc.ucar.edu  "$NHD update --lane dev --smoke-hosts derecho.hpc.ucar.edu"
+
+19 * * * *      $SSH casper.hpc.ucar.edu  "$NHD run --lane dev accounting-comp --last 2d >/dev/null"
+24 * * * *      $SSH derecho.hpc.ucar.edu "$NHD run --lane dev accounting-comp --last 2d >/dev/null"
+29 02 * * *     $SSH casper.hpc.ucar.edu  "$NHD run --lane dev accounting-disk >/dev/null"
+*/5 * * * *     $SSH casper.hpc.ucar.edu  "$NHD run --lane dev collectors >/dev/null"
