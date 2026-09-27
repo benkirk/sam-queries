@@ -47,12 +47,20 @@ def test_the_card_shows_the_key_the_link_and_the_closed_warning(auth_client, tic
     resp = auth_client.get(f'{FRAGMENT}?search=zz.ticket.card')
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
-    assert f'>ZZ-{rid}</small>' in html, 'the key, as text, in the status cell'
+    link = f'href="https://ithelp.ucar.edu/browse/ZZ-{rid}"'
+    assert html.count(link) == 2, 'the key links from the status cell and the details'
     assert '+1' in html, 'the second ticket is counted'
-    assert f'href="https://ithelp.ucar.edu/browse/ZZ-{rid}"' in html
     assert 'closed without an account' in html
     assert 'filed by SAM' in html and 'found after the mail' in html
     assert '>duplicate<' in html
+
+
+def test_the_row_is_icons_with_words_on_hover(auth_client, ticketed_request):
+    html = auth_client.get(f'{FRAGMENT}?search=zz.ticket.card').get_data(as_text=True)
+    for label in ('Standalone: an account, no project',
+                  'Invited by a sponsor or operator', 'No account yet'):
+        assert f'aria-label="{label}"' in html, label
+    assert 'mailto:zz.ticket.card@example.invalid' in html, 'the full address is in the details'
 
 
 def test_a_request_without_tickets_renders_no_ticket_row(auth_client):

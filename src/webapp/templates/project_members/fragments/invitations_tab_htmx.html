@@ -187,7 +187,7 @@
         <tr class="collapse" id="{{ body_id }}">
             <td></td>
             <td colspan="6" class="small">
-                <dl class="row mb-0">
+                <dl class="row mx-0 mb-0">
                     {% if r.organization %}<dt class="col-sm-3">Institution</dt><dd class="col-sm-9">{{ r.organization }}{% if r.academic_status %} · {{ r.academic_status }}{% endif %}{% if r.residence_country %} · {{ r.residence_country }}{% endif %}</dd>{% endif %}
                     {% if r.phone or r.orcid %}<dt class="col-sm-3">Contact</dt><dd class="col-sm-9">{{ r.phone or '' }}{% if r.orcid %} · ORCID {{ r.orcid }}{% endif %}</dd>{% endif %}
                     {% if r.desired_username %}<dt class="col-sm-3">Wants username</dt><dd class="col-sm-9 font-monospace">{{ r.desired_username }}</dd>{% endif %}

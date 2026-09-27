@@ -2,7 +2,7 @@
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
 {% from 'dashboards/fragments/project_bits.html' import project_link %}
-{% from 'dashboards/fragments/account_request_bits.html' import invite_badge, invite_details, ticket_inline, ticket_details %}
+{% from 'dashboards/fragments/account_request_bits.html' import invite_details, ticket_details, kind_icons, readiness_icons, status_line %}
 {#
   The account-request queue card.
 
@@ -118,14 +118,14 @@
             <thead class="table-subtle">
                 <tr>
                     <th style="width:1.5rem;"></th>
-                    <th>{{ sort_header('person', 'Person') }}</th>
-                    <th>{{ sort_header('email', 'Email') }}</th>
-                    <th style="width:8rem;">Purpose</th>
-                    <th style="width:9rem;">Project</th>
-                    <th style="width:10rem;">Readiness</th>
-                    <th class="text-nowrap" style="width:6rem;">{{ sort_header('waiting', 'Waiting') }}</th>
-                    <th style="width:9rem;">{{ sort_header('state', 'Status') }}</th>
-                    <th class="text-end" style="width:9rem;">Actions</th>
+                    <th style="width:24%;">{{ sort_header('person', 'Person') }}</th>
+                    <th style="width:30%;">{{ sort_header('email', 'Email') }}</th>
+                    <th class="text-nowrap" style="width:4.5rem;" title="Purpose and origin (hover an icon)">Kind</th>
+                    <th style="width:7rem;">Project</th>
+                    <th class="text-nowrap" style="width:5rem;" title="Readiness, address and invitation (hover an icon)">Ready</th>
+                    <th class="text-nowrap" style="width:5.5rem;">{{ sort_header('waiting', 'Wait') }}</th>
+                    <th class="text-nowrap" style="width:11rem;">{{ sort_header('state', 'Status') }}</th>
+                    <th class="text-end" style="width:8.5rem;">Actions</th>
                 </tr>
             </thead>
             {% for group in groups %}
@@ -159,48 +159,19 @@
                 {% set body_id = 'arq-' ~ v.id %}
                 <tr id="account-request-{{ v.id }}"{% if r.state in ('dismissed', 'rejected') %} class="text-muted"{% endif %}>
                     <td class="cursor-pointer" {{ collapse_toggle(body_id) }}><i class="fa-solid fa-chevron-right small text-muted collapse-icon"></i></td>
-                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
-                        {{ v.name }}
-                        {% if r.desired_username %}<br><small class="text-muted">wants <span class="font-monospace">{{ r.desired_username }}</span></small>{% endif %}
+                    <td class="cursor-pointer text-truncate" style="max-width:0;" title="{{ v.name }}{% if r.desired_username %} (wants {{ r.desired_username }}){% endif %}" {{ collapse_toggle(body_id) }}>
+                        {{ v.name }}{% if r.desired_username %} <i class="fa-solid fa-at small text-body-secondary" aria-hidden="true"></i>{% endif %}
                     </td>
                     <td class="cursor-pointer text-truncate" style="max-width:0;" title="{{ v.email }}" {{ collapse_toggle(body_id) }}>{{ v.email }}</td>
-                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
-                        <span class="badge bg-body-secondary text-body-secondary border">{{ v.purpose }}</span>
-                        <br><small class="text-muted">{{ origin_labels[v.origin] }}</small>
-                    </td>
+                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>{{ kind_icons(v) }}</td>
                     {# Not a collapse trigger: the modal opener inside would toggle the row too. #}
                     <td>
                         {% if v.project_code %}{{ project_link(v.project_code, can_view_projects, compact=True) }}{% else %}<span class="text-muted">—</span>{% endif %}
                     </td>
-                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
-                        {% if v.readiness == 'ready' %}
-                        <span class="badge bg-success" title="A SAM account {{ v.resolution.username }} holds this address. Reconcile stamps and enrolls it.">Account exists</span>
-                        {% elif v.readiness == 'fulfilled' %}
-                        <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle" title="Fulfilled {{ r.fulfilled_at | fmt_date }}">Fulfilled</span>
-                        {% elif v.readiness == 'failed' %}
-                        <span class="badge bg-danger" title="{{ r.fulfill_error }}">Enrollment failed</span>
-                        {% elif v.readiness == 'inactive' %}
-                        <span class="badge bg-warning text-dark" title="SAM account {{ v.resolution.username }} holds this address but is inactive. Reactivation is NUSD's.">Account inactive</span>
-                        {% elif v.readiness == 'ambiguous' %}
-                        <span class="badge bg-dark" title="More than one active SAM account holds this address. Nothing is stamped automatically.">Ambiguous</span>
-                        {% else %}
-                        <span class="badge bg-secondary">No account yet</span>
-                        {% endif %}
-                        {% if not v.verified %}<br><small class="text-warning-emphasis">unverified</small>{% endif %}
-                        {% if r.invite_state %}<br>{{ invite_badge(r) }}{% endif %}
-                    </td>
+                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>{{ readiness_icons(v) }}</td>
                     <td class="cursor-pointer text-nowrap text-muted" title="{{ r.creation_time | fmt_date }}" {{ collapse_toggle(body_id) }}>{{ v.waiting_days }} d</td>
-                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
-                        {% if r.state == 'claimed' %}
-                        <span class="badge bg-info text-dark" title="Claimed by {{ r.assignee }}">claimed · {{ r.assignee }}</span>
-                        {% elif r.state == 'submitted' %}
-                        <span class="badge bg-body-secondary text-body-secondary border">open</span>
-                        {% else %}
-                        <span class="badge bg-secondary" title="{{ r.closed_reason }} — {{ r.closed_by }}, {{ r.closed_at | fmt_date }}">{{ r.state }}</span>
-                        {% endif %}
-                        {% if r.requested_at %}<br><small class="text-muted" title="Included in a digest to NUSD">sent {{ r.requested_at | fmt_date }}</small>{% endif %}
-                        {{ ticket_inline(v) }}
-                    </td>
+                    {# Not a collapse trigger: the ticket link inside would toggle the row too. #}
+                    <td>{{ status_line(v) }}</td>
                     <td class="text-end text-nowrap">
                         <div class="btn-group btn-group-sm flex-nowrap">
                             {% if r.state in ('submitted', 'claimed') %}
@@ -244,19 +215,23 @@
                 <tr class="collapse" id="{{ body_id }}">
                     <td></td>
                     <td colspan="8" class="small">
-                        <dl class="row mb-0">
+                        <dl class="row mx-0 mb-0">
+                            <dt class="col-sm-3">Email</dt><dd class="col-sm-9"><a href="mailto:{{ v.email }}" class="font-monospace">{{ v.email }}</a></dd>
                             <dt class="col-sm-3">Institution</dt><dd class="col-sm-9">{{ r.organization or '—' }}{% if r.academic_status %} · {{ r.academic_status }}{% endif %}{% if r.residence_country %} · {{ r.residence_country }}{% endif %}</dd>
                             {% if r.phone or r.orcid %}
                             <dt class="col-sm-3">Contact</dt><dd class="col-sm-9">{{ r.phone or '' }}{% if r.orcid %} · ORCID {{ r.orcid }}{% endif %}</dd>
                             {% endif %}
                             <dt class="col-sm-3">Requested</dt>
                             <dd class="col-sm-9">
-                                {{ r.creation_time | fmt_date }} via {{ origin_labels[v.origin] }}
+                                {{ r.creation_time | fmt_date }}, {{ v.purpose }}, via {{ origin_labels[v.origin] }}
                                 {%- if v.sponsor %} by {{ v.sponsor.display_name }} (<span class="font-monospace">{{ v.sponsor.username }}</span>){% endif %}
                                 {%- if v.event %}; event <span class="font-monospace">{{ v.event.event_code }}</span>{% endif %}
                                 {%- if v.verified %}; verified {{ r.verified_at | fmt_date }}{% if r.verified_by %} by {{ r.verified_by }}{% endif %}{% else %}; <span class="text-warning-emphasis">address not verified</span>{% endif %}
                                 {%- if r.source_ip %}; from <span class="font-monospace">{{ r.source_ip }}</span>{% if (r.verify_sent_count or 0) > 1 %}, {{ r.verify_sent_count }} verification mails{% endif %}{% endif %}
                             </dd>
+                            {% if r.desired_username %}
+                            <dt class="col-sm-3">Wants username</dt><dd class="col-sm-9 font-monospace">{{ r.desired_username }}</dd>
+                            {% endif %}
                             {{ invite_details(r) }}
                             {{ ticket_details(v) }}
                             {% if r.xras_username %}
