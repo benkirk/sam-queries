@@ -435,6 +435,12 @@ _BOOTSTRAP_TABLES = (
      'sam.core.account_requests:EventEnrollment'),
     ('external_ticket', 'create_external_ticket.sql',
      'sam.integration.tickets.models:ExternalTicket'),
+    ('samuel_role', 'create_samuel_roles.sql',
+     'sam.security.samuel_roles:SamuelRole'),
+    ('samuel_role_permission', 'create_samuel_roles.sql',
+     'sam.security.samuel_roles:SamuelRolePermission'),
+    ('samuel_role_grant', 'create_samuel_roles.sql',
+     'sam.security.samuel_roles:SamuelRoleGrant'),
 )
 
 
@@ -470,18 +476,20 @@ def _bootstrap_app_owned_tables(engine, tmp_path_factory):
     missing = [t for t in _BOOTSTRAP_TABLES if not inspector.has_table(t[0])]
     if not missing:
         return
-    if engine.dialect.name == 'postgresql':
-        for _, _, target in missing:
-            module, name = target.split(':')
-            model = getattr(importlib.import_module(module), name)
-            model.__table__.create(engine, checkfirst=True)
-        return
     sql_dir = Path(__file__).resolve().parents[1] / 'scripts' / 'sql'
     base = tmp_path_factory.getbasetemp()
     shared = base.parent if base.name.startswith('popen-') else base
     with open(shared / 'read_model_ddl.lock', 'w') as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
         try:
+            if engine.dialect.name == 'postgresql':
+                # Under the lock too: two workers creating one table race on
+                # its sequence and one of them fails.
+                for _, _, target in missing:
+                    module, name = target.split(':')
+                    model = getattr(importlib.import_module(module), name)
+                    model.__table__.create(engine, checkfirst=True)
+                return
             with engine.begin() as conn:
                 for table, script_name, _ in missing:
                     # Another worker may have created it while we waited.

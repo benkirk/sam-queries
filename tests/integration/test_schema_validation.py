@@ -858,6 +858,47 @@ class TestCriticalSchemas:
         """)).scalar()
         assert fks == 0, 'no foreign keys by design'
 
+    def test_samuel_roles_schema(self, session):
+        """The role catalog: three tables, no FKs, app clock, names not ids."""
+        roles = get_db_columns(session, 'samuel_role')
+        assert set(roles) == {'samuel_role_id', 'name', 'description', 'extends_role_id',
+                              'active', 'created_by', 'creation_time', 'modified_by',
+                              'modified_time'}, set(roles)
+        assert roles['samuel_role_id']['key'] == 'PRI'
+        assert roles['name']['type'] == 'varchar(40)'
+        perms = get_db_columns(session, 'samuel_role_permission')
+        assert set(perms) == {'samuel_role_id', 'permission'}
+        assert perms['samuel_role_id']['key'] == 'PRI' and perms['permission']['key'] == 'PRI'
+        grants = get_db_columns(session, 'samuel_role_grant')
+        assert set(grants) == {'samuel_role_grant_id', 'subject_type', 'subject_name',
+                               'samuel_role_id', 'permission', 'facility_name', 'note',
+                               'created_by', 'creation_time', 'revoked_by', 'revoked_at'}
+        assert grants['subject_name']['type'] == 'varchar(35)'
+        for col in ('samuel_role_id', 'permission', 'facility_name', 'note',
+                    'revoked_by', 'revoked_at'):
+            assert grants[col]['nullable'] is True, col
+        unique = session.execute(text("""
+            SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX)
+              FROM information_schema.STATISTICS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'samuel_role'
+               AND INDEX_NAME = 'samuel_role_name' AND NON_UNIQUE = 0
+        """)).scalar()
+        assert unique == 'name'
+        for table, col in (('samuel_role', 'creation_time'), ('samuel_role', 'modified_time'),
+                           ('samuel_role_grant', 'creation_time')):
+            default = session.execute(text(f"""
+                SELECT COLUMN_DEFAULT FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '{table}'
+                   AND COLUMN_NAME = '{col}'
+            """)).scalar()
+            assert default is None, f'{table}.{col} is stamped from the app clock'
+        fks = session.execute(text("""
+            SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'samuel_role%'
+               AND REFERENCED_TABLE_NAME IS NOT NULL
+        """)).scalar()
+        assert fks == 0, 'no foreign keys by design'
+
     def test_notification_addressing_schema(self, session):
         """Operator-added copies: one address per row, unique per scope+field."""
         db_cols = get_db_columns(session, 'notification_addressing')
