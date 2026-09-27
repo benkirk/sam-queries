@@ -39,7 +39,9 @@ DEFAULT_CONNECT_TIMEOUT = 3.05
 DEFAULT_MAX_RETRIES = 3
 #: The webapp's budget: a filing runs inside a request, after its commit.
 INTERACTIVE_TIMEOUT = 5.0
-AUTH_MODES = ('bearer', 'basic')
+BEARER = 'bearer'
+BASIC = 'basic'
+AUTH_MODES = (BEARER, BASIC)
 
 
 @dataclass(frozen=True)
@@ -50,7 +52,7 @@ class JiraConfig:
     write_enabled: bool = False
     base_url: str = DEFAULT_BASE_URL
     token: str = ''
-    auth: str = 'bearer'
+    auth: str = BEARER
     user: str = ''
     project_key: str = DEFAULT_PROJECT_KEY
     service_desk_id: str = DEFAULT_SERVICE_DESK_ID
@@ -62,7 +64,7 @@ class JiraConfig:
 
     @classmethod
     def from_environment(cls) -> 'JiraConfig':
-        auth = config_str('JIRA_AUTH', 'bearer').lower()
+        auth = config_str('JIRA_AUTH', BEARER).lower()
         labels = config_str('JIRA_LABELS', DEFAULT_LABELS)
         return cls(
             enabled=config_bool('JIRA_ENABLED', False),
@@ -70,7 +72,7 @@ class JiraConfig:
             base_url=(config_str('JIRA_BASE_URL', DEFAULT_BASE_URL)
                       or DEFAULT_BASE_URL).rstrip('/'),
             token=config_str('JIRA_TOKEN', ''),
-            auth=auth if auth in AUTH_MODES else 'bearer',
+            auth=auth if auth in AUTH_MODES else BEARER,
             user=config_str('JIRA_USER', ''),
             project_key=config_str('JIRA_PROJECT_KEY', DEFAULT_PROJECT_KEY) or DEFAULT_PROJECT_KEY,
             service_desk_id=(config_str('JIRA_SERVICE_DESK_ID', DEFAULT_SERVICE_DESK_ID)
@@ -91,7 +93,7 @@ class JiraConfig:
     def configured(self) -> bool:
         """The read lever and a usable credential (Basic also needs a user)."""
         return bool(self.enabled and self.token
-                    and (self.auth != 'basic' or self.user))
+                    and (self.auth != BASIC or self.user))
 
     @property
     def write_configured(self) -> bool:
@@ -143,7 +145,7 @@ class _JiraTransport:
             'User-Agent': 'SAM/1.0 (+https://sam.hpc.ucar.edu)',
             'Accept': 'application/json',
         })
-        if config.auth == 'basic':
+        if config.auth == BASIC:
             self.session.auth = (config.user, config.token)
         else:
             self.session.headers['Authorization'] = f'Bearer {config.token}'
