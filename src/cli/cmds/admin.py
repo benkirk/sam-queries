@@ -23,6 +23,7 @@ from cli.project.commands import (
 from cli.accounting.commands import AccountingAdminCommand
 from cli.accounting.dates import _validate_accounting_dates, _resolve_accounting_dates
 from cli.contracts.commands import ContractsAuditCommand
+from cli.security.commands import RbacCommand
 from cli.tasks.commands import TasksCommand
 from cli.xras.commands import XrasCommand
 
@@ -941,6 +942,53 @@ def tasks(ctx: Context, list_tasks, run_due, run, history, task, limit,
         dry_run=dry_run,
         force=force,
         occurrence=occurrence,
+    ))
+
+
+@cli.command()
+@click.option('--seed', is_flag=True,
+              help='Write the factory-default roles and grants into EMPTY samuel_role_* tables')
+@click.option('--seed-keys', 'seed_keys', is_flag=True,
+              help='Grant api_legacy to every enabled API key that holds no grant yet')
+@click.option('--keys', is_flag=True,
+              help='Every enabled API key with its active grant count (the pre-flip checklist)')
+@click.option('--effective', metavar='SUBJECT',
+              help='Resolved permissions with provenance: user:NAME (or a bare username), '
+                   'group:NAME, apikey:NAME')
+@click.option('--diff', is_flag=True, help='Tables versus the factory defaults')
+@click.option('--grant', metavar='SUBJECT',
+              help='Add a grant to user:NAME / group:NAME / apikey:NAME (with --role or --permission)')
+@click.option('--role', metavar='NAME', help='[grant] The role to hand out')
+@click.option('--permission', metavar='VALUE', help='[grant] One permission, e.g. view_projects')
+@click.option('--facility', metavar='NAME', help='[grant] Limit the grant to one facility')
+@click.option('--note', metavar='TEXT', help='[grant] Why')
+@click.option('--revoke', type=int, metavar='ID', help='Revoke a grant by id (a stamp, not a delete)')
+@click.option('--include-revoked', 'include_revoked', is_flag=True,
+              help='[list] Show revoked grants too')
+@click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
+@pass_context
+def rbac(ctx: Context, seed, seed_keys, keys, effective, diff, grant, role, permission,
+         facility, note, revoke, include_revoked, verbose):
+    """The role catalog (samuel_role_*): list, seed, check a subject, grant, revoke.
+
+    Always reads the tables, whatever RBAC_SOURCE the webapp runs with.
+    """
+    if verbose:
+        ctx.verbose = True
+    modes = [bool(seed), bool(seed_keys), bool(keys), bool(effective), bool(diff),
+             bool(grant), revoke is not None]
+    if sum(modes) > 1:
+        ctx.console.print('Error: --seed, --seed-keys, --keys, --effective, --diff, --grant '
+                          'and --revoke are mutually exclusive', style='bold red')
+        sys.exit(EXIT_ERROR)
+    if (role or permission or facility or note) and not grant:
+        ctx.console.print('Error: --role, --permission, --facility and --note require --grant',
+                          style='bold red')
+        sys.exit(EXIT_ERROR)
+    sys.exit(RbacCommand(ctx).execute(
+        seed=seed, seed_keys=seed_keys, keys=keys, effective=effective, diff=diff,
+        grant=grant, revoke=revoke, role=role, permission=permission,
+        facility=facility, note=note, include_revoked=include_revoked,
     ))
 
 
