@@ -144,6 +144,9 @@ class SamuelRolePermission(Base):
     samuel_role_id = Column(Integer, nullable=False)
     permission = Column(String(64), nullable=False)
 
+    def __str__(self) -> str:
+        return self.permission
+
     def __repr__(self) -> str:
         return f'<SamuelRolePermission {self.samuel_role_id} {self.permission}>'
 
@@ -233,10 +236,13 @@ class SamuelRoleGrant(Base, SessionMixin):
             raise
         return self
 
-    def __repr__(self) -> str:
+    def __str__(self) -> str:
         what = f'role:{self.samuel_role_id}' if self.samuel_role_id else self.permission
         scope = f'@{self.facility_name}' if self.facility_name else ''
-        return f'<SamuelRoleGrant {self.subject_type}:{self.subject_name} {what}{scope}>'
+        return f'{self.subject_type}:{self.subject_name} {what}{scope}'
+
+    def __repr__(self) -> str:
+        return f'<SamuelRoleGrant {self}>'
 
 
 def _clean_name(name: str) -> str:
