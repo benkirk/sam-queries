@@ -89,6 +89,21 @@ class TestTheOrmDoesNotDragInTheMailer:
         """)
         assert result.stdout.strip() == 'False', result.stderr
 
+    def test_importing_sam_does_not_import_the_ticket_provider(self):
+        """`sam` exports ExternalTicket; the Jira transport (and `requests`)
+        must stay behind an import by path."""
+        result = _run("""
+            import sam, sam.queries
+            assert sam.ExternalTicket is not None
+            leaked = [m for m in ('sam.integration.tickets.jira',
+                                  'sam.integration.tickets.registry', 'requests')
+                      if m in sys.modules]
+            print(','.join(leaked))
+        """)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == '', (
+            f'importing sam pulled in {result.stdout.strip()}')
+
 
 class TestTheLazySurfaceStillWorks:
 

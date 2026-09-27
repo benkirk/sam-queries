@@ -9,6 +9,8 @@ the real builders' key sets.
 
 from datetime import date, datetime
 
+import pytest
+
 from factories import (
     make_account_request,
     make_account_request_event,
@@ -319,6 +321,17 @@ class TestTicketMessage:
         assert message.context['requested_via'].startswith('self-registration')
         assert message.context['eula_accepted_on'] == '' and message.context['eula_sha7'] == ''
         assert message.sender is None, 'falls back to MAIL_DEFAULT_FROM'
+
+    @pytest.mark.parametrize('verified_by,expected', [
+        ('self', 'self-registration (email address verified)'),
+        ('oper1', 'self-registration (address vouched for by oper1)'),
+        (None, 'self-registration (email address not verified)'),
+    ])
+    def test_the_via_line_names_who_verified(self, session, verified_by, expected):
+        row = make_account_request(session, by='self', verified_by=verified_by)
+        message = build_ticket_message(row, view=self._view(session, row),
+                                       recipient='help@example.invalid', requested_by='x')
+        assert message.context['requested_via'] == expected
 
     def test_it_renders_as_text_only(self, session):
         from sam.notify.render import TemplateRenderer

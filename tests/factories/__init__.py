@@ -25,6 +25,7 @@ from .core import (
 )
 from .notify import make_notification_log, make_template_override
 from .operational import make_wallclock_exemption
+from .tickets import make_external_ticket
 from .xras import (
     make_xras_action,
     make_xras_activation_event,
@@ -67,6 +68,7 @@ __all__ = [
     "make_adhoc_group",
     "make_notification_log",
     "make_template_override",
+    "make_external_ticket",
     "make_gid_allocation",
     "make_institution",
     "make_mnemonic_code",

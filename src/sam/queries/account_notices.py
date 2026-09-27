@@ -247,11 +247,16 @@ def build_receipt_message(row: AccountRequest, *, project_code: str = '',
     )
 
 
+def ticket_handle(request_id: int) -> str:
+    """``SAM-AR-<id>``: the ticket's lookup handle, the one place its format lives.
+    Jira keeps the summary verbatim, so ``summary ~ "\\"SAM-AR-<id>\\""`` finds the
+    ticket later (docs/plans/TICKET_PROVIDER.md)."""
+    return f'SAM-AR-{request_id}'
+
+
 def subject_token(request_id: int) -> str:
-    """``[SAM-AR-<id>]``: the ticket's lookup handle. Jira-by-email keeps the
-    summary verbatim, so ``summary ~ "\\"SAM-AR-<id>\\""`` finds the ticket later
-    (docs/plans/TICKET_PROVIDER.md); the URL in the body is not indexed usefully."""
-    return f'[SAM-AR-{request_id}]'
+    """``[SAM-AR-<id>]``, the handle as it appears in the subject."""
+    return f'[{ticket_handle(request_id)}]'
 
 
 def ticket_subject(name: str, *, request_id: int, event_code: str = '',
@@ -275,7 +280,13 @@ def build_ticket_message(row: AccountRequest, *, view: Dict[str, Any], recipient
     sponsor = view['sponsor'].display_name if view['sponsor'] else ''
     origin = origin_of(row)
     if origin == ORIGIN_SELF:
-        via = 'self-registration (email address verified)'
+        # Who verified, not who created: an operator may vouch for the address.
+        if row.verified_by == CREATED_BY_SELF:
+            via = 'self-registration (email address verified)'
+        elif row.verified_by:
+            via = f'self-registration (address vouched for by {row.verified_by})'
+        else:
+            via = 'self-registration (email address not verified)'
     elif origin == ORIGIN_SWEEP:
         via = 'XRAS submission'
     elif sponsor:

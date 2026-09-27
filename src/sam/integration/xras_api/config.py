@@ -25,11 +25,13 @@ XRAS.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-_TRUE = ('1', 'true', 'yes', 'on')
+from sam.integration._config import (config_bool as _config_bool,
+                                    config_float as _config_float,
+                                    config_int as _config_int,
+                                    config_str as _config_str)
 
 DEFAULT_BASE_URL = 'https://api.xras.org'
 DEFAULT_ALLOCATIONS_PROCESS = 'NCAR'
@@ -50,51 +52,6 @@ DEFAULT_TIMEOUT = 10
 DEFAULT_CONNECT_TIMEOUT = 3.05
 
 DEFAULT_MAX_RETRIES = 3
-
-
-def _raw(key: str, default: Any) -> Any:
-    """Read a key from Flask app config if we are in an app context, else env.
-
-    ``RuntimeError`` is what ``current_app`` raises outside an application
-    context; ``ImportError`` covers a ``sam`` install with no Flask at all,
-    which is a supported deployment (neither the CLI nor ``src/scheduling/``
-    depends on Flask).
-    """
-    try:
-        from flask import current_app
-        return current_app.config.get(key, os.environ.get(key, default))
-    except (RuntimeError, ImportError):
-        return os.environ.get(key, default)
-
-
-def _config_str(key: str, default: str = '') -> str:
-    value = _raw(key, default)
-    return '' if value is None else str(value).strip()
-
-
-def _config_bool(key: str, default: bool = False) -> bool:
-    value = _raw(key, default)
-    if isinstance(value, bool):
-        return value
-    return str(value).strip().lower() in _TRUE
-
-
-def _config_int(key: str, default: int) -> int:
-    value = _raw(key, default)
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return default
-    return parsed if parsed > 0 else default
-
-
-def _config_float(key: str, default: float) -> float:
-    value = _raw(key, default)
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        return default
-    return parsed if parsed > 0 else default
 
 
 @dataclass(frozen=True)

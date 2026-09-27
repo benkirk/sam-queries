@@ -1,7 +1,11 @@
 # Ticketing from SAM: the ithelp Jira API and a thin ticket-provider layer
 
-Status: design record, 2026-09-26. Phase 0 shipped with this document. Phases
-1-3 are designed, not built. Phase 2 is blocked on the service-account question.
+Status: design record and as-built, 2026-09-26. Phase 0 shipped (#634).
+Phases 1-3 are **built** on branch `jira-ticket-provider-build` (seven commits,
+one per step of § 8.9) and run on Ben's PAT; § 8 is the approved plan and
+§ 9 records where the build departs from it. Section 8 supersedes the
+column-level details in section 5 (the `external_ticket` table replaces the
+four columns). A bot token later is a change to the OpenBao value only.
 
 ## 1. Why
 
@@ -100,18 +104,23 @@ covers the mail era and the API era with one predicate.
 
 ### 4.2 How general, for a two-year horizon
 
-- Keep a `TicketProvider` ABC (about 40 lines) with **exactly one
-  implementation**. It earns its keep for the test fake and because the callers
-  never import `requests`, not because of Cloud.
+- Keep a `TicketProvider` ABC with **exactly one implementation today**, shaped
+  so a second provider is an additional class (six abstract members; `find`,
+  `comment`, `check` have safe defaults) and never a change to the Jira one.
+  It earns its keep for the test fake, because the callers never import
+  `requests`, and because Ben wants leads and admins raising other RC request
+  types (allocations, scratch quota, refunds) from Manage Project later.
 - Do **not** pre-build a Cloud provider. JSM Cloud exposes the same
   `/rest/servicedeskapi/request` shape, so the create path barely moves. The
   delta is auth (Basic `email:api_token` instead of Bearer), the base URL, and
   the v2 search endpoint (`/rest/api/2/search` is retired on Cloud for
   `/rest/api/2/search/jql`). That is a config flag plus one method, about 30 lines.
-- Do **not** add a generic `external_ticket` table, and store neither the URL nor
-  a provider name. One subject type exists; the issue key survives a migration
-  verbatim; the URL is `JIRA_BASE_URL/browse/<key>` at render time, so the
-  migration touches zero rows.
+- **Store the link in a small `external_ticket` table**, not columns on
+  `account_request` (Ben's decision, 2026-09-26): one row per ticket, keyed by
+  provider + ticket key, polymorphic `entity_type`/`entity_id` like
+  `notification_log`, so project- and allocation-level requests can use it
+  later without a second DDL handoff and a backfill. Still no stored URL: it is
+  `provider.browse_url(key)` at render time, so a migration touches zero rows.
 - Do **not** add `notification_log.external_ref`. Revisit when a second kind
   needs an external reference.
 
@@ -120,9 +129,9 @@ covers the mail era and the API era with one predicate.
 | Phase | What | Schema | CronJob env | Status |
 |---|---|---|---|---|
 | 0 | `[SAM-AR-<id>]` token in the mail subject | none | none | **shipped with this doc** |
-| 1 | read-only client; learn the key hourly; `RC-40274`-style link on the Accounts card | ALTER, four columns | read keys + token | designed |
-| 2 | JSM create replacing mail behind `TICKET_PROVIDER=jira` | none | none | blocked: service account |
-| 3 | status sync; optional internal note on fulfillment | none | none | marginal |
+| 1 | read-only client; learn the key hourly; `RC-40274`-style link on the Accounts card | `external_ticket` table | read keys + token | **built**, § 9 |
+| 2 | JSM create with mail fallback behind `TICKET_PROVIDER=jira-servicedesk`, internal automation note on every created ticket | none | none | **built** on Ben's PAT; bot token later |
+| 3 | status sync | none | none | **built**, § 9 |
 
 ### Phase 0: the subject token
 
@@ -253,8 +262,479 @@ dates the row.
 
 ## 7. Open items
 
-- Watch the first real SAM mail ticket land: which request type and reporter the
-  handler assigns, and that the `[SAM-AR-<id>]` suffix survives.
-- Ask for a Jira service account for RC (decides phase 2).
-- Ask NUSD who the customer should be on an API-filed request (section 5, phase 2).
-- Close RC-40274 from the UI.
+- **Jira bot account.** Ask for a service user with Browse and Create on RC;
+  swapping it in is a change to the OpenBao value at `csg/sam-jira-token` only.
+  Until then every API ticket carries Ben as reporter, and the PAT never expires.
+- **JSM customer choice.** Ask NUSD who the customer should be on an API-filed
+  request (`raiseOnBehalfOf`): the requester, the sponsor, or nobody.
+  `TicketDraft.on_behalf_of` exists and is sent when set; nothing sets it.
+- ~~Close RC-40274~~: Canceled as of 2026-09-26.
+- **Large rosters (accepted risk at initial deployment).** A roster pasted
+  without invitation links files one ticket per queued name, serially, inside
+  the paste request: about 1.4 s each (measured), so 40 names is roughly a
+  minute. That fits gunicorn's 120 s but may exceed a 60 s ingress read
+  timeout; the tickets still file, the operator just sees an error instead of
+  the result. It also hands NUSD 40 separate tickets for one class. A future
+  redesign (not for initial deployment): **one ticket per roster**, keyed to
+  the event rather than the request, with later roster changes (names added,
+  dropped, fulfilled) posted to that ticket as comments by an update
+  mechanism. `external_ticket` is already polymorphic (`entity_type`), so an
+  `account_request_event` row needs no DDL; the ledger key and the Accounts
+  card would change.
+- Watch the first real API ticket land (and the first real mail ticket before
+  it): request type "Add a user", the internal note, the label, and the
+  Accounts card link.
+
+## 8. Build plan (handoff, 2026-09-26)
+
+Approved plan for phases 1-3. One PR against staging from branch
+`jira-ticket-provider-build`, one commit per build step, on Ben's PAT.
+
+### 8.0 Prompt for the build session
+
+> Read `docs/plans/TICKET_PROVIDER.md` on branch `jira-ticket-provider-build`
+> end to end, especially § 8 "Build plan (handoff)", and follow its build order
+> one commit at a time on that branch. The desk is Jira Service Management at
+> `ithelp.ucar.edu` (project RC, service desk 3, request type 20); the PAT is
+> line 4 of `~/jira_token` and is for local testing only, never committed. Build
+> `src/sam/integration/tickets/` (ABC + registry + `JiraServiceDeskProvider`,
+> composition over a private transport), the `external_ticket` table
+> (`scripts/sql/create_external_ticket.sql`, ORM `ExternalTicket`, bootstrap
+> tuple, schema pin), the hourly learn/refresh in `account_requests_reconcile`,
+> the provider branch in `send_ticket` with mail as fallback and the internal
+> automation note, the Accounts card link, the Configuration tile, and the Helm
+> `jiraCredentials` wiring with `JIRA_WRITE_ENABLED` and `TICKET_PROVIDER` kept
+> out of the CronJob. Rehearse the DDL on the local MySQL and the :3307 test
+> container, then stop and give Ben the exact command to apply it to prod
+> before opening the PR against staging. Pin `JIRA_TOKEN=''` and the three
+> levers in `pytest_configure`. When green, open one PR and update the doc to
+> as-built. Open items to leave in the doc: bot account, JSM customer choice,
+> close RC-40274.
+
+### 8.1 Configuration and modes
+
+Three fail-closed levers; nothing else selects behavior.
+
+| Lever | Default | Meaning |
+|---|---|---|
+| `JIRA_ENABLED` | off | reads allowed (learn, status, check) |
+| `JIRA_WRITE_ENABLED` | off | creates and comments allowed; **webapp-only**, never in `cronjob-tasks.yaml` |
+| `TICKET_PROVIDER` | `''` | `''`/`mail` = today's mail path; `jira-servicedesk` = file through the API, mail on any failure |
+
+Provider-owned keys (`JIRA_*`): `JIRA_BASE_URL` (`https://ithelp.ucar.edu`),
+`JIRA_TOKEN` (secret), `JIRA_AUTH` (`bearer` | `basic`), `JIRA_USER` (Basic
+only), `JIRA_PROJECT_KEY` (`RC`), `JIRA_SERVICE_DESK_ID` (`3`),
+`JIRA_REQUEST_TYPE_ID` (`20`), `JIRA_LABELS` (`sam-account-request`),
+`JIRA_TIMEOUT` / `JIRA_CONNECT_TIMEOUT` / `JIRA_MAX_RETRIES` (10 / 3.05 / 3, the
+webapp create path overrides to 5 / 3.05 / 1).
+
+**Per-kind settings** (Ben, 2026-09-26, review of #636): a scalar request type
+is one ticket shape forever. `KINDS` in `tickets/base.py` (`('account',)`, the
+`sam.notify` `FAMILIES` shape) names every kind of ticket SAM files;
+`TicketDraft.kind` says which one a filing is. For each name,
+`JIRA_<KIND>_SERVICE_DESK_ID` / `JIRA_<KIND>_REQUEST_TYPE_ID` /
+`JIRA_<KIND>_LABELS` override the unsuffixed defaults above
+(`JiraConfig.kinds`, resolved once in `from_environment`; `for_kind(name)`;
+an unknown name is a `ValueError`, which the webapp's create path turns into
+the mail fallback). A second kind (a per-roster ticket, an allocation request)
+is one tuple entry plus its env: the provider needs no code. Kinds are
+write-side, so the CronJob's read-only key list does not carry them. Suffixed
+vars over one JSON map because every other SAM lever is a flat key, Helm and
+OpenBao quote them without ceremony, and the CronJob forwards by prefix.
+
+Modes: (a) mail only = all three off, unchanged from today; (b) mail plus
+read-only = `JIRA_ENABLED=1`; (c) API create with mail fallback = all three on.
+Production ships in (c) on Ben's PAT; `values-dev.yaml` ships in (a) with the
+credential block disabled.
+
+### 8.2 Package `src/sam/integration/tickets/`
+
+Follows `sam/integration/xras_api/` (config seam, transport, exceptions) and
+`sam/integration/awards/` (provider ABC + registry). Nothing under `sam/notify`
+changes except one enum member.
+
+- `base.py`: `TicketDraft(token, summary, body, link_url, labels=(),
+  on_behalf_of='', automation_note='')`, `TicketRef(key, url, status='',
+  closed=None)`, exceptions `TicketSourceUnavailable` > `TicketNotConfigured`,
+  `TicketRejected(status, errors)`, and `DEFAULT_AUTOMATION_NOTE`.
+  `TicketProvider(ABC)`, `name: ClassVar[str]`:
+  - **abstract** (the surface the registry, card and callers use without
+    knowing the class): `from_environment()` classmethod (never raises; check
+    `configured`), `configured`, `write_configured`, `summary()` (never the
+    credential), `create(draft) -> TicketRef`, `get(key) -> Optional[TicketRef]`,
+    `browse_url(key)`.
+  - **concrete defaults** (optional capabilities, so a second provider is six
+    members): `find(token)` returns `None`; `comment(key, text, *,
+    internal=True)` raises `NotImplementedError`; `check()` returns `(True, '')`;
+    `guard_write()` raises `TicketNotConfigured` unless `write_configured`.
+  - Provider invariant: `create` posts the automation note (`draft.automation_note
+    or DEFAULT_AUTOMATION_NOTE`) as an internal comment after the key is minted,
+    wrapped so a failed note never fails the create. No `ProviderConfig` base
+    class: each provider owns its frozen config dataclass; the three abstract
+    properties are the whole shared surface.
+- `sam/integration/_config.py`: `raw`, `config_str`, `config_bool`,
+  `config_int`, `config_float` lifted from `xras_api/config.py` (xras
+  semantics: positive-int guard, `ImportError` caught); `xras_api/config.py`
+  repointed to import them (nothing patches them by path). The copies in
+  `notify/config.py`, `queries/allocation_state.py`, `caching/buckets.py` are
+  left for a later sweep and named in the module docstring.
+- `jira.py`: `JiraConfig` frozen dataclass (`from_environment`, `configured`,
+  `write_configured`, `summary`; default `timeout=5`); `_JiraTransport`
+  (module-private; persistent `requests.Session`, Bearer or Basic from
+  `config.auth`, `(connect, read)` timeouts; `get` retries 5xx/socket with
+  `2**attempt` backoff, 404 → `None`, other 4xx → `TicketRejected`; `post` is
+  **one attempt**, 4xx → `TicketRejected(status, errors)` from
+  `errorMessages`+`errors`, else `TicketSourceUnavailable`; 401/403 message says
+  "token rejected"); `JiraServiceDeskProvider(TicketProvider)` **composes** the
+  transport (constructor arg, so tests inject a fake without `requests`; a
+  future `JiraSoftwareProvider` reuses it the same way, no inheritance between
+  providers). `create` = `guard_write()`, `POST /rest/servicedeskapi/request`
+  (`serviceDeskId`, `requestTypeId`, `requestFieldValues{summary, description}`,
+  `raiseOnBehalfOf` only when `on_behalf_of` is set) → `TicketRef` from
+  `issueKey`; labels via a best-effort `PUT /rest/api/2/issue/{key}` only when
+  `config.labels` is non-empty (JSM rejects unknown request fields); then the
+  automation note. `comment` = `POST /rest/servicedeskapi/request/{key}/comment`
+  `{public: not internal}`; `get` = `GET /rest/api/2/issue/{key}?fields=status`,
+  `statusCategory.key == 'done'` → `closed`; `find` = `GET /rest/api/2/search`,
+  `project = <key> AND summary ~ "\"<token>\"" ORDER BY created ASC`, oldest
+  wins, two hits logged at WARNING; `check` = `GET /rest/api/2/myself` →
+  `(True, displayName)`; `browse_url` = `<base>/browse/<key>`. The description
+  is `{noformat}\n<body>\n{noformat}\n\nSAM request: <link>` so the aligned
+  columns survive wiki rendering and the link stays clickable; the caller never
+  sees wiki markup.
+- `registry.py`: `PROVIDERS = {JiraServiceDeskProvider.name:
+  JiraServiceDeskProvider}`, `MAIL_NAMES = {'', 'mail', 'none'}`,
+  `build_provider(name) -> Optional[TicketProvider]` (mail names → `None`;
+  unknown name raises `TicketNotConfigured` listing the valid names, like
+  `notify.registry.build_transport`), `provider_from_environment()` reading
+  `TICKET_PROVIDER`, `provider_names()` for the card and the gate. `learn` and
+  `status` also go through `provider_from_environment()`, so
+  `TICKET_PROVIDER=mail` means Jira is not in play at all; "pause creates but
+  keep learning" is `JIRA_WRITE_ENABLED=0`, the XRAS write-lever discipline.
+- `learn.py`: `learn_ticket_keys(session, provider, *, clock, limit)` and
+  `refresh_ticket_status(session, provider, *, clock, limit)`. Both fail-open
+  twice (`xras_api/comments.py` pattern): `TicketNotConfigured` → `skipped`
+  before any row; `TicketSourceUnavailable` mid-loop → stop, keep stamps,
+  report. Selection: learn = `account_request` rows with a `sent`
+  `account_ticket:<id>` ledger row, no `external_ticket` row for
+  (`account_request`, id), `creation_time` within 60 d; a miss is remembered in
+  a process-local dict for the run only, so a mail the handler has not ingested
+  yet is retried next hour and a row is never written for a miss. Refresh =
+  `external_ticket` rows with `closed_at IS NULL` and `synced_at` older than
+  6 h. Cap `SAM_TASKS_TICKET_LOOKUP_MAX` (25) on each. Inserts and stamps go
+  through `ExternalTicket.create()` / `mark_synced()` with
+  `requested_by='task:account_requests_reconcile'`.
+- `__init__.py`: exports.
+
+### 8.3 Data model: the `external_ticket` table (Ben's decision, 2026-09-26)
+
+One row per ticket SAM filed or learned, polymorphic over the SAM entity so
+project- and allocation-level requests can use it later. No FKs (the
+`notification_log` / `account_request` convention); no URL (derived by
+`provider.browse_url(key)` at render time).
+
+| column | type | notes |
+|---|---|---|
+| `external_ticket_id` | INT PK auto | |
+| `provider` | VARCHAR(32) NOT NULL | registry name, `jira-servicedesk` |
+| `ticket_key` | VARCHAR(32) NOT NULL | `RC-40274`; not redacted by `dbbrowse/redact.py` (never name it `*_token`) |
+| `entity_type` | VARCHAR(32) NOT NULL | `account_request` today |
+| `entity_id` | INT NOT NULL | |
+| `origin` | VARCHAR(16) NOT NULL | `created` (API) or `learned` (JQL after mail) |
+| `requested_by` | VARCHAR(35) NOT NULL | username, `self`, or `task:account_requests_reconcile` |
+| `status` | VARCHAR(32) NULL | tracker's status name, display only |
+| `closed_at` | DATETIME NULL | first sync that saw `statusCategory = done` |
+| `synced_at` | DATETIME NULL | last successful `get`/`find` |
+| `creation_time` | DATETIME NOT NULL | app clock, naive Mountain (no `CURRENT_TIMESTAMP` default, per house DDL) |
+
+Indexes: unique `(provider, ticket_key)`; `(entity_type, entity_id)`. The
+"one ticket per request" rule stays in the ledger `dedup_key`; a second row for
+the same entity is legal (a learned duplicate is the cutover detector, shown
+oldest-first).
+
+- ORM `ExternalTicket` in `src/sam/integration/tickets/models.py` (SQLAlchemy
+  only, `SessionMixin`, `create()` classmethod, `mark_synced()` instance
+  method), exported from `sam/__init__.py`. ⚠️ `tickets/__init__.py` must stay
+  import-light (base + models only; `registry`/`jira` imported by path by their
+  callers) so `sam/__init__.py` does not pull `requests` into every ORM
+  consumer; extend `tests/unit/gates/test_notify_import_graph.py` with the same
+  assertion for `sam.integration.tickets.jira`.
+- `scripts/sql/create_external_ticket.sql` in the
+  `create_xras_remediation_event.sql` idiom (`CREATE TABLE IF NOT EXISTS`,
+  InnoDB, utf8mb3 with no human-text columns to widen, verification SELECT,
+  "NO DROP" header). One tuple added to `_BOOTSTRAP_TABLES` in
+  `tests/conftest.py`; pin in `tests/integration/test_schema_validation.py`.
+- Query helpers in `tickets/queries.py`: `tickets_for(session, entity_type,
+  ids) -> Dict[int, List[ExternalTicket]]` (oldest first) used by
+  `request_views`, and the learn/refresh selections.
+- Rehearse locally first: apply the script to the dev MySQL
+  (`mysql -u root -h 127.0.0.1 -proot sam < scripts/sql/create_external_ticket.sql`)
+  and to the test container on :3307, twice each, to prove idempotency and read
+  the verification SELECT; then run `tests/integration/test_schema_validation.py`.
+- ⚠️ Prod needs the table **before** the code deploys. After the local
+  rehearsal and before the PR opens, stop and ping Ben with the exact `mysql ...
+  < scripts/sql/create_external_ticket.sql` command and the expected
+  verification output; Ben applies it. Also on the Postgres dev DB (`sam_dev`,
+  per `docs/plans/K8S_DEV_ENVIRONMENT.md`) if samuel-dev should carry the table.
+
+### 8.4 What Ben does (outside the repo)
+
+1. **OpenBao**: a KV secret at `csg/sam-jira-token` with one field, `token`,
+   holding the 44-character PAT from `~/jira_token` line 4. The chart's
+   `jiraCredentials` block references it as `secretPath: csg/sam-jira-token`,
+   `tokenKey: token`, `secretStoreRefName: csg-ro`, exactly the
+   `xrasApiCredentials` shape. When the bot account arrives, only this value
+   changes.
+2. **Prod DDL**: apply `scripts/sql/create_external_ticket.sql` when pinged (build step 2).
+3. **Close RC-40274** from the UI when convenient.
+
+### 8.5 Filing path (`webapp/register/handoff_mail.py`)
+
+`send_ticket(row)` keeps its signature and its six call sites (all after
+commit). Internally:
+
+1. `provider = provider_from_environment()`; if `None` or not
+   `write_configured` → today's mail path, unchanged.
+2. `ledger = get_notifier().ledger`; `already_sent('account_ticket:<id>')` →
+   return `None` (one ticket per row, either era).
+3. `provider.find(subject_token(id))` hit → insert an `ExternalTicket` row
+   with `origin='learned'`, record a ledger row `sent` with
+   `transport=provider.name`, `channel='ticket'`; return.
+4. `message = build_ticket_message(...)`, `rendered =
+   get_notifier(read_only=True).preview(message)` (template overrides honored).
+   `log_id = ledger.record(message, status='queued', transport=provider.name)`.
+5. `ref = provider.create(TicketDraft(...))`. On `TicketSourceUnavailable` or
+   `TicketRejected`: `ledger.resolve(log_id, 'failed', detail)`, log, **fall
+   back to the mail path** and return its result.
+6. Success: `ledger.resolve(log_id, 'sent', detail=ref.key)`; insert the
+   `ExternalTicket(origin='created', status=ref.status, synced_at=now)` row in
+   its own short session (a filed ticket must survive any later rollback). The
+   internal note was already posted by the provider inside `create` (its
+   invariant).
+7. Return a `DeliveryResult(status='sent', ...)` so callers are unchanged.
+
+The draft's `automation_note` is built in `handoff_mail.py` from
+`DEFAULT_AUTOMATION_NOTE` plus the row-specific line: "Filed automatically by
+SAM (NSF NCAR Systems Accounting Manager) using Ben Kirk's API token, not by
+hand. Replies here reach the NUSD queue, not SAM; the request lives at <link>."
+The reporter stays the token owner, as with mail today; `on_behalf_of` is left
+empty until NUSD says who the customer should be (open item in the doc).
+
+`Channel.TICKET = 'ticket'` added in `sam/notify/base.py`; `Recipient` for the
+ledger row uses `address=<project key>`, `channel=Channel.TICKET`. Never call
+the provider inside `management_transaction` (docstring rule).
+
+### 8.6 Hourly task and the card
+
+- `scheduling/tasks/account_requests_reconcile.py`: after the reconcile, build
+  `provider_from_environment()` and call `learn_ticket_keys` then
+  `refresh_ticket_status` with `ctx.sam_session`, merging their counts into
+  `detail` and `message`. Reads only, so no `dry_run` branch is needed (the
+  stamps roll back under the runner). Docstring loses "DB-only".
+- `sam/queries/account_requests.py` `request_views`: add `tickets`, a list of
+  `{key, url, status, closed_at, origin}` from one `tickets_for()` call per
+  page (provider built once per call for `browse_url`; `None` provider → empty
+  URL, key still shown). Oldest first; the card shows the first and counts the
+  rest.
+- `templates/dashboards/admin/fragments/account_requests_card.html`: a
+  monospace key link after `sent <date>` in the status cell; a Ticket row
+  (key, status, closed date, origin) in the detail list; a warning badge when
+  the ticket is closed and `fulfilled_at` is not set ("closed without an
+  account"). A `ticket_link` macro in `fragments/account_request_bits.html` so
+  the Invitations tab shares it.
+- `webapp/utils/config_inspect.py` `gather_runtime_state`: a `tickets` block
+  from `provider.summary()` (`provider`, `enabled`, `write_enabled`,
+  `token_set`, `base_url`, `project`, `request_type`), rendered as a new tile in
+  `configuration_card.html` with the `stat()` macro; `unavailable` fallback like
+  the notifications block.
+
+### 8.7 Helm and secrets
+
+- `values.yaml` `webapp.env`: `TICKET_PROVIDER: "jira-servicedesk"`,
+  `JIRA_ENABLED: "1"`, `JIRA_WRITE_ENABLED: "1"`, `JIRA_BASE_URL`,
+  `JIRA_PROJECT_KEY: "RC"`, `JIRA_SERVICE_DESK_ID: "3"`,
+  `JIRA_REQUEST_TYPE_ID: "20"`, `JIRA_LABELS`. A `jiraCredentials` block
+  mirroring `xrasApiCredentials` (`secretStoreRefName: csg-ro`, `secretPath:
+  csg/sam-jira-token`, `tokenKey: token`). Ben stores the PAT in OpenBao at that path.
+- `external_secret.yaml`: a `jiraCredentials` ExternalSecret; `deployment.yaml`:
+  `JIRA_TOKEN` secretKeyRef, and `jiraCredentials.enabled` added to the `or`
+  gate on L56.
+- `cronjob-tasks.yaml`: hand-list `JIRA_ENABLED`, `JIRA_BASE_URL`,
+  `JIRA_PROJECT_KEY`, `JIRA_SERVICE_DESK_ID`, `JIRA_REQUEST_TYPE_ID`, `JIRA_AUTH`
+  and the `JIRA_TOKEN` secretKeyRef under the XRAS-style WARNING; **never**
+  `JIRA_WRITE_ENABLED` or `TICKET_PROVIDER`.
+- `values-dev.yaml`: `TICKET_PROVIDER: ""`, `JIRA_ENABLED: "0"`,
+  `JIRA_WRITE_ENABLED: "0"`, `jiraCredentials.enabled: false`.
+- `helm/tests/test-cronjob-render.sh`: assert each read key and the secret name
+  against the `-s` render; `helm/tests/test-dev-render.sh`: dev holds no token
+  and files no API ticket.
+- `.env.example`: the `JIRA_*` and `TICKET_PROVIDER` block, all off.
+
+### 8.8 Tests
+
+- `tests/conftest.py` `pytest_configure`: assign `JIRA_TOKEN=''`,
+  `JIRA_ENABLED='0'`, `JIRA_WRITE_ENABLED='0'`, `TICKET_PROVIDER=''` (assign,
+  not setdefault, so a developer `.env` cannot leak the PAT). The existing
+  `_no_outbound_http` guard already blocks `ithelp.ucar.edu`.
+- `tests/unit/models/test_outbound_guards.py`: the four pins added to the
+  levers parametrize; the socket-guard message test also names `ithelp.ucar.edu`.
+- `tests/unit/tickets/` (new domain dir; marker auto-derived; register `tickets`
+  in `pytest.ini` and `pytest_collection_modifyitems` if the dir list is
+  explicit): `FakeTicketProvider(TicketProvider)` in the domain `conftest.py`
+  (dict-backed, records `created`/`comments`, `raise_with` attribute) and a
+  `MinimalProvider` implementing only the six abstract members, together the
+  extensibility proof; `test_registry_gate.py` (every registered class is
+  concrete and `cls.name` is its key; `from_environment` under the pins yields
+  `configured=False` and `create` raises `TicketNotConfigured`; mail names →
+  `None`; unknown name raises naming the valid ones; `MinimalProvider()`
+  instantiates);
+  `test_jira_provider.py` (mock `client.session.request`, house idiom: create
+  201 → `TicketRef` with derived URL and the pinned JSM body; 400/401 →
+  `TicketRejected`; 5xx on create is one attempt; `get` 404 → `None`; `done`
+  category → `closed=True`; `find` 0/1/2 hits and the JQL string pinned;
+  internal comment body `public:false`; GET retries; Basic vs Bearer header);
+  `test_learn.py` (hit inserts a `learned` row, miss writes nothing, throttle,
+  cap, unconfigured, mid-loop failure, refresh stamps `closed_at` once and
+  `synced_at` every time); `test_models.py` (`ExternalTicket.create`, unique
+  `(provider, ticket_key)` raises on a duplicate).
+- `tests/unit/webapp/test_account_registration.py` (+ builders): `send_ticket`
+  with a `FakeTicketProvider` files once, stamps the key, writes ledger
+  `transport='jira-servicedesk'`, posts the internal comment; a `find` hit skips
+  create; `TicketSourceUnavailable` falls back to mail and the ledger shows
+  both rows; `already_sent` short-circuits; provider `None` is byte-identical to
+  today (existing tests pass unchanged).
+- `tests/unit/tasks/test_task_account_requests_reconcile.py`: detail carries the
+  learn/refresh counts; unconfigured leaves existing counts untouched.
+- `tests/unit/webapp/test_admin_account_requests_routes.py`: card renders the
+  link and the "closed without an account" badge.
+- Gates: a `TestHelmJiraLevers` copying `TestHelmWriteLever` (values.yaml armed
+  values pinned; `JIRA_WRITE_ENABLED`/`TICKET_PROVIDER` absent from `tasks.env`
+  and the comment-stripped `cronjob-tasks.yaml`; dev values off); the
+  `external_ticket` schema pin; `test_docs.py` for the doc edits.
+
+### 8.9 Build order (one commit each)
+
+1. `sam/integration/_config.py` lift + `tickets/base.py`, `config.py`,
+   `registry.py`, `jira.py` + unit tests (no callers yet).
+2. `ExternalTicket` model + `create_external_ticket.sql` + bootstrap tuple +
+   schema pin + `tickets/queries.py` + `request_views` keys; local DDL
+   rehearsal; **stop and ping Ben to apply the table to prod**.
+3. `learn.py` + reconcile task wiring + task tests.
+4. `send_ticket` provider path + `Channel.TICKET` + internal comment + webapp
+   tests.
+5. Card, bits macro, configuration tile + route tests.
+6. Helm, `.env.example`, conftest pins, gates, `helm/tests` assertions.
+7. `docs/plans/TICKET_PROVIDER.md` updated to as-built (phases 1-3 shipped,
+   PAT posture, open items: bot account, JSM customer, close RC-40274);
+   CLAUDE.md § Account family one line; D22 unchanged.
+
+Rough size: ~900 LOC product, ~700 LOC tests.
+
+### 8.10 Verification
+
+- `pytest tests/unit/tickets tests/unit/webapp/test_account_registration.py
+  tests/unit/webapp/test_account_requests_builders.py
+  tests/unit/webapp/test_admin_account_requests_routes.py tests/unit/tasks
+  tests/unit/gates tests/integration/test_schema_validation.py`, then the full
+  suite; `bash helm/tests/test-cronjob-render.sh` and `test-dev-render.sh`.
+- Live, on webdev with Ben's PAT in `.env` and `TICKET_PROVIDER=jira-servicedesk`:
+  operator Verify on a test request files an RC ticket titled
+  `[SAM API TEST]`-free but tagged `[SAM-AR-<id>]`, the internal note appears,
+  the Accounts card shows the key; then mark the row fulfilled and run
+  `sam-admin tasks --run account_requests_reconcile --force` to see the status
+  refresh. Ben cancels the ticket from the UI.
+- Prod rollout order: OpenBao secret → ALTER → merge/deploy → watch the first
+  real request → `sam-admin cache --refresh`.
+
+### 8.11 Open items carried in the doc
+
+- Jira bot account (swap `JIRA_TOKEN`, no code change).
+- Who NUSD wants as the JSM customer (`raiseOnBehalfOf`); the knob is not built.
+- ~~Close RC-40274.~~ Canceled.
+
+## 9. As built (2026-09-26)
+
+Seven commits on `jira-ticket-provider-build`, following § 8.9. Full suite
+green on MySQL and Postgres; `helm/tests/test-cronjob-render.sh` and
+`test-dev-render.sh` green. What differs from § 8, and why:
+
+| Plan | Built | Why |
+|---|---|---|
+| Learn and refresh go through `provider_from_environment()` (`TICKET_PROVIDER`) | through `registry.read_providers()`: every provider whose reads are on (`JIRA_ENABLED`) | `TICKET_PROVIDER` is kept out of the CronJob (§ 8.7), so the plan's wording would have skipped the hourly pass forever. The lever table (§ 8.1, mode b) already reads this way. `TICKET_PROVIDER` selects only the filing path. |
+| `TicketDraft.token`, `find(subject_token(id))` | `TicketDraft.handle`, bare `SAM-AR-<id>` from `ticket_handle()` in `account_notices.py` (`subject_token()` wraps it in brackets) | the verified JQL phrase has no brackets; one function owns the format |
+| six abstract members | seven: `from_environment(*, interactive=False)`, `configured`, `write_configured`, `summary`, `create`, `get`, `browse_url` | as listed in § 8.2; `interactive` asks for the webapp budget |
+| automation note names "Ben Kirk's API token" | `DEFAULT_AUTOMATION_NOTE` says the reporter shown is the token owner, plus the row's link | the bot swap stays a secret-only change |
+| `JiraConfig` default timeout 5 | defaults 10 s read / 3.05 s connect / 3 retries; `interactive` = 5 s, one attempt | § 8.1's numbers; the webapp path is `interactive` |
+| `find` trusts the JQL hits | hits are also filtered to the exact handle (`SAM-AR-12` never matches `SAM-AR-123`) | cheap insurance on a phrase match |
+| a process-local miss dict | not built | each request is asked at most once per run anyway; a miss writes nothing |
+| — | in-request circuit breaker: after one provider outage, the rest of that request (a roster) files by mail | a 30-row roster against a dead desk would otherwise wait out 30 connect timeouts |
+| — | `request_views` builds each link from the provider the row stores, not the current selector | a link survives `TICKET_PROVIDER` going back to mail |
+| — | refresh stamps a vanished ticket (404) as read; a reopened ticket stays closed in SAM | stops hourly re-asks; reopen is rare |
+| refresh open tickets not read in 6 h; cap 25 per pass | every hourly run (threshold 50 min, since slot stamps are exactly 60 min apart); cap `SAM_TASKS_TICKET_LOOKUP_MAX` 50 per half | Ben, 2026-09-26: a closed-without-account ticket should surface within the hour, and a pasted roster is easily 40 open tickets |
+| card key link in the status cell (as text, since the cell was a collapse trigger) | the Status cell is no longer a collapse trigger, so the key links there too; queue rows are one line, with Kind (purpose, origin) and Ready (readiness, address, invitation) as glyphs whose words sit in `title`/`aria-label`; the full email is in the details | Ben's UX pass after the smoke; rows went from 69 px to 53 px |
+| — | the ticket's "Requested via" line names who verified the address: "self-registration (address vouched for by <operator>)" when an operator vouched | the builder keyed on who created the row, so a vouched self-registration claimed "email address verified" (seen on RC-40275, fixed on RC-40276) |
+| — | anonymizer purges `external_ticket`; healthcheck expects the Jira ExternalSecret on prod only; the notification detail modal shows a sent row's detail neutral, not red | the rows would orphan once `account_request` is purged; the key is recorded as the sent row's detail |
+| scalar `JIRA_REQUEST_TYPE_ID` | `TicketDraft.kind` + `KINDS` + `JIRA_<KIND>_*` overrides (§ 8.1) | Ben, review of #636: a second request type had no seam |
+| create failure → mail | a create that raised `TicketSourceUnavailable` (not `TicketRejected`) first asks `find(handle)` once; a hit is linked as `created` and nothing is mailed | the desk commits before the 5 s budget expires; mailing on that timeout filed a guaranteed duplicate |
+| `_JiraTransport.get`: 404 is `None` | only for `/issue/<key>` (`missing_ok`); on `/search` or `/myself` a 404 raises like any 4xx | a wrong `JIRA_BASE_URL` read as "no such ticket" everywhere and `check()` reported it healthy |
+| — | one provider (one HTTP session) per request, cached on `flask.g` beside the breaker | a 40-row roster built 40 sessions |
+| — | the task wraps `sync_tickets` in a broad except | a non-tracker error (JSON shape, missing table) would roll back the hour's fulfillment stamps |
+| — | `JIRA_USER` forwarded to the CronJob with `JIRA_AUTH` | under `basic` the hourly pass was silently `skipped` |
+| the "closed without an account" warning on any closed ticket | only while the request is `submitted`/`claimed` | a rejected request whose ticket the desk cancelled is the correct outcome |
+
+Behavior worth knowing:
+
+- `NOTIFY_ENABLED` does not gate the API path; `JIRA_WRITE_ENABLED` does. Both
+  paths share the ledger key `account_ticket:<id>`, so a request is filed once
+  in either era. An API failure leaves a `failed` row (transport
+  `jira-servicedesk`, channel `ticket`) and then the mail row.
+- A filing costs up to four calls (find, create, labels, note), each at most
+  5 s; the live smoke measured 1.4 s per filing. A roster queued without
+  invitation links files serially inside one request, so 40 names is roughly a
+  minute: under gunicorn's 120 s, but near a 60 s ingress read timeout if the
+  cluster's ingress uses that common default. Tickets still file if the
+  browser gives up; the page just never hears back. Accepted for initial
+  deployment; the redesign is in § 7.
+- The Configuration tile shows the mode: "mail only", "mail, keys learned
+  hourly" (reads alone), or "API create, mail fallback".
+
+Verified live, reads only, 2026-09-26: `check()` authenticates as Ben Kirk;
+`find('SAM-AR-0')` returns RC-40274 and `find('SAM-AR-01')` returns nothing;
+`get('RC-40274')` reports Canceled with `closed=True`; an unknown key is `None`.
+`~/jira_token` line 4 carries a label before the 44-character PAT; only the
+PAT belongs in OpenBao.
+
+Live create, 2026-09-26, on local webdev with the PAT: an operator vouch on
+request 900001 (an id far above production's, so its `SAM-AR-900001` handle
+cannot shadow a real request) filed **RC-40275** in 1.4 s. It is an "Add a
+user" request (type 20, desk 3, component NUSD, Support wait) with the
+`sam-account-request` label, the `{noformat}` body with the link below it, and
+the internal note (`public: false`). The ledger row reads `sent`, transport
+`jira-servicedesk`, channel `ticket`, detail `RC-40275`; the link row is
+`created`. A second `send_ticket` was suppressed without a call; the card and
+the Configuration tile rendered the key and "API create, mail fallback"; a
+forced `account_requests_reconcile` refreshed its status. A second ticket,
+RC-40276, confirmed "address vouched for by benkirk". After Ben cancelled both,
+one forced run reported "2 closed of 2 refreshed" (status Resolved,
+`closed_at` stamped), the card showed "closed without an account" on both
+rows, and the next run read neither.
+
+Prod DDL (before the deploy):
+
+```bash
+source ../.env
+mysql -u "$PROD_SAM_DB_USERNAME" -h sam-sql.ucar.edu -p sam < scripts/sql/create_external_ticket.sql
+```
+
+Expected output, the same on a second run:
+
+```text
+rows_expect_0     0
+columns_expect_11 11
+indexes_expect_3  3
+fks_expect_0      0
+```
+
+samuel-dev (Postgres `sam_dev`) gets the table from the ORM on the next
+`make refresh-dev`, since `load_postgres.py` builds its schema from
+`Base.metadata`.

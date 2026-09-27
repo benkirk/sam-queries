@@ -491,6 +491,42 @@ def _fs_scan_freshness(fs_mod, members) -> Dict[str, Any]:
     }
 
 
+def _tickets_block(db) -> Dict[str, Any]:
+    """The filing selector, the mode both levers yield, a provider summary, link counts."""
+    from sam.integration._config import config_str
+    from sam.integration.tickets import TicketNotConfigured
+    from sam.integration.tickets.registry import (PROVIDERS, provider_from_environment,
+                                                  read_providers)
+    selected = config_str('TICKET_PROVIDER', '') or 'mail'
+    block: Dict[str, Any] = {'selected': selected, 'error': None}
+    try:
+        filer = provider_from_environment()
+    except TicketNotConfigured as exc:
+        filer, block['error'] = None, str(exc)
+    readers = read_providers()
+    shown = filer or (readers[0] if readers else None) or next(
+        (cls.from_environment() for cls in PROVIDERS.values()), None)
+    if shown is not None:
+        block.update(shown.summary())
+    block['mode'] = ('API create, mail fallback' if filer and filer.write_configured
+                     else 'mail, keys learned hourly' if readers else 'mail only')
+    try:
+        from sqlalchemy import func
+        from sam import ExternalTicket
+        rows = dict(db.session.query(ExternalTicket.origin, func.count())
+                    .group_by(ExternalTicket.origin).all())
+        block.update(created=rows.get('created', 0), learned=rows.get('learned', 0),
+                     unavailable=False)
+    except Exception:
+        # external_ticket awaits a DBA; roll back as the notifications block does.
+        try:
+            db.session.rollback()
+        except Exception:                    # pragma: no cover - defensive
+            pass
+        block['unavailable'] = True
+    return block
+
+
 def gather_runtime_state(app, db) -> Dict[str, Any]:
     """Collect runtime state for the Admin Configuration page.
 
@@ -668,6 +704,11 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
             'window_hours': None,
         }
 
+    # Help-desk tickets: the selector, the provider's summary (never the token),
+    # and link counts. No live probe: an HTTP call per card render is a cost
+    # the card has no business paying.
+    tickets_block = _tickets_block(db)
+
     # Scheduled tasks: registry + SAM_TASKS_DISABLED + task_run counts. No
     # addresses and no PII. `runner_id` is a pod name and `detail` can hold a
     # traceback naming hosts and paths, which is why the per-row detail modal
@@ -739,5 +780,6 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         'notifications':   notifications_block,
         'rate_limits':     rate_limits_block,
         'scheduled_tasks': scheduled_tasks_block,
+        'tickets':         tickets_block,
         'server':          server,
     }

@@ -268,6 +268,44 @@
             </div>
         </div>
 
+        {# Help-desk tickets (sam.integration.tickets). No token, no probe. #}
+        <div class="col-12 col-xl-6">
+            <div class="card inner-card h-100">
+                <div class="card-header mb-4">
+                    <h5><i class="fa-solid fa-ticket me-1"></i> Help-desk tickets</h5>
+                </div>
+                <div class="card-body">
+                    {% set tk = state.tickets %}
+                    {% if tk.error %}
+                    <div class="alert alert-danger py-2 px-3 small mb-3">
+                        <i class="fa-solid fa-triangle-exclamation me-1"></i>{{ tk.error }} — filing by mail.
+                    </div>
+                    {% endif %}
+                    <dl class="config-stats mb-0 small">
+                        {{ stat('TICKET_PROVIDER', tk.selected) }}
+                        {{ stat('Mode', tk.mode) }}
+                        {% if tk.provider %}
+                        {{ stat('Reads (JIRA_ENABLED)', tk.enabled) }}
+                        {{ stat('Writes (JIRA_WRITE_ENABLED)', tk.write_enabled) }}
+                        {{ stat('Token set', tk.token_set) }}
+                        {{ stat('Base URL', tk.base_url) }}
+                        {{ stat('Project', tk.project) }}
+                        {% for name, kind in (tk.kinds or {}).items() %}
+                        {{ stat(name ~ ': desk / type', kind.service_desk ~ ' / ' ~ kind.request_type) }}
+                        {{ stat(name ~ ': labels', kind.labels or '—') }}
+                        {% endfor %}
+                        {% endif %}
+                        {% if tk.unavailable %}
+                        {{ stat('Linked tickets', 'unavailable — no external_ticket table') }}
+                        {% elif tk.unavailable is defined %}
+                        {{ stat('Filed by SAM', tk.created | fmt_number) }}
+                        {{ stat('Found after mail', tk.learned | fmt_number) }}
+                        {% endif %}
+                    </dl>
+                </div>
+            </div>
+        </div>
+
         {# Scheduled tasks (scheduling registry + task_run counts)
              No PII on this tile or the table behind it — task names, states,
              pod names. The per-row detail modal IS SYSTEM_ADMIN, because

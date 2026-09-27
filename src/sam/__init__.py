@@ -226,6 +226,7 @@ from .integration.xras_views import (
 from .notify.addressing_store import NotificationAddressing
 from .notify.models import NotificationLog
 from .notify.template_store import NotificationTemplateOverride
+from .integration.tickets.models import ExternalTicket
 
 from .security.roles import Role, RoleUser, ApiCredentials, RoleApiCredentials
 from .security.access import AccessBranch, AccessBranchResource
@@ -303,6 +304,8 @@ __all__ = [
     'NotificationAddressing',
     'NotificationLog',
     'NotificationTemplateOverride',
+    # Help-desk tickets
+    'ExternalTicket',
     # Security
     'Role', 'RoleUser', 'ApiCredentials', 'RoleApiCredentials',
     'AccessBranch', 'AccessBranchResource',
