@@ -49,6 +49,9 @@ webapp:
     NOTIFY_ACCOUNT_TICKET_TO: ""          # dev never files a Jira ticket
     XRAS_OUTGOING_ENABLED: "0"
     XRAS_WRITE_ENABLED: "0"
+    TICKET_PROVIDER: ""                   # dev files no API ticket
+    JIRA_ENABLED: "0"
+    JIRA_WRITE_ENABLED: "0"
     XRAS_ACTIONS_CAPTURE_ONLY: "1"
     # Dev-only bcrypt hash; plaintext is SAM_DEV_API_PASS in the laptop .env.
     API_KEYS_COLLECTOR: "$2b$12$cT8gWOKQtobRHrs1/lgVaeiUL6mivFdfsctyFImGRgulhd8I11mb6"
@@ -68,6 +71,8 @@ webapp:
     secretPath: csg/sam-dev-oidc
   xrasApiCredentials:
     enabled: false                        # lever off; do not hold the prod key
+  jiraCredentials:
+    enabled: false                        # levers off; do not hold the PAT
 
 tasks:
   name: samuel-dev-tasks

@@ -386,6 +386,26 @@ webapp:
     # the drift test in tests/unit/gates/test_xras_admin_client.py pins whichever value
     # ships, so a flip in either direction is a reviewed change to both files.
     XRAS_WRITE_ENABLED: "1"
+    # Help-desk tickets (sam/integration/tickets, docs/plans/TICKET_PROVIDER.md).
+    # Three fail-closed levers:
+    #   JIRA_ENABLED        reads: the hourly learn/status pass and the card.
+    #   JIRA_WRITE_ENABLED  creates and comments. WEBAPP-ONLY, like XRAS_WRITE_ENABLED:
+    #                       cronjob-tasks.yaml never carries it.
+    #   TICKET_PROVIDER     the filing path: "" or "mail" = the NOTIFY_ACCOUNT_TICKET_TO
+    #                       mail; "jira-servicedesk" = the JSM API, mail on any failure.
+    #                       Also webapp-only; the hourly pass keys on JIRA_ENABLED.
+    # The token is not here: webapp.jiraCredentials below injects JIRA_TOKEN into
+    # BOTH deployment.yaml and cronjob-tasks.yaml. Drift gate:
+    # tests/unit/gates/test_helm_jira_levers.py.
+    TICKET_PROVIDER: "jira-servicedesk"
+    JIRA_ENABLED: "1"
+    JIRA_WRITE_ENABLED: "1"
+    JIRA_BASE_URL: "https://ithelp.ucar.edu"
+    JIRA_AUTH: "bearer"                   # "basic" + JIRA_USER on Jira Cloud
+    JIRA_PROJECT_KEY: "RC"
+    JIRA_SERVICE_DESK_ID: "3"
+    JIRA_REQUEST_TYPE_ID: "20"            # "Add a user"
+    JIRA_LABELS: "sam-account-request"
 
   # Each block below syncs one secret from OpenBao. `enabled: false` skips it;
   # `useExternalSecret: false` skips the ExternalSecret CRD so the secret can be
@@ -464,6 +484,16 @@ webapp:
     useExternalSecret: true
     secretStoreRefName: csg-ro
     secretPath: csg/xras-api-key
+    tokenKey: token
+
+  # Jira (ithelp.ucar.edu) personal access token, injected as JIRA_TOKEN into the
+  # Deployment and the CronJob. Swapping to a bot account changes the OpenBao
+  # value only.
+  jiraCredentials:
+    enabled: true
+    useExternalSecret: true
+    secretStoreRefName: csg-ro
+    secretPath: csg/sam-jira-token
     tokenKey: token
 
   # OIDC SSO credentials + Flask session-signing key.

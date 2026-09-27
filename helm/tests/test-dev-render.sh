@@ -93,6 +93,11 @@ check_dev() {
   assert_not_contains "$whole" "sam.hpc.ucar.edu" "dev must not mail links to the production host"
   assert_not_contains "$whole" "name: XRAS_API_KEY" "dev must not hold the XRAS API key"
   assert_not_contains "$whole" "xras-api-credentials" "dev must not sync the XRAS key from OpenBao"
+  same_on_both "$deploy" "$cron" JIRA_ENABLED "0"
+  [[ "$(env_value "$deploy" JIRA_WRITE_ENABLED)" == "0" ]] || { red "FAIL: JIRA_WRITE_ENABLED must be 0 on dev"; return 1; }
+  [[ -z "$(env_value "$deploy" TICKET_PROVIDER)" ]] || { red "FAIL: dev must file no API ticket (TICKET_PROVIDER empty)"; return 1; }
+  assert_not_contains "$whole" "name: JIRA_TOKEN" "dev must not hold the Jira token"
+  assert_not_contains "$whole" "jira-credentials" "dev must not sync the Jira token from OpenBao"
 
   # --- 3. its own data -------------------------------------------------------
   local dev_hash
@@ -227,6 +232,10 @@ expect_reject --set webapp.env.XRAS_OUTGOING_ENABLED=1
 expect_reject --set webapp.env.XRAS_WRITE_ENABLED=1
 expect_reject --set webapp.env.XRAS_ACTIONS_CAPTURE_ONLY=0
 expect_reject --set webapp.xrasApiCredentials.enabled=true
+expect_reject --set webapp.env.JIRA_ENABLED=1
+expect_reject --set webapp.env.JIRA_WRITE_ENABLED=1
+expect_reject --set webapp.env.TICKET_PROVIDER=jira-servicedesk
+expect_reject --set webapp.jiraCredentials.enabled=true
 expect_reject --set webapp.env.SAM_DB_NAME=sam
 expect_reject --set webapp.env.SAM_DB_NAME=null
 expect_reject --set webapp.env.STATUS_DB_NAME=system_status
@@ -242,4 +251,4 @@ expect_reject --set tasks.env.SAM_TASKS_DISABLED=xras_notices
 expect_reject --set podDisruptionBudget.enabled=true
 expect_reject --set-string "webapp.env.API_KEYS_COLLECTOR=${prod_hash}"
 
-green "OK: samuel-dev renders authenticated, mute, on its own data, disjoint from prod (25 rejections proven)"
+green "OK: samuel-dev renders authenticated, mute, on its own data, disjoint from prod (30 rejections proven)"

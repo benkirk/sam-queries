@@ -45,9 +45,9 @@ HEALTH_PATH="/api/v1/health/ready"
 # the issued cert; INGRESS_HOSTS is every name the ingress answers for (fqdn +
 # extraHosts), all on the one multi-SAN TLS_SECRET. The task pods carry
 # `app: <tasks.name>` — NOT `app.kubernetes.io/component=tasks`, which matches
-# nothing and reads as "the dispatcher never fired". XRAS_ES_EXPECTED says
-# whether the chart syncs the XRAS API key for this env (values-dev.yaml turns
-# it off). DEFAULT_WATCH_DB_HOST empty = no XRAS/db-load reads (dev SAM is
+# nothing and reads as "the dispatcher never fired". XRAS_ES_EXPECTED and
+# JIRA_ES_EXPECTED say whether the chart syncs the XRAS key / Jira token for
+# this env (values-dev.yaml turns both off). DEFAULT_WATCH_DB_HOST empty = no XRAS/db-load reads (dev SAM is
 # Postgres and XRAS never posts to dev).
 cirrus_set_env() {
     SAM_ENV="$1"
@@ -62,6 +62,7 @@ cirrus_set_env() {
             INGRESS_HOSTS=("samuel.k8s.ucar.edu" "sam.hpc.ucar.edu")
             TLS_SECRET="incommon-cert-samuel"
             XRAS_ES_EXPECTED=1
+            JIRA_ES_EXPECTED=1
             DEFAULT_WATCH_DB_HOST="sam-sql.ucar.edu"
             ;;
         dev)
@@ -74,6 +75,7 @@ cirrus_set_env() {
             INGRESS_HOSTS=("samuel-dev.k8s.ucar.edu")
             TLS_SECRET="incommon-cert-samuel-dev"
             XRAS_ES_EXPECTED=0
+            JIRA_ES_EXPECTED=0
             DEFAULT_WATCH_DB_HOST=""
             ;;
         *) echo "cirrus_common.sh: unknown SAM_ENV '$SAM_ENV' (prod|dev)" >&2; exit 2;;

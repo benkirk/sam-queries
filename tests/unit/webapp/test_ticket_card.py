@@ -77,6 +77,12 @@ class TestConfigurationTile:
         section = html[html.index('Help-desk tickets'):][:3000]
         assert 'API create, mail fallback' in section and 'RC / 3 / 20' in section
 
+    def test_reads_alone_learn_keys(self, auth_client, monkeypatch):
+        monkeypatch.setenv('JIRA_ENABLED', '1')
+        monkeypatch.setenv('JIRA_TOKEN', 'not-real')
+        html = auth_client.get(CONFIG_URL).get_data(as_text=True)
+        assert 'mail, keys learned hourly' in html
+
     def test_a_typo_is_shown_not_raised(self, auth_client, monkeypatch):
         monkeypatch.setenv('TICKET_PROVIDER', 'jria')
         html = auth_client.get(CONFIG_URL).get_data(as_text=True)

@@ -492,20 +492,24 @@ def _fs_scan_freshness(fs_mod, members) -> Dict[str, Any]:
 
 
 def _tickets_block(db) -> Dict[str, Any]:
-    """``TICKET_PROVIDER``, the mode it yields, the provider summary, link counts."""
+    """The filing selector, the mode both levers yield, a provider summary, link counts."""
     from sam.integration._config import config_str
     from sam.integration.tickets import TicketNotConfigured
+    from sam.integration.tickets.registry import (PROVIDERS, provider_from_environment,
+                                                  read_providers)
     selected = config_str('TICKET_PROVIDER', '') or 'mail'
-    block: Dict[str, Any] = {'selected': selected, 'mode': 'mail only', 'error': None}
+    block: Dict[str, Any] = {'selected': selected, 'error': None}
     try:
-        from sam.integration.tickets.registry import provider_from_environment
-        provider = provider_from_environment()
+        filer = provider_from_environment()
     except TicketNotConfigured as exc:
-        return {**block, 'error': str(exc)}
-    if provider is not None:
-        block.update(provider.summary())
-        block['mode'] = ('API create, mail fallback' if provider.write_configured
-                         else 'mail, keys learned' if provider.configured else 'mail only')
+        filer, block['error'] = None, str(exc)
+    readers = read_providers()
+    shown = filer or (readers[0] if readers else None) or next(
+        (cls.from_environment() for cls in PROVIDERS.values()), None)
+    if shown is not None:
+        block.update(shown.summary())
+    block['mode'] = ('API create, mail fallback' if filer and filer.write_configured
+                     else 'mail, keys learned hourly' if readers else 'mail only')
     try:
         from sqlalchemy import func
         from sam import ExternalTicket

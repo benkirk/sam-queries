@@ -10,17 +10,16 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from sam.integration.tickets.base import (TicketNotConfigured, TicketProvider,
-                                          TicketSourceUnavailable)
+from sam.integration.tickets.base import TicketProvider, TicketSourceUnavailable
 from sam.integration.tickets.models import ExternalTicket
 from sam.integration.tickets.queries import (ACCOUNT_REQUEST, learn_candidates,
                                              refresh_candidates)
-from sam.integration.tickets.registry import provider_from_environment
+from sam.integration.tickets.registry import read_providers
 from sam.queries.account_notices import ticket_handle
 
 logger = logging.getLogger(__name__)
@@ -92,31 +91,32 @@ def refresh_ticket_status(session: Session, provider: TicketProvider, *,
 
 
 def sync_tickets(session: Session, *, clock: datetime, limit: int = DEFAULT_LOOKUP_MAX,
-                 provider: Optional[TicketProvider] = None) -> Dict[str, Any]:
-    """Learn then refresh; ``{'skipped': True, 'reason': ...}`` when Jira is not in play."""
-    if provider is None:
-        try:
-            provider = provider_from_environment()
-        except TicketNotConfigured as exc:
-            return {'skipped': True, 'reason': str(exc)}
-    if provider is None:
-        return {'skipped': True, 'reason': 'TICKET_PROVIDER selects mail'}
-    if not provider.configured:
-        return {'skipped': True, 'reason': f'{provider.name}: reads are not configured'}
-    learned = learn_ticket_keys(session, provider, clock=clock, limit=limit)
-    refreshed = (refresh_ticket_status(session, provider, clock=clock, limit=limit)
-                 if not learned['error'] else
-                 {'checked': 0, 'closed': 0, 'missing': 0, 'error': 'not attempted'})
-    return {'skipped': False, 'provider': provider.name, 'limit': limit,
-            'learn': learned, 'refresh': refreshed}
+                 providers: Optional[List[TicketProvider]] = None) -> Dict[str, Any]:
+    """Learn then refresh through each provider with reads on (``JIRA_ENABLED``),
+    whatever ``TICKET_PROVIDER`` says; ``{'skipped': True, 'reason': ...}`` when none."""
+    providers = read_providers() if providers is None else [
+        p for p in providers if p.configured]
+    if not providers:
+        return {'skipped': True, 'reason': 'no ticket provider has reads on (JIRA_ENABLED)'}
+    runs: Dict[str, Any] = {}
+    for provider in providers:
+        learned = learn_ticket_keys(session, provider, clock=clock, limit=limit)
+        refreshed = (refresh_ticket_status(session, provider, clock=clock, limit=limit)
+                     if not learned['error'] else
+                     {'checked': 0, 'closed': 0, 'missing': 0, 'error': 'not attempted'})
+        runs[provider.name] = {'learn': learned, 'refresh': refreshed}
+    return {'skipped': False, 'limit': limit, 'providers': runs}
 
 
 def describe(result: Dict[str, Any]) -> str:
     """One line for the task message."""
     if result.get('skipped'):
         return f"tickets skipped ({result['reason']})"
-    learn, refresh = result['learn'], result['refresh']
-    text = (f"tickets: {learn['learned']} learned of {learn['checked']}, "
-            f"{refresh['closed']} closed of {refresh['checked']} refreshed")
-    error = learn['error'] or (refresh['error'] if refresh['error'] != 'not attempted' else '')
-    return f'{text}; {error}' if error else text
+    parts = []
+    for name, run in result['providers'].items():
+        learn, refresh = run['learn'], run['refresh']
+        text = (f"{name}: {learn['learned']} learned of {learn['checked']}, "
+                f"{refresh['closed']} closed of {refresh['checked']} refreshed")
+        error = learn['error'] or (refresh['error'] if refresh['error'] != 'not attempted' else '')
+        parts.append(f'{text} ({error})' if error else text)
+    return 'tickets ' + '; '.join(parts)

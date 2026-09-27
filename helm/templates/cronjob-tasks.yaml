@@ -216,6 +216,30 @@ spec:
                     name: {{ .Values.webapp.name }}-xras-api-credentials
                     key: token
               {{- end }}
+              # Help-desk tickets (account_requests_reconcile's hourly learn/refresh).
+              # READS ONLY. WARNING: JIRA_WRITE_ENABLED and TICKET_PROVIDER are
+              # webapp-only and must never be listed here, so no scheduled task can
+              # file or comment on a ticket. Asserted by test-cronjob-render.sh and
+              # tests/unit/gates/test_helm_jira_levers.py.
+              - name: JIRA_ENABLED
+                value: {{ .Values.webapp.env.JIRA_ENABLED | quote }}
+              - name: JIRA_BASE_URL
+                value: {{ .Values.webapp.env.JIRA_BASE_URL | quote }}
+              - name: JIRA_AUTH
+                value: {{ .Values.webapp.env.JIRA_AUTH | quote }}
+              - name: JIRA_PROJECT_KEY
+                value: {{ .Values.webapp.env.JIRA_PROJECT_KEY | quote }}
+              - name: JIRA_SERVICE_DESK_ID
+                value: {{ .Values.webapp.env.JIRA_SERVICE_DESK_ID | quote }}
+              - name: JIRA_REQUEST_TYPE_ID
+                value: {{ .Values.webapp.env.JIRA_REQUEST_TYPE_ID | quote }}
+              {{- if .Values.webapp.jiraCredentials.enabled }}
+              - name: JIRA_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ .Values.webapp.name }}-jira-credentials
+                    key: token
+              {{- end }}
               {{- if .Values.webapp.dbCredentials.enabled }}
               - name: STATUS_DB_USERNAME
                 valueFrom:

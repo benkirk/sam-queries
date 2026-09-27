@@ -40,6 +40,18 @@ class TestTheXrasCredentialsArePinnedFailClosed:
         assert xras_api_configured() is False
         assert xras_write_configured() is False
 
+    @pytest.mark.parametrize('name,value', [('JIRA_TOKEN', ''), ('JIRA_ENABLED', '0'),
+                                            ('JIRA_WRITE_ENABLED', '0'),
+                                            ('TICKET_PROVIDER', '')])
+    def test_the_ticket_levers_are_pinned_too(self, name, value):
+        """A developer `.env` may carry the ithelp PAT, which files real tickets."""
+        assert os.environ.get(name) == value
+
+    def test_no_ticket_provider_is_armed(self):
+        from sam.integration.tickets.registry import provider_from_environment, read_providers
+        assert provider_from_environment() is None
+        assert read_providers() == []
+
     def test_a_test_can_still_opt_into_the_configured_path(self, monkeypatch):
         """The pin must not make the configured path untestable — every XRAS
         test drives it with fakes."""
@@ -68,6 +80,10 @@ class TestNoRealOutboundHttp:
         assert 'write-provisioned' in message
         assert 'no undo' in message
         assert 'monkeypatch' in message, 'it must name the way out'
+
+    def test_the_help_desk_is_refused_too(self):
+        with pytest.raises(RuntimeError, match='real POST request to ithelp.ucar.edu'):
+            requests.post('https://ithelp.ucar.edu/rest/servicedeskapi/request', timeout=1)
 
     def test_it_covers_a_session_not_just_the_module_helpers(self):
         """The clients hold a persistent `requests.Session`."""

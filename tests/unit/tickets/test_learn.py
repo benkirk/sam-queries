@@ -128,38 +128,49 @@ class TestRefresh:
 
 
 class TestSync:
-    def test_the_suite_selects_mail(self, session):
+    REASON = 'no ticket provider has reads on (JIRA_ENABLED)'
+
+    def test_the_suite_reads_nothing(self, session):
         result = sync_tickets(session, clock=CLOCK)
-        assert result == {'skipped': True, 'reason': 'TICKET_PROVIDER selects mail'}
-        assert describe(result) == 'tickets skipped (TICKET_PROVIDER selects mail)'
+        assert result == {'skipped': True, 'reason': self.REASON}
+        assert describe(result) == f'tickets skipped ({self.REASON})'
 
     def test_unconfigured_is_skipped_before_any_row(self, session):
         provider = FakeTicketProvider(configured=False)
-        result = sync_tickets(session, clock=CLOCK, provider=provider)
-        assert result['skipped'] and 'not configured' in result['reason']
-        assert provider.calls == []
+        result = sync_tickets(session, clock=CLOCK, providers=[provider])
+        assert result['skipped'] and provider.calls == []
 
-    def test_jira_selected_but_reads_off(self, session, monkeypatch):
-        monkeypatch.setenv('TICKET_PROVIDER', 'jira-servicedesk')
-        result = sync_tickets(session, clock=CLOCK)
-        assert result['skipped'] and 'jira-servicedesk' in result['reason']
+    def test_reads_on_without_a_token_is_still_skipped(self, session, monkeypatch):
+        monkeypatch.setenv('JIRA_ENABLED', '1')
+        assert sync_tickets(session, clock=CLOCK)['skipped']
 
-    def test_an_unknown_provider_name_is_skipped(self, session, monkeypatch):
+    def test_reads_need_no_ticket_provider(self, monkeypatch):
+        """Mode (b): the CronJob never carries TICKET_PROVIDER, yet learns keys."""
+        from sam.integration.tickets.registry import read_providers
+        monkeypatch.setenv('TICKET_PROVIDER', '')
+        monkeypatch.setenv('JIRA_ENABLED', '1')
+        monkeypatch.setenv('JIRA_TOKEN', 'not-real')
+        assert [p.name for p in read_providers()] == ['jira-servicedesk']
+
+    def test_a_filing_typo_does_not_stop_learning(self, monkeypatch):
+        from sam.integration.tickets.registry import read_providers
         monkeypatch.setenv('TICKET_PROVIDER', 'jria')
-        result = sync_tickets(session, clock=CLOCK)
-        assert result['skipped'] and 'unknown TICKET_PROVIDER' in result['reason']
+        monkeypatch.setenv('JIRA_ENABLED', '1')
+        monkeypatch.setenv('JIRA_TOKEN', 'not-real')
+        assert len(read_providers()) == 1
 
     def test_a_learn_failure_skips_the_refresh(self, session, fake_provider):
         _mailed(session)
         fake_provider.raise_with = TicketSourceUnavailable('down')
-        result = sync_tickets(session, clock=CLOCK, provider=fake_provider)
-        assert result['learn']['error'] == 'down'
-        assert result['refresh']['error'] == 'not attempted'
-        assert describe(result).endswith('; down')
+        result = sync_tickets(session, clock=CLOCK, providers=[fake_provider])
+        run = result['providers']['fake']
+        assert run['learn']['error'] == 'down'
+        assert run['refresh']['error'] == 'not attempted'
+        assert describe(result).endswith('(down)')
 
     def test_configured(self, session, fake_provider):
         row = _mailed(session)
         fake_provider.add(ticket_handle(row.account_request_id))
-        result = sync_tickets(session, clock=CLOCK, provider=fake_provider, limit=500)
-        assert not result['skipped'] and result['learn']['learned'] >= 1
-        assert describe(result).startswith('tickets: ')
+        result = sync_tickets(session, clock=CLOCK, providers=[fake_provider], limit=500)
+        assert not result['skipped'] and result['providers']['fake']['learn']['learned'] >= 1
+        assert describe(result).startswith('tickets fake: ')

@@ -140,6 +140,12 @@ def pytest_configure(config):
     # NUSD's ticket address: a developer's .env may name the real Jira inbox,
     # and a route test that reaches a ticket site would write a ledger row.
     os.environ["NOTIFY_ACCOUNT_TICKET_TO"] = ""
+    # The Jira PAT (a developer .env may carry it) and the three ticket levers,
+    # assigned for the same reason: the token files tickets in NUSD's real queue.
+    os.environ["JIRA_TOKEN"] = ""
+    os.environ["JIRA_ENABLED"] = "0"
+    os.environ["JIRA_WRITE_ENABLED"] = "0"
+    os.environ["TICKET_PROVIDER"] = ""
 
     # ---- Per-worker Redis keyspace under xdist ---------------------------
     #

@@ -1,15 +1,17 @@
-"""Provider name -> class, and the ``TICKET_PROVIDER`` selector.
+"""Provider name -> class, the ``TICKET_PROVIDER`` filing selector, and the
+providers the hourly pass reads through.
 
 A dict, like ``sam.notify.registry``: a typo in ``TICKET_PROVIDER`` fails with
-the valid names in the message. ``''``/``mail``/``none`` mean Jira is not in
-play at all (no create, no learn); pausing creates while still learning is
-``JIRA_WRITE_ENABLED=0``. Imports ``requests`` via ``jira``, so callers import
-this module by path, never through ``sam.integration.tickets``.
+the valid names in the message. ``TICKET_PROVIDER`` selects only the *filing*
+path (``''``/``mail``/``none`` = mail) and is webapp-only; the hourly learn and
+refresh use :func:`read_providers`, gated by each provider's read lever
+(``JIRA_ENABLED``). Imports ``requests`` via ``jira``, so callers import this
+module by path, never through ``sam.integration.tickets``.
 """
 
 from __future__ import annotations
 
-from typing import Dict, FrozenSet, Optional, Type
+from typing import Dict, FrozenSet, List, Optional, Type
 
 from sam.integration._config import config_str
 from sam.integration.tickets.base import TicketNotConfigured, TicketProvider
@@ -53,3 +55,9 @@ def provider_for_stored(name: str) -> Optional[TicketProvider]:
     """The provider a stored row names, for ``browse_url``; ``None`` if retired."""
     cls = PROVIDERS.get(name or '')
     return cls.from_environment() if cls else None
+
+
+def read_providers() -> List[TicketProvider]:
+    """Every registered provider whose reads are configured, in registry order."""
+    built = (cls.from_environment() for cls in PROVIDERS.values())
+    return [p for p in built if p.configured]

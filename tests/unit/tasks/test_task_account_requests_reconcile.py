@@ -108,9 +108,9 @@ class TestTheTicketPass:
 
     def test_the_suite_skips_it_and_says_why(self, ctx, session):
         result = mod.account_requests_reconcile(ctx())
-        assert result.detail['tickets'] == {'skipped': True,
-                                            'reason': 'TICKET_PROVIDER selects mail'}
-        assert result.message.endswith('tickets skipped (TICKET_PROVIDER selects mail)')
+        reason = 'no ticket provider has reads on (JIRA_ENABLED)'
+        assert result.detail['tickets'] == {'skipped': True, 'reason': reason}
+        assert result.message.endswith(f'tickets skipped ({reason})')
         for key in ('checked', 'fulfilled', 'purged'):
             assert key in result.detail, 'the reconcile counts are untouched'
 
@@ -118,13 +118,14 @@ class TestTheTicketPass:
         from factories.tickets import FakeTicketProvider
         from sam.integration.tickets import learn
         provider = FakeTicketProvider()
-        monkeypatch.setattr(learn, 'provider_from_environment', lambda: provider)
+        monkeypatch.setattr(learn, 'read_providers', lambda: [provider])
         monkeypatch.setenv('SAM_TASKS_TICKET_LOOKUP_MAX', '3')
         result = mod.account_requests_reconcile(ctx())
         tickets = result.detail['tickets']
         assert tickets['skipped'] is False and tickets['limit'] == 3
-        assert set(tickets['learn']) == {'checked', 'learned', 'missed', 'error'}
-        assert set(tickets['refresh']) == {'checked', 'closed', 'missing', 'error'}
+        run = tickets['providers']['fake']
+        assert set(run['learn']) == {'checked', 'learned', 'missed', 'error'}
+        assert set(run['refresh']) == {'checked', 'closed', 'missing', 'error'}
         assert result.state == 'succeeded'
 
     def test_a_tracker_outage_is_not_a_red_job(self, ctx, session, monkeypatch):
@@ -138,10 +139,10 @@ class TestTheTicketPass:
                               when=OCC - timedelta(hours=1))
         provider = FakeTicketProvider()
         provider.raise_with = TicketSourceUnavailable('ithelp down')
-        monkeypatch.setattr(learn, 'provider_from_environment', lambda: provider)
+        monkeypatch.setattr(learn, 'read_providers', lambda: [provider])
         result = mod.account_requests_reconcile(ctx())
         assert result.state == 'succeeded'
-        assert result.detail['tickets']['learn']['error'] == 'ithelp down'
+        assert result.detail['tickets']['providers']['fake']['learn']['error'] == 'ithelp down'
 
     @pytest.mark.parametrize('raw,expected', [(None, 25), ('0', 25), ('40', 40)])
     def test_the_lookup_knob(self, raw, expected):
