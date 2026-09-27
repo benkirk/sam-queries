@@ -1,0 +1,98 @@
+{% extends 'dashboards/base.html' %}
+{#
+  Roles & access: the samuel_role_* catalog behind the Configuration tile's
+  "Details »". MANAGE_ROLES on every route, so the gate is not here.
+
+  Three tabs, deep-linked via ?tab= (data-tab-url-param): grants (who holds
+  what), roles (the bundles), check (what one subject resolves to).
+
+  Context: active_tab, source ('defaults' | 'db')
+#}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+{% endblock %}
+
+{% block title %}Roles & access — SAM admin{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <h2 class="mb-1"><i class="fa-solid fa-user-shield"></i> Roles &amp; access</h2>
+        <p class="text-muted mb-0">
+            Roles are permission bundles; a grant hands a role or one permission to a
+            user, a POSIX group or an API key, for every facility or for one.
+            Source in effect: <code>{{ source }}</code>
+            {% if source != 'db' %}
+            <span class="text-warning">— edits here take effect once <code>RBAC_SOURCE=db</code>.</span>
+            {% endif %}
+        </p>
+    </div>
+</div>
+
+{% if not tables_present %}
+{% include 'dashboards/admin/fragments/roles_tables_missing.html' %}
+{% endif %}
+
+<ul class="nav nav-tabs mb-3" id="rolesTabs" role="tablist" data-tab-url-param="tab">
+    {% for key, icon, label in [('grants', 'fa-key', 'Grants'), ('roles', 'fa-layer-group', 'Roles'),
+                                ('check', 'fa-magnifying-glass', 'Check a subject')] %}
+    <li class="nav-item" role="presentation">
+        <button class="nav-link{{ ' active' if active_tab == key }}" id="{{ key }}-tab"
+                data-bs-toggle="tab" data-bs-target="#{{ key }}-pane" type="button" role="tab"
+                data-tab-param-value="{{ key }}" aria-controls="{{ key }}-pane"
+                aria-selected="{{ 'true' if active_tab == key else 'false' }}">
+            <i class="fa-solid {{ icon }} me-1"></i> {{ label }}
+        </button>
+    </li>
+    {% endfor %}
+</ul>
+
+<div class="tab-content" id="rolesTabsContent">
+<div class="tab-pane fade{{ ' show active' if active_tab == 'grants' }}" id="grants-pane"
+     role="tabpanel" aria-labelledby="grants-tab">
+    <div id="grantsCard"
+         hx-get="{{ url_for('admin_dashboard.roles_grants_card') }}"
+         hx-trigger="load, reloadGrantsCard from:body"
+         hx-swap="innerHTML">
+        <div class="text-muted small p-3">
+            <i class="fa-solid fa-circle-notch fa-spin"></i> Loading grants…
+        </div>
+    </div>
+</div>
+<div class="tab-pane fade{{ ' show active' if active_tab == 'roles' }}" id="roles-pane"
+     role="tabpanel" aria-labelledby="roles-tab">
+    <div id="rolesCard"
+         hx-get="{{ url_for('admin_dashboard.roles_roles_card') }}"
+         hx-trigger="load, reloadRolesCard from:body"
+         hx-swap="innerHTML">
+        <div class="text-muted small p-3">
+            <i class="fa-solid fa-circle-notch fa-spin"></i> Loading roles…
+        </div>
+    </div>
+    <div id="roleEditor" class="mt-3"></div>
+</div>
+<div class="tab-pane fade{{ ' show active' if active_tab == 'check' }}" id="check-pane"
+     role="tabpanel" aria-labelledby="check-tab">
+    <div class="card mb-3">
+        <div class="card-body">
+            <form hx-get="{{ url_for('admin_dashboard.roles_check') }}"
+                  hx-target="#checkResult" hx-swap="innerHTML"
+                  class="row g-2 align-items-end">
+                <div class="col-12 col-md-6">
+                    <label class="form-label small mb-1" for="checkSubject">Subject</label>
+                    <input type="search" class="form-control" id="checkSubject" name="subject"
+                           placeholder="username, group:csg or apikey:collector" required>
+                </div>
+                <div class="col-12 col-md-2">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="fa-solid fa-magnifying-glass me-1"></i> Resolve
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div id="checkResult"></div>
+</div>
+</div>{# /tab-content #}
+{% endblock %}

@@ -1,5 +1,5 @@
-"""Plain-dict payloads for ``sam-admin rbac``; the JSON envelopes and the rich
-renderers both read these, never an ORM object."""
+"""Plain-dict reports over the role catalog: the CLI's JSON envelopes, its rich
+renderers and the Roles page's Check tab all read these, never an ORM object."""
 
 from __future__ import annotations
 
@@ -130,3 +130,24 @@ def build_diff(session) -> dict:
 def _grant_key(g) -> str:
     what = g.role or (g.permission.value if isinstance(g.permission, Permission) else g.permission)
     return f'{g.subject_type}:{g.subject_name} {what}' + (f' @{g.facility}' if g.facility else '')
+
+
+_CRUD_ACTIONS = ('view', 'edit', 'create', 'delete')
+
+
+def permission_groups() -> List[tuple]:
+    """``[(group label, [(value, label), ...]), ...]`` for a checkbox matrix:
+    CRUD families by domain, then everything else under "System"."""
+    groups: Dict[str, List[tuple]] = {}
+    other: List[tuple] = []
+    for p in sorted(Permission, key=lambda p: p.value):
+        action, _, domain = p.value.partition('_')
+        label = p.value.replace('_', ' ')
+        if action in _CRUD_ACTIONS and domain:
+            groups.setdefault(domain.replace('_', ' '), []).append((p.value, label))
+        else:
+            other.append((p.value, label))
+    out = [(name, sorted(rows, key=lambda r: _CRUD_ACTIONS.index(r[0].split('_', 1)[0])))
+           for name, rows in sorted(groups.items())]
+    out.append(('system', other))
+    return out

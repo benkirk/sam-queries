@@ -1,0 +1,59 @@
+{#
+  The Roles pane: every role with its parent, direct and effective counts, and
+  how many active grants name it. Edit and New load the editor into #roleEditor,
+  which lives outside this card so a reload does not wipe it.
+
+  Context: roles — [{row, extends, direct, effective, holders}]
+#}
+<div class="card">
+    <div class="card-header py-2 d-flex align-items-center gap-3">
+        <strong>Roles</strong>
+        <span class="badge bg-secondary">{{ roles | length | fmt_number }}</span>
+        <button type="button" class="btn btn-sm btn-primary ms-auto"
+                hx-get="{{ url_for('admin_dashboard.roles_role_new_form') }}"
+                hx-target="#roleEditor" hx-swap="innerHTML">
+            <i class="fa-solid fa-plus me-1"></i> New role
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Extends</th>
+                    <th class="text-end">Direct</th>
+                    <th class="text-end">Effective</th>
+                    <th class="text-end">Grants</th>
+                    <th>Description</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in roles %}
+                <tr{{ ' class="text-muted"' | safe if not r.row.active }}>
+                    <td><span class="font-monospace">{{ r.row.name }}</span>
+                        {% if not r.row.active %}<span class="badge bg-secondary ms-1">inactive</span>{% endif %}</td>
+                    <td>{{ r.extends or '' }}</td>
+                    <td class="text-end">{{ r.direct | fmt_number }}</td>
+                    <td class="text-end">{{ r.effective | fmt_number }}</td>
+                    <td class="text-end">{{ r.holders | fmt_number }}</td>
+                    <td class="small">{{ r.row.description or '' }}</td>
+                    <td class="text-end text-nowrap">
+                        <button type="button" class="btn btn-sm btn-outline-primary" title="Edit"
+                                aria-label="Edit {{ r.row.name }}"
+                                hx-get="{{ url_for('admin_dashboard.roles_role_edit_form', name=r.row.name) }}"
+                                hx-target="#roleEditor" hx-swap="innerHTML">
+                            <i class="fa-solid fa-pen"></i>
+                        </button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="text-muted">No roles yet: <code>sam-admin rbac --seed</code>
+                    writes the factory defaults, or create one here.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>

@@ -11,7 +11,8 @@ from typing import Optional
 from cli.core.base import BaseCommand
 from cli.core.output import output_json
 from cli.core.utils import EXIT_ERROR, EXIT_NOT_FOUND, EXIT_SUCCESS
-from cli.security import builders, display
+from cli.security import display
+from sam.security import rbac_reports as builders
 
 
 class RbacCommand(BaseCommand):

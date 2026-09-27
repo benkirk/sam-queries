@@ -228,6 +228,7 @@ from .adjustments import (
 from .admin import (
     ClearRateLimitForm,
 )
+from .security import AddGrantForm, SaveRoleForm
 from .notifications import (
     AddAddressingForm,
     NotificationTemplateForm,
@@ -355,6 +356,8 @@ __all__ = [
     'ClearRateLimitForm',
     'AddAddressingForm',
     'NotificationTemplateForm',
+    'AddGrantForm',
+    'SaveRoleForm',
     # Status
     'CreateOutageForm',
     'EditOutageForm',

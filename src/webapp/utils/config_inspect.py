@@ -527,6 +527,38 @@ def _tickets_block(db) -> Dict[str, Any]:
     return block
 
 
+def _rbac_block(app, db) -> Dict[str, Any]:
+    """The role catalog's source, snapshot TTL, counts, and the keys still
+    holding no grant; ``unavailable`` while the tables are missing."""
+    from sam.security.rbac_reports import build_keys
+    from sam.security.samuel_roles import GUARD_PERMISSIONS, SamuelRole, SamuelRoleGrant, load_catalog
+    cfg = app.config
+    block: Dict[str, Any] = {
+        'source': cfg.get('RBAC_SOURCE', 'defaults'),
+        'ttl': int(cfg.get('RBAC_DB_TTL', 0)),
+        'unavailable': False,
+    }
+    try:
+        catalog = load_catalog(db.session)
+        block['roles'] = db.session.query(SamuelRole).filter(SamuelRole.is_active).count()
+        block['grants'] = db.session.query(SamuelRoleGrant).filter(SamuelRoleGrant.is_active).count()
+        block['guard_holders'] = sum(
+            1 for (t, _), perms in catalog.unscoped.items()
+            if t != 'apikey' and any(p in perms for p in GUARD_PERMISSIONS))
+        keys = build_keys(db.session, config_names=sorted(cfg.get('API_KEYS') or {}))
+        # Not 'keys': in Jinja a dict's attribute lookup finds the method first.
+        block['key_count'] = len(keys['keys'])
+        block['keys_ungranted'] = keys['ungranted']
+    except Exception:
+        # samuel_role_* await the DDL; roll back as the notifications block does.
+        try:
+            db.session.rollback()
+        except Exception:                    # pragma: no cover - defensive
+            pass
+        block['unavailable'] = True
+    return block
+
+
 def gather_runtime_state(app, db) -> Dict[str, Any]:
     """Collect runtime state for the Admin Configuration page.
 
@@ -708,6 +740,7 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
     # and link counts. No live probe: an HTTP call per card render is a cost
     # the card has no business paying.
     tickets_block = _tickets_block(db)
+    rbac_block = _rbac_block(app, db)
 
     # Scheduled tasks: registry + SAM_TASKS_DISABLED + task_run counts. No
     # addresses and no PII. `runner_id` is a pod name and `detail` can hold a
@@ -781,5 +814,6 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         'rate_limits':     rate_limits_block,
         'scheduled_tasks': scheduled_tasks_block,
         'tickets':         tickets_block,
+        'rbac':            rbac_block,
         'server':          server,
     }

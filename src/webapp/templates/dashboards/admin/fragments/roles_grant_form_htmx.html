@@ -1,0 +1,58 @@
+{% from 'dashboards/fragments/form_fields.html' import text_field, select_field, fk_search_field, form_errors_panel with context %}
+{#
+  The inline add-grant form. Swaps itself: a subject-type change re-renders it
+  (server-side cascade, no script), a validation error re-renders it in place,
+  a success replaces it with the checkmark and fires reloadGrantsCard.
+
+  Context: subject_type, subject_types, groups, key_options, roles, permissions,
+           facilities, post_url, form_url; on re-render errors, field_errors, form
+#}
+<form hx-post="{{ post_url }}" hx-target="this" hx-swap="outerHTML" class="roles-grant-form" novalidate>
+    <h6 class="mb-2">Add a grant</h6>
+    <div class="row g-2 align-items-end">
+        <div class="col-6 col-md-2">
+            {{ select_field('subject_type', 'Subject type', options=subject_types, required=True,
+                            optional_text='', default=subject_type, id='grant-subject-type',
+                            hx_get=form_url, hx_target='closest form', hx_swap='outerHTML',
+                            hx_trigger='change', hx_include='closest form') }}
+        </div>
+        <div class="col-12 col-md-4">
+            {% if subject_type == 'user' %}
+            {{ fk_search_field('subject_user_id', 'User', required=True, optional_text='',
+                               search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
+                               placeholder='Search by username or name…',
+                               id_prefix='grantSubjectUser') }}
+            {% elif subject_type == 'group' %}
+            {{ select_field('subject_name', 'POSIX group', items=groups, value_attr='group_name',
+                            label_attr='group_name', required=True, optional_text='',
+                            placeholder='Choose a group', id='grant-subject-group') }}
+            {% else %}
+            {{ select_field('subject_name', 'API key', options=key_options, required=True,
+                            optional_text='', placeholder='Choose a key', id='grant-subject-key') }}
+            {% endif %}
+        </div>
+        <div class="col-6 col-md-3">
+            {{ select_field('role_name', 'Role', items=roles, value_attr='name', label_attr='name',
+                            optional_text='', placeholder='— a role —', id='grant-role') }}
+        </div>
+        <div class="col-6 col-md-3">
+            {{ select_field('permission', 'or one permission', options=permissions,
+                            optional_text='', placeholder='— a permission —', id='grant-permission') }}
+        </div>
+        <div class="col-6 col-md-3">
+            {{ select_field('facility_name', 'Facility', items=facilities, value_attr='facility_name',
+                            label_attr='facility_name', optional_text='', placeholder='All facilities',
+                            id='grant-facility') }}
+        </div>
+        <div class="col-12 col-md-7">
+            {{ text_field('note', 'Note', optional_text='', maxlength=255,
+                          placeholder='Why (ticket, request, date)', id='grant-note') }}
+        </div>
+        <div class="col-12 col-md-2 mb-3">
+            <button type="submit" class="btn btn-primary w-100">
+                <i class="fa-solid fa-plus me-1"></i> Grant
+            </button>
+        </div>
+    </div>
+    {{ form_errors_panel() }}
+</form>

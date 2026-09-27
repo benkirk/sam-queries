@@ -1,0 +1,76 @@
+{% from 'dashboards/fragments/form_fields.html' import text_field, textarea_field, select_field, form_errors_panel with context %}
+{#
+  The role editor: name, description, parent, active, and the permission
+  matrix. A permission the parent already confers is drawn checked and
+  disabled ("via parent") — it is not a direct row. Swaps itself on error;
+  a success replaces it with the checkmark and fires reloadRolesCard.
+
+  Context: role (None = new), roles, groups, direct, inherited, extends,
+           post_url; on re-render errors, field_errors, form
+#}
+<form hx-post="{{ post_url }}" hx-target="this" hx-swap="outerHTML" class="card roles-role-form" novalidate>
+    <div class="card-header py-2">
+        <strong>{% if role %}Edit role <span class="font-monospace">{{ role.name }}</span>{% else %}New role{% endif %}</strong>
+    </div>
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-12 col-md-3">
+                {% if role %}
+                <input type="hidden" name="name" value="{{ role.name }}">
+                <div class="mb-3"><label class="form-label">Name</label>
+                    <div class="form-control-plaintext font-monospace">{{ role.name }}</div></div>
+                {% else %}
+                {{ text_field('name', 'Name', required=True, optional_text='', maxlength=40,
+                              placeholder='e.g. wna_manager', id='role-name') }}
+                {% endif %}
+            </div>
+            <div class="col-12 col-md-3">
+                {{ select_field('extends', 'Extends', items=roles, value_attr='name', label_attr='name',
+                                optional_text='', placeholder='— nothing —', default=extends, id='role-extends',
+                                help='The parent\'s permissions are folded in.') }}
+            </div>
+            <div class="col-12 col-md-5">
+                {{ text_field('description', 'Description', optional_text='', maxlength=255,
+                              default=(role.description if role else ''), id='role-description') }}
+            </div>
+            {% if role %}
+            <div class="col-12 col-md-1">
+                <div class="form-check form-switch mt-md-4 pt-md-2">
+                    <input class="form-check-input" type="checkbox" role="switch" id="role-active"
+                           name="active" value="1"{{ ' checked' if (form.get('active') if form else role.active) }}>
+                    <label class="form-check-label" for="role-active">Active</label>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="row g-3 mt-1">
+            {% for group, rows in groups %}
+            <div class="col-6 col-md-4 col-xl-3">
+                <div class="fw-semibold small text-uppercase text-muted mb-1">{{ group }}</div>
+                {% for value, label in rows %}
+                <div class="form-check">
+                    {% if value in inherited %}
+                    <input class="form-check-input" type="checkbox" id="perm-{{ value }}" checked disabled>
+                    <label class="form-check-label text-muted" for="perm-{{ value }}">{{ label }} <small>(via parent)</small></label>
+                    {% else %}
+                    <input class="form-check-input" type="checkbox" id="perm-{{ value }}"
+                           name="permissions" value="{{ value }}"{{ ' checked' if value in direct }}>
+                    <label class="form-check-label" for="perm-{{ value }}">{{ label }}</label>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+        {{ form_errors_panel() }}
+    </div>
+    <div class="card-footer d-flex gap-2">
+        <button type="submit" class="btn btn-primary">
+            <i class="fa-solid fa-save me-1"></i> Save role
+        </button>
+        <button type="button" class="btn btn-outline-secondary"
+                hx-get="{{ url_for('admin_dashboard.roles_roles_card') }}"
+                hx-target="#rolesCard" hx-swap="innerHTML">Reload roles</button>
+    </div>
+</form>
