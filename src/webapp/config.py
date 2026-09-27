@@ -34,6 +34,14 @@ class SAMWebappConfig(SAMConfig):
     # Seconds a successful bcrypt verification is remembered per worker; 0 = off.
     API_KEY_VERIFY_TTL  = int(os.getenv('API_KEY_VERIFY_TTL', 300))
 
+    # Where the role catalog comes from: 'defaults' (the dicts in
+    # webapp/utils/rbac.py) or 'db' (the samuel_role_* tables, seeded by
+    # `sam-admin rbac --seed`). In 'db' mode API keys are held to the
+    # Permission each token route declares. Snapshot refresh interval in
+    # seconds; 0 = every check.
+    RBAC_SOURCE = os.getenv('RBAC_SOURCE', 'defaults')
+    RBAC_DB_TTL = int(os.getenv('RBAC_DB_TTL', 60))
+
     # Auth provider ('stub' | 'ldap' | 'oidc')
     AUTH_PROVIDER = os.getenv('AUTH_PROVIDER', 'stub')
 
@@ -455,6 +463,8 @@ class TestingConfig(SAMWebappConfig):
     # tests (the module-level cache in api_auth is process-global).
     API_KEYS_DB_TTL = 0
     API_KEY_VERIFY_TTL = 0
+    RBAC_SOURCE = 'defaults'
+    RBAC_DB_TTL = 0
 
     # Disable usage cache in tests to prevent cross-test pollution
     ALLOCATION_USAGE_CACHE_TTL  = 0

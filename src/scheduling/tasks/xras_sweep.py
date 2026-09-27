@@ -82,8 +82,8 @@ from scheduling.schedules import DEFAULT_TZ, Hourly, to_local_naive
 #: is what `BusinessHourly(tz=...)` was supplying.
 #:
 #: `minute=0` for the same reason `xras_notices` uses it: the CronJob wakes at
-#: :07, so a :00 slot dispatches about seven minutes later where a :20 slot
-#: would wait for the next wake. Both tasks share the wake and run
+#: :07 (and three more times an hour for the */15 tasks), so a :00 slot
+#: dispatches about seven minutes later. Both tasks share the wake and run
 #: sequentially under `concurrencyPolicy: Forbid`; this one takes 60-90s.
 SCHEDULE = Hourly(minute=0)
 

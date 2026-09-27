@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from scheduling.registry import TaskResult, task
 from scheduling.schedules import Hourly
 
-#: Top of every hour, UTC. The dispatcher wakes at :07, so rows land ~:07.
+#: Top of every hour, UTC. The dispatcher's first wake of the hour is :07, so rows land ~:07.
 SCHEDULE = Hourly(minute=0)
 
 

@@ -1280,6 +1280,9 @@ class SAMAnonymizer:
                         ('account_request', 'account requests (names + emails of non-users)'),
                         ('account_request_event', 'account-request events (sponsor prose)'),
                         ('external_ticket', 'help-desk ticket links (orphaned with account_request)'),
+                        ('samuel_role', 'role catalog (seeded per environment)'),
+                        ('samuel_role_permission', 'role catalog permission rows'),
+                        ('samuel_role_grant', 'role grants (real usernames and key names)'),
                         ('account_allocation_state', 'the allocation read model (stale after anonymization)')):
                     if self._table_exists(session, table_name):
                         self.purge_operator_table(session, table_name, what)

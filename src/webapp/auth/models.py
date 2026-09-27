@@ -8,7 +8,7 @@ from flask_login import UserMixin
 from sqlalchemy.orm import Session
 
 from sam.core.users import User
-from webapp.utils.rbac import GROUP_PERMISSIONS
+from webapp.utils.rbac import active_catalog
 
 
 class AuthUser(UserMixin):
@@ -20,16 +20,11 @@ class AuthUser(UserMixin):
 
     Authorization model
     -------------------
-    The user's permissions are derived from POSIX group membership.
-    ``self.roles`` is the set of group names the user belongs to that
-    have a bundle in ``GROUP_PERMISSIONS`` (i.e. groups that confer
-    permissions).
-
-    Group membership comes from ``adhoc_system_account_entry`` via
-    ``get_user_group_access()`` — in dev, test, and production alike.
-    Per-user incremental grants live in ``USER_PERMISSION_OVERRIDES``.
-
-    The SAM ``role_user`` / ``role`` tables are **not** consulted.
+    ``self.roles`` is the set of POSIX group names the user belongs to that
+    hold a grant in the active role catalog (``webapp.utils.rbac``). Group
+    membership comes from ``adhoc_system_account_entry`` via
+    ``get_user_group_access()`` in dev, test and production alike. The SAM
+    ``role_user`` / ``role`` tables are **not** consulted.
     """
 
     def __init__(self, sam_user: User):
@@ -67,16 +62,12 @@ class AuthUser(UserMixin):
         Get group-bundle names the user belongs to, as a set.
 
         Derived from POSIX group membership (``get_user_group_access``),
-        filtered to groups that actually have a ``GROUP_PERMISSIONS``
-        bundle — groups conferring no permissions are noise as far as
-        RBAC is concerned.
-
-        Cached on the instance.
+        filtered to groups the catalog names; the rest are noise as far as
+        RBAC is concerned. Cached on the instance.
         """
         if self._roles is None:
-            self._roles = {
-                g for g in self._posix_group_names() if g in GROUP_PERMISSIONS
-            }
+            named = active_catalog().group_subjects
+            self._roles = {g for g in self._posix_group_names() if g in named}
         return self._roles
 
     def _posix_group_names(self) -> set:

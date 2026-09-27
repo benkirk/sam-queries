@@ -515,7 +515,8 @@ def test_prose_avoids_changelog_phrasing():
 
 DEFAULT_LINE_BUDGET = 250
 LINE_BUDGETS = {
-    "CLAUDE.md": 1060,
+    # +7 on 2026-09-27: the samuel_role_* RBAC catalog and its RBAC_SOURCE switch.
+    "CLAUDE.md": 1067,
     "CONTRIBUTING.md": 740,
     "README.md": 1070,
     "collectors/README.md": 370,

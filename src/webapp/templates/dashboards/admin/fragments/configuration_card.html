@@ -268,6 +268,58 @@
             </div>
         </div>
 
+        {# Roles & access (samuel_role_*). Counts only at VIEW_SYSTEM_CONFIG;
+           the page names people and keys, so its link is MANAGE_ROLES. #}
+        <div class="col-12 col-xl-6">
+            <div class="card inner-card h-100">
+                <div class="card-header mb-4 d-flex justify-content-between align-items-center">
+                    <h5><i class="fa-solid fa-user-shield me-1"></i> Roles &amp; access</h5>
+                    {% if has_permission(Permission.MANAGE_ROLES) %}
+                    <a href="{{ url_for('admin_dashboard.roles') }}"
+                       class="small text-decoration-none">
+                        Details &raquo;
+                    </a>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    {% set rb = state.rbac %}
+                    <dl class="config-stats mb-3 small">
+                        {{ stat('RBAC_SOURCE', rb.source) }}
+                        {{ stat('Snapshot TTL', rb.ttl ~ 's') }}
+                    </dl>
+                    {% if rb.unavailable %}
+                    <p class="text-muted small mb-0">
+                        <i class="fa-solid fa-circle-info"></i>
+                        The <code>samuel_role_*</code> tables are not present on this
+                        database; the code defaults are in effect.
+                    </p>
+                    {% else %}
+                    <dl class="config-stats mb-0 small">
+                        {{ stat('Active roles', rb.roles | fmt_number) }}
+                        {{ stat('Active grants', rb.grants | fmt_number) }}
+                        {{ stat('Can manage roles', rb.guard_holders | fmt_number) }}
+                        {{ stat('API keys', rb.key_count | fmt_number) }}
+                        {{ stat('Keys without a grant', rb.keys_ungranted | length | fmt_number) }}
+                    </dl>
+                    {% if rb.keys_ungranted %}
+                    <div class="alert alert-warning py-2 px-3 small mt-3 mb-0">
+                        <i class="fa-solid fa-triangle-exclamation me-1"></i>
+                        {{ rb.keys_ungranted | length | fmt_plural('key holds', 'keys hold') }} no grant
+                        {% if rb.source == 'db' %}and {{ 'is' if rb.keys_ungranted | length == 1 else 'are' }} denied on every token route{% else %}and will be denied once <code>RBAC_SOURCE=db</code>{% endif %}.
+                    </div>
+                    {% endif %}
+                    {% if rb.source == 'db' and rb.grants == 0 %}
+                    <div class="alert alert-danger py-2 px-3 small mt-3 mb-0">
+                        <i class="fa-solid fa-triangle-exclamation me-1"></i>
+                        <code>db</code> mode with no grants: nobody holds anything.
+                        Seed with <code>sam-admin rbac --seed</code>.
+                    </div>
+                    {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
         {# Help-desk tickets (sam.integration.tickets). No token, no probe. #}
         <div class="col-12 col-xl-6">
             <div class="card inner-card h-100">

@@ -1,0 +1,47 @@
+{#
+  What one subject resolves to: the grants that contributed and the effective
+  permissions per scope. Context: subject, payload (sam.security.rbac_reports
+  .build_effective, or None before a search)
+#}
+{% if payload is none %}
+{% elif not payload.grants %}
+<div class="alert alert-secondary small">
+    <span class="font-monospace">{{ payload.subject_type }}:{{ payload.subject_name }}</span>
+    holds no grant{% if payload.groups %} (groups: {{ payload.groups | join(', ') }}){% endif %}.
+</div>
+{% else %}
+<div class="card mb-3">
+    <div class="card-header py-2">
+        <strong class="font-monospace">{{ payload.subject_type }}:{{ payload.subject_name }}</strong>
+        <span class="text-muted small ms-2">source {{ payload.source }}</span>
+        {% if payload.groups %}<span class="text-muted small ms-2">groups: {{ payload.groups | join(', ') }}</span>{% endif %}
+    </div>
+    <div class="card-body">
+        <h6>Contributing grants</h6>
+        <div class="table-responsive">
+        <table class="table table-sm mb-3">
+            <thead><tr><th>Subject</th><th>Holds</th><th>Facility</th><th>Note</th></tr></thead>
+            <tbody>
+            {% for g in payload.grants %}
+            <tr>
+                <td><span class="font-monospace">{{ g.subject_type }}:{{ g.subject_name }}</span></td>
+                <td>{% if g.role %}role <strong>{{ g.role }}</strong>{% else %}<code>{{ g.permission }}</code>{% endif %}</td>
+                <td>{{ g.facility or 'all' }}</td>
+                <td class="small">{{ g.note or '' }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        <h6>Effective permissions</h6>
+        <dl class="row small mb-0">
+            <dt class="col-sm-3">All facilities</dt>
+            <dd class="col-sm-9">{% if payload.unscoped %}{% for p in payload.unscoped %}<code class="me-1">{{ p }}</code>{% endfor %}{% else %}<span class="text-muted">none</span>{% endif %}</dd>
+            {% for facility, perms in payload.scoped.items() %}
+            <dt class="col-sm-3">{{ facility }}</dt>
+            <dd class="col-sm-9">{% for p in perms %}<code class="me-1">{{ p }}</code>{% endfor %}</dd>
+            {% endfor %}
+        </dl>
+    </div>
+</div>
+{% endif %}

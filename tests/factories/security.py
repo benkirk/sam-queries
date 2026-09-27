@@ -1,4 +1,5 @@
-"""Factories for security-domain entities: Role, ApiCredentials.
+"""Factories for security-domain entities: Role, ApiCredentials, and the
+samuel_role_* catalog rows.
 
 Mirrors the legacy `api_credentials` / `role_api_credentials` tables that
 new SAM authenticates against on the API paths (see webapp.utils.api_auth).
@@ -7,7 +8,9 @@ from typing import Optional, Sequence
 
 import bcrypt
 
+from sam.security.permissions import Permission
 from sam.security.roles import ApiCredentials, Role, RoleApiCredentials
+from sam.security.samuel_roles import SamuelRole, SamuelRoleGrant
 
 from ._seq import next_seq
 
@@ -63,3 +66,31 @@ def make_api_credentials(
         )
     session.flush()
     return cred
+
+
+def make_samuel_role(session, *, name: Optional[str] = None,
+                     permissions: Sequence[Permission] = (Permission.VIEW_USERS,),
+                     extends: Optional[SamuelRole] = None, by: str = 'factory',
+                     description: Optional[str] = None) -> SamuelRole:
+    """Build and flush a samuel_role row with its permission rows."""
+    if name is None:
+        name = next_seq("srole")
+    return SamuelRole.create(session, name=name, permissions=permissions, by=by,
+                             description=description, extends=extends)
+
+
+def make_samuel_grant(session, *, subject_type: str = 'user',
+                      subject_name: Optional[str] = None,
+                      role: Optional[SamuelRole] = None,
+                      permission: Optional[Permission] = None,
+                      facility_name: Optional[str] = None, by: str = 'factory',
+                      note: Optional[str] = None) -> SamuelRoleGrant:
+    """Build and flush a grant; makes a role when neither role nor permission is given."""
+    if subject_name is None:
+        subject_name = next_seq("subj")
+    if role is None and permission is None:
+        role = make_samuel_role(session)
+    return SamuelRoleGrant.create(session, subject_type=subject_type,
+                                  subject_name=subject_name, by=by, role=role,
+                                  permission=permission, facility_name=facility_name,
+                                  note=note)

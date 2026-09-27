@@ -53,8 +53,16 @@ webapp:
     JIRA_ENABLED: "0"
     JIRA_WRITE_ENABLED: "0"
     XRAS_ACTIONS_CAPTURE_ONLY: "1"
+    # Role catalog: "defaults" reads the code bundles, "db" the samuel_role_*
+    # tables (seeded by `sam-admin rbac --seed`, then --seed-keys) with no
+    # fallback, and holds API keys to each token route's Permission. Flip only
+    # after the DDL and the seed have run on this database.
+    RBAC_SOURCE: "db"
     # Dev-only bcrypt hash; plaintext is SAM_DEV_API_PASS in the laptop .env.
     API_KEYS_COLLECTOR: "$2b$12$cT8gWOKQtobRHrs1/lgVaeiUL6mivFdfsctyFImGRgulhd8I11mb6"
+    # sam-admin cache --refresh credential (api_admin grant); plaintext is
+    # SAM_CACHE_REFRESH_API_PASS_DEV in the laptop .env.
+    API_KEYS_CACHEREF: "$2b$12$nvmZU6FjXiwutAIn1tSDpugXbVhw1qzYdk3nWekw2W21qcZHiSwHq"
     SAM_API_BASE: "https://samuel-dev.k8s.ucar.edu"   # sam-admin cache --refresh defaults to prod
     # Dev is the load-test target: no throttling of authed, M2M or anonymous
     # traffic. RATELIMIT_AUTH_LOGIN stays at the prod default (guards the OIDC
