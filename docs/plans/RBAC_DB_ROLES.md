@@ -9,13 +9,13 @@ section 12 as they happen.
 ## Progress
 
 - [x] 1. This document.
-- [ ] 2. `Permission` + `ALL_*` moved to `sam/security/permissions.py`, shim in `rbac.py`, suite green unedited.
-- [ ] 3. `rbac_catalog.py`, `DEFAULT_ROLES` / `DEFAULT_GRANTS`, derived dicts, `RBAC_SOURCE` / `RBAC_DB_TTL`, catalog-backed predicates, `AuthUser.roles`.
-- [ ] 4. ORM models, DDL, `_BOOTSTRAP_TABLES`, anonymizer, schema pins, factories; regenerated LFS blob (own commit).
-- [ ] 5. `sam-admin rbac`.
-- [ ] 6. Roles page: schemas, handlers, routes, templates, nav, tile, route-map snapshot, page tests.
-- [ ] 7. API keys as a grant subject; token-path enforcement in `db` mode; the `api_*` roles.
-- [ ] 8. Docs rewrite, CLAUDE.md, `api_auth.py` docstrings.
+- [x] 2. `Permission` + `ALL_*` moved to `sam/security/permissions.py`, shim in `rbac.py`, suite green unedited.
+- [x] 3. `rbac_catalog.py`, `DEFAULT_ROLES` / `DEFAULT_GRANTS`, derived dicts, `RBAC_SOURCE` / `RBAC_DB_TTL`, catalog-backed predicates, `AuthUser.roles`.
+- [x] 4. ORM models, DDL, `_BOOTSTRAP_TABLES`, anonymizer, schema pins, factories; regenerated LFS blob (own commit).
+- [x] 5. `sam-admin rbac`.
+- [x] 6. Roles page: schemas, handlers, routes, templates, nav, tile, route-map snapshot, page tests.
+- [x] 7. API keys as a grant subject; token-path enforcement in `db` mode; the `api_*` roles.
+- [x] 8. Docs rewrite, CLAUDE.md, `api_auth.py` docstrings.
 - [ ] 9. Dev flip (`values-dev.yaml` `RBAC_SOURCE: "db"`), after the dev DDL + seed.
 - [ ] 10. Prod flip (`values.yaml`), after the prod DDL + seed; merge after prod runs it.
 
@@ -214,4 +214,21 @@ Local webdev: `.env` `RBAC_SOURCE=db` + `sam-admin rbac --seed` to exercise the 
 
 ## 12. Deviations
 
-None yet.
+- The report builders (`build_listing`, `build_effective`, `build_keys`, `build_diff`,
+  `permission_groups`) live in `sam/security/rbac_reports.py`, not under `cli/`, so the
+  Roles page's Check tab and the CLI share them.
+- No depth cap on `extends`: cycle refusal is enough for a finite graph, and the cap
+  could never fire in dictionary order.
+- `WITHHELD` does not carry EDIT_GROUPS, VIEW_REPORTS or VIEW_CHARGE_SUMMARIES: today's
+  `ALL_VIEW` / `ALL_EDIT` bundles grant them, and the seed reproduces today.
+  EDIT_FACILITIES is withheld (only system_admin held it).
+- The last-holder check runs on the writes that can lose a holder (revoke,
+  deactivate, set_permissions, re-parent), not on `create`, so an empty table can be
+  seeded. A refused revoke restores its stamp.
+- The charge-summary ingest is session-only (`login_required`), so `api_collector`'s
+  MANAGE_CHARGE_SUMMARIES is inert; only the four status-ingest routes carry
+  `api_key_required(permission=MANAGE_SYSTEM_STATUS)`.
+- The Postgres table bootstrap in `tests/conftest.py` now runs under the same file
+  lock as MySQL: two xdist workers creating one table raced on its sequence.
+- The Roles page uses inline forms and a server-side subject-type cascade, no modals
+  and no script, so it adds nothing to `HTMX_FRAGMENT_SHELL_DEPS`.

@@ -138,7 +138,7 @@ app (session-scoped)
 `TestingConfig` is loaded via `FLASK_CONFIG=testing`. Key properties:
 - `TESTING = True`, `WTF_CSRF_ENABLED = False`
 - `ALLOCATION_USAGE_CACHE_TTL = 0` (caching disabled)
-- `USER_PERMISSION_OVERRIDES['benkirk']` (in `webapp.utils.rbac`) gives `benkirk` the full Permission set
+- `RBAC_SOURCE = 'defaults'`: the code catalog (`sam/security/rbac_defaults.py`) grants `benkirk` the `system_admin` role, so `auth_client` holds every Permission
 - `NullCache` for Flask-Caching (no `@cache.cached` interference)
 
 ---

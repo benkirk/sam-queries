@@ -240,31 +240,39 @@ Notes on the other run modes:
 
 ### Testing RBAC locally
 
-A user's permission set is the union of two layers (both in
-[`src/webapp/utils/rbac.py`](../src/webapp/utils/rbac.py)):
+A user's permission set is the union of the grants held by their username
+and by each POSIX group they belong to (`get_user_group_access()`); a grant
+hands out a role (a permission bundle that may extend one parent) or a
+single permission, for every facility or for one. `SYSTEM_ADMIN` implies
+every permission. Which catalog is read is `RBAC_SOURCE`
+([`src/webapp/utils/rbac.py`](../src/webapp/utils/rbac.py)):
 
-1. **POSIX group bundles** -- each group the user belongs to
-   (`get_user_group_access()`) whose name has a `GROUP_PERMISSIONS`
-   entry contributes that bundle.
-2. **Per-user overrides** -- `USER_PERMISSION_OVERRIDES` grants
-   specific `Permission` members to individual usernames on top.
+- `defaults` (code default, tests, local): the roles and grants in
+  [`src/sam/security/rbac_defaults.py`](../src/sam/security/rbac_defaults.py).
+- `db` (prod and samuel-dev): the `samuel_role_*` tables, edited on
+  Admin -> Roles & access (`MANAGE_ROLES`) or with `sam-admin rbac`, read
+  through a per-process snapshot refreshed every `RBAC_DB_TTL` seconds.
+  There is no fallback to the defaults in this mode, and API keys are held to
+  the `Permission` each token route declares.
 
-There is no dependency on the SAM `role_user`/`role` tables and no
-dev-only bypass -- dev, test, and production resolve permissions the
-same way. To exercise a specific permission set:
+There is no dependency on the SAM `role_user`/`role` tables and no dev-only
+bypass. To exercise a specific permission set locally:
 
-1. Point `USER_PERMISSION_OVERRIDES` at your username with the exact
-   subset you want to test (or `set(Permission)` for admin-equivalent).
-2. `docker compose up webdev --watch`, Quick-Login as that user, and
-   verify the expected tabs/action buttons appear. The user card on
-   `/` lists the resolved permission set.
-3. Re-login after edits (`--watch` picks up the code change).
+1. Apply `scripts/sql/create_samuel_roles.sql` to the local MySQL once, then
+   `sam-admin rbac --seed` and `--seed-keys`; set `RBAC_SOURCE=db` for
+   webdev.
+2. `docker compose up webdev --watch`, Quick-Login as `benkirk`, and grant
+   your test user the role or permissions on Admin -> Roles & access (the
+   Check tab shows what a subject resolves to).
+3. Log in as that user and verify the tabs and action buttons. The user card
+   on `/` lists the resolved permission set. A grant is live within
+   `RBAC_DB_TTL` seconds, without a re-login.
 
-Troubleshooting: "no roles assigned" means no bundled POSIX group and
-no override entry; missing edit buttons mean the route decorator (or
-the gating macros in
-`templates/dashboards/fragments/action_buttons.html`) requires a
-permission you don't hold.
+Troubleshooting: "no roles assigned" means no grant names the user or any
+of their POSIX groups; missing edit buttons mean the route decorator (or
+the gating macros in `templates/dashboards/fragments/action_buttons.html`)
+requires a permission you don't hold. Design record:
+[`docs/plans/RBAC_DB_ROLES.md`](plans/RBAC_DB_ROLES.md).
 
 ### Running real OIDC locally (rare)
 

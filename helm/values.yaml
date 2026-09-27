@@ -283,6 +283,11 @@ webapp:
     # would re-pin every host to one origin and break login on the others.
     OIDC_USERNAME_CLAIM: "preferred_username"
     OIDC_SCOPES: "openid email profile"
+    # Role catalog: "defaults" reads the code bundles, "db" the samuel_role_*
+    # tables (seeded by `sam-admin rbac --seed`, then --seed-keys) with no
+    # fallback, and holds API keys to each token route's Permission. Flip only
+    # after the DDL and the seed have run on this database.
+    RBAC_SOURCE: "defaults"
     # API keys for HPC status collectors (bcrypt hashes — safe to store here).
     # Generate with: python scripts/gen_api_key.py --username collector
     API_KEYS_COLLECTOR: "$2b$12$X8NQvOUvyrj80Ud3N6Y.0uZs70ZC6lJYy/zfka/v7uQQFKJhds0b2"
