@@ -287,7 +287,7 @@ webapp:
     # tables (seeded by `sam-admin rbac --seed`, then --seed-keys) with no
     # fallback, and holds API keys to each token route's Permission. Flip only
     # after the DDL and the seed have run on this database.
-    RBAC_SOURCE: "defaults"
+    RBAC_SOURCE: "db"
     # API keys for HPC status collectors (bcrypt hashes — safe to store here).
     # Generate with: python scripts/gen_api_key.py --username collector
     API_KEYS_COLLECTOR: "$2b$12$X8NQvOUvyrj80Ud3N6Y.0uZs70ZC6lJYy/zfka/v7uQQFKJhds0b2"
