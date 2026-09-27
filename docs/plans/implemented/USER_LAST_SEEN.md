@@ -52,10 +52,7 @@ Useful facts learned on the way:
 
 Nothing below is committed to; it is the list to pick from.
 
-- **Read side.** A "Last seen" line in `sam-search user X`; `sam-search user
-  --abandoned` using the MAX across sources; a Last-seen card on the admin user
-  view; a dormant-users report (never seen / not seen in N years) as a CLI view or
-  xlsx export.
+- **Read side**: sketched below.
 - **Deactivation.** Feed the ledger into account-deactivation review, e.g. alongside
   the `deactivate_expired` task, as evidence rather than a trigger.
 - **Webapp "last used", not just "last login".** SSO sessions last days. Scrape the
@@ -72,6 +69,55 @@ Nothing below is committed to; it is the list to pick from.
 - **Housekeeping found on the way.** A small migration to sync the pre-existing
   column comments `alembic check` reports, and a fix for migration 0002 on a fresh
   MySQL 8 database.
+
+### Sketch: read side (CLI + UI)
+
+This is a sketch, not a plan. The main constraint: the ledger lives in `system_status`
+and users live in SAM, so every view makes two queries joined by username in Python,
+never a cross-database SQL join. Both directions are cheap: the ledger is about 22k
+rows, and `ix_user_last_seen_source_id_last_seen` serves the "since T" filter.
+
+**CLI**
+
+- `sam-search user X` (and `--verbose`): one "Last seen" line giving the most recent
+  source and time, e.g. `2026-09-27 23:40 UTC (webapp)`. `--verbose` shows the full
+  per-source table that `sam-admin last-seen X` prints today. It uses
+  `get_last_seen()`, and the JSON envelope gains a `last_seen` list.
+- `sam-search user --not-seen-since 3y` / `--seen-since 30d`: active SAM users
+  whose MAX `last_seen` across sources is older (or newer) than the window. "Never
+  seen" (no ledger row) counts as older. It pairs naturally with `--abandoned`,
+  e.g. `--abandoned --not-seen-since 1y` is the strong-candidate list. Duration
+  parsing can reuse `_parse_last_spec` (`src/cli/accounting/dates.py`), which
+  `accounting --last 7d` uses; it accepts days only today, so it would need `y`/`m`
+  added.
+- Optional `--source login|pbs|jupyterhub|webapp` to narrow either of the above.
+- `sam-admin last-seen` already exists; it stays the operator and backfill surface.
+
+**User card / modal** (`admin_dashboard.user_card`, which serves both the Users &
+Groups card and `#userDetailsModal`, so one change covers both)
+
+- A compact "Last seen" block: one row per source kind, showing system, `fmt_ago`
+  and the date, with the newest first. It shows "never seen" when there are no rows.
+  Retired systems (cheyenne, yellowstone) sit in the same list, since that history
+  is the point.
+- Gate it on `VIEW_USERS`, the same as the card. It reads the `system_status` bind,
+  so a status DB outage must degrade to "unavailable" rather than breaking the card.
+
+**Admin list view** (Admin → Users & Groups, a new card or tab)
+
+- A "Last seen" table of users sorted by last seen: username (opening the user
+  modal), name, SAM active/locked, most recent source, and last seen (`fmt_ago`).
+  Optionally show the number of active projects, so a dormant user who still holds a
+  project stands out.
+- Filters: a window pill (`30d / 1y / 3y / never`), a source kind, and "active SAM
+  users only" (default on, via `read_active_only`). It uses the shared filter and
+  search-box macros, and `?` params make it deep-linkable.
+- Paginate on the status-DB side, then fetch those usernames' SAM rows in one
+  `IN (...)`. "Never seen" runs the other way (SAM users minus ledger usernames), so
+  it may want its own query path.
+- An xlsx export through `sam/export/` is the natural next step for deactivation
+  review.
+- Load `wire-dashboard-feature` before building either UI piece.
 
 ---
 
