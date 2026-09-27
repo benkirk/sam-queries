@@ -67,7 +67,7 @@ samuel_role
   samuel_role_id     INT AUTO_INCREMENT PK
   name               VARCHAR(40)  NOT NULL   UNIQUE KEY samuel_role_name
   description        VARCHAR(255) NULL
-  extends_role_id    INT NULL                -- single parent, depth ≤ 8, no cycles
+  extends_role_id    INT NULL                -- single parent, no cycles
   active             TINYINT(1) NOT NULL
   created_by, creation_time, modified_by, modified_time   (VARCHAR(35) / DATETIME, app clock)
 
@@ -233,3 +233,32 @@ Local webdev: `.env` `RBAC_SOURCE=db` + `sam-admin rbac --seed` to exercise the 
   lock as MySQL: two xdist workers creating one table raced on its sequence.
 - The Roles page uses inline forms and a server-side subject-type cascade, no modals
   and no script, so it adds nothing to `HTMX_FRAGMENT_SHELL_DEPS`.
+- The catalog API is `RoleCatalog.permissions(subject_type, name)` and
+  `facility_permissions(subject_type, name)` over two maps keyed by
+  `(subject_type, subject_name)` (`unscoped`, `scoped`), not the per-type `apikeys` /
+  `facility_groups` / `apikey_permissions` names in section 4. `group_subjects` and
+  `subjects(type)` are the only per-type views.
+- A retired `Permission` value in a row is skipped silently (`direct_permissions`,
+  `role_defs`, `grant_defs`), not dropped with a warning; `sam-admin rbac --diff` is
+  where it shows.
+- `MANAGE_SYSTEM_STATUS` and `MANAGE_CHARGE_SUMMARIES` are held by `api_collector`,
+  not withheld (section 4 lists them under `WITHHELD`).
+- The tests live in `tests/unit/models/test_rbac_catalog.py` and
+  `tests/unit/models/test_samuel_roles.py`, not `tests/unit/security/` (section 7).
+- The D6 "startup `logger.error`" is a TTL-cadence error, not a startup hook: `_db_catalog`
+  logs `nobody holds anything` each time it loads an empty catalog in `db` mode, one line
+  per minute per worker. The tile sits behind `VIEW_SYSTEM_CONFIG`, which nobody holds in
+  that state, so the log is the only signal.
+- A failed load rolls `db.session` back before serving the last-good snapshot: on
+  Postgres the aborted transaction would otherwise fail every later query in the request.
+- "An API key grant is never facility-scoped" is a `SamuelRoleGrant.create` rule, so the
+  CLI `--grant` refuses it too; the handler only maps the `ValueError`.
+
+## 13. Open items
+
+- The prod `collector` key holds `api_admin` (SYSTEM_ADMIN) because `sam-admin cache
+  --refresh` reuses it, which makes the collector credential an all-routes token in `db`
+  mode. Mint a dedicated cache-refresh key with `api_admin` and drop `api_admin` from
+  `collector`.
+- `--seed-keys` granted `api_legacy` to the XRAS key. Inert: `xras_api_required` passes no
+  `Permission`, so `api_key_allowed` never runs there. Harmless; leave it.

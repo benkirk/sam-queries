@@ -95,6 +95,12 @@ class TestGrantWrites:
             SamuelRoleGrant.create(session, subject_type='robot', subject_name='u', by='t',
                                    role=role)
 
+    def test_an_api_key_grant_is_never_facility_scoped(self, session, anchor):
+        role = make_samuel_role(session)
+        with pytest.raises(ValueError, match='facility'):
+            SamuelRoleGrant.create(session, subject_type='apikey', subject_name='k', by='t',
+                                   role=role, facility_name='WNA')
+
     def test_revoke_stamps_and_keeps_the_row(self, session, anchor):
         g = make_samuel_grant(session, permission=P.VIEW_USERS)
         g.revoke(by='t')

@@ -74,6 +74,24 @@ class TestSnapshot:
         rbac.invalidate_catalog()
         assert rbac.has_permission(_StubUser(username='root'), P.VIEW_USERS)
 
+    def test_load_error_rolls_the_session_back(self, db_mode, monkeypatch):
+        from webapp.extensions import db
+        calls = []
+
+        def boom():
+            raise RuntimeError('db down')
+        monkeypatch.setattr(rbac, '_load_db_catalog', boom)
+        monkeypatch.setattr(db.session, 'rollback', lambda: calls.append(1))
+        rbac.has_permission(_StubUser(username='root'), P.VIEW_USERS)
+        assert calls == [1]
+
+    def test_an_empty_catalog_is_logged(self, db_mode, monkeypatch, caplog):
+        monkeypatch.setattr(rbac, '_load_db_catalog',
+                            lambda: RoleCatalog(roles={}, unscoped={}, scoped={}, source='db'))
+        with caplog.at_level('ERROR'):
+            rbac.has_permission(_StubUser(username='root'), P.VIEW_USERS)
+        assert 'nobody holds anything' in caplog.text
+
     def test_defaults_are_not_a_fallback(self, db_mode, monkeypatch):
         monkeypatch.setattr(rbac, '_load_db_catalog',
                             lambda: RoleCatalog(roles={}, unscoped={}, scoped={}, source='db'))

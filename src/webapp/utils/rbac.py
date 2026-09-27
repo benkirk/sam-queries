@@ -71,12 +71,29 @@ def _db_catalog() -> RoleCatalog:
     except Exception:
         current_app.logger.error('samuel_role_* load failed; serving the last-good '
                                  'role catalog', exc_info=True)
+        _rollback_session()
         if _DB_CACHE['catalog'] is None:
             _DB_CACHE['catalog'] = RoleCatalog(roles={}, unscoped={}, scoped={}, source='db')
         return _DB_CACHE['catalog']
+    if not fresh.unscoped and not fresh.scoped:
+        # The tile that says this sits behind VIEW_SYSTEM_CONFIG, which nobody
+        # holds in this state, so the log is the only signal.
+        current_app.logger.error('RBAC_SOURCE=db and samuel_role_* hold no active grant: '
+                                 'nobody holds anything; seed with sam-admin rbac --seed')
     _DB_CACHE['at'] = now
     _DB_CACHE['catalog'] = fresh
     return fresh
+
+
+def _rollback_session() -> None:
+    """A failed load leaves Postgres in an aborted transaction; end it so the
+    request's later queries still run."""
+    try:
+        from webapp.extensions import db
+        db.session.rollback()
+    except Exception:
+        current_app.logger.warning('rollback after a samuel_role_* load failure failed',
+                                   exc_info=True)
 
 
 def active_catalog() -> RoleCatalog:
@@ -237,7 +254,7 @@ def can_impersonate(caller, target) -> bool:
 
 
 def has_role(user, role_name: str) -> bool:
-    """True if ``user`` belongs to the named ``GROUP_PERMISSIONS`` bundle.
+    """True if ``user`` belongs to a POSIX group the catalog names.
 
     Display logic only — authorization decisions use ``has_permission``.
     """

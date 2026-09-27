@@ -209,6 +209,8 @@ class SamuelRoleGrant(Base, SessionMixin):
         if not subject_name or len(subject_name) > _SUBJECT_MAX:
             raise ValueError('subject_name is required')
         facility_name = (facility_name or '').strip() or None
+        if facility_name and subject_type == 'apikey':
+            raise ValueError('an API key grant is never facility-scoped')
         if cls.find_active(session, subject_type=subject_type, subject_name=subject_name,
                            role=role, permission=permission, facility_name=facility_name):
             raise ValueError('that grant is already active')

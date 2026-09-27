@@ -72,7 +72,6 @@ class TestThePage:
 
     def test_a_deep_link_selects_the_tab(self, auth_client):
         html = auth_client.get(PAGE + '?tab=roles').get_data(as_text=True)
-        assert 'id="roles-tab"' in html and 'roles-tab"\n' not in html[:0]
         assert 'nav-link active" id="roles-tab"' in html
 
     def test_the_grants_card_renders_with_the_add_form(self, auth_client):
@@ -131,6 +130,12 @@ class TestValidationRerenders:
                                               'permission': 'view_users',
                                               'facility_name': 'ZZ-NOWHERE'})
         assert b'No facility named' in resp.data
+
+    def test_scoped_api_key_grant_is_refused_by_the_model(self, auth_client):
+        resp = auth_client.post(GRANTS, data={'subject_type': 'apikey', 'subject_name': 'collector',
+                                              'permission': 'view_users', 'facility_name': 'UNIV'})
+        assert resp.status_code == 200
+        assert b'never facility-scoped' in resp.data
 
     def test_bad_role_name(self, auth_client):
         resp = auth_client.post(ROLES, data={'name': 'has space'})

@@ -150,8 +150,6 @@ class _AddGrantHandler(FlattenedFieldErrors, HtmxFormHandler):
             if data['role'] is None or not data['role'].active:
                 raise FormError(f"No active role named {data['role_name']!r}.")
         if data.get('facility_name'):
-            if subject_type == 'apikey':
-                raise FormError('An API key grant is never facility-scoped.')
             if not db.session.query(Facility).filter(
                     Facility.facility_name == data['facility_name']).first():
                 raise FormError(f"No facility named {data['facility_name']!r}.")
