@@ -1,7 +1,8 @@
 # DB-backed RBAC: `samuel_role_*` tables and Admin -> Configuration -> Roles & access
 
-Status: approved plan, 2026-09-27. Building on branch `rbac-db-roles` (from
-`origin/staging` da3f9a2f), one PR to staging. The commit series is section 9; the
+Status: built through step 8 on branch `rbac-db-roles` (from `origin/staging`
+da3f9a2f), PR #640 to staging, 2026-09-27; steps 9-10 wait on the dev and prod
+DDL + seed. The commit series is section 9; the
 in-PR rollout, with the dispatch deploys to dev and prod, is section 10. Decisions
 resolved with Ben are in section 11. Deviations from this plan are recorded in
 section 12 as they happen.
