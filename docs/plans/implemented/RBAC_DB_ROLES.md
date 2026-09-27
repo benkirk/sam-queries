@@ -1,7 +1,7 @@
 # DB-backed RBAC: `samuel_role_*` tables and Admin -> Configuration -> Roles & access
 
-Status: **live in production in `db` mode since 2026-09-27 12:05 MDT** (PR #640,
-branch `rbac-db-roles` from `origin/staging` da3f9a2f). Section 10 records the
+Status: **live in production in `db` mode since 2026-09-27 12:05 MDT**; PR #640
+merged 2026-09-27 (branch `rbac-db-roles` from `origin/staging` da3f9a2f). Section 10 records the
 rollout as run; section 12 the deviations. The commit series is section 9; the
 in-PR rollout, with the dispatch deploys to dev and prod, is section 10. Decisions
 resolved with Ben are in section 11. Deviations from this plan are recorded in
@@ -169,11 +169,11 @@ untouched. Denials on the token path log the key name, never the route's caller 
 
 ## 8. Docs
 
-`docs/plans/RBAC_DB_ROLES.md` (this plan, house shape: Status/branch, Progress checklist, decisions, as-built); rewrite `docs/AUTHENTICATION.md` "Testing RBAC locally" (§241-267) and `src/webapp/README.md` RBAC sections (also fixes the stale `hsg`); `docs/TESTING.md:141`; CLAUDE.md: one paragraph under *Security / Integration*, `sam-admin rbac` line in the CLI block, the `RBAC_SOURCE` fail-safe, and the §8 note ("the Basic-Auth path bypasses the Permission check") rewritten as conditional; `api_auth.py` docstrings likewise; `helm/values.yaml` and `values-dev.yaml` `RBAC_SOURCE` set to `db` in commits 9–10.
+`docs/plans/implemented/RBAC_DB_ROLES.md` (this plan, house shape: Status/branch, Progress checklist, decisions, as-built); rewrite `docs/AUTHENTICATION.md` "Testing RBAC locally" (§241-267) and `src/webapp/README.md` RBAC sections (also fixes the stale `hsg`); `docs/TESTING.md:141`; CLAUDE.md: one paragraph under *Security / Integration*, `sam-admin rbac` line in the CLI block, the `RBAC_SOURCE` fail-safe, and the §8 note ("the Basic-Auth path bypasses the Permission check") rewritten as conditional; `api_auth.py` docstrings likewise; `helm/values.yaml` and `values-dev.yaml` `RBAC_SOURCE` set to `db` in commits 9–10.
 
 ## 9. Commit series (one PR → staging; the branch is deployed by dispatch before merge)
 
-1. docs: `docs/plans/RBAC_DB_ROLES.md`.
+1. docs: `docs/plans/implemented/RBAC_DB_ROLES.md`.
 2. Move `Permission` + `ALL_*` to `sam/security/permissions.py`; shim in `rbac.py` (suite green unedited).
 3. `rbac_catalog.py` + `DEFAULT_ROLES/GRANTS`; `rbac.py` dicts become derived; `RBAC_SOURCE`/`RBAC_DB_TTL` config; catalog-backed predicates; `AuthUser.roles` (suite green unedited except new tests).
 4. ORM models + DDL + `_BOOTSTRAP_TABLES` + anonymizer + schema pins + factories; regenerated LFS blob in its own commit.

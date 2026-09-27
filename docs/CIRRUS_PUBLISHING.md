@@ -21,7 +21,7 @@ workflow_dispatch ───────────►│ .github/workflows/    
                                 (tagged sha-<short>, latest, branch, semver)
 ```
 
-The two branches carry the same chart; `samuel-dev` reads it with `helm/values-dev.yaml` layered on top (see `docs/plans/K8S_DEV_ENVIRONMENT.md`).
+The two branches carry the same chart; `samuel-dev` reads it with `helm/values-dev.yaml` layered on top (see `docs/plans/implemented/K8S_DEV_ENVIRONMENT.md`).
 
 ## The pipeline
 
@@ -179,6 +179,6 @@ Find the ruleset ID with `gh api /repos/benkirk/sam-queries/rulesets`. This requ
 
 - Workflow: [`.github/workflows/build-images-cirrus-deploy.yaml`](../.github/workflows/build-images-cirrus-deploy.yaml)
 - Helm values: [`helm/values.yaml`](../helm/values.yaml) — `webapp.container.image` is the line `update-helm` rewrites; [`helm/values-dev.yaml`](../helm/values-dev.yaml) is layered on it for `samuel-dev`
-- Dev deployment: [`docs/plans/K8S_DEV_ENVIRONMENT.md`](plans/K8S_DEV_ENVIRONMENT.md)
+- Dev deployment: [`docs/plans/implemented/K8S_DEV_ENVIRONMENT.md`](plans/implemented/K8S_DEV_ENVIRONMENT.md)
 - k8s overview: [`docs/k8s.md`](k8s.md), [`docs/README-k8s.md`](README-k8s.md)
 - Staging environment (separate AWS ECS pipeline, not CIRRUS): [`docs/STAGING.md`](STAGING.md)

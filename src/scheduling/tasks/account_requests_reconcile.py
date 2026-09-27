@@ -9,7 +9,7 @@ when ``JIRA_ENABLED``, it learns help-desk ticket keys and refreshes their statu
 Writes only the database (the ticket pass only *reads* the tracker), so no
 ``dry_run`` branch: the runner's rollback is complete coverage. Never a tracker
 write: ``JIRA_WRITE_ENABLED`` is not in the CronJob. Design:
-docs/plans/implemented/ACCOUNT_REGISTRATION.md, docs/plans/TICKET_PROVIDER.md.
+docs/plans/implemented/ACCOUNT_REGISTRATION.md, docs/plans/implemented/TICKET_PROVIDER.md.
 """
 
 from __future__ import annotations

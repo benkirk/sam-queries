@@ -47,7 +47,7 @@ _DB_KEY_CACHE = {'at': None, 'map': {}}
 
 # Successful verifications, keyed (username, stored_hash, sha256(presented key))
 # -> monotonic time. bcrypt at cost 12 is ~260 ms of CPU per call and was the
-# whole per-request cost of an API-key hit (docs/plans/DEV_LOAD_CAMPAIGN.md).
+# whole per-request cost of an API-key hit (docs/plans/implemented/DEV_LOAD_CAMPAIGN.md).
 # Only successes are cached: a wrong key always pays full bcrypt, and rotating
 # a key changes stored_hash so old entries miss. Bounded, per worker process.
 _VERIFY_CACHE = {}

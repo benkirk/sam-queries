@@ -179,7 +179,7 @@ cheap, else NetworkPolicy alone gets ~90%. Drop the AVD-DS-0002 trivyignore.
   audit stream — exactly the events you want when internet-exposed [P1-10]
 - Healthcheck failures log as routine INFO 503; no alerting [P1-55] — readiness
   degradation (a secondary bind down) now logs WARNING (2026-09-13,
-  `docs/plans/CNPG_ROLL_RESILIENCE.md`); the primary-down 503 is still INFO
+  `docs/plans/implemented/CNPG_ROLL_RESILIENCE.md`); the primary-down 503 is still INFO
 
 **Fix**: audit logger → `StreamHandler(stdout)` so the cluster log pipeline captures it
 (cheapest durable option); emit audit events for login/logout/login-failure; add Sentry

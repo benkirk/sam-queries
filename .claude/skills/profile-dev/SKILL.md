@@ -17,7 +17,7 @@ with one captured browser session replayed at concurrency. The mechanics live in
 two scripts — `scripts/dev_capture_session.py` and `scripts/dev_session_load.py`
 — plus the two existing watchers. This skill carries the judgment they can't:
 which targets matter, how to read the per-request split, and the caveats already
-measured (recorded in `docs/plans/DEV_LOAD_CAMPAIGN.md`).
+measured (recorded in `docs/plans/implemented/DEV_LOAD_CAMPAIGN.md`).
 
 Work top to bottom. Step 1 captures a session; step 2 drives load; step 3 watches
 three sides and attributes cost; step 4 is the shape the numbers already take;
@@ -105,7 +105,7 @@ which hosts `sam_dev`, `system_status_dev` **and** the plugin stores.
 
 ## 4. The shape the numbers already take (measured)
 
-`docs/plans/DEV_LOAD_CAMPAIGN.md` is the record; the standing conclusions:
+`docs/plans/implemented/DEV_LOAD_CAMPAIGN.md` is the record; the standing conclusions:
 
 - **The cached surface is well designed.** Warm: `rm=served` dominates the
   rollups, ~42 req/s on `allocations_projects` at 32 clients, DB conns bounded,
@@ -145,4 +145,4 @@ which hosts `sam_dev`, `system_status_dev` **and** the plugin stores.
   query `sam_dev` for a broad one (§2).
 
 Dev-hammering constraints and the deploy/refresh mechanics:
-`docs/plans/K8S_DEV_ENVIRONMENT.md` § 6.5.
+`docs/plans/implemented/K8S_DEV_ENVIRONMENT.md` § 6.5.

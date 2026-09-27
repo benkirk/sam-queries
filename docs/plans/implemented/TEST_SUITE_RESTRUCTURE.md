@@ -1,6 +1,7 @@
 # Test suite restructure — handoff
 
-**Status:** planned 2026-09-18, not started. One PR, a series of commits, `--base staging`.
+**Status:** shipped in #579 (2026-09-19). Planned 2026-09-18 as one PR, a series of
+commits, `--base staging`.
 **For:** a fresh session. Everything needed is in this file; the research is not repeated
 elsewhere. Read "Findings" once, then execute "Commit series" in order.
 

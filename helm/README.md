@@ -14,7 +14,7 @@ only — the full deployment guides live elsewhere:
   there is no direct `helm upgrade` against either release. The dev
   release (`samuel-dev`) follows the same flow from `cirrus-dev`, applied by
   Argo CD application `sam-query-dev` into namespace `sam-queries-dev` (see
-  [docs/plans/K8S_DEV_ENVIRONMENT.md](../docs/plans/K8S_DEV_ENVIRONMENT.md)).
+  [docs/plans/implemented/K8S_DEV_ENVIRONMENT.md](../docs/plans/implemented/K8S_DEV_ENVIRONMENT.md)).
 
 ## Layout
 

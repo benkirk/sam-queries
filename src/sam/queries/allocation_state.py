@@ -5,7 +5,7 @@
 table rows; the hourly ``refresh_allocation_state`` task is its only writer.
 ``fresh_state`` is the read side: rows for a scope when they are fresh, with
 stale MPTT trees re-projected in memory. Not exported from ``sam.queries``:
-consumers import this module directly. Design: ``docs/plans/READ_MODEL.md``.
+consumers import this module directly. Design: ``docs/plans/implemented/READ_MODEL.md``.
 """
 import contextvars
 import logging

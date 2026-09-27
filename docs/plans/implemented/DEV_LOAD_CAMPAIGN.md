@@ -1,6 +1,7 @@
 # samuel-dev load campaign, 2026-09-13
 
-**Status: DONE (measurements). Findings A–F below are open hardening items.** First
+**Status: DONE (measurements), #560 and #565.** Findings A–F below are tracked as
+follow-up hardening items, not as open work on this plan. First
 laptop-driven load campaign against samuel-dev, watched on three sides at once
 (`scripts/cirrus_watch.sh --env dev`, the prod tick, and hpc-usage-queries'
 `cnpg_watch.sh`), ending with a CNPG switchover under load. Driver and raw CSVs

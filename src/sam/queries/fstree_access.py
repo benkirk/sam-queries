@@ -626,7 +626,7 @@ def get_fstree_data(
         else:
             subtree_infos.append(info)
 
-    # Read-model short-circuit (docs/plans/READ_MODEL.md): rows the hourly task
+    # Read-model short-circuit (docs/plans/implemented/READ_MODEL.md): rows the hourly task
     # wrote stand in for the rollup and the threshold-window queries below.
     state = _read_model_rows(session, alloc_infos, threshold_accounts)
 

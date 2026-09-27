@@ -54,7 +54,7 @@ Steady state is one line. Raise it only on a real signal:
   down. A csg-postgres roll or failover now shows as `readiness degraded
   (still serving)` WARNINGs in the pod log and a `degraded` `/ready` body,
   with zero 5xx (measured 2026-09-13: <1 s for a switchover, ~16 s for a
-  failover — `docs/plans/CNPG_ROLL_RESILIENCE.md`). A readiness 503 whose run
+  failover — `docs/plans/implemented/CNPG_ROLL_RESILIENCE.md`). A readiness 503 whose run
   line shows `sam=…ms/1q` succeeding means that fix regressed. Correlate any
   status-DB blip with the peer repo's `cnpg_watch.sh` (a `FAILOVER: primary
   X → Y` line during a known roll is the switchover).
@@ -88,7 +88,7 @@ known profile, the same call from a human is a user-facing stall — and read
 **Known-slow — do NOT re-flag:** `directory_access` ~6.9s, `fstree/Casper`
 ~3s DB plus an app-side tail that amplifies under load (measured; the old "~1.7s"
 was optimistic). Both are **under active investigation** —
-`docs/plans/FSTREE_LATENCY_INVESTIGATION.md` — so don't re-diagnose from scratch;
+`docs/plans/implemented/FSTREE_LATENCY_INVESTIGATION.md` — so don't re-diagnose from scratch;
 flag only a *material, sustained* worsening (running >5s across several
 consecutive ticks, not one spike). The script prints this reminder under the slow
 line for exactly this reason.

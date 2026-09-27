@@ -1,7 +1,9 @@
-# FY26 → FY27 Divisional Renew — PROD handoff (UNCOMMITTED working note)
+# FY26 → FY27 Divisional Renew — PROD handoff
 
-Status as of 2026-09-06. **This file is intentionally untracked** — a working
-checklist for the prod renew pass (planned next week). Do not commit.
+**Status: record** of the prod renew pass, written 2026-09-06 as its checklist. The
+replace-existing coverage gap it warned about was remediated 2026-09-22, and renew
+now truncates instead of deleting (`FY27_RENEW_TRUNCATE_REFACTOR.md`). The fstree
+No-Account and NERP0001 parity diffs are follow-ups, not work on this runbook.
 
 ## Prerequisite (BLOCKER)
 

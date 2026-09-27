@@ -177,7 +177,7 @@ automatically. Names are `<webapp.name>-<block>-credentials`:
 | `…-fs-db-credentials` | `csg/pg-appuser` | same | `FS_SCAN_PG_USER`, `FS_SCAN_PG_PASSWORD` |
 | `…-jh-credentials` | `csg/jh-api-token` | same | `JUPYTERHUB_API_TOKEN` |
 | `…-xras-api-credentials` | `csg/xras-api-key` | not synced | `XRAS_API_KEY` |
-| `…-jira-credentials` | `csg/sam-jira-token` | not synced | `JIRA_TOKEN` (ithelp PAT; `docs/plans/TICKET_PROVIDER.md` §8.4) |
+| `…-jira-credentials` | `csg/sam-jira-token` | not synced | `JIRA_TOKEN` (ithelp PAT; `docs/plans/implemented/TICKET_PROVIDER.md` §8.4) |
 | `…-oidc-credentials` | `csg/sam-oidc` | `csg/sam-dev-oidc` | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_ISSUER`, `FLASK_SECRET_KEY` |
 | `…-human-check-credentials` | `csg/sam-turnstile` | same | `HUMAN_CHECK_SITE_KEY`, `HUMAN_CHECK_SECRET_KEY` (setup: `docs/plans/implemented/ACCOUNT_REGISTRATION.md` §6.3) |
 
@@ -410,7 +410,7 @@ rendered with `helm/values-dev.yaml` on top of `values.yaml`: every object is na
 XRAS API key, and accepts only its own collector API key.
 `helm/tests/test-dev-render.sh` proves each of those and that the render shares
 no name, label, host or TLS secret with prod. Design, decisions and the
-outside-the-repo checklist: `docs/plans/K8S_DEV_ENVIRONMENT.md`.
+outside-the-repo checklist: `docs/plans/implemented/K8S_DEV_ENVIRONMENT.md`.
 
 ```bash
 gh workflow run "Publish Images and CIRRUS Deploy" --ref <branch>   # builds + pins cirrus-dev (docs/CIRRUS_PUBLISHING.md)

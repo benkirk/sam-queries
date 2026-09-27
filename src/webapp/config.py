@@ -196,7 +196,7 @@ class SAMWebappConfig(SAMConfig):
     ALLOCATION_USAGE_CACHE_TTL  = int(os.getenv('ALLOCATION_USAGE_CACHE_TTL', 3600))   # seconds
     ALLOCATION_USAGE_CACHE_SIZE = int(os.getenv('ALLOCATION_USAGE_CACHE_SIZE', 200))    # max entries
 
-    # Allocation read-model (docs/plans/READ_MODEL.md). Off by default: readers
+    # Allocation read-model (docs/plans/implemented/READ_MODEL.md). Off by default: readers
     # serve `account_allocation_state` rows only when this is on AND the rows
     # are younger than READ_MODEL_MAX_AGE seconds, else the live computation.
     READ_MODEL_ENABLED = os.getenv('READ_MODEL_ENABLED', '0').lower() in ('1', 'true', 'yes')
