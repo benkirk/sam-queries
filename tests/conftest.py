@@ -212,6 +212,7 @@ _UNIT_DOMAIN_MARKERS = {
     "models": "models",
     "queries": "queries",
     "manage": "manage",
+    "tickets": "tickets",
 }
 
 
