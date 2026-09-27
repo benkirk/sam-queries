@@ -289,8 +289,11 @@
                         {{ stat('Writes (JIRA_WRITE_ENABLED)', tk.write_enabled) }}
                         {{ stat('Token set', tk.token_set) }}
                         {{ stat('Base URL', tk.base_url) }}
-                        {{ stat('Project / desk / type', tk.project ~ ' / ' ~ tk.service_desk ~ ' / ' ~ tk.request_type) }}
-                        {{ stat('Labels', tk.labels or '—') }}
+                        {{ stat('Project', tk.project) }}
+                        {% for name, kind in (tk.kinds or {}).items() %}
+                        {{ stat(name ~ ': desk / type', kind.service_desk ~ ' / ' ~ kind.request_type) }}
+                        {{ stat(name ~ ': labels', kind.labels or '—') }}
+                        {% endfor %}
                         {% endif %}
                         {% if tk.unavailable %}
                         {{ stat('Linked tickets', 'unavailable — no external_ticket table') }}

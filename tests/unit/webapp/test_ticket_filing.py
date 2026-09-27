@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 
 from factories.tickets import FakeTicketProvider
 from sam import ExternalTicket
-from sam.integration.tickets import DEFAULT_AUTOMATION_NOTE, TicketSourceUnavailable
+from sam.integration.tickets import (DEFAULT_AUTOMATION_NOTE, TicketRejected,
+                                     TicketSourceUnavailable)
 from sam.notify.base import DeliveryResult
 
 
@@ -159,6 +160,45 @@ def test_an_outage_falls_back_to_mail_for_the_rest_of_the_request(app, ctx, mail
     assert len(provider.calls) == calls, 'the second filing skips the provider'
     assert len(mailer.mailed) == 2
     assert _links(app, row.account_request_id) == []
+
+
+def test_a_create_that_timed_out_after_filing_is_linked_not_mailed(app, ctx, mailer, provider):
+    """The desk commits, then the 5 s budget expires: the one duplicate-ticket path."""
+    from webapp.register.handoff_mail import send_ticket
+
+    def create_then_time_out(draft):
+        provider.add(draft.handle, key='FAKE-LATE')
+        raise TicketSourceUnavailable('POST ...: Read timed out')
+    provider.create = create_then_time_out
+    row = ctx()
+    result = send_ticket(row, requested_by='oper')
+    assert (result.status, result.detail) == ('sent', 'FAKE-LATE')
+    assert mailer.mailed == []
+    assert mailer.ledger.rows[0]['status'] == 'sent'
+    assert _links(app, row.account_request_id) == [('fake', 'created', 'oper')]
+    assert [op for op, _ in provider.calls] == ['find', 'find'], 'asked once more, then stopped'
+
+
+def test_a_rejected_create_mails_without_asking_again(ctx, mailer, provider):
+    from webapp.register.handoff_mail import send_ticket
+    provider.raise_with = TicketRejected('bad field', status=400)
+    provider.raise_on = ('create',)
+    send_ticket(ctx())
+    assert [op for op, _ in provider.calls] == ['find', 'create']
+    assert mailer.ledger.rows[0]['status'] == 'failed' and len(mailer.mailed) == 1
+
+
+def test_one_provider_serves_the_whole_request(ctx, mailer, monkeypatch):
+    from webapp.register.handoff_mail import send_ticket
+    built = []
+
+    def build(**_):
+        built.append(FakeTicketProvider(prefix='FAKE-G'))
+        return built[-1]
+    monkeypatch.setattr('sam.integration.tickets.registry.provider_from_environment', build)
+    send_ticket(ctx())
+    send_ticket(ctx('zz.ticket.filing2@example.invalid'))
+    assert len(built) == 1 and len(built[0].created) == 2
 
 
 def test_a_provider_bug_on_create_falls_back_too(ctx, mailer, provider):

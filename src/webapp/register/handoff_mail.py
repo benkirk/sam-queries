@@ -20,9 +20,10 @@ from flask import current_app, g
 from sqlalchemy.orm import Session
 
 from sam.core.account_requests import CREATED_BY_SELF, AccountRequest
-from sam.integration.tickets import (DEFAULT_AUTOMATION_NOTE, ExternalTicket,
-                                     TicketDraft, TicketNotConfigured,
-                                     TicketProvider, TicketRef,
+from sam.integration.tickets import (ACCOUNT_KIND, DEFAULT_AUTOMATION_NOTE,
+                                     ExternalTicket, TicketDraft,
+                                     TicketNotConfigured, TicketProvider,
+                                     TicketRef, TicketRejected,
                                      TicketSourceUnavailable)
 from sam.notify.base import Channel, DeliveryResult
 from sam.queries.account_notices import (build_receipt_message, build_ticket_message,
@@ -70,18 +71,24 @@ def send_ticket(row: AccountRequest, *, requested_by: str = CREATED_BY_SELF
 
 
 def ticket_provider() -> Optional[TicketProvider]:
-    """The provider armed for filing, or ``None`` for the mail path. After one
-    outage in a request (a roster files many) the rest of it goes to mail."""
+    """The provider armed for filing, or ``None`` for the mail path. Built once
+    per request (a roster files many, on one HTTP session); after one outage
+    the rest of the request goes to mail."""
     if g.get('ticket_provider_down'):
         return None
+    if 'ticket_provider' in g:
+        return g.ticket_provider
     # By path: the registry imports requests (sam/integration/tickets/__init__.py).
     from sam.integration.tickets.registry import provider_from_environment
     try:
         provider = provider_from_environment(interactive=True)
     except TicketNotConfigured as exc:
         logger.error('ticket provider: %s; filing by mail', exc)
-        return None
-    return provider if provider is not None and provider.write_configured else None
+        provider = None
+    if provider is not None and not provider.write_configured:
+        provider = None
+    g.ticket_provider = provider
+    return provider
 
 
 def _mail_ticket(row: AccountRequest, requested_by: str) -> Optional[DeliveryResult]:
@@ -130,18 +137,36 @@ def _file_ticket(provider: TicketProvider, row: AccountRequest,
         return None
 
     draft = TicketDraft(
-        handle=handle, summary=message.subject, body=rendered.text, link_url=link,
+        handle=handle, kind=ACCOUNT_KIND, summary=message.subject, body=rendered.text,
+        link_url=link,
         automation_note=f'{DEFAULT_AUTOMATION_NOTE} The request lives at {link}')
     try:
         ref = provider.create(draft)
     except Exception as exc:        # TicketSourceUnavailable, or a provider bug
-        ledger.resolve(log_id, status='failed', detail=f'{type(exc).__name__}: {exc}')
-        return _provider_down(rid, provider, exc)
+        ref = _filed_anyway(provider, handle, exc)
+        if ref is None:
+            ledger.resolve(log_id, status='failed', detail=f'{type(exc).__name__}: {exc}')
+            return _provider_down(rid, provider, exc)
+        logger.warning('request %s: create failed (%s) but %s carries %s; not mailing',
+                       rid, exc, ref.key, handle)
     ledger.resolve(log_id, status='sent', detail=ref.key)
     _link_ticket(provider, ref, rid, 'created', requested_by)
     logger.info('request %s: filed %s through %s', rid, ref.key, provider.name)
     return DeliveryResult(ok=True, status='sent', message=message, detail=ref.key,
                           log_id=log_id)
+
+
+def _filed_anyway(provider: TicketProvider, handle: str, exc: Exception
+                  ) -> Optional[TicketRef]:
+    """A create that timed out may have filed: the desk commits, then the 5 s
+    budget expires. Mailing on that would file a duplicate, so ask once. A 4xx
+    (``TicketRejected``) or a provider bug means nothing was filed."""
+    if not isinstance(exc, TicketSourceUnavailable) or isinstance(exc, TicketRejected):
+        return None
+    try:
+        return provider.find(handle)
+    except Exception:
+        return None
 
 
 def _provider_down(rid: int, provider: TicketProvider, exc: Exception) -> None:

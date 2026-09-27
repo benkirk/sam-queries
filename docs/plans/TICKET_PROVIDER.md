@@ -328,6 +328,20 @@ only), `JIRA_PROJECT_KEY` (`RC`), `JIRA_SERVICE_DESK_ID` (`3`),
 `JIRA_TIMEOUT` / `JIRA_CONNECT_TIMEOUT` / `JIRA_MAX_RETRIES` (10 / 3.05 / 3, the
 webapp create path overrides to 5 / 3.05 / 1).
 
+**Per-kind settings** (Ben, 2026-09-26, review of #636): a scalar request type
+is one ticket shape forever. `KINDS` in `tickets/base.py` (`('account',)`, the
+`sam.notify` `FAMILIES` shape) names every kind of ticket SAM files;
+`TicketDraft.kind` says which one a filing is. For each name,
+`JIRA_<KIND>_SERVICE_DESK_ID` / `JIRA_<KIND>_REQUEST_TYPE_ID` /
+`JIRA_<KIND>_LABELS` override the unsuffixed defaults above
+(`JiraConfig.kinds`, resolved once in `from_environment`; `for_kind(name)`;
+an unknown name is a `ValueError`, which the webapp's create path turns into
+the mail fallback). A second kind (a per-roster ticket, an allocation request)
+is one tuple entry plus its env: the provider needs no code. Kinds are
+write-side, so the CronJob's read-only key list does not carry them. Suffixed
+vars over one JSON map because every other SAM lever is a flat key, Helm and
+OpenBao quote them without ceremony, and the CronJob forwards by prefix.
+
 Modes: (a) mail only = all three off, unchanged from today; (b) mail plus
 read-only = `JIRA_ENABLED=1`; (c) API create with mail fallback = all three on.
 Production ships in (c) on Ben's PAT; `values-dev.yaml` ships in (a) with the
@@ -660,6 +674,13 @@ green on MySQL and Postgres; `helm/tests/test-cronjob-render.sh` and
 | card key link in the status cell (as text, since the cell was a collapse trigger) | the Status cell is no longer a collapse trigger, so the key links there too; queue rows are one line, with Kind (purpose, origin) and Ready (readiness, address, invitation) as glyphs whose words sit in `title`/`aria-label`; the full email is in the details | Ben's UX pass after the smoke; rows went from 69 px to 53 px |
 | — | the ticket's "Requested via" line names who verified the address: "self-registration (address vouched for by <operator>)" when an operator vouched | the builder keyed on who created the row, so a vouched self-registration claimed "email address verified" (seen on RC-40275, fixed on RC-40276) |
 | — | anonymizer purges `external_ticket`; healthcheck expects the Jira ExternalSecret on prod only; the notification detail modal shows a sent row's detail neutral, not red | the rows would orphan once `account_request` is purged; the key is recorded as the sent row's detail |
+| scalar `JIRA_REQUEST_TYPE_ID` | `TicketDraft.kind` + `KINDS` + `JIRA_<KIND>_*` overrides (§ 8.1) | Ben, review of #636: a second request type had no seam |
+| create failure → mail | a create that raised `TicketSourceUnavailable` (not `TicketRejected`) first asks `find(handle)` once; a hit is linked as `created` and nothing is mailed | the desk commits before the 5 s budget expires; mailing on that timeout filed a guaranteed duplicate |
+| `_JiraTransport.get`: 404 is `None` | only for `/issue/<key>` (`missing_ok`); on `/search` or `/myself` a 404 raises like any 4xx | a wrong `JIRA_BASE_URL` read as "no such ticket" everywhere and `check()` reported it healthy |
+| — | one provider (one HTTP session) per request, cached on `flask.g` beside the breaker | a 40-row roster built 40 sessions |
+| — | the task wraps `sync_tickets` in a broad except | a non-tracker error (JSON shape, missing table) would roll back the hour's fulfillment stamps |
+| — | `JIRA_USER` forwarded to the CronJob with `JIRA_AUTH` | under `basic` the hourly pass was silently `skipped` |
+| the "closed without an account" warning on any closed ticket | only while the request is `submitted`/`claimed` | a rejected request whose ticket the desk cancelled is the correct outcome |
 
 Behavior worth knowing:
 

@@ -24,6 +24,11 @@ DEFAULT_AUTOMATION_NOTE = (
     'API token, not by hand; the reporter shown is the token owner. Replies '
     'here reach this queue, not SAM.')
 
+#: The kinds of ticket SAM files. A provider keys its per-kind settings
+#: (request type, desk, labels) on these names, like ``sam.notify`` families.
+ACCOUNT_KIND = 'account'
+KINDS: Tuple[str, ...] = (ACCOUNT_KIND,)
+
 
 class TicketSourceUnavailable(Exception):
     """The tracker could not be reached, or did not answer usefully."""
@@ -46,11 +51,13 @@ class TicketRejected(TicketSourceUnavailable):
 @dataclass(frozen=True)
 class TicketDraft:
     """What a caller asks a provider to file. ``handle`` is the lookup token
-    already in ``summary`` (``SAM-AR-12``); ``body`` is plain text."""
+    already in ``summary`` (``SAM-AR-12``); ``body`` is plain text; ``kind``
+    is a :data:`KINDS` name and selects the provider's request type."""
 
     handle: str
     summary: str
     body: str
+    kind: str = ACCOUNT_KIND
     link_url: str = ''
     labels: Tuple[str, ...] = ()
     on_behalf_of: str = ''

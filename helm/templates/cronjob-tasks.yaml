@@ -227,6 +227,8 @@ spec:
                 value: {{ .Values.webapp.env.JIRA_BASE_URL | quote }}
               - name: JIRA_AUTH
                 value: {{ .Values.webapp.env.JIRA_AUTH | quote }}
+              - name: JIRA_USER
+                value: {{ .Values.webapp.env.JIRA_USER | default "" | quote }}
               - name: JIRA_PROJECT_KEY
                 value: {{ .Values.webapp.env.JIRA_PROJECT_KEY | quote }}
               - name: JIRA_SERVICE_DESK_ID

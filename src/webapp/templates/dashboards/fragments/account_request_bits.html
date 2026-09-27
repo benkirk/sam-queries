@@ -103,7 +103,7 @@
 {%- endif -%}
 {%- if t %} {% if t.url %}<a href="{{ t.url }}" target="_blank" rel="noopener" class="font-monospace small" title="Help-desk ticket{% if t.status %}: {{ t.status }}{% endif %}">{{ t.key }}</a>{% else %}<span class="font-monospace small text-body-secondary">{{ t.key }}</span>{% endif -%}
 {%- if v.tickets | length > 1 %}<small class="text-body-secondary" title="{{ v.tickets | length }} tickets carry this request's handle">+{{ v.tickets | length - 1 }}</small>{% endif -%}
-{%- if t.closed_at and not r.fulfilled_at %} {{ _icon('fa-solid fa-triangle-exclamation text-warning-emphasis', 'The desk closed ' ~ t.key ~ ' on ' ~ (t.closed_at | fmt_date) ~ ' and no SAM account holds this address yet: closed without an account') }}{% endif -%}
+{%- if t.closed_at and not r.fulfilled_at and r.state in ('submitted', 'claimed') %} {{ _icon('fa-solid fa-triangle-exclamation text-warning-emphasis', 'The desk closed ' ~ t.key ~ ' on ' ~ (t.closed_at | fmt_date) ~ ' and no SAM account holds this address yet: closed without an account') }}{% endif -%}
 {%- endif -%}
 {%- if r.requested_at %} {{ _icon('fa-solid fa-paper-plane text-body-secondary', 'Included in a digest to NUSD ' ~ (r.requested_at | fmt_date)) }}{% endif -%}
 </span>

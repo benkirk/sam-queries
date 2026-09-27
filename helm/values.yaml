@@ -403,6 +403,9 @@ webapp:
     JIRA_BASE_URL: "https://ithelp.ucar.edu"
     JIRA_AUTH: "bearer"                   # "basic" + JIRA_USER on Jira Cloud
     JIRA_PROJECT_KEY: "RC"
+    # Desk / type / labels are the defaults for every ticket kind (KINDS in
+    # sam/integration/tickets/base.py); JIRA_<KIND>_{SERVICE_DESK_ID,REQUEST_TYPE_ID,LABELS}
+    # overrides one kind, e.g. JIRA_ACCOUNT_REQUEST_TYPE_ID. Webapp-only: kinds are write-side.
     JIRA_SERVICE_DESK_ID: "3"
     JIRA_REQUEST_TYPE_ID: "20"            # "Add a user"
     JIRA_LABELS: "sam-account-request"

@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 from urllib.parse import quote
 
@@ -22,7 +22,7 @@ import requests
 
 from sam.integration._config import (config_bool, config_float, config_int,
                                      config_str)
-from sam.integration.tickets.base import (TicketDraft, TicketProvider,
+from sam.integration.tickets.base import (KINDS, TicketDraft, TicketProvider,
                                           TicketRef,
                                           TicketRejected,
                                           TicketSourceUnavailable)
@@ -44,9 +44,37 @@ BASIC = 'basic'
 AUTH_MODES = (BEARER, BASIC)
 
 
+def _split_labels(raw: str) -> Tuple[str, ...]:
+    return tuple(x for x in re.split(r'[\s,]+', raw) if x)
+
+
+@dataclass(frozen=True)
+class JiraKind:
+    """Where one :data:`KINDS` name files: ``JIRA_<KIND>_{SERVICE_DESK_ID,
+    REQUEST_TYPE_ID,LABELS}``, each falling back to the unsuffixed default."""
+
+    service_desk_id: str
+    request_type_id: str
+    labels: Tuple[str, ...]
+
+    @classmethod
+    def from_environment(cls, kind: str, default: 'JiraKind') -> 'JiraKind':
+        prefix = f'JIRA_{kind.upper()}_'
+        labels = config_str(f'{prefix}LABELS', '')
+        return cls(
+            service_desk_id=config_str(f'{prefix}SERVICE_DESK_ID', '') or default.service_desk_id,
+            request_type_id=config_str(f'{prefix}REQUEST_TYPE_ID', '') or default.request_type_id,
+            labels=_split_labels(labels) if labels else default.labels)
+
+    def summary(self) -> Dict[str, str]:
+        return {'service_desk': self.service_desk_id, 'request_type': self.request_type_id,
+                'labels': ', '.join(self.labels)}
+
+
 @dataclass(frozen=True)
 class JiraConfig:
-    """A snapshot of ``JIRA_*`` config, resolved at construction."""
+    """A snapshot of ``JIRA_*`` config, resolved at construction. The unsuffixed
+    desk / type / labels are the defaults every kind in ``kinds`` falls back to."""
 
     enabled: bool = False
     write_enabled: bool = False
@@ -61,12 +89,12 @@ class JiraConfig:
     timeout: float = DEFAULT_TIMEOUT
     connect_timeout: float = DEFAULT_CONNECT_TIMEOUT
     max_retries: int = DEFAULT_MAX_RETRIES
+    kinds: Mapping[str, JiraKind] = field(default_factory=dict)
 
     @classmethod
     def from_environment(cls) -> 'JiraConfig':
         auth = config_str('JIRA_AUTH', BEARER).lower()
-        labels = config_str('JIRA_LABELS', DEFAULT_LABELS)
-        return cls(
+        config = cls(
             enabled=config_bool('JIRA_ENABLED', False),
             write_enabled=config_bool('JIRA_WRITE_ENABLED', False),
             base_url=(config_str('JIRA_BASE_URL', DEFAULT_BASE_URL)
@@ -79,11 +107,20 @@ class JiraConfig:
                              or DEFAULT_SERVICE_DESK_ID),
             request_type_id=(config_str('JIRA_REQUEST_TYPE_ID', DEFAULT_REQUEST_TYPE_ID)
                              or DEFAULT_REQUEST_TYPE_ID),
-            labels=tuple(x for x in re.split(r'[\s,]+', labels) if x),
+            labels=_split_labels(config_str('JIRA_LABELS', DEFAULT_LABELS)),
             timeout=config_float('JIRA_TIMEOUT', DEFAULT_TIMEOUT),
             connect_timeout=config_float('JIRA_CONNECT_TIMEOUT', DEFAULT_CONNECT_TIMEOUT),
             max_retries=config_int('JIRA_MAX_RETRIES', DEFAULT_MAX_RETRIES),
         )
+        default = JiraKind(config.service_desk_id, config.request_type_id, config.labels)
+        return replace(config, kinds={k: JiraKind.from_environment(k, default) for k in KINDS})
+
+    def for_kind(self, kind: str) -> JiraKind:
+        """Raises ``ValueError`` for a name not in :data:`KINDS` (a caller bug)."""
+        if kind not in KINDS:
+            raise ValueError(f'unknown ticket kind {kind!r}; expected one of {", ".join(KINDS)}')
+        return self.kinds.get(kind) or JiraKind(self.service_desk_id, self.request_type_id,
+                                                self.labels)
 
     def interactive(self) -> 'JiraConfig':
         """The webapp budget: at most 5 s read, one attempt."""
@@ -117,6 +154,7 @@ class JiraConfig:
             'max_retries': self.max_retries,
             'configured': self.configured,
             'write_configured': self.write_configured,
+            'kinds': {k: self.for_kind(k).summary() for k in KINDS},
         }
 
 
@@ -164,9 +202,11 @@ class _JiraTransport:
         return TicketRejected(f'{method} {url} -> HTTP {status}: {reason}',
                               status=status, errors=errors)
 
-    def get(self, path: str, *, params: Optional[Mapping[str, Any]] = None
-            ) -> Optional[Any]:
-        """Parsed JSON, or ``None`` on 404. Retries socket errors and 5xx."""
+    def get(self, path: str, *, params: Optional[Mapping[str, Any]] = None,
+            missing_ok: bool = False) -> Optional[Any]:
+        """Parsed JSON. A 404 is ``None`` only with ``missing_ok`` (an issue that
+        is gone); on a search or probe path it is a misconfiguration and raises.
+        Retries socket errors and 5xx."""
         url = self._url(path)
         last: Optional[Exception] = None
         attempts = max(1, self.config.max_retries)
@@ -178,7 +218,7 @@ class _JiraTransport:
                 last = exc
             else:
                 status = response.status_code
-                if status == 404:
+                if status == 404 and missing_ok:
                     return None
                 if 400 <= status < 500:
                     raise self._reject('GET', url, response)
@@ -275,9 +315,10 @@ class JiraServiceDeskProvider(TicketProvider):
 
     def create(self, draft: TicketDraft) -> TicketRef:
         self.guard_write()
+        spec = self.config.for_kind(draft.kind)
         payload: Dict[str, Any] = {
-            'serviceDeskId': self.config.service_desk_id,
-            'requestTypeId': self.config.request_type_id,
+            'serviceDeskId': spec.service_desk_id,
+            'requestTypeId': spec.request_type_id,
             'requestFieldValues': {'summary': draft.summary,
                                    'description': self.description(draft)},
         }
@@ -290,7 +331,7 @@ class JiraServiceDeskProvider(TicketProvider):
             raise TicketSourceUnavailable('JSM create answered without an issueKey')
         status = ((data.get('currentStatus') or {}).get('status') or '')
         logger.info('jira: filed %s (%s)', key, draft.handle)
-        self._add_labels(key, tuple(dict.fromkeys(self.config.labels + draft.labels)))
+        self._add_labels(key, tuple(dict.fromkeys(spec.labels + draft.labels)))
         self.post_automation_note(key, draft)
         return TicketRef(key=key, url=self.browse_url(key), status=status, closed=False)
 
@@ -312,7 +353,7 @@ class JiraServiceDeskProvider(TicketProvider):
     def get(self, key: str) -> Optional[TicketRef]:
         self.guard_read()
         data = self.transport.get(f'/rest/api/2/issue/{quote(key)}',
-                                  params={'fields': 'status'})
+                                  params={'fields': 'status'}, missing_ok=True)
         if not data:
             return None
         return self._ref(data)
@@ -354,4 +395,4 @@ class JiraServiceDeskProvider(TicketProvider):
                          closed=(category == 'done') if category else None)
 
 
-__all__ = ['JiraConfig', 'JiraServiceDeskProvider']
+__all__ = ['JiraConfig', 'JiraKind', 'JiraServiceDeskProvider']

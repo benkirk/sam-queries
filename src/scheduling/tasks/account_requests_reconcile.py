@@ -64,9 +64,14 @@ def account_requests_reconcile(ctx) -> TaskResult:
                     'fulfilled, %(enrolled)d enrolled, %(enroll_failed)d '
                     'enrollment failure(s), %(purged)d purged', counts)
 
-    # Fail-open: a tracker outage is a line in the detail, never a red Job.
+    # Fail-open: the pass handles a tracker outage itself; anything else (a JSON
+    # shape, a DB without external_ticket) must not roll back the stamps above.
     from sam.integration.tickets.learn import describe, sync_tickets
-    tickets = sync_tickets(ctx.sam_session, clock=clock, limit=ticket_lookup_max())
+    try:
+        tickets = sync_tickets(ctx.sam_session, clock=clock, limit=ticket_lookup_max())
+    except Exception as exc:                          # noqa: BLE001
+        ctx.logger.exception('account requests: ticket pass failed')
+        tickets = {'skipped': True, 'reason': f'{type(exc).__name__}: {exc}'}
     ctx.logger.info('account requests: %s', describe(tickets))
     return TaskResult(
         detail={**counts, 'purge_days': days, 'clock': clock.isoformat(),

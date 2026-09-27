@@ -144,6 +144,23 @@ class TestTheTicketPass:
         assert result.state == 'succeeded'
         assert result.detail['tickets']['providers']['fake']['learn']['error'] == 'ithelp down'
 
+    def test_a_non_tracker_error_is_not_a_red_job_either(self, ctx, session, monkeypatch):
+        """A JSON-shape surprise or a DB without external_ticket must not roll
+        back the fulfillment stamps made in the same run."""
+        from sam.integration.tickets import learn
+        row = make_account_request(session, email='still@example.edu')
+        make_email_address(session, make_user(session), email='still@example.edu')
+
+        def boom(*a, **k):
+            raise AttributeError("'list' object has no attribute 'get'")
+        monkeypatch.setattr(learn, 'sync_tickets', boom)
+        result = mod.account_requests_reconcile(ctx())
+        assert result.state == 'succeeded' and result.detail['fulfilled'] == 1
+        assert row.fulfilled_at is not None
+        assert result.detail['tickets'] == {
+            'skipped': True, 'reason': "AttributeError: 'list' object has no attribute 'get'"}
+        assert 'tickets skipped (AttributeError' in result.message
+
     @pytest.mark.parametrize('raw,expected', [(None, 50), ('0', 50), ('40', 40)])
     def test_the_lookup_knob(self, raw, expected):
         env = {} if raw is None else {'SAM_TASKS_TICKET_LOOKUP_MAX': raw}

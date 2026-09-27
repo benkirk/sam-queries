@@ -83,7 +83,8 @@ class TestConfigurationTile:
         html = auth_client.get(CONFIG_URL).get_data(as_text=True)
         assert 'zz-sekrit-pat' not in html
         section = html[html.index('Help-desk tickets'):][:3000]
-        assert 'API create, mail fallback' in section and 'RC / 3 / 20' in section
+        assert 'API create, mail fallback' in section
+        assert 'account: desk / type' in section and '3 / 20' in section, 'one row per kind'
 
     def test_reads_alone_learn_keys(self, auth_client, monkeypatch):
         monkeypatch.setenv('JIRA_ENABLED', '1')

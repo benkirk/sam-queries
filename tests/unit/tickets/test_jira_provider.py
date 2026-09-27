@@ -8,8 +8,8 @@ import requests
 from sam.integration.tickets import (DEFAULT_AUTOMATION_NOTE, TicketDraft,
                                      TicketNotConfigured, TicketRejected,
                                      TicketSourceUnavailable)
-from sam.integration.tickets.jira import (JiraConfig, JiraServiceDeskProvider,
-                                          _JiraTransport)
+from sam.integration.tickets.jira import (JiraConfig, JiraKind,
+                                          JiraServiceDeskProvider, _JiraTransport)
 
 BASE = 'https://ithelp.example.invalid'
 DRAFT = TicketDraft(handle='SAM-AR-12', summary="New HPC User Request 'A B' [SAM-AR-12]",
@@ -70,6 +70,34 @@ class TestConfig:
         assert JiraConfig.from_environment().labels == ('a', 'b', 'c')
 
 
+class TestKinds:
+    """Per-kind desk / type / labels: JIRA_<KIND>_* over the unsuffixed defaults."""
+
+    def test_the_account_kind_is_the_defaults_when_nothing_is_suffixed(self):
+        cfg = JiraConfig.from_environment()
+        assert cfg.for_kind('account') == JiraKind('3', '20', ('sam-account-request',))
+        assert set(cfg.kinds) == {'account'}
+
+    def test_a_suffixed_key_overrides_one_field_and_the_rest_fall_back(self, monkeypatch):
+        monkeypatch.setenv('JIRA_ACCOUNT_REQUEST_TYPE_ID', '21')
+        monkeypatch.setenv('JIRA_ACCOUNT_LABELS', 'x y')
+        assert JiraConfig.from_environment().for_kind('account') == JiraKind('3', '21', ('x', 'y'))
+
+    def test_a_directly_built_config_resolves_kinds_from_its_defaults(self):
+        cfg = JiraConfig(service_desk_id='7', request_type_id='8', labels=('l',))
+        assert cfg.for_kind('account') == JiraKind('7', '8', ('l',))
+        assert cfg.interactive().for_kind('account') == cfg.for_kind('account')
+
+    def test_an_unknown_kind_is_a_caller_bug(self):
+        with pytest.raises(ValueError, match="unknown ticket kind 'roster'"):
+            JiraConfig().for_kind('roster')
+
+    def test_the_summary_carries_every_kind(self):
+        assert JiraConfig().summary()['kinds'] == {
+            'account': {'service_desk': '3', 'request_type': '20',
+                        'labels': 'sam-account-request'}}
+
+
 class TestAuth:
     def test_bearer_by_default(self):
         transport = _JiraTransport(JiraConfig(token='t0k'))
@@ -108,6 +136,21 @@ class TestCreate:
         (m3, u3), k3 = mock.call_args_list[2][0], mock.call_args_list[2][1]
         assert (m3, u3) == ('POST', f'{BASE}/rest/servicedeskapi/request/RC-9/comment')
         assert k3['json'] == {'body': DEFAULT_AUTOMATION_NOTE, 'public': False}
+
+    def test_the_kind_selects_desk_type_and_labels(self):
+        kinds = {'account': JiraKind('9', '77', ('per-kind',))}
+        provider, mock = _provider(_response(201, {'issueKey': 'RC-1'}), _response(204),
+                                   _response(201, {}), kinds=kinds)
+        provider.create(DRAFT)
+        body = mock.call_args_list[0][1]['json']
+        assert (body['serviceDeskId'], body['requestTypeId']) == ('9', '77')
+        assert mock.call_args_list[1][1]['json'] == {'update': {'labels': [{'add': 'per-kind'}]}}
+
+    def test_an_unknown_kind_raises_before_any_call(self):
+        provider, mock = _provider()
+        with pytest.raises(ValueError, match='unknown ticket kind'):
+            provider.create(TicketDraft('h', 's', 'b', kind='roster'))
+        mock.assert_not_called()
 
     def test_on_behalf_of_is_sent_only_when_set(self):
         from dataclasses import replace
@@ -241,6 +284,11 @@ class TestFind:
         with pytest.raises(TicketRejected, match='bad jql'):
             provider.find('SAM-AR-12')
 
+    def test_a_404_on_the_search_path_is_a_misconfiguration_not_a_miss(self):
+        provider, _ = _provider(_response(404, {}))
+        with pytest.raises(TicketSourceUnavailable, match='HTTP 404'):
+            provider.find('SAM-AR-12')
+
 
 class TestCommentAndCheck:
     def test_a_public_comment(self):
@@ -256,6 +304,11 @@ class TestCommentAndCheck:
         provider, _ = _provider(_response(401, {}))
         ok, why = provider.check()
         assert not ok and 'token rejected' in why
+
+    def test_check_reports_a_wrong_base_url(self):
+        provider, _ = _provider(_response(404, {}))
+        ok, why = provider.check()
+        assert not ok and 'HTTP 404' in why
 
     def test_check_unconfigured(self):
         ok, why = JiraServiceDeskProvider(JiraConfig()).check()
