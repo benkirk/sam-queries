@@ -107,6 +107,11 @@ class TicketProvider(ABC):
     def browse_url(self, key: str) -> str:
         """The human URL for ``key``. No I/O."""
 
+    @property
+    def destination(self) -> str:
+        """Where filings land, for the ledger's recipient column."""
+        return self.name
+
     def find(self, handle: str) -> Optional[TicketRef]:
         """The oldest ticket whose summary carries ``handle``; ``None`` if none."""
         return None

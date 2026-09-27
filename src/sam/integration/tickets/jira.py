@@ -254,6 +254,10 @@ class JiraServiceDeskProvider(TicketProvider):
     def write_configured(self) -> bool:
         return self.config.write_configured
 
+    @property
+    def destination(self) -> str:
+        return self.config.project_key
+
     def summary(self) -> Dict[str, Any]:
         return {'provider': self.name, **self.config.summary()}
 
