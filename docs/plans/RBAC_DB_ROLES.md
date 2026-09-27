@@ -17,7 +17,7 @@ section 12 as they happen.
 - [x] 6. Roles page: schemas, handlers, routes, templates, nav, tile, route-map snapshot, page tests.
 - [x] 7. API keys as a grant subject; token-path enforcement in `db` mode; the `api_*` roles.
 - [x] 8. Docs rewrite, CLAUDE.md, `api_auth.py` docstrings.
-- [ ] 9. Dev flip (`values-dev.yaml` `RBAC_SOURCE: "db"`), after the dev DDL + seed.
+- [x] 9. Dev flip (`values-dev.yaml` `RBAC_SOURCE: "db"`), after the dev DDL + seed.
 - [ ] 10. Prod flip (`values.yaml`), after the prod DDL + seed; merge after prod runs it.
 
 **One PR to staging** carrying the code, the DDL, the prod role seed (users, groups, API
@@ -188,7 +188,7 @@ untouched. Denials on the token path log the key name, never the route's caller 
 
 1. Push commits 1–8. CI green on MySQL and Postgres. Dispatch the branch to **dev** (`gh workflow run "Publish Images and CIRRUS Deploy" --ref rbac-db-roles`): dev runs the new code with `RBAC_SOURCE=defaults`, behavior identical. `cirrus_watch --env dev` quiet.
 2. Dev tables: `make refresh-dev` builds `samuel_role_*` from the ORM on `sam_dev`. Seed: `sam-admin rbac --seed` then `--seed-keys` against `sam_dev` (`SAM_DEV_PG_*` env); `--effective benkirk`, `--effective sureshm`, `--keys` shows every key granted; grant the collector and cache-refresh keys their `api_*` roles via `--grant`.
-3. Commit 9 (dev flip); dispatch dev again. Verify: login as benkirk (OIDC) reaches Admin → Configuration, tile reads source = database, keys without a grant 0; Roles page add/revoke round trip; `sam-admin cache --refresh --env dev` works through the API key; collectors keep posting (status page updates; `cirrus_watch --env dev` shows no `/api/` 401/403). Soak at least one collector cycle and one XRAS sweep.
+3. Commit 9 (dev flip, `d6f21c63`); dispatch dev again. **Done 2026-09-27**: seeded through `kubectl exec` (9 roles, `--diff` clean, `collector` also granted `api_admin` because `sam-admin cache --refresh` uses that key); on `sha-d6f21c6` with `RBAC_SOURCE=db` the collector key gets 200 on `/api/v1/queue/` and on the cache refresh, a bogus key 401, tick clean. Verify: login as benkirk (OIDC) reaches Admin → Configuration, tile reads source = database, keys without a grant 0; Roles page add/revoke round trip; `sam-admin cache --refresh --env dev` works through the API key; collectors keep posting (status page updates; `cirrus_watch --env dev` shows no `/api/` 401/403). Soak at least one collector cycle and one XRAS sweep.
 4. Browser smoke of the page at 3 layouts × 2 themes on dev; fix-ups as further commits, re-dispatch.
 5. Prod DDL (**prompt**): `mysql -u "$PROD_SAM_DB_USERNAME" -h sam-sql.ucar.edu -p sam < scripts/sql/create_samuel_roles.sql`; the script's verification SELECTs match. **Done 2026-09-27** (hpc-writer; 0/0/0 rows, 9/2/11 columns, 0 FKs), ahead of the dev steps so `everything-coherent` carries the empty tables into every copy.
 6. Prod seed (**prompt**): `sam-admin rbac --seed`, `--seed-keys`, then `--keys` and `--grant` for the collector and cache-refresh keys, `--effective benkirk`, `--diff` empty. Prod is still running the pre-flip image, so nothing changes yet.
