@@ -23,6 +23,7 @@ from cli.project.commands import (
 from cli.accounting.commands import AccountingAdminCommand
 from cli.accounting.dates import _validate_accounting_dates, _resolve_accounting_dates
 from cli.contracts.commands import ContractsAuditCommand
+from cli.last_seen.commands import LastSeenCommand
 from cli.security.commands import RbacCommand
 from cli.tasks.commands import TasksCommand
 from cli.xras.commands import XrasCommand
@@ -943,6 +944,23 @@ def tasks(ctx: Context, list_tasks, run_due, run, history, task, limit,
         force=force,
         occurrence=occurrence,
     ))
+
+
+@cli.command('last-seen')
+@click.argument('username', required=False)
+@click.option('--backfill', is_flag=True,
+              help='Seed the pbs sources from SAM charge summaries (comp, dav, hpc); idempotent')
+@click.option('--dry-run', is_flag=True, help='[backfill] Read and report; write nothing')
+@pass_context
+def last_seen(ctx: Context, username, backfill, dry_run):
+    """When a user was last seen, per source (the system_status ledger)."""
+    if bool(username) == backfill:
+        ctx.console.print('Error: give a USERNAME or --backfill, not both', style='bold red')
+        sys.exit(EXIT_ERROR)
+    if dry_run and not backfill:
+        ctx.console.print('Error: --dry-run requires --backfill', style='bold red')
+        sys.exit(EXIT_ERROR)
+    sys.exit(LastSeenCommand(ctx).execute(username=username, backfill=backfill, dry_run=dry_run))
 
 
 @cli.command()

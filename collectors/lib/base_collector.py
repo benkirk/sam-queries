@@ -109,12 +109,16 @@ class BaseCollector:
             login_nodes = self.login_collector.collect_login_node_data(
                 self.config.login_nodes
             )
+            # Per-node process owners become one system-wide set for the last-seen ledger.
+            data['login_users'] = sorted(set().union(*(n.pop('users', ()) for n in login_nodes)))
             data['login_nodes'] = login_nodes
             available = sum(1 for n in login_nodes if n.get('available'))
-            self.logger.info(f"  Login nodes: {available}/{len(login_nodes)} available")
+            self.logger.info(f"  Login nodes: {available}/{len(login_nodes)} available, "
+                             f"{len(data['login_users'])} users with processes")
         except Exception as e:
             self.logger.error(f"Failed to collect login node data: {e}")
             data['login_nodes'] = []
+            data['login_users'] = []
 
     def _collect_filesystem_data(self, data: dict):
         """Collect common filesystem data."""

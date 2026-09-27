@@ -311,6 +311,9 @@ class JupyterHubCollector(BaseCollector):
             data['casper_batch_jobs'] = stats['casper_batch_jobs']
             data['derecho_batch_jobs'] = stats['derecho_batch_jobs']
             data['jobs_suspended'] = stats['broken_jobs']  # broken_jobs stored as jobs_suspended
+            # Feeds the server's last-seen ledger; last_activity is the hub's own ISO-8601 UTC stamp.
+            data['users'] = [{'name': u['name'], 'last_activity': u.get('last_activity')}
+                             for u in users if u.get('name')]
 
             self.logger.info(f"  Active sessions: {data['active_sessions']}")
             self.logger.info(f"  Active users: {data['active_users']}")

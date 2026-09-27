@@ -21,6 +21,7 @@ from system_status import (
     FilesystemStatus,
     UserProjQueueStatus,
     UserDef,
+    UserLastSeen,
     ProjectCodeDef,
 )
 
@@ -755,3 +756,88 @@ class TestOutageEndpointValidation:
         response = api_key_client.post('/api/v1/status/outage', json=bad)
         assert response.status_code == 400
         assert 'start_time' in response.get_json()['error']
+
+
+# ============================================================================
+# Last-seen ledger fed by ingest
+# ============================================================================
+
+_DERECHO_BASE = {
+    'cpu_nodes_total': 100, 'cpu_nodes_available': 80, 'cpu_nodes_down': 5, 'cpu_nodes_reserved': 15,
+    'gpu_nodes_total': 10, 'gpu_nodes_available': 8, 'gpu_nodes_down': 0, 'gpu_nodes_reserved': 2,
+    'cpu_cores_total': 12800, 'cpu_cores_allocated': 10000, 'cpu_cores_idle': 2800,
+    'gpu_count_total': 80, 'gpu_count_allocated': 60, 'gpu_count_idle': 20,
+    'memory_total_gb': 25600.0, 'memory_allocated_gb': 20000.0,
+    'running_jobs': 1, 'pending_jobs': 0, 'active_users': 1,
+}
+
+
+def _seen(session, kind, system):
+    from system_status import AccessSource, System
+    rows = (session.query(UserDef.username, UserLastSeen.last_seen)
+            .join(UserLastSeen.user).join(UserLastSeen.source).join(AccessSource.system)
+            .filter(AccessSource.kind == kind, System.name == system).all())
+    return dict(rows)
+
+
+class TestLastSeenIngest:
+
+    def test_derecho_records_pbs_and_login_users(self, api_key_client, status_session):
+        data = dict(_DERECHO_BASE, timestamp='2026-09-27T15:00:00',
+                    user_project_queues=[
+                        {'username': 'benkirk', 'project_code': 'SCSG0001',
+                         'queue_name': 'main', 'running_jobs': 1, 'cores_allocated': 64},
+                        {'username': 'benkirk', 'project_code': 'SCSG0001',
+                         'queue_name': 'develop', 'running_jobs': 1, 'cores_allocated': 1},
+                    ],
+                    login_users=['benkirk', 'bdobbins'])
+        resp = api_key_client.post('/api/v1/status/derecho', json=data)
+        assert resp.status_code == 201, resp.get_json()
+
+        ts = datetime(2026, 9, 27, 15, 0, 0)
+        assert _seen(status_session, 'pbs', 'derecho') == {'benkirk': ts}
+        assert _seen(status_session, 'login', 'derecho') == {'benkirk': ts, 'bdobbins': ts}
+
+    def test_payload_without_login_users_still_ingests(self, api_key_client, status_session):
+        resp = api_key_client.post('/api/v1/status/derecho', json=_DERECHO_BASE)
+        assert resp.status_code == 201, resp.get_json()
+        assert status_session.query(UserLastSeen).count() == 0
+
+    def test_malformed_login_users_is_a_400(self, api_key_client, status_session):
+        resp = api_key_client.post('/api/v1/status/derecho',
+                                   json=dict(_DERECHO_BASE, login_users=['x' * 40]))
+        assert resp.status_code == 400
+        assert status_session.query(DerechoStatus).count() == 0
+
+    def test_ledger_failure_does_not_cost_the_snapshot(
+            self, api_key_client, status_session, monkeypatch):
+        import webapp.api.v1.status as status_api
+
+        def boom(*a, **kw):
+            raise RuntimeError('ledger down')
+        monkeypatch.setattr(status_api, 'record_seen', boom)
+        resp = api_key_client.post('/api/v1/status/derecho',
+                                   json=dict(_DERECHO_BASE, login_users=['benkirk']))
+        assert resp.status_code == 201, resp.get_json()
+        assert status_session.query(DerechoStatus).count() == 1
+        assert status_session.query(UserLastSeen).count() == 0
+
+    def test_jupyterhub_uses_last_activity_clamped_to_the_snapshot(
+            self, api_key_client, status_session):
+        resp = api_key_client.post('/api/v1/status/jupyterhub', json={
+            'timestamp': '2026-09-27T15:00:00',
+            'active_users': 3, 'active_sessions': 3,
+            'users': [
+                {'name': 'benkirk', 'last_activity': '2026-09-27T14:30:00.123456Z'},
+                {'name': 'bdobbins', 'last_activity': '2026-09-27T08:30:00-06:00'},
+                {'name': 'skewed', 'last_activity': '2027-01-01T00:00:00Z'},
+                {'name': 'idle', 'last_activity': None, 'servers': {}},
+            ],
+        })
+        assert resp.status_code == 201, resp.get_json()
+        assert _seen(status_session, 'jupyterhub', 'jupyterhub') == {
+            'benkirk': datetime(2026, 9, 27, 14, 30, 0, 123456),
+            'bdobbins': datetime(2026, 9, 27, 14, 30, 0),
+            'skewed': datetime(2026, 9, 27, 15, 0, 0),
+            'idle': datetime(2026, 9, 27, 15, 0, 0),
+        }
