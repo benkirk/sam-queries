@@ -67,8 +67,10 @@ remote_digest() {
 do_smoke() {
     local image; image=$(image_path "$1")
     log "smoke on $(nhd_host): ${image} -> $(readlink -f "${image}")"
-    local step
-    for step in ${NCAR_HPC_DEPLOY_SMOKE_STEPS:-base accounting-comp jobhist-sync collectors}; do
+    # A lane without the job_history writer overlay (dev) does not run the ingest, so skips its step.
+    local step steps="base accounting-comp collectors"
+    [[ -r "${NHD_ENV_FILE}.jobhist-sync" ]] && steps="base accounting-comp jobhist-sync collectors"
+    for step in ${NCAR_HPC_DEPLOY_SMOKE_STEPS:-${steps}}; do
         ( NHD_JOB="${step}" NHD_PWD="${NHD_STATE}" \
             nhd_exec "${image}" bash "${NHD_IMAGE_SRC}/smoke/smoke.sh" "${step}" ) || return 2
     done
@@ -131,7 +133,7 @@ cmd_update() {
         [[ ${rc} -eq 0 ]] || break
         log "remote smoke on ${h}"
         ssh -o BatchMode=yes -o LogLevel=error "${h}" \
-            "NCAR_HPC_DEPLOY_ROOT='${NHD_ROOT}' NCAR_HPC_DEPLOY_SRC='${NCAR_HPC_DEPLOY_SRC}' '${NHD_LIBEXEC}/ncar-hpc-deploy' smoke --lane '${NHD_LANE}' --image candidate" || rc=$?
+            "NCAR_HPC_DEPLOY_ROOT='${NHD_ROOT}' NCAR_HPC_DEPLOY_SRC='${NCAR_HPC_DEPLOY_SRC}' NCAR_HPC_DEPLOY_SMOKE_STEPS='${NCAR_HPC_DEPLOY_SMOKE_STEPS}' '${NHD_LIBEXEC}/ncar-hpc-deploy' smoke --lane '${NHD_LANE}' --image candidate" || rc=$?
     done
     if [[ ${rc} -ne 0 ]]; then
         echo "$(stamp) ${digest} smoke exit=${rc}" > "${NHD_STATE}/last-update.FAILED"

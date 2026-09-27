@@ -54,8 +54,9 @@ ssh. Only a pass moves `current`. A failure leaves `current` alone, writes
 
 The smoke gate is read-only. It checks imports and entry points, runs a SAM
 query, and dry-runs `accounting-comp`, `jobhist-sync` and `collectors` against
-the lane's real databases and PBS hosts. Each step runs in its own container,
-so the job's env overlay applies.
+the lane's real databases and PBS hosts. The `jobhist-sync` step runs only in
+a lane with `env.jobhist-sync`. `NCAR_HPC_DEPLOY_SMOKE_STEPS` overrides the
+list. Each step runs in its own container, so the job's env overlay applies.
 
 ## Jobs
 
