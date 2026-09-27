@@ -280,7 +280,13 @@ def build_ticket_message(row: AccountRequest, *, view: Dict[str, Any], recipient
     sponsor = view['sponsor'].display_name if view['sponsor'] else ''
     origin = origin_of(row)
     if origin == ORIGIN_SELF:
-        via = 'self-registration (email address verified)'
+        # Who verified, not who created: an operator may vouch for the address.
+        if row.verified_by == CREATED_BY_SELF:
+            via = 'self-registration (email address verified)'
+        elif row.verified_by:
+            via = f'self-registration (address vouched for by {row.verified_by})'
+        else:
+            via = 'self-registration (email address not verified)'
     elif origin == ORIGIN_SWEEP:
         via = 'XRAS submission'
     elif sponsor:
