@@ -9,6 +9,9 @@ NHD_IMAGE_REPO="${NCAR_HPC_DEPLOY_IMAGE_REPO:-ghcr.io/benkirk/sam-queries/webapp
 # Job bodies ship inside the image; NCAR_HPC_DEPLOY_SRC=<checkout> binds that checkout's
 # jobs and collectors over the image's (testing a change before its image exists).
 NHD_IMAGE_SRC=/code/containers/ncar-hpc-deploy
+# Host-side python (lock.py, the GHCR token): the system one, not whatever module view the
+# login shell puts first on PATH. Code under libexec/ must stay 3.6-compatible.
+NHD_PYTHON="${NCAR_HPC_DEPLOY_PYTHON:-/usr/bin/python3}"
 
 nhd_die() { echo "ncar-hpc-deploy: $*" >&2; exit 2; }
 

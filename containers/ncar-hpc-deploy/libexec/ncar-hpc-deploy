@@ -1,7 +1,7 @@
 #!/bin/bash
 # ncar-hpc-deploy: run scheduled HPC-side jobs from a blessed container image.
 #   tick [--lane L] CADENCE [--list|--dry-run]   run etc/schedule's CADENCE steps (what cron calls)
-#   run [--lane L] JOB [ARGS]      run jobs/JOB.sh in the lane's current image (flock + log)
+#   run [--lane L] JOB [ARGS]      run jobs/JOB.sh in the lane's current image (lock + log)
 #   update [--lane L] [--force]    pull the lane tag; smoke-test; swap current on pass
 #   smoke [--lane L] [--image current|candidate|PATH]
 #   promote [--lane L] IMAGE       point current at IMAGE (manual bless; previous kept)
@@ -19,6 +19,7 @@ usage() { sed -n '2,11p' "$(readlink -f "${BASH_SOURCE[0]}")" | sed 's/^# \{0,1\
 cmd="${1:-}"; [[ -z "${cmd}" ]] && usage; shift
 [[ "${cmd}" == -h || "${cmd}" == --help ]] && usage 0
 
+orig=("$@")   # a locked command re-invokes itself with these (with_lock)
 force=0; image_sel=current; remote_smoke="${NCAR_HPC_DEPLOY_SMOKE_HOSTS:-}"
 args=()
 while [[ $# -gt 0 ]]; do
@@ -29,7 +30,7 @@ while [[ $# -gt 0 ]]; do
         --image)  image_sel="$2"; shift 2 ;;
         --smoke-hosts) remote_smoke="$2"; shift 2 ;;
         --)       shift; args+=("$@"); break ;;
-        *)        args+=("$1"); shift; [[ "${cmd}" == run ]] && { args+=("$@"); break; } ;;
+        *)        args+=("$1"); shift; [[ "${cmd}" == run || "${cmd}" == _job ]] && { args+=("$@"); break; } ;;
     esac
 done
 nhd_lane_init
@@ -54,7 +55,8 @@ relink() {
 # (a --force re-smoke of an unchanged digest must not collapse previous onto current).
 bless() {
     local cur; cur=$(readlink -f "${NHD_LANE_DIR}/current" 2>/dev/null)
-    [[ -n "${cur}" && "${cur}" != "$1" ]] && relink previous "${cur}"
+    # -f: on a first install readlink -f still prints the missing path, which is not an image.
+    [[ -f "${cur}" && "${cur}" != "$1" ]] && relink previous "${cur}"
     relink current "$1"
 }
 
@@ -66,7 +68,7 @@ image_facts() {
 remote_digest() {
     local repo_path="${NHD_IMAGE_REPO#*/}" registry="${NHD_IMAGE_REPO%%/*}" token
     token=$(curl -fsS "https://${registry}/token?scope=repository:${repo_path}:pull" \
-        | python3 -c 'import sys,json; print(json.load(sys.stdin)["token"])') || return 2
+        | "${NHD_PYTHON}" -c 'import sys,json; print(json.load(sys.stdin)["token"])') || return 2
     curl -fsSI -H "Authorization: Bearer ${token}" \
         -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
         "https://${registry}/v2/${repo_path}/manifests/${NHD_TAG}" \
@@ -126,39 +128,49 @@ lock_busy() {
     return 0
 }
 
-# run_job WAIT JOB [ARGS]: one job under its lock, logged; WAIT is flock -w seconds, 0 = skip
-# when held (rc 1). A subshell, so its exits end this job and not a calling tick.
+# with_lock LOCK WAIT WHAT CMD...: run CMD holding a POSIX lock on LOCK (libexec/lock.py; flock
+# is node-local on GPFS). WAIT is seconds, 0 = skip when held: then rc 1 after lock_busy.
+with_lock() {
+    local lock="$1" wait="$2" what="$3" rc; shift 3
+    "${NHD_PYTHON}" "${NHD_LIBEXEC}/lock.py" "${lock}" "${wait}" "$@"; rc=$?
+    (( rc == 75 )) || return ${rc}
+    lock_busy "${lock}" "${what}"; return 1
+}
+
+# run_job WAIT JOB [ARGS]: JOB under its lock (rapid/hourly pass WAIT 0). A subshell, so an
+# nhd_die ends this job and not a calling tick.
 run_job() (
-    local wait="$1" job="$2"; shift 2
+    local wait="$1" job="$2"
     [[ "${job}" =~ ^[a-z0-9][a-z0-9-]*$ ]] || nhd_die "run: JOB must name jobs/<job>.sh, not '${job}'"
-    local host; host=$(nhd_host)
+    with_lock "${NHD_STATE}/${job}-$(nhd_host).lock" "${wait}" "run ${job}" \
+        "${NHD_LIBEXEC}/ncar-hpc-deploy" _job --lane "${NHD_LANE}" "${@:2}"
+)
+
+# The locked half of run: prejob, the job in the image, log, last-run.
+cmd_job() {
+    local job="${args[0]}" host; host=$(nhd_host)
     mkdir -p "${NHD_LOGS}/${job}"
     local logfile="${NHD_LOGS}/${job}/${host}-$(date +%Y-%m-%d).log"
-    local lock="${NHD_STATE}/${job}-${host}.lock" how=(-n)
-    (( wait > 0 )) && how=(-w "${wait}")
+    touch "${NHD_STATE}/${job}-${host}.lock"   # mtime = when the holder started (lock_busy)
     {
-        flock -x "${how[@]}" 9 || { lock_busy "${lock}" "run ${job}"; exit 1; }
-        touch "${lock}"   # mtime = when the holder started; fd 9 is O_APPEND, so a contender does not reset it
-        {
-            echo "#----------------------------------------------------------------------------"
-            log "run ${job} $* on ${host} image=$(readlink "${NHD_LANE_DIR}/current")"
-            local t0=${SECONDS} rc=0
-            # A job with a host half (prejob_<job>) runs it first, outside the container.
-            if declare -F "prejob_${job//-/_}" >/dev/null; then
-                "prejob_${job//-/_}" "${NHD_LANE_DIR}/current" || rc=$?
-            fi
-            (( rc == 0 )) && { NHD_JOB="${job}" NHD_PWD="${NHD_STATE}" nhd_exec "${NHD_LANE_DIR}/current" \
-                bash "${NHD_IMAGE_SRC}/jobs/${job}.sh" "$@" || rc=$?; }
-            log "run ${job} exit=${rc} ($((SECONDS - t0))s)"
-            echo "$(stamp) exit=${rc} $((SECONDS - t0))s" > "${NHD_STATE}/last-run.${job}.${host}"
-            exit ${rc}
-        } 2>&1 | tee -a "${logfile}"
-        local rc=${PIPESTATUS[0]}
-        # stdout is usually discarded by cron; stderr is what mails someone.
-        (( rc == 0 )) || echo "ncar-hpc-deploy[${NHD_LANE}]: ${job} on ${host} exit=${rc}; see ${logfile}" >&2
-        exit "${rc}"
-    } 9>>"${lock}"
-)
+        echo "#----------------------------------------------------------------------------"
+        log "run ${job} ${args[*]:1} on ${host} image=$(readlink "${NHD_LANE_DIR}/current")"
+        local t0=${SECONDS} rc=0
+        # A job with a host half (prejob_<job>) runs it first, outside the container.
+        if declare -F "prejob_${job//-/_}" >/dev/null; then
+            "prejob_${job//-/_}" "${NHD_LANE_DIR}/current" || rc=$?
+        fi
+        (( rc == 0 )) && { NHD_JOB="${job}" NHD_PWD="${NHD_STATE}" nhd_exec "${NHD_LANE_DIR}/current" \
+            bash "${NHD_IMAGE_SRC}/jobs/${job}.sh" "${args[@]:1}" || rc=$?; }
+        log "run ${job} exit=${rc} ($((SECONDS - t0))s)"
+        echo "$(stamp) exit=${rc} $((SECONDS - t0))s" > "${NHD_STATE}/last-run.${job}.${host}"
+        exit ${rc}
+    } 2>&1 | tee -a "${logfile}"
+    local rc=${PIPESTATUS[0]}
+    # stdout is usually discarded by cron; stderr is what mails someone.
+    (( rc == 0 )) || echo "ncar-hpc-deploy[${NHD_LANE}]: ${job} on ${host} exit=${rc}; see ${logfile}" >&2
+    exit "${rc}"
+}
 
 cmd_run() { run_job 0 "${args[@]}"; exit; }
 
@@ -177,6 +189,10 @@ cmd_tick() {
     done
     [[ "${cadence}" =~ ^[a-z0-9][a-z0-9-]*$ ]] || nhd_die "tick: CADENCE must name an etc/schedule cadence"
     local host schedule; host=$(nhd_host)
+    local lock="${NHD_STATE}/tick-${cadence}-${host}.lock"
+    if [[ "${cmd}" == tick ]] && (( ! list )); then
+        with_lock "${lock}" 0 "tick ${cadence}" "${NHD_LIBEXEC}/ncar-hpc-deploy" _tick "${orig[@]}"; exit
+    fi
     schedule=$(host_extract "${NHD_LANE_DIR}/current" "${NHD_IMAGE_SRC}/etc/schedule") \
         || nhd_die "tick: no etc/schedule in $(readlink "${NHD_LANE_DIR}/current")"
 
@@ -189,9 +205,6 @@ cmd_tick() {
     (( ${#steps[@]} )) || { echo "ncar-hpc-deploy[${NHD_LANE}]: tick ${cadence}: no steps for ${host}" >&2; exit 1; }
     if (( list )); then printf '%s\n' "${steps[@]}"; exit 0; fi
 
-    local lock="${NHD_STATE}/tick-${cadence}-${host}.lock"
-    exec 7>>"${lock}"
-    flock -xn 7 || { lock_busy "${lock}" "tick ${cadence}"; exit 1; }
     touch "${lock}"
 
     local wait=${NCAR_HPC_DEPLOY_STEP_WAIT:-1800}
@@ -211,8 +224,10 @@ cmd_tick() {
 }
 
 cmd_update() {
-    exec 8>"${NHD_STATE}/update.lock"
-    flock -xn 8 || { log "update already running"; exit 1; }
+    if [[ "${cmd}" == update ]]; then
+        with_lock "${NHD_STATE}/update.lock" 0 update "${NHD_LIBEXEC}/ncar-hpc-deploy" _update "${orig[@]}"; exit
+    fi
+    touch "${NHD_STATE}/update.lock"
     prune_logs
 
     local digest; digest=$(remote_digest) || true
@@ -314,9 +329,10 @@ cmd_status() {
 }
 
 case "${cmd}" in
-    tick)     cmd_tick ;;
-    run)      cmd_run ;;
-    update)   cmd_update ;;
+    tick|_tick)     cmd_tick ;;
+    run)            cmd_run ;;
+    _job)           cmd_job ;;
+    update|_update) cmd_update ;;
     smoke)    do_smoke "${image_sel}" ;;
     promote)  cmd_promote ;;
     rollback) cmd_rollback ;;
