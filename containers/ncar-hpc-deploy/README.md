@@ -35,7 +35,8 @@ lanes/<lane>/
 
 Overlays exist because SAM accounting and `jobhist-sync` read the same
 variable names (`CIRRUS_PG_USER`, ...) under different roles. Only the job
-that writes job_history gets the writer role.
+that writes job_history gets the DML writer role, `jobhist_writer` (OpenBao
+`csg/jobhist-writer`; grants in `docs/plans/JOBHIST_WRITER_ROLE.md`).
 
 ## Commands
 
@@ -139,8 +140,9 @@ Gotchas:
 - `--cleanenv` means only the lane env and what `nhd_exec` names reach the
   job: `NCAR_HOST`, `TZ` (default `America/Denver`), the `NHD_*` paths and
   `MPLCONFIGDIR`. The image's own clock is UTC.
-- `jobhist-sync --dry-run` still runs `init_db()` DDL, so it needs the writer
-  role.
+- `jobhist-sync` only checks the schema; a sync or `--dry-run` against a
+  schema that is behind exits 2 with "run `jobhist-sync --init-db`". Run that
+  once per schema change as the DB owner (`postgres`), outside the lanes.
 - A skipped run is normal for an overrun and is only logged; a lock held longer
   than `NCAR_HPC_DEPLOY_STALE_MIN` (60) minutes is reported on stderr every
   tick, so a hung job mails rather than silently starving its successors.
