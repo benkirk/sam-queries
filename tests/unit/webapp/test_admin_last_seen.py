@@ -4,6 +4,7 @@ Both read the `system_status` ledger (a per-worker SQLite file that may
 commit) and the committed SAM snapshot, so seeded ledger rows name `benkirk`.
 """
 
+import re
 from datetime import timedelta
 
 import pytest
@@ -20,6 +21,13 @@ CARD = '/admin/user/benkirk'
 def seen_on_cheyenne(status_session):
     record_seen_at(status_session, 'pbs', 'cheyenne', ['benkirk'],
                    utcnow_naive() - timedelta(days=1500))
+    status_session.commit()
+
+
+@pytest.fixture
+def seen_just_now(status_session):
+    record_seen_at(status_session, 'login', 'derecho', ['benkirk'],
+                   utcnow_naive() - timedelta(minutes=1))
     status_session.commit()
 
 
@@ -53,6 +61,15 @@ class TestTable:
         assert 'pbs · cheyenne' in stale
         assert 'No users match these filters.' in recent
 
+    def test_a_fresh_sighting_reads_now(self, auth_client, seen_just_now):
+        html = auth_client.get(f'{TABLE}?active_only=1&q=benkirk&bucket=current').get_data(as_text=True)
+        assert 'login · derecho' in html
+        assert '>now' in html and 'minute ago' not in html
+        assert ' UTC">' in html                     # the exact time stays in the title...
+        assert not re.search(r'>[^<]*\d\d:\d\d UTC', html)  # ...never in visible text
+        recent = auth_client.get(f'{TABLE}?active_only=1&q=benkirk&bucket=recent').get_data(as_text=True)
+        assert 'No users match these filters.' in recent
+
     def test_unseen_snapshot_users_are_never(self, auth_client, status_session):
         html = auth_client.get(f'{TABLE}?active_only=1&bucket=never').get_data(as_text=True)
         assert 'never' in html and 'No users match' not in html
@@ -70,6 +87,10 @@ class TestUserCard:
     def test_card_lists_each_source(self, auth_client, seen_on_cheyenne):
         html = auth_client.get(CARD).get_data(as_text=True)
         assert 'Last seen' in html and 'cheyenne' in html
+
+    def test_card_reads_now_for_a_fresh_sighting(self, auth_client, seen_just_now):
+        html = auth_client.get(CARD).get_data(as_text=True)
+        assert 'derecho' in html and '>now' in html and 'minute ago' not in html
 
     def test_card_says_never_seen(self, auth_client, status_session):
         html = auth_client.get(CARD).get_data(as_text=True)

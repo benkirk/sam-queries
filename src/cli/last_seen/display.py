@@ -13,9 +13,10 @@ def display_last_seen(ctx, payload):
     for col in ('Source', 'System', 'First seen (UTC)', 'Last seen (UTC)'):
         table.add_column(col)
     for row in payload['sources']:
+        last = fmt.date_str(row['last_seen'], fmt='%Y-%m-%d %H:%M')
         table.add_row(row['kind'], row['system'],
                       fmt.date_str(row['first_seen'], fmt='%Y-%m-%d %H:%M'),
-                      fmt.date_str(row['last_seen'], fmt='%Y-%m-%d %H:%M'))
+                      f"{last}  (now)" if row.get('current') else last)
     ctx.console.print(table)
 
 

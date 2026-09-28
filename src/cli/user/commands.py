@@ -35,14 +35,18 @@ _UNCONFIGURED = object()
 def _last_seen(username: str):
     """Ledger rows for one user, None when unreadable, ``_UNCONFIGURED`` without STATUS_DB_*."""
     from cli.last_seen.commands import status_session
+    from sam.queries.last_seen_review import is_current
     from system_status.queries.last_seen import get_last_seen
+    from system_status.timeutil import utcnow_naive
     try:
         status = status_session()
     except RuntimeError:
         return _UNCONFIGURED
     try:
+        now = utcnow_naive()
         with status:
-            return get_last_seen(status, username)
+            return [{**r, 'current': is_current(r['last_seen'], r['kind'], now)}
+                    for r in get_last_seen(status, username)]
     except Exception:
         logger.debug('last-seen lookup failed for %s', username, exc_info=True)
         return None
