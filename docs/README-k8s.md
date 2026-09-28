@@ -184,6 +184,11 @@ automatically. Names are `<webapp.name>-<block>-credentials`:
 ESO refreshes these every hour (`refreshInterval: 1h`). You never manage these secrets
 manually on CIRRUS — rotating credentials in OpenBao is sufficient.
 
+| OpenBao path, hand-run (not synced) | Role | Used by |
+|---|---|---|
+| `csg/pg-superuser` | `postgres` | DBA runbooks, `scripts/seed_status_dev.sh`, `jobhist-sync --init-db` |
+| `csg/jobhist-writer` | `jobhist_writer` (DML on `casper_jobs` / `derecho_jobs`) | the prod lane's `env.jobhist-sync` (`containers/ncar-hpc-deploy/`) |
+
 **Force an immediate sync** (after rotating a value in OpenBao instead of waiting up to 1h):
 
 ```bash
