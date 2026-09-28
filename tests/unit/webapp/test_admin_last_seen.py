@@ -4,6 +4,7 @@ Both read the `system_status` ledger (a per-worker SQLite file that may
 commit) and the committed SAM snapshot, so seeded ledger rows name `benkirk`.
 """
 
+import re
 from datetime import timedelta
 
 import pytest
@@ -64,7 +65,8 @@ class TestTable:
         html = auth_client.get(f'{TABLE}?active_only=1&q=benkirk&bucket=current').get_data(as_text=True)
         assert 'login · derecho' in html
         assert '>now' in html and 'minute ago' not in html
-        assert '1 UTC' not in html        # the exact time stays in the title, not the cell
+        assert ' UTC">' in html                     # the exact time stays in the title...
+        assert not re.search(r'>[^<]*\d\d:\d\d UTC', html)  # ...never in visible text
         recent = auth_client.get(f'{TABLE}?active_only=1&q=benkirk&bucket=recent').get_data(as_text=True)
         assert 'No users match these filters.' in recent
 
