@@ -1,7 +1,7 @@
 # ncar-hpc-deploy, prod lane — csgteam on the `cron` host.
 # Cron says when a cadence fires; etc/schedule (in the image) says what each cadence runs, in
 # order. Each tick flocks itself on /glade, so an overrun skips the next tick of that cadence.
-NHD=/glade/u/apps/opt/CHANGEME/containers/ncar-hpc-deploy/bin/ncar-hpc-deploy
+NHD=/glade/u/apps/opt/sam-queries/containers/ncar-hpc-deploy/bin/ncar-hpc-deploy
 SSH="ssh -o BatchMode=yes -o LogLevel=error"
 
 # image: pull :main, smoke on casper + derecho, swap on pass (exits 2 and mails on failure).

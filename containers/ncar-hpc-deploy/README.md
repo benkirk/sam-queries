@@ -125,11 +125,12 @@ the image's copies (testing only).
 
 ## Install
 
-1. As csgteam, clone the repo and write `lanes/<lane>/env` (plus
-   `env.jobhist-sync` for prod), all 0600.
+1. As csgteam, update the checkout at `/glade/u/apps/opt/sam-queries` (the
+   `NHD=` path in both crontabs) and write `lanes/<lane>/env` (plus
+   `env.jobhist-sync` for prod), all 0600. Do not set `NCAR_HPC_DEPLOY_SRC`.
 2. `bin/ncar-hpc-deploy update --lane <lane> --smoke-hosts derecho.hpc.ucar.edu`
-3. Set `NHD=` in `etc/crontab.<lane>`, then merge it into csgteam's crontab
-   on `cron`. Remove each host-checkout entry it replaces in the same edit.
+3. Merge `etc/crontab.<lane>` into csgteam's crontab on `cron`. For prod, remove
+   each host-checkout entry it replaces in the same edit; dev replaces none.
 
 Ordering: a lane's image must carry this directory. Until the change that adds
 it has reached the lane's tag and CI has published that image, `update` fails
