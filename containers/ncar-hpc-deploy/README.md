@@ -24,7 +24,7 @@ this directory; `lanes/` is git-ignored):
 lanes/<lane>/
   env                 0600, apptainer --env-file (template: etc/env.example)
   env.<job>           optional overlay for one job (etc/env.jobhist-sync.example)
-  images/*.sif        pulled by digest; current + previous + 3 newest kept
+  images/*.sif        pulled by digest; 3 kept (NCAR_HPC_DEPLOY_KEEP), always current + previous
   current previous    symlinks into images/; swapped by rename, so a running job is never left without one
   state/              locks, last-run.<job>.<host>, last-tick.<cadence>.<host>, last-digest,
                       update-history, disk stamps, extract/<image>/ (host-side files

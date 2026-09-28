@@ -245,6 +245,7 @@ cmd_update() {
     done
     if [[ ${rc} -ne 0 ]]; then
         echo "$(stamp) ${digest} smoke exit=${rc}" > "${NHD_STATE}/last-update.FAILED"
+        prune
         nhd_die "smoke FAILED (exit ${rc}); current left at $(readlink "${NHD_LANE_DIR}/current")"
     fi
 
@@ -256,14 +257,18 @@ cmd_update() {
     prune
 }
 
-# Keep current, previous, and the newest NCAR_HPC_DEPLOY_KEEP (3) others.
+# Keep NCAR_HPC_DEPLOY_KEEP (3) images in all: current, previous and a failed candidate
+# always, then the newest others. Runs after every update that pulled, pass or fail.
 prune() {
-    local keep=("$(readlink -f "${NHD_LANE_DIR}/current")" "$(readlink -f "${NHD_LANE_DIR}/previous" 2>/dev/null)")
-    local n=0 f
+    local keep=() l f n=0
+    for l in current previous candidate; do
+        f=$(readlink -f "${NHD_LANE_DIR}/${l}" 2>/dev/null) || continue
+        [[ -f "${f}" && " ${keep[*]} " != *" ${f} "* ]] && keep+=("${f}")
+    done
     for f in $(ls -t "${NHD_LANE_DIR}"/images/*.sif 2>/dev/null); do
         [[ " ${keep[*]} " == *" ${f} "* ]] && continue
         n=$((n + 1))
-        (( n > ${NCAR_HPC_DEPLOY_KEEP:-3} )) && { log "prune $(basename "${f}")"; rm -f "${f}"; }
+        (( n + ${#keep[@]} > ${NCAR_HPC_DEPLOY_KEEP:-3} )) && { log "prune $(basename "${f}")"; rm -f "${f}"; }
     done
 }
 
