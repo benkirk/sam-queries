@@ -10,11 +10,12 @@ import click
 
 from config import SAMConfig
 from cli.core.context import Context
-from cli.core.utils import EXIT_ERROR, configure_logging
+from cli.core.utils import EXIT_ERROR, configure_logging, parse_duration_days
 from cli.user.commands import (
     UserSearchCommand,
     UserPatternSearchCommand,
     UserAbandonedCommand,
+    UserNotSeenCommand,
     UserWithProjectsCommand
 )
 from cli.project.commands import (
@@ -30,6 +31,7 @@ from cli.awards.commands import AwardPatternSearchCommand, AwardSearchCommand
 from cli.allocations.commands import AllocationSearchCommand
 from cli.accounting.commands import AccountingSearchCommand, AccountingJobsCommand
 from cli.accounting.dates import _validate_accounting_dates, _resolve_accounting_dates
+from system_status.models.last_seen import SOURCE_KINDS
 
 
 pass_context = click.make_pass_decorator(Context, ensure=True)
@@ -80,6 +82,10 @@ def process_result(result, **kwargs):
 @click.option('--search', metavar='PATTERN', help='Search pattern (use % for wildcard, _ for single char)')
 @click.option('--abandoned', is_flag=True, help="Find 'active' users with no active projects")
 @click.option('--has-active-project', is_flag=True, help="Find 'active' users with at least one active projects")
+@click.option('--not-seen-since', metavar='SPEC',
+              help='Users not seen in SPEC (N, Nd, Nw, Nm, Ny; e.g. 1y) or never; combines with --abandoned')
+@click.option('--source', type=click.Choice(SOURCE_KINDS),
+              help='With --not-seen-since, count only sightings from this source')
 @click.option('--list-projects', is_flag=True, help='List all projects for the user')
 @click.option('--limit', type=int, default=50, help='Maximum number of results for pattern search (default: 50)')
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
@@ -87,18 +93,23 @@ def process_result(result, **kwargs):
 @click.option('--provisioning/--no-provisioning', default=None,
               help='Cross-check host provisioning (auto-on on a provisioned host)')
 @pass_context
-def user(ctx: Context, username, search, abandoned, has_active_project, list_projects, limit, verbose, very_verbose, provisioning):
+def user(ctx: Context, username, search, abandoned, has_active_project, not_seen_since, source,
+         list_projects, limit, verbose, very_verbose, provisioning):
     """
     Search for users.
 
-    You must provide either a username, --search PATTERN, --abandoned, or --has-active-project.
+    You must provide either a username, --search PATTERN, --abandoned, --not-seen-since SPEC,
+    or --has-active-project. --abandoned and --not-seen-since combine.
     """
-    # Enforce mutual exclusivity
-    inputs = [bool(username), bool(search), abandoned, has_active_project]
-    if sum(inputs) != 1:
-        ctx.console.print("Error: Please provide exactly one of: username, --search, --abandoned, or --has-active-project", style="bold red")
+    # Enforce mutual exclusivity; --abandoned and --not-seen-since are one mode together.
+    inputs = [bool(username), bool(search), abandoned or bool(not_seen_since), has_active_project]
+    if sum(inputs) != 1 or (source and not not_seen_since):
+        ctx.console.print("Error: Please provide exactly one of: username, --search, --abandoned "
+                          "and/or --not-seen-since, or --has-active-project "
+                          "(--source needs --not-seen-since)", style="bold red")
         click.echo(click.get_current_context().get_help())
         sys.exit(1)
+    days = parse_duration_days(not_seen_since, '--not-seen-since') if not_seen_since else None
 
     if very_verbose:
         ctx.very_verbose = True
@@ -119,6 +130,11 @@ def user(ctx: Context, username, search, abandoned, has_active_project, list_pro
         # Pattern Search
         command = UserPatternSearchCommand(ctx)
         exit_code = command.execute(search, limit)
+        sys.exit(exit_code)
+
+    elif not_seen_since:
+        command = UserNotSeenCommand(ctx)
+        exit_code = command.execute(days, not_seen_since, source=source, abandoned=abandoned)
         sys.exit(exit_code)
 
     elif abandoned:

@@ -8,6 +8,7 @@ from system_status import AccessSource, System, UserDef, UserLastSeen
 from system_status import retention
 from system_status.queries.last_seen import (
     get_last_seen,
+    get_last_seen_by_user,
     get_or_create_source,
     record_seen,
     record_seen_at,
@@ -103,6 +104,20 @@ class TestGetLastSeen:
 
     def test_unknown_user_is_empty(self, status_session):
         assert get_last_seen(status_session, 'nobody') == []
+
+
+class TestGetLastSeenByUser:
+
+    def test_newest_row_per_kind_across_systems(self, status_session):
+        record_seen_at(status_session, 'pbs', 'derecho', ['alice'], T0)
+        record_seen_at(status_session, 'pbs', 'cheyenne', ['alice'], EARLIER)
+        record_seen_at(status_session, 'webapp', 'samuel', ['alice'], LATER)
+        record_seen_at(status_session, 'login', 'casper', ['bob'], EARLIER)
+        status_session.commit()
+        assert get_last_seen_by_user(status_session) == {
+            'alice': {'pbs': (T0, 'derecho'), 'webapp': (LATER, 'samuel')},
+            'bob': {'login': (EARLIER, 'casper')},
+        }
 
 
 class TestNeverPurged:

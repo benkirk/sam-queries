@@ -52,7 +52,15 @@ Useful facts learned on the way:
 
 Nothing below is committed to; it is the list to pick from.
 
-- **Read side**: sketched below.
+- **Read side**: sketched below. The user card section and the Admin → Users & Groups
+  → Last seen page are built (`webapp/dashboards/admin/last_seen_routes.py`, the join
+  in `sam/queries/last_seen_review.py`). Recency is a chip strip of buckets (<30d,
+  30d–1y, 1–3y, >3y, never) rather than window pills, and times show in UTC because
+  backfilled rows hold a Mountain date at 00:00. The CLI half is built too: a Last seen
+  row in `sam-search user X` (per-source table under `-v`, `last_seen` in the JSON), and
+  `sam-search user --not-seen-since SPEC [--source KIND]`, which intersects with
+  `--abandoned` and reuses the same `review()` join, so its count matches the web chips.
+  Still open: the xlsx export.
 - **Deactivation.** Feed the ledger into account-deactivation review, e.g. alongside
   the `deactivate_expired` task, as evidence rather than a trigger.
 - **Webapp "last used", not just "last login".** SSO sessions last days. Scrape the

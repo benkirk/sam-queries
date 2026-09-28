@@ -1814,6 +1814,20 @@
     ]
   ],
   [
+    "admin_dashboard.users_last_seen",
+    "/admin/users/last-seen",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.users_last_seen_table",
+    "/admin/htmx/users/last-seen",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.adjustment_details",
     "/allocations/adjustment_details/<int:adjustment_id>",
     [

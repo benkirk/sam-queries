@@ -1,0 +1,17 @@
+{#
+  Shared layout for the admin Users & Groups pages (search, last seen): the
+  secondary link strip under the main admin tab strip. Pages fill
+  {% block users_content %}.
+#}
+{% extends 'dashboards/admin/base_admin.html' %}
+{% from 'dashboards/fragments/page_tabs.html' import page_tabs %}
+
+{% block admin_content %}
+{{ page_tabs([
+    {'endpoint': 'admin_dashboard.users_groups', 'label': 'Search', 'icon': 'fa-solid fa-magnifying-glass'},
+    {'endpoint': 'admin_dashboard.users_last_seen', 'label': 'Last seen', 'icon': 'fa-solid fa-clock-rotate-left',
+     'visible': has_permission(Permission.VIEW_USERS)},
+]) }}
+
+{% block users_content %}{% endblock %}
+{% endblock %}

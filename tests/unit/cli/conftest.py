@@ -24,3 +24,14 @@ def mock_db_session(session):
         mock_engine.return_value = (MagicMock(), None)
         mock_session_cls.return_value = session
         yield session
+
+
+@pytest.fixture(autouse=True)
+def status_db_not_configured():
+    """Every CLI test starts with no status DB, so none dials the one a dev ``.env`` names.
+
+    Tests that need the ledger re-patch ``create_status_engine`` to the SQLite bind.
+    """
+    with patch('system_status.session.create_status_engine',
+               side_effect=RuntimeError('system_status database connection is not configured')):
+        yield

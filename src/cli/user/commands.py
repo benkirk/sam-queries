@@ -1,5 +1,8 @@
 """User command classes."""
 
+import logging
+from datetime import timedelta
+
 from cli.core.base import BaseUserCommand
 from cli.core.output import output_json
 from cli.core.utils import EXIT_SUCCESS, EXIT_NOT_FOUND, EXIT_ERROR
@@ -11,15 +14,38 @@ from cli.user.builders import (
     build_user_search_results,
     build_abandoned_users,
     build_users_with_projects,
+    build_not_seen_users,
 )
 from cli.user.display import (
     display_user,
     display_user_search_results,
     display_abandoned_users,
     display_users_with_projects,
+    display_not_seen_users,
 )
 from sam import User
 from rich.progress import track
+
+logger = logging.getLogger(__name__)
+
+#: ``data`` key left out entirely when the status DB is not configured on this host.
+_UNCONFIGURED = object()
+
+
+def _last_seen(username: str):
+    """Ledger rows for one user, None when unreadable, ``_UNCONFIGURED`` without STATUS_DB_*."""
+    from cli.last_seen.commands import status_session
+    from system_status.queries.last_seen import get_last_seen
+    try:
+        status = status_session()
+    except RuntimeError:
+        return _UNCONFIGURED
+    try:
+        with status:
+            return get_last_seen(status, username)
+    except Exception:
+        logger.debug('last-seen lookup failed for %s', username, exc_info=True)
+        return None
 
 
 class UserSearchCommand(BaseUserCommand):
@@ -48,6 +74,9 @@ class UserSearchCommand(BaseUserCommand):
                 )
             if self.ctx.check_provisioning:
                 data['provisioning'] = build_user_provisioning(user)
+            last_seen = _last_seen(user.username)
+            if last_seen is not _UNCONFIGURED:
+                data['last_seen'] = last_seen
 
             if json_mode:
                 output_json(data)
@@ -142,6 +171,44 @@ class UserWithProjectsCommand(BaseUserCommand):
             elif users_with_projects:
                 display_users_with_projects(self.ctx, data, list_projects)
 
+            return EXIT_SUCCESS
+        except Exception as e:
+            return self.handle_exception(e)
+
+
+class UserNotSeenCommand(BaseUserCommand):
+    """Users whose newest sighting is older than a cutoff, or who were never seen."""
+
+    def execute(self, days: int, spec: str, source=None, abandoned: bool = False) -> int:
+        from cli.last_seen.commands import status_session
+        from sam.queries.last_seen_review import review
+        from sam.queries.users import (
+            count_active_projects_by_username, get_primary_emails, get_user_directory,
+        )
+        from system_status.queries.last_seen import get_last_seen_by_user
+        from system_status.timeutil import utcnow_naive
+        try:
+            now = utcnow_naive()
+            cutoff = now - timedelta(days=days)
+            directory = get_user_directory(self.session, active_only=not self.ctx.inactive_users)
+            with status_session() as status:
+                ledger = get_last_seen_by_user(status)
+            rows, _, _ = review(directory, ledger, now=now, kind=source,
+                                sort_by='last_seen', sort_dir='asc')
+            rows = [r for r in rows if r.last_seen is None or r.last_seen < cutoff]
+            projects = count_active_projects_by_username(self.session, [r.username for r in rows])
+            if abandoned:
+                rows = [r for r in rows if not projects.get(r.username)]
+            emails = get_primary_emails(self.session, [r.username for r in rows])
+
+            data = build_not_seen_users(
+                rows, projects, emails, spec=spec, cutoff=cutoff, source=source,
+                abandoned=abandoned, total_considered=len(directory),
+                active_only=not self.ctx.inactive_users)
+            if self.ctx.output_format == 'json':
+                output_json(data)
+            else:
+                display_not_seen_users(self.ctx, data)
             return EXIT_SUCCESS
         except Exception as e:
             return self.handle_exception(e)

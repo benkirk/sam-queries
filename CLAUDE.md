@@ -672,7 +672,7 @@ stateless; admin commands extend search commands via inheritance. Exit codes:
 ```bash
 # Search
 sam-search user benkirk --list-projects --verbose
-sam-search user --search "ben%" ; sam-search user --abandoned
+sam-search user --search "ben%" ; sam-search user --abandoned [--not-seen-since 1y --source pbs]
 sam-search project SCSG0001 --list-users --verbose
 sam-search project --upcoming-expirations --list-users
 sam-search allocations --resource Derecho --total-facilities --total-types

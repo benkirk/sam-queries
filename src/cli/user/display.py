@@ -59,6 +59,9 @@ def display_user(ctx: Context, data: dict, list_projects: bool = False):
                 "\n".join(f"{o['name']} ({o['acronym']})" for o in detail['organizations'])
             )
 
+    if 'last_seen' in data:
+        grid.add_row("Last seen", _last_seen_summary(data['last_seen']))
+
     grid.add_row("Active Projects", str(data['active_project_count']))
 
     panel = Panel(grid, title=f"User Information: [bold]{data['username']}[/]",
@@ -71,11 +74,34 @@ def display_user(ctx: Context, data: dict, list_projects: bool = False):
             style="dim italic"
         )
 
+    if ctx.verbose and data.get('last_seen'):
+        from cli.last_seen.display import display_last_seen
+        display_last_seen(ctx, {'username': data['username'], 'sources': data['last_seen']})
+
     if list_projects and 'projects' in data:
         display_user_projects(ctx, data['projects'], data['username'])
 
     if data.get('provisioning') is not None:
         display_user_provisioning(ctx, data['provisioning'], data['username'])
+
+
+def _via(kind, system) -> str:
+    if not kind:
+        return '—'
+    return kind if system == kind else f"{kind} · {system}"
+
+
+def _last_seen_summary(sources):
+    """Newest sighting for the panel row: ``2026-09-27 23:40 UTC  webapp · samuel  (3 hours ago)``."""
+    if sources is None:
+        return Text("unavailable", style="dim")
+    if not sources:
+        return Text("never", style="yellow")
+    from system_status.timeutil import utcnow_naive
+    newest = sources[0]
+    return (f"{fmt.date_str(newest['last_seen'], fmt='%Y-%m-%d %H:%M')} UTC  "
+            f"{_via(newest['kind'], newest['system'])}  "
+            f"({fmt.ago(utcnow_naive() - newest['last_seen'])} ago)")
 
 
 def display_user_provisioning(ctx: Context, prov: dict, username: str):
@@ -235,4 +261,38 @@ def display_users_with_projects(ctx: Context, data: dict, list_projects: bool = 
         if list_projects and 'projects' in u:
             for p in u['projects']:
                 table.add_row(f"    - {p['projcode']:12} {p['title']}")
+    ctx.console.print(table)
+
+
+def display_not_seen_users(ctx: Context, data: dict):
+    """Render ``build_not_seen_users``; email shows only under ``--verbose``."""
+    who = 'active users' if data['active_only'] else 'users'
+    scope = f" on {data['source']}" if data['source'] else ''
+    tail = ', with no active projects' if data['abandoned'] else ''
+    ctx.console.print(
+        f"{fmt.number(data['count'])} of {fmt.number(data['total_considered'])} {who} "
+        f"not seen{scope} since {fmt.date_str(data['cutoff'])} ({data['since']}){tail}",
+        style="bold yellow" if data['count'] else "green")
+    if not data['users']:
+        return
+
+    table = Table(box=box.SIMPLE_HEAD, caption="Dates are UTC.", caption_justify="left")
+    table.add_column("Username", style="cyan", no_wrap=True)
+    table.add_column("Name", overflow="ellipsis", max_width=22)
+    table.add_column("Last seen", no_wrap=True, min_width=10)
+    table.add_column("Via", style="dim", overflow="ellipsis")
+    table.add_column("Projects", justify="right", no_wrap=True, min_width=8)
+    if ctx.verbose:
+        table.add_column("Email", no_wrap=True)
+    for u in data['users']:
+        seen = u['last_seen']
+        # Active is the default and unmarked; only the exceptions carry a tag.
+        name = u['username'] if u['status'] == 'active' else f"{u['username']} [dim]({u['status']})[/]"
+        row = [name, u['display_name']]
+        row += [fmt.date_str(seen) if seen else '[yellow]never[/]',
+                _via(u['source'], u['system']),
+                str(u['active_project_count'])]
+        if ctx.verbose:
+            row.append(u['primary_email'] or '—')
+        table.add_row(*row)
     ctx.console.print(table)

@@ -13,6 +13,15 @@ from cli.core.utils import EXIT_NOT_FOUND, EXIT_SUCCESS
 from cli.last_seen import display
 
 
+def status_session():
+    """A Session on the status DB; ``RuntimeError`` when ``STATUS_DB_*`` is not configured."""
+    from sqlalchemy.orm import Session
+
+    from system_status.session import create_status_engine
+    engine, _ = create_status_engine()
+    return Session(engine)
+
+
 class LastSeenCommand(BaseCommand):
     """Read or seed ``system_status.user_last_seen``."""
 
@@ -28,8 +37,8 @@ class LastSeenCommand(BaseCommand):
     def _show(self, username: str) -> int:
         from system_status.queries.last_seen import get_last_seen
 
-        with self._status_session() as status_session:
-            sources = get_last_seen(status_session, username)
+        with status_session() as status:
+            sources = get_last_seen(status, username)
         payload = {'kind': 'last_seen', 'username': username, 'sources': sources}
         if self.ctx.output_format == 'json':
             output_json(payload)
@@ -54,12 +63,12 @@ class LastSeenCommand(BaseCommand):
 
         applied = {}
         if not dry_run:
-            with self._status_session() as status_session:
+            with status_session() as status:
                 for system, users in sorted(plan.items()):
                     applied[system] = record_seen(
-                        status_session, 'pbs', system,
+                        status, 'pbs', system,
                         ((u, first, last) for u, (first, last) in users.items()))
-                status_session.commit()
+                status.commit()
 
         payload = {
             'kind': 'last_seen_backfill',
@@ -75,11 +84,3 @@ class LastSeenCommand(BaseCommand):
         else:
             display.display_backfill(self.ctx, payload)
         return EXIT_SUCCESS
-
-    @staticmethod
-    def _status_session():
-        from sqlalchemy.orm import Session
-
-        from system_status.session import create_status_engine
-        engine, _ = create_status_engine()
-        return Session(engine)
