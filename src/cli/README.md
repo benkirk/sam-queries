@@ -69,6 +69,8 @@ JSON payloads:
 - `datetime`/`date` → ISO 8601 string, `Decimal` → float, `set` → sorted list
 - Not-found path emits `{"kind": "...", "error": "not_found", "<id>": "..."}`,
   exit 1
+- The `user` envelope's `last_seen` is a list from the `system_status` ledger, `null`
+  when that database is unreachable, and absent on a host with no `STATUS_DB_*`
 - Combining `--format json` with side-effecting flags (`--notify`,
   `--deactivate`) is rejected with `{"error": "json_unsupported_for_writes"}`,
   exit 2

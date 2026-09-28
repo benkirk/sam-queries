@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from lib.base_collector import BaseCollector, main_runner
 from lib.parsers.jupyterhub_nodes import JupyterHubNodeParser
 from lib.exceptions import SSHError
+from lib.commands import manifest
 
 # Import requests for API calls
 import requests
@@ -29,8 +30,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 class JupyterHubCollector(BaseCollector):
     """JupyterHub-specific data collector."""
 
-    def __init__(self, system_name, dry_run=False, json_only=False):
-        super().__init__(system_name, dry_run, json_only)
+    def __init__(self, system_name, dry_run=False, json_only=False, source=None):
+        super().__init__(system_name, dry_run, json_only, source)
 
         # JupyterHub API configuration
         self.base_url = os.getenv('JUPYTERHUB_API_URL', 'https://jupyterhub.hpc.ucar.edu')
@@ -154,53 +155,37 @@ class JupyterHubCollector(BaseCollector):
             'broken_jobs': job_counts['broken']
         }
 
-    def _run_ssh_command(self, command: str, timeout: int = 30) -> str:
-        """
-        Run a command on casper via SSH.
+    def manifest(self):
+        """Only the node listing comes from the host; sessions come from the REST API."""
+        return manifest(jhlnodes=True)
 
-        Args:
-            command: The command to run
-            timeout: Command timeout in seconds
-
-        Returns:
-            Command output as string
+    def _jhlnodes_output(self) -> str:
+        """jhlnodes output from the spool, or over ssh to the PBS host.
 
         Raises:
-            SSHError: If command fails or times out
+            SSHError: If the command failed or timed out
         """
-        ssh_cmd = f'ssh -o ConnectTimeout=10 {self.config.pbs_host} "{command}"'
-        self.logger.debug(f"Running SSH command: {ssh_cmd}")
-
-        try:
-            result = subprocess.run(
-                ssh_cmd,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=timeout
-            )
-        except subprocess.TimeoutExpired:
-            raise SSHError(f"Command timed out: {command}")
-
-        if result.returncode != 0:
-            raise SSHError(f"Command failed: {command}\nError: {result.stderr}")
-
-        return result.stdout
+        if self.source is not None:
+            rc, out, err = self.source.read('jhlnodes')
+        else:
+            try:
+                rc, out, err = self.pbs.ssh.jhlnodes()
+            except subprocess.TimeoutExpired:
+                raise SSHError("Command timed out: jhlnodes")
+        if rc != 0:
+            raise SSHError(f"Command failed: jhlnodes\nError: {err}")
+        return out
 
     def _collect_node_data(self, data: dict):
         """
-        Collect JupyterHub node data by running jhlnodes on casper.
+        Collect JupyterHub node data from jhlnodes (casper's jhublogin nodes).
 
         This replaces the standard PBS node collection.
         """
         try:
             self.logger.info("Collecting JupyterHub node data...")
 
-            # Run jhlnodes on casper
-            output = self._run_ssh_command(
-                '/glade/u/home/csgteam/bin/jhlnodes',
-                timeout=30
-            )
+            output = self._jhlnodes_output()
 
             # Parse the output
             node_stats = JupyterHubNodeParser.parse_jhlnodes(output)
@@ -356,7 +341,7 @@ class JupyterHubCollector(BaseCollector):
         data = {'timestamp': datetime.now().isoformat()}
 
         # Collect JupyterHub-specific data
-        self._collect_node_data(data)        # Uses SSH + jhlnodes (nodes, CPUs, memory, GPUs)
+        self._collect_node_data(data)        # jhlnodes: nodes, CPUs, memory, GPUs
         self._collect_job_data(data)         # Uses JupyterHub API (sessions, users, job types)
 
         # Skip these BaseCollector methods (not applicable to JupyterHub):

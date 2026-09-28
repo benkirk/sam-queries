@@ -1,0 +1,61 @@
+{% extends 'dashboards/admin/base_admin_users.html' %}
+{#
+  Admin -> Users & Groups -> Last seen. The chips, sort headers and pagination
+  in the fragment all write into this one form, so every control composes.
+  Context: filters, active_only, form_id, target_id, fragment_url.
+#}
+
+{% block title %}Admin: Last seen - SAM{% endblock %}
+
+{% block users_content %}
+<div class="card inner-card mb-3">
+    <div class="card-header mb-3">
+        <h5><i class="fa-solid fa-clock-rotate-left"></i> Last seen</h5>
+        <span class="text-muted small">
+            Each user's most recent sighting across login nodes, batch jobs,
+            JupyterHub and webapp logins. Batch history before live collection
+            is day-granular.
+        </span>
+    </div>
+    <div class="card-body">
+        <form id="{{ form_id }}"
+              hx-get="{{ fragment_url }}"
+              hx-target="#{{ target_id }}"
+              hx-swap="innerHTML"
+              hx-trigger="submit, change, input changed delay:300ms from:#lastSeenSearch"
+              class="row g-2 align-items-center">
+            <div class="col-12 col-md-6">
+                <label class="visually-hidden" for="lastSeenSearch">Username or name</label>
+                <input type="search" class="form-control form-control-sm"
+                       id="lastSeenSearch" name="q"
+                       value="{{ filters.search or '' }}"
+                       placeholder="Filter by username or name…">
+            </div>
+            <div class="col-12 col-md-6">
+                <div class="form-check form-switch mb-0">
+                    <input type="checkbox" class="form-check-input"
+                           id="lastSeenActiveOnly" name="active_only" value="1"
+                           {% if active_only %}checked{% endif %}>
+                    <label class="form-check-label small text-muted fw-normal"
+                           for="lastSeenActiveOnly">Active SAM users only</label>
+                </div>
+            </div>
+            {# Written by the facet chips and sort headers. #}
+            <input type="hidden" name="bucket" value="{{ filters.bucket or '' }}">
+            <input type="hidden" name="kind" value="{{ filters.kind or '' }}">
+            <input type="hidden" name="sort_by" value="{{ filters.sort_by }}">
+            <input type="hidden" name="sort_dir" value="{{ filters.sort_dir }}">
+        </form>
+    </div>
+</div>
+
+<div id="{{ target_id }}"
+     hx-get="{{ fragment_url }}"
+     hx-include="#{{ form_id }}"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+    <div class="text-muted small p-3">
+        <i class="fa-solid fa-circle-notch fa-spin"></i> Loading…
+    </div>
+</div>
+{% endblock %}

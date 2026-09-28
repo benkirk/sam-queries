@@ -23,7 +23,7 @@ Functions:
 from datetime import datetime
 from typing import List, Optional, Dict, Tuple
 
-from sqlalchemy import or_, func, desc, select, exists
+from sqlalchemy import or_, func, desc, select, exists, union
 
 from sam.sqlcompat import ci_like
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -279,6 +279,73 @@ def get_users_by_organization(session: Session, org_acronym: str) -> List[User]:
         .filter(Organization.acronym == org_acronym)\
         .filter(User.is_active)\
         .all()
+
+
+def get_user_directory(session: Session, active_only: bool = True) -> Dict[str, Tuple[str, bool, bool]]:
+    """``{username: (display_name, active, locked)}`` from one column select."""
+    q = select(User.username, User.nickname, User.first_name, User.last_name,
+               User.active, User.locked)
+    if active_only:
+        q = q.where(User.is_active)
+    return {
+        username: (' '.join(p for p in (nickname or first, last) if p),
+                   bool(active), bool(locked))
+        for username, nickname, first, last, active, locked in session.execute(q)
+    }
+
+
+def count_active_projects_by_username(session: Session, usernames) -> Dict[str, int]:
+    """Active projects per username as member, lead or admin; absent means zero.
+
+    Same membership rule as ``User.active_projects()``, one query per 1,000 usernames.
+    """
+    counts: Dict[str, int] = {}
+    for chunk in _chunks(usernames):
+        counts.update(session.execute(_active_project_counts(chunk)).all())
+    return counts
+
+
+def _active_project_counts(usernames: List[str]):
+    members = (select(AccountUser.user_id.label('uid'), Account.project_id.label('pid'))
+               .join(Account, AccountUser.account_id == Account.account_id)
+               .join(Project, Account.project_id == Project.project_id)
+               .where(Project.is_active,
+                      or_(AccountUser.end_date.is_(None),
+                          AccountUser.end_date >= datetime.now())))
+    leads = select(Project.project_lead_user_id, Project.project_id).where(Project.is_active)
+    admins = (select(Project.project_admin_user_id, Project.project_id)
+              .where(Project.is_active, Project.project_admin_user_id.is_not(None)))
+    links = union(members, leads, admins).subquery()
+    return (select(User.username, func.count())
+            .join(links, links.c.uid == User.user_id)
+            .where(User.username.in_(usernames))
+            .group_by(User.username))
+
+
+def get_primary_emails(session: Session, usernames) -> Dict[str, str]:
+    """``{username: address}`` by the ``User.primary_email`` rule; users with none are absent."""
+    best: Dict[str, Tuple[int, str]] = {}
+    for chunk in _chunks(usernames):
+        q = (select(User.username, EmailAddress.email_address, EmailAddress.is_primary,
+                    EmailAddress.active)
+             .join(EmailAddress, EmailAddress.user_id == User.user_id)
+             .where(User.username.in_(chunk))
+             .order_by(EmailAddress.email_address_id))
+        for username, address, is_primary, active in session.execute(q):
+            rank = 0 if is_primary else (1 if active or active is None else 2)
+            if username not in best or rank < best[username][0]:
+                best[username] = (rank, address)
+    return {u: address for u, (_, address) in best.items()}
+
+
+#: Bound on an ``IN (...)`` list; dormancy lists run to thousands of usernames.
+_IN_CHUNK = 1000
+
+
+def _chunks(items):
+    items = list(items)
+    for i in range(0, len(items), _IN_CHUNK):
+        yield items[i:i + _IN_CHUNK]
 
 
 # ============================================================================

@@ -293,6 +293,8 @@ def ago(
         ago(timedelta(minutes=75))   -> '75 minutes'
         ago(timedelta(hours=29))     -> '29 hours'
         ago(timedelta(days=3))       -> '3 days'
+        ago(timedelta(days=200))     -> '7 months'
+        ago(timedelta(days=1500))    -> '4 years'
         ago(None)                    -> '—'
     """
     if delta is None:
@@ -304,8 +306,12 @@ def ago(
         n, unit = round(mins), 'minute'
     elif mins < 48 * 60:
         n, unit = round(mins / 60), 'hour'
-    else:
+    elif mins < 90 * 1440:
         n, unit = round(mins / 1440), 'day'
+    elif mins < 730 * 1440:
+        n, unit = round(mins / (1440 * 30.44)), 'month'
+    else:
+        n, unit = round(mins / (1440 * 365.25)), 'year'
     return f"{n} {unit}{'s' if n != 1 else ''}"
 
 

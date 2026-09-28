@@ -152,6 +152,13 @@ class TestAgo:
 
     def test_days(self):
         assert ago(timedelta(days=3)) == '3 days'
+        assert ago(timedelta(days=89)) == '89 days'
+
+    def test_months_then_years(self):
+        assert ago(timedelta(days=90)) == '3 months'
+        assert ago(timedelta(days=729)) == '24 months'
+        assert ago(timedelta(days=730)) == '2 years'
+        assert ago(timedelta(days=1500)) == '4 years'
 
     def test_negative_clamps_to_zero(self):
         # Clock skew between collector and webapp must not render nonsense.

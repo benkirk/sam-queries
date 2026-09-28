@@ -452,6 +452,7 @@ PAGES_WITH_PROJECT_MODAL = {
     '/admin/htmx/notifications': 'dashboards/admin/notifications.html',
     '/admin/account-requests': 'dashboards/admin/account_requests.html',
     '/admin/users-groups': 'dashboards/admin/users_groups.html',
+    '/admin/users/last-seen': 'dashboards/admin/users_last_seen.html',
     '/admin/events': 'dashboards/admin/events.html',
     '/allocations/projects': 'dashboards/allocations/projects.html',
     '/allocations/transactions': 'dashboards/allocations/transactions.html',

@@ -146,6 +146,7 @@ Each post also names the users observed, which the server folds into
 - `users` (JupyterHub): `[{name, last_activity}]` from the hub API.
 
 The fields are optional, so a collector and the server can be upgraded in either order.
+Design record and future work: [USER_LAST_SEEN.md](../docs/plans/implemented/USER_LAST_SEEN.md).
 
 ## Node Type Classification
 
@@ -276,7 +277,31 @@ Options:
   --json-only        Output JSON to stdout and exit (no API call)
   --verbose, -v      Enable verbose logging
   --log-file PATH    Log file path (default: stdout only)
+  --strict           Exit 3 if any part of the collection logged an ERROR
+  --print-manifest   Print the key<TAB>command lines spool mode runs on the host
+  --spool DIR        Parse DIR (from bin/run-manifest.sh) instead of running ssh
+  --max-spool-age S  Refuse a spool older than S seconds (default 600)
 ```
+
+`STATUS_API_KEY` is needed only to POST; `--dry-run`, `--json-only` and
+`--print-manifest` run without it.
+
+## Spool mode (collector in a container)
+
+By default a collector runs `ssh <pbs_host> "..."`, from a laptop or login node. A
+container cannot (host-based ssh needs setuid `ssh-keysign`; PBS needs host libraries),
+so the host runs the commands with **bash only** and the collector parses the files:
+
+```bash
+./casper/collector.py --print-manifest | bin/run-manifest.sh /tmp/spool/casper   # host
+./casper/collector.py --spool /tmp/spool/casper                                    # anywhere
+./run_collectors.sh --once --spool /tmp/spool     # reads /tmp/spool/<system>/
+```
+
+Each host collects only itself (casper: `casper` + `jupyterhub`; derecho: `derecho`).
+Run `run-manifest.sh` from a login environment: only the site `qstat` on the login PATH
+lists every job (`/opt/pbs/bin/qstat` lists your own, exit 0); the collector logs an
+ERROR when jobs look missing. Both modes read the table in `collectors/lib/commands.py`.
 
 ## Testing
 
@@ -327,11 +352,9 @@ curl -X POST http://localhost:5050/api/v1/status/derecho \
 
 The following are documented in `docs/implemented/PBS_COLLECTORS_PLAN.md` but deferred for future implementation:
 
-- Cron-based deployment
 - Log rotation (logrotate)
 - Health check monitoring
 - Deployment automation (Makefile)
-- Unit and integration tests
 
 ## Architecture
 

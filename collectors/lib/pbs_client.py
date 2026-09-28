@@ -8,55 +8,50 @@ import subprocess
 
 try:
     from .exceptions import PBSCommandError, PBSParseError
+    from .commands import PBS_COMMANDS, SshSource
 except ImportError:
     from exceptions import PBSCommandError, PBSParseError
+    from commands import PBS_COMMANDS, SshSource
 
 
 class PBSClient:
     """
-    Wrapper for PBS command execution.
-    Handles SSH invocation, timeouts, and error capture.
+    PBS command execution: over ssh (default) or from a host-captured spool.
+    Handles timeouts and error capture.
     """
 
-    def __init__(self, host, timeout=30):
+    def __init__(self, host, timeout=30, source=None):
         self.host = host
         self.timeout = timeout
+        self.source = source
+        self.ssh = SshSource(host, pbs_timeout=timeout)
         self.logger = logging.getLogger(__name__)
 
     def run_command(self, cmd, json_output=False):
         """
-        Execute PBS command via SSH.
-
-        Args:
-            cmd: Command to run (e.g., "pbsnodes -aj -F json")
-            json_output: If True, parse JSON response
-
-        Returns:
-            Parsed JSON dict or raw string output
+        Execute a command on the PBS host via SSH.
 
         Raises:
             PBSCommandError: If command fails or times out
         """
-        full_cmd = f'ssh -o ConnectTimeout={self.timeout} {self.host} "{cmd}"'
-
-        self.logger.debug(f"Running: {full_cmd}")
-
+        self.logger.debug(f"Running: {cmd}")
         try:
-            result = subprocess.run(
-                full_cmd,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout
-            )
+            rc, out, err = self.ssh.remote(cmd)
         except subprocess.TimeoutExpired:
             raise PBSCommandError(f"Command timed out after {self.timeout}s: {cmd}")
+        return self._result(cmd, rc, out, err, json_output)
 
-        if result.returncode != 0:
-            error_msg = result.stderr.strip() or result.stdout.strip()
-            raise PBSCommandError(f"Command failed (exit {result.returncode}): {cmd}\n{error_msg}")
+    def fetch(self, key, json_output=False):
+        """Output of manifest key (see commands.PBS_COMMANDS) from the spool or over ssh."""
+        if self.source is None:
+            return self.run_command(PBS_COMMANDS[key], json_output=json_output)
+        rc, out, err = self.source.read(key)
+        return self._result(PBS_COMMANDS[key], rc, out, err, json_output)
 
-        output = result.stdout
+    def _result(self, cmd, rc, output, stderr, json_output):
+        if rc != 0:
+            error_msg = stderr.strip() or output.strip()
+            raise PBSCommandError(f"Command failed (exit {rc}): {cmd}\n{error_msg}")
 
         if json_output:
             try:
@@ -70,16 +65,16 @@ class PBSClient:
 
     def get_nodes_json(self):
         """Execute pbsnodes -aj -F json"""
-        return self.run_command("pbsnodes -aj -F json", json_output=True)
+        return self.fetch('pbsnodes', json_output=True)
 
     def get_jobs_json(self):
         """Execute qstat -f -F json"""
-        return self.run_command("qstat -f -F json", json_output=True)
+        return self.fetch('qstat', json_output=True)
 
     def get_queues_json(self):
         """Execute qstat -Q -f -F json (full queue roster, incl. routing queues)"""
-        return self.run_command("qstat -Q -f -F json", json_output=True)
+        return self.fetch('qstat_Q', json_output=True)
 
     def get_reservations(self):
         """Execute pbs_rstat -f"""
-        return self.run_command("pbs_rstat -f")
+        return self.fetch('pbs_rstat')

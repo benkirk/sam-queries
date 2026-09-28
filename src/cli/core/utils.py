@@ -39,3 +39,22 @@ def configure_logging(verbose: bool = False) -> logging.Handler:
     handler.setFormatter(logging.Formatter(CLI_LOG_FORMAT))
     root.addHandler(handler)
     return handler
+
+
+_DURATION_DAYS = {'d': 1, 'w': 7, 'm': 30, 'y': 365}
+
+
+def parse_duration_days(spec: str, option: str) -> int:
+    """``'90'``, ``'90d'``, ``'2w'``, ``'6m'`` (30 d) or ``'3y'`` (365 d) as whole days."""
+    import click
+
+    s = (spec or '').strip().lower()
+    unit = _DURATION_DAYS.get(s[-1:], None) if s else None
+    digits = s[:-1] if unit else s
+    try:
+        n = int(digits) * (unit or 1)
+    except ValueError:
+        raise click.BadParameter(f"{option} must be N, Nd, Nw, Nm or Ny (e.g. 1y), got: {spec!r}")
+    if n < 1:
+        raise click.BadParameter(f"{option} must be at least one day")
+    return n

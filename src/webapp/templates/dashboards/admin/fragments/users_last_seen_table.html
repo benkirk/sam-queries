@@ -1,0 +1,76 @@
+{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/fragments/pagination.html' import pagination %}
+{% from 'dashboards/fragments/sort_link.html' import sort_header with context %}
+{% from 'dashboards/fragments/user_rows.html' import user_link %}
+{#
+  Last seen table (HTMX fragment). Context: rows (ReviewRow), total, projects
+  ({username: n}), filters, *_facets (self-excluding, see sam.queries.last_seen_review),
+  page, sort, sortable_columns, form_id, target_id, fragment_url.
+  WARNING: ledger times are naive UTC and shown as UTC. Backfilled rows hold the
+  Mountain activity date at 00:00, which a local-time conversion would shift a day.
+#}
+{% if unavailable %}
+<div class="text-muted small p-3">
+    <i class="fa-solid fa-circle-info me-1"></i>
+    Last-seen data is unavailable: the status database could not be read.
+</div>
+{% else %}
+<div class="d-flex flex-wrap align-items-baseline gap-2 mb-1 small">
+    <strong>{{ total | fmt_plural('user', 'users') }}</strong>
+    {% if filters.kind %}<span class="text-muted">by their newest <code>{{ filters.kind }}</code> sighting</span>{% endif %}
+    <span class="text-muted ms-auto">Times are UTC</span>
+</div>
+
+<div class="facet-grid mb-2">
+    {{ facet_row('Last seen', bucket_facets, form_id, 'bucket',
+                 [filters.bucket] if filters.bucket else []) }}
+    {{ facet_row('Source', kind_facets, form_id, 'kind',
+                 [filters.kind] if filters.kind else []) }}
+</div>
+
+<div class="table-responsive">
+    <table class="table table-sm table-striped table-hover mb-0">
+        <thead class="table-subtle">
+            <tr>
+                <th>{{ sort_header('username', 'User') }}</th>
+                <th class="d-none d-md-table-cell">{{ sort_header('name', 'Name') }}</th>
+                <th class="text-nowrap">{{ sort_header('last_seen', 'Last seen') }}</th>
+                <th class="d-none d-md-table-cell">Via</th>
+                <th class="text-end text-nowrap" title="Active projects as member, lead or admin">Projects</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            <tr>
+                <td class="text-nowrap">
+                    {# Active is the default and unmarked; only the exceptions get a badge. #}
+                    {% if r.status == 'not in SAM' %}<code>{{ r.username }}</code>
+                    <span class="badge bg-dark ms-1" style="font-size:0.7em;" title="No SAM user has this username">not in SAM</span>
+                    {% else %}{{ user_link(r.username, True, compact=True) }}
+                    {%- if r.status != 'active' %}{{ status_badge(r.status, extra='ms-1', small=True) }}{% endif %}{% endif %}
+                </td>
+                <td class="d-none d-md-table-cell">{{ r.name or '—' }}</td>
+                <td class="text-nowrap">
+                    {% if r.last_seen %}
+                    <span title="{{ r.last_seen | fmt_date(fmt='%Y-%m-%d %H:%M') }} UTC">
+                        {{ r.age | fmt_ago }} ago</span>
+                    <span class="text-muted small ms-1 d-none d-sm-inline">{{ r.last_seen | fmt_date }}</span>
+                    {% else %}<span class="text-muted">never</span>{% endif %}
+                </td>
+                <td class="d-none d-md-table-cell text-muted small text-nowrap">
+                    {% if r.kind %}{{ r.kind }}{% if r.system != r.kind %} · {{ r.system }}{% endif %}{% else %}—{% endif %}
+                </td>
+                <td class="text-end">{{ projects.get(r.username, 0) if r.status != 'not in SAM' else '—' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-muted text-center py-4">No users match these filters.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if total %}
+{{ pagination(page, total, fragment_url, target_id, form_id, sort) }}
+{% endif %}
+{% endif %}

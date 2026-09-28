@@ -13,9 +13,11 @@ from typing import List, Dict
 try:
     from .exceptions import SSHError
     from .parallel_ssh import ParallelSSHCollector
+    from .commands import SshSource
 except ImportError:
     from exceptions import SSHError
     from parallel_ssh import ParallelSSHCollector
+    from commands import SshSource
 
 
 #: Lowest uid counted as a person on a login node; below it are system accounts.
@@ -41,9 +43,11 @@ def parse_process_users(ps_output: str) -> List[str]:
 class LoginNodeCollector:
     """Collect login node metrics via SSH in parallel."""
 
-    def __init__(self, base_host: str, timeout: int = 10):
+    def __init__(self, base_host: str, timeout: int = 10, source=None):
         self.base_host = base_host
         self.timeout = timeout
+        self.source = source  # SpoolSource, or None for ssh
+        self.ssh = SshSource(base_host, ssh_timeout=timeout)
         self.logger = logging.getLogger(__name__)
 
     def collect_login_node_data(self, login_nodes: List[dict]) -> List[dict]:
@@ -127,30 +131,17 @@ class LoginNodeCollector:
         Load averages are stored as CPU utilization percentages:
             load_pct = (raw_load_avg / num_cpus) * 100
         """
-        # SSH through base host to login node, collecting load, users, CPU count and process owners.
-        # ps (not who) sees VS Code Remote, non-interactive ssh, scp/sftp and detached tmux;
-        # user:32 widens the column, which otherwise prints a uid for names over 8 characters.
-        cmd = (
-            f"ssh -o ConnectTimeout={self.timeout} {self.base_host} "
-            f'"ssh {node_name} \'cat /proc/loadavg; echo ---; who | wc -l; echo ---; nproc --all; '
-            f'echo ---; ps -eo uid=,user:32= | sort -u\'" '
-        )
+        if self.source is not None:
+            rc, stdout, stderr = self.source.read(f'login.{node_name}')
+        else:
+            self.logger.debug(f"Collecting {node_name} via {self.base_host}")
+            try:
+                rc, stdout, stderr = self.ssh.login(node_name)
+            except subprocess.TimeoutExpired:
+                raise SSHError(f"Timeout connecting to {node_name}")
 
-        self.logger.debug(f"Running: {cmd}")
-
-        try:
-            result = subprocess.run(
-                cmd,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout * 2  # Double timeout for nested SSH
-            )
-        except subprocess.TimeoutExpired:
-            raise SSHError(f"Timeout connecting to {node_name}")
-
-        if result.returncode != 0:
-            raise SSHError(f"Failed to connect to {node_name}: {result.stderr}")
+        if rc != 0:
+            raise SSHError(f"Failed to connect to {node_name}: {stderr}")
 
         # Parse output: four sections separated by '---'
         #   Section 0: /proc/loadavg output (load_1min load_5min load_15min ...)
@@ -158,7 +149,7 @@ class LoginNodeCollector:
         #   Section 2: CPU count from 'nproc --all'
         #   Section 3: 'uid user' process owners (popped by the caller into login_users)
         try:
-            parts = result.stdout.strip().split('---')
+            parts = stdout.strip().split('---')
             loadavg = parts[0].strip().split()
             user_count = int(parts[1].strip())
             num_cpus = int(parts[2].strip())

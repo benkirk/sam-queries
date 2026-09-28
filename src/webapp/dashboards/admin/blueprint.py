@@ -358,6 +358,20 @@ def project_card(projcode):
     )
 
 
+def _user_last_seen(username):
+    """``get_last_seen`` rows with an ``age``, or None when the status DB cannot be read."""
+    from system_status.queries.last_seen import get_last_seen
+    from system_status.timeutil import utcnow_naive
+    try:
+        rows = get_last_seen(db.session, username)
+    except Exception:
+        logger.warning('user_last_seen unreadable for %s', username, exc_info=True)
+        db.session.rollback()
+        return None
+    now = utcnow_naive()
+    return [{**r, 'age': now - r['last_seen']} for r in rows]
+
+
 @bp.route('/user/<username>')
 @login_required
 @require_permission_any_facility(Permission.VIEW_USERS)
@@ -368,6 +382,9 @@ def user_card(username):
     Returns:
         HTML user card fragment
     """
+    # First, so the rollback on a status-DB failure cannot expire the SAM rows below.
+    last_seen = _user_last_seen(username)
+
     # Eager-load both affiliation graphs: the card renders each of them twice
     # (current + former blocks), which would otherwise lazy-load per row.
     from sqlalchemy.orm import selectinload, joinedload
@@ -403,6 +420,7 @@ def user_card(username):
 
     return render_template(
         'dashboards/admin/fragments/user_card_wrapper.html',
+        last_seen=last_seen,
         sam_user=sam_user,
         user_groups=user_groups,
         primary_group_name=primary_group_name,
@@ -1269,4 +1287,4 @@ def htmx_queues_for_resource():
 # Domain route modules — must be imported AFTER bp is defined
 # ============================================================================
 
-from . import resources_routes, facilities_routes, orgs_routes, contracts_routes, projects_routes, configuration_routes, rate_limits_routes, notifications_routes, tasks_routes, account_requests_routes, events_routes, roles_routes  # noqa: E402, F401
+from . import resources_routes, facilities_routes, orgs_routes, contracts_routes, projects_routes, configuration_routes, rate_limits_routes, notifications_routes, tasks_routes, last_seen_routes, account_requests_routes, events_routes, roles_routes  # noqa: E402, F401

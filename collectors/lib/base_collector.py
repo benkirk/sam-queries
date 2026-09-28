@@ -20,6 +20,8 @@ try:
     from .parsers.filesystems import FilesystemParser
     from .parsers.reservations import ReservationParser
     from .ssh_utils import LoginNodeCollector
+    from .commands import SpoolSource, manifest
+    from .exceptions import ConfigError
 except ImportError:
     from pbs_client import PBSClient
     from api_client import SAMAPIClient
@@ -31,27 +33,36 @@ except ImportError:
     from parsers.filesystems import FilesystemParser
     from parsers.reservations import ReservationParser
     from ssh_utils import LoginNodeCollector
+    from commands import SpoolSource, manifest
+    from exceptions import ConfigError
 
 
 class BaseCollector:
     """Base class for system-specific data collectors."""
 
-    def __init__(self, system_name, dry_run=False, json_only=False):
+    def __init__(self, system_name, dry_run=False, json_only=False, source=None):
         self.system_name = system_name
         self.config = CollectorConfig(system_name)
         self.dry_run = dry_run
         self.json_only = json_only
+        self.source = source  # SpoolSource, or None to run commands over ssh
         self.logger = logging.getLogger(__name__)
 
         # Initialize clients
-        self.pbs = PBSClient(self.config.pbs_host, timeout=self.config.pbs_timeout)
+        self.pbs = PBSClient(self.config.pbs_host, timeout=self.config.pbs_timeout, source=source)
         self.api = SAMAPIClient(
             self.config.api_url,
             self.config.api_user,
             self.config.api_password,
             timeout=self.config.api_timeout
         )
-        self.login_collector = LoginNodeCollector(self.config.pbs_host, timeout=self.config.ssh_timeout)
+        self.login_collector = LoginNodeCollector(self.config.pbs_host, timeout=self.config.ssh_timeout,
+                                                  source=source)
+
+    def manifest(self):
+        """Commands this collector reads in spool mode, for bin/run-manifest.sh."""
+        return manifest(pbs=True, filesystems=self.config.filesystems,
+                        login_nodes=self.config.login_nodes)
 
     def _collect_node_data(self, data: dict):
         """
@@ -67,6 +78,7 @@ class BaseCollector:
             jobs_json = self.pbs.get_jobs_json()
             job_stats = JobParser.parse_jobs(jobs_json)
             data.update(job_stats)
+            self._check_jobs_visible(data)  # here, not in collect(): a failed qstat also reads as 0
 
             data['queues'] = QueueParser.parse_queues(jobs_json)
             data['user_project_queues'] = QueueParser.parse_user_project_queues(jobs_json)
@@ -101,6 +113,14 @@ class BaseCollector:
                 'user_project_queues': [],
                 'queue_definitions': [],
             })
+
+    def _check_jobs_visible(self, data: dict):
+        # The bare /opt/pbs/bin/qstat lists only the caller's own jobs; the site qstat on
+        # the login PATH lists all. The wrong one exits 0 with an empty list, silently.
+        if data.get('running_jobs') == 0 and (data.get('cpu_cores_allocated') or 0) > 0:
+            self.logger.error(
+                f"qstat shows no running jobs but {data['cpu_cores_allocated']} cores are "
+                f"allocated: qstat is probably not the site wrapper (check PATH)")
 
     def _collect_login_node_data(self, data: dict):
         """Collect common login node data."""
@@ -180,6 +200,15 @@ class BaseCollector:
             return 1
 
 
+class _ErrorCounter(logging.Handler):
+    def __init__(self):
+        super().__init__(level=logging.ERROR)
+        self.count = 0
+
+    def emit(self, record):
+        self.count += 1
+
+
 def main_runner(collector_class, system_name, description):
     """Generic main function for running a collector."""
     parser = argparse.ArgumentParser(description=description)
@@ -187,11 +216,34 @@ def main_runner(collector_class, system_name, description):
     parser.add_argument('--json-only', action='store_true', help='Output JSON to stdout and exit (no API call)')
     parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose logging')
     parser.add_argument('--log-file', help='Log file path')
+    parser.add_argument('--print-manifest', action='store_true',
+                        help='Print the key<TAB>command lines bin/run-manifest.sh runs on the host, and exit')
+    parser.add_argument('--spool', metavar='DIR',
+                        help='Read command output captured by bin/run-manifest.sh instead of running ssh')
+    parser.add_argument('--max-spool-age', type=int, default=600, metavar='SECONDS',
+                        help='Refuse a spool older than this (default 600)')
+    parser.add_argument('--strict', action='store_true',
+                        help='Exit 3 if any part of the collection logged an ERROR')
 
     args = parser.parse_args()
 
+    if args.print_manifest:
+        collector = collector_class(system_name, json_only=True)
+        for key, cmd in collector.manifest():
+            print(f'{key}\t{cmd}')
+        return 0
+
     if not args.json_only:
         setup_logging(log_file=args.log_file, verbose=args.verbose)
+    errors = _ErrorCounter()
+    if args.strict:
+        # A handler on root also retires logging.lastResort, which is what prints
+        # warnings under --json-only; keep that path on stderr.
+        if args.json_only:
+            stderr = logging.StreamHandler(sys.stderr)
+            stderr.setFormatter(logging.Formatter('%(levelname)s [%(name)s] %(message)s'))
+            logging.getLogger().addHandler(stderr)
+        logging.getLogger().addHandler(errors)
 
     logger = logging.getLogger(__name__)
     logger.info("=" * 60)
@@ -199,8 +251,17 @@ def main_runner(collector_class, system_name, description):
     logger.info("=" * 60)
 
     try:
-        collector = collector_class(system_name, dry_run=args.dry_run, json_only=args.json_only)
+        source = SpoolSource(args.spool, max_age=args.max_spool_age) if args.spool else None
+        collector = collector_class(system_name, dry_run=args.dry_run, json_only=args.json_only,
+                                    source=source)
+        if not (args.dry_run or args.json_only or collector.config.api_password):
+            raise ConfigError("STATUS_API_KEY required in .env or environment")
+        if source is not None:
+            logger.info(f"Reading spool {args.spool} (scraped on {source.host})")
         exit_code = collector.run()
+        if exit_code == 0 and args.strict and errors.count:
+            logger.error(f"--strict: {errors.count} error(s) logged during collection")
+            exit_code = 3
 
         logger.info("=" * 60)
         logger.info(f"{description} - {'SUCCESS' if exit_code == 0 else 'FAILED'}")
