@@ -97,3 +97,8 @@ Gotchas:
   `America/Denver`) reach the job. The image's own clock is UTC.
 - `jobhist-sync --dry-run` still runs `init_db()` DDL, so it needs the writer
   role.
+- The collectors spool lives under `state/` on shared `/glade`, deliberately:
+  node-local disk on a shared login node is scarce. Each derecho capture is about
+  43 MB (mostly `qstat -f -F json`); two are kept, and a new one is written every
+  5 minutes. Possible future change: a node-local spool, since the scrape and the
+  parse always run on the same host.
