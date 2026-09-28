@@ -137,3 +137,17 @@ def get_last_seen(session: Session, username: str) -> list[dict]:
             .all())
     return [{'kind': kind, 'system': system, 'first_seen': first, 'last_seen': last}
             for kind, system, first, last in rows]
+
+
+def get_last_seen_by_user(session: Session) -> dict[str, dict[str, tuple[datetime, str]]]:
+    """``{username: {kind: (last_seen, system)}}``, the newest row per user and kind."""
+    rows = (session.query(UserDef.username, AccessSource.kind, System.name,
+                          UserLastSeen.last_seen)
+            .join(UserLastSeen.source).join(AccessSource.system).join(UserLastSeen.user)
+            .all())
+    out: dict[str, dict[str, tuple[datetime, str]]] = {}
+    for username, kind, system, last in rows:
+        per_kind = out.setdefault(username, {})
+        if kind not in per_kind or last > per_kind[kind][0]:
+            per_kind[kind] = (last, system)
+    return out

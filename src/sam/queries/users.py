@@ -23,7 +23,7 @@ Functions:
 from datetime import datetime
 from typing import List, Optional, Dict, Tuple
 
-from sqlalchemy import or_, func, desc, select, exists
+from sqlalchemy import or_, func, desc, select, exists, union
 
 from sam.sqlcompat import ci_like
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -279,6 +279,44 @@ def get_users_by_organization(session: Session, org_acronym: str) -> List[User]:
         .filter(Organization.acronym == org_acronym)\
         .filter(User.is_active)\
         .all()
+
+
+def get_user_directory(session: Session, active_only: bool = True) -> Dict[str, Tuple[str, bool, bool]]:
+    """``{username: (display_name, active, locked)}`` from one column select."""
+    q = select(User.username, User.nickname, User.first_name, User.last_name,
+               User.active, User.locked)
+    if active_only:
+        q = q.where(User.is_active)
+    return {
+        username: (' '.join(p for p in (nickname or first, last) if p),
+                   bool(active), bool(locked))
+        for username, nickname, first, last, active, locked in session.execute(q)
+    }
+
+
+def count_active_projects_by_username(session: Session, usernames) -> Dict[str, int]:
+    """Active projects per username as member, lead or admin; absent means zero.
+
+    Same membership rule as ``User.active_projects()``, in one query.
+    """
+    usernames = list(usernames)
+    if not usernames:
+        return {}
+    members = (select(AccountUser.user_id.label('uid'), Account.project_id.label('pid'))
+               .join(Account, AccountUser.account_id == Account.account_id)
+               .join(Project, Account.project_id == Project.project_id)
+               .where(Project.is_active,
+                      or_(AccountUser.end_date.is_(None),
+                          AccountUser.end_date >= datetime.now())))
+    leads = select(Project.project_lead_user_id, Project.project_id).where(Project.is_active)
+    admins = (select(Project.project_admin_user_id, Project.project_id)
+              .where(Project.is_active, Project.project_admin_user_id.is_not(None)))
+    links = union(members, leads, admins).subquery()
+    q = (select(User.username, func.count())
+         .join(links, links.c.uid == User.user_id)
+         .where(User.username.in_(usernames))
+         .group_by(User.username))
+    return dict(session.execute(q).all())
 
 
 # ============================================================================

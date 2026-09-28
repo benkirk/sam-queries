@@ -4,7 +4,7 @@
 {% macro render_user_card(sam_user, is_admin=False, user_groups=None, primary_group_name=None,
                           current_shell=None, allowable_shells=None, can_edit_shell=False,
                           available_groups=None, can_edit_primary_gid=False,
-                          is_self=False) %}
+                          is_self=False, last_seen=False) %}
 {# user_groups: optional dict[branch_name] -> list of {'group_name', 'unix_gid'}
    primary_group_name: optional str — name of the adhoc group matching
                        sam_user.primary_gid, when one exists
@@ -15,7 +15,9 @@
    is_self: True when this card renders the session user's OWN record (i.e.
             /user/info). Affiliation history is not privileged data about
             yourself, so the Former Institution/Organization blocks show on
-            the self view as well as to operators. #}
+            the self view as well as to operators.
+   last_seen: False (not supplied: no section), None (ledger unreadable), or
+              get_last_seen() rows plus an `age` timedelta; the admin card only. #}
 <div class="card mb-3">
     <div class="card-header">
         <h5 class="mb-0">
@@ -323,6 +325,46 @@
         </div>
         </div>
     </div>
+
+    {% if last_seen is not sameas false %}
+    <div class="card-body border-top pt-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong><i class="fa-solid fa-clock-rotate-left"></i> Last seen</strong>
+            <a class="small text-decoration-none" href="{{ url_for('admin_dashboard.users_last_seen') }}">All users &raquo;</a>
+        </div>
+        {% if last_seen is none %}
+        <p class="text-muted mb-0"><small>Last-seen data is unavailable.</small></p>
+        {% elif not last_seen %}
+        <p class="text-muted mb-0"><small>Never seen on any tracked system.</small></p>
+        {% else %}
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-subtle">
+                    <tr>
+                        <th>Source</th>
+                        <th>System</th>
+                        <th class="text-nowrap">Last seen (UTC)</th>
+                        <th class="text-nowrap d-none d-sm-table-cell">First seen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in last_seen %}
+                    <tr>
+                        <td>{{ s.kind }}</td>
+                        <td>{{ s.system }}</td>
+                        <td class="text-nowrap">
+                            <span title="{{ s.last_seen | fmt_date(fmt='%Y-%m-%d %H:%M') }} UTC">{{ s.age | fmt_ago }} ago</span>
+                            <span class="text-muted small ms-1">{{ s.last_seen | fmt_date }}</span>
+                        </td>
+                        <td class="text-nowrap text-muted small d-none d-sm-table-cell">{{ s.first_seen | fmt_date }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
 
     <!-- SAM Permissions (only for the logged-in viewer's own card, when they have any) -->
     {% if sam_user.username == current_user.username and user_permissions %}
