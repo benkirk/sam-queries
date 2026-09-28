@@ -1,23 +1,24 @@
 # ncar-hpc-deploy, prod lane — csgteam on the `cron` host.
 # Cron says when a cadence fires; etc/schedule (in the image) says what each cadence runs, in
 # order. The lanes lock themselves on /glade (POSIX locks, cluster-wide), so an overrun skips.
+# Every name is NHD_-prefixed: crontab variables reach every later line's environment.
 NHD=/glade/u/apps/opt/sam-queries/containers/ncar-hpc-deploy/bin/ncar-hpc-deploy
-SSH="ssh -o BatchMode=yes -o LogLevel=error -o ServerAliveInterval=60 -o ServerAliveCountMax=5"
+NHD_SSH="ssh -o BatchMode=yes -o LogLevel=error -o ServerAliveInterval=60 -o ServerAliveCountMax=5"
 # Cron-side: one flock per line on this host, so ssh sessions cannot stack up. A firing waits
 # just under the line's interval for the previous one, then mails (-E 75) instead of skipping
 # silently: a hung remote run never reaches the lane's own stale-lock warning.
-L=/tmp/csgteam-nhd-prod
+NHD_LOCK=/tmp/csgteam-nhd-prod
 
 # image: pull :main, smoke on casper + derecho, swap on pass (exits 2 and mails on failure).
 # Off the */5 grid: the smoke scrapes PBS too, and must not land on a rapid tick.
-32 06 * * *     flock -E 75 -xn $L-update.lock $SSH casper.hpc.ucar.edu "$NHD update --lane prod --smoke-hosts derecho.hpc.ucar.edu"; [ $? -ne 75 ] || echo "nhd prod update: previous still running" >&2
+32 06 * * *     flock -E 75 -xn $NHD_LOCK-update.lock $NHD_SSH casper.hpc.ucar.edu "$NHD update --lane prod --smoke-hosts derecho.hpc.ucar.edu"; [ $? -ne 75 ] || echo "nhd prod update: previous still running" >&2
 
-*/5 * * * *     flock -E 75 -xw 240  $L-rapid-casper.lock   $SSH casper.hpc.ucar.edu  "$NHD tick --lane prod rapid  >/dev/null"; [ $? -ne 75 ] || echo "nhd prod rapid casper: previous still running after 4m" >&2
-*/5 * * * *     flock -E 75 -xw 240  $L-rapid-derecho.lock  $SSH derecho.hpc.ucar.edu "$NHD tick --lane prod rapid  >/dev/null"; [ $? -ne 75 ] || echo "nhd prod rapid derecho: previous still running after 4m" >&2
-17 * * * *      flock -E 75 -xw 3000 $L-hourly-casper.lock  $SSH casper.hpc.ucar.edu  "$NHD tick --lane prod hourly >/dev/null"; [ $? -ne 75 ] || echo "nhd prod hourly casper: previous still running after 50m" >&2
-22 * * * *      flock -E 75 -xw 3000 $L-hourly-derecho.lock $SSH derecho.hpc.ucar.edu "$NHD tick --lane prod hourly >/dev/null"; [ $? -ne 75 ] || echo "nhd prod hourly derecho: previous still running after 50m" >&2
+*/5 * * * *     flock -E 75 -xw 240  $NHD_LOCK-rapid-casper.lock   $NHD_SSH casper.hpc.ucar.edu  "$NHD tick --lane prod rapid  >/dev/null"; [ $? -ne 75 ] || echo "nhd prod rapid casper: previous still running after 4m" >&2
+*/5 * * * *     flock -E 75 -xw 240  $NHD_LOCK-rapid-derecho.lock  $NHD_SSH derecho.hpc.ucar.edu "$NHD tick --lane prod rapid  >/dev/null"; [ $? -ne 75 ] || echo "nhd prod rapid derecho: previous still running after 4m" >&2
+17 * * * *      flock -E 75 -xw 3000 $NHD_LOCK-hourly-casper.lock  $NHD_SSH casper.hpc.ucar.edu  "$NHD tick --lane prod hourly >/dev/null"; [ $? -ne 75 ] || echo "nhd prod hourly casper: previous still running after 50m" >&2
+22 * * * *      flock -E 75 -xw 3000 $NHD_LOCK-hourly-derecho.lock $NHD_SSH derecho.hpc.ucar.edu "$NHD tick --lane prod hourly >/dev/null"; [ $? -ne 75 ] || echo "nhd prod hourly derecho: previous still running after 50m" >&2
 # daily after midnight: the hdig acct.* files that accounting-disk loads land Saturday ~23:50.
-07 01 * * *     flock -E 75 -xn $L-daily-casper.lock   $SSH casper.hpc.ucar.edu  "$NHD tick --lane prod daily  >/dev/null"; [ $? -ne 75 ] || echo "nhd prod daily casper: previous still running" >&2
-12 01 * * *     flock -E 75 -xn $L-daily-derecho.lock  $SSH derecho.hpc.ucar.edu "$NHD tick --lane prod daily  >/dev/null"; [ $? -ne 75 ] || echo "nhd prod daily derecho: previous still running" >&2
-15 20 * * SAT   flock -E 75 -xn $L-weekly-casper.lock  $SSH casper.hpc.ucar.edu  "$NHD tick --lane prod weekly >/dev/null"; [ $? -ne 75 ] || echo "nhd prod weekly casper: previous still running" >&2
-45 20 * * SAT   flock -E 75 -xn $L-weekly-derecho.lock $SSH derecho.hpc.ucar.edu "$NHD tick --lane prod weekly >/dev/null"; [ $? -ne 75 ] || echo "nhd prod weekly derecho: previous still running" >&2
+07 01 * * *     flock -E 75 -xn $NHD_LOCK-daily-casper.lock   $NHD_SSH casper.hpc.ucar.edu  "$NHD tick --lane prod daily  >/dev/null"; [ $? -ne 75 ] || echo "nhd prod daily casper: previous still running" >&2
+12 01 * * *     flock -E 75 -xn $NHD_LOCK-daily-derecho.lock  $NHD_SSH derecho.hpc.ucar.edu "$NHD tick --lane prod daily  >/dev/null"; [ $? -ne 75 ] || echo "nhd prod daily derecho: previous still running" >&2
+15 20 * * SAT   flock -E 75 -xn $NHD_LOCK-weekly-casper.lock  $NHD_SSH casper.hpc.ucar.edu  "$NHD tick --lane prod weekly >/dev/null"; [ $? -ne 75 ] || echo "nhd prod weekly casper: previous still running" >&2
+45 20 * * SAT   flock -E 75 -xn $NHD_LOCK-weekly-derecho.lock $NHD_SSH derecho.hpc.ucar.edu "$NHD tick --lane prod weekly >/dev/null"; [ $? -ne 75 ] || echo "nhd prod weekly derecho: previous still running" >&2
