@@ -9,6 +9,7 @@ dependencies:
   - pip
   - postgresql=18.*
   - python
+  - shellcheck  # dev sessions only; containers do not read this file
   # docs/presentation deps:
   - eralchemy2
   - pydeps
