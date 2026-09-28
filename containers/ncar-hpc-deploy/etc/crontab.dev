@@ -1,0 +1,14 @@
+# ncar-hpc-deploy, dev lane — writes sam_dev and posts to samuel-dev; tracks :staging.
+# No jobhist-sync (etc/schedule lists it prod-only): the job_history DBs are shared with prod.
+NHD=/glade/u/apps/opt/sam-queries/containers/ncar-hpc-deploy/bin/ncar-hpc-deploy
+SSH="ssh -o BatchMode=yes -o LogLevel=error"
+
+# Off the */5 grid, as in crontab.prod.
+47 * * * *      $SSH casper.hpc.ucar.edu  "$NHD update --lane dev --smoke-hosts derecho.hpc.ucar.edu"
+
+*/5 * * * *     $SSH casper.hpc.ucar.edu  "$NHD tick --lane dev rapid  >/dev/null"
+*/5 * * * *     $SSH derecho.hpc.ucar.edu "$NHD tick --lane dev rapid  >/dev/null"
+19 * * * *      $SSH casper.hpc.ucar.edu  "$NHD tick --lane dev hourly >/dev/null"
+24 * * * *      $SSH derecho.hpc.ucar.edu "$NHD tick --lane dev hourly >/dev/null"
+09 01 * * *     $SSH casper.hpc.ucar.edu  "$NHD tick --lane dev daily  >/dev/null"
+14 01 * * *     $SSH derecho.hpc.ucar.edu "$NHD tick --lane dev daily  >/dev/null"

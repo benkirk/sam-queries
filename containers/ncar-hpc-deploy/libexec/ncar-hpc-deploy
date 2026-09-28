@@ -1,0 +1,328 @@
+#!/bin/bash
+# ncar-hpc-deploy: run scheduled HPC-side jobs from a blessed container image.
+#   tick [--lane L] CADENCE [--list|--dry-run]   run etc/schedule's CADENCE steps (what cron calls)
+#   run [--lane L] JOB [ARGS]      run jobs/JOB.sh in the lane's current image (flock + log)
+#   update [--lane L] [--force]    pull the lane tag; smoke-test; swap current on pass
+#   smoke [--lane L] [--image current|candidate|PATH]
+#   promote [--lane L] IMAGE       point current at IMAGE (manual bless; previous kept)
+#   rollback [--lane L]            swap current and previous
+#   status [--lane L]              image, digest, last update, last run per job
+#   shell [--lane L]               interactive shell in the current image
+# Exit codes follow the repo convention: 0 ok, 1 not found / nothing to do, 2 error.
+# Body in braces: bash parses it whole before running, so a `git pull` of this
+# checkout mid-run cannot splice new bytes into a running update.
+{
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lane.sh"
+
+usage() { sed -n '2,11p' "$(readlink -f "${BASH_SOURCE[0]}")" | sed 's/^# \{0,1\}//'; exit "${1:-2}"; }
+
+cmd="${1:-}"; [[ -z "${cmd}" ]] && usage; shift
+[[ "${cmd}" == -h || "${cmd}" == --help ]] && usage 0
+
+force=0; image_sel=current; remote_smoke="${NCAR_HPC_DEPLOY_SMOKE_HOSTS:-}"
+args=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --lane)   NHD_LANE="$2"; shift 2 ;;
+        --lane=*) NHD_LANE="${1#*=}"; shift ;;
+        --force)  force=1; shift ;;
+        --image)  image_sel="$2"; shift 2 ;;
+        --smoke-hosts) remote_smoke="$2"; shift 2 ;;
+        --)       shift; args+=("$@"); break ;;
+        *)        args+=("$1"); shift; [[ "${cmd}" == run ]] && { args+=("$@"); break; } ;;
+    esac
+done
+nhd_lane_init
+
+stamp() { date '+%Y-%m-%dT%H:%M:%S%z'; }
+log()   { echo "[$(stamp)] [${NHD_LANE}] $*"; }
+
+image_path() {
+    case "$1" in
+        current|previous|candidate) echo "${NHD_LANE_DIR}/$1" ;;
+        *) readlink -f "$1" ;;
+    esac
+}
+
+# Atomic repoint: rename(2) over the old link, so a concurrent `run` sees old or new, never neither.
+relink() {
+    ln -sfn "images/$(basename "$2")" "${NHD_LANE_DIR}/.$1.tmp" \
+        && mv -Tf "${NHD_LANE_DIR}/.$1.tmp" "${NHD_LANE_DIR}/$1"
+}
+
+# Point current at $1; previous keeps what was current, unless that is the same image
+# (a --force re-smoke of an unchanged digest must not collapse previous onto current).
+bless() {
+    local cur; cur=$(readlink -f "${NHD_LANE_DIR}/current" 2>/dev/null)
+    [[ -n "${cur}" && "${cur}" != "$1" ]] && relink previous "${cur}"
+    relink current "$1"
+}
+
+image_facts() {
+    nhd_load_apptainer
+    apptainer --quiet exec --cleanenv "$1" sh -c 'echo "git_sha=${GIT_SHA:-?} built=\"${BUILD_DATE:-?}\""' 2>/dev/null
+}
+
+remote_digest() {
+    local repo_path="${NHD_IMAGE_REPO#*/}" registry="${NHD_IMAGE_REPO%%/*}" token
+    token=$(curl -fsS "https://${registry}/token?scope=repository:${repo_path}:pull" \
+        | python3 -c 'import sys,json; print(json.load(sys.stdin)["token"])') || return 2
+    curl -fsSI -H "Authorization: Bearer ${token}" \
+        -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
+        "https://${registry}/v2/${repo_path}/manifests/${NHD_TAG}" \
+        | tr -d '\r' | awk -F': ' 'tolower($1)=="docker-content-digest"{print $2}'
+}
+
+# Host-side files (run-manifest.sh, etc/schedule) come out of the image, cached per image in
+# state/extract/<image>/, so the host checkout is not a moving part. NCAR_HPC_DEPLOY_SRC binds
+# a checkout over the image's copies, so under it the extract is refreshed every run.
+host_extract() {
+    local image="$1" path="$2" cached tmp
+    cached="${NHD_STATE}/extract/$(basename "$(readlink -f "${image}")" .sif)/$(basename "${path}")"
+    if [[ -n "${NCAR_HPC_DEPLOY_SRC}" || ! -s "${cached}" ]]; then
+        mkdir -p "$(dirname "${cached}")" && tmp=$(mktemp "${cached}.XXXXXX") || return 2
+        NHD_PWD="${NHD_STATE}" nhd_exec "${image}" cat "${path}" > "${tmp}" \
+            && [[ -s "${tmp}" ]] && chmod 755 "${tmp}" && mv -f "${tmp}" "${cached}" \
+            || { rm -f "${tmp}"; return 2; }
+    fi
+    echo "${cached}"
+}
+
+# Host half of the collectors job: the image prints each manifest, run-manifest.sh runs it.
+prejob_collectors() {
+    local image="$1" s manifest run_manifest
+    run_manifest=$(host_extract "${image}" /code/collectors/bin/run-manifest.sh) \
+        || { echo "could not extract run-manifest.sh from ${image}" >&2; return 2; }
+    for s in $(nhd_collectors); do
+        manifest=$(NHD_PWD="${NHD_STATE}" nhd_exec "${image}" \
+            python3 "/code/collectors/${s}/collector.py" --print-manifest) \
+            || { echo "${s}: --print-manifest failed" >&2; return 2; }
+        "${run_manifest}" "${NHD_STATE}/spool/$(nhd_host)/${s}" <<< "${manifest}" || return 2
+    done
+}
+
+do_smoke() {
+    local image; image=$(image_path "$1")
+    log "smoke on $(nhd_host): ${image} -> $(readlink -f "${image}")"
+    # A lane without the job_history writer overlay (dev) does not run the ingest, so skips its step.
+    local step steps="base accounting-comp collectors"
+    [[ -r "${NHD_ENV_FILE}.jobhist-sync" ]] && steps="base accounting-comp jobhist-sync collectors"
+    for step in ${NCAR_HPC_DEPLOY_SMOKE_STEPS:-${steps}}; do
+        if [[ "${step}" == collectors ]]; then
+            ( prejob_collectors "${image}" ) || { echo "SMOKE FAIL: collectors host scrape" >&2; return 2; }
+        fi
+        ( NHD_JOB="${step}" NHD_PWD="${NHD_STATE}" \
+            nhd_exec "${image}" bash "${NHD_IMAGE_SRC}/smoke/smoke.sh" "${step}" ) || return 2
+    done
+    log "smoke PASS on $(nhd_host)"
+}
+
+# Log that LOCK (held by WHAT) is busy. cron drops stdout, so a holder older than
+# NCAR_HPC_DEPLOY_STALE_MIN is a hang and is also said on stderr, which mails.
+lock_busy() {
+    log "$2: previous run still holds $1; skipping"
+    [[ -n "$(find "$1" -mmin "+${NCAR_HPC_DEPLOY_STALE_MIN:-60}" 2>/dev/null)" ]] && echo \
+        "ncar-hpc-deploy[${NHD_LANE}]: $2 on $(nhd_host) has held $1 since $(date -r "$1" '+%FT%T'); hung?" >&2
+    return 0
+}
+
+# run_job WAIT JOB [ARGS]: one job under its lock, logged; WAIT is flock -w seconds, 0 = skip
+# when held (rc 1). A subshell, so its exits end this job and not a calling tick.
+run_job() (
+    local wait="$1" job="$2"; shift 2
+    [[ "${job}" =~ ^[a-z0-9][a-z0-9-]*$ ]] || nhd_die "run: JOB must name jobs/<job>.sh, not '${job}'"
+    local host; host=$(nhd_host)
+    mkdir -p "${NHD_LOGS}/${job}"
+    local logfile="${NHD_LOGS}/${job}/${host}-$(date +%Y-%m-%d).log"
+    local lock="${NHD_STATE}/${job}-${host}.lock" how=(-n)
+    (( wait > 0 )) && how=(-w "${wait}")
+    {
+        flock -x "${how[@]}" 9 || { lock_busy "${lock}" "run ${job}"; exit 1; }
+        touch "${lock}"   # mtime = when the holder started; fd 9 is O_APPEND, so a contender does not reset it
+        {
+            echo "#----------------------------------------------------------------------------"
+            log "run ${job} $* on ${host} image=$(readlink "${NHD_LANE_DIR}/current")"
+            local t0=${SECONDS} rc=0
+            # A job with a host half (prejob_<job>) runs it first, outside the container.
+            if declare -F "prejob_${job//-/_}" >/dev/null; then
+                "prejob_${job//-/_}" "${NHD_LANE_DIR}/current" || rc=$?
+            fi
+            (( rc == 0 )) && { NHD_JOB="${job}" NHD_PWD="${NHD_STATE}" nhd_exec "${NHD_LANE_DIR}/current" \
+                bash "${NHD_IMAGE_SRC}/jobs/${job}.sh" "$@" || rc=$?; }
+            log "run ${job} exit=${rc} ($((SECONDS - t0))s)"
+            echo "$(stamp) exit=${rc} $((SECONDS - t0))s" > "${NHD_STATE}/last-run.${job}.${host}"
+            exit ${rc}
+        } 2>&1 | tee -a "${logfile}"
+        local rc=${PIPESTATUS[0]}
+        # stdout is usually discarded by cron; stderr is what mails someone.
+        (( rc == 0 )) || echo "ncar-hpc-deploy[${NHD_LANE}]: ${job} on ${host} exit=${rc}; see ${logfile}" >&2
+        exit "${rc}"
+    } 9>>"${lock}"
+)
+
+cmd_run() { run_job 0 "${args[@]}"; exit; }
+
+# Every etc/schedule row for CADENCE, this host and this lane, in file order. A failed step does
+# not stop the rest; the tick exits with the worst step's code. rapid and hourly skip a step whose
+# job lock is held (the next tick catches up); other cadences wait NCAR_HPC_DEPLOY_STEP_WAIT.
+cmd_tick() {
+    local cadence="" list=0 dry=() a
+    for a in "${args[@]}"; do
+        case "${a}" in
+            --list)    list=1 ;;
+            --dry-run) dry=(--dry-run) ;;
+            -*)        nhd_die "tick: unknown option ${a}" ;;
+            *)         [[ -z "${cadence}" ]] || nhd_die "tick: one CADENCE only"; cadence="${a}" ;;
+        esac
+    done
+    [[ "${cadence}" =~ ^[a-z0-9][a-z0-9-]*$ ]] || nhd_die "tick: CADENCE must name an etc/schedule cadence"
+    local host schedule; host=$(nhd_host)
+    schedule=$(host_extract "${NHD_LANE_DIR}/current" "${NHD_IMAGE_SRC}/etc/schedule") \
+        || nhd_die "tick: no etc/schedule in $(readlink "${NHD_LANE_DIR}/current")"
+
+    local steps=() c hosts lanes rest
+    while read -r c hosts lanes rest; do
+        [[ "${c}" == "${cadence}" ]] || continue
+        [[ ",${hosts}," == *",${host},"* && ",${lanes}," == *",${NHD_LANE},"* ]] && steps+=("${rest}")
+    done < "${schedule}"
+    # A cron line that runs nothing is a misconfiguration (typo, wrong host or lane): say so.
+    (( ${#steps[@]} )) || { echo "ncar-hpc-deploy[${NHD_LANE}]: tick ${cadence}: no steps for ${host}" >&2; exit 1; }
+    if (( list )); then printf '%s\n' "${steps[@]}"; exit 0; fi
+
+    local lock="${NHD_STATE}/tick-${cadence}-${host}.lock"
+    exec 7>>"${lock}"
+    flock -xn 7 || { lock_busy "${lock}" "tick ${cadence}"; exit 1; }
+    touch "${lock}"
+
+    local wait=${NCAR_HPC_DEPLOY_STEP_WAIT:-1800}
+    [[ "${cadence}" == rapid || "${cadence}" == hourly ]] && wait=0
+    local t0=${SECONDS} rc=0 s step words summary=""
+    for step in "${steps[@]}"; do
+        read -ra words <<< "${step}"
+        run_job "${wait}" "${words[@]}" "${dry[@]}"; s=$?
+        summary+="${summary:+,}${words[0]}=${s}"
+        (( s > rc )) && rc=${s}
+    done
+    local line; line="$(stamp) exit=${rc} $((SECONDS - t0))s ${summary}"
+    echo "${line}" > "${NHD_STATE}/last-tick.${cadence}.${host}"
+    mkdir -p "${NHD_LOGS}/tick"
+    echo "${cadence} ${line}" | tee -a "${NHD_LOGS}/tick/${host}-$(date +%Y-%m-%d).log"
+    exit ${rc}
+}
+
+cmd_update() {
+    exec 8>"${NHD_STATE}/update.lock"
+    flock -xn 8 || { log "update already running"; exit 1; }
+    prune_logs
+
+    local digest; digest=$(remote_digest) || true
+    [[ "${digest}" == sha256:* ]] || nhd_die "could not resolve ${NHD_IMAGE_REPO}:${NHD_TAG}"
+    local last; last=$(cat "${NHD_STATE}/last-digest" 2>/dev/null)
+    if [[ "${digest}" == "${last}" && ${force} -eq 0 ]]; then
+        log "${NHD_TAG} unchanged (${digest:7:12}); nothing to do"; exit 0
+    fi
+
+    local sif="${NHD_LANE_DIR}/images/webapp-${NHD_TAG}-${digest:7:12}.sif"
+    if [[ ! -s "${sif}" ]]; then
+        log "pulling ${NHD_IMAGE_REPO}@${digest}"
+        nhd_load_apptainer
+        local tmp="${NCAR_HPC_DEPLOY_TMPDIR:-${TMPDIR:-/var/tmp}}/ncar-hpc-deploy-${USER}"
+        mkdir -p "${tmp}"
+        APPTAINER_TMPDIR="${tmp}" apptainer --quiet pull --disable-cache "${sif}.part" \
+            "docker://${NHD_IMAGE_REPO}@${digest}" || { rm -f "${sif}.part"; nhd_die "pull failed"; }
+        mv -f "${sif}.part" "${sif}"
+    fi
+    relink candidate "${sif}"
+    log "candidate $(basename "${sif}") $(image_facts "${sif}")"
+
+    local rc=0 h
+    do_smoke candidate || rc=$?
+    for h in ${remote_smoke}; do
+        [[ ${rc} -eq 0 ]] || break
+        log "remote smoke on ${h}"
+        ssh -o BatchMode=yes -o LogLevel=error "${h}" \
+            "NCAR_HPC_DEPLOY_ROOT='${NHD_ROOT}' NCAR_HPC_DEPLOY_SRC='${NCAR_HPC_DEPLOY_SRC}' NCAR_HPC_DEPLOY_SMOKE_STEPS='${NCAR_HPC_DEPLOY_SMOKE_STEPS}' '${NHD_LIBEXEC}/ncar-hpc-deploy' smoke --lane '${NHD_LANE}' --image candidate" || rc=$?
+    done
+    if [[ ${rc} -ne 0 ]]; then
+        echo "$(stamp) ${digest} smoke exit=${rc}" > "${NHD_STATE}/last-update.FAILED"
+        prune
+        nhd_die "smoke FAILED (exit ${rc}); current left at $(readlink "${NHD_LANE_DIR}/current")"
+    fi
+
+    bless "${sif}"
+    rm -f "${NHD_LANE_DIR}/candidate" "${NHD_STATE}/last-update.FAILED"
+    echo "${digest}" > "${NHD_STATE}/last-digest"
+    echo "$(stamp) ${digest} $(basename "${sif}")" >> "${NHD_STATE}/update-history"
+    log "current -> $(basename "${sif}")"
+    prune
+}
+
+# Keep NCAR_HPC_DEPLOY_KEEP (3) images in all: current, previous and a failed candidate
+# always, then the newest others. Runs after every update that pulled, pass or fail.
+prune() {
+    local keep=() l f n=0
+    for l in current previous candidate; do
+        f=$(readlink -f "${NHD_LANE_DIR}/${l}" 2>/dev/null) || continue
+        [[ -f "${f}" && " ${keep[*]} " != *" ${f} "* ]] && keep+=("${f}")
+    done
+    for f in $(ls -t "${NHD_LANE_DIR}"/images/*.sif 2>/dev/null); do
+        [[ " ${keep[*]} " == *" ${f} "* ]] && continue
+        n=$((n + 1))
+        (( n + ${#keep[@]} > ${NCAR_HPC_DEPLOY_KEEP:-3} )) && { log "prune $(basename "${f}")"; rm -f "${f}"; }
+    done
+}
+
+# Run logs older than NCAR_HPC_DEPLOY_LOG_DAYS (90) and host_extract caches of pruned images.
+# Called on every update, including the "unchanged" path, so it runs daily in prod.
+prune_logs() {
+    find "${NHD_LOGS}" -name '*-????-??-??.log' -mtime "+${NCAR_HPC_DEPLOY_LOG_DAYS:-90}" -delete 2>/dev/null
+    local d
+    for d in "${NHD_STATE}"/extract/*/; do
+        [[ -d "${d}" ]] || continue
+        [[ -f "${NHD_LANE_DIR}/images/$(basename "${d}").sif" ]] || rm -rf "${d}"
+    done
+}
+
+cmd_promote() {
+    local target; target=$(image_path "${args[0]:-}")
+    [[ -f "${target}" ]] || nhd_die "promote: no image ${args[0]:-}"
+    bless "${target}"
+    log "promoted current -> $(basename "${target}")"
+}
+
+cmd_rollback() {
+    local cur prev
+    cur=$(readlink -f "${NHD_LANE_DIR}/current"); prev=$(readlink -f "${NHD_LANE_DIR}/previous")
+    [[ -f "${prev}" ]] || nhd_die "rollback: no previous image"
+    relink current "${prev}"; relink previous "${cur}"
+    log "rolled back current -> $(basename "${prev}")"
+}
+
+cmd_status() {
+    local l
+    echo "lane=${NHD_LANE} tag=${NHD_TAG} root=${NHD_LANE_DIR}"
+    for l in current previous candidate; do
+        [[ -e "${NHD_LANE_DIR}/${l}" ]] || continue
+        printf '  %-9s %s  %s\n' "${l}" "$(readlink "${NHD_LANE_DIR}/${l}")" "$(image_facts "${NHD_LANE_DIR}/${l}")"
+    done
+    echo "  digest    $(cat "${NHD_STATE}/last-digest" 2>/dev/null || echo none)"
+    [[ -f "${NHD_STATE}/last-update.FAILED" ]] && echo "  LAST UPDATE FAILED: $(cat "${NHD_STATE}/last-update.FAILED")"
+    for l in "${NHD_STATE}"/last-tick.* "${NHD_STATE}"/last-run.*; do
+        [[ -f "${l}" ]] && printf '  %-34s %s\n' "${l##*/last-}" "$(cat "${l}")"
+    done
+    return 0
+}
+
+case "${cmd}" in
+    tick)     cmd_tick ;;
+    run)      cmd_run ;;
+    update)   cmd_update ;;
+    smoke)    do_smoke "${image_sel}" ;;
+    promote)  cmd_promote ;;
+    rollback) cmd_rollback ;;
+    status)   cmd_status ;;
+    shell)    nhd_exec "${NHD_LANE_DIR}/current" bash -l ;;
+    *)        usage ;;
+esac
+exit
+}
