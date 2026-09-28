@@ -132,6 +132,16 @@ class TestSpoolSource:
         with pytest.raises(exc.ConfigError, match="stale"):
             commands.SpoolSource(_spool(tmp_path, {}, age=3600), max_age=600)
 
+    def test_a_swap_mid_parse_does_not_mix_captures(self, tmp_path):
+        a, b = _spool(tmp_path, {"qstat": (0, "A")}), tmp_path / "b"
+        b.mkdir()
+        (b / "qstat.rc").write_text("0\n"); (b / "qstat.out").write_text("B")
+        link = tmp_path / "current"
+        link.symlink_to(a)
+        src = commands.SpoolSource(str(link))
+        link.unlink(); link.symlink_to(b)
+        assert src.read("qstat")[1] == "A"
+
     def test_read(self, tmp_path):
         src = commands.SpoolSource(_spool(tmp_path, {"qstat": (0, "out"), "pbs_rstat": (1, "", "boom")}))
         assert src.host == "testhost"
@@ -184,6 +194,23 @@ class TestEmptyJobListIsFlagged:
         assert len(caplog.records) == 1 and "site wrapper" in caplog.text
 
 
+    def _job_errors(self, caplog, tmp_path, qstat):
+        collector = object.__new__(LIB["base_collector"].BaseCollector)
+        collector.logger = logging.getLogger("test")
+        collector.pbs = LIB["pbs_client"].PBSClient(
+            "casper", source=commands.SpoolSource(_spool(tmp_path, {"qstat": qstat})))
+        with caplog.at_level(logging.ERROR):
+            collector._collect_job_data({"cpu_cores_allocated": 512})
+        return caplog.text
+
+    def test_empty_job_list_is_flagged(self, caplog, tmp_path):
+        assert "site wrapper" in self._job_errors(caplog, tmp_path, (0, '{"Jobs": {}}'))
+
+    def test_failed_qstat_is_not_blamed_on_path(self, caplog, tmp_path):
+        text = self._job_errors(caplog, tmp_path, (1, "", "cannot connect"))
+        assert "Failed to collect job data" in text and "site wrapper" not in text
+
+
 class TestRunManifest:
     def _run(self, spool, manifest):
         return subprocess.run(["bash", _RUN_MANIFEST, str(spool)], input=manifest,
@@ -203,14 +230,24 @@ class TestRunManifest:
         # and the collector side accepts it
         assert commands.SpoolSource(str(spool)).read("ok") == (0, "hello\n", "")
 
-    def test_rerun_replaces_the_previous_capture(self, tmp_path):
+    def test_rerun_keeps_one_previous_capture(self, tmp_path):
         spool = tmp_path / "casper"
         self._run(spool, "a\techo 1\n")
         first = os.readlink(spool)
         self._run(spool, "a\techo 2\n")
-        assert os.readlink(spool) != first
-        assert not (tmp_path / first).exists()
+        second = os.readlink(spool)
+        assert second != first and (tmp_path / first).exists()  # a reader may still hold it
         assert (spool / "a.out").read_text() == "2\n"
+        self._run(spool, "a\techo 3\n")
+        assert not (tmp_path / first).exists() and (tmp_path / second).exists()
+
+    def test_leaves_a_concurrent_runs_capture_alone(self, tmp_path):
+        spool = tmp_path / "casper"
+        in_progress = tmp_path / "casper.1.99999"  # no scrape.meta yet
+        in_progress.mkdir()
+        self._run(spool, "a\techo 1\n")
+        self._run(spool, "a\techo 2\n")
+        assert in_progress.exists()
 
     @pytest.mark.parametrize("manifest", ["../escape\techo x\n", "", "nocommand\t\n"])
     def test_rejects_bad_manifests(self, tmp_path, manifest):

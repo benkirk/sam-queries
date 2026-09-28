@@ -86,7 +86,8 @@ class SpoolSource:
     """Reads <key>.out/.err/.rc written by bin/run-manifest.sh."""
 
     def __init__(self, spool_dir, max_age=600):
-        self.dir = spool_dir
+        # Resolve the symlink once: run-manifest.sh may repoint it mid-parse.
+        self.dir = os.path.realpath(spool_dir)
         meta = self._meta()
         finished = int(meta.get('finished', 0))
         age = time.time() - finished

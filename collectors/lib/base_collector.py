@@ -78,6 +78,7 @@ class BaseCollector:
             jobs_json = self.pbs.get_jobs_json()
             job_stats = JobParser.parse_jobs(jobs_json)
             data.update(job_stats)
+            self._check_jobs_visible(data)  # here, not in collect(): a failed qstat also reads as 0
 
             data['queues'] = QueueParser.parse_queues(jobs_json)
             data['user_project_queues'] = QueueParser.parse_user_project_queues(jobs_json)
@@ -174,7 +175,6 @@ class BaseCollector:
         data = {'timestamp': datetime.now().isoformat()}
         self._collect_node_data(data)
         self._collect_job_data(data)
-        self._check_jobs_visible(data)
         self._collect_login_node_data(data)
         self._collect_filesystem_data(data)
         self._collect_reservation_data(data)

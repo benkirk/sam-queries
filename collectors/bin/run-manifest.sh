@@ -5,6 +5,7 @@
 # repoints SPOOL_DIR (a symlink) at the finished capture, so a reader never sees a
 # partial spool. Needs bash + coreutils only: the host never needs our Python env.
 # CMD_TIMEOUT (default 60s) bounds each command; all commands run concurrently.
+# The collector's PBS_COMMAND_TIMEOUT / SSH_TIMEOUT apply to ssh mode only.
 # Run it from a login environment: commands resolve on the caller's PATH, as they do
 # over `ssh <host> "cmd"`.
 set -u
@@ -37,11 +38,15 @@ printf 'host=%s\nstarted=%s\nfinished=%s\ncommands=%s\nqstat=%s\n' \
 
 # A plain directory left at SPOOL_DIR (first run by hand) is replaced by the symlink.
 [[ -d "${spool}" && ! -L "${spool}" ]] && rm -rf "${spool}"
+previous=$(readlink "${spool}" 2>/dev/null)
 ln -sfn "$(basename "${capture}")" "${spool}.lnk.$$" && mv -Tf "${spool}.lnk.$$" "${spool}"
 
-# Keep only the capture SPOOL_DIR now points at.
+# Keep the new capture and the one it replaced (a reader may still be parsing it).
+# Only finished captures (scrape.meta written) are removed: a concurrent run's
+# in-progress capture has none yet.
 for old in "${spool}".[0-9]*.[0-9]*; do
-    [[ -d "${old}" && "${old}" != "${capture}" ]] && rm -rf "${old}"
+    [[ -f "${old}/scrape.meta" && "${old}" != "${capture}" \
+        && "$(basename "${old}")" != "${previous}" ]] && rm -rf "${old}"
 done
 
 failed=$(grep -lv '^0$' "${capture}"/*.rc 2>/dev/null | xargs -r -n1 basename | sed 's/\.rc$//' | xargs)

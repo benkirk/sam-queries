@@ -50,7 +50,8 @@ while [[ $# -gt 0 ]]; do
         --jupyterhub) RUN_JUPYTERHUB=1 ;;
         --once)       RUN_ONCE=1 ;;
         --dry-run)    EXTRA_ARGS+=(--dry-run) ;;
-        --spool)      SPOOL_ROOT="$2"; shift ;;
+        --spool)      [[ $# -ge 2 ]] || { echo "--spool needs a directory"; usage; exit 1; }
+                      SPOOL_ROOT="$2"; shift ;;
         --help|-h)    usage; exit 0 ;;
         *) echo "Unknown option: $1"; usage; exit 1 ;;
     esac
