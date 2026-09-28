@@ -27,3 +27,17 @@ def test_lead_counts_and_inactive_projects_do_not(session):
     got = count_active_projects_by_username(session, [lead.username, idle.username])
     assert got == {lead.username: 1}
     assert count_active_projects_by_username(session, []) == {}
+
+
+def test_primary_email_prefers_the_primary_row(session, multi_project_user):
+    from sam.queries.users import get_primary_emails
+    u = multi_project_user
+    assert get_primary_emails(session, [u.username]).get(u.username) == u.primary_email
+
+
+def test_chunked_counts_agree(session, multi_project_user, monkeypatch):
+    import sam.queries.users as users
+    names = [multi_project_user.username, 'benkirk']
+    whole = count_active_projects_by_username(session, names)
+    monkeypatch.setattr(users, '_IN_CHUNK', 1)
+    assert count_active_projects_by_username(session, names) == whole

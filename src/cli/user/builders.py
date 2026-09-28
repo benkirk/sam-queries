@@ -153,3 +153,32 @@ def build_users_with_projects(users: set, list_projects: bool) -> dict:
             entry['projects'] = build_user_projects(u, inactive=False)
         out['users'].append(entry)
     return out
+
+
+def build_not_seen_users(rows, projects: dict, emails: dict, *, spec: str, cutoff: datetime,
+                         source, abandoned: bool, total_considered: int,
+                         active_only: bool) -> dict:
+    """``--not-seen-since`` envelope; ``rows`` are ``ReviewRow`` (never-seen first, then oldest)."""
+    return {
+        'kind': 'users_not_seen',
+        'since': spec,
+        'cutoff': cutoff,
+        'source': source,
+        'abandoned': abandoned,
+        'active_only': active_only,
+        'total_considered': total_considered,
+        'count': len(rows),
+        'users': [
+            {
+                'username': r.username,
+                'display_name': r.name,
+                'status': r.status,
+                'last_seen': r.last_seen,
+                'source': r.kind,
+                'system': r.system,
+                'active_project_count': projects.get(r.username, 0),
+                'primary_email': emails.get(r.username),
+            }
+            for r in rows
+        ],
+    }
