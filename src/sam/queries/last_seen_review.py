@@ -15,6 +15,24 @@ from datetime import datetime, timedelta
 from typing import Mapping, Optional
 
 NEVER = 'never'
+CURRENT = 'current'
+RECENT = 'recent'
+
+#: A sighting this fresh is "now": the user was present in the latest collector
+#: snapshot (every 5 min; two ticks survive one missed run). The webapp row is a real
+#: event but shares the window so it does not float above the snapshot rows.
+CURRENT_WINDOWS = {
+    'webapp': timedelta(minutes=10),
+    'login': timedelta(minutes=10),
+    'pbs': timedelta(minutes=10),
+    'jupyterhub': timedelta(minutes=10),
+}
+
+
+def is_current(last_seen: Optional[datetime], kind: Optional[str], now: datetime) -> bool:
+    if last_seen is None or kind not in CURRENT_WINDOWS:
+        return False
+    return now - last_seen <= CURRENT_WINDOWS[kind]
 
 
 @dataclass(frozen=True)
@@ -25,9 +43,11 @@ class Bucket:
     hi_days: Optional[int]
 
 
-#: Ordered, adjacent, half-open ``[lo, hi)`` day ranges; ``never`` has no ledger row.
+#: Ordered, adjacent, half-open ``[lo, hi)`` day ranges; ``current`` is the per-kind
+#: window above and ``never`` has no ledger row.
 BUCKETS = (
-    Bucket('recent', '< 30 days', 0, 30),
+    Bucket(CURRENT, 'Now', None, None),
+    Bucket(RECENT, '< 30 days', 0, 30),
     Bucket('year', '30 days – 1 year', 30, 365),
     Bucket('dormant', '1 – 3 years', 365, 3 * 365),
     Bucket('stale', '> 3 years', 3 * 365, None),
@@ -49,16 +69,19 @@ class ReviewRow:
     system: Optional[str]
     age: Optional[timedelta]
     bucket: str
+    current: bool = False
 
 
-def bucket_for(last_seen: Optional[datetime], now: datetime) -> str:
+def bucket_for(last_seen: Optional[datetime], now: datetime, kind: Optional[str] = None) -> str:
     if last_seen is None:
         return NEVER
+    if is_current(last_seen, kind, now):
+        return CURRENT
     days = (now - last_seen).days
     for b in BUCKETS:
         if b.lo_days is not None and days >= b.lo_days and (b.hi_days is None or days < b.hi_days):
             return b.key
-    return BUCKETS[0].key           # a future timestamp is as recent as it gets
+    return RECENT                   # a future timestamp is as recent as it gets
 
 
 def _newest(per_kind: Mapping[str, tuple], kind: Optional[str]):
@@ -104,7 +127,7 @@ def review(directory: Mapping[str, tuple], ledger: Mapping[str, Mapping[str, tup
         per_kind = ledger.get(row.username, {})
         for k in kinds:
             newest = _newest(per_kind, k)
-            b = bucket_for(newest[0] if newest else None, now)
+            b = bucket_for(newest[0] if newest else None, now, k)
             if (bucket is None and newest) or (bucket is not None and b == bucket):
                 kind_counts[k] += 1
 
@@ -115,7 +138,8 @@ def review(directory: Mapping[str, tuple], ledger: Mapping[str, Mapping[str, tup
         if newest:
             row.last_seen, row.kind, row.system = newest
             row.age = now - row.last_seen
-        row.bucket = bucket_for(row.last_seen, now)
+        row.bucket = bucket_for(row.last_seen, now, row.kind)
+        row.current = row.bucket == CURRENT
         bucket_counts[row.bucket] += 1
         if bucket is None or row.bucket == bucket:
             rows.append(row)

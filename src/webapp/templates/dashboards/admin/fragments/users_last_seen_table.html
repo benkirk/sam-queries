@@ -54,7 +54,8 @@
                 <td class="text-nowrap">
                     {% if r.last_seen %}
                     <span title="{{ r.last_seen | fmt_date(fmt='%Y-%m-%d %H:%M') }} UTC">
-                        {{ r.age | fmt_ago }} ago</span>
+                        {%- if r.current %}<i class="fa-solid fa-circle text-success me-1" style="font-size:0.5em;vertical-align:middle;"></i>now
+                        {%- else %}{{ r.age | fmt_ago }} ago{% endif %}</span>
                     <span class="text-muted small ms-1 d-none d-sm-inline">{{ r.last_seen | fmt_date }}</span>
                     {% else %}<span class="text-muted">never</span>{% endif %}
                 </td>

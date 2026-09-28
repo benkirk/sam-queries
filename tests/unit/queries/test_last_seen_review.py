@@ -4,7 +4,9 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from sam.queries.last_seen_review import NEVER, NOT_IN_SAM, bucket_for, review
+from sam.queries.last_seen_review import (
+    CURRENT, CURRENT_WINDOWS, NEVER, NOT_IN_SAM, bucket_for, is_current, review,
+)
 
 NOW = datetime(2026, 9, 27, 12, 0)
 
@@ -24,6 +26,38 @@ def test_bucket_edges(days, bucket):
 
 def test_no_row_is_never():
     assert bucket_for(None, NOW) == NEVER
+
+
+class TestCurrent:
+    """A sighting inside the per-kind window is "now"; one second past it is not."""
+
+    @pytest.mark.parametrize('kind', sorted(CURRENT_WINDOWS))
+    def test_window_edge_per_kind(self, kind):
+        window = CURRENT_WINDOWS[kind]
+        assert is_current(NOW - window, kind, NOW)
+        assert not is_current(NOW - window - timedelta(seconds=1), kind, NOW)
+
+    def test_every_kind_shares_the_window(self):
+        assert len(set(CURRENT_WINDOWS.values())) == 1      # webapp does not float above the snapshots
+
+    def test_bucket_needs_a_kind(self):
+        assert bucket_for(NOW - timedelta(minutes=1), NOW, 'pbs') == CURRENT
+        assert bucket_for(NOW - timedelta(minutes=1), NOW) == 'recent'
+        assert bucket_for(NOW - timedelta(minutes=1), NOW, 'unknown') == 'recent'
+
+    def test_review_counts_current_once_and_not_as_recent(self):
+        ledger = {**LEDGER, 'alice': {'webapp': (NOW - timedelta(minutes=2), 'samuel')},
+                  'bob': {'pbs': (NOW - timedelta(minutes=9), 'derecho')}}
+        rows, buckets, kinds = review(DIRECTORY, ledger, now=NOW)
+        assert buckets[CURRENT] == 2 and buckets['recent'] == 0
+        assert {r.username for r in rows if r.current} == {'alice', 'bob'}
+        assert kinds['webapp'] == 1 and kinds['pbs'] == 1
+        current_rows, _, _ = review(DIRECTORY, ledger, now=NOW, bucket=CURRENT)
+        assert [r.username for r in current_rows] == ['alice', 'bob']
+
+    def test_an_old_row_is_not_current(self):
+        rows, _, _ = _review()
+        assert not any(r.current for r in rows)
 
 
 DIRECTORY = {

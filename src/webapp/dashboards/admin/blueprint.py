@@ -360,6 +360,7 @@ def project_card(projcode):
 
 def _user_last_seen(username):
     """``get_last_seen`` rows with an ``age``, or None when the status DB cannot be read."""
+    from sam.queries.last_seen_review import is_current
     from system_status.queries.last_seen import get_last_seen
     from system_status.timeutil import utcnow_naive
     try:
@@ -369,7 +370,8 @@ def _user_last_seen(username):
         db.session.rollback()
         return None
     now = utcnow_naive()
-    return [{**r, 'age': now - r['last_seen']} for r in rows]
+    return [{**r, 'age': now - r['last_seen'],
+             'current': is_current(r['last_seen'], r['kind'], now)} for r in rows]
 
 
 @bp.route('/user/<username>')

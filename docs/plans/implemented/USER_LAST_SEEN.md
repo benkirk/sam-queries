@@ -54,9 +54,14 @@ Nothing below is committed to; it is the list to pick from.
 
 - **Read side**: sketched below. The user card section and the Admin → Users & Groups
   → Last seen page are built (`webapp/dashboards/admin/last_seen_routes.py`, the join
-  in `sam/queries/last_seen_review.py`). Recency is a chip strip of buckets (<30d,
+  in `sam/queries/last_seen_review.py`). Recency is a chip strip of buckets (now, <30d,
   30d–1y, 1–3y, >3y, never) rather than window pills, and times show in UTC because
-  backfilled rows hold a Mountain date at 00:00. The CLI half is built too: a Last seen
+  backfilled rows hold a Mountain date at 00:00. "Now" is a per-kind window
+  (`CURRENT_WINDOWS`, 10 min = two collector ticks): a sighting that fresh is a
+  snapshot, not an event, so the cell reads "now" with a green dot instead of a
+  false-precision "1 minute ago", and the webapp login row shares the window so it
+  does not float above the snapshot rows. The user card and the CLI use the same
+  `is_current` predicate. The CLI half is built too: a Last seen
   row in `sam-search user X` (per-source table under `-v`, `last_seen` in the JSON), and
   `sam-search user --not-seen-since SPEC [--source KIND]`, which intersects with
   `--abandoned` and reuses the same `review()` join, so its count matches the web chips.
