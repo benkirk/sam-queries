@@ -43,7 +43,7 @@ that writes job_history gets the DML writer role, `jobhist_writer` (OpenBao
 ```bash
 ncar-hpc-deploy tick --lane prod hourly                      # what cron calls
 ncar-hpc-deploy tick --lane dev daily --list                 # steps for this host and lane
-ncar-hpc-deploy run --lane prod accounting-comp --last 2d   # one job: flock + log + exit code
+ncar-hpc-deploy run --lane prod accounting-comp --last 2d   # one job: lock + log + exit code
 ncar-hpc-deploy run --lane dev collectors --dry-run
 ncar-hpc-deploy update --lane prod --smoke-hosts derecho.hpc.ucar.edu
 ncar-hpc-deploy status --lane prod
@@ -147,6 +147,14 @@ Gotchas:
 - A skipped run is normal for an overrun and is only logged; a lock held longer
   than `NCAR_HPC_DEPLOY_STALE_MIN` (60) minutes is reported on stderr every
   tick, so a hung job mails rather than silently starving its successors.
+- Locks are POSIX (`fcntl`) locks taken by `libexec/lock.py`, which then execs
+  the locked command. `flock` is node-local on GPFS, and `ssh casper` lands on
+  any login node, so a flock on `lanes/` would not exclude a run on another node.
+  A locked command must not open and close its own lock file in-process:
+  closing any descriptor on it releases the lock.
+- The crontabs also flock each line on the `cron` host. A firing waits just under
+  its interval for the previous ssh, then mails, so a hung remote run is reported
+  even though it never reaches the lane's stale-lock check.
 - `accounting-disk` stamps a usage file once `sam-admin` has consumed it, even
   when rows were skipped (exit 2 still mails once). Reloading the same file
   would repeat the same rows; to rerun one, delete
