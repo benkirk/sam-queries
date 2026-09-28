@@ -1,9 +1,10 @@
 # jobhist-sync writer role — narrowing the ingest off the Postgres superuser
 
-**Status:** 2026-09-28. The hpc-usage-queries change is on branch `jobhist-check-db`
-(§2). The `jobhist_writer` role exists on csg-postgres with the §3 grants, and was verified
-(§6). The credential swap (§5 step 4) waits on an image carrying §2. **See also:** `containers/ncar-hpc-deploy/README.md` (lanes, env
-overlays), PR #645.
+**Status:** in rollout, 2026-09-28. §2 merged as hpc-usage-queries#119 and is in
+`:staging` (sam-queries#654 made the build pick it up). The `jobhist_writer` role exists
+with the §3 grants, and the soak's prod-lane override uses it (§6). Prod swaps once a
+`:main` carrying #119 is current (§5 steps 2 and 4). **See also:**
+`containers/ncar-hpc-deploy/README.md` (lanes, env overlays), PR #645.
 **Goal:** the routine `jobhist-sync` ingest runs as a DML-only role; schema work becomes an
 explicit, rare step run by the DB owner.
 
@@ -112,6 +113,13 @@ Run 2026-09-28, as `jobhist_writer`, on both DBs:
 - These were all refused: `DROP TRIGGER` (must be owner), `CREATE TABLE` and
   `CREATE OR REPLACE FUNCTION` (no CREATE on `public`), `TRUNCATE`.
 - `check_db` and `jobhist-sync --dry-run` from the §2 branch both exit 0.
+
+In the soak, with the prod-lane `env.jobhist-sync` switched to `jobhist_writer`:
+- The `:staging` image with #119 (`webapp-staging-080055682a7f`) passes the jobhist-sync
+  smoke step on casper and derecho, 0 errors.
+- The pre-#119 `:main` image fails the same step with `InsufficientPrivilege: permission
+  denied for schema public`. That is the §5 hazard, and the lane's own `update` smoke
+  refuses such an image.
 
 The checklist:
 
