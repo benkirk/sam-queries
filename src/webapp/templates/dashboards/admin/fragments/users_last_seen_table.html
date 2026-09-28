@@ -35,7 +35,6 @@
             <tr>
                 <th>{{ sort_header('username', 'User') }}</th>
                 <th class="d-none d-md-table-cell">{{ sort_header('name', 'Name') }}</th>
-                <th class="d-none d-sm-table-cell">Status</th>
                 <th class="text-nowrap">{{ sort_header('last_seen', 'Last seen') }}</th>
                 <th class="d-none d-md-table-cell">Via</th>
                 <th class="text-end text-nowrap" title="Active projects as member, lead or admin">Projects</th>
@@ -45,15 +44,13 @@
             {% for r in rows %}
             <tr>
                 <td class="text-nowrap">
+                    {# Active is the default and unmarked; only the exceptions get a badge. #}
                     {% if r.status == 'not in SAM' %}<code>{{ r.username }}</code>
-                    {% else %}{{ user_link(r.username, True, compact=True) }}{% endif %}
+                    <span class="badge bg-dark ms-1" style="font-size:0.7em;" title="No SAM user has this username">not in SAM</span>
+                    {% else %}{{ user_link(r.username, True, compact=True) }}
+                    {%- if r.status != 'active' %}{{ status_badge(r.status, extra='ms-1', small=True) }}{% endif %}{% endif %}
                 </td>
                 <td class="d-none d-md-table-cell">{{ r.name or '—' }}</td>
-                <td class="d-none d-sm-table-cell">
-                    {% if r.status == 'not in SAM' %}
-                    <span class="badge bg-dark" title="No SAM user has this username">not in SAM</span>
-                    {% else %}{{ status_badge(r.status, small=True) }}{% endif %}
-                </td>
                 <td class="text-nowrap">
                     {% if r.last_seen %}
                     <span title="{{ r.last_seen | fmt_date(fmt='%Y-%m-%d %H:%M') }} UTC">
@@ -67,7 +64,7 @@
                 <td class="text-end">{{ projects.get(r.username, 0) if r.status != 'not in SAM' else '—' }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="6" class="text-muted text-center py-4">No users match these filters.</td></tr>
+            <tr><td colspan="5" class="text-muted text-center py-4">No users match these filters.</td></tr>
             {% endfor %}
         </tbody>
     </table>

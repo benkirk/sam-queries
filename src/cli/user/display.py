@@ -279,8 +279,6 @@ def display_not_seen_users(ctx: Context, data: dict):
     table = Table(box=box.SIMPLE_HEAD, caption="Dates are UTC.", caption_justify="left")
     table.add_column("Username", style="cyan", no_wrap=True)
     table.add_column("Name", overflow="ellipsis", max_width=22)
-    if not data['active_only']:
-        table.add_column("Status", no_wrap=True, min_width=8)
     table.add_column("Last seen", no_wrap=True, min_width=10)
     table.add_column("Via", style="dim", overflow="ellipsis")
     table.add_column("Projects", justify="right", no_wrap=True, min_width=8)
@@ -288,9 +286,9 @@ def display_not_seen_users(ctx: Context, data: dict):
         table.add_column("Email", no_wrap=True)
     for u in data['users']:
         seen = u['last_seen']
-        row = [u['username'], u['display_name']]
-        if not data['active_only']:
-            row.append(u['status'])
+        # Active is the default and unmarked; only the exceptions carry a tag.
+        name = u['username'] if u['status'] == 'active' else f"{u['username']} [dim]({u['status']})[/]"
+        row = [name, u['display_name']]
         row += [fmt.date_str(seen) if seen else '[yellow]never[/]',
                 _via(u['source'], u['system']),
                 str(u['active_project_count'])]
