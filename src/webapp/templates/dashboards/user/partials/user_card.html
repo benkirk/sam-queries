@@ -353,7 +353,9 @@
                         <td>{{ s.kind }}</td>
                         <td>{{ s.system }}</td>
                         <td class="text-nowrap">
-                            <span title="{{ s.last_seen | fmt_date(fmt='%Y-%m-%d %H:%M') }} UTC">{{ s.age | fmt_ago }} ago</span>
+                            <span title="{{ s.last_seen | fmt_date(fmt='%Y-%m-%d %H:%M') }} UTC">
+                                {%- if s.current %}<i class="fa-solid fa-circle text-success me-1" style="font-size:0.5em;vertical-align:middle;"></i>now
+                                {%- else %}{{ s.age | fmt_ago }} ago{% endif %}</span>
                             <span class="text-muted small ms-1">{{ s.last_seen | fmt_date }}</span>
                         </td>
                         <td class="text-nowrap text-muted small d-none d-sm-table-cell">{{ s.first_seen | fmt_date }}</td>

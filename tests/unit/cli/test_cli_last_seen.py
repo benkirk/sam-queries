@@ -58,6 +58,14 @@ class TestUserLastSeenRow:
         verbose = runner.invoke(cli, ['user', 'benkirk', '-v']).output
         assert 'Last seen: benkirk' in verbose and 'cheyenne' in verbose
 
+    def test_fresh_sighting_reads_now(self, runner, mock_db_session, ledger):
+        ledger('login', 'derecho', ['benkirk'], 0)
+        out = runner.invoke(cli, ['user', 'benkirk']).output
+        assert '(now)' in out and 'ago' not in out.split('Last seen')[1].splitlines()[0]
+        assert '(now)' in runner.invoke(cli, ['user', 'benkirk', '-v']).output
+        data = _json(runner.invoke(cli, ['--format', 'json', 'user', 'benkirk']))
+        assert data['last_seen'][0]['current'] is True
+
     def test_json_lists_every_source(self, runner, mock_db_session, ledger):
         ledger('pbs', 'cheyenne', ['benkirk'], 400)
         data = _json(runner.invoke(cli, ['--format', 'json', 'user', 'benkirk']))

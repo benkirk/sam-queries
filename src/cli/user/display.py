@@ -99,9 +99,9 @@ def _last_seen_summary(sources):
         return Text("never", style="yellow")
     from system_status.timeutil import utcnow_naive
     newest = sources[0]
+    when = 'now' if newest.get('current') else f"{fmt.ago(utcnow_naive() - newest['last_seen'])} ago"
     return (f"{fmt.date_str(newest['last_seen'], fmt='%Y-%m-%d %H:%M')} UTC  "
-            f"{_via(newest['kind'], newest['system'])}  "
-            f"({fmt.ago(utcnow_naive() - newest['last_seen'])} ago)")
+            f"{_via(newest['kind'], newest['system'])}  ({when})")
 
 
 def display_user_provisioning(ctx: Context, prov: dict, username: str):
