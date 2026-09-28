@@ -238,6 +238,32 @@ jobs:
           # a truncated/mangled delivery shows far fewer.
           echo "staged deploy key: $(wc -c < "$RUNNER_TEMP/hpc_sched_deploy_key") bytes"
 
+      # The Dockerfile pip-installs both plugins from a git ref. Passing the literal
+      # `main` keeps that layer cached after the peer repo moves, so resolve each
+      # branch to its SHA: the layer rebuilds exactly when a peer commit lands.
+      - name: Resolve plugin refs
+        id: peer
+        run: |
+          set -uo pipefail
+          resolve() {  # resolve OUTPUT URL: SHA of main, or `main` (cached layer) with a warning
+            local sha
+            sha=$(git ls-remote "$2" refs/heads/main | cut -f1)
+            [ -n "$sha" ] || { echo "::warning::could not resolve $2 main; building from cached ref"; sha=main; }
+            echo "$1=$sha" | tee -a "$GITHUB_OUTPUT"
+          }
+          resolve usage_ref https://github.com/benkirk/hpc-usage-queries.git
+          if [ -s "$RUNNER_TEMP/hpc_sched_deploy_key" ]; then
+            key="$RUNNER_TEMP/hpc_sched_ls_key"
+            # Same normalization as the Dockerfile: GitHub strips the key's final newline.
+            install -m 600 /dev/null "$key"; tr -d '\r' < "$RUNNER_TEMP/hpc_sched_deploy_key" > "$key"
+            [ -n "$(tail -c1 "$key")" ] && printf '\n' >> "$key"
+            GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" \
+              resolve sched_ref git@github.com:NCAR/hpc-scheduling-tools.git
+            rm -f "$key"
+          else
+            echo "sched_ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push
         id: build
         uses: docker/build-push-action@v7
@@ -254,6 +280,8 @@ jobs:
           build-args: |
             GIT_SHA=${{ github.sha }}
             BUILD_DATE=${{ steps.build_date.outputs.value }}
+            HPC_USAGE_QUERIES_REF=${{ steps.peer.outputs.usage_ref }}
+            HPC_SCHEDULING_TOOLS_REF=${{ steps.peer.outputs.sched_ref }}
           # Read-only deploy key for the private NCAR/hpc-scheduling-tools plugin.
           # Consumed only by the webapp/webdev Dockerfile secret mount; unused by
           # the mysql/collectors builds. Empty file -> Dockerfile skips.
