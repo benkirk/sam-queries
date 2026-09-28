@@ -49,6 +49,14 @@ relink() {
         && mv -Tf "${NHD_LANE_DIR}/.$1.tmp" "${NHD_LANE_DIR}/$1"
 }
 
+# Point current at $1; previous keeps what was current, unless that is the same image
+# (a --force re-smoke of an unchanged digest must not collapse previous onto current).
+bless() {
+    local cur; cur=$(readlink -f "${NHD_LANE_DIR}/current" 2>/dev/null)
+    [[ -n "${cur}" && "${cur}" != "$1" ]] && relink previous "${cur}"
+    relink current "$1"
+}
+
 image_facts() {
     nhd_load_apptainer
     apptainer --quiet exec --cleanenv "$1" sh -c 'echo "git_sha=${GIT_SHA:-?} built=\"${BUILD_DATE:-?}\""' 2>/dev/null
@@ -64,12 +72,26 @@ remote_digest() {
         | tr -d '\r' | awk -F': ' 'tolower($1)=="docker-content-digest"{print $2}'
 }
 
-# Host half of the collectors job: the image prints each manifest, and the host
-# checkout's bash-only run-manifest.sh runs it, so the host needs no Python env.
+# run-manifest.sh (bash only) comes out of the image, cached per image in state/, so the
+# host checkout is not a moving part. NCAR_HPC_DEPLOY_SRC binds a checkout over
+# /code/collectors, so under it the extract is refreshed every run instead of cached.
+host_run_manifest() {
+    local image="$1" cached tmp
+    cached="${NHD_STATE}/run-manifest.$(basename "$(readlink -f "${image}")" .sif).sh"
+    if [[ -n "${NCAR_HPC_DEPLOY_SRC}" || ! -s "${cached}" ]]; then
+        tmp=$(mktemp "${cached}.XXXXXX") || return 2
+        NHD_PWD="${NHD_STATE}" nhd_exec "${image}" cat /code/collectors/bin/run-manifest.sh > "${tmp}" \
+            && [[ -s "${tmp}" ]] && chmod 755 "${tmp}" && mv -f "${tmp}" "${cached}" \
+            || { rm -f "${tmp}"; return 2; }
+    fi
+    echo "${cached}"
+}
+
+# Host half of the collectors job: the image prints each manifest, run-manifest.sh runs it.
 prejob_collectors() {
-    local image="$1" s manifest
-    local run_manifest="${NHD_LIBEXEC}/../../../collectors/bin/run-manifest.sh"
-    [[ -x "${run_manifest}" ]] || { echo "missing ${run_manifest}" >&2; return 2; }
+    local image="$1" s manifest run_manifest
+    run_manifest=$(host_run_manifest "${image}") \
+        || { echo "could not extract run-manifest.sh from ${image}" >&2; return 2; }
     for s in $(nhd_collectors); do
         manifest=$(NHD_PWD="${NHD_STATE}" nhd_exec "${image}" \
             python3 "/code/collectors/${s}/collector.py" --print-manifest) \
@@ -102,7 +124,14 @@ cmd_run() {
     local logfile="${NHD_LOGS}/${job}/${host}-$(date +%Y-%m-%d).log"
     local lock="${NHD_STATE}/${job}-${host}.lock"
     {
-        flock -xn 9 || { log "run ${job}: previous run still holds ${lock}; skipping"; exit 1; }
+        if ! flock -xn 9; then
+            log "run ${job}: previous run still holds ${lock}; skipping"
+            # cron drops stdout; a holder older than NCAR_HPC_DEPLOY_STALE_MIN is a hang, so say so on stderr.
+            [[ -n "$(find "${lock}" -mmin "+${NCAR_HPC_DEPLOY_STALE_MIN:-60}" 2>/dev/null)" ]] && echo \
+                "ncar-hpc-deploy[${NHD_LANE}]: ${job} on ${host} has held ${lock} since $(date -r "${lock}" '+%FT%T'); hung?" >&2
+            exit 1
+        fi
+        touch "${lock}"   # mtime = when the holder started; fd 9 is O_APPEND, so a contender does not reset it
         {
             echo "#----------------------------------------------------------------------------"
             log "run ${job} ${args[*]:1} on ${host} image=$(readlink "${NHD_LANE_DIR}/current")"
@@ -121,12 +150,13 @@ cmd_run() {
         # stdout is usually discarded by cron; stderr is what mails someone.
         (( rc == 0 )) || echo "ncar-hpc-deploy[${NHD_LANE}]: ${job} on ${host} exit=${rc}; see ${logfile}" >&2
         exit "${rc}"
-    } 9>"${lock}"
+    } 9>>"${lock}"
 }
 
 cmd_update() {
     exec 8>"${NHD_STATE}/update.lock"
     flock -xn 8 || { log "update already running"; exit 1; }
+    prune_logs
 
     local digest; digest=$(remote_digest) || true
     [[ "${digest}" == sha256:* ]] || nhd_die "could not resolve ${NHD_IMAGE_REPO}:${NHD_TAG}"
@@ -161,8 +191,7 @@ cmd_update() {
         nhd_die "smoke FAILED (exit ${rc}); current left at $(readlink "${NHD_LANE_DIR}/current")"
     fi
 
-    [[ -e "${NHD_LANE_DIR}/current" ]] && relink previous "$(readlink -f "${NHD_LANE_DIR}/current")"
-    relink current "${sif}"
+    bless "${sif}"
     rm -f "${NHD_LANE_DIR}/candidate" "${NHD_STATE}/last-update.FAILED"
     echo "${digest}" > "${NHD_STATE}/last-digest"
     echo "$(stamp) ${digest} $(basename "${sif}")" >> "${NHD_STATE}/update-history"
@@ -181,11 +210,22 @@ prune() {
     done
 }
 
+# Run logs older than NCAR_HPC_DEPLOY_LOG_DAYS (90) and run-manifest extracts of pruned images.
+# Called on every update, including the "unchanged" path, so it runs daily in prod.
+prune_logs() {
+    find "${NHD_LOGS}" -name '*-????-??-??.log' -mtime "+${NCAR_HPC_DEPLOY_LOG_DAYS:-90}" -delete 2>/dev/null
+    local f name
+    for f in "${NHD_STATE}"/run-manifest.*.sh; do
+        [[ -f "${f}" ]] || continue
+        name=$(basename "${f}" .sh); name=${name#run-manifest.}
+        [[ -f "${NHD_LANE_DIR}/images/${name}.sif" ]] || rm -f "${f}"
+    done
+}
+
 cmd_promote() {
     local target; target=$(image_path "${args[0]:-}")
     [[ -f "${target}" ]] || nhd_die "promote: no image ${args[0]:-}"
-    [[ -e "${NHD_LANE_DIR}/current" ]] && relink previous "$(readlink -f "${NHD_LANE_DIR}/current")"
-    relink current "${target}"
+    bless "${target}"
     log "promoted current -> $(basename "${target}")"
 }
 

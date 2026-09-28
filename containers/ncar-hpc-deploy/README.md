@@ -26,8 +26,9 @@ lanes/<lane>/
   env.<job>           optional overlay for one job (etc/env.jobhist-sync.example)
   images/*.sif        pulled by digest; current + previous + 3 newest kept
   current previous    symlinks into images/; swapped by rename, so a running job is never left without one
-  state/              locks, last-run.<job>.<host>, last-digest, update-history, disk stamps
-  logs/<job>/<host>-YYYY-MM-DD.log
+  state/              locks, last-run.<job>.<host>, last-digest, update-history, disk stamps,
+                      run-manifest.<image>.sh (extracted from the image), spool/<host>/
+  logs/<job>/<host>-YYYY-MM-DD.log   pruned after NCAR_HPC_DEPLOY_LOG_DAYS (90)
 ```
 
 Overlays exist because SAM accounting and `jobhist-sync` read the same
@@ -47,10 +48,12 @@ NCAR_HPC_DEPLOY_LANE=dev bin/sam-search project SCSG0001     # tools through the
 ```
 
 `update` resolves the tag's digest anonymously from GHCR and returns if it is
-unchanged. Otherwise it pulls to `images/`, points `candidate` at it, and runs
-`smoke/smoke.sh` inside it, locally and then on each `--smoke-hosts` host over
-ssh. Only a pass moves `current`. A failure leaves `current` alone, writes
-`state/last-update.FAILED`, and exits 2 so cron mails.
+unchanged. Otherwise it pulls to `lanes/<lane>/images/`, points `candidate` at
+it, and runs `smoke/smoke.sh` inside it, locally and then on each
+`--smoke-hosts` host over ssh. Only a pass moves `current`; `previous` keeps the
+image that was current (a `--force` re-smoke of an unchanged digest leaves it
+alone). A failure leaves `current` alone, writes
+`lanes/<lane>/state/last-update.FAILED`, and exits 2 so cron mails.
 
 The smoke gate is read-only. It checks imports and entry points, runs a SAM
 query, and dry-runs `accounting-comp`, `jobhist-sync` and `collectors` against
@@ -75,10 +78,12 @@ the env.
 The collectors job has a host half. The container can't ssh between hosts
 (host-based auth needs setuid `ssh-keysign`) or run the PBS client, so
 `prejob_collectors` first has the image print each collector's manifest, and
-the host checkout's `collectors/bin/run-manifest.sh` (bash only) runs it into
+`collectors/bin/run-manifest.sh` (bash only, extracted from that same image
+and cached per image under `lanes/<lane>/state/`) runs it into
 `state/spool/<host>/<system>/`. The container then parses that spool with
 `--spool`. Each host collects only itself: casper does `casper` and
-`jupyterhub`, derecho does `derecho`.
+`jupyterhub`, derecho does `derecho`. Nothing on the host side reads the git
+checkout except `libexec/` itself.
 
 To try a change before its image exists, set `NCAR_HPC_DEPLOY_SRC=<checkout>`.
 This binds that checkout's `containers/ncar-hpc-deploy` and `collectors` over
@@ -92,12 +97,29 @@ the image's copies (testing only).
 3. Set `NHD=` in `etc/crontab.<lane>`, then merge it into csgteam's crontab
    on `cron`. Remove each host-checkout entry it replaces in the same edit.
 
+Ordering: a lane's image must carry this directory. Until the change that adds
+it has reached the lane's tag and CI has published that image, `update` fails
+its `jobs-shipped` smoke step, and only `NCAR_HPC_DEPLOY_SRC=<checkout>` can
+run the jobs. Dev (`:staging`) therefore goes live one promotion before prod.
+
 Gotchas:
-- `--cleanenv` means only the lane env, `NCAR_HOST`, and `TZ` (default
-  `America/Denver`) reach the job. The image's own clock is UTC.
+- `--cleanenv` means only the lane env and what `nhd_exec` names reach the
+  job: `NCAR_HOST`, `TZ` (default `America/Denver`), the `NHD_*` paths and
+  `MPLCONFIGDIR`. The image's own clock is UTC.
 - `jobhist-sync --dry-run` still runs `init_db()` DDL, so it needs the writer
   role.
-- The collectors spool lives under `state/` on shared `/glade`, deliberately:
+- A skipped run is normal for an overrun and is only logged; a lock held longer
+  than `NCAR_HPC_DEPLOY_STALE_MIN` (60) minutes is reported on stderr every
+  tick, so a hung job mails rather than silently starving its successors.
+- `accounting-disk` stamps a usage file once `sam-admin` has consumed it, even
+  when rows were skipped (exit 2 still mails once). Reloading the same file
+  would repeat the same rows; to rerun one, delete
+  `lanes/<lane>/state/disk-<key>.stamp`.
+- The `accounting-comp` smoke step runs the job's fallback ladder with
+  `--dry-run`, and `--skip-errors` still exits 2 when rows were skipped. A bad
+  data day therefore fails every candidate, but the same data is already
+  failing prod's hourly job, so fix the data rather than the gate.
+- The collectors spool lives under `lanes/<lane>/state/` on shared `/glade`, deliberately:
   node-local disk on a shared login node is scarce. Each derecho capture is about
   43 MB (mostly `qstat -f -F json`); two are kept, and a new one is written every
   5 minutes. Possible future change: a node-local spool, since the scrape and the

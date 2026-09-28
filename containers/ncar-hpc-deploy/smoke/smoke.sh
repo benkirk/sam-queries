@@ -11,6 +11,8 @@ run() { echo "== smoke $1: ${*:2}"; time "${@:2}" > "${out}" 2>&1 \
 case "$1" in
     base)
         echo "== image git_sha=${GIT_SHA:-?} built=${BUILD_DATE:-?} host=${NCAR_HOST} lane=${NHD_LANE}"
+        # An image built before this directory merged has no jobs; name that plainly.
+        run jobs-shipped ls "${SRC}/jobs"
         run imports python3 -c 'import sam, cli, job_history, webapp'
         run entry-points bash -c 'sam-admin --help && sam-search --help && jobhist-sync --help'
         run sam-db sam-search --format json project SCSG0001 ;;

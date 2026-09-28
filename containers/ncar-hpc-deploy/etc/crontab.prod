@@ -1,11 +1,12 @@
 # ncar-hpc-deploy, prod lane — csgteam on the `cron` host.
 # Times match the host-checkout cron entries this replaces; each job flocks itself on /glade,
-# so an overrunning run is skipped, not stacked.
+# so an overrunning run is skipped, not stacked (a holder older than an hour mails via stderr).
 NHD=/glade/u/apps/opt/CHANGEME/containers/ncar-hpc-deploy/bin/ncar-hpc-deploy
 SSH="ssh -o BatchMode=yes -o LogLevel=error"
 
-# image: pull :main, smoke on casper + derecho, swap on pass (exits 2 and mails on failure)
-30 06 * * *     $SSH casper.hpc.ucar.edu  "$NHD update --lane prod --smoke-hosts derecho.hpc.ucar.edu"
+# image: pull :main, smoke on casper + derecho, swap on pass (exits 2 and mails on failure).
+# Off the */5 grid: the smoke scrapes PBS too, and must not land on a collectors tick.
+32 06 * * *     $SSH casper.hpc.ucar.edu  "$NHD update --lane prod --smoke-hosts derecho.hpc.ucar.edu"
 
 # job_history ingest (hpc-usage-queries)
 */5 * * * *     $SSH casper.hpc.ucar.edu  "$NHD run --lane prod jobhist-sync rapid  >/dev/null"

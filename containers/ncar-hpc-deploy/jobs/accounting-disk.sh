@@ -17,13 +17,15 @@ while read -r key resource; do
         echo "${resource}: ${latest##*/} already processed"; continue
     fi
     echo "# ${resource}: ${latest}"
-    # --skip-errors: a partial load is better than none; errors still print.
-    if time sam-admin accounting --disk --resource "${resource}" --user-usage "${latest}" \
-            --verbose --skip-errors "$@"; then
-        [[ " $* " == *" --dry-run "* ]] || date > "${stamp}"
-    else
-        rc=2
-    fi
+    # --skip-errors: a partial load is better than none; errors print and sam-admin exits 2
+    # when rows were skipped. The file is consumed either way, so it is stamped on 0 or 2:
+    # reloading it nightly would repeat the same rows. To rerun a file, rm its stamp.
+    time sam-admin accounting --disk --resource "${resource}" --user-usage "${latest}" \
+            --verbose --skip-errors "$@"; s=$?
+    case ${s} in
+        0|2) [[ " $* " == *" --dry-run "* ]] || date > "${stamp}"; (( s == 0 )) || rc=2 ;;
+        *)   rc=2 ;;
+    esac
 done <<'MAP'
 quasar Quasar
 glade Campaign_Store

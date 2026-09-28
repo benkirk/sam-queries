@@ -3,7 +3,8 @@
 NHD=/glade/u/apps/opt/CHANGEME/containers/ncar-hpc-deploy/bin/ncar-hpc-deploy
 SSH="ssh -o BatchMode=yes -o LogLevel=error"
 
-45 * * * *      $SSH casper.hpc.ucar.edu  "$NHD update --lane dev --smoke-hosts derecho.hpc.ucar.edu"
+# Off the */5 grid, as in crontab.prod.
+47 * * * *      $SSH casper.hpc.ucar.edu  "$NHD update --lane dev --smoke-hosts derecho.hpc.ucar.edu"
 
 19 * * * *      $SSH casper.hpc.ucar.edu  "$NHD run --lane dev accounting-comp --last 2d >/dev/null"
 24 * * * *      $SSH derecho.hpc.ucar.edu "$NHD run --lane dev accounting-comp --last 2d >/dev/null"
