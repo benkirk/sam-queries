@@ -146,6 +146,7 @@ Each post also names the users observed, which the server folds into
 - `users` (JupyterHub): `[{name, last_activity}]` from the hub API.
 
 The fields are optional, so a collector and the server can be upgraded in either order.
+Design record and future work: [USER_LAST_SEEN.md](../docs/plans/implemented/USER_LAST_SEEN.md).
 
 ## Node Type Classification
 
