@@ -6,8 +6,8 @@ NHD_LIBEXEC="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 NHD_ROOT="${NCAR_HPC_DEPLOY_ROOT:-$(dirname "${NHD_LIBEXEC}")}"
 NHD_LANE="${NCAR_HPC_DEPLOY_LANE:-prod}"
 NHD_IMAGE_REPO="${NCAR_HPC_DEPLOY_IMAGE_REPO:-ghcr.io/benkirk/sam-queries/webapp}"
-# Job bodies ship inside the image; NCAR_HPC_DEPLOY_SRC binds a host checkout's copy over them
-# (testing a job change before its image exists).
+# Job bodies ship inside the image; NCAR_HPC_DEPLOY_SRC=<checkout> binds that checkout's
+# jobs and collectors over the image's (testing a change before its image exists).
 NHD_IMAGE_SRC=/code/containers/ncar-hpc-deploy
 
 nhd_die() { echo "ncar-hpc-deploy: $*" >&2; exit 2; }
@@ -31,6 +31,14 @@ nhd_host() {
         casper*|crhtc*|crlogin*) echo casper ;;
         derecho*|dec*)           echo derecho ;;
         *)                       hostname -s ;;
+    esac
+}
+
+# Each host collects only itself: ssh and PBS stay on the host (collectors/README.md).
+nhd_collectors() {
+    case "$(nhd_host)" in
+        casper)  echo "casper jupyterhub" ;;
+        derecho) echo "derecho" ;;
     esac
 }
 
@@ -61,10 +69,10 @@ nhd_exec() {
     for d in /ssg/pbs/casper/accounting /ncar/pbs/accounting /local_scratch; do
         [[ -d "${d}" ]] && binds+=(-B "${d}")
     done
-    # Site host keys: without them the collectors' `ssh casper|derecho` fails host-key checks.
-    [[ -r /etc/ssh/ssh_known_hosts ]] && binds+=(-B /etc/ssh/ssh_known_hosts:/etc/ssh/ssh_known_hosts:ro)
     if [[ -n "${NCAR_HPC_DEPLOY_SRC}" ]]; then
-        binds+=(-B "$(readlink -f "${NCAR_HPC_DEPLOY_SRC}"):${NHD_IMAGE_SRC}:ro")
+        local src; src=$(readlink -f "${NCAR_HPC_DEPLOY_SRC}")
+        [[ -d "${src}/containers/ncar-hpc-deploy" ]] || nhd_die "NCAR_HPC_DEPLOY_SRC must be a repo checkout"
+        binds+=(-B "${src}/containers/ncar-hpc-deploy:${NHD_IMAGE_SRC}:ro" -B "${src}/collectors:/code/collectors:ro")
     fi
 
     # --cleanenv: nothing from the cron/login shell leaks in except what is named here.
@@ -73,6 +81,7 @@ nhd_exec() {
         "${binds[@]}" \
         --env-file "${env_file}" \
         --env "NCAR_HOST=$(nhd_host),TZ=${NCAR_HPC_DEPLOY_TZ:-America/Denver},NHD_LANE=${NHD_LANE},NHD_STATE=${NHD_STATE},NHD_LOGS=${NHD_LOGS},MPLCONFIGDIR=${NHD_STATE}/mpl" \
+        --env "NHD_COLLECTORS=$(nhd_collectors),NHD_SPOOL=${NHD_STATE}/spool/$(nhd_host)" \
         --pwd "${NHD_PWD:-${PWD}}" \
         "${image}" "$@"
 }

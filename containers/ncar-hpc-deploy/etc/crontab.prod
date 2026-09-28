@@ -24,5 +24,6 @@ SSH="ssh -o BatchMode=yes -o LogLevel=error"
 # SAM disk charge summaries (reruns only when a newer hdig acct file lands)
 27 02 * * *     $SSH casper.hpc.ucar.edu  "$NHD run --lane prod accounting-disk >/dev/null"
 
-# status collectors -> samuel
+# status collectors -> samuel; each host scrapes and posts only itself
 */5 * * * *     $SSH casper.hpc.ucar.edu  "$NHD run --lane prod collectors >/dev/null"
+*/5 * * * *     $SSH derecho.hpc.ucar.edu "$NHD run --lane prod collectors >/dev/null"

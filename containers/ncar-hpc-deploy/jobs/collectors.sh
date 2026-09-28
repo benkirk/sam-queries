@@ -1,30 +1,22 @@
 #!/bin/bash
-# One pass of the status collectors (POST to STATUS_API_URL) for this host.
-# Usage: collectors.sh [--strict] [--dry-run|--json-only ...]  (rest passed to each collector)
-# --strict fails a collector that logged any ERROR: a collector whose every ssh fails
-# still exits 0, so exit status alone cannot gate an image.
-# Same per-collector timeout and naive-UTC clock as collectors/run_collectors.sh.
-export TZ=UTC
-case "${NCAR_HOST}" in
-    casper)  collectors=(derecho casper jupyterhub) ;;
-    derecho) collectors=(derecho) ;;
-    *) echo "ERROR: unhandled NCAR_HOST=${NCAR_HOST}" >&2; exit 2 ;;
-esac
-strict=0
-[[ "$1" == --strict ]] && { strict=1; shift; }
+# Parse this host's collector spools and POST to STATUS_API_URL.
+# The host already scraped them (ncar-hpc-deploy prejob_collectors, bash only):
+# the container has no ssh identity and no PBS client.
+# Usage: collectors.sh [--strict] [--dry-run|--json-only ...]  (passed to each collector)
+# Env: NHD_COLLECTORS (systems for this host), NHD_SPOOL (spool root).
+export TZ=UTC   # collectors write naive-UTC timestamps, as collectors/run_collectors.sh does
+[[ -n "${NHD_COLLECTORS}" && -n "${NHD_SPOOL}" ]] \
+    || { echo "ERROR: NHD_COLLECTORS/NHD_SPOOL unset; run via ncar-hpc-deploy" >&2; exit 2; }
 log_dir="${NHD_LOGS:-.}/collectors"
 mkdir -p "${log_dir}"
 rc=0
-for c in "${collectors[@]}"; do
+for c in ${NHD_COLLECTORS}; do
     t0=$(date +%s)
     log="${log_dir}/${c}.log"
-    lines_before=$(cat "${log}" 2>/dev/null | wc -l)
     # stdout duplicates the collector's own log file; stderr keeps pre-logging crashes.
-    timeout 1m python3 /code/collectors/"${c}"/collector.py --log-file="${log}" "$@" > /dev/null 2>> "${log}"
+    timeout 1m python3 /code/collectors/"${c}"/collector.py --spool "${NHD_SPOOL}/${c}" \
+        --log-file="${log}" "$@" > /dev/null 2>> "${log}"
     s=$?
-    if (( s == 0 && strict )) && tail -n +"$((lines_before + 1))" "${log}" | grep -q ' ERROR '; then
-        s=3
-    fi
     if (( s == 0 )); then
         echo "  ok   ${c} ($(( $(date +%s) - t0 ))s)"
     else

@@ -64,6 +64,20 @@ remote_digest() {
         | tr -d '\r' | awk -F': ' 'tolower($1)=="docker-content-digest"{print $2}'
 }
 
+# Host half of the collectors job: the image prints each manifest, and the host
+# checkout's bash-only run-manifest.sh runs it, so the host needs no Python env.
+prejob_collectors() {
+    local image="$1" s manifest
+    local run_manifest="${NHD_LIBEXEC}/../../../collectors/bin/run-manifest.sh"
+    [[ -x "${run_manifest}" ]] || { echo "missing ${run_manifest}" >&2; return 2; }
+    for s in $(nhd_collectors); do
+        manifest=$(NHD_PWD="${NHD_STATE}" nhd_exec "${image}" \
+            python3 "/code/collectors/${s}/collector.py" --print-manifest) \
+            || { echo "${s}: --print-manifest failed" >&2; return 2; }
+        "${run_manifest}" "${NHD_STATE}/spool/$(nhd_host)/${s}" <<< "${manifest}" || return 2
+    done
+}
+
 do_smoke() {
     local image; image=$(image_path "$1")
     log "smoke on $(nhd_host): ${image} -> $(readlink -f "${image}")"
@@ -71,6 +85,9 @@ do_smoke() {
     local step steps="base accounting-comp collectors"
     [[ -r "${NHD_ENV_FILE}.jobhist-sync" ]] && steps="base accounting-comp jobhist-sync collectors"
     for step in ${NCAR_HPC_DEPLOY_SMOKE_STEPS:-${steps}}; do
+        if [[ "${step}" == collectors ]]; then
+            ( prejob_collectors "${image}" ) || { echo "SMOKE FAIL: collectors host scrape" >&2; return 2; }
+        fi
         ( NHD_JOB="${step}" NHD_PWD="${NHD_STATE}" \
             nhd_exec "${image}" bash "${NHD_IMAGE_SRC}/smoke/smoke.sh" "${step}" ) || return 2
     done
@@ -90,8 +107,12 @@ cmd_run() {
             echo "#----------------------------------------------------------------------------"
             log "run ${job} ${args[*]:1} on ${host} image=$(readlink "${NHD_LANE_DIR}/current")"
             local t0=${SECONDS} rc=0
-            NHD_JOB="${job}" NHD_PWD="${NHD_STATE}" nhd_exec "${NHD_LANE_DIR}/current" \
-                bash "${NHD_IMAGE_SRC}/jobs/${job}.sh" "${args[@]:1}" || rc=$?
+            # A job with a host half (prejob_<job>) runs it first, outside the container.
+            if declare -F "prejob_${job//-/_}" >/dev/null; then
+                "prejob_${job//-/_}" "${NHD_LANE_DIR}/current" || rc=$?
+            fi
+            (( rc == 0 )) && { NHD_JOB="${job}" NHD_PWD="${NHD_STATE}" nhd_exec "${NHD_LANE_DIR}/current" \
+                bash "${NHD_IMAGE_SRC}/jobs/${job}.sh" "${args[@]:1}" || rc=$?; }
             log "run ${job} exit=${rc} ($((SECONDS - t0))s)"
             echo "$(stamp) exit=${rc} $((SECONDS - t0))s" > "${NHD_STATE}/last-run.${job}.${host}"
             exit ${rc}

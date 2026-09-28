@@ -70,11 +70,19 @@ the env.
 | `jobhist-sync rapid\|daily\|weekly` | hpc-usage-queries `job_history/cron_scripts/*.sh` |
 | `accounting-comp [args]` | `scripts/cron/accounting/jobs/run_ncar_accounting.sh` |
 | `accounting-disk [args]` | `scripts/cron/accounting/disk/Makefile` |
-| `collectors [args]` | `collectors/cron_scripts/run_ncar_collectors.sh` |
+| `collectors [args]` (host scrape, then container parse) | `collectors/cron_scripts/run_ncar_collectors.sh` |
 
-To try a job change before its image exists, set
-`NCAR_HPC_DEPLOY_SRC=<checkout>/containers/ncar-hpc-deploy`. This binds the
-host copy over the image's copy (testing only).
+The collectors job has a host half. The container can't ssh between hosts
+(host-based auth needs setuid `ssh-keysign`) or run the PBS client, so
+`prejob_collectors` first has the image print each collector's manifest, and
+the host checkout's `collectors/bin/run-manifest.sh` (bash only) runs it into
+`state/spool/<host>/<system>/`. The container then parses that spool with
+`--spool`. Each host collects only itself: casper does `casper` and
+`jupyterhub`, derecho does `derecho`.
+
+To try a change before its image exists, set `NCAR_HPC_DEPLOY_SRC=<checkout>`.
+This binds that checkout's `containers/ncar-hpc-deploy` and `collectors` over
+the image's copies (testing only).
 
 ## Install
 
