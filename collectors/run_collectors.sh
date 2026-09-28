@@ -27,14 +27,18 @@ RUN_DERECHO=0
 RUN_CASPER=0
 RUN_JUPYTERHUB=0
 RUN_ONCE=0
+SPOOL_ROOT=""
+EXTRA_ARGS=()
 
 usage() {
-    echo "Usage: $(basename "$0") [--derecho] [--casper] [--jupyterhub] [--once]"
+    echo "Usage: $(basename "$0") [--derecho] [--casper] [--jupyterhub] [--once] [--dry-run] [--spool DIR]"
     echo ""
     echo "  --derecho      Run the Derecho collector"
     echo "  --casper       Run the Casper collector"
     echo "  --jupyterhub   Run the JupyterHub collector"
     echo "  --once         Run selected collectors once instead of looping"
+    echo "  --dry-run      Collect but do not POST"
+    echo "  --spool DIR    Read DIR/<system>/ (from bin/run-manifest.sh) instead of ssh"
     echo ""
     echo "  Default (no flags): run all collectors in a loop"
 }
@@ -45,6 +49,9 @@ while [[ $# -gt 0 ]]; do
         --casper)     RUN_CASPER=1 ;;
         --jupyterhub) RUN_JUPYTERHUB=1 ;;
         --once)       RUN_ONCE=1 ;;
+        --dry-run)    EXTRA_ARGS+=(--dry-run) ;;
+        --spool)      [[ $# -ge 2 ]] || { echo "--spool needs a directory"; usage; exit 1; }
+                      SPOOL_ROOT="$2"; shift ;;
         --help|-h)    usage; exit 0 ;;
         *) echo "Unknown option: $1"; usage; exit 1 ;;
     esac
@@ -95,7 +102,9 @@ while true; do
         # them to /dev/null previously turned a one-line traceback into a
         # silent "✗ failed in 0s".  Now the traceback lands in the LOGFILE the
         # failure message tells the user to check.
-        if timeout "${TIMEOUT}" "./${COLLECTOR}" --log-file="${LOGFILE}" > /dev/null 2>> "${LOGFILE}"; then
+        ARGS=("${EXTRA_ARGS[@]}")
+        [[ -n "${SPOOL_ROOT}" ]] && ARGS+=(--spool "${SPOOL_ROOT}/$(dirname "${COLLECTOR}")")
+        if timeout "${TIMEOUT}" "./${COLLECTOR}" --log-file="${LOGFILE}" "${ARGS[@]}" > /dev/null 2>> "${LOGFILE}"; then
             elapsed=$(( $(date +%s) - t0 ))
             echo "    ✓ ${NAME} completed in ${elapsed}s"
         else

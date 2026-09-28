@@ -8,6 +8,11 @@ Uses mount paths directly as filesystem names for clarity.
 import logging
 from typing import List
 
+try:
+    from ..commands import df_command
+except ImportError:
+    from commands import df_command
+
 
 class FilesystemParser:
     """
@@ -37,41 +42,38 @@ delimiter. Each filesystem is queried for space and inode usage.
         """
         logger = logging.getLogger(__name__)
 
-        # Build command:
-        # BLOCKSIZE=TiB df path1; echo '~~~'; df -i path1; echo '---'; ...
-        df_commands = []
-        for path in mount_paths:
-            df_commands.append(f'BLOCKSIZE=TiB df {path}; echo "~~~"; df -i {path}')
+        source = getattr(ssh_runner, 'source', None)
+        if source is not None:
+            # Spool mode: one captured block per path (manifest keys df.<i>), so one
+            # failed df degrades only its own path.
+            blocks = []
+            for i, path in enumerate(mount_paths):
+                rc, out, err = source.read(f'df.{i}')
+                if rc != 0:
+                    logger.error(f"df failed for {path} (exit {rc}): {err.strip()}")
+                    out = None
+                blocks.append(out)
+        else:
+            # Build command:
+            # BLOCKSIZE=TiB df path1; echo '~~~'; df -i path1; echo '---'; ...
+            full_command = '; echo "---"; '.join(df_command(p) for p in mount_paths)
 
-        full_command = '; echo "---"; '.join(df_commands)
-
-        try:
-            output = ssh_runner.run_command(full_command)
-        except Exception as e:
-            logger.error(f"Failed to run df commands: {e}")
-            return [
-                {
-                    'filesystem_name': path,
-                    'available': False,
-                    'degraded': True,
-                    'capacity_tb': None,
-                    'used_tb': None,
-                    'utilization_percent': None,
-                    'capacity_inodes': None,
-                    'used_inodes': None,
-                    'inodes_utilization_percent': None,
-                }
-                for path in mount_paths
-            ]
+            try:
+                output = ssh_runner.run_command(full_command)
+            except Exception as e:
+                logger.error(f"Failed to run df commands: {e}")
+                return [FilesystemParser._degraded(path) for path in mount_paths]
+            blocks = output.split('---')
 
         filesystems = []
-        blocks = output.split('---')
-
         for i, block in enumerate(blocks):
             if i >= len(mount_paths):
                 break
 
             mount_path = mount_paths[i]
+            if block is None:
+                filesystems.append(FilesystemParser._degraded(mount_path))
+                continue
 
             try:
                 if '~~~' not in block:
@@ -118,19 +120,23 @@ delimiter. Each filesystem is queried for space and inode usage.
 
             except Exception as e:
                 logger.warning(f"Failed to parse {mount_path}: {e}")
-                filesystems.append({
-                    'filesystem_name': mount_path,
-                    'available': False,
-                    'degraded': True,
-                    'capacity_tb': None,
-                    'used_tb': None,
-                    'utilization_percent': None,
-                    'capacity_inodes': None,
-                    'used_inodes': None,
-                    'inodes_utilization_percent': None,
-                })
+                filesystems.append(FilesystemParser._degraded(mount_path))
 
         return filesystems
+
+    @staticmethod
+    def _degraded(mount_path: str) -> dict:
+        return {
+            'filesystem_name': mount_path,
+            'available': False,
+            'degraded': True,
+            'capacity_tb': None,
+            'used_tb': None,
+            'utilization_percent': None,
+            'capacity_inodes': None,
+            'used_inodes': None,
+            'inodes_utilization_percent': None,
+        }
 
     @staticmethod
     def _parse_df_block(df_output: str, mount_path: str) -> dict:

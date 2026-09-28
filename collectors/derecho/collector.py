@@ -15,8 +15,8 @@ from lib.parsers.nodes import NodeParser
 class DerechoCollector(BaseCollector):
     """Derecho-specific data collector."""
 
-    def __init__(self, system_name, dry_run=False, json_only=False):
-        super().__init__(system_name, dry_run, json_only)
+    def __init__(self, system_name, dry_run=False, json_only=False, source=None):
+        super().__init__(system_name, dry_run, json_only, source)
 
     def _collect_node_data(self, data: dict):
         """Collects and processes Derecho-specific node data."""
