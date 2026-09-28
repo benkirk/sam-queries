@@ -1,30 +1,19 @@
 # ncar-hpc-deploy, prod lane — csgteam on the `cron` host.
-# Times match the host-checkout cron entries this replaces; each job flocks itself on /glade,
-# so an overrunning run is skipped, not stacked (a holder older than an hour mails via stderr).
+# Cron says when a cadence fires; etc/schedule (in the image) says what each cadence runs, in
+# order. Each tick flocks itself on /glade, so an overrun skips the next tick of that cadence.
 NHD=/glade/u/apps/opt/CHANGEME/containers/ncar-hpc-deploy/bin/ncar-hpc-deploy
 SSH="ssh -o BatchMode=yes -o LogLevel=error"
 
 # image: pull :main, smoke on casper + derecho, swap on pass (exits 2 and mails on failure).
-# Off the */5 grid: the smoke scrapes PBS too, and must not land on a collectors tick.
+# Off the */5 grid: the smoke scrapes PBS too, and must not land on a rapid tick.
 32 06 * * *     $SSH casper.hpc.ucar.edu  "$NHD update --lane prod --smoke-hosts derecho.hpc.ucar.edu"
 
-# job_history ingest (hpc-usage-queries)
-*/5 * * * *     $SSH casper.hpc.ucar.edu  "$NHD run --lane prod jobhist-sync rapid  >/dev/null"
-*/5 * * * *     $SSH derecho.hpc.ucar.edu "$NHD run --lane prod jobhist-sync rapid  >/dev/null"
-07 00 * * *     $SSH casper.hpc.ucar.edu  "$NHD run --lane prod jobhist-sync daily  >/dev/null"
-07 00 * * *     $SSH derecho.hpc.ucar.edu "$NHD run --lane prod jobhist-sync daily  >/dev/null"
-15 20 * * SAT   $SSH casper.hpc.ucar.edu  "$NHD run --lane prod jobhist-sync weekly >/dev/null"
-45 20 * * SAT   $SSH derecho.hpc.ucar.edu "$NHD run --lane prod jobhist-sync weekly >/dev/null"
-
-# SAM comp charge summaries
-17 * * * *      $SSH casper.hpc.ucar.edu  "$NHD run --lane prod accounting-comp --last 2d >/dev/null"
-22 * * * *      $SSH derecho.hpc.ucar.edu "$NHD run --lane prod accounting-comp --last 2d >/dev/null"
-33 01 * * *     $SSH casper.hpc.ucar.edu  "$NHD run --lane prod accounting-comp --last 7d >/dev/null"
-38 01 * * *     $SSH derecho.hpc.ucar.edu "$NHD run --lane prod accounting-comp --last 7d >/dev/null"
-
-# SAM disk charge summaries (reruns only when a newer hdig acct file lands)
-27 02 * * *     $SSH casper.hpc.ucar.edu  "$NHD run --lane prod accounting-disk >/dev/null"
-
-# status collectors -> samuel; each host scrapes and posts only itself
-*/5 * * * *     $SSH casper.hpc.ucar.edu  "$NHD run --lane prod collectors >/dev/null"
-*/5 * * * *     $SSH derecho.hpc.ucar.edu "$NHD run --lane prod collectors >/dev/null"
+*/5 * * * *     $SSH casper.hpc.ucar.edu  "$NHD tick --lane prod rapid  >/dev/null"
+*/5 * * * *     $SSH derecho.hpc.ucar.edu "$NHD tick --lane prod rapid  >/dev/null"
+17 * * * *      $SSH casper.hpc.ucar.edu  "$NHD tick --lane prod hourly >/dev/null"
+22 * * * *      $SSH derecho.hpc.ucar.edu "$NHD tick --lane prod hourly >/dev/null"
+# daily after midnight: the hdig acct.* files that accounting-disk loads land Saturday ~23:50.
+07 01 * * *     $SSH casper.hpc.ucar.edu  "$NHD tick --lane prod daily  >/dev/null"
+12 01 * * *     $SSH derecho.hpc.ucar.edu "$NHD tick --lane prod daily  >/dev/null"
+15 20 * * SAT   $SSH casper.hpc.ucar.edu  "$NHD tick --lane prod weekly >/dev/null"
+45 20 * * SAT   $SSH derecho.hpc.ucar.edu "$NHD tick --lane prod weekly >/dev/null"

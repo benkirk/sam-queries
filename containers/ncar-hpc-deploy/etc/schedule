@@ -1,0 +1,13 @@
+# ncar-hpc-deploy cadences: `ncar-hpc-deploy tick --lane L CADENCE` runs, in file order, every
+# row whose cadence, host and lane match. Cron says when a cadence fires (etc/crontab.<lane>);
+# this file says what it runs. Ships in the image, so a new step is smoke-tested with its job.
+# A failed step does not stop the tick. rapid/hourly skip a step whose job lock is held;
+# other cadences wait for it (NCAR_HPC_DEPLOY_STEP_WAIT, 1800 s).
+# cadence  hosts           lanes     job [args]
+rapid      casper,derecho  prod,dev  collectors
+rapid      casper,derecho  prod      jobhist-sync rapid
+hourly     casper,derecho  prod,dev  accounting-comp --last 2d
+daily      casper,derecho  prod      jobhist-sync daily
+daily      casper,derecho  prod,dev  accounting-comp --last 7d
+daily      casper          prod,dev  accounting-disk
+weekly     casper,derecho  prod      jobhist-sync weekly

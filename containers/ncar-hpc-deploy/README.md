@@ -26,9 +26,11 @@ lanes/<lane>/
   env.<job>           optional overlay for one job (etc/env.jobhist-sync.example)
   images/*.sif        pulled by digest; current + previous + 3 newest kept
   current previous    symlinks into images/; swapped by rename, so a running job is never left without one
-  state/              locks, last-run.<job>.<host>, last-digest, update-history, disk stamps,
-                      run-manifest.<image>.sh (extracted from the image), spool/<host>/
-  logs/<job>/<host>-YYYY-MM-DD.log   pruned after NCAR_HPC_DEPLOY_LOG_DAYS (90)
+  state/              locks, last-run.<job>.<host>, last-tick.<cadence>.<host>, last-digest,
+                      update-history, disk stamps, extract/<image>/ (host-side files
+                      cached from the image), spool/<host>/
+  logs/<job>/<host>-YYYY-MM-DD.log   one per job; logs/tick/ holds one line per tick
+                                     pruned after NCAR_HPC_DEPLOY_LOG_DAYS (90)
 ```
 
 Overlays exist because SAM accounting and `jobhist-sync` read the same
@@ -38,7 +40,9 @@ that writes job_history gets the writer role.
 ## Commands
 
 ```bash
-ncar-hpc-deploy run --lane prod accounting-comp --last 2d   # flock + log + exit code
+ncar-hpc-deploy tick --lane prod hourly                      # what cron calls
+ncar-hpc-deploy tick --lane dev daily --list                 # steps for this host and lane
+ncar-hpc-deploy run --lane prod accounting-comp --last 2d   # one job: flock + log + exit code
 ncar-hpc-deploy run --lane dev collectors --dry-run
 ncar-hpc-deploy update --lane prod --smoke-hosts derecho.hpc.ucar.edu
 ncar-hpc-deploy status --lane prod
@@ -55,11 +59,40 @@ image that was current (a `--force` re-smoke of an unchanged digest leaves it
 alone). A failure leaves `current` alone, writes
 `lanes/<lane>/state/last-update.FAILED`, and exits 2 so cron mails.
 
-The smoke gate is read-only. It checks imports and entry points, runs a SAM
-query, and dry-runs `accounting-comp`, `jobhist-sync` and `collectors` against
+The smoke gate is read-only. It checks imports, entry points and
+`etc/schedule` (every row names a shipped job), runs a SAM query, and dry-runs `accounting-comp`, `jobhist-sync` and `collectors` against
 the lane's real databases and PBS hosts. The `jobhist-sync` step runs only in
 a lane with `env.jobhist-sync`. `NCAR_HPC_DEPLOY_SMOKE_STEPS` overrides the
 list. Each step runs in its own container, so the job's env overlay applies.
+
+## Cadences
+
+Cron fires a **cadence**, not a job: one line per (cadence, host), calling
+`tick --lane L CADENCE`. What each cadence runs is `etc/schedule`, one row per
+step (`cadence hosts lanes job [args]`), in file order. The schedule ships in
+the image and is read from `current`, so adding a step is a code change that
+the `schedule` smoke check gates like any other. A new cadence (say `monthly`)
+takes schedule rows plus one cron line per host.
+
+| cadence | prod steps | dev steps |
+|---|---|---|
+| `rapid` (*/5) | collectors, `jobhist-sync rapid` | collectors |
+| `hourly` | `accounting-comp --last 2d` | same |
+| `daily` (01:07) | `jobhist-sync daily`, `accounting-comp --last 7d`, `accounting-disk` | the last two |
+| `weekly` (Sat) | `jobhist-sync weekly` | none |
+
+- A failed step does not stop the tick. The tick exits with the worst step's
+  code, and each failed step prints one stderr line, so cron sends one mail per
+  tick listing every failure.
+- Each step keeps its own job lock, log and `last-run`. A step whose job lock is
+  held (the same job under another cadence) is skipped in `rapid` and `hourly`
+  and waited for elsewhere (`NCAR_HPC_DEPLOY_STEP_WAIT`, 1800 s). So daily
+  `jobhist-sync` is never dropped because a rapid run held the lock.
+- The tick has its own lock, so an overrun skips the next tick of that cadence.
+- A cadence with no rows for this host and lane exits 1 with a stderr line: a
+  cron line that runs nothing is a misconfiguration.
+- `update` stays a separate cron line, because it replaces the image the ticks
+  run in.
 
 ## Jobs
 
@@ -79,7 +112,7 @@ The collectors job has a host half. The container can't ssh between hosts
 (host-based auth needs setuid `ssh-keysign`) or run the PBS client, so
 `prejob_collectors` first has the image print each collector's manifest, and
 `collectors/bin/run-manifest.sh` (bash only, extracted from that same image
-and cached per image under `lanes/<lane>/state/`) runs it into
+and cached under `lanes/<lane>/state/extract/`) runs it into
 `state/spool/<host>/<system>/`. The container then parses that spool with
 `--spool`. Each host collects only itself: casper does `casper` and
 `jupyterhub`, derecho does `derecho`. Nothing on the host side reads the git

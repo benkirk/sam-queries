@@ -13,6 +13,12 @@ case "$1" in
         echo "== image git_sha=${GIT_SHA:-?} built=${BUILD_DATE:-?} host=${NCAR_HOST} lane=${NHD_LANE}"
         # An image built before this directory merged has no jobs; name that plainly.
         run jobs-shipped ls "${SRC}/jobs"
+        # A bad etc/schedule would make every tick die; refuse the image instead.
+        run schedule awk -v src="${SRC}" '/^[[:space:]]*(#|$)/ { next }
+            NF < 4 || $1 !~ /^[a-z0-9][a-z0-9-]*$/ || $4 !~ /^[a-z0-9][a-z0-9-]*$/ \
+                || $2 !~ /^(casper|derecho)(,(casper|derecho))*$/ || $3 !~ /^(prod|dev)(,(prod|dev))*$/ \
+                || system("test -f " src "/jobs/" $4 ".sh") { print "bad row " NR ": " $0; bad = 1 }
+            END { exit bad }' "${SRC}/etc/schedule"
         run imports python3 -c 'import sam, cli, job_history, webapp'
         run entry-points bash -c 'sam-admin --help && sam-search --help && jobhist-sync --help'
         run sam-db sam-search --format json project SCSG0001 ;;

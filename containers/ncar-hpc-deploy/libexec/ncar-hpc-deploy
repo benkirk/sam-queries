@@ -1,5 +1,6 @@
 #!/bin/bash
 # ncar-hpc-deploy: run scheduled HPC-side jobs from a blessed container image.
+#   tick [--lane L] CADENCE [--list|--dry-run]   run etc/schedule's CADENCE steps (what cron calls)
 #   run [--lane L] JOB [ARGS]      run jobs/JOB.sh in the lane's current image (flock + log)
 #   update [--lane L] [--force]    pull the lane tag; smoke-test; swap current on pass
 #   smoke [--lane L] [--image current|candidate|PATH]
@@ -13,7 +14,7 @@
 {
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lane.sh"
 
-usage() { sed -n '2,10p' "$(readlink -f "${BASH_SOURCE[0]}")" | sed 's/^# \{0,1\}//'; exit "${1:-2}"; }
+usage() { sed -n '2,11p' "$(readlink -f "${BASH_SOURCE[0]}")" | sed 's/^# \{0,1\}//'; exit "${1:-2}"; }
 
 cmd="${1:-}"; [[ -z "${cmd}" ]] && usage; shift
 [[ "${cmd}" == -h || "${cmd}" == --help ]] && usage 0
@@ -72,15 +73,15 @@ remote_digest() {
         | tr -d '\r' | awk -F': ' 'tolower($1)=="docker-content-digest"{print $2}'
 }
 
-# run-manifest.sh (bash only) comes out of the image, cached per image in state/, so the
-# host checkout is not a moving part. NCAR_HPC_DEPLOY_SRC binds a checkout over
-# /code/collectors, so under it the extract is refreshed every run instead of cached.
-host_run_manifest() {
-    local image="$1" cached tmp
-    cached="${NHD_STATE}/run-manifest.$(basename "$(readlink -f "${image}")" .sif).sh"
+# Host-side files (run-manifest.sh, etc/schedule) come out of the image, cached per image in
+# state/extract/<image>/, so the host checkout is not a moving part. NCAR_HPC_DEPLOY_SRC binds
+# a checkout over the image's copies, so under it the extract is refreshed every run.
+host_extract() {
+    local image="$1" path="$2" cached tmp
+    cached="${NHD_STATE}/extract/$(basename "$(readlink -f "${image}")" .sif)/$(basename "${path}")"
     if [[ -n "${NCAR_HPC_DEPLOY_SRC}" || ! -s "${cached}" ]]; then
-        tmp=$(mktemp "${cached}.XXXXXX") || return 2
-        NHD_PWD="${NHD_STATE}" nhd_exec "${image}" cat /code/collectors/bin/run-manifest.sh > "${tmp}" \
+        mkdir -p "$(dirname "${cached}")" && tmp=$(mktemp "${cached}.XXXXXX") || return 2
+        NHD_PWD="${NHD_STATE}" nhd_exec "${image}" cat "${path}" > "${tmp}" \
             && [[ -s "${tmp}" ]] && chmod 755 "${tmp}" && mv -f "${tmp}" "${cached}" \
             || { rm -f "${tmp}"; return 2; }
     fi
@@ -90,7 +91,7 @@ host_run_manifest() {
 # Host half of the collectors job: the image prints each manifest, run-manifest.sh runs it.
 prejob_collectors() {
     local image="$1" s manifest run_manifest
-    run_manifest=$(host_run_manifest "${image}") \
+    run_manifest=$(host_extract "${image}" /code/collectors/bin/run-manifest.sh) \
         || { echo "could not extract run-manifest.sh from ${image}" >&2; return 2; }
     for s in $(nhd_collectors); do
         manifest=$(NHD_PWD="${NHD_STATE}" nhd_exec "${image}" \
@@ -116,32 +117,38 @@ do_smoke() {
     log "smoke PASS on $(nhd_host)"
 }
 
-cmd_run() {
-    local job="${args[0]:-}"
+# Log that LOCK (held by WHAT) is busy. cron drops stdout, so a holder older than
+# NCAR_HPC_DEPLOY_STALE_MIN is a hang and is also said on stderr, which mails.
+lock_busy() {
+    log "$2: previous run still holds $1; skipping"
+    [[ -n "$(find "$1" -mmin "+${NCAR_HPC_DEPLOY_STALE_MIN:-60}" 2>/dev/null)" ]] && echo \
+        "ncar-hpc-deploy[${NHD_LANE}]: $2 on $(nhd_host) has held $1 since $(date -r "$1" '+%FT%T'); hung?" >&2
+    return 0
+}
+
+# run_job WAIT JOB [ARGS]: one job under its lock, logged; WAIT is flock -w seconds, 0 = skip
+# when held (rc 1). A subshell, so its exits end this job and not a calling tick.
+run_job() (
+    local wait="$1" job="$2"; shift 2
     [[ "${job}" =~ ^[a-z0-9][a-z0-9-]*$ ]] || nhd_die "run: JOB must name jobs/<job>.sh, not '${job}'"
     local host; host=$(nhd_host)
     mkdir -p "${NHD_LOGS}/${job}"
     local logfile="${NHD_LOGS}/${job}/${host}-$(date +%Y-%m-%d).log"
-    local lock="${NHD_STATE}/${job}-${host}.lock"
+    local lock="${NHD_STATE}/${job}-${host}.lock" how=(-n)
+    (( wait > 0 )) && how=(-w "${wait}")
     {
-        if ! flock -xn 9; then
-            log "run ${job}: previous run still holds ${lock}; skipping"
-            # cron drops stdout; a holder older than NCAR_HPC_DEPLOY_STALE_MIN is a hang, so say so on stderr.
-            [[ -n "$(find "${lock}" -mmin "+${NCAR_HPC_DEPLOY_STALE_MIN:-60}" 2>/dev/null)" ]] && echo \
-                "ncar-hpc-deploy[${NHD_LANE}]: ${job} on ${host} has held ${lock} since $(date -r "${lock}" '+%FT%T'); hung?" >&2
-            exit 1
-        fi
+        flock -x "${how[@]}" 9 || { lock_busy "${lock}" "run ${job}"; exit 1; }
         touch "${lock}"   # mtime = when the holder started; fd 9 is O_APPEND, so a contender does not reset it
         {
             echo "#----------------------------------------------------------------------------"
-            log "run ${job} ${args[*]:1} on ${host} image=$(readlink "${NHD_LANE_DIR}/current")"
+            log "run ${job} $* on ${host} image=$(readlink "${NHD_LANE_DIR}/current")"
             local t0=${SECONDS} rc=0
             # A job with a host half (prejob_<job>) runs it first, outside the container.
             if declare -F "prejob_${job//-/_}" >/dev/null; then
                 "prejob_${job//-/_}" "${NHD_LANE_DIR}/current" || rc=$?
             fi
             (( rc == 0 )) && { NHD_JOB="${job}" NHD_PWD="${NHD_STATE}" nhd_exec "${NHD_LANE_DIR}/current" \
-                bash "${NHD_IMAGE_SRC}/jobs/${job}.sh" "${args[@]:1}" || rc=$?; }
+                bash "${NHD_IMAGE_SRC}/jobs/${job}.sh" "$@" || rc=$?; }
             log "run ${job} exit=${rc} ($((SECONDS - t0))s)"
             echo "$(stamp) exit=${rc} $((SECONDS - t0))s" > "${NHD_STATE}/last-run.${job}.${host}"
             exit ${rc}
@@ -151,6 +158,56 @@ cmd_run() {
         (( rc == 0 )) || echo "ncar-hpc-deploy[${NHD_LANE}]: ${job} on ${host} exit=${rc}; see ${logfile}" >&2
         exit "${rc}"
     } 9>>"${lock}"
+)
+
+cmd_run() { run_job 0 "${args[@]}"; exit; }
+
+# Every etc/schedule row for CADENCE, this host and this lane, in file order. A failed step does
+# not stop the rest; the tick exits with the worst step's code. rapid and hourly skip a step whose
+# job lock is held (the next tick catches up); other cadences wait NCAR_HPC_DEPLOY_STEP_WAIT.
+cmd_tick() {
+    local cadence="" list=0 dry=() a
+    for a in "${args[@]}"; do
+        case "${a}" in
+            --list)    list=1 ;;
+            --dry-run) dry=(--dry-run) ;;
+            -*)        nhd_die "tick: unknown option ${a}" ;;
+            *)         [[ -z "${cadence}" ]] || nhd_die "tick: one CADENCE only"; cadence="${a}" ;;
+        esac
+    done
+    [[ "${cadence}" =~ ^[a-z0-9][a-z0-9-]*$ ]] || nhd_die "tick: CADENCE must name an etc/schedule cadence"
+    local host schedule; host=$(nhd_host)
+    schedule=$(host_extract "${NHD_LANE_DIR}/current" "${NHD_IMAGE_SRC}/etc/schedule") \
+        || nhd_die "tick: no etc/schedule in $(readlink "${NHD_LANE_DIR}/current")"
+
+    local steps=() c hosts lanes rest
+    while read -r c hosts lanes rest; do
+        [[ "${c}" == "${cadence}" ]] || continue
+        [[ ",${hosts}," == *",${host},"* && ",${lanes}," == *",${NHD_LANE},"* ]] && steps+=("${rest}")
+    done < "${schedule}"
+    # A cron line that runs nothing is a misconfiguration (typo, wrong host or lane): say so.
+    (( ${#steps[@]} )) || { echo "ncar-hpc-deploy[${NHD_LANE}]: tick ${cadence}: no steps for ${host}" >&2; exit 1; }
+    if (( list )); then printf '%s\n' "${steps[@]}"; exit 0; fi
+
+    local lock="${NHD_STATE}/tick-${cadence}-${host}.lock"
+    exec 7>>"${lock}"
+    flock -xn 7 || { lock_busy "${lock}" "tick ${cadence}"; exit 1; }
+    touch "${lock}"
+
+    local wait=${NCAR_HPC_DEPLOY_STEP_WAIT:-1800}
+    [[ "${cadence}" == rapid || "${cadence}" == hourly ]] && wait=0
+    local t0=${SECONDS} rc=0 s step words summary=""
+    for step in "${steps[@]}"; do
+        read -ra words <<< "${step}"
+        run_job "${wait}" "${words[@]}" "${dry[@]}"; s=$?
+        summary+="${summary:+,}${words[0]}=${s}"
+        (( s > rc )) && rc=${s}
+    done
+    local line; line="$(stamp) exit=${rc} $((SECONDS - t0))s ${summary}"
+    echo "${line}" > "${NHD_STATE}/last-tick.${cadence}.${host}"
+    mkdir -p "${NHD_LOGS}/tick"
+    echo "${cadence} ${line}" | tee -a "${NHD_LOGS}/tick/${host}-$(date +%Y-%m-%d).log"
+    exit ${rc}
 }
 
 cmd_update() {
@@ -210,15 +267,14 @@ prune() {
     done
 }
 
-# Run logs older than NCAR_HPC_DEPLOY_LOG_DAYS (90) and run-manifest extracts of pruned images.
+# Run logs older than NCAR_HPC_DEPLOY_LOG_DAYS (90) and host_extract caches of pruned images.
 # Called on every update, including the "unchanged" path, so it runs daily in prod.
 prune_logs() {
     find "${NHD_LOGS}" -name '*-????-??-??.log' -mtime "+${NCAR_HPC_DEPLOY_LOG_DAYS:-90}" -delete 2>/dev/null
-    local f name
-    for f in "${NHD_STATE}"/run-manifest.*.sh; do
-        [[ -f "${f}" ]] || continue
-        name=$(basename "${f}" .sh); name=${name#run-manifest.}
-        [[ -f "${NHD_LANE_DIR}/images/${name}.sif" ]] || rm -f "${f}"
+    local d
+    for d in "${NHD_STATE}"/extract/*/; do
+        [[ -d "${d}" ]] || continue
+        [[ -f "${NHD_LANE_DIR}/images/$(basename "${d}").sif" ]] || rm -rf "${d}"
     done
 }
 
@@ -246,13 +302,14 @@ cmd_status() {
     done
     echo "  digest    $(cat "${NHD_STATE}/last-digest" 2>/dev/null || echo none)"
     [[ -f "${NHD_STATE}/last-update.FAILED" ]] && echo "  LAST UPDATE FAILED: $(cat "${NHD_STATE}/last-update.FAILED")"
-    for l in "${NHD_STATE}"/last-run.*; do
-        [[ -f "${l}" ]] && printf '  %-34s %s\n' "${l##*/last-run.}" "$(cat "${l}")"
+    for l in "${NHD_STATE}"/last-tick.* "${NHD_STATE}"/last-run.*; do
+        [[ -f "${l}" ]] && printf '  %-34s %s\n' "${l##*/last-}" "$(cat "${l}")"
     done
     return 0
 }
 
 case "${cmd}" in
+    tick)     cmd_tick ;;
     run)      cmd_run ;;
     update)   cmd_update ;;
     smoke)    do_smoke "${image_sel}" ;;
