@@ -22,7 +22,7 @@ jobs:
         # `.github/scripts/prune_ghcr_packages.py` (run with --help to
         # see flags). Owner / repo come from the standard Actions
         # context env vars; the script defaults to the packages this
-        # repo publishes (mysql, samuel, and webapp until it is deleted).
+        # repo publishes (mysql, samuel).
         env:
           # Use personal token if available (for user-owned packages),
           # fallback to standard token. Either needs `packages: write`.
