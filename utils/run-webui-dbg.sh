@@ -7,12 +7,12 @@
 #
 # Defaults target the isolated test database (mysql-test container on
 # port 3307) so this launcher can safely coexist with `docker compose up
-# webdev` (port 5050) and NEVER touches production data.
+# samuel-dev` (port 5050) and NEVER touches production data.
 #
 # Port map:
-#   5050  -> docker compose `webdev` service
+#   5050  -> docker compose `samuel-dev` service
 #   5051  -> this debug launcher (default — override with PORT=...)
-#   7050  -> docker compose `webapp` (production image)
+#   7050  -> docker compose `samuel` (production image)
 #
 # Prereqs:
 #   - mysql-test container running:  docker compose --profile test up -d mysql-test

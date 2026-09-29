@@ -17,7 +17,7 @@ of it here.
 
 Work top to bottom. Steps 1–3 are reuse and formatting; 4 is the write path;
 5–11 are the trap-prone surfaces; 12 is the smoke and gate run — read it
-before the browser pass, because two caches on webdev will show you stale
+before the browser pass, because two caches on samuel-dev will show you stale
 markup and stale CSS.
 
 ## 1. Reuse before authoring
@@ -170,11 +170,11 @@ CLAUDE.md § Charts.
 
 ## 12. Before commit — smoke and gates
 
-1. **Two caches lie on webdev.** Card fragments are Redis-cached per user,
+1. **Two caches lie on samuel-dev.** Card fragments are Redis-cached per user,
    so a template edit does not show until
    `docker exec samuel-cache redis-cli -n 0 FLUSHDB` (or
    `sam-admin cache --refresh`). The static `?v=` content hash is memoized
-   per process, so a CSS/JS edit is served under the *old* URL until webdev
+   per process, so a CSS/JS edit is served under the *old* URL until samuel-dev
    restarts — for a quick check, inject a fresh
    `<link href="/static/css/x.css?fresh=1">` from the console; for real,
    restart. Measure "no change" against these before doubting the edit.

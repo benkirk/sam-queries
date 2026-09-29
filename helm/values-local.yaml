@@ -44,7 +44,7 @@ webapp:
     OIDC_REDIRECT_URI: ""
     OIDC_USERNAME_CLAIM: ""
     OIDC_SCOPES: ""
-    HUMAN_CHECK_PROVIDER: "none"          # no OpenBao locally; webdev uses Cloudflare's dummy keys via .env
+    HUMAN_CHECK_PROVIDER: "none"          # no OpenBao locally; samuel-dev uses Cloudflare's dummy keys via .env
 
   dbCredentials:
     enabled: true

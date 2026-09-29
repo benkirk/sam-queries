@@ -9,8 +9,8 @@ on:
       images:
         description: |
           Space-separated list of images to build.
-          Available: mysql webapp webdev
-          Leave empty to build defaults (webapp).
+          Available: mysql samuel samuel-dev
+          Leave empty to build defaults (samuel).
         required: false
         default: ''
       target:
@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
-      webapp_built: ${{ steps.matrix.outputs.webapp_built }}
+      samuel_built: ${{ steps.matrix.outputs.samuel_built }}
       target: ${{ steps.target.outputs.target }}
       cirrus_branch: ${{ steps.target.outputs.cirrus_branch }}
 
@@ -99,15 +99,15 @@ jobs:
           TARGET[mysql]=""
           DEFAULT[mysql]="false"
 
-          DOCKERFILE[webapp]="containers/webapp/Dockerfile"
-          CONTEXT[webapp]="."
-          TARGET[webapp]="production"
-          DEFAULT[webapp]="true"
+          DOCKERFILE[samuel]="containers/samuel/Dockerfile"
+          CONTEXT[samuel]="."
+          TARGET[samuel]="production"
+          DEFAULT[samuel]="true"
 
-          DOCKERFILE[webdev]="containers/webapp/Dockerfile"
-          CONTEXT[webdev]="."
-          TARGET[webdev]="development"
-          DEFAULT[webdev]="false"
+          DOCKERFILE[samuel-dev]="containers/samuel/Dockerfile"
+          CONTEXT[samuel-dev]="."
+          TARGET[samuel-dev]="development"
+          DEFAULT[samuel-dev]="false"
 
           # ----------------------------------------------------------------
           # Determine which images to build
@@ -152,11 +152,12 @@ jobs:
           echo "Building: $IMAGES_TO_BUILD"
           echo "Matrix: $MATRIX"
 
-          # Indicate whether webapp is included (used by update-helm job)
-          if echo "$IMAGES_TO_BUILD" | grep -qw "webapp"; then
-            echo "webapp_built=true" >> "$GITHUB_OUTPUT"
+          # Indicate whether samuel is included (used by update-helm job).
+          # Exact token match: grep -w would also accept samuel-dev.
+          if [[ " $IMAGES_TO_BUILD " == *" samuel "* ]]; then
+            echo "samuel_built=true" >> "$GITHUB_OUTPUT"
           else
-            echo "webapp_built=false" >> "$GITHUB_OUTPUT"
+            echo "samuel_built=false" >> "$GITHUB_OUTPUT"
           fi
 
   # -----------------------------------------------------------------------
@@ -278,7 +279,7 @@ jobs:
             HPC_USAGE_QUERIES_REF=${{ steps.peer.outputs.usage_ref }}
             HPC_SCHEDULING_TOOLS_REF=${{ steps.peer.outputs.sched_ref }}
           # Read-only deploy key for the private NCAR/hpc-scheduling-tools plugin.
-          # Consumed only by the webapp/webdev Dockerfile secret mount; unused by
+          # Consumed only by the samuel/samuel-dev Dockerfile secret mount; unused by
           # the mysql build. Empty file -> Dockerfile skips.
           secret-files: |
             hpc_sched_deploy_key=${{ runner.temp }}/hpc_sched_deploy_key
@@ -364,7 +365,7 @@ jobs:
   update-helm:
     name: Pin Helm image tag → ${{ needs.setup.outputs.cirrus_branch }}
     needs: [setup, build]
-    if: needs.setup.outputs.webapp_built == 'true'
+    if: needs.setup.outputs.samuel_built == 'true'
     runs-on: ubuntu-latest
     env:
       CIRRUS_BRANCH: ${{ needs.setup.outputs.cirrus_branch }}
@@ -403,10 +404,10 @@ jobs:
       - name: Patch helm/values.yaml with SHA image tag
         run: |
           SHORT_SHA="${GITHUB_SHA:0:7}"
-          NEW_IMAGE="ghcr.io/${{ github.repository }}/webapp:sha-${SHORT_SHA}"
-          echo "Pinning webapp image → ${NEW_IMAGE}"
+          NEW_IMAGE="ghcr.io/${{ github.repository }}/samuel:sha-${SHORT_SHA}"
+          echo "Pinning samuel image → ${NEW_IMAGE}"
           sed -i \
-            "s|image: ghcr.io/${{ github.repository }}/webapp:.*|image: ${NEW_IMAGE}|" \
+            "s|image: ghcr.io/${{ github.repository }}/samuel:.*|image: ${NEW_IMAGE}|" \
             helm/values.yaml
           grep "image:" helm/values.yaml   # sanity-check
 
@@ -416,5 +417,5 @@ jobs:
           git config user.email "${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
           git checkout -B "$CIRRUS_BRANCH"
           git add helm/values.yaml
-          git commit -m "ci: pin webapp image to sha-${GITHUB_SHA:0:7} ($(.github/scripts/build_stamp.sh)) target=${TARGET} from ${GITHUB_REF_NAME} [skip ci]"
+          git commit -m "ci: pin samuel image to sha-${GITHUB_SHA:0:7} ($(.github/scripts/build_stamp.sh)) target=${TARGET} from ${GITHUB_REF_NAME} [skip ci]"
           git push origin "$CIRRUS_BRANCH" --force

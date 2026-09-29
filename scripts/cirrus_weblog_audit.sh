@@ -10,7 +10,7 @@
 #
 # Everything it inspects already exists on the webapp's stdout (≈45-day cluster
 # retention) and in Redis; this script just harvests and summarizes it:
-#   - gunicorn access logs   (containers/webapp/gunicorn_config.py)
+#   - gunicorn access logs   (containers/samuel/gunicorn_config.py)
 #   - the app request logger  ("METHOD path -> status (ms) rid=…")
 #   - rate-limit 429 events   (log line + Redis set 'ratelimit:events', DB 1)
 #   - auth/CSRF failure logs   (auth/blueprint.py, run.py CSRF handler)

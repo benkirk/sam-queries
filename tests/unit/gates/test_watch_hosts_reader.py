@@ -25,15 +25,15 @@ def lanes(tmp_path):
     hourly step with its log block, a stale lock, a fresh spool, and no prod lane."""
     r = tmp_path / 'dev'
     (r / 'images').mkdir(parents=True)
-    (r / 'images' / 'webapp-staging-2ea87f8dcdbe.sif').write_text('x')
-    (r / 'images' / 'webapp-staging-976d6764f6e5.sif').write_text('x')
-    os.symlink('images/webapp-staging-2ea87f8dcdbe.sif', r / 'current')
-    os.symlink('images/webapp-staging-976d6764f6e5.sif', r / 'previous')
+    (r / 'images' / 'samuel-staging-2ea87f8dcdbe.sif').write_text('x')
+    (r / 'images' / 'samuel-staging-976d6764f6e5.sif').write_text('x')
+    os.symlink('images/samuel-staging-2ea87f8dcdbe.sif', r / 'current')
+    os.symlink('images/samuel-staging-976d6764f6e5.sif', r / 'previous')
     s = r / 'state'
     _touch(s / 'last-digest', 'sha256:2ea87f8dcdbe34fa\n', 3600)
     _touch(s / 'update-history',
-           '2026-09-28T16:23:00-0600 sha256:976d sif webapp-staging-976d6764f6e5.sif git_sha=aaaaaaa\n'
-           '2026-09-28T17:00:00-0600 sha256:2ea87f8dcdbe34fa webapp-staging-2ea87f8dcdbe.sif git_sha=d809bdc\n', 3600)
+           '2026-09-28T16:23:00-0600 sha256:976d sif samuel-staging-976d6764f6e5.sif git_sha=aaaaaaa\n'
+           '2026-09-28T17:00:00-0600 sha256:2ea87f8dcdbe34fa samuel-staging-2ea87f8dcdbe.sif git_sha=d809bdc\n', 3600)
     _touch(s / 'last-update', '2026-09-28T17:47:00-0600 unchanged sha256:2ea87f8dcdbe34fa\n', 900)
     _touch(s / 'last-tick.rapid.casper', '2026-09-28T17:40:08-0600 exit=0 6s collectors=0\n', 130)
     _touch(s / 'last-tick.rapid.derecho', '2026-09-28T17:40:09-0600 exit=0 6s collectors=0\n', 131)
@@ -82,8 +82,8 @@ class TestRecords:
 
     def test_image_row_maps_the_current_image_to_its_git_sha(self, lanes):
         image = next(l for l in read(lanes, 'dev') if l.startswith('image '))
-        assert 'current=webapp-staging-2ea87f8dcdbe' in image
-        assert 'git_sha=d809bdc' in image and 'previous=webapp-staging-976d6764f6e5' in image
+        assert 'current=samuel-staging-2ea87f8dcdbe' in image
+        assert 'git_sha=d809bdc' in image and 'previous=samuel-staging-976d6764f6e5' in image
         assert 'candidate=0' in image and 'digest=sha256:2ea87f8dcdbe34fa' in image
 
     def test_update_prefers_the_stamp_and_reports_its_outcome(self, lanes):

@@ -2,7 +2,7 @@
 
 Runs the HPC-host scheduled jobs (job_history ingest, SAM charge summaries,
 status collectors) from a **blessed container image** instead of live git
-checkouts and conda envs. It uses the published `webapp` image, which already
+checkouts and conda envs. It uses the published `samuel` image, which already
 carries the whole repo, `sam-admin`, `jobhist-sync` and the collectors.
 Apptainer runs it on casper and derecho (`module load apptainer`).
 

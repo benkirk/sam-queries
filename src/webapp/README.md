@@ -55,7 +55,7 @@ as production.
 
 ```bash
 # From the repo root — preferred (rebuilds + live-reloads on change)
-docker compose up webdev --watch
+docker compose up samuel-dev --watch
 ```
 
 The application will be available at: `http://localhost:5050`

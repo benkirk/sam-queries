@@ -4,18 +4,18 @@ services:
 
   #---------------------------------------------
   # Webapp container: Production Web Application
-  webapp:
-    container_name: samuel-webapp
+  samuel:
+    container_name: samuel
     build:
       context: .
-      dockerfile: containers/webapp/Dockerfile
+      dockerfile: containers/samuel/Dockerfile
       target: production
       args:
         # Override at build time to pin/test against a peer branch:
-        #   HPC_USAGE_QUERIES_REF=my-branch docker compose build webapp
+        #   HPC_USAGE_QUERIES_REF=my-branch docker compose build samuel
         HPC_USAGE_QUERIES_REF: ${HPC_USAGE_QUERIES_REF:-main}
         # Pin the private hpc-scheduling-tools plugin (needs the deploy key below):
-        #   HPC_SCHEDULING_TOOLS_REF=my-branch HPC_SCHEDULING_TOOLS_DEPLOY_KEY_FILE=~/.ssh/hpc_sched_deploy docker compose build webapp
+        #   HPC_SCHEDULING_TOOLS_REF=my-branch HPC_SCHEDULING_TOOLS_DEPLOY_KEY_FILE=~/.ssh/hpc_sched_deploy docker compose build samuel
         HPC_SCHEDULING_TOOLS_REF: ${HPC_SCHEDULING_TOOLS_REF:-main}
       secrets:
         - hpc_sched_deploy_key
@@ -78,7 +78,7 @@ services:
       # job_history postgres lives in a separate compose stack
       # (hpc-usage-postgres). Reach it via the host's published 5432
       # rather than .env's `localhost` (which, inside the container,
-      # is the container itself). Mirrors the webdev override below.
+      # is the container itself). Mirrors the samuel-dev override below.
       - "JOB_HISTORY_PG_HOST=host.docker.internal"
       # fs-scans talks to the CNPG cluster host DIRECTLY (a routable DNS
       # name, e.g. csg-postgres.k8s.ucar.edu — NOT host-routed like
@@ -120,18 +120,18 @@ services:
 
   #----------------------------------------------
   # Webdev container: Development Web Application
-  webdev:
-    container_name: samuel-webdev
+  samuel-dev:
+    container_name: samuel-dev
     build:
       context: .
-      dockerfile: containers/webapp/Dockerfile
+      dockerfile: containers/samuel/Dockerfile
       target: development
       args:
         # Override at build time to pin/test against a peer branch:
-        #   HPC_USAGE_QUERIES_REF=my-branch docker compose build webdev
+        #   HPC_USAGE_QUERIES_REF=my-branch docker compose build samuel-dev
         HPC_USAGE_QUERIES_REF: ${HPC_USAGE_QUERIES_REF:-main}
         # Pin the private hpc-scheduling-tools plugin (needs the deploy key below):
-        #   HPC_SCHEDULING_TOOLS_REF=my-branch HPC_SCHEDULING_TOOLS_DEPLOY_KEY_FILE=~/.ssh/hpc_sched_deploy docker compose build webdev
+        #   HPC_SCHEDULING_TOOLS_REF=my-branch HPC_SCHEDULING_TOOLS_DEPLOY_KEY_FILE=~/.ssh/hpc_sched_deploy docker compose build samuel-dev
         HPC_SCHEDULING_TOOLS_REF: ${HPC_SCHEDULING_TOOLS_REF:-main}
       secrets:
         - hpc_sched_deploy_key
@@ -146,14 +146,14 @@ services:
       - sam-network
     volumes:
       - ./logs/dev:/var/log/sam
-    # See the `webapp` service for the env_file / environment rationale.
+    # See the `samuel` service for the env_file / environment rationale.
     env_file:
       - path: .env
         required: false
     # Development: Disable Python bytecode caching to avoid stale .pyc issues
     # when adding new files/functions. Remove for production deployment.
     environment:
-      # DB routing (see `webapp` for the pass-through reasoning)
+      # DB routing (see `samuel` for the pass-through reasoning)
       # WARNING: Match the chart (helm/values.yaml sets TZ: America/Denver). SAM's
       # MySQL columns are naive-MOUNTAIN, stamped from the app clock — so a
       # container left on UTC writes `received_time` six hours in the future
@@ -228,8 +228,8 @@ services:
             - .env       # don't ferry the host .env into /code; env_file
                          # already passes its values to the container
     healthcheck:
-      # Strict readiness (503 if ANY bind is unreachable), same as webapp above:
-      # the webdev is only marked healthy once both databases are queryable.
+      # Strict readiness (503 if ANY bind is unreachable), same as samuel above:
+      # samuel-dev is only marked healthy once both databases are queryable.
       test: ["CMD-SHELL", "python -c \"import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:5050/api/v1/health/ready?strict=1', timeout=3).read()\""]
       interval: 10s
       timeout: 5s
@@ -267,7 +267,7 @@ services:
       # resolve in the SERVER zone (mysqld system_time_zone follows the
       # container's TZ). Prod runs Mountain (sam-sql.ucar.edu); a UTC dev
       # container put every server-stamped column and every is_active compare
-      # ~6h ahead of the app. Match prod, like the webapp/webdev and postgres
+      # ~6h ahead of the app. Match prod, like samuel/samuel-dev and postgres
       # services already do. (system_status shares this container and is
       # naive-UTC, but stamps from the app via utcnow_naive; its few
       # server-default rows shift to Mountain in dev only, which is immaterial.)
@@ -420,8 +420,8 @@ volumes:
 
 secrets:
   # Read-only deploy key for the private NCAR/hpc-scheduling-tools plugin.
-  # Unset -> /dev/null -> empty -> the webapp Dockerfile skips the optional
+  # Unset -> /dev/null -> empty -> the samuel Dockerfile skips the optional
   # install. Opt in locally with:
-  #   HPC_SCHEDULING_TOOLS_DEPLOY_KEY_FILE=~/.ssh/hpc_sched_deploy docker compose build webapp
+  #   HPC_SCHEDULING_TOOLS_DEPLOY_KEY_FILE=~/.ssh/hpc_sched_deploy docker compose build samuel
   hpc_sched_deploy_key:
     file: ${HPC_SCHEDULING_TOOLS_DEPLOY_KEY_FILE:-/dev/null}

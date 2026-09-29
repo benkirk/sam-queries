@@ -49,7 +49,7 @@ aws ecr get-login-password --region "$REGION" | \
 
 # Build
 echo "Building Docker image..."
-docker build -f containers/webapp/Dockerfile -t "$ECR_URL:$IMAGE_TAG" -t "$ECR_URL:latest" .
+docker build -f containers/samuel/Dockerfile -t "$ECR_URL:$IMAGE_TAG" -t "$ECR_URL:latest" .
 
 # Push
 echo "Pushing to ECR..."

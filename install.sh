@@ -230,11 +230,11 @@ echo
 echo "  ${C_DIM}# 3. (optional) Run the test suite + coverage inside docker${C_RESET}"
 echo "  ${C_CYAN}make${C_RESET} docker-pytest"
 echo
-echo "  ${C_DIM}# 4. (optional) Live-sync source changes into the running webdev${C_RESET}"
+echo "  ${C_DIM}# 4. (optional) Live-sync source changes into the running samuel-dev${C_RESET}"
 echo "  ${C_CYAN}make${C_RESET} docker-watch"
 echo
 echo "${C_BOLD}Once 'make docker-up' reports healthy, open:${C_RESET}"
-echo "  ${C_BLUE}http://127.0.0.1:5050/${C_RESET}   ${C_DIM}# webdev (Flask debug, hot-reload)${C_RESET}"
+echo "  ${C_BLUE}http://127.0.0.1:5050/${C_RESET}   ${C_DIM}# samuel-dev (Flask debug, hot-reload)${C_RESET}"
 echo "  ${C_BLUE}http://127.0.0.1:7050/${C_RESET}   ${C_DIM}# webapp (gunicorn, prod-like)${C_RESET}"
 echo
 echo "${C_DIM}See \`make help\` from inside the source tree for other targets.${C_RESET}"

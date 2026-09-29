@@ -43,12 +43,12 @@ assert_contains "$prod_out" '- "--run-due"' \
 # --- The image-pinning invariant -------------------------------------------
 #
 # CI's update-helm job sed-rewrites every line matching
-# `image: ghcr.io/<repo>/webapp:` in values.yaml. A tasks-specific image key
+# `image: ghcr.io/<repo>/samuel:` in values.yaml. A tasks-specific image key
 # would either be missed (pinned at :main for ever) or silently co-rewritten,
 # giving two sources of truth for one image. The CronJob therefore references
 # .Values.webapp.container.image, and exactly two rendered manifests should
 # carry that image: the Deployment and this CronJob.
-webapp_image=$(grep -E '^\s+image: ghcr\.io/.*/webapp:' "$CHART_DIR/values.yaml" \
+webapp_image=$(grep -E '^\s+image: ghcr\.io/.*/samuel:' "$CHART_DIR/values.yaml" \
                | awk '{print $2}')
 if [[ -z "$webapp_image" ]]; then
   red "FAIL: could not find webapp.container.image in values.yaml"
@@ -60,9 +60,9 @@ assert_contains "$prod_out" "image: ${webapp_image}" \
 # Anchored to a real YAML key (indent + `image:`), so a comment that happens
 # to quote the pattern is not counted as a manifest reference.
 image_refs=$(printf '%s' "$prod_out" \
-             | grep -cE '^[[:space:]]+image: ghcr\.io/.*/webapp:' || true)
+             | grep -cE '^[[:space:]]+image: ghcr\.io/.*/samuel:' || true)
 if [[ "$image_refs" -ne 2 ]]; then
-  red "FAIL: expected exactly 2 webapp image refs (Deployment + CronJob), got ${image_refs}"
+  red "FAIL: expected exactly 2 samuel image refs (Deployment + CronJob), got ${image_refs}"
   red "  A third means someone added a second pinned image line; CI's sed will"
   red "  rewrite all of them or none, and neither is what you want."
   exit 1
