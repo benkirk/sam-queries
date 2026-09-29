@@ -120,7 +120,11 @@ def child_digests(repo_path: str, token: str, digest: str) -> set[str]:
     found = set()
     for entry in doc.get("manifests", []):
         found.add(entry["digest"])
-        found |= child_digests(repo_path, token, entry["digest"])
+        try:
+            found |= child_digests(repo_path, token, entry["digest"])
+        except urllib.error.HTTPError as exc:
+            if exc.code != 404:  # a child already gone has nothing to protect
+                raise
     return found
 
 

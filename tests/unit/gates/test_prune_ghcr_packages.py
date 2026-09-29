@@ -75,3 +75,21 @@ def test_keep_counts_only_sha_tags(keep):
                                   multiarch(3, 'sha256:y', 'sha-y'))
     doomed = {v['id'] for v, _ in prune.plan(versions, keep, children_of)}
     assert (2 in doomed, 3 in doomed) == ((True, True) if keep == 0 else (False, False))
+
+
+def test_a_child_already_gone_does_not_block_the_plan(monkeypatch):
+    import io
+    import json
+    import urllib.error
+
+    index = {'manifests': [{'digest': 'sha256:gone'}, {'digest': 'sha256:here'}]}
+    docs = {'sha256:top': index, 'sha256:here': {}}
+
+    def fake_urlopen(req, timeout=None):
+        digest = req.full_url.rsplit('/', 1)[-1]
+        if digest not in docs:
+            raise urllib.error.HTTPError(req.full_url, 404, 'Not Found', {}, None)
+        return io.BytesIO(json.dumps(docs[digest]).encode())
+
+    monkeypatch.setattr(prune.urllib.request, 'urlopen', fake_urlopen)
+    assert prune.child_digests('o/p', 'tok', 'sha256:top') == {'sha256:gone', 'sha256:here'}
