@@ -259,29 +259,26 @@ unexpectedly — fix the regression first.
 
 ### `sam-ci-docker.yaml`
 
-The primary CI workflow:
+The primary CI workflow, on PRs to `main`/`staging`/`integration` and pushes to
+`main`. Three independent jobs on three runners, so a red check names what
+failed. Each checks out with LFS and calls the composite action
+`.github/actions/test-stack`, which installs the latest Docker, fails on an LFS
+pointer in place of the backup, and runs
+`docker compose --profile test up --detach --wait --build <services>`: `--wait`
+gates on the strict `/health/ready` and `mysql-test` healthchecks, so no wait
+scripts are needed. pytest runs inside the `samuel` container.
 
-Job `pytest`:
-
-1. Builds and starts all containers including `mysql-test` (via `--profile test`)
-2. Waits for both MySQL services to accept TCP connections
-3. Runs `pytest --cov=src` inside the samuel container (branch coverage and the
-   `fail_under` floor are configured in `pyproject.toml`)
-4. Runs the gated `perf` tier, `if: always()` — `pytest -m perf -n 0`. The XRAS
-   audit-row scenarios run inside step 3, as part of the default suite.
-5. Uploads coverage report as a GitHub Actions artifact
-
-Job `pytest-postgres`: the same build and start, then
-`scripts/ci/wait-for-postgres.sh`, then `make -C containers/sam-sql-dev
-clone-pg-test` inside the samuel container with `PG_TEST_SOURCE_URL`
-(`mysql-test:3306`), `PG_TEST_HOST` and `PG_TEST_PORT` (`postgres-test:5432`)
-overriding the loader's localhost defaults, then the default tier with
-`SAM_TEST_DB_URL` pointing at `postgres-test`. No coverage upload.
+| job | runs |
+|---|---|
+| `pytest-mysql` | `pytest --cov=src` against `mysql-test` (branch coverage and the `fail_under` floor are in `pyproject.toml`); uploads the HTML report. The XRAS audit-row scenarios run here, in the default suite. |
+| `pytest-postgres` | adds `postgres-test`, builds the copy with `make -C containers/sam-sql-dev clone-pg-test` (`PG_TEST_SOURCE_URL` = `mysql-test:3306`, `PG_TEST_HOST`/`PG_TEST_PORT` = `postgres-test:5432`), then the default tier. No coverage. |
+| `perf` | `pytest -m perf -n 0` against `mysql-test`. |
 
 ### `ci-staging.yaml`
 
-Staging merge gate — the same two jobs (`test` and `test-postgres`), `pytest`
-without coverage.
+Secret scan, MegaLinter, Terraform fmt and Helm renders for PRs into `staging`.
+The test suites for those PRs come from `sam-ci-docker.yaml`, which triggers on
+them too.
 
 ### Configuration
 

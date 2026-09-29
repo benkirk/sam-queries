@@ -1,0 +1,38 @@
+name: SAM test stack
+description: >-
+  Bring up the compose test stack (latest Docker, LFS guard, build, start) and
+  wait for every healthcheck. The caller checks out the repo with lfs: true first.
+
+inputs:
+  services:
+    description: Compose services to build and start (dependencies come along).
+    default: samuel mysql-test
+
+runs:
+  using: composite
+  steps:
+    # Latest Docker for Dockerfile COPY --exclude (BuildKit dockerfile 1.19+).
+    - name: Install latest Docker
+      uses: docker/setup-docker-action@v5
+      with:
+        docker-ce-version: latest
+
+    - name: Verify the MySQL backup is not an LFS pointer
+      shell: bash
+      run: |
+        BACKUP_FILE="containers/sam-sql-dev/backups/sam-obfuscated.sql.xz"
+        ls -lh "${BACKUP_FILE}"
+        if head -c 50 "${BACKUP_FILE}" | grep -q "version https"; then
+          echo "::error::${BACKUP_FILE} is a Git LFS pointer (checkout needs lfs: true)"
+          exit 1
+        fi
+
+    # --wait gates on every healthcheck: samuel's is strict /health/ready (both
+    # binds), mysql-test's queries sam + system_status. No wait scripts needed.
+    - name: Build and start services
+      shell: bash
+      run: docker compose --profile test up --detach --wait --build ${{ inputs.services }}
+
+    - name: Show container status
+      shell: bash
+      run: docker compose ps -a
