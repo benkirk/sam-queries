@@ -39,6 +39,7 @@ of the same infra.
 | This repo | **Retire `docs/presentations/`**, leaving a README pointer to the framework repo. Add a **local-only, gitignored** symlink `docs/presentations/samuel -> ~/Documents/quarto-docs-framework/docs/samuel`; an absolute symlink would dangle for CI and everyone else. Delete the stale `presentation` branch, local and remote, after confirming at that step. |
 | Format | Author for **pptx (NCAR template) and revealjs HTML equally**. Revisit after Phase 1 if the friction is too high. |
 | Audience | **CISL management / stakeholders:** Part 1 must stand alone as a non-technical briefing. **Incoming developers / handoff:** Parts 2–3 go deep, with code paths, gotchas and war stories. |
+| Voice | Direct, unapologetically technical, playful; calibrated on Ben's own decks (§11). |
 | Planning vehicle | This doc, on branch `samuel-presentation-plan`, as a docs-only draft PR against `staging`. It matures over several sessions. |
 
 ## 3. Deck architecture (`quarto-docs-framework/docs/samuel/`)
@@ -370,6 +371,8 @@ from it onto slides.
 - [ ] Revisit "pptx + HTML equally" after Phase 1.
 - [ ] Is LibreOffice installed for pptx QA?
 - [ ] Should the retirement of `docs/presentations/` ride this PR or its own?
+- [ ] Branding: is the framework's NCAR wave template current, or should it be harvested from the NSF NCAR Google template (§11)?
+- [ ] Pick the §11 devices and part titles; draft the title slide first as the tone test.
 
 ## 8. Phases (one session each; tick as they land)
 
@@ -418,3 +421,74 @@ an update here (tick boxes, session log).
     above; mapped the peer repos.
   - Decisions in §2 confirmed with Ben.
   - No decks built.
+  - Voice calibrated from two of Ben's Google Slides decks (§11).
+
+## 11. Voice, tone and the fun
+
+**SAMuel = SAM, updated for extended lifecycle.** That backronym is the deck's premise and its
+running gag: legacy SAM served ~15 years, and SAMuel is its extended lifecycle, not its
+obituary.
+
+**Calibration sources.** These are Ben's own decks; read them through the Google Workspace MCP
+(`get_presentation`, `get_page_thumbnail` with `inline=true`) before writing any slide text:
+- *Confessions of a Vibe Coder* (SEA, 2026-03-11), ID `18U5fchHOiNZRKdmHd4uDolNIw8QhgRbY1OENWDJk16Y`.
+  - Slides 3 and 25 cover legacy SAM: ~250K LOC; Java Spring / Hibernate / JSF-PrimeFaces /
+    Flyway; cron and shell glue.
+  - Slides 8–9 are "Project SAMuel Progression": LOC milestones from Oct 2025 to Mar 2026
+    (~8.8K → ~75.4K).
+- *Enabling CI/CD Workflows with NCAR-ish HPC Containers* (ISS 2026), ID
+  `1xeH-o1eoCb2XfASJfK4aBAc_Jx-cptR4ev0jCXyPcFQ`. It is the technical register: a color-coded
+  stack table, real terminal output, and CIRRUS runners.
+
+**Voice rules distilled from those decks:**
+- **Direct and unapologetically technical** when the audience warrants it. Give concrete
+  numbers ("Over 50 valid combinations", "~1,300 line monstrosity"), show real commands and
+  real output, and use a "TL;DR -" line.
+- **Self-deprecating candor:**
+  - "Full disclosure: I'm a mediocre python programmer…";
+  - "Neither of those two repo names make much sense in retrospect";
+  - "Is it an improvement…? I'm not so sure, but seems to be 'the way…'".
+  - Name the ugly parts plainly; war stories are features.
+- **Playful punctuation and asides:**
+  - `?!?!`, trailing ellipses, parenthetical wit ("thanks Kevin!");
+  - asterisk footnotes that land a joke ("* Friends don't let friends use xAI/Grok.");
+  - ♥ / + / ★ legend symbols on tables.
+- **Narrative chains:** "This led to… This led to… …Which leads to today."
+- **Titles with a wink:** "Down the Rabbit Hole…", "Taming The Beast", "Getting Beyond '-ish'",
+  "PSA - Don't let this happen to you…".
+- **Credit colleagues by name** where they helped (CIRRUS, NUSD, George, Kevin …).
+- **Close with The Good / The Bad / The Murky.** Keep a Backup section after the close.
+
+**Where the fun goes, and where it doesn't:**
+- Titles, section dividers, asides, footnotes and speaker notes get the personality. Facts,
+  tables and diagrams stay precise; a joke never replaces a number.
+- Part 1 is stakeholder-facing: lighter touch, and the fun is in the framing.
+- Parts 2–3 can be as nerdy as the material.
+- Never punch at legacy SAM or its developers. "Extended lifecycle" is the honorific.
+
+**Candidate devices** (pick, don't use all):
+- **Title slide:** the backronym reveal, **S**AM **u**pdated for **e**xtended **l**ifecycle,
+  with the letters highlighted.
+- **Then vs. now callouts:** SAM (2011–) vs SAMuel. Java/Spring/JSF vs Python/SQLAlchemy/htmx;
+  cron + shell vs ledger-backed tasks and gitops; one server vs CIRRUS.
+- **A continuation of the Vibe Coder "Progression" slide:** LOC and commits over time from
+  `git log`, rendered with the dataviz skill rather than a GitHub screenshot. It picks up where
+  the March talk stopped, and "~75K LOC in Mar 2026 → today" is the sequel beat. Define the LOC
+  method once and record it in `_variables.yml`.
+- **Part titles with personality:** Part 1 "The Lay of the Land"; Part 2 "Where State Lives"
+  (or "Four Databases Walk Into a Bar"); Part 3 "Some Assembly Required"; the Appendix "The
+  Neighbors".
+- **Recurring "PSA - Don't let this happen to you…" slides** for the war stories: the CNPG roll,
+  the skip-ci squash trap, the GHCR prune.
+- **Live CLI output:** real `sam-search` output on slides. Capture it from the obfuscated local
+  DB with a script into committed text files; don't execute against a DB at render time.
+- **Hand-drawn diagrams:** mermaid's `look: handDrawn` for the Part 1 big-picture diagram, if it
+  survives the pptx PNG render. Keep the crisp look for Parts 2–3.
+
+**Branding check:**
+- Ben's 2026 Google decks use the NSF NCAR template: an orange accent bar left of the title,
+  NSF + NCAR "operated by UCAR" logos top right, and the talk title in the footer.
+- The framework's `template.pptx` uses the NCAR wave-line artwork. Compare the two.
+- If they differ, export one of the Google decks to `.pptx` (Drive export) and harvest its
+  master into a pandoc-compliant reference doc. That is a framework `main` PR, following the
+  template constraints in the framework README.
