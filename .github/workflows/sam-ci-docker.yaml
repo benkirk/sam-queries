@@ -14,9 +14,13 @@ concurrency:
   group: ${{ github.ref }}-${{ github.workflow }}
   cancel-in-progress: true
 
+# Three independent jobs on three runners, so a red check names what failed.
+# Each pays its own stack setup (.github/actions/test-stack). pytest runs inside
+# the samuel container and reaches the test DBs by compose hostname; the suite's
+# safety allowlist approves mysql-test:3306 and postgres-test:5432.
 jobs:
-  pytest:
-    name: Run Test Suite (Docker)
+  pytest-mysql:
+    name: Test Suite (MySQL, coverage)
     # Skip on [skip ci] / [ci skip] / [no ci] in commit message or PR title
     if: >-
       !contains(github.event.head_commit.message, '[skip ci]')
@@ -26,131 +30,19 @@ jobs:
       && !contains(github.event.pull_request.title, '[ci skip]')
       && !contains(github.event.pull_request.title, '[no ci]')
     runs-on: ubuntu-latest
-
     steps:
-      - name: Install MySQL Client
-        run: |
-          sudo apt-get install -y mysql-client
-
       - name: Checkout code
         uses: actions/checkout@v7
         with:
           lfs: true
 
-      # currently needed for e.g. COPY --exclude syntax (1.19.0 / 2025-09-30)
-      # https://docs.docker.com/build/buildkit/dockerfile-release-notes/?utm_source=chatgpt.com#1190
-      - name: Install latest Docker
-        uses: docker/setup-docker-action@v5
-        with:
-          docker-ce-version: latest   # or pin a version like "29.0.3"
+      - name: Start the test stack
+        uses: ./.github/actions/test-stack
 
-      - name: Query Docker Environment
-        run: |
-          docker --version
-          docker compose --version
-
-      - name: Verify MySQL backup file exists and is not LFS pointer
-        run: |
-          BACKUP_FILE="containers/sam-sql-dev/backups/sam-obfuscated.sql.xz"
-
-          if [ ! -f "${BACKUP_FILE}" ]; then
-            echo "❌ Backup file not found: ${BACKUP_FILE}"
-            echo "Please ensure backup is committed or use artifacts"
-            exit 1
-          fi
-
-          echo "=== Backup file info ==="
-          ls -lh "${BACKUP_FILE}"
-
-          # Check if it's a Git LFS pointer (small file starting with "version https")
-          FILE_SIZE=$(stat -c%s "${BACKUP_FILE}" 2>/dev/null || stat -f%z "${BACKUP_FILE}" 2>/dev/null)
-          echo "File size: ${FILE_SIZE} bytes"
-
-          if [ "${FILE_SIZE}" -lt 1000 ]; then
-            echo "⚠️ File is very small, checking if it's an LFS pointer..."
-            head -c 100 "${BACKUP_FILE}" | cat -v
-            if head -c 50 "${BACKUP_FILE}" | grep -q "version https"; then
-              echo ""
-              echo "❌ File is a Git LFS pointer, not the actual backup!"
-              echo "Attempting to pull LFS files..."
-              git lfs pull
-              ls -lh "${BACKUP_FILE}"
-            fi
-          else
-            echo "✅ Backup file appears to be actual data (${FILE_SIZE} bytes)"
-          fi
-
-          # Verify it's a valid xz file
-          echo ""
-          echo "=== Verifying xz format ==="
-          if file "${BACKUP_FILE}" | grep -q "XZ compressed"; then
-            echo "✅ File is valid XZ compressed data"
-          else
-            echo "⚠️ File type:"
-            file "${BACKUP_FILE}"
-          fi
-
-      - name: Build and start services
-        run: |
-          docker compose --profile test build
-          # --profile test brings up the default stack PLUS the mysql-test
-          # container needed by the test suite's SAM_TEST_DB_URL target.
-          docker compose --profile test up -d
-          # Show immediate status
-          docker compose ps
-          sleep 5
-          docker compose ps
-
-      - name: Show MySQL container status and logs
-        run: |
-          echo "=== Container status ==="
-          docker compose ps -a
-
-          echo ""
-          echo "=== MySQL container logs ==="
-          docker compose logs mysql --tail=100 || true
-
-          echo ""
-          echo "=== Check if MySQL is running ==="
-          docker compose ps mysql --format "{{.State}}" || echo "Could not get state"
-
-      - name: Wait for MySQL (main, port 3306)
-        run: scripts/ci/wait-for-mysql.sh
-        env:
-          COMPOSE_SERVICE: mysql
-
-      - name: Wait for MySQL (test, port 3307)
-        run: scripts/ci/wait-for-mysql.sh
-        env:
-          MYSQL_PORT: "3307"
-          COMPOSE_SERVICE: mysql-test
-
-      - name: Wait for samuel to be ready
-        run: |
-          timeout 60 bash -c 'until docker compose exec -T samuel python -c "import sys; sys.exit(0)" 2>/dev/null; do sleep 2; done'
-          echo "✅ Webapp is ready"
-
-      - name: Show container logs (for debugging)
-        if: failure()
-        run: |
-          docker compose logs --tail=200
-
-      - name: Show MySQL databases
-        run: |
-          mysql -h 127.0.0.1 -proot -uroot system_status --table -e "SHOW tables;"
-          mysql -h 127.0.0.1 -proot -uroot sam --table -e "SHOW tables;"
-          mysql -h 127.0.0.1 -proot -uroot sam --table -e "SELECT * from tables_dictionary;"
-          echo "=== mysql-test (3307) ==="
-          mysql -h 127.0.0.1 -P 3307 -proot -uroot sam --table -e "SHOW tables;" | head -20
-
+      # Branch coverage and the fail_under floor live in pyproject.toml. The XRAS
+      # audit-row scenarios (tests/api/xras_audit_rows/) run here as part of the
+      # default suite.
       - name: Run pytest with coverage
-        id: pytest
-        # SAM_TEST_DB_URL uses the compose service hostname `mysql-test`
-        # (not 127.0.0.1) because pytest runs inside the samuel container,
-        # which reaches mysql-test via the compose network. The test
-        # suite's safety allowlist has (mysql-test, 3306) approved.
-        # Note: `pytest` with no path arg picks up testpaths=tests from
-        # the root pytest.ini — no need to pass `tests/` explicitly.
         run: |
           docker compose exec -T \
             -e SAM_TEST_DB_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
@@ -158,8 +50,7 @@ jobs:
 
       - name: Copy coverage report from container
         if: always()
-        run: |
-          docker compose cp samuel:/code/htmlcov ./htmlcov || echo "No coverage report generated"
+        run: docker compose cp samuel:/code/htmlcov ./htmlcov || echo "No coverage report generated"
 
       - name: Upload coverage HTML report
         uses: actions/upload-artifact@v7
@@ -167,45 +58,18 @@ jobs:
         with:
           name: coverage-report-html
           path: htmlcov/
+          if-no-files-found: ignore
           retention-days: 30
 
-      - name: Display coverage summary
-        if: always()
-        run: |
-          echo "📊 Coverage report available in GitHub Actions artifacts"
-          echo "Download 'coverage-report-html' to view detailed line-by-line coverage"
-          echo ""
-          echo "ℹ️  Coverage threshold: 60% minimum required"
-          if [ "${{ steps.pytest.outcome }}" == "failure" ]; then
-            echo "❌ Coverage threshold not met or tests failed"
-          else
-            echo "✅ Coverage threshold met and all tests passed"
-          fi
+      - name: Show container logs
+        if: failure()
+        run: docker compose logs --tail=200
 
-      - name: Run perf regression tests (query counts + benchmarks)
-        #if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        if: always()
-        run: |
-          docker compose exec -T \
-            -e SAM_TEST_DB_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
-            samuel bash -c "cd /code && pytest -m perf -n 0 -v --tb=short"
-
-      # The XRAS audit-row survival scenarios run in the default suite: they are
-      # xdist-safe (rows are cleaned up by captured PK; see tests/xras_audit.py) and
-      # need only the standard mysql-test target, so the default run above already
-      # covers them. See tests/api/xras_audit_rows/.
-
-      - name: Cleanup
-        if: always()
-        run: |
-          docker compose down -v
-
-  # The same default tier on a Postgres copy of the test database
-  # (docs/plans/implemented/POSTGRES_MIGRATION.md, Stage 3). The copy is built inside the
-  # stack by the loader from mysql-test; tests/postgres_expected_failures.txt
-  # lists what still fails there, as strict xfails. Perf and stress stay MySQL.
+  # The default tier on a Postgres copy built inside the stack from mysql-test
+  # (docs/plans/implemented/POSTGRES_MIGRATION.md). tests/postgres_expected_failures.txt
+  # is empty, so this is a plain pass/fail leg.
   pytest-postgres:
-    name: Run Test Suite (Docker, Postgres)
+    name: Test Suite (Postgres)
     if: >-
       !contains(github.event.head_commit.message, '[skip ci]')
       && !contains(github.event.head_commit.message, '[ci skip]')
@@ -214,49 +78,16 @@ jobs:
       && !contains(github.event.pull_request.title, '[ci skip]')
       && !contains(github.event.pull_request.title, '[no ci]')
     runs-on: ubuntu-latest
-
     steps:
-      - name: Install MySQL Client
-        run: |
-          sudo apt-get install -y mysql-client
-
       - name: Checkout code
         uses: actions/checkout@v7
         with:
           lfs: true
 
-      - name: Install latest Docker
-        uses: docker/setup-docker-action@v5
+      - name: Start the test stack
+        uses: ./.github/actions/test-stack
         with:
-          docker-ce-version: latest
-
-      - name: Verify MySQL backup file is not an LFS pointer
-        run: |
-          BACKUP_FILE="containers/sam-sql-dev/backups/sam-obfuscated.sql.xz"
-          ls -lh "${BACKUP_FILE}"
-          if head -c 50 "${BACKUP_FILE}" | grep -q "version https"; then
-            echo "❌ ${BACKUP_FILE} is a Git LFS pointer"
-            exit 1
-          fi
-
-      - name: Build and start services
-        run: |
-          docker compose --profile test build
-          docker compose --profile test up -d
-          docker compose ps
-
-      - name: Wait for MySQL (test, port 3307)
-        run: scripts/ci/wait-for-mysql.sh
-        env:
-          MYSQL_PORT: "3307"
-          COMPOSE_SERVICE: mysql-test
-
-      - name: Wait for Postgres (test)
-        run: scripts/ci/wait-for-postgres.sh
-
-      - name: Wait for samuel to be ready
-        run: |
-          timeout 60 bash -c 'until docker compose exec -T samuel python -c "import sys; sys.exit(0)" 2>/dev/null; do sleep 2; done'
+          services: samuel mysql-test postgres-test
 
       - name: Build the Postgres copy from mysql-test
         run: |
@@ -271,12 +102,36 @@ jobs:
             -e SAM_TEST_DB_URL='postgresql+psycopg2://sam_test:sam_test@postgres-test:5432/sam' \
             samuel bash -c "cd /code && pytest"
 
-      - name: Show container logs (for debugging)
+      - name: Show container logs
         if: failure()
-        run: |
-          docker compose logs --tail=200
+        run: docker compose logs --tail=200
 
-      - name: Cleanup
-        if: always()
+  # Query-count limits (tests/perf/baselines.json) and benchmarks; MySQL only.
+  perf:
+    name: Perf Tier (MySQL)
+    if: >-
+      !contains(github.event.head_commit.message, '[skip ci]')
+      && !contains(github.event.head_commit.message, '[ci skip]')
+      && !contains(github.event.head_commit.message, '[no ci]')
+      && !contains(github.event.pull_request.title, '[skip ci]')
+      && !contains(github.event.pull_request.title, '[ci skip]')
+      && !contains(github.event.pull_request.title, '[no ci]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      - name: Start the test stack
+        uses: ./.github/actions/test-stack
+
+      - name: Run perf regression tests (query counts + benchmarks)
         run: |
-          docker compose down -v
+          docker compose exec -T \
+            -e SAM_TEST_DB_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
+            samuel bash -c "cd /code && pytest -m perf -n 0 -v --tb=short"
+
+      - name: Show container logs
+        if: failure()
+        run: docker compose logs --tail=200
