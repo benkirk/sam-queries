@@ -6,7 +6,7 @@
 #   smoke [--lane L] [--image current|candidate|PATH]
 #   promote [--lane L] IMAGE       point current at IMAGE (manual bless; previous kept)
 #   rollback [--lane L]            swap current and previous
-#   status [--lane L]              image, digest, last update, last run per job
+#   status [--lane L]              image, digest, last update, last run per job (read-only)
 #   shell [--lane L]               interactive shell in the current image
 # Exit codes follow the repo convention: 0 ok, 1 not found / nothing to do, 2 error.
 # Body in braces: bash parses it whole before running, so a `git pull` of this
@@ -33,10 +33,12 @@ while [[ $# -gt 0 ]]; do
         *)        args+=("$1"); shift; [[ "${cmd}" == run || "${cmd}" == _job ]] && { args+=("$@"); break; } ;;
     esac
 done
+[[ "${cmd}" == status ]] && NHD_NO_CREATE=1
 nhd_lane_init
 
 stamp() { date '+%Y-%m-%dT%H:%M:%S%z'; }
-log()   { echo "[$(stamp)] [${NHD_LANE}] $*"; }
+# NHD_UPDATE_LOG: set by _update, so an update's lines survive cron's >/dev/null.
+log()   { local line="[$(stamp)] [${NHD_LANE}] $*"; echo "${line}"; [[ -n "${NHD_UPDATE_LOG:-}" ]] && echo "${line}" >> "${NHD_UPDATE_LOG}"; }
 
 image_path() {
     case "$1" in
@@ -229,11 +231,15 @@ cmd_update() {
     fi
     touch "${NHD_STATE}/update.lock"
     prune_logs
+    mkdir -p "${NHD_LOGS}/update"
+    NHD_UPDATE_LOG="${NHD_LOGS}/update/${NHD_LANE}-$(date +%Y-%m-%d).log"
+    log "update ${NHD_IMAGE_REPO}:${NHD_TAG} on $(nhd_host)"
 
     local digest; digest=$(remote_digest) || true
-    [[ "${digest}" == sha256:* ]] || nhd_die "could not resolve ${NHD_IMAGE_REPO}:${NHD_TAG}"
+    [[ "${digest}" == sha256:* ]] || update_die '?' resolve "could not resolve ${NHD_IMAGE_REPO}:${NHD_TAG}"
     local last; last=$(cat "${NHD_STATE}/last-digest" 2>/dev/null)
     if [[ "${digest}" == "${last}" && ${force} -eq 0 ]]; then
+        update_stamp unchanged "${digest}"
         log "${NHD_TAG} unchanged (${digest:7:12}); nothing to do"; exit 0
     fi
 
@@ -244,11 +250,12 @@ cmd_update() {
         local tmp="${NCAR_HPC_DEPLOY_TMPDIR:-${TMPDIR:-/var/tmp}}/ncar-hpc-deploy-${USER}"
         mkdir -p "${tmp}"
         APPTAINER_TMPDIR="${tmp}" apptainer --quiet pull --disable-cache "${sif}.part" \
-            "docker://${NHD_IMAGE_REPO}@${digest}" || { rm -f "${sif}.part"; nhd_die "pull failed"; }
+            "docker://${NHD_IMAGE_REPO}@${digest}" || { rm -f "${sif}.part"; update_die "${digest}" pull "pull failed"; }
         mv -f "${sif}.part" "${sif}"
     fi
     relink candidate "${sif}"
-    log "candidate $(basename "${sif}") $(image_facts "${sif}")"
+    local facts; facts=$(image_facts "${sif}")
+    log "candidate $(basename "${sif}") ${facts}"
 
     local rc=0 h
     do_smoke candidate || rc=$?
@@ -261,16 +268,23 @@ cmd_update() {
     if [[ ${rc} -ne 0 ]]; then
         echo "$(stamp) ${digest} smoke exit=${rc}" > "${NHD_STATE}/last-update.FAILED"
         prune
-        nhd_die "smoke FAILED (exit ${rc}); current left at $(readlink "${NHD_LANE_DIR}/current")"
+        update_die "${digest}" "smoke exit=${rc}" "smoke FAILED (exit ${rc}); current left at $(readlink "${NHD_LANE_DIR}/current")"
     fi
 
     bless "${sif}"
     rm -f "${NHD_LANE_DIR}/candidate" "${NHD_STATE}/last-update.FAILED"
     echo "${digest}" > "${NHD_STATE}/last-digest"
-    echo "$(stamp) ${digest} $(basename "${sif}")" >> "${NHD_STATE}/update-history"
+    # git_sha= on the row lets a reader map the image to a commit without apptainer.
+    echo "$(stamp) ${digest} $(basename "${sif}") ${facts%% built=*}" >> "${NHD_STATE}/update-history"
+    update_stamp blessed "${digest}" "$(basename "${sif}")"
     log "current -> $(basename "${sif}")"
     prune
 }
+
+# state/last-update: <ts> <outcome> <digest> [detail]; written by every update run, so
+# a watcher can tell "ran and found nothing" from "never ran". outcome: unchanged|blessed|failed.
+update_stamp() { echo "$(stamp) $1 $2${3:+ $3}" > "${NHD_STATE}/last-update"; }
+update_die()   { update_stamp failed "$1" "$2"; log "$3"; nhd_die "$3"; }
 
 # Keep NCAR_HPC_DEPLOY_KEEP (3) images in all: current, previous and a failed candidate
 # always, then the newest others. Runs after every update that pulled, pass or fail.
@@ -313,14 +327,17 @@ cmd_rollback() {
     log "rolled back current -> $(basename "${prev}")"
 }
 
+# Read-only (NHD_NO_CREATE): safe for a watcher account and for a lane that is not installed.
 cmd_status() {
     local l
+    [[ -d "${NHD_STATE}" ]] || { echo "lane=${NHD_LANE} not installed (no ${NHD_STATE})"; return 1; }
     echo "lane=${NHD_LANE} tag=${NHD_TAG} root=${NHD_LANE_DIR}"
     for l in current previous candidate; do
         [[ -e "${NHD_LANE_DIR}/${l}" ]] || continue
         printf '  %-9s %s  %s\n' "${l}" "$(readlink "${NHD_LANE_DIR}/${l}")" "$(image_facts "${NHD_LANE_DIR}/${l}")"
     done
     echo "  digest    $(cat "${NHD_STATE}/last-digest" 2>/dev/null || echo none)"
+    [[ -f "${NHD_STATE}/last-update" ]] && echo "  update    $(cat "${NHD_STATE}/last-update")"
     [[ -f "${NHD_STATE}/last-update.FAILED" ]] && echo "  LAST UPDATE FAILED: $(cat "${NHD_STATE}/last-update.FAILED")"
     for l in "${NHD_STATE}"/last-tick.* "${NHD_STATE}"/last-run.*; do
         [[ -f "${l}" ]] && printf '  %-34s %s\n' "${l##*/last-}" "$(cat "${l}")"

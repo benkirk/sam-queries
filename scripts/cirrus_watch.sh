@@ -40,6 +40,7 @@
 #                        tick so the "do not re-flag" list lives here, not in
 #                        a timer's prompt
 #       --reset-baseline Forget prior state; seed a fresh baseline this run
+#   --no-hosts           skip the hosts: line (the ssh hop to GLADE); WATCH_HOSTS=0 does the same
 #       --no-color       Disable ANSI color
 #   -v, --verbose        Extra detail
 #   -h, --help           Show this help
@@ -67,6 +68,7 @@ DBPORT=3306
 DBHOST_FLAG=""
 STATE_FLAG=""
 RESET_BASELINE=0
+HOSTS_ENABLED="${WATCH_HOSTS:-1}"
 
 while [[ $# -gt 0 ]]; do
     if handle_common_arg "$@"; then shift "$_CONSUMED"; continue; fi
@@ -76,6 +78,7 @@ while [[ $# -gt 0 ]]; do
         --db-host)        DBHOST_FLAG="$2"; shift 2;;
         --state)          STATE_FLAG="$2"; shift 2;;
         --reset-baseline) RESET_BASELINE=1; shift;;
+        --no-hosts)       HOSTS_ENABLED=0; shift;;
         *) echo "Unknown option: $1" >&2; exit 2;;
     esac
 done
@@ -93,7 +96,7 @@ build_kctl
 # --- load prior state -------------------------------------------------------
 # Each field is carried forward independently so a partial-unreachable tick
 # (e.g. kubectl down but DB up) never zeroes the others.
-LASTID=0; LASTSHA=""; LASTEVICTED=""; LASTHITS=""; LASTMISSES=""; LASTSLOWQ=""
+LASTID=0; LASTSHA=""; LASTEVICTED=""; LASTHITS=""; LASTMISSES=""; LASTSLOWQ=""; LASTNHDDIGEST=""
 mkdir -p "$(dirname -- "$STATE")"
 # First run (no state) or an explicit reset seeds a baseline silently rather
 # than reporting every historical row as "new".
@@ -431,6 +434,83 @@ else
     fi
 fi
 
+# --- 4b. HPC lanes: ncar-hpc-deploy on GLADE, read-only over ssh ------------
+# The lane tree is on shared /glade, so one hop to whichever host answers reads
+# both hosts' stamps (scripts/lib/nhd_lane_summary.sh). No ssh = OFFLINE for this
+# line only. This never runs a deploy subcommand and never touches a lock.
+NHD_DIGEST=""
+fmt_age() { local s=$1; if (( s < 60 )); then echo "${s}s"; elif (( s < 3600 )); then echo "$((s/60))m"; elif (( s < 86400 )); then echo "$((s/3600))h"; else echo "$((s/86400))d"; fi; }
+if [[ "$HOSTS_ENABLED" -eq 1 ]]; then
+    NHD_OUT=""; NHD_VIA=""
+    for h in $NHD_HOSTS; do
+        if NHD_OUT=$(ssh -o BatchMode=yes -o ConnectTimeout=8 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 \
+                -o LogLevel=error "$h" NHD_LANES="$NHD_LANES" bash -s -- "$NHD_LANE" \
+                < "${_LIBDIR}/nhd_lane_summary.sh" 2>/dev/null) && [[ "$NHD_OUT" == lane=* ]]; then
+            NHD_VIA="$h"; break
+        fi
+    done
+    if [[ -z "$NHD_VIA" ]]; then
+        echo "hosts: OFFLINE (no ssh to ${NHD_HOSTS// //}; lane ${NHD_LANE} not read this tick)"
+    elif [[ "$NHD_OUT" == *" installed=0 "* ]]; then
+        echo "hosts: ${NHD_LANE} lane not installed on GLADE (no state dir; read via ${NHD_VIA})"
+    else
+        NHD_DIGEST=$(sed -n 's/^image .* digest=\([^ ]*\).*/\1/p' <<<"$NHD_OUT")
+        NHD_CUR=$(sed -n 's/^image current=\([^ ]*\).*/\1/p' <<<"$NHD_OUT")
+        NHD_GIT=$(sed -n 's/^image .* git_sha=\([^ ]*\).*/\1/p' <<<"$NHD_OUT")
+        NHD_CAND=$(sed -n 's/^image .* candidate=\([01]\).*/\1/p' <<<"$NHD_OUT")
+        upd=$(grep '^update ' <<<"$NHD_OUT" | tail -1)
+        upd_age=$(sed -n 's/^update age=\([0-9]*\).*/\1/p' <<<"$upd")
+        upd_out=$(sed -n 's/^update .* outcome=\([^ ]*\).*/\1/p' <<<"$upd")
+        upd_detail=$(sed -n 's/^update .* detail=\(.*\)$/\1/p' <<<"$upd")
+        upd_str="update never"; [[ -n "$upd_age" ]] && upd_str="update $(fmt_age "$upd_age") ago (${upd_out:-unknown})"
+        echo "hosts: lane=${NHD_LANE} current=${NHD_CUR:-?} (git ${NHD_GIT:-?})  ${upd_str}  via ${NHD_VIA}"
+        # one line per host: rapid | hourly | daily | weekly, in that order
+        awk '
+            function fa(s){ if(s<60)return s"s"; if(s<3600)return int(s/60)"m"; if(s<86400)return int(s/3600)"h"; return int(s/86400)"d" }
+            $1=="tick" { sub("age=","",$4); sub("steps=","",$7); hosts[$3]=1
+                         rec[$3,$2]=sprintf("%s %s %s (%s)", $2, fa($4+0), $5, $7) }
+            END { n=split("rapid hourly daily weekly",o," ")
+                  for (h in hosts) { line=""; for(i=1;i<=n;i++) if ((h,o[i]) in rec) line=line (line?" | ":"") rec[h,o[i]]
+                                     printf "  %-8s %s\n", h":", line } }' <<<"$NHD_OUT" | sort
+        sp=$(awk '$1=="spool" { sub("age=","",$4); s=$4+0; a=(s<60)?s"s":((s<3600)?int(s/60)"m":int(s/3600)"h"); printf "%s%s/%s %s", (n++?" · ":""), $2, $3, a }' <<<"$NHD_OUT")
+        [[ -n "$sp" ]] && echo "  spool: $sp"
+        # verdicts
+        rapid_ages=" "   # " host=age host=age " (macOS ships bash 3.2: no associative arrays)
+        while read -r kind a b c d e f g; do
+            case "$kind" in
+                tick)
+                    age=${c#age=}
+                    case "$a" in
+                        rapid)  rapid_ages+="${b}=${age} "; (( age > 720 ))    && fail "rapid tick on $b is $(fmt_age "$age") old (>12m): cron on 'cron' is not reaching $b, or its tick lock is stuck";;
+                        hourly) (( age > 4200 ))   && warn "hourly tick on $b is $(fmt_age "$age") old (>70m)";;
+                        daily)  (( age > 93600 ))  && warn "daily tick on $b is $(fmt_age "$age") old (>26h)";;
+                        weekly) (( age > 691200 )) && warn "weekly tick on $b is $(fmt_age "$age") old (>8d)";;
+                    esac;;
+                run)
+                    [[ "$d" == "exit=0" ]] && continue
+                    reason="${f#reason=}"; [[ "$f" == reason=* ]] && reason="${reason} ${g}" || reason=""
+                    warn "$a ${d} on $b ($(fmt_age "${c#age=}") ago)${reason:+: ${reason% }}";;
+                lock) fail "lock $a held $(fmt_age "${b#age=}") (>60m): a hung job; csgteam's cron mail says so too; never clear it from here";;
+            esac
+        done <<<"$NHD_OUT"
+        rapid_age_of() { local t; t="${rapid_ages#* ${1}=}"; [[ "$t" != "$rapid_ages" ]] && echo "${t%% *}"; }
+        while read -r kind h sys a _; do
+            [[ "$kind" == spool ]] || continue
+            age=${a#age=}; ra=$(rapid_age_of "$h")
+            [[ -n "$ra" && "$ra" -lt 720 && "$age" -gt 600 ]] \
+                && fail "spool $h/$sys is $(fmt_age "$age") old while rapid ticks run: the collector refuses stale data (exit 2)"
+        done <<<"$NHD_OUT"
+        for h in $NHD_HOSTS; do
+            [[ -n "$(rapid_age_of "$h")" ]] || warn "no rapid tick recorded for $h on the ${NHD_LANE} lane"
+        done
+        [[ "$upd_out" == failed ]] && fail "last update FAILED (${upd_detail:-no detail}); current left in place. Remedy is csgteam's: ncar-hpc-deploy update --lane ${NHD_LANE} after fixing the cause"
+        [[ "$NHD_CAND" == 1 && "$upd_out" != failed ]] && warn "a candidate image is linked without a bless (smoke in progress, or a failed update that left no stamp)"
+        if [[ "$BASELINE" -eq 0 && -n "$NHD_DIGEST" && -n "$LASTNHDDIGEST" && "$NHD_DIGEST" != "$LASTNHDDIGEST" ]]; then
+            info "lane image changed: ${LASTNHDDIGEST:7:12} -> ${NHD_DIGEST:7:12} (git ${NHD_GIT:-?}); map it like pods: sha="
+        fi
+    fi
+fi
+
 # --- 5. persist state -------------------------------------------------------
 NEW_LASTID="$MAXID"; [[ -z "$NEW_LASTID" || "$NEW_LASTID" == 0 ]] && NEW_LASTID="$LASTID"
 {
@@ -440,6 +520,7 @@ NEW_LASTID="$MAXID"; [[ -z "$NEW_LASTID" || "$NEW_LASTID" == 0 ]] && NEW_LASTID=
     echo "LASTHITS=${CUR_HITS:-$LASTHITS}"
     echo "LASTMISSES=${CUR_MISSES:-$LASTMISSES}"
     echo "LASTSLOWQ=${CUR_SLOWQ:-$LASTSLOWQ}"
+    echo "LASTNHDDIGEST=\"${NHD_DIGEST:-$LASTNHDDIGEST}\""
 } > "$STATE"
 
 # --- verdict (compact; exit 0 quiet / 1 warn / 2 fail) ----------------------

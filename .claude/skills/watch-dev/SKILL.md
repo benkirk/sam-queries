@@ -11,8 +11,8 @@ description: >-
 # Watch dev
 
 The dev counterpart of `watch-prod`, and deliberately thin: how to read a web,
-split, cache or tasks line is the same, so read `watch-prod` §2, §5 and §7 for
-that. This skill carries only what differs on dev. Dev pages nobody; the usual
+split, cache, tasks or hosts line is the same, so read `watch-prod` §2, §5, §6
+and §8 for that. This skill carries only what differs on dev. Dev pages nobody; the usual
 job is a check after a deploy, not a standing watch.
 
 ## 1. Run a tick
@@ -33,6 +33,7 @@ preflight probes the ingress on 443, not a DB.
 | `web:` / `pods:` / `cache:` / `tasks:` | As on prod (kubectl RBAC in `sam-queries-dev` landed 2026-09-26). One replica, one Redis, the dev dispatcher. |
 | `k8s: no RBAC in sam-queries-dev` | Printed only for a user without kubectl access there: the four pod-log sections are skipped and `http:` is the one live line. Not a fault on dev. |
 | `xras: skipped` / `dbload: skipped` | By design: XRAS never posts to dev, and dev SAM is Postgres. |
+| `hosts:` | The `dev` lane on GLADE (`:staging`): rapid collectors on both hosts, hourly `accounting-comp`, no `jobhist-sync` rows (job_history is shared with prod). `update` runs hourly, so `current` moves with every staging push; map its git sha like the pin. |
 
 For the database side, run the peer repo's `cnpg_watch.sh --database sam_dev`
 (recipe in `profile-dev` §3). nwc1 reports a namespace you have no RBAC in as
@@ -64,11 +65,15 @@ replica and the check says so.
   expected.
 - A single slow `/ready` (7 s once, 2026-09-23, then 100 ms) is noise. Flag it
   only when it repeats across ticks.
+- The dev lane's hourly `accounting-comp` exits 2 whenever `sam_dev` lacks users
+  the PBS logs name (`Skip: User '<u>' (no uid) not found in SAM`, then `All
+  fallbacks failed`): the snapshot is behind, not the job. It clears with the
+  next `make refresh-dev`; keep it in `known-open-dev` meanwhile.
 
 ## 5. Timer (only when asked)
 
 Default to one tick after each deploy. If Ben asks for a standing dev watch,
-follow `watch-prod` §6: `CronList` first and never duplicate. If a prod timer
+follow `watch-prod` §7: `CronList` first and never duplicate. If a prod timer
 exists, add the dev tick to **its** prompt (`scripts/cirrus_watch.sh --context
 nwc1` then `--env dev`, one line each) instead of a second timer. Three wakes an
 hour from two timers was the friction that produced this rule (2026-09-26).

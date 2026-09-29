@@ -27,9 +27,11 @@ lanes/<lane>/
   images/*.sif        pulled by digest; 3 kept (NCAR_HPC_DEPLOY_KEEP), always current + previous
   current previous    symlinks into images/; swapped by rename, so a running job is never left without one
   state/              locks, last-run.<job>.<host>, last-tick.<cadence>.<host>, last-digest,
-                      update-history, disk stamps, extract/<image>/ (host-side files
-                      cached from the image), spool/<host>/
-  logs/<job>/<host>-YYYY-MM-DD.log   one per job; logs/tick/ holds one line per tick
+                      last-update (every update run), update-history (each bless, with
+                      git_sha=), disk stamps, extract/<image>/ (host-side files cached
+                      from the image), spool/<host>/
+  logs/<job>/<host>-YYYY-MM-DD.log   one per job; logs/tick/ holds one line per tick,
+                                     logs/update/<lane>-DATE.log each update run;
                                      pruned after NCAR_HPC_DEPLOY_LOG_DAYS (90)
 ```
 
@@ -122,6 +124,24 @@ checkout except `libexec/` itself.
 To try a change before its image exists, set `NCAR_HPC_DEPLOY_SRC=<checkout>`.
 This binds that checkout's `containers/ncar-hpc-deploy` and `collectors` over
 the image's copies (testing only).
+
+## Watching a lane
+
+Everything a watcher needs is a file under `lanes/<lane>/`, readable by any
+account in the group; nothing needs the CLI. `status` is read-only (it creates
+no directories and says `not installed` for a lane without `lanes/<lane>/state/`), but the
+watch reads the files directly, from a laptop, over one ssh hop:
+`scripts/lib/nhd_lane_summary.sh LANE` prints one record per stamp with ages in
+seconds, and `scripts/cirrus_watch.sh` turns that into its `hosts:` line (the
+`watch-prod` skill says how to read it). The signals, in the order to trust
+them: `state/last-tick.<cadence>.<host>` (mtime is the heartbeat; `exit=`
+is the worst step), `state/last-run.<job>.<host>`, the closing lines of
+`logs/<job>/<host>-DATE.log` (the job's own last word, for example
+`All fallbacks failed`), `state/last-update` (`<ts> unchanged|blessed|failed
+<digest>`; before it exists only `update.lock`'s mtime says an update ran),
+`lanes/<lane>/state/last-update.FAILED`, a leftover `candidate` link, and any `state/*.lock`
+older than `NCAR_HPC_DEPLOY_STALE_MIN`. The other channel is csgteam's cron
+mail: stale locks, lock timeouts on `cron`, and every non-zero step.
 
 ## Install
 
