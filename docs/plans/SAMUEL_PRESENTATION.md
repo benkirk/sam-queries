@@ -1,0 +1,420 @@
+# SAMuel presentation series — a multi-part Quarto deck
+
+**Status:** planning, 2026-09-29. Nothing is built yet. This doc is the handoff: each session
+picks up the next unchecked phase in §8, ticks it, and appends to the session log (§10).
+**Goal:** replace the stale `docs/presentations/overview/` with a comprehensive, multi-part
+SAMuel presentation, authored in the standalone `~/Documents/quarto-docs-framework` repo and
+linked into this worktree.
+
+## 1. Why
+
+`docs/presentations/overview/overview.qmd` (352 lines, last touched 2026-04-25) is out of date:
+
+- **Its numbers are wrong:** it says 97 tables and ~1,400 tests. The suite is now 9,296 collected
+  tests (`docs/TESTING.md`).
+- **Whole areas are missing:** it has nothing on plugins, system_status, job history, fs-scans,
+  CIRRUS/Argo, RBAC, scheduled tasks, notifications, account registration or ncar-hpc-deploy.
+- **Its deployment diagram is wrong.** The "Production Deployment" mermaid (around line 278) shows
+  MariaDB on a PersistentVolume and a manual `helm upgrade`. Neither is how production runs.
+
+The `presentation` branch (11 commits, merge-base 2026-04-21) holds only the same scaffolding
+plus a 28-line system_status placeholder, so there is nothing to salvage.
+
+The build infra has since matured into `~/Documents/quarto-docs-framework`
+(`github.com/benkirk/quarto-docs-framework`, **PUBLIC, a GitHub template repo**). It has:
+- Quarto 1.9.38 in `./conda-env`;
+- `docs/Make.common` and the NCAR `docs/common/branding/ncar/template.pptx`;
+- `enable_autofit.py` and `embed_poppins.py`;
+- a CI workflow that builds the sample deck.
+
+That repo already hosts content decks as sibling dirs: `new_user_samples` on main, and
+`monthly_report` on its own branch. The in-repo `docs/presentations/common/` is an older copy
+of the same infra.
+
+## 2. Decisions (confirmed with Ben, 2026-09-29)
+
+| Decision | Choice |
+|---|---|
+| Where the decks live | A long-lived **`samuel` branch** of quarto-docs-framework, content in `docs/samuel/`. The template's `main` stays clean for cloners. Framework-generic improvements go to `main` by PR and are merged into `samuel`. |
+| This repo | **Retire `docs/presentations/`**, leaving a README pointer to the framework repo. Add a **local-only, gitignored** symlink `docs/presentations/samuel -> ~/Documents/quarto-docs-framework/docs/samuel`; an absolute symlink would dangle for CI and everyone else. Delete the stale `presentation` branch, local and remote, after confirming at that step. |
+| Format | Author for **pptx (NCAR template) and revealjs HTML equally**. Revisit after Phase 1 if the friction is too high. |
+| Audience | **CISL management / stakeholders:** Part 1 must stand alone as a non-technical briefing. **Incoming developers / handoff:** Parts 2–3 go deep, with code paths, gotchas and war stories. |
+| Planning vehicle | This doc, on branch `samuel-presentation-plan`, as a docs-only draft PR against `staging`. It matures over several sessions. |
+
+## 3. Deck architecture (`quarto-docs-framework/docs/samuel/`)
+
+One directory holds every part. Each part is a thin wrapper around an underscore body file;
+Quarto skips `_*.qmd` when rendering a project. The full deck includes every body:
+
+```
+docs/samuel/
+  Makefile            DECKS := samuel 1-overview 2-databases 3-pieces A-peers
+  _quarto.yml -> ../common/_quarto.yml   (auto-symlinked by Make.common)
+  _variables.yml      facts: counts, hosts, dates, each with a source + as-of comment
+  samuel.qmd          full deck: frontmatter + {{< include >}} of every body
+  1-overview.qmd      frontmatter + {{< include _1-overview.qmd >}}
+  _1-overview.qmd     body: `#` section-header slides, `##` slides (slide-level 2)
+  2-databases.qmd / _2-databases.qmd
+  3-pieces.qmd    / _3-pieces.qmd
+  A-peers.qmd     / _A-peers.qmd
+  images/             screenshots + generated diagrams
+```
+
+**Constraints behind that layout:**
+- **Keep the deck at depth 1** (`docs/<deck>/`). The shared `_quarto.yml` sets
+  `reference-doc: ../common/branding/ncar/template.pptx`, which is resolved relative to the
+  `_quarto.yml` as the deck sees it. A deck nested deeper breaks that path.
+- **Use one `images/` dir for every deck.** `{{< include >}}` is textual, so image paths resolve
+  against the *including* file. With every wrapper and the full deck in the same directory,
+  `images/x.png` resolves identically everywhere.
+- **Body files carry no YAML frontmatter.** Only the wrappers have it.
+
+**Framework change (PR to the framework's `main`):**
+- `docs/Make.common` builds exactly one `OUT` per directory. Generalize it to `DECKS ?= $(OUT)`,
+  with pattern rules `%.pptx / %.html / %.pdf : %.qmd _quarto.yml` that keep the
+  autofit + Poppins steps for pptx.
+- Existing 3-line deck Makefiles (`OUT := $(notdir $(CURDIR))`) must keep working unchanged.
+  Prove it with `make -C docs/sample`.
+- Update the README's "Adding a new deck" section.
+
+**Facts file:**
+- Put every number that goes stale in `_variables.yml`: tests, tables, charts, tasks, endpoints,
+  replicas, ExternalSecrets.
+- Cite it with `{{< var tests.collected >}}`, and give each entry a source path and as-of date in
+  a comment.
+- A refresh then means editing one file, never grepping slides.
+
+**Authoring rules:**
+- **Diagrams:** mermaid, which renders to PNG in pptx and live in HTML. Keep one idea per diagram;
+  large graphs are the main pptx friction.
+- **Dense slides:** tag them `{.smaller}`, which only HTML honors, and split walls of text by hand
+  for pptx.
+- **Columns:** `:::: {.columns}` works in both formats.
+- **Speaker notes:** use `::: {.notes}` for talk-track detail, so the handoff audience gets depth
+  without crowding the slides.
+
+## 4. Outline and source map
+
+All paths are relative to this repo unless noted. ⚠️ marks a doc that is **stale**; don't lift
+from it onto slides.
+
+### Part 1 — Overview (stakeholder-safe, minimal jargon)
+
+- **What SAM is:**
+  - the system of record for who may compute, on what, and how much;
+  - who uses it: users, PIs, CISL staff, systems integrations;
+  - that it replaces the Java/Tomcat legacy SAM on the same MySQL database.
+  - Sources: `README.md`, `docs/xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md` (ARC → XRAS → SAM; "SAM
+    never creates users", since users are mirrored from LDAP).
+- **The surfaces:**
+  - web dashboards (user / admin / allocations / status / gallery);
+  - REST API:
+    - 15 modules in `src/webapp/api/v1/`;
+    - 5 legacy-compat blueprints frozen byte-for-byte;
+    - the XRAS server side (7 endpoints);
+  - the `sam-search` / `sam-admin` / `sam-status` CLIs;
+  - 8 scheduled tasks, run from one CronJob every 15 min;
+  - notifications;
+  - account registration and invitations;
+  - RBAC.
+  - Sources:
+    - `CLAUDE.md`, `src/webapp/README.md`, `src/cli/README.md`;
+    - under `docs/plans/implemented/`: `SCHEDULED_TASKS.md`, `NOTIFICATION_FRAMEWORK.md`,
+      `ACCOUNT_REGISTRATION.md`, `RBAC_DB_ROLES.md`;
+    - `docs/AUTHENTICATION.md`: the sign-in walkthrough plus an OIDC mermaid sequence at around
+      line 75.
+- **Big-picture diagram:** a refreshed version of the `overview.qmd` architecture mermaid. Show:
+  - XRAS in and out;
+  - the LDAP mirror (sam-ldap-syncd);
+  - PBS → collectors → the status API;
+  - job_history → the accounting ingest;
+  - the peer DBs;
+  - consumers (hpc-scheduling-tools, LDAP provisioning, the legacy-compat API callers).
+  - Sources: `docs/apis/SYSTEMS_INTEGRATION_APIs.md`, `docs/apis/CHARGING_INTEGRATION.md`.
+- **The plugin approach:**
+  - **Registry:** `src/sam/plugins.py`. A `Plugin(name, package, install_hint)` has `.load()`,
+    which raises `PluginUnavailableError`, and `.available`. It defines three plugins, all from
+    the `[hpc]` extra:
+    - `HPC_USAGE_QUERIES` → `job_history`;
+    - `FS_SCANS` → `fs_scans`, which ships in the same hpc-usage-queries wheel;
+    - `HPC_SCHEDULING_TOOLS` → `hpc_scheduling_tools`, a private repo installed via a deploy key.
+  - **CLI:** `BaseCommand.require_plugin()` in `src/cli/core/base.py`. On a missing plugin it
+    prints the install hint and exits 2.
+  - **Webapp:** `PluginExtension` in `src/webapp/plugins/base.py`:
+    - loads the plugin once in `create_app` and warms its engines;
+    - sets Postgres `application_name` + `statement_timeout`;
+    - stores its state on `app.extensions`;
+    - on a missing plugin, logs a warning and boots anyway.
+    - Subclasses: `src/webapp/jobs/session.py` and `src/webapp/disk_scans/session.py`.
+  - **Kill switches:** `FS_SCANS_ENABLED`, `HPC_SCHEDULING_TOOLS_ENABLED`, and an empty
+    `JOB_HISTORY_MACHINES`.
+  - **Degradation:** nav hides the tabs (`src/webapp/utils/nav.py`), and `/api/v1/fairshare`
+    returns 503.
+  - Source: `docs/plans/implemented/FS_SCANS_PLUGIN-part1.md`.
+- **Screenshot tour:** 4–6 hero shots — the user dashboard, a project page with allocation
+  charts, admin, the status page, and dark mode on mobile.
+
+### Part 2 — The Databases
+
+- **One-slide map:** built from `src/webapp/utils/engine_inventory.py` (`EngineSource`,
+  `engine_sources()`). The same inventory drives the Admin Configuration card,
+  `/api/v1/health/db-pool` and `/database`.
+
+  | DB | Engine | Prod | Dev | Owning code | Writers → readers |
+  |---|---|---|---|---|---|
+  | sam | MySQL (prod); Postgres dual-backend | `sam-sql.ucar.edu` (the VM) | `sam_dev` on CNPG (samuel-dev); compose MySQL; test DBs on :3307 (MySQL) and :5434 (Postgres) | `src/sam/`, `sam.session`, `sam.sqlcompat` | webapp, sam-admin, XRAS, charge ingest, tasks → everything |
+  | system_status | Postgres (prod), MySQL (local) | CNPG `csg-postgres`, DB `system_status` | `system_status_dev` | `src/system_status/`, Alembic 0001–0007 | collectors via the status API, task ledger, login sightings → status dashboard, admin |
+  | job_history | Postgres (read-only from SAM) | `csg-postgres-ro`, DBs `derecho_jobs` / `casper_jobs` | same | hpc-usage-queries (`job_history`) | `jobhist-sync` → My Jobs, drill-downs, `sam-admin accounting --comp` |
+  | fs_scans | Postgres (CNPG) | `csg-postgres-ro`, DBs `campaign` / `destor`, one schema per collection | same | hpc-usage-queries (`fs_scans`) | scanners/importers → disk-scan tabs |
+
+- **SAM:**
+  - domain tour: users / projects / accounts / allocations (a tree) / resources / charging;
+  - the balance calculation: `remaining = allocated − (charges + adjustments)`;
+  - the four charge-summary tables;
+  - the universal `is_active` hybrid.
+  - **Postgres:** Horizon 1 is done (PRs #549–551, 2026-09-12); all-PG prod is still open.
+  - Sources: `CLAUDE.md`, `docs/plans/implemented/POSTGRES_MIGRATION.md` (14 MySQL→PG gotchas),
+    `docs/DATABASE_SWITCHING.md`, `docs/LOCAL_SETUP.md`.
+- **system_status:** 19 tables, grouped as:
+  - snapshots: `derecho_status`, `casper_status`, `casper_node_type_status`, `queue_status`,
+    `filesystem_status`, `login_node_status`, `jupyterhub_status`;
+  - lookups: `systems`, `queues`, `filesystems`, `login_nodes`, `status_users`, `project_codes`;
+  - outages: `system_outages`, `resource_reservations`;
+  - other: `user_proj_queue_status`, `task_run`, `access_sources`, `user_last_seen`.
+  - Sources: `migrations/README.md` (one Alembic env per DB),
+    `docs/plans/implemented/ADD_ALEMBRIC_and_SYSTEM_STATUS_REFACTOR.md`, `USER_LAST_SEEN.md`
+    (prod backfill: 22,015 rows, 10,122 users, 13 systems, back to 2011).
+  - **War story:** `CNPG_ROLL_RESILIENCE.md`, the 2026-09-13 outage.
+    - Symptom: a 3.5-minute outage when a csg-postgres roll failed the system_status readiness
+      check.
+    - Lesson: never add a secondary bind to `/ready`'s required set.
+- **job history:**
+  - connection settings: 60 s statement timeout, pool of 5 + 10 overflow (`src/webapp/config.py`);
+  - Source: `docs/plans/implemented/JOB_HISTORY_DASHBOARD.md`.
+- **fs-scans:** 100 s statement timeout; one engine per database × collection schema.
+  Source: `FS_SCANS_PLUGIN-part1.md`.
+- **`/database` browser:** read-only rows from every engine, found by reflection; it replaced
+  Flask-Admin. Source: `docs/plans/implemented/DB_BROWSER.md`.
+- **Optional:** an ER diagram of the core SAM tables via eralchemy2 (see §7).
+
+### Part 3 — The Pieces (may split into 3a CI/GitOps and 3b HPC data gathering past ~30 slides)
+
+- **Repos + CI:**
+  - **Workflows:**
+
+    | Workflow | Purpose | Trigger |
+    |---|---|---|
+    | `sam-ci-docker` | pytest | PR→main/staging/integration, push main |
+    | `ci-staging` | TruffleHog, MegaLinter, Terraform fmt, Helm renders | PR→staging |
+    | `browser-smoke` | Chromium sweep of every dashboard | PR→main/staging/integration, push main |
+    | `sam-ci-conda_make` | conda/pip install path + CLI smoke | same |
+    | `test-install` | `install.sh`: first run, update run, LFS recovery | same |
+    | `mega-linter` | MegaLinter (cupcake flavor) | PR→main |
+    | `build-images-cirrus-deploy` | build `samuel` → GHCR, pin `cirrus` / `cirrus-dev` | push main/staging, `v*` tags, dispatch |
+    | `open-staging-promotion` | keeps one staging→main PR open | push staging |
+    | `sync-staging-to-main` | resets staging to main after promotion | PR closed on main |
+    | `clean-ghcr` | GHCR prune; never deletes a manifest a kept tag references (#670) | Sundays 03:15 UTC |
+    | run-cleanup workflows | delete old workflow runs | monthly / dispatch |
+    | `deploy-staging` | the retired AWS ECS deploy | dispatch only |
+
+  - **Branch flow:**
+    - feature → PR to `staging`;
+    - the merge pins `cirrus-dev` (dev deploy) and opens/refreshes the promotion PR;
+    - merging the promotion PR pushes `main`, which pins `cirrus` (prod), then sync resets
+      `staging`.
+  - **The unified `samuel` image:**
+    - built natively on amd64 and arm64 runners (no QEMU);
+    - each platform is pushed by digest, then merged into one multi-arch index;
+    - peer plugin repos are pinned to SHAs at build time.
+    - Source: `docs/plans/implemented/JOBS_IMAGE.md`.
+  - **LFS test blob:** `containers/sam-sql-dev/backups/sam-obfuscated.sql.xz`, the only LFS file.
+  - **In flight:** the three-job test split (`pytest-mysql` + coverage / `pytest-postgres` /
+    `perf`) is on branch `ci-parallel-test-jobs` (commit 65e8a582), not yet on staging. Confirm
+    its state before quoting it.
+  - Sources: `docs/CIRRUS_PUBLISHING.md`, the `.github/workflows/*.yaml` header comments,
+    `docs/TESTING.md`.
+  - **Then vs. now:** `docs/nrit-review-2026-05/06_platform.md` has findings CI1–CI11 and
+    D1–D11, many since fixed. It works as "then vs. now" material.
+- **GitOps on CIRRUS (cluster nwc1):**
+  - CI's only change on a cirrus branch is the `image:` line in `helm/values.yaml`. There is no
+    manual `helm upgrade`.
+  - **Argo CD apps:**
+    - `sam-query` → namespace `sam-queries` (Capsule-managed);
+    - `sam-query-dev` (AppProject `csg`) → `sam-queries-dev`, using `values.yaml` +
+      `values-dev.yaml`.
+  - **Push lock:** only the GitHub App `cirrus-benkirk-deployer` can push the cirrus branches,
+    enforced by the ruleset "Lock cirrus to deploy workflow".
+  - Convert the ASCII pipeline in `docs/CIRRUS_PUBLISHING.md` (around lines 9–22) to mermaid.
+- **Runtime on k8s:**
+  - **Prod shape:** 2 replicas, `maxUnavailable 0`, a PDB and topology spread; gunicorn gthread.
+  - **Hosts:** `sam.hpc.ucar.edu` (a CNAME) and `samuel.k8s.ucar.edu`, with one multi-SAN
+    InCommon cert via cert-manager behind `nginx-external`.
+  - **Secrets:** ESO + OpenBao through SecretStore `csg-ro` — 9 ExternalSecrets in prod, 7 in dev.
+  - **Redis:** one `redis:7-alpine` pod, 192 MB, `allkeys-lru`. DB 0 holds the cache and DB 1 the
+    limiter; no persistence.
+  - **Tasks CronJob:** `samuel-tasks` at `7,22,37,52 * * * *` UTC. The `task_run` ledger dedupes.
+    The `SAM_TASKS_DISABLED` kill switch is fail-open.
+  - **Peer Postgres:** the CNPG `csg-postgres` cluster (namespace `pg-testing`), whose chart lives
+    in hpc-usage-queries.
+  - Sources: `docs/README-k8s.md`, `helm/`, `docs/plans/implemented/K8S_DEV_ENVIRONMENT.md`,
+    `docs/plans/implemented/REDIS.md`, `docs/plans/implemented/SCHEDULED_TASKS.md` (task_run state
+    machine at around line 386), `docs/k8s.md`.
+  - ⚠️ `helm/README.md` is stale: it says the dispatcher is "hourly" and lists "7 ExternalSecrets".
+- **Dev vs prod:**
+  - **Local compose:**
+    - `samuel` :7050 and `samuel-dev` :5050;
+    - `cache` (Redis) and `mysql` (the obfuscated LFS dump);
+    - profile `test`: `mysql-test` :3307 and `postgres-test`;
+    - profile `pg`: `postgres`.
+  - **samuel-dev on k8s:**
+    - `samuel-dev.k8s.ucar.edu`, 1 replica;
+    - no mail and no XRAS key;
+    - `make refresh-dev` rebuilds it;
+    - `helm/tests/test-dev-render.sh` proves it shares nothing with prod.
+  - **Watch tooling** (`scripts/cirrus_*.sh`, each taking `--env dev`): healthcheck, watch,
+    weblog audit, and `redis_purge` (which only mutates when given `--yes`).
+  - ⚠️ `docs/STAGING.md` describes the retired AWS ECS/RDS staging. It is worth one history line at
+    most.
+- **Data gathering on NCAR HPC:**
+  - **ncar-hpc-deploy** (`containers/ncar-hpc-deploy/`, inside this repo):
+    - the same `samuel` image runs under Apptainer on casper + derecho;
+    - lane `prod` tracks `:main` and lane `dev` tracks `:staging`;
+    - cron runs as csgteam on the `cron` host and reaches the nodes over ssh;
+    - `update` pulls by digest, smoke-tests both hosts, then swaps, keeping the previous image
+      for rollback.
+  - **Cadences** (`etc/schedule`):
+    - `rapid` every 5 min: collectors, plus `jobhist-sync rapid` on prod;
+    - `hourly`: `accounting-comp --last 2d`;
+    - `daily` at 01:07: `jobhist-sync`, `accounting-comp --last 7d`, `accounting-disk`;
+    - `weekly` on Saturday: `jobhist-sync weekly`.
+  - **Collectors:** the host side scrapes PBS into a spool; the container parses it and POSTs
+    `/api/v1/status/{derecho,casper,jupyterhub}` (needs `MANAGE_SYSTEM_STATUS`).
+  - **Charges don't go over REST in practice:** `sam-admin accounting --comp` reads job_history
+    and writes SAM via the ORM. The routes `POST /api/v1/charge-summaries/*` also exist.
+  - Sources:
+    - `containers/ncar-hpc-deploy/README.md` (the best single doc) + `etc/schedule`,
+      `etc/crontab.prod`;
+    - `collectors/README.md`;
+    - `docs/apis/CHARGING_INTEGRATION.md`, `docs/plans/implemented/CHARGING_INGEST.md`.
+  - ⚠️ `docs/apis/HPC_DATA_COLLECTORS_GUIDE.md` is stale: its base URL is `sam.ucar.edu` and it
+    uses Slurm commands. Its ASCII diagram (around lines 13–28) is still a usable starting shape.
+  - **Retired:** `scripts/cron/accounting/` and `collectors/cron_scripts/` are the old per-user
+    crontabs that ncar-hpc-deploy replaced.
+- **Optional war stories:**
+  - the CNPG roll outage;
+  - the skip-ci squash trap (#406/#408; see CLAUDE.md, and never write the bare token);
+  - the GHCR prune that deleted referenced multi-arch children (#670).
+
+### Appendix A — Peer repos
+
+| Repo | Remote | What it is | Coupling to SAMuel |
+|---|---|---|---|
+| hpc-usage-queries (`~/codes/hpc-usage-queries/devel`) | `github.com/benkirk/hpc-usage-queries` | `job_history` (PBS job history, charging) + `fs_scans`; also the csg-postgres CNPG chart (`helm/`) and `scripts/cnpg_watch.sh` | Two plugins; shared Postgres; `jobhist-sync` runs in the ncar-hpc-deploy lane |
+| hpc-scheduling-tools (`~/codes/hpc-scheduling-tools`) | `github.com/NCAR/hpc-scheduling-tools` (private) | Fairshare tree + PBS accounting DB (`fsparsetree-mr`, `samuel2sql`, `hpc-sched-refresh`) | Calls the SAMuel API; also the `HPC_SCHEDULING_TOOLS` plugin behind `/api/v1/fairshare` |
+| legacy SAM (`~/codes/sam`, symlinked as `legacy_sam`) | `github.com/NCAR/sam` | Java/Tomcat original | Same MySQL DB; SAMuel is porting its API families |
+| sam-ldap-syncd | `github.com/NCAR/sam-ldap-syncd` | Perl daemon: IDMS/LDAP ↔ SAM | Legacy `/api/protected/admin/...` endpoints, not yet ported (`docs/plans/LDAP_SYNC_API.md`) |
+| amie-sam-mediator | `github.com/NCAR/amie-sam-mediator` | ACCESS AMIE packets via SAM + LDAP | Legacy `/api/protected/amie/v1/*`, not ported, consumer idle |
+| pbsparse | `github.com/NCAR/pbsparse` | PBS log parser | Transitive, through hpc-usage-queries |
+| XRAS broker, HEUV portal | (no local repos) | External consumers | XRAS is ported (`/api/xras/v1/*`); HEUV is not |
+
+- **Not separate repos:** fs-scans, ncar-hpc-deploy, collectors and the GitOps config all live in
+  a repo above. There is no separate helm-values repo.
+- **Repo naming:** this repo's remote is `github.com/benkirk/sam-queries`, but docs link PRs at
+  `NCAR/sam-queries`. Pick one for the slides.
+- **Further reading:** `docs/plans/LDAP_SYNC_API.md` Appendix A has a fuller table of the legacy
+  container zoo.
+
+## 5. Facts to resolve before they go on a slide
+
+- **SAM table count:** the sources disagree.
+  - `CLAUDE.md` says "~100"; the old deck says 97; `docs/LOCAL_SETUP.md` says ~107 tables and
+    7 views; there are 117 `__tablename__` entries under `src/sam`.
+  - Resolution: count live from `information_schema` on the test DB, state what is counted
+    (tables vs views vs ORM-mapped), and record it in `_variables.yml`.
+- **Chart count:** `CLAUDE.md` says 16 charts; there are 14 `BaseChart` subclasses in
+  `src/webapp/dashboards/charts/`. Decide which count means what.
+- **Route counts:** ~82 API route decorators and ~444 `.route(` calls webapp-wide. These are
+  rough greps; recount with a stated method, or say "hundreds".
+- **Test counts:** 9,296 collected / 9,239 default, ~90 s (`docs/TESTING.md`, measured
+  2026-09-18). Refresh at render time.
+
+## 6. Screenshots and tooling
+
+- **Playwright MCP** drives the local `samuel-dev` (:5050, `docker compose up samuel-dev --watch`)
+  through stub Quick Login on obfuscated data. It captures desktop / mobile and light / dark
+  variants into `docs/samuel/images/`.
+  - `.playwright-mcp/` already holds ~1,089 PNGs from past UI work. Check there before
+    re-shooting.
+  - ⚠️ **The framework repo is PUBLIC.** Check each shot for real names before committing; a dev
+    DB may be unobfuscated. Never screenshot prod.
+- **claude-in-chrome skill** uses Ben's browser session for SSO-gated UIs: Argo CD, GitHub
+  Actions, the rulesets page, samuel-dev on k8s.
+- **Google Workspace MCP** can mine existing CISL/NCAR Drive decks for framing.
+- **The gap is pptx visual QA.** There is no LibreOffice on the laptop, so Claude can't rasterize
+  `.pptx` to review its own slides.
+  - Recommended: `brew install --cask libreoffice`, then
+    `soffice --headless --convert-to pdf deck.pptx` and read the PDF pages.
+  - Fallback: drive PowerPoint export via `osascript`.
+  - The revealjs HTML can be reviewed with Playwright screenshots regardless.
+
+## 7. Open questions
+
+- [ ] Should Part 3 be split into 3a CI/GitOps + 3b HPC data gathering? Decide after drafting it.
+- [ ] SAM table count: which definition (§5)?
+- [ ] Is the eralchemy2 ER diagram worth the dependency? It would go in the framework's
+  `conda-env.yaml` and needs the test DB at render time, so it may be better as a committed PNG
+  regenerated by hand. `docs/presentations/overview/NEXT_STEPS.md` sketches eralchemy2 + pydeps
+  targets.
+- [ ] Publish the combined HTML deck: a claude.ai artifact, GitHub Pages on the framework repo,
+  or neither?
+- [ ] Revisit "pptx + HTML equally" after Phase 1.
+- [ ] Is LibreOffice installed for pptx QA?
+- [ ] Should the retirement of `docs/presentations/` ride this PR or its own?
+
+## 8. Phases (one session each; tick as they land)
+
+- [ ] **Phase 0 — Scaffold.** Changes by repo:
+  - Framework `main` PR: the `Make.common` `DECKS` generalization + README;
+    `make -C docs/sample` still builds.
+  - Framework `samuel` branch: `docs/samuel/` with the wrappers, empty bodies, `_variables.yml`
+    and one placeholder slide per section. `make -C docs/samuel pptx html` builds all 5 decks.
+  - This repo:
+    - delete `docs/presentations/` except a README pointer;
+    - gitignore the local symlink `docs/presentations/samuel`;
+    - update the `docs/INDEX.md` tree entry (around line 186);
+    - delete the `presentation` branch, after confirming.
+- [ ] **Phase 1 — Part 1 Overview:** content, the architecture diagram and the screenshot tour.
+  Then revisit the format decision.
+- [ ] **Phase 2 — Part 2 Databases:** resolve the §5 facts first.
+- [ ] **Phase 3 — Part 3 Pieces:** split if it runs long.
+- [ ] **Phase 4 — Appendix + full-deck polish:** a consistent diagram style, a fact-refresh pass on
+  `_variables.yml`, and a decision on publishing.
+
+Each phase closes with render → visual review → commit on the framework's `samuel` branch, and
+an update here (tick boxes, session log).
+
+## 9. Verification
+
+- **Framework builds:**
+  - `make -C docs/samuel pptx html` builds with no `Couldn't find layout named` warnings and no
+    missing-image errors;
+  - `make -C docs/sample` still builds (back-compat).
+- **pptx:** `samuel.pptx` opens in PowerPoint with no "Repair?" prompt, and Poppins is embedded.
+- **Visual review:** screenshot every slide of the HTML, plus the PDF-converted pptx. Look for
+  overflow, mermaid legibility and broken images.
+- **This repo, after retirement:**
+  - `pytest tests/unit/gates/test_docs.py` passes.
+    - `tests/unit/gates/test_docs.py:30` lists `docs/presentations/` in `RECORD_PREFIXES`. Keep the
+      prefix while the README pointer lives there.
+    - Confirm the gate does not follow the local symlink into the framework's markdown.
+  - Leave the historical mentions in `docs/nrit-review-2026-05/` and
+    `migrations/system_status/implemented/2026-05-04-update-prod.md` alone.
+
+## 10. Session log
+
+- **2026-09-29:**
+  - Research + planning.
+  - Surveyed the framework repo, the stale deck and `presentation` branch, and every source doc
+    above; mapped the peer repos.
+  - Decisions in §2 confirmed with Ben.
+  - No decks built.
