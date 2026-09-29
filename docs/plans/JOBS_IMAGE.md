@@ -66,6 +66,10 @@ stage on `python:<minor>-slim` copies site-packages, then `COPY . /code` and
 - CI runs pytest in this image, and `test_docs.py` shells out to `git`, which slim lacks:
   a missing binary must skip, not error.
 - `sam-admin accounting --verify-host` needs `ssh`; no job uses it.
+- `make` stays in the runtime: CI runs `make clone-pg-test` inside the image.
+
+Measured (arm64): 2.07 GB → 679 MB. A source-only commit rebuilds `COPY . .` (30 MB) plus the
+editable install (5 MB); the 16 layers under them stay cached.
 
 **D. Native multi-arch.** Build each platform on its own runner (`ubuntu-24.04-arm` is free
 for public repos), push by digest, and merge with `docker buildx imagetools create`. Resolve
