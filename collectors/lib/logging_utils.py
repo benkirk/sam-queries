@@ -4,7 +4,21 @@ Logging configuration for collectors.
 
 import logging
 import logging.handlers
+import os
 import sys
+from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+
+class _ZoneFormatter(logging.Formatter):
+    """Render asctime in a fixed zone, independent of the process TZ."""
+
+    def __init__(self, fmt, datefmt, tz):
+        super().__init__(fmt, datefmt)
+        self._tz = tz
+
+    def formatTime(self, record, datefmt=None):
+        return datetime.fromtimestamp(record.created, self._tz).strftime(datefmt)
 
 
 def setup_logging(log_file=None, verbose=False):
@@ -18,7 +32,15 @@ def setup_logging(log_file=None, verbose=False):
     level = logging.DEBUG if verbose else logging.INFO
 
     format_str = '[%(asctime)s] %(levelname)s [%(name)s] %(message)s'
-    formatter = logging.Formatter(format_str, datefmt='%Y-%m-%d %H:%M:%S')
+    datefmt = '%Y-%m-%d %H:%M:%S'
+    # LOG_TZ: display zone for log lines only; data timestamps follow the process TZ (UTC).
+    formatter = logging.Formatter(format_str, datefmt=datefmt)
+    if os.environ.get('LOG_TZ'):
+        try:
+            formatter = _ZoneFormatter(format_str, datefmt, ZoneInfo(os.environ['LOG_TZ']))
+        except (ZoneInfoNotFoundError, ValueError):
+            print(f"Warning: unknown LOG_TZ={os.environ['LOG_TZ']!r}; logging in process time",
+                  file=sys.stderr)
 
     handlers = []
 
