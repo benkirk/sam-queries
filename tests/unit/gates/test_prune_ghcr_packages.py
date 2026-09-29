@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 _PATH = Path(__file__).resolve().parents[3] / '.github' / 'scripts' / 'prune_ghcr_packages.py'
+if not _PATH.exists():  # .dockerignore drops .github/, and CI runs pytest inside the image
+    pytest.skip('.github/scripts is not in this tree', allow_module_level=True)
 _spec = importlib.util.spec_from_file_location('prune_ghcr_packages', _PATH)
 prune = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(prune)
