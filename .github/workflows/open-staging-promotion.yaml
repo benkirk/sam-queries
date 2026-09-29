@@ -1,0 +1,71 @@
+name: Open staging promotion
+
+# Keeps one `staging -> main` PR open whenever staging is ahead of main.
+# sync-staging-to-main.yaml is the other half: after that PR merges it resets
+# staging to main with GITHUB_TOKEN, a push that triggers nothing here.
+#
+# WARNING: the PR is opened with the cirrus-deploy App token, not GITHUB_TOKEN.
+# A PR created by GITHUB_TOKEN triggers no pull_request workflows, so the
+# promotion PR would show no CI checks. The App needs Pull requests: write.
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: open-staging-promotion
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Open or refresh the staging -> main PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Mint GitHub App token (cirrus deploy identity)
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.CIRRUS_DEPLOY_APP_ID }}
+          private-key: ${{ secrets.CIRRUS_DEPLOY_APP_PRIVATE_KEY }}
+
+      - name: Open or refresh the PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          MARKER='<!-- open-staging-promotion -->'
+          ahead=$(git rev-list --count origin/main..origin/staging)
+          if [ "$ahead" -eq 0 ] || git diff --quiet origin/main origin/staging; then
+            echo "staging has nothing main lacks; no promotion PR needed"
+            exit 0
+          fi
+
+          # GitHub scans the whole squash message (built from this body) for
+          # skip-ci tokens; a quoted commit subject carrying one would skip CI on main.
+          {
+            echo "$MARKER"
+            echo "Opened by \`open-staging-promotion.yaml\`; the list refreshes on every push to staging."
+            echo
+            git log --no-merges --format='- %s' origin/main..origin/staging \
+              | sed -E 's/\[(skip ci|ci skip|no ci|skip actions|actions skip)\]/(skip-ci token)/gI'
+          } > body.md
+
+          pr=$(gh pr list --base main --head staging --state open --json number -q '.[0].number')
+          if [ -z "$pr" ]; then
+            url=$(gh pr create --base main --head staging --title "Staging -> Main" --body-file body.md)
+            echo "Opened ${url}" | tee -a "$GITHUB_STEP_SUMMARY"
+          elif gh pr view "$pr" --json body -q .body | grep -qF "$MARKER"; then
+            gh pr edit "$pr" --body-file body.md
+            echo "Refreshed #${pr}" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "#${pr} was opened by hand; leaving its body alone" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi

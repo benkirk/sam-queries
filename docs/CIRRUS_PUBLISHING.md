@@ -45,7 +45,7 @@ Prod is never inferred. Only a push to `main` or a `v*` tag selects it on its ow
 | Push to `staging` | `dev` | Builds default images, pins `cirrus-dev`, `samuel-dev` follows |
 | `workflow_dispatch` on any ref | `dev` unless `target=prod` | Optional `images` input overrides the default set; `target=prod` from a ref other than `main` is allowed but writes a `::warning` and a step-summary line |
 
-A `staging → main` promotion does **not** redeploy dev: the post-merge sync force-pushes `staging` with `GITHUB_TOKEN`, which triggers no workflow, and the two trees are identical anyway.
+A `staging → main` promotion does **not** redeploy dev: the post-merge sync force-pushes `staging` with `GITHUB_TOKEN`, which triggers no workflow, and the two trees are identical anyway. The next push to `staging` has `open-staging-promotion.yaml` open a fresh `staging → main` PR, using the App token so its CI runs.
 
 ### Image tags emitted per build
 

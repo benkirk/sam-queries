@@ -1011,7 +1011,7 @@ head commit message is unchanged.
 
 ## Git Workflow
 
-- PRs default to `--base staging`; staging → main promotion is a manual 2nd PR.
+- PRs default to `--base staging`; `open-staging-promotion.yaml` opens the promotion PR.
 - Detailed commit messages with markdown: "## Summary", "### Test Results" when
   relevant, ending with:
 ```

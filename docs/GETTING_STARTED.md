@@ -861,7 +861,7 @@ pipdeptree
 5. **Run full test suite**: `pytest tests/` (with coverage)
 6. **Check schema validation** if ORM models changed
 7. **Write detailed commit message** (see git history for format)
-8. **Create pull request** to `staging` (staging → main promotion is a separate manual PR)
+8. **Create pull request** to `staging` (the staging → main promotion PR opens automatically; merging it is manual)
 
 ### Code Quality
 - **Tests required**: For any new functionality
