@@ -37,7 +37,7 @@ of the same infra.
 |---|---|
 | Where the decks live | A long-lived **`samuel` branch** of quarto-docs-framework, content in `docs/samuel/`. The template's `main` stays clean for cloners. Framework-generic improvements go to `main` by PR and are merged into `samuel`. |
 | This repo | **Retire `docs/presentations/`**, leaving a README pointer to the framework repo. Add a **local-only, gitignored** symlink `docs/presentations/samuel -> ~/Documents/quarto-docs-framework/docs/samuel`; an absolute symlink would dangle for CI and everyone else. Delete the stale `presentation` branch, local and remote, after confirming at that step. |
-| Format | Author for **pptx (NCAR template) and revealjs HTML equally**. Revisit after Phase 1 if the friction is too high. |
+| Format | **Mixed, chosen per part** (§13). Part 1 Overview: pptx + ncar-beamer PDF, both branded. Parts 2–3 and details: revealjs HTML where interactivity earns its keep, plus companion interactive pages where slides run out; pptx/PDF builds remain as handouts. Revised 2026-09-29, replacing "pptx + HTML equally". |
 | Audience | **CISL management / stakeholders:** Part 1 must stand alone as a non-technical briefing. **Incoming developers / handoff:** Parts 2–3 go deep, with code paths, gotchas and war stories. |
 | Voice | Direct, unapologetically technical, playful; calibrated on Ben's own decks (§11). |
 | Planning vehicle | This doc, on branch `samuel-presentation-plan`, as a docs-only draft PR against `staging`. It matures over several sessions. |
@@ -404,10 +404,10 @@ from it onto slides.
   targets.
 - [ ] Publish the combined HTML deck: a claude.ai artifact, GitHub Pages on the framework repo,
   or neither?
-- [ ] Revisit "pptx + HTML equally" after Phase 1.
+- [x] Format strategy: superseded by the mixed, per-part strategy in §13 (2026-09-29).
 - [x] LibreOffice installed 2026-09-29 (26.8.0, `brew install --cask --appdir=~/Applications libreoffice`; the `--appdir` avoids the `sudo` prompt that fails under `!`). Verified on `sam_and_pbs.pptx`: 17 s to PDF. Caveats:
   - LibreOffice ignores the theme-font mapping, so slides render in a serif fallback, not Poppins. Treat it as a check for overflow, splits and diagrams, not for exact wrapping.
-  - It surfaced a real bug: every slide's date footer reads the literal text `last-modified`, because `date: last-modified` reaches pandoc's footer unresolved. Fix it in the framework during Phase 0; `sam_and_pbs` has it too.
+  - It surfaced a real bug: every slide's date footer reads the literal text `last-modified`, because `date: last-modified` reaches pandoc's footer unresolved. Fix it in the framework during Phase 0; `sam_and_pbs` has it too. The ncar-beamer PDF shows the same bug on its title slide ("LAST-MODIFIED"), so the fix belongs in the shared `date:` handling, not in one format.
   Original path note: `brew install --cask libreoffice`, which puts an `soffice` wrapper on PATH (conda-forge has no package). QA loop: `soffice --headless --convert-to pdf --outdir <scratch> deck.pptx`, then read the PDF pages. Use a throwaway `-env:UserInstallation=file:///<scratch>/lo-profile` so a running GUI instance doesn't block headless mode.
 - [ ] Should the retirement of `docs/presentations/` ride this PR or its own?
 - [x] Branding: resolved 2026-09-29. The framework's `template.pptx` has already been reworked (framework PR #2); use it as is.
@@ -464,6 +464,7 @@ an update here (tick boxes, session log).
   - No decks built.
   - Voice calibrated from two of Ben's Google Slides decks (§11).
   - Mined the framework's `sam_and_pbs` deck and its CLAUDE.md for reuse and build lessons (§3, §12).
+  - Reviewed the framework's new ncar-beamer PDF layer (#4); adopted a mixed, per-part format strategy (§13).
 
 ## 11. Voice, tone and the fun
 
@@ -582,3 +583,51 @@ Summarize *out* in 2–3 slides and point to the `sam_and_pbs` deck for the full
 - `refresh_data.sh` is the model for §3's frozen data.
 - **Includes across decks:** `{{< include ../sam_and_pbs/_tree_overview.qmd >}}` works from a
   sibling deck once `samuel` has merged framework `main`.
+
+## 13. Formats: mixed, per part
+
+The framework now has three branded or brandable outputs. Use each where it is strongest, from
+one source.
+
+| Format | Build | Strengths | Weak spots | Where we use it |
+|---|---|---|---|---|
+| **pptx** (NCAR template) | `make pptx` | Editable, shareable, the CISL default; four post-render fixes | Mermaid is baked PNG; content after tables/images splits slides; autofit traps | Part 1 (primary); handout builds of everything |
+| **ncar-beamer PDF** (framework #4; theme vendored from `benkirk/NCAR_beamer_template`) | `make pdf` (`--to ncar-beamer`, XeLaTeX, bundled Poppins) | Crisp typography; real monospace code; 2026 blue brand; readable directly by Claude, so it is the easiest format to QA | **No autofit:** dense slides overflow silently; fix with trimming or `{.shrink}` on the heading | Part 1 (primary, alongside pptx); archival and emailable copies |
+| **revealjs HTML** | `make html` | Live mermaid/SVG; `{.scrollable}`; code-line highlighting and fragments; speaker view; `{.smaller}`; iframes; OJS interactivity | **No NCAR theme yet:** needs a small SCSS theme (brand colors, Poppins, logo lockup) as a framework PR | Parts 2–3 when presenting live |
+| **Companion interactive pages** (claude.ai Artifacts, HTML/React) | published separately and linked from a slide | Anything too rich for a slide, e.g. a schema or ER explorer, the CI → GHCR → Argo pipeline walk-through, the ncar-hpc-deploy cadence timeline, and an allocation-tree explorer on the `tree2mermaid` data | Outside the deck build; private by default; links go stale | Deep-dive details, as needed |
+
+**One source, conditional content:**
+- **Interactive vs. static:** put the interactive element in
+  `::: {.content-visible when-format="revealjs"}` and the static PNG/table fallback in
+  `::: {.content-visible unless-format="revealjs"}`.
+  - **Verify in Phase 0** that `when-format="beamer"` matches the custom `ncar-beamer` format
+    (whose base is beamer). If it doesn't, name `ncar-beamer` explicitly.
+- **Classes each format honors:**
+  - ncar-beamer: `{.feature background-image="images/x.jpg"}` gives a full-bleed photo slide, and
+    `background-image=` doubles as the revealjs background. It also honors `{.closing}`,
+    `{.example}` / `{.alert}` blocks, `[text]{.alert}` and `{.shrink}`.
+  - pptx ignores those classes.
+  - revealjs honors `{.smaller}` and `{.scrollable}`.
+- **The pptx gotchas still bind:** a slide must survive pptx even when HTML is primary for its
+  part, because the handout builds depend on it.
+
+**Build implications for Phase 0:**
+- The `Make.common` `DECKS` generalization must keep the pdf recipe's `_extensions` symlink
+  prerequisite.
+- Build every format for every deck by default. A part can opt out of a format, rather than
+  opting in.
+- CI already installs TinyTeX for `sample.pdf`, so a SAMuel build job can reuse that setup.
+
+**QA per format:**
+- pptx: LibreOffice → PDF, then read it. Fonts fall back to a serif, so check layout only.
+- ncar-beamer: read the PDF directly; the fonts are real. Look hardest for overflow, since
+  beamer has no autofit.
+- revealjs: Playwright screenshots at 1280×720, plus one narrow viewport.
+- Companion pages: the artifact-design checklist (both themes, phone width).
+
+**Candidate companion pages** (decide per phase; each needs a slide that earns the link):
+- Part 2: an interactive map of SAMuel's databases and engines (from `engine_inventory`); an
+  allocation-tree explorer.
+- Part 3: the CI → image → Argo → pods pipeline, clickable per stage; the ncar-hpc-deploy lanes and
+  cadences as a timeline.
+- Appendix: a peer-repo dependency graph.
