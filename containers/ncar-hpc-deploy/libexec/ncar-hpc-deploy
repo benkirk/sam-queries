@@ -37,8 +37,10 @@ done
 nhd_lane_init
 
 stamp() { date '+%Y-%m-%dT%H:%M:%S%z'; }
-# NHD_UPDATE_LOG: set by _update, so an update's lines survive cron's >/dev/null.
-log()   { local line="[$(stamp)] [${NHD_LANE}] $*"; echo "${line}"; [[ -n "${NHD_UPDATE_LOG:-}" ]] && echo "${line}" >> "${NHD_UPDATE_LOG}"; }
+# NHD_UPDATE_LOG: set by _update, so an update's lines survive cron's >/dev/null. log must
+# return 0 when it is unset: do_smoke, promote and rollback end on a log call, and a standalone
+# `smoke` (the remote leg of an update) once exited 1 on "smoke PASS" for exactly that reason.
+log()   { local line="[$(stamp)] [${NHD_LANE}] $*"; echo "${line}"; [[ -z "${NHD_UPDATE_LOG:-}" ]] || echo "${line}" >> "${NHD_UPDATE_LOG}"; }
 
 image_path() {
     case "$1" in
