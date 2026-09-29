@@ -87,7 +87,7 @@ If Cursor's terminal continues to have issues, use a regular terminal for Docker
 # In Terminal.app or iTerm2
 cd /Users/metzger/Github/sam-queries
 docker compose ps
-docker compose logs webapp
+docker compose logs samuel
 docker compose up -d
 ```
 
@@ -118,7 +118,7 @@ docker ps --filter "label=com.docker.compose.project=sam-queries"
 
 # Check specific container
 docker ps --filter "name=samuel-mysql"
-docker ps --filter "name=samuel-webapp"
+docker ps --filter "name=samuel"
 ```
 
 ## Still Having Issues?

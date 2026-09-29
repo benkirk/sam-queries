@@ -9,8 +9,8 @@ on:
       images:
         description: |
           Space-separated list of images to build.
-          Available: mysql webapp webdev collectors
-          Leave empty to build defaults (webapp collectors).
+          Available: mysql samuel samuel-dev
+          Leave empty to build defaults (samuel).
         required: false
         default: ''
       target:
@@ -28,16 +28,21 @@ env:
 jobs:
 
   # -----------------------------------------------------------------------
-  # setup: determine which images to build and emit a JSON matrix
+  # setup: determine which images to build and emit the JSON matrices, and
+  # resolve the build inputs once so every platform builds the same ones
   # -----------------------------------------------------------------------
   setup:
     name: Determine build matrix
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
-      webapp_built: ${{ steps.matrix.outputs.webapp_built }}
+      images: ${{ steps.matrix.outputs.images }}
+      samuel_built: ${{ steps.matrix.outputs.samuel_built }}
       target: ${{ steps.target.outputs.target }}
       cirrus_branch: ${{ steps.target.outputs.cirrus_branch }}
+      build_date: ${{ steps.build_date.outputs.value }}
+      usage_ref: ${{ steps.peer.outputs.usage_ref }}
+      sched_ref: ${{ steps.peer.outputs.sched_ref }}
 
     steps:
       # Prod is never inferred: only a push to main or a v* tag selects it.
@@ -99,20 +104,15 @@ jobs:
           TARGET[mysql]=""
           DEFAULT[mysql]="false"
 
-          DOCKERFILE[webapp]="containers/webapp/Dockerfile"
-          CONTEXT[webapp]="."
-          TARGET[webapp]="production"
-          DEFAULT[webapp]="true"
+          DOCKERFILE[samuel]="containers/samuel/Dockerfile"
+          CONTEXT[samuel]="."
+          TARGET[samuel]="production"
+          DEFAULT[samuel]="true"
 
-          DOCKERFILE[webdev]="containers/webapp/Dockerfile"
-          CONTEXT[webdev]="."
-          TARGET[webdev]="development"
-          DEFAULT[webdev]="false"
-
-          DOCKERFILE[collectors]="containers/collectors/Dockerfile"
-          CONTEXT[collectors]="."
-          TARGET[collectors]=""
-          DEFAULT[collectors]="true"
+          DOCKERFILE[samuel-dev]="containers/samuel/Dockerfile"
+          CONTEXT[samuel-dev]="."
+          TARGET[samuel-dev]="development"
+          DEFAULT[samuel-dev]="false"
 
           # ----------------------------------------------------------------
           # Determine which images to build
@@ -132,9 +132,12 @@ jobs:
           fi
 
           # ----------------------------------------------------------------
-          # Emit JSON matrix
+          # Emit JSON matrices: `matrix` = image x platform, each on a native
+          # runner (no QEMU); `images` = one entry per image, for merge
           # ----------------------------------------------------------------
+          PLATFORMS='amd64:ubuntu-24.04 arm64:ubuntu-24.04-arm'
           MATRIX='{"include":['
+          IMAGES='{"include":['
           FIRST=true
 
           for img in $IMAGES_TO_BUILD; do
@@ -143,77 +146,37 @@ jobs:
               continue
             fi
 
-            [ "$FIRST" = "true" ] || MATRIX+=','
-            FIRST=false
-
-            MATRIX+="{\"name\":\"${img}\","
-            MATRIX+="\"dockerfile\":\"${DOCKERFILE[$img]}\","
-            MATRIX+="\"context\":\"${CONTEXT[$img]}\","
-            MATRIX+="\"target\":\"${TARGET[$img]}\"}"
+            [ "$FIRST" = "true" ] || IMAGES+=','
+            IMAGES+="{\"name\":\"${img}\"}"
+            for pr in $PLATFORMS; do
+              [ "$FIRST" = "true" ] || MATRIX+=','
+              FIRST=false
+              MATRIX+="{\"name\":\"${img}\","
+              MATRIX+="\"dockerfile\":\"${DOCKERFILE[$img]}\","
+              MATRIX+="\"context\":\"${CONTEXT[$img]}\","
+              MATRIX+="\"target\":\"${TARGET[$img]}\","
+              MATRIX+="\"arch\":\"${pr%%:*}\","
+              MATRIX+="\"runner\":\"${pr#*:}\"}"
+            done
           done
 
           MATRIX+=']}'
+          IMAGES+=']}'
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "images=$IMAGES" >> "$GITHUB_OUTPUT"
           echo "Building: $IMAGES_TO_BUILD"
           echo "Matrix: $MATRIX"
 
-          # Indicate whether webapp is included (used by update-helm job)
-          if echo "$IMAGES_TO_BUILD" | grep -qw "webapp"; then
-            echo "webapp_built=true" >> "$GITHUB_OUTPUT"
+          # Indicate whether samuel is included (used by update-helm job).
+          # Exact token match: grep -w would also accept samuel-dev.
+          if [[ " $IMAGES_TO_BUILD " == *" samuel "* ]]; then
+            echo "samuel_built=true" >> "$GITHUB_OUTPUT"
           else
-            echo "webapp_built=false" >> "$GITHUB_OUTPUT"
+            echo "samuel_built=false" >> "$GITHUB_OUTPUT"
           fi
 
-  # -----------------------------------------------------------------------
-  # build: multi-platform image build and push (one job per matrix entry)
-  # -----------------------------------------------------------------------
-  build:
-    name: Build ${{ matrix.name }}
-    needs: setup
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
-
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Set up QEMU (for cross-platform builds)
-        uses: docker/setup-qemu-action@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract image metadata
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.name }}
-          tags: |
-            # branch name (e.g. main)
-            type=ref,event=branch
-            # tag name (e.g. v1.2.3)
-            type=ref,event=tag
-            # semver components from tag (v1.2.3 -> 1.2.3, 1.2, 1)
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            # short commit SHA always
-            type=sha,prefix=sha-
-            # 'latest' only on the main branch
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Compute build date
         id: build_date
@@ -221,10 +184,9 @@ jobs:
         # for the tzdata guard.
         run: echo "value=$(.github/scripts/build_stamp.sh)" >> "$GITHUB_OUTPUT"
 
-      # Write the deploy key to a file via env (preserves the multi-line value
-      # intact) and hand it to buildx as a secret-FILE. The inline `secrets:`
-      # KEY=VALUE parser mangles a multi-line OpenSSH key -> "error in libcrypto".
-      - name: Stage deploy key for BuildKit
+      # Staged here only so `git ls-remote` can resolve the private plugin's SHA;
+      # each build job stages its own copy for the BuildKit secret mount.
+      - name: Stage deploy key for ref resolution
         env:
           HPC_SCHED_DEPLOY_KEY: ${{ secrets.HPC_SCHEDULING_TOOLS_DEPLOY_KEY }}
         run: |
@@ -264,29 +226,166 @@ jobs:
             echo "sched_ref=main" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build and push
+  # -----------------------------------------------------------------------
+  # build: one job per image x platform, each on a native runner (no QEMU).
+  # Pushes by digest only; `merge` assembles the tagged multi-arch index.
+  # -----------------------------------------------------------------------
+  build:
+    name: Build ${{ matrix.name }} (${{ matrix.arch }})
+    needs: setup
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.name }}
+
+      # Write the deploy key to a file via env (preserves the multi-line value
+      # intact) and hand it to buildx as a secret-FILE. The inline `secrets:`
+      # KEY=VALUE parser mangles a multi-line OpenSSH key -> "error in libcrypto".
+      - name: Stage deploy key for BuildKit
+        env:
+          HPC_SCHED_DEPLOY_KEY: ${{ secrets.HPC_SCHEDULING_TOOLS_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          install -m 600 /dev/null "$RUNNER_TEMP/hpc_sched_deploy_key"
+          # Empty secret -> leave the file empty so the Dockerfile skips (optional).
+          if [ -n "$HPC_SCHED_DEPLOY_KEY" ]; then
+            printf '%s\n' "$HPC_SCHED_DEPLOY_KEY" > "$RUNNER_TEMP/hpc_sched_deploy_key"
+          fi
+          # Diagnostic (byte count only, no key material): a full key is ~444 B;
+          # a truncated/mangled delivery shows far fewer.
+          echo "staged deploy key: $(wc -c < "$RUNNER_TEMP/hpc_sched_deploy_key") bytes"
+
+      - name: Build and push by digest
         id: build
         uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           target: ${{ matrix.target }}
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          platforms: linux/${{ matrix.arch }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.name }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.name }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}-${{ matrix.arch }}
+          # From setup, so both platforms build the same peer SHAs and stamp.
           build-args: |
             GIT_SHA=${{ github.sha }}
-            BUILD_DATE=${{ steps.build_date.outputs.value }}
-            HPC_USAGE_QUERIES_REF=${{ steps.peer.outputs.usage_ref }}
-            HPC_SCHEDULING_TOOLS_REF=${{ steps.peer.outputs.sched_ref }}
+            BUILD_DATE=${{ needs.setup.outputs.build_date }}
+            HPC_USAGE_QUERIES_REF=${{ needs.setup.outputs.usage_ref }}
+            HPC_SCHEDULING_TOOLS_REF=${{ needs.setup.outputs.sched_ref }}
           # Read-only deploy key for the private NCAR/hpc-scheduling-tools plugin.
-          # Consumed only by the webapp/webdev Dockerfile secret mount; unused by
-          # the mysql/collectors builds. Empty file -> Dockerfile skips.
+          # Consumed only by the samuel/samuel-dev Dockerfile secret mount; unused by
+          # the mysql build. Empty file -> Dockerfile skips.
           secret-files: |
             hpc_sched_deploy_key=${{ runner.temp }}/hpc_sched_deploy_key
+
+      - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.name }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # -----------------------------------------------------------------------
+  # merge: one tagged multi-arch index per image from its platform digests
+  # -----------------------------------------------------------------------
+  merge:
+    name: Merge ${{ matrix.name }}
+    needs: [setup, build]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup.outputs.images) }}
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download digests
+        uses: actions/download-artifact@v8
+        with:
+          pattern: digests-${{ matrix.name }}-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.name }}
+          tags: |
+            # branch name (e.g. main)
+            type=ref,event=branch
+            # tag name (e.g. v1.2.3)
+            type=ref,event=tag
+            # semver components from tag (v1.2.3 -> 1.2.3, 1.2, 1)
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            # short commit SHA always
+            type=sha,prefix=sha-
+            # 'latest' only on the main branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Create manifest list and push
+        id: build
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          REPO: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.name }}
+        run: |
+          set -euo pipefail
+          refs=(); for d in *; do refs+=("${REPO}@sha256:${d}"); done
+          [ "${#refs[@]}" -eq 2 ] || { echo "::error::expected 2 platform digests, found ${#refs[@]}"; exit 1; }
+          tags=(); while read -r t; do tags+=(-t "$t"); done < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          docker buildx imagetools create "${tags[@]}" "${refs[@]}"
+          PRIMARY_TAG=$(jq -r '.tags[0]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          echo "digest=$(docker buildx imagetools inspect "$PRIMARY_TAG" --format '{{json .Manifest}}' | jq -r .digest)" >> "$GITHUB_OUTPUT"
 
       - name: Collect image facts
         run: |
@@ -321,7 +420,7 @@ jobs:
             --argjson all_tags "$ALL_TAGS_JSON" \
             --arg digest "$DIGEST" \
             --argjson sizes "$SIZES_JSON" \
-            --arg build_date "${{ steps.build_date.outputs.value }}" \
+            --arg build_date "${{ needs.setup.outputs.build_date }}" \
             '{name: $name, primary_tag: $primary_tag, all_tags: $all_tags, digest: $digest, sizes: $sizes, build_date: $build_date}' \
             > "image-info-${{ matrix.name }}.json"
 
@@ -340,7 +439,7 @@ jobs:
   # -----------------------------------------------------------------------
   summary:
     name: Build summary
-    needs: [setup, build]
+    needs: [setup, merge]
     if: always() && needs.setup.result == 'success'
     runs-on: ubuntu-latest
 
@@ -368,8 +467,8 @@ jobs:
   # -----------------------------------------------------------------------
   update-helm:
     name: Pin Helm image tag → ${{ needs.setup.outputs.cirrus_branch }}
-    needs: [setup, build]
-    if: needs.setup.outputs.webapp_built == 'true'
+    needs: [setup, merge]
+    if: needs.setup.outputs.samuel_built == 'true'
     runs-on: ubuntu-latest
     env:
       CIRRUS_BRANCH: ${{ needs.setup.outputs.cirrus_branch }}
@@ -408,10 +507,10 @@ jobs:
       - name: Patch helm/values.yaml with SHA image tag
         run: |
           SHORT_SHA="${GITHUB_SHA:0:7}"
-          NEW_IMAGE="ghcr.io/${{ github.repository }}/webapp:sha-${SHORT_SHA}"
-          echo "Pinning webapp image → ${NEW_IMAGE}"
+          NEW_IMAGE="ghcr.io/${{ github.repository }}/samuel:sha-${SHORT_SHA}"
+          echo "Pinning samuel image → ${NEW_IMAGE}"
           sed -i \
-            "s|image: ghcr.io/${{ github.repository }}/webapp:.*|image: ${NEW_IMAGE}|" \
+            "s|image: ghcr.io/${{ github.repository }}/samuel:.*|image: ${NEW_IMAGE}|" \
             helm/values.yaml
           grep "image:" helm/values.yaml   # sanity-check
 
@@ -421,5 +520,5 @@ jobs:
           git config user.email "${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
           git checkout -B "$CIRRUS_BRANCH"
           git add helm/values.yaml
-          git commit -m "ci: pin webapp image to sha-${GITHUB_SHA:0:7} ($(.github/scripts/build_stamp.sh)) target=${TARGET} from ${GITHUB_REF_NAME} [skip ci]"
+          git commit -m "ci: pin samuel image to sha-${GITHUB_SHA:0:7} ($(.github/scripts/build_stamp.sh)) target=${TARGET} from ${GITHUB_REF_NAME} [skip ci]"
           git push origin "$CIRRUS_BRANCH" --force

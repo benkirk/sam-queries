@@ -144,8 +144,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     p.add_argument(
         "--package", action="append", dest="packages", metavar="NAME",
-        help="Package name relative to --repo (e.g. 'webapp'). Repeat to "
-             "specify multiple. Defaults to: mysql, webapp, collectors.",
+        help="Package name relative to --repo (e.g. 'samuel'). Repeat to "
+             "specify multiple. Defaults to: mysql, samuel, webapp.",
     )
     p.add_argument(
         "--keep", type=int, default=10, metavar="N",
@@ -171,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
               file=sys.stderr)
         return 2
 
-    package_names = args.packages or ["mysql", "webapp", "collectors"]
+    package_names = args.packages or ["mysql", "samuel", "webapp"]
     packages = [f"{args.repo}/{name}" for name in package_names]
 
     if args.dry_run:

@@ -60,6 +60,6 @@ helm template samuel-dev . -f values.yaml -f values-dev.yaml | less
 
 Gunicorn concurrency (worker class/count, threads) is set through
 `values.yaml → deployment.yaml` env vars consumed by
-`containers/webapp/gunicorn_config.py`; the rationale for the gthread
+`containers/samuel/gunicorn_config.py`; the rationale for the gthread
 model is recorded in
 `docs/plans/implemented/K8S_DEPLOYMENT_HARDENING.md`.

@@ -95,7 +95,7 @@ def _client(monkeypatch, responses, **config_kwargs):
 def _reset_xras_cache(monkeypatch):
     """Start each test with the XRAS cache disabled; reset it after.
 
-    ``delenv`` is load-bearing: CI runs pytest inside the compose ``webapp``
+    ``delenv`` is load-bearing: CI runs pytest inside the compose ``samuel``
     container, where ``CACHE_REDIS_URL`` is force-set. With Redis the adapter
     is a ``RedisTTLAdapter``, so dropping the in-process memo would leave the
     keyspace intact and xdist workers would share one Redis.

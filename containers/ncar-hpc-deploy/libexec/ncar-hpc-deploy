@@ -245,7 +245,7 @@ cmd_update() {
         log "${NHD_TAG} unchanged (${digest:7:12}); nothing to do"; exit 0
     fi
 
-    local sif="${NHD_LANE_DIR}/images/webapp-${NHD_TAG}-${digest:7:12}.sif"
+    local sif="${NHD_LANE_DIR}/images/samuel-${NHD_TAG}-${digest:7:12}.sif"
     if [[ ! -s "${sif}" ]]; then
         log "pulling ${NHD_IMAGE_REPO}@${digest}"
         nhd_load_apptainer

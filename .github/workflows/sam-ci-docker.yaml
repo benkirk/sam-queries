@@ -125,9 +125,9 @@ jobs:
           MYSQL_PORT: "3307"
           COMPOSE_SERVICE: mysql-test
 
-      - name: Wait for webapp to be ready
+      - name: Wait for samuel to be ready
         run: |
-          timeout 60 bash -c 'until docker compose exec -T webapp python -c "import sys; sys.exit(0)" 2>/dev/null; do sleep 2; done'
+          timeout 60 bash -c 'until docker compose exec -T samuel python -c "import sys; sys.exit(0)" 2>/dev/null; do sleep 2; done'
           echo "✅ Webapp is ready"
 
       - name: Show container logs (for debugging)
@@ -146,7 +146,7 @@ jobs:
       - name: Run pytest with coverage
         id: pytest
         # SAM_TEST_DB_URL uses the compose service hostname `mysql-test`
-        # (not 127.0.0.1) because pytest runs inside the webapp container,
+        # (not 127.0.0.1) because pytest runs inside the samuel container,
         # which reaches mysql-test via the compose network. The test
         # suite's safety allowlist has (mysql-test, 3306) approved.
         # Note: `pytest` with no path arg picks up testpaths=tests from
@@ -154,12 +154,12 @@ jobs:
         run: |
           docker compose exec -T \
             -e SAM_TEST_DB_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
-            webapp bash -c "cd /code && pytest --cov=src --cov-report=term-missing --cov-report=html"
+            samuel bash -c "cd /code && pytest --cov=src --cov-report=term-missing --cov-report=html"
 
       - name: Copy coverage report from container
         if: always()
         run: |
-          docker compose cp webapp:/code/htmlcov ./htmlcov || echo "No coverage report generated"
+          docker compose cp samuel:/code/htmlcov ./htmlcov || echo "No coverage report generated"
 
       - name: Upload coverage HTML report
         uses: actions/upload-artifact@v7
@@ -188,7 +188,7 @@ jobs:
         run: |
           docker compose exec -T \
             -e SAM_TEST_DB_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
-            webapp bash -c "cd /code && pytest -m perf -n 0 -v --tb=short"
+            samuel bash -c "cd /code && pytest -m perf -n 0 -v --tb=short"
 
       # The XRAS audit-row survival scenarios run in the default suite: they are
       # xdist-safe (rows are cleaned up by captured PK; see tests/xras_audit.py) and
@@ -254,22 +254,22 @@ jobs:
       - name: Wait for Postgres (test)
         run: scripts/ci/wait-for-postgres.sh
 
-      - name: Wait for webapp to be ready
+      - name: Wait for samuel to be ready
         run: |
-          timeout 60 bash -c 'until docker compose exec -T webapp python -c "import sys; sys.exit(0)" 2>/dev/null; do sleep 2; done'
+          timeout 60 bash -c 'until docker compose exec -T samuel python -c "import sys; sys.exit(0)" 2>/dev/null; do sleep 2; done'
 
       - name: Build the Postgres copy from mysql-test
         run: |
           docker compose exec -T \
             -e PG_TEST_SOURCE_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
             -e PG_TEST_HOST=postgres-test -e PG_TEST_PORT=5432 \
-            webapp make -C /code/containers/sam-sql-dev clone-pg-test
+            samuel make -C /code/containers/sam-sql-dev clone-pg-test
 
       - name: Run pytest against postgres-test
         run: |
           docker compose exec -T \
             -e SAM_TEST_DB_URL='postgresql+psycopg2://sam_test:sam_test@postgres-test:5432/sam' \
-            webapp bash -c "cd /code && pytest"
+            samuel bash -c "cd /code && pytest"
 
       - name: Show container logs (for debugging)
         if: failure()

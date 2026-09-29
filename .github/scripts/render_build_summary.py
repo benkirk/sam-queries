@@ -7,9 +7,9 @@ markdown to stdout suitable for `$GITHUB_STEP_SUMMARY`.
 Each sidecar is expected to look like:
 
     {
-      "name": "webapp",
-      "primary_tag": "ghcr.io/owner/repo/webapp:sha-abc1234",
-      "all_tags": ["ghcr.io/.../webapp:latest", "ghcr.io/.../webapp:main", ...],
+      "name": "samuel",
+      "primary_tag": "ghcr.io/owner/repo/samuel:sha-abc1234",
+      "all_tags": ["ghcr.io/.../samuel:latest", "ghcr.io/.../samuel:main", ...],
       "digest": "sha256:...",
       "sizes": { "linux/amd64": 412345678, "linux/arm64": 401234567 },
       "build_date": "2026-05-05 08:22 MDT"

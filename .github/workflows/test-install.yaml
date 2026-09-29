@@ -156,16 +156,16 @@ jobs:
       #    job; this workflow only proves the install path is healthy
       #    end-to-end.
       # ----------------------------------------------------------------
-      - name: Smoke — sam-search CLI inside webapp
+      - name: Smoke — sam-search CLI inside samuel
         run: |
           cd "${INSTALL_DIR}"
-          docker compose exec -T webapp sam-search user csgteam
+          docker compose exec -T samuel sam-search user csgteam
 
       - name: Smoke — webapp /health/live (port 7050; gunicorn / prod target)
         run: |
           curl -fsS http://localhost:7050/api/v1/health/live | grep -q '"status": "alive"'
 
-      - name: Smoke — webdev /health/ready (port 5050; verifies BOTH DB binds)
+      - name: Smoke — samuel-dev /health/ready (port 5050; verifies BOTH DB binds)
         run: |
           # /health/ready pings every configured SQLAlchemy bind. The new
           # compose healthcheck already exercises this internally, but

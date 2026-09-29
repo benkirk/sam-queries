@@ -8,8 +8,8 @@
 # ghcr.io/zaproxy/zaproxy:stable (bundles zap-baseline.py / zap-full-scan.py).
 #
 # DEFAULT (managed) mode, no args:
-#   1. Spins up a *throwaway* webdev container with dev auto-login enabled, on a
-#      dedicated host port (default 5051) so it never collides with a webdev you
+#   1. Spins up a *throwaway* samuel-dev container with dev auto-login enabled, on a
+#      dedicated host port (default 5051) so it never collides with a samuel-dev you
 #      already run on 5050. Auto-login (DISABLE_AUTH / DEV_AUTO_LOGIN_USER) is a
 #      RUNTIME override only — it is never written into committed compose.
 #   2. Waits for health, then asserts auto-login is live (GET /admin -> 200).
@@ -41,8 +41,8 @@
 #              and unbounded — can run very long on heavy dashboards.
 # Both active modes are HARD-GUARDED to localhost (never prod).
 #
-# Prerequisites: Docker running; the `webdev` image built
-#   (docker compose build webdev) — managed mode builds on demand if missing.
+# Prerequisites: Docker running; the `samuel-dev` image built
+#   (docker compose build samuel-dev) — managed mode builds on demand if missing.
 
 set -euo pipefail
 
@@ -65,7 +65,7 @@ WRKDIR="${REPO_ROOT}/docs/nrit-review-2026-05"   # holds gen.conf + the saved ba
 
 # Defaults / config
 ZAP_IMAGE="ghcr.io/zaproxy/zaproxy:stable"
-CONTAINER_NAME="samuel-zap-webdev"
+CONTAINER_NAME="samuel-zap-dev"
 APP_PORT=5051
 ZAP_USER="benkirk"
 FULL=""
@@ -144,7 +144,7 @@ cleanup() {
     rm -f "$PLAN_FILE" 2>/dev/null || true
     if [[ -n "$MANAGED" && -z "$KEEP_APP" ]]; then
         echo ""
-        info "Stopping throwaway webapp container..."
+        info "Stopping throwaway samuel-dev container..."
         docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
     elif [[ -n "$MANAGED" && -n "$KEEP_APP" ]]; then
         echo ""
@@ -164,30 +164,30 @@ echo "  Report  : ${WRKDIR}/${REPORT_HTML}"
 echo "  Image   : ${ZAP_IMAGE}"
 echo ""
 
-# Managed mode: stand up a throwaway auto-login webdev
+# Managed mode: stand up a throwaway auto-login samuel-dev
 if [[ -n "$MANAGED" ]]; then
-    info "Starting throwaway webdev (auto-login as '${ZAP_USER}') on host port ${APP_PORT}..."
+    info "Starting throwaway samuel-dev (auto-login as '${ZAP_USER}') on host port ${APP_PORT}..."
     # Idempotent: clear any stale container from a previous run first.
     docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
     # Explicit -p only (NOT --service-ports): publish on our dedicated host port
-    # so we never collide with a webdev the user already runs on 5050.
+    # so we never collide with a samuel-dev the user already runs on 5050.
     docker compose -f "$COMPOSE_FILE" run -d \
         --name "$CONTAINER_NAME" \
         -p "${APP_PORT}:5050" \
         -e DISABLE_AUTH=1 \
         -e DEV_AUTO_LOGIN_USER="$ZAP_USER" \
-        webdev >/dev/null \
-        || die "Failed to start webdev. If the image is missing, build it first:
-       docker compose build webdev"
+        samuel-dev >/dev/null \
+        || die "Failed to start samuel-dev. If the image is missing, build it first:
+       docker compose build samuel-dev"
 
-    # Wait for readiness (DB-backed). webdev's dev server is python3 src/webapp/run.py.
+    # Wait for readiness (DB-backed). samuel-dev's dev server is python3 src/webapp/run.py.
     info "Waiting for app readiness at http://localhost:${APP_PORT}/api/v1/health/ready ..."
     deadline=$(( SECONDS + 180 ))
     until curl -sf "http://localhost:${APP_PORT}/api/v1/health/ready" >/dev/null 2>&1; do
         if ! docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
             echo ""; docker logs --tail 40 "$CONTAINER_NAME" 2>&1 || true
-            die "webdev container exited before becoming ready."
+            die "samuel-dev container exited before becoming ready."
         fi
         (( SECONDS >= deadline )) && { docker logs --tail 40 "$CONTAINER_NAME" 2>&1 || true; die "Timed out waiting for app readiness."; }
         sleep 3; echo -n "."
@@ -205,7 +205,7 @@ if [[ -n "$MANAGED" ]]; then
     if [[ "$code" != "200" || "$eff_url" == *"/auth/login"* ]]; then
         die "Auto-login check failed: GET /admin/ landed on '${eff_url}' (HTTP ${code}).
        Dev auto-login did not engage — the spider would hit a login wall.
-       (Expected only when FLASK_CONFIG=development, which webdev uses by default.)"
+       (Expected only when FLASK_CONFIG=development, which samuel-dev uses by default.)"
     fi
     ok "Dev auto-login confirmed (GET /admin/ -> 200 as '${ZAP_USER}', no login bounce)."
 fi

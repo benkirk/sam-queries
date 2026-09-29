@@ -172,7 +172,7 @@ clone-pg-local:
 
 # The test suite's Postgres target: `sam` on the compose `postgres-test` service,
 # built from mysql-test (3307). Fixed test credentials, never .env's; the
-# PG_TEST_* overrides let CI run it inside the webapp container by service name.
+# PG_TEST_* overrides let CI run it inside the samuel container by service name.
 clone-pg-test: export SAM_DEV_PG_HOST = $(or $(PG_TEST_HOST),127.0.0.1)
 clone-pg-test: export SAM_DEV_PG_PORT = $(or $(PG_TEST_PORT),5434)
 clone-pg-test: export SAM_DEV_PG_USER = sam_test

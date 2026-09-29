@@ -57,7 +57,7 @@ admin if you think this is wrong.
 
 ### What about logging in locally?
 
-When you run the app on your laptop with `docker compose up webdev`,
+When you run the app on your laptop with `docker compose up samuel-dev`,
 you get a stub login page with a "Quick Login" panel of test usernames --
 click one and you're in (any password works). Local dev shouldn't depend
 on Microsoft being reachable, and we don't want developers' laptops
@@ -151,7 +151,7 @@ Same code, several deployment shapes. The only thing that changes is
 
 | Deployment | URL | How auth works | OIDC creds source | Reply URL on Entra |
 |---|---|---|---|---|
-| **Local Docker Compose** (`docker compose up webdev`) | `http://localhost:5050` | Stub login page (Quick Login; any password) | n/a | n/a |
+| **Local Docker Compose** (`docker compose up samuel-dev`) | `http://localhost:5050` | Stub login page (Quick Login; any password) | n/a | n/a |
 | **Local k8s** (Docker Desktop, `values-local.yaml`) | port-forwarded | Stub auto-login (`DISABLE_AUTH=1`) | n/a | n/a |
 | **Fargate staging** | `https://sam-staging.csgsam.ucar.edu` | OIDC | AWS SSM `/sam/staging/oidc-*` | `https://sam-staging.csgsam.ucar.edu/auth/oidc/callback` |
 | **CIRRUS k8s** (samuel) | `https://sam.hpc.ucar.edu` (advertised)<br>`https://samuel.k8s.ucar.edu` (platform alias) | OIDC | OpenBao `csg/sam-oidc` | one per host — `https://sam.hpc.ucar.edu/auth/oidc/callback` and `https://samuel.k8s.ucar.edu/auth/oidc/callback` |
@@ -211,7 +211,7 @@ out of your way by design.
 
 ```bash
 # Start the dev server (code-synced, port 5050)
-docker compose up webdev --watch
+docker compose up samuel-dev --watch
 
 # Browse to http://localhost:5050
 # The stub login page appears with a "Quick Login" panel of test
@@ -227,7 +227,7 @@ password for any active SAM user -- never run it in production.
 
 Notes on the other run modes:
 
-- `docker compose up` (the `webapp` service, host port **7050**) runs
+- `docker compose up` (the `samuel` service, host port **7050**) runs
   the production-like image with `DISABLE_AUTH=0` pinned in
   `compose.yaml` -- you get the same stub login page, just without
   code sync.
@@ -260,8 +260,8 @@ bypass. To exercise a specific permission set locally:
 
 1. Apply `scripts/sql/create_samuel_roles.sql` to the local MySQL once, then
    `sam-admin rbac --seed` and `--seed-keys`; set `RBAC_SOURCE=db` for
-   webdev.
-2. `docker compose up webdev --watch`, Quick-Login as `benkirk`, and grant
+   samuel-dev.
+2. `docker compose up samuel-dev --watch`, Quick-Login as `benkirk`, and grant
    your test user the role or permissions on Admin -> Roles & access (the
    Check tab shows what a subject resolves to).
 3. Log in as that user and verify the tabs and action buttons. The user card
@@ -303,12 +303,12 @@ If you really need to:
 
 3. **Pass these envs through to the container.** `compose.yaml`
    doesn't forward them by default (intentional, to avoid silent
-   misconfigurations). Either edit the `webdev` service's `environment`
+   misconfigurations). Either edit the `samuel-dev` service's `environment`
    block to add them, or use:
 
    ```bash
    docker compose run -e AUTH_PROVIDER -e OIDC_CLIENT_ID -e OIDC_CLIENT_SECRET \
-     -e OIDC_ISSUER -e OIDC_REDIRECT_URI -e FLASK_CONFIG webdev
+     -e OIDC_ISSUER -e OIDC_REDIRECT_URI -e FLASK_CONFIG samuel-dev
    ```
 
 `FLASK_CONFIG=development` is important here -- it keeps

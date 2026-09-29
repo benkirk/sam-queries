@@ -38,7 +38,7 @@ data/
 logs/
 collectors/logs/
 
-# DB-image build helpers — not used by the webapp image, and not used
+# DB-image build helpers — not used by the samuel image, and not used
 # by the sam-sql-dev/mysql-test build context either (its Dockerfile
 # only COPYs init-db.sh). Excluding them here drops ~225 MiB from the
 # webapp build context.

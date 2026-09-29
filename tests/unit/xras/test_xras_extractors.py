@@ -845,6 +845,13 @@ class TestResolveMnemonicCode:
         assert '"Extractor Stale University"' in message
         assert f'also current: "Extractor Current University" -> {linked.code}' in message
 
+    def test_institutions_load_in_primary_key_order(self):
+        """The shadowed test above needs the stale (older) row first. MySQL returns PK
+        order; Postgres returns heap order, which xdist rollbacks scramble."""
+        from sam import User, UserInstitution
+        assert list(User.institutions.property.order_by) == [
+            UserInstitution.__table__.c.user_institution_id]
+
     def _pi_role(self, username, organization):
         return [{'roleType': 'PI', 'username': username,
                  'person': {'organization': organization}}]

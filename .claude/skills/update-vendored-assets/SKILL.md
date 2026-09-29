@@ -173,9 +173,9 @@ For a bump touching a trap surface, add the matching structural gate:
 
 **Browser smoke any visible bump** (Bootstrap, Font Awesome, Poppins) at 3
 layouts × 2 themes per `wire-dashboard-feature` step 12, and eyeball
-`/dev/gallery`. Two caches lie on webdev first — flush Redis
+`/dev/gallery`. Two caches lie on samuel-dev first — flush Redis
 (`docker exec samuel-cache redis-cli -n 0 FLUSHDB` or `sam-admin cache --refresh`)
-and restart webdev so the static `?v=` hash re-memoizes — or you will measure
+and restart samuel-dev so the static `?v=` hash re-memoizes — or you will measure
 "no change" against a stale copy.
 
 ## 9. Deploy note

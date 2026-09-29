@@ -179,7 +179,7 @@ hosts. ssh is optional: `hosts: OFFLINE` means no host answered (`BatchMode`, so
 Duo prompt cannot hang the tick), not a fault. `--no-hosts` skips the hop.
 
 ```
-hosts: lane=prod current=webapp-main-<digest12> (git <sha>)  update 5h ago (unchanged)  via casper
+hosts: lane=prod current=samuel-main-<digest12> (git <sha>)  update 5h ago (unchanged)  via casper
   casper:  rapid 2m exit=0 (collectors=0,jobhist-sync=0) | hourly 25m exit=0 (accounting-comp=0) | daily 22h exit=0 (…)
   spool: casper/casper 2m · casper/jupyterhub 2m · derecho/derecho 2m
 ```
