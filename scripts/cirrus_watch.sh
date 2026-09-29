@@ -490,7 +490,7 @@ if [[ "$HOSTS_ENABLED" -eq 1 ]]; then
                     [[ "$d" == "exit=0" ]] && continue
                     reason="${f#reason=}"; [[ "$f" == reason=* ]] && reason="${reason} ${g}" || reason=""
                     warn "$a ${d} on $b ($(fmt_age "${c#age=}") ago)${reason:+: ${reason% }}";;
-                lock) fail "lock $a held $(fmt_age "${b#age=}") (>60m): a hung job; csgteam's cron mail says so too; never clear it from here";;
+                lock) fail "lock $a held $(fmt_age "${b#age=}") (>60m, no stamp since): a hung job; csgteam's cron mail says so too; never clear it from here";;
             esac
         done <<<"$NHD_OUT"
         rapid_age_of() { local t; t="${rapid_ages#* ${1}=}"; [[ "$t" != "$rapid_ages" ]] && echo "${t%% *}"; }
