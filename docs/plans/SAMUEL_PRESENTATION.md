@@ -405,7 +405,10 @@ from it onto slides.
 - [ ] Publish the combined HTML deck: a claude.ai artifact, GitHub Pages on the framework repo,
   or neither?
 - [ ] Revisit "pptx + HTML equally" after Phase 1.
-- [ ] Is LibreOffice installed for pptx QA? Path: `brew install --cask libreoffice`, which puts an `soffice` wrapper on PATH (conda-forge has no package). QA loop: `soffice --headless --convert-to pdf --outdir <scratch> deck.pptx`, then read the PDF pages. Use a throwaway `-env:UserInstallation=file:///<scratch>/lo-profile` so a running GUI instance doesn't block headless mode.
+- [x] LibreOffice installed 2026-09-29 (26.8.0, `brew install --cask --appdir=~/Applications libreoffice`; the `--appdir` avoids the `sudo` prompt that fails under `!`). Verified on `sam_and_pbs.pptx`: 17 s to PDF. Caveats:
+  - LibreOffice ignores the theme-font mapping, so slides render in a serif fallback, not Poppins. Treat it as a check for overflow, splits and diagrams, not for exact wrapping.
+  - It surfaced a real bug: every slide's date footer reads the literal text `last-modified`, because `date: last-modified` reaches pandoc's footer unresolved. Fix it in the framework during Phase 0; `sam_and_pbs` has it too.
+  Original path note: `brew install --cask libreoffice`, which puts an `soffice` wrapper on PATH (conda-forge has no package). QA loop: `soffice --headless --convert-to pdf --outdir <scratch> deck.pptx`, then read the PDF pages. Use a throwaway `-env:UserInstallation=file:///<scratch>/lo-profile` so a running GUI instance doesn't block headless mode.
 - [ ] Should the retirement of `docs/presentations/` ride this PR or its own?
 - [x] Branding: resolved 2026-09-29. The framework's `template.pptx` has already been reworked (framework PR #2); use it as is.
 - [ ] Pick the §11 devices and part titles; draft the title slide first as the tone test.
