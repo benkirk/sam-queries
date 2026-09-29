@@ -1,6 +1,6 @@
 # SAMuel presentation series — a multi-part Quarto deck
 
-**Status:** planning, 2026-09-29. Nothing is built yet. This doc is the handoff: each session
+**Status:** planning complete, 2026-09-29; ready for Phase 0. Nothing is built yet. This doc is the handoff: each session
 picks up the next unchecked phase in §8, ticks it, and appends to the session log (§10).
 **Goal:** replace the stale `docs/presentations/overview/` with a comprehensive, multi-part
 SAMuel presentation, authored in the standalone `~/Documents/quarto-docs-framework` repo and
@@ -407,7 +407,7 @@ from it onto slides.
 - [x] Format strategy: superseded by the mixed, per-part strategy in §13 (2026-09-29).
 - [x] LibreOffice installed 2026-09-29 (26.8.0, `brew install --cask --appdir=~/Applications libreoffice`; the `--appdir` avoids the `sudo` prompt that fails under `!`). Verified on `sam_and_pbs.pptx`: 17 s to PDF. Caveats:
   - LibreOffice ignores the theme-font mapping, so slides render in a serif fallback, not Poppins. Treat it as a check for overflow, splits and diagrams, not for exact wrapping.
-  - It surfaced a real bug: every slide's date footer reads the literal text `last-modified`, because `date: last-modified` reaches pandoc's footer unresolved. Root cause: the leading Emacs mode-line comment above the front matter. Filed as quarto-docs-framework#7; Ben is fixing it there. SAMuel deck files must start with `---`. The ncar-beamer PDF shows the same bug on its title slide ("LAST-MODIFIED"), so the fix belongs in the shared `date:` handling, not in one format.
+  - It surfaced a real bug: every slide's date footer reads the literal text `last-modified`, because `date: last-modified` reaches pandoc's footer unresolved. Root cause: the leading Emacs mode-line comment above the front matter. Filed as quarto-docs-framework#7 and fixed by framework PR #8 (merged 2026-09-29). SAMuel deck files must start with `---`. The ncar-beamer PDF shows the same bug on its title slide ("LAST-MODIFIED"), so the fix belongs in the shared `date:` handling, not in one format.
   Original path note: `brew install --cask libreoffice`, which puts an `soffice` wrapper on PATH (conda-forge has no package). QA loop: `soffice --headless --convert-to pdf --outdir <scratch> deck.pptx`, then read the PDF pages. Use a throwaway `-env:UserInstallation=file:///<scratch>/lo-profile` so a running GUI instance doesn't block headless mode.
 - [ ] Should the retirement of `docs/presentations/` ride this PR or its own?
 - [x] Branding: resolved 2026-09-29. The framework's `template.pptx` has already been reworked (framework PR #2); use it as is.
@@ -465,6 +465,12 @@ an update here (tick boxes, session log).
   - Voice calibrated from two of Ben's Google Slides decks (§11).
   - Mined the framework's `sam_and_pbs` deck and its CLAUDE.md for reuse and build lessons (§3, §12).
   - Reviewed the framework's new ncar-beamer PDF layer (#4); adopted a mixed, per-part format strategy (§13).
+  - LibreOffice installed and verified. The `last-modified` date bug was root-caused and fixed upstream (framework #7/#8).
+  - **Handoff complete.** The next session starts at §8 Phase 0 and should first:
+    - cut `samuel` from the framework's current `main`, which now includes the beamer layer and the date fix;
+    - read the framework's `CLAUDE.md`;
+    - take the `Make.common` `DECKS` PR first.
+    - Still open in §7: splitting Part 3, the table-count definition, eralchemy2, publishing, the §11 devices, and reuse of `sam_and_pbs`.
 
 ## 11. Voice, tone and the fun
 
