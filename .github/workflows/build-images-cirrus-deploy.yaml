@@ -9,8 +9,8 @@ on:
       images:
         description: |
           Space-separated list of images to build.
-          Available: mysql webapp webdev collectors
-          Leave empty to build defaults (webapp collectors).
+          Available: mysql webapp webdev
+          Leave empty to build defaults (webapp).
         required: false
         default: ''
       target:
@@ -108,11 +108,6 @@ jobs:
           CONTEXT[webdev]="."
           TARGET[webdev]="development"
           DEFAULT[webdev]="false"
-
-          DOCKERFILE[collectors]="containers/collectors/Dockerfile"
-          CONTEXT[collectors]="."
-          TARGET[collectors]=""
-          DEFAULT[collectors]="true"
 
           # ----------------------------------------------------------------
           # Determine which images to build
@@ -284,7 +279,7 @@ jobs:
             HPC_SCHEDULING_TOOLS_REF=${{ steps.peer.outputs.sched_ref }}
           # Read-only deploy key for the private NCAR/hpc-scheduling-tools plugin.
           # Consumed only by the webapp/webdev Dockerfile secret mount; unused by
-          # the mysql/collectors builds. Empty file -> Dockerfile skips.
+          # the mysql build. Empty file -> Dockerfile skips.
           secret-files: |
             hpc_sched_deploy_key=${{ runner.temp }}/hpc_sched_deploy_key
 
