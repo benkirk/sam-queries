@@ -152,8 +152,9 @@ jobs:
           echo "Building: $IMAGES_TO_BUILD"
           echo "Matrix: $MATRIX"
 
-          # Indicate whether samuel is included (used by update-helm job)
-          if echo "$IMAGES_TO_BUILD" | grep -qw "samuel"; then
+          # Indicate whether samuel is included (used by update-helm job).
+          # Exact token match: grep -w would also accept samuel-dev.
+          if [[ " $IMAGES_TO_BUILD " == *" samuel "* ]]; then
             echo "samuel_built=true" >> "$GITHUB_OUTPUT"
           else
             echo "samuel_built=false" >> "$GITHUB_OUTPUT"
