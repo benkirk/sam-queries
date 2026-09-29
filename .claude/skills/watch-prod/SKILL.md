@@ -194,8 +194,11 @@ hosts: lane=prod current=webapp-main-<digest12> (git <sha>)  update 5h ago (unch
   dev (:47) is the quiet case; `failed` FAILs and names the smoke step; the git
   sha maps to the `cirrus`/`cirrus-dev` pin like `pods: sha=`. A leftover
   `candidate` without a bless is a WARN.
-- **a lock older than 60 min** FAILs: a hung job. csgteam's cron mail carries the
-  same signal (stale-lock line, lock timeouts on `cron`, every non-zero step).
+- **a lock older than 60 min with no completion stamp since** FAILs: a hung job.
+  Lock files persist after release, so age alone means nothing; the holder's
+  stamp landing after the lock's mtime means it finished. csgteam's cron mail
+  carries the same signal (stale-lock line, lock timeouts on `cron`, every
+  non-zero step).
 - **Never run a deploy subcommand or clear a lock from the watch.** Same rule as
   the CronJob: report it, hand it to Ben, `ncar-hpc-deploy` is csgteam's.
 

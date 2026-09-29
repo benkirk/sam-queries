@@ -9,7 +9,7 @@
 #   update age=N outcome=unchanged|blessed|failed|unknown [detail=...]
 #   tick CADENCE HOST age=N exit=E dur=D steps=job=rc,...
 #   run JOB HOST age=N exit=E dur=D [reason=...]        (reason only when exit != 0)
-#   lock NAME age=N                                     (only past NHD_STALE_S, 3600)
+#   lock NAME age=N                 (past NHD_STALE_S, 3600, with no completion stamp since)
 #   spool HOST SYSTEM age=N
 set -u
 lane="${1:?usage: nhd_lane_summary.sh LANE}"
@@ -71,10 +71,26 @@ for f in "${S}"/last-run.*.*; do
     echo "${line}"
 done
 
+# lock.py never unlinks a lock file, so every *.lock persists with mtime = its last holder's
+# start. A lock is held only while nothing completed since: the tick/run/update stamp the
+# holder writes on exit is newer than the lock, or it is hung.
+stamps_for() {
+    local n="$1"
+    case "${n}" in
+        update)  echo "${S}/last-update ${S}/last-update.FAILED";;
+        tick-*)  n=${n#tick-}; echo "${S}/last-tick.${n%%-*}.${n#*-}";;
+        *)       echo "${S}/last-run.${n%-*}.${n##*-}";;
+    esac
+}
 for f in "${S}"/*.lock; do
     [[ -f "${f}" ]] || continue
     a=$(age "${f}") || continue
-    (( a > stale_s )) && echo "lock $(basename "${f}" .lock) age=${a}"
+    (( a > stale_s )) || continue
+    n=$(basename "${f}" .lock); lm=$(mtime "${f}"); done_since=0
+    for st in $(stamps_for "${n}"); do
+        [[ -f "${st}" ]] && (( $(mtime "${st}") >= lm )) && done_since=1
+    done
+    (( done_since )) || echo "lock ${n} age=${a}"
 done
 
 for d in "${S}"/spool/*/; do

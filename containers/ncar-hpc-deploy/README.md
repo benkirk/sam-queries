@@ -140,8 +140,9 @@ is the worst step), `state/last-run.<job>.<host>`, the closing lines of
 `All fallbacks failed`), `state/last-update` (`<ts> unchanged|blessed|failed
 <digest>`; before it exists only `update.lock`'s mtime says an update ran),
 `lanes/<lane>/state/last-update.FAILED`, a leftover `candidate` link, and any `state/*.lock`
-older than `NCAR_HPC_DEPLOY_STALE_MIN`. The other channel is csgteam's cron
-mail: stale locks, lock timeouts on `cron`, and every non-zero step.
+older than `NCAR_HPC_DEPLOY_STALE_MIN` whose stamp is older still (lock files persist
+after release; a stamp newer than the lock means the holder finished). The other channel
+is csgteam's cron mail: stale locks, lock timeouts on `cron`, and every non-zero step.
 
 ## Install
 
