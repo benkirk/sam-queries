@@ -25,6 +25,8 @@ nhd_lane_init() {
     NHD_ENV_FILE="${NHD_LANE_DIR}/env"
     NHD_STATE="${NHD_LANE_DIR}/state"
     NHD_LOGS="${NHD_LANE_DIR}/logs"
+    # NHD_NO_CREATE: a read-only command (status) on a lane that may not exist, or as a watcher account.
+    [[ -n "${NHD_NO_CREATE:-}" ]] && return 0
     mkdir -p "${NHD_LANE_DIR}/images" "${NHD_STATE}" "${NHD_LOGS}" || nhd_die "cannot create ${NHD_LANE_DIR}"
 }
 

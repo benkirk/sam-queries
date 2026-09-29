@@ -75,6 +75,16 @@ to the single harvest, with a comment naming the trap.
 §10 reads "the last 500 webapp lines" through the same selector and may share
 the cap — verify and fix separately.
 
+## The hosts line (2026-09-28)
+
+The HPC-side jobs moved into `containers/ncar-hpc-deploy/` (#645, #656). The tick now
+reads that lane's stamps from GLADE over one ssh hop (`scripts/lib/nhd_lane_summary.sh`,
+ages computed remotely, no deploy subcommand run) and prints a `hosts:` block: rapid /
+hourly / daily / weekly tick ages and exit codes per host, spool freshness, the update
+outcome and image. No ssh is `OFFLINE` for that line only. Two deploy-side changes made
+the scrape honest: `status` is read-only, and every `update` run leaves
+`state/last-update` plus a `logs/update/` line, so "ran, unchanged" and "never ran" differ.
+
 ## Slow-endpoint follow-ups
 
 Both offenders are legacy-compat API blueprints that mirror the legacy Java

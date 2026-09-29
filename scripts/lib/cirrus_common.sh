@@ -82,6 +82,10 @@ cirrus_set_env() {
     esac
     TASKS_SELECTOR="app=${TASKS_NAME}"
     [[ -n "$_NAMESPACE_EXPLICIT" ]] || NAMESPACE="$ENV_NAMESPACE"
+    # The ncar-hpc-deploy lane on GLADE that feeds this env (prod tracks :main, dev :staging).
+    NHD_LANE="$SAM_ENV"
+    NHD_HOSTS="${WATCH_NHD_HOSTS:-casper derecho}"
+    NHD_LANES="${WATCH_NHD_LANES:-/glade/u/apps/opt/sam-queries/containers/ncar-hpc-deploy/lanes}"
 }
 cirrus_set_env "${SAM_ENV:-prod}"
 

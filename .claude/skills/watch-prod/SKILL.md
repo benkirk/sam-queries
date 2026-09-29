@@ -18,8 +18,8 @@ judgment the script can't: what a line means, what to flag vs let ride, and how
 to run the recurring wake without piling up duplicate timers. For samuel-dev
 (`--env dev`), the `watch-dev` skill carries the differences.
 
-Work top to bottom. Step 1 runs a tick; steps 2–5 read it; step 6 schedules the
-recurring wake; step 7 is the traps.
+Work top to bottom. Step 1 runs a tick; steps 2–6 read it; step 7 schedules the
+recurring wake; step 8 is the traps.
 
 ## 1. Run a tick
 
@@ -170,7 +170,36 @@ dedups a duplicate dispatch to a no-op — but **deleting a running mail task**
 next dispatch reclaim the lease and double-mail every PI. So: report it, hand it
 off, don't automate it.
 
-## 6. Scheduling the recurring wake ("restart only if necessary")
+## 6. The hosts line: the HPC lanes on GLADE
+
+`hosts:` reads the `ncar-hpc-deploy` lane that feeds this env (prod tracks `:main`,
+dev `:staging`; `containers/ncar-hpc-deploy/README.md` § Watching a lane) over one
+ssh hop to casper or derecho. The tree is on shared `/glade`, so one hop reads both
+hosts. ssh is optional: `hosts: OFFLINE` means no host answered (`BatchMode`, so a
+Duo prompt cannot hang the tick), not a fault. `--no-hosts` skips the hop.
+
+```
+hosts: lane=prod current=webapp-main-<digest12> (git <sha>)  update 5h ago (unchanged)  via casper
+  casper:  rapid 2m exit=0 (collectors=0,jobhist-sync=0) | hourly 25m exit=0 (accounting-comp=0) | daily 22h exit=0 (…)
+  spool: casper/casper 2m · casper/jupyterhub 2m · derecho/derecho 2m
+```
+
+- **rapid** fires every 5 min on both hosts: older than 12 min is a FAIL (cron on
+  `cron` not reaching the host, or a stuck tick lock). hourly > 70 min, daily
+  > 26 h, weekly > 8 d are WARNs. A host with no rapid record at all is a WARN.
+- **exit≠0 on a run** is a WARN with the job's own last line (`reason=`), e.g.
+  `All fallbacks failed` after `Skip: User '<u>' (no uid) not found in SAM`:
+  a data gap in SAM, not a deploy fault. Hand the user list to the accounts team.
+- **update** is the image swap: `unchanged` daily on prod (06:32) and hourly on
+  dev (:47) is the quiet case; `failed` FAILs and names the smoke step; the git
+  sha maps to the `cirrus`/`cirrus-dev` pin like `pods: sha=`. A leftover
+  `candidate` without a bless is a WARN.
+- **a lock older than 60 min** FAILs: a hung job. csgteam's cron mail carries the
+  same signal (stale-lock line, lock timeouts on `cron`, every non-zero step).
+- **Never run a deploy subcommand or clear a lock from the watch.** Same rule as
+  the CronJob: report it, hand it to Ben, `ncar-hpc-deploy` is csgteam's.
+
+## 7. Scheduling the recurring wake ("restart only if necessary")
 
 The tick repeats on a **Claude-side timer** (a scheduled cron, or a `/loop`),
 NOT a cluster CronJob — the remote cron is hands-off (step 5). Cadence ~30 min.
@@ -182,7 +211,7 @@ NOT a cluster CronJob — the remote cron is hands-off (step 5). Cadence ~30 min
 2. If one is already scheduled and healthy, leave it — do nothing.
 3. If none exists (or it died), start one: a `CronCreate` cron at ~30-min
    cadence (or `/loop` in dynamic mode) whose prompt runs `scripts/cirrus_watch.sh`
-   and reports only the deltas per steps 2–5.
+   and reports only the deltas per steps 2–6.
 
 When samuel-dev is watched too, the **same** timer runs both ticks
 (`scripts/cirrus_watch.sh --context nwc1` then `--env dev`) and reports one line
@@ -192,7 +221,7 @@ belongs in the state-directory file (step 3), not in the prompt.
 A dropped VPN makes a tick a clean no-op (step 1), so the timer survives an
 overnight VPN outage without alarms.
 
-## 7. Traps
+## 8. Traps
 
 - **VPN preflight is load-bearing.** A fully-down VPN blackholes DNS/SYN and the
   mysql/kubectl connect timeouts don't cover it (a bare run once took ~1000s).
