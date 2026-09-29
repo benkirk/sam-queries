@@ -49,8 +49,11 @@ def is_record(rel):
 # ---------------------------------------------------------------------------
 
 def _git(*args):
-    return subprocess.run(["git", *args], capture_output=True, text=True,
-                          cwd=str(REPO_ROOT))
+    try:
+        return subprocess.run(["git", *args], capture_output=True, text=True,
+                              cwd=str(REPO_ROOT))
+    except FileNotFoundError:  # the slim runtime image has no git; CI runs pytest there
+        return subprocess.CompletedProcess(args, 127, "", "git: not found")
 
 
 @functools.lru_cache(maxsize=None)

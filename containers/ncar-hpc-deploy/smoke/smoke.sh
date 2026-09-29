@@ -20,6 +20,8 @@ case "$1" in
                 || system("test -f " src "/jobs/" $4 ".sh") { print "bad row " NR ": " $0; bad = 1 }
             END { exit bad }' "${SRC}/etc/schedule"
         run imports python3 -c 'import sam, cli, job_history, webapp'
+        # Without tzdata the lane's TZ silently resolves to UTC and SAM's naive-Mountain dates shift.
+        run tzdata env TZ=America/Denver python3 -c 'import time; assert time.tzname[0] == "MST", time.tzname'
         run entry-points bash -c 'sam-admin --help && sam-search --help && jobhist-sync --help'
         run sam-db sam-search --format json project SCSG0001 ;;
     accounting-comp) run "$1" bash "${SRC}/jobs/accounting-comp.sh" --last 1d --dry-run ;;
