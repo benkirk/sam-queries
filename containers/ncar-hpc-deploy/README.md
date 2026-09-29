@@ -137,7 +137,9 @@ seconds, and `scripts/cirrus_watch.sh` turns that into its `hosts:` line (the
 them: `state/last-tick.<cadence>.<host>` (mtime is the heartbeat; `exit=`
 is the worst step), `state/last-run.<job>.<host>`, the closing lines of
 `logs/<job>/<host>-DATE.log` (the job's own last word, for example
-`All fallbacks failed`), `state/last-update` (`<ts> unchanged|blessed|failed
+`All fallbacks failed`; a collectors run also logs `prejob <system>: manifest Ns, scrape
+Ns (slowest <key> Ns)`, and each spool keeps `<key>.sec` per scraped command),
+`state/last-update` (`<ts> unchanged|blessed|failed
 <digest>`; before it exists only `update.lock`'s mtime says an update ran),
 `lanes/<lane>/state/last-update.FAILED`, a leftover `candidate` link, and any `state/*.lock`
 older than `NCAR_HPC_DEPLOY_STALE_MIN` whose stamp is older still (lock files persist

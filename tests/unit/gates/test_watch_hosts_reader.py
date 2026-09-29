@@ -115,6 +115,18 @@ class TestRecords:
         assert runs['collectors'].endswith('exit=0 dur=6')
         assert runs['accounting-comp'].endswith('exit=2 dur=20 reason=All fallbacks failed')
 
+    def test_prejob_timing_lines_are_not_mistaken_for_the_reason(self, lanes):
+        s = lanes / 'dev' / 'state'
+        _touch(s / 'last-run.collectors.derecho', '2026-09-28T17:40:40-0600 exit=2 32s\n', 120)
+        _touch(lanes / 'dev' / 'logs' / 'collectors' / 'derecho-2026-09-28.log',
+               '#----------------------------------------------------------------------------\n'
+               '[2026-09-28T17:40:08-0600] [dev] run collectors  on derecho image=images/x.sif\n'
+               '  FAIL derecho exit=1 (1s; see derecho.log)\n'
+               '[2026-09-28T17:40:39-0600] [dev] prejob derecho: manifest 3s, scrape 28s (slowest df.3 28s)\n'
+               '[2026-09-28T17:40:40-0600] [dev] run collectors exit=2 (32s; prejob 31s)\n', 120)
+        run = next(l for l in read(lanes, 'dev') if l.startswith('run collectors derecho '))
+        assert run.endswith('exit=2 dur=32 reason=  FAIL derecho exit=1 (1s; see derecho.log)')
+
     def test_a_lock_is_stale_only_when_nothing_completed_since_it(self, lanes):
         """Lock files persist after release: tick-daily-casper is old but its tick stamp is
         newer, so it is free; accounting-disk-casper's last stamp predates it, so it is hung."""
