@@ -14,7 +14,7 @@ Guide for running the SAM Queries web application locally.
 docker compose ps mysql
 
 # Start web application
-docker compose up webapp
+docker compose up samuel
 
 # Or start both database and webapp
 docker compose up
@@ -32,11 +32,11 @@ The webapp runs in development mode by default with:
 
 ## Building the Container
 
-If you need to rebuild the webapp container:
+If you need to rebuild the samuel container:
 
 ```bash
-# Rebuild webapp container
-docker compose build webapp
+# Rebuild the samuel container
+docker compose build samuel
 
 # Or rebuild everything
 docker compose build
@@ -49,7 +49,7 @@ docker compose build
 **Solution:** This has been fixed. The Dockerfile now uses `.dockerignore` instead of `COPY --exclude`. If you still see this error:
 
 1. Ensure you have the latest code
-2. Rebuild the container: `docker compose build webapp`
+2. Rebuild the container: `docker compose build samuel`
 
 ### Issue: "Cannot connect to database"
 
@@ -61,20 +61,20 @@ docker compose build
 ### Issue: Container fails to start
 
 **Solution:**
-1. Check logs: `docker compose logs webapp`
+1. Check logs: `docker compose logs samuel`
 2. Check if port 5050 is already in use: `lsof -i :5050`
-3. Rebuild container: `docker compose build webapp`
+3. Rebuild container: `docker compose build samuel`
 
 ### Issue: Permission errors during build
 
 **Solution:**
 1. Ensure Docker Desktop has proper permissions
-2. Try: `docker compose build --no-cache webapp`
+2. Try: `docker compose build --no-cache samuel`
 3. Restart Docker Desktop if needed
 
 ## Container Details
 
-- **Image:** Built from `containers/webapp/Dockerfile`
+- **Image:** Built from `containers/samuel/Dockerfile`
 - **Port:** 5050
 - **Network:** sam-network (connects to MySQL container)
 - **Volumes:** 
@@ -94,7 +94,7 @@ Set in `compose.yaml`:
 
 ```bash
 # Stop webapp only
-docker compose stop webapp
+docker compose stop samuel
 
 # Stop everything (webapp + database)
 docker compose down

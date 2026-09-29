@@ -486,7 +486,7 @@ class TestingConfig(SAMWebappConfig):
     # one module that does exercise it (tests/integration/test_rate_limit_flow.py)
     # flips the facade on per-test and clears storage; pinning memory:// keeps
     # that clear a per-worker dict wipe rather than an attempt to wipe the shared
-    # CI Redis that compose.yaml points the webapp container at.
+    # CI Redis that compose.yaml points the samuel container at.
     RATELIMIT_ENABLED     = False
     RATELIMIT_STORAGE_URI = 'memory://'
 

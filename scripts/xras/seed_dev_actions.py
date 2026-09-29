@@ -41,10 +41,10 @@ Usage
 ::
 
     source etc/config_env.sh
-    docker compose up webdev --watch          # in another terminal
+    docker compose up samuel-dev --watch          # in another terminal
     python scripts/xras/seed_dev_actions.py --errors
 
-    # against the prod-like stack instead of webdev
+    # against the prod-like stack instead of samuel-dev
     python scripts/xras/seed_dev_actions.py --base-url http://localhost:7050
 """
 
@@ -200,7 +200,7 @@ def post(session, url, body, username, password, label):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--base-url', default='http://localhost:5050',
-                        help='webapp base URL (default: the webdev container)')
+                        help='webapp base URL (default: the samuel-dev container)')
     parser.add_argument('--dir', dest='payload_dir', default=None, metavar='PATH',
                         help='Post every *.json under PATH instead of the committed '
                              'fixtures. For the raw-payload loop: point it at a '

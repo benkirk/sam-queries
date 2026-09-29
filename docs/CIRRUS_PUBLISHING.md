@@ -17,7 +17,7 @@ workflow_dispatch ───────────►│ .github/workflows/    
   target=prod (explicit)      └──────────────────────────┘
                                   │      │       │      target=dev ─► cirrus-dev
                                   ▼      ▼       ▼                    (samuel-dev)
-                                ghcr.io: webapp, collectors, …
+                                ghcr.io: samuel, mysql, …
                                 (tagged sha-<short>, latest, branch, semver)
 ```
 
@@ -32,7 +32,7 @@ The single workflow is `.github/workflows/build-images-cirrus-deploy.yaml`. It h
 | `setup` | Resolves the deploy **target** (`dev`/`prod`) and its branch (`cirrus-dev`/`cirrus`), reads the image table and emits a build matrix | `DEFAULT[]=true` images run on every trigger; others are dispatch-only |
 | `build` (matrix) | Multi-arch (`linux/amd64,linux/arm64`) Docker build, pushes to `ghcr.io/benkirk/sam-queries/<image>` with tags: `sha-<short>`, branch, semver components (on tags), and `latest` (only on `main`) | Uses the default `GITHUB_TOKEN` for `packages: write` |
 | `summary` | Aggregates per-image artifacts into the workflow run's summary page | Read-only |
-| `update-helm` | Rewrites `helm/values.yaml` to pin `webapp` to `sha-<short>`, then **force-pushes the target branch** | Runs only if `webapp_built==true`; pushes as the GitHub App, not `github-actions[bot]` |
+| `update-helm` | Rewrites `helm/values.yaml` to pin `samuel` to `sha-<short>`, then **force-pushes the target branch** | Runs only if `samuel_built==true`; pushes as the GitHub App, not `github-actions[bot]` |
 
 ### Triggers and targets
 
@@ -40,7 +40,7 @@ Prod is never inferred. Only a push to `main` or a `v*` tag selects it on its ow
 
 | Trigger | Target | Effect |
 |---|---|---|
-| Push to `main` | `prod` | Builds default images (`webapp`, `collectors`), pins `cirrus`, prod deploy follows |
+| Push to `main` | `prod` | Builds the default image (`samuel`), pins `cirrus`, prod deploy follows |
 | Tag `v*` | `prod` | Same, plus semver-tagged images |
 | Push to `staging` | `dev` | Builds default images, pins `cirrus-dev`, `samuel-dev` follows |
 | `workflow_dispatch` on any ref | `dev` unless `target=prod` | Optional `images` input overrides the default set; `target=prod` from a ref other than `main` is allowed but writes a `::warning` and a step-summary line |
@@ -128,7 +128,7 @@ git log -1 origin/cirrus-dev --format='%h %ci %an%n%s'
 Expected (the subject names the target and the ref that is now live there):
 ```
 <sha> 2026-MM-DD HH:MM +0000 cirrus-benkirk-deployer[bot]
-ci: pin webapp image to sha-<short> (2026-MM-DD HH:MM MDT) target=dev from <branch> [skip ci]
+ci: pin samuel image to sha-<short> (2026-MM-DD HH:MM MDT) target=dev from <branch> [skip ci]
 ```
 
 If the author is **not** `cirrus-benkirk-deployer[bot]`, the App token path didn't engage on that run — investigate the `Mint GitHub App token` step in the run log.
@@ -154,7 +154,7 @@ Expected: `remote rejected ... push declined due to repository rule violations`.
 | `update-helm` fails at the force-push with `GH013: Repository rule violations` | Bypass actor mis-set (wrong `actor_id` or `actor_type`), `actor_id` doesn't match `CIRRUS_DEPLOY_APP_ID`, or the ruleset does not yet list `cirrus-dev` | `gh api /repos/benkirk/sam-queries/rulesets` → find the cirrus ruleset → confirm the bypass entry `actor_type: "Integration"`, `actor_id` = the App's numeric ID, and both refs in `conditions.ref_name.include` |
 | `gh workflow run ... -f target=...` is rejected as an unexpected input | The workflow file carrying `target` is not on `main` yet | Dispatch bare (`--ref <branch>`, no `-f target`), which lands on dev; `-f target=prod` needs the promotion first |
 | `git push` fails with *"refusing to update workflow file"* | App lacks `Workflows: Read & write` permission | Edit the App's permissions; accept the install update on the repo |
-| `update-helm` is skipped on a push | `webapp_built==false` because the dispatch input didn't include `webapp` | Re-trigger with empty `images` input, or include `webapp` explicitly |
+| `update-helm` is skipped on a push | `samuel_built==false` because the dispatch input didn't include `samuel` | Re-trigger with empty `images` input, or include `samuel` explicitly |
 | `setup` fails with `push from unexpected ref` | A push trigger fired from a branch other than `main`/`staging` | The `on.push.branches` list and the resolver disagree; fix both in one change |
 | A branch author is `github-actions[bot]` | Workflow ran before the App-token PR landed, or the App token was not threaded into checkout | Verify the workflow file on `main` includes the `app-token` step and `token:` line in the checkout |
 | Two concurrent dispatches → confused branch state | Should not happen — the per-target `concurrency` guard serializes pushes; if it does, the second waits | Inspect the workflow's `concurrency` block; both runs eventually push, last writer wins |

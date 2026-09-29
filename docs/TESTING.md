@@ -265,7 +265,7 @@ Job `pytest`:
 
 1. Builds and starts all containers including `mysql-test` (via `--profile test`)
 2. Waits for both MySQL services to accept TCP connections
-3. Runs `pytest --cov=src` inside the webapp container (branch coverage and the
+3. Runs `pytest --cov=src` inside the samuel container (branch coverage and the
    `fail_under` floor are configured in `pyproject.toml`)
 4. Runs the gated `perf` tier, `if: always()` — `pytest -m perf -n 0`. The XRAS
    audit-row scenarios run inside step 3, as part of the default suite.
@@ -273,7 +273,7 @@ Job `pytest`:
 
 Job `pytest-postgres`: the same build and start, then
 `scripts/ci/wait-for-postgres.sh`, then `make -C containers/sam-sql-dev
-clone-pg-test` inside the webapp container with `PG_TEST_SOURCE_URL`
+clone-pg-test` inside the samuel container with `PG_TEST_SOURCE_URL`
 (`mysql-test:3306`), `PG_TEST_HOST` and `PG_TEST_PORT` (`postgres-test:5432`)
 overriding the loader's localhost defaults, then the default tier with
 `SAM_TEST_DB_URL` pointing at `postgres-test`. No coverage upload.

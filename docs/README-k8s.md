@@ -246,7 +246,7 @@ Logout needs no equivalent setting: it already derives
 
 | Deployment | URL | Auth provider | OIDC creds source | Reply URL on Entra |
 |---|---|---|---|---|
-| Local Docker Compose (`webdev`) | `http://localhost:5050` | stub (`DISABLE_AUTH=1`) | n/a | n/a |
+| Local Docker Compose (`samuel-dev`) | `http://localhost:5050` | stub (`DISABLE_AUTH=1`) | n/a | n/a |
 | Local k8s (Docker Desktop, `values-local.yaml`) | port-forwarded | stub (`DISABLE_AUTH=1`) | n/a | n/a |
 | Fargate staging | `https://sam-staging.csgsam.ucar.edu` | oidc | AWS SSM `/sam/staging/oidc-*` | `https://sam-staging.csgsam.ucar.edu/auth/oidc/callback` |
 | CIRRUS k8s (this chart) | `https://sam.hpc.ucar.edu` (advertised)<br>`https://samuel.k8s.ucar.edu` (platform alias) | oidc | OpenBao `csg/sam-oidc` | both `https://sam.hpc.ucar.edu/auth/oidc/callback` and `https://samuel.k8s.ucar.edu/auth/oidc/callback` |
@@ -257,7 +257,7 @@ Scheduled tasks, by environment:
 
 | Deployment | `tasks.enabled` | Notes |
 |---|---|---|
-| Local Docker Compose (`webdev`) | n/a — no chart | Run by hand: `sam-admin tasks --run-due` |
+| Local Docker Compose (`samuel-dev`) | n/a — no chart | Run by hand: `sam-admin tasks --run-due` |
 | Local k8s (Docker Desktop) | `false` | Nothing should silently DELETE local data |
 | CIRRUS k8s (this chart) | `true`, kill-switched | Staged enable; the switch names what is not yet live. `SAM_TASKS_DISABLED=xras_notices,account_queue_digest` |
 | CIRRUS k8s dev (`samuel-dev-tasks`) | `true`, own ledger in `system_status_dev` | Mail tasks, the sweep and the account-request tasks off: `SAM_TASKS_DISABLED=expiration_notices,xras_notices,xras_sweep,account_requests_reconcile,account_queue_digest` |

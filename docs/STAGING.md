@@ -35,7 +35,7 @@ git push origin staging
 ```
 
 The workflow:
-1. Builds Docker image from `containers/webapp/Dockerfile`
+1. Builds Docker image from `containers/samuel/Dockerfile`
 2. Pushes to ECR
 3. Updates ECS task definition
 4. Deploys new task and waits for stability

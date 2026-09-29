@@ -140,7 +140,7 @@ webapp:
       timeoutSeconds: 5                  # readiness pings the DBs
       failureThreshold: 3
   # Pod/container security hardening. runAsUser MUST match the UID created in
-  # containers/webapp/Dockerfile's production stage (USER 1000); runAsNonRoot
+  # containers/samuel/Dockerfile's production stage (USER 1000); runAsNonRoot
   # makes the kubelet enforce non-root even if a future image rebuild loses
   # the USER directive. readOnlyRootFilesystem deliberately deferred —
   # matplotlib's /tmp/mpl cache, gunicorn temp files, and the /var/log/sam
@@ -157,7 +157,7 @@ webapp:
       capabilities:
         drop: ["ALL"]
   container:
-    image: ghcr.io/benkirk/sam-queries/webapp:main
+    image: ghcr.io/benkirk/sam-queries/samuel:main
     port: 5050
     requests:
       memory: 4096M

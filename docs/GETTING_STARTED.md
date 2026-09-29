@@ -423,7 +423,7 @@ docker compose up
 docker compose up -d
 
 # View logs
-docker compose logs -f webapp
+docker compose logs -f samuel
 
 # Rebuild after changes
 docker compose up --build
@@ -433,9 +433,9 @@ docker compose down
 ```
 
 **Configuration**: See `compose.yaml`
-- **webapp service**: Flask app on port 5050
+- **samuel service**: Flask app (gunicorn) on host port 7050
 - **mysql service**: MySQL 9.0 on port 3306
-- **Watch mode**: Hot reloading on file changes
+- **samuel-dev service**: Flask dev server on host port 5050 (`--watch` hot-reloads)
 - **Health checks**: Automatic service monitoring
 
 ---
@@ -694,7 +694,7 @@ to browse any database without an ORM model.
 **Day 2: Docker and Containerization**
 - [ ] Review `compose.yaml` configuration
 - [ ] Understand service dependencies (webapp ↔ mysql)
-- [ ] Study Dockerfile (`containers/webapp/Dockerfile`)
+- [ ] Study Dockerfile (`containers/samuel/Dockerfile`)
 - [ ] Learn about volume mounts and hot reloading
 - [ ] Explore health checks and startup dependencies
 
@@ -831,7 +831,7 @@ pipdeptree
 
 ### Debugging Tips
 1. **Read error messages carefully** - Python tracebacks are helpful
-2. **Check logs**: `docker compose logs -f webapp`
+2. **Check logs**: `docker compose logs -f samuel`
 3. **Use debugger**: `import pdb; pdb.set_trace()`
 4. **Run single test**: Isolate the problem
 5. **Check CLAUDE.md**: Known issues and gotchas section

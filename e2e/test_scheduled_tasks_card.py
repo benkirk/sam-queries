@@ -28,7 +28,7 @@ boundary is covered by ``tests/unit/tasks/test_admin_scheduled_tasks_page.py``'s
 To exercise scenario 2 locally the stack has to actually carry the switch.
 ``compose.yaml`` passes the host variable through (empty by default), so::
 
-    SAM_TASKS_DISABLED=expiration_notices docker compose up webdev --watch
+    SAM_TASKS_DISABLED=expiration_notices docker compose up samuel-dev --watch
     make e2e SAM_E2E_BASE_URL=http://localhost:5050
 
 Without it that test skips rather than passing vacuously.

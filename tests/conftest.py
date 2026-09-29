@@ -85,7 +85,7 @@ def pytest_configure(config):
     os.environ.setdefault("FLASK_SECRET_KEY", "test-secret-key")
 
     # Pin the zone before any datetime-sensitive collection. CI runs inside the
-    # webapp container (TZ=America/Denver); a bare-laptop run inherits the host
+    # samuel container (TZ=America/Denver); a bare-laptop run inherits the host
     # zone, so tests that reconcile naive-Mountain SAM datetimes against the wall
     # clock read differently there. setdefault so an explicit TZ still wins.
     os.environ.setdefault("TZ", "America/Denver")
@@ -150,7 +150,7 @@ def pytest_configure(config):
     # ---- Per-worker Redis keyspace under xdist ---------------------------
     #
     # WARNING: The bucketed caches use a SHARED RedisTTLAdapter when CACHE_REDIS_URL
-    # is set — which it is inside the CI webapp container (compose sets
+    # is set — which it is inside the CI samuel container (compose sets
     # redis://cache:6379/0). The xras_pending mailbox is a single GLOBAL key
     # (`xras_pending:worklist`), so with `-n auto` every xdist worker races it:
     # a `xras_sweep` test publishes its worklist while an `xras_accounts_card`

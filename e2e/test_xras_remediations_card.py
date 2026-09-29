@@ -11,7 +11,7 @@ stack has usually published nothing. So every content assertion is guarded on
 rows being present — an empty stack must not produce a red build for a correct
 card. Populate with::
 
-    docker compose exec webdev sam-admin tasks --run xras_sweep --force
+    docker compose exec samuel-dev sam-admin tasks --run xras_sweep --force
 
 WARNING: Nothing here asserts on a username, an email, a request number or a count.
 The sweep reads **production XRAS**, so anything this card shows locally is

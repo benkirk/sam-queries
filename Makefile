@@ -19,7 +19,7 @@ config_env := module load conda >/dev/null 2>&1 || true && . $(CONDA_ROOT)/etc/p
 # See etc/config_env.sh — the user-facing entry point sources this rule.
 #
 # HPC_USAGE_QUERIES_REF is the branch / tag / sha of hpc-usage-queries
-# to pip install (mirrors compose.yaml + containers/webapp/Dockerfile).
+# to pip install (mirrors compose.yaml + containers/samuel/Dockerfile).
 # It is part of the hash, so changing it triggers a rebuild into a new
 # ./conda-env-<sha>/ and an atomic symlink swap.
 # -------------------------------------------------------------------
@@ -220,7 +220,7 @@ perf: ## Run perf regression + benchmark suite (serial)
 	$(config_env) && source etc/config_env.sh && \
 	    python3 -m pytest -m perf -n 0
 
-# Where the browser tier points. Defaults to the compose `webapp` service —
+# Where the browser tier points. Defaults to the compose `samuel` service —
 # the gunicorn/production target, and so the more honest thing to smoke.
 # Override for the dev server:  make e2e SAM_E2E_BASE_URL=http://localhost:5050
 SAM_E2E_BASE_URL ?= http://localhost:7050
@@ -237,10 +237,10 @@ e2e: ## Run the Playwright browser console sweep against a running stack (needs 
 	python3 -m pytest -c e2e/pytest.ini e2e/ --base-url $(SAM_E2E_BASE_URL)
 
 # Everything a laptop can run, composed from the rules above. Self-provisions:
-# `docker-build` first, because the webapp:7050 image BAKES the code (only webdev
+# `docker-build` first, because the samuel:7050 image BAKES the code (only samuel-dev
 # is code-synced) -- without a rebuild the browser sweep runs whatever code the
 # cached image last had, so a route added since would 404 against current tests.
-# Then `docker-up` (--profile test) brings up webapp:7050 + mysql-test:3307 +
+# Then `docker-up` (--profile test) brings up samuel:7050 + mysql-test:3307 +
 # postgres-test:5434, and clone-pg-test (re)builds the Postgres test copy, so
 # both host pytest tiers and the browser sweep have their targets.
 #
@@ -300,7 +300,7 @@ docker-restart: ## Rebuild and restart docker containers
 	@$(MAKE) docker-build
 	@$(MAKE) docker-up
 
-docker-watch: ## Live-sync host → /code in webdev (foreground; Ctrl-C to stop)
+docker-watch: ## Live-sync host → /code in samuel-dev (foreground; Ctrl-C to stop)
 	@# Runs `docker compose watch` against an already-up stack so the syncer
 	@# stays in the foreground without blocking other rules. `docker-up`
 	@# brings the stack up first if it isn't already, and `--wait` ensures
@@ -309,7 +309,7 @@ docker-watch: ## Live-sync host → /code in webdev (foreground; Ctrl-C to stop)
 	@echo "👀 Watching for source changes — Ctrl-C to stop"
 	@docker compose watch
 
-docker-pytest: ## Run pytest with coverage inside the webapp container against mysql-test (parity with CI)
+docker-pytest: ## Run pytest with coverage inside the samuel container against mysql-test (parity with CI)
 	@# Brings up the `test` profile, which adds the isolated `mysql-test`
 	@# service on its own volume + port (see compose.yaml). `--wait` gates on
 	@# every service being healthy — including mysql-test verifying both
@@ -318,8 +318,8 @@ docker-pytest: ## Run pytest with coverage inside the webapp container against m
 	@docker compose --profile test up --detach --wait
 	@docker compose exec -T \
 	    -e SAM_TEST_DB_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
-	    webapp bash -c "cd /code && pytest --cov=src --cov-report=term-missing --cov-report=html"
-	@docker compose cp webapp:/code/htmlcov ./htmlcov >/dev/null 2>&1 || echo "⚠️  No coverage report copied"
+	    samuel bash -c "cd /code && pytest --cov=src --cov-report=term-missing --cov-report=html"
+	@docker compose cp samuel:/code/htmlcov ./htmlcov >/dev/null 2>&1 || echo "⚠️  No coverage report copied"
 	@echo "📊 HTML coverage report: ./htmlcov/index.html"
 
 docker-pytest-pg: ## Build the Postgres test copy inside the stack and run pytest against it (parity with CI)
@@ -327,10 +327,10 @@ docker-pytest-pg: ## Build the Postgres test copy inside the stack and run pytes
 	@docker compose exec -T \
 	    -e PG_TEST_SOURCE_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
 	    -e PG_TEST_HOST=postgres-test -e PG_TEST_PORT=5432 \
-	    webapp make -C /code/containers/sam-sql-dev clone-pg-test
+	    samuel make -C /code/containers/sam-sql-dev clone-pg-test
 	@docker compose exec -T \
 	    -e SAM_TEST_DB_URL='postgresql+psycopg2://sam_test:sam_test@postgres-test:5432/sam' \
-	    webapp bash -c "cd /code && pytest"
+	    samuel bash -c "cd /code && pytest"
 
 # -------------------------------------------------------------------
 # Alembic — system_status database (per-bind env)

@@ -108,7 +108,7 @@ sam-queries/
 ├── collectors/           # PBS/JupyterHub status collectors (own README)
 ├── helm/                 # k8s chart (see helm/README.md, docs/README-k8s.md)
 ├── migrations/           # Alembic (system_status DB only)
-├── compose.yaml          # Docker Compose (webapp:7050, webdev:5050, DBs, cache)
+├── compose.yaml          # Docker Compose (samuel:7050, samuel-dev:5050, DBs, cache)
 └── tests/                # See docs/TESTING.md for suite size/timings
     ├── unit/<domain>/       # per-domain dirs (gates xras notify tasks charts
     │                        #   cli webapp models queries manage); the matching
@@ -944,7 +944,7 @@ axis).
 
 ### Running the Web Application
 ```bash
-docker compose up webdev --watch    # dev server, code-synced → http://localhost:5050
+docker compose up samuel-dev --watch    # dev server, code-synced → http://localhost:5050
 docker compose up                   # prod-like image → http://localhost:7050
 ```
 Both show the stub login page with Quick Login buttons (stub auth accepts any

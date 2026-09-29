@@ -31,7 +31,7 @@ COPY . .
 
 # Branch / tag / SHA of hpc-usage-queries to install. Override at build time
 # to test against an in-flight peer branch:
-#   HPC_USAGE_QUERIES_REF=my-branch docker compose build webdev
+#   HPC_USAGE_QUERIES_REF=my-branch docker compose build samuel-dev
 ARG HPC_USAGE_QUERIES_REF=main
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -e ".[test]" && \
@@ -74,13 +74,13 @@ ENV BUILD_DATE=${BUILD_DATE}
 
 
 #-------------------------------------------------------------------------------
-# webdev - development flask internal sever config
+# samuel-dev - development flask internal sever config
 #-------------------------------------------------------------------------------
 FROM base AS development
 CMD ["python3", "./src/webapp/run.py"]
 
 #-------------------------------------------------------------------------------
-# webapp - production gunicorn config
+# samuel - production gunicorn config
 #-------------------------------------------------------------------------------
 FROM base AS production
 # Explicitly clear dev-auth vars — these must never be set in the production image
@@ -101,7 +101,7 @@ ENV MPLCONFIGDIR=/tmp/mpl
 
 # Numeric (not "USER sam") so the kubelet's runAsNonRoot check can verify the UID.
 USER 1000
-CMD ["gunicorn", "-c", "containers/webapp/gunicorn_config.py", "webapp.run:create_app()"]
+CMD ["gunicorn", "-c", "containers/samuel/gunicorn_config.py", "webapp.run:create_app()"]
 
 #-------------------------------------------------------------------------------
 # emacs cruft follows

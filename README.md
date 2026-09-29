@@ -129,8 +129,8 @@ ls -lh containers/sam-sql-dev/backups/sam-obfuscated.sql.xz
 make docker-up
 
 # 5. You should now be able to see
-#      'webdev' - http://127.0.0.1:5050
-#      'webapp' - http://127.0.0.1:7050
+#      'samuel-dev' - http://127.0.0.1:5050
+#      'samuel'     - http://127.0.0.1:7050
 
 # 6. Run the test suite inside docker
 make docker-pytest
@@ -140,7 +140,7 @@ See also `make help` for other targets.
 
 For interactive development you can run `make docker-watch`. This will block
 the current shell with an interactive process synchronizing the local source
-tree into the `webdev` container, so local edits are picked up immediately
+tree into the `samuel-dev` container, so local edits are picked up immediately
 by Flask's auto-reloader.
 
 

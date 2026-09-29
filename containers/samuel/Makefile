@@ -1,6 +1,6 @@
 .PHONY: build
 
-TAG ?= samuel-webapp:latest
+TAG ?= samuel:latest
 DOCKER_BUILD_ARGS ?= --progress=plain #--no-cache
 
 build:

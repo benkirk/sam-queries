@@ -865,7 +865,7 @@ The only remaining external conversations with XRAS are operational, § 13.
 - **Live opt-in probe script** `scripts/xras/probe_outgoing.py`, gated on
   `XRAS_API_KEY` — **skips** (exit 0 + message) when absent, mirroring
   `utils/parity/`'s `_resolve_xras_credentials()` behavior.
-- **End-to-end**: `docker compose up webdev --watch`, seed via
+- **End-to-end**: `docker compose up samuel-dev --watch`, seed via
   `scripts/xras/seed_dev_actions.py`, confirm the card lists a seeded
   placeholder identity as *absent*, and that the person columns appear only
   for a `MANAGE_XRAS` viewer.

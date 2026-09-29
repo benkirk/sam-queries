@@ -155,8 +155,8 @@ check_dev() {
   grep -qE '^[[:space:]]+app: samuel-dev$' <<<"$netpol" || { red "FAIL: the dev webapp pods reach the dev Redis"; return 1; }
 
   local refs
-  refs=$(grep -cE '^[[:space:]]+image: ghcr\.io/.*/webapp:' <<<"$whole" || true)
-  [[ "$refs" -eq 2 ]] || { red "FAIL: expected exactly 2 webapp image refs in the dev render, got $refs"; return 1; }
+  refs=$(grep -cE '^[[:space:]]+image: ghcr\.io/.*/samuel:' <<<"$whole" || true)
+  [[ "$refs" -eq 2 ]] || { red "FAIL: expected exactly 2 samuel image refs in the dev render, got $refs"; return 1; }
   if grep -qE '^[[:space:]]*image:' "$OVERLAY"; then
     red "FAIL: values-dev.yaml must not carry an image: line (CI pins values.yaml only)"; return 1
   fi

@@ -5,7 +5,7 @@
 NHD_LIBEXEC="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 NHD_ROOT="${NCAR_HPC_DEPLOY_ROOT:-$(dirname "${NHD_LIBEXEC}")}"
 NHD_LANE="${NCAR_HPC_DEPLOY_LANE:-prod}"
-NHD_IMAGE_REPO="${NCAR_HPC_DEPLOY_IMAGE_REPO:-ghcr.io/benkirk/sam-queries/webapp}"
+NHD_IMAGE_REPO="${NCAR_HPC_DEPLOY_IMAGE_REPO:-ghcr.io/benkirk/sam-queries/samuel}"
 # Job bodies ship inside the image; NCAR_HPC_DEPLOY_SRC=<checkout> binds that checkout's
 # jobs and collectors over the image's (testing a change before its image exists).
 NHD_IMAGE_SRC=/code/containers/ncar-hpc-deploy

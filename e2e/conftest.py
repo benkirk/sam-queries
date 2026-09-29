@@ -185,7 +185,7 @@ def base_url(request):
     """Where the stack under test is listening.
 
     `--base-url` (pytest-base-url, pulled in by pytest-playwright) wins; then
-    SAM_E2E_BASE_URL; then the compose `webapp` service, which is the
+    SAM_E2E_BASE_URL; then the compose `samuel` service, which is the
     gunicorn/production target and therefore the more honest thing to smoke.
     """
     return (

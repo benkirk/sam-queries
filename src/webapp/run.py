@@ -504,6 +504,6 @@ if __name__ == '__main__':
     app = create_app()
     # Port is configurable via WEBAPP_PORT so that an interactive debug
     # launch (utils/run-webui-dbg.sh) can coexist with `docker compose up
-    # webdev` (which binds host port 5050). Default stays 5050 for backwards
+    # samuel-dev` (which binds host port 5050). Default stays 5050 for backwards
     # compatibility with existing tooling that expects it.
     app.run(host='0.0.0.0', debug=True, port=int(os.environ.get('WEBAPP_PORT', 5050)))

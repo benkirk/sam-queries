@@ -130,7 +130,7 @@ idioms as the cluster tools (colored PASS/WARN/FAIL, exit `0`/`1`/`2`,
   export SAM_API_USER='my-api-user' SAM_API_PASS='...'
   scripts/apis/clear_caches.sh                        # clear all + each category
   scripts/apis/clear_caches.sh -v chart               # just the chart caches, verbose
-  scripts/apis/clear_caches.sh --base http://localhost:5050   # against local webdev
+  scripts/apis/clear_caches.sh --base http://localhost:5050   # against local samuel-dev
   ```
 
 ### Shared Library (`lib/`)
