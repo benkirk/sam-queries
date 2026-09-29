@@ -54,6 +54,10 @@ def lanes(tmp_path):
            '[2026-09-28T17:19:24-0600] [dev] run accounting-comp exit=2 (20s)\n', 1500)
     _touch(s / 'collectors-casper.lock', '', 130)
     _touch(s / 'jobhist-sync-derecho.lock', '', 7200)
+    _touch(s / 'tick-daily-casper.lock', '', 7200)
+    _touch(s / 'last-tick.daily.casper', '2026-09-28T16:09:56-0600 exit=0 53s accounting-comp=0\n', 7100)
+    _touch(s / 'accounting-disk-casper.lock', '', 7200)
+    _touch(s / 'last-run.accounting-disk.casper', '2026-09-27T01:09:56-0600 exit=0 34s\n', 90000)
     cap = s / 'spool' / 'casper' / 'casper.1790638803.121786'
     _touch(cap / 'scrape.meta', 'host=crlogin3\nfinished=x\n', 125)
     os.symlink(cap.name, s / 'spool' / 'casper' / 'casper')
@@ -101,7 +105,7 @@ class TestRecords:
 
     def test_ticks_carry_age_exit_and_steps(self, lanes):
         ticks = {tuple(l.split()[1:3]): l for l in read(lanes, 'dev') if l.startswith('tick ')}
-        assert set(ticks) == {('rapid', 'casper'), ('rapid', 'derecho'), ('hourly', 'casper')}
+        assert set(ticks) == {('rapid', 'casper'), ('rapid', 'derecho'), ('hourly', 'casper'), ('daily', 'casper')}
         assert 'exit=0 dur=6 steps=collectors=0' in ticks[('rapid', 'casper')]
         assert abs(_age(ticks[('rapid', 'casper')]) - 130) <= 2
         assert 'exit=2 dur=20 steps=accounting-comp=2' in ticks[('hourly', 'casper')]
@@ -111,10 +115,18 @@ class TestRecords:
         assert runs['collectors'].endswith('exit=0 dur=6')
         assert runs['accounting-comp'].endswith('exit=2 dur=20 reason=All fallbacks failed')
 
-    def test_only_stale_locks_are_listed(self, lanes):
-        locks = [l for l in read(lanes, 'dev') if l.startswith('lock ')]
-        assert len(locks) == 1 and locks[0].startswith('lock jobhist-sync-derecho age=')
-        assert abs(_age(locks[0]) - 7200) <= 2
+    def test_a_lock_is_stale_only_when_nothing_completed_since_it(self, lanes):
+        """Lock files persist after release: tick-daily-casper is old but its tick stamp is
+        newer, so it is free; accounting-disk-casper's last stamp predates it, so it is hung."""
+        locks = {l.split()[1]: l for l in read(lanes, 'dev') if l.startswith('lock ')}
+        assert set(locks) == {'jobhist-sync-derecho', 'accounting-disk-casper'}
+        assert abs(_age(locks['jobhist-sync-derecho']) - 7200) <= 2
+
+    def test_a_finished_update_lock_is_not_stale(self, lanes):
+        _touch(lanes / 'dev' / 'state' / 'update.lock', '', 7200)
+        assert not [l for l in read(lanes, 'dev') if l.startswith('lock update')]
+        (lanes / 'dev' / 'state' / 'last-update').unlink()
+        assert [l for l in read(lanes, 'dev') if l.startswith('lock update age=')]
 
     def test_spool_age_is_the_meta_files(self, lanes):
         spool = [l for l in read(lanes, 'dev') if l.startswith('spool ')]
