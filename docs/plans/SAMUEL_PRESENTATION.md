@@ -405,11 +405,11 @@ from it onto slides.
 - [ ] Publish the combined HTML deck: a claude.ai artifact, GitHub Pages on the framework repo,
   or neither?
 - [ ] Revisit "pptx + HTML equally" after Phase 1.
-- [ ] Is LibreOffice installed for pptx QA?
+- [ ] Is LibreOffice installed for pptx QA? Path: `brew install --cask libreoffice`, which puts an `soffice` wrapper on PATH (conda-forge has no package). QA loop: `soffice --headless --convert-to pdf --outdir <scratch> deck.pptx`, then read the PDF pages. Use a throwaway `-env:UserInstallation=file:///<scratch>/lo-profile` so a running GUI instance doesn't block headless mode.
 - [ ] Should the retirement of `docs/presentations/` ride this PR or its own?
-- [ ] Branding: is the framework's NCAR wave template current, or should it be harvested from the NSF NCAR Google template (§11)?
+- [x] Branding: resolved 2026-09-29. The framework's `template.pptx` has already been reworked (framework PR #2); use it as is.
 - [ ] Pick the §11 devices and part titles; draft the title slide first as the tone test.
-- [ ] **Branch vs `main` in the framework:** the precedent has shifted. `sam_and_pbs` (PRs #2/#3) and `new_user_samples` both landed on the public template's `main`. Keep the `samuel` branch (§2), or follow that precedent?
+- [x] **Branch vs `main` in the framework:** resolved 2026-09-29. Work on the `samuel` branch for the long haul, and maybe merge to `main` much later. Merge `main` into `samuel` whenever framework fixes land. the precedent has shifted. `sam_and_pbs` (PRs #2/#3) and `new_user_samples` both landed on the public template's `main`. Keep the `samuel` branch (§2), or follow that precedent?
 - [ ] How much of `sam_and_pbs` (§12) to include by reference vs. summarize?
 
 ## 8. Phases (one session each; tick as they land)
