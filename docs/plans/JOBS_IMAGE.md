@@ -1,69 +1,76 @@
-# Jobs image — drop the collectors container; a `jobs` target if one is ever wanted
+# One `samuel` image — no separate jobs image
 
-**Status:** finding, 2026-09-28. No code yet; not urgent.
-**See also:** `containers/ncar-hpc-deploy/README.md` (what runs the HPC-side jobs today),
-`docs/nrit-review-2026-05/05_collector.md` (A2 and O6 asked the same question).
-**Decision to make:** keep the collectors image and make it fit the cron jobs, or drop it.
-Recommendation: **drop it**. If a jobs-only image is ever wanted, add a target to the webapp
-Dockerfile rather than revive this one.
+**Status:** decided 2026-09-29. Track A (drop the collectors image) lands with this doc;
+B–D are follow-up PRs, one each.
+**See also:** `containers/ncar-hpc-deploy/README.md` (what runs the HPC-side jobs),
+`docs/nrit-review-2026-05/05_collector.md` (A2, O6; action register P1-53, P2-67, P2-70, Q29).
 
-## 1. What exists
+## 1. Decision
 
-`containers/collectors/Dockerfile` is `python:3` plus `collectors/` copied to `/collectors`,
-three pip dependencies (`requests`, `python-dotenv`, `PyYAML`) and
-`CMD /collectors/run_collectors.sh`. The build matrix in
-`.github/workflows/build-images-cirrus-deploy.yaml` builds it by default on every push to
-`main` and `staging`. Nothing pulls it: no chart, compose file or cron line references
-the image.
+One image serves the webapp, the k8s task CronJob (`helm/templates/cronjob-tasks.yaml`) and
+the HPC cron lanes (`ncar-hpc-deploy` under apptainer on casper and derecho). There is **no
+jobs-only image**: a jobs target without gunicorn is not meaningfully smaller. The size is
+in the base image, so the fix is a slim runtime stage for the one image.
 
-The HPC-side jobs (collectors, `jobhist-sync`, `accounting-comp`, `accounting-disk`) run from
-the **webapp** image through `ncar-hpc-deploy` under apptainer on casper and derecho.
+The image and its surfaces are renamed `webapp` → `samuel` (GHCR package, `containers/`
+directory, compose services). The old GHCR packages are removed only after the rename is
+fully deployed.
 
-## 2. Could the collectors image run those jobs?
+## 2. Where the size is
 
-No, not without becoming the webapp image:
+Measured on the production image (arm64, 2.07 GB uncompressed):
 
-| the jobs need | collectors image |
+| component | size |
 |---|---|
-| `collector.py` + its three dependencies | yes, but at `/collectors`; the jobs expect `/code/collectors` |
-| the `sam` package, `sam-admin` / `sam-search` | no |
-| `hpc-usage-queries[postgres]` (`jobhist-sync`; `accounting-comp` reads job_history) | no |
-| MySQL / Postgres drivers | no |
-| `containers/ncar-hpc-deploy/{jobs,etc,smoke}` under `/code` | no |
-| `GIT_SHA` / `BUILD_DATE` (`image_facts`, `update-history`) | no |
+| `python:3` base: full Debian trixie + buildpack-deps (gcc, headers, git, ssh) | ~1.2 GB; 415 MB compressed (amd64) |
+| site-packages | 326 MB, of which matplotlib + numpy + fontTools + PIL ≈ 150 MB |
+| gunicorn | 3 MB |
+| flask + werkzeug + wtforms + jinja2 | ~8 MB |
+| `/code` | 30 MB |
+| `python:3-slim`, for comparison | 43 MB compressed |
 
-Adding those is the webapp Dockerfile's `base` stage under another name, on the same
-`python:3` base, so it would not be smaller.
+Dropping flask and gunicorn would need a dependency split (`sam` imports flask only lazily,
+but `smoke/smoke.sh` imports `webapp`) to save under 1%. The base image matters more on HPC
+than on k8s: `ncar-hpc-deploy update` pulls with `apptainer pull --disable-cache`, so every
+digest change downloads and squashes the whole base again, per lane.
 
-## 3. A `jobs` image, if one is wanted
+Build time is the other cost. A staging build takes about 8.3 min, of which 371 s is the
+arm64 `pip install` layer under QEMU (28.5 s on amd64). It reruns on every commit because
+`COPY . .` precedes it.
 
-"The webapp without gunicorn" is cheapest as a target in `containers/webapp/Dockerfile`:
-`FROM base AS jobs` with no `CMD`. It shares every cached layer, so it costs almost nothing
-in CI, and `ncar-hpc-deploy` would point `NCAR_HPC_DEPLOY_IMAGE_REPO` at it.
+## 3. Sequence
 
-What that buys is small:
-- **Not a smaller image.** `flask*` and `gunicorn` are core `dependencies` of the single
-  `sam` distribution (`pyproject.toml`), so installing `sam` installs them. Dropping them
-  needs a dependency split first (e.g. a `webapp` extra). The smoke step imports `webapp`
-  (`smoke/smoke.sh`), so check what the CLI imports before splitting.
-- **Not fewer pulls.** The payload is the sam code itself, so a jobs digest changes on nearly
-  every merge, as the webapp digest does (about 470 MB pulled and smoked per change on the dev lane).
-- **Not the runtime user.** Apptainer runs as the calling account, so the `production`
-  stage's `USER 1000` and `CMD` already have no effect under `ncar-hpc-deploy`.
+**A. Drop the collectors image.** It was `python:3` + `collectors/` + three dependencies,
+built on every push, and pulled by nothing. It could not run the HPC jobs without becoming
+the webapp image's `base` stage (they need `sam`, `hpc-usage-queries`, the DB drivers and
+`containers/ncar-hpc-deploy/` under `/code`). This answers NRIT A2/Q29: production is
+`ncar-hpc-deploy` on the one image, and the collectors run there in spool mode, needing
+neither ssh nor a PBS client. `collectors/run_collectors.sh` stays (the standalone/systemd
+runner, and `collectors/cron_scripts/` calls it); `collectors/cron_scripts/` goes at the
+prod-lane cutover. The GHCR package `sam-queries/collectors` is pruned by hand.
 
-A real reason would be a smaller attack surface (no test extras, no private
-`hpc-scheduling-tools` plugin) or a Python/base pin that differs from the webapp's.
+**B. Rename `webapp` → `samuel`.** GHCR `samuel` / `samuel-dev`, `containers/samuel/`,
+compose services `samuel` / `samuel-dev`, the helm pin and its render tests, the HPC lane's
+default repo and SIF prefix. Out of scope: the `src/webapp` package and the helm
+`.Values.webapp` keys and k8s resource names. A new GHCR package is private by default and
+both k8s and GLADE pull anonymously, so it must be made public before the first deploy.
 
-## 4. Dropping the collectors image (the follow-up PR)
+**C. Slim runtime, dependencies first.** Build stage on `python:<minor>` installs the
+dependencies from `pyproject.toml` alone (cached across commits), then the plugins. Runtime
+stage on `python:<minor>-slim` copies site-packages, then `COPY . /code` and
+`pip install --no-deps -e /code`, so a commit changes only the top ~30 MB. Traps:
+- `tzdata` must be installed. Without it `TZ=America/Denver` silently falls back to UTC and
+  every naive-Mountain date shifts; `smoke.sh base` asserts it.
+- The editable install belongs in the runtime stage; in the build stage its finder file
+  would change the site-packages layer on every commit.
+- CI runs pytest in this image, and `test_docs.py` shells out to `git`, which slim lacks:
+  a missing binary must skip, not error.
+- `sam-admin accounting --verify-host` needs `ssh`; no job uses it.
 
-- Delete `containers/collectors/` (Dockerfile, Makefile).
-- Remove `collectors` from the build matrix, its defaults and the dispatch help text in
-  `.github/workflows/build-images-cirrus-deploy.yaml`, which stops a build on every push.
-- Prune the GHCR package `sam-queries/collectors` by hand or with the `clean-ghcr`
-  workflow (needs a token with `read:packages`).
-- Answer NRIT A2 in `docs/nrit-review-2026-05/05_collector.md`: production is `ncar-hpc-deploy`
-  on the webapp image.
-- Keep `collectors/run_collectors.sh`. `collectors/README.md` documents it as the standalone
-  and systemd runner, and `collectors/cron_scripts/run_ncar_collectors.sh` calls it.
-  `collectors/cron_scripts/` goes when the host-checkout collectors cron that still posts
-  to prod is retired (the prod-lane cutover).
+**D. Native multi-arch.** Build each platform on its own runner (`ubuntu-24.04-arm` is free
+for public repos), push by digest, and merge with `docker buildx imagetools create`. Resolve
+the plugin refs and the build date once in `setup`, so both platforms build the same inputs.
+
+**Later, maybe.** With C, a commit changes ~30 MB of layers, but `--disable-cache` still pulls
+the whole image. A per-lane `APPTAINER_CACHEDIR` would fetch only changed layers; find out
+why `--disable-cache` was chosen first.
