@@ -27,4 +27,6 @@ jobs:
           # Use personal token if available (for user-owned packages),
           # fallback to standard token. Either needs `packages: write`.
           GH_TOKEN: ${{ secrets.BENKIRK_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
-        run: python .github/scripts/prune_ghcr_packages.py
+        # Deletes only from main (the schedule's ref); a dispatch on any other ref
+        # is a dry run, so a branch can be checked against the live packages.
+        run: python .github/scripts/prune_ghcr_packages.py ${{ github.ref != 'refs/heads/main' && '--dry-run' || '' }}
