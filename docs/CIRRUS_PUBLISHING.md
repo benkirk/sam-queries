@@ -29,8 +29,9 @@ The single workflow is `.github/workflows/build-images-cirrus-deploy.yaml`. It h
 
 | Job | What it does | Notes |
 |---|---|---|
-| `setup` | Resolves the deploy **target** (`dev`/`prod`) and its branch (`cirrus-dev`/`cirrus`), reads the image table and emits a build matrix | `DEFAULT[]=true` images run on every trigger; others are dispatch-only |
-| `build` (matrix) | Multi-arch (`linux/amd64,linux/arm64`) Docker build, pushes to `ghcr.io/benkirk/sam-queries/<image>` with tags: `sha-<short>`, branch, semver components (on tags), and `latest` (only on `main`) | Uses the default `GITHUB_TOKEN` for `packages: write` |
+| `setup` | Resolves the deploy **target** (`dev`/`prod`) and its branch (`cirrus-dev`/`cirrus`), reads the image table and emits the build matrix (image × platform); resolves the plugin SHAs and build date **once**, so both platforms build identical inputs | `DEFAULT[]=true` images run on every trigger; others are dispatch-only |
+| `build` (matrix) | One job per image × platform on a **native** runner (`ubuntu-24.04` for amd64, `ubuntu-24.04-arm` for arm64; no QEMU), pushed by digest only | Cache scope `<image>-<arch>`; uses the default `GITHUB_TOKEN` for `packages: write` |
+| `merge` (matrix) | Per image: `docker buildx imagetools create` joins the two platform digests into one index at `ghcr.io/benkirk/sam-queries/<image>`, tagged `sha-<short>`, branch, semver components (on tags), and `latest` (only on `main`); records the image facts | Fails if either platform digest is missing |
 | `summary` | Aggregates per-image artifacts into the workflow run's summary page | Read-only |
 | `update-helm` | Rewrites `helm/values.yaml` to pin `samuel` to `sha-<short>`, then **force-pushes the target branch** | Runs only if `samuel_built==true`; pushes as the GitHub App, not `github-actions[bot]` |
 
