@@ -97,6 +97,10 @@
         "queries": 40,
         "notes": "measured 21 — full GET /admin/expirations?view=expired. Batched via get_projects_dashboard_data; count is near-flat in project count (selectinload chunks), so the old per-project path (~45 queries × N expired projects) regressing back runs into the hundreds+. Extra headroom absorbs expired-set size variance across snapshot refreshes."
     },
+    "admin_expirations_abandoned_route": {
+        "queries": 30,
+        "notes": "measured 15 — full GET /admin/expirations?view=abandoned (1550 before the bulk rewrite: Project.users per expired project + User.active_projects() per candidate). The abandoned set comes from one get_active_projcodes_by_user statement, names/emails from bulk selects. Flat in expired-set size; a return to per-object loads runs into the hundreds."
+    },
     "get_user_dashboard_data_read_model": {
         "queries": 30,
         "notes": "measured 19 (2026-09-09); counts barely move vs live -- cheap indexed reads replace the rollups, the win is wall time (test_dashboard_latency, docs/plans/implemented/READ_MODEL.md)"
