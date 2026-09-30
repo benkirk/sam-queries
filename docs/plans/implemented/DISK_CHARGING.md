@@ -224,10 +224,10 @@ Notes:
 - `GladeCsvReader(DiskUsageReader)` — parses `acct.glade.YYYY-MM-DD`.
 - Columns: `(date, path, projcode, username, nfiles, fsize_kib, reporting_interval, cos)`.
 - **`bytes = fsize_kib × 1024`** (KiB → bytes), per legacy convention.
-- Skips `gpfsnobody` and any row where `username` is purely numeric
-  (legacy "uid was never resolved" rows).
-- Honors a strict mode where unknown projcodes/usernames raise — the
-  CLI's `--skip-errors` decides whether to abort or continue.
+- Skips OS service accounts (`SYSTEM_USERNAMES` plus any `systemd-*`) and any
+  row where `username` is purely numeric (legacy "uid was never resolved" rows).
+- Rows that cannot be charged are classified by the CLI, not the reader; see
+  `docs/plans/DISK_INGEST_TRIAGE.md` for the categories and exit codes.
 
 `src/cli/accounting/disk_usage/charging.py`
 - Holds the single charging-math source of truth (see

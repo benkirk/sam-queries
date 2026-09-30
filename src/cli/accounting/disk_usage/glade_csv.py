@@ -35,12 +35,18 @@ from .base import DiskUsageEntry, DiskUsageReader
 # `<unidentified>` reconciliation path if --reconcile-quota-gap is set.
 _NUMERIC_USERNAME_RE = re.compile(r'^\d+$')
 
-# Service / nobody accounts that are never real users in SAM.
-_SKIP_USERNAMES = frozenset({
-    'gpfsnobody',
-    'nobody',
-    'root',
+# OS service accounts that own files but are never SAM users; their rows are
+# dropped before charging. Seeded from the prod acct.* logs, 2026-09-30.
+SYSTEM_USERNAMES = frozenset({
+    'bin', 'chrony', 'daemon', 'gpfsnobody', 'lldpd', 'lp', 'mail',
+    'nfsnobody', 'nobody', 'ntp', 'polkitd', 'postfix', 'root', 'rpc',
+    'rpcuser', 'shutdown', 'sshd', 'sssd', 'tcpdump', 'telegraf', 'tss',
 })
+_SYSTEM_USERNAME_PREFIXES = ('systemd-',)
+
+
+def is_system_account(username: str) -> bool:
+    return username in SYSTEM_USERNAMES or username.startswith(_SYSTEM_USERNAME_PREFIXES)
 
 # Filename pattern: acct.<host>.YYYY-MM-DD (e.g. acct.glade.2026-04-18).
 _FILENAME_DATE_RE = re.compile(r'\.(\d{4}-\d{2}-\d{2})(?:\.|$)')
@@ -77,6 +83,7 @@ class GladeCsvReader(DiskUsageReader):
     def read(self) -> list[DiskUsageEntry]:
         entries: list[DiskUsageEntry] = []
         snapshot_dates: set[date] = set()
+        self.skipped_system = {}
 
         with open(self.path, newline='') as fh:
             reader = csv.reader(fh)
@@ -90,7 +97,8 @@ class GladeCsvReader(DiskUsageReader):
                 cos = row[7] if len(row) > 7 else '0'
 
                 # Filter rows we cannot meaningfully attribute to a real user.
-                if username in _SKIP_USERNAMES:
+                if is_system_account(username):
+                    self.skipped_system[username] = self.skipped_system.get(username, 0) + 1
                     continue
                 if _NUMERIC_USERNAME_RE.match(username):
                     continue

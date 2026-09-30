@@ -7,6 +7,7 @@ AccountingSearchCommand — queries comp_charge_summary for user inspection.
 import getpass
 import os
 import re
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Optional
 
@@ -16,6 +17,7 @@ from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, Mo
 from cli.accounting.display import (
     display_dry_run_table,
     display_disk_dry_run_table,
+    display_disk_import_report,
     display_import_summary,
     display_charge_summary_table,
     display_jobs_table,
@@ -60,6 +62,86 @@ _RESERVATION_QUEUE_RE = re.compile(r'^[RMS]\d')
 # and attribute the row to the project lead, matching the `<unidentified>`
 # gap-row convention, so user resolution and charging math succeed.
 _DISK_ROLLUP_USERNAMES = frozenset({'total'})
+
+# Fileset labels HSG reports that no SAM project owns (scratch, test and
+# hackathon areas). Rows under them with an unlinked path are skipped, not
+# charged and not errors. Grow it here; it is not config.
+KNOWN_UNOWNED_PROJCODES = frozenset({'ROOT', 'RISC', 'NGIC'})
+
+# Disk-import report categories. Only UNEXPECTED ones make the run exit 2;
+# the rest are reported and exit 0. See docs/plans/DISK_INGEST_TRIAGE.md.
+DISK_UNEXPECTED_CATEGORIES = ('no_project', 'no_account', 'unknown_user')
+DISK_REPORT_CATEGORIES = DISK_UNEXPECTED_CATEGORIES + ('known_unowned', 'unlinked_directory')
+
+
+@dataclass(frozen=True)
+class _DiskResolution:
+    """How a disk row resolved; ``reason`` is None or a report category."""
+    project: Optional[object] = None
+    account: Optional[object] = None
+    via: Optional[str] = None       # 'path' | 'projcode'
+    reason: Optional[str] = None
+
+    @property
+    def ok(self) -> bool:
+        return self.account is not None
+
+
+def _build_disk_import_report(entries, resolve, known_usernames: set,
+                              skipped_system: dict) -> dict:
+    """Classify normal (non-gap) rows into report categories; plain dict out.
+
+    A row that did not resolve is counted under its reason only. An unknown
+    user is checked on resolved rows, so a row can be both ``unlinked_directory``
+    (informational) and ``unknown_user``. Rollup ``total`` rows have no user.
+    """
+    buckets: dict[str, dict] = {c: {} for c in DISK_REPORT_CATEGORIES}
+    rows = dict.fromkeys(DISK_REPORT_CATEGORIES, 0)
+
+    for e in entries:
+        if e.user_override is not None:
+            continue
+        res = resolve(e)
+        if res.reason is not None:
+            rows[res.reason] += 1
+            item = buckets[res.reason].setdefault((e.projcode, e.directory_path), {
+                'projcode': e.projcode, 'path': e.directory_path,
+                'sam_projcode': res.project.projcode if res.project else None,
+                'project_id': res.project.project_id if res.project else None,
+                'rows': 0, 'bytes': 0,
+            })
+            item['rows'] += 1
+            item['bytes'] += e.bytes
+        if not res.ok or e.username in _DISK_ROLLUP_USERNAMES:
+            continue
+        if e.username.lower() not in known_usernames:
+            rows['unknown_user'] += 1
+            item = buckets['unknown_user'].setdefault(e.username, {
+                'username': e.username, 'projcodes': set(), 'rows': 0, 'bytes': 0,
+            })
+            item['projcodes'].add(res.project.projcode)
+            item['rows'] += 1
+            item['bytes'] += e.bytes
+
+    categories = {}
+    for cat, bucket in buckets.items():
+        items = list(bucket.values())
+        if cat == 'unknown_user':
+            for item in items:
+                item['projcodes'] = sorted(item['projcodes'])
+            items.sort(key=lambda i: i['username'])
+        else:
+            items.sort(key=lambda i: (i['projcode'], i['path'] or ''))
+        categories[cat] = items
+
+    counts = dict(rows)
+    counts['system_account_rows'] = sum(skipped_system.values())
+    counts['unexpected'] = sum(rows[c] for c in DISK_UNEXPECTED_CATEGORIES)
+    return {
+        'counts': counts,
+        'categories': categories,
+        'system_accounts': dict(sorted(skipped_system.items())),
+    }
 
 
 def _group_disk_entries(entries: list[DiskUsageEntry]) -> list[DiskUsageEntry]:
@@ -515,6 +597,11 @@ class AccountingAdminCommand(BaseCommand):
         from sam.resources.resources import Resource
         from sam.accounting.accounts import Account
 
+        # JSON mode: stdout carries only the envelope; progress and notes go to stderr.
+        json_mode = self.ctx.output_format == 'json'
+        if json_mode:
+            self.console = self.ctx.stderr_console
+
         # ---- 1. Validate inputs ----------------------------------------
         if not resource_name:
             self.console.print(
@@ -635,8 +722,8 @@ class AccountingAdminCommand(BaseCommand):
         # ---- 6b. Resolve projcode for normal rows ----------------------
         # acct.glade column 3 is a fileset label ('cesm', 'cgd'), not a SAM
         # projcode. Resolve as legacy did, directory_path -> ProjectDirectory ->
-        # Project: path lookup first, then projcode-as-label, then give up (the
-        # row is skipped under --skip-errors, else the chunk aborts).
+        # Project: path lookup first, then projcode-as-label. A row that fails
+        # gets a report category (_DiskResolution.reason) instead of an error.
         from sam.projects.projects import ProjectDirectory, Project
         from sam.accounting.accounts import Account
         pd_path_to_project: dict[str, "Project"] = {
@@ -648,38 +735,66 @@ class AccountingAdminCommand(BaseCommand):
                 .all()
             )
         }
-        # Cache resolved Account per project_id for this resource.
-        account_cache: dict[int, "Account"] = {}
+        resolution_cache: dict[tuple, _DiskResolution] = {}
+        account_cache: dict[int, Optional["Account"]] = {}
 
-        def _resolve_for_row(row) -> tuple[bool, Optional["Project"], Optional["Account"]]:
-            """Return (resolved_ok, project, account). For normal rows only —
-            gap rows already carry user/account overrides."""
-            project = None
-            if row.directory_path and row.directory_path in pd_path_to_project:
-                project = pd_path_to_project[row.directory_path]
+        def _resolve_for_row(row) -> _DiskResolution:
+            """Resolve a normal row (gap rows carry overrides); memoized per (path, projcode)."""
+            key = (row.directory_path, row.projcode)
+            if key not in resolution_cache:
+                resolution_cache[key] = _resolve_uncached(row)
+            return resolution_cache[key]
+
+        def _resolve_uncached(row) -> _DiskResolution:
+            project = pd_path_to_project.get(row.directory_path) if row.directory_path else None
+            via = 'path'
             if project is None:
+                if row.projcode in KNOWN_UNOWNED_PROJCODES:
+                    return _DiskResolution(reason='known_unowned')
                 project = Project.get_by_projcode(self.session, row.projcode)
+                via = 'projcode'
             if project is None:
-                return False, None, None
-            acct = account_cache.get(project.project_id)
-            if acct is None:
-                acct = Account.get_by_project_and_resource(
+                return _DiskResolution(reason='no_project')
+            if project.project_id not in account_cache:
+                account_cache[project.project_id] = Account.get_by_project_and_resource(
                     self.session, project.project_id, resource.resource_id,
                     exclude_deleted=not include_deleted_accounts,
                 )
-                if acct is None:
-                    return False, project, None
-                account_cache[project.project_id] = acct
-            return True, project, acct
+            acct = account_cache[project.project_id]
+            if acct is None:
+                return _DiskResolution(project=project, via=via, reason='no_account')
+            reason = 'unlinked_directory' if via == 'projcode' and row.directory_path else None
+            return _DiskResolution(project=project, account=acct, via=via, reason=reason)
+
+        # ---- 6c. Classify every row before any write (reads only) ------
+        known_usernames = self._known_usernames(entries)
+        report = _build_disk_import_report(
+            entries, _resolve_for_row, known_usernames, reader.skipped_system,
+        )
+        unexpected = report['counts']['unexpected']
+        envelope = {
+            'resource': resource_name, 'snapshot_date': snap_date,
+            'dry_run': dry_run, 'skip_errors': skip_errors, 'written': False,
+        }
 
         # ---- 7. Verbose dry-run table ----------------------------------
-        if self.ctx.verbose:
+        if self.ctx.verbose and not json_mode:
             display_disk_dry_run_table(
                 self.ctx, entries, resource_name, dry_run=dry_run,
             )
 
         if dry_run:
-            return 0
+            self._emit_disk_report(report, envelope)
+            return 2 if unexpected else 0
+        # Without --skip-errors an unexpected gap refuses the whole file, before
+        # the first write, so a partial load never happens by accident.
+        if unexpected and not skip_errors:
+            self._emit_disk_report(report, envelope)
+            self.console.print(
+                "[bold red]Unresolved rows; nothing written. Fix them or pass "
+                "--skip-errors to load the rest.[/bold red]"
+            )
+            return 2
 
         # ---- 7. Register the snapshot date BEFORE any tier-3 insert.
         # disk_charge_summary.activity_date FKs disk_charge_summary_status, and
@@ -772,7 +887,6 @@ class AccountingAdminCommand(BaseCommand):
         n_created = 0
         n_updated = 0
         n_errors = 0
-        n_skipped = 0
 
         chunks = [
             entries_to_upsert[i:i + chunk_size]
@@ -785,6 +899,7 @@ class AccountingAdminCommand(BaseCommand):
             MofNCompleteColumn(),
             TimeElapsedColumn(),
             console=self.console,
+            disable=json_mode,
         ) as progress:
             task = progress.add_task(
                 f"Posting {resource_name} disk charges...",
@@ -809,18 +924,16 @@ class AccountingAdminCommand(BaseCommand):
                                     account_for_upsert = row.account_override
                                 else:
                                     act_uname = row.username
-                                    # Resolve project from directory_path
-                                    # (umbrella filesets like 'cgd' map to
-                                    # specific SAM projects via
-                                    # ProjectDirectory).
-                                    ok, project_for_upsert, account_for_upsert = _resolve_for_row(row)
-                                    if not ok:
-                                        raise ValueError(
-                                            f"Could not resolve project/account for "
-                                            f"row projcode={row.projcode!r} "
-                                            f"path={row.directory_path!r} on "
-                                            f"resource {resource_name!r}"
-                                        )
+                                    # Rows the report already counts (unresolved
+                                    # or an unknown user) are skipped, not errors.
+                                    res = _resolve_for_row(row)
+                                    if not res.ok or (
+                                        act_uname not in _DISK_ROLLUP_USERNAMES
+                                        and act_uname.lower() not in known_usernames
+                                    ):
+                                        continue
+                                    project_for_upsert = res.project
+                                    account_for_upsert = res.account
                                     # The audit column carries the SAM-canonical
                                     # projcode, not the input's umbrella label.
                                     act_pcode = project_for_upsert.projcode
@@ -870,8 +983,27 @@ class AccountingAdminCommand(BaseCommand):
                     )
                     return 2
 
-        display_import_summary(self.ctx, n_created, n_updated, n_errors, n_skipped)
-        return 0 if n_errors == 0 else 2
+        envelope.update(written=True, created=n_created, updated=n_updated, errors=n_errors)
+        self._emit_disk_report(report, envelope)
+        return 2 if (unexpected or n_errors) else 0
+
+    def _known_usernames(self, entries) -> set:
+        """Lowercased usernames of normal rows that exist in SAM (one query)."""
+        from sam.core.users import User
+        names = {
+            e.username for e in entries
+            if e.user_override is None and e.username not in _DISK_ROLLUP_USERNAMES
+        }
+        if not names:
+            return set()
+        found = self.session.query(User.username).filter(User.username.in_(names))
+        return {u.lower() for (u,) in found}
+
+    def _emit_disk_report(self, report: dict, envelope: dict) -> None:
+        if self.ctx.output_format == 'json':
+            output_json({'kind': 'disk_import', **envelope, **report})
+        else:
+            display_disk_import_report(self.ctx, {**envelope, **report})
 
     def _write_disk_activity_and_charge(
         self,
@@ -932,6 +1064,7 @@ class AccountingAdminCommand(BaseCommand):
             MofNCompleteColumn(),
             TimeElapsedColumn(),
             console=self.console,
+            disable=self.ctx.output_format == 'json',
         ) as progress:
             task = progress.add_task(
                 f"Writing {resource_name} disk_activity/disk_charge...",
@@ -966,12 +1099,13 @@ class AccountingAdminCommand(BaseCommand):
                             progress.advance(task)
                             # Resolve project/account first; failure is
                             # captured as audit metadata on the tier-1 row.
-                            ok, _project, account = resolve_for_row(e)
+                            res = resolve_for_row(e)
+                            account = res.account
                             user = None
                             err = None
-                            if not ok:
+                            if not res.ok:
                                 err = (
-                                    f"unresolved: projcode={e.projcode!r} "
+                                    f"unresolved({res.reason}): projcode={e.projcode!r} "
                                     f"path={e.directory_path!r}"
                                 )
                             else:
