@@ -538,8 +538,12 @@ an update here (tick boxes, session log).
   - The Progression chart:
     - `docs/samuel/refresh_data.sh` counts every text line on `origin/main`, month by month,
       reproducing the March talk's milestones exactly;
-    - today's figure is 444K lines (Python alone is 254K, past legacy's ~250K); the footnote
-      calls the comparison "a landmark, not a race".
+    - today's figure is 444K lines, stacked as source 186K + tests 153K + docs and other
+      105K. Source alone is under legacy's ~250K; the footnote calls that comparison "a
+      landmark, not a race".
+  - Screenshot revision (Ben): the usage chart is WYOM0247 on Derecho (dense, 14–16 users).
+    CESM0002 has too little charge data in the obfuscated sample. The allocations shot is the
+    Derecho facility pie. Projcodes are not obfuscated, only titles and users.
   - Screenshots came from the obfuscated test DB (§6).
   - Format lessons, recorded in the qmd:
     - a lead paragraph before a table demotes the pptx slide to Content with Caption, so put
@@ -724,3 +728,31 @@ puts the paragraph on the beamer section page; it is a framework `main` follow-u
 - Part 3: the CI → image → Argo → pods pipeline, clickable per stage; the ncar-hpc-deploy lanes and
   cadences as a timeline.
 - Appendix: a peer-repo dependency graph.
+
+## 14. Found along the way: fix later, on another branch
+
+A running list. Deck work surfaces these, but none belongs on this branch. Each gets its own
+branch and PR against `staging`. Tick an item once its fix merges, and note the PR.
+
+- [ ] **Mobile gauge collapse.** On Resource Usage Details at phone width, the Rolling
+  Consumption Rate gauge collapses to a sliver, and its axis labels overlap ("200%0%").
+  Template: `src/webapp/templates/dashboards/user/fragments/rolling_rate_htmx.html`. Found
+  2026-09-29 on the obfuscated DB, 390×844, dark.
+- [ ] **Mobile table headers wrap mid-word.** On the same page at phone width, the daily
+  history table breaks headers and values across lines ("USE RS", "JO BS", "6,80 6"). It needs
+  `white-space: nowrap` plus horizontal scroll, or fewer columns on mobile.
+- [ ] **Deprecate `sam-status`.** The third CLI (`pyproject.toml`: `sam-status =
+  "system_status:main"`, `src/system_status/cli.py`) is slated for removal (Ben, 2026-09-29).
+  Once it goes, Part 1's "3 command-line tools" becomes 2: update `clis.count` in
+  `_variables.yml`.
+- [ ] **The name in `CLAUDE.md`.** It says "System for Allocation Management"; the app header and
+  Ben's decks say "Systems Accounting Manager".
+- [ ] **`helm/README.md` is stale.** It calls the task dispatcher "hourly" (it runs every 15
+  minutes) and lists "7 ExternalSecrets" (prod has 9).
+- [ ] **`docs/apis/HPC_DATA_COLLECTORS_GUIDE.md` is stale.** Its base URL is `sam.ucar.edu`, and
+  it shows Slurm commands.
+- [ ] **`docs/STAGING.md`** describes the retired AWS ECS/RDS staging; mark it retired or
+  fold it into history.
+- [ ] **Framework: `Make.common` doesn't track `images/*`.** #10 made `_*.qmd` and `data/*`
+  prerequisites, but a replaced image still skips the render until a `touch`. Add
+  `$(wildcard images/*)` to `FRAGMENTS`. This is a one-line PR to the framework's `main`.
