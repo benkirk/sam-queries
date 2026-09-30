@@ -1,6 +1,6 @@
 # SAMuel presentation series — a multi-part Quarto deck
 
-**Status:** Phase 0 (scaffold) done, 2026-09-29, pending the merge of framework PR #10. This doc is the handoff: each session
+**Status:** Phase 0 (scaffold) done, 2026-09-29. Next: Phase 1, Part 1 Overview. This doc is the handoff: each session
 picks up the next unchecked phase in §8, ticks it, and appends to the session log (§10).
 **Goal:** replace the stale `docs/presentations/overview/` with a comprehensive, multi-part
 SAMuel presentation, authored in the standalone `~/Documents/quarto-docs-framework` repo and
@@ -433,10 +433,10 @@ from it onto slides.
 - [x] **Phase 0 — Scaffold.** Changes by repo:
   - [x] Framework `main`: branch `make-common-multi-deck` (commit `dae87f0`), with the
     `Make.common` `DECKS` generalization, README, CLAUDE.md and `docs/.gitignore`. `sample` (all
-    three formats) and `sam_and_pbs` build unchanged. Framework PR #10, awaiting merge.
+    three formats) and `sam_and_pbs` build unchanged. Merged as framework PR #10.
   - [x] Framework `samuel` branch, cut from that branch (commit `95f495c`): `docs/samuel/` with
     the wrappers, `_variables.yml`, and one divider + placeholder slide per part.
-    `make -C docs/samuel all` builds all 15 outputs. Merge `main` in once the PR lands.
+    `make -C docs/samuel all` builds all 15 outputs. `main` (with #10) merged in, `e5f5338`.
   - [x] This repo: `docs/presentations/` reduced to a README pointer plus a `.gitignore` for
     the local `samuel` symlink; `docs/INDEX.md` entry updated.
   - [x] Deleted the stale `presentation` branch, local + origin (was `8623665b`).
@@ -494,7 +494,8 @@ an update here (tick boxes, session log).
   - Found the beamer divider-subtitle gap (§13), and answered the `when-format` question.
   - This repo: `docs/presentations/` retired to a pointer.
   - Framework PR #10 opened; `samuel` pushed; the `presentation` branch deleted.
-  - **Next:** after #10 merges, merge `main` into `samuel`. Phase 1 (Part 1 Overview) starts with the title slide
+  - #10 merged; `main` merged into `samuel`.
+  - **Next:** Phase 1 (Part 1 Overview) starts with the title slide
     as the tone test (§11).
 
 ## 11. Voice, tone and the fun
