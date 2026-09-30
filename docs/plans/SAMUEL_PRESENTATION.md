@@ -1,7 +1,6 @@
 # SAMuel presentation series — a multi-part Quarto deck
 
-**Status:** Phase 0 (scaffold) built, 2026-09-29; the framework PR and the `presentation`
-branch deletion are Ben's. This doc is the handoff: each session
+**Status:** Phase 0 (scaffold) done, 2026-09-29, pending the merge of framework PR #10. This doc is the handoff: each session
 picks up the next unchecked phase in §8, ticks it, and appends to the session log (§10).
 **Goal:** replace the stale `docs/presentations/overview/` with a comprehensive, multi-part
 SAMuel presentation, authored in the standalone `~/Documents/quarto-docs-framework` repo and
@@ -434,13 +433,13 @@ from it onto slides.
 - [x] **Phase 0 — Scaffold.** Changes by repo:
   - [x] Framework `main`: branch `make-common-multi-deck` (commit `dae87f0`), with the
     `Make.common` `DECKS` generalization, README, CLAUDE.md and `docs/.gitignore`. `sample` (all
-    three formats) and `sam_and_pbs` build unchanged. PR to open and merge: Ben's call.
+    three formats) and `sam_and_pbs` build unchanged. Framework PR #10, awaiting merge.
   - [x] Framework `samuel` branch, cut from that branch (commit `95f495c`): `docs/samuel/` with
     the wrappers, `_variables.yml`, and one divider + placeholder slide per part.
     `make -C docs/samuel all` builds all 15 outputs. Merge `main` in once the PR lands.
   - [x] This repo: `docs/presentations/` reduced to a README pointer plus a `.gitignore` for
     the local `samuel` symlink; `docs/INDEX.md` entry updated.
-  - [ ] Delete the stale `presentation` branch (local + origin), after Ben confirms.
+  - [x] Deleted the stale `presentation` branch, local + origin (was `8623665b`).
 - [ ] **Phase 1 — Part 1 Overview:** content, the architecture diagram and the screenshot tour.
   Then revisit the format decision.
 - [ ] **Phase 2 — Part 2 Databases:** resolve the §5 facts first.
@@ -494,8 +493,8 @@ an update here (tick boxes, session log).
     LibreOffice and the beamer PDF read directly.
   - Found the beamer divider-subtitle gap (§13), and answered the `when-format` question.
   - This repo: `docs/presentations/` retired to a pointer.
-  - **Next:** Ben opens and merges the framework PR, then merges `main` into `samuel`.
-    Delete the `presentation` branch. Phase 1 (Part 1 Overview) starts with the title slide
+  - Framework PR #10 opened; `samuel` pushed; the `presentation` branch deleted.
+  - **Next:** after #10 merges, merge `main` into `samuel`. Phase 1 (Part 1 Overview) starts with the title slide
     as the tone test (§11).
 
 ## 11. Voice, tone and the fun
