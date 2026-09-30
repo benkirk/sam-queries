@@ -183,7 +183,7 @@ docs/
 │   └── HPC_DATA_COLLECTORS_GUIDE.md  # Collector implementation guide
 ├── plans/                     # Active plans (implemented/ holds shipped ones)
 ├── xras/                      # XRAS integration: design, sprints, cutover runbook
-└── presentations/             # Quarto → pptx presentation infra
+└── presentations/             # Pointer: SAMuel decks live in quarto-docs-framework
 
 ../
 ├── README.md                  # Project overview
