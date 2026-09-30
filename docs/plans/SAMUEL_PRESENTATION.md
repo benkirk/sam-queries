@@ -754,5 +754,14 @@ branch and PR against `staging`. Tick an item once its fix merges, and note the 
 - [ ] **`docs/STAGING.md`** describes the retired AWS ECS/RDS staging; mark it retired or
   fold it into history.
 - [ ] **Framework: `Make.common` doesn't track `images/*`.** #10 made `_*.qmd` and `data/*`
-  prerequisites, but a replaced image still skips the render until a `touch`. Add
-  `$(wildcard images/*)` to `FRAGMENTS`. This is a one-line PR to the framework's `main`.
+  prerequisites, but a replaced image still skipped the render until a `touch`. Fixed in
+  **framework PR #11**, which also adds this session's gotchas to the framework's CLAUDE.md.
+  Once it merges, merge `main` into `samuel`.
+- [ ] **Framework: beamer divider subtitles.** Beamer renders the paragraph after a `#` divider
+  as its own slide, so SAMuel's bodies fence it `unless-format="beamer"`. The fix needs two
+  pieces:
+  - a section-subtitle slot in `benkirk/NCAR_beamer_template`'s section page, then a re-vendor;
+  - a small Lua filter in the framework that moves the paragraph into the slot.
+  It spans two repos, so it is proposed only.
+- [ ] **Framework: an NCAR revealjs theme** (§13): an SCSS theme with the brand colors,
+  Poppins and the logo lockup. The HTML builds are unbranded until it exists.
