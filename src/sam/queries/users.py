@@ -21,7 +21,7 @@ Functions:
 """
 
 from datetime import datetime
-from typing import List, Optional, Dict, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from sqlalchemy import or_, func, desc, select, exists, union
 
@@ -281,16 +281,20 @@ def get_users_by_organization(session: Session, org_acronym: str) -> List[User]:
         .all()
 
 
-def get_user_directory(session: Session, active_only: bool = True) -> Dict[str, Tuple[str, bool, bool]]:
-    """``{username: (display_name, active, locked)}`` from one column select."""
+def get_user_directory(session: Session, active_only: bool = True,
+                       usernames: Optional[Iterable[str]] = None) -> Dict[str, Tuple[str, bool, bool]]:
+    """``{username: (display_name, active, locked)}``, optionally limited to *usernames*."""
     q = select(User.username, User.nickname, User.first_name, User.last_name,
                User.active, User.locked)
     if active_only:
         q = q.where(User.is_active)
+    chunks = [None] if usernames is None else _chunks(usernames)
     return {
         username: (' '.join(p for p in (nickname or first, last) if p),
                    bool(active), bool(locked))
-        for username, nickname, first, last, active, locked in session.execute(q)
+        for chunk in chunks
+        for username, nickname, first, last, active, locked in session.execute(
+            q if chunk is None else q.where(User.username.in_(chunk)))
     }
 
 
@@ -305,7 +309,38 @@ def count_active_projects_by_username(session: Session, usernames) -> Dict[str, 
     return counts
 
 
-def _active_project_counts(usernames: List[str]):
+def get_active_projcodes_by_user(session: Session,
+                                 project_ids: Iterable[int]) -> Dict[int, Tuple[str, Set[str]]]:
+    """``{user_id: (username, active projcodes)}`` for each user actively linked to *project_ids*.
+
+    Same membership rule as ``User.active_projects()``, one statement.
+    """
+    project_ids = list(project_ids)
+    if not project_ids:
+        return {}
+    # Two aliases on purpose: one shared subquery would auto-correlate into the IN.
+    links, linked = _active_project_links().subquery(), _active_project_links().subquery()
+    q = (select(User.user_id, User.username, Project.projcode)
+         .join(links, links.c.uid == User.user_id)
+         .join(Project, Project.project_id == links.c.pid)
+         .where(User.user_id.in_(select(linked.c.uid).where(linked.c.pid.in_(project_ids)))))
+    out: Dict[int, Tuple[str, Set[str]]] = {}
+    for user_id, username, projcode in session.execute(q):
+        out.setdefault(user_id, (username, set()))[1].add(projcode)
+    return out
+
+
+def get_abandoned_usernames(session: Session, expired_projects: Iterable[Project]) -> Dict[str, List[str]]:
+    """``{username: projcodes}`` for users whose every active project is in *expired_projects*."""
+    expired = {p.project_id: p.projcode for p in expired_projects}
+    codes = set(expired.values())
+    return {username: sorted(active)
+            for username, active in get_active_projcodes_by_user(session, expired).values()
+            if active <= codes}
+
+
+def _active_project_links():
+    """``(uid, pid)`` for every active project a user holds an unended row on, leads, or administers."""
     members = (select(AccountUser.user_id.label('uid'), Account.project_id.label('pid'))
                .join(Account, AccountUser.account_id == Account.account_id)
                .join(Project, Account.project_id == Project.project_id)
@@ -315,7 +350,11 @@ def _active_project_counts(usernames: List[str]):
     leads = select(Project.project_lead_user_id, Project.project_id).where(Project.is_active)
     admins = (select(Project.project_admin_user_id, Project.project_id)
               .where(Project.is_active, Project.project_admin_user_id.is_not(None)))
-    links = union(members, leads, admins).subquery()
+    return union(members, leads, admins)
+
+
+def _active_project_counts(usernames: List[str]):
+    links = _active_project_links().subquery()
     return (select(User.username, func.count())
             .join(links, links.c.uid == User.user_id)
             .where(User.username.in_(usernames))

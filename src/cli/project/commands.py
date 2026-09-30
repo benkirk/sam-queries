@@ -40,6 +40,7 @@ from sam.queries.expirations import (
     unique_projects,
 )
 from sam.queries.tree_audit import audit_allocation_trees, audit_allocation_dates
+from sam.queries.users import get_abandoned_usernames, get_primary_emails, get_user_directory
 from rich.progress import track
 
 
@@ -170,9 +171,7 @@ class ProjectExpirationCommand(BaseProjectCommand):
 
             else:
                 # Recent Expirations
-                all_users = set()
-                abandoned_users = set()
-                expiring_projects = set()
+                abandoned_users = []
 
                 # Calculate max_days_expired from --since date, default to 365 days
                 if since:
@@ -196,18 +195,8 @@ class ProjectExpirationCommand(BaseProjectCommand):
                     output_json(build_expiring_projects(expiring, upcoming=False))
                     return EXIT_SUCCESS
 
-                # Extract users if needed (business logic)
                 if list_users:
-                    for proj, alloc, res_name, days_expired in expiring:
-                        all_users.update(proj.users)
-                        expiring_projects.add(proj.projcode)
-
-                    for user in track(all_users, description="Determining abandoned users..."):
-                        user_projects = set()
-                        for proj in user.active_projects():
-                            user_projects.add(proj.projcode)
-                        if user_projects.issubset(expiring_projects):
-                            abandoned_users.add(user)
+                    abandoned_users = self._abandoned_users(proj for proj, *_ in expiring)
 
                 # Display results
                 display_expiring_projects(self.ctx, expiring, list_users=list_users, upcoming=False)
@@ -221,6 +210,14 @@ class ProjectExpirationCommand(BaseProjectCommand):
             return EXIT_SUCCESS
         except Exception as e:
             return self.handle_exception(e)
+
+    def _abandoned_users(self, expired_projects) -> list:
+        """Users whose every active project is in *expired_projects*, as display dicts."""
+        usernames = get_abandoned_usernames(self.session, expired_projects)
+        names = get_user_directory(self.session, active_only=False, usernames=usernames)
+        emails = get_primary_emails(self.session, usernames)
+        return [{'username': u, 'display_name': names[u][0], 'primary_email': emails.get(u)}
+                for u in usernames]
 
 
     def _deactivate_projects(self, expiring: list, force: bool = False) -> int:

@@ -1,8 +1,16 @@
+{% from 'dashboards/fragments/user_rows.html' import user_link %}
 {# Outside the if/else on purpose — see expirations_cards.html. #}
 {% if summary %}
 <p class="text-muted small mb-3 expirations-summary">
     <i class="fa-solid fa-filter"></i> {{ summary|safe }}
 </p>
+{% endif %}
+
+{% if last_seen_unavailable %}
+<div class="alert alert-warning small py-2">
+    <i class="fa-solid fa-triangle-exclamation"></i>
+    Last-seen data is unavailable right now, so the Not Seen Since filter was not applied.
+</div>
 {% endif %}
 
 {% if abandoned_users %}
@@ -14,13 +22,14 @@
                 <th>Name</th>
                 <th>Email</th>
                 <th>Expired Projects</th>
-                <th>Actions</th>
+                <th class="text-nowrap">Last Seen</th>
+                <th class="text-end">Actions</th>
             </tr>
         </thead>
         <tbody>
             {% for user_info in abandoned_users %}
             <tr>
-                <td><strong>{{ user_info.username }}</strong></td>
+                <td><strong>{{ user_link(user_info.username, can_view_users) }}</strong></td>
                 <td>{{ user_info.display_name }}</td>
                 <td>
                     {% if user_info.email != 'N/A' %}
@@ -41,11 +50,23 @@
                         {% endfor %}
                     </small>
                 </td>
-                <td>
+                <td class="text-nowrap">
+                    {% if user_info.last_seen %}
+                    <span title="{{ user_info.last_seen | fmt_date(fmt='%Y-%m-%d %H:%M') }} UTC">
+                        {%- if user_info.last_seen_current %}now{% else %}{{ user_info.last_seen_age | fmt_ago }} ago{% endif %}</span>
+                    <div class="text-muted small">
+                        {{ user_info.last_seen_kind }}{% if user_info.last_seen_system != user_info.last_seen_kind %} · {{ user_info.last_seen_system }}{% endif %}
+                    </div>
+                    {% elif last_seen_unavailable %}—
+                    {% else %}<span class="text-muted">never</span>{% endif %}
+                </td>
+                <td class="text-end text-nowrap">
                     <button type="button"
-                            class="btn  btn-outline-primary impersonate-user-btn"
-                            data-username="{{ user_info.username }}">
-                        <i class="fa-solid fa-user-secret"></i> Impersonate
+                            class="btn btn-xs btn-outline-warning impersonate-user-btn"
+                            data-username="{{ user_info.username }}"
+                            title="Impersonate {{ user_info.username }}"
+                            aria-label="Impersonate {{ user_info.username }}">
+                        <i class="fa-solid fa-user-secret"></i>
                     </button>
                 </td>
             </tr>

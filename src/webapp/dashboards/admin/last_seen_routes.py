@@ -32,7 +32,7 @@ _PER_PAGE = 50
 _SORTABLE = ('username', 'name', 'last_seen')
 
 
-def _ledger_missing():
+def ledger_missing():
     """True if the ledger cannot be read, after clearing the failed transaction."""
     try:
         db.session.execute(select(UserLastSeen.user_id).limit(1)).first()
@@ -78,7 +78,7 @@ def users_last_seen():
 @require_permission_any_facility(Permission.VIEW_USERS)
 def users_last_seen_table():
     """HTMX fragment: bucket and source chips, the sorted page, pagination."""
-    if _ledger_missing():
+    if ledger_missing():
         return render_template('dashboards/admin/fragments/users_last_seen_table.html',
                                unavailable=True)
 
