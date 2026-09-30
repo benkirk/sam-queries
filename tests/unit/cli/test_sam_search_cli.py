@@ -232,6 +232,32 @@ class TestSamSearchCli:
         assert result.exit_code == 0
         assert "recently expired projects" in result.output
 
+    def test_recent_expirations_lists_abandoned_users(self, runner, mock_db_session):
+        from datetime import datetime, timedelta
+        from sam.accounting.accounts import AccountUser
+        from factories.core import make_user
+        from factories.projects import make_account, make_allocation, make_project
+        s, now = mock_db_session, datetime.now()
+        expired = make_project(s, facility_name='UNIV')
+        live = make_project(s, facility_name='UNIV')
+        make_allocation(s, account=make_account(s, project=expired),
+                        start_date=now - timedelta(days=200), end_date=now - timedelta(days=10))
+        live_account = make_account(s, project=live)
+        make_allocation(s, account=live_account)
+        only, mixed = make_user(s), make_user(s)
+        for user, account in ((only, expired.accounts[0]), (mixed, expired.accounts[0]),
+                              (mixed, live_account)):
+            s.add(AccountUser(account_id=account.account_id, user_id=user.user_id,
+                              start_date=now - timedelta(days=30)))
+        s.flush()
+
+        result = runner.invoke(cli, ['project', '--recent-expirations', '--list-users'])
+        assert result.exit_code == 0, result.output
+        assert expired.projcode in result.output
+        assert 'expiring users' in result.output
+        assert only.username in result.output
+        assert mixed.username not in result.output
+
     def test_abandoned_users(self, runner, mock_db_session):
         result = runner.invoke(cli, ['user', '--abandoned'])
         assert result.exit_code == 0
