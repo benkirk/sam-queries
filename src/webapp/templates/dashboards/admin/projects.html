@@ -105,6 +105,18 @@
                                 <small class="form-text">For upcoming</small>
                             </div>
 
+                            <div>
+                                <label for="not-seen-since-filter" class="form-label"><strong>Not Seen Since</strong></label>
+                                <select class="form-control" id="not-seen-since-filter"
+                                        name="not_seen_since" style="width: 160px;">
+                                    <option value="" selected>All</option>
+                                    <option value="6m">6 months</option>
+                                    <option value="1y">1 year</option>
+                                    <option value="2y">2 years</option>
+                                </select>
+                                <small class="form-text">For abandoned users</small>
+                            </div>
+
                             <button type="button" class="btn btn-outline-white align-self-end"
                                     data-action="expirations-reload">Apply Filters
                             </button>

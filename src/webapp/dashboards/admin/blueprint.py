@@ -38,7 +38,12 @@ from sam.queries.expirations import (
     unique_projects,
 )
 from sam.queries.lookups import find_project_by_code, get_user_group_access
+from sam import fmt
+from sam.queries.last_seen_review import review
 from sam.queries.notifications import get_expiration_notice_status
+from sam.queries.users import get_abandoned_usernames, get_primary_emails, get_user_directory
+from system_status.queries.last_seen import get_last_seen_by_user
+from system_status.timeutil import utcnow_naive
 from webapp.auth.models import AuthUser
 from sam.core.users import User
 from webapp.utils.rbac import (
@@ -64,6 +69,13 @@ UPCOMING_PRESETS = {
     '7days': 7,
     '31days': 31,
     '60days': 60
+}
+
+# "Not seen since" presets for the Abandoned Users view: key -> (days, label).
+NOT_SEEN_PRESETS = {
+    '6m': (183, '6 months'),
+    '1y': (365, '1 year'),
+    '2y': (730, '2 years'),
 }
 
 # Deep-link sub-tab vocabularies (?tab=) for the Resources / Organizations
@@ -512,42 +524,42 @@ def _build_expiration_project_data(expiring_results: List[Tuple]) -> List[Dict]:
     return projects_data
 
 
-def _get_abandoned_users_data(expired_results: List[Tuple]) -> List[Dict]:
-    """
-    Find users who only have expired projects.
+def _get_abandoned_users_data(expired_results: List[Tuple],
+                              not_seen_since: str = None) -> Tuple[List[Dict], bool]:
+    """Users whose every active project expired, with newest sighting; ``(rows, ledger_unavailable)``."""
+    from .last_seen_routes import ledger_missing  # deferred: that module imports bp from here
 
-    Args:
-        expired_results: List of (Project, Allocation, resource_name, days) tuples
+    projcodes = get_abandoned_usernames(db.session, (proj for proj, *_ in expired_results))
+    unavailable = ledger_missing()
+    rows = _abandoned_rows(
+        projcodes,
+        get_user_directory(db.session, active_only=False, usernames=projcodes),
+        None if unavailable else get_last_seen_by_user(db.session),
+        get_primary_emails(db.session, projcodes),
+        now=utcnow_naive(), not_seen_since=not_seen_since)
+    return rows, unavailable
 
-    Returns:
-        List of dicts with username, display_name, email, projects
-    """
-    all_users = set()
-    expired_projcodes = set()
 
-    # Collect all users from expired projects
-    for proj, alloc, res_name, days in expired_results:
-        all_users.update(proj.users)
-        expired_projcodes.add(proj.projcode)
-
-    # Find users whose active projects are all in the expired set
-    abandoned_users = []
-    for user in all_users:
-        user_active_projcodes = set(p.projcode for p in user.active_projects())
-
-        # If user has active projects and they're ALL in the expired set, user is abandoned
-        if user_active_projcodes and user_active_projcodes.issubset(expired_projcodes):
-            # Format user data
-            project_codes = [p.projcode for p in user.active_projects()]
-            abandoned_users.append({
-                'username': user.username,
-                'display_name': user.display_name,
-                'email': user.primary_email or 'N/A',
-                'project_count': len(project_codes),
-                'projects': ', '.join(sorted(project_codes))
-            })
-
-    return sorted(abandoned_users, key=lambda u: u['username'])
+def _abandoned_rows(projcodes: Dict[str, List[str]], directory: Dict, ledger: Dict | None,
+                    emails: Dict[str, str], *, now: datetime, not_seen_since: str = None) -> List[Dict]:
+    """Rows sorted by username; ``ledger=None`` (unreadable) ignores the not-seen filter."""
+    rows, _, _ = review(directory, ledger or {}, now=now, sort_by='username', sort_dir='asc')
+    days = NOT_SEEN_PRESETS.get(not_seen_since, (None,))[0]
+    if days and ledger is not None:
+        cutoff = now - timedelta(days=days)
+        rows = [r for r in rows if r.last_seen is None or r.last_seen < cutoff]
+    return [{
+        'username': r.username,
+        'display_name': r.name,
+        'email': emails.get(r.username, 'N/A'),
+        'project_count': len(projcodes[r.username]),
+        'projects': ', '.join(projcodes[r.username]),
+        'last_seen': r.last_seen,
+        'last_seen_age': r.age,
+        'last_seen_kind': r.kind,
+        'last_seen_system': r.system,
+        'last_seen_current': r.current,
+    } for r in rows]
 
 
 def _expiration_facility_default(view_type):
@@ -569,7 +581,7 @@ def _expiration_facility_default(view_type):
 
 
 def _expirations_summary(view_type, facilities, resource, time_range=None,
-                         *, explicit_facilities=False):
+                         *, explicit_facilities=False, not_seen_since=None):
     """One sentence naming exactly what a pane is showing.
 
     The three tabs share one filter control but not one default — Upcoming is
@@ -602,10 +614,12 @@ def _expirations_summary(view_type, facilities, resource, time_range=None,
                 f'allocation expires within the next {days} days.')
 
     if view_type == 'abandoned':
+        not_seen = NOT_SEEN_PRESETS.get(not_seen_since)
+        seen_clause = f' Only users not seen in the last {not_seen[1]}.' if not_seen else ''
         return (f'Showing users whose every active project is expired — '
                 f'projects in {scope}{on_resource} whose latest-ending '
                 f'allocation ended more than {DEACTIVATION_MIN_DAYS_EXPIRED} '
-                f'days ago. Same set as the Expired tab.')
+                f'days ago. Same set as the Expired tab.{seen_clause}')
 
     return (f'Showing projects in {scope}{on_resource} whose latest-ending '
             f'allocation ended more than {DEACTIVATION_MIN_DAYS_EXPIRED} days '
@@ -638,10 +652,12 @@ def expirations_fragment():
     if resource == '':
         resource = None
     time_range = request.args.get('time_range', '31days')
+    not_seen_since = request.args.get('not_seen_since') or None
 
     summary = _expirations_summary(
         view_type, facilities, resource, time_range,
-        explicit_facilities=bool(request.args.getlist('facilities')))
+        explicit_facilities=bool(request.args.getlist('facilities')),
+        not_seen_since=not_seen_since)
 
     if view_type == 'upcoming':
         days = UPCOMING_PRESETS.get(time_range, 31)
@@ -665,11 +681,14 @@ def expirations_fragment():
         )
 
         if view_type == 'abandoned':
-            abandoned_users = _get_abandoned_users_data(results)
+            abandoned_users, last_seen_unavailable = _get_abandoned_users_data(
+                results, not_seen_since)
 
             html = render_template(
                 'dashboards/admin/fragments/abandoned_users_table.html',
                 abandoned_users=abandoned_users,
+                last_seen_unavailable=last_seen_unavailable,
+                can_view_users=has_permission_any_facility(current_user, Permission.VIEW_USERS),
                 summary=summary
             )
             badge = f'<span id="abandoned-count" hx-swap-oob="true" class="badge bg-primary">{len(abandoned_users)}</span>'
@@ -801,17 +820,23 @@ def expirations_export():
             facility_names=facilities,
             resource_name=resource
         )
-        abandoned_users = _get_abandoned_users_data(expired_results)
+        abandoned_users, last_seen_unavailable = _get_abandoned_users_data(
+            expired_results, request.args.get('not_seen_since') or None)
 
         writer = csv.writer(output)
-        writer.writerow(['Username', 'Display Name', 'Email', 'Expired Projects'])
+        writer.writerow(['Username', 'Display Name', 'Email', 'Expired Projects',
+                         'Last Seen (UTC)', 'Last Seen Source'])
 
         for user_info in abandoned_users:
+            kind, system = user_info['last_seen_kind'], user_info['last_seen_system']
             writer.writerow([
                 user_info['username'],
                 user_info['display_name'],
                 user_info['email'],
-                user_info['projects']
+                user_info['projects'],
+                fmt.date_str(user_info['last_seen'], fmt='%Y-%m-%d %H:%M',
+                             null='unavailable' if last_seen_unavailable else 'never'),
+                kind if system in (None, kind) else f'{kind} · {system}',
             ])
 
         filename = f'abandoned_users_{datetime.now().strftime("%Y%m%d")}.csv'

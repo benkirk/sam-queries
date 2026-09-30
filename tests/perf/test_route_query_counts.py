@@ -295,6 +295,12 @@ def test_admin_expirations_expired_route(auth_client, route_count_queries):
     )
 
 
+def test_admin_expirations_abandoned_route(auth_client, route_count_queries):
+    """Abandoned Users: one bulk active-projcode query, not ``Project.users`` per expired project."""
+    _route_within("admin_expirations_abandoned_route", auth_client, route_count_queries,
+                  '/admin/expirations?view=abandoned')
+
+
 # ---------------------------------------------------------------------------
 # Read-model path (READ_MODEL_ENABLED on, table fed and committed)
 # ---------------------------------------------------------------------------

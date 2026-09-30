@@ -76,7 +76,7 @@ class TestTable:
 
     def test_unreadable_ledger_degrades_to_a_200(self, auth_client, monkeypatch):
         from webapp.dashboards.admin import last_seen_routes
-        monkeypatch.setattr(last_seen_routes, '_ledger_missing', lambda: True)
+        monkeypatch.setattr(last_seen_routes, 'ledger_missing', lambda: True)
         resp = auth_client.get(TABLE)
         assert resp.status_code == 200
         assert 'unavailable' in resp.get_data(as_text=True)
