@@ -157,7 +157,8 @@ def display_import_summary(ctx: Context, n_created: int, n_updated: int,
 # (title, fix hint) per disk-import category, in print order.
 _DISK_CATEGORY_TEXT = {
     'no_project': ("Not charged: no SAM project",
-                   "path is not a project directory and the label matches no projcode"),
+                   "link the path to its project (Admin -> project -> Directories), "
+                   "or add the label to KNOWN_UNOWNED_PROJCODES"),
     'no_account': ("Not charged: project has no account on {resource}",
                    "add an account for the project on {resource}"),
     'unknown_user': ("Not charged: user not in SAM", None),

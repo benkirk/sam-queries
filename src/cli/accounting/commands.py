@@ -79,7 +79,7 @@ class _DiskResolution:
     """How a disk row resolved; ``reason`` is None or a report category."""
     project: Optional[object] = None
     account: Optional[object] = None
-    via: Optional[str] = None       # 'path' | 'projcode'
+    via: Optional[str] = None       # 'path' | 'projcode' | 'label'
     reason: Optional[str] = None
 
     @property
@@ -722,8 +722,10 @@ class AccountingAdminCommand(BaseCommand):
         # ---- 6b. Resolve projcode for normal rows ----------------------
         # acct.glade column 3 is a fileset label ('cesm', 'cgd'), not a SAM
         # projcode. Resolve as legacy did, directory_path -> ProjectDirectory ->
-        # Project: path lookup first, then projcode-as-label. A row that fails
-        # gets a report category (_DiskResolution.reason) instead of an error.
+        # Project: path lookup first, then projcode-as-label, then the one project
+        # this file's linked rows give the same label (/quasar/rda_dr rides with
+        # /quasar/rda, as tier-3 grouping by label already charges it). A row that
+        # fails gets a report category (_DiskResolution.reason) instead of an error.
         from sam.projects.projects import ProjectDirectory, Project
         from sam.accounting.accounts import Account
         pd_path_to_project: dict[str, "Project"] = {
@@ -735,6 +737,11 @@ class AccountingAdminCommand(BaseCommand):
                 .all()
             )
         }
+        label_projects: dict[str, dict] = {}
+        for e in entries:
+            proj = pd_path_to_project.get(e.directory_path) if e.directory_path else None
+            if proj is not None:
+                label_projects.setdefault(e.projcode, {})[proj.project_id] = proj
         resolution_cache: dict[tuple, _DiskResolution] = {}
         account_cache: dict[int, Optional["Account"]] = {}
 
@@ -754,7 +761,12 @@ class AccountingAdminCommand(BaseCommand):
                 project = Project.get_by_projcode(self.session, row.projcode)
                 via = 'projcode'
             if project is None:
-                return _DiskResolution(reason='no_project')
+                siblings = label_projects.get(row.projcode, {})
+                if len(siblings) != 1:
+                    return _DiskResolution(reason='no_project')
+                (project,) = siblings.values()
+                via = 'label'
+
             if project.project_id not in account_cache:
                 account_cache[project.project_id] = Account.get_by_project_and_resource(
                     self.session, project.project_id, resource.resource_id,
@@ -763,7 +775,7 @@ class AccountingAdminCommand(BaseCommand):
             acct = account_cache[project.project_id]
             if acct is None:
                 return _DiskResolution(project=project, via=via, reason='no_account')
-            reason = 'unlinked_directory' if via == 'projcode' and row.directory_path else None
+            reason = 'unlinked_directory' if via != 'path' and row.directory_path else None
             return _DiskResolution(project=project, account=acct, via=via, reason=reason)
 
         # ---- 6c. Classify every row before any write (reads only) ------
