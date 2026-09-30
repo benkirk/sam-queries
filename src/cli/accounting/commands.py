@@ -7,6 +7,7 @@ AccountingSearchCommand — queries comp_charge_summary for user inspection.
 import getpass
 import os
 import re
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Optional
@@ -71,7 +72,11 @@ KNOWN_UNOWNED_PROJCODES = frozenset({'ROOT', 'RISC', 'NGIC'})
 # Disk-import report categories. Only UNEXPECTED ones make the run exit 2;
 # the rest are reported and exit 0. See docs/plans/DISK_INGEST_TRIAGE.md.
 DISK_UNEXPECTED_CATEGORIES = ('no_project', 'no_account', 'unknown_user')
-DISK_REPORT_CATEGORIES = DISK_UNEXPECTED_CATEGORIES + ('known_unowned', 'unlinked_directory')
+DISK_REPORT_CATEGORIES = DISK_UNEXPECTED_CATEGORIES + (
+    'known_unowned', 'unlinked_directory', 'expired_directory',
+)
+# --reconcile-directories writes these; 'review' (path owned by another project) never.
+DIRECTORY_AUTO_ACTIONS = ('reopen', 'rename', 'create')
 
 
 @dataclass(frozen=True)
@@ -81,10 +86,38 @@ class _DiskResolution:
     account: Optional[object] = None
     via: Optional[str] = None       # 'path' | 'projcode' | 'label'
     reason: Optional[str] = None
+    action: Optional[str] = None    # unlinked_directory only: DIRECTORY_AUTO_ACTIONS or 'review'
+    directory_id: Optional[int] = None   # the row a reopen/rename acts on
 
     @property
     def ok(self) -> bool:
         return self.account is not None
+
+
+class _DirectoryIndex:
+    """Every project_directory row, ended ones included, to pick a reconcile action."""
+
+    def __init__(self, rows):
+        self.by_path = defaultdict(list)
+        self.by_case = defaultdict(list)
+        for pd in rows:
+            self.by_path[pd.directory_name].append(pd)
+            self.by_case[(pd.project_id, pd.directory_name.lower())].append(pd)
+
+    @staticmethod
+    def _latest(rows):
+        return max(rows, key=lambda r: (r.end_date is None, r.end_date or datetime.min))
+
+    def action_for(self, project_id: int, path: str) -> tuple[str, Optional[int]]:
+        same = [r for r in self.by_path.get(path, ()) if r.project_id == project_id]
+        if same:
+            return 'reopen', self._latest(same).project_directory_id
+        if self.by_path.get(path):
+            return 'review', None
+        variants = self.by_case.get((project_id, path.lower()))
+        if variants:
+            return 'rename', self._latest(variants).project_directory_id
+        return 'create', None
 
 
 def _build_disk_import_report(entries, resolve, known_usernames: set,
@@ -110,6 +143,8 @@ def _build_disk_import_report(entries, resolve, known_usernames: set,
                 'project_id': res.project.project_id if res.project else None,
                 'rows': 0, 'bytes': 0,
             })
+            if res.reason == 'unlinked_directory':
+                item.update(action=res.action, project_directory_id=res.directory_id)
             item['rows'] += 1
             item['bytes'] += e.bytes
         if not res.ok or e.username in _DISK_ROLLUP_USERNAMES:
@@ -350,6 +385,7 @@ class AccountingAdminCommand(BaseCommand):
         reconcile_quota_gap: bool = False,
         gap_tolerance_bytes: int = 1024 ** 3,    # 1 GiB
         gap_tolerance_frac: float = 0.01,        # 1%
+        reconcile_directories: bool = False,
         # --comp/--disk epoch override (default: hard-coded constant per mode)
         epoch: Optional[date] = None,
     ) -> int:
@@ -390,6 +426,7 @@ class AccountingAdminCommand(BaseCommand):
                 chunk_size=chunk_size,
                 include_deleted_accounts=include_deleted_accounts,
                 epoch=epoch,
+                reconcile_directories=reconcile_directories,
             )
         if archive:
             self.console.print("[yellow]--archive: not yet implemented[/yellow]")
@@ -578,6 +615,7 @@ class AccountingAdminCommand(BaseCommand):
         chunk_size: int,
         include_deleted_accounts: bool,
         epoch: Optional[date] = None,
+        reconcile_directories: bool = False,
     ) -> int:
         """Import a per-user-per-project disk usage snapshot into ``disk_charge_summary``.
 
@@ -728,6 +766,7 @@ class AccountingAdminCommand(BaseCommand):
         # fails gets a report category (_DiskResolution.reason) instead of an error.
         from sam.projects.projects import ProjectDirectory, Project
         from sam.accounting.accounts import Account
+        from sam.accounting.allocations import Allocation
         pd_path_to_project: dict[str, "Project"] = {
             pd.directory_name: proj
             for pd, proj in (
@@ -735,6 +774,15 @@ class AccountingAdminCommand(BaseCommand):
                 .join(Project, Project.project_id == ProjectDirectory.project_id)
                 .filter(ProjectDirectory.is_currently_active)
                 .all()
+            )
+        }
+        directory_index = _DirectoryIndex(self.session.query(ProjectDirectory).all())
+        funded_accounts = {
+            account_id for (account_id,) in (
+                self.session.query(Allocation.account_id)
+                .join(Account, Account.account_id == Allocation.account_id)
+                .filter(Account.resource_id == resource.resource_id, Allocation.is_active)
+                .distinct()
             )
         }
         label_projects: dict[str, dict] = {}
@@ -775,8 +823,16 @@ class AccountingAdminCommand(BaseCommand):
             acct = account_cache[project.project_id]
             if acct is None:
                 return _DiskResolution(project=project, via=via, reason='no_account')
-            reason = 'unlinked_directory' if via != 'path' and row.directory_path else None
-            return _DiskResolution(project=project, account=acct, via=via, reason=reason)
+            if via == 'path' or not row.directory_path:
+                return _DiskResolution(project=project, account=acct, via=via)
+            if acct.account_id not in funded_accounts:
+                return _DiskResolution(project=project, account=acct, via=via,
+                                       reason='expired_directory')
+            action, directory_id = directory_index.action_for(
+                project.project_id, row.directory_path)
+            return _DiskResolution(project=project, account=acct, via=via,
+                                   reason='unlinked_directory', action=action,
+                                   directory_id=directory_id)
 
         # ---- 6c. Classify every row before any write (reads only) ------
         known_usernames = self._known_usernames(entries)
@@ -807,6 +863,17 @@ class AccountingAdminCommand(BaseCommand):
                 "--skip-errors to load the rest.[/bold red]"
             )
             return 2
+
+        # ---- 6d. --reconcile-directories: fix the links the report found -----
+        if reconcile_directories:
+            try:
+                with management_transaction(self.session):
+                    envelope['directories'] = self._reconcile_directories(
+                        report['categories']['unlinked_directory'])
+            except Exception as exc:  # noqa: BLE001
+                self.console.print(
+                    f"[bold red]Directory reconcile failed: {exc}[/bold red]")
+                return 2
 
         # ---- 7. Register the snapshot date BEFORE any tier-3 insert.
         # disk_charge_summary.activity_date FKs disk_charge_summary_status, and
@@ -998,6 +1065,27 @@ class AccountingAdminCommand(BaseCommand):
         envelope.update(written=True, created=n_created, updated=n_updated, errors=n_errors)
         self._emit_disk_report(report, envelope)
         return 2 if (unexpected or n_errors) else 0
+
+    def _reconcile_directories(self, items: list) -> dict:
+        """Apply the report's reopen/rename/create actions; returns counts per action."""
+        from sam.projects.projects import ProjectDirectory
+        counts = dict.fromkeys(DIRECTORY_AUTO_ACTIONS, 0)
+        done = set()
+        for item in items:
+            key = (item['project_id'], item['path'])
+            if item['action'] not in DIRECTORY_AUTO_ACTIONS or key in done:
+                continue
+            done.add(key)
+            if item['action'] == 'create':
+                ProjectDirectory.create(self.session, project_id=item['project_id'],
+                                        directory_name=item['path'])
+            else:
+                pd = self.session.get(ProjectDirectory, item['project_directory_id'])
+                if item['action'] == 'rename':
+                    pd.update(directory_name=item['path'])
+                pd.reopen()
+            counts[item['action']] += 1
+        return counts
 
     def _known_usernames(self, entries) -> set:
         """Lowercased usernames of normal rows that exist in SAM (one query)."""

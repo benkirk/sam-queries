@@ -36,16 +36,17 @@ from sam.summaries.disk_summaries import (
     DiskChargeSummaryStatus,
 )
 from factories.core import make_user
-from factories.projects import make_account, make_project
+from factories.projects import make_account, make_allocation, make_project
 from factories.resources import make_resource, make_resource_type
 from factories._seq import next_seq
 
 
 
 
-def _build_campaign_store_graph(session, monkeypatch):
+def _build_campaign_store_graph(session, monkeypatch, *, funded=True):
     """Build a project on a uniquely-named DISK resource and register
-    GladeCsvReader / GpfsQuotaReader for it so the CLI dispatch works."""
+    GladeCsvReader / GpfsQuotaReader for it so the CLI dispatch works.
+    ``funded`` gives the account an active allocation."""
     lead = make_user(session)
     project = make_project(session, lead=lead)
     rt = session.query(ResourceType).filter_by(resource_type='DISK').first()
@@ -53,7 +54,9 @@ def _build_campaign_store_graph(session, monkeypatch):
         rt = make_resource_type(session, resource_type='DISK')
     resource_name = f"Campaign_Store_{next_seq('cs')}"
     resource = make_resource(session, resource_type=rt, resource_name=resource_name)
-    make_account(session, project=project, resource=resource)
+    account = make_account(session, project=project, resource=resource)
+    if funded:
+        make_allocation(session, account=account)
     # Patch the reader registries so the CLI finds a reader for this name.
     monkeypatch.setitem(
         disk_usage_mod._READERS, resource_name, disk_usage_mod.GladeCsvReader,
@@ -794,7 +797,7 @@ class TestDiskImportTriage:
         assert data['dry_run'] is True and data['written'] is False
         assert set(data['categories']) == {
             'no_project', 'no_account', 'unknown_user',
-            'known_unowned', 'unlinked_directory',
+            'known_unowned', 'unlinked_directory', 'expired_directory',
         }
         assert data['counts']['system_account_rows'] == 1
         assert data['counts']['unexpected'] == 0
@@ -849,3 +852,140 @@ class TestDiskImportTriage:
         assert result.exit_code == 2, result.output
         [item] = json.loads(result.stdout)['categories']['no_project']
         assert item['path'] == f"/gpfs/csfs1/{label.lower()}/c"
+
+
+class TestReconcileDirectories:
+    """Directory actions in the report, and --reconcile-directories applying them."""
+
+    GIB = 1024 * 1024  # KiB
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    @pytest.fixture
+    def mock_db_session(self, session):
+        with patch('sam.session.create_sam_engine') as mock_engine, \
+             patch('cli.core.context.Session') as mock_session_cls:
+            mock_engine.return_value = (MagicMock(), None)
+            mock_session_cls.return_value = session
+            yield session
+
+    def _dir(self, session, project, path, *, ended=False):
+        from datetime import datetime
+        from sam.projects.projects import ProjectDirectory
+        pd = ProjectDirectory.create(session, project_id=project.project_id,
+                                     directory_name=path,
+                                     start_date=datetime.now() - timedelta(days=30))
+        if ended:
+            pd.end_date = datetime.now() - timedelta(days=2)
+            session.flush()
+        return pd
+
+    def _dry_item(self, runner, resource, f):
+        result = runner.invoke(cli, [
+            '--format', 'json', 'accounting', '--disk', '--resource',
+            resource.resource_name, '--user-usage', str(f), '--dry-run'])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.stdout)
+        items = data['categories']['unlinked_directory']
+        return items[0] if items else None, data
+
+    def _apply(self, runner, resource, f):
+        result = runner.invoke(cli, [
+            '--format', 'json', 'accounting', '--disk', '--resource',
+            resource.resource_name, '--user-usage', str(f), '--reconcile-directories'])
+        assert result.exit_code == 0, result.output
+        return json.loads(result.stdout)
+
+    def _rows(self, session, path):
+        from sam.projects.projects import ProjectDirectory
+        return session.query(ProjectDirectory).filter(
+            ProjectDirectory.directory_name == path).all()
+
+    def test_ended_row_is_reopened(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        path = f"/gpfs/csfs1/{project.projcode.lower()}"
+        pd = self._dir(session, project, path, ended=True)
+        f = _write_acct(tmp_path, DISK_CHARGING_TIB_EPOCH, project.projcode,
+                        lead.username, kib=self.GIB)
+        item, _ = self._dry_item(runner, resource, f)
+        assert item['action'] == 'reopen'
+        assert item['project_directory_id'] == pd.project_directory_id
+        assert pd.end_date is not None                   # the dry run wrote nothing
+
+        data = self._apply(runner, resource, f)
+        assert data['directories'] == {'reopen': 1, 'rename': 0, 'create': 0}
+        session.refresh(pd)
+        assert pd.end_date is None
+        assert len(self._rows(session, path)) == 1       # no duplicate row
+        assert self._dry_item(runner, resource, f)[0] is None   # now linked
+
+    def test_case_variant_row_is_renamed(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        path = f"/gpfs/csfs1/{project.projcode.lower()}"
+        pd = self._dir(session, project, path.upper())
+        f = _write_acct(tmp_path, DISK_CHARGING_TIB_EPOCH, project.projcode,
+                        lead.username, kib=self.GIB)
+        assert self._dry_item(runner, resource, f)[0]['action'] == 'rename'
+        self._apply(runner, resource, f)
+        session.refresh(pd)
+        assert pd.directory_name == path and pd.end_date is None
+
+    def test_missing_row_is_created(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        path = f"/gpfs/csfs1/{project.projcode.lower()}"
+        f = _write_acct(tmp_path, DISK_CHARGING_TIB_EPOCH, project.projcode,
+                        lead.username, kib=self.GIB)
+        assert self._dry_item(runner, resource, f)[0]['action'] == 'create'
+        assert self._rows(session, path) == []
+        data = self._apply(runner, resource, f)
+        assert data['directories']['create'] == 1
+        [pd] = self._rows(session, path)
+        assert pd.project_id == project.project_id and pd.end_date is None
+
+    def test_path_owned_by_another_project_is_left_for_review(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        other = make_project(session, lead=lead)
+        path = f"/gpfs/csfs1/{project.projcode.lower()}"
+        self._dir(session, other, path, ended=True)
+        f = _write_acct(tmp_path, DISK_CHARGING_TIB_EPOCH, project.projcode,
+                        lead.username, kib=self.GIB)
+        assert self._dry_item(runner, resource, f)[0]['action'] == 'review'
+        data = self._apply(runner, resource, f)
+        assert data['directories'] == {'reopen': 0, 'rename': 0, 'create': 0}
+        [pd] = self._rows(session, path)
+        assert pd.project_id == other.project_id and pd.end_date is not None
+
+    def test_expired_allocation_is_its_own_bucket_and_untouched(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        lead, project, resource = _build_campaign_store_graph(
+            session, monkeypatch, funded=False)
+        path = f"/gpfs/csfs1/{project.projcode.lower()}"
+        pd = self._dir(session, project, path, ended=True)
+        f = _write_acct(tmp_path, DISK_CHARGING_TIB_EPOCH, project.projcode,
+                        lead.username, kib=self.GIB)
+        item, data = self._dry_item(runner, resource, f)
+        assert item is None
+        [expired] = data['categories']['expired_directory']
+        assert expired['path'] == path
+        applied = self._apply(runner, resource, f)
+        assert applied['directories'] == {'reopen': 0, 'rename': 0, 'create': 0}
+        assert applied['created'] == 1                   # still charged
+        session.refresh(pd)
+        assert pd.end_date is not None
+
+    def test_flag_is_rejected_outside_disk(self, runner, mock_db_session):
+        result = runner.invoke(cli, [
+            'accounting', '--comp', '--machine', 'derecho', '--reconcile-directories'])
+        assert result.exit_code == 1
+        assert '--reconcile-directories only applies to --disk' in result.output

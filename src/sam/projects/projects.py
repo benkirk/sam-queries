@@ -1669,6 +1669,12 @@ class ProjectDirectory(Base, TimestampMixin, DateRangeMixin, SessionMixin):
         self.session.flush()
         return self
 
+    def reopen(self) -> 'ProjectDirectory':
+        """Make this association open-ended again (end_date = NULL). Does NOT commit."""
+        self.end_date = None
+        self.session.flush()
+        return self
+
     def deactivate(self) -> 'ProjectDirectory':
         """End this directory association by setting end_date to now.
 

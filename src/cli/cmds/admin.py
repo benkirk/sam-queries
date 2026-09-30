@@ -350,6 +350,9 @@ def contracts(ctx: Context, validate, audit_all, check_sources, limit,
               help='[disk] Minimum absolute gap in bytes before emitting a synthetic row (default 1 GiB)')
 @click.option('--gap-tolerance-frac', 'gap_tolerance_frac', type=float, default=0.01, show_default=True,
               help='[disk] Minimum gap as a fraction of FILESET usage (default 1%)')
+@click.option('--reconcile-directories', 'reconcile_directories', is_flag=True,
+              help='[disk] Reopen, rename or create the project directory links the report '
+                   'lists as unlinked (active allocations only; --dry-run previews)')
 # --- Comp/Disk shared epoch override ---------------------------------------
 @click.option('--epoch', 'epoch_str', type=str, default=None, metavar='YYYY-MM-DD',
               help='[comp/disk] Override the hard-coded charging epoch. '
@@ -373,7 +376,7 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
                machine,
                user_usage_path, quotas_path, reporting_interval,
                unidentified_label, reconcile_quota_gap,
-               gap_tolerance_bytes, gap_tolerance_frac,
+               gap_tolerance_bytes, gap_tolerance_frac, reconcile_directories,
                epoch_str,
                start, end, date_str, today_flag, last,
                dry_run, update_accounting_system, deactivate_orphaned,
@@ -395,6 +398,7 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
       2. Post disk charge summaries  (--disk)
          Required: --resource <name> and --user-usage <path>
          Optional: --quotas <path> --reconcile-quota-gap
+                   --reconcile-directories (fix the directory links the report lists)
          The snapshot date is read from the user-usage file (rows or
          filename). --date YYYY-MM-DD is accepted as an optional
          safety check: if supplied, the file's snapshot date MUST
@@ -454,6 +458,13 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
         ctx.console.print(
             "Error: --force requires --deactivate-orphaned (overrides the "
             "live-path safety gate when deactivating orphans)",
+            style="bold red",
+        )
+        sys.exit(1)
+
+    if reconcile_directories and not disk:
+        ctx.console.print(
+            "Error: --reconcile-directories only applies to --disk",
             style="bold red",
         )
         sys.exit(1)
@@ -575,6 +586,7 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
             reconcile_quota_gap=reconcile_quota_gap,
             gap_tolerance_bytes=gap_tolerance_bytes,
             gap_tolerance_frac=gap_tolerance_frac,
+            reconcile_directories=reconcile_directories,
             start_date=expected_date,
             end_date=expected_date,
             dry_run=dry_run,
