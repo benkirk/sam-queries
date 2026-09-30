@@ -1,7 +1,8 @@
 #!/bin/bash
 # Host half of spool mode: run a collector manifest locally and capture each command.
 #   collector.py --print-manifest | run-manifest.sh SPOOL_DIR
-# stdin: key<TAB>command lines. Writes <key>.out/.err/.rc plus scrape.meta, then
+# stdin: key<TAB>command lines. Writes <key>.out/.err/.rc/.sec (wall seconds) plus
+# scrape.meta (slowest=<key>:<N>s names what set the scrape's duration), then
 # repoints SPOOL_DIR (a symlink) at the finished capture, so a reader never sees a
 # partial spool. Needs bash + coreutils only: the host never needs our Python env.
 # CMD_TIMEOUT (default 60s) bounds each command; all commands run concurrently.
@@ -23,18 +24,27 @@ while IFS=$'\t' read -r key cmd; do
         rm -rf "${capture}"; exit 2
     fi
     (
+        t0=${SECONDS}
         timeout "${CMD_TIMEOUT:-60}" bash -c "${cmd}" \
             > "${capture}/${key}.out" 2> "${capture}/${key}.err" < /dev/null
         echo $? > "${capture}/${key}.rc"
+        echo $((SECONDS - t0)) > "${capture}/${key}.sec"
     ) &
     n=$((n + 1))
 done
 wait
 (( n > 0 )) || { echo "run-manifest: empty manifest" >&2; rm -rf "${capture}"; exit 2; }
 
+slowest="" slowest_sec=-1
+for f in "${capture}"/*.sec; do
+    read -r sec < "${f}" || sec=0
+    (( sec > slowest_sec )) && { slowest_sec=${sec}; slowest=$(basename "${f}" .sec); }
+done
+
 # qstat recorded because only the site wrapper on the login PATH lists every job.
-printf 'host=%s\nstarted=%s\nfinished=%s\ncommands=%s\nqstat=%s\n' \
-    "$(hostname -s)" "${started}" "$(date +%s)" "${n}" "$(command -v qstat)" > "${capture}/scrape.meta"
+printf 'host=%s\nstarted=%s\nfinished=%s\ncommands=%s\nslowest=%s\nqstat=%s\n' \
+    "$(hostname -s)" "${started}" "$(date +%s)" "${n}" "${slowest}:${slowest_sec}s" \
+    "$(command -v qstat)" > "${capture}/scrape.meta"
 
 # A plain directory left at SPOOL_DIR (first run by hand) is replaced by the symlink.
 [[ -d "${spool}" && ! -L "${spool}" ]] && rm -rf "${spool}"

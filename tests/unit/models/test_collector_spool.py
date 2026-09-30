@@ -230,6 +230,14 @@ class TestRunManifest:
         # and the collector side accepts it
         assert commands.SpoolSource(str(spool)).read("ok") == (0, "hello\n", "")
 
+    def test_times_each_command_and_names_the_slowest(self, tmp_path):
+        spool = tmp_path / "derecho"
+        self._run(spool, "fast\ttrue\nslow\tsleep 2\n")
+        assert (spool / "fast.sec").read_text().strip() == "0"
+        assert int((spool / "slow.sec").read_text()) >= 2
+        meta = commands.SpoolSource(str(spool))._meta()
+        assert meta["slowest"].startswith("slow:") and meta["slowest"].endswith("s")
+
     def test_rerun_keeps_one_previous_capture(self, tmp_path):
         spool = tmp_path / "casper"
         self._run(spool, "a\techo 1\n")

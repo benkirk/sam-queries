@@ -96,14 +96,18 @@ host_extract() {
 
 # Host half of the collectors job: the image prints each manifest, run-manifest.sh runs it.
 prejob_collectors() {
-    local image="$1" s manifest run_manifest
+    local image="$1" s manifest run_manifest spool t0 t1 slowest
     run_manifest=$(host_extract "${image}" /code/collectors/bin/run-manifest.sh) \
         || { echo "could not extract run-manifest.sh from ${image}" >&2; return 2; }
     for s in $(nhd_collectors); do
+        spool="${NHD_STATE}/spool/$(nhd_host)/${s}" t0=${SECONDS}
         manifest=$(NHD_PWD="${NHD_STATE}" nhd_exec "${image}" \
             python3 "/code/collectors/${s}/collector.py" --print-manifest) \
             || { echo "${s}: --print-manifest failed" >&2; return 2; }
-        "${run_manifest}" "${NHD_STATE}/spool/$(nhd_host)/${s}" <<< "${manifest}" || return 2
+        t1=${SECONDS}
+        "${run_manifest}" "${spool}" <<< "${manifest}" || return 2
+        slowest=$(sed -n 's/^slowest=//p' "${spool}/scrape.meta" 2>/dev/null)
+        log "prejob ${s}: manifest $((t1 - t0))s, scrape $((SECONDS - t1))s (slowest ${slowest/:/ })"
     done
 }
 
@@ -159,14 +163,15 @@ cmd_job() {
     {
         echo "#----------------------------------------------------------------------------"
         log "run ${job} ${args[*]:1} on ${host} image=$(readlink "${NHD_LANE_DIR}/current")"
-        local t0=${SECONDS} rc=0
+        local t0=${SECONDS} rc=0 split=""
         # A job with a host half (prejob_<job>) runs it first, outside the container.
         if declare -F "prejob_${job//-/_}" >/dev/null; then
             "prejob_${job//-/_}" "${NHD_LANE_DIR}/current" || rc=$?
+            split="; prejob $((SECONDS - t0))s"
         fi
         (( rc == 0 )) && { NHD_JOB="${job}" NHD_PWD="${NHD_STATE}" nhd_exec "${NHD_LANE_DIR}/current" \
             bash "${NHD_IMAGE_SRC}/jobs/${job}.sh" "${args[@]:1}" || rc=$?; }
-        log "run ${job} exit=${rc} ($((SECONDS - t0))s)"
+        log "run ${job} exit=${rc} ($((SECONDS - t0))s${split})"
         echo "$(stamp) exit=${rc} $((SECONDS - t0))s" > "${NHD_STATE}/last-run.${job}.${host}"
         exit ${rc}
     } 2>&1 | tee -a "${logfile}"
