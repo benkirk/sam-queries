@@ -10,8 +10,8 @@ category; with `--format json`, that report is the `disk_import` envelope.
 |---|---|---|---|
 | system account | the reader dropped an OS service account (`SYSTEM_USERNAMES`, `systemd-*`) | no | 0 |
 | `known_unowned` | the path is not linked and the label is in `KNOWN_UNOWNED_PROJCODES` (ROOT, RISC, NGIC) | no | 0 |
-| `unlinked_directory` | resolved through the projcode fallback; the path is not a `ProjectDirectory` | **yes** | 0 |
-| `no_project` | the path is not linked and the label matches no projcode | no | 2 |
+| `unlinked_directory` | the path is not a `ProjectDirectory`; resolved through the label as a projcode, or through the one project this file's linked rows give the same label | **yes** | 0 |
+| `no_project` | the path is not linked, the label matches no projcode, and no single linked sibling shares the label | no | 2 |
 | `no_account` | the project has no account on the resource | no | 2 |
 | `unknown_user` | a real username that is not in SAM | no | 2 |
 
@@ -28,6 +28,11 @@ directories).
 The unresolved rows (every category except system accounts) still get a
 tier-1 `disk_activity` row, with
 `error_comment = unresolved(<category>): projcode=… path=…`.
+
+The sibling rule is what makes Quasar's `/quasar/rda_dr` (label `decs`) charge to
+the project `/quasar/rda` is linked to. Tier 3 already charged it that way by
+grouping on the label; the report now agrees. A label that is linked to two
+projects is not borrowed, so `no_project` is reported.
 
 `KNOWN_UNOWNED_PROJCODES` is a code constant in `src/cli/accounting/commands.py`.
 It moves to config only if HSG starts adding labels often.

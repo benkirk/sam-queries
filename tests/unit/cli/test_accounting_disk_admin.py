@@ -799,3 +799,53 @@ class TestDiskImportTriage:
         assert data['counts']['system_account_rows'] == 1
         assert data['counts']['unexpected'] == 0
         assert data['system_accounts'] == {'systemd-coredump': 1}
+
+    def _link(self, session, project, path):
+        from datetime import datetime
+        from sam.projects.projects import ProjectDirectory
+        ProjectDirectory.create(session, project_id=project.project_id,
+                                directory_name=path,
+                                start_date=datetime.now() - timedelta(days=1))
+
+    def test_unlinked_path_borrows_the_project_of_a_linked_sibling_label(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        """Quasar shape: /quasar/rda is linked, /quasar/rda_dr is not, both labeled 'decs'."""
+        _lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        label = f"ZZSB{next_seq('sb')}".upper()
+        linked = f"/quasar/{label.lower()}"
+        self._link(session, project, linked)
+        snap = DISK_CHARGING_TIB_EPOCH
+        f = _write_acct_rows(tmp_path, snap, [
+            (linked, label, 'total', self.GIB),
+            (f"{linked}_dr", label, 'total', self.GIB),
+        ])
+        result = self._run(runner, resource, f, '--skip-errors', json_out=True)
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.stdout)
+        assert data['counts']['no_project'] == 0
+        [item] = data['categories']['unlinked_directory']
+        assert item['path'] == f"{linked}_dr"
+        assert item['project_id'] == project.project_id
+        [row] = self._summary_rows(session, resource, snap)
+        assert row.bytes == 2 * 1024 ** 3
+
+    def test_label_linked_to_two_projects_is_not_borrowed(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        other = make_project(session, lead=lead)
+        make_account(session, project=other, resource=resource)
+        label = f"ZZAM{next_seq('am')}".upper()
+        self._link(session, project, f"/gpfs/csfs1/{label.lower()}/a")
+        self._link(session, other, f"/gpfs/csfs1/{label.lower()}/b")
+        snap = DISK_CHARGING_TIB_EPOCH
+        f = _write_acct_rows(tmp_path, snap, [
+            (f"/gpfs/csfs1/{label.lower()}/a", label, lead.username, self.GIB),
+            (f"/gpfs/csfs1/{label.lower()}/b", label, lead.username, self.GIB),
+            (f"/gpfs/csfs1/{label.lower()}/c", label, lead.username, self.GIB),
+        ])
+        result = self._run(runner, resource, f, '--dry-run', json_out=True)
+        assert result.exit_code == 2, result.output
+        [item] = json.loads(result.stdout)['categories']['no_project']
+        assert item['path'] == f"/gpfs/csfs1/{label.lower()}/c"
