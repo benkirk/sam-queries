@@ -135,7 +135,7 @@ deck must follow, all learned on the `sam_and_pbs` deck (§12):
 
 | Tool | Home | Why |
 |---|---|---|
-| Mermaid, Graphviz `{dot}` | the framework (Quarto bundles both, so nothing to install) | generic deck craft; conventions in the framework's CLAUDE.md (#11) |
+| Mermaid, Graphviz `{dot}` | the framework (Quarto bundles both, so nothing to install) | generic deck craft; conventions in the framework's CLAUDE.md (#12) |
 | ER generator (ORM → Graphviz) | sam-queries `scripts/er_diagram.py` (#680) | it imports SAM's models; replaces `eralchemy2` with no dependency |
 | Charts, `refresh_data.sh` | the framework's `docs/samuel/`, run with the sam-queries Python | refresh time only; it already needs the sam-queries checkout |
 | `quarto`, `eralchemy2`, `pydeps` | removed from sam-queries' `conda-env.yaml` (#680) | the decks left this repo |
@@ -493,7 +493,7 @@ from it onto slides.
     repo.
   - [ ] Revisit the format decision (§13). The revealjs output has no NCAR theme yet.
 - [ ] **Phase 2 — Part 2 Databases:** resolve the §5 facts first.
-  - Tooling is ready: `er_diagram.py` (#680), and Graphviz for the databases map (framework #11).
+  - Tooling: `er_diagram.py` (#680), and Graphviz for the databases map (Quarto bundles it; conventions in framework #12).
   - Settle the table count with a stated method: a refresh query on the obfuscated test DB
     (3307), counting tables vs views vs ORM-mapped (115 tables + 7 views in the ORM metadata).
 - [ ] **Phase 3 — Part 3 Pieces:** split if it runs long.
@@ -769,19 +769,19 @@ branch and PR against `staging`. Tick an item once its fix merges, and note the 
   it shows Slurm commands.
 - [ ] **`docs/STAGING.md`** describes the retired AWS ECS/RDS staging; mark it retired or
   fold it into history.
-- [ ] **Framework: `Make.common` doesn't track `images/*`.** #10 made `_*.qmd` and `data/*`
+- [x] **Framework: `Make.common` doesn't track `images/*`.** #10 made `_*.qmd` and `data/*`
   prerequisites, but a replaced image still skipped the render until a `touch`. Fixed in
-  **framework PR #11**, which also adds this session's gotchas to the framework's CLAUDE.md.
-- [ ] **Framework: beamer divider subtitles.** Beamer rendered the paragraph after a `#`
+  **framework PR #11** (merged 2026-09-30), which also adds this session's gotchas to the framework's CLAUDE.md.
+- [x] **Framework: beamer divider subtitles.** Beamer rendered the paragraph after a `#`
   divider as its own slide. Fixed in two PRs:
   - **benkirk/NCAR_beamer_template#2** adds `\sectionsubtitle`, and its Lua filter declares
     each subtitle in the preamble by section number (a raw block before the heading opened an
     empty frame);
   - **framework #11** re-vendors the theme and demos it in `sample`.
-  Merge #2 first. Once both land, merge `main` into `samuel` and remove the
-  `unless-format="beamer"` fences from the four SAMuel bodies.
+  Both merged 2026-09-30. `main` is merged into `samuel` and the fences are gone; a re-vendor
+  from the theme's `main` is a no-op.
 - [ ] **Framework: an NCAR revealjs theme** (§13): an SCSS theme with the brand colors,
   Poppins and the logo lockup. The HTML builds are unbranded until it exists.
-- [x] **Framework: the `sample` mermaid slide split into an orphan** (its explanation followed
-  the diagram). Fixed in framework #11, which moved the explanation into speaker notes and added a
-  Graphviz slide.
+- [ ] **Framework: the `sample` mermaid slide split into an orphan** (its explanation followed
+  the diagram), and the Graphviz conventions. That commit landed after #11 had merged, so it
+  moved to **framework #12**. Merge `main` into `samuel` once #12 lands.
