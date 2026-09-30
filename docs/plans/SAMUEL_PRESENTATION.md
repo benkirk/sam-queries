@@ -505,7 +505,7 @@ from it onto slides.
     pptx (LibreOffice), beamer and revealjs.
   - [x] Screenshots link to the live page (`b653b71`): a linked image in every format plus a
     footer line in HTML/PDF, via the deck filter `screenshots.lua`.
-  - [ ] Ben reviews, then push `samuel` (it adds a screenshot to the public repo).
+  - [ ] Ben reviews, then push `samuel-next` as `samuel` (it adds a screenshot to the public repo).
   - [ ] Companion page (the interactive database map, §13): decide now the slides exist.
 - [ ] **Phase 3 — Part 3 Pieces:** split if it runs long.
 - [ ] **Phase 4 — Appendix + full-deck polish:** a consistent diagram style, a fact-refresh pass on
@@ -815,12 +815,14 @@ branch and PR against `staging`. Tick an item once its fix merges, and note the 
 - [x] **Framework: the `sample` mermaid slide split into an orphan** (its explanation followed
   the diagram), and the Graphviz conventions. That commit landed after #11 had merged, so it
   moved to **framework #12**, merged 2026-09-30; `samuel` rebased onto it.
-- [x] **Framework retrospective, 2026-09-30** (the deck's workarounds moved upstream; in review):
+- [x] **Framework retrospective, 2026-09-30** (the deck's workarounds moved upstream; all three merged
+  2026-09-30):
   - **Theme, benkirk/NCAR_beamer_template#4 (2.2.0):** `{height="72%"}` fits HTML; Graphviz
     fills the column; mermaid labels no longer clip. Root cause of the last one: quarto renders
     each diagram inside its slide, which reveal has scaled to the window, so mermaid measured
     labels at 0.8 (at 1280 px). Not fonts. Mermaid and Graphviz are now first-class samples in
-    both the LaTeX and Quarto examples.
+    both the LaTeX and Quarto examples. Review added: a `%` height scales with the percentage
+    (72% is the full cap), keeping the image's own style.
   - **Framework #14:** vendors #4's branch (re-vendor from the theme's `main` before merging);
     `notes-last.lua`. A probe deck showed the only notes trap is notes *before* columns;
     notes after images and tables never split, and tables or code inside a column are fine
@@ -829,9 +831,10 @@ branch and PR against `staging`. Tick an item once its fix merges, and note the 
   - **Framework #15 (stacked on #14):** linked images. `[![](x.png)](url)` is the whole
     syntax: an HTML footer and PDF foot line from `linked-images.lua`, a pptx caption box
     (the link) from `link_captions.py`. Ben's pptx cue took about 50 lines of python-pptx.
-  - **SAMuel:** local branch `samuel-next` (= #15 + the deck commits + a commit dropping
-    `screenshots.lua` and the `shot-link` divs) builds 19/18/41 slides with 6 pptx captions and
-    no HTML overflow. Once #14 and #15 merge, rebase it onto `main` and force-push as `samuel`.
+  - **SAMuel:** local branch `samuel-next` (framework `main` + the eight deck commits, the last
+    dropping `screenshots.lua` and the `shot-link` divs), rebased after the merges. It builds
+    19/18/41 slides with 6 pptx captions, no HTML overflow, and exact mermaid labels. It replaces
+    `samuel` once Ben has reviewed Part 2.
 - [ ] **CLAUDE.md: the charge-summary description is stale.** It names four tables and routes
   HPC/DAV to comp + dav; `calculator.py` routes by `activity_type` over five (hpc included).
 - [ ] **`src/webapp/disk_scans/session.py:71` docstring** says Destor maps to `desc1`; config
