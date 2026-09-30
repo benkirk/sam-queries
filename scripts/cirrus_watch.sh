@@ -344,7 +344,7 @@ elif [[ -n "$TR" ]]; then
 else
     DBLOAD="dbload: n/a"
 fi
-PODCPU=$("${KCTL_NS[@]}" top pods -l "app=${WEBAPP_NAME}" --no-headers 2>/dev/null \
+PODCPU=$("${KCTL_NS[@]}" --request-timeout=10s top pods -l "app=${WEBAPP_NAME}" --no-headers 2>/dev/null \
          | awk '{c=$2; sub(/m$/,"",c); s+=c+0; if(c+0>mx)mx=c+0}
                 END{ if(NR) printf "podcpu: sum=%dm max=%dm (%d pods)", s, mx, NR; else print "podcpu: n/a" }' || true)
 [[ -z "$PODCPU" ]] && PODCPU="podcpu: n/a"
@@ -410,16 +410,21 @@ fi
 # so "is it alive?" is answerable only from the CronJob object + its Jobs. We
 # REPORT problems here; remediation (kubectl create job --from=cronjob/...) is a
 # human decision (Ben owns deploy mechanics), never automated by this watch.
+# A failed or timed-out read is "unreadable", never "not found" or last=never.
+CJ_RC=0
+[[ "$K8S_OK" -eq 0 ]] || CJ_JSON=$("${KCTL_NS[@]}" --request-timeout=10s get cronjob "$TASKS_NAME" -o json 2>&1) || CJ_RC=$?
 if [[ "$K8S_OK" -eq 0 ]]; then
     :
-elif ! "${KCTL_NS[@]}" get cronjob "$TASKS_NAME" >/dev/null 2>&1; then
+elif [[ "$CJ_RC" -ne 0 ]] && grep -q NotFound <<<"$CJ_JSON"; then
     echo "tasks: CronJob '$TASKS_NAME' not found (helm tasks.enabled=false?)"
+elif [[ "$CJ_RC" -ne 0 ]] || ! CJ_SUSPEND=$(jq -er '.spec.suspend // false | tostring' <<<"$CJ_JSON" 2>/dev/null); then
+    warn "tasks: CronJob '$TASKS_NAME' unreadable (kubectl timeout/error) — dispatcher state unknown"
 else
-    CJ_JSON=$("${KCTL_NS[@]}" get cronjob "$TASKS_NAME" -o json 2>/dev/null || echo '{}')
-    CJ_SUSPEND=$(echo "$CJ_JSON" | jq -r '.spec.suspend // false')
-    CJ_LAST=$(echo    "$CJ_JSON" | jq -r '.status.lastScheduleTime // ""')
-    JOBS_JSON=$("${KCTL_NS[@]}" get jobs -l "$TASKS_SELECTOR" -o json 2>/dev/null || echo '{"items":[]}')
-    N_FAILED=$(echo "$JOBS_JSON" | jq '[.items[] | select((.status.failed // 0) > 0)] | length' 2>/dev/null || echo 0)
+    CJ_LAST=$(jq -r '.status.lastScheduleTime // ""' <<<"$CJ_JSON")
+    N_FAILED='?'
+    if JOBS_JSON=$("${KCTL_NS[@]}" --request-timeout=10s get jobs -l "$TASKS_SELECTOR" -o json 2>/dev/null); then
+        N_FAILED=$(jq '[.items[] | select((.status.failed // 0) > 0)] | length' <<<"$JOBS_JSON" 2>/dev/null || echo '?')
+    fi
     AGE_S=""; [[ -n "$CJ_LAST" ]] && AGE_S=$(seconds_since "$CJ_LAST" 2>/dev/null || echo "")
     if [[ -n "$AGE_S" ]]; then LAST_STR="$((AGE_S/60))m ago"; else LAST_STR="never"; fi
     echo "tasks: suspend=$CJ_SUSPEND  last=$LAST_STR  failedJobs=$N_FAILED"
@@ -428,7 +433,7 @@ else
     elif [[ -n "$AGE_S" && "$AGE_S" -gt "$TASKS_MAX_SILENCE_S" ]]; then
         fail "dispatcher silent $((AGE_S/60))m (>$((TASKS_MAX_SILENCE_S/60))m) — it has stopped waking"
     fi
-    [[ "${N_FAILED:-0}" -gt 0 ]] && warn "$N_FAILED retained $TASKS_NAME Job(s) failed — inspect: kubectl -n $NAMESPACE logs job/<name>"
+    [[ "$N_FAILED" != '?' && "$N_FAILED" -gt 0 ]] && warn "$N_FAILED retained $TASKS_NAME Job(s) failed — inspect: kubectl -n $NAMESPACE logs job/<name>"
     if [[ "$CJ_SUSPEND" == "true" || ( -n "$AGE_S" && "$AGE_S" -gt "$TASKS_MAX_SILENCE_S" ) ]]; then
         note "manual remedy (human decision, NOT run here): kubectl -n $NAMESPACE create job --from=cronjob/$TASKS_NAME ${TASKS_NAME}-manual"
     fi
