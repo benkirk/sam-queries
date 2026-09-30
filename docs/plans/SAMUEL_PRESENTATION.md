@@ -1,6 +1,6 @@
 # SAMuel presentation series — a multi-part Quarto deck
 
-**Status:** Phase 0 (scaffold) done, 2026-09-29. Next: Phase 1, Part 1 Overview. This doc is the handoff: each session
+**Status:** Phase 1 (Part 1 Overview) first draft built, 2026-09-29; awaiting Ben's review (§8). This doc is the handoff: each session
 picks up the next unchecked phase in §8, ticks it, and appends to the session log (§10).
 **Goal:** replace the stale `docs/presentations/overview/` with a comprehensive, multi-part
 SAMuel presentation, authored in the standalone `~/Documents/quarto-docs-framework` repo and
@@ -156,9 +156,10 @@ from it onto slides.
 - **The surfaces:**
   - web dashboards (user / admin / allocations / status / gallery);
   - REST API:
-    - 15 modules in `src/webapp/api/v1/`;
+    - 14 modules in `src/webapp/api/v1/` (15 `.py` files, one of them `__init__.py`);
     - 5 legacy-compat blueprints frozen byte-for-byte;
-    - the XRAS server side (7 endpoints);
+    - the XRAS server side under `/api/xras/v1`: 9 routes plus 2 catch-alls that log anything
+      unmapped (legacy's own mapped surface is 8). Say "XRAS's handoff endpoints", not a count;
   - the `sam-search` / `sam-admin` / `sam-status` CLIs;
   - 8 scheduled tasks, run from one CronJob every 15 min;
   - notifications;
@@ -373,6 +374,14 @@ from it onto slides.
 
 ## 5. Facts to resolve before they go on a slide
 
+- **The name:** the app, and Ben's March deck, say "Systems Accounting Manager". `CLAUDE.md`'s
+  "System for Allocation Management" is the outlier; the slides use the app's name.
+- **The LDAP identity mirror** (`sam-ldap-syncd`) still talks to **legacy** SAM on the shared
+  database (`docs/plans/LDAP_SYNC_API.md`). The Part 1 diagram shows identities flowing into
+  the SAM database, and the notes say legacy still owns that edge.
+- **Legacy stack facts** (Spring/JSF, ~250K LOC, ~15 years) come only from Ben's March deck,
+  not from anything in this repo. `_variables.yml` cites the slide.
+
 - **SAM table count:** the sources disagree.
   - `CLAUDE.md` says "~100"; the old deck says 97; `docs/LOCAL_SETUP.md` says ~107 tables and
     7 views; there are 117 `__tablename__` entries under `src/sam`.
@@ -386,6 +395,27 @@ from it onto slides.
   2026-09-18). Refresh at render time.
 
 ## 6. Screenshots and tooling
+
+**How the Part 1 shots were taken (reuse this):**
+- The local dev DB (3306) is **real data** by Ben's choice, and `samuel-dev` reads it. Never
+  screenshot it for this deck.
+- Instead, run a throwaway instance on the obfuscated test DB:
+  - `docker compose run -d --rm --no-deps --name samuel-shots -p 5051:5050`, with the env
+    overrides `SAM_DB_SERVER=mysql-test` and `SAM_DB_PORT=3306`;
+  - its own Redis DBs, `CACHE_REDIS_URL=redis://cache:6379/5` and `RATELIMIT_STORAGE_URI=…/6`,
+    so it cannot share cache keys with `samuel-dev`;
+  - the three plugins off (`JOB_HISTORY_MACHINES=`, `FS_SCANS_ENABLED=0`,
+    `HPC_SCHEDULING_TOOLS_ENABLED=0`), because their Postgres data is real;
+  - `NOTIFY_ENABLED=0`.
+- Log in with Quick Login as `benkirk` (Ben's own identity is fine). Everyone else shows up as
+  `user_xxxxxxxx`, with synthetic names and titles.
+- Shots are 1440×810. Light mode needs `emulateMedia({colorScheme: 'light'})` plus the
+  `sam_theme=light` cookie. The dark mobile shot is 390×844 with `sam_layout=mobile`.
+- The status page's "no updates in 26 hours" banner comes from idle local collectors. It is
+  removed from the DOM before capture, and the slide notes say so.
+- ⚠️ Don't run `docker compose config` in a session transcript: it prints the `.env` secrets.
+- Found while shooting: on mobile, the Rolling Consumption Rate gauge collapses and its axis
+  labels overlap ("200%0%"). It's a webapp bug, not yet filed; the deck's shot crops it out.
 
 - **Playwright MCP** drives the local `samuel-dev` (:5050, `docker compose up samuel-dev --watch`)
   through stub Quick Login on obfuscated data. It captures desktop / mobile and light / dark
@@ -442,6 +472,13 @@ from it onto slides.
   - [x] Deleted the stale `presentation` branch, local + origin (was `8623665b`).
 - [ ] **Phase 1 — Part 1 Overview:** content, the architecture diagram and the screenshot tour.
   Then revisit the format decision.
+  - [x] First draft on framework `samuel` (commit `d7f2b77`, local): 18 slides, the
+    big-picture mermaid, a six-shot tour, and the Progression chart. Checked in pptx
+    (LibreOffice), beamer and revealjs.
+  - [ ] Ben reviews the tone, especially The Good / The Bad / The Murky, which are drafted
+    opinions. Then push `samuel`: it is the first push that carries screenshots to the public
+    repo.
+  - [ ] Revisit the format decision (§13). The revealjs output has no NCAR theme yet.
 - [ ] **Phase 2 — Part 2 Databases:** resolve the §5 facts first.
 - [ ] **Phase 3 — Part 3 Pieces:** split if it runs long.
 - [ ] **Phase 4 — Appendix + full-deck polish:** a consistent diagram style, a fact-refresh pass on
@@ -493,6 +530,24 @@ an update here (tick boxes, session log).
     LibreOffice and the beamer PDF read directly.
   - Found the beamer divider-subtitle gap (§13), and answered the `when-format` question.
   - This repo: `docs/presentations/` retired to a pointer.
+- **2026-09-29 (Phase 1 first draft):**
+  - Voice calibrated on the Vibe Coder deck: dated narrative milestones, a `†` footnote on
+    the metric, and a Good / Bad / Murky close.
+  - Facts gathered with sources, correcting §4 (14 API modules; XRAS route count) and §5 (the
+    name; the LDAP mirror; the legacy-fact source).
+  - The Progression chart:
+    - `docs/samuel/refresh_data.sh` counts every text line on `origin/main`, month by month,
+      reproducing the March talk's milestones exactly;
+    - today's figure is 444K lines (Python alone is 254K, past legacy's ~250K); the footnote
+      calls the comparison "a landmark, not a race".
+  - Screenshots came from the obfuscated test DB (§6).
+  - Format lessons, recorded in the qmd:
+    - a lead paragraph before a table demotes the pptx slide to Content with Caption, so put
+      the lead in the title;
+    - in beamer, full-width 16:9 screenshots need `{height="72%" fig-align="center"}`;
+    - an `LR` diagram with 5 outputs came out 1.4:1 and clipped its labels; `TB` with short
+      labels is 2.66:1 and clean;
+    - `{.smaller}` on the dense table slides keeps revealjs from overflowing.
   - Framework PR #10 opened; `samuel` pushed; the `presentation` branch deleted.
   - #10 merged; `main` merged into `samuel`.
   - **Next:** Phase 1 (Part 1 Overview) starts with the title slide
