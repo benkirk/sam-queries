@@ -598,6 +598,9 @@ an update here (tick boxes, session log).
   - Screenshots link to sam.hpc.ucar.edu (Ben's ask): pandoc turns `[![](x.png)](url)` into a
     clickable pptx picture (`a:hlinkClick`) with no slide split.
   - A first `make all` hung 29 min in headless Chrome on `samuel.pptx`; the rerun took 36 s.
+  - Retrospective (Ben's call): the deck's workarounds moved upstream as theme #4 and
+    framework #14/#15 (§14), with mermaid and Graphviz as first-class theme samples. Ben's pptx
+    link cue is `link_captions.py`. `samuel-next` proves the deck on top of them.
 
 ## 11. Voice, tone and the fun
 
@@ -812,22 +815,23 @@ branch and PR against `staging`. Tick an item once its fix merges, and note the 
 - [x] **Framework: the `sample` mermaid slide split into an orphan** (its explanation followed
   the diagram), and the Graphviz conventions. That commit landed after #11 had merged, so it
   moved to **framework #12**, merged 2026-09-30; `samuel` rebased onto it.
-- [ ] **Framework: revealjs images with a `%` height overflow.** The CLAUDE.md beamer recipe
-  `{height="72%"}` resolves against the whole slide in HTML (752 of 900 px, plus the title).
-  The theme caps mermaid (`max-height: calc(600px * var(--ncar-fit, 1))`) but not `img`; the
-  SAMuel deck works around it in `docs/samuel/screenshots.lua`. Fix in the theme repo.
-- [ ] **Framework: live diagrams in revealjs.** Mermaid labels drift right of center and clip
-  (Part 1's cylinder: "SAM databa"), plausibly measured before Poppins loads; Graphviz SVGs
-  draw at natural size instead of filling the slide.
-- [ ] **Framework: more pptx split traps** for its CLAUDE.md: a notes block *before* columns,
-  and a code block or table *inside* a column, each give a title-only slide plus an untitled
-  continuation.
-- [ ] **Framework: a deck-local Lua filter is not a make prerequisite** (like includes from
-  another deck dir): `touch` the wrappers after editing one.
-- [ ] **Framework (idea, Ben 2026-09-30): a visible cue on linked pptx pictures.** PowerPoint
-  shows only a hand cursor in slideshow mode. A pptx post-step could add a tiny muted,
-  hyperlinked URL text box under each picture that carries `a:hlinkClick` (after pandoc, so
-  it cannot split the slide). The HTML/PDF footer line already does this deck-side.
+- [x] **Framework retrospective, 2026-09-30** (the deck's workarounds moved upstream; in review):
+  - **Theme, benkirk/NCAR_beamer_template#4 (2.2.0):** `{height="72%"}` fits HTML; Graphviz
+    fills the column; mermaid labels no longer clip. Root cause of the last one: quarto renders
+    each diagram inside its slide, which reveal has scaled to the window, so mermaid measured
+    labels at 0.8 (at 1280 px). Not fonts. Mermaid and Graphviz are now first-class samples in
+    both the LaTeX and Quarto examples.
+  - **Framework #14:** vendors #4's branch (re-vendor from the theme's `main` before merging);
+    `notes-last.lua`. A probe deck showed the only notes trap is notes *before* columns;
+    notes after images and tables never split, and tables or code inside a column are fine
+    (the earlier entry here was wrong). Deck `*.lua` files are make prerequisites. CLAUDE.md
+    lessons: Chrome Headless Shell (the 29-minute hang), the QA walk, Poppins arrows.
+  - **Framework #15 (stacked on #14):** linked images. `[![](x.png)](url)` is the whole
+    syntax: an HTML footer and PDF foot line from `linked-images.lua`, a pptx caption box
+    (the link) from `link_captions.py`. Ben's pptx cue took about 50 lines of python-pptx.
+  - **SAMuel:** local branch `samuel-next` (= #15 + the deck commits + a commit dropping
+    `screenshots.lua` and the `shot-link` divs) builds 19/18/41 slides with 6 pptx captions and
+    no HTML overflow. Once #14 and #15 merge, rebase it onto `main` and force-push as `samuel`.
 - [ ] **CLAUDE.md: the charge-summary description is stale.** It names four tables and routes
   HPC/DAV to comp + dav; `calculator.py` routes by `activity_type` over five (hpc included).
 - [ ] **`src/webapp/disk_scans/session.py:71` docstring** says Destor maps to `desc1`; config
