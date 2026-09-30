@@ -139,3 +139,20 @@ def test_eight_and_six_column_rows_mix(tmp_path):
 def test_destor_registry_dispatch():
     r = get_disk_usage_reader("Destor", "/tmp/whatever")
     assert isinstance(r, GladeCsvReader)
+
+
+def test_skips_system_accounts_and_counts_them(tmp_path):
+    csv = (
+        '"2026-09-26","/gpfs/csfs1/cesm","cesm","sshd","1","32","7","0"\n'
+        '"2026-09-26","/gpfs/csfs1/cesm","cesm","telegraf","1","32","7","0"\n'
+        '"2026-09-26","/gpfs/csfs1/cesm","cesm","systemd-coredump","1","32","7","0"\n'
+        '"2026-09-26","/gpfs/csfs1/ncar","ncar","systemd-network","1","32","7","0"\n'
+        '"2026-09-26","/gpfs/csfs1/cesm","cesm","gdicker","1","32","7","0"\n'
+    )
+    f = _write(tmp_path, "acct.glade.2026-09-26", csv)
+    reader = GladeCsvReader(str(f))
+    entries = reader.read()
+    assert [e.username for e in entries] == ["gdicker"]
+    assert reader.skipped_system == {
+        'sshd': 1, 'telegraf': 1, 'systemd-coredump': 1, 'systemd-network': 1,
+    }

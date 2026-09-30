@@ -57,6 +57,8 @@ class DiskUsageReader(ABC):
 
     def __init__(self, path: str):
         self.path = path
+        # Rows dropped as OS service accounts, username -> row count.
+        self.skipped_system: dict[str, int] = {}
 
     @abstractmethod
     def read(self) -> list[DiskUsageEntry]:
