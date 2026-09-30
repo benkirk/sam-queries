@@ -164,7 +164,9 @@ _DISK_CATEGORY_TEXT = {
     'unknown_user': ("Not charged: user not in SAM", None),
     'known_unowned': ("Skipped: known unowned filesets", None),
     'unlinked_directory': ("Charged via the fileset label; directory not linked",
-                           "Admin -> project -> Directories -> add the path"),
+                           "--reconcile-directories applies reopen/rename/create; "
+                           "review rows need a person"),
+    'expired_directory': ("Charged via the fileset label; allocation expired", None),
 }
 
 
@@ -189,6 +191,7 @@ def display_disk_import_report(ctx: Context, data: dict) -> None:
     table.add_row("Skipped (system account)", str(counts['system_account_rows']))
     table.add_row("Skipped (known unowned)", str(counts['known_unowned']))
     table.add_row("Charged, directory not linked", str(counts['unlinked_directory']))
+    table.add_row("Charged, allocation expired", str(counts['expired_directory']))
     for cat in ('no_project', 'no_account', 'unknown_user'):
         n = counts[cat]
         table.add_row(f"Not charged ({cat.replace('_', ' ')})",
@@ -196,6 +199,16 @@ def display_disk_import_report(ctx: Context, data: dict) -> None:
     if data.get('errors'):
         table.add_row("Errors", f"[red]{data['errors']}[/red]")
     ctx.console.print(table)
+
+    actions: dict[str, int] = {}
+    for item in cats['unlinked_directory']:
+        actions[item['action']] = actions.get(item['action'], 0) + 1
+    if actions:
+        planned = ', '.join(f"{a} {n}" for a, n in sorted(actions.items()))
+        ctx.console.print(f"Directory actions: {planned}")
+    if 'directories' in data:
+        applied = ', '.join(f"{a} {n}" for a, n in data['directories'].items())
+        ctx.console.print(f"[green]Directories reconciled: {applied}[/green]")
 
     for cat, (heading, hint) in _DISK_CATEGORY_TEXT.items():
         items = cats[cat]
@@ -220,8 +233,9 @@ def display_disk_import_report(ctx: Context, data: dict) -> None:
                 continue
             sam = item['sam_projcode']
             sam_txt = f" -> {sam}" if sam and sam != item['projcode'] else ""
+            tag = f"\\[{item['action']}] " if item.get('action') else ""
             ctx.console.print(
-                f"  {escape(item['projcode'])}{sam_txt}  {escape(item['path'] or '-')}  "
+                f"  {tag}{escape(item['projcode'])}{sam_txt}  {escape(item['path'] or '-')}  "
                 f"rows={item['rows']}  {fmt.size(item['bytes'])}"
             )
 
