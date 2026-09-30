@@ -505,7 +505,7 @@ from it onto slides.
     pptx (LibreOffice), beamer and revealjs.
   - [x] Screenshots link to the live page (`b653b71`): a linked image in every format plus a
     footer line in HTML/PDF, via the deck filter `screenshots.lua`.
-  - [ ] Ben reviews, then push `samuel-next` as `samuel` (it adds a screenshot to the public repo).
+  - [x] Pushed as `samuel` (`6038638`) with the living draft PR **framework #16**; review happens there.
   - [ ] Companion page (the interactive database map, §13): decide now the slides exist.
 - [ ] **Phase 3 — Part 3 Pieces:** split if it runs long.
 - [ ] **Phase 4 — Appendix + full-deck polish:** a consistent diagram style, a fact-refresh pass on
@@ -833,8 +833,8 @@ branch and PR against `staging`. Tick an item once its fix merges, and note the 
     (the link) from `link_captions.py`. Ben's pptx cue took about 50 lines of python-pptx.
   - **SAMuel:** local branch `samuel-next` (framework `main` + the eight deck commits, the last
     dropping `screenshots.lua` and the `shot-link` divs), rebased after the merges. It builds
-    19/18/41 slides with 6 pptx captions, no HTML overflow, and exact mermaid labels. It replaces
-    `samuel` once Ben has reviewed Part 2.
+    19/18/41 slides with 6 pptx captions, no HTML overflow, and exact mermaid labels. Pushed as
+    `samuel`; framework #16 is the living draft PR.
 - [ ] **CLAUDE.md: the charge-summary description is stale.** It names four tables and routes
   HPC/DAV to comp + dav; `calculator.py` routes by `activity_type` over five (hpc included).
 - [ ] **`src/webapp/disk_scans/session.py:71` docstring** says Destor maps to `desc1`; config
