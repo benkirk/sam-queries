@@ -1,6 +1,7 @@
 # SAMuel presentation series — a multi-part Quarto deck
 
-**Status:** planning complete, 2026-09-29; ready for Phase 0. Nothing is built yet. This doc is the handoff: each session
+**Status:** Phase 0 (scaffold) built, 2026-09-29; the framework PR and the `presentation`
+branch deletion are Ben's. This doc is the handoff: each session
 picks up the next unchecked phase in §8, ticks it, and appends to the session log (§10).
 **Goal:** replace the stale `docs/presentations/overview/` with a comprehensive, multi-part
 SAMuel presentation, authored in the standalone `~/Documents/quarto-docs-framework` repo and
@@ -25,7 +26,9 @@ The build infra has since matured into `~/Documents/quarto-docs-framework`
 - Quarto 1.9.38 in `./conda-env`;
 - `docs/Make.common` and the NCAR `docs/common/branding/ncar/template.pptx`;
 - `enable_autofit.py` and `embed_poppins.py`;
-- a CI workflow that builds the sample deck.
+- a CI workflow that builds the sample deck in all three formats. The workflow also fails any
+  `docs/*/*.qmd` whose line 1 is not `---` (it skips `_*` fragments) and any pptx carrying a
+  literal `last-modified` date (#9).
 
 That repo already hosts content decks as sibling dirs: `new_user_samples` on main, and
 `monthly_report` on its own branch. The in-repo `docs/presentations/common/` is an older copy
@@ -101,18 +104,26 @@ deck must follow, all learned on the `sam_and_pbs` deck (§12):
 - The refresh script queries **only the author's own username**, so nobody else's data is
   committed. Keep that discipline; the repo is public.
 
-**Framework change (PR to the framework's `main`):**
-- `docs/Make.common` builds exactly one `OUT` per directory. Generalize it to `DECKS ?= $(OUT)`,
-  with pattern rules `%.pptx / %.html / %.pdf : %.qmd _quarto.yml` that keep the
-  autofit + Poppins steps for pptx.
-- Existing 3-line deck Makefiles (`OUT := $(notdir $(CURDIR))`) must keep working unchanged.
-  Prove it with `make -C docs/sample` and `make -C docs/sam_and_pbs`.
-- Keep all four pptx post-steps, in order.
-- **Fix the stale-fragment gotcha in the same PR.** Make tracks only the deck's `.qmd`, so an edit
-  to an included `_*.qmd` or to `data/` silently skips the render; the framework's CLAUDE.md says
-  "touch it". The wrapper + body design makes every edit a fragment edit, so add
-  `$(wildcard _*.qmd) $(wildcard data/*)` as prerequisites. `sam_and_pbs` benefits too.
-- Update the README's "Adding a new deck" section.
+**Framework change (PR to the framework's `main`, branch `make-common-multi-deck`):**
+- `docs/Make.common` built exactly one `OUT` per directory. It becomes:
+  - `OUT ?= $(notdir $(CURDIR))`. The README always claimed a 1-line `include ../Make.common`
+    worked, but nothing defaulted `OUT`.
+  - `DECKS ?= $(OUT)`, with pattern rules `%.pptx / %.html / %.pdf : %.qmd $(DEPS)`. The pptx
+    rule keeps all four post-steps, in order.
+  - `QFILE` survives as a single-deck override, via explicit rules emitted only when it differs
+    from `$(OUT).qmd`.
+  - `.NOTPARALLEL`, because every deck in a directory shares one `.quarto/` cache;
+    `.DELETE_ON_ERROR`, so a failed post-step leaves no "finished" output behind.
+- **The stale-fragment gotcha is fixed** in the same PR. `DEPS` includes
+  `$(wildcard _*.qmd) $(wildcard data/*)`; the wrapper + body design makes every edit a
+  fragment edit. `sam_and_pbs` benefits too.
+- Existing 3-line deck Makefiles keep working unchanged, as `make -C docs/sample` and
+  `make -C docs/sam_and_pbs` prove.
+- `docs/.gitignore` gains anchored `/*/*.{pptx,pdf,html}`. Outputs had been ignored
+  per deck, and inconsistently.
+- The README's "Adding a new deck" section and the framework's CLAUDE.md describe `DECKS`.
+- **Commit the deck's `_quarto.yml` / `_extensions` symlinks** (mode 120000), as `sample/` and
+  `sam_and_pbs/` do.
 
 **Facts file:**
 - Put every number that goes stale in `_variables.yml`: tests, tables, charts, tasks, endpoints,
@@ -387,12 +398,10 @@ from it onto slides.
 - **claude-in-chrome skill** uses Ben's browser session for SSO-gated UIs: Argo CD, GitHub
   Actions, the rulesets page, samuel-dev on k8s.
 - **Google Workspace MCP** can mine existing CISL/NCAR Drive decks for framing.
-- **The gap is pptx visual QA.** There is no LibreOffice on the laptop, so Claude can't rasterize
-  `.pptx` to review its own slides.
-  - Recommended: `brew install --cask libreoffice`, then
-    `soffice --headless --convert-to pdf deck.pptx` and read the PDF pages.
-  - Fallback: drive PowerPoint export via `osascript`.
-  - The revealjs HTML can be reviewed with Playwright screenshots regardless.
+- **pptx visual QA goes through LibreOffice** (installed 2026-09-29, §7): run
+  `soffice --headless --convert-to pdf --outdir <scratch> deck.pptx`, then read the PDF pages.
+  Fonts fall back to a serif, so this checks layout only. The ncar-beamer PDF is read directly,
+  and the revealjs HTML is reviewed with Playwright screenshots.
 
 ## 7. Open questions
 
@@ -409,24 +418,29 @@ from it onto slides.
   - LibreOffice ignores the theme-font mapping, so slides render in a serif fallback, not Poppins. Treat it as a check for overflow, splits and diagrams, not for exact wrapping.
   - It surfaced a real bug: every slide's date footer reads the literal text `last-modified`, because `date: last-modified` reaches pandoc's footer unresolved. Root cause: the leading Emacs mode-line comment above the front matter. Filed as quarto-docs-framework#7 and fixed by framework PR #8 (merged 2026-09-29). SAMuel deck files must start with `---`. The ncar-beamer PDF shows the same bug on its title slide ("LAST-MODIFIED"), so the fix belongs in the shared `date:` handling, not in one format.
   Original path note: `brew install --cask libreoffice`, which puts an `soffice` wrapper on PATH (conda-forge has no package). QA loop: `soffice --headless --convert-to pdf --outdir <scratch> deck.pptx`, then read the PDF pages. Use a throwaway `-env:UserInstallation=file:///<scratch>/lo-profile` so a running GUI instance doesn't block headless mode.
-- [ ] Should the retirement of `docs/presentations/` ride this PR or its own?
+- [x] The retirement of `docs/presentations/` rides this PR (#679), decided 2026-09-29.
 - [x] Branding: resolved 2026-09-29. The framework's `template.pptx` has already been reworked (framework PR #2); use it as is.
 - [ ] Pick the §11 devices and part titles; draft the title slide first as the tone test.
-- [x] **Branch vs `main` in the framework:** resolved 2026-09-29. Work on the `samuel` branch for the long haul, and maybe merge to `main` much later. Merge `main` into `samuel` whenever framework fixes land. the precedent has shifted. `sam_and_pbs` (PRs #2/#3) and `new_user_samples` both landed on the public template's `main`. Keep the `samuel` branch (§2), or follow that precedent?
+- [x] **Branch vs `main` in the framework:** resolved 2026-09-29. Work on the `samuel` branch
+  for the long haul, and maybe merge to `main` much later. Merge `main` into `samuel` whenever
+  framework fixes land. (`sam_and_pbs` and `new_user_samples` landed on `main`; SAMuel
+  deliberately does not.)
+- [x] **Does the docs gate follow the local symlink?** No. `test_docs.py` builds its corpus from
+  `git ls-files` and skips symlinks, so an ignored symlink is never read.
 - [ ] How much of `sam_and_pbs` (§12) to include by reference vs. summarize?
 
 ## 8. Phases (one session each; tick as they land)
 
-- [ ] **Phase 0 — Scaffold.** Changes by repo:
-  - Framework `main` PR: the `Make.common` `DECKS` generalization + README;
-    `make -C docs/sample` still builds.
-  - Framework `samuel` branch: `docs/samuel/` with the wrappers, empty bodies, `_variables.yml`
-    and one placeholder slide per section. `make -C docs/samuel pptx html` builds all 5 decks.
-  - This repo:
-    - delete `docs/presentations/` except a README pointer;
-    - gitignore the local symlink `docs/presentations/samuel`;
-    - update the `docs/INDEX.md` tree entry (around line 186);
-    - delete the `presentation` branch, after confirming.
+- [x] **Phase 0 — Scaffold.** Changes by repo:
+  - [x] Framework `main`: branch `make-common-multi-deck` (commit `dae87f0`), with the
+    `Make.common` `DECKS` generalization, README, CLAUDE.md and `docs/.gitignore`. `sample` (all
+    three formats) and `sam_and_pbs` build unchanged. PR to open and merge: Ben's call.
+  - [x] Framework `samuel` branch, cut from that branch (commit `95f495c`): `docs/samuel/` with
+    the wrappers, `_variables.yml`, and one divider + placeholder slide per part.
+    `make -C docs/samuel all` builds all 15 outputs. Merge `main` in once the PR lands.
+  - [x] This repo: `docs/presentations/` reduced to a README pointer plus a `.gitignore` for
+    the local `samuel` symlink; `docs/INDEX.md` entry updated.
+  - [ ] Delete the stale `presentation` branch (local + origin), after Ben confirms.
 - [ ] **Phase 1 — Part 1 Overview:** content, the architecture diagram and the screenshot tour.
   Then revisit the format decision.
 - [ ] **Phase 2 — Part 2 Databases:** resolve the §5 facts first.
@@ -450,7 +464,7 @@ an update here (tick boxes, session log).
   - `pytest tests/unit/gates/test_docs.py` passes.
     - `tests/unit/gates/test_docs.py:30` lists `docs/presentations/` in `RECORD_PREFIXES`. Keep the
       prefix while the README pointer lives there.
-    - Confirm the gate does not follow the local symlink into the framework's markdown.
+    - The gate never sees the local symlink: its corpus is `git ls-files` (§7).
   - Leave the historical mentions in `docs/nrit-review-2026-05/` and
     `migrations/system_status/implemented/2026-05-04-update-prod.md` alone.
 
@@ -471,6 +485,18 @@ an update here (tick boxes, session log).
     - read the framework's `CLAUDE.md`;
     - take the `Make.common` `DECKS` PR first.
     - Still open in §7: splitting Part 3, the table-count definition, eralchemy2, publishing, the §11 devices, and reuse of `sam_and_pbs`.
+- **2026-09-29 (Phase 0):**
+  - Refined this doc: stale LibreOffice note, the contradictory §7 branch item, the retirement
+    decision (this PR), and the docs-gate question (it reads `git ls-files`).
+  - Framework: `Make.common` gained `DECKS`, fragment prerequisites, `OUT ?=`, `.NOTPARALLEL`
+    and `.DELETE_ON_ERROR`, plus a deck-output `.gitignore`. The SAMuel scaffold is on `samuel`.
+    All 15 outputs build, with no layout warnings or literal dates; the pptx was checked via
+    LibreOffice and the beamer PDF read directly.
+  - Found the beamer divider-subtitle gap (§13), and answered the `when-format` question.
+  - This repo: `docs/presentations/` retired to a pointer.
+  - **Next:** Ben opens and merges the framework PR, then merges `main` into `samuel`.
+    Delete the `presentation` branch. Phase 1 (Part 1 Overview) starts with the title slide
+    as the tone test (§11).
 
 ## 11. Voice, tone and the fun
 
@@ -606,8 +632,8 @@ one source.
 - **Interactive vs. static:** put the interactive element in
   `::: {.content-visible when-format="revealjs"}` and the static PNG/table fallback in
   `::: {.content-visible unless-format="revealjs"}`.
-  - **Verify in Phase 0** that `when-format="beamer"` matches the custom `ncar-beamer` format
-    (whose base is beamer). If it doesn't, name `ncar-beamer` explicitly.
+  - **Verified in Phase 0:** `when-format="beamer"` matches the custom `ncar-beamer` format;
+    `when-format="ncar-beamer"` matches nothing. Always write `beamer`.
 - **Classes each format honors:**
   - ncar-beamer: `{.feature background-image="images/x.jpg"}` gives a full-bleed photo slide, and
     `background-image=` doubles as the revealjs background. It also honors `{.closing}`,
@@ -616,6 +642,12 @@ one source.
   - revealjs honors `{.smaller}` and `{.scrollable}`.
 - **The pptx gotchas still bind:** a slide must survive pptx even when HTML is primary for its
   part, because the handout builds depend on it.
+
+**Divider subtitles in beamer (found in Phase 0).** Beamer renders text after a `#` divider
+as its own slide, titled after the section. `section_subtitle.py` fixes only pptx, and no other
+deck had exercised this in a PDF. For now the bodies fence each subtitle in
+`::: {.content-visible unless-format="beamer"}`. The proper fix is a framework Lua filter that
+puts the paragraph on the beamer section page; it is a framework `main` follow-up.
 
 **Build implications for Phase 0:**
 - The `Make.common` `DECKS` generalization must keep the pdf recipe's `_extensions` symlink
