@@ -36,16 +36,17 @@ from sam.summaries.disk_summaries import (
     DiskChargeSummaryStatus,
 )
 from factories.core import make_user
-from factories.projects import make_account, make_project
+from factories.projects import make_account, make_allocation, make_project
 from factories.resources import make_resource, make_resource_type
 from factories._seq import next_seq
 
 
 
 
-def _build_campaign_store_graph(session, monkeypatch):
+def _build_campaign_store_graph(session, monkeypatch, *, funded=True):
     """Build a project on a uniquely-named DISK resource and register
-    GladeCsvReader / GpfsQuotaReader for it so the CLI dispatch works."""
+    GladeCsvReader / GpfsQuotaReader for it so the CLI dispatch works.
+    ``funded`` gives the account an active allocation."""
     lead = make_user(session)
     project = make_project(session, lead=lead)
     rt = session.query(ResourceType).filter_by(resource_type='DISK').first()
@@ -53,7 +54,9 @@ def _build_campaign_store_graph(session, monkeypatch):
         rt = make_resource_type(session, resource_type='DISK')
     resource_name = f"Campaign_Store_{next_seq('cs')}"
     resource = make_resource(session, resource_type=rt, resource_name=resource_name)
-    make_account(session, project=project, resource=resource)
+    account = make_account(session, project=project, resource=resource)
+    if funded:
+        make_allocation(session, account=account)
     # Patch the reader registries so the CLI finds a reader for this name.
     monkeypatch.setitem(
         disk_usage_mod._READERS, resource_name, disk_usage_mod.GladeCsvReader,
@@ -573,3 +576,416 @@ class TestDiskAdminCli:
             DiskChargeSummary.user_id == lead.user_id,
         ).count() == 1
 
+
+
+def _write_acct_rows(tmp_path: Path, snap: date,
+                     rows: list[tuple[str, str, str, int]]) -> Path:
+    """acct.glade.YYYY-MM-DD from (directory_path, label, username, kib) rows."""
+    f = tmp_path / f"acct.glade.{snap.isoformat()}"
+    f.write_text(''.join(
+        f'"{snap.isoformat()}","{path}","{label.lower()}","{user}","10","{kib}","7","0"\n'
+        for (path, label, user, kib) in rows
+    ))
+    return f
+
+
+class TestDiskImportTriage:
+    """Each report category, its exit code, and the JSON envelope."""
+
+    GIB = 1024 * 1024  # KiB
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    @pytest.fixture
+    def mock_db_session(self, session):
+        with patch('sam.session.create_sam_engine') as mock_engine, \
+             patch('cli.core.context.Session') as mock_session_cls:
+            mock_engine.return_value = (MagicMock(), None)
+            mock_session_cls.return_value = session
+            yield session
+
+    def _run(self, runner, resource, f, *extra, json_out=False):
+        args = (['--format', 'json'] if json_out else []) + [
+            'accounting', '--disk', '--resource', resource.resource_name,
+            '--user-usage', str(f), *extra,
+        ]
+        return runner.invoke(cli, args)
+
+    def _summary_rows(self, session, resource, snap):
+        from sam.accounting.accounts import Account
+        return session.query(DiskChargeSummary).join(
+            Account, Account.account_id == DiskChargeSummary.account_id,
+        ).filter(
+            DiskChargeSummary.activity_date == snap,
+            Account.resource_id == resource.resource_id,
+        ).all()
+
+    def test_unknown_projcode_is_no_project_and_exits_2(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        snap = DISK_CHARGING_TIB_EPOCH
+        label = f"ZZNP{next_seq('np')}".upper()
+        f = _write_acct_rows(tmp_path, snap, [
+            (f"/gpfs/csfs1/{label.lower()}", label, lead.username, self.GIB),
+        ])
+        result = self._run(runner, resource, f, '--skip-errors', '--dry-run', json_out=True)
+        assert result.exit_code == 2, result.output
+        data = json.loads(result.stdout)
+        assert data['counts']['no_project'] == 1
+        [item] = data['categories']['no_project']
+        assert item['projcode'] == label and item['project_id'] is None
+
+    def test_project_without_account_is_no_account_and_exits_2(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        lead, _project, resource = _build_campaign_store_graph(session, monkeypatch)
+        other = make_project(session, lead=lead)   # no account on the resource
+        snap = DISK_CHARGING_TIB_EPOCH
+        f = _write_acct(tmp_path, snap, other.projcode, lead.username, kib=self.GIB)
+        result = self._run(runner, resource, f, '--skip-errors', json_out=True)
+        assert result.exit_code == 2, result.output
+        data = json.loads(result.stdout)
+        [item] = data['categories']['no_account']
+        assert item['sam_projcode'] == other.projcode
+        assert item['project_id'] == other.project_id
+        assert self._summary_rows(session, resource, snap) == []
+
+    def test_known_unowned_is_skipped_and_exits_0(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        lead, _project, resource = _build_campaign_store_graph(session, monkeypatch)
+        snap = DISK_CHARGING_TIB_EPOCH
+        path = f"/gpfs/csfs1/ral/nral{next_seq('ku')}"
+        f = _write_acct_rows(tmp_path, snap, [(path, 'ROOT', lead.username, self.GIB)])
+        result = self._run(runner, resource, f, '--verbose')
+        assert result.exit_code == 0, result.output
+        assert 'known unowned' in result.output
+        assert self._summary_rows(session, resource, snap) == []
+        [act] = session.query(DiskActivity).filter(
+            DiskActivity.activity_date == snap,
+            DiskActivity.resource_name == resource.resource_name,
+        ).all()
+        assert act.error_comment.startswith('unresolved(known_unowned):')
+
+    def test_projcode_fallback_charges_and_reports_unlinked_directory(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        snap = DISK_CHARGING_TIB_EPOCH
+        f = _write_acct(tmp_path, snap, project.projcode, lead.username, kib=self.GIB)
+        result = self._run(runner, resource, f, json_out=True)
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.stdout)
+        [item] = data['categories']['unlinked_directory']
+        assert item['project_id'] == project.project_id
+        assert item['path'] == f"/gpfs/csfs1/{project.projcode.lower()}"
+        assert data['created'] == 1
+        assert len(self._summary_rows(session, resource, snap)) == 1
+
+    def test_linked_directory_is_not_reported(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        from datetime import datetime
+        from sam.projects.projects import ProjectDirectory
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        path = f"/gpfs/csfs1/{project.projcode.lower()}"
+        ProjectDirectory.create(session, project_id=project.project_id,
+                                directory_name=path,
+                                start_date=datetime.now() - timedelta(days=1))
+        snap = DISK_CHARGING_TIB_EPOCH
+        f = _write_acct(tmp_path, snap, project.projcode, lead.username, kib=self.GIB)
+        result = self._run(runner, resource, f, '--dry-run', json_out=True)
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.stdout)
+        assert all(not items for items in data['categories'].values())
+
+    def test_unknown_user_exits_2(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        _lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        snap = DISK_CHARGING_TIB_EPOCH
+        ghost = f"ghost{next_seq('gu')}"
+        f = _write_acct(tmp_path, snap, project.projcode, ghost, kib=self.GIB)
+        result = self._run(runner, resource, f, '--skip-errors', json_out=True)
+        assert result.exit_code == 2, result.output
+        data = json.loads(result.stdout)
+        [item] = data['categories']['unknown_user']
+        assert item['username'] == ghost and item['projcodes'] == [project.projcode]
+        assert data['errors'] == 0
+
+    def test_skip_errors_still_loads_resolvable_rows(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        """The lane's contract: known data lands even when other rows fail."""
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        snap = DISK_CHARGING_TIB_EPOCH
+        label = f"ZZNP{next_seq('np')}".upper()
+        f = _write_acct_rows(tmp_path, snap, [
+            (f"/gpfs/csfs1/{project.projcode.lower()}", project.projcode, lead.username, self.GIB),
+            (f"/gpfs/csfs1/{label.lower()}", label, lead.username, self.GIB),
+            ("/gpfs/csfs1/cisl/HDIG/jamtest", 'ROOT', lead.username, self.GIB),
+        ])
+        result = self._run(runner, resource, f, '--skip-errors')
+        assert result.exit_code == 2, result.output
+        assert label in result.output
+        [row] = self._summary_rows(session, resource, snap)
+        assert row.act_projcode == project.projcode
+        n_charge = session.query(DiskCharge).join(DiskActivity).filter(
+            DiskActivity.activity_date == snap,
+            DiskActivity.resource_name == resource.resource_name,
+        ).count()
+        assert n_charge == 1
+
+    def test_without_skip_errors_an_unexpected_gap_writes_nothing(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        snap = DISK_CHARGING_TIB_EPOCH
+        label = f"ZZNP{next_seq('np')}".upper()
+        f = _write_acct_rows(tmp_path, snap, [
+            (f"/gpfs/csfs1/{project.projcode.lower()}", project.projcode, lead.username, self.GIB),
+            (f"/gpfs/csfs1/{label.lower()}", label, lead.username, self.GIB),
+        ])
+        result = self._run(runner, resource, f)
+        assert result.exit_code == 2, result.output
+        assert 'nothing written' in result.output
+        assert self._summary_rows(session, resource, snap) == []
+        assert session.query(DiskActivity).filter(
+            DiskActivity.activity_date == snap,
+            DiskActivity.resource_name == resource.resource_name,
+        ).count() == 0
+
+    def test_dry_run_prints_categories_and_writes_nothing(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        snap = DISK_CHARGING_TIB_EPOCH
+        f = _write_acct_rows(tmp_path, snap, [
+            (f"/gpfs/csfs1/{project.projcode.lower()}", project.projcode, lead.username, self.GIB),
+            ("/quasar/ral_risc", 'RISC', lead.username, self.GIB),
+            ("/gpfs/csfs1/x", project.projcode, 'sshd', self.GIB),
+        ])
+        result = self._run(runner, resource, f, '--dry-run')
+        assert result.exit_code == 0, result.output
+        assert 'nothing written' in result.output
+        assert 'directory not linked' in result.output
+        assert 'RISC' not in result.output          # listed only under --verbose
+        result = self._run(runner, resource, f, '--dry-run', '--verbose')
+        assert result.exit_code == 0, result.output
+        assert 'RISC' in result.output
+        assert 'System accounts dropped: sshd' in result.output
+        assert self._summary_rows(session, resource, snap) == []
+
+    def test_json_envelope_shape(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        snap = DISK_CHARGING_TIB_EPOCH
+        f = _write_acct_rows(tmp_path, snap, [
+            (f"/gpfs/csfs1/{project.projcode.lower()}", project.projcode, lead.username, self.GIB),
+            ("/gpfs/csfs1/y", project.projcode, 'systemd-coredump', self.GIB),
+        ])
+        result = self._run(runner, resource, f, '--dry-run', json_out=True)
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.stdout)
+        assert data['kind'] == 'disk_import'
+        assert data['resource'] == resource.resource_name
+        assert data['snapshot_date'] == snap.isoformat()
+        assert data['dry_run'] is True and data['written'] is False
+        assert set(data['categories']) == {
+            'no_project', 'no_account', 'unknown_user',
+            'known_unowned', 'unlinked_directory', 'expired_directory',
+        }
+        assert data['counts']['system_account_rows'] == 1
+        assert data['counts']['unexpected'] == 0
+        assert data['system_accounts'] == {'systemd-coredump': 1}
+
+    def _link(self, session, project, path):
+        from datetime import datetime
+        from sam.projects.projects import ProjectDirectory
+        ProjectDirectory.create(session, project_id=project.project_id,
+                                directory_name=path,
+                                start_date=datetime.now() - timedelta(days=1))
+
+    def test_unlinked_path_borrows_the_project_of_a_linked_sibling_label(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        """Quasar shape: /quasar/rda is linked, /quasar/rda_dr is not, both labeled 'decs'."""
+        _lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        label = f"ZZSB{next_seq('sb')}".upper()
+        linked = f"/quasar/{label.lower()}"
+        self._link(session, project, linked)
+        snap = DISK_CHARGING_TIB_EPOCH
+        f = _write_acct_rows(tmp_path, snap, [
+            (linked, label, 'total', self.GIB),
+            (f"{linked}_dr", label, 'total', self.GIB),
+        ])
+        result = self._run(runner, resource, f, '--skip-errors', json_out=True)
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.stdout)
+        assert data['counts']['no_project'] == 0
+        [item] = data['categories']['unlinked_directory']
+        assert item['path'] == f"{linked}_dr"
+        assert item['project_id'] == project.project_id
+        [row] = self._summary_rows(session, resource, snap)
+        assert row.bytes == 2 * 1024 ** 3
+
+    def test_label_linked_to_two_projects_is_not_borrowed(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        other = make_project(session, lead=lead)
+        make_account(session, project=other, resource=resource)
+        label = f"ZZAM{next_seq('am')}".upper()
+        self._link(session, project, f"/gpfs/csfs1/{label.lower()}/a")
+        self._link(session, other, f"/gpfs/csfs1/{label.lower()}/b")
+        snap = DISK_CHARGING_TIB_EPOCH
+        f = _write_acct_rows(tmp_path, snap, [
+            (f"/gpfs/csfs1/{label.lower()}/a", label, lead.username, self.GIB),
+            (f"/gpfs/csfs1/{label.lower()}/b", label, lead.username, self.GIB),
+            (f"/gpfs/csfs1/{label.lower()}/c", label, lead.username, self.GIB),
+        ])
+        result = self._run(runner, resource, f, '--dry-run', json_out=True)
+        assert result.exit_code == 2, result.output
+        [item] = json.loads(result.stdout)['categories']['no_project']
+        assert item['path'] == f"/gpfs/csfs1/{label.lower()}/c"
+
+
+class TestReconcileDirectories:
+    """Directory actions in the report, and --reconcile-directories applying them."""
+
+    GIB = 1024 * 1024  # KiB
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    @pytest.fixture
+    def mock_db_session(self, session):
+        with patch('sam.session.create_sam_engine') as mock_engine, \
+             patch('cli.core.context.Session') as mock_session_cls:
+            mock_engine.return_value = (MagicMock(), None)
+            mock_session_cls.return_value = session
+            yield session
+
+    def _dir(self, session, project, path, *, ended=False):
+        from datetime import datetime
+        from sam.projects.projects import ProjectDirectory
+        pd = ProjectDirectory.create(session, project_id=project.project_id,
+                                     directory_name=path,
+                                     start_date=datetime.now() - timedelta(days=30))
+        if ended:
+            pd.end_date = datetime.now() - timedelta(days=2)
+            session.flush()
+        return pd
+
+    def _dry_item(self, runner, resource, f):
+        result = runner.invoke(cli, [
+            '--format', 'json', 'accounting', '--disk', '--resource',
+            resource.resource_name, '--user-usage', str(f), '--dry-run'])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.stdout)
+        items = data['categories']['unlinked_directory']
+        return items[0] if items else None, data
+
+    def _apply(self, runner, resource, f):
+        result = runner.invoke(cli, [
+            '--format', 'json', 'accounting', '--disk', '--resource',
+            resource.resource_name, '--user-usage', str(f), '--reconcile-directories'])
+        assert result.exit_code == 0, result.output
+        return json.loads(result.stdout)
+
+    def _rows(self, session, path):
+        from sam.projects.projects import ProjectDirectory
+        return session.query(ProjectDirectory).filter(
+            ProjectDirectory.directory_name == path).all()
+
+    def test_ended_row_is_reopened(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        path = f"/gpfs/csfs1/{project.projcode.lower()}"
+        pd = self._dir(session, project, path, ended=True)
+        f = _write_acct(tmp_path, DISK_CHARGING_TIB_EPOCH, project.projcode,
+                        lead.username, kib=self.GIB)
+        item, _ = self._dry_item(runner, resource, f)
+        assert item['action'] == 'reopen'
+        assert item['project_directory_id'] == pd.project_directory_id
+        assert pd.end_date is not None                   # the dry run wrote nothing
+
+        data = self._apply(runner, resource, f)
+        assert data['directories'] == {'reopen': 1, 'rename': 0, 'create': 0}
+        session.refresh(pd)
+        assert pd.end_date is None
+        assert len(self._rows(session, path)) == 1       # no duplicate row
+        assert self._dry_item(runner, resource, f)[0] is None   # now linked
+
+    def test_case_variant_row_is_renamed(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        path = f"/gpfs/csfs1/{project.projcode.lower()}"
+        pd = self._dir(session, project, path.upper())
+        f = _write_acct(tmp_path, DISK_CHARGING_TIB_EPOCH, project.projcode,
+                        lead.username, kib=self.GIB)
+        assert self._dry_item(runner, resource, f)[0]['action'] == 'rename'
+        self._apply(runner, resource, f)
+        session.refresh(pd)
+        assert pd.directory_name == path and pd.end_date is None
+
+    def test_missing_row_is_created(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        path = f"/gpfs/csfs1/{project.projcode.lower()}"
+        f = _write_acct(tmp_path, DISK_CHARGING_TIB_EPOCH, project.projcode,
+                        lead.username, kib=self.GIB)
+        assert self._dry_item(runner, resource, f)[0]['action'] == 'create'
+        assert self._rows(session, path) == []
+        data = self._apply(runner, resource, f)
+        assert data['directories']['create'] == 1
+        [pd] = self._rows(session, path)
+        assert pd.project_id == project.project_id and pd.end_date is None
+
+    def test_path_owned_by_another_project_is_left_for_review(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        other = make_project(session, lead=lead)
+        path = f"/gpfs/csfs1/{project.projcode.lower()}"
+        self._dir(session, other, path, ended=True)
+        f = _write_acct(tmp_path, DISK_CHARGING_TIB_EPOCH, project.projcode,
+                        lead.username, kib=self.GIB)
+        assert self._dry_item(runner, resource, f)[0]['action'] == 'review'
+        data = self._apply(runner, resource, f)
+        assert data['directories'] == {'reopen': 0, 'rename': 0, 'create': 0}
+        [pd] = self._rows(session, path)
+        assert pd.project_id == other.project_id and pd.end_date is not None
+
+    def test_expired_allocation_is_its_own_bucket_and_untouched(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        lead, project, resource = _build_campaign_store_graph(
+            session, monkeypatch, funded=False)
+        path = f"/gpfs/csfs1/{project.projcode.lower()}"
+        pd = self._dir(session, project, path, ended=True)
+        f = _write_acct(tmp_path, DISK_CHARGING_TIB_EPOCH, project.projcode,
+                        lead.username, kib=self.GIB)
+        item, data = self._dry_item(runner, resource, f)
+        assert item is None
+        [expired] = data['categories']['expired_directory']
+        assert expired['path'] == path
+        applied = self._apply(runner, resource, f)
+        assert applied['directories'] == {'reopen': 0, 'rename': 0, 'create': 0}
+        assert applied['created'] == 1                   # still charged
+        session.refresh(pd)
+        assert pd.end_date is not None
+
+    def test_flag_is_rejected_outside_disk(self, runner, mock_db_session):
+        result = runner.invoke(cli, [
+            'accounting', '--comp', '--machine', 'derecho', '--reconcile-directories'])
+        assert result.exit_code == 1
+        assert '--reconcile-directories only applies to --disk' in result.output

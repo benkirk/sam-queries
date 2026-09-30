@@ -7,6 +7,8 @@ AccountingSearchCommand — queries comp_charge_summary for user inspection.
 import getpass
 import os
 import re
+from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Optional
 
@@ -16,6 +18,7 @@ from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, Mo
 from cli.accounting.display import (
     display_dry_run_table,
     display_disk_dry_run_table,
+    display_disk_import_report,
     display_import_summary,
     display_charge_summary_table,
     display_jobs_table,
@@ -60,6 +63,120 @@ _RESERVATION_QUEUE_RE = re.compile(r'^[RMS]\d')
 # and attribute the row to the project lead, matching the `<unidentified>`
 # gap-row convention, so user resolution and charging math succeed.
 _DISK_ROLLUP_USERNAMES = frozenset({'total'})
+
+# Fileset labels HSG reports that no SAM project owns (scratch, test and
+# hackathon areas). Rows under them with an unlinked path are skipped, not
+# charged and not errors. Grow it here; it is not config.
+KNOWN_UNOWNED_PROJCODES = frozenset({'ROOT', 'RISC', 'NGIC'})
+
+# Disk-import report categories. Only UNEXPECTED ones make the run exit 2;
+# the rest are reported and exit 0. See docs/plans/DISK_INGEST_TRIAGE.md.
+DISK_UNEXPECTED_CATEGORIES = ('no_project', 'no_account', 'unknown_user')
+DISK_REPORT_CATEGORIES = DISK_UNEXPECTED_CATEGORIES + (
+    'known_unowned', 'unlinked_directory', 'expired_directory',
+)
+# --reconcile-directories writes these; 'review' (path owned by another project) never.
+DIRECTORY_AUTO_ACTIONS = ('reopen', 'rename', 'create')
+
+
+@dataclass(frozen=True)
+class _DiskResolution:
+    """How a disk row resolved; ``reason`` is None or a report category."""
+    project: Optional[object] = None
+    account: Optional[object] = None
+    via: Optional[str] = None       # 'path' | 'projcode' | 'label'
+    reason: Optional[str] = None
+    action: Optional[str] = None    # unlinked_directory only: DIRECTORY_AUTO_ACTIONS or 'review'
+    directory_id: Optional[int] = None   # the row a reopen/rename acts on
+
+    @property
+    def ok(self) -> bool:
+        return self.account is not None
+
+
+class _DirectoryIndex:
+    """Every project_directory row, ended ones included, to pick a reconcile action."""
+
+    def __init__(self, rows):
+        self.by_path = defaultdict(list)
+        self.by_case = defaultdict(list)
+        for pd in rows:
+            self.by_path[pd.directory_name].append(pd)
+            self.by_case[(pd.project_id, pd.directory_name.lower())].append(pd)
+
+    @staticmethod
+    def _latest(rows):
+        return max(rows, key=lambda r: (r.end_date is None, r.end_date or datetime.min))
+
+    def action_for(self, project_id: int, path: str) -> tuple[str, Optional[int]]:
+        same = [r for r in self.by_path.get(path, ()) if r.project_id == project_id]
+        if same:
+            return 'reopen', self._latest(same).project_directory_id
+        if self.by_path.get(path):
+            return 'review', None
+        variants = self.by_case.get((project_id, path.lower()))
+        if variants:
+            return 'rename', self._latest(variants).project_directory_id
+        return 'create', None
+
+
+def _build_disk_import_report(entries, resolve, known_usernames: set,
+                              skipped_system: dict) -> dict:
+    """Classify normal (non-gap) rows into report categories; plain dict out.
+
+    A row that did not resolve is counted under its reason only. An unknown
+    user is checked on resolved rows, so a row can be both ``unlinked_directory``
+    (informational) and ``unknown_user``. Rollup ``total`` rows have no user.
+    """
+    buckets: dict[str, dict] = {c: {} for c in DISK_REPORT_CATEGORIES}
+    rows = dict.fromkeys(DISK_REPORT_CATEGORIES, 0)
+
+    for e in entries:
+        if e.user_override is not None:
+            continue
+        res = resolve(e)
+        if res.reason is not None:
+            rows[res.reason] += 1
+            item = buckets[res.reason].setdefault((e.projcode, e.directory_path), {
+                'projcode': e.projcode, 'path': e.directory_path,
+                'sam_projcode': res.project.projcode if res.project else None,
+                'project_id': res.project.project_id if res.project else None,
+                'rows': 0, 'bytes': 0,
+            })
+            if res.reason == 'unlinked_directory':
+                item.update(action=res.action, project_directory_id=res.directory_id)
+            item['rows'] += 1
+            item['bytes'] += e.bytes
+        if not res.ok or e.username in _DISK_ROLLUP_USERNAMES:
+            continue
+        if e.username.lower() not in known_usernames:
+            rows['unknown_user'] += 1
+            item = buckets['unknown_user'].setdefault(e.username, {
+                'username': e.username, 'projcodes': set(), 'rows': 0, 'bytes': 0,
+            })
+            item['projcodes'].add(res.project.projcode)
+            item['rows'] += 1
+            item['bytes'] += e.bytes
+
+    categories = {}
+    for cat, bucket in buckets.items():
+        items = list(bucket.values())
+        if cat == 'unknown_user':
+            for item in items:
+                item['projcodes'] = sorted(item['projcodes'])
+            items.sort(key=lambda i: i['username'])
+        else:
+            items.sort(key=lambda i: (i['projcode'], i['path'] or ''))
+        categories[cat] = items
+
+    counts = dict(rows)
+    counts['system_account_rows'] = sum(skipped_system.values())
+    counts['unexpected'] = sum(rows[c] for c in DISK_UNEXPECTED_CATEGORIES)
+    return {
+        'counts': counts,
+        'categories': categories,
+        'system_accounts': dict(sorted(skipped_system.items())),
+    }
 
 
 def _group_disk_entries(entries: list[DiskUsageEntry]) -> list[DiskUsageEntry]:
@@ -268,6 +385,7 @@ class AccountingAdminCommand(BaseCommand):
         reconcile_quota_gap: bool = False,
         gap_tolerance_bytes: int = 1024 ** 3,    # 1 GiB
         gap_tolerance_frac: float = 0.01,        # 1%
+        reconcile_directories: bool = False,
         # --comp/--disk epoch override (default: hard-coded constant per mode)
         epoch: Optional[date] = None,
     ) -> int:
@@ -308,6 +426,7 @@ class AccountingAdminCommand(BaseCommand):
                 chunk_size=chunk_size,
                 include_deleted_accounts=include_deleted_accounts,
                 epoch=epoch,
+                reconcile_directories=reconcile_directories,
             )
         if archive:
             self.console.print("[yellow]--archive: not yet implemented[/yellow]")
@@ -496,6 +615,7 @@ class AccountingAdminCommand(BaseCommand):
         chunk_size: int,
         include_deleted_accounts: bool,
         epoch: Optional[date] = None,
+        reconcile_directories: bool = False,
     ) -> int:
         """Import a per-user-per-project disk usage snapshot into ``disk_charge_summary``.
 
@@ -514,6 +634,11 @@ class AccountingAdminCommand(BaseCommand):
         """
         from sam.resources.resources import Resource
         from sam.accounting.accounts import Account
+
+        # JSON mode: stdout carries only the envelope; progress and notes go to stderr.
+        json_mode = self.ctx.output_format == 'json'
+        if json_mode:
+            self.console = self.ctx.stderr_console
 
         # ---- 1. Validate inputs ----------------------------------------
         if not resource_name:
@@ -635,10 +760,13 @@ class AccountingAdminCommand(BaseCommand):
         # ---- 6b. Resolve projcode for normal rows ----------------------
         # acct.glade column 3 is a fileset label ('cesm', 'cgd'), not a SAM
         # projcode. Resolve as legacy did, directory_path -> ProjectDirectory ->
-        # Project: path lookup first, then projcode-as-label, then give up (the
-        # row is skipped under --skip-errors, else the chunk aborts).
+        # Project: path lookup first, then projcode-as-label, then the one project
+        # this file's linked rows give the same label (/quasar/rda_dr rides with
+        # /quasar/rda, as tier-3 grouping by label already charges it). A row that
+        # fails gets a report category (_DiskResolution.reason) instead of an error.
         from sam.projects.projects import ProjectDirectory, Project
         from sam.accounting.accounts import Account
+        from sam.accounting.allocations import Allocation
         pd_path_to_project: dict[str, "Project"] = {
             pd.directory_name: proj
             for pd, proj in (
@@ -648,38 +776,104 @@ class AccountingAdminCommand(BaseCommand):
                 .all()
             )
         }
-        # Cache resolved Account per project_id for this resource.
-        account_cache: dict[int, "Account"] = {}
+        directory_index = _DirectoryIndex(self.session.query(ProjectDirectory).all())
+        funded_accounts = {
+            account_id for (account_id,) in (
+                self.session.query(Allocation.account_id)
+                .join(Account, Account.account_id == Allocation.account_id)
+                .filter(Account.resource_id == resource.resource_id, Allocation.is_active)
+                .distinct()
+            )
+        }
+        label_projects: dict[str, dict] = {}
+        for e in entries:
+            proj = pd_path_to_project.get(e.directory_path) if e.directory_path else None
+            if proj is not None:
+                label_projects.setdefault(e.projcode, {})[proj.project_id] = proj
+        resolution_cache: dict[tuple, _DiskResolution] = {}
+        account_cache: dict[int, Optional["Account"]] = {}
 
-        def _resolve_for_row(row) -> tuple[bool, Optional["Project"], Optional["Account"]]:
-            """Return (resolved_ok, project, account). For normal rows only —
-            gap rows already carry user/account overrides."""
-            project = None
-            if row.directory_path and row.directory_path in pd_path_to_project:
-                project = pd_path_to_project[row.directory_path]
+        def _resolve_for_row(row) -> _DiskResolution:
+            """Resolve a normal row (gap rows carry overrides); memoized per (path, projcode)."""
+            key = (row.directory_path, row.projcode)
+            if key not in resolution_cache:
+                resolution_cache[key] = _resolve_uncached(row)
+            return resolution_cache[key]
+
+        def _resolve_uncached(row) -> _DiskResolution:
+            project = pd_path_to_project.get(row.directory_path) if row.directory_path else None
+            via = 'path'
             if project is None:
+                if row.projcode in KNOWN_UNOWNED_PROJCODES:
+                    return _DiskResolution(reason='known_unowned')
                 project = Project.get_by_projcode(self.session, row.projcode)
+                via = 'projcode'
             if project is None:
-                return False, None, None
-            acct = account_cache.get(project.project_id)
-            if acct is None:
-                acct = Account.get_by_project_and_resource(
+                siblings = label_projects.get(row.projcode, {})
+                if len(siblings) != 1:
+                    return _DiskResolution(reason='no_project')
+                (project,) = siblings.values()
+                via = 'label'
+
+            if project.project_id not in account_cache:
+                account_cache[project.project_id] = Account.get_by_project_and_resource(
                     self.session, project.project_id, resource.resource_id,
                     exclude_deleted=not include_deleted_accounts,
                 )
-                if acct is None:
-                    return False, project, None
-                account_cache[project.project_id] = acct
-            return True, project, acct
+            acct = account_cache[project.project_id]
+            if acct is None:
+                return _DiskResolution(project=project, via=via, reason='no_account')
+            if via == 'path' or not row.directory_path:
+                return _DiskResolution(project=project, account=acct, via=via)
+            if acct.account_id not in funded_accounts:
+                return _DiskResolution(project=project, account=acct, via=via,
+                                       reason='expired_directory')
+            action, directory_id = directory_index.action_for(
+                project.project_id, row.directory_path)
+            return _DiskResolution(project=project, account=acct, via=via,
+                                   reason='unlinked_directory', action=action,
+                                   directory_id=directory_id)
+
+        # ---- 6c. Classify every row before any write (reads only) ------
+        known_usernames = self._known_usernames(entries)
+        report = _build_disk_import_report(
+            entries, _resolve_for_row, known_usernames, reader.skipped_system,
+        )
+        unexpected = report['counts']['unexpected']
+        envelope = {
+            'resource': resource_name, 'snapshot_date': snap_date,
+            'dry_run': dry_run, 'skip_errors': skip_errors, 'written': False,
+        }
 
         # ---- 7. Verbose dry-run table ----------------------------------
-        if self.ctx.verbose:
+        if self.ctx.verbose and not json_mode:
             display_disk_dry_run_table(
                 self.ctx, entries, resource_name, dry_run=dry_run,
             )
 
         if dry_run:
-            return 0
+            self._emit_disk_report(report, envelope)
+            return 2 if unexpected else 0
+        # Without --skip-errors an unexpected gap refuses the whole file, before
+        # the first write, so a partial load never happens by accident.
+        if unexpected and not skip_errors:
+            self._emit_disk_report(report, envelope)
+            self.console.print(
+                "[bold red]Unresolved rows; nothing written. Fix them or pass "
+                "--skip-errors to load the rest.[/bold red]"
+            )
+            return 2
+
+        # ---- 6d. --reconcile-directories: fix the links the report found -----
+        if reconcile_directories:
+            try:
+                with management_transaction(self.session):
+                    envelope['directories'] = self._reconcile_directories(
+                        report['categories']['unlinked_directory'])
+            except Exception as exc:  # noqa: BLE001
+                self.console.print(
+                    f"[bold red]Directory reconcile failed: {exc}[/bold red]")
+                return 2
 
         # ---- 7. Register the snapshot date BEFORE any tier-3 insert.
         # disk_charge_summary.activity_date FKs disk_charge_summary_status, and
@@ -772,7 +966,6 @@ class AccountingAdminCommand(BaseCommand):
         n_created = 0
         n_updated = 0
         n_errors = 0
-        n_skipped = 0
 
         chunks = [
             entries_to_upsert[i:i + chunk_size]
@@ -785,6 +978,7 @@ class AccountingAdminCommand(BaseCommand):
             MofNCompleteColumn(),
             TimeElapsedColumn(),
             console=self.console,
+            disable=json_mode,
         ) as progress:
             task = progress.add_task(
                 f"Posting {resource_name} disk charges...",
@@ -809,18 +1003,16 @@ class AccountingAdminCommand(BaseCommand):
                                     account_for_upsert = row.account_override
                                 else:
                                     act_uname = row.username
-                                    # Resolve project from directory_path
-                                    # (umbrella filesets like 'cgd' map to
-                                    # specific SAM projects via
-                                    # ProjectDirectory).
-                                    ok, project_for_upsert, account_for_upsert = _resolve_for_row(row)
-                                    if not ok:
-                                        raise ValueError(
-                                            f"Could not resolve project/account for "
-                                            f"row projcode={row.projcode!r} "
-                                            f"path={row.directory_path!r} on "
-                                            f"resource {resource_name!r}"
-                                        )
+                                    # Rows the report already counts (unresolved
+                                    # or an unknown user) are skipped, not errors.
+                                    res = _resolve_for_row(row)
+                                    if not res.ok or (
+                                        act_uname not in _DISK_ROLLUP_USERNAMES
+                                        and act_uname.lower() not in known_usernames
+                                    ):
+                                        continue
+                                    project_for_upsert = res.project
+                                    account_for_upsert = res.account
                                     # The audit column carries the SAM-canonical
                                     # projcode, not the input's umbrella label.
                                     act_pcode = project_for_upsert.projcode
@@ -870,8 +1062,48 @@ class AccountingAdminCommand(BaseCommand):
                     )
                     return 2
 
-        display_import_summary(self.ctx, n_created, n_updated, n_errors, n_skipped)
-        return 0 if n_errors == 0 else 2
+        envelope.update(written=True, created=n_created, updated=n_updated, errors=n_errors)
+        self._emit_disk_report(report, envelope)
+        return 2 if (unexpected or n_errors) else 0
+
+    def _reconcile_directories(self, items: list) -> dict:
+        """Apply the report's reopen/rename/create actions; returns counts per action."""
+        from sam.projects.projects import ProjectDirectory
+        counts = dict.fromkeys(DIRECTORY_AUTO_ACTIONS, 0)
+        done = set()
+        for item in items:
+            key = (item['project_id'], item['path'])
+            if item['action'] not in DIRECTORY_AUTO_ACTIONS or key in done:
+                continue
+            done.add(key)
+            if item['action'] == 'create':
+                ProjectDirectory.create(self.session, project_id=item['project_id'],
+                                        directory_name=item['path'])
+            else:
+                pd = self.session.get(ProjectDirectory, item['project_directory_id'])
+                if item['action'] == 'rename':
+                    pd.update(directory_name=item['path'])
+                pd.reopen()
+            counts[item['action']] += 1
+        return counts
+
+    def _known_usernames(self, entries) -> set:
+        """Lowercased usernames of normal rows that exist in SAM (one query)."""
+        from sam.core.users import User
+        names = {
+            e.username for e in entries
+            if e.user_override is None and e.username not in _DISK_ROLLUP_USERNAMES
+        }
+        if not names:
+            return set()
+        found = self.session.query(User.username).filter(User.username.in_(names))
+        return {u.lower() for (u,) in found}
+
+    def _emit_disk_report(self, report: dict, envelope: dict) -> None:
+        if self.ctx.output_format == 'json':
+            output_json({'kind': 'disk_import', **envelope, **report})
+        else:
+            display_disk_import_report(self.ctx, {**envelope, **report})
 
     def _write_disk_activity_and_charge(
         self,
@@ -932,6 +1164,7 @@ class AccountingAdminCommand(BaseCommand):
             MofNCompleteColumn(),
             TimeElapsedColumn(),
             console=self.console,
+            disable=self.ctx.output_format == 'json',
         ) as progress:
             task = progress.add_task(
                 f"Writing {resource_name} disk_activity/disk_charge...",
@@ -966,12 +1199,13 @@ class AccountingAdminCommand(BaseCommand):
                             progress.advance(task)
                             # Resolve project/account first; failure is
                             # captured as audit metadata on the tier-1 row.
-                            ok, _project, account = resolve_for_row(e)
+                            res = resolve_for_row(e)
+                            account = res.account
                             user = None
                             err = None
-                            if not ok:
+                            if not res.ok:
                                 err = (
-                                    f"unresolved: projcode={e.projcode!r} "
+                                    f"unresolved({res.reason}): projcode={e.projcode!r} "
                                     f"path={e.directory_path!r}"
                                 )
                             else:

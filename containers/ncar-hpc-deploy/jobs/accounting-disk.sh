@@ -17,9 +17,9 @@ while read -r key resource; do
         echo "${resource}: ${latest##*/} already processed"; continue
     fi
     echo "# ${resource}: ${latest}"
-    # --skip-errors: a partial load is better than none; errors print and sam-admin exits 2
-    # when rows were skipped. The file is consumed either way, so it is stamped on 0 or 2:
-    # reloading it nightly would repeat the same rows. To rerun a file, rm its stamp.
+    # --skip-errors: a partial load is better than none. sam-admin exits 2 only for an
+    # unexpected gap (no project, no account, unknown user). The file is consumed either way,
+    # so it is stamped on 0 or 2: reloading it would repeat the same rows. To rerun, rm its stamp.
     time sam-admin accounting --disk --resource "${resource}" --user-usage "${latest}" \
             --verbose --skip-errors "$@"; s=$?
     case ${s} in

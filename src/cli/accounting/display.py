@@ -5,6 +5,7 @@ from rich.table import Table
 from rich.tree import Tree
 from rich.panel import Panel
 from rich import box
+from rich.markup import escape
 
 from sam import fmt
 
@@ -151,6 +152,98 @@ def display_import_summary(ctx: Context, n_created: int, n_updated: int,
         table.add_row("Errors", f"[red]{n_errors}[/red]")
 
     ctx.console.print(table)
+
+
+# (title, fix hint) per disk-import category, in print order.
+_DISK_CATEGORY_TEXT = {
+    'no_project': ("Not charged: no SAM project",
+                   "link the path to its project (Admin -> project -> Directories), "
+                   "or add the label to KNOWN_UNOWNED_PROJCODES"),
+    'no_account': ("Not charged: project has no account on {resource}",
+                   "add an account for the project on {resource}"),
+    'unknown_user': ("Not charged: user not in SAM", None),
+    'known_unowned': ("Skipped: known unowned filesets", None),
+    'unlinked_directory': ("Charged via the fileset label; directory not linked",
+                           "--reconcile-directories applies reopen/rename/create; "
+                           "review rows need a person"),
+    'expired_directory': ("Charged via the fileset label; allocation expired", None),
+}
+
+
+def display_disk_import_report(ctx: Context, data: dict) -> None:
+    """Print the disk-import summary and one section per non-empty category.
+
+    Unexpected categories always list their rows; the informational ones
+    (hundreds of unlinked directories on Campaign_Store) only under --verbose.
+    """
+    counts = data['counts']
+    cats = data['categories']
+    resource = data['resource']
+    title = f"Disk Import {resource} {data['snapshot_date']}"
+    if not data['written']:
+        title += " (nothing written)"
+    table = Table(title=title, show_header=False, box=None)
+    table.add_column("Label", style="dim")
+    table.add_column("Count", justify="right", style="bold")
+    if data['written']:
+        table.add_row("Created", f"[green]{data['created']}[/green]")
+        table.add_row("Updated", f"[cyan]{data['updated']}[/cyan]")
+    table.add_row("Skipped (system account)", str(counts['system_account_rows']))
+    table.add_row("Skipped (known unowned)", str(counts['known_unowned']))
+    table.add_row("Charged, directory not linked", str(counts['unlinked_directory']))
+    table.add_row("Charged, allocation expired", str(counts['expired_directory']))
+    for cat in ('no_project', 'no_account', 'unknown_user'):
+        n = counts[cat]
+        table.add_row(f"Not charged ({cat.replace('_', ' ')})",
+                      f"[red]{n}[/red]" if n else "0")
+    if data.get('errors'):
+        table.add_row("Errors", f"[red]{data['errors']}[/red]")
+    ctx.console.print(table)
+
+    actions: dict[str, int] = {}
+    for item in cats['unlinked_directory']:
+        actions[item['action']] = actions.get(item['action'], 0) + 1
+    if actions:
+        planned = ', '.join(f"{a} {n}" for a, n in sorted(actions.items()))
+        ctx.console.print(f"Directory actions: {planned}")
+    if 'directories' in data:
+        applied = ', '.join(f"{a} {n}" for a, n in data['directories'].items())
+        ctx.console.print(f"[green]Directories reconciled: {applied}[/green]")
+
+    for cat, (heading, hint) in _DISK_CATEGORY_TEXT.items():
+        items = cats[cat]
+        if not items:
+            continue
+        unexpected = cat in ('no_project', 'no_account', 'unknown_user')
+        if not (unexpected or ctx.verbose):
+            continue
+        style = "red" if unexpected else "yellow"
+        ctx.console.print(
+            f"\n[bold {style}]{heading.format(resource=resource)}[/bold {style}] "
+            f"({fmt.plural(len(items), 'entry', 'entries')})"
+        )
+        if hint:
+            ctx.console.print(f"  [dim]fix: {hint.format(resource=resource)}[/dim]")
+        for item in items:
+            if cat == 'unknown_user':
+                ctx.console.print(
+                    f"  {escape(item['username'])}  projects={','.join(item['projcodes'])}  "
+                    f"rows={item['rows']}  {fmt.size(item['bytes'])}"
+                )
+                continue
+            sam = item['sam_projcode']
+            sam_txt = f" -> {sam}" if sam and sam != item['projcode'] else ""
+            tag = f"\\[{item['action']}] " if item.get('action') else ""
+            ctx.console.print(
+                f"  {tag}{escape(item['projcode'])}{sam_txt}  {escape(item['path'] or '-')}  "
+                f"rows={item['rows']}  {fmt.size(item['bytes'])}"
+            )
+
+    system = data['system_accounts']
+    if system:
+        ctx.console.print(
+            f"\n[dim]System accounts dropped: {escape(', '.join(system))}[/dim]"
+        )
 
 
 def display_charge_summary_table(ctx: Context, rows: list, start_date, end_date) -> None:
