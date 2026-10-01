@@ -30,6 +30,13 @@ from sam.summaries.disk_summaries import BYTES_PER_TIB
 from sam.accounting.calculator import calculate_charges
 
 
+def _keep_fixed_keys(charges: dict, activity_type) -> dict:
+    """DISK/ARCHIVE always carry their key, even at zero (the read-model row does too)."""
+    if activity_type in ('DISK', 'ARCHIVE'):
+        charges.setdefault(activity_type.lower(), 0.0)
+    return charges
+
+
 class AccountSummarySchema(BaseSchema):
     """
     Minimal account schema for nested references.
@@ -181,8 +188,8 @@ class AllocationWithUsageSchema(AllocationSchema):
         project = account.project
         if project is not None and not project.is_leaf() and \
                 project.tree_root and project.tree_left and project.tree_right:
-            charges = project.get_subtree_charges(
-                account.resource_id, activity_type, start_date, end_date)
+            charges = _keep_fixed_keys(project.get_subtree_charges(
+                account.resource_id, activity_type, start_date, end_date), activity_type)
             adjustments = 0.0
             if include_adjustments:
                 adjustments = float(project.get_subtree_adjustments(
@@ -218,10 +225,9 @@ class AllocationWithUsageSchema(AllocationSchema):
         Delegates to the shared calculator so routing lives in exactly one place.
         DISK/ARCHIVE keep their key even at zero, matching the prior contract.
         """
-        charges = calculate_charges(session, [account_id], start_date, end_date, activity_type)
-        if activity_type in ('DISK', 'ARCHIVE'):
-            charges.setdefault(activity_type.lower(), 0.0)
-        return charges
+        return _keep_fixed_keys(
+            calculate_charges(session, [account_id], start_date, end_date, activity_type),
+            activity_type)
 
     def get_charges_by_type(self, obj):
         """Get breakdown of charges by type (comp, dav, disk, archive)."""

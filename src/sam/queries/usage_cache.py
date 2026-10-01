@@ -24,7 +24,10 @@ from typing import Dict, List, Optional
 import logging
 
 from sam.caching import BucketedTTLCache, BucketSpec, CacheBase, norm
-from sam.queries.allocations import get_allocation_summary_with_usage
+from sam.queries.allocations import (
+    get_allocation_summary_with_usage,
+    get_allocation_usage_rows,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +110,28 @@ def cached_allocation_usage(
         include_adjustments,
         root_only,
     )
+    return _CACHE.get_or_compute('default', key, _compute,
+                                 force_refresh=force_refresh)
+
+
+def cached_allocation_usage_rows(
+    session,
+    *,
+    resource_name,
+    window_start: datetime,
+    window_end: datetime,
+    as_of: datetime,
+    force_refresh: bool = False,
+) -> List[Dict]:
+    """Cached wrapper for get_allocation_usage_rows(), keyed at day granularity."""
+    def _compute():
+        return get_allocation_usage_rows(
+            session, resource_name=resource_name, window_start=window_start,
+            window_end=window_end, as_of=as_of,
+        )
+
+    key = ('rows', norm(resource_name), window_start.date(), window_end.date(),
+           as_of.date())
     return _CACHE.get_or_compute('default', key, _compute,
                                  force_refresh=force_refresh)
 
