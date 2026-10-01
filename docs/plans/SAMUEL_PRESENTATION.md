@@ -772,6 +772,15 @@ an update here (tick boxes, session log).
     `.fill` grew the schedule to 3× in folded lines. Fixed: no wrap on `.fill` slides, and an
     inner scroll counts as overflow.
 
+- **2026-10-01 (layout pass, merged):**
+  - Theme #8 merged, with Ben's review commit: `.hcenter` leaves a captioned figure alone in
+    the PDF. Framework #20 merged with the theme's `main` vendored.
+  - `samuel` was rebased onto `main` (13 deck commits).
+  - The layout pass covers 22 slides, chosen by measuring each slide's free height in HTML.
+    Note that column slides read about 95% free, which is an artifact of the measure.
+  - Every PDF page was checked for overflow. All 21 outputs build, slide counts are unchanged,
+    and there are no untitled pptx slides.
+
 ## 11. Voice, tone and the fun
 
 **SAMuel = SAM, updated for extended lifecycle.** That backronym is the deck's premise and its
@@ -938,7 +947,7 @@ puts the paragraph on the beamer section page; it is a framework `main` follow-u
 - revealjs: Playwright screenshots at 1280×720, plus one narrow viewport.
 - Companion pages: the artifact-design checklist (both themes, phone width).
 
-**Centering and scaling a short slide** (2026-10-01; theme #8 v2.5.0, framework #20).
+**Centering and scaling a short slide** (2026-10-01; theme #8 v2.5.0 and framework #20, both merged).
 - **Five independent controls on a `##` heading:** `.hcenter`, `.vcenter`, `.center` (both;
   the theme's, not Quarto's), `scale="S"` and `.fill`.
 - **Formats:** they work in HTML and PDF. pptx gets them through `slide_layout.py`, which
@@ -946,7 +955,15 @@ puts the paragraph on the beamer section page; it is a framework `main` follow-u
 - **Recipe for a short slide:** `{.center .fill scale="S"}`, with S sized so the *PDF* fits.
   HTML fills to the floor, and PDF/pptx use S. In Part 4, 1.4 and 1.5 overflowed the beamer
   page; 1.15 and 1.25 fit.
-- **Phase 6:** the polish pass uses these on the remaining whitespace.
+- **Applied to Parts 1–4** (framework `ca66e38`), on 22 slides:
+  - standalone tables use `{.center .fill scale="S"}`;
+  - bullet plus CLI output uses `{.vcenter .fill}`;
+  - short diagrams use `{.vcenter}`.
+
+  Bullet and column slides stay top-aligned at the deck's size, because a per-slide text size
+  jars in a talk. Two tables keep scale 1 because their PDF overflowed even at 1.1: "five
+  audiences" and "same bytes".
+- **Phase 6:** the polish pass covers whatever whitespace is left.
 
 **Candidate companion pages** (decide per phase; each needs a slide that earns the link):
 - Part 2: an allocation-tree explorer.
