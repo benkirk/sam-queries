@@ -367,9 +367,10 @@ make target.
   `PROD_STATUS_DB_*` (which name the postgres superuser), so the make targets need
   no separate `PGPASSWORD`; `PGSSLMODE` defaults to `require`.
 - Top-level `Makefile`, `refresh-dev`: `$(MAKE) -C containers/sam-sql-dev clone clone-pg`
-  → `scripts/seed_status_dev.sh` → `SAM_API_USER=collector SAM_API_PASS=$SAM_DEV_API_PASS
+  → `scripts/seed_status_dev.sh` → `SAM_API_USER=cacheref SAM_API_PASS=$SAM_CACHE_REFRESH_API_PASS_DEV
   SAM_API_BASE=https://samuel-dev.k8s.ucar.edu sam-admin cache --refresh`
-  (`SAM_DEV_API_PASS` in `.env`, documented in `.env.example`). Cadence: on demand,
+  (`SAM_CACHE_REFRESH_API_PASS_DEV` in `.env`, documented in `.env.example`; the
+  refresh route needs `api_admin`, which only `cacheref` holds). Cadence: on demand,
   floor weekly. It runs from a VPN'd laptop because `clone` reads prod MySQL as
   `hpc-reader`, so it is not a cluster CronJob. Do not `make -n refresh-dev`: the
   recipe contains `$(MAKE)`, which GNU make runs even under `-n`.
