@@ -1274,7 +1274,11 @@ class SAMAnonymizer:
                 # modified_time past its refreshed_at, so every tree reads as
                 # stale and the reader refuses the whole table. Ship it empty;
                 # the hourly task and the tests rebuild it.
+                # API-key hashes stay in the raw dev clones but never in the
+                # committed blob. role_api_credentials first: its FK is live here.
                 for table_name, what in (
+                        ('role_api_credentials', 'API-key role links (orphaned with api_credentials)'),
+                        ('api_credentials', 'API-key bcrypt hashes'),
                         ('notification_addressing', 'operator cc/bcc rows (real mailboxes)'),
                         ('notification_template_override', 'edited template bodies'),
                         ('account_request', 'account requests (names + emails of non-users)'),

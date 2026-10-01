@@ -194,11 +194,11 @@ dev_cache_refresh = SAM_DB_DRIVER=postgresql SAM_DB_REQUIRE_SSL=true \
     SAM_DB_SERVER="$${SAM_DEV_PG_HOST:-csg-postgres.k8s.ucar.edu}" \
     SAM_DB_NAME="$${SAM_DEV_PG_DB:-sam_dev}" \
     SAM_DB_USERNAME="$$SAM_DEV_PG_USER" SAM_DB_PASSWORD="$$SAM_DEV_PG_PASSWORD" \
-    SAM_API_USER=collector SAM_API_PASS="$$SAM_DEV_API_PASS" \
+    SAM_API_USER=cacheref SAM_API_PASS="$$SAM_CACHE_REFRESH_API_PASS_DEV" \
     SAM_API_BASE=https://samuel-dev.k8s.ucar.edu sam-admin cache --refresh
 
 # Laptop-only (VPN): `clone` reads prod MySQL as hpc-reader. Needs .env's
-# SAM_DEV_PG_*, SAM_DEV_API_PASS, and PROD_STATUS_DB_* (the csg/pg-superuser the
+# SAM_DEV_PG_*, SAM_CACHE_REFRESH_API_PASS_DEV, and PROD_STATUS_DB_* (the csg/pg-superuser the
 # status seed uses). The loader evicts the dev pods' own sessions before the swap.
 refresh-dev: ## Rebuild sam_dev + system_status_dev from prod, then refresh samuel-dev's caches
 	$(config_env) && source etc/config_env.sh && \
@@ -208,7 +208,7 @@ refresh-dev: ## Rebuild sam_dev + system_status_dev from prod, then refresh samu
 
 # Laptop-only (VPN): superset of refresh-dev — also loads the local compose
 # postgres (:5433) via clone-pg-local, and brings it up first. Needs .env's
-# SAM_DEV_PG_*, SAM_DEV_API_PASS, and PROD_STATUS_DB_* (the csg/pg-superuser the
+# SAM_DEV_PG_*, SAM_CACHE_REFRESH_API_PASS_DEV, and PROD_STATUS_DB_* (the csg/pg-superuser the
 # status seed uses); docker for the local postgres bring-up.
 sync-dev: ## Update all backing dev DBs (local :5433 + CNPG sam_dev + system_status_dev) from prod, then refresh caches
 	$(config_env) && source etc/config_env.sh && \
