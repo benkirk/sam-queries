@@ -1,12 +1,12 @@
 # Ticketing from SAM: the ithelp Jira API and a thin ticket-provider layer
 
 Status: design record and as-built. Phase 0 shipped in #634 (2026-09-26);
-phases 1-3 **merged** in #636 (2026-09-27), one commit per step of § 8.9, and run
-on Ben's PAT. The open items (bot account, `on_behalf_of`, one ticket per roster)
-stay listed in § 7; § 8 is the approved plan and
-§ 9 records where the build departs from it. Section 8 supersedes the
-column-level details in section 5 (the `external_ticket` table replaces the
-four columns). A bot token later is a change to the OpenBao value only.
+phases 1-3 **merged** in #636 (2026-09-27), one commit per step of § 8.9. Filing
+runs on the `rc-sam-bot` service account's PAT (OpenBao, 2026-09-30). The open
+items (`on_behalf_of`, one ticket per roster) stay listed in § 7; § 8 is the
+approved plan and § 9 records where the build departs from it. Section 8
+supersedes the column-level details in section 5 (the `external_ticket` table
+replaces the four columns).
 
 ## 1. Why
 
@@ -131,7 +131,7 @@ covers the mail era and the API era with one predicate.
 |---|---|---|---|---|
 | 0 | `[SAM-AR-<id>]` token in the mail subject | none | none | **shipped with this doc** |
 | 1 | read-only client; learn the key hourly; `RC-40274`-style link on the Accounts card | `external_ticket` table | read keys + token | **built**, § 9 |
-| 2 | JSM create with mail fallback behind `TICKET_PROVIDER=jira-servicedesk`, internal automation note on every created ticket | none | none | **built** on Ben's PAT; bot token later |
+| 2 | JSM create with mail fallback behind `TICKET_PROVIDER=jira-servicedesk`, internal automation note on every created ticket | none | none | **built**; files as `rc-sam-bot` (§ 7) |
 | 3 | status sync | none | none | **built**, § 9 |
 
 ### Phase 0: the subject token
@@ -263,9 +263,11 @@ dates the row.
 
 ## 7. Open items
 
-- **Jira bot account.** Ask for a service user with Browse and Create on RC;
-  swapping it in is a change to the OpenBao value at `csg/sam-jira-token` only.
-  Until then every API ticket carries Ben as reporter, and the PAT never expires.
+- ~~Jira bot account~~: `rc-sam-bot` (groups `RC-bots`, `servicedesk-customer`),
+  PAT never expires, in OpenBao at `csg/sam-jira-token`. Scoped 2026-09-30: every
+  RC project permission matches Ben's (agent, create, edit, comment, transition,
+  assign, modify reporter); it lacks only the global Browse users and shared
+  filters, which SAM does not call. Write smoke on RC-40333 (Canceled).
 - **JSM customer choice.** Ask NUSD who the customer should be on an API-filed
   request (`raiseOnBehalfOf`): the requester, the sponsor, or nobody.
   `TicketDraft.on_behalf_of` exists and is sent when set; nothing sets it.
@@ -649,7 +651,7 @@ Rough size: ~900 LOC product, ~700 LOC tests.
 
 ### 8.11 Open items carried in the doc
 
-- Jira bot account (swap `JIRA_TOKEN`, no code change).
+- ~~Jira bot account~~: `rc-sam-bot`, 2026-09-30 (§ 7).
 - Who NUSD wants as the JSM customer (`raiseOnBehalfOf`); the knob is not built.
 - ~~Close RC-40274.~~ Canceled.
 
@@ -664,7 +666,7 @@ green on MySQL and Postgres; `helm/tests/test-cronjob-render.sh` and
 | Learn and refresh go through `provider_from_environment()` (`TICKET_PROVIDER`) | through `registry.read_providers()`: every provider whose reads are on (`JIRA_ENABLED`) | `TICKET_PROVIDER` is kept out of the CronJob (§ 8.7), so the plan's wording would have skipped the hourly pass forever. The lever table (§ 8.1, mode b) already reads this way. `TICKET_PROVIDER` selects only the filing path. |
 | `TicketDraft.token`, `find(subject_token(id))` | `TicketDraft.handle`, bare `SAM-AR-<id>` from `ticket_handle()` in `account_notices.py` (`subject_token()` wraps it in brackets) | the verified JQL phrase has no brackets; one function owns the format |
 | six abstract members | seven: `from_environment(*, interactive=False)`, `configured`, `write_configured`, `summary`, `create`, `get`, `browse_url` | as listed in § 8.2; `interactive` asks for the webapp budget |
-| automation note names "Ben Kirk's API token" | `DEFAULT_AUTOMATION_NOTE` says the reporter shown is the token owner, plus the row's link | the bot swap stays a secret-only change |
+| automation note names "Ben Kirk's API token" | `DEFAULT_AUTOMATION_NOTE` says only that SAM filed it and replies stay in the queue, plus the row's link | the reporter is the `rc-sam-bot` token owner, which explains itself |
 | `JiraConfig` default timeout 5 | defaults 10 s read / 3.05 s connect / 3 retries; `interactive` = 5 s, one attempt | § 8.1's numbers; the webapp path is `interactive` |
 | `find` trusts the JQL hits | hits are also filtered to the exact handle (`SAM-AR-12` never matches `SAM-AR-123`) | cheap insurance on a phrase match |
 | a process-local miss dict | not built | each request is asked at most once per run anyway; a miss writes nothing |
