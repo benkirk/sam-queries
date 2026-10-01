@@ -1973,3 +1973,130 @@ class TestPlanMatchesTouched:
         plan, touched = self._extend(session, standalone_project, [derecho.resource_id],
                                      acting_user, new_end=SRC_END)
         assert plan == touched == []
+
+
+# ---------------------------------------------------------------------------
+# Overlap guard — the NCGD0006 Extend of 2026-09-30
+# ---------------------------------------------------------------------------
+
+
+class TestExtendOverlapGuard:
+    """Extend must not run an allocation over a later one on the same account."""
+
+    def _renew_tree(self, session, root, resource):
+        """FY-next successors on every account of an inheriting tree."""
+        return _seed_inheriting_tree(session, root, resource, start=NEW_START, end=NEW_END)
+
+    def _ends(self, session, root, resource_id):
+        rows = (session.query(Allocation)
+                .join(Account, Allocation.account_id == Account.account_id)
+                .filter(Account.resource_id == resource_id, Allocation.deleted == False)  # noqa: E712
+                .all())
+        return sorted((a.allocation_id, a.end_date) for a in rows)
+
+    def test_refuses_over_renewed_tree_and_writes_nothing(
+        self, session, tree_root_with_children, derecho, acting_user,
+    ):
+        from sam.manage.allocations import AllocationOverlapError
+        _seed_inheriting_tree(session, tree_root_with_children, derecho)
+        self._renew_tree(session, tree_root_with_children, derecho)
+        before = self._ends(session, tree_root_with_children, derecho.resource_id)
+        n_txn = session.query(AllocationTransaction).count()
+
+        with pytest.raises(AllocationOverlapError) as exc:
+            extend_project_allocations(
+                session, root_project_id=tree_root_with_children.project_id,
+                source_active_at=SRC_ACTIVE_AT, new_end=EXTENDED_END,
+                resource_ids=[derecho.resource_id], user_id=acting_user.user_id)
+
+        assert len(exc.value.conflicts) == 4          # root + 3 children
+        assert exc.value.latest_clear_end == NEW_START - timedelta(seconds=1)
+        assert '2100-01-01' in str(exc.value)
+        assert self._ends(session, tree_root_with_children, derecho.resource_id) == before
+        assert session.query(AllocationTransaction).count() == n_txn
+
+    def test_extending_into_a_gap_before_the_successor_succeeds(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        source = _seed_standalone_source(session, standalone_project, derecho)
+        _seed_standalone_source(session, standalone_project, derecho,
+                                start=datetime(2100, 3, 1), end=NEW_END)
+        gap_end = datetime(2100, 2, 28, 23, 59, 59)
+        extend_project_allocations(
+            session, root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT, new_end=gap_end,
+            resource_ids=[derecho.resource_id], user_id=acting_user.user_id)
+        assert session.get(Allocation, source.allocation_id).end_date == gap_end
+
+    def test_one_conflicting_child_refuses_the_whole_tree(
+        self, session, tree_root_with_children, derecho, acting_user,
+    ):
+        from sam.manage.allocations import AllocationOverlapError
+        _, allocs = _seed_inheriting_tree(session, tree_root_with_children, derecho)
+        child = _active_descendants(tree_root_with_children)[1]
+        _seed_standalone_source(session, child, derecho, start=NEW_START, end=NEW_END)
+        with pytest.raises(AllocationOverlapError) as exc:
+            extend_project_allocations(
+                session, root_project_id=tree_root_with_children.project_id,
+                source_active_at=SRC_ACTIVE_AT, new_end=EXTENDED_END,
+                resource_ids=[derecho.resource_id], user_id=acting_user.user_id)
+        assert len(exc.value.conflicts) == 1
+        root_alloc = _find_test_alloc(session, tree_root_with_children,
+                                      derecho.resource_id, SRC_ACTIVE_AT)
+        assert root_alloc.end_date == SRC_END
+
+    def test_deleted_successor_is_ignored(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        source = _seed_standalone_source(session, standalone_project, derecho)
+        successor = _seed_standalone_source(session, standalone_project, derecho,
+                                            start=NEW_START, end=NEW_END)
+        session.get(Allocation, successor.allocation_id).deleted = True
+        session.flush()
+        extend_project_allocations(
+            session, root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT, new_end=EXTENDED_END,
+            resource_ids=[derecho.resource_id], user_id=acting_user.user_id)
+        assert session.get(Allocation, source.allocation_id).end_date == EXTENDED_END
+
+
+class TestUpdateAllocationOverlapGuard:
+
+    def test_widening_end_over_a_later_allocation_raises(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        from sam.manage.allocations import AllocationOverlapError, update_allocation
+        source = _seed_standalone_source(session, standalone_project, derecho)
+        _seed_standalone_source(session, standalone_project, derecho,
+                                start=NEW_START, end=NEW_END)
+        with pytest.raises(AllocationOverlapError):
+            update_allocation(session, source.allocation_id, acting_user.user_id,
+                              end_date=EXTENDED_END)
+        with pytest.raises(AllocationOverlapError):
+            update_allocation(session, source.allocation_id, acting_user.user_id,
+                              end_date=None)
+        assert session.get(Allocation, source.allocation_id).end_date == SRC_END
+
+    def test_shrink_or_amount_edit_passes_despite_an_existing_overlap(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        from sam.manage.allocations import update_allocation
+        source = _seed_standalone_source(session, standalone_project, derecho)
+        _seed_standalone_source(session, standalone_project, derecho,
+                                start=datetime(2099, 6, 1), end=NEW_END)
+        update_allocation(session, source.allocation_id, acting_user.user_id, amount=5.0)
+        shorter = datetime(2099, 9, 30, 23, 59, 59)
+        update_allocation(session, source.allocation_id, acting_user.user_id,
+                          end_date=shorter)
+        assert session.get(Allocation, source.allocation_id).end_date == shorter
+
+    def test_cascade_into_a_childs_later_allocation_raises(
+        self, session, tree_root_with_children, derecho, acting_user,
+    ):
+        from sam.manage.allocations import AllocationOverlapError, update_allocation
+        root_alloc, _ = _seed_inheriting_tree(session, tree_root_with_children, derecho)
+        child = _active_descendants(tree_root_with_children)[0]
+        _seed_standalone_source(session, child, derecho, start=NEW_START, end=NEW_END)
+        with pytest.raises(AllocationOverlapError):
+            update_allocation(session, root_alloc.allocation_id, acting_user.user_id,
+                              end_date=EXTENDED_END)

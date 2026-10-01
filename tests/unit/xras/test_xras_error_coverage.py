@@ -51,6 +51,7 @@ SCENARIOS = {
     'missing_date': 'a blank actionBeginDate / actionEndDate',
     'could_not_convert_date': 'an unparseable actionBeginDate / actionEndDate',
     'extension_end_date_before_existing': 'an Extension that would shrink',
+    'extension_overlaps_later_allocation': 'an Extension whose subtree would overlap a later allocation (SAM-only)',
     'update_end_date_before_existing': 'an Update that would shrink',
     'all_end_dates_null_or_past': 'a Supplement create branch with no usable end',
     'cannot_find_contract': 'a grantNumber SAM holds no contract for',
