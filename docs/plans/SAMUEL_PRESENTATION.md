@@ -851,6 +851,15 @@ an update here (tick boxes, session log).
   - **QA:** every HTML slide screenshotted (1600×900) and every PDF page rasterized, before and
     after. pptx and PDF slide counts match for every part (19/40/16/31/33, 138 combined), and
     the LibreOffice sheet shows no split slides.
+- **2026-10-01 (deck QA tooling):** framework #21 adds `make qa` (`deck_qa.py`) and a `deck-polish`
+  skill, so the next format pass starts from a report.
+  - Run against the deck before the format pass, it flags every defect that pass found by hand.
+  - It found two the pass missed, both fixed on `samuel` (`815b3b2`): Part 3's PSA slide never
+    got the short-slide recipe (its title is the same as Part 2's), and the borrowed-databases
+    table ran past the PDF margin at scale 1.2.
+  - `docs/samuel/qa-names.txt` drives the name scan.
+  - The skill's deferred list holds the follow-ups: an ignore list, the sample deck's three
+    overflows, CI, and pptx overflow.
 
 ## 11. Voice, tone and the fun
 
