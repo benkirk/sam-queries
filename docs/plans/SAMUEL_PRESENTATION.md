@@ -757,6 +757,21 @@ an update here (tick boxes, session log).
       the last column, or in the notes.
     - zsh reads `"$ref:c…"` as a history modifier; write `${ref}`. Bash scripts are unaffected.
 
+- **2026-10-01 (slide layout controls):**
+  - Ben asked for a "center + scale by xx" control for short slides, then chose separate
+    controls: `.hcenter`, `.vcenter`, `.center`, `scale=` and `.fill`.
+  - **Theme #8 (v2.5.0):**
+    - both filters wrap the body in a Div before the footnote hoist, and turn it into raw
+      markup after;
+    - HTML: the autofit script starts at S, grows for `.fill`, and measures `.vcenter`;
+    - PDF: a `\fontsize` group, frame option `c`, and `center` + `varwidth`.
+  - **Framework #20:** re-vendors the theme. The pptx path is `slide-layout.lua`, which writes
+    a notes line (pandoc merges notes Divs), plus `utils/slide_layout.py`.
+  - **`samuel` stacks on #20;** two Part 4 slides use it.
+  - **Bug found:** Quarto wraps plain code and caps its height with an inner scroll, so
+    `.fill` grew the schedule to 3× in folded lines. Fixed: no wrap on `.fill` slides, and an
+    inner scroll counts as overflow.
+
 ## 11. Voice, tone and the fun
 
 **SAMuel = SAM, updated for extended lifecycle.** That backronym is the deck's premise and its
@@ -922,6 +937,16 @@ puts the paragraph on the beamer section page; it is a framework `main` follow-u
   beamer has no autofit.
 - revealjs: Playwright screenshots at 1280×720, plus one narrow viewport.
 - Companion pages: the artifact-design checklist (both themes, phone width).
+
+**Centering and scaling a short slide** (2026-10-01; theme #8 v2.5.0, framework #20).
+- **Five independent controls on a `##` heading:** `.hcenter`, `.vcenter`, `.center` (both;
+  the theme's, not Quarto's), `scale="S"` and `.fill`.
+- **Formats:** they work in HTML and PDF. pptx gets them through `slide_layout.py`, which
+  can't do `hcenter` or `fill`.
+- **Recipe for a short slide:** `{.center .fill scale="S"}`, with S sized so the *PDF* fits.
+  HTML fills to the floor, and PDF/pptx use S. In Part 4, 1.4 and 1.5 overflowed the beamer
+  page; 1.15 and 1.25 fit.
+- **Phase 6:** the polish pass uses these on the remaining whitespace.
 
 **Candidate companion pages** (decide per phase; each needs a slide that earns the link):
 - Part 2: an allocation-tree explorer.
