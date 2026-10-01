@@ -16,6 +16,7 @@
                               amount (None = varies), end_date,
                               is_open_ended, descendant_count, child_only,
                               anchor_projcodes
+    tree_size         — active projects in root's tree; None when opened on the root
     source_active_at  — YYYY-MM-DD string (the "Active At" filter value)
     default_end       — YYYY-MM-DD string — proposed new end date
     errors            — list of validation error strings (on re-render)
@@ -46,6 +47,15 @@
     unchanged.
     {{ help_icon(g_renew_vs_extend(), rich=True, title='Renew vs. Extend', placement='right') }}
   </div>
+
+  {% if tree_size %}
+  <div class="alert alert-warning small mb-3" data-testid="extend-tree-scope">
+    <i class="fa-solid fa-triangle-exclamation"></i>
+    Extend acts on the whole <strong>{{ root.projcode }}</strong> tree
+    ({{ tree_size | fmt_plural('project', 'projects') }}), not only
+    <code>{{ project.projcode }}</code>.
+  </div>
+  {% endif %}
 
   {# Preserve source date for the POST — not user-editable. #}
   <input type="hidden" name="source_active_at" value="{{ source_active_at }}">

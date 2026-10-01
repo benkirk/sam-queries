@@ -116,5 +116,7 @@ deliberately not a superuser. The role name and password live only in `.env`.
 The obfuscated blob is committed to a public repository. Preserved usernames
 (`preserve_usernames` in `config.yaml`) keep their real data, and anything
 the anonymizer cannot reach (JSON payloads) is emptied by a `mode: empty`
-strategy instead. Before committing a regenerated blob, read the `verify`
-output: a table reading clean may simply be empty.
+strategy instead. The anonymizer also purges `api_credentials` and
+`role_api_credentials`, which the raw dev clones keep. Before committing a
+regenerated blob, read the `verify` output: a table reading clean may simply
+be empty.

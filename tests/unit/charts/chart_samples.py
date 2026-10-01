@@ -9,7 +9,7 @@ Everything here is fixed — no ``date.today()``, no randomness — because the
 fingerprints are checked in.
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from webapp.dashboards import charts
@@ -210,6 +210,29 @@ def _pace_allocations(n=25):
     return out
 
 
+def _pace_rollover(n=12):
+    """A cycle boundary on ``_PACE_NOW``: every project's old allocation ended
+    the day before and its renewal starts that day, plus one that starts later."""
+    boundary = _PACE_NOW.replace(hour=0)
+    out = []
+    for i in range(n):
+        out.append({
+            'projcode': f'ROLL{i:04d}',
+            'start_date': boundary - timedelta(days=365),
+            'end_date': boundary - timedelta(seconds=1),
+            'total_amount': float(150_000 * (n - i)),
+            'total_used': float(120_000 * (n - i)),
+        })
+        out.append({
+            'projcode': f'ROLL{i:04d}',
+            'start_date': boundary + (timedelta(days=45) if i == 0 else timedelta()),
+            'end_date': boundary + timedelta(days=365),
+            'total_amount': float(100_000 * (n - i)),
+            'total_used': 0.0,
+        })
+    return out
+
+
 #: ``(case_id, callable, args, kwargs)``. The id is the snapshot key, so it is
 #: stable and descriptive; renaming one is a snapshot diff.
 CASES = [
@@ -330,4 +353,6 @@ CASES = [
     ('pace.small_top_n', charts.generate_pace_chart_matplotlib,
      (_pace_allocations(6), _PACE_NOW), {'top_n': 8}),
     ('pace.empty', charts.generate_pace_chart_matplotlib, ([], _PACE_NOW), {}),
+    ('pace.fy_rollover', charts.generate_pace_chart_matplotlib,
+     (_pace_rollover(), _PACE_NOW), {'sort_by': 'size'}),
 ]

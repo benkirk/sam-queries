@@ -35,6 +35,7 @@ from sam.manage.allocations import (
     detach_allocation,
     log_allocation_transaction,
     log_integration_transaction,
+    raise_if_widening_conflicts,
     validate_allocation_dates,
 )
 from sam.base import normalize_end_date
@@ -43,6 +44,7 @@ from sam.manage.renew import PlannedAllocation, find_renew_anchors, find_source_
 
 __all__ = [
     'extend_project_allocations',
+    'check_extend_overlap',
     'plan_extend_allocations',
     'extend_account_allocation',
 ]
@@ -73,6 +75,18 @@ def _extend_steps(
             if source_child.end_date >= new_end:
                 continue
             yield source_child, False
+
+
+def check_extend_overlap(root_project: Project, resource_ids: List[int], *,
+                         source_active_at: datetime, new_end: datetime) -> None:
+    """Raise ``AllocationOverlapError`` if the Extend would run any touched allocation
+    over a later one on its account. Writes nothing; the preview calls it too."""
+    raise_if_widening_conflicts(
+        ((alloc, alloc.start_date, new_end)
+         for resource_id in set(resource_ids)
+         for alloc, _ in _extend_steps(root_project, resource_id,
+                                       source_active_at=source_active_at, new_end=new_end)),
+        f"Extending {root_project.projcode} to {new_end:%Y-%m-%d}")
 
 
 def plan_extend_allocations(
@@ -118,10 +132,17 @@ def extend_project_allocations(
     Returns the anchor allocations actually updated (one per extended
     anchor). ``touched``, when given, collects every extended allocation,
     anchors and descendants alike.
+
+    Raises ``AllocationOverlapError``, before writing anything, if any touched
+    allocation would run over a later one on its account.
     """
     root_project = session.get(Project, root_project_id)
     if root_project is None:
         raise ValueError(f"Project {root_project_id} not found")
+
+    # All or nothing: a partly extended tree leaves the root ending before its children.
+    check_extend_overlap(root_project, resource_ids,
+                         source_active_at=source_active_at, new_end=new_end)
 
     updated: List[Allocation] = []
     for resource_id in set(resource_ids):
@@ -220,6 +241,8 @@ def extend_account_allocation(
             before anything is written**, matching legacy's
             ``validateNewEndDate`` -> ``extend`` ordering: one bad descendant
             aborts the extension rather than half-applying it.
+        AllocationOverlapError: the new end would overlap a later live allocation on
+            a subtree node's account. SAM-only; legacy never checked.
     """
     subtree: List[Allocation] = []
     allocation._walk_tree(lambda node: subtree.append(node))
@@ -237,6 +260,10 @@ def extend_account_allocation(
                 f"Allocation {node.allocation_id} ends {node.end_date:%Y-%m-%d}, "
                 f"after the requested {new_end:%Y-%m-%d}"
             )
+
+    raise_if_widening_conflicts(((node, node.start_date, new_end) for node in subtree),
+                                f"Extending allocation {allocation.allocation_id} "
+                                f"to {new_end:%Y-%m-%d}")
 
     if allocation.is_inheriting:
         detach_allocation(session, allocation.allocation_id, user_id)

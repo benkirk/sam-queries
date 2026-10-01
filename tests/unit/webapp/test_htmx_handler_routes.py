@@ -10,6 +10,7 @@ form_input -> load -> clean -> render_errors with the route's own context.
 
 import pytest
 from sqlalchemy import func
+from sqlalchemy.orm import aliased
 
 from sam.accounting.accounts import Account
 from sam.accounting.allocations import Allocation
@@ -528,3 +529,64 @@ class TestAddMemberPointsAtInvitations:
         html = resp.get_data(as_text=True)
         assert resp.status_code == 200 and 'not found' in html
         assert 'tab=invitations' in html
+
+
+@pytest.fixture
+def renewed_root(session):
+    """``(projcode, resource_id, allocation_id, later_start)``: a root project's
+    standalone allocation followed on the same account by a later live one."""
+    from datetime import timedelta
+    later = aliased(Allocation)
+    row = (session.query(Project.projcode, Account.resource_id, Allocation.allocation_id,
+                         Allocation.start_date, later.start_date)
+           .join(Account, Account.project_id == Project.project_id)
+           .join(Allocation, Allocation.account_id == Account.account_id)
+           .join(later, later.account_id == Account.account_id)
+           .filter(Project.is_active, Project.parent_id.is_(None),
+                   Allocation.deleted.is_(False), later.deleted.is_(False),
+                   Allocation.parent_allocation_id.is_(None),
+                   Allocation.end_date.isnot(None),
+                   later.start_date > Allocation.end_date)
+           .order_by(later.start_date.desc()).first())
+    if row is None:
+        pytest.skip('no renewed root allocation in this snapshot')
+    projcode, rid, alloc_id, start, later_start = row
+    return projcode, rid, alloc_id, start + timedelta(days=1), later_start
+
+
+class TestOverlapGuardRoutes:
+    """Extend and Edit refuse to run an allocation over a later one (NCGD0006, 2026-09-30)."""
+
+    def test_extend_preview_and_save_refuse_with_the_later_period(
+            self, app, auth_client, renewed_root):
+        projcode, rid, alloc_id, active_at, later_start = renewed_root
+        before = _allocation_state(app, alloc_id)
+        data = {'source_active_at': active_at.date().isoformat(),
+                'new_end_date': '2099-12-31', 'resource_ids': str(rid)}
+        for url in (f'/admin/htmx/extend-allocations-preview/{projcode}',
+                    f'/admin/htmx/extend-allocations/{projcode}'):
+            html = auth_client.post(url, data=data).get_data(as_text=True)
+            assert 'would overlap' in html, url
+            assert later_start.strftime('%Y-%m-%d') in html, url
+        assert _allocation_state(app, alloc_id) == before
+
+    def test_edit_modal_refuses_an_end_date_over_the_later_allocation(
+            self, app, auth_client, renewed_root):
+        _, _, alloc_id, _, _ = renewed_root
+        before = _allocation_state(app, alloc_id)
+        html = auth_client.post(f'/admin/htmx/edit-allocation/{alloc_id}',
+                                data={'end_date': '2099-12-31'}).get_data(as_text=True)
+        assert 'would overlap' in html
+        assert _allocation_state(app, alloc_id) == before
+
+    def test_extend_form_names_the_tree_when_opened_below_the_root(
+            self, auth_client, session):
+        child = (session.query(Project)
+                 .filter(Project.is_active, Project.parent_id.isnot(None)).first())
+        if child is None:
+            pytest.skip('no sub-project in this snapshot')
+        below = auth_client.get(f'/admin/htmx/extend-allocations-form/{child.projcode}')
+        assert 'data-testid="extend-tree-scope"' in below.get_data(as_text=True)
+        root = child.get_root()
+        at_root = auth_client.get(f'/admin/htmx/extend-allocations-form/{root.projcode}')
+        assert 'data-testid="extend-tree-scope"' not in at_root.get_data(as_text=True)

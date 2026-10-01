@@ -33,6 +33,7 @@ from datetime import datetime
 from typing import List
 
 from sam.accounting.allocations import Allocation
+from sam.manage.allocations import widening_conflicts
 from sam.manage.extend import extend_account_allocation
 
 from .. import errors as e
@@ -91,6 +92,14 @@ class ExtensionHandler(ActionHandler):
                 # account reports too.
                 self.errors.report(e.extension_end_date_before_existing(
                     existing_end.strftime('%Y-%m-%d')))
+                continue
+            subtree: List[Allocation] = []
+            allocation._walk_tree(subtree.append)
+            conflicts = widening_conflicts(
+                (node, node.start_date, self.new_end) for node in subtree)
+            if conflicts:
+                self.errors.report(e.extension_overlaps_later_allocation(
+                    conflicts[0].start_date.strftime('%Y-%m-%d')))
                 continue
             self.targets.append(allocation)
 

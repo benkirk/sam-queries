@@ -53,6 +53,7 @@ from webapp.dashboards.charts.jobs_metrics import (  # noqa: F401
 )
 from webapp.dashboards.charts.layout import Layout  # noqa: F401
 from webapp.dashboards.charts.pace import (  # noqa: F401
+    PACE_WINDOW_DAYS,
     PaceChart,
     pace_bands as _pace_bands,
     pace_key_fields as _pace_key_fields,
@@ -204,6 +205,7 @@ __all__ = [
     'generate_jobs_usage_pie_chart',
     'generate_jobs_user_pie_chart',
     'generate_pace_chart_matplotlib',
+    'PACE_WINDOW_DAYS',
     # The hierarchy, for anyone subclassing.
     'BaseChart',
     'chart_view',

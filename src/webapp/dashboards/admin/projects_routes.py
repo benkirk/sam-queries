@@ -36,6 +36,7 @@ from webapp.utils.project_permissions import (
 from sam.manage import management_transaction
 from sam.sqlcompat import ci_like
 from sam.accounting.allocations import InheritingAllocationException
+from sam.manage.allocations import AllocationOverlapError
 from sam.core.groups import GidAllocation, NoAvailableGidError
 from sam.schemas.forms import (
     AccessGridToggleForm, AddAllocationsForm, AllocateResidualForm,
@@ -1902,6 +1903,27 @@ def _extend_shortening_error(root, resource_ids, source_dt, new_end):
     return None
 
 
+def _tree_size(project, root):
+    """Active projects in ``root``'s tree, or None when the form was opened on the root."""
+    if project.project_id == root.project_id:
+        return None
+    return 1 + sum(1 for d in root.get_descendants() if d.active)
+
+
+def _extend_refusal(root, resource_ids, source_dt, new_end):
+    """Extend's refusal, shared with its preview: a shortening, then an overlap."""
+    from sam.manage.allocations import AllocationOverlapError
+    from sam.manage.extend import check_extend_overlap
+    error = _extend_shortening_error(root, resource_ids, source_dt, new_end)
+    if error:
+        return error
+    try:
+        check_extend_overlap(root, resource_ids, source_active_at=source_dt, new_end=new_end)
+    except AllocationOverlapError as exc:
+        return str(exc)
+    return None
+
+
 def _renewal_preview(project, root, *, action, schema_cls, form_input, plan, active_at,
                      endpoint, prefix, refusal=None):
     """The renew/extend preview pane: plan the write, then build its notices.
@@ -2116,6 +2138,7 @@ def htmx_extend_allocations_form(project):
         'dashboards/admin/fragments/extend_allocations_form_htmx.html',
         project=project,
         root=root,
+        tree_size=_tree_size(project, root),
         candidates=candidates,
         source_active_at=source_active_at.strftime('%Y-%m-%d'),
         default_end=default_end,
@@ -2140,8 +2163,8 @@ class _ExtendAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
         self.source_dt = datetime.combine(
             data['source_active_at'], datetime.min.time())
 
-        error = _extend_shortening_error(self.root, data['resource_ids'],
-                                         self.source_dt, self.new_end)
+        error = _extend_refusal(self.root, data['resource_ids'],
+                                self.source_dt, self.new_end)
         if error:
             raise FormError(error)
         return data
@@ -2171,6 +2194,7 @@ class _ExtendAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
         return {
             'project': self.project,
             'root': self.root,
+            'tree_size': _tree_size(self.project, self.root),
             'candidates': _build_alloc_candidates(self.root, source_dt),
             'source_active_at': source_dt.strftime('%Y-%m-%d'),
             'default_end': request.form.get('new_end_date', ''),
@@ -2221,7 +2245,7 @@ def htmx_extend_allocations_preview(project):
         project, root, action='extended', schema_cls=ExtendAllocationsForm,
         form_input=_extend_form_input, plan=plan, active_at=lambda _data, src: src,
         endpoint='admin_dashboard.htmx_extend_allocations_preview', prefix='extendPreview',
-        refusal=lambda data, src: _extend_shortening_error(
+        refusal=lambda data, src: _extend_refusal(
             root, data['resource_ids'], src, data['new_end_date']))
 
 
@@ -2542,6 +2566,7 @@ class _EditAllocationHandler(HtmxFormHandler):
             'Check "I understand — permanently break inheritance and allow '
             'editing these fields" to detach it first, or edit the parent '
             'allocation — changes are applied here automatically.')),
+        (AllocationOverlapError, lambda e: str(e)),
     )
 
     def form_input(self):

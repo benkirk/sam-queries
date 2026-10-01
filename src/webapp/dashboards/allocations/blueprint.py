@@ -33,7 +33,9 @@ from sam.queries.charges import (
     count_recent_charge_adjustments,
     get_recent_charge_adjustments,
 )
-from sam.queries.usage_cache import cached_allocation_usage, purge_usage_cache, usage_cache_info
+from sam.queries.usage_cache import (
+    cached_allocation_usage, cached_allocation_usage_rows, purge_usage_cache, usage_cache_info,
+)
 from sam.queries.lookups import find_project_by_code
 from sam.export import Column, build_workbook
 from sam.schemas.forms import CreateChargeAdjustmentForm
@@ -50,6 +52,7 @@ from ..charts import (
     generate_facility_pie_chart_matplotlib,
     generate_allocation_type_pie_chart_matplotlib,
     generate_pace_chart_matplotlib,
+    PACE_WINDOW_DAYS,
 )
 
 from . import bp
@@ -648,16 +651,30 @@ def htmx_pace_chart(resource_name):
         default=(sorted(allowed) if allowed is not None else None),
     )
 
-    per_project_usage = cached_allocation_usage(
-        session=db.session,
-        resource_name=[resource_name],
-        facility_name=None,
-        allocation_type=None,
-        projcode=None,
-        active_only=True,
-        active_at=active_at,
-        root_only=True,
-    )
+    # One row per allocation across the drawn window, so allocations that ended
+    # or start inside it get their bands. Disk keeps the active-only summary:
+    # its "used" is current occupancy, which an ended allocation does not have.
+    resource = Resource.get_by_name(db.session, resource_name)
+    is_disk = (resource is not None and resource.resource_type is not None
+               and resource.resource_type.resource_type == 'DISK')
+    if is_disk:
+        per_project_usage = cached_allocation_usage(
+            session=db.session,
+            resource_name=[resource_name],
+            facility_name=None,
+            allocation_type=None,
+            projcode=None,
+            active_only=True,
+            active_at=active_at,
+            root_only=True,
+        )
+    else:
+        window = timedelta(days=PACE_WINDOW_DAYS)
+        per_project_usage = cached_allocation_usage_rows(
+            db.session, resource_name=[resource_name],
+            window_start=active_at - window, window_end=active_at + window,
+            as_of=active_at,
+        )
     per_project_usage = filter_rows_by_facility(per_project_usage, selected_facilities)
 
     chart_svg = generate_pace_chart_matplotlib(
