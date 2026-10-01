@@ -847,7 +847,7 @@ an update here (tick boxes, session log).
     `job_history` / `fs_scans`. Repo names used as the project's name (sam-queries) and
     environment names (samuel-dev) stay plain. Diagram labels stay in one sans face.
   - **Companion page:** inline code no longer breaks at hyphens. It has no overflow at 360 px.
-    The screenshot was refreshed. **Republish pending.**
+    The screenshot was refreshed, and the page was republished to the same URL (version 3).
   - **QA:** every HTML slide screenshotted (1600×900) and every PDF page rasterized, before and
     after. pptx and PDF slide counts match for every part (19/40/16/31/33, 138 combined), and
     the LibreOffice sheet shows no split slides.
