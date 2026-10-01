@@ -6,8 +6,8 @@ audit trail creation in allocation_transaction table.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import List, Optional, Dict, Any
+from datetime import datetime, timedelta
+from typing import Iterable, List, Optional, Dict, Any, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -26,6 +26,9 @@ __all__ = [
     'update_allocation',
     'alignment_target',
     'alignment_conflicts',
+    'AllocationOverlapError',
+    'widening_conflicts',
+    'raise_if_widening_conflicts',
     'align_project_allocations',
     'exchange_allocations',
     'propagate_allocation_to_subprojects',
@@ -423,6 +426,13 @@ def update_allocation(
 
     # Validate dates
     validate_allocation_dates(new_start, new_end)
+    if 'start_date' in updates or 'end_date' in updates:
+        subtree: List[Allocation] = []
+        allocation._walk_tree(subtree.append)
+        raise_if_widening_conflicts(
+            ((node, new_start, new_end) for node in subtree),
+            f"Changing allocation {allocation_id} to {new_start:%Y-%m-%d} - "
+            f"{f'{new_end:%Y-%m-%d}' if new_end else 'open-ended'}")
 
     # Apply updates
     for field, value in updates.items():
@@ -477,6 +487,89 @@ def update_allocation(
         session.flush()
 
     return allocation
+
+
+class AllocationOverlapError(ValueError):
+    """A write would widen an allocation over another live one on the same account.
+
+    ``latest_clear_end`` is the last end date that avoids every conflict, or None
+    when a conflict starts before the widened allocation does.
+    """
+
+    def __init__(self, action: str, conflicts: List[Allocation],
+                 latest_clear_end: Optional[datetime]):
+        self.conflicts = conflicts
+        self.latest_clear_end = latest_clear_end
+        periods: Dict[tuple, Dict[str, set]] = {}
+        for c in conflicts:
+            group = periods.setdefault((c.start_date, c.end_date),
+                                       {'resources': set(), 'projects': set()})
+            group['resources'].add(c.account.resource.resource_name)
+            group['projects'].add(c.account.project.projcode)
+        parts = []
+        for (start, end), group in sorted(periods.items(), key=lambda kv: kv[0][0]):
+            n = len(group['projects'])
+            parts.append(
+                f"{', '.join(sorted(group['resources']))} ({n} project{'s' if n != 1 else ''}) "
+                f"from {start:%Y-%m-%d} to {f'{end:%Y-%m-%d}' if end else 'open-ended'}")
+        message = (f"{action} would overlap {len(conflicts)} allocation(s) already in "
+                   f"place: {'; '.join(parts)}.")
+        if latest_clear_end is not None:
+            message += (f" The latest end date that avoids them is "
+                        f"{latest_clear_end:%Y-%m-%d}; to go further, edit those "
+                        f"allocations instead.")
+        super().__init__(message)
+
+
+def _added_ranges(node: Allocation, new_start, new_end) -> List[tuple]:
+    """The parts of ``[new_start, new_end]`` outside the node's current window."""
+    one = timedelta(seconds=1)
+    ranges = []
+    if new_start is not None and new_start < node.start_date:
+        ranges.append((new_start, node.start_date - one))
+    if node.end_date is not None and (new_end is None or new_end > node.end_date):
+        ranges.append((node.end_date + one, new_end))
+    return ranges
+
+
+def widening_conflicts(windows: Iterable[Tuple[Allocation, Any, Any]]) -> List[Allocation]:
+    """Live allocations that widening each ``(allocation, new_start, new_end)`` would
+    overlap on its own account.
+
+    Only the added dates are checked, so a shrink or an overlap that already exists
+    never refuses; allocations in ``windows`` never conflict with each other.
+    """
+    windows = list(windows)
+    own = {node.allocation_id for node, _, _ in windows}
+    hits: Dict[int, Allocation] = {}
+    for node, new_start, new_end in windows:
+        if node.account is None:
+            continue
+        for start, end in _added_ranges(node, new_start, new_end):
+            class _Range:
+                start_date, end_date = start, end
+            for other in node.account.allocations:
+                if (not other.deleted and other.allocation_id not in own
+                        and date_ranges_overlap(other, _Range)):
+                    hits.setdefault(other.allocation_id, other)
+    return sorted(hits.values(), key=lambda a: (a.start_date, a.allocation_id))
+
+
+def raise_if_widening_conflicts(windows: Iterable[Tuple[Allocation, Any, Any]],
+                                action: str) -> None:
+    """Raise :class:`AllocationOverlapError` if :func:`widening_conflicts` finds any.
+
+    Two live allocations on one account are both active at once and double-count
+    usage; the NCGD0006 Extend of 2026-09-30 is the case this exists for.
+    """
+    windows = list(windows)
+    conflicts = widening_conflicts(windows)
+    if not conflicts:
+        return
+    earliest = min(c.start_date for c in conflicts)
+    later = all(earliest > node.start_date for node, _, _ in windows)
+    raise AllocationOverlapError(
+        action, conflicts, earliest - timedelta(seconds=1) if later else None)
 
 
 def alignment_target(sources) -> Optional[tuple]:

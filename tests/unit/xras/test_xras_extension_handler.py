@@ -448,6 +448,34 @@ class TestTheShrinkRejection:
         assert allocation.end_date == datetime(2027, 1, 31, 23, 59, 59)
 
 
+class TestTheOverlapRejection:
+    """SAM-only: an extension must not run a subtree node over a later allocation."""
+
+    def test_a_childs_later_allocation_rejects_and_writes_nothing(self, committing):
+        session = committing
+        from factories import make_account, make_allocation, make_project
+        parent = make_project(session)
+        child = make_project(session, parent=parent)
+        latest = make_allocation(session, account=make_account(session, project=parent),
+                                 end_date=datetime(2027, 1, 31))
+        child_account = make_account(session, project=child)
+        make_allocation(session, account=child_account, parent=latest,
+                        start_date=latest.start_date, end_date=datetime(2027, 1, 31))
+        make_allocation(session, account=child_account,
+                        start_date=datetime(2028, 1, 1), end_date=datetime(2028, 12, 31))
+        session.expire_all()
+
+        with pytest.raises(XrasActionRejected) as exc:
+            handle_extension(session, action_for(parent.projcode, '2030-06-30'))
+
+        assert exc.value.messages == [
+            'Action end date overlaps a later allocation on the same account '
+            '(starting 2028-01-01)']
+        assert latest.end_date == datetime(2027, 1, 31, 23, 59, 59)
+        assert not [t for t in txns_for(session, latest)
+                    if t.transaction_type == AllocationTransactionType.EXTENSION]
+
+
 class TestTheRowsItWrites:
     """Legacy's row shape, measured against 1,553 production rows."""
 

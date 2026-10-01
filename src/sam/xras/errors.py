@@ -262,6 +262,14 @@ def extension_end_date_before_existing(existing_end: str) -> str:
     return f'Action end date is before existing allocation end date ({existing_end})'
 
 
+def extension_overlaps_later_allocation(conflict_start: str) -> str:
+    """SAM-only: legacy never refused this. Extending would leave two allocations
+    live on one account, double-counting its usage (the NCGD0006 incident, 2026-09-30).
+    """
+    return (f'Action end date overlaps a later allocation on the same account '
+            f'(starting {conflict_start})')
+
+
 def update_end_date_before_existing(resource_name: str) -> str:
     """`UpdateProjectAllocationActionCommandsFactory:52` — the **Update** path.
 
