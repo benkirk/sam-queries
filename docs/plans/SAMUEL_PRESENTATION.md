@@ -12,8 +12,8 @@ linked into this worktree.
 
 - **Its numbers are wrong:** it says 97 tables and ~1,400 tests. The suite is now 9,296 collected
   tests (`docs/TESTING.md`).
-- **Whole areas are missing:** it has nothing on plugins, system_status, job history, fs-scans,
-  CIRRUS/Argo, RBAC, scheduled tasks, notifications, account registration or ncar-hpc-deploy.
+- **Whole areas are missing:** it has nothing on plugins, system_status, job history, `fs-scans`,
+  CIRRUS/Argo, RBAC, scheduled tasks, notifications, account registration or `ncar-hpc-deploy`.
 - **Its deployment diagram is wrong.** The "Production Deployment" mermaid (around line 278) shows
   MariaDB on a PersistentVolume and a manual `helm upgrade`. Neither is how production runs.
 
@@ -189,18 +189,18 @@ from it onto slides.
       line 75.
 - **Big-picture diagram:** a refreshed version of the `overview.qmd` architecture mermaid. Show:
   - XRAS in and out;
-  - the LDAP mirror (sam-ldap-syncd);
+  - the LDAP mirror (`sam-ldap-syncd`);
   - PBS → collectors → the status API;
   - job_history → the accounting ingest;
   - the peer DBs;
-  - consumers (hpc-scheduling-tools, LDAP provisioning, the legacy-compat API callers).
+  - consumers (`hpc-scheduling-tools`, LDAP provisioning, the legacy-compat API callers).
   - Sources: `docs/apis/SYSTEMS_INTEGRATION_APIs.md`, `docs/apis/CHARGING_INTEGRATION.md`.
 - **The plugin approach:**
   - **Registry:** `src/sam/plugins.py`. A `Plugin(name, package, install_hint)` has `.load()`,
     which raises `PluginUnavailableError`, and `.available`. It defines three plugins, all from
     the `[hpc]` extra:
     - `HPC_USAGE_QUERIES` → `job_history`;
-    - `FS_SCANS` → `fs_scans`, which ships in the same hpc-usage-queries wheel;
+    - `FS_SCANS` → `fs_scans`, which ships in the same `hpc-usage-queries` wheel;
     - `HPC_SCHEDULING_TOOLS` → `hpc_scheduling_tools`, a private repo installed via a deploy key.
   - **CLI:** `BaseCommand.require_plugin()` in `src/cli/core/base.py`. On a missing plugin it
     prints the install hint and exits 2.
@@ -257,10 +257,10 @@ concepts, as tables" and "The balance, as tables".
 
   | DB | Engine | Prod | Dev | Owning code | Writers → readers |
   |---|---|---|---|---|---|
-  | sam | MySQL (prod); Postgres dual-backend | `sam-sql.ucar.edu` (the VM) | `sam_dev` on CNPG (samuel-dev); compose MySQL; test DBs on :3307 (MySQL) and :5434 (Postgres) | `src/sam/`, `sam.session`, `sam.sqlcompat` | webapp, sam-admin, XRAS, charge ingest, tasks → everything |
-  | system_status | Postgres (prod), MySQL (local) | CNPG `csg-postgres`, DB `system_status` | `system_status_dev` | `src/system_status/`, Alembic 0001–0007 | collectors via the status API, task ledger, login sightings → status dashboard, admin |
-  | job_history | Postgres (read-only from SAM) | `csg-postgres-ro`, DBs `derecho_jobs` / `casper_jobs` | same | hpc-usage-queries (`job_history`) | `jobhist-sync` → My Jobs, drill-downs, `sam-admin accounting --comp` |
-  | fs_scans | Postgres (CNPG) | `csg-postgres-ro`, DBs `campaign` / `destor`, one schema per collection | same | hpc-usage-queries (`fs_scans`) | scanners/importers → disk-scan tabs |
+  | `sam` | MySQL (prod); Postgres dual-backend | `sam-sql.ucar.edu` (the VM) | `sam_dev` on CNPG (samuel-dev); compose MySQL; test DBs on :3307 (MySQL) and :5434 (Postgres) | `src/sam/`, `sam.session`, `sam.sqlcompat` | webapp, sam-admin, XRAS, charge ingest, tasks → everything |
+  | `system_status` | Postgres (prod), MySQL (local) | CNPG `csg-postgres`, DB `system_status` | `system_status_dev` | `src/system_status/`, Alembic 0001–0007 | collectors via the status API, task ledger, login sightings → status dashboard, admin |
+  | `job_history` | Postgres (read-only from SAM) | `csg-postgres-ro`, DBs `derecho_jobs` / `casper_jobs` | same | `hpc-usage-queries` (`job_history`) | `jobhist-sync` → My Jobs, drill-downs, `sam-admin accounting --comp` |
+  | `fs_scans` | Postgres (CNPG) | `csg-postgres-ro`, DBs `campaign` / `destor`, one schema per collection | same | `hpc-usage-queries` (`fs_scans`) | scanners/importers → disk-scan tabs |
 
 - **SAM:**
   - domain tour: users / projects / accounts / allocations (a tree) / resources / charging;
@@ -281,13 +281,13 @@ concepts, as tables" and "The balance, as tables".
     `docs/plans/implemented/ADD_ALEMBRIC_and_SYSTEM_STATUS_REFACTOR.md`, `USER_LAST_SEEN.md`
     (prod backfill: 22,015 rows, 10,122 users, 13 systems, back to 2011).
   - **War story:** `CNPG_ROLL_RESILIENCE.md`, the 2026-09-13 outage.
-    - Symptom: a 3.5-minute outage when a csg-postgres roll failed the system_status readiness
+    - Symptom: a 3.5-minute outage when a `csg-postgres` roll failed the system_status readiness
       check.
     - Lesson: never add a secondary bind to `/ready`'s required set.
 - **job history:**
   - connection settings: 60 s statement timeout, pool of 5 + 10 overflow (`src/webapp/config.py`);
   - Source: `docs/plans/implemented/JOB_HISTORY_DASHBOARD.md`.
-- **fs-scans:** 100 s statement timeout; one engine per database × collection schema.
+- **`fs-scans`:** 100 s statement timeout; one engine per database × collection schema.
   Source: `FS_SCANS_PLUGIN-part1.md`.
 - **`/database` browser:** read-only rows from every engine, found by reflection; it replaced
   Flask-Admin. Source: `docs/plans/implemented/DB_BROWSER.md`.
@@ -429,7 +429,7 @@ slides plus 5 dividers. The outline below was verified on 2026-09-30 (`886c2f09`
 
 - **C. Runtime on nwc1:**
   - **Pods:** 2 replicas, `maxUnavailable 0`, `maxSurge 1`, PDB `minAvailable 1`, a hostname
-    spread; gunicorn gthread with 8 threads.
+    spread; `gunicorn` `gthread` with 8 threads.
   - **Ingress:** one InCommon multi-SAN cert on `nginx-external` for two hosts.
   - **Secrets:** 9 ExternalSecrets through SecretStore `csg-ro`; dev drops xras and jira,
     leaving 7.
@@ -438,7 +438,7 @@ slides plus 5 dividers. The outline below was verified on 2026-09-30 (`886c2f09`
     - runs at `7,22,37,52 * * * *` UTC with `Forbid`;
     - `SAM_TASKS_DISABLED` is fail-open;
     - the lease must outlive `activeDeadlineSeconds`.
-- **D. The companion CNPG cluster** (2–3 slides). The source is hpc-usage-queries `helm/`,
+- **D. The companion CNPG cluster** (2–3 slides). The source is `hpc-usage-queries` `helm/`,
   which Argo renders, so `helm list` is empty.
   - **What it hosts** (a table: database, writer, reader):
     - `derecho_jobs` and `casper_jobs`;
@@ -479,15 +479,15 @@ slides plus 5 dividers. The outline below was verified on 2026-09-30 (`886c2f09`
 
 | Repo | Remote | What it is | Coupling to SAMuel |
 |---|---|---|---|
-| hpc-usage-queries (`~/codes/hpc-usage-queries/devel`) | `github.com/benkirk/hpc-usage-queries` | `job_history` (PBS job history, charging) + `fs_scans`; also the csg-postgres CNPG chart (`helm/`) and `scripts/cnpg_watch.sh` | Two plugins; shared Postgres; `jobhist-sync` runs in the ncar-hpc-deploy lane |
-| hpc-scheduling-tools (`~/codes/hpc-scheduling-tools`) | `github.com/NCAR/hpc-scheduling-tools` (private) | Fairshare tree + PBS accounting DB (`fsparsetree-mr`, `samuel2sql`, `hpc-sched-refresh`) | Calls the SAMuel API; also the `HPC_SCHEDULING_TOOLS` plugin behind `/api/v1/fairshare` |
+| `hpc-usage-queries` (`~/codes/hpc-usage-queries/devel`) | `github.com/benkirk/hpc-usage-queries` | `job_history` (PBS job history, charging) + `fs_scans`; also the `csg-postgres` CNPG chart (`helm/`) and `scripts/cnpg_watch.sh` | Two plugins; shared Postgres; `jobhist-sync` runs in the `ncar-hpc-deploy` lane |
+| `hpc-scheduling-tools` (`~/codes/hpc-scheduling-tools`) | `github.com/NCAR/hpc-scheduling-tools` (private) | Fairshare tree + PBS accounting DB (`fsparsetree-mr`, `samuel2sql`, `hpc-sched-refresh`) | Calls the SAMuel API; also the `HPC_SCHEDULING_TOOLS` plugin behind `/api/v1/fairshare` |
 | legacy SAM (`~/codes/sam`, symlinked as `legacy_sam`) | `github.com/NCAR/sam` | Java/Tomcat original | Same MySQL DB; SAMuel is porting its API families |
-| sam-ldap-syncd | `github.com/NCAR/sam-ldap-syncd` | Perl daemon: IDMS/LDAP ↔ SAM | Legacy `/api/protected/admin/...` endpoints, not yet ported (`docs/plans/LDAP_SYNC_API.md`) |
-| amie-sam-mediator | `github.com/NCAR/amie-sam-mediator` | ACCESS AMIE packets via SAM + LDAP | Legacy `/api/protected/amie/v1/*`, not ported, consumer idle |
-| pbsparse | `github.com/NCAR/pbsparse` | PBS log parser | Transitive, through hpc-usage-queries |
+| `sam-ldap-syncd` | `github.com/NCAR/sam-ldap-syncd` | Perl daemon: IDMS/LDAP ↔ SAM | Legacy `/api/protected/admin/...` endpoints, not yet ported (`docs/plans/LDAP_SYNC_API.md`) |
+| `amie-sam-mediator` | `github.com/NCAR/amie-sam-mediator` | ACCESS AMIE packets via SAM + LDAP | Legacy `/api/protected/amie/v1/*`, not ported, consumer idle |
+| `pbsparse` | `github.com/NCAR/pbsparse` | PBS log parser | Transitive, through `hpc-usage-queries` |
 | XRAS broker, HEUV portal | (no local repos) | External consumers | XRAS is ported (`/api/xras/v1/*`); HEUV is not |
 
-- **Not separate repos:** fs-scans, ncar-hpc-deploy, collectors and the GitOps config all live in
+- **Not separate repos:** `fs-scans`, `ncar-hpc-deploy`, collectors and the GitOps config all live in
   a repo above. There is no separate helm-values repo.
 - **Repo naming:** this repo's remote is `github.com/benkirk/sam-queries`, but docs link PRs at
   `NCAR/sam-queries`. Pick one for the slides.
@@ -640,7 +640,7 @@ slides plus 5 dividers. The outline below was verified on 2026-09-30 (`886c2f09`
     page), pptx (layout scan plus LibreOffice), and all 21 outputs build.
   - [x] Companion page published and made public by Ben: the pipeline walkthrough (§13),
     linked from its own slide (`679b129`).
-  - [ ] Ben reviews, including whether Part 4's ncar-hpc-deploy box and notes should be
+  - [ ] Ben reviews, including whether Part 4's `ncar-hpc-deploy` box and notes should be
     softened to match.
 - [ ] **Phase 6 — Appendix + full-deck polish:** a consistent diagram style, a fact-refresh pass on
   `_variables.yml`, and a decision on publishing.
@@ -763,7 +763,7 @@ an update here (tick boxes, session log).
     `staging`.
   - **Ben's call:** split Pieces by axis. Part 4 is systems and data flow; Part 5 is hosting,
     GitOps and deployment, plus a couple of CNPG slides. Legacy SAM is drawn as grey boxes,
-    because sam-tomcat and sam-app still run. The key message is that we don't yet own the SQL
+    because `sam-tomcat` and `sam-app` still run. The key message is that we don't yet own the SQL
     schema.
   - **Facts re-verified** against staging `886c2f09` with five read-only agents (§4 holds the
     corrections). The schema count is new: 92 of the 108 modeled tables come from legacy
@@ -822,6 +822,35 @@ an update here (tick boxes, session log).
     - sources and the page grepped for IPs, secret paths, lane mechanics and the skip-ci
       tokens.
     - HTML not yet spot-checked in a browser.
+- **2026-10-01 (visual format pass, Parts 1–5; framework `b6af2d2`):**
+  - **Ben's call:** short slides are centered with one fixed bump, `{.vcenter scale="1.15"}`.
+    Every short slide gets the same size, so text stays steady across them; dense slides keep
+    the deck's size. "Short" was measured, not eyeballed: bullet-only slides used at most 54%
+    of the HTML body, and text-only column slides used 31–64%.
+  - **Applied to 61 slides.** "SAM in one slide" and "`is_active`" keep `{.vcenter}` alone,
+    because at 1.15 the PDF overran the page number and wrapped the code.
+  - **`.smaller` without `.fill` shrank HTML text to about 60%.** Resources, two kinds of groups,
+    the fine print and fourteen ways now use the short-slide recipe instead.
+  - **Overflows fixed:**
+    - the Resources table and the four-API-families table ran off the beamer page. They now
+      have explicit pipe-table dash widths, whose total must pass 72 columns to take effect;
+    - the tree-audit output got `scale="0.92"`;
+    - the replay table's dates broke at their hyphens. It got dash widths and a nowrap span
+      (`concepts_data.py`), which HTML honors and beamer and pptx ignore.
+  - **Diagrams reshaped to fill the slide:**
+    - "Follow one job's hours", from a 7-wide mermaid row to a pinned neato snake;
+    - "The verbs", to a two-rank dot tree;
+    - "Now: jobs live with their machine", to a pinned two-column snake.
+  - **Monospace for tool, package and database names** on slides, in the companion page and in
+    this doc: `sam-ldap-syncd`, `hpc-usage-queries`, `hpc-scheduling-tools`, `fs-scans`,
+    `csg-postgres`, `gunicorn`, `amie-sam-mediator`, `jobhist-sync`, `sam` / `system_status` /
+    `job_history` / `fs_scans`. Repo names used as the project's name (sam-queries) and
+    environment names (samuel-dev) stay plain. Diagram labels stay in one sans face.
+  - **Companion page:** inline code no longer breaks at hyphens. It has no overflow at 360 px.
+    The screenshot was refreshed. **Republish pending.**
+  - **QA:** every HTML slide screenshotted (1600×900) and every PDF page rasterized, before and
+    after. pptx and PDF slide counts match for every part (19/40/16/31/33, 138 combined), and
+    the LibreOffice sheet shows no split slides.
 
 ## 11. Voice, tone and the fun
 
@@ -911,7 +940,7 @@ work to this deck, in both content and craft. **Reuse it; don't duplicate it.**
 | "SAM Projects & Allocations" (Facility → Allocation type → Project → per-resource Allocation + Users; CPU/GPU resource pairs) and its mermaid | Part 1's plain-language domain slide; Part 2's facility → panel → allocation type slide |
 | "SAM Project Trees": two conventions stored identically (**shared pool** `NMMM0003` vs **subdivided award** `CESM0002`); a root's amount already is its subtree total; the API never deduplicates | Part 2, block E: the two-conventions table, the SAM-side award and pool trees, and the CESM tree included by reference |
 | "The SAM API — SAMuel": basic auth via env, server-side cache, the `fstree_access` / `queue` / `wallclock_exemption` / cache-refresh endpoints | Part 1 surfaces (the API as consumers see it); Part 4 |
-| "The Big Picture": SAM API → `samuel2sql.py` / `fsparsetree_mr.py` → `ncar_accounting.db` + `resource_group` → hooks / scheduler → PBS | Part 1's big-picture diagram (SAMuel's outbound edge); the hpc-scheduling-tools row in Appendix A |
+| "The Big Picture": SAM API → `samuel2sql.py` / `fsparsetree_mr.py` → `ncar_accounting.db` + `resource_group` → hooks / scheduler → PBS | Part 1's big-picture diagram (SAMuel's outbound edge); the `hpc-scheduling-tools` row in Appendix A |
 | "Tooling — SAM to PBS Pipeline" (5 slides), below | Part 4, data gathering, as the **outbound** half |
 | "When Something Looks Wrong" symptom→meaning table | A format to copy for Part 4's ops slides |
 
@@ -924,8 +953,8 @@ Details of the SAM to PBS pipeline:
   costs a scheduler pause.
 
 **Framing it enables.** Part 4's data gathering becomes **data in / data out**:
-- *in* is PBS → collectors and `jobhist-sync` → SAMuel (ncar-hpc-deploy);
-- *out* is SAMuel → hpc-scheduling-tools → PBS (the SAM to PBS pipeline).
+- *in* is PBS → collectors and `jobhist-sync` → SAMuel (`ncar-hpc-deploy`);
+- *out* is SAMuel → `hpc-scheduling-tools` → PBS (the SAM to PBS pipeline).
 
 Summarize *out* in 2–3 slides and point to the `sam_and_pbs` deck for the full story.
 
@@ -952,7 +981,7 @@ one source.
 | **pptx** (NCAR template) | `make pptx` | Editable, shareable, the CISL default; four post-render fixes | Mermaid is baked PNG; content after tables/images splits slides; autofit traps | Part 1 (primary); handout builds of everything |
 | **ncar-beamer PDF** (framework #4; theme vendored from `benkirk/NCAR_beamer_template`) | `make pdf` (`--to ncar-beamer`, XeLaTeX, bundled Poppins) | Crisp typography; real monospace code; 2026 blue brand; readable directly by Claude, so it is the easiest format to QA | **No autofit:** dense slides overflow silently; fix with trimming or `{.shrink}` on the heading | Part 1 (primary, alongside pptx); archival and emailable copies |
 | **revealjs HTML** (framework #13: `--to ncar-revealjs`, NCAR web theme) | `make html` | Live mermaid/SVG; autofit that shrinks an overflowing slide; `{.scrollable}`; code-line highlighting and fragments; speaker view; `{.smaller}`; iframes; OJS interactivity | Mermaid/Graphviz draw live, so they can differ from the baked pptx/PDF PNGs; check both | Parts 2–4 when presenting live |
-| **Companion interactive pages** (claude.ai Artifacts, HTML/React) | published separately and linked from a slide | Anything too rich for a slide, e.g. a schema or ER explorer, the CI → GHCR → Argo pipeline walk-through, the ncar-hpc-deploy cadence timeline, and an allocation-tree explorer on the `tree2mermaid` data | Outside the deck build; private by default; links go stale | Deep-dive details, as needed |
+| **Companion interactive pages** (claude.ai Artifacts, HTML/React) | published separately and linked from a slide | Anything too rich for a slide, e.g. a schema or ER explorer, the CI → GHCR → Argo pipeline walk-through, the `ncar-hpc-deploy` cadence timeline, and an allocation-tree explorer on the `tree2mermaid` data | Outside the deck build; private by default; links go stale | Deep-dive details, as needed |
 
 **One source, conditional content:**
 - **Interactive vs. static:** put the interactive element in
@@ -1002,10 +1031,12 @@ puts the paragraph on the beamer section page; it is a framework `main` follow-u
   - bullet plus CLI output uses `{.vcenter .fill}`;
   - short diagrams use `{.vcenter}`.
 
-  Bullet and column slides stay top-aligned at the deck's size, because a per-slide text size
-  jars in a talk. Two tables keep scale 1 because their PDF overflowed even at 1.1: "five
-  audiences" and "same bytes".
-- **Phase 6:** the polish pass covers whatever whitespace is left.
+  Two tables keep scale 1 because their PDF overflowed even at 1.1: "five audiences" and
+  "same bytes".
+- **Short bullet and column slides:** `{.vcenter scale="1.15"}`, one size for all of them
+  (Ben, 2026-10-01). A slide too dense for it at 1.15 in the PDF keeps `{.vcenter}` alone.
+- **A table too wide for the beamer page:** give the pipe table explicit dash widths whose total
+  passes 72 columns. Pandoc then wraps the cells to those proportions.
 
 **Candidate companion pages** (decide per phase; each needs a slide that earns the link):
 - Part 2: an allocation-tree explorer.
@@ -1091,7 +1122,7 @@ branch and PR against `staging`. Tick an item once its fix merges, and note the 
 - [ ] **`src/webapp/disk_scans/session.py:71` docstring** says Destor maps to `desc1`; config
   and helm say `destor`.
 - [ ] **`scripts/cron/accounting/` and `collectors/cron_scripts/`** still exist, unmarked; the
-  ncar-hpc-deploy lanes replaced them (prod's install removes the crontab entries).
+  `ncar-hpc-deploy` lanes replaced them (prod's install removes the crontab entries).
 - [ ] **`docs/plans/implemented/CHARGING_INGEST.md`** still says job data arrives "via a SQLite
   database".
 - [ ] **`docs/CIRRUS_PUBLISHING.md:28`** says the workflow "has four jobs"; its table lists five.
