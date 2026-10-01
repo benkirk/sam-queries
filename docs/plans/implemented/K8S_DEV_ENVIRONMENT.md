@@ -107,6 +107,8 @@ Repo:
   the top level; `SAM_DEV_API_PASS` was a name this doc invented (the CLI reads
   `SAM_API_USER` / `SAM_API_PASS` / `SAM_API_BASE`), so `refresh-dev` maps it.
 - API keys: `scripts/gen_api_key.py` prints a bcrypt hash for `API_KEYS_<USER>`.
+  The legacy `api_credentials` keys arrive with `refresh-dev` (prod's rows, and prod's
+  `apikey:` grants with them); only the anonymizer purges them, so the blob carries none.
 - `scripts/lib/cirrus_common.sh` hardcoded prod names; `scripts/cirrus_healthcheck.sh`
   adopted the **first** helm release it found in the namespace when `helm status samuel`
   failed (it always fails, prod is Argo-applied) — but only `$RELEASE`, so it would
