@@ -773,9 +773,13 @@ def _fetch_all_allocations(
     active_only: bool,
     check_date: datetime,
     root_only: bool = False,
+    overlaps: Optional[Tuple[datetime, datetime]] = None,
 ) -> List[tuple]:
     """
     Fetch all active allocations matching the given filters in a single query.
+
+    ``overlaps=(start, end)`` keeps allocations whose dates intersect that window;
+    pair it with ``active_only=False``.
 
     Returns list of (Allocation, resource_name, resource_type, activity_type,
     facility_name, allocation_type_name, projcode, Project, Account) tuples.
@@ -840,6 +844,16 @@ def _fetch_all_allocations(
             )
         )
 
+    if overlaps is not None:
+        window_start, window_end = overlaps
+        query = query.filter(
+            Allocation.start_date <= window_end,
+            or_(
+                Allocation.end_date.is_(None),
+                Allocation.end_date >= window_start
+            )
+        )
+
     if root_only:
         query = query.filter(
             Allocation.parent_allocation_id.is_(None),  # root-level allocation
@@ -847,6 +861,81 @@ def _fetch_all_allocations(
         )
 
     return query.all()
+
+
+def get_allocation_usage_rows(
+    session: Session,
+    *,
+    resource_name: Union[str, List[str]],
+    window_start: datetime,
+    window_end: datetime,
+    as_of: datetime,
+    include_adjustments: bool = True,
+) -> List[Dict]:
+    """One row per root allocation overlapping the window, with usage as of ``as_of``.
+
+    Unlike get_allocation_summary_with_usage() nothing is grouped, so a project's
+    ended and current allocations stay separate rows (the pace chart draws each).
+    Charges count through the end of the ``as_of`` day; an allocation starting
+    after it reads 0. Disk occupancy is not substituted: callers wanting the disk
+    capacity figure use get_allocation_summary_with_usage().
+    """
+    as_of_end = as_of.replace(hour=23, minute=59, second=59, microsecond=0)
+    rows = _fetch_all_allocations(
+        session, resource_name, None, None, None,
+        active_only=False, check_date=as_of_end, root_only=True,
+        overlaps=(window_start, window_end),
+    )
+
+    subtree_infos: List[Dict[str, Any]] = []
+    account_infos: List[Dict[str, Any]] = []
+    for alloc, _rn, res_type, activity_type, _fn, _atn, _pc, project, account in rows:
+        if alloc.start_date > as_of_end:
+            continue
+        end = min(alloc.end_date, as_of_end) if alloc.end_date else as_of_end
+        info = {
+            'key': alloc.allocation_id,
+            'resource_type': res_type,
+            'activity_type': activity_type,
+            'resource_id': account.resource_id,
+            'account_id': alloc.account_id,
+            'tree_root': project.tree_root,
+            'tree_left': project.tree_left,
+            'tree_right': project.tree_right,
+            'start_date': alloc.start_date,
+            'end_date': end,
+        }
+        is_tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
+        if is_tree_valid and not project.is_leaf():
+            subtree_infos.append(info)
+        else:
+            account_infos.append(info)
+
+    charges: Dict[Any, Dict] = {}
+    if subtree_infos:
+        charges.update(Project.batch_get_subtree_charges(session, subtree_infos, include_adjustments))
+    if account_infos:
+        charges.update(Project.batch_get_account_charges(session, account_infos, include_adjustments))
+
+    out = []
+    for alloc, res_name, _rt, _act, fac_name, at_name, projcode, _proj, _acct in rows:
+        c = charges.get(alloc.allocation_id)
+        used = 0.0
+        if c is not None:
+            used = sum(c['charges_by_type'].values())
+            if include_adjustments:
+                used += c['adjustment']
+        out.append({
+            'projcode': projcode,
+            'resource': res_name,
+            'facility': fac_name,
+            'allocation_type': at_name,
+            'start_date': alloc.start_date,
+            'end_date': alloc.end_date,
+            'total_amount': float(alloc.amount or 0.0),
+            'total_used': used,
+        })
+    return out
 
 
 def _group_allocations_by_summary_key(

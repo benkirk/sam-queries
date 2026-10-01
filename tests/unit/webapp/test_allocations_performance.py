@@ -1379,3 +1379,39 @@ class TestUserAwareCacheKeyScope:
             key = user_aware_cache_key()
             logout_user()
         assert '|s:all' in key
+
+
+class TestPaceChartRoute:
+    """GET /allocations/htmx/pace-chart/<resource>: HPC draws the whole window,
+    disk keeps the active-only summary."""
+
+    _BP = 'webapp.dashboards.allocations.blueprint'
+
+    def test_hpc_renders_svg(self, auth_client):
+        response = auth_client.get(
+            '/allocations/htmx/pace-chart/Derecho?active_at=2026-10-01')
+        assert response.status_code == 200
+        html = response.data.decode().lower()
+        assert '<svg' in html or 'no allocations' in html
+
+    def test_hpc_fetches_the_window(self, auth_client):
+        with patch(f'{self._BP}.cached_allocation_usage_rows', return_value=[]) as rows, \
+                patch(f'{self._BP}.cached_allocation_usage', return_value=[]) as summary:
+            auth_client.get('/allocations/htmx/pace-chart/Derecho?active_at=2026-10-01')
+        assert rows.call_count == 1 and summary.call_count == 0
+        kwargs = rows.call_args.kwargs
+        assert kwargs['window_start'] == datetime(2026, 4, 4)
+        assert kwargs['window_end'] == datetime(2027, 3, 30)
+
+    def test_disk_keeps_active_only_summary(self, auth_client, session):
+        from sam.resources.resources import Resource, ResourceType
+        disk = (session.query(Resource.resource_name).join(Resource.resource_type)
+                .filter(ResourceType.resource_type == 'DISK', Resource.is_active)
+                .first())
+        if disk is None:
+            pytest.skip('no active DISK resource in the snapshot')
+        with patch(f'{self._BP}.cached_allocation_usage_rows', return_value=[]) as rows, \
+                patch(f'{self._BP}.cached_allocation_usage', return_value=[]) as summary:
+            auth_client.get(f'/allocations/htmx/pace-chart/{disk.resource_name}')
+        assert rows.call_count == 0 and summary.call_count == 1
+        assert summary.call_args.kwargs['active_only'] is True

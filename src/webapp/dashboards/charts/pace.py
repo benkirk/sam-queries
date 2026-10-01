@@ -41,6 +41,9 @@ _PACE_RATE_SCALE = 365  # internal per-day rates -> per-year axis
 
 OTHER_KEY = '__other__'
 
+#: Half-window either side of ``active_at``; the route fetches the same span.
+PACE_WINDOW_DAYS = 180
+
 
 def _pace_other_color(theme):
     """The inert "Other (N projects)" band.
@@ -58,8 +61,9 @@ def pace_bands(allocations: List[Dict], active_at: datetime,
     """Build per-allocation rate arrays on a daily grid.
 
     Returns (days, bands) where bands is a list of
-    ``(projcode, total_amount, rates_list)`` tuples — one per allocation
-    that intersects the window and has nonzero area.
+    ``(projcode, total_amount, rates_list, covers)`` tuples — one per allocation
+    that intersects the window and has nonzero area. ``covers`` is True when the
+    allocation spans ``active_at``.
     """
     n_days = (window_end - window_start).days + 1
     today_idx = (active_at - window_start).days
@@ -97,7 +101,7 @@ def pace_bands(allocations: List[Dict], active_at: datetime,
         if future_rate > 0:
             rates[max(today_idx, s_idx):e_idx] = future_rate
 
-        bands.append((a.get('projcode', ''), amount, rates))
+        bands.append((a.get('projcode', ''), amount, rates, s <= active_at <= e))
 
     days = [window_start + timedelta(days=i) for i in range(n_days)]
     return days, bands
@@ -157,7 +161,7 @@ class PaceChart(BaseChart):
     legend_anchor = (1.01, 0.5)
 
     def __init__(self, allocations: List[Dict], active_at: datetime,
-                 window_days: int = 180, top_n: int = 20,
+                 window_days: int = PACE_WINDOW_DAYS, top_n: int = 20,
                  resource_name: str = '', sort_by: str = 'size'):
         self.allocations = allocations or []
         self.active_at = active_at
@@ -167,7 +171,7 @@ class PaceChart(BaseChart):
         self.sort_by = sort_by
 
     @staticmethod
-    def cache_key(allocations, active_at, window_days=180, top_n=20,
+    def cache_key(allocations, active_at, window_days=PACE_WINDOW_DAYS, top_n=20,
                   resource_name='', sort_by='size'):
         return content_hash([pace_key_fields(allocations), active_at.isoformat(),
                              int(window_days), int(top_n), resource_name, sort_by])
@@ -192,7 +196,9 @@ class PaceChart(BaseChart):
         today_idx = (self.active_at - self.days[0]).days
 
         # Per-project aggregations for the three rank metrics:
-        #   - size:   sum of total_amount   (legacy default — biggest pool)
+        #   - size:   sum of total_amount of the allocations covering today,
+        #             else of all its bands (a project that only ended or
+        #             only starts later); default sort
         #   - past:   sum of past-rate band heights at today-1 (visible
         #             past slope, per day)
         #   - future: sum of future-rate band heights at today   (visible
@@ -206,10 +212,15 @@ class PaceChart(BaseChart):
         proj_future: Dict[str, float] = {}
         past_i = max(today_idx - 1, 0)
         future_i = min(today_idx, n_days - 1)
-        for pc, amount, rates in self._bands:
-            proj_size[pc] = proj_size.get(pc, 0.0) + amount
+        size_all: Dict[str, float] = {}
+        for pc, amount, rates, covers in self._bands:
+            size_all[pc] = size_all.get(pc, 0.0) + amount
+            if covers:
+                proj_size[pc] = proj_size.get(pc, 0.0) + amount
             proj_past[pc] = proj_past.get(pc, 0.0) + float(rates[past_i])
             proj_future[pc] = proj_future.get(pc, 0.0) + float(rates[future_i])
+        for pc, total in size_all.items():
+            proj_size.setdefault(pc, total)
 
         # Ranking + legend-display metric picked in lockstep so the legend
         # number always reflects the active sort. Unknown sort_by falls back
@@ -252,15 +263,16 @@ class PaceChart(BaseChart):
         # as the per-project entries.
         self.group_sort_totals = {k: 0.0 for k in group_keys}
 
-        for pc, amount, rates in self._bands:
+        for pc, _amount, rates, _covers in self._bands:
             key = pc if pc in self.color_map else OTHER_KEY
             group_rates[key] += rates
             if self.sort_by == 'past':
                 self.group_sort_totals[key] += float(rates[past_i])
             elif self.sort_by == 'future':
                 self.group_sort_totals[key] += float(rates[future_i])
-            else:
-                self.group_sort_totals[key] += amount
+        if self.sort_by == 'size':
+            for pc, size in proj_size.items():
+                self.group_sort_totals[pc if pc in self.color_map else OTHER_KEY] += size
 
         # Stack order: top-N (ranked) first, Other capping the top. Drop empty
         # groups so stackplot doesn't emit a zero-area path.
