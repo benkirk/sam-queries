@@ -1,6 +1,6 @@
 # SAMuel presentation series — a multi-part Quarto deck
 
-**Status:** Parts 1–4 drafted on framework `samuel` (Part 4, "Who Talks to Whom", 2026-09-30); Part 5 is a skeleton; awaiting Ben's review (§8). On 2026-09-30 Part 2 Concepts was inserted and Pieces split by axis into Part 4 (systems and data flow) and Part 5 (hosting, GitOps, deployment). This doc is the handoff: each session
+**Status:** Parts 1–5 drafted on framework `samuel` (Part 5, "Deployment & Operations", 2026-10-01); awaiting Ben's review (§8). On 2026-09-30 Part 2 Concepts was inserted and Pieces split by axis into Part 4 (systems and data flow) and Part 5 (hosting, GitOps, deployment). This doc is the handoff: each session
 picks up the next unchecked phase in §8, ticks it, and appends to the session log (§10).
 **Goal:** replace the stale `docs/presentations/overview/` with a comprehensive, multi-part
 SAMuel presentation, authored in the standalone `~/Documents/quarto-docs-framework` repo and
@@ -356,10 +356,25 @@ way the data moves. Part 5 covers where it runs and how a commit gets there.
 - whether the scheduler hosts and the LDAP provisioner have actually repointed from legacy.
   The census only says "ported; both serve them".
 
-### Part 5 — Some Assembly Required (hosting, GitOps, deployment; skeleton only)
+### Part 5 — Deployment & Operations (hosting, GitOps, deployment; first draft done)
 
-**Status:** the framework has a section skeleton. The outline below was verified on
-2026-09-30 (`886c2f09`).
+**Status:** first draft on framework `samuel` (`f49e8ac` + `679b129`, 2026-10-01): 27 content
+slides plus 5 dividers. The outline below was verified on 2026-09-30 (`886c2f09`) and rechecked on 2026-10-01
+(`1b624fc3`: no change under `helm/`, `.github/` or `compose.yaml`).
+
+**Ben's calls (2026-10-01):**
+- **Title:** "Deployment & Operations", replacing "Some Assembly Required".
+- **Length:** the full section.
+- **No PSA slides.** The GHCR prune and the squash trap stay out of Part 5; the prune is one
+  notes line.
+- **HPC deployment is downplayed.** Some readers may see the host-lane automation as a
+  code-injection risk, so the deck highlights GitOps to k8s. The HPC hosts get one slide that
+  says only that the same image runs there and that "HPC deployments from staging and main are
+  also straightforward". There are no lane mechanics on slides or in notes.
+- **CNPG backups:** one line, "snapshots configured; scheduled backups to Boreas planned".
+- **A slide on the Claude watch skills:** `watch-prod`, `watch-dev`, `profile-dev`, and the peer
+  `watch-cnpg`.
+- **The companion pipeline page is built** (§13).
 
 - **A. Commit to image:**
   - **Branch flow:** feature to `staging` pins `cirrus-dev` and opens or refreshes the
@@ -456,12 +471,9 @@ way the data moves. Part 5 covers where it runs and how a commit gets there.
   - **samuel-dev:** `make refresh-dev`; `helm/tests/test-dev-render.sh`.
   - **The four `scripts/cirrus_*.sh`:** healthcheck, watch, weblog audit, and redis purge, the
     only one that mutates, and only with `--yes`.
-- **F. ncar-hpc-deploy as deployment:**
-  - lanes on casper and derecho;
-  - `update` resolves the digest, pulls, smoke-tests locally and on derecho, swaps on a pass,
-    keeps `previous`, and has `rollback`;
-  - prod updates daily at 06:32 and dev hourly at :47;
-  - cron runs as csgteam on the `cron` host, over ssh, with a flock on each line.
+  - **The Claude skills** (a table): skill, when to load it, what it drives, and what it
+    reports.
+- **F. The HPC hosts:** reduced to one broad slide at the end of B (Ben, 2026-10-01; see above).
 
 ### Appendix A — Peer repos
 
@@ -620,8 +632,16 @@ way the data moves. Part 5 covers where it runs and how a commit gets there.
     ncar-beamer PDF (page by page), pptx (layout scan plus LibreOffice) and revealjs (spot
     checks at 1280×720).
   - [ ] Ben reviews: the title, the grey-box convention, and the repoint question in §4.
-- [ ] **Phase 5 — Part 5 Some Assembly Required** (hosting, GitOps, deployment, the companion
-  CNPG cluster, §4): draft from the skeleton.
+- [ ] **Phase 5 — Part 5 Deployment & Operations** (hosting, GitOps, deployment, the companion
+  CNPG cluster, §4):
+  - [x] Ben answered the handoff's four questions (§4, Ben's calls).
+  - [x] First draft (framework `f49e8ac`, local): 26 content slides plus 5 dividers, four
+    Graphviz diagrams, and new `_variables.yml` facts. Checked in the ncar-beamer PDF (page by
+    page), pptx (layout scan plus LibreOffice), and all 21 outputs build.
+  - [x] Companion page published and made public by Ben: the pipeline walkthrough (§13),
+    linked from its own slide (`679b129`).
+  - [ ] Ben reviews, including whether Part 4's ncar-hpc-deploy box and notes should be
+    softened to match.
 - [ ] **Phase 6 — Appendix + full-deck polish:** a consistent diagram style, a fact-refresh pass on
   `_variables.yml`, and a decision on publishing.
 
@@ -780,6 +800,28 @@ an update here (tick boxes, session log).
     Note that column slides read about 95% free, which is an artifact of the measure.
   - Every PDF page was checked for overflow. All 21 outputs build, slide counts are unchanged,
     and there are no untitled pptx slides.
+- **2026-10-01 (Part 5 draft):**
+  - Ben's answers to the handoff questions: the title "Deployment & Operations", the full
+    length, backups as "planned", and the companion page now. Then, at plan review: no PSA
+    slides, a slide on the Claude watch skills, and HPC deployment downplayed (§4).
+  - **Draft:** framework `f49e8ac` (local).
+    - The six skeleton sections are now five, plus one HPC slide.
+    - Four Graphviz diagrams: the pipeline ring, the branch flow, the publish pipeline and the
+      namespace.
+    - The workflows table is condensed to eight rows covering the 14 files.
+  - **Companion page:**
+    - built as a claude.ai artifact;
+    - each stop now links its workflow YAML and docs on `main`;
+    - Ben made it public;
+    - linked from a new slide (a linked screenshot, all three formats).
+  - **QA:**
+    - every beamer page read;
+    - pptx: 32 slides, all titled;
+    - LibreOffice contact sheet checked;
+    - `make -C docs/samuel all` green;
+    - sources and the page grepped for IPs, secret paths, lane mechanics and the skip-ci
+      tokens.
+    - HTML not yet spot-checked in a browser.
 
 ## 11. Voice, tone and the fun
 
@@ -834,11 +876,11 @@ obituary.
   the March talk stopped, and "~75K LOC in Mar 2026 → today" is the sequel beat. Define the LOC
   method once and record it in `_variables.yml`.
 - **Part titles with personality:** Part 1 "The Lay of the Land"; Part 2 "Concepts" (plain, by
-  Ben's call); Part 3 "Where State Lives" (or "Four Databases Walk Into a Bar"); Part 4 "Some
-  Assembly Required"; the Appendix "The
+  Ben's call); Part 3 "Where State Lives" (or "Four Databases Walk Into a Bar"); Part 4 "Who
+  Talks to Whom"; Part 5 "Deployment & Operations" (plain, by Ben's call); the Appendix "The
   Neighbors".
-- **Recurring "PSA - Don't let this happen to you…" slides** for the war stories: the CNPG roll,
-  the skip-ci squash trap, the GHCR prune.
+- **Recurring "PSA - Don't let this happen to you…" slides** for the war stories: the CNPG roll
+  (Part 3) and the schema drop (Part 4). Part 5 has none, by Ben's call.
 - **Live CLI output:** real `sam-search` / `sam-admin` / `jobhist` output on slides.
   - Use the §3 frozen-data pattern: a `refresh_data.sh` writes `data/*.txt` from the obfuscated
     local DB, or from Ben's own records (e.g. `sam-search user benkirk`,
@@ -969,8 +1011,12 @@ puts the paragraph on the beamer section page; it is a framework `main` follow-u
 - Part 2: an allocation-tree explorer.
 - Part 3: an interactive map of SAMuel's databases and engines (from `engine_inventory`).
 - Part 4: the systems map, clickable per box (who writes what, legacy vs SAMuel).
-- Part 5: the CI → image → Argo → pods pipeline, clickable per stage; the ncar-hpc-deploy lanes
-  and cadences as a timeline.
+- Part 5: **built 2026-10-01**, the CI → image → Argo → pods pipeline, clickable per stage with
+  a prod/dev toggle.
+  - **Where:** public claude.ai artifact `Tp4XaBDH7BmvUbPT6UUbtS`.
+  - **Linked from:** the slide "Walk the pipeline yourself", as a linked screenshot.
+  - **Each stop** links its workflow YAML and docs on sam-queries `main`.
+  - **Dropped:** the lanes timeline, because HPC deployment stays downplayed.
 - Appendix: a peer-repo dependency graph.
 
 ## 14. Found along the way: fix later, on another branch
