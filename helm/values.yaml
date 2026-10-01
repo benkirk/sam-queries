@@ -497,9 +497,8 @@ webapp:
     secretPath: csg/xras-api-key
     tokenKey: token
 
-  # Jira (ithelp.ucar.edu) personal access token, injected as JIRA_TOKEN into the
-  # Deployment and the CronJob. Swapping to a bot account changes the OpenBao
-  # value only.
+  # Jira (ithelp.ucar.edu) PAT of the rc-sam-bot service account, injected as
+  # JIRA_TOKEN into the Deployment and the CronJob.
   jiraCredentials:
     enabled: true
     useExternalSecret: true

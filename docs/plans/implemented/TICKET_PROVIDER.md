@@ -131,7 +131,7 @@ covers the mail era and the API era with one predicate.
 |---|---|---|---|---|
 | 0 | `[SAM-AR-<id>]` token in the mail subject | none | none | **shipped with this doc** |
 | 1 | read-only client; learn the key hourly; `RC-40274`-style link on the Accounts card | `external_ticket` table | read keys + token | **built**, § 9 |
-| 2 | JSM create with mail fallback behind `TICKET_PROVIDER=jira-servicedesk`, internal automation note on every created ticket | none | none | **built** on Ben's PAT; bot token later |
+| 2 | JSM create with mail fallback behind `TICKET_PROVIDER=jira-servicedesk`, internal automation note on every created ticket | none | none | **built**; files as `rc-sam-bot` (§ 7) |
 | 3 | status sync | none | none | **built**, § 9 |
 
 ### Phase 0: the subject token
@@ -651,7 +651,7 @@ Rough size: ~900 LOC product, ~700 LOC tests.
 
 ### 8.11 Open items carried in the doc
 
-- Jira bot account (swap `JIRA_TOKEN`, no code change).
+- ~~Jira bot account~~: `rc-sam-bot`, 2026-09-30 (§ 7).
 - Who NUSD wants as the JSM customer (`raiseOnBehalfOf`); the knob is not built.
 - ~~Close RC-40274.~~ Canceled.
 
