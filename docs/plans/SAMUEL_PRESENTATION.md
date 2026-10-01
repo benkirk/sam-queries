@@ -1016,6 +1016,8 @@ puts the paragraph on the beamer section page; it is a framework `main` follow-u
   - **Where:** public claude.ai artifact `Tp4XaBDH7BmvUbPT6UUbtS`.
   - **Linked from:** the slide "Walk the pipeline yourself", as a linked screenshot.
   - **Each stop** links its workflow YAML and docs on sam-queries `main`.
+  - **Source:** vendored in framework `docs/samuel/companion/` (`7683b21`). The README there
+    covers the build, the republish step and the screenshot command. That copy is canonical.
   - **Dropped:** the lanes timeline, because HPC deployment stays downplayed.
 - Appendix: a peer-repo dependency graph.
 
