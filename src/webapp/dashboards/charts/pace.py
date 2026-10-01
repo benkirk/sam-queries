@@ -1,7 +1,8 @@
 """Allocation pace chart.
 
 Stacked-area chart where each allocation is one band with a step at
-``active_at``. Left of the step: constant past-burn-rate (used/elapsed_days).
+``active_at``. Left of the step: constant past-burn-rate (burn inside the window
+/ live days in it, or used/elapsed_days for rows without ``window_used``).
 Right of the step: constant required-future-rate (remaining/remaining_days).
 Past and future of the same allocation share a color (one band = one color).
 Top-N projcodes get distinct colors; the rest share a muted "Other" color.
@@ -79,10 +80,17 @@ def pace_bands(allocations: List[Dict], active_at: datetime,
         amount = float(a.get('total_amount') or 0.0)
         used = float(a.get('total_used') or 0.0)
 
-        # past region: S -> min(active_at, E); height = used / elapsed
+        # past region: S -> min(active_at, E). Height is the burn inside the window
+        # when the row carries it (a lifetime average flattens multi-year allocations),
+        # else used / elapsed.
         past_end = min(active_at, e)
-        past_days = max((past_end - s).days, 0)
-        past_rate = (used / past_days) if past_days > 0 else 0.0
+        if 'window_used' in a:
+            past_used = float(a.get('window_used') or 0.0)
+            past_days = max((past_end - max(s, window_start)).days, 0)
+        else:
+            past_used = used
+            past_days = max((past_end - s).days, 0)
+        past_rate = (past_used / past_days) if past_days > 0 else 0.0
 
         # future region: max(active_at, S) -> E; height = remaining / remaining
         future_start = max(active_at, s)
@@ -118,7 +126,7 @@ def pace_key_fields(allocations: List[Dict]) -> list:
             _d(a.get('end_date')),
             float(a.get('total_amount') or 0.0),
             float(a.get('total_used') or 0.0),
-        )
+        ) + ((float(a['window_used'] or 0.0),) if 'window_used' in a else ())
         for a in allocations
     ]
 

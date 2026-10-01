@@ -43,6 +43,25 @@ class TestPaceBands:
         assert [bands[pc][3] for pc in ('ENDED01', 'CURR01', 'FUT01')] == [False, True, False]
 
 
+class TestWindowBurn:
+
+    def test_past_rate_is_the_burn_inside_the_window(self):
+        """A multi-year allocation: its lifetime average would dilute recent burn."""
+        long_lived = _alloc('LONG01', datetime(2018, 1, 1), datetime(2027, 12, 31),
+                            9_000_000.0, 3_000_000.0)
+        long_lived['window_used'] = 1_800_000.0
+        days, bands = _bands([long_lived])
+        today = days.index(NOW)
+        window_days = (NOW - days[0]).days
+        assert bands['LONG01'][2][today - 1] == 1_800_000.0 / window_days
+
+    def test_rows_without_window_used_keep_the_lifetime_average(self):
+        days, bands = _bands([ENDED])
+        today = days.index(NOW)
+        elapsed = (ENDED['end_date'] - ENDED['start_date']).days
+        assert bands['ENDED01'][2][today - 1] == 600_000.0 / elapsed
+
+
 class TestSizeRank:
 
     @pytest.fixture(autouse=True)
