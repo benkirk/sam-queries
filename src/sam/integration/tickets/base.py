@@ -20,9 +20,8 @@ logger = logging.getLogger(__name__)
 #: Posted as an internal note on every ticket a provider creates, so the desk
 #: knows no person typed it. Callers append the row-specific line.
 DEFAULT_AUTOMATION_NOTE = (
-    'Filed automatically by SAM (NSF NCAR Systems Accounting Manager) with an '
-    'API token, not by hand; the reporter shown is the token owner. Replies '
-    'here reach this queue, not SAM.')
+    'Filed automatically by SAM (NSF NCAR Systems Accounting Manager). '
+    'Replies here reach this queue, not SAM.')
 
 #: The kinds of ticket SAM files. A provider keys its per-kind settings
 #: (request type, desk, labels) on these names, like ``sam.notify`` families.
