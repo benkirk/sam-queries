@@ -1,8 +1,7 @@
 """Pie charts.
 
 `PieChart` owns the `ax.pie` call, the autopct recoloring and the wedge/legend
-drill wiring. A subclass supplies the trim strategy (`trim_fixed_cap` top-10 or
-`trim_cumulative` ~90%), the "Other" derivation, the legend formatter and an
+drill wiring. A subclass supplies the trim (`trim_cumulative`, ~90%), the "Other" derivation, the legend formatter and an
 optional drill target. `TwoRingPie` is the two-ring (sunburst) variant.
 """
 
@@ -20,26 +19,11 @@ from webapp.dashboards.charts.theme import (
 )
 
 _PIE_START_ANGLE = 60
-_PIE_MAX_ENTITIES = 10
 
 #: Cumulative-share trim: show entities up to ~90% of the total, but never
 #: more than 9 named slices (the palette has 10; keep "Other" distinct).
 _PIE_CUM_SHARE = 0.90
 _PIE_HARD_CAP = 9
-
-
-def trim_fixed_cap(names: list, values: list, cap: int = _PIE_MAX_ENTITIES
-                   ) -> tuple[list, list]:
-    """Sort by value descending, cap, group the remainder as 'Others (N)'."""
-    paired = sorted(zip(names, values), key=lambda x: x[1], reverse=True)
-    names_s = [p[0] for p in paired]
-    values_s = [p[1] for p in paired]
-    if len(names_s) > cap:
-        n_others = len(names_s) - cap
-        others_sum = sum(values_s[cap:])
-        names_s = names_s[:cap] + [f'Others ({n_others})']
-        values_s = values_s[:cap] + [others_sum]
-    return names_s, values_s
 
 
 def trim_cumulative(values_desc: list, cap: int = _PIE_HARD_CAP) -> int:
@@ -151,56 +135,6 @@ class PieChart(BaseChart):
                 leg_patches[i].set_url(url)
             if i < len(leg_texts):
                 leg_texts[i].set_url(url)
-
-
-class _FixedCapPie(PieChart):
-    """Top-10 cap with an 'Others (N)' remainder; never clickable.
-
-    The two allocations-dashboard pies. Both take a single list argument and
-    differ only in which two dict keys they read — which is the whole of each
-    subclass below.
-    """
-
-    #: ``(name_key, value_key)`` in the incoming row dicts.
-    fields: tuple = None
-
-    def __init__(self, data: List[Dict]):
-        self.data = data or []
-
-    @staticmethod
-    def cache_key(data):
-        return content_hash(data)
-
-    def build(self):
-        name_key, value_key = self.fields
-        names, values = trim_fixed_cap([d[name_key] for d in self.data],
-                                       [d[value_key] for d in self.data],
-                                       cap=self.slice_cap(_PIE_MAX_ENTITIES))
-        colors = self.theme.data_colors(
-            list(UNITY_PALETTE_10[:len(names)]))
-        return names, values, colors, [None] * len(names)
-
-
-class FacilityPie(_FixedCapPie):
-    """Allocation distribution by facility. Title is rendered in the
-    surrounding HTML (see allocations dashboard template)."""
-
-    cache_name = 'facility_pie_chart'
-    #: One entry per resource filter combination, split by layout (tablet too:
-    #: same bytes as desktop, different key).
-    cache_maxsize = 72
-    empty_message = 'No facility data available'
-    fields = ('facility', 'annualized_rate')
-
-
-class AllocationTypePie(_FixedCapPie):
-    """Allocation distribution by type within a facility."""
-
-    cache_name = 'allocation_type_pie_chart'
-    #: One entry per (resource, facility) filter combination.
-    cache_maxsize = 64
-    empty_message = 'No allocation type data available'
-    fields = ('allocation_type', 'total_amount')
 
 
 class _CumulativePie(PieChart):

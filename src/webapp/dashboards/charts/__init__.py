@@ -60,15 +60,12 @@ from webapp.dashboards.charts.pace import (  # noqa: F401
 )
 from webapp.dashboards.charts.pie import (  # noqa: F401
     AllocationSunburst,
-    AllocationTypePie,
     DiskEntityPie,
-    FacilityPie,
     FairShareSunburst,
     JobsUsagePie,
     PieChart,
     UserUsagePie,
     trim_cumulative as _pie_cumulative_keep,
-    trim_fixed_cap as _pie_trim,
 )
 from webapp.dashboards.charts.stacked import (  # noqa: F401
     DiskUsageAreaChart,
@@ -116,7 +113,7 @@ def _user_modal_url(username: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# The 17 cached charts.
+# The 15 cached charts.
 #
 # ORDER IS LOAD-BEARING: `chart_cached` appends to the cache registry at
 # decoration time, so this is the order rows appear on the admin Caching card.
@@ -137,8 +134,6 @@ generate_nodetype_history_matplotlib = chart_view(NodetypeHistoryChart)
 generate_queue_history_matplotlib = chart_view(QueueHistoryChart)
 
 # 4. Pies.  charts/pie.py
-generate_facility_pie_chart_matplotlib = chart_view(FacilityPie)
-generate_allocation_type_pie_chart_matplotlib = chart_view(AllocationTypePie)
 generate_disk_entity_pie_chart = chart_view(DiskEntityPie)
 generate_user_usage_pie_chart = chart_view(UserUsagePie)
 
@@ -204,8 +199,6 @@ __all__ = [
     'generate_distribution_histogram',
     'generate_nodetype_history_matplotlib',
     'generate_queue_history_matplotlib',
-    'generate_facility_pie_chart_matplotlib',
-    'generate_allocation_type_pie_chart_matplotlib',
     'generate_disk_entity_pie_chart',
     'generate_user_usage_pie_chart',
     'generate_jobs_histogram',

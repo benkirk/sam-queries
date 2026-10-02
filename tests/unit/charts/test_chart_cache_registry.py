@@ -29,8 +29,6 @@ EXPECTED = [
     'distribution_histogram',
     'nodetype_history',
     'queue_history',
-    'facility_pie_chart',
-    'allocation_type_pie_chart',
     'disk_entity_pie_chart',
     'user_usage_pie_chart',
     'jobs_histogram',
@@ -51,7 +49,7 @@ def test_cache_names_and_order():
 
 
 def test_cache_count():
-    assert len(caching._chart_caches) == 17
+    assert len(caching._chart_caches) == 15
 
 
 def test_no_duplicate_cache_names():
@@ -64,9 +62,9 @@ def test_no_duplicate_cache_names():
 def test_every_cached_generator_has_a_cache():
     """One cache per cached generator, and no strays."""
     generators = [n for n in dir(charts) if n.startswith('generate_')]
-    # 18 generators, 17 caches: the By User jobs pie is a delegating facade.
-    assert len(generators) == 18
-    assert len(_registered_names()) == 17
+    # 16 generators, 15 caches: the By User jobs pie is a delegating facade.
+    assert len(generators) == 16
+    assert len(_registered_names()) == 15
 
 
 def test_delegating_facade_registers_no_cache(app):

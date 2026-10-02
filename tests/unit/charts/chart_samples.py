@@ -110,18 +110,6 @@ def _queue_history(with_gpus):
     ]
 
 
-def _facility_data():
-    return [{'facility': n, 'annualized_rate': v, 'count': 3, 'percent': 10}
-            for n, v in [('UNIV', 5_000_000), ('WNA', 2_500_000), ('NCAR', 1_250_000)]]
-
-
-def _alloc_type_data():
-    # 12 entries so _pie_trim's fixed-cap-10 + "Others (2)" path is exercised.
-    return [{'allocation_type': f'Type{i:02d}', 'total_amount': 10_000 * (13 - i),
-             'count': 2, 'avg_amount': 5000}
-            for i in range(1, 13)]
-
-
 def _disk_entities():
     # Decimal on purpose: scan rollups arrive as decimal.Decimal from Postgres
     # and must be coerced at the chart boundary, or `cum += v` raises TypeError.
@@ -312,17 +300,6 @@ CASES = [
     ('queue.gpus', charts.generate_queue_history_matplotlib,
      (_queue_history(with_gpus=True),), {}),
     ('queue.empty', charts.generate_queue_history_matplotlib, ([],), {}),
-
-    # --- 8. facility pie -------------------------------------------------
-    ('facility_pie.normal', charts.generate_facility_pie_chart_matplotlib,
-     (_facility_data(),), {}),
-    ('facility_pie.empty', charts.generate_facility_pie_chart_matplotlib, ([],), {}),
-
-    # --- 9. allocation-type pie (exercises _pie_trim "Others (N)") ------
-    ('alloc_type_pie.trimmed', charts.generate_allocation_type_pie_chart_matplotlib,
-     (_alloc_type_data(),), {}),
-    ('alloc_type_pie.empty', charts.generate_allocation_type_pie_chart_matplotlib,
-     ([],), {}),
 
     # --- 10. disk entity pie (Decimal input, cumulative keep) -----------
     ('disk_entity_pie.owner', charts.generate_disk_entity_pie_chart,

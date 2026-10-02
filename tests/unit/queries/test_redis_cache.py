@@ -200,7 +200,7 @@ class TestDerivedPrefixes:
 class TestRedisChartCache:
 
     def test_get_miss_then_put_then_hit(self, redis_client):
-        cache = RedisChartCache(name='facility_pie_chart', client=redis_client)
+        cache = RedisChartCache(name='allocation_sunburst', client=redis_client)
         assert cache.get('key1') is None
         cache.put('key1', '<svg>hello</svg>')
         assert cache.get('key1') == '<svg>hello</svg>'
@@ -208,8 +208,8 @@ class TestRedisChartCache:
     def test_hit_miss_counters_persist_in_redis(self, redis_client):
         # Two cache instances against the same Redis: counters must add up,
         # which is the property that "shared across workers" depends on.
-        a = RedisChartCache(name='facility_pie_chart', client=redis_client)
-        b = RedisChartCache(name='facility_pie_chart', client=redis_client)
+        a = RedisChartCache(name='allocation_sunburst', client=redis_client)
+        b = RedisChartCache(name='allocation_sunburst', client=redis_client)
         a.get('absent')           # miss on a
         b.get('absent')           # miss on b
         a.put('present', '<svg/>')
@@ -220,7 +220,7 @@ class TestRedisChartCache:
 
     def test_distinct_chart_names_do_not_share_keys(self, redis_client):
         a = RedisChartCache(name='pace_chart', client=redis_client)
-        b = RedisChartCache(name='facility_pie_chart', client=redis_client)
+        b = RedisChartCache(name='allocation_sunburst', client=redis_client)
         a.put('k', '<svg>A</svg>')
         b.put('k', '<svg>B</svg>')
         assert a.get('k') == '<svg>A</svg>'
