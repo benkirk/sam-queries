@@ -142,6 +142,15 @@
     --surface-secondary-rgb: 233, 236, 239;
     --surface-tertiary-rgb:  248, 249, 250;
 
+    /* --- Facility color families (fair-share bars and chart) ---
+       == charts/theme.py FAIR_SHARE_LIGHT/DARK; test_css_tokens pins them. */
+    --data-facility-1: #0057c2;
+    --data-facility-2: #e0681a;
+    --data-facility-3: #00a2b4;
+    --data-facility-4: #d4246b;
+    --data-facility-5: #9a7b00;
+    --data-facility-6: #6b46c1;
+
     /* --- Text --- */
     --text-primary:   #323133;   /* body copy */
     --text-primary-rgb: 50, 49, 51;
@@ -332,6 +341,14 @@
        into the neutral ramp — same distinction as in light mode. */
     --surface-accent:       #1e2b3d;
     --surface-accent-hover: #26364b;
+
+    /* --- Facility color families: dark steps, validated on --surface-card --- */
+    --data-facility-1: #4687ea;
+    --data-facility-2: #d9772c;
+    --data-facility-3: #11a0b0;
+    --data-facility-4: #de4b80;
+    --data-facility-5: #ad8d1c;
+    --data-facility-6: #8f70e8;
 
     /* --- Text --- */
     --text-primary:     #e9ecef;

@@ -5,6 +5,7 @@
     {% call pane_toolbar('5 types, 18 resources') %}<button ...>{% endcall %}
     {{ group_count(3) }}            count badge on a group header row
     {{ state_tag('decommissioned', title='Since 2024-01-31') }}
+    {{ share_bar(31.0, slot=3) }}   bar + number; slot = facility color family
 #}
 
 {# Count on the left, create buttons on the right; sits above the table. #}
@@ -22,4 +23,16 @@
 {# A neutral fact about a row (why it is dim), not a signal. #}
 {% macro state_tag(label, title='') -%}
 <span class="badge state-tag ms-2"{% if title %} title="{{ title }}"{% endif %}>{{ label }}</span>
+{%- endmacro %}
+
+{# A share of a parent, 0-100. slot: a facility_slots() hue; tint: a child's share. #}
+{% macro share_bar(pct, slot=None, tint=False, title='') -%}
+{%- if pct is none -%}<span class="text-muted">—</span>
+{%- else -%}
+<span class="share"{% if title %} title="{{ title }}"{% endif %}>
+  <span class="share-bar{{ ' share-tint' if tint }}{{ ' share-zero' if not pct }}"{% if slot %} data-fs="{{ slot }}"{% endif %}
+        style="--share: {{ [[pct, 0] | max, 100] | min }}%" aria-hidden="true"></span>
+  {{- pct | fmt_pct(decimals=2) -}}
+</span>
+{%- endif -%}
 {%- endmacro %}

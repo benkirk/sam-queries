@@ -496,13 +496,6 @@ tr:hover > td .btn.btn-row-attention {
     border-bottom: 1px solid var(--border-default);
 }
 
-/* A table nested in an expanded row: smaller type, no second header rule. */
-.table .table-nested {
-    font-size: 0.875em;
-}
-.table .table-nested thead th {
-    border-bottom-width: 1px;
-}
 
 /* Admin organization tree: indentation per depth, set inline as --depth. */
 .org-tree-cell {
@@ -540,4 +533,60 @@ tr:hover > td .btn.btn-row-attention {
 .badge.count-badge {
     padding: 0.2rem 0.45rem;
     font-variant-numeric: tabular-nums;
+}
+
+/* Tree rows in one table: --depth indents the name cell, and each ancestor
+   level draws a guide line, continuous across contiguous rows. */
+.table td.tree-cell {
+    --tree-step: 1.4rem;
+    padding-left: calc(var(--depth, 0) * var(--tree-step) + 0.5rem);
+    background-repeat: no-repeat;
+}
+.table td.tree-cell.tree-d1 {
+    background-image: linear-gradient(var(--border-default), var(--border-default));
+    background-size: 1px 100%;
+    background-position: 0.95rem 0;
+}
+.table td.tree-cell.tree-d2 {
+    background-image: linear-gradient(var(--border-default), var(--border-default)),
+                      linear-gradient(var(--border-default), var(--border-default));
+    background-size: 1px 100%, 1px 100%;
+    background-position: 0.95rem 0, calc(0.95rem + var(--tree-step)) 0;
+}
+
+/* A share of a parent: a thin bar beside the number, which stays the text. */
+.share {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+.share-bar {
+    --share-color: var(--fs-color, var(--text-link));
+    flex: none;
+    width: 3.5rem;
+    height: 0.375rem;
+    border-radius: 0.1875rem;
+    background:
+        linear-gradient(var(--share-color), var(--share-color)) left / max(var(--share, 0%), 2px) 100% no-repeat,
+        var(--surface-secondary);
+}
+/* A child's share: its facility's hue, tinted toward the card. */
+.share-bar.share-tint {
+    --share-color: color-mix(in srgb, var(--fs-color, var(--text-link)) 55%, var(--surface-card));
+}
+.share-bar.share-zero {
+    background: var(--surface-secondary);
+}
+[data-fs="1"] { --fs-color: var(--data-facility-1); }
+[data-fs="2"] { --fs-color: var(--data-facility-2); }
+[data-fs="3"] { --fs-color: var(--data-facility-3); }
+[data-fs="4"] { --fs-color: var(--data-facility-4); }
+[data-fs="5"] { --fs-color: var(--data-facility-5); }
+[data-fs="6"] { --fs-color: var(--data-facility-6); }
+
+/* Collapsible <tr>s snap rather than animate a row height. */
+tr.collapse,
+tr.collapsing {
+    transition: none !important;
 }

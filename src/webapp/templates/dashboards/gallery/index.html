@@ -254,6 +254,42 @@
       </table>
     </div>
   {% endcall %}
+  {% call specimen('table_bits.share_bar + .tree-cell', 'one-table tree: guide lines per level, a share of the parent in its facility family, tinted for children') %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-subtle"><tr>
+          <th class="col-shrink">Name</th><th>Description</th>
+          <th class="col-num">Fair share</th><th class="col-num">Of machine</th>
+        </tr></thead>
+        <tbody>
+          <tr class="table-subtle fw-semibold">
+            <td class="tree-cell text-nowrap" style="--depth: 0;"><i class="fa-solid fa-chevron-down small text-muted me-1"></i>UNIV</td>
+            <td class="small text-muted fw-normal">University</td>
+            <td class="col-num">{{ table_bits.share_bar(25.95, slot=5) }}</td>
+            <td class="col-num text-muted">{{ 25.95 | fmt_pct(decimals=2) }}</td>
+          </tr>
+          <tr>
+            <td class="tree-cell tree-d1 fw-semibold text-nowrap" style="--depth: 1;"><i class="fa-solid fa-users-gear small text-muted me-1"></i>UNIV USS</td>
+            <td class="small text-muted">University panel</td>
+            <td class="col-num text-muted">{{ table_bits.share_bar(80.0, slot=5, tint=true) }}</td>
+            <td class="col-num"></td>
+          </tr>
+          <tr>
+            <td class="tree-cell tree-d2 text-nowrap" style="--depth: 2;">UNIV-Small</td>
+            <td></td>
+            <td class="col-num">{{ table_bits.share_bar(60.0, slot=5, tint=true) }}</td>
+            <td class="col-num text-muted">{{ 15.57 | fmt_pct(decimals=2) }}</td>
+          </tr>
+          <tr>
+            <td class="tree-cell tree-d2 text-nowrap" style="--depth: 2;">UNIV-Large</td>
+            <td></td>
+            <td class="col-num">{{ table_bits.share_bar(20.0, slot=5, tint=true) }}</td>
+            <td class="col-num text-muted">{{ 5.19 | fmt_pct(decimals=2) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  {% endcall %}
   {% call specimen('pagination.pagination', 'windowed page nav') %}
     {{ pagination.pagination(pagination_page, pagination_total, fragment_url, target_id, form_id, sort) }}
   {% endcall %}
