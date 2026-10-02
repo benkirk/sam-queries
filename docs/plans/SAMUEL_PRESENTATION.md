@@ -559,6 +559,19 @@ are in the slide notes.
   after-number); indexes (jobs 58 s / 109 s → ms, fs-scans 17.8 → 0.23 s, temp spill 1.5 GB → 0).
 - **Still slow, and known,** then the TL;DR.
 
+### Appendix D — Failing Closed (security hardening; drafted 2026-10-02, 7 slides)
+
+- **CSRF:** Flask-WTF on every session write; htmx sends the token from the body's
+  `hx-headers`. The cookie is HttpOnly, Lax, and Secure in prod. 14 key-only routes are exempt.
+- **CSP:** enforced since #303, all `'self'`, no nonce (pages are cached), built from the asset
+  registry. The template lint started at 41 files and is now 0.
+- **No third-party origins:** vendored, sha384-pinned, re-hashed in CI; the
+  `update-vendored-assets` skill (#522–#524).
+- **Rate limits:** a table of the tiers. **The lost client IP** (⚠︎): every per-IP tier is one
+  bucket, API keys included.
+- **The NRIT review:** requested by Ben before SAMuel left the VPN; one dense page, with what's
+  fixed, the ZAP scan, and what's still open. The reviewer is not named (public repo).
+
 ## 5. Facts to resolve before they go on a slide
 
 - **The name:** the app, and Ben's March deck, say "Systems Accounting Manager". `CLAUDE.md`'s
@@ -998,6 +1011,11 @@ an update here (tick boxes, session log).
   - Ben's measurement: legacy refreshes the Derecho fairshare tree in about 200–300 s.
     Comparisons to legacy are good data; don't be hard on legacy.
 
+- **2026-10-02, Appendix D drafted** (framework `3df2622`, local). 7 slides; the combined deck
+  is 186.
+  - The survey found that API-key routes are rate-limited per IP, not per key (§14).
+  - The NRIT review was Ben's request, the gate before going public outside the VPN.
+
 ## 11. Voice, tone and the fun
 
 **SAMuel = SAM, updated for extended lifecycle.** That backronym is the deck's premise and its
@@ -1212,6 +1230,34 @@ puts the paragraph on the beamer section page; it is a framework `main` follow-u
 
 A running list. Deck work surfaces these, but none belongs on this branch. Each gets its own
 branch and PR against `staging`. Tick an item once its fix merges, and note the PR.
+
+- [ ] **API-key rate limit counts per IP, not per key** (found 2026-10-02, Appendix D).
+  - `api_key_required` pins `key_func` to `ip:<remote>` (`src/webapp/utils/api_auth.py:220-224`),
+    because Flask-Limiter runs before the decorator sets `g.api_key_user`.
+  - With the client IP lost at the ingress (every request from 127.0.0.1), all key callers
+    likely share one 120/min bucket. Unconfirmed in prod logs.
+  - The `_key_func` docstring (`limiter/__init__.py:35-53`) and `RATE_LIMITING.md:85-93` say
+    per key.
+  - Fix: key on the Basic-auth username before verifying (bounded, since a wrong key is cheap
+    to reject), or verify first.
+- [ ] **Stale security docs** (found 2026-10-02, Appendix D):
+  - `RATE_LIMITING.md`: ProxyFix "gives the real client IP" (false on nwc1); the OIDC callback
+    is on AUTH_LOGIN, not ANON.
+  - `PRODUCTION_IMPROVEMENTS.md:38`: "`/database/` → 404", but the read-only browser is mounted
+    since #620.
+  - `PRODUCTION_IMPROVEMENTS-phase-B.md:206-208`: lists P0-5/6/10 as open; all are fixed.
+  - The `update-vendored-assets` skill says htmx 2.0.4 (it is 2.0.10).
+  - The `run.py:173` comment calls the exempt routes "Basic-auth M2M", but 7 also take a
+    session.
+- [ ] **NRIT opens not otherwise tracked:**
+  - P0-7, collectors write zeros on failure;
+  - P0-8, no collector alerting;
+  - P0-14, no error tracking;
+  - P1-2, OIDC matches by `preferred_username` prefix, not Entra `oid`;
+  - P1-10, login and logout are not in the audit log;
+  - P1-45/46/47, actions pinned by tag, a personal PAT, no `permissions:` blocks;
+  - P0-13, the staging RDS Terraform still says `publicly_accessible = true`; staging is
+    retired, so remove it.
 
 - [ ] **Deploy-aware cache invalidation** (follow-on, Ben, 2026-10-02, Appendix C). Today a
   deploy relies on a manual `sam-admin cache --refresh`:
