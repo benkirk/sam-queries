@@ -1,6 +1,6 @@
 # Admin table polish — Resources, Organizations, Contracts, Facilities
 
-**Status: implemented, awaiting review** · branch `admin-table-polish` (from `origin/staging`)
+**Status: implemented, in review** · branch `admin-table-polish` (from `origin/staging`)
 
 ## Why
 
@@ -87,13 +87,16 @@ The fill column is whatever is left: every other column is `col-shrink`, so a
 - [x] Resources: a resource's facility shares are rows of the same table (class-target
       expander `.res-fs-<id>`), with the sum on the resource row.
 
-### Open question for review
+### Found by the tree: bogus Derecho overrides (resolved)
 
-Derecho and Derecho GPU have every facility overridden (1%, ASD 0.95%), so their
-effective shares sum to **5.95%**, not 100% (local snapshot). Every other HPC/DAV
-resource and every facility's types sum to exactly 100%. SAM emits the raw values to
-PBS; if the scheduler weighs siblings relative to each other this is an equal split,
-otherwise it is a data-entry slip. The tables mark it with a neutral info glyph.
+The resource sum on the Resources tab showed Derecho and Derecho GPU at **5.95%**: every
+facility overridden to 1% (ASD 0.95%), where every other resource sums to 100%. They
+were bogus and were removed on prod on 2026-10-01; a fresh clone shows every HPC/DAV
+resource at 100% with no overrides. The tables keep a neutral info glyph for any sum
+other than 100%, since SAM passes the raw values to PBS and does not define how the
+scheduler weighs them.
+
+Next: `ALLOCATIONS_SUNBURST.md` carries these patterns to `/allocations/projects`.
 
 ### Follow-on: a hover layer for the chart framework
 
