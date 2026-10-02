@@ -1,20 +1,49 @@
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button, delete_row_button with context %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% from 'dashboards/fragments/table_bits.html' import pane_toolbar, group_count, state_tag %}
 {#
   Admin: Facility Card Body (lazy-loaded into the Facilities tab pane)
   Unified hierarchical view: Facilities (collapsible) -> Panels -> Allocation Types (nested table).
   Active-only filtering is applied server-side via ?active_only=1 query param.
 #}
 <div class="card-body p-0" id="facilities-pane">
+    {% call pane_toolbar(facilities|length ~ ' facilit' ~ ('ies' if facilities|length != 1 else 'y')) %}
+        {% if has_permission(Permission.CREATE_FACILITIES) %}
+        <button type="button" class="btn btn-sm btn-outline-primary"
+                data-bs-toggle="modal"
+                data-bs-target="#createFacilityModal"
+                hx-get="{{ url_for('admin_dashboard.htmx_facility_create_form') }}"
+                hx-target="#createFacilityFormContainer"
+                hx-trigger="click">
+            <i class="fa-solid fa-plus me-1"></i>Facility
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-primary"
+                data-bs-toggle="modal"
+                data-bs-target="#createPanelModal"
+                hx-get="{{ url_for('admin_dashboard.htmx_panel_create_form') }}"
+                hx-target="#createPanelFormContainer"
+                hx-trigger="click">
+            <i class="fa-solid fa-plus me-1"></i>Panel
+        </button>
+        <button type="button" class="btn btn-sm btn-primary"
+                data-bs-toggle="modal"
+                data-bs-target="#createAllocationTypeModal"
+                hx-get="{{ url_for('admin_dashboard.htmx_allocation_type_create_form') }}"
+                hx-target="#createAllocationTypeFormContainer"
+                hx-trigger="click">
+            <i class="fa-solid fa-plus me-1"></i>Allocation type
+        </button>
+        {% endif %}
+    {% endcall %}
     <div class="table-responsive">
-        <table class="table table-sm mb-0">
+        <table class="table table-sm align-middle mb-0">
             <thead class="table-subtle">
                 <tr>
-                    <th>Name</th>
-                    <th>Code</th>
+                    <th class="col-shrink">Name</th>
+                    <th class="col-shrink">Code</th>
                     <th>Description</th>
-                    <th>Fair Share %</th>
-                    <th class="text-end">Actions</th>
+                    <th class="col-num">Fair share</th>
+                    <th class="col-shrink text-end">Actions</th>
                 </tr>
             </thead>
 
@@ -22,29 +51,28 @@
             {% for f in facilities %}
             {% set visible_panels = (f.panels | selectattr('active') if active_only else f.panels) | sort(attribute='panel_name') %}
 
-            {# Facility row (the four leading cells are collapse triggers)
-               The toggle sits on the cells, not the <tr>: a row-level trigger
-               would also fire when the Edit/Delete buttons are clicked, and
-               nothing on the button can stop it (Bootstrap's data-api runs in
-               the capture phase). See dashboards/fragments/collapse.html. #}
+            {# The toggle sits on the leading cells, not the <tr>: a row-level
+               trigger would also fire from the Edit/Delete buttons
+               (see dashboards/fragments/collapse.html). #}
             {% set f_toggle = 'facility-panels-' ~ f.facility_id %}
             <tbody>
-                <tr class="table-subtle fw-semibold{% if not f.active %} opacity-50{% endif %}">
-                    <td class="cursor-pointer" {{ collapse_toggle(f_toggle) }}>
-                        <i class="fa-solid fa-chevron-right small text-muted me-1 facility-collapse-icon"
-                           style="transition: transform 0.2s;"></i>
-                        {{ f.facility_name }}
+                <tr class="table-subtle fw-semibold">
+                    <td class="cursor-pointer text-nowrap" {{ collapse_toggle(f_toggle) }}>
+                        <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
+                        {{- f.facility_name }}
+                        {{- group_count(visible_panels|length, title='Panels in this facility') }}
+                        {%- if not f.active %}{{ state_tag('inactive') }}{% endif %}
                     </td>
-                    <td class="cursor-pointer" {{ collapse_toggle(f_toggle) }}>
-                        {% if f.code %}
-                        <span class="badge bg-body-tertiary text-body-emphasis border">{{ f.code }}</span>
-                        {% else %}—{% endif %}
+                    <td class="col-shrink cursor-pointer" {{ collapse_toggle(f_toggle) }}>
+                        {%- if f.code %}<code class="text-reset">{{ f.code }}</code>{% endif -%}
                     </td>
-                    <td class="text-muted cursor-pointer" {{ collapse_toggle(f_toggle) }}>{{ f.description or '—' }}</td>
-                    <td class="cursor-pointer" {{ collapse_toggle(f_toggle) }}>
+                    <td class="cell-truncate small text-muted fw-normal cursor-pointer" {{ collapse_toggle(f_toggle) }}
+                        title="{{ f.description or '' }}">{{ f.description or '—' }}</td>
+                    <td class="col-num cursor-pointer" {{ collapse_toggle(f_toggle) }}>
                         {{ f.fair_share_percentage | fmt_pct(decimals=2) }}
                     </td>
                     <td class="text-end text-nowrap">
+                        <span class="row-actions">
                         {{ edit_modal_button(
                             url_for('admin_dashboard.htmx_facility_edit_form', facility_id=f.facility_id),
                             modal_id='editFacilityModal',
@@ -55,7 +83,9 @@
                             url_for('admin_dashboard.htmx_facility_delete', facility_id=f.facility_id),
                             confirm="Deactivate facility '" ~ f.facility_name ~ "'?",
                             title='Deactivate facility',
+                            reload_event='reloadFacilitiesCard',
                             permission=Permission.DELETE_FACILITIES) }}
+                        </span>
                     </td>
                 </tr>
             </tbody>
@@ -65,16 +95,17 @@
                 {% for p in visible_panels %}
                 {% set visible_ats = (p.allocation_types | selectattr('active') if active_only else p.allocation_types) | sort(attribute='allocation_type') %}
 
-                {# Panel header row #}
-                <tr class="table-secondary{% if not p.active %} opacity-50{% endif %}">
-                    <td class="ps-4 fw-semibold">
-                        <i class="fa-solid fa-users-gear small text-muted me-1"></i>
-                        {{ p.panel_name }}
+                <tr class="{{ 'row-inactive' if not p.active }}">
+                    <td class="cell-child fw-semibold text-nowrap">
+                        <i class="fa-solid fa-users-gear small text-muted me-1" title="Allocation panel"></i>
+                        {{- p.panel_name }}
+                        {%- if not p.active %}{{ state_tag('inactive') }}{% endif %}
                     </td>
-                    <td>—</td>
-                    <td class="text-muted small">{{ p.description or '—' }}</td>
-                    <td>—</td>
+                    <td class="col-shrink"></td>
+                    <td class="cell-truncate small text-muted" title="{{ p.description or '' }}">{{ p.description or '—' }}</td>
+                    <td class="col-num"></td>
                     <td class="text-end text-nowrap">
+                        <span class="row-actions">
                         {{ edit_modal_button(
                             url_for('admin_dashboard.htmx_panel_edit_form', panel_id=p.panel_id),
                             modal_id='editPanelModal',
@@ -85,32 +116,38 @@
                             url_for('admin_dashboard.htmx_panel_delete', panel_id=p.panel_id),
                             confirm="Deactivate panel '" ~ p.panel_name ~ "'?",
                             title='Deactivate panel',
+                            reload_event='reloadFacilitiesCard',
                             permission=Permission.DELETE_FACILITIES) }}
+                        </span>
                     </td>
                 </tr>
 
-                {# Embedded Allocation Types — nested table in a spanning cell #}
-                <tr class="table-secondary">
-                    <td colspan="5" class="ps-5 pt-0 pb-2">
+                {# Embedded Allocation Types: a nested table in a spanning cell #}
+                <tr>
+                    <td colspan="5" class="ps-5 pe-3 pt-0 pb-3">
                         {% if visible_ats %}
-                        <table class="table table-sm table-bordered mb-0 bg-body" style="font-size: 0.875em;">
+                        <table class="table table-sm table-nested align-middle mb-0">
                             <thead class="table-subtle">
                                 <tr>
-                                    <th>Allocation Type</th>
-                                    <th>Default Amount</th>
-                                    <th>Fair Share %</th>
-                                    <th># Projects</th>
-                                    <th class="text-end">Actions</th>
+                                    <th>Allocation type</th>
+                                    <th class="col-num">Default amount</th>
+                                    <th class="col-num">Fair share</th>
+                                    <th class="col-num">Projects</th>
+                                    <th class="col-shrink text-end">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for at in visible_ats %}
-                                <tr{% if not at.active %} class="opacity-50"{% endif %}>
-                                    <td>{{ at.allocation_type }}</td>
-                                    <td>{{ at.default_allocation_amount | fmt_number }}</td>
-                                    <td>{{ at.fair_share_percentage | fmt_pct(decimals=2) }}</td>
-                                    <td>{{ at.projects | length }}</td>
+                                <tr class="{{ 'row-inactive' if not at.active }}">
+                                    <td>
+                                        {{- at.allocation_type }}
+                                        {%- if not at.active %}{{ state_tag('inactive') }}{% endif %}
+                                    </td>
+                                    <td class="col-num">{{ at.default_allocation_amount | fmt_number }}</td>
+                                    <td class="col-num">{{ at.fair_share_percentage | fmt_pct(decimals=2) }}</td>
+                                    <td class="col-num">{{ at.projects | length | fmt_number }}</td>
                                     <td class="text-end text-nowrap">
+                                        <span class="row-actions">
                                         {{ edit_modal_button(
                                             url_for('admin_dashboard.htmx_allocation_type_edit_form', allocation_type_id=at.allocation_type_id),
                                             modal_id='editAllocationTypeModal',
@@ -121,7 +158,9 @@
                                             url_for('admin_dashboard.htmx_allocation_type_delete', allocation_type_id=at.allocation_type_id),
                                             confirm="Deactivate allocation type '" ~ at.allocation_type ~ "'?",
                                             title='Deactivate allocation type',
+                                            reload_event='reloadFacilitiesCard',
                                             permission=Permission.DELETE_FACILITIES) }}
+                                        </span>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -134,8 +173,8 @@
                 </tr>
 
                 {% else %}
-                <tr class="table-secondary">
-                    <td colspan="5" class="ps-4 text-muted fst-italic">No panels.</td>
+                <tr>
+                    <td colspan="5" class="cell-child text-muted fst-italic">No panels.</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -149,39 +188,4 @@
 
         </table>
     </div>
-    <div class="d-flex justify-content-between align-items-center px-3 py-2">
-        <span class="text-muted small">
-            Showing {{ facilities|length }} facilit{{ 'ies' if facilities|length != 1 else 'y' }}
-        </span>
-        {% if has_permission(Permission.CREATE_FACILITIES) %}
-        <div class="d-flex gap-2">
-            <button class="btn btn-primary"
-                    data-bs-toggle="modal"
-                    data-bs-target="#createFacilityModal"
-                    hx-get="{{ url_for('admin_dashboard.htmx_facility_create_form') }}"
-                    hx-target="#createFacilityFormContainer"
-                    hx-trigger="click">
-                <i class="fa-solid fa-plus"></i> Create Facility
-            </button>
-            <button class="btn btn-primary"
-                    data-bs-toggle="modal"
-                    data-bs-target="#createPanelModal"
-                    hx-get="{{ url_for('admin_dashboard.htmx_panel_create_form') }}"
-                    hx-target="#createPanelFormContainer"
-                    hx-trigger="click">
-                <i class="fa-solid fa-plus"></i> Create Panel
-            </button>
-            <button class="btn btn-primary"
-                    data-bs-toggle="modal"
-                    data-bs-target="#createAllocationTypeModal"
-                    hx-get="{{ url_for('admin_dashboard.htmx_allocation_type_create_form') }}"
-                    hx-target="#createAllocationTypeFormContainer"
-                    hx-trigger="click">
-                <i class="fa-solid fa-plus"></i> Create Allocation Type
-            </button>
-        </div>
-        {% endif %}
-    </div>
 </div>
-
-{# Collapse chevrons wired in static/js/form-helpers.js (htmx.onLoad). #}

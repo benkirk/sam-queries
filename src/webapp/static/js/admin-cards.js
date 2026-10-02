@@ -104,8 +104,6 @@
     }
 
     function initInstitutions(root) {
-        SamCollapseChevron.attach('#institutions-pane', '.inst-type-collapse-icon');
-
         root.querySelectorAll('.inst-expand-trigger').forEach(function (row) {
             var targetId = row.dataset.instTarget;
             var userRow = document.getElementById(targetId);
@@ -183,26 +181,14 @@
 
         if (has(root, '#organizationsTabsContent')) {
             document.querySelectorAll('#organizationsTabsContent table').forEach(attachSorting);
-            SamCollapseChevron.attach('#areas-pane', '.collapse-icon');
         }
 
-        // The contracts table moved out of the Organizations card onto
-        // /admin/contracts, so its chevrons are wired off their own marker.
-        if (has(root, '#contractsTable')) {
-            SamCollapseChevron.attach('#contractsTable', '.contract-collapse-icon');
-        }
-
-        if (has(root, '.inst-type-collapse-icon') || has(root, '.inst-expand-trigger')) {
+        if (has(root, '#institutions-table')) {
             initInstitutions(root);
         }
 
         if (has(root, '#resourcesTabsContent')) {
             document.querySelectorAll('#resourcesTabsContent table').forEach(attachSorting);
-            SamCollapseChevron.attach('#resources-pane', '.res-type-collapse-icon');
-            SamCollapseChevron.attach('#resources-pane', '.facility-resource-collapse-icon');
-            SamCollapseChevron.attach('#resources-pane', '.disk-root-collapse-icon');
-            SamCollapseChevron.attach('#queues-pane',    '.queue-res-collapse-icon');
-            SamCollapseChevron.attach('#queues-pane',    '.exemption-res-collapse-icon');
         }
     });
 })();

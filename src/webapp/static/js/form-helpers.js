@@ -501,9 +501,6 @@
         if (has(root, '#contractLookupRow')) { initCreateContractForm(); }
         if (has(root, '#exchangeFromProject')) { initExchangeForm(root); }
 
-        if (has(root, '.facility-collapse-icon')) {
-            SamCollapseChevron.attach('#facilities-pane', '.facility-collapse-icon');
-        }
         if (has(root, '.pd-res-collapse-icon')) {
             SamCollapseChevron.attach('#projectDirectoriesSection', '.pd-res-collapse-icon');
         }

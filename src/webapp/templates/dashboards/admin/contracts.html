@@ -157,7 +157,7 @@
                            hx-swap="innerHTML"
                            hx-trigger="change"
                            hx-include="this">
-                    <label class="form-check-label small" for="contractsTableActiveOnly">
+                    <label class="form-check-label small text-muted fw-normal" for="contractsTableActiveOnly">
                         Active only
                     </label>
                 </div>
@@ -168,7 +168,12 @@
             <div id="contractsTableSection"
                  hx-get="{{ url_for('admin_dashboard.htmx_contracts_table') }}?active_only=1"
                  hx-trigger="load once"
-                 hx-swap="innerHTML"></div>
+                 hx-swap="innerHTML">
+                <div class="card-body text-center text-muted py-4" role="status">
+                    <i class="fa-solid fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
+                    <p class="mt-2">Loading...</p>
+                </div>
+            </div>
         </div>
     </div>
 </div>
