@@ -1,9 +1,7 @@
 # Allocations dashboard: two-ring charts and one-table trees
 
-**Status: sketch, not started (2026-10-02).** Depends on the admin-table-polish PR
-(branch `admin-table-polish`): `FairShareSunburst`, `table_bits.share_bar`,
-`.tree-cell`, `charts/theme.py` `facility_slots` / `FAIR_SHARE_LIGHT/DARK`,
-`links.FACILITY_ROW`. Start from `origin/staging` after it merges.
+**Status: implemented, in review (2026-10-02)** · branch `allocations-sunburst` (from
+`origin/staging` after #696 merged).
 
 ## Why
 
@@ -87,10 +85,38 @@ card had. Lessons from that work apply directly.
 
 ## Progress
 
-- [ ] 1. `TwoRingPie` base; `FairShareSunburst` on it with unchanged fingerprints.
-- [ ] 2. `generate_allocation_sunburst` + samples + fingerprint additions.
-- [ ] 3. Allocated / Used sunbursts per Resource tab (replace facility pies).
-- [ ] 4. Summary table -> tree (Bootstrap collapse, share bars, drill attrs).
-- [ ] 5. Remove per-facility type pies; keep Pace as an expansion row.
-- [ ] 6. Tests (conventions-style render test for the tree, drill e2e), snapshots,
-      browser pass 3 layouts x 2 themes via `scripts/ui_snapshots.py`.
+- [x] 1. `TwoRingPie` base; `FairShareSunburst` on it. SVG bytes compared before/after
+      (12 renders: 3 layouts x 2 themes x 2 data sets): identical.
+- [x] 2. `generate_allocation_sunburst` (`AllocationSunburst`, `center` in the key),
+      samples, +7 fingerprint entries only.
+- [x] 3. Allocated / Used sunbursts per Resource tab, behind **Share | Pace** pills.
+- [x] 4. Summary table -> tree (Bootstrap collapse, share bars, drill attrs).
+- [x] 5. Per-facility type pies removed; per-facility Pace is a lazy expansion row.
+- [x] 6. Tests: `tests/unit/webapp/test_allocations_tree.py`,
+      `e2e/test_allocations_tree.py`; the dark sweep now expands this table too.
+- [x] 7. `FacilityPie` / `AllocationTypePie` retired (-14 fingerprint entries only).
+
+## As built (where it differs from the sketch)
+
+- **Charts live inside each Resource pane**, behind Share | Pace pills (Ben's call).
+  A pill pane is itself a `.tab-pane`, so `svg-chart-links.js` resolves a row drill
+  in the nearest `[data-drill-scope]` first; the Resource pane carries it.
+- **Expansion follows the tab** (Ben, 2026-10-02): on a Resource tab switch,
+  `dashboard-init.js` mirrors which facilities are open and the Share/Pace pill from
+  the pane just left. Facility level only: type rows hold lazily fetched project
+  tables (`data-no-persist`), and mirroring them would fire fetches.
+- **Columns**: Count / Total amount / Annual rate / Avg / Rate share / Used / Use
+  share; storage drops the rate column and charts volume (`total_amount`). Shares are
+  of the parent row. The facility row is the subtotal.
+- **Lazy loads**: a type's projects and a facility's Pace load on first expand
+  (`hx-trigger="show.bs.collapse from:closest tr once"`), where every per-facility
+  Pace used to fetch at page load.
+- **Found on the way**: storage pies plotted `annualized_rate` under a "Data Volume"
+  title; share-bar numbers of different widths pushed their bars off one x (fixed in
+  `table_bits.share_bar` with a tabular `.share-num` slot, which also aligns the
+  admin Facilities and Resources trees).
+- **Roots only** still filters only the per-type project lists; the summaries, both
+  sunbursts and Pace are always root-only (a child draws on its parent's amount, so
+  including it would double-count).
+- `pie.py` hit the chart-module 550-line cap at step 1; over-budget comments were
+  compressed, and step 7 brought it to 478.
