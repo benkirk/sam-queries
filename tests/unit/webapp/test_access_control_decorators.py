@@ -362,7 +362,7 @@ class TestActionButtonMacros:
             url='/foo/edit', modal_id='m', target_id='t',
         )
         assert '<button' in html
-        assert 'fa-pen-to-square' in html
+        assert 'fa-pen' in html and 'aria-label="Edit"' in html
 
     def test_edit_button_hidden_without_permission(self, app):
         html = self._render_macro(

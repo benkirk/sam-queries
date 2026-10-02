@@ -1,0 +1,25 @@
+{#
+  Small shared pieces of a data table; the column-role classes they pair with
+  (.col-shrink, .col-num, .cell-truncate, .btn-row) live in components.css.
+
+    {% call pane_toolbar('5 types, 18 resources') %}<button ...>{% endcall %}
+    {{ group_count(3) }}            count badge on a group header row
+    {{ state_tag('decommissioned', title='Since 2024-01-31') }}
+#}
+
+{# Count on the left, create buttons on the right; sits above the table. #}
+{% macro pane_toolbar(summary) -%}
+<div class="pane-toolbar d-flex flex-wrap align-items-center gap-2 px-3 py-2">
+    <span class="text-muted small me-auto">{{ summary }}</span>
+    {%- if caller is defined %}{{ caller() }}{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro group_count(n, title='') -%}
+<span class="badge bg-secondary ms-2"{% if title %} title="{{ title }}"{% endif %}>{{ n | fmt_number }}</span>
+{%- endmacro %}
+
+{# A neutral fact about a row (why it is dim), not a signal. #}
+{% macro state_tag(label, title='') -%}
+<span class="badge state-tag ms-2"{% if title %} title="{{ title }}"{% endif %}>{{ label }}</span>
+{%- endmacro %}

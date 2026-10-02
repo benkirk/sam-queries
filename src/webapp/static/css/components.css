@@ -368,3 +368,148 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
 .notify-preview-text-tall {
     max-height: 32rem;
 }
+
+/* ===================================================================
+   Data tables: column roles and the row-action strip
+   Every column but one is .col-shrink, so the .cell-truncate column
+   takes the slack. Design record: docs/plans/ADMIN_TABLE_POLISH.md.
+   =================================================================== */
+.table .col-shrink,
+.table .col-num {
+    width: 1%;
+    white-space: nowrap;
+}
+
+.table .col-num {
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+}
+
+/* A child row under a group header: its text lines up with the group label. */
+.table td.cell-child {
+    padding-left: 1.85rem;
+}
+
+.table .col-chevron {
+    width: 1.5rem;
+    padding-right: 0;
+}
+
+/* text-overflow needs max-width:0 on an auto-layout table cell. */
+.table .cell-truncate {
+    max-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.row-actions {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    gap: 0.125rem;
+    vertical-align: middle;
+}
+
+/* Icon-only row action: muted until the row is hovered or the button focused. */
+.btn.btn-row {
+    --bs-btn-border-width: 1px;
+    --bs-btn-color: var(--text-secondary);
+    --bs-btn-bg: transparent;
+    --bs-btn-border-color: transparent;
+    --bs-btn-hover-color: var(--text-link);
+    --bs-btn-hover-bg: rgba(var(--ncar-blue-rgb), 0.08);
+    --bs-btn-hover-border-color: rgba(var(--ncar-blue-rgb), 0.35);
+    --bs-btn-active-color: var(--text-link);
+    --bs-btn-active-bg: rgba(var(--ncar-blue-rgb), 0.16);
+    --bs-btn-active-border-color: rgba(var(--ncar-blue-rgb), 0.5);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    font-size: 0.875rem;
+    line-height: 1;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+tr:hover > td .btn.btn-row,
+.btn.btn-row:focus-visible {
+    --bs-btn-color: var(--text-link);
+}
+
+.btn.btn-row-danger {
+    --bs-btn-hover-color: var(--danger-color);
+    --bs-btn-hover-bg: color-mix(in srgb, var(--danger-color) 10%, transparent);
+    --bs-btn-hover-border-color: color-mix(in srgb, var(--danger-color) 40%, transparent);
+    --bs-btn-active-color: var(--danger-color);
+    --bs-btn-active-bg: color-mix(in srgb, var(--danger-color) 18%, transparent);
+    --bs-btn-active-border-color: var(--danger-color);
+}
+
+tr:hover > td .btn.btn-row-danger {
+    --bs-btn-color: var(--danger-color);
+}
+
+/* A retired row reads muted and says why in a .state-tag; opacity would
+   also fade its badges and action buttons. */
+.table tr.row-inactive > td {
+    color: var(--text-secondary);
+}
+
+.badge.state-tag {
+    background-color: var(--surface-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-default);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    padding: 0.15rem 0.4rem;
+    letter-spacing: 0.02em;
+    vertical-align: 0.1em;
+}
+
+.pane-toolbar {
+    border-bottom: 1px solid var(--border-default);
+}
+
+/* A table nested in an expanded row: smaller type, no second header rule. */
+.table .table-nested {
+    font-size: 0.875em;
+}
+.table .table-nested thead th {
+    border-bottom-width: 1px;
+}
+
+/* Admin organization tree: indentation per depth, set inline as --depth. */
+.org-tree-cell {
+    padding-left: calc(var(--depth, 0) * 1.4rem + 0.4rem) !important;
+}
+.org-tree-chevron {
+    transition: transform 0.15s ease;
+}
+.tree-leaf-dot {
+    font-size: 0.35em;
+    color: var(--text-tertiary);
+    vertical-align: middle;
+}
+.inst-expand-icon {
+    transition: transform 0.2s ease;
+}
+.chip-row-label {
+    display: inline-block;
+    min-width: 4.5rem;
+    margin-right: 0.5rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+/* Inline ellipsis for a value in a shrink column; the cell carries title=. */
+.text-clip {
+    display: inline-block;
+    max-width: 12rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
