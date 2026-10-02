@@ -3353,10 +3353,10 @@
   },
   "fair_share_sunburst.normal": {
     "counts": {
-      "a": 27,
-      "g": 44,
+      "a": 33,
+      "g": 49,
       "path": 24,
-      "text": 16,
+      "text": 22,
       "use": 0
     },
     "drill_hrefs": [
@@ -3386,6 +3386,12 @@
       "#sam/row/data-facility-id/5",
       "#sam/row/data-facility-id/5",
       "#sam/row/data-facility-id/6",
+      "#sam/row/data-facility-id/6",
+      "#sam/row/data-facility-id/1",
+      "#sam/row/data-facility-id/2",
+      "#sam/row/data-facility-id/3",
+      "#sam/row/data-facility-id/4",
+      "#sam/row/data-facility-id/5",
       "#sam/row/data-facility-id/6"
     ],
     "fills": [
@@ -3433,24 +3439,30 @@
       "WNA",
       "Fair",
       "share",
-      "ASD (0.10%)",
-      "CSL (31.00%)",
-      "NCAR (28.95%)",
-      "UNIV (25.95%)",
-      "WNA (13.00%)",
-      "EXTRA (1.00%)"
+      "ASD",
+      "CSL",
+      "NCAR",
+      "UNIV",
+      "WNA",
+      "EXTRA",
+      "0.10%",
+      "31.00%",
+      "28.95%",
+      "25.95%",
+      "13.00%",
+      "1.00%"
     ],
     "size": [
-      341.6,
+      323.8,
       236.2
     ]
   },
   "fair_share_sunburst.normal@dark": {
     "counts": {
-      "a": 27,
-      "g": 44,
+      "a": 33,
+      "g": 49,
       "path": 24,
-      "text": 16,
+      "text": 22,
       "use": 0
     },
     "drill_hrefs": [
@@ -3480,6 +3492,12 @@
       "#sam/row/data-facility-id/5",
       "#sam/row/data-facility-id/5",
       "#sam/row/data-facility-id/6",
+      "#sam/row/data-facility-id/6",
+      "#sam/row/data-facility-id/1",
+      "#sam/row/data-facility-id/2",
+      "#sam/row/data-facility-id/3",
+      "#sam/row/data-facility-id/4",
+      "#sam/row/data-facility-id/5",
       "#sam/row/data-facility-id/6"
     ],
     "fills": [
@@ -3525,24 +3543,30 @@
       "WNA",
       "Fair",
       "share",
-      "ASD (0.10%)",
-      "CSL (31.00%)",
-      "NCAR (28.95%)",
-      "UNIV (25.95%)",
-      "WNA (13.00%)",
-      "EXTRA (1.00%)"
+      "ASD",
+      "CSL",
+      "NCAR",
+      "UNIV",
+      "WNA",
+      "EXTRA",
+      "0.10%",
+      "31.00%",
+      "28.95%",
+      "25.95%",
+      "13.00%",
+      "1.00%"
     ],
     "size": [
-      341.6,
+      323.8,
       236.2
     ]
   },
   "fair_share_sunburst.normal@mobile": {
     "counts": {
-      "a": 27,
-      "g": 40,
+      "a": 33,
+      "g": 45,
       "path": 24,
-      "text": 12,
+      "text": 18,
       "use": 0
     },
     "drill_hrefs": [
@@ -3572,6 +3596,12 @@
       "#sam/row/data-facility-id/5",
       "#sam/row/data-facility-id/5",
       "#sam/row/data-facility-id/6",
+      "#sam/row/data-facility-id/6",
+      "#sam/row/data-facility-id/1",
+      "#sam/row/data-facility-id/2",
+      "#sam/row/data-facility-id/3",
+      "#sam/row/data-facility-id/4",
+      "#sam/row/data-facility-id/5",
       "#sam/row/data-facility-id/6"
     ],
     "fills": [
@@ -3613,24 +3643,30 @@
       "WNA",
       "Fair",
       "share",
-      "ASD (0.10%)",
-      "CSL (31.00%)",
-      "NCAR (28.95%)",
-      "UNIV (25.95%)",
-      "WNA (13.00%)",
-      "EXTRA (1.00%)"
+      "ASD",
+      "CSL",
+      "NCAR",
+      "UNIV",
+      "WNA",
+      "EXTRA",
+      "0.10%",
+      "31.00%",
+      "28.95%",
+      "25.95%",
+      "13.00%",
+      "1.00%"
     ],
     "size": [
-      280.0,
+      262.2,
       175.2
     ]
   },
   "fair_share_sunburst.normal@mobile@dark": {
     "counts": {
-      "a": 27,
-      "g": 40,
+      "a": 33,
+      "g": 45,
       "path": 24,
-      "text": 12,
+      "text": 18,
       "use": 0
     },
     "drill_hrefs": [
@@ -3660,6 +3696,12 @@
       "#sam/row/data-facility-id/5",
       "#sam/row/data-facility-id/5",
       "#sam/row/data-facility-id/6",
+      "#sam/row/data-facility-id/6",
+      "#sam/row/data-facility-id/1",
+      "#sam/row/data-facility-id/2",
+      "#sam/row/data-facility-id/3",
+      "#sam/row/data-facility-id/4",
+      "#sam/row/data-facility-id/5",
       "#sam/row/data-facility-id/6"
     ],
     "fills": [
@@ -3701,24 +3743,30 @@
       "WNA",
       "Fair",
       "share",
-      "ASD (0.10%)",
-      "CSL (31.00%)",
-      "NCAR (28.95%)",
-      "UNIV (25.95%)",
-      "WNA (13.00%)",
-      "EXTRA (1.00%)"
+      "ASD",
+      "CSL",
+      "NCAR",
+      "UNIV",
+      "WNA",
+      "EXTRA",
+      "0.10%",
+      "31.00%",
+      "28.95%",
+      "25.95%",
+      "13.00%",
+      "1.00%"
     ],
     "size": [
-      280.0,
+      262.2,
       175.2
     ]
   },
   "fair_share_sunburst.normal@tablet": {
     "counts": {
-      "a": 27,
-      "g": 44,
+      "a": 33,
+      "g": 49,
       "path": 24,
-      "text": 16,
+      "text": 22,
       "use": 0
     },
     "drill_hrefs": [
@@ -3748,6 +3796,12 @@
       "#sam/row/data-facility-id/5",
       "#sam/row/data-facility-id/5",
       "#sam/row/data-facility-id/6",
+      "#sam/row/data-facility-id/6",
+      "#sam/row/data-facility-id/1",
+      "#sam/row/data-facility-id/2",
+      "#sam/row/data-facility-id/3",
+      "#sam/row/data-facility-id/4",
+      "#sam/row/data-facility-id/5",
       "#sam/row/data-facility-id/6"
     ],
     "fills": [
@@ -3795,24 +3849,30 @@
       "WNA",
       "Fair",
       "share",
-      "ASD (0.10%)",
-      "CSL (31.00%)",
-      "NCAR (28.95%)",
-      "UNIV (25.95%)",
-      "WNA (13.00%)",
-      "EXTRA (1.00%)"
+      "ASD",
+      "CSL",
+      "NCAR",
+      "UNIV",
+      "WNA",
+      "EXTRA",
+      "0.10%",
+      "31.00%",
+      "28.95%",
+      "25.95%",
+      "13.00%",
+      "1.00%"
     ],
     "size": [
-      341.6,
+      323.8,
       236.2
     ]
   },
   "fair_share_sunburst.normal@tablet@dark": {
     "counts": {
-      "a": 27,
-      "g": 44,
+      "a": 33,
+      "g": 49,
       "path": 24,
-      "text": 16,
+      "text": 22,
       "use": 0
     },
     "drill_hrefs": [
@@ -3842,6 +3902,12 @@
       "#sam/row/data-facility-id/5",
       "#sam/row/data-facility-id/5",
       "#sam/row/data-facility-id/6",
+      "#sam/row/data-facility-id/6",
+      "#sam/row/data-facility-id/1",
+      "#sam/row/data-facility-id/2",
+      "#sam/row/data-facility-id/3",
+      "#sam/row/data-facility-id/4",
+      "#sam/row/data-facility-id/5",
       "#sam/row/data-facility-id/6"
     ],
     "fills": [
@@ -3887,15 +3953,21 @@
       "WNA",
       "Fair",
       "share",
-      "ASD (0.10%)",
-      "CSL (31.00%)",
-      "NCAR (28.95%)",
-      "UNIV (25.95%)",
-      "WNA (13.00%)",
-      "EXTRA (1.00%)"
+      "ASD",
+      "CSL",
+      "NCAR",
+      "UNIV",
+      "WNA",
+      "EXTRA",
+      "0.10%",
+      "31.00%",
+      "28.95%",
+      "25.95%",
+      "13.00%",
+      "1.00%"
     ],
     "size": [
-      341.6,
+      323.8,
       236.2
     ]
   },
