@@ -104,19 +104,34 @@ document.body.addEventListener('closeModal', function(evt) {
     if (el) { var m = bootstrap.Modal.getInstance(el); if (m) m.hide(); }
 });
 
-// Reload an admin card section after a modal save, respecting the active_only checkbox.
-// URL is read from the section's hx-get attribute — no hardcoded paths.
+// Reload an admin card section after a modal save, keeping the active_only
+// checkbox and the open sub-tab. URL is read from the section's hx-get attribute.
 function _reloadAdminCard(sectionId, checkboxId) {
     var s = document.getElementById(sectionId); if (!s) return;
     var url = (s.getAttribute('hx-get') || '').split('?')[0]; if (!url) return;
     var cb = document.getElementById(checkboxId);
+    var params = new URLSearchParams();
+    if (cb && cb.checked) { params.set('active_only', '1'); }
+    var tab = s.querySelector('[data-tab-url-param] .nav-link.active[data-tab-param-value]');
+    if (tab) { params.set(tab.closest('[data-tab-url-param]').dataset.tabUrlParam, tab.dataset.tabParamValue); }
+    var qs = params.toString();
     // 300ms matches Bootstrap's modal close animation so the reload lands
     // after the modal has fully animated out of view.
     setTimeout(function() {
-        htmx.ajax('GET', (cb && cb.checked) ? url + '?active_only=1' : url,
-                  {target: '#' + sectionId, swap: 'innerHTML'});
+        // X-SAM-Fresh: a cached card recomputes and overwrites its entry (extensions.fresh_requested).
+        htmx.ajax('GET', qs ? url + '?' + qs : url,
+                  {target: '#' + sectionId, swap: 'innerHTML', headers: {'X-SAM-Fresh': '1'}});
     }, 300);
 }
+
+// A row action marked data-reload-event reloads its card on success instead of
+// swapping one <tr> (delete_row_button's reload_event).
+document.body.addEventListener('htmx:afterRequest', function(evt) {
+    var el = evt.detail.elt;
+    if (evt.detail.successful && el && el.dataset && el.dataset.reloadEvent) {
+        htmx.trigger(document.body, el.dataset.reloadEvent);
+    }
+});
 
 document.body.addEventListener('reloadFacilitiesCard', function() {
     _reloadAdminCard('facilitiesSection', 'facilitiesCardActiveOnly');
