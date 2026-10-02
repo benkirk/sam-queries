@@ -24,6 +24,7 @@ CARDS = [
     ('nsf-programs', '/admin/organizations', '#nsf-programs-tab', '#nsf-programs-pane table', None),
     ('contracts', '/admin/contracts', None, '#contractsTable table', '#contract-source-'),
     ('facilities', '/admin/facilities', None, '#facilities-pane table', '#facility-panels-'),
+    ('mnemonics', '/admin/organizations/mnemonics', None, '#mnemonicCodesSection table', None),
 ]
 
 _MEASURE = """(ready) => {

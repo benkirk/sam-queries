@@ -26,6 +26,7 @@ CARDS = [
     '/admin/htmx/institutions-fragment?show_users_projects=1',
     '/admin/htmx/contracts-table',
     '/admin/htmx/facilities',
+    '/admin/htmx/mnemonic-codes-table',
 ]
 
 
@@ -133,5 +134,6 @@ def test_icon_only_buttons_are_labelled(card):
 
 
 def test_retired_rows_are_tagged_not_faded(card):
-    url, html, _ = card
-    assert 'opacity-50' not in html, f'{url}: use .row-inactive + state_tag, not opacity-50'
+    url, _, root = card
+    faded = [' '.join(r.all_text().split())[:40] for r in root.find_all('tr') if 'opacity-50' in r.classes]
+    assert not faded, f'{url}: use .row-inactive + state_tag, not opacity-50: {faded[:5]}'
