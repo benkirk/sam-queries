@@ -476,3 +476,9 @@ class AllocationSunburst(TwoRingPie):
     @staticmethod
     def cache_key(data, center=''):
         return content_hash([data, center])
+
+    def legend_label(self, label, value) -> str:
+        # Percent first (what the Allocated and Used charts are compared by); under
+        # 1% keeps two decimals so a sliver never reads as 0.0%.
+        share = self.percent(value)
+        return f'{label} {fmt.pct(share, decimals=1 if share >= 1 else 2)} ({fmt.number(value)})'
