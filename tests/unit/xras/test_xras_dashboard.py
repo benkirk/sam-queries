@@ -1013,7 +1013,7 @@ class TestActivityRowExpansion:
         """Four verbs at a fixed width: the label is the `title`, never text
         beside the icon, so a row with everything to offer stays one line."""
         cell = self._actions_cell(self._render(app, may_manage=True))
-        assert 'btn-group btn-group-sm' in cell
+        assert 'class="row-actions"' in cell
         for button in cell.split('<button')[1:]:
             visible = button.split('>', 1)[1]
             for tag in ('<i class', '</i>', '<span class', '</span>', '</button>'):
@@ -1061,7 +1061,8 @@ class TestActivityRowExpansion:
 
     def test_the_strip_never_wraps(self, app):
         cell = self._actions_cell(self._render(app, may_manage=True))
-        assert 'btn-group btn-group-sm flex-nowrap' in cell
+        # .row-actions is an inline-flex nowrap strip; the cell itself is nowrap too.
+        assert 'class="row-actions"' in cell and 'white-space:nowrap' in cell
 
     def test_the_hidden_count_badge_names_the_switch(self, app):
         body = self._render(app, may_manage=True, window_total=3, hidden_count=2)

@@ -23,6 +23,12 @@ csrf = CSRFProtect()
 cache = caching.flask
 
 
+def fresh_requested() -> bool:
+    """``forced_update`` for a cached fragment: recompute and overwrite on a post-save reload."""
+    from flask import request
+    return request.headers.get('X-SAM-Fresh') == '1'
+
+
 def user_aware_cache_key() -> str:
     """Cache key keyed on (current user id, path, query string, facility scope,
     chart layout).

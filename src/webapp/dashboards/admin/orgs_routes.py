@@ -29,7 +29,7 @@ from webapp.utils.htmx import (
     read_tab,
     register_typeahead,
 )
-from webapp.extensions import db, cache, user_aware_cache_key
+from webapp.extensions import db, cache, fresh_requested, user_aware_cache_key
 from webapp.utils.rbac import (
     has_permission, has_permission_any_facility,
     require_permission, require_permission_any_facility, Permission,
@@ -103,7 +103,7 @@ def _all_aoi_groups():
 @bp.route('/htmx/organizations-card')
 @login_required
 @require_permission_any_facility(Permission.VIEW_ORG_METADATA)
-@cache.cached(make_cache_key=user_aware_cache_key)
+@cache.cached(make_cache_key=user_aware_cache_key, forced_update=fresh_requested)
 def htmx_organizations_card():
     """
     Return the Organization card body fragment with four tabs:

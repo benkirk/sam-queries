@@ -110,18 +110,6 @@ def _queue_history(with_gpus):
     ]
 
 
-def _facility_data():
-    return [{'facility': n, 'annualized_rate': v, 'count': 3, 'percent': 10}
-            for n, v in [('UNIV', 5_000_000), ('WNA', 2_500_000), ('NCAR', 1_250_000)]]
-
-
-def _alloc_type_data():
-    # 12 entries so _pie_trim's fixed-cap-10 + "Others (2)" path is exercised.
-    return [{'allocation_type': f'Type{i:02d}', 'total_amount': 10_000 * (13 - i),
-             'count': 2, 'avg_amount': 5000}
-            for i in range(1, 13)]
-
-
 def _disk_entities():
     # Decimal on purpose: scan rollups arrive as decimal.Decimal from Postgres
     # and must be coerced at the chart boundary, or `cum += v` raises TypeError.
@@ -235,6 +223,34 @@ def _pace_rollover(n=12):
 
 #: ``(case_id, callable, args, kwargs)``. The id is the snapshot key, so it is
 #: stable and descriptive; renaming one is a snapshot diff.
+_FAIR_SHARE = [
+    {'id': 1, 'facility': 'ASD', 'slot': 1, 'share': 0.1,
+     'types': [{'name': 'ASD-NCAR', 'share': 50.0}, {'name': 'ASD-UNIV', 'share': 50.0}]},
+    {'id': 2, 'facility': 'CSL', 'slot': 3, 'share': 31.0, 'types': [{'name': 'CSL', 'share': 100.0}]},
+    {'id': 3, 'facility': 'NCAR', 'slot': 4, 'share': 28.95,
+     'types': [{'name': 'NCAR Labs', 'share': 70.0}, {'name': 'NCAR Director', 'share': 20.0}]},
+    {'id': 4, 'facility': 'UNIV', 'slot': 5, 'share': 25.95,
+     'types': [{'name': 'CHAP', 'share': 70.0}, {'name': 'Small', 'share': 10.0},
+               {'name': 'Classroom', 'share': 20.0}]},
+    {'id': 5, 'facility': 'WNA', 'slot': 6, 'share': 13.0, 'types': [{'name': 'WNA', 'share': 100.0}]},
+    {'id': 6, 'facility': 'EXTRA', 'slot': None, 'share': 1.0, 'types': []},
+]
+
+#: Absolute core-hours. NCAR's types fall short of it (a blank wedge), UNIV's
+#: overshoot (scaled to fit), and WNA has no types at all.
+_ALLOCATION_SUNBURST = [
+    {'id': 2, 'facility': 'CSL', 'slot': 3, 'value': 310_000_000.0,
+     'types': [{'name': 'CSL', 'value': 310_000_000.0}]},
+    {'id': 3, 'facility': 'NCAR', 'slot': 4, 'value': 180_000_000.0,
+     'types': [{'name': 'NCAR Labs', 'value': 120_000_000.0},
+               {'name': 'NCAR Director', 'value': 40_000_000.0}]},
+    {'id': 4, 'facility': 'UNIV', 'slot': 5, 'value': 150_000_000.0,
+     'types': [{'name': 'Large', 'value': 100_000_000.0}, {'name': 'Small', 'value': 30_000_000.0},
+               {'name': 'Classroom', 'value': 30_000_000.0}]},
+    {'id': 5, 'facility': 'WNA', 'slot': 6, 'value': 60_000_000.0, 'types': []},
+]
+
+
 CASES = [
     # --- 1. usage timeseries (flat) -------------------------------------
     ('usage_timeseries.charges', charts.generate_usage_timeseries_matplotlib,
@@ -284,17 +300,6 @@ CASES = [
     ('queue.gpus', charts.generate_queue_history_matplotlib,
      (_queue_history(with_gpus=True),), {}),
     ('queue.empty', charts.generate_queue_history_matplotlib, ([],), {}),
-
-    # --- 8. facility pie -------------------------------------------------
-    ('facility_pie.normal', charts.generate_facility_pie_chart_matplotlib,
-     (_facility_data(),), {}),
-    ('facility_pie.empty', charts.generate_facility_pie_chart_matplotlib, ([],), {}),
-
-    # --- 9. allocation-type pie (exercises _pie_trim "Others (N)") ------
-    ('alloc_type_pie.trimmed', charts.generate_allocation_type_pie_chart_matplotlib,
-     (_alloc_type_data(),), {}),
-    ('alloc_type_pie.empty', charts.generate_allocation_type_pie_chart_matplotlib,
-     ([],), {}),
 
     # --- 10. disk entity pie (Decimal input, cumulative keep) -----------
     ('disk_entity_pie.owner', charts.generate_disk_entity_pie_chart,
@@ -355,4 +360,14 @@ CASES = [
     ('pace.empty', charts.generate_pace_chart_matplotlib, ([], _PACE_NOW), {}),
     ('pace.fy_rollover', charts.generate_pace_chart_matplotlib,
      (_pace_rollover(), _PACE_NOW), {'sort_by': 'size'}),
+
+    # --- 17. fair-share sunburst (a facility under 100%, a 7th folds to gray)
+    ('fair_share_sunburst.normal', charts.generate_fair_share_sunburst,
+     (_FAIR_SHARE,), {}),
+    ('fair_share_sunburst.empty', charts.generate_fair_share_sunburst, ([],), {}),
+
+    # --- 18. allocations sunburst (short, overshooting and type-less groups)
+    ('allocation_sunburst.allocated', charts.generate_allocation_sunburst,
+     (_ALLOCATION_SUNBURST,), {'center': 'Allocated'}),
+    ('allocation_sunburst.empty', charts.generate_allocation_sunburst, ([],), {'center': 'Used'}),
 ]

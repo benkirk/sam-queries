@@ -26,7 +26,11 @@ That's real but rare, and we have no prod incident of it on record.
   site) raises the cost of an unnoticed visual change.
 - `/dev/gallery` grows past what a person can page through by hand.
 
-## Middle ground, if ever wanted
+## Middle ground — built
+
+`scripts/ui_snapshots.py` (with the admin-table polish, `ADMIN_TABLE_POLISH.md`)
+covers this and takes any page list, not only the gallery. The rest of this
+section is the original sketch.
 
 A single script that screenshots `/dev/gallery` in the six theme × layout states
 into a folder: no baselines, no CI. Run it before and after a vendored bump and

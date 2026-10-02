@@ -178,6 +178,10 @@ layouts × 2 themes per `wire-dashboard-feature` step 12, and eyeball
 and restart samuel-dev so the static `?v=` hash re-memoizes — or you will measure
 "no change" against a stale copy.
 
+To compare by eye, run `scripts/ui_snapshots.py --out /tmp/before` on the base
+branch and `--out /tmp/after` on the bump: the same pages in all six states, one
+folder each.
+
 ## 9. Deploy note
 
 A version-pinned filename change moves the served `url_for('static', …)` path.

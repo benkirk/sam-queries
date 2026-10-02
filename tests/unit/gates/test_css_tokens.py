@@ -241,6 +241,21 @@ def test_tier1_matches_chart_palette():
         'charts/theme.py:\n' + '\n'.join(mismatches))
 
 
+def test_facility_palette_matches_chart():
+    """The fair-share bars (CSS) and the fair-share chart (matplotlib) draw one
+    facility in one hue; each theme's palette is defined twice, so pin it."""
+    from webapp.dashboards.charts.theme import FAIR_SHARE_DARK, FAIR_SHARE_LIGHT
+
+    text = COMMENT_RE.sub('', (CSS_DIR / TOKEN_FILE).read_text())
+    head = text[:text.index(':root[data-bs-theme="dark"]')]
+    light = {n: v.strip() for n, v in DECL_RE.findall(head) if n.startswith('--')}
+    dark = _dark_tokens()
+    for i, (lc, dc) in enumerate(zip(FAIR_SHARE_LIGHT, FAIR_SHARE_DARK), start=1):
+        token = f'--data-facility-{i}'
+        assert (light.get(token) or '').lower() == lc.lower(), f'{token} light != FAIR_SHARE_LIGHT[{i - 1}]'
+        assert (dark.get(token) or '').lower() == dc.lower(), f'{token} dark != FAIR_SHARE_DARK[{i - 1}]'
+
+
 def _dark_tokens():
     """{token: value} from the `:root[data-bs-theme="dark"]` block."""
     text = COMMENT_RE.sub('', (CSS_DIR / TOKEN_FILE).read_text())

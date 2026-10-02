@@ -45,23 +45,23 @@
 
   <div class="table-responsive">
     <table class="table table-sm table-hover align-middle mb-0">
-      <thead>
+      <thead class="table-subtle">
         <tr>
-          <th scope="col">{{ sort_header('code', 'Code') }}</th>
+          <th scope="col" class="col-shrink">{{ sort_header('code', 'Code') }}</th>
           <th scope="col">{{ sort_header('description', 'Description') }}</th>
           <th scope="col">{{ sort_header('links', 'Links to') }}</th>
-          <th scope="col" class="text-end">{{ sort_header('minted', 'Minted') }}</th>
-          <th scope="col">Status</th>
-          {% if can_edit or can_reassign %}<th scope="col" class="text-end">Actions</th>{% endif %}
+          <th scope="col" class="col-num">{{ sort_header('minted', 'Minted') }}</th>
+          <th scope="col" class="col-shrink">Status</th>
+          {% if can_edit or can_reassign %}<th scope="col" class="col-shrink text-end">Actions</th>{% endif %}
         </tr>
       </thead>
       <tbody>
         {% for r in rows %}
-        <tr>
+        <tr class="{{ 'row-inactive' if not r.active }}">
           <td class="text-nowrap"><span class="badge bg-dark-subtle text-dark-emphasis border font-monospace">{{ r.code }}</span>
             {{- copy_button(r.code, label='Copy code', inline=true) }}</td>
-          <td>{{ r.description }}</td>
-          <td>
+          <td class="cell-truncate" title="{{ r.description }}">{{ r.description }}</td>
+          <td class="cell-truncate" title="{{ r.links_to | map(attribute='name') | join('; ') }}">
             {% if not r.active %}
             <span class="text-muted">—</span>
             {% elif r.orphaned %}
@@ -77,12 +77,12 @@
             {% endif %}
             {% endif %}
           </td>
-          <td class="text-end">
+          <td class="col-num">
             {% if r.minted_total %}
             <span title="{% for u in r.usage %}{{ u.facility }}: {{ u.last }}{{ '  ' if not loop.last }}{% endfor %}">{{ r.minted_total | fmt_number }}</span>
             {% else %}<span class="text-muted">—</span>{% endif %}
           </td>
-          <td>
+          <td class="col-shrink">
             {% if r.active %}
             <span class="badge bg-success-subtle text-success-emphasis border">Active</span>
             {% else %}
@@ -90,25 +90,25 @@
             {% endif %}
           </td>
           {% if can_edit or can_reassign %}
-          <td class="text-end text-nowrap">
+          <td class="text-end text-nowrap"><span class="row-actions">
             {{ edit_modal_button(
                 url_for('admin_dashboard.htmx_mnemonic_code_edit_form', mnemonic_code_id=r.id),
                 modal_id='editMnemonicCodeModal', target_id='editMnemonicCodeFormContainer',
                 title='Edit description / status', permission=Permission.EDIT_ORG_METADATA) }}
             {% if can_reassign %}
-            <button class="btn btn-sm btn-outline-secondary ms-1"
+            <button type="button" class="btn btn-row"
                     data-bs-toggle="modal" data-bs-target="#reassignMnemonicCodeModal"
                     hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_code_reassign_form', mnemonic_code_id=r.id) }}"
                     hx-target="#reassignMnemonicCodeFormContainer" hx-trigger="click"
-                    title="Reassign to a new owner (system admin)">
-              <i class="fa-solid fa-right-left"></i>
+                    title="Reassign to a new owner (system admin)" aria-label="Reassign">
+              <i class="fa-solid fa-right-left" aria-hidden="true"></i>
             </button>
             {% endif %}
-          </td>
+          </span></td>
           {% endif %}
         </tr>
         {% else %}
-        <tr><td colspan="{{ 6 if can_edit else 5 }}" class="text-center text-muted py-4">
+        <tr><td colspan="{{ 6 if (can_edit or can_reassign) else 5 }}" class="text-center text-muted py-4">
           No mnemonic codes match the current filters.</td></tr>
         {% endfor %}
       </tbody>

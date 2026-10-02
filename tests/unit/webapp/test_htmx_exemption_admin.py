@@ -35,14 +35,12 @@ class TestResourcesCardExemptionsSection:
 
     def test_admin_renders_exemptions_section(self, auth_client):
         """The new Wallclock Exemptions listing block is present in the
-        Queues tab — heading, column headers, and chevron-icon class."""
+        Queues tab — heading and the create button."""
         resp = auth_client.get('/admin/htmx/resources')
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
-        assert 'Wallclock Exemptions' in html
-        assert 'exemption-res-collapse-icon' in html
-        # Deactivate button wiring is emitted only when exemptions exist, so
-        # don't assert on it here — the chevron class is present either way.
+        assert 'Wallclock exemptions' in html
+        assert 'addExemptionModal' in html
 
 
 # ---------------------------------------------------------------------------

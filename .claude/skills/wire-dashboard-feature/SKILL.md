@@ -41,7 +41,8 @@ The families:
   `multiselect_filter`, `checkbox_field`, `readonly_display`, `fk_search_field`,
   `form_errors_panel`), and `modal_form.htmx_form`.
 - **Tables** — `pagination.pagination`, `sort_link.sort_link` /
-  `sort_header`.
+  `sort_header`, `table_bits.pane_toolbar` / `group_count` / `state_tag`
+  (see §7 for the column vocabulary).
 - **Modals** — `modals.modal_scaffold`, `action_buttons.edit_modal_button` /
   `delete_row_button`.
 - **Pickers** — `date_range_picker`, `time_range_picker`, `window_pills`.
@@ -122,17 +123,48 @@ button toggles the row too and no `stopPropagation` on the button can prevent
 it. Use `collapse.collapse_toggle`, make the toggle non-link `<td>`s, and render
 the chevron with `.collapse-icon`. Gate: `test_collapse_trigger_rows`.
 
-## 7. Action cells never wrap
+## 7. Table columns and action cells
 
-Two icon buttons side by side are ~105 px. Without `nowrap` the auto table
-layout shrinks the Actions column to the widest *single* button and the rest
-stack, so every row doubles in height — at desktop width, not just on a
-phone (94 px rows on the NSF Programs tab; 127 px on the XRAS Activations
-card). The idiom is `<td class="text-end text-nowrap">`; a strip is
-`<div class="btn-group btn-group-sm flex-nowrap">`, icon-only with the verb in
-`title` + `aria-label` (the `action_buttons` macros' shape). Consequential
-verbs (Withdraw, Delete, Merge) keep their words. Gate:
-`test_action_cells_nowrap`.
+The vocabulary lives in `components.css` § Data tables; markup helpers in
+`fragments/table_bits.html` (`pane_toolbar`, `group_count`, `state_tag`).
+
+- **Columns**: every column but one is `.col-shrink` (or `.col-num`: right
+  aligned, tabular); the one left over takes the slack, as `.cell-truncate`
+  with the full text in `title=`. No `width:99%`, no percentage widths.
+- **Group rows**: one spanning label cell + `group_count(n)`, never a Count
+  column that is empty on every child row. Child rows indent with `.cell-child`.
+- **Retired rows**: `.row-inactive` on the `<tr>` + `state_tag('expired')`
+  (or decommissioned, inactive); not `opacity-50`, which also fades the buttons.
+- **Actions** never wrap. Two icon buttons side by side are ~60 px; without
+  `nowrap` the auto layout shrinks the column to one button and every row
+  doubles (94 px rows on NSF Programs, 127 px on XRAS Activations). The idiom
+  is `<td class="text-end text-nowrap"><span class="row-actions">` holding
+  `.btn.btn-row` icon buttons, the verb in `title` + `aria-label` (the
+  `action_buttons` macros' shape). Color at rest only where it carries
+  meaning: `.btn-row-primary` (the verb the row waits on), `-attention`,
+  `-success`, `-danger`. NOT a `btn-group` of `btn-outline-secondary`:
+  inside a `.btn-group` that class is the toggle-bar idiom and renders solid
+  blue. Consequential verbs (Withdraw, Delete, Merge) keep their words.
+- **Hierarchies are one table**, never a nested `<table>` with its own header in
+  a spanning cell: children are rows at `.tree-cell` + `style="--depth: N"`
+  with `.tree-d1`/`.tree-d2` guide lines, in the parent's column set. Several
+  child `<tr>`s in one tbody collapse together via a class target
+  (`data-bs-target=".x-<id>"`). A share of a parent is `table_bits.share_bar`
+  (facility hues via `charts/theme.py` `facility_slots`, over ALL active
+  facilities so a scoped user's colors match). References:
+  `admin/fragments/facility_card.html`, `allocations/projects.html`.
+- **A chart drilling into a tree** puts `data-facility-id` (or its `RowDrill`
+  attribute) plus `data-bs-target` on the row. The JS resolves the row within
+  the nearest `[data-drill-scope]`, else the tab pane: a chart behind pills
+  sits in a pill pane with no rows, so mark the pane that holds the table.
+- **Create buttons** go in `pane_toolbar` above the table, `btn-sm`.
+- **Grouped deletes** pass `delete_row_button(reload_event='reloadXCard')` so
+  the card re-renders (a group's children live in a sibling `<tbody>`).
+
+Gates: `test_action_cells_nowrap`, and for the admin cards the rendered
+`tests/unit/webapp/test_admin_table_conventions.py` (header-width rows,
+`aria-label`, `align-middle`, no `opacity-50`) plus the row-height budget in
+`e2e/test_admin_table_density.py`.
 
 ## 8. Active-only toggles
 
@@ -198,7 +230,8 @@ CLAUDE.md § Charts.
    `{% if x %}` is fine — guard new context keys by truthiness.
 6. Run the structural gates:
    `pytest tests/unit/gates/test_modal_shell_contract.py tests/unit/gates/test_collapse_trigger_rows.py tests/unit/gates/test_action_cells_nowrap.py tests/unit/gates/test_static_assets.py tests/unit/gates/test_template_csp_lint.py tests/unit/gates/test_css_tokens.py tests/unit/gates/test_route_map_parity.py`
-   plus the feature's own tests.
+   plus the feature's own tests. For a visible change, `scripts/ui_snapshots.py`
+   shoots the before and after folders in all six states.
 7. If routes changed, regenerate the route-map snapshot
    (`ROUTE_MAP_REGEN=1 pytest tests/unit/gates/test_route_map_parity.py`) and commit
    the diff.

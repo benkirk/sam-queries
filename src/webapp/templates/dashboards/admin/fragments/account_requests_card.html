@@ -173,43 +173,43 @@
                     {# Not a collapse trigger: the ticket link inside would toggle the row too. #}
                     <td>{{ status_line(v) }}</td>
                     <td class="text-end text-nowrap">
-                        <div class="btn-group btn-group-sm flex-nowrap">
+                        <span class="row-actions">
                             {% if r.state in ('submitted', 'claimed') %}
                             {% if not v.verified %}
-                            <button type="button" class="btn btn-outline-warning"
+                            <button type="button" class="btn btn-row btn-row-attention"
                                     title="Mark verified — vouch for this address; the request enters the queue" aria-label="Mark verified"
                                     hx-post="{{ url_for('admin_dashboard.account_request_verify', request_id=v.id) }}"
                                     hx-confirm="Vouch for {{ v.email }} without the mail round trip?"
                                     hx-swap="none"><i class="fa-solid fa-envelope-circle-check"></i></button>
                             {% endif %}
                             {% if r.state == 'claimed' %}
-                            <button type="button" class="btn btn-outline-secondary"
+                            <button type="button" class="btn btn-row"
                                     title="Release — take your claim off this request" aria-label="Release"
                                     hx-post="{{ url_for('admin_dashboard.account_request_unclaim', request_id=v.id) }}"
                                     hx-swap="none"><i class="fa-solid fa-hand-back-fist"></i></button>
                             {% else %}
-                            <button type="button" class="btn btn-outline-primary"
+                            <button type="button" class="btn btn-row btn-row-primary"
                                     title="Claim — tell other operators you are working this one" aria-label="Claim"
                                     hx-post="{{ url_for('admin_dashboard.account_request_claim', request_id=v.id) }}"
                                     hx-swap="none"><i class="fa-solid fa-hand"></i></button>
                             {% endif %}
-                            <button type="button" class="btn btn-outline-secondary"
+                            <button type="button" class="btn btn-row"
                                     title="Dismiss — a duplicate, or someone who already has an account" aria-label="Dismiss"
                                     hx-get="{{ url_for('admin_dashboard.account_request_dismiss_form', request_id=v.id) }}"
                                     hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
                                     data-bs-toggle="modal" data-bs-target="#auditDetailsModal"><i class="fa-solid fa-eye-slash"></i></button>
-                            <button type="button" class="btn btn-outline-danger"
+                            <button type="button" class="btn btn-row btn-row-danger"
                                     title="Reject — refuse the request; optionally email the reason to the requester" aria-label="Reject"
                                     hx-get="{{ url_for('admin_dashboard.account_request_reject_form', request_id=v.id) }}"
                                     hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
                                     data-bs-toggle="modal" data-bs-target="#auditDetailsModal"><i class="fa-solid fa-ban"></i></button>
                             {% else %}
-                            <button type="button" class="btn btn-outline-secondary"
+                            <button type="button" class="btn btn-row"
                                     title="Reopen — put this request back in the queue" aria-label="Reopen"
                                     hx-post="{{ url_for('admin_dashboard.account_request_reopen', request_id=v.id) }}"
                                     hx-swap="none"><i class="fa-solid fa-rotate-left"></i></button>
                             {% endif %}
-                        </div>
+                        </span>
                     </td>
                 </tr>
                 <tr class="collapse" id="{{ body_id }}">

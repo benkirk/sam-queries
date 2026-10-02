@@ -1,6 +1,7 @@
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
 {% from 'dashboards/admin/fragments/institution_filters.html' import institution_filters %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% from 'dashboards/fragments/table_bits.html' import pane_toolbar, group_count %}
 {#
   Admin Institutions table fragment (HTMX-swapped).
 
@@ -20,7 +21,7 @@
     active_users_projects      - bool; filters chip lists + counts (only
                                  relevant when show_users_projects is on)
 #}
-{% set ncols = 7 if show_users_projects else 5 %}
+{% set ncols = 6 if show_users_projects else 4 %}
 
 
 <div class="filter-sidebar mb-3">
@@ -36,53 +37,76 @@
                            active_users_projects=active_users_projects) }}
 </div>
 
+{% set _filtered = country_id or state_prov_id or active_only or show_users_projects %}
+{% call pane_toolbar(institution_types_grouped|length ~ ' type' ~ ('s' if institution_types_grouped|length != 1 else '') ~ ', '
+                     ~ total_institutions ~ ' institution' ~ ('s' if total_institutions != 1 else '')
+                     ~ (' (filtered)' if _filtered else '')) %}
+    {% if has_permission(Permission.CREATE_ORG_METADATA) %}
+    <button type="button" class="btn btn-sm btn-outline-primary"
+            data-bs-toggle="modal"
+            data-bs-target="#createMnemonicCodeModal"
+            hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_code_create_form') }}"
+            hx-target="#createMnemonicCodeFormContainer"
+            hx-trigger="click">
+        <i class="fa-solid fa-plus me-1"></i>Mnemonic code
+    </button>
+    <button type="button" class="btn btn-sm btn-outline-primary"
+            data-bs-toggle="modal"
+            data-bs-target="#createInstitutionTypeModal"
+            hx-get="{{ url_for('admin_dashboard.htmx_institution_type_create_form') }}"
+            hx-target="#createInstitutionTypeFormContainer"
+            hx-trigger="click">
+        <i class="fa-solid fa-plus me-1"></i>Type
+    </button>
+    <button type="button" class="btn btn-sm btn-primary"
+            data-bs-toggle="modal"
+            data-bs-target="#createInstitutionModal"
+            hx-get="{{ url_for('admin_dashboard.htmx_institution_create_form') }}"
+            hx-target="#createInstitutionFormContainer"
+            hx-trigger="click">
+        <i class="fa-solid fa-plus me-1"></i>Institution
+    </button>
+    {% endif %}
+{% endcall %}
+
 <div class="table-responsive">
-    <table class="table table-sm mb-0">
+    <table class="table table-sm align-middle mb-0" id="institutions-table">
         <thead class="table-subtle">
             <tr>
-                <th>Name / Acronym</th>
-                <th>Count</th>
-                <th>Location</th>
-                <th>Mnemonic</th>
+                <th>Institution</th>
+                <th class="col-shrink">Location</th>
+                <th class="col-shrink">Mnemonic</th>
                 {% if show_users_projects %}
-                <th class="text-end"># Users</th>
-                <th class="text-end"># Projects</th>
+                <th class="col-num">Users</th>
+                <th class="col-num">Projects</th>
                 {% endif %}
-                <th class="text-end">Actions</th>
+                <th class="col-shrink text-end">Actions</th>
             </tr>
         </thead>
         {% if institution_types_grouped %}
         {% for it, insts in institution_types_grouped %}
-        {# Institution Type row (every cell but Actions is the trigger)
-           The toggle cannot live on the <tr>: it would fire on the Edit button
-           too, and no button-side guard can prevent that (Bootstrap's data-api
-           runs in the capture phase). See dashboards/fragments/collapse.html. #}
+        {# The toggle sits on the label cell, not the <tr>: it would fire on the
+           Edit button too (see dashboards/fragments/collapse.html). #}
         {% set it_toggle = 'inst-type-' ~ it.institution_type_id %}
         <tbody>
             <tr class="table-subtle fw-semibold">
-                <td class="cursor-pointer" {{ collapse_toggle(it_toggle) }}>
-                    <i class="fa-solid fa-chevron-right small text-muted me-1 inst-type-collapse-icon"
-                       style="transition: transform 0.2s;"></i>
+                <td colspan="{{ ncols - 1 }}" class="cursor-pointer" {{ collapse_toggle(it_toggle) }}>
+                    <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
                     {{ it.type }}
+                    {{- group_count(insts|length, title='Institutions of this type') }}
                 </td>
-                <td class="text-muted small cursor-pointer" {{ collapse_toggle(it_toggle) }}>{{ insts|length }} institution{{ 's' if insts|length != 1 else '' }}</td>
-                <td class="cursor-pointer" {{ collapse_toggle(it_toggle) }}></td>
-                <td class="cursor-pointer" {{ collapse_toggle(it_toggle) }}></td>
-                {% if show_users_projects %}
-                <td class="cursor-pointer" {{ collapse_toggle(it_toggle) }}></td>
-                <td class="cursor-pointer" {{ collapse_toggle(it_toggle) }}></td>
-                {% endif %}
-                <td class="text-end">
+                <td class="text-end text-nowrap">
+                    <span class="row-actions">
                     {{ edit_modal_button(
                         url_for('admin_dashboard.htmx_institution_type_edit_form', institution_type_id=it.institution_type_id),
                         modal_id='editInstitutionTypeModal',
                         target_id='editInstitutionTypeFormContainer',
                         title='Edit institution type',
                         permission=Permission.EDIT_ORG_METADATA) }}
+                    </span>
                 </td>
             </tr>
         </tbody>
-        {# Institution child rows (collapsed by default) #}
         <tbody class="collapse" id="inst-type-{{ it.institution_type_id }}">
             {% for inst in insts %}
             {% set sp = inst.state_prov %}
@@ -93,69 +117,62 @@
             {% set _visible_users = _users if not active_users_projects else _users | selectattr(1) | list %}
             {% set _visible_projects = _projects if not active_users_projects else _projects | selectattr(1) | list %}
             {% set _expandable = show_users_projects and (_visible_users or _visible_projects) %}
-            {# Institution row — clickable when U&P are shown and non-empty #}
-            <tr class="table-secondary{% if _expandable %} cursor-pointer inst-expand-trigger{% endif %}"
+            {# Clickable (a JS display toggle) when U&P are shown and non-empty #}
+            <tr class="{{ 'cursor-pointer inst-expand-trigger' if _expandable }}"
                 {% if _expandable %}data-inst-target="inst-users-{{ inst.institution_id }}"{% endif %}>
-                <td class="ps-4">
+                <td class="cell-child cell-truncate" title="{{ inst.name }}{{ ' (' ~ inst.acronym ~ ')' if inst.acronym }}">
                     {% if _expandable %}
-                    <i class="fa-solid fa-chevron-right small text-muted me-1 inst-expand-icon"
-                       style="transition: transform 0.2s;"></i>
-                    {% else %}
-                    <i class="fa-solid fa-circle small me-1" style="font-size:0.35em; color:var(--text-tertiary); vertical-align:middle;"></i>
+                    <i class="fa-solid fa-chevron-right fa-fw small text-muted inst-expand-icon"></i>
                     {% endif %}
                     {{ inst.name }}
-                    {% if inst.acronym %}
-                    <span class="text-muted small ms-1">({{ inst.acronym }})</span>
-                    {% endif %}
+                    {% if inst.acronym %}<code class="text-reset text-muted ms-1">{{ inst.acronym }}</code>{% endif %}
                 </td>
-                <td></td>
-                <td class="text-muted small">
+                <td class="col-shrink small text-muted">
                     {% set _loc_parts = [inst.city, state_label, country_label] | select | list %}
                     {{ _loc_parts | join(', ') if _loc_parts else '—' }}
                 </td>
-                <td>
+                <td class="col-shrink">
                     {% set mc = inst_to_mnemonic.get(inst.institution_id) %}
                     {% if mc %}
-                    <span class="badge bg-secondary font-monospace">{{ mc }}</span>
+                    <code class="text-reset">{{ mc }}</code>
                     {% elif has_permission(Permission.CREATE_ORG_METADATA) %}
-                    <button class="btn btn-link p-0 border-0"
+                    <button type="button" class="btn btn-row text-warning-emphasis"
                             data-bs-toggle="modal"
                             data-bs-target="#createMnemonicCodeModal"
                             hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_code_create_form', description=((inst.name ~ ', ' ~ inst.city) if inst.city else inst.name)) }}"
                             hx-target="#createMnemonicCodeFormContainer"
                             hx-trigger="click"
-                            title="No mnemonic match — click to create one">
-                        <span class="badge bg-warning text-dark font-monospace">
-                            <i class="fa-solid fa-triangle-exclamation"></i>
-                        </span>
+                            title="No mnemonic match: project routing may fail. Click to create one."
+                            aria-label="Create a mnemonic code for {{ inst.name }}"
+                            data-stop-propagation>
+                        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
                     </button>
                     {% else %}
-                    <span class="badge bg-secondary font-monospace text-white-50" title="No mnemonic match — project routing may fail"><i class="fa-solid fa-triangle-exclamation"></i></span>
+                    <i class="fa-solid fa-triangle-exclamation text-warning-emphasis" role="img"
+                       title="No mnemonic match: project routing may fail"
+                       aria-label="No mnemonic match"></i>
                     {% endif %}
                 </td>
                 {% if show_users_projects %}
-                <td class="text-muted small text-end">
-                    {{ _visible_users | length }}
-                </td>
-                <td class="text-muted small text-end">
-                    {{ _visible_projects | length }}
-                </td>
+                <td class="col-num small">{{ _visible_users | length | fmt_number }}</td>
+                <td class="col-num small">{{ _visible_projects | length | fmt_number }}</td>
                 {% endif %}
-                <td class="text-end" data-stop-propagation>
+                <td class="text-end text-nowrap" data-stop-propagation>
+                    <span class="row-actions">
                     {{ edit_modal_button(
                         url_for('admin_dashboard.htmx_institution_edit_form', inst_id=inst.institution_id),
                         modal_id='editInstitutionModal',
                         target_id='editInstitutionFormContainer',
                         title='Edit institution',
                         permission=Permission.EDIT_ORG_METADATA) }}
+                    </span>
                 </td>
             </tr>
-            {# Users / Projects sub-row (only when U&P are shown) #}
             {% if _expandable %}
             <tr id="inst-users-{{ inst.institution_id }}" style="display: none;">
                 <td colspan="{{ ncols }}" class="ps-5 pt-1 pb-2">
                     <div class="small">
-                        <span class="text-muted fw-semibold me-2" style="min-width:4.5rem; display:inline-block;">Users:</span>
+                        <span class="chip-row-label">Users</span>
                         {% for username, is_active in _visible_users %}
                         <a href="#"
                            class="me-3 text-decoration-none{% if not is_active %} text-muted fst-italic{% endif %}"
@@ -172,7 +189,7 @@
                         {% endfor %}
                     </div>
                     <div class="small mt-1">
-                        <span class="text-muted fw-semibold me-2" style="min-width:4.5rem; display:inline-block;">Projects:</span>
+                        <span class="chip-row-label">Projects</span>
                         {% for projcode, is_active in _visible_projects %}
                         <a href="#"
                            class="me-3 text-decoration-none font-monospace{% if not is_active %} text-muted fst-italic{% endif %}"
@@ -192,8 +209,8 @@
             </tr>
             {% endif %}
             {% else %}
-            <tr class="table-secondary">
-                <td colspan="{{ ncols }}" class="ps-4 text-muted fst-italic">No institutions of this type.</td>
+            <tr>
+                <td colspan="{{ ncols }}" class="cell-child text-muted fst-italic">No institutions of this type.</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -201,7 +218,7 @@
         {% else %}
         <tbody>
             <tr><td colspan="{{ ncols }}" class="text-center text-muted py-3">
-                {% if country_id or state_prov_id or active_only or show_users_projects %}
+                {% if _filtered %}
                 No institutions match the current filter.
                 {% else %}
                 No institution types found.
@@ -211,44 +228,8 @@
         {% endif %}
     </table>
 </div>
-<div class="d-flex justify-content-between align-items-center px-3 py-2">
-    <span class="text-muted small">
-        Showing {{ institution_types_grouped|length }} type{{ 's' if institution_types_grouped|length != 1 else '' }}, {{ total_institutions }} institution{{ 's' if total_institutions != 1 else '' }}
-        {% if country_id or state_prov_id or active_only or show_users_projects %}
-        <span class="ms-1">(filtered)</span>
-        {% endif %}
-    </span>
-    {% if has_permission(Permission.CREATE_ORG_METADATA) %}
-    <div class="d-flex gap-2">
-        <button class="btn  btn-primary"
-                data-bs-toggle="modal"
-                data-bs-target="#createInstitutionTypeModal"
-                hx-get="{{ url_for('admin_dashboard.htmx_institution_type_create_form') }}"
-                hx-target="#createInstitutionTypeFormContainer"
-                hx-trigger="click">
-            <i class="fa-solid fa-plus"></i> Create Type
-        </button>
-        <button class="btn  btn-primary"
-                data-bs-toggle="modal"
-                data-bs-target="#createInstitutionModal"
-                hx-get="{{ url_for('admin_dashboard.htmx_institution_create_form') }}"
-                hx-target="#createInstitutionFormContainer"
-                hx-trigger="click">
-            <i class="fa-solid fa-plus"></i> Create Institution
-        </button>
-        <button class="btn  btn-primary"
-                data-bs-toggle="modal"
-                data-bs-target="#createMnemonicCodeModal"
-                hx-get="{{ url_for('admin_dashboard.htmx_mnemonic_code_create_form') }}"
-                hx-target="#createMnemonicCodeFormContainer"
-                hx-trigger="click">
-            <i class="fa-solid fa-plus"></i> Create Mnemonic Code
-        </button>
-    </div>
-    {% endif %}
-</div>
 
-{# Behavior (expand-row persistence, collapse chevrons, the
+{# Behavior (expand-row persistence, the
    nav-view-persistence race re-restore) lives in static/js/admin-cards.js,
    initialized per swap via htmx.onLoad — this fragment is cached per-user
    in Redis, so no inline script. #}

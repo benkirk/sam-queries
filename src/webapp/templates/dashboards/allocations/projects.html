@@ -2,110 +2,12 @@
 {% from 'dashboards/fragments/form_fields.html' import multiselect_filter %}
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_roots_only %}
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% from 'dashboards/fragments/table_bits.html' import share_bar, group_count %}
 
 {% block title %}Allocations Dashboard{% endblock %}
 
 {% block alloc_content %}
-
-<!-- Facility Pie: Allocated | Usage pill tabs above resource tabs, swaps when active tab changes -->
-{% if grouped_data %}
-<div class="mb-3">
-    <ul class="nav nav-pills nav-fill mb-2 justify-content-center" id="pieChartTabs" role="tablist" style="max-width:420px; margin-left:auto; margin-right:auto;">
-        <li class="nav-item" role="presentation">
-            <button class="nav-link active py-1 px-3 small" id="pie-allocated-tab"
-                    data-bs-toggle="pill" data-bs-target="#pie-allocated"
-                    type="button" role="tab">Allocated</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link py-1 px-3 small" id="pie-usage-tab"
-                    data-bs-toggle="pill" data-bs-target="#pie-usage"
-                    type="button" role="tab">Usage</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link py-1 px-3 small" id="pie-pace-tab"
-                    data-bs-toggle="pill" data-bs-target="#pie-pace"
-                    type="button" role="tab">Pace</button>
-        </li>
-    </ul>
-    <div class="tab-content">
-        <div class="tab-pane fade show active" id="pie-allocated" role="tabpanel">
-            <div id="facilityPieContainer" class="chart-container">
-                {% for resource_name, _ in grouped_data.items()|sort %}
-                {% set overview = resource_overviews[resource_name] %}
-                {% set is_storage = resource_types.get(resource_name) in ['DISK', 'ARCHIVE'] %}
-                {% if overview.table_data|length > 1 %}
-                <div class="facility-pie-panel"
-                     data-resource="{{ resource_name|replace(' ', '_') }}"
-                     style="display:none;">
-                    <h6 class="text-center fw-bold mb-2">
-                        {{ 'Data Volume by Facility' if is_storage else 'Annual Rate by Facility' }}
-                        <span class="text-muted fw-normal">— {{ resource_name }}</span>
-                    </h6>
-                    {{ overview.chart|safe }}
-                </div>
-                {% endif %}
-                {% endfor %}
-            </div>
-        </div>
-        <div class="tab-pane fade" id="pie-usage" role="tabpanel">
-            <div id="facilityUsagePieContainer" class="chart-container">
-                {% for resource_name, _ in grouped_data.items()|sort %}
-                {% set usage_overview = resource_usage_overviews.get(resource_name, {}) %}
-                {% if usage_overview and usage_overview.table_data|length > 1 %}
-                <div class="facility-usage-pie-panel"
-                     data-resource="{{ resource_name|replace(' ', '_') }}"
-                     style="display:none;">
-                    <h6 class="text-center fw-bold mb-2">
-                        Usage by Facility
-                        <span class="text-muted fw-normal">— {{ resource_name }}</span>
-                    </h6>
-                    {{ usage_overview.chart|safe }}
-                </div>
-                {% elif usage_overview and usage_overview.table_data|length == 1 %}
-                <div class="facility-usage-pie-panel"
-                     data-resource="{{ resource_name|replace(' ', '_') }}"
-                     style="display:none;">
-                    <div class="text-center text-muted small py-3">Single facility — no pie chart</div>
-                </div>
-                {% endif %}
-                {% endfor %}
-            </div>
-        </div>
-        <div class="tab-pane fade" id="pie-pace" role="tabpanel">
-            <div id="facilityPaceContainer" class="chart-container pace-chart">
-                {# Each resource gets its own HTMX-loaded pace chart with
-                   a "Sort by" selector inside the swap target. The
-                   data-chart-persist-id on the loader matches the one
-                   the partial emits, so nav-view-persistence.js replays
-                   the saved sort_by on the initial request. #}
-                {% for resource_name, _ in grouped_data.items()|sort %}
-                {% set _pace_id = 'pace-chart-' ~ (resource_name|replace(' ', '_')) %}
-                <div class="facility-pace-panel"
-                     data-resource="{{ resource_name|replace(' ', '_') }}"
-                     style="display:none;">
-                    <h6 class="text-center fw-bold mb-2">
-                        Allocation Pace
-                        <span class="text-muted fw-normal">— {{ resource_name }}</span>
-                    </h6>
-                    <div hx-get="{{ url_for('allocations_dashboard.htmx_pace_chart',
-                                            resource_name=resource_name,
-                                            active_at=active_at,
-                                            sort_by='size') }}"
-                         hx-trigger="load"
-                         hx-swap="innerHTML"
-                         data-chart-persist-id="{{ _pace_id }}"
-                         data-chart-persist-keys="sort_by">
-                        <div class="text-center text-muted py-5">
-                            <i class="fa-solid fa-spinner fa-spin"></i> Loading chart…
-                        </div>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
 
 <!-- Filter Panel: Unity NCAR navy panel, always visible, sits above content.
      Reuses .filter-sidebar (same design tokens as the original sidebar-style
@@ -186,220 +88,169 @@
 </ul>
 
 <div class="tab-content" id="resourceTabsContent">
-    {% for resource_name, facilities in grouped_data.items()|sort %}
+    {% for resource_name in grouped_data.keys()|sort %}
     {% set slug = resource_name|replace(' ', '_')|lower %}
+    {% set pane = resource_name|replace(' ', '_') %}
+    {% set is_storage = resource_types.get(resource_name) in ['DISK', 'ARCHIVE'] %}
+    {% set tree = trees[resource_name] %}
+    {% set ncols = 7 if is_storage else 8 %}
+    {# data-drill-scope: a sunburst click opens its facility's row in THIS pane;
+       the nearer Share pill pane holds no rows. #}
     <div class="tab-pane fade {% if slug == active_tab %}show active{% endif %}"
-         id="{{ resource_name|replace(' ', '_') }}"
-         role="tabpanel">
+         id="{{ pane }}" role="tabpanel" data-drill-scope>
 
-        <!-- Combined Facility / Allocation-Type Table -->
-        {% set overview = resource_overviews[resource_name] %}
-        {% set is_storage = resource_types.get(resource_name) in ['DISK', 'ARCHIVE'] %}
-        {# table-responsive: the summary table is wider than a phone —
-           scroll it inside its pane rather than the whole document. #}
-        <div class="mt-3 table-responsive">
+        <ul class="nav nav-pills justify-content-center my-3 alloc-view-pills"
+            id="alloc-view-{{ slug }}" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active py-1 px-3 small" id="share-{{ slug }}-tab"
+                        data-bs-toggle="pill" data-bs-target="#share-{{ slug }}" data-alloc-view="share"
+                        type="button" role="tab" aria-controls="share-{{ slug }}" aria-selected="true">Share</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link py-1 px-3 small" id="pace-{{ slug }}-tab"
+                        data-bs-toggle="pill" data-bs-target="#pace-{{ slug }}" data-alloc-view="pace"
+                        type="button" role="tab" aria-controls="pace-{{ slug }}" aria-selected="false">Pace</button>
+            </li>
+        </ul>
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="share-{{ slug }}" role="tabpanel">
+                <div class="row g-3 align-items-center">
+                    <figure class="col-md-6 mb-0 sunburst-chart"
+                            aria-label="{{ 'Data volume' if is_storage else 'Annualized allocation rate' }} by facility and allocation type">
+                        {{ sunbursts[resource_name].alloc | safe }}
+                    </figure>
+                    <figure class="col-md-6 mb-0 sunburst-chart" aria-label="Usage by facility and allocation type">
+                        {{ sunbursts[resource_name].used | safe }}
+                    </figure>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="pace-{{ slug }}" role="tabpanel">
+                {# The persist id matches the one the partial emits, so
+                   nav-view-persistence.js replays the saved sort_by. #}
+                <div class="chart-container pace-chart"
+                     hx-get="{{ url_for('allocations_dashboard.htmx_pace_chart',
+                                        resource_name=resource_name, active_at=active_at, sort_by='size') }}"
+                     hx-trigger="load" hx-swap="innerHTML"
+                     data-chart-persist-id="pace-chart-{{ pane }}"
+                     data-chart-persist-keys="sort_by">
+                    <div class="text-center text-muted py-5">
+                        <i class="fa-solid fa-spinner fa-spin"></i> Loading chart…
+                    </div>
+                </div>
+            </div>
+        </div>
+        <p class="small text-muted text-center mt-2 mb-0">
+            Charts and totals count root allocations only
+            {{ help_icon(g_roots_only(), rich=True, title='Roots only') }}
+        </p>
 
-            <!-- Flat table: facility rows + interleaved type/detail rows for column alignment -->
-            <table class="table table-sm table-bordered summary-table">
-                <thead>
+        {# One table: facility rows (which are also the subtotals) open their
+           allocation types; a type row opens its projects, lazily. #}
+        <div class="table-responsive mt-3">
+            <table class="table table-sm align-middle mb-0 alloc-tree">
+                <thead class="table-subtle">
                     <tr>
-                        <th class="table-col-expand"></th>
-                        <th>Facility / Type</th>
-                        <th>Total Amount</th>
-                        <th>{{ 'Data Volume' if is_storage else 'Annual Rate' }}</th>
-                        <th>Count</th>
-                        <th>Avg</th>
-                        <th>%</th>
+                        <th>Facility / type</th>
+                        <th class="col-num">Count</th>
+                        <th class="col-num">{{ 'Volume' if is_storage else 'Total amount' }}</th>
+                        {% if not is_storage %}<th class="col-num">Annual rate</th>{% endif %}
+                        <th class="col-num">Avg</th>
+                        <th class="col-num" title="A facility's share of the resource; a type's share of its facility">
+                            {{ 'Volume share' if is_storage else 'Rate share' }}</th>
+                        <th class="col-num">Used</th>
+                        <th class="col-num" title="A facility's share of the resource's use; a type's share of its facility's">Use share</th>
                     </tr>
                 </thead>
+                {% for f in tree %}
+                {% set f_body = 'alloc-fac-' ~ slug ~ '-' ~ (f.key|string|replace(' ', '_')) %}
                 <tbody>
-                    {% for facility_data in overview.table_data|sort(attribute='facility') %}
-                    {% set facility_name = facility_data.facility %}
-                    {% set fac_id = 'fac-' ~ resource_name|replace(' ', '_') ~ '-' ~ facility_name|replace(' ', '_') %}
-                    {% set types = grouped_data[resource_name].get(facility_name, []) %}
-
-                    <!-- Facility Row (collapsible, default collapsed) -->
-                    {# data-fac (not data-fac-id) — data-fac-id marks the child rows this toggles #}
-                    <tr class="expandable-row facility-row"
-                        data-action="alloc-toggle-facility" data-fac="{{ fac_id }}">
-                        <td>
-                            <i class="fa-solid fa-chevron-right expand-icon"></i>
+                    {# data-facility-id: the sunburst's RowDrill finds this row and
+                       opens its data-bs-target. No buttons here, so the row toggles. #}
+                    <tr class="table-subtle fw-semibold cursor-pointer"
+                        {% if f.id is not none %}data-facility-id="{{ f.id }}"{% endif %}
+                        {{ collapse_toggle(f_body) }}>
+                        <td class="tree-cell text-nowrap" style="--depth: 0;">
+                            <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
+                            {{- f.facility }}
+                            {{- group_count(f.types|length, title='Allocation types') }}
                         </td>
-                        <td><strong>{{ facility_name }}</strong></td>
-                        <td>{{ facility_data.total_amount | fmt_number }}</td>
-                        <td>
-                            {% if is_storage %}
-                                <span class="text-muted">—</span>
-                            {% else %}
-                                {{ facility_data.annualized_rate | fmt_number }}
-                            {% endif %}
-                        </td>
-                        <td>{{ facility_data.count }}</td>
-                        <td class="text-muted">—</td>
-                        <td>{{ facility_data.percent | fmt_pct }}</td>
+                        <td class="col-num fw-normal">{{ f.count | fmt_number }}</td>
+                        <td class="col-num">{{ f.total_amount | fmt_number }}</td>
+                        {% if not is_storage %}<td class="col-num">{{ f.alloc | fmt_number }}</td>{% endif %}
+                        <td class="col-num fw-normal text-muted">{{ f.avg | fmt_number }}</td>
+                        <td class="col-num fw-normal">{{ share_bar(f.alloc_share, slot=f.slot, title='Share of ' ~ resource_name) }}</td>
+                        <td class="col-num">{{ f.used | fmt_number }}</td>
+                        <td class="col-num fw-normal">{{ share_bar(f.used_share, slot=f.slot, title="Share of " ~ resource_name ~ "'s use") }}</td>
                     </tr>
-
-                    <!-- Allocation Type Rows (hidden; expand icon in col 1, type name in col 2) -->
-                    {% for type_data in types %}
-                    {% set details_id = 'details-' ~ resource_name|replace(' ', '_') ~ '-' ~ facility_name|replace(' ', '_') ~ '-' ~ type_data.allocation_type|replace(' ', '_') %}
-                    <tr class="expandable-row alloc-type-row"
-                        data-fac-id="{{ fac_id }}"
-                        data-action="alloc-toggle-details" data-details-id="{{ details_id }}">
-                        <td>
-                            <i class="fa-solid fa-chevron-right expand-icon"></i>
-                        </td>
-                        <td class="ps-4"><strong>{{ type_data.allocation_type }}</strong></td>
-                        <td>{{ type_data.total_amount | fmt_number }}</td>
-                        {% set type_rate = type_annualized_rates.get((resource_name, facility_name, type_data.allocation_type)) %}
-                        <td>{% if type_rate and not is_storage %}{{ type_rate | fmt_number }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                        <td>{{ type_data.count }}</td>
-                        <td>{{ type_data.avg_amount | fmt_number }}</td>
-                        <td>
-                            {% if type_rate and facility_data.annualized_rate and not is_storage %}
-                                {{ (type_rate / facility_data.annualized_rate * 100) | fmt_pct }}
-                            {% else %}
-                                <span class="text-muted">—</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    <tr class="project-details-row" data-fac-id="{{ fac_id }}" id="{{ details_id }}">
-                        <td colspan="7"
-                            hx-get="{{ url_for('allocations_dashboard.projects_fragment') }}?resource={{ resource_name|urlencode }}&facility={{ facility_name|urlencode }}&allocation_type={{ type_data.allocation_type|urlencode }}&active_at={{ active_at }}&root_only={{ 1 if root_only else 0 }}"
-                            hx-trigger="load-details"
-                            hx-swap="innerHTML">
-                            <div class="p-3 text-center">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Loading...</span>
-                                </div>
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-
-                    <!-- Type Subtotal Row (if >1 type) -->
-                    {% if types|length > 1 %}
-                    {% set total_allocated = types|sum(attribute='total_amount') %}
-                    {% set total_count = types|sum(attribute='count') %}
-                    <tr class="alloc-type-subtotal-row table-secondary" data-fac-id="{{ fac_id }}">
-                        <th></th>
-                        <th class="ps-4">Subtotal</th>
-                        <th>{{ total_allocated | fmt_number }}</th>
-                        <th>{% if not is_storage %}{{ facility_data.annualized_rate | fmt_number }}{% else %}<span class="text-muted">—</span>{% endif %}</th>
-                        <th>{{ total_count }}</th>
-                        <th>{{ (total_allocated / total_count if total_count > 0 else 0) | fmt_number }}</th>
-                        <th class="text-muted">—</th>
-                    </tr>
-                    {% endif %}
-
-                    <!-- Type Pie Chart Row (if >1 type and chart available) -->
-                    {% set type_chart = allocation_type_charts.get(resource_name, {}).get(facility_name) %}
-                    {% set usage_type_chart = allocation_type_usage_charts.get(resource_name, {}).get(facility_name) %}
-                    {# Pace card is HTMX-loaded — show it whenever there are
-                       allocations in the facility; the endpoint handles the
-                       empty-window case itself. #}
-                    {% if types|length > 1 and (type_chart or usage_type_chart) %}
-                    <tr class="alloc-type-chart-row" data-fac-id="{{ fac_id }}">
-                        <td colspan="7" class="p-0">
-                            <div class="p-2 pb-0">
-                                <ul class="nav nav-pills nav-fill mb-2 justify-content-center"
-                                    style="max-width:420px; margin-left:auto; margin-right:auto;">
-                                    <li class="nav-item">
-                                        <button class="nav-link active py-1 px-3 small"
-                                                data-bs-toggle="pill"
-                                                data-bs-target="#type-alloc-{{ fac_id }}"
-                                                type="button">Allocated</button>
-                                    </li>
-                                    <li class="nav-item">
-                                        <button class="nav-link py-1 px-3 small"
-                                                data-bs-toggle="pill"
-                                                data-bs-target="#type-usage-{{ fac_id }}"
-                                                type="button">Usage</button>
-                                    </li>
-                                    <li class="nav-item">
-                                        <button class="nav-link py-1 px-3 small"
-                                                data-bs-toggle="pill"
-                                                data-bs-target="#type-pace-{{ fac_id }}"
-                                                type="button">Pace</button>
-                                    </li>
-                                </ul>
-                                <div class="tab-content">
-                                    <div class="tab-pane fade show active" id="type-alloc-{{ fac_id }}">
-                                        {% if type_chart %}
-                                        <div class="chart-container p-3">
-                                            <h6 class="text-center fw-bold mb-2">
-                                                {{ 'Data Volume by Type' if is_storage else 'Allocation by Type' }}
-                                                <span class="text-muted fw-normal">— {{ resource_name }} — {{ facility_name }}</span>
-                                            </h6>
-                                            {{ type_chart|safe }}
-                                        </div>
-                                        {% else %}
-                                        <div class="text-center text-muted small py-3">No chart available</div>
-                                        {% endif %}
-                                    </div>
-                                    <div class="tab-pane fade" id="type-usage-{{ fac_id }}">
-                                        {% if usage_type_chart %}
-                                        <div class="chart-container p-3">
-                                            <h6 class="text-center fw-bold mb-2">
-                                                Usage by Type
-                                                <span class="text-muted fw-normal">— {{ resource_name }} — {{ facility_name }}</span>
-                                            </h6>
-                                            {{ usage_type_chart|safe }}
-                                        </div>
-                                        {% else %}
-                                        <div class="text-center text-muted small py-3">No usage data yet</div>
-                                        {% endif %}
-                                    </div>
-                                    <div class="tab-pane fade" id="type-pace-{{ fac_id }}">
-                                        {# Per-facility Pace card — same HTMX endpoint as the
-                                           resource-wide chart, narrowed by ?facilities=. The
-                                           dom_id is suffixed with the facility so its
-                                           persisted sort_by is independent of the
-                                           resource-wide chart's. #}
-                                        {% set _facet_pace_id = 'pace-chart-' ~ (resource_name|replace(' ', '_')) ~ '-' ~ (facility_name|replace(' ', '_')) %}
-                                        <div class="chart-container pace-chart p-3">
-                                            <h6 class="text-center fw-bold mb-2">
-                                                Allocation Pace
-                                                <span class="text-muted fw-normal">— {{ resource_name }} — {{ facility_name }}</span>
-                                            </h6>
-                                            <div hx-get="{{ url_for('allocations_dashboard.htmx_pace_chart',
-                                                                    resource_name=resource_name,
-                                                                    facilities=facility_name,
-                                                                    active_at=active_at,
-                                                                    sort_by='size') }}"
-                                                 hx-trigger="load"
-                                                 hx-swap="innerHTML"
-                                                 data-chart-persist-id="{{ _facet_pace_id }}"
-                                                 data-chart-persist-keys="sort_by">
-                                                <div class="text-center text-muted small py-3">
-                                                    <i class="fa-solid fa-spinner fa-spin"></i> Loading chart…
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </td>
-                    </tr>
-                    {% endif %}
-
-                    {% endfor %}
                 </tbody>
-                {% if overview.table_data|length > 1 %}
-                <tfoot class="table-secondary">
+                <tbody class="collapse alloc-tree-body" id="{{ f_body }}" data-alloc-facility="{{ f.key }}">
+                    {% for t in f.types %}
+                    {% set t_id = f_body ~ '-' ~ loop.index %}
+                    <tr class="cursor-pointer" {{ collapse_toggle(t_id) }}>
+                        <td class="tree-cell tree-d1 text-nowrap" style="--depth: 1;">
+                            <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
+                            {{- t.name }}
+                        </td>
+                        <td class="col-num">{{ t.count | fmt_number }}</td>
+                        <td class="col-num">{{ t.total_amount | fmt_number }}</td>
+                        {% if not is_storage %}<td class="col-num">{{ t.alloc | fmt_number }}</td>{% endif %}
+                        <td class="col-num text-muted">{{ t.avg | fmt_number }}</td>
+                        <td class="col-num">{{ share_bar(t.alloc_share, slot=f.slot, tint=true, title='Share of ' ~ f.facility) }}</td>
+                        <td class="col-num">{{ t.used | fmt_number }}</td>
+                        <td class="col-num">{{ share_bar(t.used_share, slot=f.slot, tint=true, title="Share of " ~ f.facility ~ "'s use") }}</td>
+                    </tr>
+                    <tr class="collapse" id="{{ t_id }}" data-no-persist>
+                        <td colspan="{{ ncols }}" class="p-0">
+                            <div class="alloc-details"
+                                 hx-get="{{ url_for('allocations_dashboard.projects_fragment',
+                                                    resource=resource_name, facility=f.facility,
+                                                    allocation_type=t.name, active_at=active_at,
+                                                    root_only=1 if root_only else 0) }}"
+                                 hx-trigger="show.bs.collapse from:closest tr once" hx-swap="innerHTML">
+                                <div class="p-3 text-center text-muted">
+                                    <i class="fa-solid fa-spinner fa-spin"></i> Loading projects…
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% set p_id = f_body ~ '-pace' %}
+                    <tr class="cursor-pointer" {{ collapse_toggle(p_id) }}>
+                        <td colspan="{{ ncols }}" class="tree-cell tree-d1 text-muted" style="--depth: 1;">
+                            <i class="fa-solid fa-chevron-right small me-1 collapse-icon"></i>
+                            <i class="fa-solid fa-gauge-high small me-1" aria-hidden="true"></i>Pace of {{ f.facility }} allocations
+                        </td>
+                    </tr>
+                    <tr class="collapse" id="{{ p_id }}" data-no-persist>
+                        <td colspan="{{ ncols }}" class="p-2">
+                            {# Persist id suffixed with the facility, so its sort_by is
+                               independent of the resource-wide chart's. #}
+                            <div class="chart-container pace-chart"
+                                 hx-get="{{ url_for('allocations_dashboard.htmx_pace_chart',
+                                                    resource_name=resource_name, facilities=f.facility,
+                                                    active_at=active_at, sort_by='size') }}"
+                                 hx-trigger="show.bs.collapse from:closest tr once" hx-swap="innerHTML"
+                                 data-chart-persist-id="pace-chart-{{ pane }}-{{ f.facility|replace(' ', '_') }}"
+                                 data-chart-persist-keys="sort_by">
+                                <div class="text-center text-muted small py-3">
+                                    <i class="fa-solid fa-spinner fa-spin"></i> Loading chart…
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+                {% endfor %}
+                {% if tree|length > 1 %}
+                <tfoot class="table-subtle fw-semibold">
                     <tr>
-                        <th></th>
-                        <th>Total</th>
-                        <th>{{ "{:,.0f}".format(overview.table_data|sum(attribute='total_amount')) }}</th>
-                        <th>
-                            {% if is_storage %}
-                                <span class="text-muted">—</span>
-                            {% else %}
-                                {{ "{:,.0f}".format(overview.table_data|sum(attribute='annualized_rate')) }}
-                            {% endif %}
-                        </th>
-                        <th>{{ overview.table_data|sum(attribute='count') }}</th>
-                        <th class="text-muted">—</th>
-                        <th>100%</th>
+                        <td>Total</td>
+                        <td class="col-num fw-normal">{{ tree|sum(attribute='count') | fmt_number }}</td>
+                        <td class="col-num">{{ tree|sum(attribute='total_amount') | fmt_number }}</td>
+                        {% if not is_storage %}<td class="col-num">{{ tree|sum(attribute='alloc') | fmt_number }}</td>{% endif %}
+                        <td></td>
+                        <td></td>
+                        <td class="col-num">{{ tree|sum(attribute='used') | fmt_number }}</td>
+                        <td></td>
                     </tr>
                 </tfoot>
                 {% endif %}
@@ -439,7 +290,7 @@
 
 {% endblock %}
 
-{# Page behavior (row toggles, pie/tab sync) lives in
+{# Page behavior (expansion follows the resource tab) lives in
    static/js/dashboard-init.js — this page is cached per-user in Redis, so
    no inline script may carry per-request state. Client-side table sorting
    is wired by static/js/sortable_table.js. #}

@@ -42,8 +42,8 @@ def encode(action: str, *segments) -> str:
 class RowDrill:
     """Expand the table row carrying ``<attr>="<value>"``.
 
-    Resolved by the JS *within the clicked chart's tab pane*, so identical
-    values in different panes never cross-fire. That scoping is also why a
+    Resolved by the JS *within the clicked chart's nearest* ``[data-drill-scope]``,
+    else its tab pane, so identical values in different panes never cross-fire. That scoping is also why a
     chart whose rows live in another pane must use `ModalRoute` instead — see
     the jobs activity timeline.
     """
@@ -120,6 +120,9 @@ JT_PERIOD = RowDrill('data-jt-period')
 #: fs-scans entity pie, By User / By Group tabs.
 DISK_OWNER = RowDrill('data-owner-uid')
 DISK_GROUP = RowDrill('data-group-gid')
+
+#: admin Facilities fair-share sunburst -> that facility's tree row.
+FACILITY_ROW = RowDrill('data-facility-id')
 
 #: job-history usage pies.
 JOB_USER = RowDrill('data-job-user')

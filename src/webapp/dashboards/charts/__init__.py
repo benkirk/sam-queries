@@ -59,14 +59,13 @@ from webapp.dashboards.charts.pace import (  # noqa: F401
     pace_key_fields as _pace_key_fields,
 )
 from webapp.dashboards.charts.pie import (  # noqa: F401
-    AllocationTypePie,
+    AllocationSunburst,
     DiskEntityPie,
-    FacilityPie,
+    FairShareSunburst,
     JobsUsagePie,
     PieChart,
     UserUsagePie,
     trim_cumulative as _pie_cumulative_keep,
-    trim_fixed_cap as _pie_trim,
 )
 from webapp.dashboards.charts.stacked import (  # noqa: F401
     DiskUsageAreaChart,
@@ -135,8 +134,6 @@ generate_nodetype_history_matplotlib = chart_view(NodetypeHistoryChart)
 generate_queue_history_matplotlib = chart_view(QueueHistoryChart)
 
 # 4. Pies.  charts/pie.py
-generate_facility_pie_chart_matplotlib = chart_view(FacilityPie)
-generate_allocation_type_pie_chart_matplotlib = chart_view(AllocationTypePie)
 generate_disk_entity_pie_chart = chart_view(DiskEntityPie)
 generate_user_usage_pie_chart = chart_view(UserUsagePie)
 
@@ -148,13 +145,19 @@ generate_jobs_usage_pie_chart = chart_view(JobsUsagePie)
 # 6. Allocation pace chart.  charts/pace.py
 generate_pace_chart_matplotlib = chart_view(PaceChart)
 
+# 7. Fair-share sunburst (admin Facilities card).  charts/pie.py
+generate_fair_share_sunburst = chart_view(FairShareSunburst)
+
+# 8. Allocated / Used sunbursts (allocations dashboard).  charts/pie.py
+generate_allocation_sunburst = chart_view(AllocationSunburst)
+
 
 def generate_jobs_user_pie_chart(entity_data, metric='cpu_hours', *,
                                  layout='desktop', theme='light') -> str:
     """By User pie — delegates to the entity-agnostic renderer with the
     ``data-job-user`` row family.
 
-    Deliberately a facade rather than a 16th bound chart: binding it would
+    Deliberately a facade rather than a bound chart of its own: binding it would
     register a second cache and add a row to the admin Caching card for what
     is really the same chart under a different drill attribute.
 
@@ -188,7 +191,7 @@ _pace_cache_key = PaceChart.cache_key
 
 
 __all__ = [
-    # The 16 public generators.
+    # The public generators.
     'generate_usage_timeseries_matplotlib',
     'generate_usage_timeseries_stacked_by_user',
     'generate_disk_usage_stacked_area',
@@ -196,8 +199,6 @@ __all__ = [
     'generate_distribution_histogram',
     'generate_nodetype_history_matplotlib',
     'generate_queue_history_matplotlib',
-    'generate_facility_pie_chart_matplotlib',
-    'generate_allocation_type_pie_chart_matplotlib',
     'generate_disk_entity_pie_chart',
     'generate_user_usage_pie_chart',
     'generate_jobs_histogram',
@@ -205,6 +206,8 @@ __all__ = [
     'generate_jobs_usage_pie_chart',
     'generate_jobs_user_pie_chart',
     'generate_pace_chart_matplotlib',
+    'generate_fair_share_sunburst',
+    'generate_allocation_sunburst',
     'PACE_WINDOW_DAYS',
     # The hierarchy, for anyone subclassing.
     'BaseChart',

@@ -233,7 +233,8 @@ class TestRunManifest:
     def test_times_each_command_and_names_the_slowest(self, tmp_path):
         spool = tmp_path / "derecho"
         self._run(spool, "fast\ttrue\nslow\tsleep 2\n")
-        assert (spool / "fast.sec").read_text().strip() == "0"
+        # Whole seconds: a fast command straddling a second boundary records 1.
+        assert int((spool / "fast.sec").read_text()) <= 1
         assert int((spool / "slow.sec").read_text()) >= 2
         meta = commands.SpoolSource(str(spool))._meta()
         assert meta["slowest"].startswith("slow:") and meta["slowest"].endswith("s")

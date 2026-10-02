@@ -36,6 +36,11 @@
           permission=Permission.EDIT_PROJECT_MEMBERS,
           project=project) }}
 
+  Grouped tables pass ``reload_event='reloadXCard'``: the card re-renders
+  instead of one <tr> being removed, because a group row's children live in a
+  sibling <tbody> and a retired row should reappear dimmed when inactive rows
+  are shown (htmx-config.js fires the event after a successful request).
+
   WARNING: stop_propagation=True does NOT work against a Bootstrap collapse
   trigger, despite what this note used to claim. Bootstrap registers its
   data-api handlers with `EventHandler.on(document, ...)`, which passes the
@@ -66,15 +71,15 @@
     or (project is none and has_permission(permission))
 ) -%}
 {%- if _allowed -%}
-<button class="btn btn-sm btn-outline-secondary"
+<button type="button" class="btn btn-row"
         data-bs-toggle="modal"
         data-bs-target="#{{ modal_id }}"
         hx-get="{{ url }}"
         hx-target="#{{ target_id }}"
         hx-trigger="click"
-        title="{{ title }}"
+        title="{{ title }}" aria-label="{{ title }}"
         {%- if stop_propagation %} data-stop-propagation{% endif %}>
-    <i class="fa-solid fa-pen-to-square"></i>
+    <i class="fa-solid fa-pen" aria-hidden="true"></i>
 </button>
 {%- endif -%}
 {%- endmacro %}
@@ -83,21 +88,25 @@
 {% macro delete_row_button(url, confirm, title='Delete',
                            stop_propagation=False,
                            permission=None, project=None,
-                           include_ancestors=False) -%}
+                           include_ancestors=False, reload_event=None) -%}
 {%- set _allowed = (
     permission is none
     or (project is not none and can_act_on_project(permission, project, include_ancestors=include_ancestors))
     or (project is none and has_permission(permission))
 ) -%}
 {%- if _allowed -%}
-<button class="btn btn-sm btn-outline-danger ms-1"
-        title="{{ title }}"
+<button type="button" class="btn btn-row btn-row-danger"
+        title="{{ title }}" aria-label="{{ title }}"
         hx-delete="{{ url }}"
+        {%- if reload_event %}
+        hx-swap="none" data-reload-event="{{ reload_event }}"
+        {%- else %}
         hx-target="closest tr"
         hx-swap="outerHTML"
+        {%- endif %}
         hx-confirm="{{ confirm }}"
         {%- if stop_propagation %} data-stop-propagation{% endif %}>
-    <i class="fa-solid fa-trash-can"></i>
+    <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
 </button>
 {%- endif -%}
 {%- endmacro %}

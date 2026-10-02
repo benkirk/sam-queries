@@ -12,6 +12,7 @@ scripts/
 ├── cirrus_weblog_audit.sh       # CIRRUS/k8s traffic + rate-limit + abuse audit
 ├── seed_status_dev.sh           # Reseed system_status_dev from prod (make refresh-dev)
 ├── dev_session_load.py          # Load driver for samuel-dev's authed surface (+ dev_capture_session.py)
+├── ui_snapshots.py              # Pages x layouts x themes screenshots for before/after review (no baselines)
 ├── er_diagram.py                # Graphviz ER diagram of named tables, from the ORM (no DB)
 ├── zap_probe_docker.sh          # Dockerized OWASP ZAP scan of the webapp
 ├── apis/                        # Public-API worked examples / smoke tests
@@ -23,8 +24,7 @@ scripts/
 │   └── prereqs.sh              # Dependency checks (require_cmd, check_docker…)
 ├── setup/                       # Setup and utility scripts
 │   ├── README.md               # Setup scripts documentation
-│   ├── switch_to_production_db.sh
-│   ├── switch_to_local_db.sh
+│   ├── switch_to_{production,local}_db.sh
 │   ├── check_docker.sh
 │   ├── fix_mysql_permissions.sh
 │   └── download_backup.sh

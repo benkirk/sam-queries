@@ -164,6 +164,20 @@ UNITY_STACK_10 = (
     '#5a77a6',   # 10. blue-33
 )
 
+# Facility color families for the fair-share views (the two-ring chart and the
+# admin tables' share bars). Validated with the dataviz palette checks, each
+# against its own surface; UNITY_PALETTE_10[:6] fails them (navy too dark,
+# gold/orange too light and too close, teal reads gray). Mirrored as
+# --data-facility-N in variables.css; test_css_tokens pins the copies.
+FAIR_SHARE_LIGHT = ('#0057c2', '#e0681a', '#00a2b4', '#d4246b', '#9a7b00', '#6b46c1')
+FAIR_SHARE_DARK = ('#4687ea', '#d9772c', '#11a0b0', '#de4b80', '#ad8d1c', '#8f70e8')
+
+
+def facility_slots(facility_ids) -> dict:
+    """{facility_id: 1-based palette slot} for active facilities in id order; a 7th+ maps to None."""
+    ordered = sorted(set(facility_ids))
+    return {fid: (i + 1 if i < len(FAIR_SHARE_LIGHT) else None) for i, fid in enumerate(ordered)}
+
 
 # ---------------------------------------------------------------------------
 # Theme — the chrome axis
@@ -221,6 +235,9 @@ class Theme:
     #: card and undoes `min_data_contrast`.
     area_alpha: float
 
+    #: One base hue per facility slot (`facility_slots`); its types are shades.
+    facility_palette: tuple
+
     @property
     def is_dark(self) -> bool:
         return self.name == 'dark'
@@ -266,6 +283,7 @@ Theme.LIGHT = Theme(
     min_data_contrast=None,
     area_alpha=0.85,
     muted_data=UNITY_NCAR_GRAY_LIGHT,
+    facility_palette=FAIR_SHARE_LIGHT,
 )
 
 # The dark rendering. `surface` is `--surface-card` from
@@ -294,6 +312,7 @@ Theme.DARK = Theme(
     # family resemblance — a data band the exact color of the gridlines
     # reads as a rendering fault.
     muted_data='#434d59',
+    facility_palette=FAIR_SHARE_DARK,
 )
 
 THEMES = {'light': Theme.LIGHT, 'dark': Theme.DARK}
