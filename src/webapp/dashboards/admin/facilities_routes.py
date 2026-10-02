@@ -21,6 +21,7 @@ from webapp.utils.htmx import (
     read_active_only,
 )
 from webapp.extensions import db
+from webapp.dashboards.charts.theme import facility_slots
 from webapp.utils.rbac import (
     require_permission, require_permission_any_facility, Permission,
 )
@@ -55,11 +56,7 @@ def _active_facilities():
 @login_required
 @require_permission_any_facility(Permission.VIEW_FACILITIES)
 def htmx_facilities_card():
-    """
-    Return the Facility card body fragment with four tabs:
-    Facilities, Panels, Panel Sessions, Allocation Types.
-    Lazy-loaded when the Facility collapsible section is first expanded.
-    """
+    """The Facilities card: one tree of facility -> panel -> allocation type, with fair shares."""
     active_only = read_active_only(request.args)
 
     facility_q = db.session.query(Facility).order_by(Facility.facility_name)
@@ -70,8 +67,8 @@ def htmx_facilities_card():
     return render_template(
         'dashboards/admin/fragments/facility_card.html',
         facilities=facilities,
-        is_admin=True,
         active_only=active_only,
+        fs_slots=facility_slots(f.facility_id for f in _active_facilities()),
     )
 
 
