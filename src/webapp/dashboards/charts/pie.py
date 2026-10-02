@@ -426,14 +426,15 @@ class TwoRingPie(PieChart):
         ax.set_aspect('equal')
 
     def legend_cells(self, label, value):
-        """``(name, share, amount)`` strings for one table-legend row."""
+        """Strings for one table-legend row: the name, then its numbers."""
         raise NotImplementedError
 
     def add_legend(self, ax, layout, theme):
         if not self.table_legend:
             return super().add_legend(ax, layout, theme)
         # Columns, not one string per entry: names left, numbers right-aligned, so
-        # shares and amounts compare down the column in a proportional font.
+        # they compare down the column in a proportional font. Columns after the
+        # second are secondary and drawn muted.
         size = layout.legend_fontsize or self.legend_fontsize
         rows = [self.legend_cells(l, v) for l, v in zip(self.labels, self.values)]
         urls = [self.drill.url(k) if k is not None else None for k in self.link_keys]
@@ -453,13 +454,12 @@ class TwoRingPie(PieChart):
             return HPacker(children=[swatch, cell(text, url)], sep=size * 0.6, align='center')
 
         sep = size * 0.55
-        columns = [
-            VPacker(children=[name(r[0], c, u) for r, c, u in zip(rows, self.bases, urls)],
-                    sep=sep, align='left'),
-            VPacker(children=[cell(r[1], u) for r, u in zip(rows, urls)], sep=sep, align='right'),
-            VPacker(children=[cell(r[2], u, alpha=0.7) for r, u in zip(rows, urls)],
-                    sep=sep, align='right'),
-        ]
+        columns = [VPacker(children=[name(r[0], c, u) for r, c, u in zip(rows, self.bases, urls)],
+                           sep=sep, align='left')]
+        for j in range(1, len(rows[0])):
+            columns.append(VPacker(children=[cell(r[j], u, alpha=1.0 if j == 1 else 0.7)
+                                             for r, u in zip(rows, urls)],
+                                   sep=sep, align='right'))
         table = AnchoredOffsetbox(loc='center left', child=HPacker(children=columns, sep=size * 1.1,
                                                                    align='top'),
                                   bbox_to_anchor=self.legend_anchor, bbox_transform=ax.transAxes,
@@ -487,9 +487,10 @@ class FairShareSunburst(TwoRingPie):
     cache_maxsize = 24
     empty_message = 'No active facility has a fair share'
     center_text = 'Fair\nshare'
+    table_legend = True
 
-    def legend_label(self, label, value) -> str:
-        return f'{label} ({fmt.pct(value, decimals=2)})'
+    def legend_cells(self, label, value):
+        return label, fmt.pct(value, decimals=2)
 
     def groups(self):
         return [(r, r.get('share')) for r in self.data]
