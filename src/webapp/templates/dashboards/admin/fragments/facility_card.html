@@ -93,8 +93,8 @@
                     <td class="col-num cursor-pointer" {{ collapse_toggle(f_toggle) }}></td>
                     <td class="col-num cursor-pointer" {{ collapse_toggle(f_toggle) }}>
                         {% if f.active and fac.has_types and (fac.type_sum - 100) | abs > 0.01 %}
-                        <i class="fa-solid fa-triangle-exclamation text-warning-emphasis me-1" role="img"
-                           title="Allocation types sum to {{ fac.type_sum | fmt_pct(decimals=2) }} of this facility"
+                        <i class="fa-solid fa-circle-info text-body-secondary me-1" role="img"
+                           title="Allocation types sum to {{ fac.type_sum | fmt_pct(decimals=2) }} of this facility, not 100%"
                            aria-label="Allocation types do not sum to 100%"></i>
                         {%- endif %}
                         {{- share_bar(fsp, slot=slot, title='Share of the machine') }}

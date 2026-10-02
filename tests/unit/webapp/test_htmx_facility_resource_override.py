@@ -44,16 +44,16 @@ class TestResourcesCardOverrideSection:
         resp = auth_client.get('/admin/htmx/resources')
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
-        assert 'data-bs-target="#res-fs-' in html
+        assert 'data-bs-target=".res-fs-' in html
+        assert 'class="collapse res-fs-' in html
         assert 'editFacilityResourceModal' in html
 
-    def test_admin_renders_totals_footer(self, auth_client):
-        """Each HPC/DAV override table has a Total footer row summing the shares."""
+    def test_admin_renders_share_sum(self, auth_client):
+        """Each HPC/DAV resource row carries the sum of its facility shares."""
         resp = auth_client.get('/admin/htmx/resources')
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
-        assert '<tfoot' in html
-        assert 'Total' in html
+        assert 'Sum of the facility shares on' in html
 
 
 # ---------------------------------------------------------------------------

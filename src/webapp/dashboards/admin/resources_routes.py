@@ -9,6 +9,7 @@ from flask_login import current_user, login_required
 from datetime import datetime
 from functools import partial
 
+from webapp.dashboards.charts.theme import facility_slots
 from webapp.utils.htmx import (
     handle_htmx_form_post,
     htmx_not_found,
@@ -136,6 +137,7 @@ def htmx_resources_card():
         resources=resources,
         resource_types=resource_types,
         facilities=facilities,
+        fs_slots=facility_slots(f.facility_id for f in facilities),
         machines=machines,
         queues=queues,
         exemptions=exemptions,
