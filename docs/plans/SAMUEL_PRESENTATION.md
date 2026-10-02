@@ -480,7 +480,7 @@ slides plus 5 dividers. The outline below was verified on 2026-09-30 (`886c2f09`
 | Repo | Remote | What it is | Coupling to SAMuel |
 |---|---|---|---|
 | `hpc-usage-queries` (`~/codes/hpc-usage-queries/devel`) | `github.com/benkirk/hpc-usage-queries` | `job_history` (PBS job history, charging) + `fs_scans`; also the `csg-postgres` CNPG chart (`helm/`) and `scripts/cnpg_watch.sh` | Two plugins; shared Postgres; `jobhist-sync` runs in the `ncar-hpc-deploy` lane |
-| `hpc-scheduling-tools` (`~/codes/hpc-scheduling-tools`) | `github.com/NCAR/hpc-scheduling-tools` (private) | Fairshare tree + PBS accounting DB (`fsparsetree-mr`, `samuel2sql`, `hpc-sched-refresh`) | Calls the SAMuel API; also the `HPC_SCHEDULING_TOOLS` plugin behind `/api/v1/fairshare` |
+| `hpc-scheduling-tools` (`~/codes/hpc-scheduling-tools`) | `github.com/NCAR/hpc-scheduling-tools` (private) | Fairshare tree + PBS accounting DB (`fsparsetree-mr`, `samuel2sql`, `hpc-sched-refresh`) | HSG's cron downloads from the SAMuel API and runs none of our code; `fsparsetree_mr` runs inside SAMuel as the `HPC_SCHEDULING_TOOLS` plugin behind `/api/v1/fairshare` |
 | legacy SAM (`~/codes/sam`, symlinked as `legacy_sam`) | `github.com/NCAR/sam` | Java/Tomcat original | Same MySQL DB; SAMuel is porting its API families |
 | `sam-ldap-syncd` | `github.com/NCAR/sam-ldap-syncd` | Perl daemon: IDMS/LDAP ↔ SAM | Legacy `/api/protected/admin/...` endpoints, not yet ported (`docs/plans/LDAP_SYNC_API.md`) |
 | `amie-sam-mediator` | `github.com/NCAR/amie-sam-mediator` | ACCESS AMIE packets via SAM + LDAP | Legacy `/api/protected/amie/v1/*`, not ported, consumer idle |
@@ -992,7 +992,7 @@ work to this deck, in both content and craft. **Reuse it; don't duplicate it.**
 | "When Something Looks Wrong" symptom→meaning table | A format to copy for Part 4's ops slides |
 
 Details of the SAM to PBS pipeline:
-- HSG's cron processes run it for the accounting hooks and `fairshare`. The 12-minute cron on
+- HSG's cron processes download from SAMuel's API for the accounting hooks and `fairshare`; they do not run our Python. `fsparsetree_mr` is embedded in the API (`/api/v1/fairshare/<machine>`), so nobody runs it on a scheduler host. The 12-minute cron on
   `cron.hpc.ucar.edu` is Ben's internal playground, not production; keep it off the slides
   (Ben, 2026-10-01);
 - content-gated publishing, with asymmetric digests (bytes vs `.dump`);
