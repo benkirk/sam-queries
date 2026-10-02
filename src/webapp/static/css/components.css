@@ -591,8 +591,9 @@ tr.collapsing {
     transition: none !important;
 }
 
-/* The fair-share sunburst above the Facilities tree. */
-.fair-share-chart svg {
+/* Two-ring charts above their tree tables (admin Facilities, allocations). */
+.fair-share-chart svg,
+.sunburst-chart svg {
     display: block;
     width: 100%;
     max-width: 44rem;

@@ -15,46 +15,6 @@
 
     /* ================= Allocations dashboard ================= */
 
-    /* Toggle facility rows — shows/hides interleaved type rows in the
-     * flat table. The clicked header row carries data-fac (NOT
-     * data-fac-id: that attribute marks the child rows it toggles). */
-    registerAction('alloc-toggle-facility', function (row) {
-        var icon = row.querySelector('.expand-icon');
-        var isExpanding = !icon.classList.contains('expanded');
-        icon.classList.toggle('expanded');
-        document.querySelectorAll('[data-fac-id="' + row.dataset.fac + '"]')
-            .forEach(function (r) {
-                if (r.classList.contains('project-details-row')) {
-                    /* Always collapse project detail rows when facility toggles */
-                    r.classList.remove('show');
-                } else {
-                    r.classList.toggle('show', isExpanding);
-                    /* Type-row chevrons appear collapsed when facility expands */
-                    if (isExpanding && r.classList.contains('alloc-type-row')) {
-                        var typeIcon = r.querySelector('.expand-icon');
-                        if (typeIcon) { typeIcon.classList.remove('expanded'); }
-                    }
-                }
-            });
-    });
-
-    /* Toggle expandable detail rows; lazy-load contents on first expand */
-    registerAction('alloc-toggle-details', function (row) {
-        var icon = row.querySelector('.expand-icon');
-        var detailsRow = document.getElementById(row.dataset.detailsId);
-        icon.classList.toggle('expanded');
-        if (detailsRow.classList.contains('show')) {
-            detailsRow.classList.remove('show');
-        } else {
-            var td = detailsRow.querySelector('td[hx-get]');
-            if (td && !detailsRow.dataset.loaded) {
-                htmx.trigger(td, 'load-details');
-                detailsRow.dataset.loaded = 'true';
-            }
-            detailsRow.classList.add('show');
-        }
-    });
-
     /* Create Adjustment form: show the intent hint matching the selected
      * adjustment type (fragments/create_adjustment_form_htmx.html) */
     registerAction('adj-intent-toggle', function (select) {
@@ -93,15 +53,28 @@
                    source: '#xras-filters'});
     });
 
-    /* Swap facility pie charts above the tabs to follow the active
-     * resource tab (initial state set at load below) */
-    function showPieForResource(resourceId) {
-        ['.facility-pie-panel', '.facility-usage-pie-panel', '.facility-pace-panel']
-            .forEach(function (sel) {
-                document.querySelectorAll(sel).forEach(function (p) {
-                    p.style.display = p.dataset.resource === resourceId ? '' : 'none';
-                });
-            });
+    /* Expansion follows the resource tab: a facility open under Casper is open
+     * under Derecho too, and the Share/Pace pill matches. Facilities missing
+     * from the previous pane keep their own state; type rows (lazy project
+     * tables) are not mirrored. */
+    function mirrorResourcePane(from, to) {
+        if (!from || !to || !window.bootstrap) { return; }
+        var open = {};
+        from.querySelectorAll('tbody[data-alloc-facility]').forEach(function (b) {
+            open[b.dataset.allocFacility] = b.classList.contains('show');
+        });
+        to.querySelectorAll('tbody[data-alloc-facility]').forEach(function (b) {
+            var want = open[b.dataset.allocFacility];
+            if (want === undefined || want === b.classList.contains('show')) { return; }
+            var c = bootstrap.Collapse.getOrCreateInstance(b, {toggle: false});
+            if (want) { c.show(); } else { c.hide(); }
+        });
+        var pill = from.querySelector('.alloc-view-pills .nav-link.active');
+        var match = pill && to.querySelector(
+            '.alloc-view-pills [data-alloc-view="' + pill.dataset.allocView + '"]');
+        if (match && !match.classList.contains('active')) {
+            bootstrap.Tab.getOrCreateInstance(match).show();
+        }
     }
 
     /* ================= Admin dashboard ================= */
@@ -195,9 +168,11 @@
                 container.dataset.loaded = 'true';
             }
         }
-        /* allocations: pie panels follow the active resource tab */
-        if (tab.closest('#resourceTabs')) {
-            showPieForResource(tab.getAttribute('href').slice(1));
+        /* allocations: the new pane mirrors the one just left */
+        if (tab.closest('#resourceTabs') && e.relatedTarget) {
+            mirrorResourcePane(
+                document.querySelector(e.relatedTarget.getAttribute('href')),
+                document.querySelector(tab.getAttribute('href')));
         }
     });
 
@@ -225,13 +200,6 @@
             revealCard(e.detail.target);
         }
     });
-
-    /* allocations: show the pie for the initially active resource tab
-     * (script loads at end of body, DOM is parsed) */
-    var activeResourceTab = document.querySelector('#resourceTabs .nav-link.active');
-    if (activeResourceTab) {
-        showPieForResource(activeResourceTab.getAttribute('href').slice(1));
-    }
 
     /* ================= Collapsible filter panels ================= */
 

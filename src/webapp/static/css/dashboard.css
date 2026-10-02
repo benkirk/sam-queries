@@ -486,13 +486,7 @@ body {
         -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
     }
 
-    /* Tap targets: expandable drill-down rows and sortable column headers
-       are finger-hostile at desktop padding. */
-    .expandable-row td {
-        padding-top: 0.625rem;
-        padding-bottom: 0.625rem;
-    }
-
+    /* Tap targets: sortable column headers are finger-hostile at desktop padding. */
     .main-content table.table th a {
         display: inline-block;
         padding: 0.25rem 0;

@@ -14,7 +14,8 @@
  *      space cannot break the parse. We split once and dispatch on <action>:
  *
  *        #sam/row/<attr>/<value>  -> expand the table row carrying
- *            <attr>="<value>", scoped to the clicked chart's tab pane.
+ *            <attr>="<value>", scoped to the clicked chart's nearest
+ *            [data-drill-scope], else its tab pane.
  *            The ATTRIBUTE TRAVELS IN THE HREF: this file no longer keeps a
  *            prefix->attribute table, so adding a drill-down chart is a
  *            zero-JavaScript change — the chart declares the attribute and
@@ -198,7 +199,8 @@
             case 'row':
                 if (args.length < 2 || args[0] === '' || args[1] === '') return;
                 e.preventDefault();
-                openEntityRow(args[0], args[1], a.closest('.tab-pane'));
+                openEntityRow(args[0], args[1],
+                              a.closest('[data-drill-scope]') || a.closest('.tab-pane'));
                 return;
             case 'day':
                 if (!args[0]) return;
