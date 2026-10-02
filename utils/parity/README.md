@@ -136,4 +136,9 @@ Comparison tolerances (lifted from the retired
   codes) — same DB-mirror lag.
 - **≤5 items** on DEAD/live status inconsistencies.
 - **≤3 users missing** per project+resource node in fstree.
+- **None** on fstree facility shares. These are compared per resource against
+  `/api/v1/fstree_access/{resource}`, because the all-resource payload carries
+  one share per facility. SAMuel's per-resource shares must also sum to 100
+  (±0.01). That self-check needs no legacy fetch, and it is the one that
+  catches a bogus override both stacks serve.
 - **None at all** for `--api xras` — see above.
