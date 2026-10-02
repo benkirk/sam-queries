@@ -944,6 +944,10 @@ an update here (tick boxes, session log).
   - **Trap:** a wide `rankdir=LR` chain in a 100% column renders squashed in the PDF. A vertical
     chain in a 40% column, beside the bullets, renders cleanly in all three formats.
 
+- **2026-10-02, Part 3 sizes.** `dataset_activity` (6.6 GB) retires with the per-job tables
+  (Ben), so "Four databases, two engines" footnotes 58 GB of `sam`'s 60 GB as legacy-only.
+  SAMuel models the table but never writes it.
+
 ## 11. Voice, tone and the fun
 
 **SAMuel = SAM, updated for extended lifecycle.** That backronym is the deck's premise and its
