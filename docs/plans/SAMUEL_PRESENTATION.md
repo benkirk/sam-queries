@@ -992,7 +992,9 @@ work to this deck, in both content and craft. **Reuse it; don't duplicate it.**
 | "When Something Looks Wrong" symptom→meaning table | A format to copy for Part 4's ops slides |
 
 Details of the SAM to PBS pipeline:
-- cron on `cron.hpc.ucar.edu` every 12 min, ssh to Casper with Derecho as fallback;
+- HSG's cron processes run it for the accounting hooks and `fairshare`. The 12-minute cron on
+  `cron.hpc.ucar.edu` is Ben's internal playground, not production; keep it off the slides
+  (Ben, 2026-10-01);
 - content-gated publishing, with asymmetric digests (bytes vs `.dump`);
 - a churn guard;
 - `.prev` rollback;
