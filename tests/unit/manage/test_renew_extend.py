@@ -999,6 +999,47 @@ class TestRenewReplaceExisting:
         assert txn is not None
         assert 'Superseded by renew' in (txn.transaction_comment or '')
 
+    def test_replace_true_collapses_old_row_to_its_start_day(
+        self, session, standalone_project, derecho, acting_user,
+    ):
+        """Legacy ignores ``deleted``: the dead row must stop overlapping its twin (HARD_DELETE_AUDIT §1)."""
+        _seed_standalone_source(session, standalone_project, derecho)
+        first = renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+        )
+        old_id = first[0].allocation_id
+        session.expire_all()
+        renew_project_allocations(
+            session,
+            root_project_id=standalone_project.project_id,
+            source_active_at=SRC_ACTIVE_AT,
+            new_start=NEW_START,
+            new_end=NEW_END,
+            resource_ids=[derecho.resource_id],
+            user_id=acting_user.user_id,
+            replace_existing=True,
+        )
+        old = session.get(Allocation, old_id)
+        assert old.start_date == NEW_START
+        assert old.end_date == NEW_START.replace(hour=23, minute=59, second=59)
+        assert old.end_date >= old.start_date
+        assert old.amount == first[0].amount
+        txn = (
+            session.query(AllocationTransaction)
+            .filter(
+                AllocationTransaction.allocation_id == old_id,
+                intent_filter(AllocationTransactionType.DELETE),
+            )
+            .one()
+        )
+        assert txn.alloc_end_date == NEW_END
+
     def test_replace_true_supersedes_in_inheriting_tree(
         self, session, tree_root_with_children, derecho, acting_user,
     ):
@@ -1057,6 +1098,8 @@ class TestRenewReplaceExisting:
                 .all()
             )
             assert len(deleted_rows) >= 1, f"{descendant.projcode} missing soft-deleted row"
+            for row in deleted_rows:
+                assert row.end_date == row.start_date.replace(hour=23, minute=59, second=59)
 
     def test_replace_false_does_not_touch_existing(
         self, session, standalone_project, derecho, acting_user,

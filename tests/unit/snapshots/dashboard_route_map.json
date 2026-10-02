@@ -252,13 +252,6 @@
     ]
   ],
   [
-    "admin_dashboard.htmx_admin_disk_root_delete",
-    "/admin/htmx/admin/disk-roots/<int:dr_id>/delete",
-    [
-      "POST"
-    ]
-  ],
-  [
     "admin_dashboard.htmx_admin_disk_root_edit",
     "/admin/htmx/admin/disk-roots/<int:dr_id>/edit",
     [

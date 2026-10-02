@@ -1062,6 +1062,18 @@ class AccountingAdminCommand(BaseCommand):
                     )
                     return 2
 
+        # ---- 9. Re-stamp: legacy SAM's disk_charge triggers set this date
+        # current=FALSE on each insert/delete in 7a, and legacy's Quartz recompute
+        # then rewrites the whole day in its own shape (HARD_DELETE_AUDIT.md §3).
+        try:
+            with management_transaction(self.session):
+                mark_disk_snapshot_current(self.session, snap_date)
+        except Exception as exc:  # noqa: BLE001
+            self.console.print(
+                f"[bold red]Failed to re-stamp snapshot {snap_date}: {exc}[/bold red]"
+            )
+            return 2
+
         envelope.update(written=True, created=n_created, updated=n_updated, errors=n_errors)
         self._emit_disk_report(report, envelope)
         return 2 if (unexpected or n_errors) else 0

@@ -775,26 +775,6 @@ def htmx_admin_disk_root_toggle_active(dr_id):
     return htmx_success_message(_RESOURCES_TRIGGERS, msg)
 
 
-@bp.route('/htmx/admin/disk-roots/<int:dr_id>/delete', methods=['POST'])
-@login_required
-@require_permission(Permission.DELETE_RESOURCES)
-def htmx_admin_disk_root_delete(dr_id):
-    """Hard-delete a DiskResourceRootDirectory row."""
-    from sam.resources.resources import DiskResourceRootDirectory
-
-    dr = db.session.get(DiskResourceRootDirectory, dr_id)
-    if not dr:
-        return '<div class="alert alert-danger">Root directory not found.</div>', 404
-
-    try:
-        with management_transaction(db.session):
-            dr.delete()
-    except Exception as e:
-        return f'<div class="alert alert-danger">Error: {e}</div>', 500
-
-    return htmx_success_message({'reloadResourcesCard': {}}, 'Root directory deleted.')
-
-
 # CRUD routes — generated from specs
 #
 # Endpoints, URL rules, templates, permissions, and not-found messages are
