@@ -19,6 +19,7 @@ which is the declarative tier this repo already reaches for elsewhere
 (`CrudSpec`).
 """
 
+import math
 from typing import Dict, List
 
 from sam import fmt
@@ -28,7 +29,7 @@ from webapp.dashboards.charts.base import BaseChart
 from webapp.dashboards.charts.jobs_metrics import jobs_metric_value
 from webapp.dashboards.charts.layout import profile
 from webapp.dashboards.charts.theme import (
-    UNITY_PALETTE_10, autopct_color_for,
+    UNITY_PALETTE_10, autopct_color_for, shade_family,
 )
 
 _PIE_START_ANGLE = 60
@@ -422,3 +423,102 @@ class JobsUsagePie(_CumulativePie):
             colors.append(self.theme.muted_data)
 
         return labels, values, colors, keys
+
+
+class FairShareSunburst(PieChart):
+    """Fair share in two rings: facilities (share of the machine) inside, their
+    allocation types outside, each type a shade of its facility's family.
+
+    ``data`` = ``[{'id', 'facility', 'slot', 'share', 'types': [{'name', 'share'}]}]``;
+    a type's share is of its facility, so its wedge is facility x type / 100.
+    Every wedge and legend entry drills to its facility's row in the tree.
+    """
+
+    cache_name = 'fair_share_sunburst'
+    cache_maxsize = 24
+    empty_message = 'No active facility has a fair share'
+    drill = links.FACILITY_ROW
+
+    inner_radius = 0.66
+    ring_width = 0.3
+    #: Smallest wedge (percent of the machine) that carries a direct label.
+    inner_label_min = 5
+    outer_label_min = 6
+
+    def __init__(self, data: List[Dict]):
+        self.data = data or []
+
+    @staticmethod
+    def cache_key(data):
+        return content_hash(data)
+
+    def legend_label(self, label, value) -> str:
+        return f'{label} ({fmt.pct(value, decimals=2)})'
+
+    def prepare(self):
+        self.rows = [r for r in self.data if r.get('share')]
+        self.labels = [r['facility'] for r in self.rows]
+        self.values = [r['share'] for r in self.rows]
+        self.link_keys = [r.get('id') for r in self.rows]
+
+    def is_empty(self) -> bool:
+        return not self.values
+
+    def _base(self, slot):
+        palette = self.theme.facility_palette
+        if slot and slot <= len(palette):
+            return self.theme.data_color(palette[slot - 1])
+        return self.theme.muted_data
+
+    def draw(self, ax, layout, theme):
+        bases = [self._base(r.get('slot')) for r in self.rows]
+        outer_vals, outer_colors, outer_names, outer_keys = [], [], [], []
+        for row, base in zip(self.rows, bases):
+            types = sorted((t for t in row.get('types', []) if t.get('share')),
+                           key=lambda t: t['name'])
+            total = sum(t['share'] for t in types)
+            scale = 100 / total if total > 100 else 1
+            shades = shade_family(base, len(types), lightest=0.55, toward=theme.shade_toward)
+            for t, shade in zip(types, reversed(shades)):
+                outer_vals.append(row['share'] * t['share'] * scale / 100)
+                outer_colors.append(shade)
+                outer_names.append(t['name'])
+                outer_keys.append(row.get('id'))
+            gap = row['share'] * (100 - total * scale) / 100
+            if gap > 1e-9:
+                outer_vals.append(gap)
+                outer_colors.append('none')
+                outer_names.append(None)
+                outer_keys.append(None)
+
+        common = dict(startangle=self.start_angle, counterclock=False)
+        edge = {'edgecolor': theme.surface}
+        inner, _ = ax.pie(self.values, radius=self.inner_radius, colors=bases,
+                          wedgeprops={**edge, 'width': self.ring_width, 'linewidth': 1.5}, **common)
+        outer, _ = ax.pie(outer_vals, radius=self.inner_radius + self.ring_width + 0.02,
+                          colors=outer_colors,
+                          wedgeprops={**edge, 'width': self.ring_width, 'linewidth': 1}, **common)
+        self.wedges = inner
+        for wedge, key in zip(outer, outer_keys):
+            if key is not None:
+                wedge.set_url(self.drill.url(key))
+
+        size = self.autopct_fontsize
+        self._label(ax, inner, self.labels, self.values, bases,
+                    self.inner_radius - self.ring_width / 2, self.inner_label_min, size)
+        if layout.name != 'mobile':   # a phone's outer ring is too narrow; the legend carries it
+            self._label(ax, outer, outer_names, outer_vals, outer_colors,
+                        self.inner_radius + self.ring_width / 2 + 0.02, self.outer_label_min, size - 1)
+        ax.text(0, 0, 'Fair\nshare', ha='center', va='center', fontsize=size + 1,
+                color=theme.text, alpha=0.7)
+        ax.set_aspect('equal')
+
+    @staticmethod
+    def _label(ax, wedges, names, values, colors, radius, minimum, size):
+        for wedge, name, value, color in zip(wedges, names, values, colors):
+            if not name or value < minimum or color == 'none':
+                continue
+            angle = math.radians((wedge.theta1 + wedge.theta2) / 2)
+            ax.text(radius * math.cos(angle), radius * math.sin(angle), name,
+                    ha='center', va='center', fontsize=size, fontweight='bold',
+                    color=autopct_color_for(color))

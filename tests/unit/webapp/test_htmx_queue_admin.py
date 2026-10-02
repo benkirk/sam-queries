@@ -460,8 +460,8 @@ class TestResourcesCardQueueButtons:
         resp = auth_client.get('/admin/htmx/resources')
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
-        assert 'Create Queue' in html
-        assert 'Cleanup' in html
+        assert '#createQueueModal' in html
+        assert '#queueCleanupModal' in html
         assert 'queue-cleanup-form' in html
 
     # The collapse-trigger-row guard is deliberately NOT here. Rendering only

@@ -121,6 +121,9 @@ JT_PERIOD = RowDrill('data-jt-period')
 DISK_OWNER = RowDrill('data-owner-uid')
 DISK_GROUP = RowDrill('data-group-gid')
 
+#: admin Facilities fair-share sunburst -> that facility's tree row.
+FACILITY_ROW = RowDrill('data-facility-id')
+
 #: job-history usage pies.
 JOB_USER = RowDrill('data-job-user')
 JOB_PROJECT = RowDrill('data-job-project')

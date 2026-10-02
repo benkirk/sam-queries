@@ -12,6 +12,8 @@ runtime (htmx:targetError, or a Bootstrap toggle that closes its host).
 
 import os
 
+import re
+
 import pytest
 
 from sam.projects.contracts import Contract, NSFProgram
@@ -373,11 +375,11 @@ class TestContractsTableToggle:
         body = auth_client.get(
             CONTRACTS_TABLE_URL, query_string={'active_only': '1'}
         ).get_data(as_text=True)
-        assert 'Showing' in body
-        active = int(body.split('Showing ')[1].split(' contract')[0])
+        def count(html):
+            return int(re.search(r'me-auto">([\d,]+) contracts?<', html).group(1).replace(',', ''))
 
-        wide = auth_client.get(CONTRACTS_TABLE_URL).get_data(as_text=True)
-        allrows = int(wide.split('Showing ')[1].split(' contract')[0])
+        active = count(body)
+        allrows = count(auth_client.get(CONTRACTS_TABLE_URL).get_data(as_text=True))
 
         # The whole point: absent must mean "include inactive", so the
         # unfiltered count has to be strictly larger.

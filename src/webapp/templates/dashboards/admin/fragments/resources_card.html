@@ -1,22 +1,20 @@
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button, delete_row_button with context %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/contract_bits.html' import contract_user_link with context %}
+{% from 'dashboards/fragments/table_bits.html' import pane_toolbar, group_count, state_tag, share_bar %}
 {#
   Admin: Resources Card Body (lazy-loaded into the Resources collapsible section)
   Contains three tabs: Resources (types+resources combined), Machines, Queues.
   Active-only filtering is applied server-side via ?active_only=1 query param.
 
   Group rows that carry action buttons put the collapse toggle on their cells
-  rather than the <tr> — a nested button cannot suppress a row-level toggle
-  (Bootstrap's data-api runs in the capture phase on `document`). See
-  dashboards/fragments/collapse.html for the full explanation. The Wallclock
+  rather than the <tr> (see dashboards/fragments/collapse.html). The Wallclock
   Exemptions group row has no buttons, so it keeps the simpler <tr> trigger.
 #}
 <div class="card-body p-0">
     {# Sub-tabs are deep-linked via ?tab= (data-tab-url-param); the route reads
        it and stamps the active pane, and nav-view-persistence.js mirrors a tab
        click back into the URL. active_tab defaults to 'resources'. #}
-    <!-- Tab navigation -->
     <ul class="nav nav-tabs" id="resourcesTabs" role="tablist" data-tab-url-param="tab">
         <li class="nav-item" role="presentation">
             <button class="nav-link {{ 'active' if active_tab == 'resources' }}" id="resources-tab" data-bs-toggle="tab"
@@ -46,15 +44,36 @@
         <!-- Resources tab (types collapsed, resources expand on click) -->
         <div class="tab-pane fade {{ 'show active' if active_tab == 'resources' }}" id="resources-pane" role="tabpanel"
              aria-labelledby="resources-tab">
+            {% call pane_toolbar(resource_types|length ~ ' type' ~ ('s' if resource_types|length != 1 else '') ~ ', '
+                                 ~ resources|length ~ ' resource' ~ ('s' if resources|length != 1 else '')) %}
+                {% if has_permission(Permission.CREATE_RESOURCES) %}
+                <button type="button" class="btn btn-sm btn-outline-primary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#createResourceTypeModal"
+                        hx-get="{{ url_for('admin_dashboard.htmx_resource_type_create_form') }}"
+                        hx-target="#createResourceTypeFormContainer"
+                        hx-trigger="click">
+                    <i class="fa-solid fa-plus me-1"></i>Type
+                </button>
+                <button type="button" class="btn btn-sm btn-primary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#createResourceModal"
+                        hx-get="{{ url_for('admin_dashboard.htmx_resource_create_form') }}"
+                        hx-target="#createResourceFormContainer"
+                        hx-trigger="click">
+                    <i class="fa-solid fa-plus me-1"></i>Resource
+                </button>
+                {% endif %}
+            {% endcall %}
             <div class="table-responsive">
-                <table class="table table-sm mb-0">
+                <table class="table table-sm align-middle mb-0">
                     <thead class="table-subtle">
                         <tr>
-                            <th>Name</th>
-                            <th>Count</th>
+                            <th class="col-shrink">Name</th>
                             <th>Description</th>
-                            <th>Commissioned</th>
-                            <th class="text-end text-nowrap">Actions</th>
+                            <th class="col-num" title="HPC/DAV: each facility's share of the resource">Fair share</th>
+                            <th class="col-shrink">Commissioned</th>
+                            <th class="col-shrink text-end">Actions</th>
                         </tr>
                     </thead>
                     {% if resource_types %}
@@ -63,21 +82,20 @@
                     {# Per-resource facility fair-share overrides only apply to HPC/DAV
                        resources (the only types the fstree query consults). #}
                     {% set is_hpc_dav = rt.resource_type in ['HPC', 'DAV'] %}
-                    {# Resource Type row (cells are the collapse trigger) #}
                     {% set rt_toggle = 'res-type-' ~ rt.resource_type_id %}
                     <tbody>
                         <tr class="table-subtle fw-semibold">
-                            <td class="cursor-pointer" {{ collapse_toggle(rt_toggle) }}>
-                                <i class="fa-solid fa-chevron-right small text-muted me-1 res-type-collapse-icon"
-                                   style="transition: transform 0.2s;"></i>
+                            <td colspan="4" class="tree-cell cursor-pointer text-nowrap" style="--depth: 0;" {{ collapse_toggle(rt_toggle) }}>
+                                <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
                                 {{ rt.resource_type }}
+                                {{- group_count(type_resources|length, title='Resources of this type') }}
+                                {% if rt.grace_period_days is not none %}
+                                <span class="text-muted small fw-normal ms-2"
+                                      title="Days an allocation's jobs may still charge after it ends">{{ rt.grace_period_days }}-day grace</span>
+                                {% endif %}
                             </td>
-                            <td class="text-muted small cursor-pointer" {{ collapse_toggle(rt_toggle) }}>{{ type_resources|length }} resource{{ 's' if type_resources|length != 1 else '' }}</td>
-                            <td class="text-muted small cursor-pointer" {{ collapse_toggle(rt_toggle) }}>
-                                {% if rt.grace_period_days is not none %}Grace: {{ rt.grace_period_days }}d{% endif %}
-                            </td>
-                            <td class="cursor-pointer" {{ collapse_toggle(rt_toggle) }}></td>
                             <td class="text-end text-nowrap">
+                                <span class="row-actions">
                                 {{ edit_modal_button(
                                     url_for('admin_dashboard.htmx_resource_type_edit_form', resource_type_id=rt.resource_type_id),
                                     modal_id='editResourceTypeModal',
@@ -88,30 +106,47 @@
                                     url_for('admin_dashboard.htmx_resource_type_delete', resource_type_id=rt.resource_type_id),
                                     confirm="Deactivate resource type '" ~ rt.resource_type ~ "'?",
                                     title='Deactivate resource type',
+                                    reload_event='reloadResourcesCard',
                                     permission=Permission.DELETE_RESOURCES) }}
+                                </span>
                             </td>
                         </tr>
                     </tbody>
-                    {# Resource child rows (collapsed by default) #}
                     <tbody class="collapse" id="res-type-{{ rt.resource_type_id }}">
                         {% for r in type_resources %}
-                        {# Fair-share expander (HPC/DAV only) hangs off the cells,
-                           not the <tr> — this row carries Edit/Delete buttons. #}
-                        {% set fs_toggle = 'res-fs-' ~ r.resource_id %}
-                        {% set fs_attrs = collapse_toggle(fs_toggle) if is_hpc_dav else '' %}
+                        {# The fair-share expander (HPC/DAV) targets a class: a resource's
+                           facility rows are several <tr>s in this tbody. It hangs off the
+                           cells, not the <tr>, because this row carries Edit/Delete. #}
+                        {% set fs_attrs = ('data-bs-toggle="collapse" data-bs-target=".res-fs-' ~ r.resource_id ~ '" aria-expanded="false"') if is_hpc_dav else '' %}
                         {% set fs_cursor = ' cursor-pointer' if is_hpc_dav else '' %}
-                        <tr class="table-secondary{% if not r.is_active %} opacity-50{% endif %}">
-                            <td class="ps-4 fw-semibold{{ fs_cursor }}" {{ fs_attrs }}>
-                                {% if is_hpc_dav %}<i class="fa-solid fa-chevron-right small text-muted me-1 facility-resource-collapse-icon"
-                                   style="transition: transform 0.2s;"></i>{% endif %}
-                                {{ r.resource_name }}
+                        {% set shares = namespace(total=0.0) %}
+                        {% if is_hpc_dav %}
+                        {% for fac in facilities %}
+                            {% set _m = r.facility_resources | selectattr('facility_id', 'equalto', fac.facility_id) | list %}
+                            {% set _o = _m[0].fair_share_percentage if _m and _m[0].fair_share_percentage is not none else none %}
+                            {% set shares.total = shares.total + ((_o if _o is not none else fac.fair_share_percentage) or 0) %}
+                        {% endfor %}
+                        {% endif %}
+                        <tr class="{{ 'row-inactive' if not r.is_active }}">
+                            <td class="tree-cell tree-d1 fw-semibold text-nowrap{{ fs_cursor }}" style="--depth: 1;" {{ fs_attrs | safe }}>
+                                {% if is_hpc_dav %}<i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>{% endif %}
+                                {{- r.resource_name }}
+                                {%- if not r.is_active %}{{ state_tag('decommissioned', title='Decommissioned ' ~ (r.decommission_date | fmt_date)) }}{% endif %}
                             </td>
-                            <td class="{{ fs_cursor }}" {{ fs_attrs }}></td>
-                            <td class="text-muted small{{ fs_cursor }}" {{ fs_attrs }}>{{ r.description or '—' }}</td>
-                            <td class="text-muted small text-nowrap{{ fs_cursor }}" {{ fs_attrs }}>
-                                {{ r.commission_date | fmt_date }}
+                            <td class="cell-truncate small text-muted{{ fs_cursor }}" {{ fs_attrs | safe }} title="{{ r.description or '' }}">{{ r.description or '—' }}</td>
+                            <td class="col-num text-muted{{ fs_cursor }}" {{ fs_attrs | safe }}>
+                                {% if is_hpc_dav and facilities %}
+                                {% if (shares.total - 100) | abs > 0.01 %}
+                                <i class="fa-solid fa-circle-info text-body-secondary me-1" role="img"
+                                   title="Facility shares on {{ r.resource_name }} sum to {{ shares.total | fmt_pct(decimals=2) }}, not 100%"
+                                   aria-label="Facility shares do not sum to 100%"></i>
+                                {%- endif %}
+                                <span title="Sum of the facility shares on {{ r.resource_name }}">{{ shares.total | fmt_pct(decimals=2) }}</span>
+                                {% endif %}
                             </td>
+                            <td class="col-shrink small text-muted{{ fs_cursor }}" {{ fs_attrs | safe }}>{{ r.commission_date | fmt_date }}</td>
                             <td class="text-end text-nowrap">
+                                <span class="row-actions">
                                 {{ edit_modal_button(
                                     url_for('admin_dashboard.htmx_resource_edit_form', resource_id=r.resource_id),
                                     modal_id='editResourceModal',
@@ -122,90 +157,62 @@
                                     url_for('admin_dashboard.htmx_resource_delete', resource_id=r.resource_id),
                                     confirm="Decommission resource '" ~ r.resource_name ~ "'? This sets the decommission date to today.",
                                     title='Decommission resource',
+                                    reload_event='reloadResourcesCard',
                                     permission=Permission.DELETE_RESOURCES) }}
+                                </span>
                             </td>
                         </tr>
-                        {# Per-facility fair-share overrides (collapsed by default) #}
                         {% if is_hpc_dav %}
-                        <tr class="table-secondary">
-                            <td colspan="5" class="p-0 border-0">
-                                <div class="collapse" id="res-fs-{{ r.resource_id }}">
-                                    <div class="ps-5 pt-1 pb-2">
-                                        <div class="text-muted small mb-1">
-                                            <i class="fa-solid fa-scale-balanced me-1"></i>
-                                            Fair-share by facility for {{ r.resource_name }}
-                                            <span class="fst-italic">(overrides the facility default; unset to restore it)</span>
-                                        </div>
-                                        <table class="table table-sm table-bordered mb-0 bg-body" style="font-size: 0.875em;">
-                                            <thead class="table-subtle">
-                                                <tr>
-                                                    <th>Facility</th>
-                                                    <th>Fair Share %</th>
-                                                    <th>Source</th>
-                                                    <th class="text-end">Actions</th>
-                                                </tr>
-                                            </thead>
-                                            {% set ns = namespace(total=0.0) %}
-                                            <tbody>
-                                                {% for fac in facilities %}
-                                                {% set _matches = r.facility_resources | selectattr('facility_id', 'equalto', fac.facility_id) | list %}
-                                                {% set override = _matches[0] if _matches else none %}
-                                                {% set has_override = override is not none and override.fair_share_percentage is not none %}
-                                                {% set effective = override.fair_share_percentage if has_override else fac.fair_share_percentage %}
-                                                {% set ns.total = ns.total + (effective or 0) %}
-                                                <tr>
-                                                    <td>
-                                                        {% if fac.code %}<span class="badge bg-body-tertiary text-body-emphasis border me-1">{{ fac.code }}</span>{% endif %}
-                                                        {{ fac.facility_name }}
-                                                    </td>
-                                                    <td>{{ effective | fmt_pct(decimals=2) }}</td>
-                                                    <td>
-                                                        {% if has_override %}
-                                                        <span class="badge bg-warning text-dark">override</span>
-                                                        {% else %}
-                                                        <span class="badge bg-body-tertiary text-muted border">default</span>
-                                                        {% endif %}
-                                                    </td>
-                                                    <td class="text-end text-nowrap">
-                                                        {{ edit_modal_button(
-                                                            url_for('admin_dashboard.htmx_facility_resource_edit_form',
-                                                                    resource_id=r.resource_id, facility_id=fac.facility_id),
-                                                            modal_id='editFacilityResourceModal',
-                                                            target_id='editFacilityResourceFormContainer',
-                                                            title='Set fair-share override',
-                                                            permission=Permission.EDIT_RESOURCES) }}
-                                                        {% if has_override %}
-                                                        {{ delete_row_button(
-                                                            url_for('admin_dashboard.htmx_facility_resource_unset',
-                                                                    resource_id=r.resource_id, facility_id=fac.facility_id),
-                                                            confirm="Unset the " ~ fac.facility_name ~ " fair-share override for " ~ r.resource_name ~ "? The facility default will apply.",
-                                                            title='Unset override (restore default)',
-                                                            permission=Permission.DELETE_RESOURCES) }}
-                                                        {% endif %}
-                                                    </td>
-                                                </tr>
-                                                {% else %}
-                                                <tr><td colspan="4" class="text-muted fst-italic">No active facilities.</td></tr>
-                                                {% endfor %}
-                                            </tbody>
-                                            {% if facilities %}
-                                            <tfoot class="table-subtle fw-semibold" style="border-top: 2px solid var(--bs-border-color);">
-                                                <tr>
-                                                    <td>Total</td>
-                                                    <td>{{ ns.total | fmt_pct(decimals=2) }}</td>
-                                                    <td colspan="2"></td>
-                                                </tr>
-                                            </tfoot>
-                                            {% endif %}
-                                        </table>
-                                    </div>
-                                </div>
+                        {% for fac in facilities %}
+                        {% set _matches = r.facility_resources | selectattr('facility_id', 'equalto', fac.facility_id) | list %}
+                        {% set override = _matches[0] if _matches else none %}
+                        {% set has_override = override is not none and override.fair_share_percentage is not none %}
+                        {% set effective = override.fair_share_percentage if has_override else fac.fair_share_percentage %}
+                        <tr class="collapse res-fs-{{ r.resource_id }}">
+                            <td class="tree-cell tree-d2 text-nowrap" style="--depth: 2;">
+                                {% if fac.code %}<code class="text-reset me-1">{{ fac.code }}</code>{% endif %}
+                                {{- fac.facility_name }}
+                            </td>
+                            <td class="small">
+                                {% if has_override %}
+                                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+                                      title="Overrides the facility default of {{ fac.fair_share_percentage | fmt_pct(decimals=2) }}">override</span>
+                                {% else %}
+                                <span class="badge state-tag ms-0" title="The facility's default share">default</span>
+                                {% endif %}
+                            </td>
+                            <td class="col-num">{{ share_bar(effective, slot=fs_slots.get(fac.facility_id), title='Share of ' ~ r.resource_name) }}</td>
+                            <td class="col-shrink"></td>
+                            <td class="text-end text-nowrap">
+                                <span class="row-actions">
+                                {{ edit_modal_button(
+                                    url_for('admin_dashboard.htmx_facility_resource_edit_form',
+                                            resource_id=r.resource_id, facility_id=fac.facility_id),
+                                    modal_id='editFacilityResourceModal',
+                                    target_id='editFacilityResourceFormContainer',
+                                    title='Set fair-share override',
+                                    permission=Permission.EDIT_RESOURCES) }}
+                                {% if has_override %}
+                                {{ delete_row_button(
+                                    url_for('admin_dashboard.htmx_facility_resource_unset',
+                                            resource_id=r.resource_id, facility_id=fac.facility_id),
+                                    confirm="Unset the " ~ fac.facility_name ~ " fair-share override for " ~ r.resource_name ~ "? The facility default will apply.",
+                                    title='Unset override (restore default)',
+                                    reload_event='reloadResourcesCard',
+                                    permission=Permission.DELETE_RESOURCES) }}
+                                {% endif %}
+                                </span>
                             </td>
                         </tr>
+                        {% else %}
+                        <tr class="collapse res-fs-{{ r.resource_id }}">
+                            <td colspan="5" class="tree-cell tree-d2 text-muted fst-italic" style="--depth: 2;">No active facilities.</td>
+                        </tr>
+                        {% endfor %}
                         {% endif %}
                         {% else %}
-                        <tr class="table-secondary">
-                            <td colspan="5" class="ps-4 text-muted fst-italic">No resources of this type.</td>
+                        <tr>
+                            <td colspan="5" class="tree-cell tree-d1 text-muted fst-italic" style="--depth: 1;">No resources of this type.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -217,31 +224,6 @@
                     {% endif %}
                 </table>
             </div>
-            <div class="d-flex justify-content-between align-items-center px-3 py-2">
-                <span class="text-muted small">
-                    Showing {{ resource_types|length }} type{{ 's' if resource_types|length != 1 else '' }}, {{ resources|length }} resource{{ 's' if resources|length != 1 else '' }}
-                </span>
-                {% if has_permission(Permission.CREATE_RESOURCES) %}
-                <div class="d-flex gap-2">
-                    <button class="btn btn-primary"
-                            data-bs-toggle="modal"
-                            data-bs-target="#createResourceTypeModal"
-                            hx-get="{{ url_for('admin_dashboard.htmx_resource_type_create_form') }}"
-                            hx-target="#createResourceTypeFormContainer"
-                            hx-trigger="click">
-                        <i class="fa-solid fa-plus"></i> Create Type
-                    </button>
-                    <button class="btn btn-primary"
-                            data-bs-toggle="modal"
-                            data-bs-target="#createResourceModal"
-                            hx-get="{{ url_for('admin_dashboard.htmx_resource_create_form') }}"
-                            hx-target="#createResourceFormContainer"
-                            hx-trigger="click">
-                        <i class="fa-solid fa-plus"></i> Create Resource
-                    </button>
-                </div>
-                {% endif %}
-            </div>
 
             {% include 'dashboards/admin/fragments/disk_root_directories_section.html' %}
         </div>
@@ -249,41 +231,55 @@
         <!-- Machines tab -->
         <div class="tab-pane fade {{ 'show active' if active_tab == 'machines' }}" id="machines-pane" role="tabpanel"
              aria-labelledby="machines-tab">
+            {% call pane_toolbar(machines|length ~ ' machine' ~ ('s' if machines|length != 1 else '')) %}
+                {% if has_permission(Permission.CREATE_RESOURCES) %}
+                <button type="button" class="btn btn-sm btn-primary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#createMachineModal"
+                        hx-get="{{ url_for('admin_dashboard.htmx_machine_create_form') }}"
+                        hx-target="#createMachineFormContainer"
+                        hx-trigger="click">
+                    <i class="fa-solid fa-plus me-1"></i>Machine
+                </button>
+                {% endif %}
+            {% endcall %}
             <div class="table-responsive">
-                <table class="table table-hover table-sm mb-0">
+                <table class="table table-hover table-sm align-middle mb-0">
                     <thead class="table-subtle">
                         <tr>
-                            <th class="sortable-header" data-sort="text">Name</th>
-                            <th class="sortable-header" data-sort="text">Resource</th>
-                            <th class="sortable-header" data-sort="text">Type</th>
-                            <th class="sortable-header" data-sort="numeric">CPUs/Node</th>
+                            <th class="col-shrink sortable-header" data-sort="text">Name</th>
+                            <th class="col-shrink sortable-header" data-sort="text">Resource</th>
+                            <th class="col-num sortable-header" data-sort="numeric">CPUs/node</th>
                             <th class="sortable-header" data-sort="text">Description</th>
-                            <th class="sortable-header" data-sort="date">Commissioned</th>
-                            <th class="sortable-header" data-sort="date">Decommissioned</th>
-                            <th class="text-end text-nowrap">Actions</th>
+                            <th class="col-shrink sortable-header" data-sort="date">Commissioned</th>
+                            <th class="col-shrink sortable-header" data-sort="date">Decommissioned</th>
+                            <th class="col-shrink text-end">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="machines-tbody">
                         {% for m in machines %}
-                        <tr{% if not m.is_active %} class="opacity-50"{% endif %}>
-                            <td class="fw-semibold" data-sort-value="{{ m.name }}">{{ m.name }}</td>
-                            <td data-sort-value="{{ m.resource.resource_name if m.resource else '' }}">
-                                <span class="text-muted">
-                                    {{ m.resource.resource_name if m.resource else '—' }}
-                                </span>
+                        {% set m_type = m.resource.resource_type.resource_type if m.resource and m.resource.resource_type else '' %}
+                        <tr class="{{ 'row-inactive' if not m.is_active }}">
+                            <td class="fw-semibold text-nowrap" data-sort-value="{{ m.name }}">
+                                {{- m.name }}
+                                {%- if not m.is_active %}{{ state_tag('decommissioned') }}{% endif %}
                             </td>
-                            <td class="text-muted small" data-sort-value="{{ m.resource.resource_type.resource_type if m.resource and m.resource.resource_type else '' }}">
-                                {{ m.resource.resource_type.resource_type if m.resource and m.resource.resource_type else '—' }}
+                            <td class="text-nowrap" data-sort-value="{{ m.resource.resource_name if m.resource else '' }}">
+                                {% if m.resource %}
+                                {{ m.resource.resource_name }}
+                                {% if m_type %}<span class="text-muted small ms-1">{{ m_type }}</span>{% endif %}
+                                {% else %}<span class="text-muted">—</span>{% endif %}
                             </td>
-                            <td data-sort-value="{{ m.cpus_per_node or 0 }}">{{ m.cpus_per_node or '—' }}</td>
-                            <td class="text-muted" data-sort-value="{{ m.description or '' }}">{{ m.description or '—' }}</td>
-                            <td class="text-nowrap" data-sort-value="{{ m.commission_date.strftime('%Y-%m-%d') if m.commission_date else '' }}">
+                            <td class="col-num" data-sort-value="{{ m.cpus_per_node or 0 }}">{{ m.cpus_per_node | fmt_number if m.cpus_per_node else '—' }}</td>
+                            <td class="cell-truncate small text-muted" data-sort-value="{{ m.description or '' }}" title="{{ m.description or '' }}">{{ m.description or '—' }}</td>
+                            <td class="col-shrink small" data-sort-value="{{ m.commission_date.strftime('%Y-%m-%d') if m.commission_date else '' }}">
                                 {{ m.commission_date | fmt_date }}
                             </td>
-                            <td class="text-nowrap" data-sort-value="{{ m.decommission_date.strftime('%Y-%m-%d') if m.decommission_date else 'Z' }}">
+                            <td class="col-shrink small" data-sort-value="{{ m.decommission_date.strftime('%Y-%m-%d') if m.decommission_date else 'Z' }}">
                                 {{ m.decommission_date | fmt_date }}
                             </td>
                             <td class="text-end text-nowrap">
+                                <span class="row-actions">
                                 {{ edit_modal_button(
                                     url_for('admin_dashboard.htmx_machine_edit_form', machine_id=m.machine_id),
                                     modal_id='editMachineModal',
@@ -294,98 +290,90 @@
                                     url_for('admin_dashboard.htmx_machine_delete', machine_id=m.machine_id),
                                     confirm="Decommission machine '" ~ m.name ~ "'? This sets the decommission date to today.",
                                     title='Decommission machine',
+                                    reload_event='reloadResourcesCard',
                                     permission=Permission.DELETE_RESOURCES) }}
+                                </span>
                             </td>
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="8" class="text-center text-muted py-3">No machines found.</td>
+                            <td colspan="7" class="text-center text-muted py-3">No machines found.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
-            </div>
-            <div class="d-flex justify-content-between align-items-center px-3 py-2">
-                <span class="text-muted small">
-                    Showing {{ machines|length }} machine{{ 's' if machines|length != 1 else '' }}
-                </span>
-                {% if has_permission(Permission.CREATE_RESOURCES) %}
-                <button class="btn  btn-primary"
-                        data-bs-toggle="modal"
-                        data-bs-target="#createMachineModal"
-                        hx-get="{{ url_for('admin_dashboard.htmx_machine_create_form') }}"
-                        hx-target="#createMachineFormContainer"
-                        hx-trigger="click">
-                    <i class="fa-solid fa-plus"></i> Create Machine
-                </button>
-                {% endif %}
             </div>
         </div>
 
         <!-- Queues tab (resources collapsed, queues expand on click) -->
         <div class="tab-pane fade {{ 'show active' if active_tab == 'queues' }}" id="queues-pane" role="tabpanel"
              aria-labelledby="queues-tab">
+            {% call pane_toolbar(queues|length ~ ' queue' ~ ('s' if queues|length != 1 else '')) %}
+                {% if has_permission(Permission.CREATE_RESOURCES) %}
+                <button type="button" class="btn btn-sm btn-primary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#createQueueModal"
+                        hx-get="{{ url_for('admin_dashboard.htmx_queue_create_form') }}"
+                        hx-target="#createQueueFormContainer"
+                        hx-trigger="click">
+                    <i class="fa-solid fa-plus me-1"></i>Queue
+                </button>
+                {% endif %}
+            {% endcall %}
             <div class="table-responsive">
-                <table class="table table-sm mb-0">
+                <table class="table table-sm align-middle mb-0">
                     <thead class="table-subtle">
                         <tr>
-                            <th>Queue Name</th>
-                            <th>Queues</th>
-                            <th>WC Limit (hrs)</th>
-                            <th>Start Date</th>
-                            <th>End Date</th>
-                            <th class="text-end">Actions</th>
+                            <th>Queue</th>
+                            <th class="col-num">Wallclock limit</th>
+                            <th class="col-shrink">Start</th>
+                            <th class="col-shrink">End</th>
+                            <th class="col-shrink text-end">Actions</th>
                         </tr>
                     </thead>
                     {% if resources %}
                     {% for r in resources | sort(attribute='resource_name') %}
                     {% set r_queues = queues | selectattr('resource_id', 'equalto', r.resource_id) | list | sort(attribute='queue_name') %}
                     {% if r_queues %}
-                    {# Resource row (cells are the collapse trigger) #}
                     {% set q_toggle = 'queue-res-' ~ r.resource_id %}
                     <tbody>
                         <tr class="table-subtle fw-semibold">
-                            <td class="cursor-pointer" {{ collapse_toggle(q_toggle) }}>
-                                <i class="fa-solid fa-chevron-right small text-muted me-1 queue-res-collapse-icon"
-                                   style="transition: transform 0.2s;"></i>
+                            <td colspan="4" class="cursor-pointer" {{ collapse_toggle(q_toggle) }}>
+                                <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
                                 {{ r.resource_name }}
+                                {{- group_count(r_queues|length, title='Queues on this resource') }}
                             </td>
-                            <td class="text-muted small cursor-pointer" {{ collapse_toggle(q_toggle) }}>
-                                {{ r_queues|length }} queue{{ 's' if r_queues|length != 1 else '' }}
-                            </td>
-                            <td class="cursor-pointer" {{ collapse_toggle(q_toggle) }}></td>
-                            <td class="cursor-pointer" {{ collapse_toggle(q_toggle) }}></td>
-                            <td class="cursor-pointer" {{ collapse_toggle(q_toggle) }}></td>
-                            <td class="text-end">
+                            <td class="text-end text-nowrap">
                                 {% if has_permission(Permission.DELETE_RESOURCES) %}
-                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                <span class="row-actions">
+                                <button type="button" class="btn btn-row"
                                         data-bs-toggle="modal"
                                         data-bs-target="#queueCleanupModal"
                                         hx-get="{{ url_for('admin_dashboard.htmx_queue_cleanup_form', resource_id=r.resource_id) }}"
                                         hx-target="#queueCleanupFormContainer"
                                         hx-trigger="click"
-                                        title="Find and expire queues unused for N days">
-                                    <i class="fa-solid fa-broom"></i> Cleanup…
+                                        title="Clean up: find and expire queues unused for N days"
+                                        aria-label="Clean up unused queues on {{ r.resource_name }}">
+                                    <i class="fa-solid fa-broom" aria-hidden="true"></i>
                                 </button>
+                                </span>
                                 {% endif %}
                             </td>
                         </tr>
                     </tbody>
-                    {# Queue child rows (collapsed by default) #}
                     <tbody class="collapse" id="queue-res-{{ r.resource_id }}">
                         {% for q in r_queues %}
                         {% set q_active = (q.end_date is none) or (q.end_date > now) %}
-                        <tr class="table-secondary{% if not q_active %} opacity-50{% endif %}">
-                            <td class="ps-4 fw-semibold">{{ q.queue_name }}</td>
-                            <td></td>
-                            <td class="text-muted small">{{ q.wall_clock_hours_limit or '—' }}</td>
-                            <td class="text-muted small text-nowrap">
-                                {{ q.start_date | fmt_date }}
+                        <tr class="{{ 'row-inactive' if not q_active }}">
+                            <td class="cell-child">
+                                <code class="text-reset">{{ q.queue_name }}</code>
+                                {%- if not q_active %}{{ state_tag('expired') }}{% endif %}
                             </td>
-                            <td class="text-muted small text-nowrap">
-                                {{ q.end_date | fmt_date }}
-                            </td>
+                            <td class="col-num">{{ (q.wall_clock_hours_limit | fmt_number ~ ' h') if q.wall_clock_hours_limit else '—' }}</td>
+                            <td class="col-shrink small">{{ q.start_date | fmt_date }}</td>
+                            <td class="col-shrink small">{{ q.end_date | fmt_date }}</td>
                             <td class="text-end text-nowrap">
+                                <span class="row-actions">
                                 {{ edit_modal_button(
                                     url_for('admin_dashboard.htmx_queue_edit_form', queue_id=q.queue_id),
                                     modal_id='editQueueModal',
@@ -396,7 +384,9 @@
                                     url_for('admin_dashboard.htmx_queue_delete', queue_id=q.queue_id),
                                     confirm="Expire queue '" ~ q.queue_name ~ "'? This sets the end date to today.",
                                     title='Expire queue',
+                                    reload_event='reloadResourcesCard',
                                     permission=Permission.DELETE_RESOURCES) }}
+                                </span>
                             </td>
                         </tr>
                         {% endfor %}
@@ -405,58 +395,39 @@
                     {% endfor %}
                     {% else %}
                     <tbody>
-                        <tr><td colspan="6" class="text-center text-muted py-3">No queues found.</td></tr>
+                        <tr><td colspan="5" class="text-center text-muted py-3">No queues found.</td></tr>
                     </tbody>
                     {% endif %}
                 </table>
             </div>
-            <div class="d-flex justify-content-between align-items-center px-3 py-2">
-                <span class="text-muted small">
-                    Showing {{ queues|length }} queue{{ 's' if queues|length != 1 else '' }}
-                </span>
-                {% if has_permission(Permission.CREATE_RESOURCES) %}
-                <button class="btn btn-primary"
-                        data-bs-toggle="modal"
-                        data-bs-target="#createQueueModal"
-                        hx-get="{{ url_for('admin_dashboard.htmx_queue_create_form') }}"
-                        hx-target="#createQueueFormContainer"
-                        hx-trigger="click">
-                    <i class="fa-solid fa-plus"></i> Create Queue
-                </button>
-                {% endif %}
-            </div>
 
             {# Wallclock Exemptions #}
-            <div class="border-top mt-2 pt-2 px-3 pb-1 d-flex align-items-center justify-content-between">
-                <div class="d-flex align-items-center">
-                    <i class="fa-solid fa-clock me-2 text-muted"></i>
-                    <span class="fw-semibold">Wallclock Exemptions</span>
-                    <span class="text-muted small ms-2">
-                        per-user overrides of queue wallclock limits
-                    </span>
-                </div>
+            <div class="section-heading d-flex flex-wrap align-items-center gap-2 border-top mt-3 px-3 py-2">
+                <i class="fa-solid fa-clock text-muted"></i>
+                <span class="fw-semibold">Wallclock exemptions{{ group_count(exemptions|length) }}</span>
+                <span class="text-muted small me-auto">per-user overrides of a queue's wallclock limit</span>
                 {% if has_permission(Permission.EDIT_USERS) %}
-                <button type="button" class="btn btn-primary"
+                <button type="button" class="btn btn-sm btn-primary"
                         data-bs-toggle="modal"
                         data-bs-target="#addExemptionModal"
                         hx-get="{{ url_for('admin_dashboard.htmx_admin_exemption_form') }}"
                         hx-target="#addExemptionFormContainer"
                         hx-trigger="click">
-                    <i class="fa-solid fa-plus"></i> New
+                    <i class="fa-solid fa-plus me-1"></i>Exemption
                 </button>
                 {% endif %}
             </div>
             <div class="table-responsive">
-                <table class="table table-sm mb-0">
+                <table class="table table-sm align-middle mb-0">
                     <thead class="table-subtle">
                         <tr>
-                            <th>Queue</th>
-                            <th>User</th>
-                            <th>Limit (hrs)</th>
-                            <th>Start</th>
-                            <th>End</th>
+                            <th class="col-shrink">Queue</th>
+                            <th class="col-shrink">User</th>
+                            <th class="col-num">Limit</th>
+                            <th class="col-shrink">Start</th>
+                            <th class="col-shrink">End</th>
                             <th>Comment</th>
-                            <th class="text-end">Actions</th>
+                            <th class="col-shrink text-end">Actions</th>
                         </tr>
                     </thead>
                     {% if exemptions %}
@@ -469,35 +440,30 @@
                       {% endif %}
                     {% endfor %}
                     {% for rid, group in ex_by_resource.items() %}
-                    {# Resource row (clickable trigger) #}
                     <tbody>
                         <tr class="cursor-pointer table-subtle fw-semibold"
-                            data-bs-toggle="collapse"
-                            data-bs-target="#exemption-res-{{ rid }}"
-                            aria-expanded="false">
-                            <td>
-                                <i class="fa-solid fa-chevron-right small text-muted me-1 exemption-res-collapse-icon"
-                                   style="transition: transform 0.2s;"></i>
+                            {{ collapse_toggle('exemption-res-' ~ rid) }}>
+                            <td colspan="7">
+                                <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
                                 {{ group['resource'].resource_name }}
-                            </td>
-                            <td class="text-muted small" colspan="6">
-                                {{ group['rows']|length }} exemption{{ 's' if group['rows']|length != 1 else '' }}
+                                {{- group_count(group['rows']|length, title='Exemptions on this resource') }}
                             </td>
                         </tr>
                     </tbody>
-                    {# Exemption child rows (collapsed by default) #}
                     <tbody class="collapse" id="exemption-res-{{ rid }}">
                         {% for e in group['rows'] %}
-                        <tr class="table-secondary{% if not e.is_active %} opacity-50{% endif %}">
-                            <td class="ps-4">{{ e.queue.queue_name }}</td>
-                            <td>
+                        <tr class="{{ 'row-inactive' if not e.is_active }}">
+                            <td class="cell-child"><code class="text-reset">{{ e.queue.queue_name }}</code></td>
+                            <td class="text-nowrap">
                                 {{ contract_user_link(e.user, can_view_users) }}
+                                {%- if not e.is_active %}{{ state_tag('ended') }}{% endif %}
                             </td>
-                            <td>{{ e.time_limit_hours | fmt_number }}</td>
-                            <td class="text-nowrap small">{{ e.start_date | fmt_date }}</td>
-                            <td class="text-nowrap small">{{ e.end_date | fmt_date }}</td>
-                            <td class="small text-muted">{{ e.comment or '—' }}</td>
+                            <td class="col-num">{{ e.time_limit_hours | fmt_number }} h</td>
+                            <td class="col-shrink small">{{ e.start_date | fmt_date }}</td>
+                            <td class="col-shrink small">{{ e.end_date | fmt_date }}</td>
+                            <td class="cell-truncate small text-muted" title="{{ e.comment or '' }}">{{ e.comment or '—' }}</td>
                             <td class="text-end text-nowrap">
+                                <span class="row-actions">
                                 {{ edit_modal_button(
                                     url_for('admin_dashboard.htmx_edit_exemption_form', exemption_id=e.wallclock_exemption_id),
                                     modal_id='editExemptionModal',
@@ -505,18 +471,19 @@
                                     title='Edit exemption',
                                     permission=Permission.EDIT_USERS) }}
                                 {% if has_permission(Permission.EDIT_USERS) and e.is_active %}
-                                <button class="btn btn-sm btn-outline-warning ms-1"
-                                        title="Deactivate exemption"
+                                <button type="button" class="btn btn-row btn-row-danger"
+                                        title="End exemption"
+                                        aria-label="End exemption"
                                         hx-post="{{ url_for('admin_dashboard.htmx_deactivate_exemption', exemption_id=e.wallclock_exemption_id) }}"
                                         hx-swap="none"
-                                        hx-confirm="Deactivate wallclock exemption for {{ e.user.display_name }} on queue {{ e.queue.queue_name }}? This sets the end date to today."
-                                        data-confirm-title="Deactivate exemption"
+                                        hx-confirm="End the wallclock exemption for {{ e.user.display_name }} on queue {{ e.queue.queue_name }}? This sets the end date to today."
+                                        data-confirm-title="End exemption"
                                         data-confirm-variant="warning"
-                                        data-confirm-label="Deactivate"
-                                        data-stop-propagation>
-                                    <i class="fa-solid fa-ban"></i>
+                                        data-confirm-label="End exemption">
+                                    <i class="fa-solid fa-ban" aria-hidden="true"></i>
                                 </button>
                                 {% endif %}
+                                </span>
                             </td>
                         </tr>
                         {% endfor %}
@@ -529,13 +496,10 @@
                     {% endif %}
                 </table>
             </div>
-            <div class="text-muted small px-3 py-2">
-                Showing {{ exemptions|length }} exemption{{ 's' if exemptions|length != 1 else '' }}
-            </div>
         </div>
 
     </div>{# tab-content #}
 </div>{# card-body #}
 
-{# Behavior (table sorting, collapse chevrons) lives in
-   static/js/admin-cards.js, initialized per swap via htmx.onLoad. #}
+{# Behavior (table sorting) lives in static/js/admin-cards.js, initialized per
+   swap via htmx.onLoad; chevrons rotate off aria-expanded in components.css. #}

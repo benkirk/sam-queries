@@ -860,7 +860,7 @@ parsing. `test_task_ledger.py` AST-walks the package.
 
 ## Charts — `webapp/dashboards/charts/`
 
-16 matplotlib charts, server-rendered to **inline SVG** (no PNG/base64/dpi
+17 matplotlib charts, server-rendered to **inline SVG** (no PNG/base64/dpi
 anywhere). Each is a `BaseChart` subclass bound to its cache by `chart_view`.
 
 ```

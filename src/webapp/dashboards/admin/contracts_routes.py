@@ -36,7 +36,7 @@ from webapp.utils.htmx import (
     read_active_only,
     register_typeahead,
 )
-from webapp.extensions import db, cache, user_aware_cache_key
+from webapp.extensions import db, cache, fresh_requested, user_aware_cache_key
 from webapp.utils.rbac import (
     has_permission_any_facility,
     require_permission, require_permission_any_facility, Permission,
@@ -267,7 +267,7 @@ def _contract_create_context(form=None, **extra):
 @bp.route('/htmx/contracts-table')
 @login_required
 @require_permission_any_facility(Permission.VIEW_CONTRACTS)
-@cache.cached(make_cache_key=user_aware_cache_key)
+@cache.cached(make_cache_key=user_aware_cache_key, forced_update=fresh_requested)
 def htmx_contracts_table():
     """The All Contracts table on /admin/contracts, grouped by funding source.
 

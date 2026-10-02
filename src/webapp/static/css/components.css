@@ -368,3 +368,234 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
 .notify-preview-text-tall {
     max-height: 32rem;
 }
+
+/* ===================================================================
+   Data tables: column roles and the row-action strip
+   Every column but one is .col-shrink, so the .cell-truncate column
+   takes the slack. Design record: docs/plans/ADMIN_TABLE_POLISH.md.
+   =================================================================== */
+.table .col-shrink,
+.table .col-num {
+    width: 1%;
+    white-space: nowrap;
+}
+
+.table .col-num {
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+}
+
+/* A child row under a group header: its text lines up with the group label. */
+.table td.cell-child {
+    padding-left: 1.85rem;
+}
+
+.table .col-chevron {
+    width: 1.5rem;
+    padding-right: 0;
+}
+
+/* text-overflow needs max-width:0 on an auto-layout table cell. */
+.table .cell-truncate {
+    max-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.row-actions {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    gap: 0.125rem;
+    vertical-align: middle;
+}
+
+/* Icon-only row action: muted until the row is hovered or the button focused. */
+.btn.btn-row {
+    --bs-btn-border-width: 1px;
+    --bs-btn-color: var(--text-secondary);
+    --bs-btn-bg: transparent;
+    --bs-btn-border-color: transparent;
+    --bs-btn-hover-color: var(--text-link);
+    --bs-btn-hover-bg: rgba(var(--ncar-blue-rgb), 0.08);
+    --bs-btn-hover-border-color: rgba(var(--ncar-blue-rgb), 0.35);
+    --bs-btn-active-color: var(--text-link);
+    --bs-btn-active-bg: rgba(var(--ncar-blue-rgb), 0.16);
+    --bs-btn-active-border-color: rgba(var(--ncar-blue-rgb), 0.5);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    height: 1.75rem;
+    padding: 0 0.35rem;
+    font-size: 0.875rem;
+    line-height: 1;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+tr:hover > td .btn.btn-row,
+.btn.btn-row:focus-visible {
+    --bs-btn-color: var(--text-link);
+}
+
+.btn.btn-row-danger {
+    --bs-btn-hover-color: var(--danger-color);
+    --bs-btn-hover-bg: color-mix(in srgb, var(--danger-color) 10%, transparent);
+    --bs-btn-hover-border-color: color-mix(in srgb, var(--danger-color) 40%, transparent);
+    --bs-btn-active-color: var(--danger-color);
+    --bs-btn-active-bg: color-mix(in srgb, var(--danger-color) 18%, transparent);
+    --bs-btn-active-border-color: var(--danger-color);
+}
+
+tr:hover > td .btn.btn-row-danger {
+    --bs-btn-color: var(--danger-color);
+}
+
+/* The verb this row is waiting on keeps its color at rest. */
+.btn.btn-row-primary {
+    --bs-btn-color: var(--text-link);
+}
+
+.btn.btn-row-attention,
+tr:hover > td .btn.btn-row-attention {
+    --bs-btn-color: var(--bs-warning-text-emphasis);
+    --bs-btn-hover-color: var(--bs-warning-text-emphasis);
+    --bs-btn-hover-bg: var(--bs-warning-bg-subtle);
+    --bs-btn-hover-border-color: var(--bs-warning-border-subtle);
+    --bs-btn-active-color: var(--bs-warning-text-emphasis);
+    --bs-btn-active-bg: var(--bs-warning-bg-subtle);
+    --bs-btn-active-border-color: var(--bs-warning-text-emphasis);
+}
+
+.btn.btn-row-success {
+    --bs-btn-color: var(--bs-success-text-emphasis);
+    --bs-btn-hover-color: var(--bs-success-text-emphasis);
+    --bs-btn-hover-bg: var(--bs-success-bg-subtle);
+    --bs-btn-hover-border-color: var(--bs-success-border-subtle);
+}
+
+/* A retired row reads muted and says why in a .state-tag; opacity would
+   also fade its badges and action buttons. */
+.table tr.row-inactive > td {
+    color: var(--text-secondary);
+}
+
+.badge.state-tag {
+    background-color: var(--surface-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-default);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    padding: 0.15rem 0.4rem;
+    letter-spacing: 0.02em;
+    vertical-align: 0.1em;
+}
+
+.pane-toolbar {
+    border-bottom: 1px solid var(--border-default);
+}
+
+
+/* Admin organization tree: indentation per depth, set inline as --depth. */
+.org-tree-cell {
+    padding-left: calc(var(--depth, 0) * 1.4rem + 0.4rem) !important;
+}
+.org-tree-chevron {
+    transition: transform 0.15s ease;
+}
+.tree-leaf-dot {
+    font-size: 0.35em;
+    color: var(--text-tertiary);
+    vertical-align: middle;
+}
+.inst-expand-icon {
+    transition: transform 0.2s ease;
+}
+.chip-row-label {
+    display: inline-block;
+    min-width: 4.5rem;
+    margin-right: 0.5rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+/* Inline ellipsis for a value in a shrink column; the cell carries title=. */
+.text-clip {
+    display: inline-block;
+    max-width: 12rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+.badge.count-badge {
+    padding: 0.2rem 0.45rem;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Tree rows in one table: --depth indents the name cell, and each ancestor
+   level draws a guide line, continuous across contiguous rows. */
+.table td.tree-cell {
+    --tree-step: 1.4rem;
+    padding-left: calc(var(--depth, 0) * var(--tree-step) + 0.5rem);
+    background-repeat: no-repeat;
+}
+.table td.tree-cell.tree-d1 {
+    background-image: linear-gradient(var(--border-default), var(--border-default));
+    background-size: 1px 100%;
+    background-position: 0.95rem 0;
+}
+.table td.tree-cell.tree-d2 {
+    background-image: linear-gradient(var(--border-default), var(--border-default)),
+                      linear-gradient(var(--border-default), var(--border-default));
+    background-size: 1px 100%, 1px 100%;
+    background-position: 0.95rem 0, calc(0.95rem + var(--tree-step)) 0;
+}
+
+/* A share of a parent: a thin bar beside the number, which stays the text. */
+.share {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+.share-bar {
+    --share-color: var(--fs-color, var(--text-link));
+    flex: none;
+    width: 3.5rem;
+    height: 0.375rem;
+    border-radius: 0.1875rem;
+    background:
+        linear-gradient(var(--share-color), var(--share-color)) left / max(var(--share, 0%), 2px) 100% no-repeat,
+        var(--surface-secondary);
+}
+/* A child's share: its facility's hue, tinted toward the card. */
+.share-bar.share-tint {
+    --share-color: color-mix(in srgb, var(--fs-color, var(--text-link)) 55%, var(--surface-card));
+}
+.share-bar.share-zero {
+    background: var(--surface-secondary);
+}
+[data-fs="1"] { --fs-color: var(--data-facility-1); }
+[data-fs="2"] { --fs-color: var(--data-facility-2); }
+[data-fs="3"] { --fs-color: var(--data-facility-3); }
+[data-fs="4"] { --fs-color: var(--data-facility-4); }
+[data-fs="5"] { --fs-color: var(--data-facility-5); }
+[data-fs="6"] { --fs-color: var(--data-facility-6); }
+
+/* Collapsible <tr>s snap rather than animate a row height. */
+tr.collapse,
+tr.collapsing {
+    transition: none !important;
+}
+
+/* The fair-share sunburst above the Facilities tree. */
+.fair-share-chart svg {
+    display: block;
+    width: 100%;
+    max-width: 44rem;
+    height: auto;
+    margin: 0 auto;
+}

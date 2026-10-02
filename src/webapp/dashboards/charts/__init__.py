@@ -62,6 +62,7 @@ from webapp.dashboards.charts.pie import (  # noqa: F401
     AllocationTypePie,
     DiskEntityPie,
     FacilityPie,
+    FairShareSunburst,
     JobsUsagePie,
     PieChart,
     UserUsagePie,
@@ -114,7 +115,7 @@ def _user_modal_url(username: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# The 15 cached charts.
+# The 16 cached charts.
 #
 # ORDER IS LOAD-BEARING: `chart_cached` appends to the cache registry at
 # decoration time, so this is the order rows appear on the admin Caching card.
@@ -147,6 +148,9 @@ generate_jobs_usage_pie_chart = chart_view(JobsUsagePie)
 
 # 6. Allocation pace chart.  charts/pace.py
 generate_pace_chart_matplotlib = chart_view(PaceChart)
+
+# 7. Fair-share sunburst (admin Facilities card).  charts/pie.py
+generate_fair_share_sunburst = chart_view(FairShareSunburst)
 
 
 def generate_jobs_user_pie_chart(entity_data, metric='cpu_hours', *,
@@ -205,6 +209,7 @@ __all__ = [
     'generate_jobs_usage_pie_chart',
     'generate_jobs_user_pie_chart',
     'generate_pace_chart_matplotlib',
+    'generate_fair_share_sunburst',
     'PACE_WINDOW_DAYS',
     # The hierarchy, for anyone subclassing.
     'BaseChart',
