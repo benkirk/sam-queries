@@ -507,20 +507,33 @@ what is retired or retiring.
   production cron downloads the tree is Ben's statement (2026-10-01), not something in a repo.
 - **Further reading:** `docs/plans/LDAP_SYNC_API.md` Appendix A has the fuller zoo survey.
 
-### Appendix B — Two Dialects (the APIs; placeholder, 2026-10-01)
+### Appendix B — Two Dialects (the APIs; drafted 2026-10-02)
 
-Ben's ask: the API details, and the nuance of the "old" and "new" best practices.
-- **Old dialect:** match legacy. The five frozen blueprints build camelCase by hand.
-  Byte-identical was the porting proof; now an explainable difference is acceptable.
-- **New dialect:** Marshmallow output with `data_key` (`disk_quota` is the reference), ORM by
-  default (`queue_access`). Raw SQL needs a measured cost, split-and-assemble and a `make perf`
-  benchmark (`directory_access`). Deep trees stay hand-built.
-- **Sources:**
-  - CLAUDE.md § API "Output shaping";
-  - `docs/apis/SYSTEMS_INTEGRATION_APIs.md`;
-  - Part 4's "Four API families".
-- **To do:** route inventory and callers per family; a side-by-side of one hand-built dict and
-  one schema.
+Ben's ask: 8–10 slides with code, for API consumers and future SAMuel developers, including
+cache refreshing. The growth pitch is for HSG and groups like it, tied to old endpoints or
+wanting more but not yet asking.
+
+- **Slides (`_B-apis.qmd`, 12 with title and section):**
+  - One front door;
+  - The old dialect: no client change;
+  - Hand-built, on purpose (the `queue_access.py` dict);
+  - Proving it (the parity harness, 590 of 590, the phone `MIN()`);
+  - The bridge: legacy shape, schema inside (`DiskQuotaSchema`, `data_key`);
+  - The new dialect (the projects list route and its JSON envelope);
+  - Writes follow the web app's rules (`HTMX_API_READINESS.md`: about 87 of 160 writes are
+    cheap, 5 have API twins);
+  - Cached, and how to refresh (5 minutes in Redis, `POST …/refresh`, `sam-admin cache
+    --refresh`);
+  - Need more? Ask;
+  - TL;DR.
+- **Facts:**
+  - 72 routes on 15 blueprints (core 39, legacy shapes 21, fairshare 1, XRAS 11);
+  - keys held per route under `RBAC_SOURCE=db`;
+  - `RATELIMIT_M2M` 120 per minute;
+  - `CACHE_DEFAULT_TIMEOUT` 300, Redis in production;
+  - `fsparsetree_mr` refreshes `fstree_access` before it reads.
+- **Code is trimmed:** the `DiskQuotaSchema` snippet drops `allow_none=True`, and the projects
+  route shows only its last lines.
 
 ### Appendix C — Keeping It Snappy (performance; placeholder, 2026-10-01)
 
@@ -948,6 +961,11 @@ an update here (tick boxes, session log).
   (Ben), so "Four databases, two engines" footnotes 58 GB of `sam`'s 60 GB as legacy-only.
   SAMuel models the table but never writes it.
 
+- **2026-10-02, Appendix B drafted.** The placeholder became 12 slides (see §4), from two
+  read-only surveys of the API. `make qa DECKS="B-apis samuel"` passes.
+  - **Trap:** pptx moves anything after a `.columns` block to a new slide. Put the bullets
+    inside the columns.
+
 ## 11. Voice, tone and the fun
 
 **SAMuel = SAM, updated for extended lifecycle.** That backronym is the deck's premise and its
@@ -1164,6 +1182,15 @@ puts the paragraph on the beamer section page; it is a framework `main` follow-u
 A running list. Deck work surfaces these, but none belongs on this branch. Each gets its own
 branch and PR against `staging`. Tick an item once its fix merges, and note the PR.
 
+- [ ] **The new API dialect isn't uniform yet** (found 2026-10-02, Appendix B).
+  - There is no shared pagination helper; only projects and users page.
+  - `users.py` `list_users`: `total` is the count on the current page, and `?search=` skips
+    pagination.
+  - `projects.py` `list_projects`: the `?facility=` path skips pagination, and `?active=` uses
+    a raw `Project.active ==` comparison (CLAUDE.md §5).
+  - There is no OpenAPI.
+  - `HTMX_API_READINESS.md:180` still says keys skip the permission check, which is false
+    under `RBAC_SOURCE=db`.
 - [ ] **Mobile gauge collapse.** On Resource Usage Details at phone width, the Rolling
   Consumption Rate gauge collapses to a sliver, and its axis labels overlap ("200%0%").
   Template: `src/webapp/templates/dashboards/user/fragments/rolling_rate_htmx.html`. Found
