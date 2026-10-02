@@ -12,7 +12,7 @@ disagree, SAMuel changes. So every row below ends in a SAMuel-side verdict, not 
 |---|---|---|---|---|
 | 1 | Renew supersede, `src/sam/manage/renew.py:175` | `allocation` (**soft** delete) | **Live.** 79 rows on prod that legacy still serves as current | **Change** (low-hanging): collapse the dead row's window + repair |
 | 2 | Disk-root delete, `resources.py:443` / `resources_routes.py:778-791` | `disk_resource_root_directory` | Legacy disk engine: absent = ingest error / re-map; inactive = exempt | **Changed** — route and `delete()` removed; the active toggle is the retire path |
-| 3 | Disk re-import, `src/cli/accounting/commands.py:928-938, 1192-1197` | `disk_charge_summary`, `disk_charge`, `disk_activity` | None from the delete; coexistence risk closed on prod (no triggers) | **Keep**; 2026-06-06 left legacy-shaped |
+| 3 | Disk re-import, `src/cli/accounting/commands.py:928-938, 1192-1197` | `disk_charge_summary`, `disk_charge`, `disk_activity` | The delete is legacy-native; legacy's triggers flip the date dirty and its recompute rewrites the day | **Changed**: re-stamp `current` after writes; 2026-06-06 re-imported |
 | 4 | Contract unlink, `projects_routes.py:2995` | `project_contract` | Same as legacy's own unlink | **Keep** |
 | 5 | Never-started membership, `src/sam/manage/__init__.py:142` | `account_user` | None in any systems output | **Keep** |
 | 6 | `account_request`, `samuel_role_permission`, `account_allocation_state`, `notification_*` | SAMuel-only | None | **Keep** |
@@ -121,7 +121,7 @@ ingest still runs (§3 says its Quartz job is still scheduled).
 `toggle-active` already gives legacy the `active=0` it honors. The `DELETE_RESOURCES` routes that
 remain are all soft retires (resource/machine decommission date, queue end date, fair-share Unset).
 
-### 3. Disk accounting re-import (KEEP)
+### 3. Disk accounting re-import (CHANGE)
 
 **SAMuel.** `sam-admin accounting --disk` (cron `scripts/cron/accounting/disk/run_ncar_accounting.sh`)
 deletes the `(snap_date, resource)` slice of `disk_charge` → `disk_activity` and the day's
@@ -145,18 +145,29 @@ deletes the `(snap_date, resource)` slice of `disk_charge` → `disk_activity` a
 - SAMuel writes unresolved tier-1 rows with `processing_status=0` (`commands.py:1233`); legacy's manual
   `PUT /protected/admin/dasg/repair/{days}` picks up `!= 1` and would charge them with legacy's formula.
 
-**Prod read-only checks (2026-10-02):**
-- `information_schema.TRIGGERS`: **zero triggers in the `sam` schema** — legacy's V4 migration never
-  reached prod, so SAMuel's `disk_charge` writes cannot flip a date to `current=FALSE`.
-- `disk_charge_summary_status WHERE current = 0`: **none**.
-- Legacy-shaped summary days since 2026-05-01: **only 2026-06-06** (2,405 rows), same as the snapshot.
-  It predates the stamp-first ordering in `commands.py:878-892` (#301, 2026-06-12, which exists for
-  the status FK); legacy's Quartz recompute evidently caught that date while it was not current.
+**Prod (2026-10-02).** The triggers are live. `information_schema.TRIGGERS` is empty for
+`hpc-reader`, but only because MySQL hides triggers from a user without the `TRIGGER` privilege, so
+that check proves nothing. The proof: Ben re-imported 2026-06-06 (Campaign_Store,
+`acct.glade.2026-06-06`) at 14:33 MDT, and the date went from `current=1` to `current=0`. The cause
+was SAMuel's own deletes and inserts on `disk_charge`, made after its up-front stamp. Ben reset the
+flag by hand at 14:45, before legacy's 16:00 recompute.
 
-So the coexistence risk is closed for new imports. Left over: 2026-06-06 on prod carries legacy's
-totals (~3.5% above SAMuel's). Re-running `sam-admin accounting --disk` for that date would restore
-SAMuel's — a prod write, Ben's call. `processing_status=0` rows remain reachable by legacy's manual
-`PUT /protected/admin/dasg/repair/{days}` only.
+| 2026-06-06 Campaign_Store | before | after re-import |
+|---|---|---|
+| Summary rows / legacy-shaped | 2,405 / 2,405 | 2,389 / 0 |
+| Summary TB-years | 2,240.07 | 2,126.95 (neighbors 2,143.58, 2,126.24) |
+
+That 2,240.07 equals the day's `SUM(disk_charge.terabyte_year)` exactly, which is legacy's recompute
+formula. SAMuel's summaries sit about 5% under the tier-2 sum every week; see the open items.
+
+Why weekly imports do not end at `current=0` is not explained. The same insert trigger should fire
+on them, yet the last six weeks are `current=1` and SAMuel-shaped. Only a re-run, with its deletes,
+has been seen to trip it. A DBA can settle it with `SHOW TRIGGERS LIKE 'disk_charge'`.
+
+**Change (done).** `sam-admin accounting --disk` re-stamps `current=TRUE` after all its writes
+(step 9). The up-front stamp stays, because the summary rows have an FK to the status row.
+`processing_status=0` rows remain reachable only through legacy's manual
+`PUT /protected/admin/dasg/repair/{days}`.
 
 ### 4. `project_contract` unlink (KEEP)
 
@@ -203,6 +214,12 @@ No SAMuel code removes a child from any of the 17, deletes a cascading parent, o
 
 ## Open items (not part of the fix)
 
+Disk tier-2 vs tier-3 gap (cursory, 2026-06-13): only 6 of 510 Campaign_Store accounts differ, and
+CESM0002 is 110 of the 113 TB-years (378 per-directory vs 268 summary). NCGD0006/0009/0036 and
+P06010014 move a few TB-years each in both directions. So this is routing, with no arithmetic error:
+per-directory charges follow the directory's project, while summaries follow the file's projcode
+label. Accepted unless CESM0002's numbers matter.
+
 From the handoff, unchanged: `HPC_Futures_Lab` membership gap, `allocationAmount` truncate-vs-round,
 Cheyenne shares summing to 100.95.
 
@@ -215,8 +232,11 @@ Cheyenne shares summing to 100.95.
    79 audit rows). **Captured, not applied** (Ben, 2026-10-02): legacy reporting is being retired
    fast enough that the 79 rows may simply be accepted. The code change stops new ones either way.
 3. §2: disk-root hard-delete route and method removed; route-map snapshot regenerated.
+4. §3: the disk import re-stamps `current=TRUE` after its writes
+   (`tests/unit/cli/test_accounting_disk_admin.py::...after_legacy_triggers`). 2026-06-06 re-imported
+   on prod.
 
-**Ben's call, no code:** re-import 2026-06-06 disk (§3); reactivate NCGD0071-73 Data_Access as
+**Ben's call, no code:** reactivate NCGD0071-73 Data_Access as
 truncated rows (§1), as `reconcile_fy27_renew_gap.sql` did for NCGD0073 Casper.
 
 **Not audited:** soft retires that set a flag legacy may not honor. Generated CRUD sets
