@@ -40,6 +40,11 @@
         </button>
         {% endif %}
     {% endcall %}
+    {% if fair_share_chart %}
+    <figure class="fair-share-chart px-3 pt-2 mb-0" aria-label="Fair share by facility and allocation type">
+        {{ fair_share_chart | safe }}
+    </figure>
+    {% endif %}
     <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
             <thead class="table-subtle">

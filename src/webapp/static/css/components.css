@@ -590,3 +590,11 @@ tr.collapse,
 tr.collapsing {
     transition: none !important;
 }
+
+/* The fair-share sunburst above the Facilities tree. */
+.fair-share-chart svg {
+    display: block;
+    width: 100%;
+    max-width: 34rem;
+    height: auto;
+}

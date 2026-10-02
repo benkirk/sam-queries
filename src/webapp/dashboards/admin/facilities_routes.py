@@ -19,8 +19,11 @@ from webapp.utils.htmx import (
     htmx_success_message,
     modal_triggers,
     read_active_only,
+    read_layout,
+    read_theme,
 )
 from webapp.extensions import db
+from webapp.dashboards.charts import generate_fair_share_sunburst
 from webapp.dashboards.charts.theme import facility_slots
 from webapp.utils.rbac import (
     require_permission, require_permission_any_facility, Permission,
@@ -63,12 +66,23 @@ def htmx_facilities_card():
     if active_only:
         facility_q = facility_q.filter(Facility.is_active)
     facilities = facility_q.all()
+    active = _active_facilities()
+    slots = facility_slots(f.facility_id for f in active)
+    sunburst = [
+        {'facility': f.facility_name, 'slot': slots.get(f.facility_id),
+         'share': f.fair_share_percentage or 0,
+         'types': [{'name': at.allocation_type, 'share': at.fair_share_percentage or 0}
+                   for p in f.panels for at in p.allocation_types if at.active]}
+        for f in active
+    ]
 
     return render_template(
         'dashboards/admin/fragments/facility_card.html',
         facilities=facilities,
         active_only=active_only,
-        fs_slots=facility_slots(f.facility_id for f in _active_facilities()),
+        fs_slots=slots,
+        fair_share_chart=generate_fair_share_sunburst(
+            sunburst, layout=read_layout(), theme=read_theme()),
     )
 
 
