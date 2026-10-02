@@ -273,7 +273,7 @@
                         {% for m in machines %}
                         {% set m_type = m.resource.resource_type.resource_type if m.resource and m.resource.resource_type else '' %}
                         <tr class="{{ 'row-inactive' if not m.is_active }}">
-                            <td class="fw-semibold" data-sort-value="{{ m.name }}">
+                            <td class="fw-semibold text-nowrap" data-sort-value="{{ m.name }}">
                                 {{- m.name }}
                                 {%- if not m.is_active %}{{ state_tag('decommissioned') }}{% endif %}
                             </td>

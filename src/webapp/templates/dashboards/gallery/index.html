@@ -33,6 +33,7 @@
 {% import 'dashboards/fragments/user_rows.html' as user_rows with context %}
 {% import 'dashboards/fragments/contract_bits.html' as contract_bits with context %}
 {% import 'dashboards/fragments/action_buttons.html' as action_buttons with context %}
+{% import 'dashboards/fragments/table_bits.html' as table_bits %}
 
 {# Card chrome shared by every specimen. #}
 {% macro specimen(title, note='') %}
@@ -208,6 +209,50 @@
       <thead>{{ user_rows.user_table_head() }}</thead>
       <tbody>{{ user_rows.render_user_rows(sample_users, can_view_users=False) }}</tbody>
     </table>
+  {% endcall %}
+  {% call specimen('table_bits + .col-* / .btn-row', 'admin data table: shrink columns, one truncating column, group count, retired row, row actions') %}
+    {% call table_bits.pane_toolbar('2 types, 3 resources') %}
+      <button type="button" class="btn btn-sm btn-primary"><i class="fa-solid fa-plus me-1"></i>Resource</button>
+    {% endcall %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-subtle"><tr>
+          <th class="col-shrink">Name</th><th>Description</th>
+          <th class="col-num">Cores</th><th class="col-shrink text-end">Actions</th>
+        </tr></thead>
+        <tbody>
+          <tr class="table-subtle fw-semibold">
+            <td colspan="3" class="cursor-pointer" {{ collapse.collapse_toggle('gallery-table-group', expanded=true) }}>
+              <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>HPC{{ table_bits.group_count(3) }}
+            </td>
+            <td class="text-end text-nowrap"><span class="row-actions">
+              <button type="button" class="btn btn-row" title="Edit type" aria-label="Edit type"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
+              <button type="button" class="btn btn-row btn-row-danger" title="Deactivate type" aria-label="Deactivate type"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
+            </span></td>
+          </tr>
+        </tbody>
+        <tbody class="collapse show" id="gallery-table-group">
+          <tr>
+            <td class="cell-child fw-semibold text-nowrap">Derecho</td>
+            <td class="cell-truncate small text-muted" title="A long description that ellipsizes rather than wrapping the row onto a second line, with the full text kept in the title attribute">A long description that ellipsizes rather than wrapping the row onto a second line, with the full text kept in the title attribute</td>
+            <td class="col-num">{{ 323712 | fmt_number }}</td>
+            <td class="text-end text-nowrap"><span class="row-actions">
+              <button type="button" class="btn btn-row btn-row-primary" title="Claim" aria-label="Claim"><i class="fa-solid fa-hand" aria-hidden="true"></i></button>
+              <button type="button" class="btn btn-row btn-row-attention" title="Mark verified" aria-label="Mark verified"><i class="fa-solid fa-envelope-circle-check" aria-hidden="true"></i></button>
+              <button type="button" class="btn btn-row btn-row-success" title="Activate" aria-label="Activate"><i class="fa-solid fa-circle-check" aria-hidden="true"></i></button>
+            </span></td>
+          </tr>
+          <tr class="row-inactive">
+            <td class="cell-child fw-semibold text-nowrap">Cheyenne{{ table_bits.state_tag('decommissioned', title='Decommissioned 2024-01-31') }}</td>
+            <td class="cell-truncate small text-muted">—</td>
+            <td class="col-num">{{ 145152 | fmt_number }}</td>
+            <td class="text-end text-nowrap"><span class="row-actions">
+              <button type="button" class="btn btn-row" title="Edit resource" aria-label="Edit resource"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
+            </span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   {% endcall %}
   {% call specimen('pagination.pagination', 'windowed page nav') %}
     {{ pagination.pagination(pagination_page, pagination_total, fragment_url, target_id, form_id, sort) }}

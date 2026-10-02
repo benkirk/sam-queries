@@ -1,6 +1,6 @@
 # Admin table polish — Resources, Organizations, Contracts, Facilities
 
-**Status: in progress** · branch `admin-table-polish` (from `origin/staging`)
+**Status: implemented, awaiting review** · branch `admin-table-polish` (from `origin/staging`)
 
 ## Why
 
@@ -47,40 +47,36 @@ The fill column is whatever is left: every other column is `col-shrink`, so a
 ## Progress
 
 - [x] 0. Seed the local dev DB (scratch script, not committed): 3 events, 7 account
-      requests, enrollments — so the reference tables have rows to measure.
-- [ ] 1. CSS vocabulary + `action_buttons` macros emit `.btn-row` + `aria-label`;
-      `/dev/gallery` specimen of a polished admin table.
-- [ ] 2. Resources page (resource types/resources, fair-share, disk roots, machines,
-      queues, wallclock exemptions).
-- [ ] 3. Organizations page (org tree, institutions, areas, NSF programs; drop the
-      doubled "Organizations" heading).
-- [ ] 4. Contracts page (status badge for expired, column tidy).
-- [ ] 5. Facilities page (facilities/panels, allocation types).
-- [ ] 6. Bugs found on the way:
-      - saving from a non-default tab reloads into the first tab (`_reloadAdminCard`
-        drops `tab`, `static/js/htmx-config.js`);
-      - deleting a group row leaves its child `<tbody>` orphaned (empty swap of
-        `closest tr`);
-      - org empty-state `colspan="4"` on a 5-column table.
-- [ ] 7. Tooling:
-      - rendered-HTML gate over every admin card/tab: colspan == header width,
-        icon-only buttons carry `aria-label`, tables are `align-middle`;
-      - e2e `test_admin_table_density.py`: row-height budget, action strip on one
-        line, tab survives a save;
-      - `scripts/ui_snapshots.py`: pages × layouts × themes screenshots for
-        before/after review (the middle ground in `GALLERY_VISUAL_SNAPSHOTS.md`).
-- [ ] 8. Apply `.btn-row` to the reference cards' action strips (Accounts, Events,
-      Invitations, XRAS) so both generations match — separate commit, droppable.
-- [ ] 9. Skill + docs: `wire-dashboard-feature` §7 names the vocabulary; §12 lists
-      the new gate.
+      requests, enrollments, so the reference tables have rows to measure.
+- [x] 1. CSS vocabulary + `action_buttons` macros emit `.btn-row` + `aria-label`.
+- [x] 2–5. Resources, Organizations (doubled heading dropped), Contracts (status
+      badge for expired, loading placeholder), Facilities. Rows 56 px -> 45 px.
+- [x] 6. Bugs: the sub-tab survives a save (`_reloadAdminCard` sends `tab`);
+      grouped deletes reload the card (`reload_event`); org empty-state colspan.
+      Found on the way: with `tab` in the reload URL the post-save request hits
+      the page-load cache key exactly, so the orgs card and contracts table pass
+      `forced_update=fresh_requested` and the reload sends `X-SAM-Fresh`.
+- [x] 7. Tooling: `tests/unit/webapp/test_admin_table_conventions.py` (rendered,
+      mutation-checked), `e2e/test_admin_table_density.py` (48 px budget, strip on
+      one line, tab survives a save), `scripts/ui_snapshots.py`, a `/dev/gallery`
+      specimen.
+- [x] 8. The reference cards' strips (Accounts, Events, Invitations, XRAS
+      Activations and Pending Users) moved to `.btn-row`; meaning kept as color at
+      rest (`-primary`, `-attention`, `-success`, `-danger`).
+- [x] Added in review: `.badge.bg-secondary` joins the muted badge palette, so
+      count badges stop being the loudest thing in a row app-wide (78 uses), and
+      admin.css's larger `.badge` override is gone.
+- [x] 9. Skills: `wire-dashboard-feature` §7 is the vocabulary; `update-vendored-assets`
+      points at the snapshot script.
 
 ## Out of scope (noted, not fixed)
 
 - Panel Sessions have an edit route and form but no listing or modal shell.
 - No server-side search/pagination on these cards (Contracts renders ~2,200 rows
   with Active only off, inside collapsed groups).
-- Stale "four tabs" docstrings in `facilities_routes.py:59`, `resources_routes.py:69`
-  are fixed in passing only if the commit already touches the function.
+- Stale "four tabs" docstrings in `facilities_routes.py:59`, `resources_routes.py:69`.
+- The institutions fragment is cached too, and a post-save card reload lazy-loads
+  it without `X-SAM-Fresh`: an institution edit can still show stale for 300 s.
 
 ## Verification
 
