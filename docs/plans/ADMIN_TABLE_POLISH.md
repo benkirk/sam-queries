@@ -69,6 +69,44 @@ The fill column is whatever is left: every other column is `col-shrink`, so a
 - [x] 9. Skills: `wire-dashboard-feature` §7 is the vocabulary; `update-vendored-assets`
       points at the snapshot script.
 
+## Round 2 (2026-10-02)
+
+- [x] Mnemonics: Reassign is a `.btn-row`; Description/Links split the slack; colspan
+      fixed for reassign-only users.
+- [x] One table per hierarchy: `.tree-cell` + `.tree-d1/.tree-d2` guide lines and
+      `table_bits.share_bar` replace the nested tables on Facilities and the Resources
+      fair-share expander.
+- [x] Facilities: facility -> panel -> type in one column set. Fair share is a share of
+      the parent (fstree: Facility -> AllocationType; a panel shows its types' sum);
+      "Of machine" = facility% x type% / 100. Footer total 100.00%.
+- [x] Two-ring sunburst (`FairShareSunburst`, `generate_fair_share_sunburst`): inner =
+      facilities, outer = their types in the facility's color family. Palette
+      `FAIR_SHARE_LIGHT/DARK` (charts/theme.py) == `--data-facility-1..6`
+      (variables.css), validated with the dataviz `validate_palette.js`; the bars use
+      the same hues, so a facility is one color in chart and tables.
+- [x] Resources: a resource's facility shares are rows of the same table (class-target
+      expander `.res-fs-<id>`), with the sum on the resource row.
+
+### Open question for review
+
+Derecho and Derecho GPU have every facility overridden (1%, ASD 0.95%), so their
+effective shares sum to **5.95%**, not 100% (local snapshot). Every other HPC/DAV
+resource and every facility's types sum to exactly 100%. SAM emits the raw values to
+PBS; if the scheduler weighs siblings relative to each other this is an equal split,
+otherwise it is a data-entry slip. The tables mark it with a neutral info glyph.
+
+### Follow-on: a hover layer for the chart framework
+
+No server-rendered SVG chart has a hover/tooltip layer (the dataviz method defaults to
+one: per-mark tooltips on wedges/bars, a crosshair on line/area). The sunburst shows
+the need: outer wedges under 6% of the machine carry no label. Write
+`docs/plans/CHART_HOVER_LAYER.md` after this PR lands, covering: how per-artist
+metadata rides the SVG (`links.py` already emits per-artist `<a xlink:href>`; a
+`data-*`/`<title>` channel would need a post-render pass over `fig_to_svg` output), CSP
+(no inline script: one static JS file keyed off SVG attributes, initialized per
+`htmx.onLoad`), touch (tap-to-reveal), and cache cost (the attributes live in the
+cached SVG bytes; a format change shows up as a fingerprint delta on every chart).
+
 ## Out of scope (noted, not fixed)
 
 - Panel Sessions have an edit route and form but no listing or modal shell.

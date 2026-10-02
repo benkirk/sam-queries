@@ -145,6 +145,13 @@ The vocabulary lives in `components.css` § Data tables; markup helpers in
   `-success`, `-danger`. NOT a `btn-group` of `btn-outline-secondary`:
   inside a `.btn-group` that class is the toggle-bar idiom and renders solid
   blue. Consequential verbs (Withdraw, Delete, Merge) keep their words.
+- **Hierarchies are one table**, never a nested `<table>` with its own header in
+  a spanning cell: children are rows at `.tree-cell` + `style="--depth: N"`
+  with `.tree-d1`/`.tree-d2` guide lines, in the parent's column set. Several
+  child `<tr>`s in one tbody collapse together via a class target
+  (`data-bs-target=".x-<id>"`). A share of a parent is `table_bits.share_bar`
+  (facility hues via `charts/theme.py` `facility_slots`). Reference:
+  `admin/fragments/facility_card.html`.
 - **Create buttons** go in `pane_toolbar` above the table, `btn-sm`.
 - **Grouped deletes** pass `delete_row_button(reload_event='reloadXCard')` so
   the card re-renders (a group's children live in a sibling `<tbody>`).
