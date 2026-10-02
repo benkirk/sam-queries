@@ -971,16 +971,16 @@ an update here (tick boxes, session log).
   - **Trap:** a bare `<code>` in a speaker note is a real HTML tag in revealjs and swallows the
     slides after it. Backtick every `<placeholder>` in notes; Parts 3 and 5 had three.
 
-- **2026-10-02, framework fixes** (the retrospective's three; framework branch
-  `framework-fixes` `2ac87c8`, theme branch `glyph-fallback` `b5393d7`, both local).
+- **2026-10-02, framework fixes** (the retrospective's three): framework #22 and theme
+  NCAR_beamer_template#9 (v2.6.0), both merged.
   - `docs/common/single-body.lua` wraps a pptx slide's body in one 100% column when content
     follows a table or diagram. Code blocks never split. The deck's 7 hand wrappers came out,
     and the pptx is byte-identical.
   - Theme 2.6.0 borrows ⚠ and arrows from DejaVu Sans. The 4 triangle titles are now plain
     `## ⚠︎ Title`.
   - `deck_qa` fails on a bare `<word>` in the sources, with `file:line`.
-  - `samuel` merged `framework-fixes` (`d7dba41`), then the cleanup (`b8b69fa`). `make qa`
-    passes on all 9 decks.
+  - `samuel` is rebased onto #22, with the cleanup on top (`497acf3`). `make qa` passes on all
+    9 decks.
   - Still a rule: content after a `.columns` block splits pptx; put it inside the columns.
 
 ## 11. Voice, tone and the fun
