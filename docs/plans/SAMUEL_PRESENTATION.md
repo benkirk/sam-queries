@@ -494,6 +494,40 @@ slides plus 5 dividers. The outline below was verified on 2026-09-30 (`886c2f09`
 - **Further reading:** `docs/plans/LDAP_SYNC_API.md` Appendix A has a fuller table of the legacy
   container zoo.
 
+### Appendix B — Two Dialects (the APIs; placeholder, 2026-10-01)
+
+Ben's ask: the API details, and the nuance of the "old" and "new" best practices.
+- **Old dialect:** match legacy. The five frozen blueprints build camelCase by hand.
+  Byte-identical was the porting proof; now an explainable difference is acceptable.
+- **New dialect:** Marshmallow output with `data_key` (`disk_quota` is the reference), ORM by
+  default (`queue_access`). Raw SQL needs a measured cost, split-and-assemble and a `make perf`
+  benchmark (`directory_access`). Deep trees stay hand-built.
+- **Sources:**
+  - CLAUDE.md § API "Output shaping";
+  - `docs/apis/SYSTEMS_INTEGRATION_APIs.md`;
+  - Part 4's "Four API families".
+- **To do:** route inventory and callers per family; a side-by-side of one hand-built dict and
+  one schema.
+
+### Appendix C — Keeping It Snappy (performance; placeholder, 2026-10-01)
+
+- **Measure first:**
+  - request `db=`/`cpu=`/`q=` (#531);
+  - `tests/perf/baselines.json`;
+  - `docs/plans/implemented/PROD_PERF_WATCH.md`.
+- **The read model:** `docs/plans/implemented/READ_MODEL.md`, live (`READ_MODEL_ENABLED=1`,
+  #534/#543/#546), and `FSTREE_LATENCY_INVESTIGATION.md`. The slide needs before and after
+  numbers.
+- **The caches:**
+  - CLAUDE.md §11, static assets: 87.5% of requests were 304s;
+  - `docs/plans/REDIS_CACHE_PREFIXES.md`;
+  - `GLOBAL_CACHE_REFRESH_API.md`;
+  - charts keyed by input data.
+- **Query shape:**
+  - `directory_access` split-and-assemble (~6.9 s before; after is still to fill in);
+  - the jobs end-composite indexes;
+  - the CNPG temp-spill fix.
+
 ## 5. Facts to resolve before they go on a slide
 
 - **The name:** the app, and Ben's March deck, say "Systems Accounting Manager". `CLAUDE.md`'s
