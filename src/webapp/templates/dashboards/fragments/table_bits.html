@@ -32,7 +32,7 @@
 <span class="share"{% if title %} title="{{ title }}"{% endif %}>
   <span class="share-bar{{ ' share-tint' if tint }}{{ ' share-zero' if not pct }}"{% if slot %} data-fs="{{ slot }}"{% endif %}
         style="--share: {{ [[pct, 0] | max, 100] | min }}%" aria-hidden="true"></span>
-  {{- pct | fmt_pct(decimals=2) -}}
+  <span class="share-num">{{ pct | fmt_pct(decimals=2) }}</span>
 </span>
 {%- endif -%}
 {%- endmacro %}

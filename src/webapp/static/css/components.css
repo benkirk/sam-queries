@@ -561,6 +561,13 @@ tr:hover > td .btn.btn-row-attention {
     gap: 0.5rem;
     justify-content: flex-end;
 }
+/* A fixed, right-aligned slot for the number ("100.00%" fits), so every bar in
+   a column starts at the same x whatever its number's width. */
+.share-num {
+    min-width: 4.25em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
 .share-bar {
     --share-color: var(--fs-color, var(--text-link));
     flex: none;
