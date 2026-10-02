@@ -248,6 +248,20 @@ _FAIR_SHARE = [
     {'id': 6, 'facility': 'EXTRA', 'slot': None, 'share': 1.0, 'types': []},
 ]
 
+#: Absolute core-hours. NCAR's types fall short of it (a blank wedge), UNIV's
+#: overshoot (scaled to fit), and WNA has no types at all.
+_ALLOCATION_SUNBURST = [
+    {'id': 2, 'facility': 'CSL', 'slot': 3, 'value': 310_000_000.0,
+     'types': [{'name': 'CSL', 'value': 310_000_000.0}]},
+    {'id': 3, 'facility': 'NCAR', 'slot': 4, 'value': 180_000_000.0,
+     'types': [{'name': 'NCAR Labs', 'value': 120_000_000.0},
+               {'name': 'NCAR Director', 'value': 40_000_000.0}]},
+    {'id': 4, 'facility': 'UNIV', 'slot': 5, 'value': 150_000_000.0,
+     'types': [{'name': 'Large', 'value': 100_000_000.0}, {'name': 'Small', 'value': 30_000_000.0},
+               {'name': 'Classroom', 'value': 30_000_000.0}]},
+    {'id': 5, 'facility': 'WNA', 'slot': 6, 'value': 60_000_000.0, 'types': []},
+]
+
 
 CASES = [
     # --- 1. usage timeseries (flat) -------------------------------------
@@ -374,4 +388,9 @@ CASES = [
     ('fair_share_sunburst.normal', charts.generate_fair_share_sunburst,
      (_FAIR_SHARE,), {}),
     ('fair_share_sunburst.empty', charts.generate_fair_share_sunburst, ([],), {}),
+
+    # --- 18. allocations sunburst (short, overshooting and type-less groups)
+    ('allocation_sunburst.allocated', charts.generate_allocation_sunburst,
+     (_ALLOCATION_SUNBURST,), {'center': 'Allocated'}),
+    ('allocation_sunburst.empty', charts.generate_allocation_sunburst, ([],), {'center': 'Used'}),
 ]

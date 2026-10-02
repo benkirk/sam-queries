@@ -523,3 +523,22 @@ class FairShareSunburst(TwoRingPie):
 
     def percent(self, value):
         return value
+
+
+class AllocationSunburst(TwoRingPie):
+    """Allocations dashboard: a resource's facilities inside, their allocation types
+    outside, in absolute units. ``center`` names the measure ('Allocated', 'Used').
+    """
+
+    cache_name = 'allocation_sunburst'
+    #: Two per resource tab (Allocated, Used), split by layout and theme.
+    cache_maxsize = 144
+    empty_message = 'No allocations to chart'
+
+    def __init__(self, data: List[Dict], center: str = ''):
+        super().__init__(data)
+        self.center_text = center
+
+    @staticmethod
+    def cache_key(data, center=''):
+        return content_hash([data, center])

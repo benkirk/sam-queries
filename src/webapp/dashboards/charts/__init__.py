@@ -59,6 +59,7 @@ from webapp.dashboards.charts.pace import (  # noqa: F401
     pace_key_fields as _pace_key_fields,
 )
 from webapp.dashboards.charts.pie import (  # noqa: F401
+    AllocationSunburst,
     AllocationTypePie,
     DiskEntityPie,
     FacilityPie,
@@ -115,7 +116,7 @@ def _user_modal_url(username: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# The 16 cached charts.
+# The 17 cached charts.
 #
 # ORDER IS LOAD-BEARING: `chart_cached` appends to the cache registry at
 # decoration time, so this is the order rows appear on the admin Caching card.
@@ -152,13 +153,16 @@ generate_pace_chart_matplotlib = chart_view(PaceChart)
 # 7. Fair-share sunburst (admin Facilities card).  charts/pie.py
 generate_fair_share_sunburst = chart_view(FairShareSunburst)
 
+# 8. Allocated / Used sunbursts (allocations dashboard).  charts/pie.py
+generate_allocation_sunburst = chart_view(AllocationSunburst)
+
 
 def generate_jobs_user_pie_chart(entity_data, metric='cpu_hours', *,
                                  layout='desktop', theme='light') -> str:
     """By User pie — delegates to the entity-agnostic renderer with the
     ``data-job-user`` row family.
 
-    Deliberately a facade rather than a 16th bound chart: binding it would
+    Deliberately a facade rather than a bound chart of its own: binding it would
     register a second cache and add a row to the admin Caching card for what
     is really the same chart under a different drill attribute.
 
@@ -192,7 +196,7 @@ _pace_cache_key = PaceChart.cache_key
 
 
 __all__ = [
-    # The 16 public generators.
+    # The public generators.
     'generate_usage_timeseries_matplotlib',
     'generate_usage_timeseries_stacked_by_user',
     'generate_disk_usage_stacked_area',
@@ -210,6 +214,7 @@ __all__ = [
     'generate_jobs_user_pie_chart',
     'generate_pace_chart_matplotlib',
     'generate_fair_share_sunburst',
+    'generate_allocation_sunburst',
     'PACE_WINDOW_DAYS',
     # The hierarchy, for anyone subclassing.
     'BaseChart',
