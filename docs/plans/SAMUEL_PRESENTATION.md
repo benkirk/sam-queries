@@ -876,6 +876,19 @@ an update here (tick boxes, session log).
     - an Events bullet on Users.
   - **QA:** `make qa` passes on all parts. Plugins, "How we got here" and the new slide dropped
     to `{.vcenter}` to fit the PDF.
+  - **Follow-ups the same day:**
+    - the shared-pool example moved to Casper (NMMM0080, 75K of a 750K pool). Derecho's NMMM0083
+      held a copy of the pool's amount, and Ben relinked it in prod;
+    - closing slides bold their key phrases;
+    - the PSA titles became warning triangles;
+    - Part 3 gained "Every date is a timestamp" (the reason for DATETIME is undocumented; the
+      slide labels its guesses) and footnotes on CI covering both engines and on reading from
+      the replica.
+  - **Trap:** a footnote after a bare table splits the pptx slide. Put the table and footnote
+    in one 100% column.
+  - **Trap:** `concepts_data.py` reads "now". Run after 2026-10-01, it draws the FY27 windows
+    at 0% used. `_out_accounts.qmd` and `_out_audit.qmd` stay at their FY26 versions until it
+    takes an as-of date.
 
 ## 11. Voice, tone and the fun
 
@@ -938,8 +951,12 @@ bullet and the first column of each table. Parts 2–5 bold table row labels onl
   Ben's call); Part 3 "Where State Lives" (or "Four Databases Walk Into a Bar"); Part 4 "Who
   Talks to Whom"; Part 5 "Deployment & Operations" (plain, by Ben's call); the Appendix "The
   Neighbors".
-- **Recurring "PSA - Don't let this happen to you…" slides** for the war stories: the CNPG roll
+- **Recurring "⚠ Don't let this happen to you…" slides** for the war stories: the CNPG roll
   (Part 3) and the schema drop (Part 4). Part 5 has none, by Ben's call.
+  - "PSA - " became a warning triangle on 2026-10-01 (Ben).
+  - Poppins has no U+26A0. Beamer draws it from TeX Live's DejaVu Sans Bold (raw LaTeX), and
+    HTML and pptx get the character from a span hidden in beamer; copy the markup from any
+    of the four slides.
 - **Live CLI output:** real `sam-search` / `sam-admin` / `jobhist` output on slides.
   - Use the §3 frozen-data pattern: a `refresh_data.sh` writes `data/*.txt` from the obfuscated
     local DB, or from Ben's own records (e.g. `sam-search user benkirk`,
