@@ -1,5 +1,9 @@
 -- collapse_superseded_allocations.sql
 --
+-- STATUS: captured 2026-10-02, NOT APPLIED. Deferred by Ben: legacy reporting
+-- is being retired fast enough that the discrepancy may be accepted instead.
+-- Re-run STEP 0 against prod before any apply; the scope may have changed.
+--
 -- End every allocation soft-deleted by "Superseded by renew" where its live
 -- replacement begins, so legacy SAM stops serving it.
 --

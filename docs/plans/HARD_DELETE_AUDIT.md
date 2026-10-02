@@ -212,7 +212,8 @@ Cheyenne shares summing to 100.95.
    so the history keeps the real window. Tests in `tests/unit/manage/test_renew_extend.py`.
 2. §1 repair: `scripts/repair/collapse_superseded_allocations.sql` (79 rows; dry-run on the 3306
    snapshot, which matches prod: 0 live to legacy, 0 overlaps past a shared start day, 0 end < start,
-   79 audit rows). Ben applies it on prod.
+   79 audit rows). **Captured, not applied** (Ben, 2026-10-02): legacy reporting is being retired
+   fast enough that the 79 rows may simply be accepted. The code change stops new ones either way.
 3. §2: disk-root hard-delete route and method removed; route-map snapshot regenerated.
 
 **Ben's call, no code:** re-import 2026-06-06 disk (§3); reactivate NCGD0071-73 Data_Access as
