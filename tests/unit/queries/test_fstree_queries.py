@@ -707,7 +707,7 @@ class TestFacilityResourceOverride:
         )
         assert self._facility_fsp(session, resource_name, facility_name) == sentinel
 
-        # Unset the override -> the facility default re-emerges via COALESCE.
+        # Unset NULLs the override -> the facility default re-emerges via COALESCE.
         removed = FacilityResource.clear_override(
             session,
             facility_id=facility.facility_id,

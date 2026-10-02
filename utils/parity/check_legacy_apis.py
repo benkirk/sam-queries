@@ -158,7 +158,7 @@ def _fetch_project(
 
 def _fetch_fstree(
     legacy: LegacyClient, new: NewClient, resources: Optional[list[str]], verbose: int
-) -> tuple[dict, dict]:
+) -> tuple[dict, dict, dict]:
     if verbose:
         print('  fetching new fstree_access ...', file=sys.stderr)
     new_data = new.fstree_access()
@@ -184,7 +184,13 @@ def _fetch_fstree(
             'Check legacy URL and credentials.'
         )
 
-    return legacy_by_resource, new_data
+    new_by_resource: dict = {}
+    for r in legacy_by_resource:
+        if verbose:
+            print(f'  fetching new fstree_access/{r} ...', file=sys.stderr)
+        new_by_resource[r] = new.fstree_access(r)
+
+    return legacy_by_resource, new_data, new_by_resource
 
 
 def _fetch_queue(legacy: LegacyClient, new: NewClient, verbose: int) -> tuple[dict, dict]:
@@ -402,8 +408,8 @@ def main() -> int:
                 ld, nd = _fetch_project(legacy, new, branches, args.verbose)
                 results = compare_project_access(ld, nd)
             elif api == 'fstree':
-                ld, nd = _fetch_fstree(legacy, new, resources, args.verbose)
-                results = compare_fstree_access(ld, nd)
+                ld, nd, nbr = _fetch_fstree(legacy, new, resources, args.verbose)
+                results = compare_fstree_access(ld, nd, nbr)
             elif api == 'queue':
                 ld, nd = _fetch_queue(legacy, new, args.verbose)
                 results = compare_queue(ld, nd)

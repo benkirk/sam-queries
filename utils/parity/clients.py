@@ -93,8 +93,10 @@ class NewClient(_BaseClient):
     def project_access(self) -> dict:
         return self._get('/api/v1/project_access/')
 
-    def fstree_access(self) -> dict:
-        return self._get('/api/v1/fstree_access/')
+    def fstree_access(self, resource: str | None = None) -> dict | None:
+        if resource is None:
+            return self._get('/api/v1/fstree_access/')
+        return self._get(f'/api/v1/fstree_access/{quote(resource, safe="")}', allow_404=True)
 
     def queue(self, resource: str | None = None) -> dict:
         if resource is None:

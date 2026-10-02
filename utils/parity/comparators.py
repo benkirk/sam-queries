@@ -58,6 +58,11 @@ def _build_fstree_index(fstree_data: dict) -> dict:
     return idx
 
 
+def _facility_shares(fstree_data: dict | None) -> dict:
+    return {f['name']: f.get('fairSharePercentage')
+            for f in (fstree_data or {}).get('facilities', [])}
+
+
 def _date_part(value) -> str | None:
     """Return the YYYY-MM-DD prefix of an ISO date/datetime string (or None).
 
@@ -619,11 +624,12 @@ def compare_project_access(legacy_by_branch: dict, new: dict) -> list[CheckResul
 
 
 # ===========================================================================
-# FairShare Tree — 9 checks
+# FairShare Tree — 11 checks
 # ===========================================================================
 
-def compare_fstree_access(legacy_by_resource: dict, new: dict) -> list[CheckResult]:
-    """legacy_by_resource: {resource_name: fstree_dict} — one fetch per resource."""
+def compare_fstree_access(legacy_by_resource: dict, new: dict,
+                          new_by_resource: dict | None = None) -> list[CheckResult]:
+    """Per-resource dicts are {resource_name: fstree_dict}; checks 10-11 need new_by_resource."""
     results: list[CheckResult] = []
     new_idx = _build_fstree_index(new)
 
@@ -922,6 +928,49 @@ def compare_fstree_access(legacy_by_resource: dict, new: dict) -> list[CheckResu
         name='fstree / accountStatus consistency (legacy non-Normal ⇒ new non-Normal)',
         passed=len(failures) <= 5,
         summary=f'{compared} matched nodes checked (tolerance 5)',
+        mismatches=failures,
+        compared=compared,
+    ))
+
+    if new_by_resource is None:
+        return results
+
+    # 10. Facility shares agree per resource. The all-resource payload carries one
+    # percentage per facility, so a per-resource override is only visible here.
+    failures = []
+    compared = 0
+    for resource, legacy_data in legacy_by_resource.items():
+        new_pct = _facility_shares(new_by_resource.get(resource))
+        for fname, lpct in _facility_shares(legacy_data).items():
+            if fname not in new_pct:
+                continue
+            compared += 1
+            if abs((lpct or 0.0) - (new_pct[fname] or 0.0)) > 1e-3:
+                failures.append(f'{resource}/{fname}: legacy={lpct}, new={new_pct[fname]}')
+    results.append(CheckResult(
+        name='fstree / facility fairSharePercentage matches (per resource)',
+        passed=not failures,
+        summary=f'{compared} (resource, facility) shares checked',
+        mismatches=failures,
+        compared=compared,
+    ))
+
+    # 11. Self-consistency of the new payload alone: shares sum to 100 per resource.
+    # Both stacks served the bogus Derecho overrides (sum 5.95), so only this catches them.
+    failures = []
+    compared = 0
+    for resource in legacy_by_resource:
+        shares = _facility_shares(new_by_resource.get(resource))
+        if not shares:
+            continue
+        compared += 1
+        total = sum(v or 0.0 for v in shares.values())
+        if abs(total - 100.0) > 0.01:
+            failures.append(f'{resource}: shares sum to {total:.4g} ({shares})')
+    results.append(CheckResult(
+        name='fstree / facility shares sum to 100 (per resource, new)',
+        passed=not failures,
+        summary=f'{compared} resources checked',
         mismatches=failures,
         compared=compared,
     ))

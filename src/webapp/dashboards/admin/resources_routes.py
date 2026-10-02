@@ -175,9 +175,9 @@ def htmx_resource_delete(resource_id):
 
 
 # Per-resource Facility Fair-Share Override
-# A row in `facility_resource` overrides the facility default fair-share for a
-# single resource (COALESCE(fr…, f…) in sam/queries/fstree_access.py). "Set"
-# upserts the row; "Unset" deletes it so the facility default re-emerges.
+# A non-NULL `facility_resource.fair_share_percentage` overrides the facility
+# default for one resource. "Set" upserts the row; "Unset" NULLs the value and
+# keeps the row, which legacy SAM reads as facility-on-resource membership.
 
 
 @bp.route('/htmx/facility-resource-edit-form/<int:resource_id>/<int:facility_id>')
@@ -236,7 +236,7 @@ def htmx_facility_resource_edit(resource_id, facility_id):
 @login_required
 @require_permission(Permission.DELETE_RESOURCES)
 def htmx_facility_resource_unset(resource_id, facility_id):
-    """Delete a per-resource fair-share override so the facility default re-emerges."""
+    """Clear a per-resource fair-share override so the facility default re-emerges."""
     from sam.resources.facilities import FacilityResource
 
     try:

@@ -3,7 +3,7 @@ fair-share override backing the Admin > Resources override UI.
 
 The override row is what the fstree query prefers over the facility default
 via ``COALESCE(fr.fair_share_percentage, f.fair_share_percentage)``. These
-tests cover the model-level create/update/delete/upsert/clear helpers; the
+tests cover the model-level create/update/upsert/clear helpers; the
 end-to-end "unset restores the facility default" behavior through the query
 lives in test_fstree_queries.py::TestFacilityResourceOverride.
 """
@@ -129,18 +129,54 @@ class TestSetOverride:
 
 class TestClearOverride:
 
-    def test_deletes_existing(self, session):
+    def test_nulls_value_and_keeps_row(self, session):
+        # Legacy SAM reads the row as facility-on-resource membership: deleting
+        # it emptied the Derecho fairShareTree (2026-10-01).
+        fac = make_facility(session)
+        res = make_resource(session)
+        created = FacilityResource.create(
+            session, facility_id=fac.facility_id, resource_id=res.resource_id,
+            fair_share_percentage=3.0,
+        )
+        cleared = FacilityResource.clear_override(
+            session, facility_id=fac.facility_id, resource_id=res.resource_id,
+        )
+        assert cleared is True
+        row = FacilityResource.get_override(session, fac.facility_id, res.resource_id)
+        assert row is not None
+        assert row.facility_resource_id == created.facility_resource_id
+        assert row.fair_share_percentage is None
+        session.rollback()
+
+    def test_noop_when_already_null(self, session):
         fac = make_facility(session)
         res = make_resource(session)
         FacilityResource.create(
             session, facility_id=fac.facility_id, resource_id=res.resource_id,
-            fair_share_percentage=3.0,
         )
-        removed = FacilityResource.clear_override(
+        cleared = FacilityResource.clear_override(
             session, facility_id=fac.facility_id, resource_id=res.resource_id,
         )
-        assert removed is True
-        assert FacilityResource.get_override(session, fac.facility_id, res.resource_id) is None
+        assert cleared is False
+        assert FacilityResource.get_override(session, fac.facility_id, res.resource_id) is not None
+        session.rollback()
+
+    def test_set_after_clear_reuses_row(self, session):
+        fac = make_facility(session)
+        res = make_resource(session)
+        created = FacilityResource.set_override(
+            session, facility_id=fac.facility_id, resource_id=res.resource_id,
+            fair_share_percentage=3.0,
+        )
+        FacilityResource.clear_override(
+            session, facility_id=fac.facility_id, resource_id=res.resource_id,
+        )
+        again = FacilityResource.set_override(
+            session, facility_id=fac.facility_id, resource_id=res.resource_id,
+            fair_share_percentage=4.0,
+        )
+        assert again.facility_resource_id == created.facility_resource_id
+        assert again.fair_share_percentage == 4.0
         session.rollback()
 
     def test_noop_when_absent(self, session):

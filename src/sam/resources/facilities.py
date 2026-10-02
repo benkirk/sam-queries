@@ -117,14 +117,12 @@ class Facility(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
 #----------------------------------------------------------------------------
 class FacilityResource(Base, SessionMixin):
-    """Per-(facility, resource) fair-share override.
+    """Facility-on-resource membership plus an optional fair-share override.
 
-    When a row exists here for a given (facility, resource) pair, its
-    ``fair_share_percentage`` overrides the facility default
-    (``Facility.fair_share_percentage``) for that resource — see the
-    ``COALESCE(fr.fair_share_percentage, f.fair_share_percentage)`` in
-    ``sam/queries/fstree_access.py``. Deleting the row (or leaving it absent)
-    makes the facility default re-emerge.
+    A non-NULL ``fair_share_percentage`` overrides ``Facility.fair_share_percentage``
+    for this resource (the COALESCE in ``sam/queries/fstree_access.py``); NULL means
+    the default. WARNING: legacy SAM reads the row itself as membership — no row
+    drops the facility from its fairShareTree — so an override is cleared, never deleted.
     """
     __tablename__ = 'facility_resource'
 
@@ -218,14 +216,11 @@ class FacilityResource(Base, SessionMixin):
 
     @classmethod
     def clear_override(cls, session, *, facility_id: int, resource_id: int) -> bool:
-        """Delete the (facility, resource) override so the facility default re-emerges.
-
-        Returns True if a row was deleted, False if none existed (no-op).
-        """
+        """NULL the override, keeping the membership row; True if a value was cleared."""
         existing = cls.get_override(session, facility_id, resource_id)
-        if existing is None:
+        if existing is None or existing.fair_share_percentage is None:
             return False
-        session.delete(existing)
+        existing.fair_share_percentage = None
         session.flush()
         return True
 
