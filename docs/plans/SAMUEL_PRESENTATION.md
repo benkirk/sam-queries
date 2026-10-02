@@ -971,6 +971,18 @@ an update here (tick boxes, session log).
   - **Trap:** a bare `<code>` in a speaker note is a real HTML tag in revealjs and swallows the
     slides after it. Backtick every `<placeholder>` in notes; Parts 3 and 5 had three.
 
+- **2026-10-02, framework fixes** (the retrospective's three; framework branch
+  `framework-fixes` `2ac87c8`, theme branch `glyph-fallback` `b5393d7`, both local).
+  - `docs/common/single-body.lua` wraps a pptx slide's body in one 100% column when content
+    follows a table or diagram. Code blocks never split. The deck's 7 hand wrappers came out,
+    and the pptx is byte-identical.
+  - Theme 2.6.0 borrows ⚠ and arrows from DejaVu Sans. The 4 triangle titles are now plain
+    `## ⚠︎ Title`.
+  - `deck_qa` fails on a bare `<word>` in the sources, with `file:line`.
+  - `samuel` merged `framework-fixes` (`d7dba41`), then the cleanup (`b8b69fa`). `make qa`
+    passes on all 9 decks.
+  - Still a rule: content after a `.columns` block splits pptx; put it inside the columns.
+
 ## 11. Voice, tone and the fun
 
 **SAMuel = SAM, updated for extended lifecycle.** That backronym is the deck's premise and its
@@ -1035,9 +1047,8 @@ bullet and the first column of each table. Parts 2–5 bold table row labels onl
 - **Recurring "⚠ Don't let this happen to you…" slides** for the war stories: the CNPG roll
   (Part 3) and the schema drop (Part 4). Part 5 has none, by Ben's call.
   - "PSA - " became a warning triangle on 2026-10-01 (Ben).
-  - Poppins has no U+26A0. Beamer draws it from TeX Live's DejaVu Sans Bold (raw LaTeX), and
-    HTML and pptx get the character from a span hidden in beamer; copy the markup from any
-    of the four slides.
+  - Write the title as `## ⚠︎ Title`. Theme 2.6 draws the ⚠ (and → ← ↔ ⇒) from DejaVu Sans
+    in the PDF.
 - **Live CLI output:** real `sam-search` / `sam-admin` / `jobhist` output on slides.
   - Use the §3 frozen-data pattern: a `refresh_data.sh` writes `data/*.txt` from the obfuscated
     local DB, or from Ben's own records (e.g. `sam-search user benkirk`,
