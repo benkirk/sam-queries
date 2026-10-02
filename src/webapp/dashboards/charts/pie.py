@@ -8,6 +8,9 @@ optional drill target. `TwoRingPie` is the two-ring (sunburst) variant.
 import math
 from typing import Dict, List
 
+from matplotlib.offsetbox import AnchoredOffsetbox, DrawingArea, HPacker, TextArea, VPacker
+from matplotlib.patches import Rectangle
+
 from sam import fmt
 from webapp.caching.chart import content_hash
 from webapp.dashboards.charts import links
@@ -339,6 +342,8 @@ class TwoRingPie(PieChart):
     inner_label_min = 5
     outer_label_min = 6
     center_text = ''
+    #: True draws the legend as aligned columns from ``legend_cells()``.
+    table_legend = False
 
     def __init__(self, data: List[Dict]):
         self.data = data or []
@@ -404,7 +409,7 @@ class TwoRingPie(PieChart):
         outer, _ = ax.pie(outer_vals, radius=self.inner_radius + self.ring_width + 0.02,
                           colors=outer_colors,
                           wedgeprops={**edge, 'width': self.ring_width, 'linewidth': 1}, **common)
-        self.wedges = inner
+        self.wedges, self.bases = inner, bases
         for wedge, key in zip(outer, outer_keys):
             if key is not None:
                 wedge.set_url(self.drill.url(key))
@@ -419,6 +424,47 @@ class TwoRingPie(PieChart):
             ax.text(0, 0, self.center_text, ha='center', va='center', fontsize=size + 1,
                     color=theme.text, alpha=0.7)
         ax.set_aspect('equal')
+
+    def legend_cells(self, label, value):
+        """``(name, share, amount)`` strings for one table-legend row."""
+        raise NotImplementedError
+
+    def add_legend(self, ax, layout, theme):
+        if not self.table_legend:
+            return super().add_legend(ax, layout, theme)
+        # Columns, not one string per entry: names left, numbers right-aligned, so
+        # shares and amounts compare down the column in a proportional font.
+        size = layout.legend_fontsize or self.legend_fontsize
+        rows = [self.legend_cells(l, v) for l, v in zip(self.labels, self.values)]
+        urls = [self.drill.url(k) if k is not None else None for k in self.link_keys]
+        for wedge, url in zip(self.wedges, urls):
+            wedge.set_url(url)
+
+        def cell(text, url, alpha=1.0):
+            area = TextArea(text, textprops=dict(fontsize=size, color=theme.text, alpha=alpha))
+            area._text.set_url(url)
+            return area
+
+        def name(text, color, url):
+            swatch = DrawingArea(size * 1.4, size, 0, 0)
+            rect = Rectangle((0, size * 0.2), size * 1.4, size * 0.6, facecolor=color, edgecolor='none')
+            rect.set_url(url)
+            swatch.add_artist(rect)
+            return HPacker(children=[swatch, cell(text, url)], sep=size * 0.6, align='center')
+
+        sep = size * 0.55
+        columns = [
+            VPacker(children=[name(r[0], c, u) for r, c, u in zip(rows, self.bases, urls)],
+                    sep=sep, align='left'),
+            VPacker(children=[cell(r[1], u) for r, u in zip(rows, urls)], sep=sep, align='right'),
+            VPacker(children=[cell(r[2], u, alpha=0.7) for r, u in zip(rows, urls)],
+                    sep=sep, align='right'),
+        ]
+        table = AnchoredOffsetbox(loc='center left', child=HPacker(children=columns, sep=size * 1.1,
+                                                                   align='top'),
+                                  bbox_to_anchor=self.legend_anchor, bbox_transform=ax.transAxes,
+                                  frameon=False, borderpad=0, pad=0)
+        ax.add_artist(table)
 
     @staticmethod
     def _label(ax, wedges, names, percents, colors, radius, minimum, size):
@@ -468,6 +514,7 @@ class AllocationSunburst(TwoRingPie):
     #: Two per resource tab (Allocated, Used), split by layout and theme.
     cache_maxsize = 144
     empty_message = 'No allocations to chart'
+    table_legend = True
 
     def __init__(self, data: List[Dict], center: str = ''):
         super().__init__(data)
@@ -477,8 +524,7 @@ class AllocationSunburst(TwoRingPie):
     def cache_key(data, center=''):
         return content_hash([data, center])
 
-    def legend_label(self, label, value) -> str:
-        # Percent first (what the Allocated and Used charts are compared by); under
-        # 1% keeps two decimals so a sliver never reads as 0.0%.
+    def legend_cells(self, label, value):
+        # Under 1% keeps two decimals, so a sliver never reads as 0.0%.
         share = self.percent(value)
-        return f'{label} {fmt.pct(share, decimals=1 if share >= 1 else 2)} ({fmt.number(value)})'
+        return label, fmt.pct(share, decimals=1 if share >= 1 else 2), fmt.number(value)

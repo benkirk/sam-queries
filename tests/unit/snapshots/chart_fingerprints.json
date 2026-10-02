@@ -1,10 +1,10 @@
 {
   "allocation_sunburst.allocated": {
     "counts": {
-      "a": 18,
-      "g": 34,
+      "a": 26,
+      "g": 41,
       "path": 17,
-      "text": 12,
+      "text": 20,
       "use": 0
     },
     "drill_hrefs": [
@@ -25,6 +25,14 @@
       "#sam/row/data-facility-id/4",
       "#sam/row/data-facility-id/4",
       "#sam/row/data-facility-id/5",
+      "#sam/row/data-facility-id/5",
+      "#sam/row/data-facility-id/2",
+      "#sam/row/data-facility-id/3",
+      "#sam/row/data-facility-id/4",
+      "#sam/row/data-facility-id/5",
+      "#sam/row/data-facility-id/2",
+      "#sam/row/data-facility-id/3",
+      "#sam/row/data-facility-id/4",
       "#sam/row/data-facility-id/5"
     ],
     "fills": [
@@ -59,22 +67,30 @@
       "NCAR Labs",
       "Large",
       "Allocated",
-      "CSL 44.3% (310M)",
-      "NCAR 25.7% (180M)",
-      "UNIV 21.4% (150M)",
-      "WNA 8.6% (60.0M)"
+      "CSL",
+      "NCAR",
+      "UNIV",
+      "WNA",
+      "44.3%",
+      "25.7%",
+      "21.4%",
+      "8.6%",
+      "310M",
+      "180M",
+      "150M",
+      "60.0M"
     ],
     "size": [
-      359.5,
+      353.0,
       236.2
     ]
   },
   "allocation_sunburst.allocated@dark": {
     "counts": {
-      "a": 18,
-      "g": 34,
+      "a": 26,
+      "g": 41,
       "path": 17,
-      "text": 12,
+      "text": 20,
       "use": 0
     },
     "drill_hrefs": [
@@ -95,6 +111,14 @@
       "#sam/row/data-facility-id/4",
       "#sam/row/data-facility-id/4",
       "#sam/row/data-facility-id/5",
+      "#sam/row/data-facility-id/5",
+      "#sam/row/data-facility-id/2",
+      "#sam/row/data-facility-id/3",
+      "#sam/row/data-facility-id/4",
+      "#sam/row/data-facility-id/5",
+      "#sam/row/data-facility-id/2",
+      "#sam/row/data-facility-id/3",
+      "#sam/row/data-facility-id/4",
       "#sam/row/data-facility-id/5"
     ],
     "fills": [
@@ -129,22 +153,30 @@
       "NCAR Labs",
       "Large",
       "Allocated",
-      "CSL 44.3% (310M)",
-      "NCAR 25.7% (180M)",
-      "UNIV 21.4% (150M)",
-      "WNA 8.6% (60.0M)"
+      "CSL",
+      "NCAR",
+      "UNIV",
+      "WNA",
+      "44.3%",
+      "25.7%",
+      "21.4%",
+      "8.6%",
+      "310M",
+      "180M",
+      "150M",
+      "60.0M"
     ],
     "size": [
-      359.5,
+      353.0,
       236.2
     ]
   },
   "allocation_sunburst.allocated@mobile": {
     "counts": {
-      "a": 18,
-      "g": 31,
+      "a": 26,
+      "g": 38,
       "path": 17,
-      "text": 9,
+      "text": 17,
       "use": 0
     },
     "drill_hrefs": [
@@ -165,6 +197,14 @@
       "#sam/row/data-facility-id/4",
       "#sam/row/data-facility-id/4",
       "#sam/row/data-facility-id/5",
+      "#sam/row/data-facility-id/5",
+      "#sam/row/data-facility-id/2",
+      "#sam/row/data-facility-id/3",
+      "#sam/row/data-facility-id/4",
+      "#sam/row/data-facility-id/5",
+      "#sam/row/data-facility-id/2",
+      "#sam/row/data-facility-id/3",
+      "#sam/row/data-facility-id/4",
       "#sam/row/data-facility-id/5"
     ],
     "fills": [
@@ -196,22 +236,30 @@
       "UNIV",
       "WNA",
       "Allocated",
-      "CSL 44.3% (310M)",
-      "NCAR 25.7% (180M)",
-      "UNIV 21.4% (150M)",
-      "WNA 8.6% (60.0M)"
+      "CSL",
+      "NCAR",
+      "UNIV",
+      "WNA",
+      "44.3%",
+      "25.7%",
+      "21.4%",
+      "8.6%",
+      "310M",
+      "180M",
+      "150M",
+      "60.0M"
     ],
     "size": [
-      297.9,
+      291.4,
       175.2
     ]
   },
   "allocation_sunburst.allocated@mobile@dark": {
     "counts": {
-      "a": 18,
-      "g": 31,
+      "a": 26,
+      "g": 38,
       "path": 17,
-      "text": 9,
+      "text": 17,
       "use": 0
     },
     "drill_hrefs": [
@@ -232,6 +280,14 @@
       "#sam/row/data-facility-id/4",
       "#sam/row/data-facility-id/4",
       "#sam/row/data-facility-id/5",
+      "#sam/row/data-facility-id/5",
+      "#sam/row/data-facility-id/2",
+      "#sam/row/data-facility-id/3",
+      "#sam/row/data-facility-id/4",
+      "#sam/row/data-facility-id/5",
+      "#sam/row/data-facility-id/2",
+      "#sam/row/data-facility-id/3",
+      "#sam/row/data-facility-id/4",
       "#sam/row/data-facility-id/5"
     ],
     "fills": [
@@ -263,22 +319,30 @@
       "UNIV",
       "WNA",
       "Allocated",
-      "CSL 44.3% (310M)",
-      "NCAR 25.7% (180M)",
-      "UNIV 21.4% (150M)",
-      "WNA 8.6% (60.0M)"
+      "CSL",
+      "NCAR",
+      "UNIV",
+      "WNA",
+      "44.3%",
+      "25.7%",
+      "21.4%",
+      "8.6%",
+      "310M",
+      "180M",
+      "150M",
+      "60.0M"
     ],
     "size": [
-      297.9,
+      291.4,
       175.2
     ]
   },
   "allocation_sunburst.allocated@tablet": {
     "counts": {
-      "a": 18,
-      "g": 34,
+      "a": 26,
+      "g": 41,
       "path": 17,
-      "text": 12,
+      "text": 20,
       "use": 0
     },
     "drill_hrefs": [
@@ -299,6 +363,14 @@
       "#sam/row/data-facility-id/4",
       "#sam/row/data-facility-id/4",
       "#sam/row/data-facility-id/5",
+      "#sam/row/data-facility-id/5",
+      "#sam/row/data-facility-id/2",
+      "#sam/row/data-facility-id/3",
+      "#sam/row/data-facility-id/4",
+      "#sam/row/data-facility-id/5",
+      "#sam/row/data-facility-id/2",
+      "#sam/row/data-facility-id/3",
+      "#sam/row/data-facility-id/4",
       "#sam/row/data-facility-id/5"
     ],
     "fills": [
@@ -333,22 +405,30 @@
       "NCAR Labs",
       "Large",
       "Allocated",
-      "CSL 44.3% (310M)",
-      "NCAR 25.7% (180M)",
-      "UNIV 21.4% (150M)",
-      "WNA 8.6% (60.0M)"
+      "CSL",
+      "NCAR",
+      "UNIV",
+      "WNA",
+      "44.3%",
+      "25.7%",
+      "21.4%",
+      "8.6%",
+      "310M",
+      "180M",
+      "150M",
+      "60.0M"
     ],
     "size": [
-      359.5,
+      353.0,
       236.2
     ]
   },
   "allocation_sunburst.allocated@tablet@dark": {
     "counts": {
-      "a": 18,
-      "g": 34,
+      "a": 26,
+      "g": 41,
       "path": 17,
-      "text": 12,
+      "text": 20,
       "use": 0
     },
     "drill_hrefs": [
@@ -369,6 +449,14 @@
       "#sam/row/data-facility-id/4",
       "#sam/row/data-facility-id/4",
       "#sam/row/data-facility-id/5",
+      "#sam/row/data-facility-id/5",
+      "#sam/row/data-facility-id/2",
+      "#sam/row/data-facility-id/3",
+      "#sam/row/data-facility-id/4",
+      "#sam/row/data-facility-id/5",
+      "#sam/row/data-facility-id/2",
+      "#sam/row/data-facility-id/3",
+      "#sam/row/data-facility-id/4",
       "#sam/row/data-facility-id/5"
     ],
     "fills": [
@@ -403,13 +491,21 @@
       "NCAR Labs",
       "Large",
       "Allocated",
-      "CSL 44.3% (310M)",
-      "NCAR 25.7% (180M)",
-      "UNIV 21.4% (150M)",
-      "WNA 8.6% (60.0M)"
+      "CSL",
+      "NCAR",
+      "UNIV",
+      "WNA",
+      "44.3%",
+      "25.7%",
+      "21.4%",
+      "8.6%",
+      "310M",
+      "180M",
+      "150M",
+      "60.0M"
     ],
     "size": [
-      359.5,
+      353.0,
       236.2
     ]
   },
