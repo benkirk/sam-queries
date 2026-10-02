@@ -102,10 +102,14 @@ def test_saving_from_a_sub_tab_keeps_that_tab(page):
 def test_fair_share_chart_drills_to_its_facility_row(page):
     """Every sunburst wedge and legend entry is a RowDrill to its facility's tree row."""
     _open(page, '/admin/facilities', None, '.fair-share-chart svg', None)
-    link = page.locator('.fair-share-chart svg a[href^="#sam/row/data-facility-id/"]').last
-    if link.count() == 0:
+    links = page.locator('.fair-share-chart svg a')
+    # matplotlib writes xlink:href, which a CSS [href] selector does not match.
+    hrefs = links.evaluate_all("els => els.map(e => e.getAttribute('xlink:href') || e.getAttribute('href') || '')")
+    drills = [i for i, h in enumerate(hrefs) if h.startswith('#sam/row/data-facility-id/')]
+    if not drills:
         pytest.skip('no facility with a fair share in this dataset')
-    fid = link.get_attribute('href').rsplit('/', 1)[1]
+    link = links.nth(drills[-1])   # the last legend label
+    fid = hrefs[drills[-1]].rsplit('/', 1)[1]
     assert page.locator(f'#facility-panels-{fid}.show').count() == 0
     link.click()
     page.locator(f'#facility-panels-{fid}.show').wait_for(timeout=10_000)
