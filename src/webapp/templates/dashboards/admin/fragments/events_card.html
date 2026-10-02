@@ -53,32 +53,32 @@
             </td>
             <td class="text-end text-nowrap">
                 {% if has_permission_any_facility(Permission.MANAGE_EVENTS) %}
-                <div class="btn-group btn-group-sm flex-nowrap">
+                <span class="row-actions">
                     {% if can_roster and e.active and r.project_active %}
-                    <button type="button" class="btn btn-outline-secondary"
+                    <button type="button" class="btn btn-row"
                             title="Paste a roster under this event" aria-label="Paste a roster"
                             hx-get="{{ url_for('admin_dashboard.htmx_admin_event_roster_form', event_code=e.event_code) }}"
                             hx-target="#invitationFormContainer" hx-swap="innerHTML"
                             data-bs-toggle="modal" data-bs-target="#invitationModal"><i class="fa-solid fa-list-ul"></i></button>
                     {% endif %}
-                    <button type="button" class="btn btn-outline-secondary"
+                    <button type="button" class="btn btn-row"
                             title="Edit this event" aria-label="Edit"
                             hx-get="{{ url_for('admin_dashboard.htmx_admin_event_edit_form', event_code=e.event_code) }}"
                             hx-target="#invitationFormContainer" hx-swap="innerHTML"
                             data-bs-toggle="modal" data-bs-target="#invitationModal"><i class="fa-solid fa-pen"></i></button>
                     {% if e.active %}
-                    <button type="button" class="btn btn-outline-secondary"
+                    <button type="button" class="btn btn-row"
                             title="Close — stop accepting this code" aria-label="Close event"
                             hx-post="{{ url_for('admin_dashboard.htmx_admin_event_close', event_code=e.event_code) }}"
                             hx-confirm="Stop accepting {{ e.event_code }}? Existing requests are untouched."
                             hx-swap="none"><i class="fa-solid fa-lock"></i></button>
                     {% else %}
-                    <button type="button" class="btn btn-outline-secondary"
+                    <button type="button" class="btn btn-row"
                             title="Reopen this event" aria-label="Reopen event"
                             hx-post="{{ url_for('admin_dashboard.htmx_admin_event_reopen', event_code=e.event_code) }}"
                             hx-swap="none"><i class="fa-solid fa-lock-open"></i></button>
                     {% endif %}
-                </div>
+                </span>
                 {% endif %}
             </td>
         </tr>

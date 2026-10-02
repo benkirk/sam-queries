@@ -555,31 +555,31 @@
                                 {%- elif arq.requested_at %} — sent to NUSD {{ arq.requested_at | fmt_date }}
                                 {%- else %} — open{% endif %}.
                             </div>
-                            <div class="btn-group btn-group-sm flex-nowrap">
+                            <span class="row-actions">
                                 {% if arq.state in ('submitted', 'claimed') %}
                                 {% if arq.state == 'claimed' %}
-                                <button type="button" class="btn btn-outline-secondary"
+                                <button type="button" class="btn btn-row"
                                         title="Release — take the claim off this request" aria-label="Release"
                                         hx-post="{{ url_for('admin_dashboard.account_request_unclaim', request_id=arq.id) }}"
                                         hx-swap="none"><i class="fa-solid fa-hand-back-fist"></i></button>
                                 {% else %}
-                                <button type="button" class="btn btn-outline-primary"
+                                <button type="button" class="btn btn-row btn-row-primary"
                                         title="Claim — tell other operators you are working this one" aria-label="Claim"
                                         hx-post="{{ url_for('admin_dashboard.account_request_claim', request_id=arq.id) }}"
                                         hx-swap="none"><i class="fa-solid fa-hand"></i></button>
                                 {% endif %}
-                                <button type="button" class="btn btn-outline-secondary"
+                                <button type="button" class="btn btn-row"
                                         title="Dismiss — a duplicate, or someone who already has an account" aria-label="Dismiss"
                                         hx-get="{{ url_for('admin_dashboard.account_request_dismiss_form', request_id=arq.id) }}"
                                         hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
                                         data-bs-toggle="modal" data-bs-target="#auditDetailsModal"><i class="fa-solid fa-eye-slash"></i></button>
                                 {% else %}
-                                <button type="button" class="btn btn-outline-secondary"
+                                <button type="button" class="btn btn-row"
                                         title="Reopen — put this request back in the queue" aria-label="Reopen"
                                         hx-post="{{ url_for('admin_dashboard.account_request_reopen', request_id=arq.id) }}"
                                         hx-swap="none"><i class="fa-solid fa-rotate-left"></i></button>
                                 {% endif %}
-                            </div>
+                            </span>
                         </div>
                         {% endif %}
                         {% if may_manage %}{{ person_detail(row.person) }}{% endif %}

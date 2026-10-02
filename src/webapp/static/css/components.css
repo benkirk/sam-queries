@@ -425,9 +425,9 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.75rem;
+    min-width: 1.75rem;
     height: 1.75rem;
-    padding: 0;
+    padding: 0 0.35rem;
     font-size: 0.875rem;
     line-height: 1;
     letter-spacing: 0;
@@ -450,6 +450,29 @@ tr:hover > td .btn.btn-row,
 
 tr:hover > td .btn.btn-row-danger {
     --bs-btn-color: var(--danger-color);
+}
+
+/* The verb this row is waiting on keeps its color at rest. */
+.btn.btn-row-primary {
+    --bs-btn-color: var(--text-link);
+}
+
+.btn.btn-row-attention,
+tr:hover > td .btn.btn-row-attention {
+    --bs-btn-color: var(--bs-warning-text-emphasis);
+    --bs-btn-hover-color: var(--bs-warning-text-emphasis);
+    --bs-btn-hover-bg: var(--bs-warning-bg-subtle);
+    --bs-btn-hover-border-color: var(--bs-warning-border-subtle);
+    --bs-btn-active-color: var(--bs-warning-text-emphasis);
+    --bs-btn-active-bg: var(--bs-warning-bg-subtle);
+    --bs-btn-active-border-color: var(--bs-warning-text-emphasis);
+}
+
+.btn.btn-row-success {
+    --bs-btn-color: var(--bs-success-text-emphasis);
+    --bs-btn-hover-color: var(--bs-success-text-emphasis);
+    --bs-btn-hover-bg: var(--bs-success-bg-subtle);
+    --bs-btn-hover-border-color: var(--bs-success-border-subtle);
 }
 
 /* A retired row reads muted and says why in a .state-tag; opacity would
@@ -512,4 +535,9 @@ tr:hover > td .btn.btn-row-danger {
     text-overflow: ellipsis;
     white-space: nowrap;
     vertical-align: bottom;
+}
+
+.badge.count-badge {
+    padding: 0.2rem 0.45rem;
+    font-variant-numeric: tabular-nums;
 }
