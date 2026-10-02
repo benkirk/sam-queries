@@ -475,24 +475,34 @@ slides plus 5 dividers. The outline below was verified on 2026-09-30 (`886c2f09`
     reports.
 - **F. The HPC hosts:** reduced to one broad slide at the end of B (Ben, 2026-10-01; see above).
 
-### Appendix A — Peer repos
+### Appendix A — Peer repos ("The Neighbors"; drafted 2026-10-01)
 
-| Repo | Remote | What it is | Coupling to SAMuel |
+Ben's ask: 1–2 slides per peer repo, 3 for `hpc-usage-queries` (both plugins), 2 for
+`hpc-scheduling-tools` (the PBS rules kept apart, then packaged and served by the API), legacy
+SAM and its container zoo, private repos named but not linked, and one undetailed slide for
+what is retired or retiring.
+
+| Repo | Visibility | What it is | Coupling to SAMuel |
 |---|---|---|---|
-| `hpc-usage-queries` (`~/codes/hpc-usage-queries/devel`) | `github.com/benkirk/hpc-usage-queries` | `job_history` (PBS job history, charging) + `fs_scans`; also the `csg-postgres` CNPG chart (`helm/`) and `scripts/cnpg_watch.sh` | Two plugins; shared Postgres; `jobhist-sync` runs in the `ncar-hpc-deploy` lane |
-| `hpc-scheduling-tools` (`~/codes/hpc-scheduling-tools`) | `github.com/NCAR/hpc-scheduling-tools` (private) | Fairshare tree + PBS accounting DB (`fsparsetree-mr`, `samuel2sql`, `hpc-sched-refresh`) | HSG's cron downloads from the SAMuel API and runs none of our code; `fsparsetree_mr` runs inside SAMuel as the `HPC_SCHEDULING_TOOLS` plugin behind `/api/v1/fairshare` |
-| legacy SAM (`~/codes/sam`, symlinked as `legacy_sam`) | `github.com/NCAR/sam` | Java/Tomcat original | Same MySQL DB; SAMuel is porting its API families |
-| `sam-ldap-syncd` | `github.com/NCAR/sam-ldap-syncd` | Perl daemon: IDMS/LDAP ↔ SAM | Legacy `/api/protected/admin/...` endpoints, not yet ported (`docs/plans/LDAP_SYNC_API.md`) |
-| `amie-sam-mediator` | `github.com/NCAR/amie-sam-mediator` | ACCESS AMIE packets via SAM + LDAP | Legacy `/api/protected/amie/v1/*`, not ported, consumer idle |
-| `pbsparse` | `github.com/NCAR/pbsparse` | PBS log parser | Transitive, through `hpc-usage-queries` |
-| XRAS broker, HEUV portal | (no local repos) | External consumers | XRAS is ported (`/api/xras/v1/*`); HEUV is not |
+| `hpc-usage-queries` (`~/codes/hpc-usage-queries/devel`) | public, `benkirk/` | `job_history` + `fs_scans`, ~34K Python lines, ~920 tests; owns the `csg-postgres` CNPG chart | Two plugins (`[hpc]` extra); `sam-admin accounting --comp` reads `daily_summary`; sync runs in the `ncar-hpc-deploy` lane |
+| `hpc-scheduling-tools` (`~/codes/hpc-scheduling-tools`) | private, NCAR | `fsparsetree-mr` (`resource_group`), `samuel2sql` (`ncar_accounting.db`), `hpc-sched-refresh` (playground) | `HPC_SCHEDULING_TOOLS` plugin behind `/api/v1/fairshare/<machine>`; reads `fstree_access`, `queue`, `wallclock_exemption` |
+| `pbsparse` | public, NCAR | PBS accounting-log parser | Transitive, through `hpc-usage-queries` |
+| `PBS_hooks` | private, NCAR | the `accounting` and `wallclock` hooks that read `ncar_accounting.db` | Fed from SAMuel's legacy-shaped APIs |
+| legacy SAM (`~/codes/sam`, symlinked as `legacy_sam`) | private, NCAR | Java/Spring/JSF/Hibernate WAR on Tomcat; ~2,900 `.java` files, 229 `.xhtml` | Same MySQL DB; SAMuel is porting its API families |
+| container zoo (`legacy_sam/container_zoo/`) | mostly private (`amie-sam-mediator`, `amiemediator` public) | LDAP chain, AMIE chain, `sweet` base images, `sam-app` host config | Only `sam-ldap-syncd` and `amie-sam-mediator` call legacy SAM |
 
-- **Not separate repos:** `fs-scans`, `ncar-hpc-deploy`, collectors and the GitOps config all live in
-  a repo above. There is no separate helm-values repo.
-- **Repo naming:** this repo's remote is `github.com/benkirk/sam-queries`, but docs link PRs at
-  `NCAR/sam-queries`. Pick one for the slides.
-- **Further reading:** `docs/plans/LDAP_SYNC_API.md` Appendix A has a fuller table of the legacy
-  container zoo.
+- **Slides (`_A-peers.qmd`, 12 with title and section):** Who's who; `hpc-usage-queries` x3
+  (overview, `job_history` logs to charges, `fs_scans` and the CNPG cluster); `hpc-scheduling-tools`
+  x2 (kept apart; packaged once, served by the API); legacy SAM; the container zoo; retired or
+  soon to be; TL;DR.
+- **Left out:** `qhist`, `csg-utils`, `fs_usage`, `sam_usage_data`, `parse_quotas` (no
+  dependency).
+- **Repo naming, resolved:** `NCAR/sam-queries` does not exist; slides use
+  `github.com/benkirk/sam-queries`.
+- **To confirm with Ben:** nothing in `hpc-scheduling-tools` calls `/api/v1/fairshare`;
+  `refresh.py` (the playground) builds both artifacts from the raw endpoints. That HSG's
+  production cron downloads the tree is Ben's statement (2026-10-01), not something in a repo.
+- **Further reading:** `docs/plans/LDAP_SYNC_API.md` Appendix A has the fuller zoo survey.
 
 ### Appendix B — Two Dialects (the APIs; placeholder, 2026-10-01)
 
@@ -923,6 +933,13 @@ an update here (tick boxes, session log).
   - **Trap:** `concepts_data.py` reads "now". Run after 2026-10-01, it draws the FY27 windows
     at 0% used. `_out_accounts.qmd` and `_out_audit.qmd` stay at their FY26 versions until it
     takes an as-of date.
+
+- **2026-10-01, Appendix A drafted.** The placeholder became 12 slides (see §4). Facts from
+  read-only surveys of `hpc-usage-queries`, `hpc-scheduling-tools`, `~/codes/sam` and its zoo,
+  plus `gh repo view` for visibility. `_variables.yml` gained `peers.huq_lines` and
+  `peers.huq_tests`. `make qa DECKS="A-peers samuel"` passes.
+  - **Trap:** a wide `rankdir=LR` chain in a 100% column renders squashed in the PDF. A vertical
+    chain in a 40% column, beside the bullets, renders cleanly in all three formats.
 
 ## 11. Voice, tone and the fun
 
