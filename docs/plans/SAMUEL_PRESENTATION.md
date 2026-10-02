@@ -966,6 +966,11 @@ an update here (tick boxes, session log).
   - **Trap:** pptx moves anything after a `.columns` block to a new slide. Put the bullets
     inside the columns.
 
+- **2026-10-02, Appendix B endpoint tables.** Two summary tables follow the two dialects'
+  introductions: "The legacy-shaped endpoints" and "The new endpoints" (Ben).
+  - **Trap:** a bare `<code>` in a speaker note is a real HTML tag in revealjs and swallows the
+    slides after it. Backtick every `<placeholder>` in notes; Parts 3 and 5 had three.
+
 ## 11. Voice, tone and the fun
 
 **SAMuel = SAM, updated for extended lifecycle.** That backronym is the deck's premise and its
