@@ -860,12 +860,33 @@ an update here (tick boxes, session log).
   - `docs/samuel/qa-names.txt` drives the name scan.
   - The skill's deferred list holds the follow-ups: an ignore list, the sample deck's three
     overflows, CI, and pptx overflow.
+- **2026-10-01 (Ben's review, batch 1: Part 1):** Ben edited Part 1 directly. Claude swept the
+  rest of the deck for the same treatment (§11 records the tone call).
+  - **Part 1:** bold key terms; plain titles ("Deep roots", "Mobile and dark mode"); users and
+    support staff rather than PIs and CISL staff; more on organizational and grant metadata,
+    Events, and why plugins exist.
+  - **Milestones** are added to `_variables.yml` and "How we got here":
+    - charge ingest, May 2026 (Ben);
+    - web app read/write, June 2026 (#320, 2026-06-18);
+    - FY27 renewals, September 2026.
+  - **Parts 2–5:** row labels bolded in eight tables. No bolding of bullet lists outside Part 1.
+  - **Part 2:**
+    - a new slide, "Who, where, and who pays": organizations, institutions, contracts and area of
+      interest, with the external-contacts plan as a footnote (Ben);
+    - an Events bullet on Users.
+  - **QA:** `make qa` passes on all parts. Plugins, "How we got here" and the new slide dropped
+    to `{.vcenter}` to fit the PDF.
 
 ## 11. Voice, tone and the fun
 
 **SAMuel = SAM, updated for extended lifecycle.** That backronym is the deck's premise and its
-running gag: legacy SAM served ~15 years, and SAMuel is its extended lifecycle, not its
-obituary.
+running gag: legacy SAM served ~15 years, and SAMuel is its extended lifecycle.
+
+**Ben's call, 2026-10-01 (his Part 1 edit):** say it plainly. SAMuel is "a modernization and
+refactoring effort to support another generation", not a wink at an obituary. Part 1 drops the
+cute titles and asides ("A long and honorable career" became "Deep roots"). The audience is
+users and support staff, not just PIs and CISL staff. Part 1 also bolds the key term of each
+bullet and the first column of each table. Parts 2–5 bold table row labels only.
 
 **Calibration sources.** These are Ben's own decks; read them through the Google Workspace MCP
 (`get_presentation`, `get_page_thumbnail` with `inline=true`) before writing any slide text:
@@ -900,7 +921,7 @@ obituary.
 **Where the fun goes, and where it doesn't:**
 - Titles, section dividers, asides, footnotes and speaker notes get the personality. Facts,
   tables and diagrams stay precise; a joke never replaces a number.
-- Part 1 is stakeholder-facing: lighter touch, and the fun is in the framing.
+- Part 1 is stakeholder-facing: plain, with no winks; the fun lives in Parts 2–5.
 - Parts 2–4 can be as nerdy as the material.
 - Never punch at legacy SAM or its developers. "Extended lifecycle" is the honorific.
 
