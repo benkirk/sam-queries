@@ -485,9 +485,9 @@ what is retired or retiring.
 | Repo | Visibility | What it is | Coupling to SAMuel |
 |---|---|---|---|
 | `hpc-usage-queries` (`~/codes/hpc-usage-queries/devel`) | public, `benkirk/` | `job_history` + `fs_scans`, ~34K Python lines, ~920 tests; owns the `csg-postgres` CNPG chart | Two plugins (`[hpc]` extra); `sam-admin accounting --comp` reads `daily_summary`; sync runs in the `ncar-hpc-deploy` lane |
-| `hpc-scheduling-tools` (`~/codes/hpc-scheduling-tools`) | private, NCAR | `fsparsetree-mr` (`resource_group`), `samuel2sql` (`ncar_accounting.db`), `hpc-sched-refresh` (playground) | `HPC_SCHEDULING_TOOLS` plugin behind `/api/v1/fairshare/<machine>`; reads `fstree_access`, `queue`, `wallclock_exemption` |
+| `hpc-scheduling-tools` (`~/codes/hpc-scheduling-tools`) | private, NCAR | `fsparsetree-mr` (`resource_group`); reference copies of HSG's hooks (`sample_hooks/`) and `samuel2sql` (`ncar_accounting.db`), iterated on since; `hpc-sched-refresh` (playground) | `HPC_SCHEDULING_TOOLS` plugin behind `/api/v1/fairshare/<machine>`; reads `fstree_access`, `queue`, `wallclock_exemption` |
 | `pbsparse` | public, NCAR | PBS accounting-log parser | Transitive, through `hpc-usage-queries` |
-| `PBS_hooks` | private, NCAR | the `accounting` and `wallclock` hooks that read `ncar_accounting.db` | Fed from SAMuel's legacy-shaped APIs |
+| `PBS_hooks` | private, NCAR | HSG's deployed `accounting` and `wallclock` hooks (branch `production`) | HSG's own `samuel2sql` builds their database from SAMuel's legacy-shaped APIs |
 | legacy SAM (`~/codes/sam`, symlinked as `legacy_sam`) | private, NCAR | Java/Spring/JSF/Hibernate WAR on Tomcat; ~2,900 `.java` files, 229 `.xhtml` | Same MySQL DB; SAMuel is porting its API families |
 | container zoo (`legacy_sam/container_zoo/`) | mostly private (`amie-sam-mediator`, `amiemediator` public) | LDAP chain, AMIE chain, `sweet` base images, `sam-app` host config | Only `sam-ldap-syncd` and `amie-sam-mediator` call legacy SAM |
 
@@ -499,6 +499,9 @@ what is retired or retiring.
   dependency).
 - **Repo naming, resolved:** `NCAR/sam-queries` does not exist; slides use
   `github.com/benkirk/sam-queries`.
+- **The hooks are HSG's** (Ben, 2026-10-02): HSG runs and maintains their own hooks and
+  `samuel2sql`. The copies in `hpc-scheduling-tools` are references Ben has iterated on since.
+  Only the fairshare tree is this repo's, and only the tree is served by SAMuel's API.
 - **To confirm with Ben:** nothing in `hpc-scheduling-tools` calls `/api/v1/fairshare`;
   `refresh.py` (the playground) builds both artifacts from the raw endpoints. That HSG's
   production cron downloads the tree is Ben's statement (2026-10-01), not something in a repo.
