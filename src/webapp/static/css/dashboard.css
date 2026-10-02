@@ -2412,7 +2412,7 @@ tr.tree-node-current {
 
 /* ============================================================================
    MUTED BADGE PALETTE — saturated Bootstrap defaults (bg-primary/info/success/
-   warning/danger) read as aggressive next to the flat Unity surfaces, especially
+   warning/danger, and the solid gray secondary) read as aggressive next to the flat Unity surfaces, especially
    when a dozen+ badges stack on a single line (group memberships, permissions,
    etc.). Override the .badge .bg-X compound so badges adopt the subtle/tinted
    palette Bootstrap 5.3 already ships (--bs-X-bg-subtle / -text-emphasis /
@@ -2421,12 +2421,21 @@ tr.tree-node-current {
    The !important is required to beat Bootstrap's own .bg-X !important.
    ========================================================================= */
 .badge.bg-primary,
+.badge.bg-secondary,
 .badge.bg-info,
 .badge.bg-success,
 .badge.bg-warning,
 .badge.bg-danger {
     font-weight: var(--font-weight-semi-bold);
     border: 1px solid;
+}
+
+/* Secondary is the count badge (group sizes, queue lengths) and the neutral
+   status (inactive, expired); solid gray was the loudest thing in its row. */
+.badge.bg-secondary {
+    background-color: var(--bs-secondary-bg-subtle) !important;
+    color: var(--bs-secondary-text-emphasis) !important;
+    border-color: var(--bs-secondary-border-subtle);
 }
 
 .badge.bg-primary {

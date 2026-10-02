@@ -16,7 +16,7 @@
 {%- endmacro %}
 
 {% macro group_count(n, title='') -%}
-<span class="badge bg-secondary ms-2"{% if title %} title="{{ title }}"{% endif %}>{{ n | fmt_number }}</span>
+<span class="badge bg-secondary count-badge ms-2"{% if title %} title="{{ title }}"{% endif %}>{{ n | fmt_number }}</span>
 {%- endmacro %}
 
 {# A neutral fact about a row (why it is dim), not a signal. #}
