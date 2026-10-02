@@ -259,12 +259,13 @@ current affiliation need a membership fix instead and are counted apart.
 
 {# Allocations dashboard: the project table's "Roots only" switch (popover) #}
 {% macro g_roots_only() -%}
-Shows the top of each allocation tree only: projects with no parent project,
-and allocations not drawn from a parent allocation. Sub-projects that share a
-parent&rsquo;s pool, and carve-outs allotted from it, are folded into their
-root so an amount is never counted twice &mdash; the same rule the charts and
-totals on this page always use. Turn it off to list every project; a row
-drawing from a shared pool then shows the amount that is its own.
+<strong>Filters the project lists only.</strong> Totals, both charts and Pace
+always count root allocations, so an amount is never counted twice.
+On, each allocation type lists the top of each allocation tree: projects with no
+parent project, and allocations not drawn from a parent allocation (sub-projects
+sharing a parent&rsquo;s pool and carve-outs from it are folded into their root).
+Off, every project is listed, and a row drawing from a shared pool shows the
+amount that is its own.
 {%- endmacro %}
 
 {# XRAS Remediations: the contract-blockers strip (popover) #}

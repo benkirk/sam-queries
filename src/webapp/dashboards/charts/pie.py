@@ -1,26 +1,15 @@
 """Pie charts.
 
-Five charts shared a 16-line `subplots` + `ax.pie` + autopct-recolour block
-**byte-identical in all five**, plus an 8-line wedge/legend click-wiring loop
-repeated three times. What actually differed was small and is now the whole of
-each subclass:
-
-- **trim strategy** — a fixed top-10 cap (`trim_fixed_cap`) or a ~90%
-  cumulative share (`trim_cumulative`). Note this splits exactly the same way
-  the cache keys do: the two fixed-cap pies are also the two with no drill.
-- **"Other" derivation** — three variants: count-based remainder, sum of the
-  tail, or `totals - kept` from an upstream-truncated envelope.
-- **legend formatter** — `fmt.number` for counts and charges, `fmt.size` for
-  bytes.
-- **drill target** — four, or none.
-
-`FacilityPie` and `AllocationTypePie` end up as attribute-only subclasses,
-which is the declarative tier this repo already reaches for elsewhere
-(`CrudSpec`).
+`PieChart` owns the `ax.pie` call, the autopct recoloring and the wedge/legend
+drill wiring. A subclass supplies the trim (`trim_cumulative`, ~90%), the "Other" derivation, the legend formatter and an
+optional drill target. `TwoRingPie` is the two-ring (sunburst) variant.
 """
 
 import math
 from typing import Dict, List
+
+from matplotlib.offsetbox import AnchoredOffsetbox, DrawingArea, HPacker, TextArea, VPacker
+from matplotlib.patches import Rectangle
 
 from sam import fmt
 from webapp.caching.chart import content_hash
@@ -33,26 +22,11 @@ from webapp.dashboards.charts.theme import (
 )
 
 _PIE_START_ANGLE = 60
-_PIE_MAX_ENTITIES = 10
 
 #: Cumulative-share trim: show entities up to ~90% of the total, but never
 #: more than 9 named slices (the palette has 10; keep "Other" distinct).
 _PIE_CUM_SHARE = 0.90
 _PIE_HARD_CAP = 9
-
-
-def trim_fixed_cap(names: list, values: list, cap: int = _PIE_MAX_ENTITIES
-                   ) -> tuple[list, list]:
-    """Sort by value descending, cap, group the remainder as 'Others (N)'."""
-    paired = sorted(zip(names, values), key=lambda x: x[1], reverse=True)
-    names_s = [p[0] for p in paired]
-    values_s = [p[1] for p in paired]
-    if len(names_s) > cap:
-        n_others = len(names_s) - cap
-        others_sum = sum(values_s[cap:])
-        names_s = names_s[:cap] + [f'Others ({n_others})']
-        values_s = values_s[:cap] + [others_sum]
-    return names_s, values_s
 
 
 def trim_cumulative(values_desc: list, cap: int = _PIE_HARD_CAP) -> int:
@@ -78,20 +52,9 @@ def trim_cumulative(values_desc: list, cap: int = _PIE_HARD_CAP) -> int:
 class PieChart(BaseChart):
     """Shared pie rendering. Subclasses supply slices and, optionally, a drill."""
 
-    #: Pies keep their side legend on mobile — measured, and it reads fine:
-    #: a pie is square, so a legend beside it uses width the plot cannot,
-    #: whereas the wide families have no width to spare. The `max_legend_entries`
-    #: cap keeps that column from growing taller than the pie.
-    #:
-    #: **Tablet is desktop, deliberately.** A pie's tight bbox is only ~360pt
-    #: — a pie trims to its own square, where the wide families trim to nearly
-    #: their declared inches — so every surface that renders one already gives
-    #: it as much width as it can use. Measured at a 768 viewport the three
-    #: pie surfaces read 13.8px, 10.7px and 16.6px; shrinking the figure would
-    #: make the jobs pie smaller on screen and the allocations pie's labels
-    #: larger, and neither is an improvement. The `max_legend_entries` cap is
-    #: dropped with it, because on this family the cap removes *slices*, and a
-    #: tablet has room for all of them.
+    #: Side legend on mobile (a square pie leaves width a legend can use; the cap
+    #: keeps it no taller than the pie). Tablet is desktop: a pie's ~360pt bbox
+    #: already gets all the width it can use, and there the cap would cut slices.
     LAYOUTS = profile((7, 4), (3.6, 2.9), (7, 4),
                       mobile={'legend_placement': 'right'},
                       tablet={'max_legend_entries': None})
@@ -106,9 +69,7 @@ class PieChart(BaseChart):
     legend_fontsize = 9
     legend_anchor = (1.01, 0.5)
 
-    #: A drill target (`RowDrill`/`UserDrill`) or None. When None the legend
-    #: is built but its return value discarded, exactly as before — the two
-    #: allocation pies have never been clickable.
+    #: A drill target (`RowDrill`/`UserDrill`), or None for an inert pie.
     drill = None
 
     def build(self):
@@ -123,16 +84,9 @@ class PieChart(BaseChart):
         return f'{label} ({fmt.number(value)})'
 
     def slice_cap(self, default: int) -> int:
-        """How many named slices this layout affords, before 'Other'.
-
-        A pie is the one family where `max_legend_entries` must bite on the
-        **data**, not the legend. Capping only the legend would draw wedges
-        that nothing identifies — and every one of these pies is a drill
-        target, so an unidentified wedge is also an unlabelled click.
-
-        Read off `self.layout` because this runs inside `build()`, which
-        `prepare()` calls before the drawing hooks get their arguments.
-        """
+        """Named slices this layout affords before 'Other'. Caps the data, not the
+        legend: an unlegended wedge is an unlabelled click. Reads `self.layout`
+        because `build()` runs in `prepare()`, before the drawing hooks."""
         return min(default, self.layout.max_legend_entries or default)
 
     # --- lifecycle --------------------------------------------------------
@@ -184,59 +138,6 @@ class PieChart(BaseChart):
                 leg_patches[i].set_url(url)
             if i < len(leg_texts):
                 leg_texts[i].set_url(url)
-
-
-class _FixedCapPie(PieChart):
-    """Top-10 cap with an 'Others (N)' remainder; never clickable.
-
-    The two allocations-dashboard pies. Both take a single list argument and
-    differ only in which two dict keys they read — which is the whole of each
-    subclass below.
-    """
-
-    #: ``(name_key, value_key)`` in the incoming row dicts.
-    fields: tuple = None
-
-    def __init__(self, data: List[Dict]):
-        self.data = data or []
-
-    @staticmethod
-    def cache_key(data):
-        return content_hash(data)
-
-    def build(self):
-        name_key, value_key = self.fields
-        names, values = trim_fixed_cap([d[name_key] for d in self.data],
-                                       [d[value_key] for d in self.data],
-                                       cap=self.slice_cap(_PIE_MAX_ENTITIES))
-        colors = self.theme.data_colors(
-            list(UNITY_PALETTE_10[:len(names)]))
-        return names, values, colors, [None] * len(names)
-
-
-class FacilityPie(_FixedCapPie):
-    """Allocation distribution by facility. Title is rendered in the
-    surrounding HTML (see allocations dashboard template)."""
-
-    cache_name = 'facility_pie_chart'
-    #: One entry per resource filter combination; few distinct views. Raised
-    #: 32 -> 48 with the mobile layout and 48 -> 72 with the tablet one: each
-    #: live profile splits every chart's key space, and this was the tightest
-    #: budget in the package. The split is real here even though a tablet pie
-    #: renders the desktop figure — same bytes, different key.
-    cache_maxsize = 72
-    empty_message = 'No facility data available'
-    fields = ('facility', 'annualized_rate')
-
-
-class AllocationTypePie(_FixedCapPie):
-    """Allocation distribution by type within a facility."""
-
-    cache_name = 'allocation_type_pie_chart'
-    #: One entry per (resource, facility) filter combination.
-    cache_maxsize = 64
-    empty_message = 'No allocation type data available'
-    fields = ('allocation_type', 'total_amount')
 
 
 class _CumulativePie(PieChart):
@@ -425,25 +326,24 @@ class JobsUsagePie(_CumulativePie):
         return labels, values, colors, keys
 
 
-class FairShareSunburst(PieChart):
-    """Fair share in two rings: facilities (share of the machine) inside, their
-    allocation types outside, each type a shade of its facility's family.
+class TwoRingPie(PieChart):
+    """Groups in the inner ring, their parts in the outer ring, each part a shade of
+    its group's hue (``facility_palette`` slot). Every wedge and legend entry drills.
 
-    ``data`` = ``[{'id', 'facility', 'slot', 'share', 'types': [{'name', 'share'}]}]``;
-    a type's share is of its facility, so its wedge is facility x type / 100.
-    Every wedge and legend entry drills to its facility's row in the tree.
+    ``data`` = ``[{'id', 'facility', 'slot', 'value', 'types': [{'name', 'value'}]}]``;
+    parts summing above their group are scaled to fit, and a shortfall is a blank wedge.
     """
 
-    cache_name = 'fair_share_sunburst'
-    cache_maxsize = 24
-    empty_message = 'No active facility has a fair share'
     drill = links.FACILITY_ROW
 
     inner_radius = 0.66
     ring_width = 0.3
-    #: Smallest wedge (percent of the machine) that carries a direct label.
+    #: Smallest wedge (percent of the whole) that carries a direct label.
     inner_label_min = 5
     outer_label_min = 6
+    center_text = ''
+    #: True draws the legend as aligned columns from ``legend_cells()``.
+    table_legend = False
 
     def __init__(self, data: List[Dict]):
         self.data = data or []
@@ -452,14 +352,29 @@ class FairShareSunburst(PieChart):
     def cache_key(data):
         return content_hash(data)
 
-    def legend_label(self, label, value) -> str:
-        return f'{label} ({fmt.pct(value, decimals=2)})'
+    def groups(self):
+        """``[(row, value)]`` for the inner ring."""
+        return [(r, r.get('value')) for r in self.data]
+
+    def parts(self, row, value):
+        """``([(name, value)], gap)``: one group's outer wedges in name order."""
+        types = sorted(((t['name'], t['value']) for t in row.get('types', []) if t.get('value')),
+                       key=lambda t: t[0])
+        total = sum(v for _, v in types)
+        scale = value / total if total > value else 1
+        return [(n, v * scale) for n, v in types], value - total * scale
+
+    def percent(self, value):
+        """``value`` as a percent of the whole, for the direct-label thresholds."""
+        return value * 100 / self.total if self.total else 0
 
     def prepare(self):
-        self.rows = [r for r in self.data if r.get('share')]
+        pairs = [(r, v) for r, v in self.groups() if v]
+        self.rows = [r for r, _ in pairs]
         self.labels = [r['facility'] for r in self.rows]
-        self.values = [r['share'] for r in self.rows]
+        self.values = [v for _, v in pairs]
         self.link_keys = [r.get('id') for r in self.rows]
+        self.total = sum(self.values)
 
     def is_empty(self) -> bool:
         return not self.values
@@ -473,19 +388,15 @@ class FairShareSunburst(PieChart):
     def draw(self, ax, layout, theme):
         bases = [self._base(r.get('slot')) for r in self.rows]
         outer_vals, outer_colors, outer_names, outer_keys = [], [], [], []
-        for row, base in zip(self.rows, bases):
-            types = sorted((t for t in row.get('types', []) if t.get('share')),
-                           key=lambda t: t['name'])
-            total = sum(t['share'] for t in types)
-            scale = 100 / total if total > 100 else 1
-            shades = shade_family(base, len(types), lightest=0.55, toward=theme.shade_toward)
-            for t, shade in zip(types, reversed(shades)):
-                outer_vals.append(row['share'] * t['share'] * scale / 100)
+        for row, value, base in zip(self.rows, self.values, bases):
+            parts, gap = self.parts(row, value)
+            shades = shade_family(base, len(parts), lightest=0.55, toward=theme.shade_toward)
+            for (name, part), shade in zip(parts, reversed(shades)):
+                outer_vals.append(part)
                 outer_colors.append(shade)
-                outer_names.append(t['name'])
+                outer_names.append(name)
                 outer_keys.append(row.get('id'))
-            gap = row['share'] * (100 - total * scale) / 100
-            if gap > 1e-9:
+            if gap > 1e-9 * max(value, 1):
                 outer_vals.append(gap)
                 outer_colors.append('none')
                 outer_names.append(None)
@@ -498,27 +409,122 @@ class FairShareSunburst(PieChart):
         outer, _ = ax.pie(outer_vals, radius=self.inner_radius + self.ring_width + 0.02,
                           colors=outer_colors,
                           wedgeprops={**edge, 'width': self.ring_width, 'linewidth': 1}, **common)
-        self.wedges = inner
+        self.wedges, self.bases = inner, bases
         for wedge, key in zip(outer, outer_keys):
             if key is not None:
                 wedge.set_url(self.drill.url(key))
 
         size = self.autopct_fontsize
-        self._label(ax, inner, self.labels, self.values, bases,
+        self._label(ax, inner, self.labels, [self.percent(v) for v in self.values], bases,
                     self.inner_radius - self.ring_width / 2, self.inner_label_min, size)
         if layout.name != 'mobile':   # a phone's outer ring is too narrow; the legend carries it
-            self._label(ax, outer, outer_names, outer_vals, outer_colors,
+            self._label(ax, outer, outer_names, [self.percent(v) for v in outer_vals], outer_colors,
                         self.inner_radius + self.ring_width / 2 + 0.02, self.outer_label_min, size - 1)
-        ax.text(0, 0, 'Fair\nshare', ha='center', va='center', fontsize=size + 1,
-                color=theme.text, alpha=0.7)
+        if self.center_text:
+            ax.text(0, 0, self.center_text, ha='center', va='center', fontsize=size + 1,
+                    color=theme.text, alpha=0.7)
         ax.set_aspect('equal')
 
+    def legend_cells(self, label, value):
+        """``(name, share, amount)`` strings for one table-legend row."""
+        raise NotImplementedError
+
+    def add_legend(self, ax, layout, theme):
+        if not self.table_legend:
+            return super().add_legend(ax, layout, theme)
+        # Columns, not one string per entry: names left, numbers right-aligned, so
+        # shares and amounts compare down the column in a proportional font.
+        size = layout.legend_fontsize or self.legend_fontsize
+        rows = [self.legend_cells(l, v) for l, v in zip(self.labels, self.values)]
+        urls = [self.drill.url(k) if k is not None else None for k in self.link_keys]
+        for wedge, url in zip(self.wedges, urls):
+            wedge.set_url(url)
+
+        def cell(text, url, alpha=1.0):
+            area = TextArea(text, textprops=dict(fontsize=size, color=theme.text, alpha=alpha))
+            area._text.set_url(url)
+            return area
+
+        def name(text, color, url):
+            swatch = DrawingArea(size * 1.4, size, 0, 0)
+            rect = Rectangle((0, size * 0.2), size * 1.4, size * 0.6, facecolor=color, edgecolor='none')
+            rect.set_url(url)
+            swatch.add_artist(rect)
+            return HPacker(children=[swatch, cell(text, url)], sep=size * 0.6, align='center')
+
+        sep = size * 0.55
+        columns = [
+            VPacker(children=[name(r[0], c, u) for r, c, u in zip(rows, self.bases, urls)],
+                    sep=sep, align='left'),
+            VPacker(children=[cell(r[1], u) for r, u in zip(rows, urls)], sep=sep, align='right'),
+            VPacker(children=[cell(r[2], u, alpha=0.7) for r, u in zip(rows, urls)],
+                    sep=sep, align='right'),
+        ]
+        table = AnchoredOffsetbox(loc='center left', child=HPacker(children=columns, sep=size * 1.1,
+                                                                   align='top'),
+                                  bbox_to_anchor=self.legend_anchor, bbox_transform=ax.transAxes,
+                                  frameon=False, borderpad=0, pad=0)
+        ax.add_artist(table)
+
     @staticmethod
-    def _label(ax, wedges, names, values, colors, radius, minimum, size):
-        for wedge, name, value, color in zip(wedges, names, values, colors):
-            if not name or value < minimum or color == 'none':
+    def _label(ax, wedges, names, percents, colors, radius, minimum, size):
+        for wedge, name, pct, color in zip(wedges, names, percents, colors):
+            if not name or pct < minimum or color == 'none':
                 continue
             angle = math.radians((wedge.theta1 + wedge.theta2) / 2)
             ax.text(radius * math.cos(angle), radius * math.sin(angle), name,
                     ha='center', va='center', fontsize=size, fontweight='bold',
                     color=autopct_color_for(color))
+
+
+class FairShareSunburst(TwoRingPie):
+    """Fair share: facilities (share of the machine) inside, their allocation types
+    outside. ``data`` rows carry ``share`` for ``value``, and a type's share is of
+    its facility, so its wedge is facility x type / 100.
+    """
+
+    cache_name = 'fair_share_sunburst'
+    cache_maxsize = 24
+    empty_message = 'No active facility has a fair share'
+    center_text = 'Fair\nshare'
+
+    def legend_label(self, label, value) -> str:
+        return f'{label} ({fmt.pct(value, decimals=2)})'
+
+    def groups(self):
+        return [(r, r.get('share')) for r in self.data]
+
+    def parts(self, row, value):
+        types = sorted((t for t in row.get('types', []) if t.get('share')), key=lambda t: t['name'])
+        total = sum(t['share'] for t in types)
+        scale = 100 / total if total > 100 else 1
+        parts = [(t['name'], value * t['share'] * scale / 100) for t in types]
+        return parts, value * (100 - total * scale) / 100
+
+    def percent(self, value):
+        return value
+
+
+class AllocationSunburst(TwoRingPie):
+    """Allocations dashboard: a resource's facilities inside, their allocation types
+    outside, in absolute units. ``center`` names the measure ('Allocated', 'Used').
+    """
+
+    cache_name = 'allocation_sunburst'
+    #: Two per resource tab (Allocated, Used), split by layout and theme.
+    cache_maxsize = 144
+    empty_message = 'No allocations to chart'
+    table_legend = True
+
+    def __init__(self, data: List[Dict], center: str = ''):
+        super().__init__(data)
+        self.center_text = center
+
+    @staticmethod
+    def cache_key(data, center=''):
+        return content_hash([data, center])
+
+    def legend_cells(self, label, value):
+        # Under 1% keeps two decimals, so a sliver never reads as 0.0%.
+        share = self.percent(value)
+        return label, fmt.pct(share, decimals=1 if share >= 1 else 2), fmt.number(value)

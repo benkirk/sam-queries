@@ -7,92 +7,20 @@
  */
 
 /* ===================================================================
-   Allocation Cards
+   Facility / allocation-type tree (projects.html)
    =================================================================== */
 
-.allocation-card {
-    background: var(--surface-tertiary);
-    border-left: 4px solid var(--ncar-blue);
-    padding: 1rem;
-    margin-bottom: 1rem;
-    border-radius: var(--radius-sm);
-}
-
-/* ===================================================================
-   Summary Tables
-   =================================================================== */
-
-.summary-table {
-    font-size: 0.9rem;
-}
-
-.summary-table th {
-    background-color: var(--surface-secondary);
-    font-weight: 600;
-}
-
-/* ===================================================================
-   Expandable Rows
-   =================================================================== */
-
-.expandable-row {
-    cursor: pointer;
-    transition: background-color var(--transition-fast);
-}
-
-.expandable-row:hover {
+/* A type's projects, loaded on expand: indented under the type row, on the
+   tertiary surface. */
+.alloc-details {
     background-color: var(--surface-tertiary);
+    padding: 0.5rem 0.75rem 0.75rem 2.4rem;
 }
 
-.expand-icon {
-    transition: transform var(--transition-fast);
-    display: inline-block;
-    width: 20px;
-    text-align: center;
-}
-
-.expand-icon.expanded {
-    transform: rotate(90deg);
-}
-
-.project-details-row {
-    display: none;
-    background-color: var(--surface-tertiary);
-}
-
-.project-details-row.show {
-    display: table-row;
-}
-
-/* ===================================================================
-   Hierarchical Facility / Allocation-Type Table (flat, interleaved rows)
-   =================================================================== */
-
-/* Facility header rows (top-level collapsible).
-   Blue-tinted rather than grey — deliberately distinct from the neutral
-   --surface-* ramp, which is why these get their own accent tokens instead
-   of being folded into it. */
-.facility-row {
-    background-color: var(--surface-accent);
-    cursor: pointer;
-    transition: background-color var(--transition-fast);
-}
-
-.facility-row:hover {
-    background-color: var(--surface-accent-hover);
-}
-
-/* Allocation type rows — hidden by default, revealed when facility expands */
-.alloc-type-row,
-.alloc-type-subtotal-row,
-.alloc-type-chart-row {
-    display: none;
-}
-
-.alloc-type-row.show,
-.alloc-type-subtotal-row.show,
-.alloc-type-chart-row.show {
-    display: table-row;
+.alloc-view-pills {
+    max-width: 16rem;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 .chart-container {
@@ -105,7 +33,7 @@
     height: auto;
 }
 
-/* Pace chart breaks out of the pie's 720px cap and fills the dashboard column */
+/* Pace chart breaks out of the 720px cap and fills the dashboard column */
 .chart-container.pace-chart svg {
     max-width: none;
 }

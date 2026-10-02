@@ -530,42 +530,25 @@ class TestMatplotlibCaching:
         html = response.data.decode()
         assert '<canvas' not in html
 
-    def test_facility_pie_cache_hit(self):
-        from webapp.dashboards.charts import generate_facility_pie_chart_matplotlib
-        generate_facility_pie_chart_matplotlib.cache_clear()
+    def test_allocation_sunburst_cache_hit(self):
+        from webapp.dashboards.charts import generate_allocation_sunburst
+        generate_allocation_sunburst.cache_clear()
 
-        data = [
-            {'facility': 'UNIV', 'annualized_rate': 500, 'count': 10, 'percent': 62.5},
-            {'facility': 'WNA', 'annualized_rate': 300, 'count': 5, 'percent': 37.5},
-        ]
-        r1 = generate_facility_pie_chart_matplotlib(data)
-        r2 = generate_facility_pie_chart_matplotlib(data)
+        data = [{'id': 1, 'facility': 'UNIV', 'slot': 1, 'value': 500.0,
+                 'types': [{'name': 'Small', 'value': 500.0}]}]
+        r1 = generate_allocation_sunburst(data, center='Used')
+        r2 = generate_allocation_sunburst(data, center='Used')
         assert r1 == r2
-        assert generate_facility_pie_chart_matplotlib.cache_info().hits >= 1
+        assert generate_allocation_sunburst.cache_info().hits >= 1
 
-    def test_facility_pie_cache_miss_on_different_data(self):
-        from webapp.dashboards.charts import generate_facility_pie_chart_matplotlib
-        generate_facility_pie_chart_matplotlib.cache_clear()
+    def test_allocation_sunburst_center_is_part_of_the_key(self):
+        from webapp.dashboards.charts import generate_allocation_sunburst
+        generate_allocation_sunburst.cache_clear()
 
-        data_a = [{'facility': 'UNIV', 'annualized_rate': 500, 'count': 10, 'percent': 100}]
-        data_b = [{'facility': 'WNA', 'annualized_rate': 300, 'count': 5, 'percent': 100}]
-        r1 = generate_facility_pie_chart_matplotlib(data_a)
-        r2 = generate_facility_pie_chart_matplotlib(data_b)
-        assert r1 != r2
-        assert generate_facility_pie_chart_matplotlib.cache_info().misses >= 2
-
-    def test_alloc_type_pie_cache_hit(self):
-        from webapp.dashboards.charts import generate_allocation_type_pie_chart_matplotlib
-        generate_allocation_type_pie_chart_matplotlib.cache_clear()
-
-        data = [
-            {'allocation_type': 'NSC', 'total_amount': 1000, 'count': 5, 'avg_amount': 200},
-            {'allocation_type': 'Small', 'total_amount': 500, 'count': 10, 'avg_amount': 50},
-        ]
-        r1 = generate_allocation_type_pie_chart_matplotlib(data)
-        r2 = generate_allocation_type_pie_chart_matplotlib(data)
-        assert r1 == r2
-        assert generate_allocation_type_pie_chart_matplotlib.cache_info().hits >= 1
+        data = [{'id': 1, 'facility': 'UNIV', 'slot': 1, 'value': 500.0, 'types': []}]
+        assert generate_allocation_sunburst(data, center='Used') != \
+            generate_allocation_sunburst(data, center='Volume')
+        assert generate_allocation_sunburst.cache_info().misses >= 2
 
     def test_nodetype_history_cache_hit(self):
         from webapp.dashboards.charts import generate_nodetype_history_matplotlib
@@ -607,21 +590,19 @@ class TestMatplotlibCaching:
         assert generate_usage_timeseries_matplotlib.cache_info().hits >= 1
 
     def test_empty_data_returns_fallback(self):
-        from webapp.dashboards.charts import generate_facility_pie_chart_matplotlib
-        result = generate_facility_pie_chart_matplotlib([])
+        from webapp.dashboards.charts import generate_allocation_sunburst
+        result = generate_allocation_sunburst([])
         assert 'text-muted' in result
         assert '<svg' not in result.lower()
 
     def test_cache_info_exposed(self):
         from webapp.dashboards.charts import (
-            generate_facility_pie_chart_matplotlib,
-            generate_allocation_type_pie_chart_matplotlib,
+            generate_allocation_sunburst,
             generate_usage_timeseries_matplotlib,
             generate_nodetype_history_matplotlib,
             generate_queue_history_matplotlib,
         )
-        for fn in [generate_facility_pie_chart_matplotlib,
-                   generate_allocation_type_pie_chart_matplotlib,
+        for fn in [generate_allocation_sunburst,
                    generate_usage_timeseries_matplotlib,
                    generate_nodetype_history_matplotlib,
                    generate_queue_history_matplotlib]:

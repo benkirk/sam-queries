@@ -134,7 +134,7 @@ class TestFacade:
         from webapp.dashboards import charts
         for name in ('_JOBS_METRIC_KEYS', '_jobs_bucket_segments',
                      '_jobs_metric_value', '_jobs_timeseries_series',
-                     '_pie_cumulative_keep', '_pie_trim', '_bucket_segments',
+                     '_pie_cumulative_keep', '_bucket_segments',
                      '_pace_bands', '_pace_key_fields',
                      '_jobs_histogram_cache_key', '_jobs_timeseries_cache_key',
                      '_jobs_usage_pie_cache_key', '_pace_cache_key',

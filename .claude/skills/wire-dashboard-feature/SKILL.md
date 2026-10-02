@@ -150,8 +150,13 @@ The vocabulary lives in `components.css` § Data tables; markup helpers in
   with `.tree-d1`/`.tree-d2` guide lines, in the parent's column set. Several
   child `<tr>`s in one tbody collapse together via a class target
   (`data-bs-target=".x-<id>"`). A share of a parent is `table_bits.share_bar`
-  (facility hues via `charts/theme.py` `facility_slots`). Reference:
-  `admin/fragments/facility_card.html`.
+  (facility hues via `charts/theme.py` `facility_slots`, over ALL active
+  facilities so a scoped user's colors match). References:
+  `admin/fragments/facility_card.html`, `allocations/projects.html`.
+- **A chart drilling into a tree** puts `data-facility-id` (or its `RowDrill`
+  attribute) plus `data-bs-target` on the row. The JS resolves the row within
+  the nearest `[data-drill-scope]`, else the tab pane: a chart behind pills
+  sits in a pill pane with no rows, so mark the pane that holds the table.
 - **Create buttons** go in `pane_toolbar` above the table, `btn-sm`.
 - **Grouped deletes** pass `delete_row_button(reload_event='reloadXCard')` so
   the card re-renders (a group's children live in a sibling `<tbody>`).

@@ -47,13 +47,14 @@ from webapp.utils.rbac import (
     Permission, allowed_facility_names as _allowed_facility_names,
 )
 from webapp.api.access_control import require_project_access
+from sam.resources.facilities import Facility
 from sam.resources.resources import Resource
 from ..charts import (
-    generate_facility_pie_chart_matplotlib,
-    generate_allocation_type_pie_chart_matplotlib,
+    generate_allocation_sunburst,
     generate_pace_chart_matplotlib,
     PACE_WINDOW_DAYS,
 )
+from ..charts.theme import facility_slots
 
 from . import bp
 
@@ -239,6 +240,66 @@ def get_all_facility_overviews(session, resource_names: List[str], active_at: da
     return overviews, type_rate_totals
 
 
+def _share(part, whole):
+    return part * 100 / whole if whole else None
+
+
+def build_facility_trees(grouped_data, overviews, type_rates, usage_overviews,
+                         usage_by_type, resource_types, facilities):
+    """{resource: [facility row with nested type rows]} for the tree table and sunbursts.
+
+    ``facilities`` is ``[(facility_id, facility_name, is_active)]`` for every facility:
+    slots come from the active ones, so a scoped user sees the same hues as everyone.
+    A row's ``alloc`` is its annualized rate, or its data volume on storage; its
+    shares are of the parent row (a facility of the resource, a type of its facility).
+    """
+    ids = {name: fid for fid, name, _ in facilities}
+    slots = facility_slots(fid for fid, _, active in facilities if active)
+    trees = {}
+    for rn, by_facility in grouped_data.items():
+        storage = resource_types.get(rn) in ('DISK', 'ARCHIVE')
+        overview = {o['facility']: o for o in overviews.get(rn, [])}
+        used_by_fac = {o['facility']: o.get('total_used', 0.0) for o in usage_overviews.get(rn, [])}
+        rows = []
+        for fac, types in by_facility.items():
+            ov = overview.get(fac, {})
+            amount = ov.get('total_amount', sum(t['total_amount'] for t in types))
+            count = ov.get('count', sum(t['count'] for t in types))
+            fid = ids.get(fac)
+            type_rows = []
+            for t in sorted(types, key=lambda t: t['allocation_type']):
+                name = t['allocation_type']
+                type_rows.append({
+                    'name': name, 'count': t['count'], 'total_amount': t['total_amount'],
+                    'avg': t.get('avg_amount'),
+                    'alloc': t['total_amount'] if storage else type_rates.get((rn, fac, name), 0.0),
+                    'used': usage_by_type.get((rn, fac, name), 0.0),
+                })
+            rows.append({
+                'id': fid, 'key': fid if fid is not None else fac, 'facility': fac,
+                'slot': slots.get(fid), 'count': count, 'total_amount': amount,
+                'avg': amount / count if count else None,
+                'alloc': amount if storage else ov.get('annualized_rate', 0.0),
+                'used': used_by_fac.get(fac, 0.0), 'types': type_rows,
+            })
+        rows.sort(key=lambda r: (r['slot'] is None, r['id'] is None, r['id'] or 0, r['facility']))
+        total_alloc = sum(r['alloc'] for r in rows)
+        total_used = sum(r['used'] for r in rows)
+        for r in rows:
+            r['alloc_share'], r['used_share'] = _share(r['alloc'], total_alloc), _share(r['used'], total_used)
+            for t in r['types']:
+                t['alloc_share'], t['used_share'] = _share(t['alloc'], r['alloc']), _share(t['used'], r['used'])
+        trees[rn] = rows
+    return trees
+
+
+def sunburst_rows(tree, measure):
+    """The two-ring chart input for one resource's tree, ``measure`` = 'alloc' | 'used'."""
+    return [{'id': r['id'], 'facility': r['facility'], 'slot': r['slot'], 'value': r[measure],
+             'types': [{'name': t['name'], 'value': t[measure]} for t in r['types']]}
+            for r in tree]
+
+
 def get_resource_types(session) -> Dict[str, str]:
     """
     Get mapping of resource name to resource type.
@@ -400,12 +461,9 @@ def projects():
     # The table's row filter; the summaries and charts are always root-only.
     root_only = read_switch(request.args, 'root_only', default=True)
 
-    # Four pies rendered inline, so this is one of the nine chart call sites with
-    # no htmx request behind them and the layout arrives on the cookie.
-    # `user_aware_cache_key` partitions the cached HTML by it, or the first
-    # visitor to warm the page would decide whether everyone else got
-    # phone-sized pies. The theme rides the same mechanism and the same
-    # partition, and fails louder -- a light pie on a dark page.
+    # The sunbursts render inline (no htmx request), so the layout arrives on the
+    # cookie and `user_aware_cache_key` partitions the cached HTML by it and by
+    # theme, or the first visitor would pick phone-sized or dark charts for all.
     layout, theme = read_layout(), read_theme()
 
     # ``allowed_facility_names`` is the user's universe -- every active facility
@@ -493,28 +551,6 @@ def projects():
             if key[1] in _allowed_set  # key is (resource, facility, allocation_type)
         }
 
-    # Generate facility pie chart SVGs (cached via lru_cache)
-    resource_overviews = {}
-    for rn in grouped_data.keys():
-        overview_data = all_overviews.get(rn, [])
-        resource_overviews[rn] = {
-            'table_data': overview_data,
-            'chart': generate_facility_pie_chart_matplotlib(
-                overview_data, layout=layout, theme=theme),
-        }
-
-    # Generate allocation type pie chart SVGs per resource/facility
-    allocation_type_charts = {}
-    for resource_name, facilities in grouped_data.items():
-        allocation_type_charts[resource_name] = {}
-        for facility_name, types in facilities.items():
-            if len(types) > 1:
-                allocation_type_charts[resource_name][facility_name] = \
-                    generate_allocation_type_pie_chart_matplotlib(
-                        types, layout=layout, theme=theme)
-            else:
-                allocation_type_charts[resource_name][facility_name] = None
-
     # Build usage-based charts.
     # Compute per-project usage ONCE; derive projcode="TOTAL" grouping Python-side
     # to avoid a second _fetch_all_allocations + full charge query pass.
@@ -529,60 +565,31 @@ def projects():
         force_refresh=force_refresh,
         root_only=True,     # Exclude inheriting child allocations — root amount == total
     )
-    # Scope filter: pace charts, usage pies, allocation-type usage
-    # charts all iterate this list and key off row['facility'].
+    # Scope filter: the Used column and sunburst key off row['facility'].
     per_project_usage = filter_rows_by_facility(per_project_usage, effective_facilities)
 
     # Derive TOTAL grouping (resource+facility+type, no projcode) Python-side
     usage_type_data = _aggregate_usage_to_total(per_project_usage)
 
-    # Index by resource -> facility for allocation-type chart generation
-    usage_by_resource_facility: Dict[str, Dict[str, List]] = {}
-    for row in usage_type_data:
-        usage_by_resource_facility\
-            .setdefault(row['resource'], {})\
-            .setdefault(row['facility'], [])\
-            .append(row)
-
-    allocation_type_usage_charts = {}
-    for resource_name, facilities in grouped_data.items():
-        allocation_type_usage_charts[resource_name] = {}
-        for facility_name, types in facilities.items():
-            usage_rows = usage_by_resource_facility.get(resource_name, {}).get(facility_name, [])
-            # Reuse allocation type chart fn — build minimal dicts with total_used as value
-            # (must exclude non-hashable fields like charges_by_type)
-            chartable = [
-                {
-                    'allocation_type': row['allocation_type'],
-                    'total_amount': row.get('total_used', 0.0),
-                    'count': row.get('count', 0),
-                    'avg_amount': row.get('total_used', 0.0),
-                }
-                for row in usage_rows
-                if row.get('total_used', 0.0) > 0
-            ]
-            if len(chartable) > 1:
-                allocation_type_usage_charts[resource_name][facility_name] = \
-                    generate_allocation_type_pie_chart_matplotlib(
-                        chartable, layout=layout, theme=theme)
-            else:
-                allocation_type_usage_charts[resource_name][facility_name] = None
-
-    # Build usage-based facility pie charts — reuse per_project_usage (no second DB call)
+    usage_by_type = {(r['resource'], r['facility'], r['allocation_type']): r.get('total_used', 0.0)
+                     for r in usage_type_data}
     all_usage_overviews = get_all_facility_usage_overviews(
         db.session, list(grouped_data.keys()), active_at,
         _usage=per_project_usage,
     )
-    resource_usage_overviews = {}
-    for rn in grouped_data.keys():
-        usage_overview_data = all_usage_overviews.get(rn, [])
-        # Only pass facilities that have actual usage (pie requires positive values)
-        chartable = [d for d in usage_overview_data if d.get('total_used', 0.0) > 0]
-        resource_usage_overviews[rn] = {
-            'table_data': usage_overview_data,
-            'chart': generate_facility_pie_chart_matplotlib(
-                chartable, layout=layout, theme=theme)
-                     if chartable else '<div class="text-center text-muted small py-3">No usage data yet</div>',
+
+    facilities = [(f.facility_id, f.facility_name, f.is_active) for f in db.session.query(Facility)]
+    trees = build_facility_trees(grouped_data, all_overviews, type_annualized_rates,
+                                 all_usage_overviews, usage_by_type, resource_types, facilities)
+    sunbursts = {}
+    for rn, tree in trees.items():
+        storage = resource_types.get(rn) in ('DISK', 'ARCHIVE')
+        sunbursts[rn] = {
+            'alloc': generate_allocation_sunburst(
+                sunburst_rows(tree, 'alloc'), center='Volume' if storage else 'Annual\nrate',
+                layout=layout, theme=theme),
+            'used': generate_allocation_sunburst(
+                sunburst_rows(tree, 'used'), center='Used', layout=layout, theme=theme),
         }
 
     # Pace charts render via HTMX, one loader per resource. Deferring the SVG
@@ -593,11 +600,8 @@ def projects():
     return render_template(
         'dashboards/allocations/projects.html',
         grouped_data=grouped_data,
-        resource_overviews=resource_overviews,
-        resource_usage_overviews=resource_usage_overviews,
-        allocation_type_charts=allocation_type_charts,
-        allocation_type_usage_charts=allocation_type_usage_charts,
-        type_annualized_rates=type_annualized_rates,
+        trees=trees,
+        sunbursts=sunbursts,
         active_at=active_at.strftime('%Y-%m-%d'),
         active_tab=active_tab,
         all_resources=all_resources,

@@ -1,12 +1,12 @@
-"""The 15 chart caches: names, count, and registration order.
+"""The chart caches: names, count, and registration order.
 
 Three things are pinned here, all of which the refactor could break silently:
 
 - **Names.** They are Redis key prefixes (``redis_chart.py``:
   ``f'chart:{name}:'``), so renaming one orphans its warm entries rather than
   failing. ``test_redis_cache.py`` also names several directly.
-- **Count.** 15 caches, one per cached generator. The 16th generator
-  (``generate_jobs_user_pie_chart``) is a facade that delegates and
+- **Count.** One cache per cached generator, except
+  ``generate_jobs_user_pie_chart``: a facade that delegates and
   deliberately registers no cache of its own — binding it would add a row to
   the admin Caching card for a chart that is really another chart.
 - **Order.** ``chart_cached`` appends to ``caching._chart_caches`` at
@@ -29,8 +29,6 @@ EXPECTED = [
     'distribution_histogram',
     'nodetype_history',
     'queue_history',
-    'facility_pie_chart',
-    'allocation_type_pie_chart',
     'disk_entity_pie_chart',
     'user_usage_pie_chart',
     'jobs_histogram',
@@ -38,6 +36,7 @@ EXPECTED = [
     'jobs_usage_pie_chart',
     'pace_chart',
     'fair_share_sunburst',
+    'allocation_sunburst',
 ]
 
 
@@ -50,7 +49,7 @@ def test_cache_names_and_order():
 
 
 def test_cache_count():
-    assert len(caching._chart_caches) == 16
+    assert len(caching._chart_caches) == 15
 
 
 def test_no_duplicate_cache_names():
@@ -63,16 +62,16 @@ def test_no_duplicate_cache_names():
 def test_every_cached_generator_has_a_cache():
     """One cache per cached generator, and no strays."""
     generators = [n for n in dir(charts) if n.startswith('generate_')]
-    # 17 generators, 16 caches: the By User jobs pie is a delegating facade.
-    assert len(generators) == 17
-    assert len(_registered_names()) == 16
+    # 16 generators, 15 caches: the By User jobs pie is a delegating facade.
+    assert len(generators) == 16
+    assert len(_registered_names()) == 15
 
 
 def test_delegating_facade_registers_no_cache(app):
     """`generate_jobs_user_pie_chart` must stay a thin facade.
 
     It inherits caching through the callee. Binding it as its own chart would
-    register a 16th cache and add a row to the admin Caching card for what is
+    register a second cache and add a row to the admin Caching card for what is
     really the same chart under a different drill attribute.
     """
     before = len(caching._chart_caches)
