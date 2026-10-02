@@ -429,13 +429,15 @@ class FairShareSunburst(PieChart):
     """Fair share in two rings: facilities (share of the machine) inside, their
     allocation types outside, each type a shade of its facility's family.
 
-    ``data`` = ``[{'facility', 'slot', 'share', 'types': [{'name', 'share'}]}]``;
+    ``data`` = ``[{'id', 'facility', 'slot', 'share', 'types': [{'name', 'share'}]}]``;
     a type's share is of its facility, so its wedge is facility x type / 100.
+    Every wedge and legend entry drills to its facility's row in the tree.
     """
 
     cache_name = 'fair_share_sunburst'
     cache_maxsize = 24
     empty_message = 'No active facility has a fair share'
+    drill = links.FACILITY_ROW
 
     inner_radius = 0.66
     ring_width = 0.3
@@ -457,7 +459,7 @@ class FairShareSunburst(PieChart):
         self.rows = [r for r in self.data if r.get('share')]
         self.labels = [r['facility'] for r in self.rows]
         self.values = [r['share'] for r in self.rows]
-        self.link_keys = [None] * len(self.rows)
+        self.link_keys = [r.get('id') for r in self.rows]
 
     def is_empty(self) -> bool:
         return not self.values
@@ -470,7 +472,7 @@ class FairShareSunburst(PieChart):
 
     def draw(self, ax, layout, theme):
         bases = [self._base(r.get('slot')) for r in self.rows]
-        outer_vals, outer_colors, outer_names = [], [], []
+        outer_vals, outer_colors, outer_names, outer_keys = [], [], [], []
         for row, base in zip(self.rows, bases):
             types = sorted((t for t in row.get('types', []) if t.get('share')),
                            key=lambda t: t['name'])
@@ -481,11 +483,13 @@ class FairShareSunburst(PieChart):
                 outer_vals.append(row['share'] * t['share'] * scale / 100)
                 outer_colors.append(shade)
                 outer_names.append(t['name'])
+                outer_keys.append(row.get('id'))
             gap = row['share'] * (100 - total * scale) / 100
             if gap > 1e-9:
                 outer_vals.append(gap)
                 outer_colors.append('none')
                 outer_names.append(None)
+                outer_keys.append(None)
 
         common = dict(startangle=self.start_angle, counterclock=False)
         edge = {'edgecolor': theme.surface}
@@ -495,6 +499,9 @@ class FairShareSunburst(PieChart):
                           colors=outer_colors,
                           wedgeprops={**edge, 'width': self.ring_width, 'linewidth': 1}, **common)
         self.wedges = inner
+        for wedge, key in zip(outer, outer_keys):
+            if key is not None:
+                wedge.set_url(self.drill.url(key))
 
         size = self.autopct_fontsize
         self._label(ax, inner, self.labels, self.values, bases,

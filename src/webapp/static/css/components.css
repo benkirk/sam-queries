@@ -595,6 +595,7 @@ tr.collapsing {
 .fair-share-chart svg {
     display: block;
     width: 100%;
-    max-width: 34rem;
+    max-width: 44rem;
     height: auto;
+    margin: 0 auto;
 }

@@ -69,7 +69,7 @@ def htmx_facilities_card():
     active = _active_facilities()
     slots = facility_slots(f.facility_id for f in active)
     sunburst = [
-        {'facility': f.facility_name, 'slot': slots.get(f.facility_id),
+        {'id': f.facility_id, 'facility': f.facility_name, 'slot': slots.get(f.facility_id),
          'share': f.fair_share_percentage or 0,
          'types': [{'name': at.allocation_type, 'share': at.fair_share_percentage or 0}
                    for p in f.panels for at in p.allocation_types if at.active]}

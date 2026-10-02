@@ -77,8 +77,11 @@
                trigger would also fire from the Edit/Delete buttons
                (see dashboards/fragments/collapse.html). #}
             {% set f_toggle = 'facility-panels-' ~ f.facility_id %}
+            {# data-facility-id + an inert data-bs-target (no data-bs-toggle): the
+               sunburst's RowDrill finds this row and opens what the cells toggle. #}
             <tbody>
-                <tr class="table-subtle fw-semibold{{ ' row-inactive' if not f.active }}">
+                <tr class="table-subtle fw-semibold{{ ' row-inactive' if not f.active }}"
+                    data-facility-id="{{ f.facility_id }}" data-bs-target="#{{ f_toggle }}">
                     <td class="tree-cell cursor-pointer text-nowrap" style="--depth: 0;" {{ collapse_toggle(f_toggle) }}>
                         <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
                         {{- f.facility_name }}

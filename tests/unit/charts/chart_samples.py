@@ -236,16 +236,16 @@ def _pace_rollover(n=12):
 #: ``(case_id, callable, args, kwargs)``. The id is the snapshot key, so it is
 #: stable and descriptive; renaming one is a snapshot diff.
 _FAIR_SHARE = [
-    {'facility': 'ASD', 'slot': 1, 'share': 0.1,
+    {'id': 1, 'facility': 'ASD', 'slot': 1, 'share': 0.1,
      'types': [{'name': 'ASD-NCAR', 'share': 50.0}, {'name': 'ASD-UNIV', 'share': 50.0}]},
-    {'facility': 'CSL', 'slot': 3, 'share': 31.0, 'types': [{'name': 'CSL', 'share': 100.0}]},
-    {'facility': 'NCAR', 'slot': 4, 'share': 28.95,
+    {'id': 2, 'facility': 'CSL', 'slot': 3, 'share': 31.0, 'types': [{'name': 'CSL', 'share': 100.0}]},
+    {'id': 3, 'facility': 'NCAR', 'slot': 4, 'share': 28.95,
      'types': [{'name': 'NCAR Labs', 'share': 70.0}, {'name': 'NCAR Director', 'share': 20.0}]},
-    {'facility': 'UNIV', 'slot': 5, 'share': 25.95,
+    {'id': 4, 'facility': 'UNIV', 'slot': 5, 'share': 25.95,
      'types': [{'name': 'CHAP', 'share': 70.0}, {'name': 'Small', 'share': 10.0},
                {'name': 'Classroom', 'share': 20.0}]},
-    {'facility': 'WNA', 'slot': 6, 'share': 13.0, 'types': [{'name': 'WNA', 'share': 100.0}]},
-    {'facility': 'EXTRA', 'slot': None, 'share': 1.0, 'types': []},
+    {'id': 5, 'facility': 'WNA', 'slot': 6, 'share': 13.0, 'types': [{'name': 'WNA', 'share': 100.0}]},
+    {'id': 6, 'facility': 'EXTRA', 'slot': None, 'share': 1.0, 'types': []},
 ]
 
 
