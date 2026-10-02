@@ -139,6 +139,10 @@
                 </div>
             </div>
         </div>
+        <p class="small text-muted text-center mt-2 mb-0">
+            Charts and totals count root allocations only
+            {{ help_icon(g_roots_only(), rich=True, title='Roots only') }}
+        </p>
 
         {# One table: facility rows (which are also the subtotals) open their
            allocation types; a type row opens its projects, lazily. #}
