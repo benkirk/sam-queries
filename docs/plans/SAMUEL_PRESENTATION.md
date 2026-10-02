@@ -535,24 +535,29 @@ wanting more but not yet asking.
 - **Code is trimmed:** the `DiskQuotaSchema` snippet drops `allow_none=True`, and the projects
   route shows only its last lines.
 
-### Appendix C — Keeping It Snappy (performance; placeholder, 2026-10-01)
+### Appendix C — Keeping It Snappy (performance; drafted 2026-10-02, 15 slides)
 
-- **Measure first:**
-  - request `db=`/`cpu=`/`q=` (#531);
-  - `tests/perf/baselines.json`;
-  - `docs/plans/implemented/PROD_PERF_WATCH.md`.
-- **The read model:** `docs/plans/implemented/READ_MODEL.md`, live (`READ_MODEL_ENABLED=1`,
-  #534/#543/#546), and `FSTREE_LATENCY_INVESTIGATION.md`. The slide needs before and after
-  numbers.
-- **The caches:**
-  - CLAUDE.md §11, static assets: 87.5% of requests were 304s;
-  - `docs/plans/REDIS_CACHE_PREFIXES.md`;
-  - `GLOBAL_CACHE_REFRESH_API.md`;
-  - charts keyed by input data.
-- **Query shape:**
-  - `directory_access` split-and-assemble (~6.9 s before; after is still to fill in);
-  - the jobs end-composite indexes;
-  - the CNPG temp-spill fix.
+The story: measure first, then fix what the measurement points at. Each number's path and date
+are in the slide notes.
+
+- **Where we started:** the prod baseline from 2026-09-02 (`PROD_PERF_WATCH.md`): p50 179 ms,
+  p99 6.7 s, with the tail in the batch endpoints.
+- **The same tree, two builds:**
+  - Legacy refreshes the Derecho fairshare tree in about 200–300 s (Ben, 2026-10-02, the
+    legacy POST refresh).
+  - SAMuel builds it live in about 4 s, and serves it from the read model in under 1 s.
+  - Framed gently, as context.
+- **Measurement:**
+  - the request line (`run.py:271`, `request_timing.py`): `cpu=`, then `<role>=ms/Nq`;
+  - reading the split;
+  - the bcrypt key check (#561: 12.5 → 180 req/s on dev);
+  - pinned query counts (`baselines.json`, the 200-query watch guard).
+- **The read model:** the gate's code, and a before/after table. Small pages gain nothing.
+- **The caches:** a TTL table; static files (7 → 0.76 static requests per page); and a
+  ⚠︎ traps slide pointing to the deploy-aware invalidation follow-on (§14).
+- **Query shape:** split-and-assemble (`directory_access`, about 4× on a copy, with no prod
+  after-number); indexes (jobs 58 s / 109 s → ms, fs-scans 17.8 → 0.23 s, temp spill 1.5 GB → 0).
+- **Still slow, and known,** then the TL;DR.
 
 ## 5. Facts to resolve before they go on a slide
 
@@ -983,6 +988,16 @@ an update here (tick boxes, session log).
     9 decks.
   - Still a rule: content after a `.columns` block splits pptx; put it inside the columns.
 
+- **2026-10-02, Appendix C drafted** (framework `38d623d`, local). The 4 placeholders became
+  15 slides (see §4). The combined deck is 178 slides.
+  - The survey corrected the placeholder: the log fields are per-database labels since #539,
+    not `db=`/`q=`. The chart TTL is 600 s. Any commit clears the view cache.
+  - Appendix B's "about 0.2 s" for `directory_access` was one sub-query. It now says "about 4×
+    faster" (1.5 → 0.38 s on a copy). Ben chose non-prod numbers, because no prod
+    after-number exists.
+  - Ben's measurement: legacy refreshes the Derecho fairshare tree in about 200–300 s.
+    Comparisons to legacy are good data; don't be hard on legacy.
+
 ## 11. Voice, tone and the fun
 
 **SAMuel = SAM, updated for extended lifecycle.** That backronym is the deck's premise and its
@@ -1197,6 +1212,35 @@ puts the paragraph on the beamer section page; it is a framework `main` follow-u
 
 A running list. Deck work surfaces these, but none belongs on this branch. Each gets its own
 branch and PR against `staging`. Tick an item once its fix merges, and note the PR.
+
+- [ ] **Deploy-aware cache invalidation** (follow-on, Ben, 2026-10-02, Appendix C). Today a
+  deploy relies on a manual `sam-admin cache --refresh`:
+  - chart keys hash the input data, not the rendering code;
+  - cached HTML keeps emitting old `?v=` tags until it expires;
+  - a full refresh under load is a cold-render stampede (no dogpile lock; 32 cold charts had a
+    p50 of 16.5 s, `DEV_LOAD_CAMPAIGN.md` finding D).
+
+  Directions to weigh:
+  - a code version (the image sha, or a hash of the chart and template sources) in the
+    code-dependent keys;
+  - a single-flight lock per key;
+  - pre-warming hot keys after a deploy;
+  - targeted view invalidation in place of clear-all-on-commit (`audit/events.py`
+    `_flush_view_cache`).
+
+  Measure each with the request split across a deploy.
+- [ ] **Stale perf docs and comments** (found 2026-10-02, Appendix C):
+  - `REDIS_CACHE_PREFIXES.md` says the jobs TTL is 6 h; the code says 30 min.
+  - `redis_chart.py:20` says 600 s "mirrors CACHE_DEFAULT_TIMEOUT", which is 300.
+  - `docs/TESTING.md`'s perf section lists 3 files and old counts (there are 6 files, 57
+    tests and 46 baselines).
+  - `PROD_PERF_WATCH.md` links `containers/webapp/gunicorn_config.py` (the path is
+    `containers/samuel/`).
+  - The `run.py:278` comment subtracts a `wait` that doesn't exist.
+  - The watch-prod skill still lists `directory_access` at ~6.9 s as known-slow; there is no
+    prod after-number since #492.
+  - The admin cache-refresh docs list 5 categories; the code accepts 7 (`awards`,
+    `xras_api`).
 
 - [ ] **The new API dialect isn't uniform yet** (found 2026-10-02, Appendix B).
   - There is no shared pagination helper; only projects and users page.
