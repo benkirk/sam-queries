@@ -7,9 +7,6 @@ and parts are (fair share, allocations, job-history usage by facility).
 import math
 from typing import Dict, List
 
-from matplotlib.offsetbox import AnchoredOffsetbox, DrawingArea, HPacker, TextArea, VPacker
-from matplotlib.patches import Rectangle
-
 from sam import fmt
 from webapp.caching.chart import content_hash
 from webapp.dashboards.charts import links
@@ -49,8 +46,6 @@ class TwoRingPie(PieChart):
     inner_label_min = 5
     outer_label_min = 6
     center_text = ''
-    #: True draws the legend as aligned columns from ``legend_cells()``.
-    table_legend = False
     #: 'horizontal', or 'tangent' / 'radial': set along the arc / the radius
     #: (radial falls back to the arc), dropping any label that fits neither.
     inner_label_orient = 'horizontal'
@@ -76,17 +71,12 @@ class TwoRingPie(PieChart):
         scale = value / total if total > value else 1
         return [(n, v * scale) for n, v in types], value - total * scale
 
-    def percent(self, value):
-        """``value`` as a percent of the whole, for the direct-label thresholds."""
-        return value * 100 / self.total if self.total else 0
-
     def prepare(self):
         pairs = [(r, v) for r, v in self.groups() if v]
         self.rows = [r for r, _ in pairs]
         self.labels = [r['facility'] for r in self.rows]
         self.values = [v for _, v in pairs]
         self.link_keys = [r.get('id') for r in self.rows]
-        self.total = sum(self.values)
 
     def is_empty(self) -> bool:
         return not self.values
@@ -131,7 +121,7 @@ class TwoRingPie(PieChart):
         outer, _ = ax.pie(outer_vals, radius=self.inner_radius + outer_width + 0.02,
                           colors=outer_colors,
                           wedgeprops={**edge, 'width': outer_width, 'linewidth': 1}, **common)
-        self.wedges, self.bases = inner, bases
+        self.wedges, self.colors = inner, bases
         for wedge, url in zip(outer, outer_urls):
             if url is not None:
                 wedge.set_url(url)
@@ -148,49 +138,6 @@ class TwoRingPie(PieChart):
             ax.text(0, 0, self.center_text, ha='center', va='center', fontsize=size + 1,
                     color=theme.text, alpha=0.7)
         ax.set_aspect('equal')
-
-    def legend_cells(self, label, value):
-        """Strings for one table-legend row: the name, then its numbers."""
-        # Under 1% keeps two decimals, so a sliver never reads as 0.0%.
-        share = self.percent(value)
-        return label, fmt.pct(share, decimals=1 if share >= 1 else 2), fmt.number(value)
-
-    def add_legend(self, ax, layout, theme):
-        if not self.table_legend:
-            return super().add_legend(ax, layout, theme)
-        # Columns, not one string per entry: names left, numbers right-aligned, so
-        # they compare down the column in a proportional font. Columns after the
-        # second are secondary and drawn muted.
-        size = layout.legend_fontsize or self.legend_fontsize
-        rows = [self.legend_cells(l, v) for l, v in zip(self.labels, self.values)]
-        urls = [self.drill.url(k) if k is not None else None for k in self.link_keys]
-        for wedge, url in zip(self.wedges, urls):
-            wedge.set_url(url)
-
-        def cell(text, url, alpha=1.0):
-            area = TextArea(text, textprops=dict(fontsize=size, color=theme.text, alpha=alpha))
-            area._text.set_url(url)
-            return area
-
-        def name(text, color, url):
-            swatch = DrawingArea(size * 1.4, size, 0, 0)
-            rect = Rectangle((0, size * 0.2), size * 1.4, size * 0.6, facecolor=color, edgecolor='none')
-            rect.set_url(url)
-            swatch.add_artist(rect)
-            return HPacker(children=[swatch, cell(text, url)], sep=size * 0.6, align='center')
-
-        sep = size * 0.55
-        columns = [VPacker(children=[name(r[0], c, u) for r, c, u in zip(rows, self.bases, urls)],
-                           sep=sep, align='left')]
-        for j in range(1, len(rows[0])):
-            columns.append(VPacker(children=[cell(r[j], u, alpha=1.0 if j == 1 else 0.7)
-                                             for r, u in zip(rows, urls)],
-                                   sep=sep, align='right'))
-        table = AnchoredOffsetbox(loc='center left', child=HPacker(children=columns, sep=size * 1.1,
-                                                                   align='top'),
-                                  bbox_to_anchor=self.legend_anchor, bbox_transform=ax.transAxes,
-                                  frameon=False, borderpad=0, pad=0)
-        ax.add_artist(table)
 
     @staticmethod
     def _label(ax, wedges, names, percents, colors, radius, minimum, size,
@@ -228,7 +175,6 @@ class FairShareSunburst(TwoRingPie):
     cache_maxsize = 24
     empty_message = 'No active facility has a fair share'
     center_text = 'Fair\nshare'
-    table_legend = True
 
     def legend_cells(self, label, value):
         return label, fmt.pct(value, decimals=2)
@@ -256,7 +202,6 @@ class AllocationSunburst(TwoRingPie):
     #: Two per resource tab (Allocated, Used), split by layout and theme.
     cache_maxsize = 144
     empty_message = 'No allocations to chart'
-    table_legend = True
 
     def __init__(self, data: List[Dict], center: str = ''):
         super().__init__(data)

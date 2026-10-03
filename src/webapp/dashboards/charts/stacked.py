@@ -21,7 +21,7 @@ from matplotlib.ticker import MaxNLocator
 from sam import fmt
 from webapp.caching.chart import content_hash
 from webapp.dashboards.charts import links, series as series_mod
-from webapp.dashboards.charts.base import BaseChart
+from webapp.dashboards.charts.base import BaseChart, cells_label
 from webapp.dashboards.charts.dualpanel import _to_display_tz
 from webapp.dashboards.charts.jobs_metrics import (
     JOBS_METRIC_LABELS, jobs_timeseries_series,
@@ -87,8 +87,8 @@ class StackedSeriesChart(BaseChart):
         """Plot-ready values for one band — the hook byte scaling uses."""
         return band.values
 
-    def legend_label(self, band) -> str:
-        return band.label
+    def legend_cells(self, band):
+        return (band.label,)
 
     def ylabel(self) -> str:
         raise NotImplementedError
@@ -172,9 +172,13 @@ class StackedSeriesChart(BaseChart):
     def add_legend(self, ax, layout, theme):
         if not self.show_legend or layout.legend_placement == 'none':
             return
-        entries = self.legend_entries(layout)
-        handles = [mpatches.Patch(color=c, label=self.legend_label(b))
-                   for b, c in entries]
+        entries, drill = self.legend_entries(layout), self.legend_drill
+        rows = [self.legend_cells(b) for b, _ in entries]
+        urls = [drill.url(b.link_key) if drill and b.is_linkable else None for b, _ in entries]
+        if self.table_legend and self.draw_table_legend(
+                ax, rows, [c for _, c in entries], urls, layout, theme):
+            return
+        handles = [mpatches.Patch(color=c, label=cells_label(r)) for r, (_, c) in zip(rows, entries)]
         legend = ax.legend(
             handles=handles,
             frameon=False,
@@ -183,7 +187,6 @@ class StackedSeriesChart(BaseChart):
             **({'labelspacing': self.legend_labelspacing}
                if self.legend_labelspacing else {}),
         )
-        drill = self.legend_drill
         if drill is not None:
             # `ordered=True`: `entries` is already in legend order and may be
             # capped, so re-reversing it would misalign hrefs onto the wrong
@@ -380,13 +383,13 @@ class UserProjAreaChart(StackedSeriesChart):
     stack_mode = 'area'
     palette = UNITY_STACK_20
     palette_reverse = True
-    #: This chart is deliberately set a tier larger than the rest of the
-    #: stacked family — it is the status dashboard's headline chart.
+    #: A tier larger than the rest of the family: the status dashboard's headline chart.
     legend_fontsize = 13
     axis_label_fontsize = 13
     tick_fontsize = 12
     #: Long labels ("PROJ0001 (1,234)"), so a below-legend gets one column.
     legend_ncol_below = 1
+    table_legend = True
 
     def __init__(self, timeseries, link_kind=None, rank_by: str = 'current'):
         self.timeseries = timeseries or {}
@@ -413,10 +416,8 @@ class UserProjAreaChart(StackedSeriesChart):
         return [_to_display_tz(d) if isinstance(d, datetime) else d
                 for d in (self.timeseries.get('dates') or [])]
 
-    def legend_label(self, band):
-        # The number in parens mirrors the active rank_by selector, so it
-        # always matches whichever sort the user chose. 'Others' uses the same
-        # formula over its aggregate values array.
+    def legend_cells(self, band):
+        # The number tracks the active rank_by selector; 'Others' too, over its aggregate.
         vs = list(band.values)
         if not vs:
             value = 0
@@ -424,7 +425,7 @@ class UserProjAreaChart(StackedSeriesChart):
             value = max(vs)
         else:
             value = vs[-1]
-        return f'{band.label} ({fmt.number(value)})'
+        return band.label, fmt.number(value)
 
     def ylabel(self):
         return self.timeseries.get('metric_label', 'Jobs')

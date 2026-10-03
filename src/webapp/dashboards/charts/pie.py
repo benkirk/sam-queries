@@ -10,7 +10,7 @@ from typing import Dict, List
 from sam import fmt
 from webapp.caching.chart import content_hash
 from webapp.dashboards.charts import links
-from webapp.dashboards.charts.base import BaseChart
+from webapp.dashboards.charts.base import BaseChart, cells_label
 from webapp.dashboards.charts.jobs_metrics import jobs_metric_value
 from webapp.dashboards.charts.layout import profile
 from webapp.dashboards.charts.theme import UNITY_PALETTE_10, autopct_color_for
@@ -65,6 +65,7 @@ class PieChart(BaseChart):
 
     #: A drill target (`RowDrill`/`UserDrill`), or None for an inert pie.
     drill = None
+    table_legend = True
 
     def build(self):
         """Return ``(labels, values, colors, link_keys)``, all same length.
@@ -74,8 +75,19 @@ class PieChart(BaseChart):
         """
         raise NotImplementedError
 
-    def legend_label(self, label, value) -> str:
-        return f'{label} ({fmt.number(value)})'
+    def percent(self, value):
+        """``value`` as a percent of the whole pie."""
+        total = sum(self.values)
+        return value * 100 / total if total else 0
+
+    def legend_amount(self, value) -> str:
+        return fmt.number(value)
+
+    def legend_cells(self, label, value):
+        """Strings for one legend row: the name, then its numbers."""
+        # Under 1% keeps two decimals, so a sliver never reads as 0.0%.
+        share = self.percent(value)
+        return label, fmt.pct(share, decimals=1 if share >= 1 else 2), self.legend_amount(value)
 
     def slice_cap(self, default: int) -> int:
         """Named slices this layout affords before 'Other'. Caps the data, not the
@@ -111,9 +123,15 @@ class PieChart(BaseChart):
         self.wedges = wedges
 
     def add_legend(self, ax, layout, theme):
-        legend_labels = [self.legend_label(l, v)
-                         for l, v in zip(self.labels, self.values)]
-        legend = ax.legend(self.wedges, legend_labels,
+        rows = [self.legend_cells(l, v) for l, v in zip(self.labels, self.values)]
+        if self.table_legend:
+            urls = [self.drill.url(k) if self.drill is not None and k is not None else None
+                    for k in self.link_keys]
+            for wedge, url in zip(self.wedges, urls):
+                wedge.set_url(url)
+            if self.draw_table_legend(ax, rows, self.colors, urls, layout, theme):
+                return
+        legend = ax.legend(self.wedges, [cells_label(r) for r in rows],
                            **self.legend_kwargs(layout))
         if self.drill is None:
             return
@@ -168,8 +186,8 @@ class DiskEntityPie(_CumulativePie):
     def drill(self):
         return links.DISK_OWNER if self.kind == 'owner' else links.DISK_GROUP
 
-    def legend_label(self, label, value):
-        return f'{label} ({fmt.size(value)})'
+    def legend_amount(self, value):
+        return fmt.size(value)
 
     def build(self):
         numeric_label = 'uid ' if self.kind == 'owner' else 'gid '
@@ -190,7 +208,7 @@ class DiskEntityPie(_CumulativePie):
 
         if n_others > 0:
             keys.append(None)                  # inert slice
-            labels.append(f'Other ({n_others})')
+            labels.append(f'{fmt.number(n_others)} other')
             values.append(sum(values_desc[keep:]))
             colors.append(self.theme.muted_data)
 
@@ -241,7 +259,7 @@ class UserUsagePie(_CumulativePie):
 
         if n_others > 0:
             keys.append(None)                  # inert slice
-            labels.append(f'Other ({n_others})')
+            labels.append(f'{fmt.number(n_others)} other')
             values.append(sum(values_desc[keep:]))
             colors.append(self.theme.muted_data)
 
