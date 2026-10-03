@@ -106,7 +106,7 @@ def test_window_and_as_of_bound_what_counts(session):
 
 
 def test_union_all_anchors_where_values_is_unsupported(session, monkeypatch):
-    import sam.queries.allocations as allocations
+    import sam.accounting.calculator as calculator
     from factories.projects import make_account, make_allocation, make_project
     hpc = _hpc(session)
     account = make_account(session, project=make_project(session, facility_name='UNIV'),
@@ -115,7 +115,7 @@ def test_union_all_anchors_where_values_is_unsupported(session, monkeypatch):
                             start_date=datetime(2026, 1, 1),
                             end_date=datetime(2026, 12, 31, 23, 59, 59))
     _charge(session, account, datetime(2026, 3, 4), 9.0)
-    monkeypatch.setattr(allocations, 'values_cte_supported', lambda _session: False)
+    monkeypatch.setattr(calculator, '_values_supported', False)
 
     assert _burn(session, hpc)[alloc.allocation_id] == {202603: 9.0}
 

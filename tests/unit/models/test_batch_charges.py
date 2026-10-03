@@ -7,7 +7,7 @@ from datetime import datetime
 
 import pytest
 
-import sam.projects.projects as projects_module
+import sam.accounting.calculator as calculator
 from sam.projects.projects import Project
 from sam.resources.resources import ResourceType
 
@@ -18,7 +18,7 @@ EMPTY = {'charges_by_type': {}, 'adjustment': 0.0}
 @pytest.fixture(params=[True, False], ids=['values', 'no-values'], autouse=True)
 def values_support(request, monkeypatch):
     """Run every case with and without VALUES row-constructor support."""
-    monkeypatch.setattr(projects_module, '_values_cte_supported', request.param)
+    monkeypatch.setattr(calculator, '_values_supported', request.param)
 
 
 def _hpc(session):
