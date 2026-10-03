@@ -1,0 +1,8 @@
+---
+title: "SAMuel, Part 2"
+subtitle: "Concepts"
+author: "Ben Kirk, NCAR/CISL"
+date: last-modified
+---
+
+{{< include _2-concepts.qmd >}}

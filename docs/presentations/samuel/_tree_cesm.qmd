@@ -1,0 +1,21 @@
+```{mermaid}
+%%| fig-width: 5.5
+graph TD
+    CESM0002grp["CESM0002grp<br/>181,094,881"]
+    CESM0002grp --> CESM0023["CESM0023<br/>80,820,155"]
+    CESM0002grp --> CESM0020["CESM0020<br/>61,726,749"]
+    CESM0002grp --> CESM0019["CESM0019<br/>61,589,386"]
+    CESM0002grp --> CESM0024["CESM0024<br/>61,589,386"]
+    CESM0002grp --> CESM0002["CESM0002<br/>59,666,309"]
+    CESM0002grp --> CESM0028grp["CESM0028grp<br/>58,842,133"]
+    CESM0028grp --> P93300065["P93300065<br/>57,743,232"]
+    CESM0028grp --> CESM0028["CESM0028<br/>53,347,628"]
+    CESM0028grp --> CESM0027["CESM0027<br/>1,098,901"]
+    CESM0002grp --> CESM0002grp_more(["(+10 more)"])
+    classDef grp fill:#cfe2f3,stroke:#1f4e79,stroke-width:2px
+    classDef selfleaf fill:#fff2cc,stroke:#bf9000
+    classDef elided fill:#f3f3f3,stroke:#999999,stroke-dasharray:4 3,color:#666666
+    class CESM0002grp,CESM0028grp grp
+    class CESM0002,CESM0028 selfleaf
+    class CESM0002grp_more elided
+```

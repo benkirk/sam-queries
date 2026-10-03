@@ -33,6 +33,9 @@ htmlcov/
 .#*
 \#*\#
 
+# Slide decks and the framework submodule, whose conda-env/ can be ~1.5 GB
+docs/presentations/
+
 # Local working data (untracked; not used inside the image)
 data/
 logs/

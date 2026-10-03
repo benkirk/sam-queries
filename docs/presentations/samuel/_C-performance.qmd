@@ -1,0 +1,316 @@
+# Keeping It Snappy
+
+Measure first, then fix what the measurement points at.
+
+## Where we started {.vcenter scale="1.15"}
+
+- **One production day, 2026-09-02:** 5,457 requests in 16 hours, none failed.
+- **The median request was fast:** 179 ms.
+- **The tail was slow:** p95 2.95 s, p99 6.7 s.
+- **The tail was a few batch endpoints,** serving large JSON to machines: `directory_access`
+  averaged 6.9 s, and the Casper fstree 1.7 s.
+- So the work went where the time was, not where it looked slow.
+
+::: {.notes}
+docs/plans/implemented/PROD_PERF_WATCH.md:9-31, from kubectl logs of both samuel pods, image
+sha-b1f0efa. 67 4xx (1.2%), mostly XRAS people lookups for placeholder ids and scanner noise.
+p90 1.6 s, max 24 s. The slow endpoints' callers are ssg (fstree, directory_access, every 5
+minutes), the collectors and XRAS. Fstree Derecho averaged 1.1 s; the GPU variants 150-350 ms.
+:::
+
+## The same tree, two builds {.vcenter scale="1.15"}
+
+- Legacy SAM refreshes the Derecho fairshare tree in about 200–300 s.
+- SAMuel builds it live in about 4 s, and serves it from the read model in under 1 s.
+- The directory export: legacy's query shape took about 7 s; ours takes 0.4 s on a copy.
+- That was the bar callers were used to.
+
+::: {.notes}
+Legacy: measured by Ben 2026-10-02 with the legacy refresh (POST), as the parity tool
+(utils/parity/) calls it. SAMuel live: cold miss 3.5-4.3 s, of which ~3.3 s is the database,
+prod 2026-09-08 (docs/plans/implemented/FSTREE_LATENCY_INVESTIGATION.md:16-27). From the read
+model: 0.25-0.7 s, prod 2026-09-11 (docs/plans/implemented/READ_MODEL.md:221-225). After the
+first build it comes from the 5-minute cache. directory_access: 6.9 s in prod 2026-09-02 running
+legacy's single join; 0.38 s after the rewrite, on a production copy (local MySQL). No
+production after-number was recorded; dev Postgres serves it in 415 ms
+(DEV_LOAD_CAMPAIGN.md:28). Not a judgment of legacy: we have not measured why its build costs
+what it does.
+:::
+
+## Every request says where its time went
+
+```python
+app.logger.info(
+    '%s %s → %s  (%.1f ms %s)  rid=%s',
+    request.method, request.path, response.status_code,
+    total_ms, fields, request_id,
+)
+```
+
+```text
+GET /api/v1/users/… → 200  (15.0 ms cpu=12.0ms sam=4.0ms/18q …)
+GET …/jobs/…/by-user → 200  (2600 ms cpu=161ms jobhistory=2420ms/4q …)
+```
+
+- One line per request: CPU, then time and query count per database it touched.
+- What's left over is waiting: `rest = total − cpu − databases − pool`.
+- Over 5 s, the line is repeated as a warning.
+
+::: {.notes}
+src/webapp/run.py:271-282 (the format) and src/webapp/request_timing.py:130-151 (the fields).
+CPU is time.thread_time(), per thread. Database time comes from SQLAlchemy cursor events.
+Labels name the role, not the engine: sam, status, jobhistory, fsscans. Then pool= (checkout
+wait, if any), rm= (the read-model verdict) and who= (user or API key). The two lines are
+reassembled from measured requests and trimmed: an API-key repeat call on dev after #561, and
+the 365-day jobs chart over a 54-project tree, 2026-09-15 (DEV_LOAD_CAMPAIGN.md:56-58,
+170-176). History: #531 (2026-09-08) logged db=/cpu=/q= for MySQL only; #539 (2026-09-10)
+gave each database its own label, after a 19 s jobs request logged db=8ms.
+:::
+
+## Reading the split {.smaller .center .fill}
+
+| Biggest share | So look at | Seen |
+|------------------------------|------------------------------|------------------------------------|
+| **the `sam` database** | the query, an index | fstree: 86% of a cold build |
+| **a plugin database** | its query, its index | jobs chart: 92% `jobhistory` |
+| **`cpu`** | do less work, or cache it | the pace chart: drawing |
+| **rest: waiting** | threads, the pool, a cache | 32 cold charts: 86% waiting |
+
+† Waiting is Python's global lock: 32 chart renders at once take turns.
+
+::: {.notes}
+fstree cold miss, prod 2026-09-08: ~3.3 s of ~3.5-4.3 s is the sam database
+(FSTREE_LATENCY_INVESTIGATION.md:16-27). Jobs chart, dev 2026-09-15: 2.6 s cold, 2,420 ms of it
+jobhistory (DEV_LOAD_CAMPAIGN.md:170-176). Pace chart: 574 ms with 1.8 ms of database, prod
+2026-09-08. Cold charts: chart cache flushed, 32 clients, p50 16.5 s, cpu 13%, sam 1%, rest
+86% (DEV_LOAD_CAMPAIGN.md:206-219). The skill profile-dev reads this split for a load pass.
+:::
+
+## The surprise: checking keys {.vcenter}
+
+```python
+def _key_matches(username, password, stored_hash):
+    key = (username, stored_hash, sha256(password))
+    seen = _VERIFY_CACHE.get(key)
+    if seen is not None and (now - seen) < ttl:
+        return True
+    if not _bcrypt_matches(password, stored_hash):
+        return False
+    _VERIFY_CACHE[key] = now
+    return True
+```
+
+- Every API-key request spent about 260 ms checking the key. That was all its CPU.
+- Now a good key is remembered for 5 minutes; a wrong one always pays.
+- 32 clients, on dev: 12.5 → 180 requests a second, median 2.0 s → 0.16 s.
+
+::: {.notes}
+src/webapp/utils/api_auth.py:114-130, trimmed (the TTL switch and the size bound removed).
+bcrypt at cost 12. API_KEY_VERIFY_TTL defaults to 300 s, per worker process, at most 256
+entries; rotating a key changes stored_hash, so old entries miss. #561. Measured on samuel-dev,
+2026-09-13, /api/v1/users/`<u>` through the Ingress (DEV_LOAD_CAMPAIGN.md:45-58, 186-200). After
+the fix the median server time was 37 ms: cpu 7.5 + sam 26.9. The bottleneck moved to the
+database, where it belongs.
+:::
+
+## Query counts are pinned {.vcenter scale="1.15"}
+
+```json
+"admin_project_directories_route": {
+    "queries": 20,
+    "notes": "measured 12 (2026-09-11) vs 2834 before ..."
+}
+```
+
+- `make perf` fails a page that issues more queries than its ceiling. Each ceiling is
+  measured, never guessed.
+- In production, the watch flags any request over 200 queries. That is how this
+  page was found.
+- The biggest catch: the allocations dashboard went from 52,923 queries in 348 s to 42 in
+  18 s.
+
+::: {.notes}
+tests/perf/baselines.json:196-199, notes trimmed. 46 ceilings; 57 perf tests, run serially
+(pytest -m perf -n 0), about 26 s; gated off the default run (docs/TESTING.md). A change to a
+query count lands with a measured baseline per mode: live, read model, stale. Production:
+scripts/cirrus_watch.sh --query-guard, default 200 (#547, 2026-09-11), which found the project
+directories page at 895 and cut it to 12. Allocations dashboard, show_usage, cold cache:
+docs/plans/implemented/ALLOC-DASHBOARD-PROFILING.md:130,199-206; warm, it is well under 1 s.
+:::
+
+## The read model
+
+```python
+oldest = min(r.refreshed_at for r in rows)
+if now - oldest > cfg.max_age:
+    return Lookup(None, 'too-old')            # compute live
+stale = {t for t, stamp in stamp_of.items()
+         if stamp >= oldest_by_tree.get(t, oldest)}
+if not stale:
+    return Lookup(rows, 'ok')                 # serve the table
+if len(stale) > cfg.patch_max_trees:
+    return Lookup(None, 'too-many-stale')     # compute live
+# else: recompute the changed trees in memory, serve the rest
+```
+
+- One row per allocation: used, remaining and charges, rebuilt every hour.
+- Rebuilt by the same function the live path calls, so the two cannot disagree.
+- Each log line says which: `rm=served`, `rm=patched:2`, `rm=live:too-old`.
+
+::: {.notes}
+src/sam/queries/allocation_state.py:378-396, trimmed. Table account_allocation_state in SAM
+MySQL: allocations active or ended within 90 days, 4,823 rows in prod (2026-09-11). Feeder:
+src/scheduling/tasks/refresh_allocation_state.py, hourly, lands about :07; it calls
+project_allocation_state(), which runs the dashboards' batched builder. Gate: on only with
+READ_MODEL_ENABLED (prod "1"), rows from today, no older than 2 h (one missed run tolerated),
+at most 250 changed trees. A read never writes the table. Readers: the dashboards, the
+allocations page, fstree, and the project allocations and charges APIs. Design and record:
+docs/plans/implemented/READ_MODEL.md; #534, #543, #546 (2026-09-09 to 09-11).
+:::
+
+## What the read model bought {.smaller .center .fill}
+
+| Request | Live | Read model | On |
+|--------------------------------------|----------------------|----------------------|--------|
+| **fstree** | 48 queries, 3.3–6.0 s | 26 queries, 0.25–0.7 s | prod |
+| **fstree, just after an XRAS change** | 6 s | 1.2 s, one tree patched | prod |
+| **Derecho allocation summary** | 733 ms | 201 ms | copy |
+| **one small project's dashboard** | 32 ms | 40 ms | copy |
+
+† Small pages gain nothing. A test checks that every reader gives the same answer either way.
+
+::: {.notes}
+Prod rows 2026-09-11, READ_MODEL.md:221-225 (fstree, warm/cold live); copy rows 2026-09-09,
+:310-315 (webdev, local MySQL with
+production-size data, best of 3). The XRAS row is the case that motivated per-tree staleness
+(#543): one handoff used to send both Casper and Derecho live for 53 minutes. Parity tests:
+tests/unit/tasks/test_task_refresh_allocation_state.py (the feeder equals the builder) and the
+`*_on_equals_off` tests in tests/unit/queries/test_read_model_readers.py. The project deep-dive
+(~5.7 s) and the resource-details page (~5.4 s) have no recorded after: the read model does not
+cover their slow part.
+:::
+
+## The caches {.smaller .center .fill}
+
+| Cache | Lives | Keyed by |
+|----------------------------------|--------------------|------------------------------------------|
+| **Page fragments, API replies** | 5 minutes | the URL; pages also user, scope, layout, theme |
+| **Charts** | 10 minutes | a hash of the input data, layout, theme |
+| **Allocation usage** | 1 hour | the query's arguments |
+| **Jobs** | 15–30 minutes | the query's arguments |
+| **Disk scans, awards** | 8 days | the query's arguments |
+| **XRAS lookups** | 4 hours – 1 day | the query's arguments |
+
+† Outside data lives long because it changes slowly and costs a lot to fetch.
+
+::: {.notes}
+All in Redis db0, one key prefix per cache (docs/plans/implemented/REDIS_CACHE_PREFIXES.md).
+CACHE_DEFAULT_TIMEOUT 300 (src/webapp/config.py:177); user_aware_cache_key
+(src/webapp/extensions.py:32). Charts: src/webapp/caching/redis_chart.py:20, key in
+src/webapp/dashboards/charts/base.py:384-392. allocation_usage 3600 s
+(src/sam/queries/usage_cache.py); jobs 1800 s, open windows 900 s (src/webapp/jobs/cache.py);
+fs_scans 8 days, filtered 30 min; awards 8 days, search 1 day; xras people 4 h, lookups 1 day.
+Redis, 2026-09-03: 192 MB cap, peak 78 MB, 0 evictions, 85.8% hits. Part 5, "Redis: a cache you
+can lose".
+:::
+
+## Static files: one rule {.vcenter scale="1.15"}
+
+- Every link to a static file carries a hash of its content: `dashboard.css?v=…`
+- With the hash, the browser keeps it for a year. Without, for an hour.
+- Before, 2026-08-17: 87.5% of all requests were static files, and 96% of those only
+  asked "unchanged?".
+- After: static requests per page request fell from 7 to under 1 (0.3 by 2026-09-02).
+
+::: {.notes}
+CLAUDE.md §11; src/webapp/utils/static_assets.py; #453. Before: nwc1, one pod, 4h37m; Bootstrap
+was revalidated ~145 times in 4.5 hours. After: 7.0 to 0.5-0.9 within ~40 minutes, holding at
+0.76; a second roll with identical hashes gave 0.36, so browser caches survived the deploy. A
+content hash, not mtime: a rebuild restamps every mtime. PROD_PERF_WATCH.md:19 for 0.3.
+Gate: tests/unit/gates/test_static_assets.py.
+:::
+
+## ⚠︎ Cache traps {.vcenter scale="1.15"}
+
+- No targeted invalidation for a cached page: any database commit clears them all.
+- Charts are keyed by their data, not their code. After a visual change, refresh them.
+- After a deploy, refresh the narrowest category: `sam-admin cache --refresh`.
+- A refresh under load is a stampede: 32 cold chart renders took 16.5 s each (median).
+  Nothing yet stops two requests building the same entry.
+
+† Next: invalidation that follows the deploy, so nobody has to remember.
+
+::: {.notes}
+Commit hook: _flush_view_cache, src/webapp/audit/events.py:192-206; collectors commit every few
+minutes, so most page entries die well before 5 minutes. delete_memoized does nothing on a
+view. Categories: flask, chart, usage, scans, jobs, awards, xras_api
+(src/webapp/caching/__init__.py). Rendered HTML also keeps old ?v= tags until it expires. The
+stampede: DEV_LOAD_CAMPAIGN.md finding D, 2026-09-15; no dogpile lock. The follow-on (Ben,
+2026-10-02, on the plan's fix-later list): a code version in the code-dependent keys, a
+single-flight lock per key, pre-warming hot keys, targeted view invalidation.
+:::
+
+## The shape of a query: split and assemble {.vcenter scale="1.15"}
+
+- The directory export was one join. Each user fanned out 14 ways: accounts, allocations,
+  phones, institutions, organizations. About 135,000 rows, grouped back down.
+- Now it is 12 small queries, one per kind of fact, stitched together in Python.
+- About 4× faster (1.5 s → 0.38 s on a production copy), and the same plan on every
+  database.
+- Same answer out, checked by the parity harness.
+
+::: {.notes}
+src/sam/queries/directory_access.py:115-125 and 364-405: one DISTINCT membership query, then
+bulk phone, institution, organization, key-resource, override and shell lookups (8), plus the
+group populator's 4. #492, in production 2026-09-03. Plan stability: an intermediate version
+that kept the overrides in SQL exploded to over 1M rows on the test database while fine on
+another, so rewrites are timed on both. Dev Postgres: 415 ms, 12 queries
+(DEV_LOAD_CAMPAIGN.md:28). No production after-number was recorded. Byte-identical except
+~21 users whose duplicate phone rows had stray whitespace, now trimmed. Benchmark:
+tests/perf/test_directory_access_latency.py.
+:::
+
+## Indexes where the data is big {.smaller .center .fill}
+
+| Query | Before | After | When |
+|--------------------------------------------------|----------|----------|------------|
+| **Derecho jobs, a stalled account, newest 50** | 58 s | 0.5 ms | Sep 30 |
+| **Casper jobs, a stalled account, newest 50** | 109 s | 4 ms | Sep 30 |
+| **Campaign Store directories, by owner** | 17.8 s | 0.23 s | Sep 28 |
+| **Jobs usage charts, disk spill per call** | 1.5 GB | none | Sep 12 |
+
+† The jobs tables hold 16 and 27.5 million rows; the directory table, 61 million.
+
+::: {.notes}
+All production, all in the peer repo hpc-usage-queries. Jobs: (account_id, end)
+composites; before, the planner walked the end-time index backward past every other account's
+newer rows; the long cases were cold first touches (job_history/SCHEMA.md:80-101). Each index
+built in 9.5-19 s. A two-account tree also needed one query per account. Directories: the
+(owner_uid, total_size_nr) index (#120); the page in the browser; the query is now 0.6 ms
+(85 s under ingest load). Spill: usage now reads the daily summary table, and histograms get
+work_mem 1 GB (#112).
+:::
+
+## Still slow, and known {.vcenter scale="1.15"}
+
+- The all-facility pace chart: 9–11 s cold, 0.25 s warm. Accepted.
+- A year of jobs over a wide project tree: 2.6 s the first time.
+- Deploys refresh the caches by hand, and a cold refresh under load stampedes.
+- Disk-scan queries run in worker threads, so their time shows as waiting.
+
+::: {.notes}
+Pace chart: #691, prod 2026-10-01. Jobs: DEV_LOAD_CAMPAIGN.md:170-176; 30 days is ~160 ms, and
+it is cached after the first view. Caches: the follow-on on the Cache traps slide. Threads:
+#655, open; the request timing records only in the request's thread. Also outside SAMuel: the
+shared Ingress drops a new connection for ~8 s every minute or two (DEV_LOAD_CAMPAIGN.md
+finding F), handed to the platform team.
+:::
+
+## TL;DR - keeping it snappy {.vcenter scale="1.15"}
+
+- **Measure first:** every request logs its CPU and **its time in each database**.
+- **Pin the count:** `make perf` and the production watch catch an **N+1** early.
+- **The read model** serves allocation usage from **one row each**, rebuilt by the live code.
+- **Cache with a known key,** and **refresh** after a deploy.
+- **Shape the query, index the big tables:** seconds became milliseconds.
+- **Still slow is written down,** and next is **cache invalidation that follows the deploy**.

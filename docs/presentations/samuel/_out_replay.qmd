@@ -1,0 +1,7 @@
+| Date | Type | Amount | Note | Replay |
+|--------------|------------|--------------:|----------------|-------------:|
+| [2024-08-27]{style="white-space: nowrap"} | NEW | 100,000,000 | [to 2025-09-30]{style="white-space: nowrap"} | 100,000,000 |
+| [2025-09-18]{style="white-space: nowrap"} | EXTENSION | — | [to 2026-09-30]{style="white-space: nowrap"} | 100,000,000 |
+| [2026-04-30]{style="white-space: nowrap"} | ADJUSTMENT | +25,000,000 | 100M was crazy. | 125,000,000 |
+| [2026-04-30]{style="white-space: nowrap"} | ADJUSTMENT | -100,000,000 |  | 25,000,000 |
+| | **amount** | | | **25,000,000** |

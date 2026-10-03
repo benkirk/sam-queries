@@ -1,0 +1,13 @@
+# Names that belong in backticks on a slide (deck_qa.py reports plain uses).
+sam-admin
+sam-search
+sam-status
+sam-ldap-syncd
+amie-sam-mediator
+hpc-usage-queries
+hpc-scheduling-tools
+fs-scans
+csg-postgres
+jobhist-sync
+gunicorn
+update-helm

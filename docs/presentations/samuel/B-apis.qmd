@@ -1,0 +1,8 @@
+---
+title: "SAMuel, Appendix B"
+subtitle: "Two Dialects"
+author: "Ben Kirk, NCAR/CISL"
+date: last-modified
+---
+
+{{< include _B-apis.qmd >}}

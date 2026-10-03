@@ -1,0 +1,244 @@
+# The Lay of the Land
+
+What SAM is, who uses it, and what SAMuel puts on top of it.
+
+## SAM in one slide {.vcenter}
+
+:::: {.columns}
+::: {.column width="58%"}
+SAM is the system of record for **who** may compute, **on what**, and **how much**.
+
+- **Projects** hold **allocations** on each resource: an amount, a date window, a balance.
+- **Users** belong to projects, and their jobs are **charged** against those allocations.
+- University awards arrive through **XRAS**; NCAR, WNA and CSL have their own paths.
+- People come from NCAR's identity system. SAM never creates users; it mirrors them.
+- Lots of organizational and grant-related metadata, tying usage to funding agencies etc... for reporting purposes.
+:::
+::: {.column width="42%"}
+**Resources it accounts for**
+
+- Derecho and Gust (HPC)
+- Casper (analysis and visualization)
+- Campaign Store and Stratus (disk)
+
+**Facilities**
+
+- Distinct "communities" served.
+- NCAR, UNIV, WNA, CSL, CISL, …
+:::
+::::
+
+::: {.notes}
+The stakeholder one-liner: if you can run a job on Derecho, SAM is why, and SAM is
+also how we know how much of your allocation that job used.
+:::
+
+## Deep roots {.vcenter scale="1.15"}
+
+SAM has run CISL's allocations for {{< var legacy.years >}} years:
+
+- A **web interface** for users and administrators.
+- **Back-end processing** for identity management and accounting.
+- A **web API** feeding the batch scheduler, storage quotas, and friends.
+- A **MySQL database** gluing all of it together.
+- {{< var legacy.loc >}} lines of Java (Spring, Hibernate, JSF/PrimeFaces, Flyway), plus a
+  plethora of shell scripts and cron jobs.
+
+*† SAMuel is its extended lifecycle, a modernization and refactoring effort to support another generation. Same database, same data, same groups depending on it.*
+
+## Same database, new everything around it {.smaller .center .fill scale="1.15"}
+
+| | SAM | SAMuel |
+|---|---|---|
+| **Code** | Java: Spring, Hibernate | Python: SQLAlchemy 2, Flask |
+| **Web UI** | JSF / PrimeFaces | htmx + Bootstrap 5, mobile and dark mode |
+| **Database** | MySQL | **the same MySQL** (Postgres-ready) |
+| **Background work** | cron + shell scripts | scheduled tasks with a run ledger |
+| **Deployment** | a Tomcat server | containers on CIRRUS (Kubernetes), via GitOps |
+
+## How we got here {.vcenter}
+
+- **Oct 2025:** a Python model of the production database, read as-is. *This led to…*
+- **Nov–Dec 2025:** a CLI, a REST API, the first dashboards. *This led to…*
+- **Early 2026:** allocations dashboard, charging, expiration emails. *This led to…*
+- **Apr 2026:** legacy-compatible APIs for the systems that call SAM, and a home on CIRRUS.
+  *This led to…*
+- **{{< var milestones.charge_ingest >}}:** SAMuel takes over the daily charge ingest. *This led to…*
+- **{{< var milestones.read_write >}}:** the web app goes read/write: edits land in the shared database. *This led to…*
+- **{{< var milestones.xras_repoint >}}:** XRAS hands its awards to SAMuel directly. *This led to…*
+- **{{< var milestones.fy27_renewals >}}:** FY27 renewals run in SAMuel.
+- *…Which leads to today:* SAMuel is production SAM, at **{{< var hosts.prod >}}**.
+
+::: {.notes}
+The legacy system still owns a few integrations (the LDAP identity mirror, AMIE); both
+systems share one database while those move. Parts 4 and 5 and the appendix have the details.
+Read/write: the webapp switched to the SAM write credential 2026-06-18 (sam-queries #320).
+FY27: the NCAR divisional trees were renewed 2026-09-07 to 09-16
+(docs/plans/implemented/FY27_PROD_RENEW_HANDOFF.md). Charge ingest: SAMuel's daily ingest took over
+in May 2026; it moved to the ncar-hpc-deploy prod lane on 2026-09-30.
+:::
+
+## One database, five audiences {.smaller .center .fill}
+
+| Who | What they do | Where |
+|---|---|---|
+| **Users and PIs** | check balances and usage, manage members, invite collaborators | User dashboard |
+| **Support staff** | manage projects and allocations, work the account-request queue | Admin and Allocations dashboards |
+| **Everyone** | see what Derecho, Casper and JupyterHub are doing | Status dashboard (public) |
+| **Operators** | report, audit, fix in bulk | `sam-search`, `sam-admin` |
+| **Other systems** | provisioning, PBS scheduling, XRAS | REST API |
+
+## The big picture
+
+::: {.notes}
+Left: what flows in. Right: who reads it back out. SAMuel also pulls XRAS's reports
+hourly, which the diagram leaves out to stay legible.
+:::
+
+```{mermaid}
+%%| fig-width: 10
+flowchart TB
+    XRAS["ARC / XRAS<br/>NSF API<br/>allocation awards"]:::inb
+    LDAP["NCAR identity<br/>people, groups,<br/>organizations,<br/>institutions"]:::inb
+    COL["PBS queue status<br/>system usage metrics"]:::inb
+    JOBS["PBS job history<br/>finished jobs"]:::inb
+    SAM[("SAMuel<br/>+ SAM database")]:::core
+    WEB["Dashboards<br/>users, support staff"]:::out
+    CLI["CLIs<br/>operators"]:::out
+    PBS["PBS scheduling<br/>fairshare, queues"]:::out
+    PROV["Provisioning<br/>UNIX users & groups"]:::out
+    MAIL["Email<br/>notices, invites"]:::out
+    XRAS -->|awards| SAM
+    LDAP -->|identities| SAM
+    COL -->|every 5 min| SAM
+    JOBS -->|charges, hourly| SAM
+    SAM --> WEB
+    SAM --> CLI
+    SAM --> PBS
+    SAM --> PROV
+    SAM --> MAIL
+    classDef inb fill:#E6F0FA,stroke:#0057C2,color:#00357A
+    classDef core fill:#0057C2,stroke:#00357A,color:#FFFFFF
+    classDef out fill:#FFF4E0,stroke:#FAA119,color:#00357A
+```
+
+## By the numbers {.vcenter scale="1.15"}
+
+- **{{< var dashboards.count >}}** web dashboards: User, Admin, Allocations, Status.
+- **{{< var api.modules >}}** REST API modules. **{{< var api.legacy_compat >}}** answer
+  byte-for-byte like legacy SAM, so no caller had to change.
+- XRAS's handoff endpoints, served natively.
+- **{{< var clis.count >}}** command-line tools: `sam-search`, `sam-admin`, `sam-status`.
+- **{{< var tasks.count >}}** scheduled tasks, checked every {{< var tasks.cadence >}}.
+- **{{< var tests.collected >}}** automated tests, run on every change.
+
+## More than a port - new capabilities {.vcenter scale="1.15"}
+
+- **Invitations and account requests:** a sponsor invites; the request reaches NUSD as a ticket.
+- **Events** for managing large project rosters for e.g. workshops and tutorials.
+- **Email that remembers:** expiration notices with previews and a ledger, so nobody is mailed
+  twice.
+- **Live system status** for Derecho, Casper and JupyterHub, every 5 minutes.
+- **Usage drill-downs:** per project, per user, per day; export to Excel.
+- **Roles and access** managed in the app, scoped by facility.
+- **Mobile and dark mode**, because it is worth the flexibility.
+
+## Plugins: optional by design {.vcenter}
+
+Some features live in companion packages, loaded only where they are installed:
+
+- **Job history:** My Jobs, per-job drill-downs, charge ingest (`hpc-usage-queries`).
+- **Disk scans:** who is using which directories (`fs-scans`).
+- **Scheduling tools:** the PBS fairshare tree, served ready-made by the API
+  (`hpc-scheduling-tools`).
+
+Each has an off switch. A missing plugin shows a banner, never an error page, and the rest
+of SAMuel carries on.
+
+Theoretically a site-specific plugin would make it easier to deploy at another site.
+
+*† Plugins are especially useful for things tied to a machine lifecycle (per-job history) or likely to change through time (scheduler implementation).*
+
+::: {.notes}
+Registry: src/sam/plugins.py. CLI: BaseCommand.require_plugin. Webapp: PluginExtension
+loads each once at startup and logs a warning when one is missing. Kill switches:
+JOB_HISTORY_MACHINES, FS_SCANS_ENABLED, HPC_SCHEDULING_TOOLS_ENABLED.
+:::
+
+## A user's view: projects and resource balances
+
+::: {.notes}
+The User dashboard: every project a person belongs to, each allocation's balance, and the
+date window it runs in. Screenshots use the obfuscated test database.
+:::
+
+[![](images/tour-project.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/user/)
+
+## Usage, by day and by user
+
+::: {.notes}
+Resource Usage Details for a busy university project on Derecho: 90 days of charges, stacked
+by user; click a bar to open that day.
+:::
+
+[![](images/tour-usage.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/user/resource-details/WYOM0247?resource=Derecho)
+
+## Allocations across every facility
+
+::: {.notes}
+The Allocations dashboard, Derecho tab: allocated (annual rate) and used, as two-ring charts
+(inner ring facilities, outer ring their allocation types), over a facility tree that opens to
+types and projects. Clicking a wedge opens its row. Per resource, with an Excel export.
+:::
+
+[![](images/tour-allocations.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/allocations/projects?resources=Derecho)
+
+## Admin: one project, every knob
+
+::: {.notes}
+The project editor: details, allocations, members and invitations in one place.
+:::
+
+[![](images/tour-admin.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/admin/project/SCSG0001/edit)
+
+## Status: what Derecho is doing right now
+
+::: {.notes}
+Fed every 5 minutes by collectors on the HPC systems. Public, no login needed. (The local
+copy's "no updates" banner is hidden in this shot.)
+:::
+
+[![](images/tour-status.png){height="72%" fig-align="center"}](https://sam.hpc.ucar.edu/status/derecho)
+
+## Mobile and dark mode
+
+:::: {.columns}
+::: {.column width="55%"}
+Every page works at phone width, and dark mode is a first-class theme, charts included.
+
+Charts are drawn on the server for the layout and theme you asked for, so a phone gets a
+phone-sized chart, not a shrunken desktop one.
+:::
+::: {.column width="45%"}
+![](images/tour-mobile-dark.png){height="85%"}
+:::
+::::
+
+## The Progression, continued
+
+::: {.notes}
+Picks up where "Confessions of a Vibe Coder" (March 2026) stopped at ~75K lines. The
+twist: source alone is {{< var size.source_lines >}}, still under legacy's ~250K, and the
+tests ({{< var size.test_lines >}}) are nearly as big as the code they test.
+{{< var size.prs_merged >}} pull requests merged since October 2025.
+:::
+
+![](images/loc_progression.png){height="72%" fig-align="center"}
+
+## The Good, the Bad, the Murky {.smaller .center .fill}
+
+| The Good | The Bad | The Murky |
+|---|---|---|
+| **One database, no migration:** people saw a new interface, not a new system. | **Legacy SAM still owns a few integrations,** so two systems share one database for now. | **Postgres:** both engines work today; an all-Postgres production is a decision, not a task. |
+| **Every change is tested** ({{< var tests.collected >}} tests) and deployed through GitOps. | **A lot of surface** for a small team to own. | **Much of this was written with an AI agent.** What does that mean for the next maintainer? |
+| **Features ship in days,** not release cycles: {{< var size.prs_merged >}} merged pull requests. | | |

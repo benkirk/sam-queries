@@ -1,0 +1,3 @@
+[submodule "docs/presentations/framework"]
+	path = docs/presentations/framework
+	url = https://github.com/benkirk/quarto-docs-framework.git

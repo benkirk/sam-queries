@@ -1,0 +1,28 @@
+---
+title: "SAMuel"
+subtitle: "SAM, updated for extended lifecycle"
+author: "Ben Kirk, NCAR/CISL"
+date: last-modified
+---
+
+{{< include _1-overview.qmd >}}
+
+{{< include _2-concepts.qmd >}}
+
+{{< include _3-databases.qmd >}}
+
+{{< include _4-systems.qmd >}}
+
+{{< include _5-deployment.qmd >}}
+
+{{< include _A-peers.qmd >}}
+
+{{< include _B-apis.qmd >}}
+
+{{< include _C-performance.qmd >}}
+
+{{< include _D-security.qmd >}}
+
+## Questions? {.closing}
+
+benkirk@ucar.edu

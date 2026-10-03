@@ -1,0 +1,260 @@
+# Two Dialects
+
+The APIs: what callers can count on, and how we add to them.
+
+## One front door {.vcenter scale="1.15"}
+
+- **72 routes in four families:** core, legacy shapes, fairshare, XRAS. Part 4 has the table.
+- **Two ways in:** a browser session, or an API key over HTTP Basic.
+- **Each key holds only the permissions it was granted,** route by route, and is limited to
+  120 requests a minute.
+- **Errors look alike:** `{"error": "…"}` with the usual status codes.
+- **Docs:** `docs/apis/` in the repo, with a runnable script for the systems endpoints.
+
+::: {.notes}
+Route counts are decorator counts (src/webapp/run.py:437-453): core 39, legacy shapes 21,
+fairshare 1, XRAS 11. Nothing is mounted at /api/protected and there is no /api/v2.
+login_or_token_required (src/webapp/utils/api_auth.py): keys are bcrypt-hashed, and a good check
+is cached because bcrypt costs ~260 ms. Under RBAC_SOURCE=db (prod) a key needs a
+samuel_role_grant for the route's Permission. RATELIMIT_M2M is 120 per minute, counted in Redis.
+docs/apis/: SYSTEMS_INTEGRATION_APIs.md, HPC_DATA_COLLECTORS_GUIDE.md, CHARGING_INTEGRATION.md;
+scripts/apis/systems_integration_apis.sh.
+:::
+
+## The old dialect: no client change {.vcenter scale="1.15"}
+
+- **Legacy's JSON, at a new address.** Same keys, same nesting, same camelCase.
+- **A client changes its base URL and its key.** Nothing else.
+- **Frozen on purpose:** additive changes only, and never to the bytes a client already reads.
+- Fstree, queues, wallclock exemptions, directory and project access, disk quotas, and XRAS.
+
+† XRAS is held tightest: compared byte for byte, because a swapped first and last name keeps
+the same length.
+
+::: {.notes}
+Part 4's "Same bytes, new address" maps each route to its legacy path. CLAUDE.md, "Legacy-compat
+blueprints — DO NOT REFACTOR". The one XRAS relaxation: masters[] is sorted rather than in Java
+HashMap order. Repointed: XRAS (2026-08-24, no legacy calls since 08-28).
+:::
+
+## The legacy-shaped endpoints {.smaller .center .fill}
+
+| `/api/v1/…` | Returns | Caller | Built |
+|--------------------------|------------------------------|------------------|----------|
+| **`fstree_access`** | projects, allocations, usage, users | PBS fairshare | by hand |
+| **`queue`** | queues and wallclock limits | PBS hooks | by hand |
+| **`wallclock_exemption`** | users' exemptions | PBS hooks | by hand |
+| **`directory_access`** | unix groups and accounts | LDAP provisioning | by hand |
+| **`project_access`** | project groups and status | LDAP provisioning | by hand |
+| **`disk_quota`** | project quotas and paths | disk quotas | schema |
+| **XRAS** (`/api/xras/v1`) | people, requests; actions in | XRAS broker | by hand |
+
+::: {.notes}
+21 legacy-shaped routes in six modules, plus 11 XRAS routes in five. Most take a resource or a
+branch in the path: fstree_access also answers `/projects/<projcode>` and `/users/<username>`;
+directory_access and project_access take a `<branch>` (hpc, hpc-dev, ...). Each legacy-shaped
+family also has POST .../refresh. Part 4's "Same bytes, new address" maps each to its legacy
+path.
+:::
+
+## Hand-built, on purpose {.vcenter scale="1.15"}
+
+```python
+by_resource.setdefault(rname, []).append({
+    'queueName':           queue.queue_name,
+    'wallClockHoursLimit': queue.wall_clock_hours_limit,
+    'startDate':           _iso(queue.start_date),
+    'endDate':             _iso(queue.end_date),
+    'cosId':               queue.cos_id,
+})
+```
+
+- **Every key is typed by hand** to match what legacy sent.
+- **Nothing declares the shape,** so nothing would catch it drifting. Hence frozen.
+
+† Not every legacy shape is even consistent: `directory_access` is camelCase on the outside
+and snake_case inside. We match it anyway.
+
+::: {.notes}
+src/sam/queries/queue_access.py:67-73, behind GET /api/v1/queue. The five frozen query modules
+are src/sam/queries/{directory_access,project_access,fstree_access,queue_access,
+wallclock_exemption_access}.py. directory_access: unixGroups/unixAccounts outside,
+group_name/home_directory inside.
+:::
+
+## Proving it {.vcenter scale="1.15"}
+
+- **A parity harness** asks both hosts the same questions: about 40 rules, per endpoint.
+- **Disk quotas: 590 of 590.** The other gaps were a row or two of mirror lag.
+- **Byte-identical was the proof.** Now that callers have moved, an explainable difference
+  beats copying a legacy bug.
+- **Example:** legacy picked one of a user's duplicate phone rows at random. We pick the
+  same one every time.
+
+::: {.notes}
+utils/parity/check_legacy_apis.py (+ comparators.py, clients.py, README.md): not pytest; it hits
+SAMuel and sam.ucar.edu over the VPN, --api directory|project|fstree|queue|wallclock|xras. Rules
+are mostly one-directional (legacy is a subset of new), with count tolerances for mirror lag.
+Results table: docs/apis/SYSTEMS_INTEGRATION_APIs.md. The phone fix is MIN()
+(src/sam/queries/directory_access.py:185-188); it reproduces legacy's choice on real data. Other
+explained differences: a soft-deleted allocation counted (ufsu0023), a start_date bound on
+queues, a NULL commission_date treated as commissioned. Ben, 2026-09-02: "explainable
+differences are acceptable now".
+:::
+
+## The bridge: legacy shape, schema inside {.vcenter scale="1.15"}
+
+```python
+class DiskQuotaSchema(Schema):
+    projcode = fields.String()
+    group_name = fields.String(data_key='groupName')
+    data_manager = fields.String(data_key='dataManager')
+    resource_name = fields.String(data_key='resourceName')
+    quota = fields.Float()
+    paths = fields.List(fields.String())
+```
+
+- **A new legacy-shaped endpoint starts here:** the shape is declared, and `data_key` makes
+  the camelCase.
+- **ORM by default.** Raw SQL only for a measured cost, with a benchmark:
+  `directory_access` became about 4× faster (Appendix C).
+
+::: {.notes}
+src/sam/schemas/disk_quota.py:13-21 (allow_none trimmed), the reference (CLAUDE.md, "Output shaping"). Its consumer is
+DASG; legacy path dasg/diskquota. directory_access split-and-assemble: legacy's one join fanned
+each user out ~14x into ~135K rows; now one DISTINCT membership query plus small bulk lookups
+merged in Python: 1.5 s to 0.38 s on a production copy; 6.9 s in prod before (2026-09-02).
+Benchmark: tests/perf/test_directory_access_latency.py, `make perf`. Deep
+nested trees (fstree, wallclock) stay hand-built: the documented exception.
+:::
+
+## The new dialect {.vcenter scale="1.15"}
+
+:::: {.columns}
+::: {.column width="55%"}
+```python
+out = ProjectListSchema(many=True)
+return jsonify({
+    'projects': out.dump(rows),
+    'page': page,
+    'per_page': per_page,
+    'total': total,
+})
+```
+
+- **snake_case, ISO dates, paged.** Shapes are declared in schemas.
+:::
+::: {.column width="45%"}
+```json
+{"projects": [
+   {"projcode": "SCSG0001",
+    "active": true, ...}],
+ "page": 1,
+ "per_page": 50,
+ "total": …}
+```
+
+- **Three tiers per entity:** full, list, and summary for nesting.
+:::
+::::
+
+::: {.notes}
+GET /api/v1/projects/ (src/webapp/api/v1/projects.py:108), trimmed; per_page max 1000. Schemas: src/sam/schemas/, ProjectSchema /
+ProjectListSchema / ProjectSummarySchema, the same for users. AllocationWithUsageSchema adds used,
+remaining, percent_used and charges_by_type, matching the CLI and the dashboards.
+:::
+
+## The new endpoints {.smaller .center .fill}
+
+| `/api/v1/…` | Serves | Methods |
+|------------------------------|--------------------------------------|----------------|
+| **`projects`** | list, detail, members, allocations, jobs | GET; members POST, DELETE |
+| **`users`** | list, search, detail, projects, `me` | GET |
+| **`allocations/<id>`** | one allocation, and edits | GET, PUT |
+| **`projects/<code>/charges`** | detailed and summary charges | GET |
+| **`charge-summaries/…`** | daily charges in | POST |
+| **`status`** | collectors in; status and outages out | POST, GET, PATCH |
+| **`fairshare/<machine>`** | the PBS fairshare tree, ready-made | GET |
+| **`health`** | liveness, readiness | GET |
+| **`admin/cache/refresh`** | clear the caches, by category | POST |
+
+::: {.notes}
+39 core routes in seven modules, plus fairshare: projects 10, status 11, users 6, charges 5,
+health 4, allocations 2, admin 1 (src/webapp/run.py:437-453). Also: projects/expiring and
+recently_expired, PUT `projects/<code>/admin`, status reservations and outage DELETE,
+health/db-pool. Charge summaries: comp, disk, archive. Callers: the dashboards and CLIs, the
+status collectors (by API key, MANAGE_SYSTEM_STATUS), HSG (fairshare), Kubernetes probes
+(health). Projects, allocations and charges take a session login only; users take a session or
+a key. Health, the cache refresh and fairshare are small hand-built replies; the rest dump
+schemas.
+:::
+
+## Writes follow the web app's rules {.vcenter scale="1.15"}
+
+- **Same path as a click:** a form schema checks the input, then one transaction, then the
+  same `sam.manage` function the dashboard calls.
+- **Example:** `POST /projects/<code>/members` reuses the Add Member form and function.
+- **So a new write is cheap** when its dashboard route is thin: about 15 lines.
+- About 87 of 160 dashboard writes qualify. Five have an API twin today.
+
+::: {.notes}
+sam.schemas.forms (AddMemberForm, EditAllocationForm), management_transaction (audit logging),
+sam.manage. docs/plans/HTMX_API_READINESS.md is the census: ~87 clean, ~46 glue, ~15 stuck,
+~11 UI-only; eight extraction clusters, allocation exchange flagged as security-relevant.
+Existing writes: project members (POST/DELETE, PUT admin), PUT allocations, POST
+charge-summaries, the status collectors.
+:::
+
+## Cached, and how to refresh {.vcenter scale="1.15"}
+
+- **Responses live for 5 minutes** in a shared cache, one entry per query string.
+- **Need it fresh?** Each legacy-shaped endpoint has `POST …/refresh`:
+
+```bash
+curl -X POST -u "$SAM_API_USER:$SAM_API_PASS" \
+     "$SAM_API_BASE/api/v1/queue/refresh"
+```
+
+- **HSG's tools refresh, then download.** SAMuel's own queue edits clear that cache.
+- **Admins clear by category:** `sam-admin cache --refresh`.
+
+† The fstree for every resource takes about 2.8 s to build, and comes back at once from the
+cache.
+
+::: {.notes}
+CACHE_DEFAULT_TIMEOUT=300; Redis in production (CACHE_REDIS_URL), shared across workers and
+pods; @cache.cached(query_string=True). Refresh routes: directory_access, project_access,
+fstree_access, queue, wallclock_exemption, plus disk_quota and the status family. The admin route
+is POST /api/v1/admin/cache/refresh?category=flask|chart|usage|scans|jobs (SYSTEM_ADMIN).
+invalidate_queue_cache() is called by the admin queue edits. hpc-scheduling-tools'
+fsparsetree_mr posts v1/fstree_access/refresh before it reads. Fairshare takes ?clear_cache=1.
+scripts/apis/systems_integration_apis.sh walks download, refresh, download again.
+The 2.8 s is docs/apis/SYSTEMS_INTEGRATION_APIs.md:572 (one resource ~0.7 s); Appendix C has
+the prod cold-miss and read-model numbers.
+:::
+
+## Need more? Ask. {.vcenter scale="1.15"}
+
+- **Still on an old endpoint?** It keeps working. Moving is a URL change.
+- **Want something legacy never gave you?** Ask. It comes in the new dialect, or in a legacy
+  shape if your tooling expects one.
+- **We can do the computing:** the fairshare tree comes ready-made, so nobody runs the
+  builder on a scheduler host.
+- **Next on our side:** the ldapsync endpoints, a shared paging helper, and published API docs.
+
+::: {.notes}
+Aimed at HSG and groups like them: teams tied to old endpoints, or who would want more but have
+not asked. Honest state of the new dialect: paging is hand-rolled per route (only projects and
+users page), and there is no OpenAPI yet; both are on the fix-later list in the plan
+(SAMUEL_PRESENTATION.md §14). ldapsync scope: docs/plans/LDAP_SYNC_API.md.
+:::
+
+## TL;DR - two dialects {.vcenter scale="1.15"}
+
+- **The old dialect** is legacy's JSON at a new address: **no client change**, frozen.
+- **Proven by parity,** and an **explainable difference** beats a copied bug.
+- **The new dialect** is snake_case, **paged, and declared in schemas**; legacy shapes built
+  today use schemas too.
+- **Writes reuse the web app's rules,** so new ones are cheap.
+- **Cached for five minutes,** with a **refresh** for when that's too long.
+- **The API is where SAMuel grows:** if you need more, **ask**.

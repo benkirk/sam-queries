@@ -1,0 +1,8 @@
+---
+title: "SAMuel, Appendix A"
+subtitle: "The Neighbors"
+author: "Ben Kirk, NCAR/CISL"
+date: last-modified
+---
+
+{{< include _A-peers.qmd >}}

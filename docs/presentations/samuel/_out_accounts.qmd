@@ -1,0 +1,12 @@
+| Account (resource) | Type | Allocated | % used |
+|---|---|--:|--:|
+| Data_Access | DATA ACCESS | 1 | 0.0% |
+| Casper | DAV | 75,000 | 63.0% |
+| Campaign_Store | DISK | 23 | 26.8% |
+| Stratus | DISK | 100 | 0.0% |
+| Casper GPU | HPC | 10,000 | 17.5% |
+| Derecho | HPC | 25.0M | 23.4% |
+| Derecho GPU | HPC | 100,000 | 12.8% |
+| Gust | HPC | 5,000 | 0.0% |
+| Gust GPU | HPC | 1,000 | 0.0% |
+| HPC_Futures_Lab | HPC | 1 | 0.0% |
