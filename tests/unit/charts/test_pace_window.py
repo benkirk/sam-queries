@@ -88,9 +88,18 @@ class TestChart:
 
     def test_past_ranks_by_the_recent_actual_rate(self):
         chart = self._chart([ENDED, CURRENT], sort_by='past')
-        # Look-back Jul 2 23:59:59 to Sep 30 23:59:59: July counts 29 of its 31 days.
+        # Look-back Jul 3 to Oct 1: July counts 29 of its 31 days.
         assert chart.rank_metric['ENDED01'] == pytest.approx((50_000.0 * 29 / 31 + 100_000.0) / 90, rel=1e-4)
         assert chart.rank_metric['CURR01'] == 0.0
+
+    def test_past_does_not_double_count_a_renewed_project(self):
+        """Ended in June plus its renewal: one 90-day rate, not each allocation's own."""
+        ended = _alloc('REN01', datetime(2025, 7, 1), datetime(2026, 6, 30, 23, 59, 59), 365_000.0, 365_000.0, 6)
+        renewed = _alloc('REN01', datetime(2026, 7, 1), datetime(2027, 6, 30, 23, 59, 59), 365_000.0, 92_000.0, 7)
+        burns = {6: {202604: 30_000.0, 202605: 31_000.0, 202606: 30_000.0},
+                 7: {202607: 31_000.0, 202608: 31_000.0, 202609: 30_000.0}}
+        chart = self._chart([ended, renewed], sort_by='past', burns=burns)
+        assert chart.rank_metric['REN01'] == pytest.approx(1_000.0)
 
     def test_future_ranks_by_the_projected_rate_at_today(self):
         # The renewal inherits ENDED01's pace: 600k a year against 1M even, so 0.6x its own.

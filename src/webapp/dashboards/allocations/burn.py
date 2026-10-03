@@ -53,7 +53,9 @@ def month_shares(row, lo, hi):
     while m < hi:
         nxt = month_start(m, 1)
         c_lo, c_hi = max(m, lo), min(nxt, hi)
-        yield m, m.year * 100 + m.month, c_lo, c_hi, amount * (c_hi - c_lo).total_seconds() / span
+        # lo past hi in hi's month (a start after the as-of day) would yield a negative share.
+        if c_hi > c_lo:
+            yield m, m.year * 100 + m.month, c_lo, c_hi, amount * (c_hi - c_lo).total_seconds() / span
         m = nxt
 
 
@@ -129,7 +131,8 @@ def _until(lo, end, balance, rate):
 
 def pace_segments(rows, burns, through, at):
     """Copies of ``rows`` with ``pace``: ``past``, ``projected`` and ``committed`` lists of
-    ``(lo, hi, rate per day)``, split at ``at``; ``recent`` is the actual rate over the look-back.
+    ``(lo, hi, rate per day)``, split at ``at``; ``recent`` is its charges inside the look-back
+    over the look-back's full length, so a project's allocations add up to its actual rate.
 
     Past: each month cell's charges over its days. Projected: from ``at``, the project's recent
     ratio (``project_ratios``; 1 with no history) x the allocation's even rate, until the balance
@@ -149,7 +152,8 @@ def pace_segments(rows, burns, through, at):
             if s < through:
                 for _m, ym, c_lo, c_hi, _share in month_shares(r, s, min(e, through)):
                     past.append((c_lo, min(c_hi, at), cells.get(ym, 0.0) / _days(c_lo, c_hi)))
-                recent = recent_rate(r, cells, min(through, e))
+                look = through - timedelta(days=RUNOUT_LOOKBACK_DAYS)
+                recent = charges_between(r, cells, look, min(through, e)) / RUNOUT_LOOKBACK_DAYS
             rate = ratios.get(r['projcode'], 1.0) * even_rate(r)
         else:
             elapsed = _days(s, min(e, through)) if s < through else 0.0

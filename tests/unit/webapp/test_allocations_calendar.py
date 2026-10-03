@@ -165,6 +165,15 @@ class TestBurn:
         assert strips[('UNIV', 'Small')][0]['ratio'] == pytest.approx(1.0)
         assert strips['UNIV'][0]['ratio'] == pytest.approx(0.5)
 
+    def test_group_burn_ignores_a_start_later_in_the_as_of_month(self):
+        start, end = calendar_window(AT)
+        rows = [_row('A', *self.YEAR, amount=365.0, allocation_id=1)]
+        later = _row('B', datetime(2026, 10, 20), datetime(2027, 10, 20), amount=36500.0, allocation_id=2)
+        burns = {1: {202610: 3.0}}
+        alone = group_burn(rows, burns, start, end, THROUGH)
+        assert alone[-1]['month'] == datetime(2026, 10, 1) and alone[-1]['ratio'] == pytest.approx(1.0)
+        assert group_burn(rows + [later], burns, start, end, THROUGH) == alone
+
     def test_shading_stops_at_todays_midnight(self):
         assert burn_through(AT, today=datetime(2026, 12, 1)) == THROUGH
         # As of today: today's charges land tomorrow, so its share would read low.
@@ -255,6 +264,14 @@ class TestPaceSegments:
         p = self._pace([old, new], {7: self.TWO_A_DAY})
         assert p[8]['projected'][0][2] == pytest.approx(4.0, rel=0.01)     # 2x its 2/day even rate
         assert not p[7]['projected'] and not p[7]['committed']
+
+    def test_recent_adds_up_to_the_projects_rate_across_a_renewal(self):
+        # 2/day throughout; the old allocation ended Aug 31, inside the look-back.
+        old = self._row(365.0, span=(datetime(2025, 9, 1), datetime(2026, 9, 1)))
+        new = self._row(60.0, span=(datetime(2026, 9, 1), datetime(2027, 9, 1)), allocation_id=8)
+        p = self._pace([old, new], {7: {202607: 62.0, 202608: 62.0}, 8: {202609: 60.0}})
+        assert p[7]['recent'] + p[8]['recent'] == pytest.approx(2.0)
+        assert p[8]['recent'] == pytest.approx(60 / 90)
 
     def test_no_history_projects_the_even_rate(self):
         later = self._row(span=(datetime(2026, 10, 20), datetime(2027, 10, 20)))
