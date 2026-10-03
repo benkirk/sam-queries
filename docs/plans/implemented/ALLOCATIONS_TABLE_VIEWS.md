@@ -1,7 +1,7 @@
 # Allocations dashboard: an at-date table and a calendar view
 
-**Status: implemented, unreviewed (2026-10-03)** · branch `allocations-table-views` (from
-`origin/staging` after #706 merged) · one PR, one commit per stage below.
+**Status: implemented, merged to staging in #707 (2026-10-03)** · one PR, one commit per stage
+below.
 
 ## Context
 

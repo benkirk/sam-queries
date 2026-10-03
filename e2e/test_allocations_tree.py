@@ -3,7 +3,7 @@ tab, expansion follows you across tabs, the tree stays dense, and the calendar
 view loads a type group's projects as bars.
 
 Each test starts from cleared localStorage, since collapse and pill state persist.
-Design records: docs/plans/ALLOCATIONS_SUNBURST.md, docs/plans/ALLOCATIONS_TABLE_VIEWS.md.
+Design records: docs/plans/ALLOCATIONS_SUNBURST.md, docs/plans/implemented/ALLOCATIONS_TABLE_VIEWS.md.
 """
 import pytest
 

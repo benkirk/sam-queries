@@ -4,7 +4,7 @@ The even pace spreads the amount uniformly from start to end date; a month's cha
 share of that is the burn ratio. The recent rate (charges per day over the last 90 days)
 projects when the balance runs out. Charges come as get_allocation_burn's ``{yyyymm: charges}``.
 No Flask, no matplotlib: the calendar and the Pace chart both read it.
-Design record: docs/plans/ALLOCATIONS_TABLE_VIEWS.md (Burn).
+Design record: docs/plans/implemented/ALLOCATIONS_TABLE_VIEWS.md (Burn).
 """
 from datetime import datetime, timedelta
 
