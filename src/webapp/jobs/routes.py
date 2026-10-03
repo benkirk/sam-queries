@@ -458,7 +458,7 @@ _SIZE_DIMENSIONS = ('nodes', 'cpus', 'gpus',
 _BY_USER_LIMIT = 25
 
 # Projects named per facility in the By Project "By facility" outer ring.
-_FACILITY_TOP_PROJECTS = 3
+_FACILITY_TOP_PROJECTS = 5
 # Its center label: the summary line's short units, which fit a phone's ring hole.
 _FACILITY_CENTER = {'jobs': 'Jobs', 'cpu_hours': 'CPU-h', 'gpu_hours': 'GPU-h',
                     'charges': 'Charges'}

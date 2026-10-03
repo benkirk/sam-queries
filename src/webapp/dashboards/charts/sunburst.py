@@ -17,18 +17,18 @@ from webapp.dashboards.charts.pie import PieChart
 from webapp.dashboards.charts.theme import autopct_color_for, shade_family
 
 
-def _text_width(ax, text):
-    """Unrotated width of ``text`` in display pixels."""
+def _text_size(ax, text):
+    """Unrotated ``(width, height)`` of ``text`` in display pixels."""
     canvas = ax.figure.canvas
     renderer = canvas.get_renderer() if hasattr(canvas, 'get_renderer') else ax.figure._get_renderer()
-    return text.get_window_extent(renderer).width
+    extent = text.get_window_extent(renderer)
+    return extent.width, extent.height
 
 
-def _arc_width(ax, wedge, radius):
-    """Length in display pixels of ``wedge``'s arc at ``radius``."""
+def _pixels_per_unit(ax):
     ax.apply_aspect()
     (x0, _), (x1, _) = ax.transData.transform([(0, 0), (1, 0)])
-    return math.radians(wedge.theta2 - wedge.theta1) * radius * abs(x1 - x0)
+    return abs(x1 - x0)
 
 
 class TwoRingPie(PieChart):
@@ -43,14 +43,19 @@ class TwoRingPie(PieChart):
 
     inner_radius = 0.66
     ring_width = 0.3
+    #: Outer ring's width when it differs from the inner one's.
+    outer_width = None
     #: Smallest wedge (percent of the whole) that carries a direct label.
     inner_label_min = 5
     outer_label_min = 6
     center_text = ''
     #: True draws the legend as aligned columns from ``legend_cells()``.
     table_legend = False
-    #: True sets outer labels along the arc and drops any wider than its wedge.
-    outer_label_tangent = False
+    #: 'horizontal', or 'tangent' / 'radial': set along the arc / the radius
+    #: (radial falls back to the arc), dropping any label that fits neither.
+    inner_label_orient = 'horizontal'
+    outer_label_orient = 'horizontal'
+    outer_label_fontsize = None
 
     def __init__(self, data: List[Dict]):
         self.data = data or []
@@ -122,9 +127,10 @@ class TwoRingPie(PieChart):
         edge = {'edgecolor': theme.surface}
         inner, _ = ax.pie(self.values, radius=self.inner_radius, colors=bases,
                           wedgeprops={**edge, 'width': self.ring_width, 'linewidth': 1.5}, **common)
-        outer, _ = ax.pie(outer_vals, radius=self.inner_radius + self.ring_width + 0.02,
+        outer_width = self.outer_width or self.ring_width
+        outer, _ = ax.pie(outer_vals, radius=self.inner_radius + outer_width + 0.02,
                           colors=outer_colors,
-                          wedgeprops={**edge, 'width': self.ring_width, 'linewidth': 1}, **common)
+                          wedgeprops={**edge, 'width': outer_width, 'linewidth': 1}, **common)
         self.wedges, self.bases = inner, bases
         for wedge, url in zip(outer, outer_urls):
             if url is not None:
@@ -132,11 +138,12 @@ class TwoRingPie(PieChart):
 
         size = self.autopct_fontsize
         self._label(ax, inner, self.labels, [self.percent(v) for v in self.values], bases,
-                    self.inner_radius - self.ring_width / 2, self.inner_label_min, size)
+                    self.inner_radius - self.ring_width / 2, self.inner_label_min, size,
+                    self.inner_label_orient, self.ring_width)
         if layout.name != 'mobile':   # a phone's outer ring is too narrow; the legend carries it
             self._label(ax, outer, outer_names, [self.percent(v) for v in outer_vals], outer_colors,
-                        self.inner_radius + self.ring_width / 2 + 0.02, self.outer_label_min, size - 1,
-                        tangent=self.outer_label_tangent)
+                        self.inner_radius + outer_width / 2 + 0.02, self.outer_label_min,
+                        self.outer_label_fontsize or size - 1, self.outer_label_orient, outer_width)
         if self.center_text:
             ax.text(0, 0, self.center_text, ha='center', va='center', fontsize=size + 1,
                     color=theme.text, alpha=0.7)
@@ -186,7 +193,8 @@ class TwoRingPie(PieChart):
         ax.add_artist(table)
 
     @staticmethod
-    def _label(ax, wedges, names, percents, colors, radius, minimum, size, tangent=False):
+    def _label(ax, wedges, names, percents, colors, radius, minimum, size,
+               orient='horizontal', band=0):
         for wedge, name, pct, color in zip(wedges, names, percents, colors):
             if not name or pct < minimum or color == 'none':
                 continue
@@ -195,12 +203,18 @@ class TwoRingPie(PieChart):
             text = ax.text(radius * math.cos(angle), radius * math.sin(angle), name,
                            ha='center', va='center', fontsize=size, fontweight='bold',
                            color=autopct_color_for(color))
-            if not tangent:
+            if orient == 'horizontal':
                 continue
-            if _text_width(ax, text) > _arc_width(ax, wedge, radius):
+            width, height = _text_size(ax, text)
+            unit = _pixels_per_unit(ax)
+            arc = math.radians(wedge.theta2 - wedge.theta1) * radius * unit
+            if orient == 'radial' and width <= band * unit and height <= arc:
+                rotation = mid % 360
+            elif width <= arc:          # 'tangent', and radial's fallback
+                rotation = (mid - 90) % 360
+            else:
                 text.remove()
                 continue
-            rotation = (mid - 90) % 360
             text.set_rotation(rotation - 180 if 90 < rotation < 270 else rotation)
 
 
@@ -264,8 +278,15 @@ class JobsFacilitySunburst(AllocationSunburst):
     cache_maxsize = 64
     empty_message = 'No usage data available'
     drill = links.JOB_PROJECT
-    outer_label_min = 2
-    outer_label_tangent = True
+    #: Thin facility core, thick project rim: a projcode laid along the radius
+    #: needs the rim's width, and then only one line's height of arc.
+    inner_radius = 0.46
+    ring_width = 0.18
+    outer_width = 0.5
+    inner_label_orient = 'tangent'
+    outer_label_orient = 'radial'
+    outer_label_fontsize = 6.5
+    outer_label_min = 1
 
     def prepare(self):
         super().prepare()

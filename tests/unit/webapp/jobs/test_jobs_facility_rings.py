@@ -26,7 +26,7 @@ _SLOTS = {1: 1, 2: 2}
 
 
 def _rings(metric='cpu_hours', linked=frozenset()):
-    return _facility_rings(_ROWS, metric, _FACILITY_OF, _SLOTS, linked)
+    return _facility_rings(_ROWS, metric, _FACILITY_OF, _SLOTS, linked, top_n=3)
 
 
 def test_facilities_in_slot_order_unknown_last():
