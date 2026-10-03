@@ -236,6 +236,34 @@ latency becomes a concern.
 
 ---
 
+## As built, 2026-10-03: one builder for both batch methods
+
+The two batch methods and the calendar's monthly burn query (`get_allocation_burn`, #707) now
+share one SQL builder in `src/sam/accounting/calculator.py`: `anchor_sums` (one statement per
+charge table, optionally grouped by month) and `batch_charges` (the batch return shape).
+`Project.batch_get_subtree_charges` and `batch_get_account_charges` are two-line shims over it.
+
+- **The Python fallback is gone.** Where `VALUES` is unsupported the anchors become a
+  `UNION ALL` derived table, so the SQL is the same on every database.
+- **Constant dates matter on the subtree path.** A first cut put every subtree anchor in one
+  statement with per-anchor dates. On MySQL one dashboard statement went from 0.5 ms to
+  104 ms, and fstree's subtree part 2.5x: without a constant range the planner reads each
+  account's whole charge history instead of range-scanning the date index. So subtree anchors
+  still go one date range per statement, and `anchor_sums` passes a shared range as constants.
+  Mixed ranges (the account path, the burn query) ride in the anchors table.
+- **Parity:** 30 scenarios (usage rows, burn and fstree on six resources; the all-resources
+  summary at two dates; eight user dashboards) match the old code on MySQL and Postgres,
+  ignoring row order and float rounding at 1e-9.
+- **Cost (local test snapshot, 11 repeats, min):** within noise on both backends. MySQL:
+  summary 2.6-2.8 s, fstree all 0.90 vs 0.91 s, user dashboards 54-376 ms. Statements across
+  the 30 scenarios: 2,031 to 1,941, all from adjustments, which now run once per path.
+- **Not done:** the subtree charge statements are still the dominant cost (1.35 s of the
+  summary's 2.0 s in anchors, for 385 anchors), and the burn query sends its 24 subtree
+  anchors with mixed dates in one statement (about 200 ms on MySQL). Prod MySQL was not
+  measured.
+
+---
+
 ## Key Files
 
 | File | Role |
@@ -245,4 +273,5 @@ latency becomes a concern.
 | `src/webapp/dashboards/allocations/blueprint.py` | Route handler — `index()`, `get_all_facility_usage_overviews()` |
 | `src/sam/accounting/accounts.py` | Account model — `lazy='select'` on `Account.users` (Phase 2) |
 | `src/sam/projects/projects.py` | `get_subtree_charges`, `get_subtree_adjustments`, `batch_get_subtree_charges`, `batch_get_account_charges` (Phase 2) |
+| `src/sam/accounting/calculator.py` | `anchor_sums`, `batch_charges`: the shared builder behind both batch methods (2026-10-03) |
 | `utils/profiling/profile_allocations.py` | Profiling script — run to measure progress |
