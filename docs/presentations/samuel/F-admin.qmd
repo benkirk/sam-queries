@@ -1,0 +1,8 @@
+---
+title: "SAMuel, Appendix F"
+subtitle: "Running the Shop"
+author: "Ben Kirk, NCAR/CISL"
+date: last-modified
+---
+
+{{< include _F-admin.qmd >}}

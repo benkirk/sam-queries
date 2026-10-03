@@ -589,6 +589,24 @@ G, the CLIs). These two features had about 15 implemented plan docs but only one
   Ben's local data is a few files.
 - **Where the data comes from:** `csg-postgres`, sizes, freshness, caching, slow cases.
 
+### Appendix F — Running the Shop (the admin dashboard; drafted 2026-10-03, 9 slides)
+
+The admin side had one screenshot (Part 1's project editor) and bullets.
+- **A tour of the tabs:** who sees each tab (permission, facility scope) and what it is for.
+- **Account requests:** the queue, fulfillment derived and reconciled every 15 minutes, one
+  help-desk ticket per request.
+- **Events and invitations:** listed and invite-only events, roster paste, and signed
+  invitation links (30 days; a resend voids older links).
+- **Expirations:** the CSV exports, the Monday notices, and Deactivate Expired (the button and
+  the monthly task).
+- **Mail:** off by default, previewed, deduplicated and logged; five families; addressing rows.
+- **Templates:** 33 editable, stored as database overrides, rendered against samples on save.
+- **The eight tasks:** a table of when each runs and which are off in prod.
+- **The Configuration tab:** rate limits, Last seen and impersonation.
+- **No screenshots yet.** The obfuscated DB empties these tables (account requests, events, the
+  notification log, addressing, role grants), and production shows real addresses. They wait
+  for the production shoot (§6). The template editor and the task history are safe on any data.
+
 ## 5. Facts to resolve before they go on a slide
 
 - **The name:** the app, and Ben's March deck, say "Systems Accounting Manager". `CLAUDE.md`'s
@@ -1081,6 +1099,9 @@ Each phase closes with render → visual review → commit in this repo
   RBAC, the XRAS operator side and developer onboarding are set aside. Appendix E is 8 slides
   (see §4), with three screenshots from the local plugin data.
 
+- **2026-10-03, Appendix F drafted** (9 slides, text and tables only; see §4). It is stacked on
+  E's branch, and its PR opens after #714 merges.
+
 ## 11. Voice, tone and the fun
 
 **SAMuel = SAM, updated for extended lifecycle.** That backronym is the deck's premise and its
@@ -1451,3 +1472,11 @@ branch and PR against `staging`. Tick an item once its fix merges, and note the 
   keep the footnotes. The slide count doesn't change, so `make qa` can't see it. Suspect
   `single-body.lua`'s one-column wrapper, or pandoc's pptx writer, dropping the paragraph after a
   table inside a column. Found 2026-10-03; fix in quarto-docs-framework, then move the pin.
+- [ ] **CLAUDE.md says the template editor edits "30 shipped files".** There are 39 files in
+  `src/sam/notify/templates`, 6 of them underscore partials, so 33 are editable
+  (`src/sam/notify/render.py:54-63`).
+- [ ] **CLAUDE.md calls the tab "Admin → Accounts"**; it is labelled "Account Requests"
+  (`templates/dashboards/admin/base_admin.html:40`).
+- [ ] **Last seen: the route admits a facility-scoped VIEW_USERS grant, but the tab needs a plain
+  one** (`last_seen_routes.py:60-62` vs `base_admin_users.html:12-13`). A facility manager can open
+  the URL but never sees the tab.
