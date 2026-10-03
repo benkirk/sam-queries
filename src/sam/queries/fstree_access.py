@@ -33,10 +33,7 @@ from typing import Any, Dict, List, Optional, Set
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from sam.queries.rolling_usage import (
-    _query_window_charges,
-    _query_window_subtree_charges,
-)
+from sam.queries.rolling_usage import trailing_window_charges
 
 
 # ---------------------------------------------------------------------------
@@ -417,12 +414,6 @@ def _compute_threshold_data(
     return result or None
 
 
-# _query_window_charges and _query_window_subtree_charges are imported from
-# sam.queries.rolling_usage (see import at top of file).  They live there so
-# that get_project_rolling_usage() can share the same SQL helpers without
-# duplicating code.  The fstree behavior is 100% unchanged.
-
-
 # ---------------------------------------------------------------------------
 # Internal helper: build/update the facilities_dict from a set of skeleton rows
 # ---------------------------------------------------------------------------
@@ -551,7 +542,6 @@ def get_fstree_data(
     seen_proj_res: Set[tuple] = set()
     alloc_infos: List[Dict[str, Any]] = []
     threshold_accounts: Dict[int, tuple] = {}
-    alloc_windows: Dict[int, tuple] = {}
 
     for row in skeleton_rows:
         pid_to_projcode[row.project_id] = row.projcode
@@ -575,7 +565,6 @@ def get_fstree_data(
                     'start_date':    row.start_date,
                     'end_date':      row.end_date or now,
                 })
-                alloc_windows[row.account_id] = (row.start_date, row.end_date or now)
                 if row.first_threshold is not None or row.second_threshold is not None:
                     threshold_accounts[row.account_id] = (
                         row.first_threshold, row.second_threshold,
@@ -655,13 +644,8 @@ def get_fstree_data(
     # subtree rollup so that descendant project charges are included, matching
     # the behavior of batch_get_subtree_charges() used for adjustedUsage.
     # ------------------------------------------------------------------
-    subtree_acct_map: Dict[int, Dict] = {info['account_id']: info for info in subtree_infos}
-    threshold_leaf_ids = [aid for aid in threshold_accounts if aid not in subtree_acct_map]
-    threshold_subtree_infos = {
-        aid: subtree_acct_map[aid]
-        for aid in threshold_accounts
-        if aid in subtree_acct_map
-    }
+    subtree_ids = {info['account_id'] for info in subtree_infos}
+    threshold_infos = [info for info in alloc_infos if info['account_id'] in threshold_accounts]
 
     window_30: Dict[int, float] = {}
     window_90: Dict[int, float] = {}
@@ -673,13 +657,10 @@ def get_fstree_data(
             window_30[aid] = _own_window_charges(row, '30')
             window_90[aid] = _own_window_charges(row, '90')
     else:
-        if threshold_leaf_ids:
-            window_30.update(_query_window_charges(session, threshold_leaf_ids, 30, now, alloc_windows))
-            window_90.update(_query_window_charges(session, threshold_leaf_ids, 90, now, alloc_windows))
-
-        if threshold_subtree_infos:
-            window_30.update(_query_window_subtree_charges(session, threshold_subtree_infos, 30, now, alloc_windows))
-            window_90.update(_query_window_subtree_charges(session, threshold_subtree_infos, 90, now, alloc_windows))
+        for subtree in (False, True):
+            group = [i for i in threshold_infos if (i['account_id'] in subtree_ids) == subtree]
+            window_30.update(trailing_window_charges(session, group, 30, now, subtree=subtree))
+            window_90.update(trailing_window_charges(session, group, 90, now, subtree=subtree))
 
     # ------------------------------------------------------------------
     # Query 3 — Users per account

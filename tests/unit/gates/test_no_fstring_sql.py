@@ -24,7 +24,6 @@ _FSTRING_SQL = re.compile(r'\btext\s*\(\s*f["\']')
 # after re-auditing the statement(s); see the module docstring.
 _ALLOWLIST = {
     "sam/accounting/calculator.py": 2,  # anchored charge sums: placeholder names + __tablename__; the capability probe
-    "sam/queries/rolling_usage.py": 4,  # rolling charge VALUES-CTE: same pattern
     "webapp/utils/config_inspect.py": 1,  # information_schema scope predicate from sam.sqlcompat
 }
 
