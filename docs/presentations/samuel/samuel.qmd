@@ -23,6 +23,8 @@ date: last-modified
 
 {{< include _D-security.qmd >}}
 
+{{< include _E-jobs.qmd >}}
+
 ## Questions? {.closing}
 
 benkirk@ucar.edu
