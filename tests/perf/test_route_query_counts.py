@@ -417,3 +417,26 @@ def test_admin_project_directories_route(auth_client, route_count_queries):
 def test_admin_project_directories_active_route(auth_client, route_count_queries):
     _route_within("admin_project_directories_active_route", auth_client,
                   route_count_queries, '/admin/htmx/admin/project-directories?active_only=1')
+
+
+# ---------------------------------------------------------------------------
+# Allocations calendar: Burn adds one cached month-sums pass per resource and
+# date (comp/dav + adjustments per routing path), never a per-allocation query.
+# ---------------------------------------------------------------------------
+
+_CALENDAR = '/allocations/htmx/calendar/Derecho?active_at=2026-10-03'
+
+
+def test_allocations_calendar_route(auth_client, route_count_queries):
+    _route_within("allocations_calendar_route", auth_client, route_count_queries, _CALENDAR)
+
+
+def test_allocations_calendar_burn_route(auth_client, route_count_queries):
+    _route_within("allocations_calendar_burn_route", auth_client, route_count_queries,
+                  _CALENDAR + '&mode=burn')
+
+
+def test_allocations_calendar_burn_rows_route(auth_client, route_count_queries):
+    _route_within("allocations_calendar_burn_rows_route", auth_client, route_count_queries,
+                  '/allocations/htmx/calendar/Derecho/rows?active_at=2026-10-03&mode=burn'
+                  '&facility=UNIV&allocation_type=Small')
