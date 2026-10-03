@@ -31,6 +31,7 @@ from datetime import datetime
 import pytest
 
 from webapp.dashboards import charts
+from webapp.dashboards.allocations.burn import pace_segments
 
 #: ``(generator_name, key_fn_name)`` for charts still bound as plain
 #: functions with a hand-written key. Shrinks to empty as the refactor lands.
@@ -306,9 +307,9 @@ def test_user_usage_pie_renders_without_explicit_metric(app):
 
 def test_pace_explicit_default_top_n_matches_omitted():
     """Regression: explicit top_n=20 and omitted top_n must hash the same."""
-    allocs = [{'projcode': 'P0001',
-               'start_date': datetime(2026, 1, 1), 'end_date': datetime(2026, 12, 31),
-               'total_amount': 1000.0, 'total_used': 400.0}]
     now = datetime(2026, 6, 1)
+    allocs = pace_segments([{'projcode': 'P0001',
+                             'start_date': datetime(2026, 1, 1), 'end_date': datetime(2026, 12, 31),
+                             'total_amount': 1000.0, 'total_used': 400.0}], None, now, now)
     assert (charts._pace_cache_key(allocs, now)
             == charts._pace_cache_key(allocs, now, 180, 20))

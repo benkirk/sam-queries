@@ -104,14 +104,144 @@ once remote CI is wanted. Commit 0 is this doc.
 - **Perf tier**: not extended; the sibling chart fragments (Pace, Used ring) have no baselines either.
 
 ### Later (not in this PR)
-- Monthly burn strip: needs per-allocation monthly charges (comp/dav summaries by `activity_date`,
-  subtree logic from `batch_get_subtree_charges`), ideally a rollup companion to the read model.
-- Calendar span pills; storage occupancy fills; facility/type aggregate bands on group rows.
+- Calendar span pills; storage occupancy fills.
+
+## Burn: the monthly burn strip (follow-on PR, branch `calendar-burn`)
+
+**Status: in progress (2026-10-03)** · stacked on #707 (base `allocations-table-views`; rebase
+`--onto origin/staging` and retarget once #707 merges) · one commit per stage below.
+
+Ben wants to see *when* the use happened: each month of a bar shaded by that month's charges
+against an even-pace share, and the same for the facility and type rows, whose tracks are empty
+in the Used view. The default calendar must stay as fast as it is.
+
+Decisions (2026-10-03): a **Used | Burn** toggle on the calendar, burn data fetched only when
+chosen; group rows show an aggregate strip in Burn mode. **No DDL**: read-only queries over the
+existing charge summaries plus the usage cache. A READ_MODEL.md rollup companion would be DDL,
+so it stays a last resort needing Ben's go-ahead.
+
+Data facts (local snapshot, Derecho, 25-month window): only 222 of 1,525 root allocations start
+on the 1st, so month buckets must be per allocation (a mid-month renewal splits its month), not
+per account. Per allocation x month is ~20k cells. No (account_id, activity_date) index exists;
+the shape matches `get_allocation_usage_rows`, whose ±180-day Pace window costs 9-11 s cold.
+
+1. **Query** `get_allocation_burn()` (`sam/queries/allocations.py`): the usage-rows allocation set
+   and subtree/account routing; per-anchor dates `[max(start, window start), min(end, end of the
+   as-of day, window end)]` in a VALUES table (UNION ALL where VALUES is unsupported) with
+   `sqlcompat.month_key()` in the GROUP BY; charge model per `get_charge_models_for_activity`,
+   adjustments into the same cells. Returns `{allocation_id: {yyyymm: charges}}`. New code beside
+   the batch methods, which feed every usage figure and stay untouched. Usage rows gain
+   `allocation_id` so the calendar can join the two.
+   - **Cache**: its own bucket, `allocation_burn` (`ALLOCATION_BURN_CACHE_TTL` 12 h, size 50), not
+     usage's 1 h: an entry is keyed on its as-of day and only that day's month still moves (Ben,
+     2026-10-03). Purged with the `usage` category; a second row on the Admin Caching card.
+   - **Measured** (local MySQL snapshot, as of 2026-10-03, fresh process): Derecho 0.68 s, 12
+     statements, 952 allocations, 5,303 cells, 79 KiB pickled; Casper 0.57 s. Usage rows on the
+     same window: 0.87 s. Pressing Burn on the local dev server (:5050): 1.3 s cold, 30-60 ms warm.
+2. **Geometry** (`calendar.py`): `burn_cells` (one cell per month the bar covers, in % of the bar;
+   ratio = charges / (amount x cell days / allocation days)), 5 classes at `<0.25, <0.75, <1.25,
+   <2, >=2` (`BURN_EDGES`, which also builds the key's labels), and `group_burn` / 
+   `calendar_group_burn` (summed charges over summed even shares per window month). Shading stops
+   at `burn_through()`: the end of the as-of day, or **today's midnight** if sooner, because a
+   day's charges land the next day and would otherwise read every current month low (a third low
+   on the 3rd). No cells for open-ended, zero-amount, id-less or future allocations.
+3. **UI**: `mode=burn` on `htmx_calendar` and its rows route (HPC/DAV only; anything else reads as
+   `used`), persisted via `data-chart-persist-keys="mode"` on the loader and the fragment, and
+   forwarded into every rows URL. A toolbar holds the `Used | Burn` pills and, in Burn mode, the
+   key. Burn cells replace the fill and % label; group rows carry a strip. The toggle re-renders
+   the fragment, so `dashboard-init.js` carries the open type groups (`data-no-persist`) and the
+   horizontal scroll across the swap.
+   - **Colors (changed from the handoff)**: burn ratio is a polarity around even pace, so a
+     diverging scale (`--data-burn-0..4`: blue under, gray on pace, red over), not facility tints
+     with a `--danger-color` cap (a status color is reserved). In Burn mode a bar's unshaded rest
+     is an empty frame: the UNIV tint there read as the 1.25-2x step. Adjacent steps, OKLab dE x100,
+     light >= 16.8 normal / >= 14.5 under protan, deutan and tritan; dark >= 15.6 / >= 11.2, the
+     dark midpoint 1.6:1 on the facility rows' `--surface-secondary`.
+4. **Perf**: route query-count baselines; cold timing on samuel-dev Postgres. Over ~3 s cold on
+   dev means prewarming today's entry (cache-only).
+5. **Future risk (decided 2026-10-03)**: a run-out tick on Burn bars, no "future risk" mode.
+   Ben asked about projects that ran cold and are ramping up. Local snapshot, as of 2026-10-03,
+   current allocations with >= 30 days left, Derecho (Casper in parentheses), 1,054 (1,156):
+
+   | Signal | Projects | Reading |
+   |---|---|---|
+   | Catch-up rate >= 1.25x (unspent / even share of time left) | 715, 68% (844) | Noise, and Pace already draws it |
+   | Last ~90 days >= 1.25x even pace | 124 (84) | |
+   | Cold before (< 0.75x), hot now, balance large | 40, 4% (28) | Real but small: 1.9% of remaining balance, ~+15M over 90 days |
+   | At the 90-day rate, runs out >= 30 days before its end | 89, 8% (54) | The actionable signal: a date |
+
+   So no toggle, no projected calendar cells, no facility demand forecast; the projected future
+   goes on the Pace chart instead (the follow-on PR stacked on this one). The burn
+   math moved to `allocations/burn.py` (no Flask, no matplotlib; gated in
+   `test_chart_module_boundaries.py`) so Pace can share it. `recent_rate` = charges per day over
+   the last 90 days (`RUNOUT_LOOKBACK_DAYS`; from the start date if later), a month cell partly
+   inside counting pro rata. `runs_out` = through + unspent / recent rate, only for a current
+   burnable allocation with a balance and a rate, and only when it lands >= 30 days
+   (`RUNOUT_MARGIN_DAYS`) before the end date; the day counts are compared before building the
+   date, because a trickle of charges overflows `datetime`. The bar gets a 2px `--data-burn-4`
+   tick with a `--surface-card` halo inside an 8px hover target, the date in its title and the
+   bar's, and a key item.
+   - **Measured** (local MySQL, as of 2026-10-03): 87 Derecho / 55 Casper run-outs (the analysis
+     counted 89 / 54); 80 / 51 draw, the rest fall past the window's end. UHWM0061: 8.9x even
+     pace over 90 days, 120 days left, runs out about 2026-10-29.
+
+## Pace: reads the burn data (follow-on PR, branch `pace-burn`)
+
+**Status: built (2026-10-03)** · stacked on `calendar-burn`.
+
+The Pace chart's gaps, measured on the local snapshot (Derecho, as of 2026-10-03):
+
+| # | Gap | Evidence |
+|---|---|---|
+| G1 | Eager load: every Resource tab fetched its Pace chart and Used ring while hidden | ~10 Pace requests per page view, 9-11 s each cold on prod (#691); fixed separately (#709) |
+| G2 | The future side was the committed ceiling, not a forecast: unspent / days left | 10.3B/yr against ~2.4B/yr actually charged (Casper 6.4x) |
+| G3 | The past side was one flat average over the 180-day window | 2.27B/yr flat; monthly actuals 165M ... 219M |
+| G4 | A second fetch: Pace cached ±180-day rows with `window_used` anchors only it read | |
+| G5 | A ymax clamp for unspent / 1 day spikes near an end date | |
+| G6 | `sort_by='future'` ranked the ceiling, so mostly idle projects | |
+
+Decisions (Ben, 2026-10-03): the future side is **projected use as the stacked area, plus the
+committed total as a dashed line**. The gap between them is latent demand. Call it
+**committed**, never "required": it is what allocations promise to deliver by their end dates,
+and more than will be used, because many projects never spend their allocation.
+
+- **Data**: the route reads the calendar's cache entries (`_calendar_rows`, `_calendar_burn`:
+  rows and month sums over the 25-month window), so either view warms the other. Disk keeps its
+  active-only occupancy rows. `window_used` and its `('window', id)` anchors are gone from
+  `get_allocation_usage_rows`.
+- **Math** (`burn.pace_segments`, pure; `pace.py` cannot import `allocations/` without a cycle
+  through the blueprint, so the route hands it rows with a `pace` dict of `(lo, hi, rate)`
+  segments). Past: each month cell's charges over its days. Projected: from the as-of date, the
+  **project's** 90-day ratio (`project_ratios`: charges over even share, summed over its
+  allocations on the resource) x the allocation's even rate, until the balance runs out or it
+  ends; with no history, the even rate. Committed: balance over days left. Disk: the lifetime
+  average for past and projected.
+  - **Changed from the handoff**: the handoff projected a current allocation at its own recent
+    rate and used the project ratio only for unstarted ones. On 2026-10-03, 132 of 1,054
+    current Derecho allocations started under 90 days ago (mostly Oct 1 renewals, two days of
+    data), so one rule does both; for an allocation spanning the look-back the two agree.
+    Derecho at today: 2.31B/yr (own rate) vs 2.40B/yr (project ratio).
+- **Chart**: the stack's top sets the axis (no clamp); the committed line is dashed in the
+  text color (the accent is the today marker's), and when off scale it is clipped with its
+  value labeled at today with an up arrow. Sorts: `size` unchanged, `past` = actual 90-day
+  rate ("Recent Burn"), `future` = projected rate at today ("Projected Burn"); legend numbers
+  follow. A footnote under the chart says what the area and the line are. Day indices round to
+  the nearest day, so an end at 23:59:59 closes its day (flooring left a 1-day notch at every
+  month end).
+- **Measured** (local MySQL, Derecho, as of 2026-10-03): past steps equal the monthly actuals
+  x 12 (Sep 211M -> 2.5B/yr); projected at today 2.40B/yr; committed 10.2B/yr, off scale.
+  Data cost, three cold runs: rows ±180 d 0.54-0.64 s, rows 25 months 0.57-0.67 s, month sums
+  0.56-0.73 s, so cold-cold Pace roughly doubles locally and is free after the calendar. Dev
+  server: 3.0 s cold (racing a cold calendar request), 130-270 ms warm. Route statements, cache
+  off: 45 vs 38 (perf baseline `allocations_pace_route`). SVG, desktop, raw / gzip: 211-231 KB /
+  21-24 KB vs 195-196 KB / 19-23 KB; 66-68 paths vs 69.
+- Not measured: cold timing on samuel-dev Postgres or prod MySQL, where the ±180-day rows alone
+  took 9-11 s; a cold Pace there may need the calendar's entries prewarmed.
 
 ## Critical files
 
 - `src/webapp/dashboards/allocations/blueprint.py` (projects(), build_facility_trees, fragments)
-- `src/webapp/dashboards/allocations/calendar.py` (new)
+- `src/webapp/dashboards/allocations/calendar.py` (new), `burn.py` (burn math, run-out)
 - `src/sam/queries/allocations.py` (as-of fix, ~line 1161)
 - `src/webapp/templates/dashboards/allocations/projects.html` + new partials
 - `src/webapp/templates/dashboards/fragments/table_bits.html` (`tree_label_cell`, `alloc_meter`)

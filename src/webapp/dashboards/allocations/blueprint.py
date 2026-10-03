@@ -34,7 +34,8 @@ from sam.queries.charges import (
     get_recent_charge_adjustments,
 )
 from sam.queries.usage_cache import (
-    cached_allocation_usage, cached_allocation_usage_rows, cached_charges_by_facility_type,
+    cached_allocation_burn, cached_allocation_usage, cached_allocation_usage_rows,
+    cached_charges_by_facility_type,
     purge_usage_cache, usage_cache_info,
 )
 from sam.queries.lookups import find_project_by_code
@@ -53,10 +54,12 @@ from sam.resources.resources import Resource
 from ..charts import (
     generate_allocation_sunburst,
     generate_pace_chart_matplotlib,
-    PACE_WINDOW_DAYS,
 )
 from ..charts.theme import facility_slots
-from .calendar import calendar_groups, calendar_months, calendar_rows, calendar_window
+from .burn import burn_key, burn_through, pace_segments
+from .calendar import (
+    calendar_group_burn, calendar_groups, calendar_months, calendar_rows, calendar_window,
+)
 
 from . import bp
 
@@ -718,8 +721,8 @@ def htmx_pace_chart(resource_name):
 
     active_at, requested_facilities, selected_facilities = _fragment_scope()
 
-    # One row per allocation across the drawn window, so allocations that ended
-    # or start inside it get their bands. Disk keeps the active-only summary:
+    # The calendar's cache entries (rows and monthly charges over its 25-month
+    # window), so either view warms the other. Disk keeps the active-only summary:
     # its "used" is current occupancy, which an ended allocation does not have.
     resource = Resource.get_by_name(db.session, resource_name)
     is_disk = (resource is not None and resource.resource_type is not None
@@ -735,14 +738,14 @@ def htmx_pace_chart(resource_name):
             active_at=active_at,
             root_only=True,
         )
+        per_project_usage = filter_rows_by_facility(per_project_usage, selected_facilities)
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        per_project_usage = pace_segments(per_project_usage, None, burn_through(active_at, today),
+                                          active_at)
     else:
-        window = timedelta(days=PACE_WINDOW_DAYS)
-        per_project_usage = cached_allocation_usage_rows(
-            db.session, resource_name=[resource_name],
-            window_start=active_at - window, window_end=active_at + window,
-            as_of=active_at,
-        )
-    per_project_usage = filter_rows_by_facility(per_project_usage, selected_facilities)
+        start, end, per_project_usage = _calendar_rows(resource_name, active_at, selected_facilities)
+        burns, through = _calendar_burn(resource_name, active_at, start, end)
+        per_project_usage = pace_segments(per_project_usage, burns, through, active_at)
 
     chart_svg = generate_pace_chart_matplotlib(
         per_project_usage, active_at, resource_name=resource_name,
@@ -824,6 +827,24 @@ def _calendar_rows(resource_name, active_at, selected_facilities):
     return start, end, rows
 
 
+#: Resource types whose charges accrue over time, so a month's burn means something.
+_BURN_RESOURCE_TYPES = ('HPC', 'DAV')
+
+
+def _calendar_mode(resource_name):
+    """``(burnable, mode)``: ``mode`` is 'burn' only when asked for on an HPC/DAV resource."""
+    burnable = get_resource_types(db.session).get(resource_name) in _BURN_RESOURCE_TYPES
+    return burnable, 'burn' if burnable and request.args.get('mode') == 'burn' else 'used'
+
+
+def _calendar_burn(resource_name, active_at, start, end):
+    """``(burns, through)``: the cached monthly charges, and where their shading stops."""
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    return (cached_allocation_burn(db.session, resource_name=[resource_name],
+                                   window_start=start, window_end=end, as_of=active_at),
+            burn_through(active_at, today))
+
+
 @bp.route('/htmx/calendar/<resource_name>')
 @login_required
 @require_permission_any_facility(Permission.VIEW_PROJECTS)
@@ -832,12 +853,19 @@ def htmx_calendar(resource_name):
     each type's project rows load lazily from `htmx_calendar_rows`."""
     active_at, requested_facilities, selected_facilities = _fragment_scope()
     start, end, rows = _calendar_rows(resource_name, active_at, selected_facilities)
+    burnable, mode = _calendar_mode(resource_name)
+    burns, through = (_calendar_burn(resource_name, active_at, start, end) if mode == 'burn'
+                      else (None, None))
     facilities = _facility_index()
     order = [name for _, name, _ in sorted(facilities, key=lambda f: (not f[2], f[0]))]
+    groups = calendar_groups(rows, order)
     return render_template(
         'dashboards/allocations/partials/calendar.html',
         resource_name=resource_name, pane=resource_name.replace(' ', '_'),
-        groups=calendar_groups(rows, order), months=calendar_months(start, end),
+        mode=mode, burnable=burnable, burn_key=burn_key(),
+        strips=(calendar_group_burn(rows, groups, burns, start, end, through)
+                if burns is not None else None),
+        groups=groups, months=calendar_months(start, end),
         days=(end - start).days, now_pct=(active_at - start) / (end - start) * 100,
         slots=_facility_slot_names(facilities),
         active_at=active_at.strftime('%Y-%m-%d'), active_at_dt=active_at,
@@ -859,12 +887,16 @@ def htmx_calendar_rows(resource_name):
     start, end, rows = _calendar_rows(resource_name, active_at, selected_facilities)
     rows = [r for r in rows
             if r['facility'] == facility and (r['allocation_type'] or '') == allocation_type]
+    _, mode = _calendar_mode(resource_name)
+    burns, through = (_calendar_burn(resource_name, active_at, start, end) if mode == 'burn'
+                      else (None, None))
     if get_resource_types(db.session).get(resource_name) in ('DISK', 'ARCHIVE'):
         # Its rows carry summed charges, not occupancy: draw the spans unfilled.
         rows = [{**r, 'total_used': None} for r in rows]
     return render_template(
         'dashboards/allocations/partials/calendar_rows.html',
-        projects=calendar_rows(rows, start, end, active_at),
+        projects=calendar_rows(rows, start, end, active_at, burns=burns, through=through),
+        mode=mode,
         slot=_facility_slot_names(_facility_index()).get(facility),
         can_view_projects=True,  # route requires VIEW_PROJECTS
     )

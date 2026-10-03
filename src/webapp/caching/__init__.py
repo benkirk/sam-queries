@@ -164,7 +164,7 @@ class Caching:
         ``scans`` and ``jobs`` are per-bucket lists the template loops over.
         """
         from flask import current_app
-        from sam.queries.usage_cache import usage_cache_info
+        from sam.queries.usage_cache import burn_cache_info, usage_cache_info
 
         out = {
             'backend':         current_app.config.get('CACHE_TYPE'),
@@ -177,6 +177,7 @@ class Caching:
         # The usage cache predates the per-bucket list shape and the card
         # renders it as a single row; keep that contract.
         out['usage'] = usage_cache_info()
+        out['usage_burn'] = burn_cache_info()
         return out
 
     def clear(self, category: Optional[str] = None) -> dict:

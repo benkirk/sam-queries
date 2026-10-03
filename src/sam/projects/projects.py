@@ -59,6 +59,12 @@ def _ensure_values_cte_probed(session) -> None:
             "Results are correct but performance is degraded. "
             "Upgrade the database to enable the optimal CTE path."
         )
+
+
+def values_cte_supported(session) -> bool:
+    """Whether the database takes a VALUES row-constructor table (probed once per process)."""
+    _ensure_values_cte_probed(session)
+    return bool(_values_cte_supported)
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
 class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixin):

@@ -55,6 +55,12 @@ def test_backend_free_modules_import_no_numpy(name):
     assert 'numpy' not in _imports(PKG / name)
 
 
+def test_burn_math_imports_no_framework():
+    """allocations/burn.py feeds the calendar and the Pace chart's projection: pure arithmetic."""
+    imported = _imports(PKG.parent / 'allocations' / 'burn.py')
+    assert not imported & {'flask', 'matplotlib', 'numpy', 'sqlalchemy'}, imported
+
+
 def test_expected_package_layout():
     """A new module is a design decision, so it should be a visible diff."""
     assert ALL_MODULES == [

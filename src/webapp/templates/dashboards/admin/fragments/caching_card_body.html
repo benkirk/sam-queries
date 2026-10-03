@@ -37,6 +37,10 @@
 <hr class="my-3">
 <div class="text-muted small mb-2"><strong>Allocation usage cache</strong></div>
 {{ cache_row(cache_state.usage) }}
+{% if cache_state.usage_burn %}
+  <div class="text-muted small mt-2 mb-1">Calendar burn <code class="ms-1">{{ cache_state.usage_burn.name }}</code></div>
+  {{ cache_row(cache_state.usage_burn) }}
+{% endif %}
 {% endif %}
 
 {% if cache_state.scans %}

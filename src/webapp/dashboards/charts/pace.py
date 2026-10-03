@@ -1,15 +1,16 @@
 """Allocation pace chart.
 
-Stacked-area chart where each allocation is one band with a step at
-``active_at``. Left of the step: constant past-burn-rate (burn inside the window
-/ live days in it, or used/elapsed_days for rows without ``window_used``).
-Right of the step: constant required-future-rate (remaining/remaining_days).
-Past and future of the same allocation share a color (one band = one color).
+Stacked-area chart where each allocation is one band, split at ``active_at``.
+Left: its actual monthly charge rate. Right: its projected rate, the project's
+last-90-day pace, until its balance runs out or it ends. A dashed line over the
+stack is the **committed** rate: every balance over its days left, what the
+allocations promise to deliver, and more than will be used. The rates arrive
+precomputed per row (``allocations/burn.py`` ``pace_segments``).
 Top-N projcodes get distinct colors; the rest share a muted "Other" color.
 
 **A direct `BaseChart` subclass with no family, deliberately.** Roughly 60% of
 this file is bespoke — the daily-grid band builder, the run-length compression,
-the ymax clamp, the today marker, and the only `MonthLocator` in the app — and
+the committed line, the today marker, and the only `MonthLocator` in the app — and
 it is the most numerically fragile code in the chart layer. It takes `to_svg`,
 `empty_state` and the render axes from the base and nothing else. Forcing it
 into `StackedSeriesChart` would mean growing that family hooks only one chart
@@ -42,7 +43,7 @@ _PACE_RATE_SCALE = 365  # internal per-day rates -> per-year axis
 
 OTHER_KEY = '__other__'
 
-#: Half-window either side of ``active_at``; the route fetches the same span.
+#: Half-window either side of ``active_at``; the route's data spans the calendar's wider window.
 PACE_WINDOW_DAYS = 180
 
 
@@ -57,60 +58,42 @@ def _pace_other_color(theme):
     return matplotlib.colors.to_rgba(theme.muted_data, 0.85)
 
 
+def _day(d, window_start, n):
+    # Nearest day, not floor: an end date at 23:59:59 closes its day.
+    return min(max(round((d - window_start).total_seconds() / 86400), 0), n)
+
+
+def _fill(arr, lo, hi, rate, window_start):
+    arr[_day(lo, window_start, len(arr)):_day(hi, window_start, len(arr))] += rate
+
+
 def pace_bands(allocations: List[Dict], active_at: datetime,
                window_start: datetime, window_end: datetime):
-    """Build per-allocation rate arrays on a daily grid.
+    """Per-allocation rate arrays on a daily grid, from each row's ``pace`` segments.
 
-    Returns (days, bands) where bands is a list of
-    ``(projcode, total_amount, rates_list, covers)`` tuples — one per allocation
-    that intersects the window and has nonzero area. ``covers`` is True when the
-    allocation spans ``active_at``.
+    Returns ``(days, bands)``, bands a list of ``(projcode, total_amount, rates,
+    covers, committed, recent)``: ``rates`` is past then projected, ``committed`` the
+    dashed line's share (future only), ``covers`` whether it spans ``active_at``.
+    Rows with no area and no commitment in the window are dropped.
     """
     n_days = (window_end - window_start).days + 1
-    today_idx = (active_at - window_start).days
-
     bands = []
     for a in allocations:
-        s, e = a['start_date'], a['end_date']
-        if s is None or e is None or e <= s:
+        p = a.get('pace')
+        if not p:
             continue
-        if e < window_start or s > window_end:
+        rates, committed = np.zeros(n_days), np.zeros(n_days)
+        for lo, hi, rate in p['past']:
+            _fill(rates, lo, min(hi, active_at), rate, window_start)
+        for lo, hi, rate in p['projected']:
+            _fill(rates, max(lo, active_at), hi, rate, window_start)
+        for lo, hi, rate in p['committed']:
+            _fill(committed, max(lo, active_at), hi, rate, window_start)
+        if not rates.any() and not committed.any():
             continue
-
-        amount = float(a.get('total_amount') or 0.0)
-        used = float(a.get('total_used') or 0.0)
-
-        # past region: S -> min(active_at, E). Height is the burn inside the window
-        # when the row carries it (a lifetime average flattens multi-year allocations),
-        # else used / elapsed.
-        past_end = min(active_at, e)
-        if 'window_used' in a:
-            past_used = float(a.get('window_used') or 0.0)
-            past_days = max((past_end - max(s, window_start)).days, 0)
-        else:
-            past_used = used
-            past_days = max((past_end - s).days, 0)
-        past_rate = (past_used / past_days) if past_days > 0 else 0.0
-
-        # future region: max(active_at, S) -> E; height = remaining / remaining
-        future_start = max(active_at, s)
-        future_days = max((e - future_start).days, 0)
-        future_rate = ((amount - used) / future_days) if future_days > 0 else 0.0
-
-        if past_rate <= 0 and future_rate <= 0:
-            continue
-
-        rates = np.zeros(n_days)
-        s_idx = max(0, (s - window_start).days)
-        e_idx = min(n_days, (e - window_start).days + 1)
-
-        if past_rate > 0:
-            rates[s_idx:min(today_idx, e_idx)] = past_rate
-        if future_rate > 0:
-            rates[max(today_idx, s_idx):e_idx] = future_rate
-
-        bands.append((a.get('projcode', ''), amount, rates, s <= active_at <= e))
-
+        covers = a['start_date'] <= active_at <= a['end_date']
+        bands.append((a.get('projcode', ''), float(a.get('total_amount') or 0.0), rates, covers,
+                      committed, p['recent']))
     days = [window_start + timedelta(days=i) for i in range(n_days)]
     return days, bands
 
@@ -119,15 +102,19 @@ def pace_key_fields(allocations: List[Dict]) -> list:
     """Extract only the fields the pace chart consumes, for a compact hash input."""
     def _d(x):
         return x.isoformat() if x is not None else None
+
+    def _segs(segs):
+        return [(_d(lo), _d(hi), round(rate, 6)) for lo, hi, rate in segs]
     return [
         (
             a.get('projcode', ''),
             _d(a.get('start_date')),
             _d(a.get('end_date')),
             float(a.get('total_amount') or 0.0),
-            float(a.get('total_used') or 0.0),
-        ) + ((float(a['window_used'] or 0.0),) if 'window_used' in a else ())
-        for a in allocations
+            _segs(a['pace']['past']), _segs(a['pace']['projected']),
+            _segs(a['pace']['committed']), round(a['pace']['recent'], 6),
+        )
+        for a in allocations if a.get('pace')
     ]
 
 
@@ -135,17 +122,16 @@ class PaceChart(BaseChart):
     """One band per allocation, past-rate | future-rate step at ``active_at``.
 
     Args (via the public view):
-        allocations: per-allocation rows (from ``cached_allocation_usage``)
-            with at least ``projcode``, ``start_date``, ``end_date``,
-            ``total_amount``, ``total_used``.
+        allocations: per-allocation rows through ``burn.pace_segments``: at least
+            ``projcode``, ``start_date``, ``end_date``, ``total_amount``, ``pace``.
         active_at: chart centerline ("today").
         window_days: half-window on each side of ``active_at``.
         top_n: projects with their own color + legend entry.
         resource_name: used only for cache key disambiguation.
         sort_by: ranking metric for the top-N selection — ``'size'`` (total
-            allocated), ``'past'`` (burn rate so far) or ``'future'`` (required
-            rate to completion, the "risk" signal). The legend number on each
-            band reflects this same metric.
+            allocated), ``'past'`` (actual rate over the last 90 days) or
+            ``'future'`` (projected rate at ``active_at``). The legend number on
+            each band reflects this same metric.
     """
 
     cache_name = 'pace_chart'
@@ -204,29 +190,19 @@ class PaceChart(BaseChart):
         n_days = len(self.days)
         today_idx = (self.active_at - self.days[0]).days
 
-        # Per-project aggregations for the three rank metrics:
-        #   - size:   sum of total_amount of the allocations covering today,
-        #             else of all its bands (a project that only ended or
-        #             only starts later); default sort
-        #   - past:   sum of past-rate band heights at today-1 (visible
-        #             past slope, per day)
-        #   - future: sum of future-rate band heights at today   (visible
-        #             future slope = required burn-to-completion)
-        # Past/future rates are piecewise-constant inside each band (set by
-        # pace_bands), so the value at the single sample point IS the band's
-        # rate over its active region. Summing across bands handles projects
-        # with multiple allocations on the same resource.
+        # Rank metrics per project, summed over its allocations: size = amount of
+        # those covering today (else all of its bands); past = actual last-90-day
+        # rate; future = projected rate at today.
         proj_size: Dict[str, float] = {}
         proj_past: Dict[str, float] = {}
         proj_future: Dict[str, float] = {}
-        past_i = max(today_idx - 1, 0)
         future_i = min(today_idx, n_days - 1)
         size_all: Dict[str, float] = {}
-        for pc, amount, rates, covers in self._bands:
+        for pc, amount, rates, covers, _committed, recent in self._bands:
             size_all[pc] = size_all.get(pc, 0.0) + amount
             if covers:
                 proj_size[pc] = proj_size.get(pc, 0.0) + amount
-            proj_past[pc] = proj_past.get(pc, 0.0) + float(rates[past_i])
+            proj_past[pc] = proj_past.get(pc, 0.0) + recent
             proj_future[pc] = proj_future.get(pc, 0.0) + float(rates[future_i])
         for pc, total in size_all.items():
             proj_size.setdefault(pc, total)
@@ -272,16 +248,12 @@ class PaceChart(BaseChart):
         # as the per-project entries.
         self.group_sort_totals = {k: 0.0 for k in group_keys}
 
-        for pc, _amount, rates, _covers in self._bands:
-            key = pc if pc in self.color_map else OTHER_KEY
-            group_rates[key] += rates
-            if self.sort_by == 'past':
-                self.group_sort_totals[key] += float(rates[past_i])
-            elif self.sort_by == 'future':
-                self.group_sort_totals[key] += float(rates[future_i])
-        if self.sort_by == 'size':
-            for pc, size in proj_size.items():
-                self.group_sort_totals[pc if pc in self.color_map else OTHER_KEY] += size
+        committed = np.zeros(n_days)
+        for pc, _amount, rates, _covers, band_committed, _recent in self._bands:
+            group_rates[pc if pc in self.color_map else OTHER_KEY] += rates
+            committed += band_committed
+        for pc, value in self.rank_metric.items():
+            self.group_sort_totals[pc if pc in self.color_map else OTHER_KEY] += value
 
         # Stack order: top-N (ranked) first, Other capping the top. Drop empty
         # groups so stackplot doesn't emit a zero-area path.
@@ -289,13 +261,14 @@ class PaceChart(BaseChart):
         ordered += [(OTHER_KEY, group_rates[OTHER_KEY])]
         ordered = [(k, r) for k, r in ordered if r.any()]
 
-        self._compress(ordered, n_days, today_idx)
+        self._compress(ordered, committed, n_days, today_idx)
 
-    def _compress(self, ordered, n_days, today_idx):
+    def _compress(self, ordered, committed, n_days, today_idx):
         """Lossless run-length compression on the time axis.
 
         Each band's rate is piecewise constant (set in flat slices by
         `pace_bands`), so a 361-element daily array is mostly repeated values.
+        The committed line rides along as one more row.
         Subset to:
           - chart endpoints (so axis bounds stay correct),
           - today_idx and today_idx-1 (the past->future step is the most
@@ -310,7 +283,7 @@ class PaceChart(BaseChart):
         is usually small (~10-30 of 361 days). Per-band vertex count drops by
         10-50x, lossless.
         """
-        band_rates_full = np.stack([r for _, r in ordered], axis=0)
+        band_rates_full = np.stack([r for _, r in ordered] + [committed], axis=0)
         diffs = np.any(np.diff(band_rates_full, axis=1) != 0, axis=0)
         trans = np.flatnonzero(diffs) + 1   # day i where rate[i-1] != rate[i]
 
@@ -326,7 +299,8 @@ class PaceChart(BaseChart):
 
         self.days = [self.days[i] for i in keep_idx]
         self.rates_matrix = [band_rates_full[bi, keep_idx] * _PACE_RATE_SCALE
-                             for bi in range(band_rates_full.shape[0])]
+                             for bi in range(len(ordered))]
+        self.committed = band_rates_full[-1, keep_idx] * _PACE_RATE_SCALE
         other = _pace_other_color(self.theme)
         self.colors = [self.color_map.get(k, other) for k, _ in ordered]
 
@@ -334,7 +308,7 @@ class PaceChart(BaseChart):
         # Explicit, not inherited: `self._bands` holds ndarrays, so any
         # truthiness test over its contents raises "truth value of an array is
         # ambiguous". Length is the only safe question to ask.
-        return not self.allocations or len(self._bands) == 0
+        return not self.allocations or len(self._bands) == 0 or not self.rates_matrix
 
     # --- drawing ----------------------------------------------------------
 
@@ -342,21 +316,26 @@ class PaceChart(BaseChart):
         ax.stackplot(self.days, self.rates_matrix, colors=self.colors,
                      edgecolor='none', linewidth=0, antialiased=True)
 
-        # Clamp ymax to the larger of the stacked totals at the window edges,
-        # plus 25% headroom. Allocations expiring within a day or two of
-        # active_at otherwise produce future-rates of remaining/1d that
-        # dominate the axis and squash the rest of the chart into a flat strip.
-        totals_by_day = np.sum(self.rates_matrix, axis=0)
-        edge_bound = max(float(totals_by_day[0]), float(totals_by_day[-1]))
-        ax.set_ylim(bottom=0, top=(1.25 * edge_bound) if edge_bound > 0 else None)
+        # The axis fits the stack; an off-scale committed line is clipped and
+        # labeled at today, since the gap to the area is the point.
+        top = float(np.max(np.sum(self.rates_matrix, axis=0))) * 1.15 or None
+        ax.set_ylim(bottom=0, top=top)
+        ymax = ax.get_ylim()[1]
+        future = np.array([d >= self.active_at for d in self.days])
+        if self.committed[future].any():
+            ax.plot(self.days, np.where(future, self.committed, np.nan), color=theme.text,
+                    linestyle=(0, (4, 2)), linewidth=1.5)
+            now = float(self.committed[future][0])
+            label = f'committed {fmt.number(now)}/yr'
+            ax.annotate(label + (' \u2191' if now > ymax else ''), (self.active_at, min(now, ymax)),
+                        xytext=(4, -2 if now > ymax * 0.9 else 3), textcoords='offset points',
+                        color=theme.text, fontsize=8, ha='left',
+                        va='top' if now > ymax * 0.9 else 'bottom')
 
-        # Today marker — placed after set_ylim so the label sits at the
-        # clamped ymax rather than the auto-scaled spike.
         ax.axvline(self.active_at, color=theme.accent, linestyle='--',
                    linewidth=1)
-        _, ymax = ax.get_ylim()
-        ax.text(self.active_at, ymax, ' today', color=theme.accent,
-                fontsize=8, va='top', ha='left')
+        ax.annotate('today', (self.active_at, ymax), xytext=(-4, -2), textcoords='offset points',
+                    color=theme.accent, fontsize=8, va='top', ha='right')
 
     def add_legend(self, ax, layout, theme):
         # Deduplicated: one handle per top-N projcode + one Other. The number
