@@ -8,14 +8,16 @@ Backend, lazy init and the get/compute/store dance come from
 :class:`sam.caching.BucketedTTLCache` (shared with ``webapp.disk_scans.cache``
 and ``webapp.jobs.cache``) — a Redis-backed adapter shared across gunicorn
 workers when ``CACHE_REDIS_URL`` is reachable, a per-worker in-process TTL
-cache otherwise. This one has a single bucket; all that lives here is the
-cache key.
+cache otherwise. Two buckets: usage, and the calendar's monthly burn, on the
+same TTL so the two never disagree for long. What lives here is the keys.
 
 Configuration is read from Flask app.config when available, falling back to
 environment variables so the module works outside a Flask context (CLI, tests).
 
   ALLOCATION_USAGE_CACHE_TTL  — TTL in seconds (0 = disabled, default 3600)
   ALLOCATION_USAGE_CACHE_SIZE — max LRU entries  (0 = disabled, default 200)
+  ALLOCATION_BURN_CACHE_TTL   — TTL in seconds (0 = disabled, default 3600)
+  ALLOCATION_BURN_CACHE_SIZE  — max LRU entries  (0 = disabled, default 50)
 """
 
 from datetime import datetime
@@ -25,6 +27,7 @@ import logging
 
 from sam.caching import BucketedTTLCache, BucketSpec, CacheBase, norm
 from sam.queries.allocations import (
+    get_allocation_burn,
     get_allocation_summary_with_usage,
     get_allocation_usage_rows,
 )
@@ -33,13 +36,18 @@ from sam.queries.charges import get_charges_by_facility_type
 logger = logging.getLogger(__name__)
 
 
-#: One bucket — allocation usage has no second staleness population the way
-#: fs-scans (passive vs explorer) and jobs (closed vs open window) do.
+#: Burn shares usage's TTL: Pace and the run-out tick read both, so month cells
+#: must not lag the balance. Both purge together under the 'usage' category.
 _CACHE = BucketedTTLCache('usage_cache', 'usage', {
     'default': BucketSpec(
         name='allocation_usage',
         ttl_key='ALLOCATION_USAGE_CACHE_TTL', ttl_default=3600,
         size_key='ALLOCATION_USAGE_CACHE_SIZE', size_default=200,
+    ),
+    'burn': BucketSpec(
+        name='allocation_burn',
+        ttl_key='ALLOCATION_BURN_CACHE_TTL', ttl_default=3600,
+        size_key='ALLOCATION_BURN_CACHE_SIZE', size_default=50,
     ),
 })
 
@@ -137,6 +145,28 @@ def cached_allocation_usage_rows(
                                  force_refresh=force_refresh)
 
 
+def cached_allocation_burn(
+    session,
+    *,
+    resource_name,
+    window_start: datetime,
+    window_end: datetime,
+    as_of: datetime,
+    force_refresh: bool = False,
+) -> Dict[int, Dict[int, float]]:
+    """Cached wrapper for get_allocation_burn(), keyed at day granularity."""
+    def _compute():
+        return get_allocation_burn(
+            session, resource_name=resource_name, window_start=window_start,
+            window_end=window_end, as_of=as_of,
+        )
+
+    key = ('burn', norm(resource_name), window_start.date(), window_end.date(),
+           as_of.date())
+    return _CACHE.get_or_compute('burn', key, _compute,
+                                 force_refresh=force_refresh)
+
+
 def cached_charges_by_facility_type(session, *, resource_names, start: datetime,
                                     end: datetime, force_refresh: bool = False) -> List[Dict]:
     """Cached wrapper for get_charges_by_facility_type(), keyed at day granularity."""
@@ -159,7 +189,12 @@ def usage_cache_info() -> Dict:
     Backwards-compatible: the legacy keys (`enabled`, `currsize`,
     `maxsize`, `ttl`) are still present; new fields (`hits`, `misses`,
     `bytes_approx`, `name`, `extras`) are additive. A dict rather than the
-    per-bucket list the multi-bucket caches return — this cache has exactly
-    one bucket and the Admin card renders it as a single row.
+    per-bucket list the multi-bucket caches return: the Admin card renders the
+    usage bucket as one row and the burn bucket (burn_cache_info) as another.
     """
     return _CACHE.info()[0]
+
+
+def burn_cache_info() -> Dict:
+    """The calendar-burn bucket's info dict, a second row on the Admin card."""
+    return _CACHE.info()[1]

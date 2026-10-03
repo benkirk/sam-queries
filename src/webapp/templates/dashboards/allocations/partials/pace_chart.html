@@ -24,14 +24,12 @@
         <div>
             <label class="form-label small text-muted mb-1 me-2">Sort by</label>
             <div class="btn-group btn-group-sm" role="group" aria-label="Sort by">
-                {# 'size': total allocated amount per project.
-                   'past': past burn rate (used / past_days), per year.
-                   'future': future required rate ((amount - used) / future_days),
-                            per year — steeper = more risk to complete. #}
+                {# size: allocated amount; past: actual rate over the last 90 days;
+                   future: projected rate at the as-of date. Rates per year. #}
                 {% for opt_val, opt_lbl in [
                     ('size',   'Allocation Size'),
-                    ('past',   'Past Burn'),
-                    ('future', 'Future Risk'),
+                    ('past',   'Recent Burn'),
+                    ('future', 'Projected Burn'),
                 ] %}
                 <button type="button"
                         class="btn {% if sort_by == opt_val %}btn-secondary active{% else %}btn-outline-secondary{% endif %}"
@@ -50,4 +48,9 @@
     <div class="chart-container">
         {{ chart_svg | safe }}
     </div>
+    <p class="small text-muted text-center mt-2 mb-0">
+        Left of today, each allocation's actual monthly charge rate. Right, projected use at its
+        project's last-90-day pace, until its balance runs out or it ends. The dashed line is what
+        allocations commit to deliver by their end dates, more than will be used.
+    </p>
 </div>

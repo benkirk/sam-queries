@@ -585,6 +585,35 @@ tr:hover > td .btn.btn-row-attention {
 .share-bar.share-zero {
     background: var(--surface-secondary);
 }
+/* Time elapsed on a full-height usage bar (render_usage_bar); set left inline. */
+.elapsed-tick {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    width: 2px;
+    background: rgba(var(--text-primary-rgb), 0.55);
+    z-index: 2;
+    pointer-events: none;
+}
+/* % of an allocation used: a wider share bar; the tick marks % of its time elapsed. */
+.share-bar.meter {
+    position: relative;
+    width: 5rem;
+}
+.share-bar.meter-over {
+    --share-color: var(--danger-color);
+}
+.share-bar.meter.has-elapsed::after {
+    content: '';
+    position: absolute;
+    left: var(--elapsed);
+    top: -0.1875rem;
+    bottom: -0.1875rem;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--text-primary);
+    opacity: 0.55;
+}
 [data-fs="1"] { --fs-color: var(--data-facility-1); }
 [data-fs="2"] { --fs-color: var(--data-facility-2); }
 [data-fs="3"] { --fs-color: var(--data-facility-3); }
@@ -606,4 +635,257 @@ tr.collapsing {
     max-width: 44rem;
     height: auto;
     margin: 0 auto;
+}
+/* A lazy ring's placeholder holds about a ring's height, so `intersect` fires when its row
+   comes into view, not when its vertically centered spinner line does. */
+.sunburst-chart > [hx-trigger] {
+    display: flex;
+    min-height: 20rem;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Allocations calendar: a label column plus a date track --cal-days wide. Bars and
+   gridlines are placed in percents of the track, so the pixel scale lives here. */
+.alloc-calendar {
+    --cal-tint: 30%;
+    --cal-past-opacity: 0.7;
+    --cal-label-w: 15rem;
+    --cal-day-px: 3px;
+    --cal-lane-h: 1.375rem;
+    --cal-track-w: calc(var(--cal-days) * var(--cal-day-px));
+}
+/* A long group name truncates itself: the cell's own ellipsis would swap this
+   inline-block for a bare "..." the moment it overflows, so leave room for the chevron. */
+.cal-table .cal-label .tree-label {
+    display: inline-block;
+    max-width: calc(100% - 1.5rem);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
+}
+/* Bar body vs card at least 1.4:1 light, 1.6:1 dark; fill vs body at least 2.3:1. */
+:root[data-bs-theme="dark"] .alloc-calendar {
+    --cal-tint: 40%;
+}
+@media (max-width: 1199.98px) {
+    .alloc-calendar { --cal-day-px: 2.5px; }
+}
+@media (max-width: 767.98px) {
+    .alloc-calendar { --cal-label-w: 8.5rem; --cal-day-px: 1.5px; }
+    .alloc-calendar .table td.tree-cell { --tree-step: 0.75rem; }
+    .alloc-calendar .cal-year { display: none; }
+}
+.cal-scroll {
+    position: relative;
+    overflow-x: auto;
+}
+.table.cal-table {
+    table-layout: fixed;
+    width: calc(var(--cal-label-w) + var(--cal-track-w));
+}
+/* .cal-scroll is the one scroller: undo dashboard.css's below-lg display:block on
+   tables, which would also give each lazy row table a scroller of its own. */
+@media (max-width: 991.98px) {
+    .main-content :not(.table-responsive) > table.table.cal-table {
+        display: table;
+        overflow: visible;
+    }
+}
+/* left: -1px covers the bar's antialiased edge when the scroller sits on a half pixel. */
+.cal-table .cal-label {
+    position: sticky;
+    left: -1px;
+    z-index: 2;
+    width: var(--cal-label-w);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 1px 0 0 var(--border-default);
+}
+.cal-table .cal-track-cell {
+    width: var(--cal-track-w);
+    padding: 0;
+}
+.cal-overlay {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--cal-label-w);
+    width: var(--cal-track-w);
+    z-index: 1;
+    pointer-events: none;
+}
+.cal-gridline,
+.cal-now {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--border-default);
+    opacity: 0.6;
+}
+.cal-gridline.cal-year-line {
+    background: var(--text-secondary);
+}
+.cal-now {
+    width: 2px;
+    margin-left: -1px;
+    background: var(--text-primary);
+    opacity: 0.7;
+}
+.cal-months {
+    position: relative;
+    height: 1.5rem;
+}
+.cal-month {
+    position: absolute;
+    top: 0;
+    padding-left: 0.25rem;
+    overflow: hidden;
+    white-space: nowrap;
+    font-weight: 600;
+}
+.cal-year {
+    color: var(--text-secondary);
+    font-weight: 400;
+}
+.cal-track {
+    position: relative;
+    height: calc(var(--lanes, 1) * var(--cal-lane-h));
+}
+/* A bar is its allocation's span, tinted with its facility's hue; the fill is its use. */
+.cal-bar {
+    --bar-color: var(--fs-color, var(--text-link));
+    position: absolute;
+    z-index: 1;
+    top: calc(var(--lane, 0) * var(--cal-lane-h) + 0.1875rem);
+    height: calc(var(--cal-lane-h) - 0.375rem);
+    border-radius: 0.25rem;
+    overflow: hidden;
+    background:
+        linear-gradient(var(--bar-color), var(--bar-color)) left / var(--fill, 0%) 100% no-repeat,
+        color-mix(in srgb, var(--bar-color) var(--cal-tint), var(--surface-card));
+}
+.cal-bar.cal-past {
+    opacity: var(--cal-past-opacity);
+}
+.cal-bar.cal-future {
+    background: transparent;
+    border: 1px dashed color-mix(in srgb, var(--bar-color) 70%, var(--surface-card));
+}
+.cal-bar.cal-over {
+    box-shadow: inset -0.25rem 0 0 var(--danger-color);
+}
+/* A bar the window cuts off fades at the cut: the allocation continues past it.
+   A mask reads only alpha, so any opaque token serves as its "on" color. */
+.cal-bar.cal-clip-l {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    mask-image: linear-gradient(to right, transparent, var(--text-primary) 1.5rem);
+}
+.cal-bar.cal-clip-r {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    mask-image: linear-gradient(to left, transparent, var(--text-primary) 1.5rem);
+}
+.cal-bar.cal-clip-l.cal-clip-r {
+    mask-image: linear-gradient(to right, transparent, var(--text-primary) 1.5rem, var(--text-primary) calc(100% - 1.5rem), transparent);
+}
+.cal-bar-label {
+    position: absolute;
+    right: 0.375rem;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 0 0.25rem;
+    border-radius: 0.125rem;
+    background: var(--surface-card);
+    font-size: 0.6875rem;
+    line-height: 1.2;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+.cal-bar.cal-clip-r .cal-bar-label {
+    right: 1.75rem;
+}
+/* Burn mode: each month shaded by its charges against an even pace (calendar.py), on the
+   diverging --data-burn-* scale. Past the last shaded month a bar is an empty frame: a facility
+   tint there reads as a burn class. The fade and the over-use edge go for the same reason. */
+.cal-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1.25rem;
+    margin-bottom: 0.5rem;
+}
+.burn-key {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.75rem;
+}
+.burn-key-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-variant-numeric: tabular-nums;
+}
+.burn-swatch {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 0.125rem;
+    background: var(--burn-color);
+}
+.burn-0 { --burn-color: var(--data-burn-0); }
+.burn-1 { --burn-color: var(--data-burn-1); }
+.burn-2 { --burn-color: var(--data-burn-2); }
+.burn-3 { --burn-color: var(--data-burn-3); }
+.burn-4 { --burn-color: var(--data-burn-4); }
+.burn-cell {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: var(--burn-color);
+    box-shadow: inset -2px 0 0 var(--surface-card);
+}
+/* Run-out tick (burn.py runs_out): a 2px line in a wider hover target, haloed off the cells. */
+.burn-runout {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 0.5rem;
+    margin-left: -0.25rem;
+}
+.burn-runout::before,
+.burn-runout-swatch {
+    background: var(--data-burn-4);
+    box-shadow: 0 0 0 1px var(--surface-card);
+}
+.burn-runout::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(50% - 1px);
+    width: 2px;
+}
+.burn-runout-swatch {
+    width: 2px;
+    height: 0.875rem;
+    margin: 0 0.3125rem;
+}
+.cal-burn .cal-bar {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-secondary) 55%, var(--surface-card));
+}
+.cal-burn .cal-bar.cal-future {
+    box-shadow: none;
+}
+.cal-burn .cal-bar.cal-past {
+    opacity: 1;
+}
+.cal-strip {
+    position: relative;
+    height: 0.625rem;
+    border-radius: 0.125rem;
+    overflow: hidden;
 }

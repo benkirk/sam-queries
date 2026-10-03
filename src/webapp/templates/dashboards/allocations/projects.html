@@ -2,8 +2,6 @@
 {% from 'dashboards/fragments/form_fields.html' import multiselect_filter %}
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_roots_only %}
-{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
-{% from 'dashboards/fragments/table_bits.html' import share_bar, group_count %}
 
 {% block title %}Allocations Dashboard{% endblock %}
 
@@ -99,179 +97,37 @@
     <div class="tab-pane fade {% if slug == active_tab %}show active{% endif %}"
          id="{{ pane }}" role="tabpanel" data-drill-scope>
 
-        <ul class="nav nav-pills justify-content-center my-3 alloc-view-pills"
-            id="alloc-view-{{ slug }}" role="tablist">
+        {% include 'dashboards/allocations/partials/_resource_charts.html' %}
+        <ul class="nav nav-pills justify-content-center mt-3 mb-0 alloc-view-pills"
+            id="alloc-table-view-{{ slug }}" role="tablist">
             <li class="nav-item" role="presentation">
-                <button class="nav-link active py-1 px-3 small" id="share-{{ slug }}-tab"
-                        data-bs-toggle="pill" data-bs-target="#share-{{ slug }}" data-alloc-view="share"
-                        type="button" role="tab" aria-controls="share-{{ slug }}" aria-selected="true">Share</button>
+                <button class="nav-link active py-1 px-3 small" id="tableview-{{ slug }}-tab"
+                        data-bs-toggle="pill" data-bs-target="#tableview-{{ slug }}" data-alloc-view="table"
+                        type="button" role="tab" aria-controls="tableview-{{ slug }}" aria-selected="true">Table</button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link py-1 px-3 small" id="pace-{{ slug }}-tab"
-                        data-bs-toggle="pill" data-bs-target="#pace-{{ slug }}" data-alloc-view="pace"
-                        type="button" role="tab" aria-controls="pace-{{ slug }}" aria-selected="false">Pace</button>
+                <button class="nav-link py-1 px-3 small" id="calendar-{{ slug }}-tab"
+                        data-bs-toggle="pill" data-bs-target="#calendar-{{ slug }}" data-alloc-view="calendar"
+                        type="button" role="tab" aria-controls="calendar-{{ slug }}" aria-selected="false">Calendar</button>
             </li>
         </ul>
         <div class="tab-content">
-            <div class="tab-pane fade show active" id="share-{{ slug }}" role="tabpanel">
-                <div class="row g-3 align-items-center">
-                    <figure class="col-md-6 mb-0 sunburst-chart"
-                            aria-label="{{ 'Data volume' if is_storage else 'Annualized allocation rate' }} by facility and allocation type">
-                        {{ sunbursts[resource_name].alloc | safe }}
-                    </figure>
-                    {% if is_storage %}
-                    <figure class="col-md-6 mb-0 sunburst-chart" aria-label="Usage by facility and allocation type">
-                        {{ sunbursts[resource_name].used | safe }}
-                    </figure>
-                    {% else %}
-                    {# Usage over a trailing window (pills inside the fragment), so it reads
-                       against the rate ring whatever each allocation's start date. #}
-                    {% set _used_id = 'used-sunburst-' ~ resource_name|replace(' ', '_') %}
-                    <figure class="col-md-6 mb-0 sunburst-chart"
-                            aria-label="Annual use rate by facility and allocation type">
-                        <div hx-get="{{ url_for('allocations_dashboard.htmx_used_sunburst',
-                                                resource_name=resource_name, active_at=active_at,
-                                                facilities=selected_facilities or []) }}"
-                             hx-trigger="load" hx-swap="outerHTML"
-                             data-chart-persist-id="{{ _used_id }}"
-                             data-chart-persist-keys="days">
-                            <p class="text-muted small text-center my-5">Loading usage…</p>
-                        </div>
-                    </figure>
-                    {% endif %}
-                </div>
+            <div class="tab-pane fade show active" id="tableview-{{ slug }}" role="tabpanel">
+                {% include 'dashboards/allocations/partials/_alloc_tree_table.html' %}
             </div>
-            <div class="tab-pane fade" id="pace-{{ slug }}" role="tabpanel">
-                {# The persist id matches the one the partial emits, so
-                   nav-view-persistence.js replays the saved sort_by. #}
-                <div class="chart-container pace-chart"
-                     hx-get="{{ url_for('allocations_dashboard.htmx_pace_chart',
-                                        resource_name=resource_name, active_at=active_at, sort_by='size') }}"
-                     hx-trigger="load" hx-swap="innerHTML"
-                     data-chart-persist-id="pace-chart-{{ pane }}"
-                     data-chart-persist-keys="sort_by">
+            {# intersect: loads once the pane is both shown and scrolled into view. The persist
+               id matches the fragment's, so nav-view-persistence.js replays the saved mode. #}
+            <div class="tab-pane fade" id="calendar-{{ slug }}" role="tabpanel">
+                <div class="mt-3"
+                     hx-get="{{ url_for('allocations_dashboard.htmx_calendar', resource_name=resource_name,
+                                        active_at=active_at, facilities=selected_facilities or []) }}"
+                     hx-trigger="intersect once" hx-swap="innerHTML"
+                     data-chart-persist-id="cal-{{ pane }}" data-chart-persist-keys="mode">
                     <div class="text-center text-muted py-5">
-                        <i class="fa-solid fa-spinner fa-spin"></i> Loading chart…
+                        <i class="fa-solid fa-spinner fa-spin"></i> Loading calendar…
                     </div>
                 </div>
             </div>
-        </div>
-        <p class="small text-muted text-center mt-2 mb-0">
-            Charts and totals count root allocations only
-            {{ help_icon(g_roots_only(), rich=True, title='Roots only') }}
-        </p>
-
-        {# One table: facility rows (which are also the subtotals) open their
-           allocation types; a type row opens its projects, lazily. #}
-        <div class="table-responsive mt-3">
-            <table class="table table-sm align-middle mb-0 alloc-tree">
-                <thead class="table-subtle">
-                    <tr>
-                        <th>Facility / type</th>
-                        <th class="col-num">Count</th>
-                        <th class="col-num">{{ 'Volume' if is_storage else 'Total amount' }}</th>
-                        {% if not is_storage %}<th class="col-num">Annual rate</th>{% endif %}
-                        <th class="col-num">Avg</th>
-                        <th class="col-num" title="A facility's share of the resource; a type's share of its facility">
-                            {{ 'Volume share' if is_storage else 'Rate share' }}</th>
-                        <th class="col-num">Used</th>
-                        <th class="col-num" title="A facility's share of the resource's use; a type's share of its facility's">Use share</th>
-                    </tr>
-                </thead>
-                {% for f in tree %}
-                {% set f_body = 'alloc-fac-' ~ slug ~ '-' ~ (f.key|string|replace(' ', '_')) %}
-                <tbody>
-                    {# data-facility-id: the sunburst's RowDrill finds this row and
-                       opens its data-bs-target. No buttons here, so the row toggles. #}
-                    <tr class="table-subtle fw-semibold cursor-pointer"
-                        {% if f.id is not none %}data-facility-id="{{ f.id }}"{% endif %}
-                        {{ collapse_toggle(f_body) }}>
-                        <td class="tree-cell text-nowrap" style="--depth: 0;">
-                            <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
-                            {{- f.facility }}
-                            {{- group_count(f.types|length, title='Allocation types') }}
-                        </td>
-                        <td class="col-num fw-normal">{{ f.count | fmt_number }}</td>
-                        <td class="col-num">{{ f.total_amount | fmt_number }}</td>
-                        {% if not is_storage %}<td class="col-num">{{ f.alloc | fmt_number }}</td>{% endif %}
-                        <td class="col-num fw-normal text-muted">{{ f.avg | fmt_number }}</td>
-                        <td class="col-num fw-normal">{{ share_bar(f.alloc_share, slot=f.slot, title='Share of ' ~ resource_name) }}</td>
-                        <td class="col-num">{{ f.used | fmt_number }}</td>
-                        <td class="col-num fw-normal">{{ share_bar(f.used_share, slot=f.slot, title="Share of " ~ resource_name ~ "'s use") }}</td>
-                    </tr>
-                </tbody>
-                <tbody class="collapse alloc-tree-body" id="{{ f_body }}" data-alloc-facility="{{ f.key }}">
-                    {% for t in f.types %}
-                    {% set t_id = f_body ~ '-' ~ loop.index %}
-                    <tr class="cursor-pointer" {{ collapse_toggle(t_id) }}>
-                        <td class="tree-cell tree-d1 text-nowrap" style="--depth: 1;">
-                            <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
-                            {{- t.name }}
-                        </td>
-                        <td class="col-num">{{ t.count | fmt_number }}</td>
-                        <td class="col-num">{{ t.total_amount | fmt_number }}</td>
-                        {% if not is_storage %}<td class="col-num">{{ t.alloc | fmt_number }}</td>{% endif %}
-                        <td class="col-num text-muted">{{ t.avg | fmt_number }}</td>
-                        <td class="col-num">{{ share_bar(t.alloc_share, slot=f.slot, tint=true, title='Share of ' ~ f.facility) }}</td>
-                        <td class="col-num">{{ t.used | fmt_number }}</td>
-                        <td class="col-num">{{ share_bar(t.used_share, slot=f.slot, tint=true, title="Share of " ~ f.facility ~ "'s use") }}</td>
-                    </tr>
-                    <tr class="collapse" id="{{ t_id }}" data-no-persist>
-                        <td colspan="{{ ncols }}" class="p-0">
-                            <div class="alloc-details"
-                                 hx-get="{{ url_for('allocations_dashboard.projects_fragment',
-                                                    resource=resource_name, facility=f.facility,
-                                                    allocation_type=t.name, active_at=active_at,
-                                                    root_only=1 if root_only else 0) }}"
-                                 hx-trigger="show.bs.collapse from:closest tr once" hx-swap="innerHTML">
-                                <div class="p-3 text-center text-muted">
-                                    <i class="fa-solid fa-spinner fa-spin"></i> Loading projects…
-                                </div>
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                    {% set p_id = f_body ~ '-pace' %}
-                    <tr class="cursor-pointer" {{ collapse_toggle(p_id) }}>
-                        <td colspan="{{ ncols }}" class="tree-cell tree-d1 text-muted" style="--depth: 1;">
-                            <i class="fa-solid fa-chevron-right small me-1 collapse-icon"></i>
-                            <i class="fa-solid fa-gauge-high small me-1" aria-hidden="true"></i>Pace of {{ f.facility }} allocations
-                        </td>
-                    </tr>
-                    <tr class="collapse" id="{{ p_id }}" data-no-persist>
-                        <td colspan="{{ ncols }}" class="p-2">
-                            {# Persist id suffixed with the facility, so its sort_by is
-                               independent of the resource-wide chart's. #}
-                            <div class="chart-container pace-chart"
-                                 hx-get="{{ url_for('allocations_dashboard.htmx_pace_chart',
-                                                    resource_name=resource_name, facilities=f.facility,
-                                                    active_at=active_at, sort_by='size') }}"
-                                 hx-trigger="show.bs.collapse from:closest tr once" hx-swap="innerHTML"
-                                 data-chart-persist-id="pace-chart-{{ pane }}-{{ f.facility|replace(' ', '_') }}"
-                                 data-chart-persist-keys="sort_by">
-                                <div class="text-center text-muted small py-3">
-                                    <i class="fa-solid fa-spinner fa-spin"></i> Loading chart…
-                                </div>
-                            </div>
-                        </td>
-                    </tr>
-                </tbody>
-                {% endfor %}
-                {% if tree|length > 1 %}
-                <tfoot class="table-subtle fw-semibold">
-                    <tr>
-                        <td>Total</td>
-                        <td class="col-num fw-normal">{{ tree|sum(attribute='count') | fmt_number }}</td>
-                        <td class="col-num">{{ tree|sum(attribute='total_amount') | fmt_number }}</td>
-                        {% if not is_storage %}<td class="col-num">{{ tree|sum(attribute='alloc') | fmt_number }}</td>{% endif %}
-                        <td></td>
-                        <td></td>
-                        <td class="col-num">{{ tree|sum(attribute='used') | fmt_number }}</td>
-                        <td></td>
-                    </tr>
-                </tfoot>
-                {% endif %}
-            </table>
         </div>
 
     </div>

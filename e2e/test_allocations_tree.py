@@ -1,8 +1,9 @@
 """Allocations dashboard: a sunburst click opens its facility in its own Resource
-tab, expansion follows you across tabs, and the tree stays dense.
+tab, expansion follows you across tabs, the tree stays dense, and the calendar
+view loads a type group's projects as bars.
 
 Each test starts from cleared localStorage, since collapse and pill state persist.
-Design record: docs/plans/ALLOCATIONS_SUNBURST.md.
+Design records: docs/plans/ALLOCATIONS_SUNBURST.md, docs/plans/ALLOCATIONS_TABLE_VIEWS.md.
 """
 import pytest
 
@@ -73,7 +74,7 @@ def test_expansion_and_view_follow_the_resource_tab(page):
 
     _show_tab(page, b['id'])
     page.locator(f'#{b["id"]} tbody[data-alloc-facility="{key}"].show').wait_for(timeout=10_000)
-    assert page.locator(f'#{b["id"]} .alloc-view-pills .nav-link.active').get_attribute('data-alloc-view') == 'pace'
+    assert page.locator(f'#{b["id"]} .alloc-view-pills [data-alloc-view="pace"].active').count() == 1
 
 
 def test_tree_rows_stay_dense(page):
@@ -89,3 +90,24 @@ def test_tree_rows_stay_dense(page):
         .map(r => [r.innerText.replace(/\\s+/g, ' ').trim().slice(0, 40), r.getBoundingClientRect().height])""")
     tall = [h for h in heights if h[1] > ROW_BUDGET_PX]
     assert not tall, f'rows over {ROW_BUDGET_PX}px: {tall[:5]}'
+
+
+def test_calendar_view_persists_and_loads_bars(page):
+    panes = _fresh(page)
+    pane = next((p for p in panes if p['facilities']), None)
+    if pane is None:
+        pytest.skip('no allocations in this dataset')
+    _show_tab(page, pane['id'])
+    page.click(f'#{pane["id"]} .alloc-view-pills [data-alloc-view="calendar"]')
+    # The calendar loads on intersect: bring its pane into view first.
+    page.locator(f'#{pane["id"]} .tab-pane[id^="calendar-"]').scroll_into_view_if_needed()
+    page.locator(f'#{pane["id"]} .alloc-calendar').wait_for(timeout=20_000)
+    page.click(f'#{pane["id"]} .alloc-calendar tbody tr[data-bs-toggle]')
+    page.locator(f'#{pane["id"]} .alloc-calendar tbody.collapse.show tr[data-bs-toggle]').first.click()
+    page.locator(f'#{pane["id"]} .cal-rows').first.wait_for(timeout=20_000)
+    assert page.locator(f'#{pane["id"]} .cal-scroll').get_attribute('data-cal-focused') == '1'
+    assert page.evaluate('() => document.documentElement.scrollWidth <= innerWidth')
+
+    visit(page, ROUTE)
+    _show_tab(page, pane['id'])
+    assert page.locator(f'#{pane["id"]} .alloc-view-pills [data-alloc-view="calendar"].active').count() == 1
