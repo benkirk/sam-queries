@@ -69,13 +69,29 @@
             var c = bootstrap.Collapse.getOrCreateInstance(b, {toggle: false});
             if (want) { c.show(); } else { c.hide(); }
         });
-        var pill = from.querySelector('.alloc-view-pills .nav-link.active');
-        var match = pill && to.querySelector(
-            '.alloc-view-pills [data-alloc-view="' + pill.dataset.allocView + '"]');
-        if (match && !match.classList.contains('active')) {
-            bootstrap.Tab.getOrCreateInstance(match).show();
-        }
+        from.querySelectorAll('.alloc-view-pills .nav-link.active').forEach(function (pill) {
+            var match = to.querySelector(
+                '.alloc-view-pills [data-alloc-view="' + pill.dataset.allocView + '"]');
+            if (match && !match.classList.contains('active')) {
+                bootstrap.Tab.getOrCreateInstance(match).show();
+            }
+        });
     }
+
+    /* Allocation calendar: once visible, scroll so the view-at line sits a third
+     * of the way across the track. A pane loaded while hidden waits for a tab show. */
+    function focusCalendars() {
+        document.querySelectorAll('.cal-scroll[data-cal-focus]:not([data-cal-focused])').forEach(function (s) {
+            if (!s.offsetParent) { return; }
+            var label = s.querySelector('th.cal-label');
+            var labelW = label ? label.offsetWidth : 0;
+            var track = s.scrollWidth - labelW;
+            s.scrollLeft = track * parseFloat(s.dataset.calFocus) / 100 - (s.clientWidth - labelW) / 3;
+            s.dataset.calFocused = '1';
+        });
+    }
+    document.body.addEventListener('htmx:afterSettle', focusCalendars);
+    document.addEventListener('shown.bs.tab', focusCalendars);
 
     /* ================= Admin dashboard ================= */
 

@@ -1849,6 +1849,20 @@
     ]
   ],
   [
+    "allocations_dashboard.htmx_calendar",
+    "/allocations/htmx/calendar/<resource_name>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.htmx_calendar_rows",
+    "/allocations/htmx/calendar/<resource_name>/rows",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.htmx_create_adjustment",
     "/allocations/htmx/create_adjustment",
     [

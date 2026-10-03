@@ -1,6 +1,6 @@
 # Allocations dashboard: an at-date table and a calendar view
 
-**Status: in progress (2026-10-03)** · branch `allocations-table-views` (from
+**Status: implemented, unreviewed (2026-10-03)** · branch `allocations-table-views` (from
 `origin/staging` after #706 merged) · one PR, one commit per stage below.
 
 ## Context
@@ -67,39 +67,41 @@ once remote CI is wanted. Commit 0 is this doc.
 - Tfoot: Count, Allocated, Annual rate, Used, Remaining, % used totals.
 - Ring caption stays "Charges in the year to …"; table header tooltips say "as of <date>".
 
-### Commit 3: the calendar view
+### Commit 3: the calendar view (as built)
 
-- **Switch**: pills `Table | Calendar` above the table (`role="tablist"`, id
-  `alloc-table-view-{slug}`), persisted by `nav-view-persistence.js` and mirrored across resource
-  panes by `mirrorResourcePane` in `dashboard-init.js` like Share/Pace.
+- **Switch**: pills `Table | Calendar` under the charts (`role="tablist"`, id
+  `alloc-table-view-{slug}`, class `alloc-view-pills`), persisted by `nav-view-persistence.js`;
+  `mirrorResourcePane` in `dashboard-init.js` now mirrors every `.alloc-view-pills` group, so
+  the view follows the resource tab like Share/Pace.
 - **Routes** (both `@login_required` + `@require_permission_any_facility(VIEW_PROJECTS)`, scope
-  via `_fragment_scope()`, `facilities=` forwarded in every URL they emit):
-  - `/htmx/calendar/<resource_name>`: loads on first show of the Calendar pill
-    (`hx-trigger="shown.bs.tab from:#… once"`); renders the month header, view-at line, and the
-    facility → type skeleton with counts of projects in the window.
-  - `/htmx/calendar/<resource_name>/rows?facility=&allocation_type=`: one type group's project
-    rows, lazily on `show.bs.collapse … once` (same pattern as `projects_fragment`).
-  - Both call `cached_allocation_usage_rows(resource, window_start, window_end, as_of=active_at)`
-    with the same args, so the skeleton warms the cache for every group, then
-    `filter_rows_by_facility`. Window = first of month 12 months before view-at → end of month 12
-    after (module constants; span pills are a later add, `data-chart-persist-keys` ready).
-- **Layout helper** `src/webapp/dashboards/allocations/calendar.py` (pure Python, no Flask):
-  `calendar_months(window_start, window_end)` → `[{label, left_pct, width_pct}]` (widths ∝ days);
-  `calendar_rows(rows, window, active_at, slots)` → `[{projcode, facility, type, bars: [{left_pct,
-  width_pct, clipped_left, clipped_right, pct_used, elapsed_pct, state: past|current|future,
-  title}]}]`, one row per projcode (renewals side by side), sorted by projcode. Open-ended bars
-  run to the window edge; bars outside the window are dropped.
-- **Markup/CSS** (new block in `components.css`, tokens only): not a `<table>` of month cells;
-  each row is a grid of a sticky projcode cell (copy `.sticky-col` from `admin.css:73-90`) and a
-  `position:relative` track of width `calc(var(--cal-days) * var(--cal-day-px))`, bars absolutely
-  positioned by `%`. `--cal-day-px` set per breakpoint in CSS, so mobile/tablet need no server
-  layout axis. Month gridlines + the view-at line drawn once as an overlay behind the rows. Bar =
-  tinted facility body + `alloc_meter`-style fill; ended bars muted, future bars outlined.
-  Projcode via `project_link(..., stop_propagation=True)`; bars carry a `title` tooltip.
-- **JS** (static file, CSP-safe): on fragment swap, scroll the calendar so the view-at line sits
-  near the left third. Nothing else.
-- Storage resources: spans without fills in v1 (`get_allocation_usage_rows` does not substitute
-  occupancy); noted as follow-up.
+  via `_fragment_scope()`):
+  - `/htmx/calendar/<resource_name>` (`hx-trigger="intersect once"`: loads once the Calendar
+    pane is both shown and scrolled into view): month axis, view-at line, facility -> type
+    skeleton (no counts: the Table view carries them). Forwards `facilities=` into every rows URL.
+  - `/htmx/calendar/<resource_name>/rows?facility=&allocation_type=`: one group's project rows,
+    on `show.bs.collapse ... once`; 403 for a facility outside the user's scope.
+  - Both read `cached_allocation_usage_rows(window, as_of=active_at)` with the same args (one
+    cache entry per resource and date), then `filter_rows_by_facility`. Window =
+    `calendar_window()`: first of the month 12 months back to the end of the month 12 ahead.
+- **Geometry** `src/webapp/dashboards/allocations/calendar.py` (pure): `calendar_window`,
+  `calendar_months` (`{label, year, left, width}`, widths follow days), `calendar_rows` (one row
+  per projcode, renewals side by side, overlaps stacked into lanes; each bar has `left, width,
+  clip_left, clip_right, state` past/current/future, `pct_used, fill, over`), `calendar_groups`.
+- **The fill** runs along the whole allocation: it ends at the date an even burn would have
+  reached at its % used, so it lines up with the view-at line (short of it = under pace). A
+  window edge cuts bar and fill alike; a cut end fades (CSS mask). A multi-year allocation that
+  started before the window can therefore show little or no visible fill; the % label carries it.
+- **Markup**: a two-column table (sticky label, a track `--cal-days x --cal-day-px` wide); a type
+  group's rows arrive as a nested `.cal-rows` table of the same fixed widths, so one `.cal-scroll`
+  scroller holds everything. Gridlines and the view-at line are one overlay. `--cal-day-px` is
+  3 / 2.5 / 1.5 px by breakpoint (phones also drop the axis year and tighten the indent); below lg, `cal-table` opts out of dashboard.css's
+  `display: block` rule for bare tables (it would give each row table its own scroller).
+- **JS** (`dashboard-init.js`, `focusCalendars`): once visible, scroll so the view-at line sits a
+  third of the way across the track.
+- **Contrast**: bar body is the facility hue mixed 30% (light) / 40% (dark) into the card,
+  ended bars at 0.7 opacity: body vs card at least 1.4:1, fill vs body at least 2.3:1.
+- **Storage**: spans without fills (`get_allocation_usage_rows` sums charges; no occupancy).
+- **Perf tier**: not extended; the sibling chart fragments (Pace, Used ring) have no baselines either.
 
 ### Later (not in this PR)
 - Monthly burn strip: needs per-allocation monthly charges (comp/dav summaries by `activity_date`,

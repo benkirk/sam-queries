@@ -56,6 +56,7 @@ from ..charts import (
     PACE_WINDOW_DAYS,
 )
 from ..charts.theme import facility_slots
+from .calendar import calendar_groups, calendar_months, calendar_rows, calendar_window
 
 from . import bp
 
@@ -674,6 +675,12 @@ def _facility_index():
     return [(f.facility_id, f.facility_name, f.is_active) for f in db.session.query(Facility)]
 
 
+def _facility_slot_names(facilities):
+    """``{facility_name: slot}`` over `_facility_index` output; slots from active facilities."""
+    slots = facility_slots(fid for fid, _, active in facilities if active)
+    return {name: slots.get(fid) for fid, name, _ in facilities}
+
+
 def _fragment_scope():
     """``(active_at, requested_facilities, selected_facilities)`` for an htmx fragment.
 
@@ -805,6 +812,61 @@ def htmx_used_sunburst(resource_name):
         window_days=_USED_WINDOW_DAYS, active_at=active_at,
         chart_dom_id='used-sunburst-' + resource_name.replace(' ', '_'),
         selector_kwargs=selector_kwargs,
+    )
+
+
+def _calendar_rows(resource_name, active_at, selected_facilities):
+    """The calendar's window and its allocation rows: one cached query per resource and date."""
+    start, end = calendar_window(active_at)
+    rows = cached_allocation_usage_rows(db.session, resource_name=[resource_name],
+                                        window_start=start, window_end=end, as_of=active_at)
+    rows = [r for r in filter_rows_by_facility(rows, selected_facilities) if r.get('facility')]
+    return start, end, rows
+
+
+@bp.route('/htmx/calendar/<resource_name>')
+@login_required
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
+def htmx_calendar(resource_name):
+    """A resource's allocation calendar: month axis plus the facility -> type tree;
+    each type's project rows load lazily from `htmx_calendar_rows`."""
+    active_at, requested_facilities, selected_facilities = _fragment_scope()
+    start, end, rows = _calendar_rows(resource_name, active_at, selected_facilities)
+    facilities = _facility_index()
+    order = [name for _, name, _ in sorted(facilities, key=lambda f: (not f[2], f[0]))]
+    return render_template(
+        'dashboards/allocations/partials/calendar.html',
+        resource_name=resource_name, pane=resource_name.replace(' ', '_'),
+        groups=calendar_groups(rows, order), months=calendar_months(start, end),
+        days=(end - start).days, now_pct=(active_at - start) / (end - start) * 100,
+        slots=_facility_slot_names(facilities),
+        active_at=active_at.strftime('%Y-%m-%d'), active_at_dt=active_at,
+        requested_facilities=requested_facilities,
+    )
+
+
+@bp.route('/htmx/calendar/<resource_name>/rows')
+@login_required
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
+def htmx_calendar_rows(resource_name):
+    """One facility/type group's project rows in the calendar."""
+    facility = request.args.get('facility', '')
+    allocation_type = request.args.get('allocation_type', '')
+    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
+    if allowed is not None and facility not in allowed:
+        abort(403)   # one named facility: out of scope is a forged URL, as in projects_fragment
+    active_at, _, selected_facilities = _fragment_scope()
+    start, end, rows = _calendar_rows(resource_name, active_at, selected_facilities)
+    rows = [r for r in rows
+            if r['facility'] == facility and (r['allocation_type'] or '') == allocation_type]
+    if get_resource_types(db.session).get(resource_name) in ('DISK', 'ARCHIVE'):
+        # Its rows carry summed charges, not occupancy: draw the spans unfilled.
+        rows = [{**r, 'total_used': None} for r in rows]
+    return render_template(
+        'dashboards/allocations/partials/calendar_rows.html',
+        projects=calendar_rows(rows, start, end, active_at),
+        slot=_facility_slot_names(_facility_index()).get(facility),
+        can_view_projects=True,  # route requires VIEW_PROJECTS
     )
 
 

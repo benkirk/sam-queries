@@ -53,10 +53,10 @@
 {%- endmacro %}
 
 {# The first cell of a tree row that toggles a collapse (the row carries collapse_toggle). #}
-{% macro tree_label_cell(label, depth=0, count=None, count_title='') -%}
-<td class="tree-cell{{ ' tree-d%d' % depth if depth }} text-nowrap" style="--depth: {{ depth }};">
+{% macro tree_label_cell(label, depth=0, count=None, count_title='', cls='') -%}
+<td class="tree-cell{{ ' tree-d%d' % depth if depth }} text-nowrap{{ ' ' ~ cls if cls }}" style="--depth: {{ depth }};">
     <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
-    {{- label }}
+    {{- '' }}<span class="tree-label">{{ label }}</span>
     {%- if count is not none %}{{ group_count(count, title=count_title) }}{% endif %}
 </td>
 {%- endmacro %}

@@ -98,7 +98,35 @@
          id="{{ pane }}" role="tabpanel" data-drill-scope>
 
         {% include 'dashboards/allocations/partials/_resource_charts.html' %}
-        {% include 'dashboards/allocations/partials/_alloc_tree_table.html' %}
+        <ul class="nav nav-pills justify-content-center mt-3 mb-0 alloc-view-pills"
+            id="alloc-table-view-{{ slug }}" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active py-1 px-3 small" id="tableview-{{ slug }}-tab"
+                        data-bs-toggle="pill" data-bs-target="#tableview-{{ slug }}" data-alloc-view="table"
+                        type="button" role="tab" aria-controls="tableview-{{ slug }}" aria-selected="true">Table</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link py-1 px-3 small" id="calendar-{{ slug }}-tab"
+                        data-bs-toggle="pill" data-bs-target="#calendar-{{ slug }}" data-alloc-view="calendar"
+                        type="button" role="tab" aria-controls="calendar-{{ slug }}" aria-selected="false">Calendar</button>
+            </li>
+        </ul>
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="tableview-{{ slug }}" role="tabpanel">
+                {% include 'dashboards/allocations/partials/_alloc_tree_table.html' %}
+            </div>
+            {# intersect: loads once the pane is both shown and scrolled into view. #}
+            <div class="tab-pane fade" id="calendar-{{ slug }}" role="tabpanel">
+                <div class="mt-3"
+                     hx-get="{{ url_for('allocations_dashboard.htmx_calendar', resource_name=resource_name,
+                                        active_at=active_at, facilities=selected_facilities or []) }}"
+                     hx-trigger="intersect once" hx-swap="innerHTML">
+                    <div class="text-center text-muted py-5">
+                        <i class="fa-solid fa-spinner fa-spin"></i> Loading calendar…
+                    </div>
+                </div>
+            </div>
+        </div>
 
     </div>
     {% endfor %}
