@@ -54,8 +54,8 @@ class SQLStats:
         self.slowest = self.slowest[:10]
 
         table = _extract_table(statement)
-        if statement.strip().lower().startswith('with anchors'):
-            table = '<batched WITH anchors CTE>'
+        if 'anchor_key' in statement:
+            table = '<batched anchors table>'
         elif statement.strip().lower().startswith('with w '):
             table = '<batched WITH w (rolling) CTE>'
         self.by_table.setdefault(table, []).append(elapsed)

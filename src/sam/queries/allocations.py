@@ -21,13 +21,13 @@ Functions:
 from datetime import datetime, timedelta
 from typing import Any, List, Optional, Dict, Tuple, Union
 
-from sqlalchemy import or_, func, text
+from sqlalchemy import or_, func
 from sqlalchemy.orm import Session, noload
 
-from sam.accounting.calculator import get_charge_models_for_activity
+from sam.accounting.calculator import anchor_sums, get_charge_models_for_activity
 
 from sam.core.users import User
-from sam.projects.projects import Project, values_cte_supported
+from sam.projects.projects import Project
 from sam.accounting.allocations import (
     Allocation,
     AllocationTransaction,
@@ -38,7 +38,6 @@ from sam.resources.resources import Resource, ResourceType
 from sam.resources.facilities import Facility, Panel
 from sam.accounting.accounts import Account
 from sam.accounting.adjustments import ChargeAdjustment
-from sam.sqlcompat import month_key, row_constructor
 
 
 # ============================================================================
@@ -942,54 +941,6 @@ def get_allocation_usage_rows(
     return out
 
 
-_BURN_ACCOUNT_JOIN = """
-    JOIN {anchors} ON t.account_id = a.account_id
-                  AND t.{date} BETWEEN a.start_date AND a.end_date"""
-
-_BURN_SUBTREE_JOIN = """
-    JOIN account acc ON t.account_id = acc.account_id
-    JOIN project p   ON acc.project_id = p.project_id
-    JOIN {anchors} ON p.tree_root = a.tree_root
-                  AND p.tree_left >= a.tree_left AND p.tree_right <= a.tree_right
-                  AND acc.resource_id = a.resource_id
-                  AND t.{date} BETWEEN a.start_date AND a.end_date"""
-
-_BURN_ACCOUNT_COLS = ('account_id', 'start_date', 'end_date')
-_BURN_SUBTREE_COLS = ('tree_root', 'tree_left', 'tree_right', 'resource_id',
-                      'start_date', 'end_date')
-
-
-def _anchors_table(session, cols, n) -> str:
-    """The anchors as a derived table ``a``: VALUES rows, or a UNION ALL where VALUES is unsupported."""
-    names = ('anchor_key',) + cols
-    if values_cte_supported(session):
-        row = row_constructor(session)
-        rows = ', '.join(f"{row}(:ak{i}, {', '.join(f':{c}{i}' for c in cols)})" for i in range(n))
-        return f"(VALUES {rows}) AS a ({', '.join(names)})"
-    selects = ' UNION ALL '.join(
-        f"SELECT :ak{i} AS anchor_key, {', '.join(f':{c}{i} AS {c}' for c in cols)}" for i in range(n))
-    return f'({selects}) AS a'
-
-
-def _add_month_sums(session, infos, cols, join, table, value, date_col, out) -> None:
-    """Add one table's per-anchor monthly sums into ``out[info['key']][yyyymm]``."""
-    if not infos:
-        return
-    params = {}
-    for i, info in enumerate(infos):
-        params[f'ak{i}'] = i
-        params.update({f'{c}{i}': info[c] for c in cols})
-    month = month_key(f't.{date_col}')
-    sql = text(f"""
-        SELECT a.anchor_key, {month}, SUM(COALESCE(t.{value}, 0))
-        FROM {table} t {join.format(anchors=_anchors_table(session, cols, len(infos)), date=date_col)}
-        GROUP BY a.anchor_key, {month}""")
-    for anchor_key, ym, amount in session.execute(sql, params):
-        if amount:
-            cells = out.setdefault(infos[anchor_key]['key'], {})
-            cells[int(ym)] = cells.get(int(ym), 0.0) + float(amount)
-
-
 def get_allocation_burn(
     session: Session,
     *,
@@ -1023,17 +974,22 @@ def get_allocation_burn(
         paths[path].setdefault(activity_type, []).append(info)
 
     out: Dict[int, Dict[int, float]] = {}
+
+    def _add(sums):
+        for key, ym, amount in sums:
+            cells = out.setdefault(key, {})
+            cells[ym] = cells.get(ym, 0.0) + amount
+
     for path, by_activity in paths.items():
-        cols, join = ((_BURN_SUBTREE_COLS, _BURN_SUBTREE_JOIN) if path == 'subtree'
-                      else (_BURN_ACCOUNT_COLS, _BURN_ACCOUNT_JOIN))
+        subtree = path == 'subtree'
         for activity_type, infos in by_activity.items():
             for model in get_charge_models_for_activity(activity_type).values():
-                _add_month_sums(session, infos, cols, join, model.__tablename__,
-                                'charges', 'activity_date', out)
+                _add(anchor_sums(session, infos, subtree=subtree, table=model.__tablename__,
+                                 value='charges', date_col='activity_date', by_month=True))
         if include_adjustments:
             infos = [i for group in by_activity.values() for i in group]
-            _add_month_sums(session, infos, cols, join, 'charge_adjustment',
-                            'amount', 'adjustment_date', out)
+            _add(anchor_sums(session, infos, subtree=subtree, table='charge_adjustment',
+                             value='amount', date_col='adjustment_date', by_month=True))
     return out
 
 
