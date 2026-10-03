@@ -1891,6 +1891,13 @@
     ]
   ],
   [
+    "allocations_dashboard.htmx_used_sunburst",
+    "/allocations/htmx/used-sunburst/<resource_name>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.index",
     "/allocations/",
     [

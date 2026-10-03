@@ -119,9 +119,26 @@
                             aria-label="{{ 'Data volume' if is_storage else 'Annualized allocation rate' }} by facility and allocation type">
                         {{ sunbursts[resource_name].alloc | safe }}
                     </figure>
+                    {% if is_storage %}
                     <figure class="col-md-6 mb-0 sunburst-chart" aria-label="Usage by facility and allocation type">
                         {{ sunbursts[resource_name].used | safe }}
                     </figure>
+                    {% else %}
+                    {# Usage over a trailing window (pills inside the fragment), so it reads
+                       against the rate ring whatever each allocation's start date. #}
+                    {% set _used_id = 'used-sunburst-' ~ resource_name|replace(' ', '_') %}
+                    <figure class="col-md-6 mb-0 sunburst-chart"
+                            aria-label="Annual use rate by facility and allocation type">
+                        <div hx-get="{{ url_for('allocations_dashboard.htmx_used_sunburst',
+                                                resource_name=resource_name, active_at=active_at,
+                                                facilities=selected_facilities or []) }}"
+                             hx-trigger="load" hx-swap="outerHTML"
+                             data-chart-persist-id="{{ _used_id }}"
+                             data-chart-persist-keys="days">
+                            <p class="text-muted small text-center my-5">Loading usage…</p>
+                        </div>
+                    </figure>
+                    {% endif %}
                 </div>
             </div>
             <div class="tab-pane fade" id="pace-{{ slug }}" role="tabpanel">

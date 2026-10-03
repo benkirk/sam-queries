@@ -12,9 +12,10 @@ Functions:
     get_daily_charge_trends_for_accounts: Get daily charge trends by date
     get_raw_charge_summaries_for_accounts: Get raw charge summary records
     get_user_breakdown_for_project: Get per-user usage breakdown
+    get_charges_by_facility_type: Charges over a date range by resource, facility, type
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, List, Optional, Dict, Union
 
 from sqlalchemy import String, distinct, func, select
@@ -22,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from sam.core.users import User
 from sam.summaries.comp_summaries import CompChargeSummary
+from sam.summaries.dav_summaries import DavChargeSummary
 from sam.accounting.accounts import Account
 from sam.accounting.adjustments import ChargeAdjustment, ChargeAdjustmentType
 from sam.accounting.allocations import AllocationType
@@ -506,6 +508,43 @@ def get_user_breakdown_for_project(session, projcode: str,
         }
         for row in results
     ]
+
+
+def get_charges_by_facility_type(session: Session, resource_names: List[str],
+                                 start: datetime, end: datetime) -> List[Dict[str, Any]]:
+    """``[{resource, facility, allocation_type, charges}]`` over ``[start, end]``, adjustments included.
+
+    Not clipped to allocation dates: an account spans its project's renewals, so a
+    window reads the same either side of a reset. Projects group by their current
+    facility and type; a project with no type has facility and type ``None``.
+    """
+    if not resource_names:
+        return []
+    lo = datetime.combine(start.date(), datetime.min.time())
+    hi = datetime.combine(end.date(), datetime.min.time()) + timedelta(days=1)   # half-open: adjustment_date is a DateTime
+    totals: Dict[tuple, float] = {}
+    for amount, date_col in ((CompChargeSummary.charges, CompChargeSummary.activity_date),
+                             (DavChargeSummary.charges, DavChargeSummary.activity_date),
+                             (ChargeAdjustment.amount, ChargeAdjustment.adjustment_date)):
+        source = date_col.class_
+        rows = session.query(Resource.resource_name, Facility.facility_name,
+                             AllocationType.allocation_type, func.sum(amount))\
+            .select_from(source)\
+            .join(Account, source.account_id == Account.account_id)\
+            .join(Resource, Account.resource_id == Resource.resource_id)\
+            .join(Project, Account.project_id == Project.project_id)\
+            .outerjoin(AllocationType, Project.allocation_type_id == AllocationType.allocation_type_id)\
+            .outerjoin(Panel, AllocationType.panel_id == Panel.panel_id)\
+            .outerjoin(Facility, Panel.facility_id == Facility.facility_id)\
+            .filter(Resource.resource_name.in_(resource_names),
+                    date_col >= lo, date_col < hi)\
+            .group_by(Resource.resource_name, Facility.facility_name, AllocationType.allocation_type)\
+            .all()
+        for resource, facility, alloc_type, total in rows:
+            key = (resource, facility, alloc_type)
+            totals[key] = totals.get(key, 0.0) + float(total or 0)
+    return [{'resource': r, 'facility': f, 'allocation_type': t, 'charges': c}
+            for (r, f, t), c in totals.items()]
 
 
 def get_charges_by_projcode(
