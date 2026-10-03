@@ -137,3 +137,33 @@ def test_burn_caches_in_its_own_bucket(monkeypatch):
         assert uc.burn_cache_info()['name'] == 'allocation_burn'
     finally:
         uc._CACHE.reset_for_tests(disabled=False)
+
+
+def test_month_sums_add_up_to_usage_rows_total_used(session):
+    """The burn builder and the batch charge builders share one join: pin them together."""
+    from factories.projects import (make_account, make_allocation, make_charge_adjustment,
+                                    make_project)
+    from sam.queries.allocations import get_allocation_usage_rows
+    hpc = _hpc(session)
+    span = dict(start_date=datetime(2026, 1, 1), end_date=datetime(2026, 12, 31, 23, 59, 59))
+    leaf = make_account(session, project=make_project(session, facility_name='UNIV'), resource=hpc)
+    parent = make_project(session, facility_name='UNIV')
+    child = make_account(session, project=make_project(session, facility_name='UNIV', parent=parent),
+                         resource=hpc)
+    allocs = [make_allocation(session, account=leaf, amount=1000.0, **span),
+              make_allocation(session, account=make_account(session, project=parent, resource=hpc),
+                              amount=5000.0, **span)]
+    for account in (leaf, child):
+        _charge(session, account, datetime(2026, 2, 10), 30.0)
+        _charge(session, account, datetime(2026, 9, 30), 12.5)
+        _charge(session, account, datetime(2026, 10, 11), 500.0)   # after the as-of day
+        make_charge_adjustment(session, account=account, amount=-4.0,
+                               adjustment_date=datetime(2026, 5, 5, 9, 0))
+
+    burn = _burn(session, hpc)
+    used = {r['allocation_id']: r['total_used'] for r in get_allocation_usage_rows(
+        session, resource_name=[hpc.resource_name], window_start=WINDOW[0], window_end=WINDOW[1],
+        as_of=AS_OF)}
+
+    for alloc in allocs:
+        assert sum(burn[alloc.allocation_id].values()) == used[alloc.allocation_id] == 38.5
