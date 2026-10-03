@@ -115,12 +115,14 @@
             <div class="tab-pane fade show active" id="tableview-{{ slug }}" role="tabpanel">
                 {% include 'dashboards/allocations/partials/_alloc_tree_table.html' %}
             </div>
-            {# intersect: loads once the pane is both shown and scrolled into view. #}
+            {# intersect: loads once the pane is both shown and scrolled into view. The persist
+               id matches the fragment's, so nav-view-persistence.js replays the saved mode. #}
             <div class="tab-pane fade" id="calendar-{{ slug }}" role="tabpanel">
                 <div class="mt-3"
                      hx-get="{{ url_for('allocations_dashboard.htmx_calendar', resource_name=resource_name,
                                         active_at=active_at, facilities=selected_facilities or []) }}"
-                     hx-trigger="intersect once" hx-swap="innerHTML">
+                     hx-trigger="intersect once" hx-swap="innerHTML"
+                     data-chart-persist-id="cal-{{ pane }}" data-chart-persist-keys="mode">
                     <div class="text-center text-muted py-5">
                         <i class="fa-solid fa-spinner fa-spin"></i> Loading calendar…
                     </div>

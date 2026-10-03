@@ -7,11 +7,12 @@ import pytest
 
 from webapp.dashboards.allocations import blueprint
 from webapp.dashboards.allocations.calendar import (
-    burn_cells, burn_class, calendar_groups, calendar_months, calendar_rows, calendar_window,
+    burn_cells, burn_class, burn_key, burn_through, calendar_group_burn, calendar_groups, calendar_months, calendar_rows, calendar_window,
     group_burn,
 )
 
 AT = datetime(2026, 10, 3)
+THROUGH = datetime(2026, 10, 4)   # the end of the AT day
 
 
 def _row(projcode, start, end, amount=100.0, used=0.0, facility='UNIV', alloc_type='Small',
@@ -85,9 +86,11 @@ class TestGeometry:
         assert calendar_groups(rows, ['NCAR', 'UNIV']) == [('NCAR', ['NSC']), ('UNIV', ['Large', 'Small'])]
 
 
-_ROWS = [_row('UNIV0001', datetime(2026, 1, 1), datetime(2026, 12, 31), used=40.0),
-         _row('UNIV0002', datetime(2025, 1, 1), datetime(2025, 12, 31), used=90.0, alloc_type='Large'),
-         _row('NCAR0001', datetime(2026, 4, 1), datetime(2027, 3, 31), facility='NCAR', alloc_type='NSC')]
+_ROWS = [_row('UNIV0001', datetime(2026, 1, 1), datetime(2026, 12, 31), used=40.0, allocation_id=1),
+         _row('UNIV0002', datetime(2025, 1, 1), datetime(2025, 12, 31), used=90.0, alloc_type='Large',
+              allocation_id=2),
+         _row('NCAR0001', datetime(2026, 4, 1), datetime(2027, 3, 31), facility='NCAR', alloc_type='NSC',
+              allocation_id=3)]
 
 
 class TestBurn:
@@ -101,7 +104,7 @@ class TestBurn:
     def test_cells_follow_months_and_stop_at_the_as_of_day(self):
         start, end = calendar_window(AT)
         row = _row('A', *self.YEAR, amount=365.0, allocation_id=7)
-        cells = burn_cells(row, {202601: 31.0, 202602: 56.0, 202610: 3.0}, start, end, AT)
+        cells = burn_cells(row, {202601: 31.0, 202602: 56.0, 202610: 3.0}, start, end, THROUGH)
         assert len(cells) == 10                       # Jan..Oct, nothing after Oct 3
         jan, feb = cells[0], cells[1]
         assert jan['ratio'] == pytest.approx(1.0) and jan['cls'] == 2
@@ -109,13 +112,13 @@ class TestBurn:
         assert cells[2]['charges'] == 0.0 and cells[2]['cls'] == 0
         assert jan['left'] == 0.0 and feb['left'] == pytest.approx(31 / 365 * 100)
         oct_ = cells[-1]                              # Oct 1 to the end of Oct 3: ~3 days
-        assert oct_['ratio'] == pytest.approx(1.0, rel=1e-4)
-        assert oct_['width'] == pytest.approx(3 / 365 * 100, rel=1e-4)
+        assert oct_['ratio'] == pytest.approx(1.0)
+        assert oct_['width'] == pytest.approx(3 / 365 * 100)
 
     def test_cells_are_in_percent_of_the_clipped_bar(self):
         start, end = calendar_window(AT)               # opens 2025-10-01
         row = _row('A', datetime(2025, 7, 1), datetime(2026, 7, 1), amount=365.0, allocation_id=1)
-        cells = burn_cells(row, {202510: 31.0}, start, end, AT)
+        cells = burn_cells(row, {202510: 31.0}, start, end, THROUGH)
         assert cells[0]['month'] == datetime(2025, 10, 1) and cells[0]['left'] == 0.0
         assert sum(c['width'] for c in cells) == pytest.approx(100.0)
         assert cells[0]['ratio'] == pytest.approx(1.0)
@@ -125,15 +128,15 @@ class TestBurn:
         for row in (_row('A', datetime(2026, 1, 1), None, allocation_id=1),
                     _row('A', *self.YEAR, amount=0.0, allocation_id=1),
                     _row('A', *self.YEAR)):           # no allocation_id: a stale cached row
-            assert burn_cells(row, {}, start, end, AT) is None
+            assert burn_cells(row, {}, start, end, THROUGH) is None
         future = _row('A', datetime(2026, 11, 1), datetime(2027, 11, 1), allocation_id=1)
-        assert burn_cells(future, {}, start, end, AT) == []
+        assert burn_cells(future, {}, start, end, THROUGH) == []
 
     def test_rows_carry_burn_only_when_asked(self):
         start, end = calendar_window(AT)
         rows = [_row('A', *self.YEAR, amount=365.0, allocation_id=7)]
         assert 'burn' not in calendar_rows(rows, start, end, AT)[0]['bars'][0]
-        (a,) = calendar_rows(rows, start, end, AT, burns={7: {202601: 31.0}})
+        (a,) = calendar_rows(rows, start, end, AT, burns={7: {202601: 31.0}}, through=THROUGH)
         assert a['bars'][0]['burn'][0]['cls'] == 2
 
     def test_group_burn_sums_charges_over_shares(self):
@@ -142,12 +145,32 @@ class TestBurn:
                 _row('B', *self.YEAR, amount=730.0, allocation_id=2),
                 _row('C', datetime(2026, 1, 1), None, allocation_id=3)]   # open-ended: ignored
         cells = group_burn(rows, {1: {202603: 31.0}, 2: {202603: 31.0}, 3: {202603: 999.0}},
-                           start, end, AT)
+                           start, end, THROUGH)
         mar = next(c for c in cells if c['month'] == datetime(2026, 3, 1))
         assert mar['charges'] == 62.0 and mar['ratio'] == pytest.approx(62 / 93)
         assert cells[0]['month'] == datetime(2026, 1, 1)
         assert cells[-1]['month'] == datetime(2026, 10, 1)
         assert mar['left'] == pytest.approx((datetime(2026, 3, 1) - start) / (end - start) * 100)
+
+    def test_group_burn_per_facility_and_type(self):
+        start, end = calendar_window(AT)
+        rows = [_row('A', *self.YEAR, amount=365.0, allocation_id=1),
+                _row('B', *self.YEAR, amount=365.0, alloc_type='Large', allocation_id=2)]
+        strips = calendar_group_burn(rows, calendar_groups(rows, ['UNIV']), {1: {202601: 31.0}},
+                                     start, end, THROUGH)
+        assert set(strips) == {'UNIV', ('UNIV', 'Small'), ('UNIV', 'Large')}
+        assert strips[('UNIV', 'Small')][0]['ratio'] == pytest.approx(1.0)
+        assert strips['UNIV'][0]['ratio'] == pytest.approx(0.5)
+
+    def test_shading_stops_at_todays_midnight(self):
+        assert burn_through(AT, today=datetime(2026, 12, 1)) == THROUGH
+        # As of today: today's charges land tomorrow, so its share would read low.
+        assert burn_through(AT, today=AT) == AT
+        assert burn_through(datetime(2027, 1, 1), today=AT) == AT
+
+    def test_key_labels_follow_the_edges(self):
+        assert [label for _, label in burn_key()] == [
+            '<0.25×', '0.25–0.75×', '0.75–1.25×', '1.25–2×', '≥2×']
 
 
 @pytest.fixture
@@ -171,7 +194,7 @@ def test_skeleton_lists_groups_and_lazy_row_urls(auth_client, captured):
 def test_skeleton_facility_filter_narrows_and_is_forwarded(auth_client, captured):
     body = auth_client.get('/allocations/htmx/calendar/Derecho?facilities=UNIV').get_data(as_text=True)
     assert 'NCAR' not in body
-    assert body.count('facilities=UNIV') == 2
+    assert body.count('facilities=UNIV') == 4   # two rows URLs, two Used | Burn pills
 
 
 def test_rows_render_one_type_group(auth_client, captured):
@@ -188,6 +211,49 @@ def test_storage_rows_draw_spans_without_fills(auth_client, captured, monkeypatc
                            '&active_at=2026-10-03').get_data(as_text=True)
     assert '--fill: 0.00%' in body and 'cal-bar-label' not in body
     assert '100 allocated' in body
+
+
+@pytest.fixture
+def burn():
+    seen = {}
+    with patch.object(blueprint, 'cached_allocation_burn',
+                      side_effect=lambda *a, **kw: seen.update(query=kw) or {1: {202603: 50.0}}):
+        yield seen
+
+
+def test_used_mode_offers_the_toggle_and_never_queries_burn(auth_client, captured, burn):
+    body = auth_client.get('/allocations/htmx/calendar/Derecho?active_at=2026-10-03').get_data(as_text=True)
+    assert 'aria-label="Calendar shading"' in body and 'mode=burn' in body
+    assert 'cal-burn' not in body and 'cal-strip' not in body and 'burn-key' not in body
+    assert 'query' not in burn
+
+
+def test_burn_mode_draws_group_strips_and_forwards_the_mode(auth_client, captured, burn):
+    body = auth_client.get('/allocations/htmx/calendar/Derecho?active_at=2026-10-03&mode=burn'
+                           '&facilities=UNIV').get_data(as_text=True)
+    assert burn['query']['as_of'] == AT and burn['query']['window_start'] == datetime(2025, 10, 1)
+    assert 'alloc-calendar cal-burn' in body and 'burn-key' in body
+    assert body.count('class="cal-strip"') == 3          # UNIV and its two types
+    assert body.count('mode=burn&amp;') + body.count('mode=burn"') >= 3
+    assert 'Mar 2026: 50 charged' in body
+
+
+def test_burn_rows_carry_cells_instead_of_the_fill_label(auth_client, captured, burn):
+    body = auth_client.get('/allocations/htmx/calendar/Derecho/rows?facility=UNIV&allocation_type=Small'
+                           '&active_at=2026-10-03&mode=burn').get_data(as_text=True)
+    assert 'burn-cell burn-' in body and 'cal-bar-label' not in body
+
+
+def test_storage_offers_no_burn(auth_client, captured, burn, monkeypatch):
+    monkeypatch.setattr(blueprint, 'get_resource_types', lambda session: {'Derecho': 'DISK'})
+    body = auth_client.get('/allocations/htmx/calendar/Derecho?mode=burn').get_data(as_text=True)
+    assert 'Calendar shading' not in body and 'cal-burn' not in body
+    assert 'query' not in burn
+
+
+def test_unknown_mode_reads_as_used(auth_client, captured, burn):
+    body = auth_client.get('/allocations/htmx/calendar/Derecho?mode=heat').get_data(as_text=True)
+    assert 'cal-burn' not in body and 'query' not in burn
 
 
 def test_bad_active_at_falls_back_silently(auth_client, captured):

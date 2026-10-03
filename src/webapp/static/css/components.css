@@ -799,3 +799,59 @@ tr.collapsing {
 .cal-bar.cal-clip-r .cal-bar-label {
     right: 1.75rem;
 }
+/* Burn mode: each month shaded by its charges against an even pace (calendar.py), on the
+   diverging --data-burn-* scale. Past the last shaded month a bar is an empty frame: a facility
+   tint there reads as a burn class. The fade and the over-use edge go for the same reason. */
+.cal-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1.25rem;
+    margin-bottom: 0.5rem;
+}
+.burn-key {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.75rem;
+}
+.burn-key-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-variant-numeric: tabular-nums;
+}
+.burn-swatch {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 0.125rem;
+    background: var(--burn-color);
+}
+.burn-0 { --burn-color: var(--data-burn-0); }
+.burn-1 { --burn-color: var(--data-burn-1); }
+.burn-2 { --burn-color: var(--data-burn-2); }
+.burn-3 { --burn-color: var(--data-burn-3); }
+.burn-4 { --burn-color: var(--data-burn-4); }
+.burn-cell {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: var(--burn-color);
+    box-shadow: inset -2px 0 0 var(--surface-card);
+}
+.cal-burn .cal-bar {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-secondary) 55%, var(--surface-card));
+}
+.cal-burn .cal-bar.cal-future {
+    box-shadow: none;
+}
+.cal-burn .cal-bar.cal-past {
+    opacity: 1;
+}
+.cal-strip {
+    position: relative;
+    height: 0.625rem;
+    border-radius: 0.125rem;
+    overflow: hidden;
+}

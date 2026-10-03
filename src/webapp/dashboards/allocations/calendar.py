@@ -7,7 +7,7 @@ Positions are percents of the window, so CSS alone sets the pixel scale.
 Burn mode splits a bar into months, each classed by its charges over an even-pace share.
 Design record: docs/plans/ALLOCATIONS_TABLE_VIEWS.md.
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 
 PAST_MONTHS = 12
 FUTURE_MONTHS = 12
@@ -70,6 +70,14 @@ def burn_class(ratio):
     return sum(ratio >= edge for edge in BURN_EDGES)
 
 
+def burn_key():
+    """``[(class, label)]`` for the legend, from BURN_EDGES: ``<0.25×`` ... ``≥2×``."""
+    edges = [f'{e:g}' for e in BURN_EDGES]
+    return ([(0, f'<{edges[0]}×')]
+            + [(i + 1, f'{lo}–{hi}×') for i, (lo, hi) in enumerate(zip(edges, edges[1:]))]
+            + [(len(edges), f'≥{edges[-1]}×')])
+
+
 def _month_shares(row, lo, hi):
     """``(month, yyyymm, cell_start, cell_end, even_share)`` per calendar month meeting
     ``[lo, hi)``; even share = amount x the cell's part of the allocation's span."""
@@ -83,6 +91,12 @@ def _month_shares(row, lo, hi):
         m = nxt
 
 
+def burn_through(active_at, today):
+    """Where shading stops (exclusive): the end of the as-of day, or today's midnight if sooner,
+    because a day's charges land the day after."""
+    return min(active_at.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1), today)
+
+
 def _burnable(row):
     return (row.get('allocation_id') is not None and row['end_date'] is not None
             and (row.get('total_amount') or 0) > 0 and row['end_date'] > row['start_date'])
@@ -94,22 +108,22 @@ def _cell(m, charges, share, c_lo, c_hi, origin, width):
             'left': (c_lo - origin) / width * 100, 'width': (c_hi - c_lo) / width * 100}
 
 
-def burn_cells(row, months_charges, start, end, active_at):
-    """A bar's burn cells, one per month it covers through the as-of day, in % of the visible bar;
+def burn_cells(row, months_charges, start, end, through):
+    """A bar's burn cells, one per month it covers before ``through``, in % of the visible bar;
     ``None`` when the allocation has no even pace (open-ended, no amount, no id)."""
     if not _burnable(row):
         return None
     vis_start, vis_end = max(row['start_date'], start), min(row['end_date'], end)
-    hi = min(vis_end, active_at.replace(hour=23, minute=59, second=59))
+    hi = min(vis_end, through)
     width = vis_end - vis_start
     return [_cell(m, months_charges.get(ym, 0.0), share, c_lo, c_hi, vis_start, width)
             for m, ym, c_lo, c_hi, share in _month_shares(row, vis_start, hi) if share > 0]
 
 
-def group_burn(rows, burns, start, end, active_at):
-    """One cell per window month through the as-of day, in % of the window: the group's summed
+def group_burn(rows, burns, start, end, through):
+    """One cell per window month before ``through``, in % of the window: the group's summed
     charges over its summed even shares. Months with no share in the group get no cell."""
-    hi = min(end, active_at.replace(hour=23, minute=59, second=59))
+    hi = min(end, through)
     totals = {}
     for r in rows:
         if not _burnable(r):
@@ -128,6 +142,18 @@ def group_burn(rows, burns, start, end, active_at):
     return out
 
 
+def calendar_group_burn(rows, groups, burns, start, end, through):
+    """``group_burn`` cells for each facility (keyed by name) and type (keyed ``(facility, type)``)."""
+    out = {}
+    for facility, types in groups:
+        f_rows = [r for r in rows if r['facility'] == facility]
+        out[facility] = group_burn(f_rows, burns, start, end, through)
+        for t in types:
+            out[(facility, t)] = group_burn([r for r in f_rows if r['allocation_type'] == t],
+                                            burns, start, end, through)
+    return out
+
+
 def _lanes(bars):
     """Greedy lanes, so overlapping allocations on one project stack instead of hiding."""
     ends = []
@@ -138,16 +164,16 @@ def _lanes(bars):
     return len(ends)
 
 
-def calendar_rows(rows, start, end, active_at, burns=None):
+def calendar_rows(rows, start, end, active_at, burns=None, through=None):
     """One ``{projcode, lanes, bars}`` per project with a bar in the window, by projcode.
-    With ``burns`` (get_allocation_burn's dict) each bar also carries ``burn`` cells."""
+    With ``burns`` (get_allocation_burn's dict) each bar also carries ``burn`` cells to ``through``."""
     by_project = {}
     for r in rows:
         bar = _bar(r, start, end, active_at)
         if bar is not None:
             if burns is not None:
                 bar['burn'] = burn_cells(r, burns.get(r.get('allocation_id'), {}),
-                                         start, end, active_at)
+                                         start, end, through)
             by_project.setdefault(r['projcode'], []).append(bar)
     out = []
     for projcode in sorted(by_project):

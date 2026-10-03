@@ -1,10 +1,35 @@
 {# A resource's allocation calendar (htmx_calendar): a month axis over the facility ->
    type tree; a type row opens its projects lazily (htmx_calendar_rows). Positions are
-   percents of the window; components.css sets the pixel scale. #}
+   percents of the window; components.css sets the pixel scale. The Used | Burn pills
+   re-render this fragment; data-chart-persist-* replays the chosen `mode` on reload. #}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/table_bits.html' import tree_label_cell %}
+{% from 'dashboards/allocations/partials/_calendar_burn.html' import burn_strip %}
 {% set cal_id = 'cal-' ~ pane %}
-<div class="alloc-calendar" style="--cal-days: {{ days }};">
+<div class="alloc-calendar{{ ' cal-burn' if mode == 'burn' }}" id="{{ cal_id }}"
+     data-chart-persist-id="{{ cal_id }}" data-chart-persist-keys="mode"
+     style="--cal-days: {{ days }};">
+    {% if burnable %}
+    <div class="cal-toolbar">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Calendar shading">
+            {% for m, label in (('used', 'Used'), ('burn', 'Burn')) %}
+            <button type="button" aria-pressed="{{ 'true' if mode == m else 'false' }}"
+                    class="btn {% if mode == m %}btn-secondary active{% else %}btn-outline-secondary{% endif %}"
+                    hx-get="{{ url_for('allocations_dashboard.htmx_calendar', resource_name=resource_name,
+                                       active_at=active_at, facilities=requested_facilities, mode=m) }}"
+                    hx-target="#{{ cal_id }}" hx-swap="outerHTML">{{ label }}</button>
+            {% endfor %}
+        </div>
+        {% if mode == 'burn' %}
+        <div class="burn-key small text-muted">
+            <span>Charges vs. even pace:</span>
+            {% for cls, label in burn_key %}
+            <span class="burn-key-item"><span class="burn-swatch burn-{{ cls }}"></span>{{ label }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
     <div class="cal-scroll" data-cal-focus="{{ '%.3f' | format(now_pct) }}">
         <div class="cal-overlay" aria-hidden="true">
             {% for m in months %}<span class="cal-gridline{{ ' cal-year-line' if m.year and not loop.first }}" style="left: {{ '%.4f' | format(m.left) }}%;"></span>{% endfor %}
@@ -26,7 +51,7 @@
             <tbody>
                 <tr class="table-subtle fw-semibold cursor-pointer" {{ collapse_toggle(f_body) }}>
                     {{ tree_label_cell(facility, cls='cal-label') }}
-                    <td class="cal-track-cell"></td>
+                    <td class="cal-track-cell">{% if strips %}{{ burn_strip(strips[facility]) }}{% endif %}</td>
                 </tr>
             </tbody>
             <tbody class="collapse" id="{{ f_body }}">
@@ -34,13 +59,14 @@
                 {% set t_id = f_body ~ '-' ~ loop.index %}
                 <tr class="cursor-pointer" {{ collapse_toggle(t_id) }}>
                     {{ tree_label_cell(alloc_type or 'Unknown', depth=1, cls='cal-label') }}
-                    <td class="cal-track-cell"></td>
+                    <td class="cal-track-cell">{% if strips %}{{ burn_strip(strips[(facility, alloc_type)]) }}{% endif %}</td>
                 </tr>
                 <tr class="collapse" id="{{ t_id }}" data-no-persist>
                     <td colspan="2" class="p-0">
                         <div hx-get="{{ url_for('allocations_dashboard.htmx_calendar_rows', resource_name=resource_name,
                                                 facility=facility, allocation_type=alloc_type or '',
-                                                active_at=active_at, facilities=requested_facilities) }}"
+                                                active_at=active_at, facilities=requested_facilities,
+                                                mode=mode) }}"
                              hx-trigger="show.bs.collapse from:closest tr once" hx-swap="innerHTML">
                             <div class="cal-loading text-muted small py-2">
                                 <i class="fa-solid fa-spinner fa-spin"></i> Loading projects…
@@ -56,8 +82,14 @@
         </table>
     </div>
     <p class="small text-muted text-center mt-2 mb-0">
+        {% if mode == 'burn' %}
+        Each month of a bar is shaded by its charges against an even burn of the allocation over
+        its whole span; group rows add up their allocations. A faded end continues past the window.
+        Charges through {{ active_at_dt | fmt_date }}.
+        {% else %}
         Each bar spans an allocation and fills to its % used along its whole length; a faded end
         continues past the window. A fill short of the line ({{ active_at_dt | fmt_date }}) is under pace.
         Charges through that date.
+        {% endif %}
     </p>
 </div>

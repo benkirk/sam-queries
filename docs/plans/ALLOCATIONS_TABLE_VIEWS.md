@@ -127,19 +127,38 @@ the shape matches `get_allocation_usage_rows`, whose ±180-day Pace window costs
 
 1. **Query** `get_allocation_burn()` (`sam/queries/allocations.py`): the usage-rows allocation set
    and subtree/account routing; per-anchor dates `[max(start, window start), min(end, end of the
-   as-of day, window end)]` in a VALUES CTE with `sqlcompat.month_key()` in the GROUP BY; charge
-   model per `get_charge_models_for_activity`, adjustments into the same cells. Returns
-   `{allocation_id: {yyyymm: charges}}`, cached as `cached_allocation_burn`. New code beside the
-   batch methods, which feed every usage figure and stay untouched.
-2. **Geometry** (`calendar.py`): `burn_cells` (one cell per month the bar covers up to the as-of
-   day, in % of the bar; ratio = charges / (amount x cell days / allocation days)), 5 classes at
-   `<0.25, <0.75, <1.25, <2, >=2`, and `group_burn` (summed charges over summed even shares per
-   window month). No cells for open-ended, zero-amount or future allocations.
-3. **UI**: `mode=burn` on `htmx_calendar` and its rows route (HPC/DAV only, persisted via
-   `data-chart-persist-keys="mode"`, forwarded into every rows URL); burn cells replace the fill
-   and % label; group rows carry a strip; a key under the calendar.
-4. **Perf**: route query-count baselines; cold timing on local MySQL and samuel-dev. Over ~3 s
-   cold on dev means prewarming today's entry (cache-only).
+   as-of day, window end)]` in a VALUES table (UNION ALL where VALUES is unsupported) with
+   `sqlcompat.month_key()` in the GROUP BY; charge model per `get_charge_models_for_activity`,
+   adjustments into the same cells. Returns `{allocation_id: {yyyymm: charges}}`. New code beside
+   the batch methods, which feed every usage figure and stay untouched. Usage rows gain
+   `allocation_id` so the calendar can join the two.
+   - **Cache**: its own bucket, `allocation_burn` (`ALLOCATION_BURN_CACHE_TTL` 12 h, size 50), not
+     usage's 1 h: an entry is keyed on its as-of day and only that day's month still moves (Ben,
+     2026-10-03). Purged with the `usage` category; a second row on the Admin Caching card.
+   - **Measured** (local MySQL snapshot, as of 2026-10-03, fresh process): Derecho 0.68 s, 12
+     statements, 952 allocations, 5,303 cells, 79 KiB pickled; Casper 0.57 s. Usage rows on the
+     same window: 0.87 s. Pressing Burn on the local dev server (:5050): 1.3 s cold, 30-60 ms warm.
+2. **Geometry** (`calendar.py`): `burn_cells` (one cell per month the bar covers, in % of the bar;
+   ratio = charges / (amount x cell days / allocation days)), 5 classes at `<0.25, <0.75, <1.25,
+   <2, >=2` (`BURN_EDGES`, which also builds the key's labels), and `group_burn` / 
+   `calendar_group_burn` (summed charges over summed even shares per window month). Shading stops
+   at `burn_through()`: the end of the as-of day, or **today's midnight** if sooner, because a
+   day's charges land the next day and would otherwise read every current month low (a third low
+   on the 3rd). No cells for open-ended, zero-amount, id-less or future allocations.
+3. **UI**: `mode=burn` on `htmx_calendar` and its rows route (HPC/DAV only; anything else reads as
+   `used`), persisted via `data-chart-persist-keys="mode"` on the loader and the fragment, and
+   forwarded into every rows URL. A toolbar holds the `Used | Burn` pills and, in Burn mode, the
+   key. Burn cells replace the fill and % label; group rows carry a strip. The toggle re-renders
+   the fragment, so `dashboard-init.js` carries the open type groups (`data-no-persist`) and the
+   horizontal scroll across the swap.
+   - **Colors (changed from the handoff)**: burn ratio is a polarity around even pace, so a
+     diverging scale (`--data-burn-0..4`: blue under, gray on pace, red over), not facility tints
+     with a `--danger-color` cap (a status color is reserved). In Burn mode a bar's unshaded rest
+     is an empty frame: the UNIV tint there read as the 1.25-2x step. Adjacent steps, OKLab dE x100,
+     light >= 16.8 normal / >= 14.5 under protan, deutan and tritan; dark >= 15.6 / >= 11.2, the
+     dark midpoint 1.6:1 on the facility rows' `--surface-secondary`.
+4. **Perf**: route query-count baselines; cold timing on samuel-dev Postgres. Over ~3 s cold on
+   dev means prewarming today's entry (cache-only).
 
 ## Critical files
 
