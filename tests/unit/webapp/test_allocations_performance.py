@@ -1370,7 +1370,7 @@ class TestUserAwareCacheKeyScope:
 
 class TestPaceChartRoute:
     """GET /allocations/htmx/pace-chart/<resource>: HPC draws the whole window,
-    disk keeps the active-only summary."""
+    storage keeps the active-only summary."""
 
     _BP = 'webapp.dashboards.allocations.blueprint'
 
@@ -1404,3 +1404,10 @@ class TestPaceChartRoute:
             auth_client.get(f'/allocations/htmx/pace-chart/{disk.resource_name}')
         assert rows.call_count == 0 and summary.call_count == 1
         assert summary.call_args.kwargs['active_only'] is True
+
+    def test_archive_takes_the_storage_path_like_the_calendar(self, auth_client):
+        with patch(f'{self._BP}._resource_type', return_value='ARCHIVE'), \
+                patch(f'{self._BP}.cached_allocation_usage_rows', return_value=[]) as rows, \
+                patch(f'{self._BP}.cached_allocation_usage', return_value=[]) as summary:
+            auth_client.get('/allocations/htmx/pace-chart/Derecho?active_at=2026-10-01')
+        assert rows.call_count == 0 and summary.call_count == 1
