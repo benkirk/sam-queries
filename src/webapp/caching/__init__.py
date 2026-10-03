@@ -160,11 +160,9 @@ class Caching:
     def stats(self) -> dict:
         """Single dict for the admin card. Stable shape, group-by-category.
 
-        ``usage`` is a single info dict (one bucket, rendered as one row);
-        ``scans`` and ``jobs`` are per-bucket lists the template loops over.
+        ``usage``, ``scans`` and ``jobs`` are per-bucket lists the template loops over.
         """
         from flask import current_app
-        from sam.queries.usage_cache import burn_cache_info, usage_cache_info
 
         out = {
             'backend':         current_app.config.get('CACHE_TYPE'),
@@ -174,10 +172,6 @@ class Caching:
         }
         for cache in self.bucketed_caches():
             out[cache.category] = cache.info()
-        # The usage cache predates the per-bucket list shape and the card
-        # renders it as a single row; keep that contract.
-        out['usage'] = usage_cache_info()
-        out['usage_burn'] = burn_cache_info()
         return out
 
     def clear(self, category: Optional[str] = None) -> dict:

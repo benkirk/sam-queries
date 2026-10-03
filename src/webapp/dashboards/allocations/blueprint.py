@@ -1349,7 +1349,7 @@ def purge_cache():
 @login_required
 @require_permission(Permission.EDIT_ALLOCATIONS)
 def cache_status():
-    """Return usage cache statistics as JSON (admin/staff only)."""
+    """Usage cache statistics as JSON, one dict per bucket (admin/staff only)."""
     return jsonify(usage_cache_info())
 
 

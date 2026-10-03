@@ -822,19 +822,20 @@ class TestUsageCacheModule:
 
     def test_info_has_required_fields(self):
         from sam.queries.usage_cache import usage_cache_info
-        info = usage_cache_info()
-        assert set(info.keys()) >= {'enabled', 'currsize', 'maxsize', 'ttl'}
+        infos = usage_cache_info()
+        assert [i['name'] for i in infos] == ['allocation_usage', 'allocation_burn']
+        for info in infos:
+            assert set(info.keys()) >= {'enabled', 'currsize', 'maxsize', 'ttl'}
 
     def test_info_disabled_when_flag_set(self):
         import sam.queries.usage_cache as uc
         uc._CACHE.reset_for_tests(disabled=True)
-        info = uc.usage_cache_info()
-        assert info['enabled'] is False
+        assert all(info['enabled'] is False for info in uc.usage_cache_info())
 
     def test_info_enabled_after_initialization(self):
         import sam.queries.usage_cache as uc
         uc.get_cache_adapter()  # triggers initialization using env-var defaults (TTL=3600)
-        info = uc.usage_cache_info()
+        info = uc.usage_cache_info()[0]
         assert info['enabled'] is True
         assert info['currsize'] == 0
 
@@ -1015,10 +1016,9 @@ class TestCacheStatusRoute:
     def test_response_has_required_fields(self, auth_client):
         response = auth_client.get('/allocations/cache/status')
         data = response.get_json()
-        assert 'enabled' in data
-        assert 'currsize' in data
-        assert 'maxsize' in data
-        assert 'ttl' in data
+        assert [b['name'] for b in data] == ['allocation_usage', 'allocation_burn']
+        for bucket in data:
+            assert {'enabled', 'currsize', 'maxsize', 'ttl'} <= set(bucket)
 
     def test_cache_config_keys_present(self, app):
         """App config must expose the cache sizing knobs (set via SAMWebappConfig defaults)."""
@@ -1028,8 +1028,14 @@ class TestCacheStatusRoute:
     def test_enabled_field_is_boolean(self, auth_client):
         """enabled field must be a bool regardless of whether the cache is on or off."""
         response = auth_client.get('/allocations/cache/status')
-        data = response.get_json()
-        assert isinstance(data['enabled'], bool)
+        assert all(isinstance(b['enabled'], bool) for b in response.get_json())
+
+    def test_caching_card_lists_both_usage_buckets(self, auth_client):
+        response = auth_client.post('/admin/htmx/cache/clear?category=usage')
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert 'allocation_usage' in body and 'allocation_burn' in body
+        assert 'Calendar burn' in body
 
 
 # ============================================================================
