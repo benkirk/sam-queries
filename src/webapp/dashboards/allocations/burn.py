@@ -57,12 +57,19 @@ def month_shares(row, lo, hi):
         m = nxt
 
 
-def recent_rate(row, months_charges, through, days=RUNOUT_LOOKBACK_DAYS):
-    """Charges per day over the ``days`` before ``through``, or since the start date if later.
-    A month cell partly inside the look-back counts pro rata; 0.0 before the start date."""
-    lo = max(through - timedelta(days=days), row['start_date'])
-    if through <= lo:
-        return 0.0
+def _days(lo, hi):
+    return (hi - lo).total_seconds() / 86400
+
+
+def even_rate(row):
+    """A burnable allocation's amount per day over its span."""
+    return row['total_amount'] / _days(row['start_date'], row['end_date'])
+
+
+def charges_between(row, months_charges, lo, through):
+    """Charges in ``[lo, through)``, ``through`` being where the cells stop; a month cell partly
+    inside counts pro rata, so the current cell runs from its start to ``through``."""
+    lo = max(lo, row['start_date'])
     total, m = 0.0, month_start(lo)
     while m < through:
         nxt = month_start(m, 1)
@@ -71,7 +78,16 @@ def recent_rate(row, months_charges, through, days=RUNOUT_LOOKBACK_DAYS):
         if inside > 0:
             total += months_charges.get(m.year * 100 + m.month, 0.0) * inside / (c_hi - c_lo).total_seconds()
         m = nxt
-    return total / ((through - lo).total_seconds() / 86400)
+    return total
+
+
+def recent_rate(row, months_charges, through, days=RUNOUT_LOOKBACK_DAYS):
+    """Charges per day over the ``days`` before ``through``, or since the start date if later.
+    A month cell partly inside the look-back counts pro rata; 0.0 before the start date."""
+    lo = max(through - timedelta(days=days), row['start_date'])
+    if through <= lo:
+        return 0.0
+    return charges_between(row, months_charges, lo, through) / _days(lo, through)
 
 
 def runs_out(row, months_charges, through):
@@ -88,3 +104,63 @@ def runs_out(row, months_charges, through):
     if days > (latest - through).total_seconds() / 86400:
         return None
     return through + timedelta(days=days)
+
+
+def project_ratios(rows, burns, through, days=RUNOUT_LOOKBACK_DAYS):
+    """``{projcode: charges / even share}`` over the look-back, summed across each project's
+    burnable allocations, so a renewal days old inherits its predecessor's pace."""
+    lo, acc = through - timedelta(days=days), {}
+    for r in rows:
+        if not burnable(r):
+            continue
+        a_lo, a_hi = max(lo, r['start_date']), min(through, r['end_date'])
+        if a_hi <= a_lo:
+            continue
+        t = acc.setdefault(r['projcode'], [0.0, 0.0])
+        t[0] += charges_between(r, burns.get(r['allocation_id'], {}), a_lo, a_hi)
+        t[1] += even_rate(r) * _days(a_lo, a_hi)
+    return {pc: c / e for pc, (c, e) in acc.items() if e > 0}
+
+
+def _until(lo, end, balance, rate):
+    """Where ``balance`` at ``rate`` per day runs out from ``lo``, capped at ``end``."""
+    return end if balance / rate >= _days(lo, end) else lo + timedelta(days=balance / rate)
+
+
+def pace_segments(rows, burns, through, at):
+    """Copies of ``rows`` with ``pace``: ``past``, ``projected`` and ``committed`` lists of
+    ``(lo, hi, rate per day)``, split at ``at``; ``recent`` is the actual rate over the look-back.
+
+    Past: each month cell's charges over its days. Projected: from ``at``, the project's recent
+    ratio (``project_ratios``; 1 with no history) x the allocation's even rate, until the balance
+    runs out or the end date. Committed: the balance over the days left, what the allocation
+    promises to deliver. ``burns=None`` (disk) uses the lifetime average for past and projected.
+    """
+    ratios = project_ratios(rows, burns, through) if burns is not None else {}
+    out = []
+    for r in rows:
+        s, e = r['start_date'], r['end_date']
+        if s is None or e is None or e <= s:
+            continue
+        amount, used = float(r.get('total_amount') or 0.0), float(r.get('total_used') or 0.0)
+        balance, past, projected, committed, recent = amount - used, [], [], [], 0.0
+        if burns is not None and burnable(r):
+            cells = burns.get(r['allocation_id'], {})
+            if s < through:
+                for _m, ym, c_lo, c_hi, _share in month_shares(r, s, min(e, through)):
+                    past.append((c_lo, min(c_hi, at), cells.get(ym, 0.0) / _days(c_lo, c_hi)))
+                recent = recent_rate(r, cells, min(through, e))
+            rate = ratios.get(r['projcode'], 1.0) * even_rate(r)
+        else:
+            elapsed = _days(s, min(e, through)) if s < through else 0.0
+            recent = rate = used / elapsed if elapsed > 0 else 0.0
+            if elapsed > 0:
+                past.append((s, min(e, at), recent))
+        f_lo = max(at, s)
+        if e > f_lo and balance > 0:
+            committed.append((f_lo, e, balance / _days(f_lo, e)))
+            if rate > 0:
+                projected.append((f_lo, _until(f_lo, e, balance, rate), rate))
+        out.append({**r, 'pace': {'past': [p for p in past if p[1] > p[0]], 'projected': projected,
+                                  'committed': committed, 'recent': recent}})
+    return out

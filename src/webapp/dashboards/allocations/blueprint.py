@@ -54,10 +54,9 @@ from sam.resources.resources import Resource
 from ..charts import (
     generate_allocation_sunburst,
     generate_pace_chart_matplotlib,
-    PACE_WINDOW_DAYS,
 )
 from ..charts.theme import facility_slots
-from .burn import burn_key, burn_through
+from .burn import burn_key, burn_through, pace_segments
 from .calendar import (
     calendar_group_burn, calendar_groups, calendar_months, calendar_rows, calendar_window,
 )
@@ -722,8 +721,8 @@ def htmx_pace_chart(resource_name):
 
     active_at, requested_facilities, selected_facilities = _fragment_scope()
 
-    # One row per allocation across the drawn window, so allocations that ended
-    # or start inside it get their bands. Disk keeps the active-only summary:
+    # The calendar's cache entries (rows and monthly charges over its 25-month
+    # window), so either view warms the other. Disk keeps the active-only summary:
     # its "used" is current occupancy, which an ended allocation does not have.
     resource = Resource.get_by_name(db.session, resource_name)
     is_disk = (resource is not None and resource.resource_type is not None
@@ -739,14 +738,14 @@ def htmx_pace_chart(resource_name):
             active_at=active_at,
             root_only=True,
         )
+        per_project_usage = filter_rows_by_facility(per_project_usage, selected_facilities)
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        per_project_usage = pace_segments(per_project_usage, None, burn_through(active_at, today),
+                                          active_at)
     else:
-        window = timedelta(days=PACE_WINDOW_DAYS)
-        per_project_usage = cached_allocation_usage_rows(
-            db.session, resource_name=[resource_name],
-            window_start=active_at - window, window_end=active_at + window,
-            as_of=active_at,
-        )
-    per_project_usage = filter_rows_by_facility(per_project_usage, selected_facilities)
+        start, end, per_project_usage = _calendar_rows(resource_name, active_at, selected_facilities)
+        burns, through = _calendar_burn(resource_name, active_at, start, end)
+        per_project_usage = pace_segments(per_project_usage, burns, through, active_at)
 
     chart_svg = generate_pace_chart_matplotlib(
         per_project_usage, active_at, resource_name=resource_name,

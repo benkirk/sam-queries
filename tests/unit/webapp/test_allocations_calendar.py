@@ -6,7 +6,9 @@ from unittest.mock import patch
 import pytest
 
 from webapp.dashboards.allocations import blueprint
-from webapp.dashboards.allocations.burn import burn_class, burn_key, burn_through, recent_rate, runs_out
+from webapp.dashboards.allocations.burn import (
+    burn_class, burn_key, burn_through, pace_segments, project_ratios, recent_rate, runs_out,
+)
 from webapp.dashboards.allocations.calendar import (
     burn_cells, calendar_group_burn, calendar_groups, calendar_months, calendar_rows, calendar_window,
     group_burn,
@@ -222,6 +224,55 @@ class TestRunOut:
         assert bar['runs_out_left'] == pytest.approx(333 / 365 * 100)
         (p,) = calendar_rows([self._row(225.0)], start, end, AT, burns={7: self.TWO_A_DAY}, through=self.OCT)
         assert 'runs_out' not in p['bars'][0]
+
+
+class TestPaceSegments:
+    OCT = datetime(2026, 10, 1)
+    YEAR = (datetime(2026, 1, 1), datetime(2027, 1, 1))     # 365 days, even 1/day per 365
+    TWO_A_DAY = {202607: 62.0, 202608: 62.0, 202609: 60.0}  # ratio 2x on an amount of 365
+
+    def _row(self, used=0.0, span=None, projcode='A', allocation_id=7, amount=365.0):
+        return _row(projcode, *(span or self.YEAR), amount=amount, used=used, allocation_id=allocation_id)
+
+    def _pace(self, rows, burns):
+        return {r['allocation_id']: r['pace'] for r in pace_segments(rows, burns, self.OCT, self.OCT)}
+
+    def test_past_cells_are_charges_over_days_and_stop_at_the_split(self):
+        (p,) = self._pace([self._row(184.0)], {7: self.TWO_A_DAY}).values()
+        assert p['past'][6] == (datetime(2026, 7, 1), datetime(2026, 8, 1), pytest.approx(2.0))
+        assert p['past'][-1][1] == self.OCT and len(p['past']) == 9
+        assert p['recent'] == pytest.approx(2.0)
+
+    def test_projection_runs_until_the_balance_is_spent(self):
+        (p,) = self._pace([self._row(245.0)], {7: self.TWO_A_DAY}).values()
+        assert p['projected'] == [(self.OCT, datetime(2026, 11, 30), pytest.approx(2.0))]
+        assert p['committed'] == [(self.OCT, datetime(2027, 1, 1), pytest.approx(120 / 92))]
+
+    def test_a_renewal_inherits_its_projects_pace(self):
+        old = self._row(184.0, span=(datetime(2025, 10, 1), self.OCT))
+        new = self._row(0.0, span=(self.OCT, datetime(2027, 10, 1)), allocation_id=8, amount=730.0)
+        assert project_ratios([old, new], {7: self.TWO_A_DAY}, self.OCT)['A'] == pytest.approx(2.0, rel=0.01)
+        p = self._pace([old, new], {7: self.TWO_A_DAY})
+        assert p[8]['projected'][0][2] == pytest.approx(4.0, rel=0.01)     # 2x its 2/day even rate
+        assert not p[7]['projected'] and not p[7]['committed']
+
+    def test_no_history_projects_the_even_rate(self):
+        later = self._row(span=(datetime(2026, 10, 20), datetime(2027, 10, 20)))
+        (p,) = self._pace([later], {}).values()
+        assert p['past'] == [] and p['recent'] == 0.0
+        assert p['projected'] == [(datetime(2026, 10, 20), datetime(2027, 10, 20), pytest.approx(1.0))]
+
+    def test_no_projection_without_a_balance(self):
+        (p,) = self._pace([self._row(400.0)], {7: self.TWO_A_DAY}).values()
+        assert p['projected'] == [] and p['committed'] == []
+
+    def test_disk_rows_use_the_lifetime_average(self):
+        (p,) = self._pace([self._row(273.0)], None).values()
+        assert p['past'] == [(datetime(2026, 1, 1), self.OCT, pytest.approx(1.0))]
+        assert p['projected'][0][2] == pytest.approx(1.0)
+
+    def test_open_ended_rows_are_skipped(self):
+        assert pace_segments([self._row(span=(datetime(2026, 1, 1), None))], {}, self.OCT, self.OCT) == []
 
 @pytest.fixture
 def captured():

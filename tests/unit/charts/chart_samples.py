@@ -13,6 +13,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from webapp.dashboards import charts
+from webapp.dashboards.allocations.burn import month_shares, pace_segments
 
 # A fixed 10-day window. Naive datetimes, per the repo convention.
 _DAYS = [date(2026, 3, d) for d in range(1, 11)]
@@ -183,6 +184,20 @@ def _jobs_usage(with_unknown=True):
                        'cpu_charges': 7500.0, 'gpu_charges': 0.0}}
 
 
+def _pace_segmented(rows):
+    """Rows through burn.pace_segments, with monthly charges that vary by month and project
+    so the past steps, the projection and the committed line are all drawn."""
+    through = _PACE_NOW.replace(hour=0)
+    burns = {}
+    for i, r in enumerate(rows):
+        r['allocation_id'] = i + 1
+        if r['start_date'] < through:
+            burns[i + 1] = {ym: share * (0.4 + 0.15 * ((ym + i) % 5))
+                            for _m, ym, _lo, _hi, share in month_shares(r, r['start_date'], through)}
+            r['total_used'] = sum(burns[i + 1].values())
+    return pace_segments(rows, burns, through, _PACE_NOW)
+
+
 def _pace_allocations(n=25):
     """25 projects so the top_n cut, the Other group and the >10 palette
     switch (UNITY_STACK_10 -> UNITY_STACK_20) are all exercised."""
@@ -195,7 +210,7 @@ def _pace_allocations(n=25):
             'total_amount': float(100_000 * (n - i)),
             'total_used': float(40_000 * (n - i)),
         })
-    return out
+    return _pace_segmented(out)
 
 
 def _pace_rollover(n=12):
@@ -218,7 +233,7 @@ def _pace_rollover(n=12):
             'total_amount': float(100_000 * (n - i)),
             'total_used': 0.0,
         })
-    return out
+    return _pace_segmented(out)
 
 
 #: ``(case_id, callable, args, kwargs)``. The id is the snapshot key, so it is
