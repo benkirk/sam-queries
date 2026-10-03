@@ -6,6 +6,7 @@
     {{ group_count(3) }}            count badge on a group header row
     {{ state_tag('decommissioned', title='Since 2024-01-31') }}
     {{ share_bar(31.0, slot=3) }}   bar + number; slot = facility color family
+    {{ tree_label_cell('UNIV', count=4) }}   chevron + name cell of a collapse-toggle row
 #}
 
 {# Count on the left, create buttons on the right; sits above the table. #}
@@ -35,4 +36,13 @@
   <span class="share-num">{{ pct | fmt_pct(decimals=2) }}</span>
 </span>
 {%- endif -%}
+{%- endmacro %}
+
+{# The first cell of a tree row that toggles a collapse (the row carries collapse_toggle). #}
+{% macro tree_label_cell(label, depth=0, count=None, count_title='') -%}
+<td class="tree-cell{{ ' tree-d%d' % depth if depth }} text-nowrap" style="--depth: {{ depth }};">
+    <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
+    {{- label }}
+    {%- if count is not none %}{{ group_count(count, title=count_title) }}{% endif %}
+</td>
 {%- endmacro %}

@@ -597,7 +597,7 @@ def projects():
         _usage=per_project_usage,
     )
 
-    facilities = [(f.facility_id, f.facility_name, f.is_active) for f in db.session.query(Facility)]
+    facilities = _facility_index()
     trees = build_facility_trees(grouped_data, all_overviews, type_annualized_rates,
                                  all_usage_overviews, usage_by_type, resource_types, facilities)
     sunbursts = {}
@@ -637,11 +637,16 @@ def projects():
 _VALID_PACE_SORT_BY = ('size', 'past', 'future')
 
 
-def _chart_fragment_scope():
-    """``(active_at, requested_facilities, selected_facilities)`` for a chart fragment.
+def _facility_index():
+    """``[(facility_id, facility_name, is_active)]`` for every facility, as `build_facility_trees` takes it."""
+    return [(f.facility_id, f.facility_name, f.is_active) for f in db.session.query(Facility)]
+
+
+def _fragment_scope():
+    """``(active_at, requested_facilities, selected_facilities)`` for an htmx fragment.
 
     Same active_at semantics as index(), but bad input falls back to today silently:
-    an HTMX swap into a chart pane is the wrong place for a top-level alert. The
+    an HTMX swap into a pane is the wrong place for a top-level alert. The
     facility clamp matches index(), so a WNA-scoped user gets WNA-only rows even
     though the URL omits ?facilities=; unscoped users get None (no filter).
     """
@@ -672,7 +677,7 @@ def htmx_pace_chart(resource_name):
     if sort_by not in _VALID_PACE_SORT_BY:
         sort_by = 'size'
 
-    active_at, requested_facilities, selected_facilities = _chart_fragment_scope()
+    active_at, requested_facilities, selected_facilities = _fragment_scope()
 
     # One row per allocation across the drawn window, so allocations that ended
     # or start inside it get their bands. Disk keeps the active-only summary:
@@ -748,13 +753,13 @@ def htmx_used_sunburst(resource_name):
     days = request.args.get('days', type=int)
     if days not in _USED_WINDOW_DAYS:
         days = _USED_WINDOW_DAYS[-1]
-    active_at, requested_facilities, selected_facilities = _chart_fragment_scope()
+    active_at, requested_facilities, selected_facilities = _fragment_scope()
 
     charges = cached_charges_by_facility_type(
         db.session, resource_names=[resource_name],
         start=active_at - timedelta(days=days - 1), end=active_at)
     charges = filter_rows_by_facility(charges, selected_facilities)
-    facilities = [(f.facility_id, f.facility_name, f.is_active) for f in db.session.query(Facility)]
+    facilities = _facility_index()
     chart_svg = generate_allocation_sunburst(
         window_sunburst_rows(charges, facilities, 365 / days), center='Use\nrate',
         layout=read_layout(), theme=read_theme())
