@@ -125,14 +125,15 @@
                     </figure>
                     {% else %}
                     {# Usage over a trailing window (pills inside the fragment), so it reads
-                       against the rate ring whatever each allocation's start date. #}
+                       against the rate ring whatever each allocation's start date. intersect:
+                       a hidden Resource pane never intersects, so only the shown tab fetches. #}
                     {% set _used_id = 'used-sunburst-' ~ resource_name|replace(' ', '_') %}
                     <figure class="col-md-6 mb-0 sunburst-chart"
                             aria-label="Annual use rate by facility and allocation type">
                         <div hx-get="{{ url_for('allocations_dashboard.htmx_used_sunburst',
                                                 resource_name=resource_name, active_at=active_at,
                                                 facilities=selected_facilities or []) }}"
-                             hx-trigger="load" hx-swap="outerHTML"
+                             hx-trigger="intersect once" hx-swap="outerHTML"
                              data-chart-persist-id="{{ _used_id }}"
                              data-chart-persist-keys="days">
                             <p class="text-muted small text-center my-5">Loading usage…</p>
@@ -142,12 +143,12 @@
                 </div>
             </div>
             <div class="tab-pane fade" id="pace-{{ slug }}" role="tabpanel">
-                {# The persist id matches the one the partial emits, so
-                   nav-view-persistence.js replays the saved sort_by. #}
+                {# intersect: loads once the pill pane is shown. The persist id matches
+                   the partial's, so nav-view-persistence.js replays the saved sort_by. #}
                 <div class="chart-container pace-chart"
                      hx-get="{{ url_for('allocations_dashboard.htmx_pace_chart',
                                         resource_name=resource_name, active_at=active_at, sort_by='size') }}"
-                     hx-trigger="load" hx-swap="innerHTML"
+                     hx-trigger="intersect once" hx-swap="innerHTML"
                      data-chart-persist-id="pace-chart-{{ pane }}"
                      data-chart-persist-keys="sort_by">
                     <div class="text-center text-muted py-5">
