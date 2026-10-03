@@ -34,12 +34,19 @@ import inspect
 from io import StringIO
 
 import matplotlib.pyplot as plt
+from matplotlib.offsetbox import AnchoredOffsetbox, DrawingArea, HPacker, TextArea, VPacker
+from matplotlib.patches import Rectangle
 
 from sam import fmt
 from webapp.caching import caching
 from webapp.caching.chart import content_hash
 from webapp.dashboards.charts.layout import resolve_layout
 from webapp.dashboards.charts.theme import resolve_theme
+
+
+def cells_label(cells) -> str:
+    """One legend string from table-legend cells: ``NAME (a, b)``, or the name alone."""
+    return f'{cells[0]} ({", ".join(cells[1:])})' if len(cells) > 1 else cells[0]
 
 
 def fig_to_svg(fig) -> str:
@@ -101,6 +108,9 @@ class BaseChart:
 
     #: Legend text size when the layout does not dictate one (i.e. desktop).
     legend_fontsize = 11
+
+    #: True draws a right-placed legend as aligned columns (`draw_table_legend`).
+    table_legend = False
 
     #: Columns to spread a `legend_placement='below'` legend across. Two is
     #: right for the short labels most charts carry; charts with long labels
@@ -188,6 +198,41 @@ class BaseChart:
             url = url_fn(band.link_key)
             patch.set_url(url)
             text.set_url(url)
+
+    def draw_table_legend(self, ax, rows, colors, urls, layout, theme) -> bool:
+        """Legend as aligned columns: swatch + name left, numbers right-aligned so
+        they compare down the column. Columns after the second are drawn muted; a
+        row's URL rides its swatch and every cell. Returns False, drawing nothing,
+        unless the legend sits at the right: a phone's legend below needs columns."""
+        if layout.legend_placement != 'right' or not rows:
+            return False
+        size = layout.legend_fontsize or self.legend_fontsize
+
+        def cell(text, url, alpha=1.0):
+            area = TextArea(text, textprops=dict(fontsize=size, color=theme.text, alpha=alpha))
+            area._text.set_url(url)
+            return area
+
+        def name(text, color, url):
+            swatch = DrawingArea(size * 1.4, size, 0, 0)
+            rect = Rectangle((0, size * 0.2), size * 1.4, size * 0.6, facecolor=color, edgecolor='none')
+            rect.set_url(url)
+            swatch.add_artist(rect)
+            return HPacker(children=[swatch, cell(text, url)], sep=size * 0.6, align='center')
+
+        sep = size * 0.55
+        columns = [VPacker(children=[name(r[0], c, u) for r, c, u in zip(rows, colors, urls)],
+                           sep=sep, align='left')]
+        for j in range(1, len(rows[0])):
+            columns.append(VPacker(children=[cell(r[j], u, alpha=1.0 if j == 1 else 0.7)
+                                             for r, u in zip(rows, urls)],
+                                   sep=sep, align='right'))
+        table = AnchoredOffsetbox(loc='center left', child=HPacker(children=columns, sep=size * 1.1,
+                                                                   align='top'),
+                                  bbox_to_anchor=self.legend_anchor, bbox_transform=ax.transAxes,
+                                  frameon=False, borderpad=0, pad=0)
+        ax.add_artist(table)
+        return True
 
     # --- the layout axis --------------------------------------------------
 

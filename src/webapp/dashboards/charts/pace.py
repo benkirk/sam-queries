@@ -31,7 +31,7 @@ import numpy as np
 from sam import fmt
 from webapp.caching.chart import content_hash
 from webapp.dashboards.charts import links
-from webapp.dashboards.charts.base import BaseChart
+from webapp.dashboards.charts.base import BaseChart, cells_label
 from webapp.dashboards.charts.layout import profile
 from webapp.dashboards.charts.theme import (
     UNITY_NCAR_NAVY, UNITY_STACK_10, UNITY_STACK_20,
@@ -160,6 +160,7 @@ class PaceChart(BaseChart):
     #: The `TABLET_DEFAULTS` legend cap does real work here: 20 project rows
     #: set the figure height on their own, whatever `figsize` says.
     LAYOUTS = profile((10, 4), (4.0, 3.0), (6.5, 3.2))
+    table_legend = True
     #: Normalized to the 0.3 every other chart uses (was 0.2, undocumented).
     grid = {'alpha': 0.3}
 
@@ -369,14 +370,16 @@ class PaceChart(BaseChart):
             def _fmt(v):
                 return f'{fmt.number(v * _PACE_RATE_SCALE)}/yr'
 
-        handles = [mpatches.Patch(color=self.color_map[pc],
-                                  label=f'{pc} ({_fmt(self.rank_metric[pc])})')
-                   for pc in self.top_projs]
+        rows = [(pc, _fmt(self.rank_metric[pc])) for pc in self.top_projs]
+        colors = [self.color_map[pc] for pc in self.top_projs]
+        urls = [links.PROJECT_MODAL.url(pc) for pc in self.top_projs]
         if self.n_other_projs > 0:
-            handles.append(mpatches.Patch(
-                color=_pace_other_color(theme),
-                label=f'{self.other_label} '
-                      f'({_fmt(self.group_sort_totals[OTHER_KEY])})'))
+            rows.append((self.other_label, _fmt(self.group_sort_totals[OTHER_KEY])))
+            colors.append(_pace_other_color(theme))
+            urls.append(None)
+        if self.table_legend and self.draw_table_legend(ax, rows, colors, urls, layout, theme):
+            return
+        handles = [mpatches.Patch(color=c, label=cells_label(r)) for r, c in zip(rows, colors)]
         legend = ax.legend(handles=handles, frameon=False,
                            **self.legend_kwargs(layout))
 
@@ -385,11 +388,10 @@ class PaceChart(BaseChart):
         # NOTE this legend is built FORWARD over top_projs, unlike the
         # StackedSeriesChart family's reversed legends, so it must not use
         # `link_legend`.
-        for pc, patch, text in zip(self.top_projs, legend.get_patches(),
-                                   legend.get_texts()):
-            url = links.PROJECT_MODAL.url(pc)
-            patch.set_url(url)
-            text.set_url(url)
+        for url, patch, text in zip(urls, legend.get_patches(), legend.get_texts()):
+            if url is not None:
+                patch.set_url(url)
+                text.set_url(url)
 
     def decorate(self, ax, layout, theme):
         ax.set_xlim(self.window_start, self.window_end)
