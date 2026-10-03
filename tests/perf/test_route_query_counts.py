@@ -440,3 +440,9 @@ def test_allocations_calendar_burn_rows_route(auth_client, route_count_queries):
     _route_within("allocations_calendar_burn_rows_route", auth_client, route_count_queries,
                   '/allocations/htmx/calendar/Derecho/rows?active_at=2026-10-03&mode=burn'
                   '&facility=UNIV&allocation_type=Small')
+
+
+def test_allocations_pace_route(auth_client, route_count_queries):
+    """Pace reads the calendar's rows and month sums: the same statements as Burn."""
+    _route_within("allocations_pace_route", auth_client, route_count_queries,
+                  '/allocations/htmx/pace-chart/Derecho?active_at=2026-10-03&sort_by=size')

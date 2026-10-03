@@ -1375,14 +1375,16 @@ class TestPaceChartRoute:
         html = response.data.decode().lower()
         assert '<svg' in html or 'no allocations' in html
 
-    def test_hpc_fetches_the_window(self, auth_client):
+    def test_hpc_shares_the_calendars_entries(self, auth_client):
         with patch(f'{self._BP}.cached_allocation_usage_rows', return_value=[]) as rows, \
+                patch(f'{self._BP}.cached_allocation_burn', return_value={}) as burn, \
                 patch(f'{self._BP}.cached_allocation_usage', return_value=[]) as summary:
             auth_client.get('/allocations/htmx/pace-chart/Derecho?active_at=2026-10-01')
-        assert rows.call_count == 1 and summary.call_count == 0
-        kwargs = rows.call_args.kwargs
-        assert kwargs['window_start'] == datetime(2026, 4, 4)
-        assert kwargs['window_end'] == datetime(2027, 3, 30)
+        assert rows.call_count == burn.call_count == 1 and summary.call_count == 0
+        for call in (rows, burn):
+            kwargs = call.call_args.kwargs
+            assert (kwargs['window_start'], kwargs['window_end']) == (
+                datetime(2025, 10, 1), datetime(2027, 11, 1))
 
     def test_disk_keeps_active_only_summary(self, auth_client, session):
         from sam.resources.resources import Resource, ResourceType

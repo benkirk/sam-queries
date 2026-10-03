@@ -185,6 +185,59 @@ the shape matches `get_allocation_usage_rows`, whose ±180-day Pace window costs
      counted 89 / 54); 80 / 51 draw, the rest fall past the window's end. UHWM0061: 8.9x even
      pace over 90 days, 120 days left, runs out about 2026-10-29.
 
+## Pace: reads the burn data (follow-on PR, branch `pace-burn`)
+
+**Status: built (2026-10-03)** · stacked on `calendar-burn`.
+
+The Pace chart's gaps, measured on the local snapshot (Derecho, as of 2026-10-03):
+
+| # | Gap | Evidence |
+|---|---|---|
+| G1 | Eager load: every Resource tab fetched its Pace chart and Used ring while hidden | ~10 Pace requests per page view, 9-11 s each cold on prod (#691); fixed separately (#709) |
+| G2 | The future side was the committed ceiling, not a forecast: unspent / days left | 10.3B/yr against ~2.4B/yr actually charged (Casper 6.4x) |
+| G3 | The past side was one flat average over the 180-day window | 2.27B/yr flat; monthly actuals 165M ... 219M |
+| G4 | A second fetch: Pace cached ±180-day rows with `window_used` anchors only it read | |
+| G5 | A ymax clamp for unspent / 1 day spikes near an end date | |
+| G6 | `sort_by='future'` ranked the ceiling, so mostly idle projects | |
+
+Decisions (Ben, 2026-10-03): the future side is **projected use as the stacked area, plus the
+committed total as a dashed line**. The gap between them is latent demand. Call it
+**committed**, never "required": it is what allocations promise to deliver by their end dates,
+and more than will be used, because many projects never spend their allocation.
+
+- **Data**: the route reads the calendar's cache entries (`_calendar_rows`, `_calendar_burn`:
+  rows and month sums over the 25-month window), so either view warms the other. Disk keeps its
+  active-only occupancy rows. `window_used` and its `('window', id)` anchors are gone from
+  `get_allocation_usage_rows`.
+- **Math** (`burn.pace_segments`, pure; `pace.py` cannot import `allocations/` without a cycle
+  through the blueprint, so the route hands it rows with a `pace` dict of `(lo, hi, rate)`
+  segments). Past: each month cell's charges over its days. Projected: from the as-of date, the
+  **project's** 90-day ratio (`project_ratios`: charges over even share, summed over its
+  allocations on the resource) x the allocation's even rate, until the balance runs out or it
+  ends; with no history, the even rate. Committed: balance over days left. Disk: the lifetime
+  average for past and projected.
+  - **Changed from the handoff**: the handoff projected a current allocation at its own recent
+    rate and used the project ratio only for unstarted ones. On 2026-10-03, 132 of 1,054
+    current Derecho allocations started under 90 days ago (mostly Oct 1 renewals, two days of
+    data), so one rule does both; for an allocation spanning the look-back the two agree.
+    Derecho at today: 2.31B/yr (own rate) vs 2.40B/yr (project ratio).
+- **Chart**: the stack's top sets the axis (no clamp); the committed line is dashed in the
+  text color (the accent is the today marker's), and when off scale it is clipped with its
+  value labeled at today with an up arrow. Sorts: `size` unchanged, `past` = actual 90-day
+  rate ("Recent Burn"), `future` = projected rate at today ("Projected Burn"); legend numbers
+  follow. A footnote under the chart says what the area and the line are. Day indices round to
+  the nearest day, so an end at 23:59:59 closes its day (flooring left a 1-day notch at every
+  month end).
+- **Measured** (local MySQL, Derecho, as of 2026-10-03): past steps equal the monthly actuals
+  x 12 (Sep 211M -> 2.5B/yr); projected at today 2.40B/yr; committed 10.2B/yr, off scale.
+  Data cost, three cold runs: rows ±180 d 0.54-0.64 s, rows 25 months 0.57-0.67 s, month sums
+  0.56-0.73 s, so cold-cold Pace roughly doubles locally and is free after the calendar. Dev
+  server: 3.0 s cold (racing a cold calendar request), 130-270 ms warm. Route statements, cache
+  off: 45 vs 38 (perf baseline `allocations_pace_route`). SVG, desktop, raw / gzip: 211-231 KB /
+  21-24 KB vs 195-196 KB / 19-23 KB; 66-68 paths vs 69.
+- Not measured: cold timing on samuel-dev Postgres or prod MySQL, where the ±180-day rows alone
+  took 9-11 s; a cold Pace there may need the calendar's entries prewarmed.
+
 ## Critical files
 
 - `src/webapp/dashboards/allocations/blueprint.py` (projects(), build_facility_trees, fragments)

@@ -56,13 +56,9 @@ def test_rows_per_allocation_with_usage_as_of(session):
     assert by_start[allocs['current'].start_date]['total_used'] == 20.0
     assert by_start[allocs['future'].start_date]['total_used'] == 0.0
     assert by_start[allocs['future'].start_date]['total_amount'] == 300.0
-    # The ended allocation started before the window (2026-04-04): only its
-    # 2026-06-01 and 2026-09-30 charges fall inside, and all of them do here.
-    assert by_start[allocs['ended'].start_date]['window_used'] == 150.0
-    assert by_start[allocs['current'].start_date]['window_used'] == 20.0
 
 
-def test_window_used_excludes_charges_before_the_window(session):
+def test_total_used_counts_charges_before_the_window(session):
     from factories.summaries import make_comp_charge_summary
     hpc, _, allocs = _build(session)
     account_id = allocs['ended'].account_id
@@ -74,7 +70,7 @@ def test_window_used_excludes_charges_before_the_window(session):
         window_start=AS_OF - WINDOW, window_end=AS_OF + WINDOW, as_of=AS_OF)
     ended = next(r for r in rows if r['start_date'] == allocs['ended'].start_date)
     assert ended['total_used'] == 1150.0
-    assert ended['window_used'] == 150.0
+    assert 'window_used' not in ended
 
 
 def test_summary_usage_stops_at_the_active_at_day(session):
