@@ -195,8 +195,8 @@ class SAMWebappConfig(SAMConfig):
     # TTL=0 disables caching; SIZE controls max LRU entries
     ALLOCATION_USAGE_CACHE_TTL  = int(os.getenv('ALLOCATION_USAGE_CACHE_TTL', 3600))   # seconds
     ALLOCATION_USAGE_CACHE_SIZE = int(os.getenv('ALLOCATION_USAGE_CACHE_SIZE', 200))    # max entries
-    # Calendar burn: keyed per as-of day, only the current month moves, so a longer TTL.
-    ALLOCATION_BURN_CACHE_TTL   = int(os.getenv('ALLOCATION_BURN_CACHE_TTL', 43200))   # seconds
+    # Calendar burn: usage's TTL, since Pace and the run-out tick read both together.
+    ALLOCATION_BURN_CACHE_TTL   = int(os.getenv('ALLOCATION_BURN_CACHE_TTL', 3600))    # seconds
     ALLOCATION_BURN_CACHE_SIZE  = int(os.getenv('ALLOCATION_BURN_CACHE_SIZE', 50))     # max entries
 
     # Allocation read-model (docs/plans/implemented/READ_MODEL.md). Off by default: readers

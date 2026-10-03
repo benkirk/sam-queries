@@ -8,15 +8,15 @@ Backend, lazy init and the get/compute/store dance come from
 :class:`sam.caching.BucketedTTLCache` (shared with ``webapp.disk_scans.cache``
 and ``webapp.jobs.cache``) — a Redis-backed adapter shared across gunicorn
 workers when ``CACHE_REDIS_URL`` is reachable, a per-worker in-process TTL
-cache otherwise. Two buckets: usage, and the calendar's monthly burn, whose
-past months do not move and so earn a longer TTL. What lives here is the keys.
+cache otherwise. Two buckets: usage, and the calendar's monthly burn, on the
+same TTL so the two never disagree for long. What lives here is the keys.
 
 Configuration is read from Flask app.config when available, falling back to
 environment variables so the module works outside a Flask context (CLI, tests).
 
   ALLOCATION_USAGE_CACHE_TTL  — TTL in seconds (0 = disabled, default 3600)
   ALLOCATION_USAGE_CACHE_SIZE — max LRU entries  (0 = disabled, default 200)
-  ALLOCATION_BURN_CACHE_TTL   — TTL in seconds (0 = disabled, default 43200)
+  ALLOCATION_BURN_CACHE_TTL   — TTL in seconds (0 = disabled, default 3600)
   ALLOCATION_BURN_CACHE_SIZE  — max LRU entries  (0 = disabled, default 50)
 """
 
@@ -36,8 +36,8 @@ from sam.queries.charges import get_charges_by_facility_type
 logger = logging.getLogger(__name__)
 
 
-#: A burn entry is keyed on its as-of day and only that day's month still moves,
-#: so it outlives a usage entry; both purge together under the 'usage' category.
+#: Burn shares usage's TTL: Pace and the run-out tick read both, so month cells
+#: must not lag the balance. Both purge together under the 'usage' category.
 _CACHE = BucketedTTLCache('usage_cache', 'usage', {
     'default': BucketSpec(
         name='allocation_usage',
@@ -46,7 +46,7 @@ _CACHE = BucketedTTLCache('usage_cache', 'usage', {
     ),
     'burn': BucketSpec(
         name='allocation_burn',
-        ttl_key='ALLOCATION_BURN_CACHE_TTL', ttl_default=43200,
+        ttl_key='ALLOCATION_BURN_CACHE_TTL', ttl_default=3600,
         size_key='ALLOCATION_BURN_CACHE_SIZE', size_default=50,
     ),
 })

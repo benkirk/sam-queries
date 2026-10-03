@@ -132,9 +132,12 @@ the shape matches `get_allocation_usage_rows`, whose ±180-day Pace window costs
    adjustments into the same cells. Returns `{allocation_id: {yyyymm: charges}}`. New code beside
    the batch methods, which feed every usage figure and stay untouched. Usage rows gain
    `allocation_id` so the calendar can join the two.
-   - **Cache**: its own bucket, `allocation_burn` (`ALLOCATION_BURN_CACHE_TTL` 12 h, size 50), not
-     usage's 1 h: an entry is keyed on its as-of day and only that day's month still moves (Ben,
-     2026-10-03). Purged with the `usage` category; a second row on the Admin Caching card.
+   - **Cache**: its own bucket, `allocation_burn` (`ALLOCATION_BURN_CACHE_TTL` 1 h, size 50), the
+     same TTL as usage. It shipped at 12 h as a precaution; the #707 review cut it to 1 h (Ben,
+     2026-10-03): nearly every entry is keyed on today, nothing purges on charge ingest, and Pace
+     and the run-out tick read month cells beside the 1 h balance, so a longer TTL let them
+     disagree for up to 11 h. The query is fast enough to recompute hourly. Purged with the
+     `usage` category; a second row on the Admin Caching card.
    - **Measured** (local MySQL snapshot, as of 2026-10-03, fresh process): Derecho 0.68 s, 12
      statements, 952 allocations, 5,303 cells, 79 KiB pickled; Casper 0.57 s. Usage rows on the
      same window: 0.87 s. Pressing Burn on the local dev server (:5050): 1.3 s cold, 30-60 ms warm.
