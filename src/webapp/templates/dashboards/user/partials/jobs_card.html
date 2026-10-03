@@ -107,10 +107,11 @@
    `group_by` is deliberately bare — user|project means the same thing
    here and on the status queue-load chart, so the choice carries across.
    One list for every panel: a key a panel doesn't offer (dimension and
-   log on the By User / By Project pies) is simply not read by its route.
+   log on the By User / By Project pies, by_facility outside By Project)
+   is simply not read by its route.
    The Jobs tab opts out: none of the four apply to a per-job table. #}
 {% macro _lens() -%}
- data-chart-persist-shared="group_by metric:jobs dimension:jobs log:jobs"
+ data-chart-persist-shared="group_by metric:jobs dimension:jobs log:jobs by_facility:jobs"
 {%- endmacro %}
 
 {% macro jobs_card(mode, cid, tablist_id, machine, load_trigger,

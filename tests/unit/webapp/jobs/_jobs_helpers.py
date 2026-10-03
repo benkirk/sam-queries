@@ -453,7 +453,7 @@ _HIST_TABS = ('wait-times', 'job-sizes', 'durations')
 
 
 _LENS = ('data-chart-persist-shared='
-         '"group_by metric:jobs dimension:jobs log:jobs"')
+         '"group_by metric:jobs dimension:jobs log:jobs by_facility:jobs"')
 
 
 def _tag_for(body, needle):
