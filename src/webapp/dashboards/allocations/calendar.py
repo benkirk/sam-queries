@@ -6,7 +6,7 @@ is under pace. A window edge cuts the bar and its fill alike.
 Positions are percents of the window, so CSS alone sets the pixel scale.
 Burn mode splits a bar into months, each classed by its charges over an even-pace share, and
 marks where the last-90-day rate would spend the balance well before the end date (burn.py).
-Design record: docs/plans/ALLOCATIONS_TABLE_VIEWS.md.
+Design record: docs/plans/implemented/ALLOCATIONS_TABLE_VIEWS.md.
 """
 from .burn import burn_class, burnable, month_shares, month_start, runs_out
 

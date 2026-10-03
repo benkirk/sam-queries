@@ -182,19 +182,6 @@ def purge_usage_cache() -> int:
     return _CACHE.purge()
 
 
-def usage_cache_info() -> Dict:
-    """Return cache statistics for monitoring/admin display.
-
-    Delegates to the adapter's `info()` (canonical CacheBase shape).
-    Backwards-compatible: the legacy keys (`enabled`, `currsize`,
-    `maxsize`, `ttl`) are still present; new fields (`hits`, `misses`,
-    `bytes_approx`, `name`, `extras`) are additive. A dict rather than the
-    per-bucket list the multi-bucket caches return: the Admin card renders the
-    usage bucket as one row and the burn bucket (burn_cache_info) as another.
-    """
-    return _CACHE.info()[0]
-
-
-def burn_cache_info() -> Dict:
-    """The calendar-burn bucket's info dict, a second row on the Admin card."""
-    return _CACHE.info()[1]
+def usage_cache_info() -> List[Dict]:
+    """One canonical ``CacheBase.info()`` dict per bucket: usage, then burn."""
+    return _CACHE.info()

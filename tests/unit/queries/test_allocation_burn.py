@@ -134,7 +134,7 @@ def test_burn_caches_in_its_own_bucket(monkeypatch):
             uc.cached_allocation_burn(None, resource_name=['Derecho'], window_start=WINDOW[0],
                                       window_end=WINDOW[1], as_of=AS_OF)
         assert len(calls) == 1
-        assert uc.burn_cache_info()['name'] == 'allocation_burn'
+        assert uc.usage_cache_info()[1]['name'] == 'allocation_burn'
     finally:
         uc._CACHE.reset_for_tests(disabled=False)
 

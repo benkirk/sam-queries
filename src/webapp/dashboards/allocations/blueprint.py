@@ -733,9 +733,9 @@ def htmx_pace_chart(resource_name):
     active_at, requested_facilities, selected_facilities = _fragment_scope()
 
     # The calendar's cache entries (rows and monthly charges over its 25-month
-    # window), so either view warms the other. Disk keeps the active-only summary:
-    # its "used" is current occupancy, which an ended allocation does not have.
-    if _resource_type(resource_name) == 'DISK':
+    # window), so either view warms the other. Storage keeps the active-only summary,
+    # as the calendar does: its "used" is not charges accruing over the window.
+    if _resource_type(resource_name) in _STORAGE_RESOURCE_TYPES:
         per_project_usage = cached_allocation_usage(
             session=db.session,
             resource_name=[resource_name],
@@ -1349,7 +1349,7 @@ def purge_cache():
 @login_required
 @require_permission(Permission.EDIT_ALLOCATIONS)
 def cache_status():
-    """Return usage cache statistics as JSON (admin/staff only)."""
+    """Usage cache statistics as JSON, one dict per bucket (admin/staff only)."""
     return jsonify(usage_cache_info())
 
 

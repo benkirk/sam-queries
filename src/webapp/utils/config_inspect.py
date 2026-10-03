@@ -665,12 +665,10 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         # Legacy template keys kept alongside the new shape for back-compat.
         caching_block['flask_cache_backend']   = caching_block.get('backend')
         caching_block['cache_default_timeout'] = caching_block.get('default_timeout')
-        caching_block['usage_cache']           = caching_block.get('usage')
     except Exception:
         caching_block = {
             'flask_cache_backend':   cfg.get('CACHE_TYPE', 'unknown'),
             'cache_default_timeout': cfg.get('CACHE_DEFAULT_TIMEOUT'),
-            'usage_cache':           None,
             'flask':                 None,
             'chart':                 [],
             'usage':                 None,

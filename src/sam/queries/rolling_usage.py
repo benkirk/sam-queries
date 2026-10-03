@@ -4,10 +4,8 @@ Rolling window usage queries for SAM.
 Provides get_project_rolling_usage() — a public, project-centric interface for
 computing trailing-N-day charge totals against prorated allocation amounts.
 
-The core SQL helpers (_query_window_charges, _query_window_subtree_charges) are
-shared with fstree_access.py, which imports them from here.  The fstree path is
-unchanged in behavior; it continues to call these helpers only for the small
-number of accounts that have threshold percentages configured.
+trailing_window_charges() sums a trailing window per anchor through the shared
+batch_charges builder; fstree_access.py imports it for its threshold accounts.
 
 Formula (NDayUsagePeriod.java):
     duration_days   = max((alloc_end - alloc_start).days - 1, 1)
@@ -18,181 +16,29 @@ Formula (NDayUsagePeriod.java):
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import text
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from sam.accounting.calculator import batch_charges
 from sam.enums import ResourceTypeName
 from sam.projects.projects import Project
 from sam.accounting.accounts import Account
 from sam.accounting.allocations import Allocation
 from sam.resources.resources import Resource, ResourceType
-from sam.sqlcompat import row_constructor
 
 
-# ---------------------------------------------------------------------------
-# Module-private SQL helpers (shared with fstree_access)
-# ---------------------------------------------------------------------------
+def trailing_window_charges(session: Session, infos: List[Dict], window_days: int, now: datetime,
+                            *, subtree: bool) -> Dict[Any, float]:
+    """``{info['key']: charges + adjustments}`` over the trailing window, clamped to each allocation.
 
-def _query_window_charges(
-    session: Session,
-    account_ids: List[int],
-    window_days: int,
-    now: datetime,
-    alloc_windows: Dict[int, tuple],
-) -> Dict[int, float]:
+    Infos are `batch_charges` infos whose ``start_date`` / ``end_date`` are the allocation's dates.
     """
-    Query total charges for a set of accounts over a trailing N-day window,
-    clamped to each account's allocation date range.
-    """
-    if not account_ids:
-        return {}
-
-    window_start_global = now - timedelta(days=window_days)
-    result: Dict[int, float] = {aid: 0.0 for aid in account_ids}
-
-    row = row_constructor(session)
-    rows_sql = ', '.join(
-        f'{row}({aid}, :ws{i}, :we{i})'
-        for i, aid in enumerate(account_ids)
-    )
-    params: Dict[str, Any] = {}
-    for i, aid in enumerate(account_ids):
-        alloc_start, alloc_end = alloc_windows.get(aid, (now, now))
-        clamped_start = max(window_start_global, alloc_start)
-        clamped_end   = min(now, alloc_end or now)
-        params[f'ws{i}'] = clamped_start
-        params[f'we{i}'] = clamped_end
-
-    for table, col in [
-        ('comp_charge_summary', 'activity_date'),
-        ('dav_charge_summary',  'activity_date'),
-    ]:
-        sql = text(f"""
-            WITH w (account_id, ws, we) AS (VALUES {rows_sql})
-            SELECT w.account_id, SUM(COALESCE(cs.charges, 0))
-            FROM {table} cs
-            JOIN w ON cs.account_id = w.account_id
-                   AND cs.{col} >= w.ws
-                   AND cs.{col} <= w.we
-            GROUP BY w.account_id
-        """)
-        for aid, amount in session.execute(sql, params).all():
-            if amount:
-                result[aid] += float(amount)
-
-    adj_sql = text(f"""
-        WITH w (account_id, ws, we) AS (VALUES {rows_sql})
-        SELECT w.account_id, SUM(COALESCE(ca.amount, 0))
-        FROM charge_adjustment ca
-        JOIN w ON ca.account_id = w.account_id
-               AND ca.adjustment_date >= w.ws
-               AND ca.adjustment_date <= w.we
-        GROUP BY w.account_id
-    """)
-    for aid, amount in session.execute(adj_sql, params).all():
-        if amount:
-            result[aid] += float(amount)
-
-    return result
-
-
-def _query_window_subtree_charges(
-    session: Session,
-    subtree_accts: Dict[int, Dict],
-    window_days: int,
-    now: datetime,
-    alloc_windows: Dict[int, tuple],
-) -> Dict[int, float]:
-    """
-    Query total charges for a set of non-leaf accounts over a trailing N-day window,
-    using MPTT subtree rollup so that descendant project charges are included.
-
-    Parallel to _query_window_charges() but joins through project tree coordinates
-    (tree_root/tree_left/tree_right) instead of direct account_id, matching the
-    pattern used by batch_get_subtree_charges().
-
-    Args:
-        subtree_accts: Dict mapping account_id -> alloc_info dict (must contain
-                       tree_root, tree_left, tree_right, resource_id keys).
-        window_days:   Trailing window length (30 or 90).
-        now:           Current datetime.
-        alloc_windows: Dict mapping account_id -> (alloc_start, alloc_end) for clamping.
-    """
-    if not subtree_accts:
-        return {}
-
-    window_start_global = now - timedelta(days=window_days)
-    result: Dict[int, float] = {aid: 0.0 for aid in subtree_accts}
-
-    # Build VALUES rows: (anchor_key=index, tree_root, tree_left, tree_right, resource_id, ws, we)
-    # anchor_key is the positional index; mapped back to account_id via idx_to_aid.
-    entries = list(subtree_accts.items())  # [(account_id, alloc_info), ...]
-    idx_to_aid: Dict[int, int] = {}
-    values_parts = []
-    params: Dict[str, Any] = {}
-    row = row_constructor(session)
-
-    for i, (aid, info) in enumerate(entries):
-        idx_to_aid[i] = aid
-        alloc_start, alloc_end = alloc_windows.get(aid, (now, now))
-        clamped_start = max(window_start_global, alloc_start)
-        clamped_end   = min(now, alloc_end or now)
-        values_parts.append(f'{row}(:ak{i}, :tr{i}, :tl{i}, :rr{i}, :ri{i}, :ws{i}, :we{i})')
-        params[f'ak{i}'] = i
-        params[f'tr{i}'] = info['tree_root']
-        params[f'tl{i}'] = info['tree_left']
-        params[f'rr{i}'] = info['tree_right']
-        params[f'ri{i}'] = info['resource_id']
-        params[f'ws{i}'] = clamped_start
-        params[f'we{i}'] = clamped_end
-
-    values_sql = ', '.join(values_parts)
-
-    for table, col in [
-        ('comp_charge_summary', 'activity_date'),
-        ('dav_charge_summary',  'activity_date'),
-    ]:
-        sql = text(f"""
-            WITH anchors (anchor_key, tree_root, tree_left, tree_right, resource_id, ws, we) AS (
-                VALUES {values_sql}
-            )
-            SELECT a.anchor_key, SUM(COALESCE(cs.charges, 0))
-            FROM {table} cs
-            JOIN account acc ON cs.account_id  = acc.account_id
-            JOIN project p   ON acc.project_id = p.project_id
-            JOIN anchors a   ON p.tree_root      =  a.tree_root
-                            AND p.tree_left      >= a.tree_left
-                            AND p.tree_right     <= a.tree_right
-                            AND acc.resource_id  =  a.resource_id
-                            AND cs.{col}         >= a.ws
-                            AND cs.{col}         <= a.we
-            GROUP BY a.anchor_key
-        """)
-        for anchor_key, amount in session.execute(sql, params).all():
-            if amount:
-                result[idx_to_aid[anchor_key]] += float(amount)
-
-    adj_sql = text(f"""
-        WITH anchors (anchor_key, tree_root, tree_left, tree_right, resource_id, ws, we) AS (
-            VALUES {values_sql}
-        )
-        SELECT a.anchor_key, SUM(COALESCE(ca.amount, 0))
-        FROM charge_adjustment ca
-        JOIN account acc ON ca.account_id  = acc.account_id
-        JOIN project p   ON acc.project_id = p.project_id
-        JOIN anchors a   ON p.tree_root      =  a.tree_root
-                        AND p.tree_left      >= a.tree_left
-                        AND p.tree_right     <= a.tree_right
-                        AND acc.resource_id  =  a.resource_id
-                        AND ca.adjustment_date >= a.ws
-                        AND ca.adjustment_date <= a.we
-        GROUP BY a.anchor_key
-    """)
-    for anchor_key, amount in session.execute(adj_sql, params).all():
-        if amount:
-            result[idx_to_aid[anchor_key]] += float(amount)
-
-    return result
+    # Midnight, so the first day counts whole: a mid-day bound against the DATE column counted
+    # it on MySQL for some query shapes and never on Postgres (2026-10-03).
+    window_start = (now - timedelta(days=window_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    clamped = [{**info, 'start_date': max(window_start, info['start_date']),
+                'end_date': min(now, info['end_date'] or now)} for info in infos]
+    sums = batch_charges(session, clamped, subtree=subtree)
+    return {key: sum(c['charges_by_type'].values()) + c['adjustment'] for key, c in sums.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -283,17 +129,11 @@ def get_project_rolling_usage(
     # ------------------------------------------------------------------
     # account_id -> metadata for result assembly
     account_meta: Dict[int, Dict] = {}
-    # account_id -> (alloc_start, alloc_end) for window clamping
-    alloc_windows: Dict[int, tuple] = {}
-    # leaf account_ids (direct charge lookup) — yields *self* charges
-    leaf_ids: List[int] = []
-    # non-leaf account_id -> MPTT info (subtree rollup) — yields *self* charges
-    subtree_map: Dict[int, Dict] = {}
-    # Inheriting accounts: account_id -> MPTT info for the *root* allocation's
-    # project subtree.  Used to compute pool charges in parallel with the
-    # self-charge query above.  The pool MPTT info uses a different anchor
-    # (the master parent's tree coordinates) and the same window clamp.
-    pool_subtree_map: Dict[int, Dict] = {}
+    # trailing_window_charges infos keyed by account_id: leaf and subtree anchors yield *self*
+    # charges; pool anchors are an inheriting account's *root* project subtree.
+    leaf_infos: List[Dict] = []
+    subtree_infos: List[Dict] = []
+    pool_infos: List[Dict] = []
 
     for acct in project.accounts:
         if acct.deleted:
@@ -316,7 +156,9 @@ def get_project_rolling_usage(
             continue
 
         aid = acct.account_id
-        alloc_windows[aid] = (active_alloc.start_date, active_alloc.end_date)
+        anchor = {'key': aid, 'account_id': aid, 'resource_id': acct.resource_id,
+                  'activity_type': res.activity_type,
+                  'start_date': active_alloc.start_date, 'end_date': active_alloc.end_date}
 
         # Pool detection — when the active allocation is inheriting, walk to
         # the root allocation and prepare a parallel subtree query against
@@ -335,12 +177,9 @@ def get_project_rolling_usage(
                     and root_project.tree_right is not None):
                 is_inheriting = True
                 root_projcode = root_project.projcode
-                pool_subtree_map[aid] = {
-                    'tree_root':   root_project.tree_root,
-                    'tree_left':   root_project.tree_left,
-                    'tree_right':  root_project.tree_right,
-                    'resource_id': acct.resource_id,
-                }
+                pool_infos.append({**anchor, 'tree_root': root_project.tree_root,
+                                   'tree_left': root_project.tree_left,
+                                   'tree_right': root_project.tree_right})
 
         account_meta[aid] = {
             'resource_name':    res.resource_name,
@@ -359,14 +198,10 @@ def get_project_rolling_usage(
         # Leaf vs. non-leaf determines self-charge rollup strategy.
         # project.is_leaf() uses NestedSetMixin (base.py:303): tree_right == tree_left + 1
         if project.is_leaf():
-            leaf_ids.append(aid)
+            leaf_infos.append(anchor)
         else:
-            subtree_map[aid] = {
-                'tree_root':   project.tree_root,
-                'tree_left':   project.tree_left,
-                'tree_right':  project.tree_right,
-                'resource_id': acct.resource_id,
-            }
+            subtree_infos.append({**anchor, 'tree_root': project.tree_root,
+                                  'tree_left': project.tree_left, 'tree_right': project.tree_right})
 
     if not account_meta:
         return {}
@@ -378,19 +213,10 @@ def get_project_rolling_usage(
 
     for w in windows:
         # Self-charges: this project's own contribution (existing logic).
-        self_charges_by_aid: Dict[int, float] = {}
-        if leaf_ids:
-            self_charges_by_aid.update(_query_window_charges(session, leaf_ids, w, now, alloc_windows))
-        if subtree_map:
-            self_charges_by_aid.update(_query_window_subtree_charges(session, subtree_map, w, now, alloc_windows))
-
-        # Pool charges: root allocation's project subtree, only for inheriting
-        # accounts.  Empty dict when no inheriting accounts in this resource set.
-        pool_charges_by_aid: Dict[int, float] = {}
-        if pool_subtree_map:
-            pool_charges_by_aid.update(
-                _query_window_subtree_charges(session, pool_subtree_map, w, now, alloc_windows)
-            )
+        self_charges_by_aid = trailing_window_charges(session, leaf_infos, w, now, subtree=False)
+        self_charges_by_aid.update(trailing_window_charges(session, subtree_infos, w, now, subtree=True))
+        # Pool charges: root allocation's project subtree, only for inheriting accounts.
+        pool_charges_by_aid = trailing_window_charges(session, pool_infos, w, now, subtree=True)
 
         for aid, self_charges in self_charges_by_aid.items():
             meta = account_meta[aid]
