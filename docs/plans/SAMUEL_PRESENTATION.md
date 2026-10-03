@@ -1,10 +1,11 @@
 # SAMuel presentation series — a multi-part Quarto deck
 
-**Status:** Parts 1–5 drafted on framework `samuel` (Part 5, "Deployment & Operations", 2026-10-01); awaiting Ben's review (§8). On 2026-09-30 Part 2 Concepts was inserted and Pieces split by axis into Part 4 (systems and data flow) and Part 5 (hosting, GitOps, deployment). This doc is the handoff: each session
+**Status:** Parts 1–5 drafted on framework `samuel` (Part 5, "Deployment & Operations", 2026-10-01); awaiting Ben's review (§8). On 2026-09-30 Part 2 Concepts was inserted and Pieces split by axis into Part 4 (systems and data flow) and Part 5 (hosting, GitOps, deployment). On 2026-10-02 the decks moved into this repo, `docs/presentations/samuel/`, with the framework as a submodule (#702, §10). This doc is the handoff: each session
 picks up the next unchecked phase in §8, ticks it, and appends to the session log (§10).
 **Goal:** replace the stale `docs/presentations/overview/` with a comprehensive, multi-part
-SAMuel presentation, authored in the standalone `~/Documents/quarto-docs-framework` repo and
-linked into this worktree.
+SAMuel presentation. The decks live in `docs/presentations/samuel/`; they build with
+quarto-docs-framework, which this repo takes as a submodule at `docs/presentations/framework`
+(`docs/presentations/README.md`).
 
 ## 1. Why
 
@@ -37,22 +38,23 @@ of the same infra.
 
 | Decision | Choice |
 |---|---|
-| Where the decks live | A long-lived **`samuel` branch** of quarto-docs-framework, content in `docs/samuel/`. The template's `main` stays clean for cloners. Framework-generic improvements go to `main` by PR, and `samuel` is **rebased** onto `main` after each lands (since 2026-09-30; before that, `main` was merged in). |
-| This repo | **Retire `docs/presentations/`**, leaving a README pointer to the framework repo. Add a **local-only, gitignored** symlink `docs/presentations/samuel -> ~/Documents/quarto-docs-framework/docs/samuel`; an absolute symlink would dangle for CI and everyone else. Delete the stale `presentation` branch, local and remote, after confirming at that step. |
+| Where the decks live | **This repo, `docs/presentations/samuel/`**, with quarto-docs-framework as a **submodule** at `docs/presentations/framework`, pinned to a framework `main` commit. Framework-generic improvements go to the framework's `main` by PR; then the pin moves here. Revised 2026-10-02 (#702, framework #25), replacing a long-lived `samuel` branch of the framework that was rebased onto `main` after every framework PR. |
+| This repo | `docs/presentations/` holds the decks, the submodule and a README on the setup. The links make creates and the outputs are gitignored. MegaLinter and `.dockerignore` leave the tree out. Revised 2026-10-02, replacing a README pointer plus a local, gitignored symlink into a framework checkout. The stale `presentation` branch is deleted. |
 | Format | **Mixed, chosen per part** (§13). Part 1 Overview: pptx + ncar-beamer PDF, both branded. Parts 2–4 and details: revealjs HTML where interactivity earns its keep, plus companion interactive pages where slides run out; pptx/PDF builds remain as handouts. Revised 2026-09-29, replacing "pptx + HTML equally". |
 | Audience | **CISL management / stakeholders:** Part 1 must stand alone as a non-technical briefing. **Incoming developers / handoff:** Parts 2–4 go deep, with code paths, gotchas and war stories. |
 | Voice | Direct, unapologetically technical, playful; calibrated on Ben's own decks (§11). |
 | Planning vehicle | This doc, on branch `samuel-presentation-plan`, as a docs-only draft PR against `staging`. It matures over several sessions. |
 
-## 3. Deck architecture (`quarto-docs-framework/docs/samuel/`)
+## 3. Deck architecture (`docs/presentations/samuel/`)
 
 One directory holds every part. Each part is a thin wrapper around an underscore body file;
 Quarto skips `_*.qmd` when rendering a project. The full deck includes every body:
 
 ```
-docs/samuel/
-  Makefile            DECKS := samuel 1-overview 2-concepts 3-databases 4-systems 5-deployment A-peers
-  _quarto.yml -> ../common/_quarto.yml   (auto-symlinked by Make.common)
+docs/presentations/samuel/
+  Makefile            DECKS := samuel 1-overview ... D-security
+                      include ../framework/docs/Make.common
+  _quarto.yml, _extensions, _ncar   links into ../framework/docs/common (made by make; gitignored)
   _variables.yml      facts: counts, hosts, dates, each with a source + as-of comment
   samuel.qmd          full deck: frontmatter + {{< include >}} of every body
   1-overview.qmd      frontmatter + {{< include _1-overview.qmd >}}
@@ -66,9 +68,10 @@ docs/samuel/
 ```
 
 **Constraints behind that layout:**
-- **Keep the deck at depth 1** (`docs/<deck>/`). The shared `_quarto.yml` sets
-  `reference-doc: ../common/branding/ncar/template.pptx`, which is resolved relative to the
-  `_quarto.yml` as the deck sees it. A deck nested deeper breaks that path.
+- **The deck directory can be anywhere** (framework #25). The shared `_quarto.yml` reaches the
+  framework's `common/` (filters, `reference-doc`) through the `_ncar` link that `Make.common`
+  creates in the deck directory. Until #25 it used `../common/...`, so a deck had to sit at the
+  framework's `docs/<deck>/`.
 - **Use one `images/` dir for every deck.** `{{< include >}}` is textual, so image paths resolve
   against the *including* file. With every wrapper and the full deck in the same directory,
   `images/x.png` resolves identically everywhere.
@@ -123,8 +126,9 @@ deck must follow, all learned on the `sam_and_pbs` deck (§12):
 - `docs/.gitignore` gains anchored `/*/*.{pptx,pdf,html}`. Outputs had been ignored
   per deck, and inconsistently.
 - The README's "Adding a new deck" section and the framework's CLAUDE.md describe `DECKS`.
-- **Commit the deck's `_quarto.yml` / `_extensions` symlinks** (mode 120000), as `sample/` and
-  `sam_and_pbs/` do.
+- **The framework's own decks commit their `_quarto.yml` / `_extensions` / `_ncar` links**
+  (mode 120000), as `sample/` and `sam_and_pbs/` do. Here they are made by make and gitignored
+  (`docs/presentations/.gitignore`).
 
 **Facts file:**
 - Put every number that goes stale in `_variables.yml`: tests, tables, charts, tasks, endpoints,
@@ -139,7 +143,7 @@ deck must follow, all learned on the `sam_and_pbs` deck (§12):
 |---|---|---|
 | Mermaid, Graphviz `{dot}` | the framework (Quarto bundles both, so nothing to install) | generic deck craft; conventions in the framework's CLAUDE.md (#12) |
 | ER generator (ORM → Graphviz) | sam-queries `scripts/er_diagram.py` (#680) | it imports SAM's models; replaces `eralchemy2` with no dependency |
-| Charts, `refresh_data.sh` | the framework's `docs/samuel/`, run with the sam-queries Python | refresh time only; it already needs the sam-queries checkout |
+| Charts, `refresh_data.sh` | `docs/presentations/samuel/`, run with the sam-queries Python | refresh time only; `SAMUEL_REPO` defaults to this checkout |
 | `quarto`, `eralchemy2`, `pydeps` | removed from sam-queries' `conda-env.yaml` (#680) | the decks left this repo |
 
 **Authoring rules:**
@@ -240,7 +244,7 @@ Outline (40 slides as drafted). Blocks A–C are the natural 2a, and D–F the 2
 | E. Trees | projects are trees; usage rolls uphill; allocations are trees too; two conventions; award and pool (SAM amounts, frozen); as PBS sees it; detach ≠ independence; the tree audit (frozen) | `project_tree_charging.md`, `ALLOCATION_TREE_EDITING.md`, `src/sam/queries/tree_audit.py` |
 | F. Wrap | follow one job's hours; TL;DR | — |
 
-**Frozen data:** `docs/samuel/concepts_data.py`, run by `refresh_data.sh` (test DB on 3307
+**Frozen data:** `docs/presentations/samuel/concepts_data.py`, run by `refresh_data.sh` (test DB on 3307
 only; the CLIs get explicit `SAM_DB_*`, which win over the `.env` they re-load), writes
 `_out_accounts`, `_out_users`, `_out_replay`, `_out_audit`, `_tree_sam_award` and
 `_tree_sam_pool`. Only SCSG0001 (Ben's own) and projcodes are read; no `--verbose`, no
@@ -585,7 +589,7 @@ are in the slide notes.
 - **SAM table count:** the sources disagree.
   - `CLAUDE.md` says "~100"; the old deck says 97; `docs/LOCAL_SETUP.md` says ~107 tables and
     7 views; there are 117 `__tablename__` entries under `src/sam`.
-  - **Resolved 2026-09-30** by `docs/samuel/count_tables.py` (run from `refresh_data.sh`, port
+  - **Resolved 2026-09-30** by `docs/presentations/samuel/count_tables.py` (run from `refresh_data.sh`, port
     3307 only): the test DB holds **114 tables + 7 views = 121** (the `/database` browser agrees);
     the ORM maps **108 + 7**; the 6 unmapped are legacy (`schema_version`, `EXPORT_TABLE`,
     `TIME_DIM`, `stage_hpc_job`, `tables_dictionary`, one scratch table); nothing is modeled but
@@ -623,17 +627,19 @@ are in the slide notes.
 
 - **Playwright MCP** drives the local `samuel-dev` (:5050, `docker compose up samuel-dev --watch`)
   through stub Quick Login on obfuscated data. It captures desktop / mobile and light / dark
-  variants into `docs/samuel/images/`.
+  variants into `docs/presentations/samuel/images/`.
   - `.playwright-mcp/` already holds ~1,089 PNGs from past UI work. Check there before
     re-shooting.
-  - ⚠️ **The framework repo is PUBLIC.** Check each shot for real names before committing; a dev
-    DB may be unobfuscated. Never screenshot prod.
+  - ⚠️ **This repo and the framework are both PUBLIC.** Check each shot for real names before
+    committing; a dev DB may be unobfuscated. Never screenshot prod.
 - **claude-in-chrome skill** uses Ben's browser session for SSO-gated UIs: Argo CD, GitHub
   Actions, the rulesets page, samuel-dev on k8s.
 - **Google Workspace MCP** can mine existing CISL/NCAR Drive decks for framing.
 - **pptx visual QA goes through LibreOffice** (installed 2026-09-29, §7): run
   `soffice --headless --convert-to pdf --outdir <scratch> deck.pptx`, then read the PDF pages.
-  Fonts fall back to a serif, so this checks layout only. The ncar-beamer PDF is read directly,
+  Under Claude Code's sandbox it cannot see the installed fonts and falls back to a serif; give
+  it a scratch profile with Poppins in `user/fonts/` (`-env:UserInstallation=...`) to see the
+  real type (§7). The ncar-beamer PDF is read directly,
   and the revealjs HTML is reviewed with Playwright screenshots.
 
 ## 7. Open questions
@@ -649,17 +655,23 @@ are in the slide notes.
 - [x] Format strategy: superseded by the mixed, per-part strategy in §13 (2026-09-29).
 - [x] LibreOffice installed 2026-09-29 (26.8.0, `brew install --cask --appdir=~/Applications libreoffice`; the `--appdir` avoids the `sudo` prompt that fails under `!`). Verified on `sam_and_pbs.pptx`: 17 s to PDF. Caveats:
   - LibreOffice ignores the theme-font mapping, so slides render in a serif fallback, not Poppins. Treat it as a check for overflow, splits and diagrams, not for exact wrapping.
+    **Corrected 2026-10-02:** the cause was the sandbox, not the theme. Sandboxed `soffice` cannot read `~/Library/Fonts` (not even Helvetica). Copying the Poppins TTFs into a scratch profile's `user/fonts/` renders real Poppins.
   - It surfaced a real bug: every slide's date footer reads the literal text `last-modified`, because `date: last-modified` reaches pandoc's footer unresolved. Root cause: the leading Emacs mode-line comment above the front matter. Filed as quarto-docs-framework#7 and fixed by framework PR #8 (merged 2026-09-29). SAMuel deck files must start with `---`. The ncar-beamer PDF shows the same bug on its title slide ("LAST-MODIFIED"), so the fix belongs in the shared `date:` handling, not in one format.
   Original path note: `brew install --cask libreoffice`, which puts an `soffice` wrapper on PATH (conda-forge has no package). QA loop: `soffice --headless --convert-to pdf --outdir <scratch> deck.pptx`, then read the PDF pages. Use a throwaway `-env:UserInstallation=file:///<scratch>/lo-profile` so a running GUI instance doesn't block headless mode.
 - [x] The retirement of `docs/presentations/` rides this PR (#679), decided 2026-09-29.
 - [x] Branding: resolved 2026-09-29. The framework's `template.pptx` has already been reworked (framework PR #2); use it as is.
 - [ ] Pick the §11 devices and part titles; draft the title slide first as the tone test.
-- [x] **Branch vs `main` in the framework:** resolved 2026-09-29. Work on the `samuel` branch
+- [x] **Branch vs `main` in the framework:** resolved 2026-09-29, superseded 2026-10-02 (next
+  item). Work on the `samuel` branch
   for the long haul, and maybe merge to `main` much later. Rebase `samuel` onto `main` whenever
   framework fixes land (`--force-with-lease`; the branch holds only `docs/samuel/` commits). (`sam_and_pbs` and `new_user_samples` landed on `main`; SAMuel
   deliberately does not.)
 - [x] **Does the docs gate follow the local symlink?** No. `test_docs.py` builds its corpus from
-  `git ls-files` and skips symlinks, so an ignored symlink is never read.
+  `git ls-files` and skips symlinks, so an ignored symlink is never read. Moot since 2026-10-02:
+  the decks are tracked here, under the `docs/presentations/` record prefix.
+- [x] **The long-lived `samuel` branch:** retired 2026-10-02. Every framework PR meant a rebase
+  of ~44 deck commits. The decks moved here, with the framework as a submodule (#702), and the
+  framework gained a CI job that builds a deck from that layout (framework #25).
 - [x] How much of `sam_and_pbs` (§12) to include by reference vs. summarize? Answered by Part 2 (2026-09-30): its concepts are retold lighter on math, with one PBS-tree slide included by reference.
 
 ## 8. Phases (one session each; tick as they land)
@@ -723,23 +735,22 @@ are in the slide notes.
 - [ ] **Phase 6 — Appendix + full-deck polish:** a consistent diagram style, a fact-refresh pass on
   `_variables.yml`, and a decision on publishing.
 
-Each phase closes with render → visual review → commit on the framework's `samuel` branch, and
-an update here (tick boxes, session log).
+Each phase closes with render → visual review → commit in this repo
+(`docs/presentations/samuel/`), and an update here (tick boxes, session log).
 
 ## 9. Verification
 
 - **Framework builds:**
-  - `make -C docs/samuel pptx html` builds with no `Couldn't find layout named` warnings and no
-    missing-image errors;
-  - `make -C docs/sample` still builds (back-compat).
+  - `make -C docs/presentations/samuel qa` passes (all decks match across formats, no findings),
+    with no `Couldn't find layout named` warnings and no missing-image errors;
+  - after moving the submodule pin, the same command still passes.
 - **pptx:** `samuel.pptx` opens in PowerPoint with no "Repair?" prompt, and Poppins is embedded.
 - **Visual review:** screenshot every slide of the HTML, plus the PDF-converted pptx. Look for
   overflow, mermaid legibility and broken images.
-- **This repo, after retirement:**
+- **This repo:**
   - `pytest tests/unit/gates/test_docs.py` passes.
-    - `tests/unit/gates/test_docs.py:30` lists `docs/presentations/` in `RECORD_PREFIXES`. Keep the
-      prefix while the README pointer lives there.
-    - The gate never sees the local symlink: its corpus is `git ls-files` (§7).
+    - `tests/unit/gates/test_docs.py:30` lists `docs/presentations/` in `RECORD_PREFIXES`, which
+      now covers the decks themselves. Keep it.
   - Leave the historical mentions in `docs/nrit-review-2026-05/` and
     `migrations/system_status/implemented/2026-05-04-update-prod.md` alone.
 
@@ -1016,6 +1027,27 @@ an update here (tick boxes, session log).
   - The survey found that API-key routes are rate-limited per IP, not per key (§14).
   - The NRIT review was Ben's request, the gate before going public outside the VPN.
 
+- **2026-10-02, pptx and PDF polish, then the move here.**
+  - **Framework #23:**
+    - pptx `#` dividers are NCAR Blue, as in the PDF and HTML: the template's Section
+      Header layout is generated by `build_divider_layout.py`, and `section_subtitle.py` adds
+      "SECTION n" and the tab;
+    - pptx tables are styled like the HTML by a new last step, `style_tables.py`.
+  - **Theme #10 and framework #24:** PDF tables in the same style. Bands with extra row height
+    pushed 3 slides into the footer, so rows keep their height.
+  - **Framework #25:** the framework can be a submodule. `_quarto.yml` reaches `common/` as
+    `_ncar/`, and the CI job `ci-consumer.yaml` builds a hello-world deck from a checkout at
+    `consumer/docs/presentations/framework`.
+  - **#702:** the decks moved here as one commit, from framework `samuel` at `6cb9fc5`. Changes:
+    - the framework is a submodule pinned at `0a75b41`;
+    - Part 2's CESM tree is a local `_tree_cesm.qmd`;
+    - the refresh scripts default to this checkout;
+    - `docs/presentations/.gitignore` re-includes a deck's `data/` against the repo-wide rule.
+
+    QA: 186 slides combined in every format, no findings; gates 557 passed.
+  - **Next:** once #702 merges, close the framework's draft `samuel` PR and delete its
+    `samuel` branch.
+
 ## 11. Voice, tone and the fun
 
 **SAMuel = SAM, updated for extended lifecycle.** That backronym is the deck's premise and its
@@ -1221,7 +1253,7 @@ puts the paragraph on the beamer section page; it is a framework `main` follow-u
   - **Where:** public claude.ai artifact `Tp4XaBDH7BmvUbPT6UUbtS`.
   - **Linked from:** the slide "Walk the pipeline yourself", as a linked screenshot.
   - **Each stop** links its workflow YAML and docs on sam-queries `main`.
-  - **Source:** vendored in framework `docs/samuel/companion/` (`7683b21`). The README there
+  - **Source:** vendored in `docs/presentations/samuel/companion/` (in the framework's `docs/samuel/companion/` until #702) (`7683b21`). The README there
     covers the build, the republish step and the screenshot command. That copy is canonical.
   - **Dropped:** the lanes timeline, because HPC deployment stays downplayed.
 - Appendix: a peer-repo dependency graph.
