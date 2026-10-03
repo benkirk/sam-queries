@@ -880,8 +880,7 @@ def get_allocation_usage_rows(
     Unlike get_allocation_summary_with_usage() nothing is grouped, so a project's
     ended and current allocations stay separate rows (the pace chart draws each).
     Charges count through the end of the ``as_of`` day; an allocation starting
-    after it reads 0. ``total_used`` is lifetime usage; ``window_used`` is the part
-    charged on or after ``window_start``. Disk occupancy is not substituted: callers
+    after it reads 0. ``total_used`` is lifetime usage. Disk occupancy is not substituted: callers
     wanting the disk capacity figure use get_allocation_summary_with_usage().
     """
     as_of_end = as_of.replace(hour=23, minute=59, second=59, microsecond=0)
@@ -909,15 +908,11 @@ def get_allocation_usage_rows(
             'start_date': alloc.start_date,
             'end_date': end,
         }
-        infos = [info]
-        if alloc.start_date < window_start:
-            infos.append({**info, 'key': ('window', alloc.allocation_id),
-                          'start_date': window_start})
         is_tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
         if is_tree_valid and not project.is_leaf():
-            subtree_infos.extend(infos)
+            subtree_infos.append(info)
         else:
-            account_infos.extend(infos)
+            account_infos.append(info)
 
     def _used(key):
         c = charges.get(key)
@@ -933,8 +928,6 @@ def get_allocation_usage_rows(
 
     out = []
     for alloc, res_name, _rt, _act, fac_name, at_name, projcode, _proj, _acct in rows:
-        used = _used(alloc.allocation_id)
-        window_key = ('window', alloc.allocation_id)
         out.append({
             'projcode': projcode,
             'resource': res_name,
@@ -944,8 +937,7 @@ def get_allocation_usage_rows(
             'start_date': alloc.start_date,
             'end_date': alloc.end_date,
             'total_amount': float(alloc.amount or 0.0),
-            'total_used': used,
-            'window_used': _used(window_key) if window_key in charges else used,
+            'total_used': _used(alloc.allocation_id),
         })
     return out
 
