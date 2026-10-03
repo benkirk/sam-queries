@@ -291,7 +291,7 @@ def build_facility_trees(grouped_data, overviews, type_rates, usage_overviews,
     slots = facility_slots(fid for fid, _, active in facilities if active)
     trees = {}
     for rn, by_facility in grouped_data.items():
-        storage = resource_types.get(rn) in ('DISK', 'ARCHIVE')
+        storage = resource_types.get(rn) in _STORAGE_RESOURCE_TYPES
         overview = {o['facility']: o for o in overviews.get(rn, [])}
         used_by_fac = {o['facility']: o.get('total_used', 0.0) for o in usage_overviews.get(rn, [])}
         rows = []
@@ -368,6 +368,17 @@ def get_resource_types(session) -> Dict[str, str]:
         .all()
 
     return {r.resource_name: r.resource_type for r in resources}
+
+
+#: Resource types whose "used" is occupancy, not charges accruing over time.
+_STORAGE_RESOURCE_TYPES = ('DISK', 'ARCHIVE')
+#: Resource types whose charges accrue over time, so a month's burn means something.
+_BURN_RESOURCE_TYPES = ('HPC', 'DAV')
+
+
+def _resource_type(resource_name):
+    """A resource's type string ('HPC', 'DISK', ...); None for an unknown name."""
+    return get_resource_types(db.session).get(resource_name)
 
 
 @bp.route('/')
@@ -638,7 +649,7 @@ def projects():
                                  elapsed_weights(per_project_usage, active_at))
     sunbursts = {}
     for rn, tree in trees.items():
-        storage = resource_types.get(rn) in ('DISK', 'ARCHIVE')
+        storage = resource_types.get(rn) in _STORAGE_RESOURCE_TYPES
         sunbursts[rn] = {
             'alloc': generate_allocation_sunburst(
                 sunburst_rows(tree, 'alloc'), center='Volume' if storage else 'Annual\nrate',
@@ -724,10 +735,7 @@ def htmx_pace_chart(resource_name):
     # The calendar's cache entries (rows and monthly charges over its 25-month
     # window), so either view warms the other. Disk keeps the active-only summary:
     # its "used" is current occupancy, which an ended allocation does not have.
-    resource = Resource.get_by_name(db.session, resource_name)
-    is_disk = (resource is not None and resource.resource_type is not None
-               and resource.resource_type.resource_type == 'DISK')
-    if is_disk:
+    if _resource_type(resource_name) == 'DISK':
         per_project_usage = cached_allocation_usage(
             session=db.session,
             resource_name=[resource_name],
@@ -739,8 +747,7 @@ def htmx_pace_chart(resource_name):
             root_only=True,
         )
         per_project_usage = filter_rows_by_facility(per_project_usage, selected_facilities)
-        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        per_project_usage = pace_segments(per_project_usage, None, burn_through(active_at, today),
+        per_project_usage = pace_segments(per_project_usage, None, _burn_through(active_at),
                                           active_at)
     else:
         start, end, per_project_usage = _calendar_rows(resource_name, active_at, selected_facilities)
@@ -827,22 +834,22 @@ def _calendar_rows(resource_name, active_at, selected_facilities):
     return start, end, rows
 
 
-#: Resource types whose charges accrue over time, so a month's burn means something.
-_BURN_RESOURCE_TYPES = ('HPC', 'DAV')
-
-
-def _calendar_mode(resource_name):
+def _calendar_mode(resource_type):
     """``(burnable, mode)``: ``mode`` is 'burn' only when asked for on an HPC/DAV resource."""
-    burnable = get_resource_types(db.session).get(resource_name) in _BURN_RESOURCE_TYPES
+    burnable = resource_type in _BURN_RESOURCE_TYPES
     return burnable, 'burn' if burnable and request.args.get('mode') == 'burn' else 'used'
+
+
+def _burn_through(active_at):
+    """Where burn shading stops for ``active_at``: `burn_through` against today's midnight."""
+    return burn_through(active_at, datetime.now().replace(hour=0, minute=0, second=0, microsecond=0))
 
 
 def _calendar_burn(resource_name, active_at, start, end):
     """``(burns, through)``: the cached monthly charges, and where their shading stops."""
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     return (cached_allocation_burn(db.session, resource_name=[resource_name],
                                    window_start=start, window_end=end, as_of=active_at),
-            burn_through(active_at, today))
+            _burn_through(active_at))
 
 
 @bp.route('/htmx/calendar/<resource_name>')
@@ -853,7 +860,7 @@ def htmx_calendar(resource_name):
     each type's project rows load lazily from `htmx_calendar_rows`."""
     active_at, requested_facilities, selected_facilities = _fragment_scope()
     start, end, rows = _calendar_rows(resource_name, active_at, selected_facilities)
-    burnable, mode = _calendar_mode(resource_name)
+    burnable, mode = _calendar_mode(_resource_type(resource_name))
     burns, through = (_calendar_burn(resource_name, active_at, start, end) if mode == 'burn'
                       else (None, None))
     facilities = _facility_index()
@@ -887,10 +894,11 @@ def htmx_calendar_rows(resource_name):
     start, end, rows = _calendar_rows(resource_name, active_at, selected_facilities)
     rows = [r for r in rows
             if r['facility'] == facility and (r['allocation_type'] or '') == allocation_type]
-    _, mode = _calendar_mode(resource_name)
+    resource_type = _resource_type(resource_name)
+    _, mode = _calendar_mode(resource_type)
     burns, through = (_calendar_burn(resource_name, active_at, start, end) if mode == 'burn'
                       else (None, None))
-    if get_resource_types(db.session).get(resource_name) in ('DISK', 'ARCHIVE'):
+    if resource_type in _STORAGE_RESOURCE_TYPES:
         # Its rows carry summed charges, not occupancy: draw the spans unfilled.
         rows = [{**r, 'total_used': None} for r in rows]
     return render_template(
