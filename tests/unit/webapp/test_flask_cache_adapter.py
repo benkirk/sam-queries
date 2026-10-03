@@ -89,7 +89,7 @@ class TestForeignPrefixCrossCheck:
                             if getattr(a, '_prefix', None) is not None]
             # Every construction must be live under fakeredis…
             assert sorted(a.name for a in ttl_adapters) == [
-                'allocation_usage', 'awards', 'awards_search',
+                'allocation_burn', 'allocation_usage', 'awards', 'awards_search',
                 'fs_scans', 'fs_scans_filtered', 'jobs', 'jobs_recent',
                 'xras_lookups', 'xras_pending', 'xras_people', 'xras_resources',
             ]

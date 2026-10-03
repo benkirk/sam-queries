@@ -21,11 +21,13 @@ Functions:
 from datetime import datetime, timedelta
 from typing import Any, List, Optional, Dict, Tuple, Union
 
-from sqlalchemy import or_, func
+from sqlalchemy import or_, func, text
 from sqlalchemy.orm import Session, noload
 
+from sam.accounting.calculator import get_charge_models_for_activity
+
 from sam.core.users import User
-from sam.projects.projects import Project
+from sam.projects.projects import Project, values_cte_supported
 from sam.accounting.allocations import (
     Allocation,
     AllocationTransaction,
@@ -36,6 +38,7 @@ from sam.resources.resources import Resource, ResourceType
 from sam.resources.facilities import Facility, Panel
 from sam.accounting.accounts import Account
 from sam.accounting.adjustments import ChargeAdjustment
+from sam.sqlcompat import month_key, row_constructor
 
 
 # ============================================================================
@@ -937,12 +940,108 @@ def get_allocation_usage_rows(
             'resource': res_name,
             'facility': fac_name,
             'allocation_type': at_name,
+            'allocation_id': alloc.allocation_id,
             'start_date': alloc.start_date,
             'end_date': alloc.end_date,
             'total_amount': float(alloc.amount or 0.0),
             'total_used': used,
             'window_used': _used(window_key) if window_key in charges else used,
         })
+    return out
+
+
+_BURN_ACCOUNT_JOIN = """
+    JOIN {anchors} ON t.account_id = a.account_id
+                  AND t.{date} BETWEEN a.start_date AND a.end_date"""
+
+_BURN_SUBTREE_JOIN = """
+    JOIN account acc ON t.account_id = acc.account_id
+    JOIN project p   ON acc.project_id = p.project_id
+    JOIN {anchors} ON p.tree_root = a.tree_root
+                  AND p.tree_left >= a.tree_left AND p.tree_right <= a.tree_right
+                  AND acc.resource_id = a.resource_id
+                  AND t.{date} BETWEEN a.start_date AND a.end_date"""
+
+_BURN_ACCOUNT_COLS = ('account_id', 'start_date', 'end_date')
+_BURN_SUBTREE_COLS = ('tree_root', 'tree_left', 'tree_right', 'resource_id',
+                      'start_date', 'end_date')
+
+
+def _anchors_table(session, cols, n) -> str:
+    """The anchors as a derived table ``a``: VALUES rows, or a UNION ALL where VALUES is unsupported."""
+    names = ('anchor_key',) + cols
+    if values_cte_supported(session):
+        row = row_constructor(session)
+        rows = ', '.join(f"{row}(:ak{i}, {', '.join(f':{c}{i}' for c in cols)})" for i in range(n))
+        return f"(VALUES {rows}) AS a ({', '.join(names)})"
+    selects = ' UNION ALL '.join(
+        f"SELECT :ak{i} AS anchor_key, {', '.join(f':{c}{i} AS {c}' for c in cols)}" for i in range(n))
+    return f'({selects}) AS a'
+
+
+def _add_month_sums(session, infos, cols, join, table, value, date_col, out) -> None:
+    """Add one table's per-anchor monthly sums into ``out[info['key']][yyyymm]``."""
+    if not infos:
+        return
+    params = {}
+    for i, info in enumerate(infos):
+        params[f'ak{i}'] = i
+        params.update({f'{c}{i}': info[c] for c in cols})
+    month = month_key(f't.{date_col}')
+    sql = text(f"""
+        SELECT a.anchor_key, {month}, SUM(COALESCE(t.{value}, 0))
+        FROM {table} t {join.format(anchors=_anchors_table(session, cols, len(infos)), date=date_col)}
+        GROUP BY a.anchor_key, {month}""")
+    for anchor_key, ym, amount in session.execute(sql, params):
+        if amount:
+            cells = out.setdefault(infos[anchor_key]['key'], {})
+            cells[int(ym)] = cells.get(int(ym), 0.0) + float(amount)
+
+
+def get_allocation_burn(
+    session: Session,
+    *,
+    resource_name: Union[str, List[str]],
+    window_start: datetime,
+    window_end: datetime,
+    as_of: datetime,
+    include_adjustments: bool = True,
+) -> Dict[int, Dict[int, float]]:
+    """``{allocation_id: {yyyymm: charges}}`` over get_allocation_usage_rows()'s allocations, each
+    within its own dates, the window and the end of the ``as_of`` day; empty months are absent.
+    Per-anchor dates ride in the anchors table: per path, one query per charge model + adjustments."""
+    as_of_end = as_of.replace(hour=23, minute=59, second=59, microsecond=0)
+    rows = _fetch_all_allocations(
+        session, resource_name, None, None, None,
+        active_only=False, check_date=as_of_end, root_only=True,
+        overlaps=(window_start, window_end),
+    )
+    paths = {'subtree': {}, 'account': {}}   # path -> activity_type -> [info]
+    for alloc, _rn, _rt, activity_type, _fn, _atn, _pc, project, account in rows:
+        lo = max(alloc.start_date, window_start)
+        hi = min(alloc.end_date or as_of_end, as_of_end, window_end)
+        if hi < lo:
+            continue
+        info = {'key': alloc.allocation_id, 'account_id': alloc.account_id,
+                'resource_id': account.resource_id, 'tree_root': project.tree_root,
+                'tree_left': project.tree_left, 'tree_right': project.tree_right,
+                'start_date': lo, 'end_date': hi}
+        is_tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
+        path = 'subtree' if is_tree_valid and not project.is_leaf() else 'account'
+        paths[path].setdefault(activity_type, []).append(info)
+
+    out: Dict[int, Dict[int, float]] = {}
+    for path, by_activity in paths.items():
+        cols, join = ((_BURN_SUBTREE_COLS, _BURN_SUBTREE_JOIN) if path == 'subtree'
+                      else (_BURN_ACCOUNT_COLS, _BURN_ACCOUNT_JOIN))
+        for activity_type, infos in by_activity.items():
+            for model in get_charge_models_for_activity(activity_type).values():
+                _add_month_sums(session, infos, cols, join, model.__tablename__,
+                                'charges', 'activity_date', out)
+        if include_adjustments:
+            infos = [i for group in by_activity.values() for i in group]
+            _add_month_sums(session, infos, cols, join, 'charge_adjustment',
+                            'amount', 'adjustment_date', out)
     return out
 
 
