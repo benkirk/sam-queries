@@ -23,6 +23,7 @@ def make_comp_charge_summary(
     num_jobs: int = 1,
     charges: float = 1.0,
     core_hours: float = 1.0,
+    account=None,
 ) -> CompChargeSummary:
     """Build and flush a CompChargeSummary row, auto-building a Queue if needed.
 
@@ -46,6 +47,7 @@ def make_comp_charge_summary(
         num_jobs=num_jobs,
         charges=charges,
         core_hours=core_hours,
+        account_id=account.account_id if account is not None else None,
     )
     session.add(row)
     session.flush()

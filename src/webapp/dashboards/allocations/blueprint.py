@@ -34,7 +34,8 @@ from sam.queries.charges import (
     get_recent_charge_adjustments,
 )
 from sam.queries.usage_cache import (
-    cached_allocation_usage, cached_allocation_usage_rows, purge_usage_cache, usage_cache_info,
+    cached_allocation_usage, cached_allocation_usage_rows, cached_charges_by_facility_type,
+    purge_usage_cache, usage_cache_info,
 )
 from sam.queries.lookups import find_project_by_code
 from sam.export import Column, build_workbook
@@ -298,6 +299,24 @@ def sunburst_rows(tree, measure):
     return [{'id': r['id'], 'facility': r['facility'], 'slot': r['slot'], 'value': r[measure],
              'types': [{'name': t['name'], 'value': t[measure]} for t in r['types']]}
             for r in tree]
+
+
+def window_sunburst_rows(charges, facilities, scale):
+    """Two-ring input from `get_charges_by_facility_type` rows, each value times ``scale``,
+    facilities in `build_facility_trees` order so hues and positions match the rate ring."""
+    ids = {name: fid for fid, name, _ in facilities}
+    slots = facility_slots(fid for fid, _, active in facilities if active)
+    by_facility = {}
+    for row in charges:
+        types = by_facility.setdefault(row['facility'], {})
+        name = row['allocation_type'] or 'Unknown'
+        types[name] = types.get(name, 0.0) + row['charges'] * scale
+    rows = [{'id': ids.get(fac), 'facility': fac or 'Unknown', 'slot': slots.get(ids.get(fac)),
+             'value': sum(types.values()),
+             'types': [{'name': n, 'value': v} for n, v in sorted(types.items())]}
+            for fac, types in by_facility.items()]
+    rows.sort(key=lambda r: (r['slot'] is None, r['id'] is None, r['id'] or 0, r['facility']))
+    return rows
 
 
 def get_resource_types(session) -> Dict[str, str]:
@@ -588,8 +607,10 @@ def projects():
             'alloc': generate_allocation_sunburst(
                 sunburst_rows(tree, 'alloc'), center='Volume' if storage else 'Annual\nrate',
                 layout=layout, theme=theme),
+            # HPC/DAV usage loads as `htmx_used_sunburst`, over a trailing window.
             'used': generate_allocation_sunburst(
-                sunburst_rows(tree, 'used'), center='Used', layout=layout, theme=theme),
+                sunburst_rows(tree, 'used'), center='Used', layout=layout, theme=theme)
+            if storage else None,
         }
 
     # Pace charts render via HTMX, one loader per resource. Deferring the SVG
@@ -616,6 +637,26 @@ def projects():
 _VALID_PACE_SORT_BY = ('size', 'past', 'future')
 
 
+def _chart_fragment_scope():
+    """``(active_at, requested_facilities, selected_facilities)`` for a chart fragment.
+
+    Same active_at semantics as index(), but bad input falls back to today silently:
+    an HTMX swap into a chart pane is the wrong place for a top-level alert. The
+    facility clamp matches index(), so a WNA-scoped user gets WNA-only rows even
+    though the URL omits ?facilities=; unscoped users get None (no filter).
+    """
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    try:
+        active_at = datetime.strptime(request.args.get('active_at') or '', '%Y-%m-%d')
+    except ValueError:
+        active_at = today
+    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
+    requested = request.args.getlist('facilities')
+    selected = apply_facility_scope(requested, Permission.VIEW_PROJECTS,
+                                    default=(sorted(allowed) if allowed is not None else None))
+    return active_at, requested, selected
+
+
 @bp.route('/htmx/pace-chart/<resource_name>')
 @login_required
 @require_permission_any_facility(Permission.VIEW_PROJECTS)
@@ -631,29 +672,7 @@ def htmx_pace_chart(resource_name):
     if sort_by not in _VALID_PACE_SORT_BY:
         sort_by = 'size'
 
-    # Same active_at semantics as index(), but with no flash on bad
-    # input — an HTMX swap into a chart pane is the wrong place for a
-    # top-level alert. Silent fallback to today matches what callers
-    # would see if they hit the route with no arg at all.
-    active_at_str = request.args.get('active_at')
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    if active_at_str:
-        try:
-            active_at = datetime.strptime(active_at_str, '%Y-%m-%d')
-        except ValueError:
-            active_at = today
-    else:
-        active_at = today
-
-    # Facility-scope clamp — identical shape to index() so a WNA-scoped
-    # user gets WNA-only rows on the chart even though the URL omits
-    # ?facilities=. Unscoped users get None -> no filter.
-    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
-    requested_facilities = request.args.getlist('facilities')
-    selected_facilities = apply_facility_scope(
-        requested_facilities, Permission.VIEW_PROJECTS,
-        default=(sorted(allowed) if allowed is not None else None),
-    )
+    active_at, requested_facilities, selected_facilities = _chart_fragment_scope()
 
     # One row per allocation across the drawn window, so allocations that ended
     # or start inside it get their bands. Disk keeps the active-only summary:
@@ -712,6 +731,42 @@ def htmx_pace_chart(resource_name):
         sort_by=sort_by,
         active_at=active_at.strftime('%Y-%m-%d'),
         chart_dom_id=chart_dom_id,
+        selector_kwargs=selector_kwargs,
+    )
+
+
+#: The Used sunburst's trailing windows, in days; the last is the default.
+_USED_WINDOW_DAYS = (30, 90, 180, 365)
+
+
+@bp.route('/htmx/used-sunburst/<resource_name>')
+@login_required
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
+def htmx_used_sunburst(resource_name):
+    """An HPC/DAV resource's Used sunburst: charges over a trailing window, across
+    allocation renewals, at an annual rate so it reads against the Annual rate ring."""
+    days = request.args.get('days', type=int)
+    if days not in _USED_WINDOW_DAYS:
+        days = _USED_WINDOW_DAYS[-1]
+    active_at, requested_facilities, selected_facilities = _chart_fragment_scope()
+
+    charges = cached_charges_by_facility_type(
+        db.session, resource_names=[resource_name],
+        start=active_at - timedelta(days=days - 1), end=active_at)
+    charges = filter_rows_by_facility(charges, selected_facilities)
+    facilities = [(f.facility_id, f.facility_name, f.is_active) for f in db.session.query(Facility)]
+    chart_svg = generate_allocation_sunburst(
+        window_sunburst_rows(charges, facilities, 365 / days), center='Use\nrate',
+        layout=read_layout(), theme=read_theme())
+
+    selector_kwargs = {'active_at': active_at.strftime('%Y-%m-%d')}
+    if requested_facilities:   # carried forward, or a click widens a scoped chart
+        selector_kwargs['facilities'] = requested_facilities
+    return render_template(
+        'dashboards/allocations/partials/used_sunburst.html',
+        resource_name=resource_name, chart_svg=chart_svg, days=days,
+        window_days=_USED_WINDOW_DAYS, active_at=active_at,
+        chart_dom_id='used-sunburst-' + resource_name.replace(' ', '_'),
         selector_kwargs=selector_kwargs,
     )
 
