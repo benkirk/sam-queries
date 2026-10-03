@@ -6,8 +6,9 @@ from unittest.mock import patch
 import pytest
 
 from webapp.dashboards.allocations import blueprint
+from webapp.dashboards.allocations.burn import burn_class, burn_key, burn_through, recent_rate, runs_out
 from webapp.dashboards.allocations.calendar import (
-    burn_cells, burn_class, burn_key, burn_through, calendar_group_burn, calendar_groups, calendar_months, calendar_rows, calendar_window,
+    burn_cells, calendar_group_burn, calendar_groups, calendar_months, calendar_rows, calendar_window,
     group_burn,
 )
 
@@ -173,6 +174,55 @@ class TestBurn:
             '<0.25×', '0.25–0.75×', '0.75–1.25×', '1.25–2×', '≥2×']
 
 
+
+class TestRunOut:
+    # 365 days; from Oct 1 the 90-day look-back opens Jul 3, so July counts 29 of its 31 days.
+    YEAR = (datetime(2026, 1, 1), datetime(2027, 1, 1))
+    OCT = datetime(2026, 10, 1)
+    TWO_A_DAY = {202607: 62.0, 202608: 62.0, 202609: 60.0}
+
+    def _row(self, used, **kw):
+        return _row('A', *kw.pop('span', self.YEAR), amount=365.0, used=used, allocation_id=7, **kw)
+
+    def test_recent_rate_counts_a_partial_month_pro_rata(self):
+        assert recent_rate(self._row(0), self.TWO_A_DAY, self.OCT) == pytest.approx(2.0)
+        assert recent_rate(self._row(0), {202607: 31.0}, self.OCT) == pytest.approx(29 / 90)
+
+    def test_recent_rate_counts_the_current_month_through_the_day(self):
+        assert recent_rate(self._row(0), {202610: 28.0}, datetime(2026, 10, 15)) == pytest.approx(28 / 90)
+
+    def test_recent_rate_starts_at_the_start_date(self):
+        row = self._row(0, span=(datetime(2026, 9, 1), datetime(2027, 9, 1)))
+        assert recent_rate(row, {202609: 60.0}, self.OCT) == pytest.approx(2.0)
+        assert recent_rate(row, {}, datetime(2026, 9, 1)) == 0.0
+
+    def test_date_is_the_balance_at_the_recent_rate(self):
+        # 120 left at 2/day: 60 days, Nov 30, which is 32 days before the end.
+        assert runs_out(self._row(245.0), self.TWO_A_DAY, self.OCT) == datetime(2026, 11, 30)
+
+    def test_none_within_the_margin_or_without_a_rate_or_balance(self):
+        assert runs_out(self._row(225.0), self.TWO_A_DAY, self.OCT) is None   # Dec 10: 22 days left
+        assert runs_out(self._row(245.0), {}, self.OCT) is None
+        assert runs_out(self._row(365.0), self.TWO_A_DAY, self.OCT) is None
+        assert runs_out(self._row(400.0), self.TWO_A_DAY, self.OCT) is None
+        assert runs_out(self._row(0.0), {202609: 1e-9}, self.OCT) is None      # past datetime.max
+
+    def test_none_unless_current_and_burnable(self):
+        assert runs_out(self._row(245.0, span=(datetime(2026, 1, 1), None)), self.TWO_A_DAY, self.OCT) is None
+        assert runs_out(self._row(245.0, span=(datetime(2025, 1, 1), datetime(2026, 9, 1))),
+                        self.TWO_A_DAY, self.OCT) is None
+        assert runs_out(self._row(0.0, span=(datetime(2026, 11, 1), datetime(2027, 11, 1))),
+                        self.TWO_A_DAY, self.OCT) is None
+
+    def test_bar_places_the_mark_in_percent_of_itself(self):
+        start, end = calendar_window(AT)
+        (p,) = calendar_rows([self._row(245.0)], start, end, AT, burns={7: self.TWO_A_DAY}, through=self.OCT)
+        bar = p['bars'][0]
+        assert bar['runs_out'] == datetime(2026, 11, 30)
+        assert bar['runs_out_left'] == pytest.approx(333 / 365 * 100)
+        (p,) = calendar_rows([self._row(225.0)], start, end, AT, burns={7: self.TWO_A_DAY}, through=self.OCT)
+        assert 'runs_out' not in p['bars'][0]
+
 @pytest.fixture
 def captured():
     seen = {}
@@ -232,7 +282,7 @@ def test_burn_mode_draws_group_strips_and_forwards_the_mode(auth_client, capture
     body = auth_client.get('/allocations/htmx/calendar/Derecho?active_at=2026-10-03&mode=burn'
                            '&facilities=UNIV').get_data(as_text=True)
     assert burn['query']['as_of'] == AT and burn['query']['window_start'] == datetime(2025, 10, 1)
-    assert 'alloc-calendar cal-burn' in body and 'burn-key' in body
+    assert 'alloc-calendar cal-burn' in body and 'burn-key' in body and 'burn-runout-swatch' in body
     assert body.count('class="cal-strip"') == 3          # UNIV and its two types
     assert body.count('mode=burn&amp;') + body.count('mode=burn"') >= 3
     assert 'Mar 2026: 50 charged' in body
@@ -242,6 +292,18 @@ def test_burn_rows_carry_cells_instead_of_the_fill_label(auth_client, captured, 
     body = auth_client.get('/allocations/htmx/calendar/Derecho/rows?facility=UNIV&allocation_type=Small'
                            '&active_at=2026-10-03&mode=burn').get_data(as_text=True)
     assert 'burn-cell burn-' in body and 'cal-bar-label' not in body
+
+
+def test_runout_mark_renders_in_burn_mode_only(auth_client, captured):
+    # UNIV0001: 60 left on Dec 31; ~1.9/day over the look-back runs out early in November.
+    hot = {1: {202607: 60.0, 202608: 60.0, 202609: 60.0}}
+    url = ('/allocations/htmx/calendar/Derecho/rows?facility=UNIV&allocation_type=Small'
+           '&active_at=2026-10-03')
+    with patch.object(blueprint, 'cached_allocation_burn', return_value=hot):
+        burn_body = auth_client.get(url + '&mode=burn').get_data(as_text=True)
+        used_body = auth_client.get(url).get_data(as_text=True)
+    assert 'class="burn-runout"' in burn_body and 'runs out about 2026-11-' in burn_body
+    assert 'burn-runout' not in used_body and 'runs out' not in used_body
 
 
 def test_storage_offers_no_burn(auth_client, captured, burn, monkeypatch):

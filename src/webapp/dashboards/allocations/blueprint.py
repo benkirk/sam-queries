@@ -57,8 +57,9 @@ from ..charts import (
     PACE_WINDOW_DAYS,
 )
 from ..charts.theme import facility_slots
+from .burn import burn_key, burn_through
 from .calendar import (
-    burn_key, burn_through, calendar_group_burn, calendar_groups, calendar_months, calendar_rows, calendar_window,
+    calendar_group_burn, calendar_groups, calendar_months, calendar_rows, calendar_window,
 )
 
 from . import bp

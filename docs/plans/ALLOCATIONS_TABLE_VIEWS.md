@@ -159,11 +159,36 @@ the shape matches `get_allocation_usage_rows`, whose ±180-day Pace window costs
      dark midpoint 1.6:1 on the facility rows' `--surface-secondary`.
 4. **Perf**: route query-count baselines; cold timing on samuel-dev Postgres. Over ~3 s cold on
    dev means prewarming today's entry (cache-only).
+5. **Future risk (decided 2026-10-03)**: a run-out tick on Burn bars, no "future risk" mode.
+   Ben asked about projects that ran cold and are ramping up. Local snapshot, as of 2026-10-03,
+   current allocations with >= 30 days left, Derecho (Casper in parentheses), 1,054 (1,156):
+
+   | Signal | Projects | Reading |
+   |---|---|---|
+   | Catch-up rate >= 1.25x (unspent / even share of time left) | 715, 68% (844) | Noise, and Pace already draws it |
+   | Last ~90 days >= 1.25x even pace | 124 (84) | |
+   | Cold before (< 0.75x), hot now, balance large | 40, 4% (28) | Real but small: 1.9% of remaining balance, ~+15M over 90 days |
+   | At the 90-day rate, runs out >= 30 days before its end | 89, 8% (54) | The actionable signal: a date |
+
+   So no toggle, no projected calendar cells, no facility demand forecast; the projected future
+   goes on the Pace chart instead (the follow-on PR stacked on this one). The burn
+   math moved to `allocations/burn.py` (no Flask, no matplotlib; gated in
+   `test_chart_module_boundaries.py`) so Pace can share it. `recent_rate` = charges per day over
+   the last 90 days (`RUNOUT_LOOKBACK_DAYS`; from the start date if later), a month cell partly
+   inside counting pro rata. `runs_out` = through + unspent / recent rate, only for a current
+   burnable allocation with a balance and a rate, and only when it lands >= 30 days
+   (`RUNOUT_MARGIN_DAYS`) before the end date; the day counts are compared before building the
+   date, because a trickle of charges overflows `datetime`. The bar gets a 2px `--data-burn-4`
+   tick with a `--surface-card` halo inside an 8px hover target, the date in its title and the
+   bar's, and a key item.
+   - **Measured** (local MySQL, as of 2026-10-03): 87 Derecho / 55 Casper run-outs (the analysis
+     counted 89 / 54); 80 / 51 draw, the rest fall past the window's end. UHWM0061: 8.9x even
+     pace over 90 days, 120 days left, runs out about 2026-10-29.
 
 ## Critical files
 
 - `src/webapp/dashboards/allocations/blueprint.py` (projects(), build_facility_trees, fragments)
-- `src/webapp/dashboards/allocations/calendar.py` (new)
+- `src/webapp/dashboards/allocations/calendar.py` (new), `burn.py` (burn math, run-out)
 - `src/sam/queries/allocations.py` (as-of fix, ~line 1161)
 - `src/webapp/templates/dashboards/allocations/projects.html` + new partials
 - `src/webapp/templates/dashboards/fragments/table_bits.html` (`tree_label_cell`, `alloc_meter`)

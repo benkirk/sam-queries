@@ -1,9 +1,14 @@
 {# Burn cells for the allocation calendar: one span per month, classed by its charges over an
-   even-pace share (calendar.py burn_cells / group_burn). Positions are percents of the parent. #}
+   even-pace share (calendar.py burn_cells / group_burn), and a bar's run-out tick (burn.py
+   runs_out). Positions are percents of the parent. #}
 {% macro burn_cells(cells) -%}
 {%- for c in cells %}<span class="burn-cell burn-{{ c.cls }}" style="left: {{ '%.4f' | format(c.left) }}%; width: {{ '%.4f' | format(c.width) }}%;" title="{{ c.month | fmt_date(fmt='%b %Y') }}: {{ c.charges | fmt_number }} charged ({{ c.ratio | fmt_factor(decimals=1) }} even pace)"></span>{% endfor -%}
 {%- endmacro %}
 
 {% macro burn_strip(cells) -%}
 <div class="cal-strip">{{ burn_cells(cells) }}</div>
+{%- endmacro %}
+
+{% macro runout_mark(bar) -%}
+<span class="burn-runout" style="left: {{ '%.4f' | format(bar.runs_out_left) }}%;" title="At its last-90-day rate, runs out about {{ bar.runs_out | fmt_date }}"></span>
 {%- endmacro %}

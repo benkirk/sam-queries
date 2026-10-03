@@ -26,6 +26,7 @@
             {% for cls, label in burn_key %}
             <span class="burn-key-item"><span class="burn-swatch burn-{{ cls }}"></span>{{ label }}</span>
             {% endfor %}
+            <span class="burn-key-item"><span class="burn-runout-swatch"></span>runs out early at its 90-day rate</span>
         </div>
         {% endif %}
     </div>
@@ -84,7 +85,8 @@
     <p class="small text-muted text-center mt-2 mb-0">
         {% if mode == 'burn' %}
         Each month of a bar is shaded by its charges against an even burn of the allocation over
-        its whole span; group rows add up their allocations. A faded end continues past the window.
+        its whole span; group rows add up their allocations. A tick marks where its last-90-day rate
+        would spend the balance at least 30 days before the end date. A faded end continues past the window.
         Charges through {{ active_at_dt | fmt_date }}.
         {% else %}
         Each bar spans an allocation and fills to its % used along its whole length; a faded end

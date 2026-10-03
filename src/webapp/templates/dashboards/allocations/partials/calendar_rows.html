@@ -1,7 +1,7 @@
 {# One facility/type group's projects in the allocation calendar (htmx_calendar_rows).
    Same column widths as calendar.html's table, so the bars line up with its month axis. #}
 {% from 'dashboards/fragments/project_bits.html' import project_link with context %}
-{% from 'dashboards/allocations/partials/_calendar_burn.html' import burn_cells %}
+{% from 'dashboards/allocations/partials/_calendar_burn.html' import burn_cells, runout_mark %}
 <table class="table table-sm align-middle mb-0 cal-table cal-rows">
     <tbody>
         {% for p in projects %}
@@ -15,8 +15,8 @@
                     <span class="cal-bar cal-{{ b.state }}{{ ' cal-clip-l' if b.clip_left }}{{ ' cal-clip-r' if b.clip_right }}{{ ' cal-over' if b.over }}"
                           {%- if slot %} data-fs="{{ slot }}"{% endif %}
                           style="left: {{ '%.4f' | format(b.left) }}%; width: {{ '%.4f' | format(b.width) }}%; --fill: {{ '%.2f' | format(b.fill) }}%; --lane: {{ b.lane }};"
-                          title="{{ p.projcode }}: {{ b.start_date | fmt_date }} to {{ b.end_date | fmt_date if b.end_date else 'open-ended' }}, {% if b.pct_used is not none %}{{ b.total_used | fmt_number }} of {{ b.total_amount | fmt_number }} used ({{ b.pct_used | fmt_pct }}){% else %}{{ b.total_amount | fmt_number }} allocated{% endif %}">
-                        {%- if mode == 'burn' %}{% if b.burn %}{{ burn_cells(b.burn) }}{% endif %}
+                          title="{{ p.projcode }}: {{ b.start_date | fmt_date }} to {{ b.end_date | fmt_date if b.end_date else 'open-ended' }}, {% if b.pct_used is not none %}{{ b.total_used | fmt_number }} of {{ b.total_amount | fmt_number }} used ({{ b.pct_used | fmt_pct }}){% else %}{{ b.total_amount | fmt_number }} allocated{% endif %}{% if mode == 'burn' and b.runs_out %}; at its last-90-day rate, runs out about {{ b.runs_out | fmt_date }}{% endif %}">
+                        {%- if mode == 'burn' %}{% if b.burn %}{{ burn_cells(b.burn) }}{% endif %}{% if b.runs_out %}{{ runout_mark(b) }}{% endif %}
                         {%- elif b.width > 6 and b.state != 'future' and b.pct_used is not none %}<span class="cal-bar-label">{{ b.pct_used | fmt_pct(decimals=0) }}</span>{% endif -%}
                     </span>
                     {% endfor %}

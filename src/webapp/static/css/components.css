@@ -839,6 +839,32 @@ tr.collapsing {
     background: var(--burn-color);
     box-shadow: inset -2px 0 0 var(--surface-card);
 }
+/* Run-out tick (burn.py runs_out): a 2px line in a wider hover target, haloed off the cells. */
+.burn-runout {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 0.5rem;
+    margin-left: -0.25rem;
+}
+.burn-runout::before,
+.burn-runout-swatch {
+    background: var(--data-burn-4);
+    box-shadow: 0 0 0 1px var(--surface-card);
+}
+.burn-runout::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(50% - 1px);
+    width: 2px;
+}
+.burn-runout-swatch {
+    width: 2px;
+    height: 0.875rem;
+    margin: 0 0.3125rem;
+}
 .cal-burn .cal-bar {
     background: transparent;
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-secondary) 55%, var(--surface-card));
