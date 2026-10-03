@@ -7,16 +7,18 @@ import pytest
 
 from webapp.dashboards.allocations import blueprint
 from webapp.dashboards.allocations.calendar import (
-    calendar_groups, calendar_months, calendar_rows, calendar_window,
+    burn_cells, burn_class, calendar_groups, calendar_months, calendar_rows, calendar_window,
+    group_burn,
 )
 
 AT = datetime(2026, 10, 3)
 
 
-def _row(projcode, start, end, amount=100.0, used=0.0, facility='UNIV', alloc_type='Small'):
+def _row(projcode, start, end, amount=100.0, used=0.0, facility='UNIV', alloc_type='Small',
+         allocation_id=None):
     return {'projcode': projcode, 'resource': 'Derecho', 'facility': facility,
             'allocation_type': alloc_type, 'start_date': start, 'end_date': end,
-            'total_amount': amount, 'total_used': used}
+            'total_amount': amount, 'total_used': used, 'allocation_id': allocation_id}
 
 
 class TestGeometry:
@@ -86,6 +88,66 @@ class TestGeometry:
 _ROWS = [_row('UNIV0001', datetime(2026, 1, 1), datetime(2026, 12, 31), used=40.0),
          _row('UNIV0002', datetime(2025, 1, 1), datetime(2025, 12, 31), used=90.0, alloc_type='Large'),
          _row('NCAR0001', datetime(2026, 4, 1), datetime(2027, 3, 31), facility='NCAR', alloc_type='NSC')]
+
+
+class TestBurn:
+    # 365 days: Jan 2026 through Dec 2026, so a 31-day month's even share is 31/365 of it.
+    YEAR = (datetime(2026, 1, 1), datetime(2027, 1, 1))
+
+    def test_classes_split_at_the_edges(self):
+        assert [burn_class(r) for r in (0, 0.24, 0.25, 0.74, 0.75, 1.24, 1.25, 1.99, 2, 9)] == \
+            [0, 0, 1, 1, 2, 2, 3, 3, 4, 4]
+
+    def test_cells_follow_months_and_stop_at_the_as_of_day(self):
+        start, end = calendar_window(AT)
+        row = _row('A', *self.YEAR, amount=365.0, allocation_id=7)
+        cells = burn_cells(row, {202601: 31.0, 202602: 56.0, 202610: 3.0}, start, end, AT)
+        assert len(cells) == 10                       # Jan..Oct, nothing after Oct 3
+        jan, feb = cells[0], cells[1]
+        assert jan['ratio'] == pytest.approx(1.0) and jan['cls'] == 2
+        assert feb['ratio'] == pytest.approx(2.0) and feb['cls'] == 4   # 56 over a 28-day share
+        assert cells[2]['charges'] == 0.0 and cells[2]['cls'] == 0
+        assert jan['left'] == 0.0 and feb['left'] == pytest.approx(31 / 365 * 100)
+        oct_ = cells[-1]                              # Oct 1 to the end of Oct 3: ~3 days
+        assert oct_['ratio'] == pytest.approx(1.0, rel=1e-4)
+        assert oct_['width'] == pytest.approx(3 / 365 * 100, rel=1e-4)
+
+    def test_cells_are_in_percent_of_the_clipped_bar(self):
+        start, end = calendar_window(AT)               # opens 2025-10-01
+        row = _row('A', datetime(2025, 7, 1), datetime(2026, 7, 1), amount=365.0, allocation_id=1)
+        cells = burn_cells(row, {202510: 31.0}, start, end, AT)
+        assert cells[0]['month'] == datetime(2025, 10, 1) and cells[0]['left'] == 0.0
+        assert sum(c['width'] for c in cells) == pytest.approx(100.0)
+        assert cells[0]['ratio'] == pytest.approx(1.0)
+
+    def test_no_cells_without_an_even_pace(self):
+        start, end = calendar_window(AT)
+        for row in (_row('A', datetime(2026, 1, 1), None, allocation_id=1),
+                    _row('A', *self.YEAR, amount=0.0, allocation_id=1),
+                    _row('A', *self.YEAR)):           # no allocation_id: a stale cached row
+            assert burn_cells(row, {}, start, end, AT) is None
+        future = _row('A', datetime(2026, 11, 1), datetime(2027, 11, 1), allocation_id=1)
+        assert burn_cells(future, {}, start, end, AT) == []
+
+    def test_rows_carry_burn_only_when_asked(self):
+        start, end = calendar_window(AT)
+        rows = [_row('A', *self.YEAR, amount=365.0, allocation_id=7)]
+        assert 'burn' not in calendar_rows(rows, start, end, AT)[0]['bars'][0]
+        (a,) = calendar_rows(rows, start, end, AT, burns={7: {202601: 31.0}})
+        assert a['bars'][0]['burn'][0]['cls'] == 2
+
+    def test_group_burn_sums_charges_over_shares(self):
+        start, end = calendar_window(AT)
+        rows = [_row('A', *self.YEAR, amount=365.0, allocation_id=1),
+                _row('B', *self.YEAR, amount=730.0, allocation_id=2),
+                _row('C', datetime(2026, 1, 1), None, allocation_id=3)]   # open-ended: ignored
+        cells = group_burn(rows, {1: {202603: 31.0}, 2: {202603: 31.0}, 3: {202603: 999.0}},
+                           start, end, AT)
+        mar = next(c for c in cells if c['month'] == datetime(2026, 3, 1))
+        assert mar['charges'] == 62.0 and mar['ratio'] == pytest.approx(62 / 93)
+        assert cells[0]['month'] == datetime(2026, 1, 1)
+        assert cells[-1]['month'] == datetime(2026, 10, 1)
+        assert mar['left'] == pytest.approx((datetime(2026, 3, 1) - start) / (end - start) * 100)
 
 
 @pytest.fixture
