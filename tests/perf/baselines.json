@@ -212,5 +212,9 @@
     "allocations_calendar_burn_rows_route": {
         "queries": 57,
         "notes": "measured 47 (2026-10-03): one type group's rows in Burn mode, cache off"
+    },
+    "allocations_pace_route": {
+        "queries": 55,
+        "notes": "measured 45 (2026-10-03) vs 38 on the +-180-day rows: +7 for the calendar's month sums, which it now shares, cache off"
     }
 }
