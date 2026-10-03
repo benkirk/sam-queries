@@ -1,0 +1,8 @@
+---
+title: "SAMuel, Appendix D"
+subtitle: "Failing Closed"
+author: "Ben Kirk, NCAR/CISL"
+date: last-modified
+---
+
+{{< include _D-security.qmd >}}

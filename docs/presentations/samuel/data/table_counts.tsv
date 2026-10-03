@@ -1,0 +1,8 @@
+what	count	method
+sam_db_tables	114	information_schema BASE TABLE, test DB
+sam_db_views	7	information_schema VIEW, test DB
+sam_orm_tables	108	SAM models, excluding views
+sam_orm_views	7	SAM models with info['is_view']
+sam_unmapped	6	in the DB, no model (names on stderr)
+sam_orm_missing	0	modeled, absent from the DB
+status_orm_tables	19	system_status models
