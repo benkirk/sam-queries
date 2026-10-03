@@ -47,7 +47,7 @@ PACE_WINDOW_DAYS = 180
 
 
 def _pace_other_color(theme):
-    """The inert "Other (N projects)" band.
+    """The inert "N other" band.
 
     Translucent so the ranked bands above it stay dominant, and derived from
     the theme rather than fixed: `--ncar-gray-light` recedes on a white card
@@ -256,8 +256,8 @@ class PaceChart(BaseChart):
                           for i, pc in enumerate(self.top_projs)}
 
         self.n_other_projs = len(self.rank_metric) - len(self.top_projs)
-        plural = 's' if self.n_other_projs != 1 else ''
-        self.other_label = f'Other ({self.n_other_projs} project{plural})'
+        # A count, not "Other (N projects)": the legend's widest row sets its width.
+        self.other_label = f'{fmt.number(self.n_other_projs)} other'
 
         # Collapse per-allocation bands into one band per color group BEFORE
         # handing to matplotlib. Stackplot emits one <path> per band; without

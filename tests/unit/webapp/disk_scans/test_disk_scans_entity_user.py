@@ -28,7 +28,7 @@ class TestDiskEntityPie:
                 for i, v in enumerate([50, 20, 10, 6, 5, 3, 2, 1, 1, 1, 0.5, 0.5])]
         svg = generate_disk_entity_pie_chart(data, 'owner')
         assert '#sam/row/data-owner-uid/1000' in svg     # top kept entity is clickable
-        assert 'Other (' in svg                  # long tail lumped into one slice
+        assert '7 other' in svg                  # long tail lumped into one slice
         assert '#sam/row/data-owner-uid/None' not in svg  # the Other slice has no sentinel
 
     def test_group_uses_group_prefix(self):

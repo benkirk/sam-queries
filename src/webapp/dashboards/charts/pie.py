@@ -208,7 +208,7 @@ class DiskEntityPie(_CumulativePie):
 
         if n_others > 0:
             keys.append(None)                  # inert slice
-            labels.append(f'Other ({n_others})')
+            labels.append(f'{fmt.number(n_others)} other')
             values.append(sum(values_desc[keep:]))
             colors.append(self.theme.muted_data)
 
@@ -259,7 +259,7 @@ class UserUsagePie(_CumulativePie):
 
         if n_others > 0:
             keys.append(None)                  # inert slice
-            labels.append(f'Other ({n_others})')
+            labels.append(f'{fmt.number(n_others)} other')
             values.append(sum(values_desc[keep:]))
             colors.append(self.theme.muted_data)
 
