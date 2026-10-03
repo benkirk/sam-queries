@@ -104,9 +104,42 @@ once remote CI is wanted. Commit 0 is this doc.
 - **Perf tier**: not extended; the sibling chart fragments (Pace, Used ring) have no baselines either.
 
 ### Later (not in this PR)
-- Monthly burn strip: needs per-allocation monthly charges (comp/dav summaries by `activity_date`,
-  subtree logic from `batch_get_subtree_charges`), ideally a rollup companion to the read model.
-- Calendar span pills; storage occupancy fills; facility/type aggregate bands on group rows.
+- Calendar span pills; storage occupancy fills.
+
+## Burn: the monthly burn strip (follow-on PR, branch `calendar-burn`)
+
+**Status: in progress (2026-10-03)** · stacked on #707 (base `allocations-table-views`; rebase
+`--onto origin/staging` and retarget once #707 merges) · one commit per stage below.
+
+Ben wants to see *when* the use happened: each month of a bar shaded by that month's charges
+against an even-pace share, and the same for the facility and type rows, whose tracks are empty
+in the Used view. The default calendar must stay as fast as it is.
+
+Decisions (2026-10-03): a **Used | Burn** toggle on the calendar, burn data fetched only when
+chosen; group rows show an aggregate strip in Burn mode. **No DDL**: read-only queries over the
+existing charge summaries plus the usage cache. A READ_MODEL.md rollup companion would be DDL,
+so it stays a last resort needing Ben's go-ahead.
+
+Data facts (local snapshot, Derecho, 25-month window): only 222 of 1,525 root allocations start
+on the 1st, so month buckets must be per allocation (a mid-month renewal splits its month), not
+per account. Per allocation x month is ~20k cells. No (account_id, activity_date) index exists;
+the shape matches `get_allocation_usage_rows`, whose ±180-day Pace window costs 9-11 s cold.
+
+1. **Query** `get_allocation_burn()` (`sam/queries/allocations.py`): the usage-rows allocation set
+   and subtree/account routing; per-anchor dates `[max(start, window start), min(end, end of the
+   as-of day, window end)]` in a VALUES CTE with `sqlcompat.month_key()` in the GROUP BY; charge
+   model per `get_charge_models_for_activity`, adjustments into the same cells. Returns
+   `{allocation_id: {yyyymm: charges}}`, cached as `cached_allocation_burn`. New code beside the
+   batch methods, which feed every usage figure and stay untouched.
+2. **Geometry** (`calendar.py`): `burn_cells` (one cell per month the bar covers up to the as-of
+   day, in % of the bar; ratio = charges / (amount x cell days / allocation days)), 5 classes at
+   `<0.25, <0.75, <1.25, <2, >=2`, and `group_burn` (summed charges over summed even shares per
+   window month). No cells for open-ended, zero-amount or future allocations.
+3. **UI**: `mode=burn` on `htmx_calendar` and its rows route (HPC/DAV only, persisted via
+   `data-chart-persist-keys="mode"`, forwarded into every rows URL); burn cells replace the fill
+   and % label; group rows carry a strip; a key under the calendar.
+4. **Perf**: route query-count baselines; cold timing on local MySQL and samuel-dev. Over ~3 s
+   cold on dev means prewarming today's entry (cache-only).
 
 ## Critical files
 
