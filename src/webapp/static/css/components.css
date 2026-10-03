@@ -636,6 +636,14 @@ tr.collapsing {
     height: auto;
     margin: 0 auto;
 }
+/* A lazy ring's placeholder holds about a ring's height, so `intersect` fires when its row
+   comes into view, not when its vertically centered spinner line does. */
+.sunburst-chart > [hx-trigger] {
+    display: flex;
+    min-height: 20rem;
+    align-items: center;
+    justify-content: center;
+}
 
 /* Allocations calendar: a label column plus a date track --cal-days wide. Bars and
    gridlines are placed in percents of the track, so the pixel scale lives here. */
