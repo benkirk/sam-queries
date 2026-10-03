@@ -20,7 +20,7 @@ P = Permission
 # facilities describe the plant, not who may use it.
 # WARNING: deletes are enumerated positively; every one is a SOFT retire
 # (generated CRUD sets active=False, the contract delete stamps end_date).
-# DELETE_RESOURCES hard-deletes disk-root and fair-share rows, and
+# DELETE_RESOURCES decommissions resources/machines and expires queues, and
 # DELETE_FACILITIES / DELETE_USERS / DELETE_GROUPS have no web surface, so all
 # four stay withheld. Known limitation: AllocationType and Panel live under
 # *_FACILITIES, so default amounts and fair-share percentages are not editable

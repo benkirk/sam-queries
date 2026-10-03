@@ -1,2 +1,17 @@
-# Local link to quarto-docs-framework/docs/samuel (see README.md).
-/samuel
+# Made by make in each deck directory (README.md): the links into the
+# framework, and the outputs. A deck that commits its own _quarto.yml
+# un-ignores it here.
+/*/_quarto.yml
+/*/_extensions
+/*/_ncar
+/*/.quarto/
+/*/_qa/
+/*/*_files/
+/*/*.pptx
+/*/*.pdf
+/*/*.html
+~$*
+
+# A deck's data/ is frozen input it commits, not the local working data the
+# repo-wide `data/` rule is for.
+!/*/data/

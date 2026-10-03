@@ -50,6 +50,23 @@
     {{ metric_pills(metric, fragment_url, target_id,
                     '#jobs-' ~ entity.form_key ~ '-params-' ~ target_id,
                     aria='Pie metric') }}
+    {% if facility_toggle %}
+    {# Same idiom as the histograms' Log scale switch: ?by_facility= is spelled
+       out, beating the round-trip form's copy, which the metric pills inherit. #}
+    <div class="form-check form-switch form-check-inline mb-0 me-1"
+         title="Facilities inside, each facility's top projects outside">
+      <input class="form-check-input" type="checkbox" role="switch"
+             id="jobs-byfac-{{ target_id }}"
+             {% if by_facility %}checked{% endif %}
+             hx-get="{{ fragment_url }}?by_facility={{ '0' if by_facility else '1' }}&metric={{ metric }}"
+             hx-target="#{{ target_id }}"
+             hx-include="#jobs-{{ entity.form_key }}-params-{{ target_id }}"
+             hx-swap="innerHTML">
+      <label class="form-check-label small text-muted" for="jobs-byfac-{{ target_id }}">
+        By facility
+      </label>
+    </div>
+    {% endif %}
     <span class="ms-auto text-muted small">
       {{ totals.get('job_count', 0) | fmt_number }} jobs ·
       {{ totals.get('cpu_hours', 0) | fmt_number }} CPU-h ·

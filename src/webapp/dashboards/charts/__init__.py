@@ -59,9 +59,7 @@ from webapp.dashboards.charts.pace import (  # noqa: F401
     pace_key_fields as _pace_key_fields,
 )
 from webapp.dashboards.charts.pie import (  # noqa: F401
-    AllocationSunburst,
     DiskEntityPie,
-    FairShareSunburst,
     JobsUsagePie,
     PieChart,
     UserUsagePie,
@@ -75,6 +73,11 @@ from webapp.dashboards.charts.stacked import (  # noqa: F401
     UsageTrendStackedChart,
     UserProjAreaChart,
     _USAGE_METRIC_YLABELS,
+)
+from webapp.dashboards.charts.sunburst import (  # noqa: F401
+    AllocationSunburst,
+    FairShareSunburst,
+    JobsFacilitySunburst,
 )
 from webapp.dashboards.charts.theme import (  # noqa: F401
     UNITY_NCAR_BLUE,
@@ -113,7 +116,7 @@ def _user_modal_url(username: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# The 15 cached charts.
+# The 16 cached charts.
 #
 # ORDER IS LOAD-BEARING: `chart_cached` appends to the cache registry at
 # decoration time, so this is the order rows appear on the admin Caching card.
@@ -145,11 +148,14 @@ generate_jobs_usage_pie_chart = chart_view(JobsUsagePie)
 # 6. Allocation pace chart.  charts/pace.py
 generate_pace_chart_matplotlib = chart_view(PaceChart)
 
-# 7. Fair-share sunburst (admin Facilities card).  charts/pie.py
+# 7. Fair-share sunburst (admin Facilities card).  charts/sunburst.py
 generate_fair_share_sunburst = chart_view(FairShareSunburst)
 
-# 8. Allocated / Used sunbursts (allocations dashboard).  charts/pie.py
+# 8. Allocated / Used sunbursts (allocations dashboard).  charts/sunburst.py
 generate_allocation_sunburst = chart_view(AllocationSunburst)
+
+# 9. Job-history By Project, grouped by facility.  charts/sunburst.py
+generate_jobs_facility_sunburst = chart_view(JobsFacilitySunburst)
 
 
 def generate_jobs_user_pie_chart(entity_data, metric='cpu_hours', *,
@@ -208,6 +214,7 @@ __all__ = [
     'generate_pace_chart_matplotlib',
     'generate_fair_share_sunburst',
     'generate_allocation_sunburst',
+    'generate_jobs_facility_sunburst',
     'PACE_WINDOW_DAYS',
     # The hierarchy, for anyone subclassing.
     'BaseChart',

@@ -35,7 +35,7 @@ card had. Lessons from that work apply directly.
 5. **Chart <-> table drill**: wedges and legend entries carry `RowDrill` sentinels;
    `svg-chart-links.js` opens the row (zero JS when rows use Bootstrap collapse).
 6. Direct labels only on big wedges; outer labels dropped on mobile; the table is the
-   table view; no hover layer yet (see the chart-framework follow-on).
+   table view; no hover layer yet (`CHART_HOVER_LAYER.md`).
 7. Fingerprint regen must only ADD entries; bind new `chart_view`s LAST.
 
 ## Proposed shape (per Resource tab)

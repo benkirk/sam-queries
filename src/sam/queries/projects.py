@@ -7,6 +7,7 @@ project data with various criteria and relationship loading strategies.
 Functions:
     search_projects_by_code_or_title: Search projects by code or title
     get_active_projects: Get all active projects, optionally by facility
+    project_facilities: Map many projcodes to their facility in one query
     search_projects_by_title: Search projects by title only
     get_projects_by_lead: Get projects led by a specific user
     get_project_with_full_details: Get project with all relationships loaded
@@ -14,7 +15,7 @@ Functions:
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from sqlalchemy import or_
 
@@ -86,6 +87,21 @@ def get_active_projects(session: Session, facility_name: str = None) -> List[Pro
             .filter(Facility.facility_name == facility_name)
 
     return query.all()
+
+
+def project_facilities(session: Session,
+                       projcodes: Iterable[str]) -> Dict[str, Tuple[int, str]]:
+    """``{projcode: (facility_id, facility_name)}``; projects with no facility are absent."""
+    codes = sorted({c for c in projcodes if c})
+    if not codes:
+        return {}
+    rows = session.query(Project.projcode, Facility.facility_id, Facility.facility_name)\
+        .join(AllocationType, Project.allocation_type_id == AllocationType.allocation_type_id)\
+        .join(Panel, AllocationType.panel_id == Panel.panel_id)\
+        .join(Facility, Panel.facility_id == Facility.facility_id)\
+        .filter(Project.projcode.in_(codes))\
+        .all()
+    return {code: (fid, name) for code, fid, name in rows}
 
 
 def get_projects_by_lead(session: Session, username: str) -> List[Project]:

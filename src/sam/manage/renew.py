@@ -147,7 +147,8 @@ def _truncate_overlapping_allocs(
 
     An overlap that starts on/after ``new_start`` sits fully inside the new
     window and cannot be truncated (``end < start``); it is genuinely
-    superseded, so it is soft-deleted — the double-click-same-period case.
+    superseded, so it is soft-deleted — the double-click-same-period case —
+    and its window collapsed to its start day (see ``_collapse_superseded``).
     Inheriting children of that fully-contained case ARE soft-deleted here (a
     soft-delete does not cascade). In the truncate branch they are instead
     skipped: ``update_allocation`` refuses an inheriting child, and the
@@ -181,8 +182,20 @@ def _truncate_overlapping_allocs(
                 comment=f"Superseded by renew on {period}",
                 old_values={},
             )
+            _collapse_superseded(alloc)
         touched.append(alloc)
     return touched
+
+
+def _collapse_superseded(alloc: Allocation) -> None:
+    """End a soft-deleted allocation on its start day, after its DELETE txn has snapshotted the real window.
+
+    Legacy SAM ignores ``allocation.deleted`` in sysacct, directory access and
+    the fairShareTree, so a superseded row left at full length stays live there
+    beside its replacement. An end before the start is not an option: legacy's
+    ``DateRange.validateStartEnd`` throws. See docs/plans/HARD_DELETE_AUDIT.md §1.
+    """
+    alloc.end_date = alloc.start_date.replace(hour=23, minute=59, second=59, microsecond=0)
 
 
 def find_source_allocations_at(

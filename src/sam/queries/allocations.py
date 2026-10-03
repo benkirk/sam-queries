@@ -24,6 +24,8 @@ from typing import Any, List, Optional, Dict, Tuple, Union
 from sqlalchemy import or_, func
 from sqlalchemy.orm import Session, noload
 
+from sam.accounting.calculator import anchor_sums, get_charge_models_for_activity
+
 from sam.core.users import User
 from sam.projects.projects import Project
 from sam.accounting.allocations import (
@@ -877,8 +879,7 @@ def get_allocation_usage_rows(
     Unlike get_allocation_summary_with_usage() nothing is grouped, so a project's
     ended and current allocations stay separate rows (the pace chart draws each).
     Charges count through the end of the ``as_of`` day; an allocation starting
-    after it reads 0. ``total_used`` is lifetime usage; ``window_used`` is the part
-    charged on or after ``window_start``. Disk occupancy is not substituted: callers
+    after it reads 0. ``total_used`` is lifetime usage. Disk occupancy is not substituted: callers
     wanting the disk capacity figure use get_allocation_summary_with_usage().
     """
     as_of_end = as_of.replace(hour=23, minute=59, second=59, microsecond=0)
@@ -906,15 +907,11 @@ def get_allocation_usage_rows(
             'start_date': alloc.start_date,
             'end_date': end,
         }
-        infos = [info]
-        if alloc.start_date < window_start:
-            infos.append({**info, 'key': ('window', alloc.allocation_id),
-                          'start_date': window_start})
         is_tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
         if is_tree_valid and not project.is_leaf():
-            subtree_infos.extend(infos)
+            subtree_infos.append(info)
         else:
-            account_infos.extend(infos)
+            account_infos.append(info)
 
     def _used(key):
         c = charges.get(key)
@@ -930,19 +927,69 @@ def get_allocation_usage_rows(
 
     out = []
     for alloc, res_name, _rt, _act, fac_name, at_name, projcode, _proj, _acct in rows:
-        used = _used(alloc.allocation_id)
-        window_key = ('window', alloc.allocation_id)
         out.append({
             'projcode': projcode,
             'resource': res_name,
             'facility': fac_name,
             'allocation_type': at_name,
+            'allocation_id': alloc.allocation_id,
             'start_date': alloc.start_date,
             'end_date': alloc.end_date,
             'total_amount': float(alloc.amount or 0.0),
-            'total_used': used,
-            'window_used': _used(window_key) if window_key in charges else used,
+            'total_used': _used(alloc.allocation_id),
         })
+    return out
+
+
+def get_allocation_burn(
+    session: Session,
+    *,
+    resource_name: Union[str, List[str]],
+    window_start: datetime,
+    window_end: datetime,
+    as_of: datetime,
+    include_adjustments: bool = True,
+) -> Dict[int, Dict[int, float]]:
+    """``{allocation_id: {yyyymm: charges}}`` over get_allocation_usage_rows()'s allocations, each
+    within its own dates, the window and the end of the ``as_of`` day; empty months are absent.
+    Per-anchor dates ride in the anchors table: per path, one query per charge model + adjustments."""
+    as_of_end = as_of.replace(hour=23, minute=59, second=59, microsecond=0)
+    rows = _fetch_all_allocations(
+        session, resource_name, None, None, None,
+        active_only=False, check_date=as_of_end, root_only=True,
+        overlaps=(window_start, window_end),
+    )
+    paths = {'subtree': {}, 'account': {}}   # path -> activity_type -> [info]
+    for alloc, _rn, _rt, activity_type, _fn, _atn, _pc, project, account in rows:
+        lo = max(alloc.start_date, window_start)
+        hi = min(alloc.end_date or as_of_end, as_of_end, window_end)
+        if hi < lo:
+            continue
+        info = {'key': alloc.allocation_id, 'account_id': alloc.account_id,
+                'resource_id': account.resource_id, 'tree_root': project.tree_root,
+                'tree_left': project.tree_left, 'tree_right': project.tree_right,
+                'start_date': lo, 'end_date': hi}
+        is_tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
+        path = 'subtree' if is_tree_valid and not project.is_leaf() else 'account'
+        paths[path].setdefault(activity_type, []).append(info)
+
+    out: Dict[int, Dict[int, float]] = {}
+
+    def _add(sums):
+        for key, ym, amount in sums:
+            cells = out.setdefault(key, {})
+            cells[ym] = cells.get(ym, 0.0) + amount
+
+    for path, by_activity in paths.items():
+        subtree = path == 'subtree'
+        for activity_type, infos in by_activity.items():
+            for model in get_charge_models_for_activity(activity_type).values():
+                _add(anchor_sums(session, infos, subtree=subtree, table=model.__tablename__,
+                                 value='charges', date_col='activity_date', by_month=True))
+        if include_adjustments:
+            infos = [i for group in by_activity.values() for i in group]
+            _add(anchor_sums(session, infos, subtree=subtree, table='charge_adjustment',
+                             value='amount', date_col='adjustment_date', by_month=True))
     return out
 
 
@@ -1132,6 +1179,8 @@ def get_allocation_summary_with_usage(
         return summary
 
     check_date = active_at if active_at is not None else datetime.now()
+    # Usage is as of check_date: charges after that day never count, as in get_allocation_usage_rows.
+    as_of_end = check_date.replace(hour=23, minute=59, second=59, microsecond=0)
 
     # Fetch ALL matching allocations in a single query, then group in Python.
     # This replaces the previous per-summary-row query loop (N+1 problem).
@@ -1158,7 +1207,7 @@ def get_allocation_summary_with_usage(
 
     for alloc_list in alloc_by_key.values():
         for alloc, res_name, res_type, project, account in alloc_list:
-            end_date = alloc.end_date if alloc.end_date else check_date
+            end_date = min(alloc.end_date, as_of_end) if alloc.end_date else as_of_end
             is_tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
             info = {
                 'key': alloc.allocation_id,
@@ -1218,7 +1267,7 @@ def get_allocation_summary_with_usage(
                 'tree_left':     root_project.tree_left,
                 'tree_right':    root_project.tree_right,
                 'start_date':    alloc.start_date,
-                'end_date':      alloc.end_date if alloc.end_date else check_date,
+                'end_date':      min(alloc.end_date, as_of_end) if alloc.end_date else as_of_end,
             })
 
     # Batch compute all charges in O(charge_models × date_groups) SQL queries

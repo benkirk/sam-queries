@@ -1,0 +1,624 @@
+# Who Talks to Whom
+
+Identity in, allocations both ways, usage in, access out, and the legacy SAM still beside us.
+
+## The whole neighborhood
+
+::: {.notes}
+Blue is SAMuel, grey is legacy SAM (still running), orange is the shared database, white is
+everyone else. Dashed edges are legacy-only traffic or deployment rather than data. Every box
+gets its own slide in this part except GitHub, which is Part 5's. Appendix A lists the repos
+behind these boxes. Three VMs on the legacy side: sam-app (the identity helpers), sam-tomcat
+(legacy SAM, behind sam.ucar.edu) and sam-sql (MySQL).
+:::
+
+```{dot}
+//| fig-width: 10
+digraph Map {
+  graph [layout=neato, splines=true, bgcolor="transparent",
+         fontname="Helvetica", fontsize=14, fontcolor="#00357A",
+         label="blue: SAMuel    grey: legacy SAM, still running    orange: the shared database    dashed: deployment, or idle",
+         labelloc=b];
+  node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=14,
+         fillcolor="#FFFFFF", color="#6B7280", fontcolor="#00357A", margin="0.15,0.07"];
+  edge  [fontname="Helvetica", fontsize=12, color="#6B7280", fontcolor="#6B7280"];
+
+  dir     [label="UCAR directory (LDAP)\nldap.ucar.edu", pos="0,4.2!"];
+  helpers [label="sam-app VM: LDAP replica,\ntransformer, sam-ldap-syncd", pos="3.6,4.2!",
+           fillcolor="#E5E7EB", fontcolor="#374151"];
+  tomcat  [label="legacy SAM (Java)\nsam-tomcat VM", pos="7.2,4.2!",
+           fillcolor="#E5E7EB", fontcolor="#374151"];
+  other   [label="AMIE, HEUV", pos="10.8,4.2!", fillcolor="#E5E7EB", fontcolor="#374151"];
+
+  entra   [label="Entra ID\nsign-in", pos="0,2.7!"];
+  sql     [label="sam-sql.ucar.edu\nMySQL VM", pos="10.8,2.7!", shape=cylinder,
+           fillcolor="#FFF4E0", color="#FAA119"];
+
+  xras    [label="XRAS\n(ACCESS)", pos="3.6,1.2!"];
+  samuel  [label="SAMuel on CIRRUS\nsam.hpc.ucar.edu", pos="7.2,1.2!",
+           fillcolor="#0057C2", color="#00357A", fontcolor="#FFFFFF"];
+  mail    [label="mail relay,\nithelp Jira", pos="10.8,1.2!"];
+
+  gh      [label="GitHub Actions\n+ GHCR", pos="0,-0.4!"];
+  lanes   [label="ncar-hpc-deploy\ncasper, derecho", pos="3.6,-0.4!"];
+  pg      [label="csg-postgres.k8s.ucar.edu\n(CNPG on CIRRUS)", pos="7.2,-0.4!", shape=cylinder,
+           fillcolor="#E6F0FA", color="#0057C2"];
+  pbs     [label="PBS scheduling\nHSG cron", pos="10.8,-0.4!"];
+
+  dir -> helpers [label="syncrepl"];
+  helpers -> tomcat [label="ldapsync"];
+  other -> tomcat [style=dashed];
+  tomcat -> sql [dir=both];
+  samuel -> sql [dir=both];
+  entra -> samuel;
+  samuel -> mail;
+  xras -> samuel [dir=both, label="actions, sweep"];
+  samuel -> pg [dir=both];
+  samuel -> pbs [label="fairshare,\nqueues"];
+  lanes -> samuel [label="status"];
+  lanes -> pg [label="jobs"];
+  lanes -> sql [headlabel="charges", labeldistance=9, labelangle=-8];
+  gh -> lanes [style=dashed, label="image"];
+}
+```
+
+## Four flows, one database {.smaller .center .fill scale="1.1"}
+
+| Flow | Path | Cadence | Runs on |
+|--------------------|--------------------------------------|--------------|------------|
+| **Identity in** | UCAR directory to `sam-ldap-syncd` to legacy SAM | per change | legacy SAM |
+| **Allocations, both ways** | ARC → XRAS → SAMuel; SAMuel reads XRAS back | per approval; hourly | SAMuel |
+| **Usage in** | PBS to collectors, job history and charging | 5 min to daily | HPC lanes |
+| **Access out** | SAMuel's APIs → PBS, LDAP provisioning, disk quotas | polled | the callers |
+
+::: {.notes}
+Read the "Runs on" column as the overlap: one of the four flows still lives entirely on the
+legacy side. The rest of this part takes them in order, then the outbound side-channels.
+:::
+
+## Two apps, one database
+
+:::: {.columns}
+::: {.column width="55%"}
+- **Legacy SAM:** Java on Tomcat, on `sam-tomcat`, behind `sam.ucar.edu`. Still running.
+- **SAMuel:** Python on CIRRUS, at **{{< var hosts.prod >}}**. Production SAM.
+- **Both** read and write `sam-sql`: one MySQL VM, run by CISL, with no replica.
+- They will overlap for a while, by design.
+- **Until legacy retires, SAMuel gives way:** it keeps the rows legacy reads, rather than
+  deleting them.
+
+† `sam-app` is a third host: it runs the identity helpers, not the Java app.
+:::
+::: {.column width="45%"}
+```{dot}
+//| fig-width: 4.6
+digraph Two {
+  graph [rankdir=TB, nodesep=0.4, ranksep=0.6, bgcolor="transparent"];
+  node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=13];
+  edge  [color="#6B7280", dir=both];
+  legacy [label="legacy SAM\nJava, Tomcat", fillcolor="#E5E7EB", color="#6B7280",
+          fontcolor="#374151"];
+  samuel [label="SAMuel\nPython, CIRRUS", fillcolor="#0057C2", color="#00357A",
+          fontcolor="#FFFFFF"];
+  sql    [label="sam-sql\nMySQL", shape=cylinder, fillcolor="#FFF4E0", color="#FAA119",
+          fontcolor="#00357A"];
+  {rank=same; legacy; samuel}
+  legacy -> sql;
+  samuel -> sql;
+}
+```
+:::
+::::
+
+::: {.notes}
+sam.ucar.edu is a load-balanced address in front of two Apache proxies that forward to Tomcat
+on sam-tomcat.ucar.edu (SAM 2.0.4). sam-app.ucar.edu runs the LDAP replica, the transformer
+and sam-ldap-syncd as rootless podman containers. Sources: sam-queries
+docs/plans/SAM_LDAP_SYNCD_REFERENCE.md §2.5 and docs/plans/LDAP_SYNC_API.md.
+Giving way, 2026-10-02: unsetting a fair-share override deleted a facility_resource row, and
+legacy's fair-share tree for Derecho came back empty (#698). The row now stays, with a NULL value.
+An audit of every SAMuel delete on a table legacy reads followed (#699, docs/plans/HARD_DELETE_AUDIT.md):
+a superseded allocation is shortened rather than left live, and the disk-root hard delete is gone.
+:::
+
+## We don't own the schema (yet) {.vcenter scale="1.15"}
+
+:::: {.columns}
+::: {.column width="50%"}
+**Legacy's**
+
+- Flyway migrations up to **{{< var schema.flyway_head >}}**, applied by hand.
+- **{{< var schema.legacy_created >}}** of our {{< var tables.sam_orm >}} modeled tables
+  were created by them.
+- The newest serve the identity sync, and they can drop a column we read.
+:::
+::: {.column width="50%"}
+**Ours**
+
+- **{{< var schema.samuel_own >}}** tables SAMuel added: notifications, account requests,
+  roles, the XRAS ledgers.
+- Plain DDL in `scripts/sql/`, and never an `ALTER` on a legacy table.
+- The ORM follows the database; schema-validation tests catch drift.
+:::
+::::
+
+::: {.notes}
+Counted 2026-09-30: every CREATE TABLE in legacy's src/main/resources/db/migration against
+the ORM's metadata. 92 + 16 = 108, every modeled table accounted for. Legacy applies its
+migrations with tools/dbmigrate.sh (mvn flyway:migrate), not at startup. CLAUDE.md's rule:
+the database is the source of truth; don't modify the SAM schema. That is why the SAM
+schema is not under Alembic (Part 3), and why Postgres in prod waits on legacy's retirement.
+:::
+
+## ⚠︎ Don't let this happen to you… again {.vcenter scale="1.15"}
+
+- **2026-08-10, the schema edition:** the identity-sync cutover shipped legacy migration V37,
+  dropping two columns from `users` and seven other tables.
+- SAMuel's ORM still selected them. **Every page returned 500 for ~20 minutes**, while all
+  three health probes said 200: `SELECT 1` can't see a missing column.
+- **Now:** `/` compares the ORM to the live schema and goes 503 on drift, so monitoring pages.
+  `/ready` stays 200, so Kubernetes doesn't empty the Service mid-fix.
+
+† Nobody did anything wrong: two applications, one schema, two release trains.
+
+::: {.notes}
+Source: sam-queries tests/api/test_health_endpoints.py (TestSchemaDriftContract, "the
+2026-08-10 outage in endpoint form") and src/sam/core/users.py, which maps the users.deactivate
+column the same cutover added. The columns were pdb_modified_time and idms_sync_token. The
+same readiness reasoning as Part 3's CNPG PSA: degrade, don't vanish.
+:::
+
+## Who’s still on legacy {.center .fill scale="1.15"}
+
+| Caller | Calls | Status |
+|------------------------------|--------------------------|----------------------|
+| `sam-ldap-syncd` | legacy `…/ldapsync` | **live**, every identity change |
+| `amie-sam-mediator` (ACCESS AMIE) | legacy `…/amie` | idle, not ported |
+| HEUV portal | legacy `…/heuv` | not ported |
+| XRAS | SAMuel `/api/xras/v1` | moved 2026-08-24 |
+| PBS, provisioning, disk quotas | SAMuel `/api/v1` | ported; both serve them |
+
+::: {.notes}
+From the Tomcat access-log census in sam-queries docs/plans/LDAP_SYNC_API.md Appendix B. AMIE
+was 99.6% of legacy's historical traffic but made 7 calls in the 30 days to 2026-09-26, the last
+on 09-04. XRAS made zero legacy calls from 08-28. PeopleDB sync was superseded; its controllers
+were deleted from legacy in July. The overlap is the plan.
+:::
+
+# Identity in
+
+SAM never originates a user.
+
+## From the directory to `users`
+
+::: {.notes}
+Everything grey is legacy-side and George's: the replica, the transformer and the daemon
+(NCAR/sam-ldap-syncd). The UCAR directory is replicated into an OpenLDAP copy on sam-app; the
+transformer turns its changes into .jsl files on a 60-second poll; the daemon PUTs them to
+legacy SAM on sam-tomcat, which reads and writes MySQL on sam-sql. SAMuel reads the result.
+:::
+
+```{dot}
+//| fig-width: 10
+digraph Identity {
+  graph [rankdir=TB, newrank=true, nodesep=0.55, ranksep=0.7, bgcolor="transparent",
+         fontname="Helvetica", fontsize=13, fontcolor="#374151"];
+  node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=14,
+         fillcolor="#E5E7EB", color="#6B7280", fontcolor="#374151", margin="0.18,0.08"];
+  edge  [fontname="Helvetica", fontsize=12, color="#6B7280", fontcolor="#6B7280"];
+  dir    [label="UCAR directory\nldap.ucar.edu", fillcolor="#FFFFFF", fontcolor="#00357A"];
+  subgraph cluster_app {
+    label="sam-app VM"; style="rounded,dashed"; color="#6B7280";
+    repl  [label="LDAP replica"];
+    xf    [label="transformer\n60 s poll"];
+    syncd [label="sam-ldap-syncd"];
+  }
+  subgraph cluster_tomcat {
+    label="sam-tomcat VM"; labelloc=b; style="rounded,dashed"; color="#6B7280";
+    tomcat [label="legacy SAM\nldapsync API"];
+  }
+  sql    [label="sam-sql.ucar.edu\nMySQL VM", shape=cylinder, fillcolor="#FFF4E0",
+          color="#FAA119", fontcolor="#00357A"];
+  subgraph cluster_cirrus {
+    label="CIRRUS, Kubernetes pods"; labelloc=b; style="rounded,dashed"; color="#0057C2";
+    fontcolor="#00357A";
+    samuel [label="SAMuel", fillcolor="#0057C2", color="#00357A", fontcolor="#FFFFFF"];
+  }
+  {rank=same; dir; repl; xf; syncd}
+  {rank=same; samuel; sql; tomcat}
+  dir -> repl [label="syncrepl"];
+  repl -> xf;
+  xf -> syncd [label=".jsl files"];
+  syncd -> tomcat [label="PUT"];
+  samuel -> sql [dir=back, label="reads"];
+  sql -> tomcat [dir=both, label="reads, writes"];
+  dir -> samuel [style=invis];
+  repl -> sql [style=invis];
+  syncd -> tomcat [style=invis, weight=5];
+}
+```
+
+† Adhoc groups, organizations and institutions take the same path into SAM.
+
+## What the synchronizer writes {.vcenter scale="1.15"}
+
+:::: {.columns}
+::: {.column width="50%"}
+**Tables**
+
+- `users` (and its `deactivate` stamp)
+- `email_address`, `phone`
+- `institution`, `organization`, and each user's links to them
+- `adhoc_group` and its members
+- `gid_allocation`
+:::
+::: {.column width="50%"}
+**Shape**
+
+- Event-driven, not cron: a quiet day is tens of requests.
+- A restart replays the backlog: thousands of PUTs.
+- Rootless podman on `sam-app`; George's code.
+- SAMuel writes exactly one `users` column: `primary_gid`.
+:::
+::::
+
+::: {.notes}
+sam-queries docs/plans/SAM_LDAP_SYNCD_REFERENCE.md §1.2 and §2.4 (one replay sent 6,329 PUTs
+in 27 minutes). The users rule from docs/xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md: no INSERT into
+users anywhere in src/, no User.create(), nothing writes active or locked; the only column
+SAMuel writes is primary_gid via User.set_primary_gid().
+:::
+
+## Next: SAMuel takes the ldapsync endpoints {.vcenter scale="1.15"}
+
+- **Planned, not started:** scoped 2026-09-25, phases P1a to P2.
+- Mounted at legacy's own prefix, so the cutover is **one URL** in the daemon's config.
+- Legacy stays the rollback: point it back.
+- After that, identity's only grey box is the daemon itself.
+
+† "SAM never creates users" means *originates*. A faithful mirror writer is the rule's
+implementation, not a violation.
+
+::: {.notes}
+sam-queries docs/plans/LDAP_SYNC_API.md: the daemon keeps its SAM_URL; the new side answers
+/api/protected/admin/{ldapsync,*Purge*,userlifecycle} with the same realm and shapes. The
+reference doc carries a ~30-item census of client-side quirks to preserve or fix.
+:::
+
+## Signing in {.vcenter scale="1.15"}
+
+:::: {.columns}
+::: {.column width="50%"}
+**People**
+
+- Entra ID (OIDC, with PKCE).
+- Production refuses to start with the stub or LDAP login.
+- Roles and grants from the database (`RBAC_SOURCE=db`).
+:::
+::: {.column width="50%"}
+**Machines**
+
+- HTTP Basic, checked against bcrypt hashes.
+- Keys from the environment, or from `api_credentials`, **shared with legacy**.
+- Each key is held to the routes its role allows.
+
+† SAMuel never talks LDAP itself. Its LDAP login provider is a stub that raises.
+:::
+::::
+
+::: {.notes}
+sam-queries docs/AUTHENTICATION.md and src/webapp/utils/api_auth.py. The api_credentials
+table is legacy's: both stacks verify the same hashes, so a key works against either host
+during the overlap. RBAC: docs/plans/implemented/RBAC_DB_ROLES.md.
+:::
+
+# Allocations: XRAS
+
+Awards in by POST, reports back by sweep.
+
+## ARC → XRAS → SAMuel
+
+::: {.notes}
+docs/xras/PROJECT_AND_ACCOUNT_LIFECYCLE.md §1. Most university projects take this path; staff
+also create projects directly in the Admin dashboard, which must always keep working. Legacy
+SAM handled the POST until the 2026 cutover.
+:::
+
+```{dot}
+//| fig-width: 10
+digraph Xras {
+  graph [rankdir=TB, nodesep=0.6, ranksep=0.8, bgcolor="transparent"];
+  node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=14,
+         fillcolor="#FFFFFF", color="#6B7280", fontcolor="#00357A", margin="0.18,0.08"];
+  edge  [fontname="Helvetica", fontsize=12, color="#6B7280", fontcolor="#6B7280"];
+  pi     [label="researcher"];
+  arc    [label="ARC\nsubmit"];
+  xras   [label="XRAS\nreview, approve"];
+  legacy [label="legacy SAM\nuntil 2026-08-24", fillcolor="#E5E7EB", fontcolor="#374151"];
+  mail   [label="PI notice"];
+  sql    [label="sam-sql", shape=cylinder, fillcolor="#FFF4E0", color="#FAA119"];
+  samuel [label="SAMuel\n/api/xras/v1", fillcolor="#0057C2", color="#00357A",
+          fontcolor="#FFFFFF"];
+  {rank=same; pi; arc; xras}
+  {rank=same; legacy; samuel}
+  {rank=same; mail; sql}
+  pi -> arc -> xras;
+  xras -> legacy [style=dashed, color="#9CA3AF", label="before"];
+  xras -> samuel [label="POST actions"];
+  samuel -> xras [label="hourly sweep", style=dashed];
+  samuel -> sql [label="project,\nallocations"];
+  samuel -> mail;
+}
+```
+
+## Incoming: six verbs {.vcenter scale="1.15"}
+
+- XRAS POSTs `/api/xras/v1/actions`: **add, adjust, extend, supplement, transfer, update**.
+- It GETs back `people`, `requests` and `dates`, in legacy's byte shapes.
+- Live in SAMuel since XRAS repointed in **{{< var milestones.xras_repoint >}}**. Legacy has
+  had no XRAS calls since.
+- An action SAMuel can't apply is **parked** for a human, never half-applied.
+
+† "Any status other than 200/OK is considered an error." Thanks, Steve Peckins: so a parked
+action still answers 200, with a different body.
+
+::: {.notes}
+sam-queries docs/xras/README.md and children. The repoint was 2026-08-24 (XRAS_TRIAGE_WEEK.md);
+the Tomcat census shows zero XRAS calls on legacy from 08-28. Every action is logged in
+xras_action_log, one of SAMuel's own tables.
+:::
+
+## Outgoing: the sweep and the writes {.vcenter scale="1.15"}
+
+- **`xras_sweep`, hourly:** a light pass over active requests, plus a full "Approved" pass
+  daily at 04:00 MT. It feeds the Allocations dashboard's work queue.
+- **Writes** (merge a person, withdraw a request): from the webapp only, by a human, never
+  from the CronJob.
+- Notices to PIs go out from the Notify button. The automatic version is built and switched
+  off.
+
+::: {.notes}
+src/scheduling/tasks/xras_sweep.py; XRAS_OUTGOING_ENABLED=1 and XRAS_WRITE_ENABLED=1 in prod,
+the latter carried by the webapp's env only. xras_notices ships named in SAM_TASKS_DISABLED.
+The write key is real: a person merge deletes an account in production with no undo, which is
+why tests pin it empty.
+:::
+
+# Usage in
+
+From PBS logs to charges, and back out to PBS.
+
+## Data in, data out
+
+::: {.notes}
+In: PBS on casper and derecho feeds three pipelines into SAMuel. Out: HSG's cron processes
+download from SAMuel's API: the accounting hooks' data, and the fairshare tree, which SAMuel
+builds itself. SAMuel talks to both databases: MySQL sam on sam-sql, and csg-postgres for
+system_status (written through the status API) and the jobs databases jobhist-sync fills.
+sam-admin accounting reads the jobs and writes charge summaries into sam. The loop takes a day for charges and minutes for status.
+:::
+
+```{dot}
+//| fig-width: 10
+digraph InOut {
+  graph [rankdir=LR, nodesep=0.45, ranksep=0.8, bgcolor="transparent"];
+  node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=14,
+         fillcolor="#FFFFFF", color="#6B7280", fontcolor="#00357A", margin="0.18,0.08"];
+  edge  [fontname="Helvetica", fontsize=12, color="#6B7280", fontcolor="#6B7280"];
+  pbs    [label="PBS\ncasper, derecho", fillcolor="#FFF4E0", color="#FAA119"];
+  coll   [label="collectors\nevery 5 min"];
+  jhs    [label="jobhist-sync\n5 min to weekly"];
+  hst    [label="HSG cron processes\naccounting hooks & fairshare"];
+  acct   [label="sam-admin\naccounting"];
+  pg     [label="csg-postgres (CNPG)\nsystem_status,\nderecho_jobs, casper_jobs", shape=cylinder,
+          fillcolor="#E6F0FA", color="#0057C2"];
+  sql    [label="sam-sql (MySQL)\nsam", shape=cylinder, fillcolor="#FFF4E0", color="#FAA119"];
+  samuel [label="SAMuel", fillcolor="#0057C2", color="#00357A", fontcolor="#FFFFFF"];
+  {rank=same; coll; jhs; hst}
+  {rank=same; pg; sql}
+  pbs -> coll [label="status"];
+  pbs -> jhs [label="logs"];
+  coll -> samuel [label="status API"];
+  jhs -> pg [label="jobs"];
+  pg -> acct [label="jobs"];
+  acct -> sql [label="charges"];
+  samuel -> pg [dir=both];
+  samuel -> sql [dir=both];
+  samuel -> hst [label="fairshare, queues", constraint=false];
+  hst -> pbs [label="tree, DB", constraint=false];
+}
+```
+
+## Collectors: PBS to the status pages {.vcenter scale="1.15"}
+
+- On each host, a script snapshots PBS into a spool directory.
+- The same `samuel` image parses the spool and POSTs `/api/v1/status/…`: Casper and
+  JupyterHub from casper, Derecho from derecho.
+- **Every 5 minutes**, with a key that may post status and charge summaries, nothing else.
+- Lands in `system_status` on the CNPG primary: the Status dashboard, and Part 3's "pulse".
+
+::: {.notes}
+sam-queries collectors/README.md (spool mode: run-manifest.sh on the host, --spool in the
+container). The key is API_KEYS_COLLECTOR, granted the api_collector role (MANAGE_SYSTEM_STATUS and
+MANAGE_CHARGE_SUMMARIES; src/sam/security/rbac_defaults.py), enforced under RBAC_SOURCE=db.
+:::
+
+## Job history and charges: ORM, not REST {.vcenter scale="1.15"}
+
+:::: {.columns}
+::: {.column width="50%"}
+**Job history**
+
+- `jobhist-sync` reads PBS accounting logs into `derecho_jobs` and `casper_jobs`.
+- Rapid every 5 min, a daily 2-day upsert, a weekly 14-day one.
+- SAMuel reads them through the read-only replica (My Jobs).
+:::
+::: {.column width="50%"}
+**Charges**
+
+- `sam-admin accounting --comp` rolls jobs into daily summaries, hourly (2 days) and daily
+  (7 days).
+- Disk: the daily `acct.<fs>` files, from casper. Tracks Campaign, Destor, Quasar.
+- Archive: none currently (deprecated).
+
+† The rapid sync looks at today's scheduler log. The infrequent longer sweeps fill in holes
+over midnight or around downtimes.
+
+‡ The REST route `POST /api/v1/charge-summaries/…` exists too. Nobody calls it.
+:::
+::::
+
+::: {.notes}
+containers/ncar-hpc-deploy/jobs/*.sh. Charges are written straight into sam-sql through the
+ORM, as the lane's database user; the REST path in docs/apis/CHARGING_INTEGRATION.md is
+documented but unused. Why job history left SAM at all is Part 2's story.
+:::
+
+## The schedule, verbatim {.center .fill scale="1.25"}
+
+{{< include _out_schedule.qmd >}}
+
+::: {.notes}
+containers/ncar-hpc-deploy/etc/schedule, frozen by refresh_data.sh. Cron on the cron host says
+when each cadence fires (etc/crontab.prod, etc/crontab.dev); this file says what it runs. Prod
+daily runs at 01:07 on casper and 01:12 on derecho; weekly is Saturday evening. Dev writes
+sam_dev and does no job-history ingest. Part 5 covers deployment.
+:::
+
+# Access out
+
+The API, and who calls it.
+
+## Four API families {.smaller .center .fill scale="1.25"}
+
+| Family | Prefix | Routes | Who calls |
+|--------------|--------------------------|-------:|----------------------------------|
+| **Core** | `/api/v1` | 39 | dashboards, CLIs, collectors |
+| **Legacy shapes** | `/api/v1` | 21 | PBS, LDAP provisioning, disk quotas |
+| **Fairshare** | `/api/v1/fairshare` | 1 | HSG's cron |
+| **XRAS** | `/api/xras/v1` | 11 | the XRAS broker |
+
+::: {.notes}
+Route counts are decorator counts on origin/staging, 2026-09-30, over 7 core modules, 6
+legacy-shaped, 1 fairshare and 5 XRAS. Core: projects 10, users 6,
+allocations 2, charges 5, status 11, health 4, admin 1. Legacy shapes: fstree_access 7,
+directory_access 3, project_access 3, queue 3, wallclock_exemption 3, disk_quota 2. Nothing is
+mounted at /api/protected: those paths still belong to legacy SAM.
+:::
+
+## Same bytes, new address {.smaller .center .fill}
+
+| SAMuel | Legacy SAM | Caller |
+|--------------------------------|------------------------------|-------------------|
+| `/api/v1/fstree_access` | `…/ssg/fairShareTree/v3` | PBS fairshare |
+| `/api/v1/queue` | `…/ssg/queue` | PBS queues |
+| `/api/v1/wallclock_exemption` | `…/ssg/wallClockExemption` | PBS limits |
+| `/api/v1/directory_access` | `…/sysacct/directoryaccess` | LDAP provisioning |
+| `/api/v1/project_access` | `…/sysacct/groupstatus` | LDAP provisioning |
+| `/api/v1/disk_quota` | `…/dasg/diskquota` | disk quotas |
+
+::: {.notes}
+The first five answer byte-for-byte like legacy, from hand-built dicts. That code is frozen on
+purpose; everything new declares its output with a schema.
+Legacy paths are under /api/protected/admin. CLAUDE.md, "Legacy-compat blueprints — DO NOT
+REFACTOR": additive changes only, response bytes must not change. disk_quota is the newer one,
+legacy-shaped but built on a Marshmallow schema; it is the reference for any future
+legacy-shaped endpoint. Legacy-era 30-day volumes: fairShareTree ~21K, wallClockExemption ~12K,
+queue ~9K, directoryaccess ~2.8K.
+:::
+
+## The loop closes
+
+::: {.notes}
+Identity enters from the UCAR directory through the legacy-side synchronizer; project groups
+leave through directory_access to the provisioner, which writes unix groups back to LDAP. So
+LDAP is both SAM's source and one of its sinks, through two different systems, one of them
+legacy. sam/provisioning.py compares what SAM believes against what a host actually provisions.
+:::
+
+```{dot}
+//| fig-width: 10
+digraph Loop {
+  graph [layout=neato, splines=true, bgcolor="transparent"];
+  node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=14,
+         fillcolor="#FFFFFF", color="#6B7280", fontcolor="#00357A", margin="0.18,0.08"];
+  edge  [fontname="Helvetica", fontsize=12, color="#6B7280", fontcolor="#6B7280"];
+  ldap   [label="LDAP\npeople, groups", pos="0,2.2!"];
+  syncd  [label="identity sync\n(legacy side)", pos="3.2,2.2!", fillcolor="#E5E7EB",
+          fontcolor="#374151"];
+  sql    [label="sam-sql", pos="6.4,2.2!", shape=cylinder, fillcolor="#FFF4E0",
+          color="#FAA119"];
+  samuel [label="SAMuel\ndirectory_access", pos="6.4,0!", fillcolor="#0057C2",
+          color="#00357A", fontcolor="#FFFFFF"];
+  prov   [label="LDAP provisioner", pos="0,0!"];
+  ldap -> syncd [label="people"];
+  syncd -> sql;
+  sql -> samuel [label="projects, members"];
+  samuel -> prov [label="group lists"];
+  prov -> ldap [label="unix groups"];
+}
+```
+
+## SAMuel to PBS, in one slide {.vcenter scale="1.15"}
+
+- **HSG's cron processes call SAMuel's API.** None of our Python runs on their hosts.
+- **Accounting hooks:** projects, users, status, queues and exemptions, from the
+  legacy-shaped endpoints.
+- **`fairshare`:** `/api/v1/fairshare/<machine>` returns the PBS tree ready-made.
+  `fsparsetree_mr` runs inside the API, so nobody installs it on a scheduler host.
+- HSG installs: swapping the database is free; a new tree costs a scheduler pause.
+
+† The full story, with the trees, is the *SAM & PBS* deck, in this same repo.
+
+::: {.notes}
+The outbound half of data in / data out. HSG's cron downloads from SAMuel; it does not run
+SAMuel code. The hooks' database is built from fstree_access, queue and wallclock_exemption
+(hpc-scheduling-tools docs/PBS_HOOKS.md). fsparsetree_mr lives in hpc-scheduling-tools (NCAR,
+private) and is loaded as the HPC_SCHEDULING_TOOLS plugin behind /api/v1/fairshare
+(src/webapp/api/v1/fairshare.py), which reads the fstree data straight from SAM's database. The sam_and_pbs deck covers the fairshare model, the
+queue-stuffing work, and "When Something Looks Wrong".
+:::
+
+# Everything else
+
+The side-channels, and the overlap mapped.
+
+## Everything else SAMuel calls {.smaller .center .fill scale="1.15"}
+
+| Service | For | When |
+|---|---|---|
+| **UCAR mail relay** | notices, invitations, receipts | per event; weekly expiration notices |
+| **ithelp (Jira Service Management)** | one ticket per account request | on submit; reconciled every 15 min |
+| **XRAS (`api.xras.org`)** | reports, merges, withdrawals | hourly; by hand |
+| **NSF and USAspending** | award lookups | on demand, cached 8 days |
+| **Cloudflare Turnstile** | the human check on `/register` | per submit |
+
+::: {.notes}
+All configured in sam-queries helm/values.yaml. Mail is fail-closed (NOTIFY_ENABLED defaults
+off everywhere but the prod chart); a failed Jira filing falls back to mail. The award lookups
+power sam-search awards. No test may open an SMTP socket or make an outbound request.
+:::
+
+## The overlap, mapped {.vcenter scale="1.15"}
+
+- **Next:** the ldapsync endpoints move to SAMuel. Identity's grey box shrinks to the daemon.
+- **By decision:** AMIE (idle) and HEUV (not ported): port, replace, or retire.
+- **Last:** the schema. Once nothing grey writes `sam-sql`, it comes under migrations, and
+  Postgres in production becomes possible.
+
+† Until then, SAMuel is a careful tenant in a shared house.
+
+::: {.notes}
+The order is a dependency chain, not a calendar. Horizon 2 in
+docs/plans/implemented/POSTGRES_MIGRATION.md (prod on csg-postgres) is gated on retiring legacy
+SAM; so is putting the SAM schema under Alembic. Part 5 is where SAMuel itself runs.
+:::
+
+## TL;DR - who talks to whom {.vcenter scale="1.15"}
+
+- **Four flows:** identity in, allocations both ways, usage in, access out.
+- **Legacy SAM is still running,** and identity still flows through it.
+- **One database, two apps:** we don't own the schema yet, and it has bitten us once.
+- **Usage comes in** from the HPC lanes through the ORM; **access goes out** through
+  legacy-shaped APIs.
+- **Every grey box has a planned exit,** in a fixed order, ending with the schema.

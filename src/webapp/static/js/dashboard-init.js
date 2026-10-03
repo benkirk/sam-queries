@@ -69,13 +69,56 @@
             var c = bootstrap.Collapse.getOrCreateInstance(b, {toggle: false});
             if (want) { c.show(); } else { c.hide(); }
         });
-        var pill = from.querySelector('.alloc-view-pills .nav-link.active');
-        var match = pill && to.querySelector(
-            '.alloc-view-pills [data-alloc-view="' + pill.dataset.allocView + '"]');
-        if (match && !match.classList.contains('active')) {
-            bootstrap.Tab.getOrCreateInstance(match).show();
-        }
+        from.querySelectorAll('.alloc-view-pills .nav-link.active').forEach(function (pill) {
+            var match = to.querySelector(
+                '.alloc-view-pills [data-alloc-view="' + pill.dataset.allocView + '"]');
+            if (match && !match.classList.contains('active')) {
+                bootstrap.Tab.getOrCreateInstance(match).show();
+            }
+        });
     }
+
+    /* Allocation calendar: once visible, scroll so the view-at line sits a third
+     * of the way across the track. A pane loaded while hidden waits for a tab show. */
+    function focusCalendars() {
+        document.querySelectorAll('.cal-scroll[data-cal-focus]:not([data-cal-focused])').forEach(function (s) {
+            if (!s.offsetParent) { return; }
+            var label = s.querySelector('th.cal-label');
+            var labelW = label ? label.offsetWidth : 0;
+            var track = s.scrollWidth - labelW;
+            s.scrollLeft = track * parseFloat(s.dataset.calFocus) / 100 - (s.clientWidth - labelW) / 3;
+            s.dataset.calFocused = '1';
+        });
+    }
+    /* The Used | Burn pills re-render the calendar: carry its open type groups (data-no-persist,
+     * so the collapse restore skips them) and its scroll across the swap. Registered first, so
+     * focusCalendars sees the carried scroll as already focused. */
+    var calCarry = {};
+    function isCalendar(el) { return el && el.matches && el.matches('.alloc-calendar[id]'); }
+    document.body.addEventListener('htmx:beforeSwap', function (e) {
+        var old = e.detail.target;
+        if (!isCalendar(old)) { return; }
+        var s = old.querySelector('.cal-scroll');
+        calCarry[old.id] = {
+            open: Array.prototype.map.call(old.querySelectorAll('tr.collapse.show[id]'),
+                                           function (r) { return r.id; }),
+            left: s ? s.scrollLeft : null
+        };
+    });
+    document.body.addEventListener('htmx:afterSettle', function (e) {
+        var cal = e.detail.elt;
+        var carry = isCalendar(cal) && calCarry[cal.id];
+        if (!carry) { return; }
+        delete calCarry[cal.id];
+        var s = cal.querySelector('.cal-scroll');
+        if (s && carry.left !== null) { s.scrollLeft = carry.left; s.dataset.calFocused = '1'; }
+        carry.open.forEach(function (id) {
+            var row = document.getElementById(id);
+            if (row) { bootstrap.Collapse.getOrCreateInstance(row, { toggle: false }).show(); }
+        });
+    });
+    document.body.addEventListener('htmx:afterSettle', focusCalendars);
+    document.addEventListener('shown.bs.tab', focusCalendars);
 
     /* ================= Admin dashboard ================= */
 

@@ -1,0 +1,212 @@
+# The Neighbors
+
+The repos SAMuel loads, feeds, or replaces.
+
+## Who's who {.smaller .center .fill}
+
+| Repo | Visibility | What it is | How SAMuel uses it |
+|------------------------------|-----------|--------------------------|--------------------------|
+| **`hpc-usage-queries`** | [yes](https://github.com/benkirk/hpc-usage-queries) | job history, charges, disk scans | two plugins; the Postgres cluster |
+| **`hpc-scheduling-tools`** | private | SAM → PBS: the fairshare tree | one plugin: `/api/v1/fairshare` |
+| **`pbsparse`** | [yes](https://github.com/NCAR/pbsparse) | PBS log parser | via `hpc-usage-queries` |
+| **`PBS_hooks`** | private | HSG's PBS submit hooks | fed from our APIs |
+| **legacy `sam`** | private | the Java original | same database; retiring |
+| **the container zoo** | mostly private | LDAP and AMIE helpers | identity comes through it |
+
+::: {.notes}
+SAMuel itself is github.com/benkirk/sam-queries (public); there is no NCAR/sam-queries. The
+public repos: hpc-usage-queries, sam-queries, pbsparse, qhist, amie-sam-mediator, amiemediator.
+Everything else here is a private NCAR repo, so it is named, not linked. Retired repos get one slide at the end.
+:::
+
+## `hpc-usage-queries`: two toolkits, one wheel {.vcenter scale="1.15"}
+
+- *"User-facing tools for analyzing resource usage on NSF NCAR HPC systems."*
+- **`job_history`:** PBS job history and charging, one database per machine.
+- **`fs_scans`:** filesystem usage, from the metadata scans of Campaign and Destor.
+- **Useful without SAM:** `jobhist` runs on the HPC hosts against SQLite or Postgres.
+- About {{< var peers.huq_lines >}} lines of Python and {{< var peers.huq_tests >}} tests,
+  public on GitHub.
+
+† Same CLI shape as SAMuel's on purpose: commands, exit codes, JSON output. The two change
+together.
+
+::: {.notes}
+github.com/benkirk/hpc-usage-queries. Both toolkits ship in one wheel; SAMuel installs it
+through its [hpc] extra and loads job_history and fs_scans as two plugins (sam/plugins.py).
+Shared conventions: the Context/BaseCommand hierarchy, EXIT_* codes, the JSON envelope with
+kind=, and ExporterRegistry. CLAUDE.md in both repos says to change them in lockstep.
+:::
+
+## `job_history`: logs to charges
+
+:::: {.columns}
+::: {.column width="40%"}
+```{dot}
+//| fig-width: 3.2
+digraph Jobs {
+  graph [rankdir=TB, nodesep=0.3, ranksep=0.3, bgcolor="transparent"];
+  node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=14,
+         fillcolor="#FFFFFF", color="#6B7280", fontcolor="#00357A", margin="0.18,0.08"];
+  edge  [fontname="Helvetica", fontsize=12, color="#6B7280", fontcolor="#6B7280"];
+  logs  [label="PBS accounting logs", fillcolor="#FFF4E0", color="#FAA119"];
+  sync  [label="jobhist-sync (pbsparse)"];
+  jobs  [label="derecho_jobs\ncasper_jobs", shape=cylinder, fillcolor="#E6F0FA", color="#0057C2"];
+  acct  [label="sam-admin accounting"];
+  sam   [label="sam\ncharge summaries", shape=cylinder, fillcolor="#FFF4E0", color="#FAA119"];
+  logs -> sync -> jobs;
+  jobs -> acct [label=" daily_summary"];
+  acct -> sam;
+}
+```
+:::
+::: {.column width="60%"}
+- **One charge row per job,** priced by this repo's rules.
+- **Whole nodes** on Derecho's production queues; actual CPUs and GPUs on the dev queues.
+- **QoS factors:** premium 1.5, regular 1.0, economy 0.7.
+- **SAMuel reads the daily summaries,** not the jobs, to charge allocations.
+:::
+::::
+
+::: {.notes}
+job_history/sync/charging.py (DerechoCharging, CasperCharging). A database trigger keeps exactly
+one job_charges row per job; daily_summary is keyed by date, user, account and queue, cut at
+Mountain midnight. pbsparse (NCAR, public) does the parsing, plus a vendored NCAR record class
+that adds power metrics. sam-admin accounting --comp calls JobQueries.daily_summary_report()
+and upserts comp_charge_summary. The sync runs from SAMuel's ncar-hpc-deploy lane; the
+schedule is Part 4's, the rules are this repo's.
+:::
+
+## `fs_scans`, and the cluster it brings {.vcenter scale="1.15"}
+
+:::: {.columns}
+::: {.column width="50%"}
+**`fs_scans`**
+
+- Weekly metadata scans of GPFS, Lustre and POSIX filesystems.
+- Imported into `campaign` and `destor`, one schema per collection.
+- SAMuel's disk-scan views read them through the replica.
+:::
+::: {.column width="50%"}
+**`csg-postgres`**
+
+- The CNPG chart lives in this repo, not SAMuel's.
+- Three roles: owner, `jobhist_writer`, read-only.
+- A read-only service on the replica, and a watch script.
+:::
+::::
+
+::: {.notes}
+fs_scans/parsers/{gpfs,lustre,posix}.py and a three-pass importer; the scan PBS jobs live in
+fs_scans/PBS/. helm/ is the cirrus-csg-postgres chart (2 instances, secrets from OpenBao);
+pg_service_ro.yaml is csg-postgres-ro.k8s.ucar.edu; scripts/cnpg_watch.sh. SAMuel calls
+require_plugin(): a missing package turns the jobs pages, My Jobs, disk scans and
+sam-search --jobs off, rather than failing.
+:::
+
+## `hpc-scheduling-tools`: SAM to PBS, kept apart {.vcenter scale="1.15"}
+
+- *"These tools sit between two production systems and translate one into the other."*
+- **The fairshare tree** (`fsparsetree_mr`): PBS's `resource_group` file. This repo owns it.
+- **The hooks and their database** (`samuel2sql`): HSG's. This repo keeps copies to test
+  against and iterate on.
+- **Read-only against SAM,** through three legacy-shaped endpoints: fstree, queues,
+  wallclock exemptions.
+- Casper, Derecho and Gust. A private NCAR repo.
+
+† HSG runs and maintains their own hooks and `samuel2sql`; ours have moved on from theirs.
+
+::: {.notes}
+github.com/NCAR/hpc-scheduling-tools (private). The accounting hook rejects a bad -A account at
+submit; the wallclock hook applies exemptions, then queue limits. The deployed hooks live in
+NCAR/PBS_hooks (private, branch production), and HSG maintains their own samuel2sql; this repo's
+sample_hooks/ and samuel2sql are reference copies Ben has iterated on since (Ben, 2026-10-02).
+The database layout is a contract (docs/PBS_HOOKS.md). capacities.json is the operator-tuned
+input.
+:::
+
+## Packaged once, served by the API {.vcenter scale="1.15"}
+
+- **The scheduling rules live in their own repo,** tested there, away from SAMuel's.
+- **SAMuel installs it as a plugin** and runs `fsparsetree_mr` inside the API:
+  `/api/v1/fairshare/<machine>`.
+- **HSG's cron downloads the tree** and installs nothing on the scheduler hosts.
+- **The next artifact can follow the same path.**
+
+::: {.notes}
+The [hpc] extra installs it from git; the HPC_SCHEDULING_TOOLS plugin backs
+src/webapp/api/v1/fairshare.py, which reads SAM's database directly (no HTTP round trip) and
+returns JSON or ?format=text. 503 unless HPC_SCHEDULING_TOOLS_ENABLED. ncar_accounting.db is not
+served by the API: HSG builds it with their own samuel2sql from the legacy-shaped endpoints. Same story as Part 4's "SAMuel to PBS, in one slide".
+:::
+
+## Legacy SAM: the original {.vcenter scale="1.15"}
+
+- **{{< var legacy.loc >}} lines of Java:** Spring, Hibernate and a JSF/PrimeFaces UI, built
+  into one WAR on Tomcat.
+- **Two surfaces:** the web UI, and the REST APIs that SAMuel has been porting.
+- **On the `sam-tomcat` VM,** sharing `sam-sql` with SAMuel.
+- **In service for {{< var legacy.years >}} years.** A private NCAR repo.
+
+† Part 4 has how the two apps share the database, and who still calls legacy.
+
+::: {.notes}
+github.com/NCAR/sam (private): about 2,900 .java files and 229 .xhtml pages, Maven-built.
+Part 4: "Two apps, one database" and "Who's still on legacy".
+:::
+
+## The container zoo {.smaller .center .fill}
+
+| Group | Repos | Calls SAM? |
+|------------------|--------------------------------------------------|----------------|
+| **Identity** | `ucarldap`, `sam-idms-ldap`, `sam-ldap-transformer`, `sam-ldap-syncd` | syncd |
+| **AMIE** | `amieclient` (upstream), `amiemediator`, `amie-sam-mediator` | mediator (idle) |
+| **Base images** | `sweet`, `sweet-pl5` | no |
+| **Host config** | `sam-app` | no |
+
+† All run on the `sam-app` VM. Only two of them call legacy SAM's API.
+
+::: {.notes}
+legacy_sam/container_zoo/: "Repos for all the helper / synchronizers SAM uses." Each is its own
+NCAR clone (amieclient is XSEDE's). Identity: the LDAP replica feeds the transformer, which feeds
+syncd, which calls /api/protected/admin/ldapsync. AMIE: amie-sam-mediator calls
+/api/protected/amie/v1, quiet since 2026-09-04. amie-sam-mediator and amiemediator are public;
+the rest are private. Full survey: sam-queries docs/plans/LDAP_SYNC_API.md, Appendix A.
+:::
+
+## Retired, or soon to be {.vcenter scale="1.15"}
+
+:::: {.columns}
+::: {.column width="50%"}
+**Retired**
+
+- `acct-sam-etl`, and its `sftp-server`
+- The PeopleDB sync
+- `hpc-usage-queries`' own crontab
+- Archive charging
+:::
+::: {.column width="50%"}
+**Soon**
+
+- Legacy SAM's UI and APIs
+- The ldapsync endpoints, to SAMuel
+- AMIE: port, replace, or retire
+- HEUV: not ported
+:::
+::::
+
+::: {.notes}
+acct-sam-etl retired 2026-05-14 (SAMuel took over the charge ingest). PeopleDB sync controllers
+deleted from legacy 2026-07-04. The jobhist crontab moved into SAMuel's ncar-hpc-deploy lane.
+Order of the "soon" column follows Part 4's "The overlap, mapped".
+:::
+
+## TL;DR - the neighbors {.vcenter scale="1.15"}
+
+- **`hpc-usage-queries`:** job history, charging rules and filesystem scans; two plugins and
+  the Postgres cluster.
+- **`hpc-scheduling-tools`:** the fairshare tree, kept in its own repo and **served by our
+  API**; the hooks stay HSG's.
+- **Legacy SAM:** the Java original, sharing our database until it retires.
+- **The container zoo:** identity and AMIE helpers; **syncd** is the one still in daily use.
+- **Retired or retiring:** one list, shrinking.

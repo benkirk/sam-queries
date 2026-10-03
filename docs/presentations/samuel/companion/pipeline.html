@@ -1,0 +1,298 @@
+<title>SAMuel Deploy Pipeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a header, one six-stop rail (a row on desktop, a column on phones), and the selected stop's detail sheet below it. */
+:root {
+  --bg: #F6F8FB;
+  --surface: #FFFFFF;
+  --ink: #0B2545;
+  --muted: #55657A;
+  --line: #D5DDE8;
+  --brand: #0057C2;
+  --brand-deep: #00357A;
+  --brand-soft: #E6F0FA;
+  --amber: #B86E00;
+  --amber-soft: #FFF4E0;
+  --code-bg: #EEF2F7;
+  --font-display: "Poppins", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0B1422; --surface: #111D30; --ink: #E3EAF4; --muted: #9AABC2; --line: #263752;
+    --brand: #5B9BEA; --brand-deep: #A9CBF5; --brand-soft: #16294A; --amber: #F2B04A;
+    --amber-soft: #2E2410; --code-bg: #0D1828; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0B1422; --surface: #111D30; --ink: #E3EAF4; --muted: #9AABC2; --line: #263752;
+  --brand: #5B9BEA; --brand-deep: #A9CBF5; --brand-soft: #16294A; --amber: #F2B04A;
+  --amber-soft: #2E2410; --code-bg: #0D1828; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px;
+  line-height: 1.55; padding-inline: 16px; padding-block: 28px 48px;
+}
+.wrap { max-width: 1120px; margin-inline: auto; display: grid; gap: 28px; }
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 16px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(26px, 4vw, 38px); line-height: 1.15; margin: 0; color: var(--brand-deep); text-wrap: balance; }
+.lede { margin: 8px 0 0; color: var(--muted); max-width: 62ch; }
+.toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: var(--surface); }
+.toggle button {
+  font: 600 14px var(--font-display); border: 0; background: transparent; color: var(--muted);
+  padding: 7px 16px; border-radius: 999px; cursor: pointer;
+}
+.toggle button[aria-pressed="true"] { background: var(--brand); color: #FFFFFF; }
+.toggle button:focus-visible, .stop:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+
+/* the rail */
+.rail { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0; position: relative; }
+.rail li { position: relative; min-width: 0; }
+.rail li:not(:last-child)::after {
+  content: ""; position: absolute; top: 31px; left: calc(50% + 26px); right: calc(-50% + 26px);
+  border-top: 2px solid var(--line);
+}
+.rail li.done:not(:last-child)::after { border-top-color: var(--brand); }
+.stop {
+  width: 100%; background: none; border: 0; padding: 8px 6px; cursor: pointer; color: var(--ink);
+  display: grid; justify-items: center; gap: 8px; text-align: center; border-radius: 12px;
+}
+.dot {
+  width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center;
+  font: 600 15px var(--font-mono); background: var(--surface); border: 2px solid var(--line); color: var(--muted);
+}
+.done .dot { border-color: var(--brand); color: var(--brand); }
+.stop[aria-selected="true"] .dot { background: var(--brand); border-color: var(--brand); color: #FFFFFF; }
+.stop .name { font: 600 14px var(--font-display); line-height: 1.25; }
+.stop .where { font: 12px var(--font-mono); color: var(--muted); overflow-wrap: anywhere; }
+
+/* the sheet */
+.sheet { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: clamp(18px, 3vw, 30px); display: grid; gap: 22px; }
+.sheet-head { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: baseline; justify-content: space-between; }
+.sheet h2 { font: 700 clamp(20px, 2.6vw, 26px)/1.2 var(--font-display); margin: 0; color: var(--brand-deep); text-wrap: balance; }
+.chip { font: 500 12px var(--font-mono); padding: 4px 10px; border-radius: 999px; background: var(--brand-soft); color: var(--brand-deep); white-space: nowrap; }
+.summary { margin: 0; max-width: 70ch; font-size: 17px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 22px 28px; }
+.cols > section { min-width: 0; }
+.cols h3 { font: 600 12px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+.cols ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.guard { background: var(--amber-soft); border-radius: 10px; padding: 12px 14px; }
+.guard h3 { color: var(--amber); }
+code { font-family: var(--font-mono); font-size: .9em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
+pre { margin: 0; background: var(--code-bg); border-radius: 10px; padding: 12px 14px; overflow-x: auto; font: 13px/1.5 var(--font-mono); }
+pre code { background: none; padding: 0; white-space: inherit; }
+.source { border-top: 1px solid var(--line); padding-top: 16px; min-width: 0; }
+.source h3 { font: 600 12px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+.source ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.source a {
+  display: inline-block; font: 13px var(--font-mono); color: var(--brand); text-decoration: none;
+  border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; overflow-wrap: anywhere;
+}
+.source a:hover { border-color: var(--brand); background: var(--brand-soft); }
+.source a:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+.nav { display: flex; justify-content: space-between; gap: 12px; }
+.nav button {
+  font: 600 14px var(--font-display); border: 1px solid var(--line); background: var(--surface); color: var(--brand);
+  padding: 8px 14px; border-radius: 10px; cursor: pointer;
+}
+.nav button:disabled { opacity: .4; cursor: default; }
+footer { color: var(--muted); font-size: 14px; max-width: 75ch; }
+footer p { margin: 0 0 6px; }
+footer a { color: var(--brand); }
+
+@media (max-width: 760px) {
+  .rail { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .rail li:not(:last-child)::after { top: 52px; bottom: -6px; left: 29px; right: auto; border-top: 0; border-left: 2px solid var(--line); }
+  .rail li.done:not(:last-child)::after { border-left-color: var(--brand); }
+  .stop { grid-template-columns: 46px minmax(0, 1fr); justify-items: start; text-align: left; column-gap: 14px; row-gap: 0; }
+  .stop .dot { grid-row: span 2; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .dot, .toggle button { transition: background .15s, border-color .15s, color .15s; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <p class="eyebrow">SAMuel, Part 5 · companion</p>
+      <h1>From a pull request to a running pod</h1>
+      <p class="lede">Six stops, one pinned image tag. Pick a stop for what runs there, what starts it, and what keeps it safe. Switch between production and samuel-dev to follow either path.</p>
+    </div>
+    <div class="toggle" role="group" aria-label="Deployment target">
+      <button type="button" id="t-prod" aria-pressed="true">production</button>
+      <button type="button" id="t-dev" aria-pressed="false">samuel-dev</button>
+    </div>
+  </header>
+
+  <ol class="rail" id="rail" role="tablist" aria-label="Pipeline stops"></ol>
+
+  <article class="sheet" id="sheet" role="tabpanel" aria-live="polite"></article>
+
+  <footer>
+    <p>After the roll, <code>scripts/cirrus_watch.sh</code> (with <code>--env dev</code> for samuel-dev) reports only what changed: web, latency, cache, pods, the CronJob. The <code>watch-prod</code> and <code>watch-dev</code> Claude skills read it on a timer, or once after a merge.</p>
+    <p>Facts as of 2026-10-01. Source links open the current file on the <code>main</code> branch of <a href="https://github.com/benkirk/sam-queries" target="_blank" rel="noopener">benkirk/sam-queries</a>, so they may have moved on since.</p>
+  </footer>
+</div>
+
+<script>
+const T = {
+  prod: { name: "production", base: "main", branch: "cirrus", app: "sam-query", ns: "sam-queries",
+          host: "sam.hpc.ucar.edu", replicas: "2, with a PodDisruptionBudget", db: "<code>sam-sql</code> (the MySQL VM)",
+          values: "<code>values.yaml</code>" },
+  dev:  { name: "samuel-dev", base: "staging", branch: "cirrus-dev", app: "sam-query-dev", ns: "sam-queries-dev",
+          host: "samuel-dev.k8s.ucar.edu", replicas: "1, no disruption budget", db: "<code>sam_dev</code> on <code>csg-postgres</code>",
+          values: "<code>values.yaml</code> + <code>values-dev.yaml</code>" }
+};
+
+const STOPS = [
+  { id: "ci", name: "Pull request", where: t => "PR into " + t.base,
+    title: t => "Tests run on the pull request",
+    chip: () => "~10 min wall clock",
+    summary: t => t.base === "main"
+      ? "Production code arrives as the one standing promotion PR, staging into main. It runs the same suites a feature PR ran, a second time."
+      : "Every feature branch opens a PR into staging. Three test jobs run in parallel, with the browser sweep and the chart checks beside them.",
+    runs: () => [
+      "<code>sam-ci-docker</code>: MySQL with coverage, Postgres, and the perf tier, on three runners",
+      "<code>browser-smoke</code>: a Chromium sweep of every dashboard",
+      "<code>ci-staging</code>: TruffleHog, MegaLinter, Terraform, Helm lint and renders",
+      "Both install paths, and a CLI smoke test"
+    ],
+    trigger: t => [ t.base === "main" ? "The promotion PR, opened by <code>open-staging-promotion</code>" : "Any PR into staging (also main and integration)" ],
+    guard: () => [ "9,296 tests, each in its own savepoint", "Coverage gates at 85%", "<code>make helm-test</code> runs every render assertion, including the one proving dev shares nothing with prod" ],
+    source: [".github/workflows/sam-ci-docker.yaml", ".github/workflows/ci-staging.yaml", ".github/workflows/browser-smoke.yaml", "docs/plans/implemented/CI_PARALLEL_SPLIT.md", "docs/TESTING.md"] },
+
+  { id: "merge", name: "Merge", where: t => "push to " + t.base,
+    title: t => "A merge to " + t.base + " is the deploy decision",
+    chip: t => t.base === "main" ? "promotion merged" : "feature merged",
+    summary: t => t.base === "main"
+      ? "Merging the promotion PR pushes main. That push starts the production build, and <code>sync-staging-to-main</code> then resets staging onto main so the two never drift."
+      : "Merging a feature PR pushes staging. That push starts the dev build, and opens or refreshes the single staging-to-main promotion PR.",
+    runs: t => t.base === "main"
+      ? [ "<code>build-images-cirrus-deploy</code>, target prod", "<code>sync-staging-to-main</code> resets staging" ]
+      : [ "<code>build-images-cirrus-deploy</code>, target dev", "<code>open-staging-promotion</code> keeps one promotion PR open" ],
+    trigger: t => t.base === "main"
+      ? [ "A push to main, or a <code>v*</code> tag. Prod is never inferred from anything else." ]
+      : [ "A push to staging", "Or by hand: <code>workflow_dispatch</code> from any branch, target dev by default" ],
+    guard: t => t.base === "main"
+      ? [ "Only main or a tag selects prod; a dispatch must name it explicitly" ]
+      : [ "A dispatch deploys that branch's chart, so keep the branch rebased on staging" ],
+    source: [".github/workflows/open-staging-promotion.yaml", ".github/workflows/sync-staging-to-main.yaml", ".github/workflows/build-images-cirrus-deploy.yaml", "docs/CIRRUS_PUBLISHING.md#triggers-and-targets"] },
+
+  { id: "build", name: "Build", where: () => "amd64 + arm64",
+    title: () => "One image, built natively for two architectures",
+    chip: () => "~3 min",
+    summary: () => "The setup job resolves the target and pins the peer plugins to commit SHAs once, so both platform builds see identical inputs. Each platform builds on its own native runner and pushes by digest.",
+    runs: () => [ "<code>setup</code>: target, plugin SHAs, build date", "<code>build</code>: <code>ubuntu-24.04</code> and <code>ubuntu-24.04-arm</code>, no emulation", "<code>merge</code>: <code>docker buildx imagetools create</code> joins the two digests", "<code>summary</code>: the run's summary page" ],
+    trigger: () => [ "Every run of the deploy workflow; only <code>samuel</code> builds by default" ],
+    guard: () => [ "The merge job fails unless it gets exactly two digests", "2.07 GB became 679 MB (uncompressed, arm64); 8 min became about 3" ],
+    source: [".github/workflows/build-images-cirrus-deploy.yaml", "docs/CIRRUS_PUBLISHING.md#the-pipeline", "docs/plans/implemented/JOBS_IMAGE.md"] },
+
+  { id: "ghcr", name: "Registry", where: () => "GHCR",
+    title: () => "The tagged multi-arch index lands in GHCR",
+    chip: () => "ghcr.io/benkirk/sam-queries/samuel",
+    summary: t => "The merged index is tagged with the short commit SHA and the branch name" + (t.base === "main" ? ", plus <code>latest</code>. A <code>v*</code> tag adds its semver components." : ". <code>latest</code> is reserved for main."),
+    runs: t => [ "<code>sha-&lt;short&gt;</code>: the tag the cluster pins", "<code>" + t.base + "</code>: the moving branch tag", t.base === "main" ? "<code>latest</code>, and semver on tags" : "no <code>latest</code> from staging" ],
+    trigger: () => [ "The merge job, after both platforms push" ],
+    guard: () => [ "<code>clean-ghcr</code> prunes on Sundays, but keeps every manifest a kept index references", "It dry-runs anywhere but main" ],
+    source: [".github/workflows/clean-ghcr.yaml", "docs/CIRRUS_PUBLISHING.md#image-tags-emitted-per-build"] },
+
+  { id: "pin", name: "Pin", where: t => t.branch + " branch",
+    title: t => "CI rewrites one line on " + t.branch,
+    chip: () => "update-helm",
+    summary: t => "<code>update-helm</code> resets the <code>" + t.branch + "</code> branch to the triggering commit's tree, rewrites the image line, and force-pushes one commit. This is CI's only deployment act: it never talks to the cluster.",
+    code: t => "# helm/values.yaml on " + t.branch + "\nwebapp:\n  container:\n    image: ghcr.io/benkirk/sam-queries/samuel:sha-1b624fc",
+    runs: () => [ "Reset to the ref's tree, <code>sed</code> the image line, force-push", "Pushes as a GitHub App, not as <code>github-actions[bot]</code>" ],
+    trigger: () => [ "Runs only if the <code>samuel</code> image built" ],
+    guard: () => [ "A ruleset locks <code>cirrus</code> and <code>cirrus-dev</code>", "Its only bypass is the deploy workflow's GitHub App: no person and no other workflow can push a deploy" ],
+    source: [".github/workflows/build-images-cirrus-deploy.yaml", "docs/CIRRUS_PUBLISHING.md#branch-protection", "docs/CIRRUS_PUBLISHING.md#why-the-branches-are-force-pushed-every-time"] },
+
+  { id: "argo", name: "Argo to pods", where: t => t.ns,
+    title: t => "Argo CD syncs " + t.app + " and rolls the pods",
+    chip: t => t.host,
+    summary: t => "CIRRUS's Argo CD watches <code>" + t.branch + "</code>. A new pin rolls the " + t.name + " release in namespace <code>" + t.ns + "</code>, with " + t.values + ".",
+    runs: t => [ "Replicas: " + t.replicas, "SAM database: " + t.db, "<code>gunicorn</code> <code>gthread</code> pods behind <code>nginx-external</code>", "The <code>samuel-tasks</code> CronJob runs the same image" ],
+    trigger: t => [ "The new commit on " + t.branch ],
+    guard: t => t.base === "main"
+      ? [ "Rollout adds a pod before removing one (maxUnavailable 0, maxSurge 1)", "Readiness gates on the sam database only, so a secondary database roll degrades instead of emptying the Service" ]
+      : [ "Mail, XRAS outgoing and writes, and Jira are off", "<code>helm/tests/test-dev-render.sh</code> fails if dev shares a secret, host, database or lever with prod" ],
+    source: ["helm/values.yaml", "helm/values-dev.yaml", "helm/tests/test-dev-render.sh", "docs/plans/implemented/K8S_DEV_ENVIRONMENT.md"] }
+];
+
+let target = "prod";
+let current = 0;
+const rail = document.getElementById("rail");
+const sheet = document.getElementById("sheet");
+
+function list(items) { return "<ul>" + items.map(i => "<li>" + i + "</li>").join("") + "</ul>"; }
+const REPO = "https://github.com/benkirk/sam-queries/blob/main/";
+function link(path) {
+  const [file, anchor] = path.split("#");
+  const label = file.replace(".github/workflows/", "workflows/") + (anchor ? " § " + anchor.replace(/-/g, " ") : "");
+  return `<li><a href="${REPO}${path}" target="_blank" rel="noopener">${label}</a></li>`;
+}
+function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+
+function render() {
+  const t = T[target];
+  rail.innerHTML = STOPS.map((s, i) =>
+    `<li class="${i <= current ? "done" : ""}"><button type="button" class="stop" role="tab" id="stop-${s.id}"
+       aria-selected="${i === current}" aria-controls="sheet"><span class="dot">${i + 1}</span>
+       <span class="name">${s.name}</span><span class="where">${s.where(t)}</span></button></li>`).join("");
+  rail.querySelectorAll(".stop").forEach((b, i) => b.addEventListener("click", () => select(i)));
+  const s = STOPS[current];
+  sheet.innerHTML = `
+    <div class="sheet-head"><h2>${s.title(t)}</h2><span class="chip">${s.chip(t)}</span></div>
+    <p class="summary">${s.summary(t)}</p>
+    ${s.code ? `<pre><code>${esc(s.code(t))}</code></pre>` : ""}
+    <div class="cols">
+      <section><h3>What runs</h3>${list(s.runs(t))}</section>
+      <section><h3>What starts it</h3>${list(s.trigger(t))}</section>
+      <section class="guard"><h3>What keeps it safe</h3>${list(s.guard(t))}</section>
+    </div>
+    <div class="source"><h3>Read the source</h3><ul>${s.source.map(link).join("")}</ul></div>
+    <div class="nav">
+      <button type="button" id="prev" ${current === 0 ? "disabled" : ""}>Previous stop</button>
+      <button type="button" id="next" ${current === STOPS.length - 1 ? "disabled" : ""}>Next stop</button>
+    </div>`;
+  document.getElementById("prev").addEventListener("click", () => select(current - 1));
+  document.getElementById("next").addEventListener("click", () => select(current + 1));
+}
+
+function select(i) {
+  current = Math.max(0, Math.min(STOPS.length - 1, i));
+  try { history.replaceState(null, "", "#" + STOPS[current].id + "-" + target); } catch (e) {}
+  render();
+}
+
+function setTarget(name) {
+  target = name;
+  document.getElementById("t-prod").setAttribute("aria-pressed", name === "prod");
+  document.getElementById("t-dev").setAttribute("aria-pressed", name === "dev");
+  select(current);
+}
+document.getElementById("t-prod").addEventListener("click", () => setTarget("prod"));
+document.getElementById("t-dev").addEventListener("click", () => setTarget("dev"));
+
+rail.addEventListener("keydown", e => {
+  if (e.key === "ArrowRight" || e.key === "ArrowDown") { select(current + 1); document.getElementById("stop-" + STOPS[current].id).focus(); e.preventDefault(); }
+  if (e.key === "ArrowLeft" || e.key === "ArrowUp") { select(current - 1); document.getElementById("stop-" + STOPS[current].id).focus(); e.preventDefault(); }
+});
+
+(function boot() {
+  const m = (location.hash || "").slice(1).match(/^([a-z]+)-(prod|dev)$/);
+  if (m) {
+    const i = STOPS.findIndex(s => s.id === m[1]);
+    if (i >= 0) current = i;
+    target = m[2];
+    document.getElementById("t-prod").setAttribute("aria-pressed", target === "prod");
+    document.getElementById("t-dev").setAttribute("aria-pressed", target === "dev");
+  }
+  render();
+})();
+</script>

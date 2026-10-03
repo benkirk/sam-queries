@@ -200,5 +200,21 @@
     "admin_project_directories_active_route": {
         "queries": 20,
         "notes": "measured 12 (2026-09-11) vs 894 before (the 895 q / 5 s seen in prod); ?active_only=1, the page shell's first load"
+    },
+    "allocations_calendar_route": {
+        "queries": 45,
+        "notes": "measured 36 (2026-10-03), Used mode: the skeleton, no burn query"
+    },
+    "allocations_calendar_burn_route": {
+        "queries": 56,
+        "notes": "measured 46 (2026-10-03): +10 for the allocation fetch and the month sums (comp/dav + adjustments per routing path), cache off"
+    },
+    "allocations_calendar_burn_rows_route": {
+        "queries": 57,
+        "notes": "measured 47 (2026-10-03): one type group's rows in Burn mode, cache off"
+    },
+    "allocations_pace_route": {
+        "queries": 55,
+        "notes": "measured 45 (2026-10-03) vs 38 on the +-180-day rows: +7 for the calendar's month sums, which it now shares, cache off"
     }
 }

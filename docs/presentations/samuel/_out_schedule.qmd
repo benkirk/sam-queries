@@ -1,0 +1,10 @@
+```
+# cadence  hosts           lanes     job [args]
+rapid      casper,derecho  prod,dev  collectors
+rapid      casper,derecho  prod      jobhist-sync rapid
+hourly     casper,derecho  prod,dev  accounting-comp --last 2d
+daily      casper,derecho  prod      jobhist-sync daily
+daily      casper,derecho  prod,dev  accounting-comp --last 7d
+daily      casper          prod,dev  accounting-disk
+weekly     casper,derecho  prod      jobhist-sync weekly
+```

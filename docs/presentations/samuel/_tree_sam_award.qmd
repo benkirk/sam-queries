@@ -1,0 +1,27 @@
+```{mermaid}
+%%| fig-width: 6
+graph TD
+    CESM0002["CESM0002<br/>465M"]
+    CESM0028["CESM0028<br/>20.0M"]
+    P93300065["P93300065<br/>16.0M"]
+    CESM0027["CESM0027<br/>4.00M"]
+    CESM0023["CESM0023<br/>100M"]
+    CESM0020["CESM0020<br/>30.5M"]
+    CESM0019["CESM0019<br/>30.0M"]
+    CESM0024["CESM0024<br/>30.0M"]
+    CESM0002_more(["(+10 more)"])
+    CESM0002 --> CESM0028
+    CESM0028 --> P93300065
+    CESM0028 --> CESM0027
+    CESM0002 --> CESM0023
+    CESM0002 --> CESM0020
+    CESM0002 --> CESM0019
+    CESM0002 --> CESM0024
+    CESM0002 --> CESM0002_more
+    classDef root fill:#cfe2f3,stroke:#1f4e79,stroke-width:2px
+    classDef own fill:#ffffff,stroke:#1f4e79
+    classDef elided fill:#f3f3f3,stroke:#999999,stroke-dasharray:4 3,color:#666666
+    class CESM0002 root
+    class CESM0028,P93300065,CESM0027,CESM0023,CESM0020,CESM0019,CESM0024 own
+    class CESM0002_more elided
+```

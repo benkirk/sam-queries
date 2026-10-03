@@ -221,16 +221,16 @@ class TestFieldsAreConsumed:
         case = next(c for c in CASES if c[0] == 'disk_entity_pie.owner')
         desktop, mobile = self._svgs(app, case)
         cap = pie.PieChart.LAYOUTS['mobile'].max_legend_entries
-        # One <a> per linked wedge, tripled (wedge + swatch + label).
+        # Five <a> per linked wedge: the wedge, its swatch, and three legend cells.
         assert mobile.count('<a ') < desktop.count('<a ')
-        assert mobile.count('<a ') <= 3 * cap
+        assert mobile.count('<a ') <= 5 * cap
 
     def test_max_legend_entries_clamps_pace_top_n(self, app):
         desktop, mobile = self._svgs(app, self._case('pace.size'))
-        assert 'Other (19 projects)' in mobile, (
+        assert '19 other' in mobile, (
             'pace did not clamp top_n on mobile — 20 legend rows under a '
             '3.4in figure is taller than the chart')
-        assert 'Other (19 projects)' not in desktop
+        assert '19 other' not in desktop
 
     def test_base_fontsize_reaches_tick_labels(self, app):
         """Applied centrally in `render()`, because a family that forgot would

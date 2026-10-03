@@ -1,0 +1,23 @@
+```{mermaid}
+%%| fig-width: 6
+graph TD
+    NMMM0003["NMMM0003<br/>750K"]
+    NMMM0080["NMMM0080<br/>75,000, detached"]
+    NMMM0004["NMMM0004<br/>750K, shared"]
+    NMMM0007["NMMM0007<br/>750K, shared"]
+    NMMM0008["NMMM0008<br/>750K, shared"]
+    NMMM0003_more(["(+9 more)"])
+    NMMM0003 --> NMMM0080
+    NMMM0003 --> NMMM0004
+    NMMM0003 --> NMMM0007
+    NMMM0003 --> NMMM0008
+    NMMM0003 --> NMMM0003_more
+    classDef root fill:#cfe2f3,stroke:#1f4e79,stroke-width:2px
+    classDef linked fill:#fff2cc,stroke:#bf9000
+    classDef detached fill:#fde2e1,stroke:#c0392b,stroke-dasharray:5 3
+    classDef elided fill:#f3f3f3,stroke:#999999,stroke-dasharray:4 3,color:#666666
+    class NMMM0003 root
+    class NMMM0004,NMMM0007,NMMM0008 linked
+    class NMMM0080 detached
+    class NMMM0003_more elided
+```

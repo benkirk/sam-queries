@@ -100,15 +100,8 @@ Next: `ALLOCATIONS_SUNBURST.md` carries these patterns to `/allocations/projects
 
 ### Follow-on: a hover layer for the chart framework
 
-No server-rendered SVG chart has a hover/tooltip layer (the dataviz method defaults to
-one: per-mark tooltips on wedges/bars, a crosshair on line/area). The sunburst shows
-the need: outer wedges under 6% of the machine carry no label. Write
-`docs/plans/CHART_HOVER_LAYER.md` after this PR lands, covering: how per-artist
-metadata rides the SVG (`links.py` already emits per-artist `<a xlink:href>`; a
-`data-*`/`<title>` channel would need a post-render pass over `fig_to_svg` output), CSP
-(no inline script: one static JS file keyed off SVG attributes, initialized per
-`htmx.onLoad`), touch (tap-to-reveal), and cache cost (the attributes live in the
-cached SVG bytes; a format change shows up as a fingerprint delta on every chart).
+Planned in `CHART_HOVER_LAYER.md`: a native `<title>` per mark, added by a pass over
+`fig_to_svg` output, with an optional styled stage on top.
 
 ## Out of scope (noted, not fixed)
 

@@ -28,11 +28,16 @@ from flask_login import login_required
 from sam.core.users import User
 from sam.projects.projects import Project
 from webapp.api.access_control import require_project_access
+from sam.queries.projects import project_facilities
+from sam.resources.facilities import Facility
 from webapp.dashboards.charts import (
+    generate_jobs_facility_sunburst,
     generate_jobs_histogram,
     generate_jobs_timeseries_stacked,
     generate_jobs_usage_pie_chart,
 )
+from webapp.dashboards.charts.jobs_metrics import jobs_metric_value
+from webapp.dashboards.charts.theme import facility_slots
 from webapp.extensions import db
 from webapp.jobs import service
 from webapp.utils.fragments import (
@@ -452,6 +457,12 @@ _SIZE_DIMENSIONS = ('nodes', 'cpus', 'gpus',
 # Rows shown in the By User table (the pie itself keeps at most 9 + Other).
 _BY_USER_LIMIT = 25
 
+# Projects named per facility in the By Project "By facility" outer ring.
+_FACILITY_TOP_PROJECTS = 5
+# Its center label: the summary line's short units, which fit a phone's ring hole.
+_FACILITY_CENTER = {'jobs': 'Jobs', 'cpu_hours': 'CPU-h', 'gpu_hours': 'GPU-h',
+                    'charges': 'Charges'}
+
 # Metric pill -> plugin jobs_usage_by sort_by key. Ranking must follow the
 # viewed metric or the top-N cut hides e.g. pure-GPU users behind CPU-heavy
 # ones (the Derecho GPU-Hours one-wedge bug).
@@ -663,6 +674,11 @@ def _parse_log() -> bool:
     return read_flag(request.args, 'log')
 
 
+def _parse_by_facility() -> bool:
+    """``?by_facility=`` — the By Project pie's facility-grouping switch."""
+    return read_flag(request.args, 'by_facility')
+
+
 def _period_bar_count(period: str, span_days: int) -> int:
     """Bars a *period* would produce over a *span_days* window."""
     per = _PERIOD_DAYS[period]
@@ -823,6 +839,52 @@ def _usage_other(usage) -> Optional[dict]:
     return rem if any(rem[k] > 1e-9 for k in visible) else None
 
 
+def _facility_rings(rows, metric, facility_of, slots, linked,
+                    top_n=_FACILITY_TOP_PROJECTS):
+    """`TwoRingPie` rows from every project's usage: facilities in slot order
+    (so a color keeps its place across metrics), unmapped projects last as Unknown."""
+    groups = {}
+    for r in rows:
+        value = jobs_metric_value(r, metric, 'cpu_hours')
+        if value <= 0:
+            continue
+        code = r.get('value')
+        fid, name = facility_of.get(code, (None, None))
+        group = groups.setdefault(name, {'fid': fid, 'value': 0.0, 'projects': []})
+        group['value'] += value
+        group['projects'].append((code, value))
+
+    def order(name):
+        slot = slots.get(groups[name]['fid'])
+        return name is None, slot is None, slot or 0, name or ''
+
+    out = []
+    for name in sorted(groups, key=order):
+        group = groups[name]
+        top = sorted(group['projects'], key=lambda p: (-p[1], str(p[0])))[:top_n]
+        out.append({
+            'id': None,
+            'facility': name or 'Unknown',
+            'slot': slots.get(group['fid']),
+            'value': group['value'],
+            'types': [{'name': code or '(unknown)', 'value': value, 'linked': code in linked}
+                      for code, value in top],
+        })
+    return out
+
+
+def _facility_sunburst(usage, metric, *, layout, theme):
+    """The By Project pie grouped by facility, from an untruncated rollup."""
+    rows = usage.get('rows') or []
+    facility_of = project_facilities(db.session, (r.get('value') for r in rows))
+    active = db.session.query(Facility.facility_id).filter(Facility.is_active)
+    slots = facility_slots(fid for (fid,) in active)
+    linked = {r.get('value') for r in rows[:_BY_USER_LIMIT]}
+    data = _facility_rings(rows, metric, facility_of, slots, linked)
+    return generate_jobs_facility_sunburst(data, _FACILITY_CENTER[metric],
+                                           layout=layout, theme=theme)
+
+
 #: The two usage rollups are the same panel over a different entity. Each
 #: spec is the complete set of things that differ — the template and the
 #: renderer below are shared verbatim.
@@ -894,16 +956,23 @@ def _render_usage_panel(*, entity_key, mode, machine, fragment_url,
 
     filters = _parse_job_filters(include_user=(username is None))
     metric = _parse_metric(_DEFAULT_METRIC_PIE)
+    # Status page only: a user's or project's own rollup spans one facility or two.
+    facility_toggle = entity_key == 'project' and mode == 'machine'
+    by_facility = facility_toggle and _parse_by_facility()
 
-    usage = None
+    usage = full = None
     error = None
     try:
-        usage = getattr(service, entity['service'])(
+        # Grouped by facility, the rings need every project; the table keeps its top 25.
+        usage = full = getattr(service, entity['service'])(
             machine,
             _agg_scope(mode, username=username,
                        account_projcodes=account_projcodes),
-            limit=_BY_USER_LIMIT, sort_by=_USAGE_SORT_BY[metric], **filters,
+            limit=None if by_facility else _BY_USER_LIMIT,
+            sort_by=_USAGE_SORT_BY[metric], **filters,
         )
+        if by_facility:
+            usage = {**full, 'rows': (full.get('rows') or [])[:_BY_USER_LIMIT]}
     except Exception as exc:
         from flask import current_app
         current_app.logger.exception(
@@ -912,10 +981,18 @@ def _render_usage_panel(*, entity_key, mode, machine, fragment_url,
         )
         error = str(exc)
 
-    pie_svg = generate_jobs_usage_pie_chart(
-        usage, metric=metric, row_attr=entity['sentinel_attr'],
-        layout=layout, theme=theme) if usage else None
+    if not usage:
+        pie_svg = None
+    elif by_facility:
+        pie_svg = _facility_sunburst(full, metric, layout=layout, theme=theme)
+    else:
+        pie_svg = generate_jobs_usage_pie_chart(
+            usage, metric=metric, row_attr=entity['sentinel_attr'],
+            layout=layout, theme=theme)
     other = _usage_other(usage) if usage else None
+    params = _roundtrip_params(machine, target_id)
+    if by_facility:
+        params = dict(params, by_facility='1')
 
     return render_template(
         template,
@@ -923,11 +1000,12 @@ def _render_usage_panel(*, entity_key, mode, machine, fragment_url,
         mode=mode, machine=machine,
         usage=usage, other=other,
         metric=metric, pie_svg=pie_svg,
+        facility_toggle=facility_toggle, by_facility=by_facility,
         fragment_url=fragment_url,
         jobs_fragment_url=jobs_fragment_url,
         target_id=target_id,
         can_view_entity=_usage_affordance_permission(entity_key, mode),
-        params=_roundtrip_params(machine, target_id),
+        params=params,
         entity=entity,
     )
 

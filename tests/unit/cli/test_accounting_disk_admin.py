@@ -576,6 +576,36 @@ class TestDiskAdminCli:
             DiskChargeSummary.user_id == lead.user_id,
         ).count() == 1
 
+    def test_import_ends_with_snapshot_current_after_legacy_triggers(
+        self, runner, mock_db_session, tmp_path, session, monkeypatch,
+    ):
+        """Prod's legacy disk_charge triggers flip the date to current=FALSE mid-import; the run must end TRUE."""
+        from cli.accounting.commands import AccountingAdminCommand
+
+        lead, project, resource = _build_campaign_store_graph(session, monkeypatch)
+        snap = DISK_CHARGING_TIB_EPOCH
+        f = _write_acct(tmp_path, snap, project.projcode, lead.username, kib=1024 * 1024)
+
+        real_write = AccountingAdminCommand._write_disk_activity_and_charge
+
+        def write_then_trigger(self, *args, **kwargs):
+            out = real_write(self, *args, **kwargs)
+            self.session.get(DiskChargeSummaryStatus, kwargs['snap_date']).current = False
+            self.session.flush()
+            return out
+
+        monkeypatch.setattr(AccountingAdminCommand, '_write_disk_activity_and_charge',
+                            write_then_trigger)
+        result = runner.invoke(cli, [
+            'accounting', '--disk',
+            '--resource', resource.resource_name,
+            '--user-usage', str(f),
+            '--date', snap.isoformat(),
+        ])
+        assert result.exit_code == 0, result.output
+        session.expire_all()
+        assert session.get(DiskChargeSummaryStatus, snap).current is True
+
 
 
 def _write_acct_rows(tmp_path: Path, snap: date,

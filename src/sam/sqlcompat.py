@@ -4,8 +4,8 @@ SAM runs on MySQL in production and Postgres in development from one ORM
 (docs/plans/implemented/POSTGRES_MIGRATION.md). Everything that can go through Core does;
 these are the leftovers, in two families. Bind -> fragment string, for text()
 statements: the VALUES row-constructor spelling, the information_schema scope
-predicate, the string-aggregate. Expression constructors, for Core: the
-statement clock, and a LIKE that Postgres accepts under the nondeterministic
+predicate, the string-aggregate (and the month key, the same on both). Expression
+constructors, for Core: the statement clock, and a LIKE that Postgres accepts under the nondeterministic
 `sam_ci` collation (ILIKE is rejected there).
 """
 from sqlalchemy import DateTime, func
@@ -46,6 +46,11 @@ def dialect_name(bind) -> str:
 def row_constructor(bind) -> str:
     """The VALUES table constructor is `VALUES ROW(...)` on MySQL, `VALUES (...)` on Postgres."""
     return 'ROW' if dialect_name(bind) in MYSQL_DIALECTS else ''
+
+
+def month_key(expr: str) -> str:
+    """``yyyymm`` as a number from a date/datetime column expression, on both backends."""
+    return f'(EXTRACT(YEAR FROM {expr}) * 100 + EXTRACT(MONTH FROM {expr}))'
 
 
 def schema_predicate(bind) -> str:
