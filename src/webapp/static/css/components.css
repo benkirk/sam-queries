@@ -585,6 +585,35 @@ tr:hover > td .btn.btn-row-attention {
 .share-bar.share-zero {
     background: var(--surface-secondary);
 }
+/* Time elapsed on a full-height usage bar (render_usage_bar); set left inline. */
+.elapsed-tick {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    width: 2px;
+    background: rgba(var(--text-primary-rgb), 0.55);
+    z-index: 2;
+    pointer-events: none;
+}
+/* % of an allocation used: a wider share bar; the tick marks % of its time elapsed. */
+.share-bar.meter {
+    position: relative;
+    width: 5rem;
+}
+.share-bar.meter-over {
+    --share-color: var(--danger-color);
+}
+.share-bar.meter.has-elapsed::after {
+    content: '';
+    position: absolute;
+    left: var(--elapsed);
+    top: -0.1875rem;
+    bottom: -0.1875rem;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--text-primary);
+    opacity: 0.55;
+}
 [data-fs="1"] { --fs-color: var(--data-facility-1); }
 [data-fs="2"] { --fs-color: var(--data-facility-2); }
 [data-fs="3"] { --fs-color: var(--data-facility-3); }

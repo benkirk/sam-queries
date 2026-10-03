@@ -245,15 +245,44 @@ def _share(part, whole):
     return part * 100 / whole if whole else None
 
 
+def elapsed_weights(rows, active_at):
+    """``{(resource, facility, type): (sum of amount x elapsed fraction, sum of amount)}``.
+
+    Open-ended and undated rows are left out. A multi-allocation row spans its
+    earliest start to its latest end, close enough for an aggregate tick.
+    """
+    weights = {}
+    for r in rows:
+        start, end = r.get('start_date'), r.get('end_date')
+        if r.get('is_open_ended') or not start or not end or end <= start:
+            continue
+        frac = min(max((active_at - start) / (end - start), 0.0), 1.0)
+        amount = r.get('total_amount') or 0.0
+        key = (r['resource'], r['facility'], r['allocation_type'])
+        w, a = weights.get(key, (0.0, 0.0))
+        weights[key] = (w + amount * frac, a + amount)
+    return weights
+
+
+def _usage_cols(row, weights):
+    """Remaining, % used and the amount-weighted % elapsed of a tree row, in place."""
+    row['remaining'] = row['total_amount'] - row['used']
+    row['pct_used'] = _share(row['used'], row['total_amount'])
+    row['elapsed_w'], row['elapsed_amount'] = weights
+    row['elapsed_pct'] = _share(row['elapsed_w'], row['elapsed_amount'])
+
+
 def build_facility_trees(grouped_data, overviews, type_rates, usage_overviews,
-                         usage_by_type, resource_types, facilities):
+                         usage_by_type, resource_types, facilities, elapsed_by_type=None):
     """{resource: [facility row with nested type rows]} for the tree table and sunbursts.
 
     ``facilities`` is ``[(facility_id, facility_name, is_active)]`` for every facility:
     slots come from the active ones, so a scoped user sees the same hues as everyone.
     A row's ``alloc`` is its annualized rate, or its data volume on storage; its
     shares are of the parent row (a facility of the resource, a type of its facility).
+    ``elapsed_by_type`` is `elapsed_weights` output; storage rows get no elapsed tick.
     """
+    elapsed_by_type = elapsed_by_type or {}
     ids = {name: fid for fid, name, _ in facilities}
     slots = facility_slots(fid for fid, _, active in facilities if active)
     trees = {}
@@ -270,26 +299,28 @@ def build_facility_trees(grouped_data, overviews, type_rates, usage_overviews,
             type_rows = []
             for t in sorted(types, key=lambda t: t['allocation_type']):
                 name = t['allocation_type']
-                type_rows.append({
+                row = {
                     'name': name, 'count': t['count'], 'total_amount': t['total_amount'],
-                    'avg': t.get('avg_amount'),
                     'alloc': t['total_amount'] if storage else type_rates.get((rn, fac, name), 0.0),
                     'used': usage_by_type.get((rn, fac, name), 0.0),
-                })
-            rows.append({
+                }
+                _usage_cols(row, (0.0, 0.0) if storage else elapsed_by_type.get((rn, fac, name), (0.0, 0.0)))
+                type_rows.append(row)
+            row = {
                 'id': fid, 'key': fid if fid is not None else fac, 'facility': fac,
                 'slot': slots.get(fid), 'count': count, 'total_amount': amount,
-                'avg': amount / count if count else None,
                 'alloc': amount if storage else ov.get('annualized_rate', 0.0),
                 'used': used_by_fac.get(fac, 0.0), 'types': type_rows,
-            })
+            }
+            _usage_cols(row, (sum(t['elapsed_w'] for t in type_rows),
+                              sum(t['elapsed_amount'] for t in type_rows)))
+            rows.append(row)
         rows.sort(key=lambda r: (r['slot'] is None, r['id'] is None, r['id'] or 0, r['facility']))
         total_alloc = sum(r['alloc'] for r in rows)
-        total_used = sum(r['used'] for r in rows)
         for r in rows:
-            r['alloc_share'], r['used_share'] = _share(r['alloc'], total_alloc), _share(r['used'], total_used)
+            r['alloc_share'] = _share(r['alloc'], total_alloc)
             for t in r['types']:
-                t['alloc_share'], t['used_share'] = _share(t['alloc'], r['alloc']), _share(t['used'], r['used'])
+                t['alloc_share'] = _share(t['alloc'], r['alloc'])
         trees[rn] = rows
     return trees
 
@@ -599,7 +630,8 @@ def projects():
 
     facilities = _facility_index()
     trees = build_facility_trees(grouped_data, all_overviews, type_annualized_rates,
-                                 all_usage_overviews, usage_by_type, resource_types, facilities)
+                                 all_usage_overviews, usage_by_type, resource_types, facilities,
+                                 elapsed_weights(per_project_usage, active_at))
     sunbursts = {}
     for rn, tree in trees.items():
         storage = resource_types.get(rn) in ('DISK', 'ARCHIVE')

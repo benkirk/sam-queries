@@ -1,7 +1,12 @@
 {# One resource pane's tree table. Included in the resource loop of projects.html;
    reads resource_name, slug, pane, is_storage, tree, ncols. #}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
-{% from 'dashboards/fragments/table_bits.html' import share_bar, tree_label_cell %}
+{% from 'dashboards/fragments/table_bits.html' import alloc_meter, share_bar, tree_label_cell %}
+{% macro used_meter(row, slot, tint=False) -%}
+{{ alloc_meter(row.pct_used, elapsed_pct=row.elapsed_pct, slot=slot, tint=tint,
+               title=(row.pct_used | fmt_pct) ~ ' used' ~ (('; ' ~ (row.elapsed_pct | fmt_pct) ~ ' of allocated time elapsed')
+                                                          if row.elapsed_pct is not none else '')) }}
+{%- endmacro %}
 {# One table: facility rows (which are also the subtotals) open their
    allocation types; a type row opens its projects, lazily. #}
 <div class="table-responsive mt-3">
@@ -10,13 +15,13 @@
             <tr>
                 <th>Facility / type</th>
                 <th class="col-num">Count</th>
-                <th class="col-num">{{ 'Volume' if is_storage else 'Total amount' }}</th>
+                <th class="col-num">{{ 'Volume' if is_storage else 'Allocated' }}</th>
                 {% if not is_storage %}<th class="col-num">Annual rate</th>{% endif %}
-                <th class="col-num">Avg</th>
                 <th class="col-num" title="A facility's share of the resource; a type's share of its facility">
                     {{ 'Volume share' if is_storage else 'Rate share' }}</th>
-                <th class="col-num">Used</th>
-                <th class="col-num" title="A facility's share of the resource's use; a type's share of its facility's">Use share</th>
+                <th class="col-num" title="{{ 'Occupancy on ' ~ active_at if is_storage else 'Charges from each allocation start through ' ~ active_at }}">Used</th>
+                <th class="col-num" title="Allocated minus used, as of {{ active_at }}">Remaining</th>
+                <th class="col-num" title="The tick: time elapsed, weighted by allocation size">% used</th>
             </tr>
         </thead>
         {% for f in tree %}
@@ -31,10 +36,10 @@
                 <td class="col-num fw-normal">{{ f.count | fmt_number }}</td>
                 <td class="col-num">{{ f.total_amount | fmt_number }}</td>
                 {% if not is_storage %}<td class="col-num">{{ f.alloc | fmt_number }}</td>{% endif %}
-                <td class="col-num fw-normal text-muted">{{ f.avg | fmt_number }}</td>
                 <td class="col-num fw-normal">{{ share_bar(f.alloc_share, slot=f.slot, title='Share of ' ~ resource_name) }}</td>
                 <td class="col-num">{{ f.used | fmt_number }}</td>
-                <td class="col-num fw-normal">{{ share_bar(f.used_share, slot=f.slot, title="Share of " ~ resource_name ~ "'s use") }}</td>
+                <td class="col-num">{{ f.remaining | fmt_number }}</td>
+                <td class="col-num fw-normal">{{ used_meter(f, f.slot) }}</td>
             </tr>
         </tbody>
         <tbody class="collapse alloc-tree-body" id="{{ f_body }}" data-alloc-facility="{{ f.key }}">
@@ -45,10 +50,10 @@
                 <td class="col-num">{{ t.count | fmt_number }}</td>
                 <td class="col-num">{{ t.total_amount | fmt_number }}</td>
                 {% if not is_storage %}<td class="col-num">{{ t.alloc | fmt_number }}</td>{% endif %}
-                <td class="col-num text-muted">{{ t.avg | fmt_number }}</td>
                 <td class="col-num">{{ share_bar(t.alloc_share, slot=f.slot, tint=true, title='Share of ' ~ f.facility) }}</td>
                 <td class="col-num">{{ t.used | fmt_number }}</td>
-                <td class="col-num">{{ share_bar(t.used_share, slot=f.slot, tint=true, title="Share of " ~ f.facility ~ "'s use") }}</td>
+                <td class="col-num">{{ t.remaining | fmt_number }}</td>
+                <td class="col-num">{{ used_meter(t, f.slot, tint=true) }}</td>
             </tr>
             <tr class="collapse" id="{{ t_id }}" data-no-persist>
                 <td colspan="{{ ncols }}" class="p-0">
@@ -92,16 +97,21 @@
         </tbody>
         {% endfor %}
         {% if tree|length > 1 %}
+        {% set t_amount = tree|sum(attribute='total_amount') %}
+        {% set t_used = tree|sum(attribute='used') %}
+        {% set t_dated = tree|sum(attribute='elapsed_amount') %}
+        {% set total = {'pct_used': t_used * 100 / t_amount if t_amount else none,
+                        'elapsed_pct': (tree|sum(attribute='elapsed_w')) * 100 / t_dated if t_dated else none} %}
         <tfoot class="table-subtle fw-semibold">
             <tr>
                 <td>Total</td>
                 <td class="col-num fw-normal">{{ tree|sum(attribute='count') | fmt_number }}</td>
-                <td class="col-num">{{ tree|sum(attribute='total_amount') | fmt_number }}</td>
+                <td class="col-num">{{ t_amount | fmt_number }}</td>
                 {% if not is_storage %}<td class="col-num">{{ tree|sum(attribute='alloc') | fmt_number }}</td>{% endif %}
                 <td></td>
-                <td></td>
-                <td class="col-num">{{ tree|sum(attribute='used') | fmt_number }}</td>
-                <td></td>
+                <td class="col-num">{{ t_used | fmt_number }}</td>
+                <td class="col-num">{{ tree|sum(attribute='remaining') | fmt_number }}</td>
+                <td class="col-num fw-normal">{{ used_meter(total, none) }}</td>
             </tr>
         </tfoot>
         {% endif %}

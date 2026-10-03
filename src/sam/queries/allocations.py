@@ -1132,6 +1132,8 @@ def get_allocation_summary_with_usage(
         return summary
 
     check_date = active_at if active_at is not None else datetime.now()
+    # Usage is as of check_date: charges after that day never count, as in get_allocation_usage_rows.
+    as_of_end = check_date.replace(hour=23, minute=59, second=59, microsecond=0)
 
     # Fetch ALL matching allocations in a single query, then group in Python.
     # This replaces the previous per-summary-row query loop (N+1 problem).
@@ -1158,7 +1160,7 @@ def get_allocation_summary_with_usage(
 
     for alloc_list in alloc_by_key.values():
         for alloc, res_name, res_type, project, account in alloc_list:
-            end_date = alloc.end_date if alloc.end_date else check_date
+            end_date = min(alloc.end_date, as_of_end) if alloc.end_date else as_of_end
             is_tree_valid = bool(project.tree_root and project.tree_left and project.tree_right)
             info = {
                 'key': alloc.allocation_id,
@@ -1218,7 +1220,7 @@ def get_allocation_summary_with_usage(
                 'tree_left':     root_project.tree_left,
                 'tree_right':    root_project.tree_right,
                 'start_date':    alloc.start_date,
-                'end_date':      alloc.end_date if alloc.end_date else check_date,
+                'end_date':      min(alloc.end_date, as_of_end) if alloc.end_date else as_of_end,
             })
 
     # Batch compute all charges in O(charge_models × date_groups) SQL queries
