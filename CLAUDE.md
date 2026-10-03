@@ -860,7 +860,7 @@ parsing. `test_task_ledger.py` AST-walks the package.
 
 ## Charts — `webapp/dashboards/charts/`
 
-16 matplotlib charts, server-rendered to **inline SVG** (no PNG/base64/dpi
+17 matplotlib charts, server-rendered to **inline SVG** (no PNG/base64/dpi
 anywhere). Each is a `BaseChart` subclass bound to its cache by `chart_view`.
 
 ```
@@ -872,7 +872,7 @@ charts/
   links.py        drill targets                      [no matplotlib]
   series.py       stacked-band normalization         [no matplotlib]
   jobs_metrics.py plugin-envelope accessors          [no matplotlib]
-  pie.py stacked.py histogram.py dualpanel.py pace.py    the five families
+  pie.py sunburst.py stacked.py histogram.py dualpanel.py pace.py   the families
 ```
 
 **Two render axes**, both composed into the cache key by `chart_view` *and* into

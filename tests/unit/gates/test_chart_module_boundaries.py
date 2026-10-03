@@ -60,7 +60,7 @@ def test_expected_package_layout():
     assert ALL_MODULES == [
         '__init__.py', 'base.py', 'dualpanel.py', 'histogram.py',
         'jobs_metrics.py', 'layout.py', 'links.py', 'pace.py', 'pie.py',
-        'series.py', 'stacked.py', 'theme.py',
+        'series.py', 'stacked.py', 'sunburst.py', 'theme.py',
     ]
 
 
@@ -76,11 +76,12 @@ def test_no_module_exceeds_the_readable_size():
 def test_family_modules_do_not_import_each_other():
     """Families are siblings, not a chain.
 
-    The one allowed edge is `stacked.py` -> `dualpanel.py` for the shared
-    `_to_display_tz`. If a second edge appears, the shared thing belongs in
-    `base.py` or `theme.py` instead.
+    The allowed edges are `stacked.py` -> `dualpanel.py` for the shared
+    `_to_display_tz`, and `sunburst.py` -> `pie.py`, whose `TwoRingPie` is a
+    `PieChart`. Any other shared thing belongs in `base.py` or `theme.py`.
     """
-    families = ['pie.py', 'stacked.py', 'histogram.py', 'dualpanel.py', 'pace.py']
+    families = ['pie.py', 'stacked.py', 'histogram.py', 'dualpanel.py', 'pace.py',
+                'sunburst.py']
     stems = {f[:-3] for f in families}
     edges = []
     for f in families:
@@ -90,7 +91,8 @@ def test_family_modules_do_not_import_each_other():
                 parts = node.module.split('.')
                 if parts[:-1] == ['webapp', 'dashboards', 'charts'] and parts[-1] in stems:
                     edges.append((f, parts[-1]))
-    assert edges == [('stacked.py', 'dualpanel')], f'unexpected family edges: {edges}'
+    assert edges == [('stacked.py', 'dualpanel'), ('sunburst.py', 'pie')], \
+        f'unexpected family edges: {edges}'
 
 
 def test_caching_package_stays_chart_free():

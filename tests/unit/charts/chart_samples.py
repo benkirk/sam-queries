@@ -250,6 +250,22 @@ _ALLOCATION_SUNBURST = [
     {'id': 5, 'facility': 'WNA', 'slot': 6, 'value': 60_000_000.0, 'types': []},
 ]
 
+# Jobs By Project, grouped: two named facilities, an inactive one, and Unknown;
+# one wedge outside the table (inert), and a remainder tint on NCAR.
+_JOBS_FACILITY_SUNBURST = [
+    {'id': None, 'facility': 'NCAR', 'slot': 1, 'value': 1_100.0,
+     'types': [{'name': 'NMMM0043', 'value': 500.0, 'linked': True},
+               {'name': 'NMMM0063', 'value': 300.0, 'linked': True},
+               {'name': 'NRAL0032', 'value': 200.0, 'linked': False}]},
+    {'id': None, 'facility': 'UNIV', 'slot': 2, 'value': 700.0,
+     'types': [{'name': 'UCUB0174', 'value': 400.0, 'linked': True},
+               {'name': 'UMIA0042', 'value': 300.0, 'linked': True}]},
+    {'id': None, 'facility': 'CSL', 'slot': 3, 'value': 400.0,
+     'types': [{'name': 'P93300606', 'value': 250.0, 'linked': True}]},
+    {'id': None, 'facility': 'Unknown', 'slot': None, 'value': 60.0,
+     'types': [{'name': '(unknown)', 'value': 60.0, 'linked': False}]},
+]
+
 
 CASES = [
     # --- 1. usage timeseries (flat) -------------------------------------
@@ -370,4 +386,10 @@ CASES = [
     ('allocation_sunburst.allocated', charts.generate_allocation_sunburst,
      (_ALLOCATION_SUNBURST,), {'center': 'Allocated'}),
     ('allocation_sunburst.empty', charts.generate_allocation_sunburst, ([],), {'center': 'Used'}),
+
+    # --- 19. jobs By Project grouped by facility (top projects, tinted remainder)
+    ('jobs_facility_sunburst.normal', charts.generate_jobs_facility_sunburst,
+     (_JOBS_FACILITY_SUNBURST,), {'center': 'CPU-h'}),
+    ('jobs_facility_sunburst.empty', charts.generate_jobs_facility_sunburst,
+     ([],), {'center': 'Jobs'}),
 ]
