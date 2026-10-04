@@ -12,15 +12,16 @@ them. Tick an item when its fix merges.
 
 From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 
-| date | end commit | private imports (helpers / sites / package-private) | dup-function groups (extra copies) | py-dup-names (names / definitions) | dead CSS classes (dynamic stem) | CSS lines / `!important` / repeated blocks | inline styles (templates) | bs4-classes (uses / classes) | JS shared names / shared events |
-|---|---|---|---|---|---|---|---|---|---|
-| 2026-10-03 | `79f1a147` | 70 / 88 / 33 | 9 (10) | — | 38 (17) | 4,789 / 70 / 14 | 405 (106) | — | 5 / 4 |
-| 2026-10-03 | `5254c65b` + js sweep | 70 / 88 / 33 | 9 (10) | — | 38 (17) | 4,817 / 70 / 14 | 404 (105) | — | 5 / 4 |
-| 2026-10-04 | `0515333f` + css sweep | 70 / 88 / 33 | 9 (10) | — | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | — | 5 / 4 |
-| 2026-10-04 | `75f89900` (base, py) | 70 / 88 / 33 | 9 (10) | 17 / 59 | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | — | 5 / 4 |
-| 2026-10-04 | `75f89900` + py sweep | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | — | 5 / 4 |
-| 2026-10-04 | `21e6bae5` (base, templates) | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | 20 / 3 | 5 / 4 |
-| 2026-10-04 | `21e6bae5` + templates sweep | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,621 / 57 / 10 | 323 (95) | 0 / 0 | 5 / 4 |
+| date | end commit | private imports (helpers / sites / package-private) | dup-function groups (extra copies) | py-dup-names (names / definitions) | dead CSS classes (dynamic stem) | CSS lines / `!important` / repeated blocks | inline styles (templates) | bs4-classes (uses / classes) | row-buttons | JS shared names / shared events |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-10-03 | `79f1a147` | 70 / 88 / 33 | 9 (10) | — | 38 (17) | 4,789 / 70 / 14 | 405 (106) | — | — | 5 / 4 |
+| 2026-10-03 | `5254c65b` + js sweep | 70 / 88 / 33 | 9 (10) | — | 38 (17) | 4,817 / 70 / 14 | 404 (105) | — | — | 5 / 4 |
+| 2026-10-04 | `0515333f` + css sweep | 70 / 88 / 33 | 9 (10) | — | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | — | — | 5 / 4 |
+| 2026-10-04 | `75f89900` (base, py) | 70 / 88 / 33 | 9 (10) | 17 / 59 | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | — | — | 5 / 4 |
+| 2026-10-04 | `75f89900` + py sweep | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | — | — | 5 / 4 |
+| 2026-10-04 | `21e6bae5` (base, templates) | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | 20 / 3 | — | 5 / 4 |
+| 2026-10-04 | `21e6bae5` + templates sweep | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,621 / 57 / 10 | 323 (95) | 0 / 0 | — | 5 / 4 |
+| 2026-10-04 | `21e6bae5` + sweep 5 + trees round | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,615 / 57 / 10 | 263 (94) | 0 / 0 | 0 (from 22) | 5 / 4 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -125,8 +126,9 @@ badges, text colors, tab counters).
 
 **Open from this sweep:**
 
-- [ ] PROJECT CARDS / PROJECT TREE (`dashboard.css`, about 240 lines) are user-dashboard
-  specific and could move to their own file. Not crowding anything today.
+- [x] PROJECT CARDS / PROJECT TREE (`dashboard.css`, about 240 lines) are user-dashboard
+  specific and could move to their own file. Not crowding anything today. Closed by sweep 6:
+  mostly shared rules, see its dropped list.
 
 ## 4. 2026-10-04: area sweep, `py`
 
@@ -278,7 +280,7 @@ visual on purpose, and each commit declares its change. `src/` across the branch
 
 **Open from this sweep:**
 
-- [ ] The project trees, `shared/project_tree.html` and `admin/.../project_allocation_tree_htmx.html`.
+- [x] The project trees, `shared/project_tree.html` and `admin/.../project_allocation_tree_htmx.html` (sweep 6).
   - Today: 23 inline styles each, a nested table and px colgroups.
   - Target: `tree-cell` + `col-num` + `btn-row` + `alloc_meter`.
   - Ben wants this as a second round, planned with fresh context. Sweep 3's move of the
@@ -300,6 +302,66 @@ visual on purpose, and each commit declares its change. `src/` across the branch
 - [ ] A one-off failure in `tests/unit/gates tests/unit/webapp` that did not reproduce in two
   reruns.
 
+## 6. 2026-10-04: area sweep, `templates` round 2 (the project trees)
+
+**Mode:** area. This is sweep 5's first open item, planned and run with sweep 5's context still
+loaded.
+
+**Stacked on:** sweep 5's branch (`sweep-templates-ux-2026-10`, end commit `21e6bae5`). Retarget
+to `staging` once that merges.
+
+**Contract:** aesthetic, like sweep 5; each commit declares its visual change.
+`src/` is +244 / -637.
+
+**Shared rows (Ben's call):** two variants were shown side by side, then a hybrid was picked.
+- *Muted pool numbers:* the pool's Allocated and Remaining in gray.
+- *Label only:* "from NCGD0006" in place of the numbers. Ben's objection: with the label alone,
+  a row has no quantitative reference once the owner's row has scrolled off the page.
+- *Hybrid (shipped):* Allocated says "from <owner>", Used is the project's own `self_used`, and
+  Remaining keeps the pool's remaining, muted.
+
+**Done, in this round's PR**, one commit each (`src/` lines added / removed):
+
+- [x] Project trees (+145 / -526): one `project_tree_rows` recursion for both trees, built on
+  `tree-cell` + new `.tree-guides` (guide lines at any depth), `alloc_meter`, `btn-row`,
+  `tree_label_cell` and `collapse_toggle`.
+  - Fixes the user hierarchy's all-bold, all-yellow bug: children were nested inside the
+    current node's `<li>`.
+  - The user hierarchy goes from 862px to 738px for 18 nodes.
+  - Deleted: the dead allocation branch of `render_project_tree`, the second recursion, and the
+    `.alloc-caret` / `.alloc-resource-header` / `.tree-node-inactive` CSS.
+  - `.btn-entity` loses Unity's 3px border, which added 6px to every row with an entity link.
+- [x] Row actions (+38 / -41): 22 icon-only outline buttons in table cells become `btn-row`.
+  A new `row-buttons` detector with a fixture test is held at zero by
+  `test_template_detectors.py`, which absorbs `test_bs4_classes.py`. Prompted by Ben: "many
+  places where an edit or delete button appears on subsequent rows with a fat border".
+- [x] Manage Project header (+19 / -32): one breadcrumb trail, where it had two; the shared
+  `page_header`; the toolbar back at `btn-sm`.
+- [x] Linked elements (+36 / -38): house table vocabulary, `hidden` instead of an inline
+  `display:none`; inline styles go from 17 to 3.
+- [x] Phones (+10 / -4): the tree is wrapped in `table-responsive`. A `visually-hidden` label in
+  a `<th>` (`position: absolute`) was escaping the scroll wrapper and stretching the page to
+  587px. Tree cells keep a projcode-wide minimum.
+
+**Tried and dropped:**
+- Moving the "PROJECT CARDS / PROJECT TREE" CSS (sweep 3's open item) into its own file. Most
+  of that section is shared rules: `.stat-item` / `.stat-label` (user and configuration cards),
+  `.accordion-chevron`, `.sam-fluid-1800`, and `.tree-list`, which Resource Details still uses.
+  A file named for project cards would mislabel half of it. Closing the item.
+
+**Open from this round:**
+
+- [ ] Resource Details scope pickers (`resource_details*.html`) still use nested `.tree-list`
+  `<li>`s, so they have the same inherited bold and tint under a current node. Moving them to
+  `project_tree_rows` would delete `.tree-list`.
+- [ ] 26 `class="btn  btn-…"` double-space leftovers in 13 templates: an old bulk `btn-sm`
+  removal whose reason isn't recorded. Several are pane-toolbar buttons that the house rule
+  says should be `btn-sm`.
+- [ ] `.tree-d1` / `.tree-d2` could become `.tree-guides`, which draws the same lines at any
+  depth. Prove it with `ui_snapshots.py --styles --compare`.
+- [ ] One test failure in `tests/unit/gates tests/unit/webapp` that did not reproduce on rerun,
+  seen twice across rounds 1 and 2.
+
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
 Surfaced by the first run of `scripts/sweep_inventory.py`. Each item belongs to an area sweep;
@@ -310,9 +372,7 @@ nothing here has been read for intent yet.
 - **docs:** `plans-stale --gh` on 2026-10-03 found no retirement candidates among 22 top-level
   plans. `ADMIN_TABLE_POLISH.md` and `ALLOCATIONS_SUNBURST.md` still say "implemented, in
   review" although their PRs have merged; they pass the 14-day idle bar on 2026-10-17.
-- **templates:** sweep 5 took inline `style=""` from 404 to 323; the project trees
-  (`shared/project_tree.html`, the admin allocation tree) still carry the most, on sweep 5's
-  open list.
+- **templates:** sweeps 5 and 6 took inline `style=""` from 404 to 263.
 
 ## Propagation candidates
 
