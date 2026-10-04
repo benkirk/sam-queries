@@ -1,16 +1,16 @@
 """Flask-then-env config readers shared by the outbound integrations.
 
 Try ``flask.current_app.config``, fall back to ``os.environ``, read per call
-and never memoised at import (the webapp's config is not readable then). Used
-by ``xras_api/config.py`` and ``tickets/jira.py``. Near-copies still live in
-``notify/config.py``, ``queries/allocation_state.py`` and
-``caching/buckets.py``; folding them in is a later sweep.
+and never memoized at import (the webapp's config is not readable then). Used
+by ``xras_api/config.py``, ``tickets/jira.py``, ``notify/config.py`` and
+``queries/allocation_state.py``. ``caching/buckets.py`` reads app config only
+and raises on a bad int, so it stays apart.
 """
 
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, Optional
 
 TRUE = ('1', 'true', 'yes', 'on')
 
@@ -40,14 +40,14 @@ def config_bool(key: str, default: bool = False) -> bool:
     return str(value).strip().lower() in TRUE
 
 
-def config_int(key: str, default: int) -> int:
-    """A positive int; anything else (including 0) is the default."""
+def config_int(key: str, default: int, minimum: Optional[int] = 1) -> int:
+    """An int of at least ``minimum`` (``None``: any int); anything else is the default."""
     value = raw(key, default)
     try:
         parsed = int(value)
     except (TypeError, ValueError):
         return default
-    return parsed if parsed > 0 else default
+    return parsed if minimum is None or parsed >= minimum else default
 
 
 def config_float(key: str, default: float) -> float:

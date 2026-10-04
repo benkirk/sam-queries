@@ -139,19 +139,17 @@ def project_allocation_state(session: Session, *, now: datetime,
 # The freshness gate (read side)
 # ============================================================================
 
-import os
 from dataclasses import dataclass
 from datetime import date
 
 from sqlalchemy import func, select, union_all
 
 from sam.accounting.adjustments import ChargeAdjustment
+from sam.integration._config import config_bool, config_int
 from sam.accounting.allocations import AllocationTransaction
 from sam.summaries.allocation_state import AccountAllocationState
 
 logger = logging.getLogger(__name__)
-
-_TRUE = ('1', 'true', 'yes', 'on')
 
 #: Called with every ``Lookup`` the gate returns. The webapp registers a
 #: forwarder onto the request profile (``webapp.request_timing``); ``sam``
@@ -164,27 +162,6 @@ def set_lookup_observer(fn: Optional[Callable[['Lookup'], None]]) -> None:
     _LOOKUP_OBSERVER = fn
 
 
-def _raw(key: str, default):
-    """Flask app config inside an app context, else the environment."""
-    try:
-        from flask import current_app
-        return current_app.config.get(key, os.environ.get(key, default))
-    except (RuntimeError, ImportError):
-        return os.environ.get(key, default)
-
-
-def _config_bool(key: str, default: bool = False) -> bool:
-    value = _raw(key, default)
-    return value if isinstance(value, bool) else str(value).strip().lower() in _TRUE
-
-
-def _config_int(key: str, default: int) -> int:
-    try:
-        return int(_raw(key, default))
-    except (TypeError, ValueError):
-        return default
-
-
 @dataclass(frozen=True)
 class ReadModelConfig:
     enabled: bool
@@ -195,9 +172,9 @@ class ReadModelConfig:
 
     @classmethod
     def from_environment(cls) -> 'ReadModelConfig':
-        return cls(enabled=_config_bool('READ_MODEL_ENABLED', False),
-                   max_age=timedelta(seconds=_config_int('READ_MODEL_MAX_AGE', 7200)),
-                   patch_max_trees=_config_int('READ_MODEL_PATCH_MAX_TREES', 250))
+        return cls(enabled=config_bool('READ_MODEL_ENABLED', False),
+                   max_age=timedelta(seconds=config_int('READ_MODEL_MAX_AGE', 7200, minimum=None)),
+                   patch_max_trees=config_int('READ_MODEL_PATCH_MAX_TREES', 250, minimum=None))
 
 
 @dataclass(frozen=True)

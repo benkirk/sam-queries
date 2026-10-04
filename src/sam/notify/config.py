@@ -1,61 +1,17 @@
-"""``NotifyConfig`` — one config object, readable from Flask *or* the environment.
+"""``NotifyConfig``: one config object, readable from Flask *or* the environment.
 
-This follows the framework-agnostic seam established at
-``sam/caching/buckets.py:65-71``: ``try: flask.current_app.config`` /
-``except RuntimeError: os.environ``. That is the only pattern in ``sam/`` that
-reads Flask config, and it exists for exactly this case — a core library that
-must behave identically under ``sam-admin`` and under the webapp.
-
-It also collapses a duplication. ``MAIL_*`` had **two** sources of truth:
-``src/config.py:31-37`` (``SAMConfig``, inherited into ``app.config`` via
-``SAMWebappConfig``) and ``src/cli/core/context.py``, which re-read the same
-six vars off ``os.getenv`` with the same defaults and so never honored a
-``SAMConfig`` change. ``NotifyConfig`` replaces both.
-
+A core library that must behave identically under ``sam-admin`` and the webapp,
+so every value goes through the Flask-then-env readers in ``sam.integration._config``.
+It is also the one source for ``MAIL_*``: the CLI and the webapp both read them here.
 See ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 2.
 """
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Optional
 
-_TRUE = ('1', 'true', 'yes', 'on')
-
-
-def _raw(key: str, default: Any) -> Any:
-    """Read a key from Flask app config if we are in an app context, else env.
-
-    ``RuntimeError`` is what ``current_app`` raises outside an application
-    context; ``ImportError`` covers a ``sam`` install with no Flask at all,
-    which is a supported deployment (the CLI does not depend on Flask).
-    """
-    try:
-        from flask import current_app
-        return current_app.config.get(key, os.environ.get(key, default))
-    except (RuntimeError, ImportError):
-        return os.environ.get(key, default)
-
-
-def _config_str(key: str, default: str = '') -> str:
-    value = _raw(key, default)
-    return '' if value is None else str(value).strip()
-
-
-def _config_bool(key: str, default: bool = False) -> bool:
-    value = _raw(key, default)
-    if isinstance(value, bool):
-        return value
-    return str(value).strip().lower() in _TRUE
-
-
-def _config_int(key: str, default: int) -> int:
-    value = _raw(key, default)
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
+from sam.integration._config import config_bool, config_int, config_str
 
 
 @dataclass(frozen=True)
@@ -121,22 +77,22 @@ class NotifyConfig:
     def from_environment(cls) -> 'NotifyConfig':
         """Build from Flask config or the environment, whichever is available."""
         return cls(
-            enabled=_config_bool('NOTIFY_ENABLED', False),
-            transport=_config_str('NOTIFY_TRANSPORT', 'smtp') or 'smtp',
-            redirect_to=_config_str('NOTIFY_REDIRECT_TO', ''),
-            bcc=_config_str('NOTIFY_BCC', ''),
-            queued_stale_seconds=_config_int('NOTIFY_QUEUED_STALE_SECONDS', 300),
-            mail_server=_config_str('MAIL_SERVER', 'ndir.ucar.edu'),
-            mail_port=_config_int('MAIL_PORT', 25),
+            enabled=config_bool('NOTIFY_ENABLED', False),
+            transport=config_str('NOTIFY_TRANSPORT', 'smtp') or 'smtp',
+            redirect_to=config_str('NOTIFY_REDIRECT_TO', ''),
+            bcc=config_str('NOTIFY_BCC', ''),
+            queued_stale_seconds=config_int('NOTIFY_QUEUED_STALE_SECONDS', 300, minimum=None),
+            mail_server=config_str('MAIL_SERVER', 'ndir.ucar.edu'),
+            mail_port=config_int('MAIL_PORT', 25, minimum=None),
             # Defaults true: § 9 measured STARTTLS working on ndir.ucar.edu,
             # the one relay both consumers use. src/config.py agrees.
-            mail_use_tls=_config_bool('MAIL_USE_TLS', True),
+            mail_use_tls=config_bool('MAIL_USE_TLS', True),
             # Kept for a future relay that wants them. ndir advertises no
             # AUTH (§ 9), so login is skipped there whatever these say.
-            mail_username=_config_str('MAIL_USERNAME', ''),
-            mail_password=_config_str('MAIL_PASSWORD', ''),
-            mail_from=_config_str('MAIL_DEFAULT_FROM', 'sam-admin@ucar.edu'),
-            mail_timeout=_config_int('MAIL_TIMEOUT', 10),
+            mail_username=config_str('MAIL_USERNAME', ''),
+            mail_password=config_str('MAIL_PASSWORD', ''),
+            mail_from=config_str('MAIL_DEFAULT_FROM', 'sam-admin@ucar.edu'),
+            mail_timeout=config_int('MAIL_TIMEOUT', 10, minimum=None),
         )
 
     @property
@@ -156,10 +112,10 @@ class NotifyConfig:
             return Addressing()
         prefix = f'NOTIFY_{family.upper()}_'
         return Addressing(
-            cc=_split(_config_str(prefix + 'CC', '')),
-            bcc=_split(_config_str(prefix + 'BCC', '')),
-            sender=_config_str(prefix + 'FROM', '') or None,
-            reply_to=_config_str(prefix + 'REPLY_TO', '') or None,
+            cc=_split(config_str(prefix + 'CC', '')),
+            bcc=_split(config_str(prefix + 'BCC', '')),
+            sender=config_str(prefix + 'FROM', '') or None,
+            reply_to=config_str(prefix + 'REPLY_TO', '') or None,
         )
 
     def addressing_summary(self) -> dict:
