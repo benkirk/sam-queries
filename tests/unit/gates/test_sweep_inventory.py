@@ -105,6 +105,20 @@ def test_row_buttons_finds_icon_only_outline_buttons_in_cells(tmp_path):
     assert [r['line'] for r in inv.row_buttons([page])] == [1]
 
 
+def test_modal_alerts_counts_only_modal_body_templates(tmp_path):
+    form = _write(tmp_path, 'form.html', "{% call htmx_form('#', '#c', 'Save') %}"
+                  '<div class="alert alert-info"></div><div class="alert alert-warning"></div>{% endcall %}')
+    card = _write(tmp_path, 'card.html', '<div class="card"><div class="alert alert-info"></div></div>')
+    quiet = _write(tmp_path, 'quiet.html', '<div class="modal-body"><p>ok</p></div>')
+    # A fragment swapped into an open modal body counts; the card whose rows open that modal does not.
+    swapped = _write(tmp_path, 'swapped.html', '<form hx-post="/x" hx-target="#auditDetailsModalBody">'
+                     '<div class="alert alert-info"></div></form>')
+    opener = _write(tmp_path, 'opener.html', '<div class="alert alert-info"></div>'
+                    '<tr data-bs-toggle="modal" hx-get="/x" hx-target="#auditDetailsModalBody"></tr>')
+    rows = inv.modal_alerts([form, card, quiet, swapped, opener])
+    assert [(r['file'].rsplit('/', 1)[1], r['count']) for r in rows] == [('form.html', 2), ('swapped.html', 1)]
+
+
 def test_js_dup_names_and_listeners(tmp_path):
     one = _write(tmp_path, 'one.js', "function sync() {}\nconst only = () => 1;\n"
                  "document.addEventListener('htmx:afterSwap', sync);\n")
@@ -149,7 +163,7 @@ def test_runs_on_the_real_tree(monkeypatch, capsys):
     assert inv.main(['--top', '3']) == 0
     out = capsys.readouterr().out
     for detector in ('private-imports', 'dup-functions', 'py-dup-names', 'css-dead', 'css-shape', 'inline-styles',
-                     'bs4-classes', 'row-buttons', 'js-dup', 'js-dead', 'plans-stale'):
+                     'bs4-classes', 'row-buttons', 'modal-alerts', 'js-dup', 'js-dead', 'plans-stale'):
         assert f'== {detector}:' in out
 
 

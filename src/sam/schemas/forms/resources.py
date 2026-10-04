@@ -27,6 +27,8 @@ class CreateResourceForm(HtmxFormSchema):
     description = f.Str(load_default=None)
     charging_exempt = f.Bool(load_default=False)
     commission_date = f.Date('%Y-%m-%d', load_default=None)
+    prim_sys_admin_user_id = f.Int(load_default=None)
+    prim_responsible_org_id = f.Int(load_default=None)
 
 
 class EditFacilityResourceForm(HtmxFormSchema):

@@ -25,7 +25,7 @@
   <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center py-2">
       <span class="fw-semibold">
-        <i class="fa-solid fa-building me-1 text-primary"></i> Organizations
+        <i class="fa-solid fa-building me-1"></i> Organizations
       </span>
       {% if can_edit_governance %}
       <button class="btn btn-sm btn-primary"
@@ -44,7 +44,7 @@
               hx-swap="innerHTML"
               novalidate>
           <div class="d-flex gap-2 align-items-start flex-wrap">
-            <div class="flex-grow-1" style="min-width:200px;">
+            <div class="flex-grow-1 le-picker">
               {{ fk_search_field('organization_id', '',
                                  search_url=url_for('admin_dashboard.htmx_org_search_for_project'),
                                  optional_text='',
@@ -115,7 +115,7 @@
   <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center py-2">
       <span class="fw-semibold">
-        <i class="fa-solid fa-file-contract me-1 text-warning"></i> Contracts
+        <i class="fa-solid fa-file-contract me-1"></i> Contracts
       </span>
       {% if can_edit_governance %}
       <button class="btn btn-sm btn-primary"
@@ -134,7 +134,7 @@
               hx-swap="innerHTML"
               novalidate>
           <div class="d-flex gap-2 align-items-start flex-wrap">
-            <div class="flex-grow-1" style="min-width:200px;">
+            <div class="flex-grow-1 le-picker">
               {{ fk_search_field('contract_id', '',
                                  search_url=url_for('admin_dashboard.htmx_contract_search_for_project'),
                                  optional_text='',
@@ -159,7 +159,7 @@
       <table class="table table-sm table-hover align-middle mb-0">
         <thead class="table-subtle">
           <tr>
-            <th class="col-shrink">Contract #</th>
+            <th class="col-shrink">Contract&nbsp;#</th>
             <th>Title</th>
             {# "Linked" is the date this project was attached to the contract —
                it says nothing about whether the contract is still in effect,
@@ -221,7 +221,7 @@
   <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center py-2">
       <span class="fw-semibold">
-        <i class="fa-solid fa-folder me-1 text-body-secondary"></i> Directories
+        <i class="fa-solid fa-folder me-1"></i> Directories
       </span>
       {% if can_edit_governance %}
       <button class="btn btn-sm btn-primary"
@@ -242,9 +242,8 @@
               novalidate>
           <div class="input-group input-group-sm" data-path-preview-group>
             <select name="root_directory_id" required
-                    class="form-select"
-                    data-path-preview-root
-                    style="max-width:14em;">
+                    class="form-select path-root-select"
+                    data-path-preview-root>
               <option value="">-- Select a disk root --</option>
               {% for r in disk_roots %}
               <option value="{{ r.root_directory_id }}"

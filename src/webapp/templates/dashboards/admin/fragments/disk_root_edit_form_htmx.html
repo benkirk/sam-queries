@@ -35,11 +35,11 @@
 
         {{ checkbox_field('charging_exempt', 'Charging exempt',
                           default=dr.charging_exempt,
-                          help='If checked, directories under this root do not incur disk charges.',
+                          tip='Directories under this root incur no disk charges.',
                           id='editDiskRootExempt') }}
 
         {{ checkbox_field('active', 'Active',
                           default=dr.is_active,
-                          help='Uncheck to soft-delete this root directory. Historical disk_charge_summary rows referencing it are preserved.',
+                          tip='Unchecking soft-deletes the root; disk charge summaries that reference it are kept.',
                           id='editDiskRootActive') }}
 {% endcall %}

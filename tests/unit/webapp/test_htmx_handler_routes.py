@@ -8,6 +8,8 @@ error-path assertion here exercises the full handler lifecycle:
 form_input -> load -> clean -> render_errors with the route's own context.
 """
 
+import re
+
 import pytest
 from sqlalchemy import func
 from sqlalchemy.orm import aliased
@@ -65,6 +67,31 @@ def held_allocation(session):
     )
     assert row, 'snapshot has no live allocation on an active resource'
     return row
+
+
+def _live_allocation_id(session, inheriting):
+    """A committed live allocation, inheriting (shared) or standalone."""
+    parent = Allocation.parent_allocation_id
+    alloc_id = (
+        session.query(func.min(Allocation.allocation_id))
+        .join(Account, Allocation.account_id == Account.account_id)
+        .filter(Allocation.deleted == False,   # noqa: E712
+                Account.deleted == False,      # noqa: E712
+                parent.isnot(None) if inheriting else parent.is_(None))
+        .scalar()
+    )
+    assert alloc_id, f'snapshot has no {"inheriting" if inheriting else "standalone"} allocation'
+    return alloc_id
+
+
+@pytest.fixture
+def standalone_allocation_id(session):
+    return _live_allocation_id(session, inheriting=False)
+
+
+@pytest.fixture
+def inheriting_allocation_id(session):
+    return _live_allocation_id(session, inheriting=True)
 
 
 class TestAddMember:
@@ -211,6 +238,71 @@ class TestAdminAllocationHandlers:
             f'/admin/htmx/extend-allocations/{snapshot_projcode}', data={})
         assert resp.status_code == 200
         assert 'HX-Trigger' not in resp.headers
+
+
+class TestEditAllocationModalActions:
+    """Detach / re-link / propagate errors re-render the edit form at 200.
+
+    htmx swaps no 4xx (htmx-config.js), so a 400 alert reached the user only
+    as a generic "Request failed (400)" toast.
+    """
+
+    @staticmethod
+    def _assert_inline(resp, text):
+        body = resp.get_data(as_text=True)
+        assert resp.status_code == 200
+        assert 'HX-Trigger' not in resp.headers
+        assert text in body
+        assert 'id="editAllocationFormContainer"' not in body   # the form, not the shell
+        assert 'alert-danger' in body
+
+    def test_detach_standalone_allocation(self, auth_client, standalone_allocation_id):
+        resp = auth_client.post(f'/admin/htmx/detach-allocation/{standalone_allocation_id}')
+        self._assert_inline(resp, 'is not an inheriting allocation')
+
+    def test_relink_without_parent_id(self, auth_client, standalone_allocation_id):
+        resp = auth_client.post(
+            f'/admin/htmx/link-allocation-to-parent/{standalone_allocation_id}', data={})
+        self._assert_inline(resp, 'Missing parent allocation id.')
+
+    def test_relink_to_missing_parent(self, auth_client, standalone_allocation_id):
+        resp = auth_client.post(
+            f'/admin/htmx/link-allocation-to-parent/{standalone_allocation_id}',
+            data={'parent_allocation_id': MISSING_ID})
+        self._assert_inline(resp, f'Parent allocation {MISSING_ID} not found')
+
+    def test_propagate_shared_allocation(self, auth_client, inheriting_allocation_id):
+        resp = auth_client.post(
+            f'/admin/htmx/propagate-allocation-to-remaining/{inheriting_allocation_id}')
+        self._assert_inline(resp, 'A shared allocation cannot be propagated')
+
+    def test_shared_form_has_one_detach_path_and_keeps_its_warnings(
+            self, auth_client, inheriting_allocation_id):
+        body = auth_client.get(
+            f'/admin/htmx/edit-allocation-form/{inheriting_allocation_id}').get_data(as_text=True)
+        assert 'id="editAllocationModalLabel" hx-swap-oob="true"' in body   # identity in the title
+        assert 'confirmBreakInheritance' not in body and 'break_inheritance' not in body
+        assert f'Detach allocation #{inheriting_allocation_id} from its parent?' in body
+        assert 'OVERSPENT' in body
+
+    def test_shared_form_edits_the_description_only(self, auth_client, inheriting_allocation_id):
+        body = auth_client.get(
+            f'/admin/htmx/edit-allocation-form/{inheriting_allocation_id}').get_data(as_text=True)
+        fields = {name: tag for tag, name in re.findall(r'(<input[^>]*name="(\w+)"[^>]*>)', body)}
+        assert all(' disabled' in fields[name] for name in ('amount', 'start_date', 'end_date'))
+        assert ' disabled' not in fields['description']
+        assert ' disabled' not in re.search(r'<button type="submit"[^>]*>', body).group(0)
+
+    def test_shared_amount_is_refused_inline(self, auth_client, inheriting_allocation_id):
+        resp = auth_client.post(f'/admin/htmx/edit-allocation/{inheriting_allocation_id}',
+                                data={'amount': '5'})
+        self._assert_inline(resp, 'amount and dates cannot be edited directly')
+
+    @pytest.mark.parametrize('rule', ['detach-allocation', 'link-allocation-to-parent',
+                                      'propagate-allocation-to-remaining'])
+    def test_non_admin_forbidden(self, non_admin_client, standalone_allocation_id, rule):
+        resp = non_admin_client.post(f'/admin/htmx/{rule}/{standalone_allocation_id}')
+        assert resp.status_code == 403
 
 
 class TestRenewTruncateControl:

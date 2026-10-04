@@ -1,0 +1,25 @@
+{#
+  An allocation modal with nothing to offer (exchange, allocate down): say why and
+  what to do instead, in place of the form. kind selects the message.
+#}
+<div class="modal-body modal-notice" role="status">
+  {% if kind == 'resource_missing' %}
+  <p>Resource not found.</p>
+  {% elif kind == 'exchange_needs_two' %}
+  <p>Exchange needs at least two standalone sub-project allocations on this resource in the
+     allocation tree. Shared (linked) allocations do not count.</p>
+  {% elif kind == 'shared' %}
+  <p>This is a shared allocation: it mirrors its parent and has no unallocated remainder of its
+     own. Allocate from the parent allocation instead.</p>
+  {% elif kind == 'over_carved' %}
+  <p class="text-danger">Sub-project carve-outs ({{ carve_total | fmt_number }}) exceed this
+     allocation ({{ amount | fmt_number }}). Resolve the deficit before allocating further: see
+     <code>sam-admin project --audit-trees</code>.</p>
+  {% else %}
+  <p>Nothing to allocate: this allocation has no unallocated remainder available for its
+     sub-projects.</p>
+  {% endif %}
+</div>
+<div class="modal-footer">
+  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+</div>

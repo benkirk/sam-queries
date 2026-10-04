@@ -29,6 +29,7 @@
   already exist, because the API CREATES an unknown target rather than failing.
 #}
 {% from 'dashboards/fragments/form_fields.html' import text_field, textarea_field, form_errors_panel with context %}
+{% from 'dashboards/fragments/table_bits.html' import state_tag %}
 
 <h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
     Resolve identity — {{ username }}
@@ -52,9 +53,9 @@
 </p>
 
 {% if person %}
-<div class="card mb-3">
-    <div class="card-header py-1 small text-uppercase text-muted">The placeholder</div>
-    <div class="card-body py-2 small">
+<div class="form-label">The placeholder</div>
+<div class="modal-facts small">
+    <div>
         <div class="font-monospace">{{ person.username }}</div>
         <div>{{ person.firstName }} {{ person.lastName }}</div>
         <div class="text-muted">{{ person.email }}</div>
@@ -98,8 +99,7 @@
                 <span class="small text-muted">· {{ candidate.email }}</span>
                 <span class="small text-muted">· {{ candidate.organization }}</span>
                 {% if candidate.reconciled is true %}
-                <span class="badge bg-body-secondary text-body-secondary border fw-normal"
-                      title="XRAS has linked this username to a confirmed person">identified</span>
+                {{ state_tag('identified', title='XRAS has linked this username to a confirmed person') }}
                 {% elif candidate.reconciled is false %}
                 <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
                       title="XRAS has not confirmed the person behind this username — merging into it keeps the placeholder's roles on an unconfirmed identity">unidentified</span>
@@ -158,8 +158,7 @@
                 <span class="small text-muted">· {{ candidate.email }}</span>
                 <span class="small text-muted">· {{ candidate.organization }}</span>
                 {% if candidate.reconciled is true %}
-                <span class="badge bg-body-secondary text-body-secondary border fw-normal"
-                      title="XRAS has linked this username to a confirmed person">identified</span>
+                {{ state_tag('identified', title='XRAS has linked this username to a confirmed person') }}
                 {% elif candidate.reconciled is false %}
                 <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
                       title="XRAS has not confirmed the person behind this username — merging into it keeps the placeholder's roles on an unconfirmed identity">unidentified</span>

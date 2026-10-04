@@ -112,6 +112,14 @@ def project_facilities(session: Session,
     return {code: (fid, name) for code, (fid, name, _) in project_panels(session, projcodes).items()}
 
 
+def project_titles(session: Session, projcodes: Iterable[str]) -> Dict[str, str]:
+    """``{projcode: title}`` in one query; unknown codes are absent."""
+    codes = sorted({c for c in projcodes if c})
+    if not codes:
+        return {}
+    return dict(session.query(Project.projcode, Project.title).filter(Project.projcode.in_(codes)).all())
+
+
 def get_projects_by_lead(session: Session, username: str) -> List[Project]:
     """Get all projects led by a specific user."""
     return session.query(Project)\

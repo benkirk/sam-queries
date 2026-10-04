@@ -7,10 +7,10 @@
   data-bs-toggle="modal" (the pane swaps into an open modal; PR #464).
 #}
 
-{% macro email_preview(p, id_prefix, pane_id, picker_url=None, picker_method='post',
-                       picker_include=None, notes=(), empty=None, mode_banner=True) %}
-{% if not mode_banner %}
-{% elif p.mode == 'disabled' %}
+{# The deployment's delivery mode, for the pane below and for a send form that shows it
+   whatever the pane holds (Notify project). mode: 'disabled' | 'redirected' | anything else. #}
+{% macro delivery_banner(mode, address=None) %}
+{% if mode == 'disabled' %}
 <div class="alert alert-warning d-flex align-items-start gap-2">
     <i class="fa-solid fa-triangle-exclamation mt-1"></i>
     <div>
@@ -19,20 +19,25 @@
             shows what would be sent.</div>
     </div>
 </div>
-{% elif p.mode == 'redirected' %}
+{% elif mode == 'redirected' %}
 {# A staging box quietly swallowing mail while the UI reports success is the
    failure this banner exists to prevent. #}
 <div class="alert alert-warning d-flex align-items-start gap-2">
     <i class="fa-solid fa-shuffle mt-1"></i>
     <div>
         <strong>All mail on this deployment is redirected.</strong>
-        {% if p.outgoing %}
-        <div>This will be delivered to <code>{{ p.outgoing.recipient.address }}</code>,
+        {% if address %}
+        <div>This will be delivered to <code>{{ address }}</code>,
             not to the recipients listed.</div>
         {% endif %}
     </div>
 </div>
 {% endif %}
+{% endmacro %}
+
+{% macro email_preview(p, id_prefix, pane_id, picker_url=None, picker_method='post',
+                       picker_include=None, notes=(), empty=None, mode_banner=True) %}
+{% if mode_banner %}{{ delivery_banner(p.mode, p.outgoing.recipient.address if p.outgoing else None) }}{% endif %}
 {% if p.mode != 'disabled' and p.transport in ('console', 'null') %}
 <div class="alert alert-info small d-flex align-items-start gap-2">
     <i class="fa-solid fa-terminal mt-1"></i>

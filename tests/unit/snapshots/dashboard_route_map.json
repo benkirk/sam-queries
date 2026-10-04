@@ -1149,20 +1149,6 @@
     ]
   ],
   [
-    "admin_dashboard.htmx_panel_session_edit",
-    "/admin/htmx/panel-session-edit/<int:panel_session_id>",
-    [
-      "POST"
-    ]
-  ],
-  [
-    "admin_dashboard.htmx_panel_session_edit_form",
-    "/admin/htmx/panel-session-edit-form/<int:panel_session_id>",
-    [
-      "GET"
-    ]
-  ],
-  [
     "admin_dashboard.htmx_panels_for_facility",
     "/admin/htmx/panels-for-facility",
     [
@@ -1970,13 +1956,6 @@
   [
     "allocations_dashboard.transactions_fragment",
     "/allocations/transactions_fragment",
-    [
-      "GET"
-    ]
-  ],
-  [
-    "allocations_dashboard.usage_modal",
-    "/allocations/usage/<projcode>/<resource>",
     [
       "GET"
     ]

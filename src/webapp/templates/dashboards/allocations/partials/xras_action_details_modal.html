@@ -36,7 +36,7 @@
     {% endif %}
 </div>
 
-<div class="project-stats-box" style="grid-template-columns: auto minmax(0, 1fr);">
+<div class="project-stats-box stats-two-col">
     <h6><i class="fa-solid fa-circle-info"></i> Action Information</h6>
 
     <div class="stat-item">
@@ -130,7 +130,7 @@
         <span class="stat-label d-block mb-1">
             Errors ({{ r.errors | length }}) — verbatim, in the order XRAS was told:
         </span>
-        <ol class="stat-value mb-0 ps-3 small" style="font-weight:normal;">
+        <ol class="stat-value stat-value-plain mb-0 ps-3 small">
             {% for e in r.errors %}
             <li><code>{{ e }}</code></li>
             {% endfor %}
@@ -143,7 +143,7 @@
         <span class="stat-label d-block mb-1">
             Warnings ({{ r.warnings | length }}) — non-fatal; the action was applied:
         </span>
-        <ol class="stat-value mb-0 ps-3 small" style="font-weight:normal;">
+        <ol class="stat-value stat-value-plain mb-0 ps-3 small">
             {% for w in r.warnings %}
             <li><code>{{ w }}</code></li>
             {% endfor %}
@@ -159,13 +159,12 @@
                 — the request body verbatim, before parsing
             </span>
         </span>
-        <pre class="stat-value mb-0 p-2 bg-body-tertiary border rounded"
-             style="white-space:pre-wrap; word-break:break-all; font-size:0.75rem; font-weight:normal; max-height:20rem; overflow:auto;">{{ r.raw_payload }}</pre>
+        <pre class="stat-value stat-pre stat-pre-raw mb-0 p-2 bg-body-tertiary border">{{ r.raw_payload }}</pre>
     </div>
     {% else %}
-    <div class="stat-item stat-item-block">
-        <span class="stat-label d-block mb-1">Raw payload:</span>
-        <span class="stat-value text-muted small" style="font-weight:normal;">
+    <div class="stat-item stat-item-block stat-item-inline">
+        <span class="stat-label">Raw payload:</span>
+        <span class="stat-value stat-value-plain text-muted small">
             <i class="fa-solid fa-lock me-1"></i>
             Hidden — the payload carries participant names, emails and phone
             numbers. Requires the XRAS management permission.
