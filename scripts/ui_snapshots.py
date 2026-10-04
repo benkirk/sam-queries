@@ -5,10 +5,12 @@ No baselines, no CI: run it on the base branch and on yours, then compare the tw
 folders (the middle ground in docs/plans/GALLERY_VISUAL_SNAPSHOTS.md). Needs the
 [e2e] extra. Logs in through the stub form unless given --storage-state.
 --styles also dumps every element's computed style; --compare proves "no visual change".
+--headers lists table headers whose sort icon wrapped onto a line of its own (no --out needed).
 
     python scripts/ui_snapshots.py --out /tmp/before
     python scripts/ui_snapshots.py --out /tmp/after --page /admin/contracts --expand 2
     python scripts/ui_snapshots.py --styles --out /tmp/after && python scripts/ui_snapshots.py --compare /tmp/before /tmp/after
+    python scripts/ui_snapshots.py --headers --layout desktop --layout mobile --theme light
 """
 import argparse
 import gzip
@@ -122,6 +124,29 @@ def compare_dirs(before_dir, after_dir, top=20):
     return 1 if failed else 0
 
 
+# .col-num / .col-shrink headers wrap at their spaces (components.css), so a sort icon must stay
+# joined to its last word (&nbsp;): flag one that sits below every line of its label. Collapsed
+# groups are shown first so their columns size as they will in use.
+HEADER_CHECK_JS = """() => {
+  document.querySelectorAll('tr.collapse, tbody.collapse').forEach(e => e.classList.add('show'));
+  const bad = [];
+  for (const th of document.querySelectorAll('table th')) {
+    if (!th.offsetParent || !/\\bcol-(num|shrink)\\b/.test(th.className)) continue;
+    const label = th.textContent.trim().replace(/\\s+/g, ' ');
+    const rects = [], tw = document.createTreeWalker(th, NodeFilter.SHOW_TEXT);
+    for (let n; (n = tw.nextNode());) {
+      if (!n.textContent.trim()) continue;
+      const r = document.createRange(); r.selectNodeContents(n); rects.push(...r.getClientRects());
+    }
+    if (!rects.length) continue;
+    const bottom = Math.max(...rects.map(r => r.bottom));
+    if ([...th.querySelectorAll('i')].some(i => { const r = i.getBoundingClientRect(); return r.height && r.top >= bottom - 2; }))
+      bad.push(`sort icon alone on a line: "${label}"`);
+  }
+  return bad;
+}"""
+
+
 def _settle(page, expand):
     try:
         page.wait_for_load_state('networkidle', timeout=15_000)
@@ -147,16 +172,20 @@ def main(argv=None):
     ap.add_argument('--username', default='benkirk')
     ap.add_argument('--password', default='e2e')
     ap.add_argument('--styles', action='store_true', help='also dump computed styles as <name>.styles.json.gz')
+    ap.add_argument('--headers', action='store_true',
+                    help='report sort icons wrapped away from their header label; exit 1 if any')
     ap.add_argument('--compare', nargs=2, metavar=('BEFORE', 'AFTER'), type=Path,
                     help='diff two --styles folders and exit 1 on any difference (no browser)')
     args = ap.parse_args(argv)
     if args.compare:
         return compare_dirs(*args.compare)
-    if args.out is None:
-        ap.error('--out is required unless --compare is given')
+    if args.out is None and not args.headers:
+        ap.error('--out is required unless --compare or --headers is given')
     from playwright.sync_api import sync_playwright
 
-    args.out.mkdir(parents=True, exist_ok=True)
+    if args.out:
+        args.out.mkdir(parents=True, exist_ok=True)
+    problems = 0
     host = re.sub(r'^https?://', '', args.base_url).split('/')[0].split(':')[0]
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
@@ -172,16 +201,23 @@ def main(argv=None):
                 for url in args.pages or DEFAULT_PAGES:
                     page.goto(url)
                     _settle(page, args.expand)
-                    path = args.out / f'{_slug(url)}__{layout}-{theme}.png'
-                    page.screenshot(path=str(path), full_page=True)
-                    print(path)
-                    if args.styles:
-                        dump = path.with_suffix('.styles.json.gz')
-                        dump.write_bytes(gzip.compress(json.dumps(page.evaluate(STYLE_DUMP_JS)).encode()))
-                        print(dump)
+                    if args.out:
+                        path = args.out / f'{_slug(url)}__{layout}-{theme}.png'
+                        page.screenshot(path=str(path), full_page=True)
+                        print(path)
+                        if args.styles:
+                            dump = path.with_suffix('.styles.json.gz')
+                            dump.write_bytes(gzip.compress(json.dumps(page.evaluate(STYLE_DUMP_JS)).encode()))
+                            print(dump)
+                    if args.headers:  # last: it opens every collapsed group
+                        for line in page.evaluate(HEADER_CHECK_JS):
+                            problems += 1
+                            print(f'{url} [{layout}-{theme}]: {line}')
                 context.close()
         browser.close()
-    return 0
+    if args.headers:
+        print(f'{problems} orphaned sort icon(s)')
+    return 1 if problems else 0
 
 
 if __name__ == '__main__':
