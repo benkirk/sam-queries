@@ -1119,18 +1119,26 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    ALERTS
    ========================================================================= */
 
-/* Unity flat-fill treatment (source/scss/components/_alerts.scss): solid
-   color fill, no border, no left accent, 0 radius. Color carries the
-   semantic; text auto-picks for legibility. Info kept as NCAR blue rather
-   than Unity's literal yellow — most users expect info=blue, yellow reads
-   as warning. */
+/* Tinted surface plus a left rule in the status hue; text stays body ink, so
+   every variant reads in both themes. A deliberate departure from Unity's solid
+   fills, which the brand guide's own "no accent as a large block" rule argues
+   against. The hues are tier-2 tokens (variables.css, --status-*). */
 .alert {
+    --alert-hue: var(--status-info);
+    background-color: color-mix(in srgb, var(--alert-hue) var(--alert-tint), var(--surface-card));
     border: 0;
+    border-left: 4px solid var(--alert-hue);
     border-radius: 0;
     box-shadow: none;
-    color: var(--text-heading);
-    padding: 0.875rem 1rem;
+    color: var(--text-primary);
+    padding: 0.75rem 1rem;
 }
+
+.alert-warning { --alert-hue: var(--status-warning); }
+.alert-danger { --alert-hue: var(--status-danger); }
+.alert-success { --alert-hue: var(--status-success); }
+.alert-secondary,
+.alert-light { --alert-hue: var(--text-tertiary); }
 
 .alert a,
 .alert button {
@@ -1142,66 +1150,6 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 .alert a:hover,
 .alert button:hover {
     color: var(--text-title);
-}
-
-.alert-info {
-    background-color: var(--ncar-blue);
-    color: var(--text-on-brand);
-}
-
-.alert-info a,
-.alert-info button {
-    color: var(--text-on-brand);
-}
-
-/* The one alert whose fill is LIGHT, so it is the one that cannot take
- * `--text-on-brand`. It used `--text-heading`, which is space-blue in light and
- * near-white in dark — 1.77:1 on orange, found by the browser sweep on the
- * /status outage banner. `--text-on-brand-dark` IS that space-blue, pinned
- * invariant: light mode does not move, dark stops inheriting a flipped token
- * onto a fill that never flips. */
-.alert-warning {
-    background-color: var(--ncar-orange);
-    color: var(--text-on-brand-dark);
-}
-
-.alert-warning a,
-.alert-warning button {
-    color: var(--text-on-brand-dark);
-}
-
-/* Descendants that set their own colour have the same problem one level down:
- * `.text-muted` inside the outage banner resolved to rgba(222,226,230,.75),
- * i.e. 1.39:1 on orange. Inheriting the alert's ink and de-emphasising with
- * opacity keeps the "muted" intent without reintroducing a theme-dependent
- * colour on an invariant fill.
- *
- * `!important` because Bootstrap's colour utilities carry it — a plain
- * declaration here loses to `.text-muted` regardless of specificity, which is
- * how the first pass at this silently did nothing. */
-.alert .text-muted {
-    color: inherit !important;
-    opacity: 0.8;
-}
-
-.alert-danger {
-    background-color: var(--ncar-vermilion);
-    color: var(--text-on-brand);
-}
-
-.alert-danger a,
-.alert-danger button {
-    color: var(--text-on-brand);
-}
-
-.alert-success {
-    background-color: #10b981;
-    color: var(--text-on-brand);
-}
-
-.alert-success a,
-.alert-success button {
-    color: var(--text-on-brand);
 }
 
 /* ============================================================================

@@ -159,6 +159,15 @@
     --data-burn-3: #f0a07c;
     --data-burn-4: #c0272d;
 
+    /* --- Status hues: alert rules, status dots, in-progress markers. The brand has no red
+       or green, so danger and success are declared deviations; warning is brand orange,
+       never text. --alert-tint is how much hue an alert's surface takes. --- */
+    --status-info:    #0057c2;
+    --status-warning: #faa119;
+    --status-danger:  #c0272d;
+    --status-success: #2b8a4b;
+    --alert-tint:     9%;
+
     /* --- Text --- */
     --text-primary:   #323133;   /* body copy */
     --text-primary-rgb: 50, 49, 51;
@@ -365,6 +374,13 @@
     --data-burn-2: #4b5664;
     --data-burn-3: #b5614a;
     --data-burn-4: #ff9a80;
+
+    /* --- Status hues: dark steps, legible as text on --surface-card --- */
+    --status-info:    #42c0ff;
+    --status-warning: #faa119;
+    --status-danger:  #ff8a7a;
+    --status-success: #4cc77f;
+    --alert-tint:     16%;
 
     /* --- Text --- */
     --text-primary:     #e9ecef;
