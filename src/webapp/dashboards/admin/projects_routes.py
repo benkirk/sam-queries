@@ -42,7 +42,7 @@ from sam.schemas.forms import (
     AccessGridToggleForm, AddAllocationsForm, AllocateResidualForm,
     EditAllocationForm, EditProjectForm, ExchangeAllocationForm,
     ExtendAllocationsForm, RenewAllocationsForm, AlignAllocationsForm,
-    NotifyProjectForm,
+    HtmxFormSchema, LinkAllocationParentForm, NotifyProjectForm,
 )
 from sam.schemas.forms.projects import (
     AddLinkedContractForm, AddLinkedDirectoryForm, AddLinkedOrganizationForm,
@@ -2447,11 +2447,8 @@ def htmx_notify_project(project):
         summary=summary, projcode=root.projcode)
 
 
-@bp.route('/htmx/edit-allocation-form/<int:allocation_id>')
-@login_required
-@require_allocation_facility_permission(Permission.EDIT_ALLOCATIONS)
-def htmx_edit_allocation_form(allocation):
-    """Return the edit-allocation form fragment (loaded into modal)."""
+def _edit_allocation_context(allocation):
+    """Template context for the edit-allocation form: the GET and every error re-render."""
     from sam.manage.allocations import get_carveout_frontier, date_ranges_overlap
     from sam.accounting.accounts import Account
 
@@ -2521,22 +2518,43 @@ def htmx_edit_allocation_form(allocation):
                         'projcode': proj.parent.projcode,
                     }
 
-    return render_template(
-        'dashboards/admin/fragments/edit_allocation_form_htmx.html',
-        allocation=allocation,
-        projcode=projcode,
-        frontier=frontier,
-        parent_info=parent_info,
-        unlinked_descendants_count=unlinked_descendants_count,
-        relink_candidate=relink_candidate,
-    )
+    return {
+        'allocation': allocation,
+        'projcode': projcode,
+        'frontier': frontier,
+        'parent_info': parent_info,
+        'unlinked_descendants_count': unlinked_descendants_count,
+        'relink_candidate': relink_candidate,
+    }
 
 
-class _EditAllocationHandler(HtmxFormHandler):
+@bp.route('/htmx/edit-allocation-form/<int:allocation_id>')
+@login_required
+@require_allocation_facility_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_edit_allocation_form(allocation):
+    """Return the edit-allocation form fragment (loaded into modal)."""
+    return render_template('dashboards/admin/fragments/edit_allocation_form_htmx.html',
+                           **_edit_allocation_context(allocation))
+
+
+class _AllocationFormHandler(HtmxFormHandler):
+    """An action posted from the edit-allocation modal: errors re-render that form inline."""
+
+    template = 'dashboards/admin/fragments/edit_allocation_form_htmx.html'
+    exception_map = ((ValueError, lambda e: str(e)),)
+
+    def context(self):
+        return _edit_allocation_context(self.allocation)
+
+    def triggers(self, result):
+        return {'closeActiveModal': {},
+                'reloadAllocationTree': self.allocation.account.project.projcode}
+
+
+class _EditAllocationHandler(_AllocationFormHandler):
     """Validate and apply allocation edits with cascade + audit logging."""
 
     schema_cls = EditAllocationForm
-    template = 'dashboards/admin/fragments/edit_allocation_form_htmx.html'
     partial = True
     error_prefix = 'Error updating allocation'
     success_message = 'Allocation updated successfully.'
@@ -2589,32 +2607,6 @@ class _EditAllocationHandler(HtmxFormHandler):
             detach_allocation(db.session, alloc_id, current_user.user_id)
         update_allocation(db.session, alloc_id, current_user.user_id, **updates)
 
-    def context(self):
-        from sam.manage.allocations import get_carveout_frontier
-        frontier = (get_carveout_frontier(db.session, self.allocation)
-                    if not self.allocation.is_inheriting else None)
-        parent_info = None
-        if self.allocation.is_inheriting and self.allocation.parent:
-            p = self.allocation.parent
-            parent_proj = p.account.project if p.account else None
-            parent_info = {
-                'allocation_id': p.allocation_id,
-                'amount': p.amount,
-                'projcode': parent_proj.projcode if parent_proj and parent_proj.active else None,
-            }
-        return {
-            'allocation': self.allocation,
-            'projcode': self.allocation.account.project.projcode,
-            'frontier': frontier,
-            'parent_info': parent_info,
-            'unlinked_descendants_count': 0,  # skip expensive recompute on error re-renders
-            'relink_candidate': None,         # skip recompute on error re-renders
-        }
-
-    def triggers(self, result):
-        return {'closeActiveModal': {},
-                'reloadAllocationTree': self.allocation.account.project.projcode}
-
 
 @bp.route('/htmx/edit-allocation/<int:allocation_id>', methods=['POST'])
 @login_required
@@ -2624,23 +2616,69 @@ def htmx_edit_allocation(allocation):
     return _EditAllocationHandler(allocation=allocation).handle()
 
 
+class _DetachAllocationHandler(_AllocationFormHandler):
+    """Break parent_allocation_id link without editing other fields."""
+
+    schema_cls = HtmxFormSchema   # no input
+    success_message = 'Allocation detached successfully.'
+
+    def perform(self, data):
+        from sam.manage.allocations import detach_allocation
+        detach_allocation(db.session, self.allocation.allocation_id, current_user.user_id)
+
+
+class _LinkAllocationHandler(FlattenedFieldErrors, _AllocationFormHandler):
+    """Re-link a standalone child allocation to its parent-project allocation."""
+
+    schema_cls = LinkAllocationParentForm   # a hidden hx-vals field, so errors fold into the panel
+    success_message = 'Allocation re-linked to parent successfully.'
+
+    def perform(self, data):
+        from sam.manage.allocations import link_allocation_to_parent
+        link_allocation_to_parent(db.session, self.allocation.allocation_id,
+                                  data['parent_allocation_id'], current_user.user_id)
+
+
+class _PropagateAllocationHandler(_AllocationFormHandler):
+    """Create child allocations for active descendants that don't yet have one."""
+
+    schema_cls = HtmxFormSchema   # no input
+    success_message = 'Shared allocations created successfully.'
+
+    def clean(self, data):
+        if self.allocation.is_inheriting:
+            raise FormError('A shared allocation cannot be propagated; edit its parent instead.')
+        return data
+
+    def perform(self, data):
+        from sam.accounting.accounts import Account
+        from sam.manage.allocations import propagate_allocation_to_subprojects
+        project = self.allocation.account.project
+        resource_id = self.allocation.account.resource_id
+
+        # Exclude descendants with ANY live allocation on this resource, detached ones included.
+        def _has_any_alloc(proj_id):
+            acct = Account.get_by_project_and_resource(db.session, proj_id, resource_id)
+            return acct is not None and bool(acct.live_allocations)
+
+        descendants = [d for d in project.get_descendants()
+                       if d.active and not _has_any_alloc(d.project_id)]
+        return propagate_allocation_to_subprojects(
+            db.session, self.allocation, descendants,
+            user_id=current_user.user_id, skip_existing=True)
+
+    def detail(self, result):
+        created, skipped = result
+        return (f'{len(created)} sub-project(s)'
+                + (f'; {len(skipped)} skipped (already had an allocation)' if skipped else ''))
+
+
 @bp.route('/htmx/detach-allocation/<int:allocation_id>', methods=['POST'])
 @login_required
 @require_allocation_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_detach_allocation(allocation):
     """Break parent_allocation_id link without editing other fields."""
-    from sam.manage.allocations import detach_allocation
-
-    projcode = allocation.account.project.projcode
-    try:
-        with management_transaction(db.session):
-            detach_allocation(db.session, allocation.allocation_id, current_user.user_id)
-    except ValueError as e:
-        return f'<div class="alert alert-danger">{e}</div>', 400
-    return htmx_success_message(
-        {'closeActiveModal': {}, 'reloadAllocationTree': projcode},
-        'Allocation detached successfully.',
-    )
+    return _DetachAllocationHandler(allocation=allocation).handle()
 
 
 @bp.route('/htmx/link-allocation-to-parent/<int:allocation_id>', methods=['POST'])
@@ -2648,31 +2686,7 @@ def htmx_detach_allocation(allocation):
 @require_allocation_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_link_allocation_to_parent(allocation):
     """Re-link a standalone child allocation to its parent-project allocation."""
-    from marshmallow import ValidationError
-    from sam.manage.allocations import link_allocation_to_parent
-    from sam.schemas.forms import LinkAllocationParentForm
-
-    projcode = allocation.account.project.projcode
-
-    try:
-        form_data = LinkAllocationParentForm().load(request.form)
-    except ValidationError as e:
-        msgs = '; '.join(m for ms in e.messages.values() for m in ms)
-        return f'<div class="alert alert-danger">{msgs}</div>', 400
-    parent_allocation_id = form_data['parent_allocation_id']
-
-    try:
-        with management_transaction(db.session):
-            link_allocation_to_parent(
-                db.session, allocation.allocation_id, parent_allocation_id, current_user.user_id
-            )
-    except ValueError as e:
-        return f'<div class="alert alert-danger">{e}</div>', 400
-
-    return htmx_success_message(
-        {'closeActiveModal': {}, 'reloadAllocationTree': projcode},
-        'Allocation re-linked to parent successfully.',
-    )
+    return _LinkAllocationHandler(allocation=allocation).handle()
 
 
 @bp.route('/htmx/propagate-allocation-to-remaining/<int:allocation_id>', methods=['POST'])
@@ -2680,39 +2694,7 @@ def htmx_link_allocation_to_parent(allocation):
 @require_allocation_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_propagate_to_remaining(allocation):
     """Create child allocations for active descendants that don't yet have one."""
-    from sam.accounting.accounts import Account
-    from sam.manage.allocations import propagate_allocation_to_subprojects
-
-    if allocation.is_inheriting:
-        return '<div class="alert alert-danger">Invalid allocation.</div>', 400
-    project = allocation.account.project
-    resource_id = allocation.account.resource_id
-
-    # Flaw 3 fix: exclude descendants that already have ANY allocation for this resource
-    # (not just those linked via allocation.children — detached ones are excluded correctly)
-    def _has_any_alloc(proj_id):
-        acct = Account.get_by_project_and_resource(db.session, proj_id, resource_id)
-        return acct is not None and bool(acct.live_allocations)
-
-    descendants = [
-        d for d in project.get_descendants()
-        if d.active and not _has_any_alloc(d.project_id)
-    ]
-    try:
-        with management_transaction(db.session):
-            created, skipped = propagate_allocation_to_subprojects(
-                db.session, allocation, descendants,
-                user_id=current_user.user_id, skip_existing=True,
-            )
-    except Exception as e:
-        return f'<div class="alert alert-danger">Error: {e}</div>', 400
-    return htmx_success_message(
-        {'closeActiveModal': {}, 'reloadAllocationTree': project.projcode},
-        'Shared allocations created successfully.',
-        detail=(f'{len(created)} sub-project(s)'
-                + (f'; {len(skipped)} skipped (already had an allocation)'
-                   if skipped else '')),
-    )
+    return _PropagateAllocationHandler(allocation=allocation).handle()
 
 
 # ---------------------------------------------------------------------------
