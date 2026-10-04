@@ -216,5 +216,13 @@
     "allocations_pace_route": {
         "queries": 55,
         "notes": "measured 45 (2026-10-03) vs 38 on the +-180-day rows: +7 for the calendar's month sums, which it now shares, cache off"
+    },
+    "allocations_sunburst_expanded_route": {
+        "queries": 36,
+        "notes": "measured 28 (2026-10-03): the per-resource usage fetch, one project_panels query and the facility index, cache off"
+    },
+    "allocations_sunburst_expanded_used_route": {
+        "queries": 22,
+        "notes": "measured 16 (2026-10-03): window charges by project (comp/dav + adjustments), project_panels and the facility index, cache off"
     }
 }

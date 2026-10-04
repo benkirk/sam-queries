@@ -1905,6 +1905,13 @@
     ]
   ],
   [
+    "allocations_dashboard.htmx_sunburst_expanded",
+    "/allocations/htmx/sunburst-expanded/<resource_name>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.htmx_used_sunburst",
     "/allocations/htmx/used-sunburst/<resource_name>",
     [
@@ -2474,6 +2481,13 @@
   [
     "disk_scans.file_sizes_user_fragment",
     "/dashboards/user/disk-scans/user/<resource>/file-sizes",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "jobs.by_project_expanded_machine_fragment",
+    "/dashboards/user/jobs/machine/<machine>/by-project/expanded",
     [
       "GET"
     ]

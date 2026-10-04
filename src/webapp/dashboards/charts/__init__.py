@@ -78,6 +78,8 @@ from webapp.dashboards.charts.sunburst import (  # noqa: F401
     AllocationSunburst,
     FairShareSunburst,
     JobsFacilitySunburst,
+    PanelSunburst,
+    panel_rows,
 )
 from webapp.dashboards.charts.theme import (  # noqa: F401
     UNITY_NCAR_BLUE,
@@ -157,6 +159,9 @@ generate_allocation_sunburst = chart_view(AllocationSunburst)
 # 9. Job-history By Project, grouped by facility.  charts/sunburst.py
 generate_jobs_facility_sunburst = chart_view(JobsFacilitySunburst)
 
+# 10. Facility / panel / project expanded view (allocations + job history).  charts/sunburst.py
+generate_panel_sunburst = chart_view(PanelSunburst)
+
 
 def generate_jobs_user_pie_chart(entity_data, metric='cpu_hours', *,
                                  layout='desktop', theme='light') -> str:
@@ -215,6 +220,8 @@ __all__ = [
     'generate_fair_share_sunburst',
     'generate_allocation_sunburst',
     'generate_jobs_facility_sunburst',
+    'generate_panel_sunburst',
+    'panel_rows',
     'PACE_WINDOW_DAYS',
     # The hierarchy, for anyone subclassing.
     'BaseChart',

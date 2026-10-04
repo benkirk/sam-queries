@@ -31,7 +31,7 @@ from sam.queries.allocations import (
     get_allocation_summary_with_usage,
     get_allocation_usage_rows,
 )
-from sam.queries.charges import get_charges_by_facility_type
+from sam.queries.charges import get_charges_by_facility_type, get_charges_by_project
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +174,16 @@ def cached_charges_by_facility_type(session, *, resource_names, start: datetime,
         return get_charges_by_facility_type(session, resource_names, start, end)
 
     key = ('window', norm(resource_names), start.date(), end.date())
+    return _CACHE.get_or_compute('default', key, _compute, force_refresh=force_refresh)
+
+
+def cached_charges_by_project(session, *, resource_names, start: datetime,
+                              end: datetime, force_refresh: bool = False) -> Dict[str, float]:
+    """Cached wrapper for get_charges_by_project(), keyed at day granularity."""
+    def _compute():
+        return get_charges_by_project(session, resource_names, start, end)
+
+    key = ('window_projects', norm(resource_names), start.date(), end.date())
     return _CACHE.get_or_compute('default', key, _compute, force_refresh=force_refresh)
 
 

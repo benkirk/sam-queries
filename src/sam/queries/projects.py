@@ -89,19 +89,26 @@ def get_active_projects(session: Session, facility_name: str = None) -> List[Pro
     return query.all()
 
 
-def project_facilities(session: Session,
-                       projcodes: Iterable[str]) -> Dict[str, Tuple[int, str]]:
-    """``{projcode: (facility_id, facility_name)}``; projects with no facility are absent."""
+def project_panels(session: Session,
+                   projcodes: Iterable[str]) -> Dict[str, Tuple[int, str, str]]:
+    """``{projcode: (facility_id, facility_name, panel_name)}``; projects with no panel are absent."""
     codes = sorted({c for c in projcodes if c})
     if not codes:
         return {}
-    rows = session.query(Project.projcode, Facility.facility_id, Facility.facility_name)\
+    rows = session.query(Project.projcode, Facility.facility_id, Facility.facility_name,
+                         Panel.panel_name)\
         .join(AllocationType, Project.allocation_type_id == AllocationType.allocation_type_id)\
         .join(Panel, AllocationType.panel_id == Panel.panel_id)\
         .join(Facility, Panel.facility_id == Facility.facility_id)\
         .filter(Project.projcode.in_(codes))\
         .all()
-    return {code: (fid, name) for code, fid, name in rows}
+    return {code: (fid, name, panel) for code, fid, name, panel in rows}
+
+
+def project_facilities(session: Session,
+                       projcodes: Iterable[str]) -> Dict[str, Tuple[int, str]]:
+    """``{projcode: (facility_id, facility_name)}``; projects with no facility are absent."""
+    return {code: (fid, name) for code, (fid, name, _) in project_panels(session, projcodes).items()}
 
 
 def get_projects_by_lead(session: Session, username: str) -> List[Project]:

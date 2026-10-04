@@ -38,6 +38,7 @@ EXPECTED = [
     'fair_share_sunburst',
     'allocation_sunburst',
     'jobs_facility_sunburst',
+    'panel_sunburst',
 ]
 
 
@@ -50,7 +51,7 @@ def test_cache_names_and_order():
 
 
 def test_cache_count():
-    assert len(caching._chart_caches) == 16
+    assert len(caching._chart_caches) == 17
 
 
 def test_no_duplicate_cache_names():
@@ -63,9 +64,9 @@ def test_no_duplicate_cache_names():
 def test_every_cached_generator_has_a_cache():
     """One cache per cached generator, and no strays."""
     generators = [n for n in dir(charts) if n.startswith('generate_')]
-    # 16 generators, 15 caches: the By User jobs pie is a delegating facade.
-    assert len(generators) == 17
-    assert len(_registered_names()) == 16
+    # 18 generators, 17 caches: the By User jobs pie is a delegating facade.
+    assert len(generators) == 18
+    assert len(_registered_names()) == 17
 
 
 def test_delegating_facade_registers_no_cache(app):

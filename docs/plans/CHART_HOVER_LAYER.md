@@ -109,7 +109,7 @@ and the server code does not change. CSP is unaffected (no inline script and no
 
 ## Progress
 
-- [ ] 1. Base mechanism + two-ring pies
+- [x] 1. Base mechanism + two-ring pies
 - [ ] 2. Single-ring pies
 - [ ] 3. Histograms, stacked charts
 - [ ] 4. Styled tooltip (optional)
