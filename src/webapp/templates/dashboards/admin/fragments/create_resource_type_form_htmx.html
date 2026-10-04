@@ -4,7 +4,7 @@
 {% call htmx_form(
     url_for('admin_dashboard.htmx_resource_type_create'),
     '#createResourceTypeFormContainer',
-    'Create Resource Type',
+    'Create',
     submit_icon='plus',
     errors=errors
 ) %}
@@ -14,7 +14,7 @@
                       id='createResTypeName') }}
 
         {{ number_field('grace_period_days', 'Grace Period Days',
-                        min=0,
+                        min=0, tip='Days after an allocation ends that access remains.',
                         placeholder='0',
                         id='createResTypeGrace') }}
 {% endcall %}

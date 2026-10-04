@@ -1,109 +1,47 @@
 {#
-  Admin: Edit Project — Exchange Allocation modal form.
-  Loaded into #exchangeAllocationFormContainer when the Exchange button is
-  clicked on a resource row in the allocation tree.
+  Admin: Edit Project — Exchange Allocation modal form, loaded into
+  #exchangeAllocationFormContainer from the tree's exchange button. Moves an amount
+  between two dedicated allocations on one resource in the project's subtree; the
+  combined amount, dates and descriptions never change.
 
-  An "exchange" moves allocation amount from one dedicated allocation to
-  another on the same resource, within the current project's subtree. The
-  overall combined amount is preserved; dates and descriptions are never
-  changed.
-
-  Context variables:
-    project     — the edit-page Project ORM object (form action scope)
-    resource    — the Resource ORM object being exchanged on
-    candidates  — list of {allocation_id, amount, used, projcode,
-                  project_id, resource_name}; already filtered to dedicated,
-                  non-inheriting, non-deleted allocations within the subtree
-    errors      — list of validation errors (on re-render)
-    form        — request.form on validation re-render
+  Context: project, resource, active_at, candidates ([{allocation_id, amount, used,
+  projcode, title}], dedicated and non-deleted, in the subtree), errors, form.
+  Previews and the from/to sync live in static/js/form-helpers.js (initExchangeForm).
 #}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
-{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+{% from 'dashboards/fragments/form_fields.html' import select_field, number_field with context %}
 {% from 'dashboards/fragments/glossary.html' import g_exchange with context %}
+
+{{ modal_title('exchangeAllocationModalLabel', 'Exchange on ' ~ resource.resource_name, 'right-left',
+               meta=project.projcode) }}
+
+{%- set ns = namespace(opts=[]) %}
+{%- for c in candidates %}
+  {%- set ns.opts = ns.opts + [(c.allocation_id,
+        c.projcode ~ ' — ' ~ (c.amount | fmt_number) ~ (' — ' ~ (c.title | truncate(50, True, '…')) if c.title else ''),
+        {'amount': c.amount, 'used': c.used, 'projcode': c.projcode})] %}
+{%- endfor %}
 
 {% call htmx_form(
     url_for('admin_dashboard.htmx_exchange_allocation', projcode=project.projcode),
     '#exchangeAllocationFormContainer',
     'Exchange',
-    submit_icon='exchange-alt',
+    submit_icon='right-left',
     submit_class='btn-outline-primary',
     errors=errors
 ) %}
-
   <input type="hidden" name="resource_id" value="{{ resource.resource_id }}">
   <input type="hidden" name="active_at" value="{{ active_at }}">
 
-  <div class="alert alert-info py-2 mb-3 small">
-    <i class="fa-solid fa-right-left me-1"></i>
-    Moves an amount between standalone sub-project allocations on
-    <strong>{{ resource.resource_name }}</strong> within
-    <code>{{ project.projcode }}</code>'s allocation tree — one goes down, the
-    other up. Dates are not changed. Shared allocations linked to either side
-    follow automatically.
-    {{ help_icon(g_exchange(), rich=True, title='Exchange', placement='right') }}
-  </div>
-
-  {# FROM project #}
-  <div class="mb-3">
-    <label for="exchangeFromProject" class="form-label fw-semibold">
-      From <span class="text-danger">*</span>
-    </label>
-    <select class="form-select" id="exchangeFromProject"
-            name="from_allocation_id" required>
-      <option value="">— Select source project —</option>
-      {% for c in candidates %}
-      <option value="{{ c.allocation_id }}"
-              data-amount="{{ c.amount }}"
-              data-used="{{ c.used }}"
-              data-projcode="{{ c.projcode }}"
-              {% if form and form.get('from_allocation_id') == c.allocation_id|string %}selected{% endif %}>
-        {{ c.projcode }} — {{ c.amount | fmt_number }}{% if c.title %} — {{ c.title | truncate(50, True, '…') }}{% endif %}
-      </option>
-      {% endfor %}
-    </select>
-    <div class="form-text">
-      <span id="exchangeFromPreview" class="text-muted"></span>
-    </div>
-  </div>
-
-  {# TO project #}
-  <div class="mb-3">
-    <label for="exchangeToProject" class="form-label fw-semibold">
-      To <span class="text-danger">*</span>
-    </label>
-    <select class="form-select" id="exchangeToProject"
-            name="to_allocation_id" required>
-      <option value="">— Select destination project —</option>
-      {% for c in candidates %}
-      <option value="{{ c.allocation_id }}"
-              data-amount="{{ c.amount }}"
-              data-projcode="{{ c.projcode }}"
-              {% if form and form.get('to_allocation_id') == c.allocation_id|string %}selected{% endif %}>
-        {{ c.projcode }} — {{ c.amount | fmt_number }}{% if c.title %} — {{ c.title | truncate(50, True, '…') }}{% endif %}
-      </option>
-      {% endfor %}
-    </select>
-    <div class="form-text">
-      <span id="exchangeToPreview" class="text-muted"></span>
-    </div>
-  </div>
-
-  {# Amount to transfer #}
-  <div class="mb-3">
-    <label for="exchangeAmount" class="form-label fw-semibold">
-      Amount to transfer <span class="text-danger">*</span>
-    </label>
-    <input type="number" class="form-control" id="exchangeAmount"
-           name="amount" min="0.01" step="any" required
-           data-number-preview
-           value="{{ form.get('amount', '') if form else '' }}"
-           placeholder="e.g. 100000">
-    <div class="form-text">
-      <span class="number-preview text-primary fw-semibold"></span>
-    </div>
-  </div>
-
-  {# Exchange preview/sync behavior lives in static/js/form-helpers.js
-     (initExchangeForm, re-run per swap via htmx.onLoad). #}
-
+  {{ select_field('from_allocation_id', 'From', options=ns.opts, required=True,
+                  placeholder='— Select source project —', id='exchangeFromProject',
+                  help_html='<span id="exchangeFromPreview" class="text-muted"></span>') }}
+  {{ select_field('to_allocation_id', 'To', options=ns.opts, required=True,
+                  placeholder='— Select destination project —', id='exchangeToProject',
+                  help_html='<span id="exchangeToPreview" class="text-muted"></span>') }}
+  {{ number_field('amount', 'Amount to transfer', required=True, min=0.01, step='any',
+                  placeholder='e.g. 100000', data_attrs={'number-preview': ''},
+                  help_html='<span class="number-preview text-primary fw-semibold"></span>',
+                  tip=g_exchange(), tip_rich=True, id='exchangeAmount') }}
 {% endcall %}

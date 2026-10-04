@@ -18,7 +18,6 @@
                         optional_text='',
                         min=0, step=1,
                         default=resource_type.grace_period_days if resource_type.grace_period_days is not none else '',
-                        placeholder='Number of grace-period days after allocation ends',
-                        help='Number of days after allocation expiry that access remains.',
+                        tip='Days after an allocation ends that access remains.',
                         id='editResourceTypeGracePeriod') }}
 {% endcall %}

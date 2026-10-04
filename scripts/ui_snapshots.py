@@ -6,11 +6,13 @@ folders (the middle ground in docs/plans/GALLERY_VISUAL_SNAPSHOTS.md). Needs the
 [e2e] extra. Logs in through the stub form unless given --storage-state.
 --styles also dumps every element's computed style; --compare proves "no visual change".
 --headers lists table headers whose sort icon wrapped onto a line of its own (no --out needed).
+--modal OPENER (after any --step) or --recipes FILE shoots the opened dialog and prints its height.
 
     python scripts/ui_snapshots.py --out /tmp/before
     python scripts/ui_snapshots.py --out /tmp/after --page /admin/contracts --expand 2
     python scripts/ui_snapshots.py --styles --out /tmp/after && python scripts/ui_snapshots.py --compare /tmp/before /tmp/after
     python scripts/ui_snapshots.py --headers --layout desktop --layout mobile --theme light
+    python scripts/ui_snapshots.py --out /tmp/m --page /admin/resources --modal '[data-bs-target="#createResourceModal"]'
 """
 import argparse
 import gzip
@@ -147,17 +149,106 @@ HEADER_CHECK_JS = """() => {
 }"""
 
 
-def _settle(page, expand):
+def parse_step(text):
+    """``click:SEL`` / ``wait:SEL`` / ``reveal:SEL`` / ``fill:SEL=TEXT`` -> ``(verb, selector, text)``."""
+    verb, _, rest = text.partition(':')
+    if verb == 'fill':
+        selector, sep, value = rest.rpartition('=')
+        if not sep or not selector:
+            raise ValueError(f'fill step needs SEL=TEXT: {text!r}')
+        return verb, selector, value
+    if verb not in ('click', 'wait', 'reveal') or not rest:
+        raise ValueError(f'step must be click:SEL, wait:SEL, reveal:SEL or fill:SEL=TEXT: {text!r}')
+    return verb, rest, None
+
+
+# Rendered height, and the natural height a fullscreen (phone) dialog would need unclipped.
+DIALOG_HEIGHT_JS = """() => {
+  const c = document.querySelector('.modal.show .modal-content');
+  const parts = c.querySelectorAll('.modal-header, .modal-body, .modal-footer');
+  const natural = [...parts].reduce((sum, el) => sum + el.scrollHeight, 0);
+  return {height: Math.round(c.getBoundingClientRect().height), natural};
+}"""
+# Lets the screenshot show a scrolling fullscreen body whole; applied after measuring.
+UNCLIP_CSS = ('.modal.show .modal-dialog, .modal.show .modal-content { height: auto !important; }'
+              ' .modal.show .modal-body { overflow: visible !important; }')
+
+
+def _open_modal(page, recipe):
+    for verb, selector, value in map(parse_step, recipe.get('steps', ())):
+        target = page.locator(selector).first
+        if verb == 'reveal':   # open collapsed rows without clicking their toggles one by one
+            page.evaluate("s => document.querySelectorAll(s).forEach(e => e.classList.add('show'))", selector)
+        elif verb == 'fill':
+            target.fill(value)
+        elif verb == 'click':
+            target.click()
+        else:
+            target.wait_for(state='visible', timeout=15_000)
+        _idle(page)
+        page.wait_for_timeout(300)   # a debounced typeahead or a collapse transition
+    page.locator(recipe['modal']).first.click()
+    page.wait_for_selector('.modal.show .modal-dialog')
+    _idle(page)
+    try:   # a lazy body, then any lazy pane inside it (an email preview)
+        page.locator('.modal.show .fa-spin >> visible=true').wait_for(state='detached', timeout=15_000)
+    except Exception:  # noqa: BLE001 - a spinner that never stops: shoot what loaded
+        pass
+    _idle(page)
+    if recipe.get('inject'):
+        html = Path(recipe['inject']['file']).read_text()
+        page.evaluate("([sel, html]) => { const el = document.querySelector(sel);"
+                      " el.innerHTML = html; window.htmx && htmx.process(el); }",
+                      [recipe['inject']['into'], html])
+    page.wait_for_timeout(400)   # the fade
+
+
+def _idle(page):
     try:
         page.wait_for_load_state('networkidle', timeout=15_000)
     except Exception:  # noqa: BLE001 - a long-poll page never idles; shoot what loaded
         pass
+
+
+def _settle(page, expand):
+    _idle(page)
     triggers = page.locator('.tab-pane.active [data-bs-toggle="collapse"]:visible, '
                             '#contractsTable [data-bs-toggle="collapse"]:visible, '
                             '#facilities-pane [data-bs-toggle="collapse"]:visible')
     for i in range(min(expand, triggers.count())):
         triggers.nth(i).click()
         page.wait_for_timeout(400)
+
+
+def _shoot_modal(page, recipe, out, state, styles):
+    name = recipe.get('name') or f"{_slug(recipe['page'])}__{_slug(recipe['modal'])}"
+    for attempt in (1, 2):   # one retry: a laptop's network can suspend mid-run
+        try:
+            page.goto(recipe['page'])
+            _settle(page, 0)
+            _open_modal(page, recipe)
+            break
+        except Exception as e:  # noqa: BLE001 - one missing opener must not lose the rest of the run
+            if attempt == 2:
+                print(f'{name} [{state}]: not opened ({type(e).__name__}: {str(e).splitlines()[0]})')
+                return
+    size = page.evaluate(DIALOG_HEIGHT_JS)
+    path = out / f'{name}__{state}.png'
+    if styles:
+        dump = path.with_suffix('.styles.json.gz')
+        dump.write_bytes(gzip.compress(json.dumps(page.evaluate(STYLE_DUMP_JS)).encode()))
+    tag = page.add_style_tag(content=UNCLIP_CSS)
+    viewport = page.viewport_size   # a dialog taller than the window paints only what is on screen
+    tall = page.locator('.modal.show .modal-dialog').bounding_box()['height'] + 120
+    if tall > viewport['height']:
+        page.set_viewport_size({'width': viewport['width'], 'height': int(tall)})
+        page.wait_for_timeout(200)
+    page.locator('.modal.show .modal-dialog').screenshot(path=str(path))
+    page.set_viewport_size(viewport)
+    tag.evaluate('el => el.remove()')
+    with (out / 'heights.tsv').open('a') as f:
+        f.write(f"{name}\t{state}\t{size['height']}\t{size['natural']}\n")
+    print(f"{path} height={size['height']} natural={size['natural']}")
 
 
 def main(argv=None):
@@ -176,9 +267,22 @@ def main(argv=None):
                     help='report sort icons wrapped away from their header label; exit 1 if any')
     ap.add_argument('--compare', nargs=2, metavar=('BEFORE', 'AFTER'), type=Path,
                     help='diff two --styles folders and exit 1 on any difference (no browser)')
+    ap.add_argument('--step', action='append', dest='steps', default=[],
+                    help='before --modal, in order: click:SEL, wait:SEL, reveal:SEL or fill:SEL=TEXT')
+    ap.add_argument('--modal', help='opener to click on each --page; shoots .modal.show .modal-dialog')
+    ap.add_argument('--recipes', type=Path,
+                    help='JSON list of {name, page, steps, modal, inject: {file, into}}; needs --out')
     args = ap.parse_args(argv)
     if args.compare:
         return compare_dirs(*args.compare)
+    recipes = json.loads(args.recipes.read_text()) if args.recipes else [
+        {'page': url, 'steps': args.steps, 'modal': args.modal} for url in args.pages or []
+    ] if args.modal else None
+    if recipes:
+        for r in recipes:
+            [parse_step(s) for s in r.get('steps', ())]   # fail before the browser starts
+        if args.out is None:
+            ap.error('--out is required with --modal or --recipes')
     if args.out is None and not args.headers:
         ap.error('--out is required unless --compare or --headers is given')
     from playwright.sync_api import sync_playwright
@@ -198,7 +302,9 @@ def main(argv=None):
                 context.add_cookies([{'name': 'sam_theme', 'value': theme, 'domain': host, 'path': '/'},
                                      {'name': 'sam_layout', 'value': layout, 'domain': host, 'path': '/'}])
                 page = context.new_page()
-                for url in args.pages or DEFAULT_PAGES:
+                for recipe in recipes or ():
+                    _shoot_modal(page, recipe, args.out, f'{layout}-{theme}', args.styles)
+                for url in () if recipes else args.pages or DEFAULT_PAGES:
                     page.goto(url)
                     _settle(page, args.expand)
                     if args.out:

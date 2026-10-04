@@ -40,7 +40,7 @@
 {%- set pool = res.root_projcode or 'parent' -%}
 <td class="col-num"{{ _sort_key(res.self_percent_used, sort) }}>{{ usage_meter(res.self_percent_used, title=(res.self_percent_used | fmt_pct) ~ ' of ' ~ pool ~ "'s pool used by this project") }}</td>
 <td class="col-num text-muted small"{{ _sort_key(res.allocated, sort) }} title="{{ pool }}'s pool: {{ res.allocated | fmt_number }} allocated">
-  {{- term('from', g_shared_alloc(), rich=True, title='Shared allocation') }} {{ project_link_button(res.root_projcode, can_view) if res.root_projcode else 'parent' -}}
+  {{- term('from', g_shared_alloc(), rich=True, title='Shared allocation', stop_propagation=True) }} {{ project_link_button(res.root_projcode, can_view) if res.root_projcode else 'parent' -}}
 </td>
 <td class="col-num"{{ _sort_key(res.self_used, sort) }} title="Used by this project; the pool has used {{ res.used | fmt_number }}">{{ res.self_used | fmt_number }}</td>
 <td class="col-num text-muted"{{ _sort_key(res.remaining, sort) }} title="{{ pool }}'s pool remaining">{{ res.remaining | fmt_number }}</td>

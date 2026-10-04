@@ -1,22 +1,17 @@
 """
 Admin dashboard — Facility management routes.
 
-Covers: Facilities, Panels, Panel Sessions, Allocation Types.
+Covers: Facilities, Panels, Allocation Types.
 
 The CRUD quintets are generated from `_FACILITY_CRUD_SPECS` at the bottom
-of this module via `register_crud`. Hand-written routes remaining: the
-card fragment and the panel-session edit pair, whose cross-field check
-(end date vs the stored start date) needs the loaded ORM object.
+of this module via `register_crud`; the card fragment is hand-written.
 """
 
 from flask import render_template, request
 from flask_login import login_required
-from datetime import datetime
 from functools import partial
 
 from webapp.utils.htmx import (
-    htmx_not_found,
-    htmx_success_message,
     modal_triggers,
     read_active_only,
     read_layout,
@@ -28,12 +23,11 @@ from webapp.dashboards.charts.theme import facility_slots
 from webapp.utils.rbac import (
     require_permission, require_permission_any_facility, Permission,
 )
-from sam.manage import management_transaction
 from sam.accounting.allocations import AllocationType
-from sam.resources.facilities import Facility, Panel, PanelSession
+from sam.resources.facilities import Facility, Panel
 from sam.schemas.forms.facilities import (
     EditFacilityForm, CreateFacilityForm, CreatePanelForm, EditPanelForm,
-    EditPanelSessionForm, EditAllocationTypeForm, CreateAllocationTypeForm,
+    EditAllocationTypeForm, CreateAllocationTypeForm,
 )
 
 from .blueprint import bp
@@ -84,76 +78,6 @@ def htmx_facilities_card():
         fair_share_chart=generate_fair_share_sunburst(
             sunburst, layout=read_layout(), theme=read_theme()),
     )
-
-
-# Panel Session Edit (bespoke: cross-field check needs the ORM object)
-# (panel session create/delete intentionally omitted — PanelSession has
-#  date-range semantics and no active flag; manage via edit only)
-
-
-@bp.route('/htmx/panel-session-edit-form/<int:panel_session_id>')
-@login_required
-@require_permission(Permission.EDIT_FACILITIES)
-def htmx_panel_session_edit_form(panel_session_id):
-    """Return the panel session edit form fragment (loaded into modal)."""
-    panel_session = db.session.get(PanelSession, panel_session_id)
-    if not panel_session:
-        return '<div class="alert alert-warning">Panel session not found</div>'
-
-    return render_template(
-        'dashboards/admin/fragments/edit_panel_session_form_htmx.html',
-        panel_session=panel_session,
-    )
-
-
-@bp.route('/htmx/panel-session-edit/<int:panel_session_id>', methods=['POST'])
-@login_required
-@require_permission(Permission.EDIT_FACILITIES)
-def htmx_panel_session_edit(panel_session_id):
-    """Update a panel session."""
-    panel_session = db.session.get(PanelSession, panel_session_id)
-    if not panel_session:
-        return htmx_not_found('Panel session')
-
-    # Cross-field check (end_date vs existing start_date) needs the loaded
-    # object, so this route uses the schema directly rather than the helper.
-    from marshmallow import ValidationError
-    try:
-        data = EditPanelSessionForm().load(request.form)
-    except ValidationError as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_panel_session_form_htmx.html',
-            panel_session=panel_session,
-            errors=EditPanelSessionForm.flatten_errors(e.messages),
-            form=request.form,
-        )
-
-    if data.get('end_date') and data.get('start_date') is None and panel_session.start_date:
-        if data['end_date'] <= panel_session.start_date:
-            return render_template(
-                'dashboards/admin/fragments/edit_panel_session_form_htmx.html',
-                panel_session=panel_session,
-                errors=['End date must be after start date.'],
-                form=request.form,
-            )
-
-    try:
-        with management_transaction(db.session):
-            panel_session.update(
-                description=data['description'],
-                start_date=datetime.combine(data['start_date'], datetime.min.time()) if data.get('start_date') else None,
-                end_date=data['end_date'],
-                panel_meeting_date=datetime.combine(data['panel_meeting_date'], datetime.min.time()) if data.get('panel_meeting_date') else None,
-            )
-    except Exception as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_panel_session_form_htmx.html',
-            panel_session=panel_session,
-            errors=[f'Error updating panel session: {e}'],
-            form=request.form,
-        )
-
-    return htmx_success_message(_FACILITY_TRIGGERS, 'Saved successfully.')
 
 
 # Allocation Type create-form context

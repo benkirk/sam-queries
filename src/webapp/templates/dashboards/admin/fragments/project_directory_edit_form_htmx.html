@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/form_fields.html' import fk_search_field, readonly_display with context %}
 {#
   htmx: Edit Project Directory form (loaded into #editProjectDirectoryFormContainer).
@@ -33,11 +34,9 @@
         <div class="alert alert-warning mb-3">
             <i class="fa-solid fa-triangle-exclamation"></i>
             <strong>This directory doesn't match any registered disk root.</strong>
-            The current path <code>{{ pd.directory_name }}</code> was created
-            before validation was added, or its root has since been deleted.
-            To save any change you must first select a valid root and adjust
-            the sub-path. To remove this entry instead, close this modal and
-            click Delete on the row.
+            {{ help_icon('The path predates root validation, or its root has since been deleted.') }}
+            To save, select a valid root and adjust the sub-path; to remove it, close this
+            modal and click Delete on the row.
         </div>
         {% endif %}
 
@@ -51,10 +50,9 @@
                 Directory <span class="text-danger">*</span>
             </label>
             <div class="input-group" data-path-preview-group>
-                <select class="form-select" id="editProjectDirectoryRoot"
+                <select class="form-select path-root-select" id="editProjectDirectoryRoot"
                         name="root_directory_id" required
-                        data-path-preview-root
-                        style="max-width: 18em;">
+                        data-path-preview-root>
                     <option value="">-- Select a disk root --</option>
                     {% for r in disk_roots %}
                     <option value="{{ r.root_directory_id }}"

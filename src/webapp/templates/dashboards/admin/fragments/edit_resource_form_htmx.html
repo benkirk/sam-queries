@@ -1,10 +1,15 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
-{% from 'dashboards/fragments/form_fields.html' import text_field, date_field, checkbox_field, readonly_display with context %}
+{% from 'dashboards/fragments/glossary.html' import g_commission_dates, g_charging_exempt with context %}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, date_field, checkbox_field with context %}
 {#
   htmx: Edit Resource Form (loaded into #editResourceFormContainer)
   resource_name and resource_type are read-only.
   Editable: description, commission_date, decommission_date, charging_exempt.
 #}
+
+{{ modal_title('editResourceModalLabel', 'Edit ' ~ resource.resource_name, 'server',
+               meta=resource.resource_type.resource_type if resource.resource_type else none) }}
 
 {% call htmx_form(
     url_for('admin_dashboard.htmx_resource_edit', resource_id=resource.resource_id),
@@ -13,14 +18,6 @@
     is_edit=True,
     errors=errors
 ) %}
-        <div class="row mb-3">
-            <div class="col-md-6">
-                {{ readonly_display('Resource Name', resource.resource_name, muted=False, strong=True) }}
-            </div>
-            <div class="col-md-6">
-                {{ readonly_display('Type', resource.resource_type.resource_type if resource.resource_type else '—') }}
-            </div>
-        </div>
 
         {{ text_field('description', 'Description',
                       optional_text='',
@@ -30,7 +27,7 @@
 
         <div class="row">
             <div class="col-md-6">
-                {{ date_field('commission_date', 'Commission Date',
+                {{ date_field('commission_date', 'Commission Date', tip=g_commission_dates(), tip_rich=True,
                               required=True,
                               default=resource.commission_date,
                               id='editResourceCommission') }}
@@ -44,6 +41,6 @@
 
         {{ checkbox_field('charging_exempt', 'Charging Exempt',
                           default=resource.charging_exempt,
-                          help='Jobs on this resource will not be charged.',
+                          tip=g_charging_exempt(),
                           id='editResourceChargingExempt') }}
 {% endcall %}

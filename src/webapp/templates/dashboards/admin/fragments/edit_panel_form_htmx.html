@@ -1,10 +1,14 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
-{% from 'dashboards/fragments/form_fields.html' import text_field, checkbox_field, readonly_display with context %}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, checkbox_field with context %}
 {#
   htmx: Edit Panel Form (loaded into #editPanelFormContainer)
   panel_name and facility are read-only.
   Editable: description (optional), active.
 #}
+
+{{ modal_title('editPanelModalLabel', 'Edit ' ~ panel.panel_name, 'users-cog',
+               meta=panel.facility.facility_name if panel.facility else none) }}
 
 {% call htmx_form(
     url_for('admin_dashboard.htmx_panel_edit', panel_id=panel.panel_id),
@@ -13,14 +17,6 @@
     is_edit=True,
     errors=errors
 ) %}
-        <div class="row mb-3">
-            <div class="col-md-7">
-                {{ readonly_display('Panel Name', panel.panel_name, muted=False, strong=True) }}
-            </div>
-            <div class="col-md-5">
-                {{ readonly_display('Facility', panel.facility.facility_name if panel.facility else '—') }}
-            </div>
-        </div>
 
         {{ text_field('description', 'Description',
                       default=panel.description or '',

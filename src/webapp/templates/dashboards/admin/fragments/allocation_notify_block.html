@@ -1,0 +1,18 @@
+{#
+  The notify + comment block shared by the Renew and Extend forms: the lead/admin
+  email checkbox (default on) with its preview button, the operator comment the
+  email carries, and the preview pane (#<prefix>PreviewPane).
+#}
+{% from 'dashboards/fragments/form_fields.html' import checkbox_field, textarea_field with context %}
+{% from 'dashboards/fragments/email_preview.html' import preview_button %}
+
+{% macro notify_block(prefix, past_tense, preview_url) %}
+{% call checkbox_field('notify_leads', 'Email the lead and admin of each project in the tree that it has been '
+                       ~ past_tense ~ ', with a link back to manage it.',
+                       default=True, id=prefix ~ 'NotifyLeads') %}
+  {{ preview_button(preview_url, prefix ~ 'PreviewPane') }}
+{% endcall %}
+{{ textarea_field('operator_comment', 'Comments', optional_text='(optional, included in the email)',
+                  rows=2, maxlength=1000, id=prefix ~ 'OperatorComment') }}
+<div id="{{ prefix }}PreviewPane" class="mb-2"></div>
+{% endmacro %}

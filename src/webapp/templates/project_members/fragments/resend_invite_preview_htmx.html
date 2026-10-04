@@ -7,10 +7,9 @@
   Context: project, row (AccountRequest or None), and email_preview_context()
            when the row can be sent a link.
 #}
-<h5 class="modal-title" id="invitationModalLabel" hx-swap-oob="true">
-    <i class="fa-solid fa-paper-plane"></i>
-    {{ 'Resend' if row and row.invite_sent_at else 'Send' }} an invitation link
-</h5>
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+{{ modal_title('invitationModalLabel', ('Resend' if row and row.invite_sent_at else 'Send') ~ ' an invitation link',
+               'paper-plane', meta=row.email if row else none) }}
 
 <div class="modal-body">
     {% if p %}
@@ -18,13 +17,9 @@
         {% include 'dashboards/fragments/email_preview_pane.html' %}
     </div>
     {% elif row %}
-    <div class="alert alert-info small mb-0">
-        <i class="fa-solid fa-circle-info me-1"></i>{{ row.email }} cannot be sent an invitation link now.
-    </div>
+    <p class="mb-0">{{ row.email }} cannot be sent an invitation link now.</p>
     {% else %}
-    <div class="alert alert-warning small mb-0">
-        <i class="fa-solid fa-circle-info me-1"></i>Invitation not found.
-    </div>
+    <p class="mb-0">Invitation not found.</p>
     {% endif %}
 </div>
 

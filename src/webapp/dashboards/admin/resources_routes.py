@@ -27,6 +27,8 @@ from webapp.utils.rbac import (
     has_permission_any_facility,
     require_permission, require_permission_any_facility, Permission,
 )
+from sam.core.organizations import Organization
+from sam.core.users import User
 from sam.manage import management_transaction
 from sam.resources.machines import Machine
 from sam.resources.resources import Resource, ResourceType
@@ -105,7 +107,6 @@ def htmx_resources_card():
     queues = queue_q.all()
 
     from sam.operational import WallclockExemption
-    from sam.core.users import User
     from sqlalchemy.orm import joinedload
     exemption_q = (
         db.session.query(WallclockExemption)
@@ -589,7 +590,6 @@ def htmx_queue_cleanup(resource_id):
 
 def _search_organizations_fk(q, active_only):
     """Active-org FK search (e.g. prim_responsible_org_id on Resource)."""
-    from sam.core.organizations import Organization
     return Organization.search_by_pattern(db.session, q)
 
 
@@ -767,6 +767,22 @@ def htmx_admin_disk_root_toggle_active(dr_id):
 
 # CRUD routes — generated from specs
 #
+def _resource_create_kwargs(data):
+    """Create kwargs, with the two optional pickers checked against the DB."""
+    validate_fk_existence(db.session,
+                          (User, data['prim_sys_admin_user_id'], 'primary sysadmin'),
+                          (Organization, data['prim_responsible_org_id'], 'responsible organization'))
+    return dict(
+        resource_name=data['resource_name'],
+        resource_type_id=data['resource_type_id'],
+        description=data['description'],
+        commission_date=datetime.combine(data['commission_date'], datetime.min.time()) if data.get('commission_date') else None,
+        charging_exempt=data['charging_exempt'],
+        prim_sys_admin_user_id=data['prim_sys_admin_user_id'],
+        prim_responsible_org_id=data['prim_responsible_org_id'],
+    )
+
+
 # Endpoints, URL rules, templates, permissions, and not-found messages are
 # identical to the hand-written routes these replace (pinned by
 # tests/unit/webapp/test_admin_facilities_resources_crud.py and the route-map
@@ -792,13 +808,7 @@ _RESOURCE_CRUD_SPECS = (
             decommission_date=data['decommission_date'],
             charging_exempt=data['charging_exempt'],
         ),
-        create_kwargs=lambda data: dict(
-            resource_name=data['resource_name'],
-            resource_type_id=data['resource_type_id'],
-            description=data['description'],
-            commission_date=datetime.combine(data['commission_date'], datetime.min.time()) if data.get('commission_date') else None,
-            charging_exempt=data['charging_exempt'],
-        ),
+        create_kwargs=_resource_create_kwargs,
         create_context=lambda: {'resource_types': _all_resource_types()},
         actions=('edit', 'create'),   # delete is bespoke (htmx_resource_delete)
     ),

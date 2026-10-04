@@ -312,16 +312,6 @@
         input.dispatchEvent(new Event('input', { bubbles: true }));
     });
 
-    /* Edit Allocation form: break-inheritance unlock checkbox */
-    registerAction('alloc-break-inheritance', function (checkbox) {
-        var unlock = checkbox.checked;
-        document.getElementById('break_inheritance').value = unlock ? 'true' : 'false';
-        ['editAllocAmount', 'editAllocStart', 'editAllocEnd'].forEach(function (id) {
-            var el = document.getElementById(id);
-            if (el) { el.disabled = !unlock; }
-        });
-    });
-
     /* Project linked-elements card: Add-form collapse panels */
     registerAction('le-toggle', function (el) {
         var panel = document.getElementById(el.dataset.targetId);
@@ -335,7 +325,7 @@
         document.getElementById('htmxSelectedUserName').textContent =
             d.displayName + ' (' + d.username + ')';
         document.getElementById('htmxSelectedUserEmail').textContent = d.email || '';
-        document.getElementById('htmxSelectedUserDisplay').style.display = 'block';
+        document.getElementById('htmxSelectedUserDisplay').hidden = false;
         document.getElementById('htmxUserSearchResults').innerHTML = '';
         document.getElementById('htmxUserSearch').value = '';
         document.getElementById('htmxAddMemberSubmitBtn').disabled = false;
@@ -343,7 +333,7 @@
 
     registerAction('member-clear-user', function () {
         document.getElementById('htmxSelectedUsername').value = '';
-        document.getElementById('htmxSelectedUserDisplay').style.display = 'none';
+        document.getElementById('htmxSelectedUserDisplay').hidden = true;
         document.getElementById('htmxAddMemberSubmitBtn').disabled = true;
         document.getElementById('htmxUserSearch').focus();
     });
