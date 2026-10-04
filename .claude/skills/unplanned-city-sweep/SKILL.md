@@ -94,8 +94,8 @@ Run each pass and collect findings. The examples are real.
   - Tables: a header wider than its column's figures (measure the label against the widest
     cell with a `Range`, never by eye). `.col-num` / `.col-shrink` headers wrap at their spaces
     by default, so anything that must not lead a line (a sort icon, `#`) joins its word with
-    `&nbsp;`. An orphan check (an icon alone on a line, a one-word label on two lines) across
-    every page at 1440px and 390px is the proof.
+    `&nbsp;`. `scripts/ui_snapshots.py --headers --layout desktop --layout mobile` over every
+    page is the proof (wire-dashboard-feature §7).
 - **Propagate.** List the shared pieces the window introduced: macros, chart families, JS
   modules, query helpers. For each, find an older surface doing the same job the old way. The
   sunburst started on the allocations page and then moved to job history; that is the shape to
