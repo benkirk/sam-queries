@@ -1284,17 +1284,9 @@ def htmx_exchange_allocation_form(project, resource_id):
     active_at = _parse_active_at_arg(request.args.get('active_at', ''))
     candidates, resource = _exchange_candidates(project, resource_id, active_at=active_at)
     if resource is None:
-        return '<div class="modal-body"><div class="alert alert-warning">Resource not found.</div></div>'
+        return render_template('dashboards/admin/fragments/allocation_form_notice_htmx.html', kind='resource_missing')
     if len(candidates) < 2:
-        return (
-            '<div class="modal-body">'
-            '<div class="alert alert-info">'
-            '<i class="fa-solid fa-circle-info"></i> '
-            'Exchange requires at least two standalone sub-project allocations '
-            'for this resource within the allocation tree. Shared (linked) '
-            'allocations do not count.'
-            '</div></div>'
-        )
+        return render_template('dashboards/admin/fragments/allocation_form_notice_htmx.html', kind='exchange_needs_two')
     return render_template(
         'dashboards/admin/fragments/exchange_allocation_form_htmx.html',
         project=project,
@@ -1440,39 +1432,16 @@ def htmx_allocate_down_form(allocation):
     uncovered branch. The parent's own amount never changes.
     """
     if allocation.deleted or allocation.is_inheriting:
-        return (
-            '<div class="modal-body">'
-            '<div class="alert alert-info">'
-            '<i class="fa-solid fa-circle-info"></i> '
-            'This is a shared allocation — it mirrors its parent and has no '
-            'unallocated remainder of its own. Allocate from the parent '
-            'allocation instead.'
-            '</div></div>'
-        )
+        return render_template('dashboards/admin/fragments/allocation_form_notice_htmx.html', kind='shared')
 
     frontier, bump_candidates, create_candidates, resource = \
         _allocate_down_context(allocation)
 
     if frontier.raw_residual < 0:
-        return (
-            '<div class="modal-body">'
-            '<div class="alert alert-warning">'
-            '<i class="fa-solid fa-triangle-exclamation"></i> '
-            f'Sub-project carve-outs ({frontier.carve_total:g}) exceed this '
-            f'allocation ({float(allocation.amount):g}). Resolve the deficit '
-            'before allocating further — see '
-            '<code>sam-admin project --audit-trees</code>.'
-            '</div></div>'
-        )
+        return render_template('dashboards/admin/fragments/allocation_form_notice_htmx.html', kind='over_carved',
+                               carve_total=frontier.carve_total, amount=allocation.amount)
     if frontier.residual <= 0 or not (bump_candidates or create_candidates):
-        return (
-            '<div class="modal-body">'
-            '<div class="alert alert-info">'
-            '<i class="fa-solid fa-circle-info"></i> '
-            'Nothing to allocate: this allocation has no unallocated remainder '
-            'available for its sub-projects.'
-            '</div></div>'
-        )
+        return render_template('dashboards/admin/fragments/allocation_form_notice_htmx.html', kind='nothing')
 
     return render_template(
         'dashboards/admin/fragments/allocate_down_form_htmx.html',

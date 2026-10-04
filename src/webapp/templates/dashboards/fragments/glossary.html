@@ -75,7 +75,8 @@ own allocation <em>without changing this one</em>.
 {% macro g_exchange() -%}
 Moves an amount between two <strong>standalone sub-project allocations</strong>
 on the same resource — one goes down, the other up, so the allocation tree's
-total is unchanged. Dates are not changed.
+total is unchanged. Dates are not changed, and shared allocations linked to
+either side follow automatically.
 {%- endmacro %}
 
 {% macro g_renew_vs_extend() -%}

@@ -278,9 +278,18 @@
      either `label_attr` (single attribute) or `label_attrs` (list of
      attributes joined with `label_separator`, default ' — ').
 
+  An options tuple may carry a third item, a dict emitted as data-* attributes
+  on that <option>. `groups` is a list of (label, options) rendered as
+  <optgroup>s (an empty one is skipped); `attrs` is a dict of extra attributes
+  on the <select> (e.g. data-action-change).
+
   `placeholder` adds a leading empty <option> with the given text.
   `default` is the initially selected value (compared as string).
 #}
+{%- macro _option(opt, selected) -%}
+<option value="{{ opt[0] }}"{% if opt[0]|string == selected %} selected{% endif %}
+    {%- for k, v in (opt[2] if opt|length > 2 else {}).items() %} data-{{ k }}="{{ v }}"{% endfor %}>{{ opt[1] }}</option>
+{%- endmacro -%}
 {% macro select_field(name, label, options=None, items=None,
                       value_attr=None, label_attr=None, label_attrs=None,
                       label_separator=' — ',
@@ -289,7 +298,7 @@
                       select_class='form-select', label_class='form-label',
                       hx_get=None, hx_target=None, hx_trigger=None,
                       hx_swap=None, hx_include=None,
-                      tip=None, tip_rich=False) %}
+                      tip=None, tip_rich=False, groups=None, attrs=None, help_html=None) %}
 {%- set _id = id or name -%}
 {%- set _form_value = form.get(name) if form else None -%}
 {%- set _selected = (_form_value if _form_value is not none else default)|string -%}
@@ -302,13 +311,22 @@
             {%- if hx_trigger %} hx-trigger="{{ hx_trigger }}"{% endif %}
             {%- if hx_swap %} hx-swap="{{ hx_swap }}"{% endif %}
             {%- if hx_include %} hx-include="{{ hx_include }}"{% endif %}
+            {%- for k, v in (attrs or {}).items() %} {{ k }}="{{ v }}"{% endfor %}
             {{- _aria(name, _id) }}>
         {%- if placeholder is not none %}
         <option value="">{{ placeholder }}</option>
         {%- endif %}
-        {%- if options %}
-            {%- for value, opt_label in options %}
-        <option value="{{ value }}"{% if value|string == _selected %} selected{% endif %}>{{ opt_label }}</option>
+        {%- if groups %}
+            {%- for group_label, group_options in groups if group_options %}
+        <optgroup label="{{ group_label }}">
+                {%- for opt in group_options %}
+            {{ _option(opt, _selected) }}
+                {%- endfor %}
+        </optgroup>
+            {%- endfor %}
+        {%- elif options %}
+            {%- for opt in options %}
+        {{ _option(opt, _selected) }}
             {%- endfor %}
         {%- elif items %}
             {%- for item in items %}
@@ -327,7 +345,8 @@
         {%- endif %}
     </select>
     {{ _field_error(name, _id) }}
-    {%- if help %}<small class="form-text text-muted">{{ help }}</small>{% endif %}
+    {%- if help_html %}<small class="form-text">{{ help_html|safe }}</small>
+    {%- elif help %}<small class="form-text text-muted">{{ help }}</small>{% endif %}
 </div>
 {% endmacro %}
 
