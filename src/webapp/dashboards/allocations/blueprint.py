@@ -846,10 +846,11 @@ def _burn_through(active_at):
 
 
 def _calendar_burn(resource_name, active_at, start, end):
-    """``(burns, through)``: the cached monthly charges, and where their shading stops."""
-    return (cached_allocation_burn(db.session, resource_name=[resource_name],
-                                   window_start=start, window_end=end, as_of=active_at),
-            _burn_through(active_at))
+    """``(burns, through)``: the cached monthly charges up to ``through``, where shading stops."""
+    through = _burn_through(active_at)
+    return (cached_allocation_burn(db.session, resource_name=[resource_name], window_start=start,
+                                   window_end=end, as_of=through - timedelta(days=1)),
+            through)
 
 
 @bp.route('/htmx/calendar/<resource_name>')
@@ -876,6 +877,7 @@ def htmx_calendar(resource_name):
         days=(end - start).days, now_pct=(active_at - start) / (end - start) * 100,
         slots=_facility_slot_names(facilities),
         active_at=active_at.strftime('%Y-%m-%d'), active_at_dt=active_at,
+        charges_through=through - timedelta(days=1) if through is not None else None,
         requested_facilities=requested_facilities,
     )
 

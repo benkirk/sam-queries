@@ -333,9 +333,11 @@ def test_storage_rows_draw_spans_without_fills(auth_client, captured, monkeypatc
 
 @pytest.fixture
 def burn():
+    """Burn queries captured, with "today" pinned well after AT so AT reads as a past day."""
     seen = {}
     with patch.object(blueprint, 'cached_allocation_burn',
-                      side_effect=lambda *a, **kw: seen.update(query=kw) or {1: {202603: 50.0}}):
+                      side_effect=lambda *a, **kw: seen.update(query=kw) or {1: {202603: 50.0}}), \
+            patch.object(blueprint, '_burn_through', lambda at: burn_through(at, datetime(2030, 1, 1))):
         yield seen
 
 
@@ -354,6 +356,15 @@ def test_burn_mode_draws_group_strips_and_forwards_the_mode(auth_client, capture
     assert body.count('class="cal-strip"') == 3          # UNIV and its two types
     assert body.count('mode=burn&amp;') + body.count('mode=burn"') >= 3
     assert 'Mar 2026: 50 charged' in body
+
+
+def test_burn_on_today_counts_complete_days_only(auth_client, captured, burn):
+    # Today's charges accumulate hourly; at month granularity the partial day waits for midnight.
+    with patch.object(blueprint, '_burn_through', lambda at: burn_through(at, AT)):
+        body = auth_client.get('/allocations/htmx/calendar/Derecho?active_at=2026-10-03&mode=burn'
+                               ).get_data(as_text=True)
+    assert burn['query']['as_of'] == datetime(2026, 10, 2)
+    assert 'Charges through 2026-10-02, the last complete day.' in body
 
 
 def test_burn_rows_carry_cells_instead_of_the_fill_label(auth_client, captured, burn):
