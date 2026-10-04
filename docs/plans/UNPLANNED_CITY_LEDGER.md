@@ -108,6 +108,9 @@ nothing here has been read for intent yet.
   per-feature files the way `allocations.css` did.
 - **css:** 21 dead classes without a dynamic stem, for example `.logout-link`, `.date-filter-form`,
   `.stat-box` and the `.border-status-*` set.
+- **docs:** `plans-stale --gh` on 2026-10-03 found no retirement candidates among 22 top-level
+  plans. `ADMIN_TABLE_POLISH.md` and `ALLOCATIONS_SUNBURST.md` still say "implemented, in
+  review" although their PRs have merged; they pass the 14-day idle bar on 2026-10-17.
 - **templates:** 405 inline `style=""` attributes; the project trees (`shared/project_tree.html`,
   the admin allocation tree) carry the most.
 

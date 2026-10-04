@@ -98,11 +98,29 @@ def test_js_dead_globals_and_actions(tmp_path):
     assert dead['unregistered_actions'] == ['ghost']
 
 
+def test_plans_stale_needs_merged_prs_and_idle_time(tmp_path):
+    day = 86400
+    done = _write(tmp_path, 'DONE.md', 'Shipped in #101 and #102; see docs/x.md#anchor.\n- [ ] polish\n')
+    open_ = _write(tmp_path, 'OPEN.md', 'Part 1 in #101, part 2 in #300.\n')
+    fresh = _write(tmp_path, 'FRESH.md', 'Shipped in #101.\n')
+    bare = _write(tmp_path, 'BARE.md', 'No PR yet.\n')
+    parked = _write(tmp_path, 'PARKED.md', '**Status: written down, deliberately unbuilt.** Cites #101.\n')
+    touched = {p.as_posix(): 0 for p in (done, open_, bare, parked)} | {fresh.as_posix(): 95 * day}
+    rows = inv.plans_stale([done, open_, fresh, bare, parked], {101, 102}, touched, now=100 * day)
+    by_name = {r['file'].rsplit('/', 1)[1]: r for r in rows}
+    assert [r['file'].rsplit('/', 1)[1] for r in rows if r['candidate']] == ['DONE.md']
+    assert by_name['DONE.md']['prs'] == [101, 102] and by_name['DONE.md']['open_boxes'] == 1
+    assert by_name['OPEN.md']['unmerged'] == [300]
+    assert by_name['FRESH.md']['idle_days'] == 5 and not by_name['BARE.md']['candidate']
+    assert by_name['PARKED.md']['status'].startswith('written down')
+
+
 def test_runs_on_the_real_tree(monkeypatch, capsys):
     monkeypatch.chdir(REPO)
     assert inv.main(['--top', '3']) == 0
     out = capsys.readouterr().out
-    for detector in ('private-imports', 'dup-functions', 'css-dead', 'css-shape', 'inline-styles', 'js-dup', 'js-dead'):
+    for detector in ('private-imports', 'dup-functions', 'css-dead', 'css-shape', 'inline-styles', 'js-dup', 'js-dead',
+                     'plans-stale'):
         assert f'== {detector}:' in out
 
 

@@ -45,6 +45,7 @@ Apply the unplanned-city litmus to the window as a whole, not per commit:
 scripts/sweep_inventory.py --since <end-commit> --top 30   # window mode
 scripts/sweep_inventory.py --area css --top 40             # area mode
 scripts/sweep_inventory.py --area js --jscpd               # add jscpd clones (npx)
+scripts/sweep_inventory.py --area docs --gh                # plans ready to retire (gh: merged PRs)
 ```
 
 Every detector is a lead, not a verdict. Read the code before reporting anything it lists.
@@ -69,6 +70,14 @@ Run each pass and collect findings. The examples are real.
   move the others to it. Grep the idiom across the layer before proposing.
 - **Delete.** Dead CSS classes (`css-dead`; check the dynamic stems), JS functions nothing calls
   (`js-dead`), compatibility shims whose callers are gone, and options no caller passes.
+- **Retire plans.** A top-level `docs/plans/*.md` whose PRs have merged and that nobody has
+  touched lately moves to `docs/plans/implemented/` (`plans-stale`). The detector holds back
+  any plan whose `**Status:**` line says unbuilt, deferred, brainstorm, sketch or in progress,
+  and it is only a lead: read the plan, and flip a stale "in review" Status line to what
+  shipped. `git mv`, then fix every reference. The docs gate catches back-ticked paths in docs
+  outside `docs/plans/`; grep the basename for the rest, including `.env.example`,
+  `scripts/sql/*.sql`, `tests/perf/baselines.json` and other plans (the #641 triage). Run
+  window mode right after the merge that lands a plan.
 - **Legibility.**
   - CSS: a feature section that has outgrown its shared file, `!important`, repeated
     declaration blocks (`css-shape`), and inline `style=""` (`inline-styles`).

@@ -9,6 +9,7 @@ The totals line per detector is what one sweep compares with the last (docs/plan
     scripts/sweep_inventory.py --since origin/staging~5 --top 30
     scripts/sweep_inventory.py --json > inventory.json
     scripts/sweep_inventory.py --area js --jscpd   # also run jscpd through npx, when present
+    scripts/sweep_inventory.py --area docs --gh    # plans ready to move to docs/plans/implemented/
 """
 import argparse
 import ast
@@ -18,6 +19,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -26,12 +28,19 @@ JS_ROOT = Path("src/webapp/static/js")
 CSS_ROOT = Path("src/webapp/static/css")
 TEMPLATE_ROOT = Path("src/webapp/templates")
 VENDOR_ROOT = Path("src/webapp/static/vendor")
+PLANS_ROOT = Path("docs/plans")
 AREAS = {
     "py": ("private-imports", "dup-functions"),
     "css": ("css-dead", "css-shape"),
     "templates": ("inline-styles",),
     "js": ("js-dup", "js-dead"),
+    "docs": ("plans-stale",),
 }
+PLAN_IDLE_DAYS = 14       # untouched this long, every cited PR merged: a retirement lead
+MERGED_REF = "origin/staging"
+_PR_REF = re.compile(r"(?<![\w/])#(\d{2,5})\b")
+_STATUS = re.compile(r"^\*\*Status:?\*?\*?:?\s*(.+)$", re.M | re.I)
+OPEN_STATUS = ("unbuilt", "deferred", "brainstorm", "sketch", "in progress", "not started")
 MIN_FUNCTION_NODES = 40   # smaller bodies repeat by accident (getters, one-line guards)
 _TOKEN = re.compile(r"[A-Za-z_][\w-]*")
 
@@ -231,6 +240,52 @@ def js_dead(js_files, corpus_files):
     return {"globals": globals_, "unused_actions": unused, "unregistered_actions": sorted(markup - set(registered))}
 
 
+def plans_stale(plan_files, merged, last_touched, now, idle_days=PLAN_IDLE_DAYS):
+    """Top-level plans with cited PRs, idle days and open checkboxes; ``candidate`` when ready to retire."""
+    rows = []
+    for path in plan_files:
+        text = read(path)
+        prs = sorted({int(n) for n in _PR_REF.findall(text)})
+        idle = int((now - last_touched.get(path.as_posix(), now)) // 86400)
+        unmerged = [n for n in prs if n not in merged]
+        status = _STATUS.search(text)
+        status = status.group(1).split("**")[0].strip("* ") if status else ""
+        still_open = any(word in status.lower() for word in OPEN_STATUS)
+        rows.append({"file": path.as_posix(), "idle_days": idle, "prs": prs, "unmerged": unmerged,
+                     "open_boxes": text.count("- [ ]"), "status": status,
+                     "candidate": bool(prs) and not unmerged and not still_open and idle >= idle_days})
+    return sorted(rows, key=lambda r: (not r["candidate"], -r["idle_days"]))
+
+
+def _git_lines(*args):
+    out = subprocess.run(["git", *args], capture_output=True, text=True)
+    return out.stdout.splitlines() if out.returncode == 0 else []
+
+
+def _plan_inputs(use_gh=False):
+    """Tracked top-level plans, merged PR numbers, last commit time per plan.
+
+    Offline, a PR counts as merged when ``(#N)`` appears in a MERGED_REF commit message; that misses
+    PRs squashed into a promotion with an empty body. ``use_gh`` asks ``gh pr list --state merged``.
+    """
+    plans = [Path(p) for p in _git_lines("ls-files", f"{PLANS_ROOT.as_posix()}/*.md")
+             if Path(p).parent == PLANS_ROOT]
+    ref = MERGED_REF if _git_lines("rev-parse", "--verify", "-q", MERGED_REF) else "HEAD"
+    merged = None
+    if use_gh and shutil.which("gh"):
+        out = subprocess.run(["gh", "pr", "list", "--state", "merged", "--limit", "5000",
+                              "--json", "number", "--jq", ".[].number"], capture_output=True, text=True)
+        merged = {int(n) for n in out.stdout.split() if n.isdigit()} if out.returncode == 0 else None
+    if merged is None:   # offline: also counts an issue cited as (#N) in a commit body
+        merged = {int(m) for line in _git_lines("log", ref, "--format=%B") for m in re.findall(r"\(#(\d+)\)", line)}
+    touched = {}
+    for path in plans:
+        stamp = _git_lines("log", "-1", "--format=%ct", "--", path.as_posix())
+        if stamp:
+            touched[path.as_posix()] = int(stamp[0])
+    return plans, merged, touched
+
+
 def changed_since(rev):
     out = subprocess.run(["git", "diff", "--name-only", rev], capture_output=True, text=True)
     return {Path(p).as_posix() for p in out.stdout.split()}
@@ -241,7 +296,7 @@ def _touches(sites, changed):
     return any(re.split(r"[: ]", site, maxsplit=1)[0] in changed for site in sites)
 
 
-def run(detectors, changed=None):
+def run(detectors, changed=None, use_gh=False):
     """``{detector: rows}`` over the whole tree; with ``changed``, only findings touching those files.
 
     Duplicates and shared names are found tree-wide first, so a new copy of an old helper still shows.
@@ -276,6 +331,9 @@ def run(detectors, changed=None):
         out["js-dead"] = {"globals": [r for r in dead["globals"] if keep([r["file"]])],
                           "unused_actions": [r for r in dead["unused_actions"] if keep([r["file"]])],
                           "unregistered_actions": dead["unregistered_actions"] if changed is None else []}
+    if "plans-stale" in detectors:
+        plans, merged, touched = _plan_inputs(use_gh)
+        out["plans-stale"] = plans_stale(plans, merged, touched, time.time())
     return out
 
 
@@ -337,6 +395,18 @@ def report(result, top):
             print(f"  action {name}  (in markup, never registered; may be a third-party widget's)")
         print(f"  total: {len(dead['globals'])} unreferenced globals, {len(dead['unused_actions'])} unused actions, "
               f"{len(dead['unregistered_actions'])} unregistered actions")
+    if "plans-stale" in result:
+        rows = result["plans-stale"]
+        print(f"\n== plans-stale: top-level plans; RETIRE = every cited PR merged, no open "
+              f"**Status:**, idle >= {PLAN_IDLE_DAYS} days")
+        for r in rows[:top]:
+            tag = "RETIRE" if r["candidate"] else "      "
+            why = f"unmerged {', '.join('#%d' % n for n in r['unmerged'][:4])}" if r["unmerged"] else (
+                "no PR cited" if not r["prs"] else f"{len(r['prs'])} PR{'s' if len(r['prs']) != 1 else ''} merged")
+            boxes = f", {r['open_boxes']} open boxes" if r["open_boxes"] else ""
+            status = f"  Status: {r['status'][:50]}" if r["status"] else ""
+            print(f"  {tag} {r['idle_days']:4d}d  {r['file']}  ({why}{boxes}){status}")
+        print(f"  total: {len(rows)} plans, {sum(r['candidate'] for r in rows)} retirement candidates")
 
 
 def run_jscpd(area):
@@ -360,9 +430,10 @@ def main(argv=None):
     ap.add_argument("--top", type=int, default=15, metavar="N", help="rows per table (default 15)")
     ap.add_argument("--json", action="store_true", help="print the full result as JSON")
     ap.add_argument("--jscpd", action="store_true", help="also run jscpd through npx")
+    ap.add_argument("--gh", action="store_true", help="plans-stale: ask gh which PRs merged (network)")
     args = ap.parse_args(argv)
     detectors = AREAS[args.area] if args.area else tuple(d for ds in AREAS.values() for d in ds)
-    result = run(detectors, changed_since(args.since) if args.since else None)
+    result = run(detectors, changed_since(args.since) if args.since else None, use_gh=args.gh)
     if args.json:
         print(json.dumps(result, indent=2))
     else:
