@@ -325,7 +325,7 @@
     /* Project linked-elements card: Add-form collapse panels */
     registerAction('le-toggle', function (el) {
         var panel = document.getElementById(el.dataset.targetId);
-        if (panel) { panel.style.display = panel.style.display === 'none' ? '' : 'none'; }
+        if (panel) { panel.hidden = !panel.hidden; }
     });
 
     /* Add Member form: user search select/clear */
