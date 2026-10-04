@@ -23,7 +23,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-04 | `21e6bae5` + templates sweep | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,621 / 57 / 10 | 323 (95) | 0 / 0 | — | 5 / 4 |
 | 2026-10-04 | `21e6bae5` + sweep 5 + trees round | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,615 / 57 / 10 | 263 (94) | 0 / 0 | 0 (from 22) | 5 / 4 |
 | 2026-10-04 | `21e6bae5` + sweeps 5–7 | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,603 / 54 / 10 | 257 (93) | 0 / 0 | 0 | 5 / 4 |
-| 2026-10-04 | `a75b9db7` + project list | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,610 / 54 / 10 | 255 (92) | 0 / 0 | 0 | 5 / 4 |
+| 2026-10-04 | `a75b9db7` + project list + headers | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,617 / 54 / 10 | 255 (92) | 0 / 0 | 0 | 5 / 4 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -447,6 +447,19 @@ aesthetic, with each commit declaring its change. `src/` is +123 / -192.
 - [x] Title N+1 (step 5): `sam.queries.projects.project_titles`, one `IN` query.
   - Route queries go from 18 + 2 per row (495 at 239 rows, 837 at 410) to a flat 18.
   - Pinned by `test_allocations_project_table_route`, baseline 27.
+- [x] Header wrapping (Ben: "Annual rate" and "Days left" set their columns' widths; then
+  "sweep this for consistency"):
+  - A multi-word `.col-num` / `.col-shrink` header wraps at its spaces, app-wide, so a column
+    sizes to its figures. Where the content is wider (share bars, meters) nothing changes.
+  - Measured column width before -> after, at 1440px:
+    - the tree's Annual rate: 115 -> 76;
+    - Default amount: 146 -> 80; Wallclock limit: 146 -> 105;
+    - Processed by: 145 -> 100; Adjusted by: 136 -> 95;
+    - Used / Capacity (TiB): 93 -> 63 / 130 -> 90.
+  - Wrapping exposed sort icons orphaned on a second line (Font Awesome's `inline-block` is a
+    break point) and a bare `#` leading a line. `sort_link` / `sort_header` and the `::after`
+    arrows now join the icon with `&nbsp;`, and "Request #" / "Contract #" bind the `#`.
+  - Orphan check across 34 pages at two widths: 0 new.
 
 **Deviations from the handoff:**
 - Annual rate follows Remaining, so `allocation_cells` stays one call.
@@ -470,6 +483,9 @@ widened the column.
   tree growing columns.
 - [ ] On a phone, the list's own `table-responsive` never scrolls. It sits in an auto-layout
   cell, so the tree's wrapper scrolls the whole tree (1055px).
+- [ ] Headers outside the column roles (no `.col-num` / `.col-shrink`) keep Bootstrap's
+  wrapping and no `&nbsp;` icon join. jobs, disk scans and the members table carry their own
+  sort markup; the orphan check found nothing there today.
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
