@@ -39,6 +39,7 @@ from sam.queries.usage_cache import (
     purge_usage_cache, usage_cache_info,
 )
 from sam import fmt
+from sam.dates import parse_ymd, parse_ymd_or, start_of_today
 from sam.queries.lookups import find_project_by_code
 from sam.queries.projects import project_panels
 from sam.export import Column, build_workbook
@@ -452,7 +453,7 @@ def _audit_page_context():
     the Facilities multi-select — enforcement happens server-side in the
     fragment routes via apply_facility_scope).
     """
-    audit_end_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    audit_end_date = start_of_today()
     audit_start_date = audit_end_date - timedelta(days=30)
 
     all_resources = [
@@ -516,14 +517,11 @@ def projects():
     """
     # Parse active_at parameter (default to today at midnight)
     active_at_str = request.args.get('active_at')
-    if active_at_str:
-        try:
-            active_at = datetime.strptime(active_at_str, '%Y-%m-%d')
-        except ValueError:
-            flash('Invalid date format. Please use YYYY-MM-DD.', 'error')
-            active_at = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    else:
-        active_at = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    try:
+        active_at = parse_ymd(active_at_str) if active_at_str else start_of_today()
+    except ValueError:
+        flash('Invalid date format. Please use YYYY-MM-DD.', 'error')
+        active_at = start_of_today()
 
     # Allow cache bypass for debugging / stale data
     force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
@@ -707,11 +705,7 @@ def _fragment_scope():
     facility clamp matches index(), so a WNA-scoped user gets WNA-only rows even
     though the URL omits ?facilities=; unscoped users get None (no filter).
     """
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    try:
-        active_at = datetime.strptime(request.args.get('active_at') or '', '%Y-%m-%d')
-    except ValueError:
-        active_at = today
+    active_at = parse_ymd_or(request.args.get('active_at'), start_of_today())
     allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
     requested = request.args.getlist('facilities')
     selected = apply_facility_scope(requested, Permission.VIEW_PROJECTS,
@@ -908,7 +902,7 @@ def _calendar_mode(resource_type):
 
 def _burn_through(active_at):
     """Where burn shading stops for ``active_at``: `burn_through` against today's midnight."""
-    return burn_through(active_at, datetime.now().replace(hour=0, minute=0, second=0, microsecond=0))
+    return burn_through(active_at, start_of_today())
 
 
 def _calendar_burn(resource_name, active_at, start, end):
@@ -1015,13 +1009,10 @@ def projects_fragment():
         abort(403)
 
     # Parse date
-    if active_at_str:
-        try:
-            active_at = datetime.strptime(active_at_str, '%Y-%m-%d')
-        except ValueError:
-            return '<p class="text-danger mb-0">Invalid date format</p>'
-    else:
-        active_at = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    try:
+        active_at = parse_ymd(active_at_str) if active_at_str else start_of_today()
+    except ValueError:
+        return '<p class="text-danger mb-0">Invalid date format</p>'
 
     # Fetch projects with usage data
     projects = cached_allocation_usage(
@@ -1086,14 +1077,7 @@ _EXPORT_COLUMNS = [
 @require_permission_any_facility(Permission.VIEW_PROJECTS)
 def projects_export():
     """Download the projects allocation view as xlsx: one sheet per resource."""
-    active_at_str = request.args.get('active_at')
-    if active_at_str:
-        try:
-            active_at = datetime.strptime(active_at_str, '%Y-%m-%d')
-        except ValueError:
-            active_at = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    else:
-        active_at = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    active_at = parse_ymd_or(request.args.get('active_at'), start_of_today())
 
     # Facility scope enforced at the source, exactly as projects() does: a
     # forged out-of-scope facility falls back to the user's full allowed set.
@@ -1198,21 +1182,12 @@ def _parse_audit_filters(request_args, sort_whitelist):
 
     if 'start_date' not in request_args and 'end_date' not in request_args:
         # First-load default: last 30 days, ending now.
-        start_date = (datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        start_date = (start_of_today()
                       - timedelta(days=30))
         end_date = datetime.now()
     else:
-        try:
-            start_date = (datetime.strptime(start_date_str, '%Y-%m-%d')
-                          if start_date_str else None)
-        except ValueError:
-            start_date = None
-        try:
-            end_date = (datetime.strptime(end_date_str, '%Y-%m-%d')
-                        .replace(hour=23, minute=59, second=59)
-                        if end_date_str else None)
-        except ValueError:
-            end_date = None
+        start_date = parse_ymd_or(start_date_str)
+        end_date = parse_ymd_or(end_date_str, end_of_day=True)
 
     filters = {
         'projcode': projcode,
@@ -1365,13 +1340,10 @@ def usage_modal(project, resource: str):
     active_at_str = request.args.get('active_at')
 
     # Parse date
-    if active_at_str:
-        try:
-            active_at = datetime.strptime(active_at_str, '%Y-%m-%d')
-        except ValueError:
-            return '<p class="text-danger mb-0">Invalid date format</p>'
-    else:
-        active_at = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    try:
+        active_at = parse_ymd(active_at_str) if active_at_str else start_of_today()
+    except ValueError:
+        return '<p class="text-danger mb-0">Invalid date format</p>'
 
     # Get allocation with usage details
     usage_data = cached_allocation_usage(
@@ -1457,7 +1429,7 @@ def htmx_create_adjustment_form():
 
 def _search_projects_for_adjustment(q, active_only):
     from sam.queries.projects import search_projects_by_code_or_title
-    return search_projects_by_code_or_title(db.session, q, active=True)[:10]
+    return search_projects_by_code_or_title(db.session, q, active=True, limit=10)
 
 
 # Search-as-you-type for the Create Adjustment project picker: mirrors

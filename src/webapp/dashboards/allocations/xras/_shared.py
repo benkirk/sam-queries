@@ -11,7 +11,8 @@ lifted verbatim from ``blueprint.py`` and the client/degrade infra verbatim
 from ``xras_remediation_routes.py`` — ``git blame -C`` follows both moves.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
+from sam.dates import parse_wire_date, parse_ymd_or, start_of_today
 
 from flask import current_app, render_template
 
@@ -213,7 +214,7 @@ def _parse_xras_filters(request_args):
     end_date_str = (request_args.get('end_date') or '').strip()
 
     if 'start_date' not in request_args and 'end_date' not in request_args:
-        start_date = (datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        start_date = (start_of_today()
                       - timedelta(days=30))
         # Deliberately UNBOUNDED above, where the sibling audit pages use
         # datetime.now(). There are no future rows, so an upper bound buys
@@ -227,17 +228,8 @@ def _parse_xras_filters(request_args):
         # sub-second bound; same latent bug, left alone as pre-existing.)
         end_date = None
     else:
-        try:
-            start_date = (datetime.strptime(start_date_str, '%Y-%m-%d')
-                          if start_date_str else None)
-        except ValueError:
-            start_date = None
-        try:
-            end_date = (datetime.strptime(end_date_str, '%Y-%m-%d')
-                        .replace(hour=23, minute=59, second=59)
-                        if end_date_str else None)
-        except ValueError:
-            end_date = None
+        start_date = parse_ymd_or(start_date_str)
+        end_date = parse_ymd_or(end_date_str, end_of_day=True)
 
     filters = {
         'status': statuses,
@@ -284,16 +276,8 @@ def _parse_activity_window(args) -> dict:
     start_raw = (args.get('start_date') or '').strip()
     end_raw = (args.get('end_date') or '').strip()
 
-    def _date(raw, end_of_day=False):
-        try:
-            parsed = datetime.strptime(raw, '%Y-%m-%d')
-        except ValueError:
-            return None
-        return (parsed.replace(hour=23, minute=59, second=59)
-                if end_of_day else parsed)
-
-    since = _date(start_raw) if start_raw else None
-    until = _date(end_raw, end_of_day=True) if end_raw else None
+    since = parse_ymd_or(start_raw)
+    until = parse_ymd_or(end_raw, end_of_day=True)
     if since is not None or until is not None:
         return {'days': None, 'since': since, 'until': until,
                 'start_date': start_raw, 'end_date': end_raw, 'custom': True}
@@ -511,12 +495,8 @@ def _submitted_since(row, since):
     if not any(dates):
         return True
     for raw in dates:
-        if not raw:
-            return True
-        try:
-            if date.fromisoformat(str(raw)[:10]) >= start:
-                return True
-        except ValueError:
+        submitted = parse_wire_date(raw)
+        if submitted is None or submitted >= start:
             return True
     return False
 

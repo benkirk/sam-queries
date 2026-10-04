@@ -30,7 +30,7 @@ from cli.contracts.commands import (
 from cli.awards.commands import AwardPatternSearchCommand, AwardSearchCommand
 from cli.allocations.commands import AllocationSearchCommand
 from cli.accounting.commands import AccountingSearchCommand, AccountingJobsCommand
-from cli.accounting.dates import _validate_accounting_dates, _resolve_accounting_dates
+from cli.accounting.dates import validate_accounting_dates, resolve_accounting_dates
 from system_status.models.last_seen import SOURCE_KINDS
 
 
@@ -342,8 +342,8 @@ def accounting(ctx: Context, user, project, resource, queue, machine,
       sam-search accounting --jobs --last 7d --machine derecho --verbose
       sam-search accounting --jobs --last 365d --job-id 6049117[28]
     """
-    _validate_accounting_dates(date_str, start, end, today_flag, last)
-    start_date, end_date = _resolve_accounting_dates(date_str, start, end, today_flag, last)
+    validate_accounting_dates(date_str, start, end, today_flag, last)
+    start_date, end_date = resolve_accounting_dates(date_str, start, end, today_flag, last)
     if verbose:
         ctx.verbose = True
 

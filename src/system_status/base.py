@@ -179,3 +179,26 @@ class QueueRollupMetricsMixin:
     def gpus_held(cls):
         return Column(Integer, nullable=False, default=0)
 #-------------------------------------------------------------------------em-
+
+
+class staged_name:
+    """A name stored as ``_pending_<attr>`` for the ``before_flush`` resolver
+    (``queries/lookups.py``); until then it reads through ``self.<rel>.<field>``."""
+
+    def __init__(self, rel: str, field: str = 'name'):
+        self.rel, self.field = rel, field
+
+    def __set_name__(self, owner, name):
+        self.key = f'_pending_{name}'
+
+    def __get__(self, obj, owner=None):
+        if obj is None:
+            return self
+        pending = obj.__dict__.get(self.key)
+        if pending is not None:
+            return pending
+        target = getattr(obj, self.rel)
+        return getattr(target, self.field) if target is not None else None
+
+    def __set__(self, obj, value):
+        obj.__dict__[self.key] = value

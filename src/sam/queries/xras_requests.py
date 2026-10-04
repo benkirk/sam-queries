@@ -26,8 +26,11 @@ is fetched live inside a permission-gated route.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from typing import Any, Dict, List, Mapping, Optional
+
+from sam.dates import parse_wire_date
+from sam.text import strip_or_none
 
 from sam.integration.xras_api.vocabulary import (
     ADMIN_ROLE_TYPE_ID,
@@ -57,39 +60,6 @@ DRAFT_ACTION_STATUS = 'Incomplete'
 # ``from sam.queries.xras_requests import PI_ROLE_TYPE_ID`` callers still work.
 
 
-def _as_date(value: Any):
-    """XRAS date -> ``date``, or ``None``.
-
-    Parsed here rather than left as a string because the entry is **pickled
-    into a cache and read straight by a Jinja ``fmt_date``**, which needs a
-    real date object — the same contract the sweep's ``generated_at`` already
-    follows. Doing it in the builder means both consumers get it and neither
-    template has to know the wire format.
-
-    Three shapes arrive: ``2015-07-09T19:16:58.481Z``, ``2026-01-01T00:00:00Z``
-    and a bare ``2015-07-09``. All three are answered by taking the first ten
-    characters, which is also why an unparsable value returns ``None`` rather
-    than raising — a malformed date must cost that field, not the row.
-    """
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    try:
-        return datetime.strptime(str(value)[:10], '%Y-%m-%d').date()
-    except (ValueError, TypeError):
-        return None
-
-
-def _text(value: Any) -> Optional[str]:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
-
-
 def _display_name(person: Dict[str, Any]) -> Optional[str]:
     parts = [person.get('firstName'), person.get('lastName')]
     return ' '.join(p for p in (str(x or '').strip() for x in parts) if p) or None
@@ -104,14 +74,14 @@ def roster_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     rows: List[Dict[str, Any]] = []
     for person, roles in iter_roster_entries(payload):
-        username = _text(person.get('username'))
+        username = strip_or_none(person.get('username'))
         if not username:
             continue
         for role in roles:
             rows.append({
                 'role_id': role.get('roleId'),
                 'role_type_id': role.get('roleTypeId'),
-                'role_type': _text(role.get('role')),
+                'role_type': strip_or_none(role.get('role')),
                 'username': username,
                 'name': _display_name(person),
                 # Display metadata, not a filter: an ended role stays listed
@@ -176,17 +146,18 @@ def actions_from_payload(payload: Dict[str, Any],
             # action with no id cannot support a single button — and a None
             # here is a BuildError that costs the whole card, not the row.
             continue
-        status = _text(action.get('actionStatus'))
+        status = strip_or_none(action.get('actionStatus'))
         rows.append({
             'action_id': action.get('actionId'),
-            'action_type': _text(action.get('actionType')),
+            'action_type': strip_or_none(action.get('actionType')),
             'action_status': status,
-            'submit_date': _as_date(action.get('submitDate')),
+            # Real dates, not wire strings: the entry is pickled into a cache and read by fmt_date.
+            'submit_date': parse_wire_date(action.get('submitDate')),
             # The recency signal: an Extension's own submitDate is often null, so
             # the entry stamps when it arrived. This is what a date filter must
             # window on — a 2022 request with an Extension entered 2 days ago is
             # recent activity, like admin's "Recent Submissions" shows it.
-            'entry_date': _as_date(action.get('entryDate')),
+            'entry_date': parse_wire_date(action.get('entryDate')),
             # Snapshot-derived *offers*, not permissions. The modal's live read
             # is the authority on legality; these only decide which button to
             # draw, and drawing one that XRAS then refuses is a 4xx the modal
@@ -252,7 +223,7 @@ def is_pending_work(entry: Mapping[str, Any]) -> bool:
             continue
         if push_state == 'unknown':
             when = action.get('entry_date') or action.get('submit_date')
-            if when is not None and _as_date(when) >= XRAS_REPOINTED_ON:
+            if when is not None and parse_wire_date(when) >= XRAS_REPOINTED_ON:
                 return True
     return False
 
@@ -354,7 +325,7 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
     """
     if not isinstance(payload, dict):
         return None
-    number = _text(payload.get('requestNumber'))
+    number = strip_or_none(payload.get('requestNumber'))
     request_id = payload.get('requestId')
     if not number or request_id is None:
         # Both are load-bearing and for different reasons: writes key on the
@@ -371,21 +342,21 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
     # actions carry no date.
     _adates = [d for a in actions
                for d in (a.get('entry_date') or a.get('submit_date'),) if d]
-    activity_date = max(_adates) if _adates else _as_date(payload.get('submitDate'))
+    activity_date = max(_adates) if _adates else parse_wire_date(payload.get('submitDate'))
     return {
         'request_number': number,
         'request_id': request_id,
-        'status': _text(payload.get('requestStatus')),
-        'request_type': _text(payload.get('requestType')),
-        'submit_date': _as_date(payload.get('submitDate')),
+        'status': strip_or_none(payload.get('requestStatus')),
+        'request_type': strip_or_none(payload.get('requestType')),
+        'submit_date': parse_wire_date(payload.get('submitDate')),
         # The date the operator cares about: when the current handoff was
         # submitted, not when the request was first created years ago.
         'activity_date': activity_date,
-        'begin_date': _as_date(payload.get('beginDate')),
-        'end_date': _as_date(payload.get('endDate')),
+        'begin_date': parse_wire_date(payload.get('beginDate')),
+        'end_date': parse_wire_date(payload.get('endDate')),
         'pending_push': bool(pending_push),
         'opportunity_id': payload.get('opportunityId'),
-        'opportunity_name': _text(payload.get('opportunity_name')
+        'opportunity_name': strip_or_none(payload.get('opportunity_name')
                                   or payload.get('opportunityName')),
         # username and name off the one resolved row, so they cannot pair one
         # person's login with another's name.
@@ -527,28 +498,28 @@ def person_roles_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
         for req in group.get('requests') or ():
             if not isinstance(req, dict):
                 continue
-            number = _text(req.get('requestNumber'))
+            number = strip_or_none(req.get('requestNumber'))
             if not number:
                 continue
             proj = projects.get(number)
             if proj is None:
                 proj = projects[number] = {
                     'request_number': number,
-                    'title': _text(req.get('requestTitle')),
-                    'allocation_type': _text(req.get('allocationType')),
-                    'opportunity': _text(req.get('opportunity')),
-                    'pi': _text(req.get('pi')),
-                    'pi_username': _text(req.get('piUsername')),
+                    'title': strip_or_none(req.get('requestTitle')),
+                    'allocation_type': strip_or_none(req.get('allocationType')),
+                    'opportunity': strip_or_none(req.get('opportunity')),
+                    'pi': strip_or_none(req.get('pi')),
+                    'pi_username': strip_or_none(req.get('piUsername')),
                     'actions': [],
                 }
                 order.append(number)
             proj['actions'].append({
                 # The feed spells the id both ways; take either.
                 'request_id': req.get('requestId') or req.get('requestID'),
-                'action_type': _text(req.get('actionType')),
-                'begin_date': _as_date(req.get('beginDate')),
-                'end_date': _as_date(req.get('endDate')),
-                'activity_date': _as_date(req.get('updateDate')),
+                'action_type': strip_or_none(req.get('actionType')),
+                'begin_date': parse_wire_date(req.get('beginDate')),
+                'end_date': parse_wire_date(req.get('endDate')),
+                'activity_date': parse_wire_date(req.get('updateDate')),
             })
         if not order:
             continue
@@ -559,7 +530,7 @@ def person_roles_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
             proj['actions'].sort(key=lambda a: a.get('activity_date') or date.min)
             proj['activity_date'] = proj['actions'][-1].get('activity_date')
         groups.append({
-            'role_name': _text(group.get('roleName')),
+            'role_name': strip_or_none(group.get('roleName')),
             'projects': sorted(
                 (projects[n] for n in order),
                 key=lambda p: p.get('activity_date') or date.min, reverse=True)})

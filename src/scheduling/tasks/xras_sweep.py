@@ -68,6 +68,7 @@ from zoneinfo import ZoneInfo
 
 from scheduling.registry import TaskResult, task
 from scheduling.schedules import DEFAULT_TZ, Hourly, to_local_naive
+from scheduling.tasks._notice_common import positive_int_env
 
 #: Hourly, every hour of every day. The Feed-B tab reads what this publishes,
 #: so the cadence IS the tab's freshness — and unlike `xras_notices`, which
@@ -164,34 +165,14 @@ EXTRA_STATUS_MAX_PAGES = 5
 _MAX_REPORTED = 100
 
 
-def _positive_int(env: Optional[dict], key: str, default: int) -> int:
-    """Read a positive int from the environment, per run.
-
-    Same shape and reasoning as `xras_notices.xras_email_max`: read per run so
-    a `values.yaml` change lands on the next dispatch rather than the next pod
-    restart, and a zero, negative or unparseable value is **refused rather than
-    obeyed** — zero pages would mean "look at nothing" while still reporting
-    success, which is indistinguishable from a broken query.
-    """
-    raw = (env if env is not None else os.environ).get(key)
-    if raw is None or not str(raw).strip():
-        return default
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return default
-    return value if value > 0 else default
-
-
 def max_pages(env: Optional[dict] = None) -> int:
     """Page budget, from ``$SAM_TASKS_XRAS_SWEEP_MAX_PAGES``."""
-    return _positive_int(env, 'SAM_TASKS_XRAS_SWEEP_MAX_PAGES', DEFAULT_MAX_PAGES)
+    return positive_int_env('SAM_TASKS_XRAS_SWEEP_MAX_PAGES', DEFAULT_MAX_PAGES, env)
 
 
 def max_people(env: Optional[dict] = None) -> int:
     """Person-refresh budget, from ``$SAM_TASKS_XRAS_SWEEP_MAX_PEOPLE``."""
-    return _positive_int(env, 'SAM_TASKS_XRAS_SWEEP_MAX_PEOPLE',
-                         DEFAULT_MAX_PEOPLE)
+    return positive_int_env('SAM_TASKS_XRAS_SWEEP_MAX_PEOPLE', DEFAULT_MAX_PEOPLE, env)
 
 
 def map_max(env: Optional[dict] = None) -> int:
@@ -205,13 +186,12 @@ def map_max(env: Optional[dict] = None) -> int:
     The one legitimately large run is the first, which backfills whatever the
     seed left unmapped. Rehearse it with ``--dry-run`` before it writes.
     """
-    return _positive_int(env, 'SAM_TASKS_XRAS_MAP_MAX', DEFAULT_MAP_MAX)
+    return positive_int_env('SAM_TASKS_XRAS_MAP_MAX', DEFAULT_MAP_MAX, env)
 
 
 def window_days(env: Optional[dict] = None) -> int:
     """Window size, from ``$SAM_TASKS_XRAS_SWEEP_WINDOW_DAYS``."""
-    return _positive_int(env, 'SAM_TASKS_XRAS_SWEEP_WINDOW_DAYS',
-                         DEFAULT_WINDOW_DAYS)
+    return positive_int_env('SAM_TASKS_XRAS_SWEEP_WINDOW_DAYS', DEFAULT_WINDOW_DAYS, env)
 
 
 def preflight_days(env: Optional[dict] = None) -> int:
@@ -220,8 +200,7 @@ def preflight_days(env: Optional[dict] = None) -> int:
     Bounds cost and noise: every action across the enumeration is thousands, the
     recent slice is tens to low hundreds. The window is reported in ``detail``.
     """
-    return _positive_int(env, 'SAM_TASKS_XRAS_PREFLIGHT_DAYS',
-                         DEFAULT_PREFLIGHT_DAYS)
+    return positive_int_env('SAM_TASKS_XRAS_PREFLIGHT_DAYS', DEFAULT_PREFLIGHT_DAYS, env)
 
 
 def sweep_status(env: Optional[dict] = None) -> Optional[str]:
@@ -278,13 +257,9 @@ def overlaps_window(payload: dict, *, window_start: date) -> bool:
     ``YYYY-MM-DD`` and are compared as dates; no timezone reasoning applies to
     a calendar date.
     """
-    raw = payload.get('endDate')
-    if not raw:
-        return True
-    try:
-        return date.fromisoformat(str(raw)[:10]) >= window_start
-    except ValueError:
-        return True
+    from sam.dates import parse_wire_date   # lazy: importing sam loads every ORM model
+    end = parse_wire_date(payload.get('endDate'))
+    return end is None or end >= window_start
 
 
 def _resource_key_map(ctx, client, detail) -> Optional[dict]:

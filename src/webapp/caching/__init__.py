@@ -99,12 +99,10 @@ class Caching:
         OrderedDict (per-worker fallback).
         """
         if self._redis_client is not None:
-            from webapp.caching.redis_chart import RedisChartCache, chart_cached_redis
+            from webapp.caching.redis_chart import RedisChartCache
             cache: CacheBase = RedisChartCache(name=name, client=self._redis_client)
-            self._chart_caches.append(cache)
-            return chart_cached_redis(cache, key_fn=key_fn)
-
-        cache = ChartCache(name=name, maxsize=maxsize)
+        else:
+            cache = ChartCache(name=name, maxsize=maxsize)
         self._chart_caches.append(cache)
         return _chart_decorator(cache, key_fn=key_fn)
 

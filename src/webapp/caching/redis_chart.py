@@ -8,7 +8,7 @@ counters live in Redis under `chart:hits:{name}` / `chart:misses:{name}`.
 """
 
 from collections import namedtuple
-from typing import Any, Callable, Optional
+from typing import Optional
 
 import redis
 
@@ -142,34 +142,4 @@ class RedisChartCache(CacheBase):
             return 0
 
 
-def chart_cached_redis(cache: RedisChartCache,
-                       key_fn: Optional[Callable] = None):
-    """Decorator factory mirroring `webapp.caching.chart.chart_cached`.
-
-    Kept separate from the in-process variant so the import graph is
-    explicit; the wrapped callable surface is identical.
-    """
-    import functools
-
-    from webapp.caching.chart import content_hash
-    _key = key_fn or (lambda *args, **kwargs: content_hash(args[0]))
-
-    def decorator(fn):
-        @functools.wraps(fn)
-        def wrapper(*args, **kwargs):
-            key = _key(*args, **kwargs)
-            result = cache.get(key)
-            if result is None:
-                result = fn(*args, **kwargs)
-                cache.put(key, result)
-            return result
-
-        wrapper.cache_info = cache.cache_info
-        wrapper.cache_clear = cache.cache_clear
-        wrapper.cache_bytes = cache.bytes_used
-        return wrapper
-
-    return decorator
-
-
-__all__ = ['RedisChartCache', 'chart_cached_redis']
+__all__ = ['RedisChartCache']

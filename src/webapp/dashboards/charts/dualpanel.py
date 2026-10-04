@@ -16,17 +16,11 @@ import matplotlib.pyplot as plt
 from sam import fmt
 from webapp.dashboards.charts.base import BaseChart
 from webapp.dashboards.charts.layout import profile
+from webapp.dashboards.charts.series import to_display_tz
 from webapp.dashboards.charts.theme import (
     UNITY_NCAR_BLUE, UNITY_NCAR_ORANGE, UNITY_NCAR_SKY, UNITY_NCAR_TEAL,
     UNITY_NCAR_VERMILION,
 )
-
-
-def _to_display_tz(naive_utc_ts):
-    """Naive-UTC -> naive-local for matplotlib axis rendering.  Strips tzinfo
-    after conversion so the existing naive-datetime plotting path is
-    unchanged (matplotlib renders the local-clock values directly)."""
-    return fmt.to_local_dt(naive_utc_ts).replace(tzinfo=None)
 
 
 class DualPanelTimeSeriesChart(BaseChart):
@@ -47,7 +41,7 @@ class DualPanelTimeSeriesChart(BaseChart):
         self.timestamps = []
 
     def prepare(self):
-        self.timestamps = [_to_display_tz(d['timestamp'])
+        self.timestamps = [to_display_tz(d['timestamp'])
                            for d in self.history_data]
 
     def is_empty(self) -> bool:

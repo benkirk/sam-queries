@@ -6,7 +6,7 @@ name the mnemonic 422, so this resolves each failing PI's org/institution — wi
 DB, and ranks by how many actions cite it. The highest-leverage XRAS data fix (playbook: 24%
 of legacy failures; 153 of 171 active orgs unlinked). Read-only, no network.
 
-WARNING: org resolution is at the leaf org (`_best_organization`), matching the resolver's
+WARNING: org resolution is at the leaf org (`best_organization`), matching the resolver's
 org-fallback arm and the Organizations card's own `org_to_mnemonic` derivation exactly. The
 resolver's NCAR-lab arm walks to a lab-level org instead; for those internal opportunities the
 name here is the PI's leaf org, still the right thing to link in the common case.
@@ -57,14 +57,14 @@ def _resolve_target(user, family: str, lookup: dict
     if user is None:
         return 'no_affiliation', None, None, None
     if family == FAMILY_ORGANIZATION:
-        from sam.xras.extractors import _best_organization
-        org = _best_organization(user)
+        from sam.xras.extractors import best_organization
+        org = best_organization(user)
         if org is None:
             return 'no_affiliation', None, None, None
         code = MnemonicCode.resolve_for_organization(org, lookup)
         return ('mapped' if code else 'unmapped'), org.name, org.name, None
-    from sam.xras.extractors import _best_institution
-    inst = _best_institution(user)
+    from sam.xras.extractors import best_institution
+    inst = best_institution(user)
     if inst is None:
         return 'no_affiliation', None, None, None
     code = MnemonicCode.resolve_for_institution(inst, lookup)

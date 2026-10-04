@@ -32,7 +32,7 @@ from webapp.api.access_control import (
     require_project_member_access,
 )
 from webapp.utils.project_permissions import (
-    _is_project_steward,
+    is_project_steward,
     can_change_admin,
     can_manage_project_members,
 )
@@ -87,7 +87,7 @@ def _invitations_url(project):
     user would see it (the tab's own gate in edit_project.html), else None."""
     if not current_app.config.get('ACCOUNT_INVITATIONS_ENABLED'):
         return None
-    if not _is_project_steward(current_user, project, Permission.MANAGE_ACCOUNT_REQUESTS,
+    if not is_project_steward(current_user, project, Permission.MANAGE_ACCOUNT_REQUESTS,
                                include_ancestors=True):
         return None
     return url_for('admin_dashboard.edit_project_page',

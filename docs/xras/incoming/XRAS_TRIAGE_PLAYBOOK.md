@@ -149,7 +149,7 @@ Mnemonic code for external PI via institution`. (Legacy's match was `code LIKE '
 and `errors.py` quotes that census — 150/171; same failure class, different remedy.)
 Since 2026-08-27 both strings carry the detail after a colon: the PI, the affiliation
 that failed, and any *other* current institution with its code — a stale open row can
-shadow the right one, because `_best_institution` takes the first in DB order.
+shadow the right one, because `best_institution` takes the first in DB order.
 
 **Fix:** a data fix — a `mnemonic_code` row whose `description` equals the organization
 or institution name. Two constraints: `code` and `description` are both unique, so every

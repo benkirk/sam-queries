@@ -10,7 +10,7 @@ Three surfaces, laid out by entry point with shared helpers above them:
 * ``get_resource_detail_data`` -- the per-resource drilldown. Self-contained.
 
 Two resource-dict builders coexist deliberately: ``_build_project_resources_data``
-(per project) and ``_build_user_projects_resources_batched`` (many at once,
+(per project) and ``build_user_projects_resources_batched`` (many at once,
 replacing an N+1 fanout). Merging them would either pessimize N=1 or complicate
 N=many.
 
@@ -58,7 +58,7 @@ class DashboardResource(TypedDict):
 
     Single source of truth for the dict shape produced by BOTH
     _build_project_resources_data() (single-project path) and
-    _build_user_projects_resources_batched() (multi-project batched path).
+    build_user_projects_resources_batched() (multi-project batched path).
     Both producers must populate every field listed here; the equivalence
     test in tests/unit/queries/test_query_functions.py compares them
     field-by-field at runtime.
@@ -128,7 +128,7 @@ def _build_project_resources_data(project: Project,
     Calls Project.get_detailed_allocation_usage() (which fires per-account
     charge / adjustment / job-statistics queries) and shapes the result
     into the dict format the dashboard templates consume. Coexists with
-    _build_user_projects_resources_batched() — see this module's docstring
+    build_user_projects_resources_batched() — see this module's docstring
     for the why-two explanation. Both produce identical output and are
     locked in step by an equivalence test in test_query_functions.py.
 
@@ -152,7 +152,7 @@ def _build_project_resources_data(project: Project,
     # rows are handed over so the builder does not consult the gate again.
     state = _read_model_rows(project.session, [project.project_id], None, active_at)
     if state is not None:
-        return _build_user_projects_resources_batched(
+        return build_user_projects_resources_batched(
             project.session, [project], active_at=active_at, state=state,
         ).get(project.project_id, [])
 
@@ -289,7 +289,7 @@ def _select_query_alloc(account: Account, now: datetime):
     return account.display_allocation(now)
 
 
-def _build_user_projects_resources_batched(
+def build_user_projects_resources_batched(
     session: Session,
     projects: List[Project],
     active_at: Optional[datetime] = None,
@@ -673,7 +673,7 @@ def get_project_dashboard_data(session: Session, projcode: str) -> Optional[Dict
     Get dashboard data for a single project.
 
     Drives the admin single-project search route. Self-contained — does
-    NOT call into _build_user_projects_resources_batched(). The user
+    NOT call into build_user_projects_resources_batched(). The user
     dashboard at /user/ uses that batched helper directly via
     get_user_dashboard_data() instead.
 
@@ -730,10 +730,10 @@ def get_projects_dashboard_data(
     """project_data dicts for an arbitrary project list, batched (no per-project N+1).
 
     Shared by the user dashboard and the admin expirations views: one call to
-    _build_user_projects_resources_batched instead of get_project_dashboard_data
+    build_user_projects_resources_batched instead of get_project_dashboard_data
     per project. Preserves the caller's project ordering.
     """
-    resources_map = _build_user_projects_resources_batched(session, projects)
+    resources_map = build_user_projects_resources_batched(session, projects)
     return [
         {
             'project': p,
@@ -781,7 +781,7 @@ def get_user_dashboard_data(session: Session, user_id: int) -> Dict:
     # email_addresses and AccountUser.account already makes the
     # active_projects() walk one batched query per relationship. The
     # template-required Project metadata is loaded by the consolidated
-    # selectinload chain at the top of _build_user_projects_resources_batched.
+    # selectinload chain at the top of build_user_projects_resources_batched.
     user = session.query(User).filter(User.user_id == user_id).first()
 
     if not user:

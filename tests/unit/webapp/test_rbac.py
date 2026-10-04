@@ -429,7 +429,7 @@ class TestAllocationAdminTier:
 class TestRbacContextProcessor:
     """Phase 3 added a ``can_act_on_project(permission, project, ...)``
     helper to the template context. Verify it delegates to
-    ``_is_project_steward`` and handles the unauthenticated /
+    ``is_project_steward`` and handles the unauthenticated /
     no-project edge cases."""
 
     def _ctx(self, app):

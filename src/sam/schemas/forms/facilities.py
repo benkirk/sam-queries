@@ -50,11 +50,7 @@ class EditPanelSessionForm(HtmxFormSchema):
     panel_meeting_date = f.Date('%Y-%m-%d', load_default=None)
     description = f.Str(load_default=None)
 
-    @post_load
-    def coerce_and_validate_dates(self, data, **kwargs):
-        data['end_date'] = self.normalize_end_date(data.get('end_date'))
-        self.assert_date_range(data.get('start_date'), data.get('end_date'))
-        return data
+    _date_range = ('start_date', 'end_date')
 
 
 class EditAllocationTypeForm(HtmxFormSchema):

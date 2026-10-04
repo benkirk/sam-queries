@@ -82,9 +82,8 @@ def test_no_module_exceeds_the_readable_size():
 def test_family_modules_do_not_import_each_other():
     """Families are siblings, not a chain.
 
-    The allowed edges are `stacked.py` -> `dualpanel.py` for the shared
-    `_to_display_tz`, and `sunburst.py` -> `pie.py`, whose `TwoRingPie` is a
-    `PieChart`. Any other shared thing belongs in `base.py` or `theme.py`.
+    The one allowed edge is `sunburst.py` -> `pie.py`, whose `TwoRingPie` is a
+    `PieChart`. Any other shared thing belongs in `base.py`, `theme.py` or `series.py`.
     """
     families = ['pie.py', 'stacked.py', 'histogram.py', 'dualpanel.py', 'pace.py',
                 'sunburst.py']
@@ -97,7 +96,7 @@ def test_family_modules_do_not_import_each_other():
                 parts = node.module.split('.')
                 if parts[:-1] == ['webapp', 'dashboards', 'charts'] and parts[-1] in stems:
                     edges.append((f, parts[-1]))
-    assert edges == [('stacked.py', 'dualpanel'), ('sunburst.py', 'pie')], \
+    assert edges == [('sunburst.py', 'pie')], \
         f'unexpected family edges: {edges}'
 
 

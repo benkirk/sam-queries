@@ -52,6 +52,13 @@ def test_dup_functions_finds_renamed_copies_only_above_the_size_floor(tmp_path):
     assert [s.split()[-1] for s in rows[0]['sites']] == ['first', 'second']
 
 
+def test_py_dup_names_strips_underscore_skips_generic_and_nested(tmp_path):
+    paths = [_write(tmp_path, f'm{i}.py', f'def {"_" * (i % 2)}parse_day(s): pass\ndef main(): pass\n'
+                    'class C:\n    def method(self): pass\n') for i in range(3)]
+    paths.append(_write(tmp_path, 'm3.py', 'def method(): pass\n'))
+    assert [(r['name'], r['modules']) for r in inv.py_dup_names(paths)] == [('parse_day', 3)]
+
+
 def test_css_dead_marks_dynamic_stems(tmp_path):
     css = _write(tmp_path, 'site.css', '/* .commented { } */\n.used { color: red }\n.gone, .burn-3 { margin: 0 }\n'
                  '@media (max-width: 10px) { .used .also-gone { padding: 0 } }\n'
@@ -123,8 +130,8 @@ def test_runs_on_the_real_tree(monkeypatch, capsys):
     monkeypatch.chdir(REPO)
     assert inv.main(['--top', '3']) == 0
     out = capsys.readouterr().out
-    for detector in ('private-imports', 'dup-functions', 'css-dead', 'css-shape', 'inline-styles', 'js-dup', 'js-dead',
-                     'plans-stale'):
+    for detector in ('private-imports', 'dup-functions', 'py-dup-names', 'css-dead', 'css-shape', 'inline-styles',
+                     'js-dup', 'js-dead', 'plans-stale'):
         assert f'== {detector}:' in out
 
 

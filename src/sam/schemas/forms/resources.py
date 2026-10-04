@@ -17,15 +17,8 @@ class EditResourceForm(HtmxFormSchema):
     description = f.Str(load_default=None)
     charging_exempt = f.Bool(load_default=False)
 
-    @post_load
-    def coerce_and_validate_dates(self, data, **kwargs):
-        data['decommission_date'] = self.normalize_end_date(data.get('decommission_date'))
-        self.assert_date_range(
-            data.get('commission_date'), data.get('decommission_date'),
-            field='decommission_date',
-            message='Decommission date must be after commission date.',
-        )
-        return data
+    _date_range = ('commission_date', 'decommission_date')
+    _date_range_message = 'Decommission date must be after commission date.'
 
 
 class CreateResourceForm(HtmxFormSchema):
@@ -60,15 +53,8 @@ class EditMachineForm(HtmxFormSchema):
     description = f.Str(load_default=None)
     cpus_per_node = f.Int(load_default=None, validate=v.Range(min=1))
 
-    @post_load
-    def coerce_and_validate_dates(self, data, **kwargs):
-        data['decommission_date'] = self.normalize_end_date(data.get('decommission_date'))
-        self.assert_date_range(
-            data.get('commission_date'), data.get('decommission_date'),
-            field='decommission_date',
-            message='Decommission date must be after commission date.',
-        )
-        return data
+    _date_range = ('commission_date', 'decommission_date')
+    _date_range_message = 'Decommission date must be after commission date.'
 
 
 class CreateMachineForm(HtmxFormSchema):
@@ -84,10 +70,7 @@ class EditQueueForm(HtmxFormSchema):
     end_date = f.Str(load_default=None)   # 23:59:59 convention applied in post_load
     description = f.Str(load_default=None)
 
-    @post_load
-    def coerce_dates(self, data, **kwargs):
-        data['end_date'] = self.normalize_end_date(data.get('end_date'))
-        return data
+    _date_range = (None, 'end_date')
     # Note: queue start_date is on the ORM object, not in the form. The route
     # checks end_date > queue.start_date inline after schema.load() since it
     # requires the existing DB value.

@@ -27,6 +27,7 @@ from sam.summaries.dav_summaries import DavChargeSummary
 from sam.accounting.accounts import Account
 from sam.accounting.adjustments import ChargeAdjustment, ChargeAdjustmentType
 from sam.accounting.allocations import AllocationType
+from sam.queries.allocations import apply_scope_filters
 from sam.accounting.calculator import get_charge_models_for_activity
 from sam.projects.projects import Project
 from sam.resources.facilities import Facility, Panel
@@ -122,23 +123,9 @@ def _apply_adjustment_filters(
     if adjustment_id is not None:
         query = query.filter(ChargeAdjustment.charge_adjustment_id == adjustment_id)
 
-    if projcode and projcode != "TOTAL":
-        if isinstance(projcode, list):
-            query = query.filter(Project.projcode.in_(projcode))
-        else:
-            query = query.filter(Project.projcode == projcode)
-
-    if resource_name and resource_name != "TOTAL":
-        if isinstance(resource_name, list):
-            query = query.filter(Resource.resource_name.in_(resource_name))
-        else:
-            query = query.filter(Resource.resource_name == resource_name)
-
-    if facility_name and facility_name != "TOTAL":
-        if isinstance(facility_name, list):
-            query = query.filter(Facility.facility_name.in_(facility_name))
-        else:
-            query = query.filter(Facility.facility_name == facility_name)
+    query = apply_scope_filters(
+        query, (Project.projcode, projcode), (Resource.resource_name, resource_name),
+        (Facility.facility_name, facility_name))
 
     if adjustment_types is not None:
         if isinstance(adjustment_types, (list, tuple, set)):

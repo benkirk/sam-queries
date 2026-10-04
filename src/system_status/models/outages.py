@@ -5,7 +5,7 @@
 from ..timeutil import utcnow_naive  # status timestamps are naive-UTC, not local
 from sqlalchemy import Column, Integer, String, Text, DateTime, Index, Enum as SQLEnum, ForeignKey
 from sqlalchemy.orm import relationship
-from ..base import StatusBase, SessionMixin
+from ..base import StatusBase, SessionMixin, staged_name
 from .lookups import System
 
 
@@ -63,16 +63,7 @@ class SystemOutage(StatusBase, SessionMixin):
     # Relationship
     system = relationship(System, foreign_keys=[system_id])
 
-    @property
-    def system_name(self):
-        pending = self.__dict__.get('_pending_system_name')
-        if pending is not None:
-            return pending
-        return self.system.name if self.system is not None else None
-
-    @system_name.setter
-    def system_name(self, value):
-        self.__dict__['_pending_system_name'] = value
+    system_name = staged_name('system')
 
     def __str__(self):
         return f"{self.system_name}: {self.title} ({self.severity}/{self.status})"
@@ -120,16 +111,7 @@ class ResourceReservation(StatusBase, SessionMixin):
     # Relationship
     system = relationship(System, foreign_keys=[system_id])
 
-    @property
-    def system_name(self):
-        pending = self.__dict__.get('_pending_system_name')
-        if pending is not None:
-            return pending
-        return self.system.name if self.system is not None else None
-
-    @system_name.setter
-    def system_name(self, value):
-        self.__dict__['_pending_system_name'] = value
+    system_name = staged_name('system')
 
     def __str__(self):
         return f"{self.system_name}: {self.reservation_name} ({self.start_time} - {self.end_time})"

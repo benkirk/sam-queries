@@ -6,7 +6,6 @@ Covers: Wallclock Exemptions (admin dashboard).
 
 import marshmallow.fields as f
 import marshmallow.validate as v
-from marshmallow import ValidationError, post_load
 
 from . import HtmxFormSchema
 
@@ -35,14 +34,7 @@ class CreateWallclockExemptionForm(HtmxFormSchema):
                         'invalid': 'Time limit must be a number.'})
     comment = f.Str(load_default=None)
 
-    @post_load
-    def coerce_and_validate_dates(self, data, **kwargs):
-        try:
-            data['end_date'] = self.normalize_end_date(data['end_date'])
-        except ValueError:
-            raise ValidationError({'end_date': ['Invalid end date format.']})
-        self.assert_date_range(data.get('start_date'), data['end_date'])
-        return data
+    _date_range = ('start_date', 'end_date')
 
 
 class AdminCreateWallclockExemptionForm(CreateWallclockExemptionForm):
@@ -70,10 +62,4 @@ class EditWallclockExemptionForm(HtmxFormSchema):
                         'invalid': 'Time limit must be a number.'})
     comment = f.Str(load_default=None)
 
-    @post_load
-    def coerce_end_date(self, data, **kwargs):
-        try:
-            data['end_date'] = self.normalize_end_date(data['end_date'])
-        except ValueError:
-            raise ValidationError({'end_date': ['Invalid end date format.']})
-        return data
+    _date_range = (None, 'end_date')

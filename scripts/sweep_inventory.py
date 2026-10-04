@@ -31,7 +31,7 @@ TEMPLATE_ROOT = Path("src/webapp/templates")
 VENDOR_ROOT = Path("src/webapp/static/vendor")
 PLANS_ROOT = Path("docs/plans")
 AREAS = {
-    "py": ("private-imports", "dup-functions"),
+    "py": ("private-imports", "dup-functions", "py-dup-names"),
     "css": ("css-dead", "css-shape"),
     "templates": ("inline-styles",),
     "js": ("js-dup", "js-dead"),
@@ -43,6 +43,9 @@ _PR_REF = re.compile(r"(?<![\w/])#(\d{2,5})\b")
 _STATUS = re.compile(r"^\*\*Status:?\*?\*?:?\s*(.+)$", re.M | re.I)
 OPEN_STATUS = ("unbuilt", "deferred", "brainstorm", "sketch", "in progress", "not started")
 MIN_FUNCTION_NODES = 40   # smaller bodies repeat by accident (getters, one-line guards)
+MIN_NAME_MODULES = 3      # py-dup-names: a helper name defined at module level in this many modules
+GENERIC_NAMES = {"main", "register", "get", "create", "update", "run", "handle", "index", "validate", "setup",
+                 "init_app"}
 _TOKEN = re.compile(r"[A-Za-z_][\w-]*")
 # Styled on purpose though nothing names them yet; css-dead reports these apart, and flags a stale entry.
 CSS_KEEP = {
@@ -143,6 +146,22 @@ def dup_functions(py_files, root=PY_ROOT, min_nodes=MIN_FUNCTION_NODES):
     rows = [{"size": sites[0][0], "copies": len(sites), "sites": [s for _, s in sites]}
             for sites in groups.values() if len(sites) > 1]
     return sorted(rows, key=lambda r: (-r["size"] * (r["copies"] - 1), r["sites"]))
+
+
+def py_dup_names(py_files, min_modules=MIN_NAME_MODULES):
+    """Module-level function names (leading ``_`` stripped) defined in several modules: small helpers re-written."""
+    sites = defaultdict(list)
+    for path in py_files:
+        try:
+            tree = ast.parse(read(path))
+        except SyntaxError:
+            continue
+        for node in tree.body:
+            name = getattr(node, "name", "").lstrip("_")
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and name not in GENERIC_NAMES:
+                sites[name].append(f"{path.as_posix()}:{node.lineno}")
+    rows = [{"name": n, "modules": len(s), "sites": s} for n, s in sites.items() if len(s) >= min_modules]
+    return sorted(rows, key=lambda r: (-r["modules"], r["name"]))
 
 
 def _css_rules(text):
@@ -345,6 +364,8 @@ def run(detectors, changed=None, use_gh=False):
             if keep(r["sites"] + [source_files.get(r["helper"].rpartition(".")[0], "")])]
     if "dup-functions" in detectors:
         out["dup-functions"] = [r for r in dup_functions(py) if keep(r["sites"])]
+    if "py-dup-names" in detectors:
+        out["py-dup-names"] = [r for r in py_dup_names(py) if keep(r["sites"])]
     if "css-dead" in detectors:
         dead = css_dead(css, corpus)
         out["css-dead"] = {"classes": [r for r in dead["classes"] if keep([r["file"]])],
@@ -386,6 +407,12 @@ def report(result, top):
         for r in rows[:top]:
             print(f"  {r['size']:4d} nodes x{r['copies']}  " + " | ".join(r["sites"]))
         print(f"  total: {len(rows)} groups, {sum(r['copies'] - 1 for r in rows)} extra copies")
+    if "py-dup-names" in result:
+        rows = result["py-dup-names"]
+        print(f"\n== py-dup-names: module-level function names in >= {MIN_NAME_MODULES} modules")
+        for r in rows[:top]:
+            print(f"  {r['modules']:3d}  {r['name']}  " + ", ".join(r["sites"][:3]))
+        print(f"  total: {len(rows)} names, {sum(r['modules'] for r in rows)} definitions")
     if "css-dead" in result:
         rows, stale = result["css-dead"]["classes"], result["css-dead"]["stale_keeps"]
         print("\n== css-dead: classes styled but never named (check dynamic names before deleting)")
@@ -462,9 +489,11 @@ def run_jscpd(area):
         print("\n== jscpd: skipped, npx not found")
         return
     roots = {"py": [PY_ROOT], "js": [JS_ROOT], "css": [CSS_ROOT], "templates": [TEMPLATE_ROOT]}
+    formats = {"py": "python", "js": "javascript", "css": "css", "templates": "markup"}
     paths = roots.get(area, [PY_ROOT, JS_ROOT, CSS_ROOT, TEMPLATE_ROOT])
     cmd = ["npx", "--yes", "jscpd", "--config", ".jscpd.json", "--ignore", "**/vendor/**,**/__pycache__/**",
-           "--ignore-pattern", JSCPD_IGNORE_PATTERN, *map(str, paths)]
+           "--ignore-pattern", JSCPD_IGNORE_PATTERN, *(["--format", formats[area]] if area in formats else []),
+           *map(str, paths)]
     print("\n== jscpd: " + " ".join(cmd))
     with tempfile.TemporaryDirectory() as out_dir:
         proc = subprocess.run([*cmd, "--reporters", "json", "--output", out_dir, "--silent", "--absolute"],

@@ -29,6 +29,7 @@ today). Like ``jobs_fragment``, a plugin/DB hiccup degrades to an inline
 from __future__ import annotations
 
 from datetime import datetime
+from sam.dates import parse_ymd_or
 from typing import Optional, Tuple
 from urllib.parse import urlencode
 
@@ -136,13 +137,7 @@ def _query_date(name: str) -> Optional[datetime]:
     here we mirror the lightweight ``request.args`` coercion already used for
     ``owner_uid``/``leaves_only`` and the ``?metric=``/``?log=`` toggles.
     """
-    raw = (request.args.get(name) or '').strip()
-    if not raw:
-        return None
-    try:
-        return datetime.strptime(raw, '%Y-%m-%d')
-    except ValueError:
-        return None
+    return parse_ymd_or((request.args.get(name) or '').strip())
 
 
 def _dir_filters() -> dict:
