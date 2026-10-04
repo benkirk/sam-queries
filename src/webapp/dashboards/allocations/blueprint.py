@@ -997,6 +997,12 @@ def _as_resource_row(row: Dict, resource_type: str, active_at: datetime) -> Dict
     }
 
 
+def _shown_used(row: Dict) -> float:
+    """The Used cell's sort value: a shared row shows its own use, not the pool's (-1 for none)."""
+    used = row['self_used'] if row.get('is_inheriting') else row['used']
+    return -1.0 if used is None else used
+
+
 @bp.route('/htmx/project_table')
 @login_required
 @require_permission_any_facility(Permission.VIEW_PROJECTS)
@@ -1059,7 +1065,7 @@ def projects_fragment():
     titles = project_titles(db.session, (p['projcode'] for p in projects))
     rows = [{**_as_resource_row(p, resource_type, active_at), 'title': titles.get(p['projcode'])}
             for p in projects]
-    rows.sort(key=lambda r: r['used'] or 0.0, reverse=True)
+    rows.sort(key=_shown_used, reverse=True)
 
     return render_template(
         'dashboards/allocations/partials/project_table.html',
