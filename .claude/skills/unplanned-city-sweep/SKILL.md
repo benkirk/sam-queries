@@ -70,6 +70,9 @@ Run each pass and collect findings. The examples are real.
   - CSS: a feature section that has outgrown its shared file, `!important`, repeated
     declaration blocks (`css-shape`), and inline `style=""` (`inline-styles`).
   - JS: the same function in several files, and htmx listeners spread across files (`js-dup`).
+    A jscpd clone between two JS files can be two modules binding the *same markup*: grep the
+    templates for the selector before calling it duplication (the js sweep's admin-card sort
+    ran twice per click). Also look for `toISOString()` used as a local calendar date.
   - Prefer moving a feature's rules into its own file, as `allocations.css` did, over adding
     another section to `dashboard.css`.
 - **Propagate.** List the shared pieces the window introduced: macros, chart families, JS
