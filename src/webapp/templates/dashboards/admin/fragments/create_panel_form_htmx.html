@@ -1,10 +1,10 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
-{% from 'dashboards/fragments/form_fields.html' import text_field with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, select_field with context %}
 {# htmx: Create Panel Form #}
 {% call htmx_form(
     url_for('admin_dashboard.htmx_panel_create'),
     '#createPanelFormContainer',
-    'Create Panel',
+    'Create',
     submit_icon='plus',
     errors=errors
 ) %}
@@ -13,21 +13,10 @@
                       placeholder='e.g. UNIV-LARGE',
                       id='createPanelName') }}
 
-        {# Facility select kept inline — option label has conditional code suffix #}
-        <div class="mb-3">
-            <label for="createPanelFacility" class="form-label">
-                Facility <span class="text-danger">*</span>
-            </label>
-            <select class="form-select" id="createPanelFacility" name="facility_id" required>
-                <option value="">— Select facility —</option>
-                {% for f in facilities %}
-                <option value="{{ f.facility_id }}"
-                    {% if form and form.get('facility_id') == f.facility_id|string %}selected{% endif %}>
-                    {{ f.facility_name }}{% if f.code %} ({{ f.code }}){% endif %}
-                </option>
-                {% endfor %}
-            </select>
-        </div>
+        {%- set ns = namespace(opts=[]) %}
+        {%- for f in facilities %}{% set ns.opts = ns.opts + [(f.facility_id, f.facility_name ~ (' (' ~ f.code ~ ')' if f.code else ''))] %}{% endfor %}
+        {{ select_field('facility_id', 'Facility', options=ns.opts, required=True,
+                        placeholder='— Select facility —', id='createPanelFacility') }}
 
         {{ text_field('description', 'Description',
                       maxlength=100,

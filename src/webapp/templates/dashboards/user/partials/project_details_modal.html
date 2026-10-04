@@ -20,21 +20,17 @@
            allocations usage modal already use; long titles wrap here
            rather than overflowing the modal header.
 
-           Shares its row with the Edit Project link — visible to
-           EDIT_PROJECTS holders AND to project leads/admins (matches
-           can_access_edit_project_page). #}
-        <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
-            <h6 class="mb-0 fw-normal">{{ project.title or 'Untitled Project' }}</h6>
-            {% if can_act_on_project(Permission.EDIT_PROJECTS, project) %}
-            <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=project.projcode) }}"
-               class="btn btn-primary flex-shrink-0">
-                <i class="fa-solid fa-pen-to-square"></i> Manage Project
-            </a>
-            {% endif %}
-        </div>
-
-        {# Render project info section #}
-        {{ render_project_info(project) }}
+           Manage Project rides in the info heading row, for EDIT_PROJECTS holders AND
+           project leads/admins (matches can_access_edit_project_page). #}
+        <h6 class="mb-2 fw-normal">{{ project.title or 'Untitled Project' }}</h6>
+        {% call render_project_info(project) %}
+        {% if can_act_on_project(Permission.EDIT_PROJECTS, project) %}
+        <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=project.projcode) }}"
+           class="btn btn-sm btn-primary">
+            <i class="fa-solid fa-pen-to-square"></i> Manage Project
+        </a>
+        {% endif %}
+        {% endcall %}
 
         {# Render resources table — rows navigate to resource_details on click #}
         {{ render_project_resources(project, resources, usage_warning_threshold, usage_critical_threshold, show_clickable_rows=true, can_edit_allocations=user_can_edit_allocations) }}
@@ -54,7 +50,7 @@
                 </button>
             </h6>
             <div id="tree-modal" class="collapse">
-                <div class="tree-container p-3 bg-body-tertiary rounded"
+                <div class="tree-container"
                      hx-get="{{ url_for('user_dashboard.tree_fragment', projcode=project.projcode, active_only=1) }}"
                      hx-trigger="show.bs.collapse from:#tree-modal once"
                      hx-swap="innerHTML">

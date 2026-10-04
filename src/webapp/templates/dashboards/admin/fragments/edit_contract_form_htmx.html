@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
 {% from 'dashboards/fragments/form_fields.html' import text_field, date_field, readonly_display, fk_search_field with context %}
 {#
   htmx: Edit Contract Form (loaded into #editContractFormContainer)
@@ -12,6 +13,9 @@
   them is active-only).
 #}
 
+{{ modal_title('editContractModalLabel', 'Edit ' ~ contract.contract_number, 'file-signature',
+               meta=contract.contract_source.contract_source if contract.contract_source else none) }}
+
 {% call htmx_form(
     url_for('admin_dashboard.htmx_contract_edit', contract_id=contract.contract_id),
     '#editContractFormContainer',
@@ -19,14 +23,6 @@
     is_edit=True,
     errors=errors
 ) %}
-        <div class="row mb-3">
-            <div class="col-md-7">
-                {{ readonly_display('Contract Number', contract.contract_number, muted=False, strong=True) }}
-            </div>
-            <div class="col-md-5">
-                {{ readonly_display('Source', contract.contract_source.contract_source if contract.contract_source else '—') }}
-            </div>
-        </div>
 
         {{ readonly_display('Principal Investigator',
                             contract.principal_investigator.display_name if contract.principal_investigator else '—') }}

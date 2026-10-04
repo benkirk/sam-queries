@@ -49,7 +49,7 @@ def get_all_orm_models() -> Dict[str, type]:
     """Return {table_name: ORM class} for every mapper registered to Base."""
     from sam.base import Base
     return {
-        m.mapped_table.name: m.class_
+        m.persist_selectable.name: m.class_
         for m in Base.registry.mappers
     }
 

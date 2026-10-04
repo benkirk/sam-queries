@@ -375,6 +375,7 @@ def update_allocation(
     Raises:
         ValueError: If allocation not found, invalid dates, or invalid amount
         KeyError: If unknown update field provided
+        InheritingAllocationException: amount or dates on a shared allocation
 
     Example:
         from sam.manage.transaction import management_transaction
@@ -393,11 +394,11 @@ def update_allocation(
     if not allocation:
         raise ValueError(f"Allocation {allocation_id} not found")
 
-    # Block direct mutation of inheriting (child) allocations
-    if allocation.is_inheriting:
+    # A shared allocation mirrors its parent's amount and dates; its description is its own.
+    if allocation.is_inheriting and set(updates) - {'description'}:
         raise InheritingAllocationException(
             f"Allocation {allocation_id} is a child (inheriting) allocation. "
-            "Updates must be applied to the master parent allocation."
+            "Amount and dates must be changed on the master parent allocation."
         )
 
     # Validate update fields

@@ -2,8 +2,9 @@
   Reusable modal scaffold macro for HTMX-loaded forms.
 
   Wraps the boilerplate Bootstrap modal markup so the only thing each
-  *_modals.html file declares is the modal id, title, icon, form container id,
-  and create/edit variant.
+  *_modals.html file declares is the modal id, title, icon and form container id.
+  Every header is the same quiet accent: the verb lives in the title and the
+  submit button, not in a color.
 
   Usage:
       {% from 'dashboards/fragments/modals.html' import modal_scaffold %}
@@ -11,14 +12,12 @@
       {{ modal_scaffold('createFacilityModal',
                         'New Facility',
                         icon='plus',
-                        container_id='createFacilityFormContainer',
-                        variant='create') }}
+                        container_id='createFacilityFormContainer') }}
 
       {{ modal_scaffold('editFacilityModal',
                         'Edit Facility',
                         icon='building',
                         container_id='editFacilityFormContainer',
-                        variant='edit',
                         size='lg') }}
 
   Parameters:
@@ -26,7 +25,6 @@
     title        - text shown in the modal header (required)
     icon         - Font Awesome icon name without 'fa-' prefix (required)
     container_id - DOM id of the inner div that HTMX will swap form HTML into (required)
-    variant      - 'create' (green header, default) or 'edit' (yellow header)
     size         - 'lg' / 'xl' to apply modal-lg / modal-xl to modal-dialog
 #}
 
@@ -46,12 +44,12 @@
      aria-labelledby="samConfirmModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header bg-danger text-white" id="samConfirmModalHeader">
+            <div class="modal-header modal-header-danger" id="samConfirmModalHeader">
                 <h5 class="modal-title" id="samConfirmModalLabel">
                     <i class="fa-solid fa-triangle-exclamation" id="samConfirmModalIcon"></i>
                     <span id="samConfirmModalTitle">Confirm action</span>
                 </h5>
-                <button type="button" class="btn-close btn-close-white" id="samConfirmModalClose"
+                <button type="button" class="btn-close"
                         data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="samConfirmModalBody"></div>
@@ -67,14 +65,7 @@
 </div>
 {% endmacro %}
 
-{% macro modal_scaffold(modal_id, title, icon, container_id, variant='create', size=None) %}
-{%- if variant == 'edit' -%}
-  {%- set _header_class = 'bg-warning' -%}
-  {%- set _close_class = 'btn-close' -%}
-{%- else -%}
-  {%- set _header_class = 'bg-success text-white' -%}
-  {%- set _close_class = 'btn-close btn-close-white' -%}
-{%- endif -%}
+{% macro modal_scaffold(modal_id, title, icon, container_id, size=None) %}
 {#- Sized (lg/xl) modals go fullscreen on phones — a modal-lg squeezed into a
     390px viewport is unusable. Default-size modals already fit. -#}
 {%- set _dialog_class = 'modal-dialog' + (' modal-' ~ size ~ ' modal-fullscreen-sm-down' if size else '') -%}
@@ -82,20 +73,31 @@
      aria-labelledby="{{ modal_id }}Label" aria-hidden="true">
     <div class="{{ _dialog_class }}">
         <div class="modal-content">
-            <div class="modal-header {{ _header_class }}">
+            <div class="modal-header">
                 <h5 class="modal-title" id="{{ modal_id }}Label">
                     <i class="fa-solid fa-{{ icon }}"></i> {{ title }}
                 </h5>
-                <button type="button" class="{{ _close_class }}"
+                <button type="button" class="btn-close"
                         data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div id="{{ container_id }}">
                 <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fa-solid fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading…</p>
+                    <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+                    <p class="mt-2 mb-0">Loading…</p>
                 </div>
             </div>
         </div>
     </div>
 </div>
 {% endmacro %}
+
+
+{# A form fragment's own title, swapped over the scaffold's (out of band): name the
+   thing being edited in the header, not in a read-only grid in the body.
+   label_id is the scaffold's '<modal_id>Label'; meta is a muted suffix (an id). #}
+{% macro modal_title(label_id, title, icon, meta=None) -%}
+<h5 class="modal-title" id="{{ label_id }}" hx-swap-oob="true">
+    <i class="fa-solid fa-{{ icon }}"></i> {{ title }}
+    {%- if meta %} <span class="modal-title-meta">{{ meta }}</span>{% endif %}
+</h5>
+{%- endmacro %}

@@ -1,11 +1,7 @@
-{#
-  Project hierarchy tree fragment — rendered by user_dashboard.tree_fragment().
-  Wraps the shared render_project_tree macro with a simple <ul>.
-#}
-{% from 'dashboards/shared/project_tree.html' import render_project_tree with context %}
-<ul class="tree-list">
-  {{ render_project_tree([root],
-                         current_projcode=current_projcode,
-                         can_view=can_view,
-                         active_only=active_only) }}
-</ul>
+{# Project hierarchy fragment, rendered by user_dashboard.tree_fragment(). #}
+{% from 'dashboards/shared/project_tree.html' import project_tree_rows with context %}
+<table class="table table-sm align-middle mb-0 project-tree">
+  <tbody>
+    {{ project_tree_rows([root], current_projcode=current_projcode, can_view=can_view, active_only=active_only) }}
+  </tbody>
+</table>

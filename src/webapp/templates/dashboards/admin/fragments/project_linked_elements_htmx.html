@@ -25,10 +25,10 @@
   <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center py-2">
       <span class="fw-semibold">
-        <i class="fa-solid fa-building me-1 text-primary"></i> Organizations
+        <i class="fa-solid fa-building me-1"></i> Organizations
       </span>
       {% if can_edit_governance %}
-      <button class="btn  btn-primary"
+      <button class="btn btn-sm btn-primary"
               type="button"
               data-action="le-toggle" data-target-id="addOrgForm">
         <i class="fa-solid fa-plus"></i> Add
@@ -38,13 +38,13 @@
     <div class="card-body p-0">
 
       {# Add form (hidden by default) #}
-      <div id="addOrgForm" style="display:none;" class="p-3 border-bottom bg-body-tertiary">
+      <div id="addOrgForm" hidden class="p-3 border-bottom bg-body-tertiary">
         <form hx-post="{{ url_for('admin_dashboard.htmx_add_project_organization', projcode=project.projcode) }}"
               hx-target="#linkedElementsContainer"
               hx-swap="innerHTML"
               novalidate>
           <div class="d-flex gap-2 align-items-start flex-wrap">
-            <div class="flex-grow-1" style="min-width:200px;">
+            <div class="flex-grow-1 le-picker">
               {{ fk_search_field('organization_id', '',
                                  search_url=url_for('admin_dashboard.htmx_org_search_for_project'),
                                  optional_text='',
@@ -53,10 +53,10 @@
                                  search_class='form-control form-control-sm',
                                  id_prefix='linkedOrg') }}
             </div>
-            <button type="submit" class="btn  btn-primary">
+            <button type="submit" class="btn btn-sm btn-primary">
               <i class="fa-solid fa-check"></i> Link
             </button>
-            <button type="button" class="btn btn-outline-secondary"
+            <button type="button" class="btn btn-sm btn-outline-secondary"
                     data-action="le-toggle" data-target-id="addOrgForm">
               Cancel
             </button>
@@ -66,14 +66,14 @@
 
       {# Table of active organizations #}
       {% if active_organizations %}
-      <table class="table table-sm table-hover mb-0">
+      <table class="table table-sm table-hover align-middle mb-0">
         <thead class="table-subtle">
           <tr>
-            <th style="width:8em;">Acronym</th>
+            <th class="col-shrink">Acronym</th>
             <th>Name</th>
-            <th style="width:9em;">Since</th>
-            <th style="width:9em;">Until</th>
-            <th style="width:3em;"></th>
+            <th class="col-shrink">Since</th>
+            <th class="col-shrink">Until</th>
+            <th class="col-shrink" aria-label="Actions"></th>
           </tr>
         </thead>
         <tbody>
@@ -83,14 +83,14 @@
               <span class="badge bg-body-tertiary text-body-emphasis border">{{ po.organization.acronym }}</span>
             </td>
             <td>{{ po.organization.name }}</td>
-            <td class="text-muted small">{{ po.start_date | fmt_date }}</td>
-            <td class="text-muted small">
+            <td class="text-muted small text-nowrap">{{ po.start_date | fmt_date }}</td>
+            <td class="text-muted small text-nowrap">
               {% if po.end_date %}{{ po.end_date | fmt_date }}{% else %}—{% endif %}
             </td>
-            <td class="text-end">
+            <td class="text-end text-nowrap">
               {% if can_edit_governance %}
-              <button class="btn btn-sm btn-outline-danger"
-                      title="Remove organization link"
+              <button type="button" class="btn btn-row btn-row-danger"
+                      title="Remove organization link" aria-label="Remove organization link"
                       hx-post="{{ url_for('admin_dashboard.htmx_remove_project_organization', projcode=project.projcode, po_id=po.project_organization_id) }}"
                       hx-target="#linkedElementsContainer"
                       hx-swap="innerHTML"
@@ -115,10 +115,10 @@
   <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center py-2">
       <span class="fw-semibold">
-        <i class="fa-solid fa-file-contract me-1 text-warning"></i> Contracts
+        <i class="fa-solid fa-file-contract me-1"></i> Contracts
       </span>
       {% if can_edit_governance %}
-      <button class="btn  btn-primary"
+      <button class="btn btn-sm btn-primary"
               type="button"
               data-action="le-toggle" data-target-id="addContractForm">
         <i class="fa-solid fa-plus"></i> Add
@@ -128,13 +128,13 @@
     <div class="card-body p-0">
 
       {# Add form (hidden by default) #}
-      <div id="addContractForm" style="display:none;" class="p-3 border-bottom bg-body-tertiary">
+      <div id="addContractForm" hidden class="p-3 border-bottom bg-body-tertiary">
         <form hx-post="{{ url_for('admin_dashboard.htmx_add_project_contract', projcode=project.projcode) }}"
               hx-target="#linkedElementsContainer"
               hx-swap="innerHTML"
               novalidate>
           <div class="d-flex gap-2 align-items-start flex-wrap">
-            <div class="flex-grow-1" style="min-width:200px;">
+            <div class="flex-grow-1 le-picker">
               {{ fk_search_field('contract_id', '',
                                  search_url=url_for('admin_dashboard.htmx_contract_search_for_project'),
                                  optional_text='',
@@ -143,10 +143,10 @@
                                  search_class='form-control form-control-sm',
                                  id_prefix='linkedContract') }}
             </div>
-            <button type="submit" class="btn  btn-primary">
+            <button type="submit" class="btn btn-sm btn-primary">
               <i class="fa-solid fa-check"></i> Link
             </button>
-            <button type="button" class="btn btn-outline-secondary"
+            <button type="button" class="btn btn-sm btn-outline-secondary"
                     data-action="le-toggle" data-target-id="addContractForm">
               Cancel
             </button>
@@ -156,17 +156,17 @@
 
       {# Table of contracts #}
       {% if contracts %}
-      <table class="table table-sm table-hover mb-0">
+      <table class="table table-sm table-hover align-middle mb-0">
         <thead class="table-subtle">
           <tr>
-            <th style="width:12em;">Contract #</th>
+            <th class="col-shrink">Contract&nbsp;#</th>
             <th>Title</th>
             {# "Linked" is the date this project was attached to the contract —
                it says nothing about whether the contract is still in effect,
                so "Period" carries the contract's own window. #}
-            <th style="width:14em;">Period</th>
-            <th style="width:9em;">Linked</th>
-            <th style="width:3em;"></th>
+            <th class="col-shrink">Period</th>
+            <th class="col-shrink">Linked</th>
+            <th class="col-shrink" aria-label="Actions"></th>
           </tr>
         </thead>
         <tbody>
@@ -186,20 +186,18 @@
               <span class="font-monospace small">{{ pc.contract.contract_number }}</span>
               {% endif %}
             </td>
-            <td class="small">
-              {{ pc.contract.title[:80] }}{% if pc.contract.title | length > 80 %}…{% endif %}
-            </td>
-            <td class="small">
+            <td class="small cell-truncate" title="{{ pc.contract.title }}">{{ pc.contract.title }}</td>
+            <td class="small text-nowrap">
               <span class="text-muted">
                 {{ pc.contract.start_date | fmt_date }} – {{ pc.contract.end_date | fmt_date }}
               </span>
               {{ contract_status_badge(pc.contract) }}
             </td>
-            <td class="text-muted small">{{ pc.creation_time | fmt_date }}</td>
-            <td class="text-end">
+            <td class="text-muted small text-nowrap">{{ pc.creation_time | fmt_date }}</td>
+            <td class="text-end text-nowrap">
               {% if can_edit_governance %}
-              <button class="btn btn-sm btn-outline-danger"
-                      title="Remove contract link"
+              <button type="button" class="btn btn-row btn-row-danger"
+                      title="Remove contract link" aria-label="Remove contract link"
                       hx-post="{{ url_for('admin_dashboard.htmx_remove_project_contract', projcode=project.projcode, pc_id=pc.project_contract_id) }}"
                       hx-target="#linkedElementsContainer"
                       hx-swap="innerHTML"
@@ -223,10 +221,10 @@
   <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center py-2">
       <span class="fw-semibold">
-        <i class="fa-solid fa-folder me-1 text-body-secondary"></i> Directories
+        <i class="fa-solid fa-folder me-1"></i> Directories
       </span>
       {% if can_edit_governance %}
-      <button class="btn  btn-primary"
+      <button class="btn btn-sm btn-primary"
               type="button"
               data-action="le-toggle" data-target-id="addDirForm">
         <i class="fa-solid fa-plus"></i> Add
@@ -236,7 +234,7 @@
     <div class="card-body p-0">
 
       {# Add form (hidden by default) #}
-      <div id="addDirForm" style="display:none;" class="p-3 border-bottom bg-body-tertiary">
+      <div id="addDirForm" hidden class="p-3 border-bottom bg-body-tertiary">
         {% if disk_roots %}
         <form hx-post="{{ url_for('admin_dashboard.htmx_add_project_directory', projcode=project.projcode) }}"
               hx-target="#linkedElementsContainer"
@@ -244,9 +242,8 @@
               novalidate>
           <div class="input-group input-group-sm" data-path-preview-group>
             <select name="root_directory_id" required
-                    class="form-select"
-                    data-path-preview-root
-                    style="max-width:14em;">
+                    class="form-select path-root-select"
+                    data-path-preview-root>
               <option value="">-- Select a disk root --</option>
               {% for r in disk_roots %}
               <option value="{{ r.root_directory_id }}"
@@ -261,10 +258,10 @@
                    placeholder="sub-path"
                    autocomplete="off"
                    data-path-preview-suffix>
-            <button type="submit" class="btn btn-primary">
+            <button type="submit" class="btn btn-sm btn-primary">
               <i class="fa-solid fa-check"></i> Add
             </button>
-            <button type="button" class="btn btn-outline-secondary"
+            <button type="button" class="btn btn-sm btn-outline-secondary"
                     data-action="le-toggle" data-target-id="addDirForm">
               Cancel
             </button>
@@ -288,27 +285,27 @@
 
       {# Table of active directories #}
       {% if active_directories %}
-      <table class="table table-sm table-hover mb-0">
+      <table class="table table-sm table-hover align-middle mb-0">
         <thead class="table-subtle">
           <tr>
             <th>Directory</th>
-            <th style="width:9em;">Since</th>
-            <th style="width:9em;">Until</th>
-            <th style="width:5em;"></th>
+            <th class="col-shrink">Since</th>
+            <th class="col-shrink">Until</th>
+            <th class="col-shrink" aria-label="Actions"></th>
           </tr>
         </thead>
         <tbody>
           {% for pd in active_directories %}
           <tr>
             <td class="font-monospace small">{{ pd.directory_name }}</td>
-            <td class="text-muted small">{{ pd.start_date | fmt_date }}</td>
-            <td class="text-muted small">
+            <td class="text-muted small text-nowrap">{{ pd.start_date | fmt_date }}</td>
+            <td class="text-muted small text-nowrap">
               {% if pd.end_date %}{{ pd.end_date | fmt_date }}{% else %}—{% endif %}
             </td>
             <td class="text-end text-nowrap">
               {% if can_edit_governance %}
-              <button class="btn btn-sm btn-outline-secondary"
-                      title="Edit directory"
+              <button type="button" class="btn btn-row"
+                      title="Edit directory" aria-label="Edit directory"
                       data-bs-toggle="modal"
                       data-bs-target="#editProjectDirectoryModal"
                       hx-get="{{ url_for('admin_dashboard.htmx_admin_project_directory_edit_form', pd_id=pd.project_directory_id) }}"
@@ -316,8 +313,8 @@
                       hx-trigger="click">
                 <i class="fa-solid fa-pen-to-square"></i>
               </button>
-              <button class="btn btn-sm btn-outline-danger ms-1"
-                      title="Remove directory"
+              <button type="button" class="btn btn-row btn-row-danger ms-1"
+                      title="Remove directory" aria-label="Remove directory"
                       hx-post="{{ url_for('admin_dashboard.htmx_remove_project_directory', projcode=project.projcode, pd_id=pd.project_directory_id) }}"
                       hx-target="#linkedElementsContainer"
                       hx-swap="innerHTML"

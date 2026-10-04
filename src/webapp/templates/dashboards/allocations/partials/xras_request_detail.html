@@ -203,16 +203,16 @@
                         <span>{% if cell.amount is not none %}{{ cell.amount | float | fmt_number }}{% else %}—{% endif %}</span>
                         {% if r.resource_id is not none and stage == 'Requested' and action.is_latest %}
                         <span class="d-inline-flex gap-1">
-                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" {{ write_disabled }}
-                                    title="{% if not write_enabled %}{{ why_off }}{% else %}Edit the requested amount…{% endif %}"
+                            <button type="button" class="btn btn-row" {{ write_disabled }}
+                                    title="{% if not write_enabled %}{{ why_off }}{% else %}Edit the requested amount…{% endif %}" aria-label="{% if not write_enabled %}{{ why_off }}{% else %}Edit the requested amount…{% endif %}"
                                     hx-get="{{ url_for('allocations_dashboard.xras_resource_form',
                                                        request_number=request_number,
                                                        action_id=action.action_id,
                                                        resource_id=r.resource_id) }}?stage=Requested"
                                     hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
                                 <i class="fa-solid fa-pencil"></i></button>
-                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" {{ write_disabled }}
-                                    title="{% if not write_enabled %}{{ why_off }}{% else %}Remove the requested line{% endif %}"
+                            <button type="button" class="btn btn-row btn-row-danger" {{ write_disabled }}
+                                    title="{% if not write_enabled %}{{ why_off }}{% else %}Remove the requested line{% endif %}" aria-label="{% if not write_enabled %}{{ why_off }}{% else %}Remove the requested line{% endif %}"
                                     hx-post="{{ url_for('allocations_dashboard.xras_resource_remove',
                                                         request_number=request_number,
                                                         action_id=action.action_id,
@@ -225,8 +225,8 @@
                         </span>
                         {% elif r.resource_id is not none and stage == 'Approved' and action.is_latest %}
                             {% if admin_context_available %}
-                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" {{ write_disabled }}
-                                    title="{% if not write_enabled %}{{ why_off }}{% else %}Edit the awarded amount…{% endif %}"
+                            <button type="button" class="btn btn-row" {{ write_disabled }}
+                                    title="{% if not write_enabled %}{{ why_off }}{% else %}Edit the awarded amount…{% endif %}" aria-label="{% if not write_enabled %}{{ why_off }}{% else %}Edit the awarded amount…{% endif %}"
                                     hx-get="{{ url_for('allocations_dashboard.xras_resource_form',
                                                        request_number=request_number,
                                                        action_id=action.action_id,
@@ -234,8 +234,8 @@
                                     hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
                                 <i class="fa-solid fa-pencil"></i></button>
                             {% else %}
-                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" disabled
-                                    title="Edit award… — editing the awarded amount needs an elevated XRAS key (admin/review context), which this deployment does not have yet.">
+                            <button type="button" class="btn btn-row" disabled
+                                    title="Edit award… — editing the awarded amount needs an elevated XRAS key (admin/review context), which this deployment does not have yet." aria-label="Edit award… — editing the awarded amount needs an elevated XRAS key (admin/review context), which this deployment does not have yet.">
                                 <i class="fa-solid fa-lock"></i></button>
                             {% endif %}
                         {% endif %}
@@ -285,7 +285,7 @@
                     <td class="text-end text-nowrap">
                     {% if d.allocation_date_id is not none and action.is_latest %}
                         <span class="d-inline-flex gap-1">
-                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" {{ write_disabled }}
+                        <button type="button" class="btn btn-row" {{ write_disabled }}
                                 title="{% if not write_enabled %}{{ why_off }}{% else %}Edit this date range…{% endif %}"
                                 aria-label="Edit this date range"
                                 hx-get="{{ url_for('allocations_dashboard.xras_dates_form',
@@ -293,7 +293,7 @@
                                                    action_id=action.action_id) }}?allocation_date_id={{ d.allocation_date_id }}"
                                 hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
                             <i class="fa-solid fa-pencil"></i></button>
-                        <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" {{ write_disabled }}
+                        <button type="button" class="btn btn-row btn-row-danger" {{ write_disabled }}
                                 title="{% if not write_enabled %}{{ why_off }}{% else %}Remove this date range{% endif %}"
                                 aria-label="Remove this date range"
                                 hx-post="{{ url_for('allocations_dashboard.xras_dates_remove',

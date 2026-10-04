@@ -1,43 +1,39 @@
 {% from 'dashboards/fragments/form_fields.html' import textarea_field, checkbox_field, form_errors_panel with context %}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
 {% from 'dashboards/fragments/email_preview.html' import preview_button %}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/glossary.html' import g_invite_link with context %}
 {#
   Paste a roster under an event. Lands in #invitationFormContainer; on
   success the outcome summary (roster_result_htmx.html) replaces it.
 
   Context: project, event, post_url, preview_url, errors
 #}
-<h5 class="modal-title" id="invitationModalLabel" hx-swap-oob="true">
-    <i class="fa-solid fa-list-ul"></i> Paste a roster under {{ event.event_code }}
-</h5>
+{{ modal_title('invitationModalLabel', 'Paste a roster under ' ~ event.event_code, 'list-ul') }}
 
 {% call htmx_form(post_url, '#invitationFormContainer', 'Invite everyone', submit_icon='user-plus', errors=errors) %}
-    <p class="text-muted small">
-        One person per line, as <code>First Last &lt;email&gt;</code> or
-        <code>Last, First &lt;email&gt;</code>. Lines starting with <code>#</code>
-        are ignored. Anyone SAM already knows is added to
-        <strong>{{ project.projcode }}</strong> at once; everyone else is queued
-        for an account under <strong>{{ event.name }}</strong>.
+    <p class="modal-lead">
+        Anyone SAM already knows joins <strong>{{ project.projcode }}</strong> at once; everyone
+        else is queued for an account under <strong>{{ event.name }}</strong>.
     </p>
     {{ textarea_field('roster', 'Roster', required=True, rows=10,
-                      placeholder='Ada Lovelace <ada@example.edu>') }}
+                      placeholder='Ada Lovelace <ada@example.edu>',
+                      help='One person per line, as First Last <email> or Last, First <email>. '
+                           'Lines starting with # are ignored.') }}
     {# The link route is mounted with the invitations switch; Admin -> Events is not. #}
     {% if config.ACCOUNT_INVITATIONS_ENABLED and has_permission_any_facility(Permission.MANAGE_ACCOUNT_REQUESTS) %}
     {% call checkbox_field('send_invite', 'Email each new person a link to finish their request',
                       default=True,
-                      help='Recommended. Each link collects the phone, country, academic status and '
-                           'terms acceptance the account team needs, and they are told once the '
-                           'person finishes. Unchecked, the team is told now with names and emails '
-                           'only and must contact each person for the rest, which is slower. '
-                           'People SAM already knows are enrolled and get no link.') %}
+                      tip=g_invite_link(), tip_rich=True,
+                      help='Recommended. Unchecked, the account team gets names and emails only '
+                           'and must contact each person for the rest, which is slower.') %}
     {% if preview_url %}{{ preview_button(preview_url, 'rosterPreviewPane') }}{% endif %}
     {% endcall %}
     <div id="rosterPreviewPane" class="mb-2"></div>
     {% elif config.ACCOUNT_INVITATIONS_ENABLED %}
     <p class="small text-muted mb-2">
-        Each new person is emailed a link to finish their request (phone, country,
-        academic status and the terms of use). People SAM already knows are
-        enrolled and get no link.
+        Each new person is emailed a link to finish their request.&nbsp;{{ help_icon(g_invite_link(), rich=True, title='Invitation link') }}
         {% if preview_url %}{{ preview_button(preview_url, 'rosterPreviewPane') }}{% endif %}
     </p>
     <div id="rosterPreviewPane" class="mb-2"></div>

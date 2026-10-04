@@ -307,8 +307,8 @@
                         {% if has_permission and Permission and has_permission(Permission.EDIT_ALLOCATIONS) %}
                         <td class="text-center">
                             {% if summary.allocation_id and not summary.is_inheriting %}
-                            <button class="btn btn-sm btn-outline-primary"
-                                    title="Edit allocation"
+                            <button type="button" class="btn btn-row"
+                                    title="Edit allocation" aria-label="Edit allocation"
                                     data-bs-toggle="modal" data-bs-target="#editAllocationModal"
                                     hx-get="{{ url_for('user_dashboard.htmx_edit_allocation_form', allocation_id=summary.allocation_id) }}?projcode={{ projcode }}"
                                     hx-target="#editAllocationFormContainer"

@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
 {% from 'dashboards/fragments/form_fields.html'
     import number_field, date_field, textarea_field with context %}
 {#
@@ -8,6 +9,8 @@
   Submission via hx-post returns either this form with errors or a success
   response with HX-Trigger to refresh the parent context.
 #}
+{{ modal_title('editAllocationModalLabel', projcode ~ ' on ' ~ resource_name, 'pen-to-square',
+               meta='#' ~ allocation.allocation_id) }}
 {% call htmx_form(
     url_for('user_dashboard.htmx_edit_allocation', allocation_id=allocation.allocation_id),
     '#editAllocationFormContainer',
@@ -16,14 +19,6 @@
     errors=errors
 ) %}
     <input type="hidden" name="projcode" value="{{ projcode }}">
-
-    <!-- Resource Display (read-only) -->
-    <div class="mb-3">
-        <label>Resource</label>
-        <div class="form-control-plaintext">
-            <strong>{{ resource_name }}</strong>
-        </div>
-    </div>
 
     {# Amount — live comma-preview rendered by static/js/number-preview.js
        into the sibling .number-preview span declared via help_html below. #}

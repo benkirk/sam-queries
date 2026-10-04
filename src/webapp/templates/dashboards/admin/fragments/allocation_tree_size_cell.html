@@ -1,0 +1,13 @@
+{#- Renew / Extend resource rows: how much of the tree a resource row reaches.
+    Context: c, a candidate from _build_alloc_candidates; verb, 'renewed' or 'extended'. -#}
+{% from 'dashboards/fragments/table_bits.html' import state_tag %}
+{%- if c.child_only -%}
+{{ state_tag('sub-project only: ' ~ (c.anchor_projcodes | length ~ ' projects' if c.anchor_projcodes | length > 2
+             else c.anchor_projcodes | join(', ')),
+             title='Only sub-projects hold this resource; each is ' ~ verb ~ ' from its own allocation') }}
+{%- if c.descendant_count > 0 %} + {{ c.descendant_count }} below{% endif %}
+{%- elif c.descendant_count > 0 -%}
+1 root + {{ c.descendant_count | fmt_plural('sub-project', 'sub-projects') }}
+{%- else -%}
+1 root
+{%- endif -%}

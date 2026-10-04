@@ -14,8 +14,8 @@
     {% endif %}
     {% if can_edit_shell %}
     <button type="button"
-            class="btn btn-sm btn-outline-secondary ms-2 py-0"
-            title="Change login shell"
+            class="btn btn-row ms-1"
+            title="Change login shell" aria-label="Change login shell"
             hx-get="{{ url_for('user_dashboard.htmx_shell_form', username=sam_user.username) }}"
             hx-target="#shell-row-{{ sam_user.username }}"
             hx-swap="innerHTML">

@@ -66,7 +66,7 @@
             <tr>
                 <th class="col-shrink">{{ sort_header('received_time', 'Received') }}</th>
                 <th class="col-shrink">{{ sort_header('action_type', 'Type') }}</th>
-                <th class="col-shrink">{{ sort_header('request_number', 'Request #') }}</th>
+                <th class="col-shrink">{{ sort_header('request_number', 'Request\u00a0#') }}</th>
                 <th class="col-shrink">{{ sort_header('status', 'Status') }}</th>
                 <th class="col-shrink">{{ sort_header('projcode_result', 'Result') }}</th>
                 <th>Errors</th>
@@ -207,8 +207,8 @@
                        leaves the two cohorts an operator is actually chasing. #}
                     {% if has_permission(Permission.MANAGE_XRAS)
                           and r.status in ('failed', 'manual', 'rechecked') %}
-                    <button class="btn btn-sm btn-outline-secondary"
-                            title="Re-check: would this succeed if posted now?"
+                    <button type="button" class="btn btn-row"
+                            title="Re-check: would this succeed if posted now?" aria-label="Re-check: would this succeed if posted now?"
                             hx-post="{{ url_for('allocations_dashboard.xras_recheck', action_id=r.action_log_id) }}"
                             hx-confirm="Re-check action #{{ r.action_log_id }} against today's code and data?&#10;&#10;Nothing is applied and XRAS is not contacted — this only answers whether a resend would succeed. A new linked audit row records the verdict."
                             hx-swap="none">

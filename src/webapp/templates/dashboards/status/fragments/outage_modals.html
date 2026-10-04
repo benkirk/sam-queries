@@ -7,11 +7,11 @@
      aria-labelledby="createOutageModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
+            <div class="modal-header">
                 <h5 class="modal-title" id="createOutageModalLabel">
                     <i class="fa-solid fa-circle-exclamation"></i> Report System Outage
                 </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             {# novalidate: CreateOutageForm is the source of truth; validation
                errors render inline (swapped into #createOutageFormBody) instead
@@ -46,11 +46,11 @@
      aria-labelledby="editOutageModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header bg-secondary text-white">
+            <div class="modal-header">
                 <h5 class="modal-title" id="editOutageModalLabel">
                     <i class="fa-solid fa-pen-to-square"></i> Edit Outage
                 </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             {# Edit form is populated via inline JS (fields set from data
                attributes on the clicked row button; see modals.js 'outage-edit').
