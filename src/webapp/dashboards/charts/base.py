@@ -30,7 +30,9 @@ a blank one.
 """
 
 import functools
+import html
 import inspect
+import re
 from io import StringIO
 
 import matplotlib.pyplot as plt
@@ -49,7 +51,23 @@ def cells_label(cells) -> str:
     return f'{cells[0]} ({", ".join(cells[1:])})' if len(cells) > 1 else cells[0]
 
 
-def fig_to_svg(fig) -> str:
+#: Prefix reserved for `BaseChart.tooltip` gids; none may survive into output.
+TOOLTIP_GID = 'tt-'
+_TOOLTIP_GROUP = re.compile(r'<g id="' + TOOLTIP_GID + r'(\d+)">(\s*<a [^>]*>)?')
+
+
+def apply_tooltips(svg: str, tooltips: dict) -> str:
+    """Give each `tooltip`-stamped group a ``<title>`` (inside its ``<a>`` when it
+    links, which names the link) and drop the throwaway id: one cached SVG can
+    appear twice on a page, and ids must be unique."""
+    def title(m):
+        text = tooltips.get(int(m.group(1)))
+        tag = f'<title>{html.escape(text)}</title>' if text else ''
+        return f'<g>{m.group(2) or ""}{tag}'
+    return _TOOLTIP_GROUP.sub(title, svg) if tooltips else svg
+
+
+def fig_to_svg(fig, tooltips=None) -> str:
     """Serialize a figure to SVG and ALWAYS close it.
 
     savefig can raise on pathological data; without the finally the figure
@@ -58,7 +76,7 @@ def fig_to_svg(fig) -> str:
     try:
         svg_io = StringIO()
         fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
-        return svg_io.getvalue()
+        return apply_tooltips(svg_io.getvalue(), tooltips)
     finally:
         plt.close(fig)
 
@@ -365,6 +383,12 @@ class BaseChart:
         for ax in (axes if isinstance(axes, (tuple, list)) else (axes,)):
             ax.tick_params(labelsize=size)
 
+    def tooltip(self, artist, text):
+        """Hover text for one mark (never a legend entry: it already says what it is)."""
+        if text:
+            artist.set_gid(f'{TOOLTIP_GID}{len(self._tooltips)}')
+            self._tooltips[len(self._tooltips)] = text
+
     # --- the driver -------------------------------------------------------
 
     def render(self, layout='desktop', theme='light') -> str:
@@ -378,6 +402,7 @@ class BaseChart:
         # The drawing hooks still take it as an argument — that is the
         # signature, and `self.layout` is not an invitation to stop passing it.
         self.layout, self.theme = lay, thm
+        self._tooltips = {}
 
         self.prepare()
         if self.is_empty():
@@ -392,7 +417,7 @@ class BaseChart:
         # Last, so it reaches artists the hooks above created — the legend in
         # particular does not exist until `add_legend` has run.
         self.apply_chrome(fig, axes, thm)
-        return fig_to_svg(fig)
+        return fig_to_svg(fig, self._tooltips)
 
     # --- caching ----------------------------------------------------------
 
