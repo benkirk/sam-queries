@@ -130,10 +130,7 @@ def search_targets(session, q, *, limit: int = 15,
 
     like = f"%{q}%"
     out: List[Dict[str, Any]] = []
-    for o in (session.query(Organization)
-              .filter(Organization.is_active,
-                      ci_like(Organization.name, like) | ci_like(Organization.acronym, like))
-              .order_by(Organization.name).limit(limit)):
+    for o in Organization.search_by_pattern(session, q, limit):
         out.append({'kind': 'organization', 'id': o.organization_id,
                     'name': o.name, 'city': None, 'description': o.name,
                     'claimed_by': _claimed(o.name)})

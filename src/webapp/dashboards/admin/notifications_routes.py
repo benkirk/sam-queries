@@ -417,7 +417,7 @@ def notification_template_audience(name: str):
 
 
 def _search_projects_for_preview(q, active_only):
-    return search_projects_by_code_or_title(db.session, q, active=True)[:10]
+    return search_projects_by_code_or_title(db.session, q, active=True, limit=10)
 
 
 # Same search and results template as the parent-project picker, gated on

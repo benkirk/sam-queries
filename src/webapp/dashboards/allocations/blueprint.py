@@ -1429,7 +1429,7 @@ def htmx_create_adjustment_form():
 
 def _search_projects_for_adjustment(q, active_only):
     from sam.queries.projects import search_projects_by_code_or_title
-    return search_projects_by_code_or_title(db.session, q, active=True)[:10]
+    return search_projects_by_code_or_title(db.session, q, active=True, limit=10)
 
 
 # Search-as-you-type for the Create Adjustment project picker: mirrors

@@ -35,7 +35,6 @@ from webapp.utils.project_permissions import (
     can_allocate_residual,
 )
 from sam.manage import management_transaction
-from sam.sqlcompat import ci_like
 from sam.accounting.allocations import InheritingAllocationException
 from sam.manage.allocations import AllocationOverlapError
 from sam.core.groups import GidAllocation, NoAvailableGidError
@@ -318,16 +317,7 @@ def htmx_alloc_types_for_panel():
 
 def _search_orgs_for_project(q, active_only):
     from sam.core.organizations import Organization
-    return (
-        db.session.query(Organization)
-        .filter(
-            Organization.is_active,
-            ci_like(Organization.name, f'%{q}%') | ci_like(Organization.acronym, f'%{q}%')
-        )
-        .order_by(Organization.name)
-        .limit(15)
-        .all()
-    )
+    return Organization.search_by_pattern(db.session, q)
 
 
 def _search_contracts_for_project(q, active_only):
@@ -348,7 +338,7 @@ def _search_contracts_for_project(q, active_only):
 
 def _search_projects_for_parent(q, active_only):
     from sam.queries.projects import search_projects_by_code_or_title
-    return search_projects_by_code_or_title(db.session, q, active=True)[:10]
+    return search_projects_by_code_or_title(db.session, q, active=True, limit=10)
 
 
 register_typeahead(
