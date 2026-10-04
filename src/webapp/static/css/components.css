@@ -220,8 +220,7 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
 
 /* Sortable table headers (sortable_table.js, loaded globally in base.html).
    Pairs the global JS with its indicator so any `.sortable-header` shows a
-   neutral up/down cue (click to sort) and an arrow for the active column.
-   Mirrors the rule duplicated in admin.css / allocations.css. */
+   neutral up/down cue (click to sort) and an arrow for the active column. */
 .sortable-header { cursor: pointer; user-select: none; white-space: nowrap; }
 .sortable-header::after { content: ' \2195'; color: var(--text-tertiary); font-size: 0.8em; }
 .sortable-header.sort-asc::after { content: ' \2191'; color: var(--text-primary); }

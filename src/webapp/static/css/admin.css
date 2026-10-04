@@ -33,32 +33,6 @@
 }
 
 /* ===================================================================
-   Sortable Table Headers
-   =================================================================== */
-
-.sortable-header {
-    cursor: pointer;
-    user-select: none;
-    white-space: nowrap;
-}
-
-.sortable-header::after {
-    content: ' \2195';
-    color: var(--text-tertiary);
-    font-size: 0.8em;
-}
-
-.sortable-header.sort-asc::after {
-    content: ' \2191';
-    color: var(--text-primary);
-}
-
-.sortable-header.sort-desc::after {
-    content: ' \2193';
-    color: var(--text-primary);
-}
-
-/* ===================================================================
    User / Resource Access grid
    =================================================================== */
 
