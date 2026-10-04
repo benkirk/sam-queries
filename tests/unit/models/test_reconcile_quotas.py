@@ -1207,6 +1207,15 @@ class TestAutoDetectVerifier:
             )
 
 
+def test_a_new_project_directory_is_active_at_once(session):
+    """A microsecond start rounds up in MySQL about half the time, hiding the row from reconcile."""
+    pd = ProjectDirectory.create(session, project_id=make_project(session).project_id,
+                                 directory_name='/gpfs/csfs1/starts_now')
+    assert pd.start_date.microsecond == 0
+    session.refresh(pd)
+    assert pd.is_active
+
+
 @pytest.mark.timeout(30)
 class TestVerifyPathsIntegration:
     """End-to-end classification with --verify-paths.
