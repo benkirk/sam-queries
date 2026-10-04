@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime, timedelta
+from sam.dates import parse_ymd_or
 from typing import Optional
 
 from flask import Blueprint, abort, render_template, request, url_for
@@ -115,12 +116,8 @@ _DEFAULT_PER_PAGE = 50
 
 def _parse_date(raw: Optional[str]) -> Optional[date]:
     """Parse YYYY-MM-DD; return None for empty/invalid."""
-    if not raw:
-        return None
-    try:
-        return datetime.strptime(raw, '%Y-%m-%d').date()
-    except ValueError:
-        return None
+    parsed = parse_ymd_or(raw)
+    return parsed.date() if parsed else None
 
 
 def _parse_days() -> Optional[int]:

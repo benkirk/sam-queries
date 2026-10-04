@@ -70,8 +70,8 @@ def parse_date_range(
         end_str = request.args.get(end_param)
         start_str = request.args.get(start_param)
 
-        end_date = datetime.strptime(end_str, '%Y-%m-%d') if end_str else datetime.now()
-        start_date = datetime.strptime(start_str, '%Y-%m-%d') if start_str else end_date - timedelta(days=days_back)
+        end_date = parse_input_start_date(end_str) if end_str else datetime.now()
+        start_date = parse_input_start_date(start_str) if start_str else end_date - timedelta(days=days_back)
 
         return start_date, end_date, None
     except ValueError:
