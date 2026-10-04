@@ -1,0 +1,13 @@
+```text
+13 Active users for SCSG0001:
+  #      Username        Name              Access Notes
+  1      benkirk         Ben Kirk
+  2      csgteam         Ben Kirk          no access to Stratus
+  3      user_0d7491d9   Laura Zimmerman
+  4      user_644fd182   Carol Khan        no access to Stratus
+  5      user_749bddba   Yara Fisher       no access to Stratus
+  6      user_824d5df7   Grace Diaz        no access to Stratus
+  7      user_880bc120   Xavier Johnson    no access to Stratus
+  8      user_8b2a05cf   Rachel Xu         no access to Stratus
+  ...    (5 more)
+```

@@ -13,6 +13,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from webapp.dashboards import charts
+from webapp.dashboards.allocations.burn import month_shares, pace_segments
 
 # A fixed 10-day window. Naive datetimes, per the repo convention.
 _DAYS = [date(2026, 3, d) for d in range(1, 11)]
@@ -183,6 +184,20 @@ def _jobs_usage(with_unknown=True):
                        'cpu_charges': 7500.0, 'gpu_charges': 0.0}}
 
 
+def _pace_segmented(rows):
+    """Rows through burn.pace_segments, with monthly charges that vary by month and project
+    so the past steps, the projection and the committed line are all drawn."""
+    through = _PACE_NOW.replace(hour=0)
+    burns = {}
+    for i, r in enumerate(rows):
+        r['allocation_id'] = i + 1
+        if r['start_date'] < through:
+            burns[i + 1] = {ym: share * (0.4 + 0.15 * ((ym + i) % 5))
+                            for _m, ym, _lo, _hi, share in month_shares(r, r['start_date'], through)}
+            r['total_used'] = sum(burns[i + 1].values())
+    return pace_segments(rows, burns, through, _PACE_NOW)
+
+
 def _pace_allocations(n=25):
     """25 projects so the top_n cut, the Other group and the >10 palette
     switch (UNITY_STACK_10 -> UNITY_STACK_20) are all exercised."""
@@ -195,7 +210,7 @@ def _pace_allocations(n=25):
             'total_amount': float(100_000 * (n - i)),
             'total_used': float(40_000 * (n - i)),
         })
-    return out
+    return _pace_segmented(out)
 
 
 def _pace_rollover(n=12):
@@ -218,7 +233,7 @@ def _pace_rollover(n=12):
             'total_amount': float(100_000 * (n - i)),
             'total_used': 0.0,
         })
-    return out
+    return _pace_segmented(out)
 
 
 #: ``(case_id, callable, args, kwargs)``. The id is the snapshot key, so it is
@@ -248,6 +263,22 @@ _ALLOCATION_SUNBURST = [
      'types': [{'name': 'Large', 'value': 100_000_000.0}, {'name': 'Small', 'value': 30_000_000.0},
                {'name': 'Classroom', 'value': 30_000_000.0}]},
     {'id': 5, 'facility': 'WNA', 'slot': 6, 'value': 60_000_000.0, 'types': []},
+]
+
+# Jobs By Project, grouped: two named facilities, an inactive one, and Unknown;
+# one wedge outside the table (inert), and a remainder tint on NCAR.
+_JOBS_FACILITY_SUNBURST = [
+    {'id': None, 'facility': 'NCAR', 'slot': 1, 'value': 1_100.0,
+     'types': [{'name': 'NMMM0043', 'value': 500.0, 'linked': True},
+               {'name': 'NMMM0063', 'value': 300.0, 'linked': True},
+               {'name': 'NRAL0032', 'value': 200.0, 'linked': False}]},
+    {'id': None, 'facility': 'UNIV', 'slot': 2, 'value': 700.0,
+     'types': [{'name': 'UCUB0174', 'value': 400.0, 'linked': True},
+               {'name': 'UMIA0042', 'value': 300.0, 'linked': True}]},
+    {'id': None, 'facility': 'CSL', 'slot': 3, 'value': 400.0,
+     'types': [{'name': 'P93300606', 'value': 250.0, 'linked': True}]},
+    {'id': None, 'facility': 'Unknown', 'slot': None, 'value': 60.0,
+     'types': [{'name': '(unknown)', 'value': 60.0, 'linked': False}]},
 ]
 
 
@@ -370,4 +401,10 @@ CASES = [
     ('allocation_sunburst.allocated', charts.generate_allocation_sunburst,
      (_ALLOCATION_SUNBURST,), {'center': 'Allocated'}),
     ('allocation_sunburst.empty', charts.generate_allocation_sunburst, ([],), {'center': 'Used'}),
+
+    # --- 19. jobs By Project grouped by facility (top projects, tinted remainder)
+    ('jobs_facility_sunburst.normal', charts.generate_jobs_facility_sunburst,
+     (_JOBS_FACILITY_SUNBURST,), {'center': 'CPU-h'}),
+    ('jobs_facility_sunburst.empty', charts.generate_jobs_facility_sunburst,
+     ([],), {'center': 'Jobs'}),
 ]

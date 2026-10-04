@@ -1,0 +1,8 @@
+---
+title: "SAMuel, Appendix C"
+subtitle: "Keeping It Snappy"
+author: "Ben Kirk, NCAR/CISL"
+date: last-modified
+---
+
+{{< include _C-performance.qmd >}}

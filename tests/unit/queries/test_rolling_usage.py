@@ -421,10 +421,19 @@ class TestFstreeRegressionAfterRefactor:
             f'Expected at least one project with resources on {hpc_resource.resource_name}'
         )
 
-    def test_window_helpers_importable_directly(self):
-        from sam.queries.rolling_usage import (
-            _query_window_charges,
-            _query_window_subtree_charges,
-        )
-        assert callable(_query_window_charges)
-        assert callable(_query_window_subtree_charges)
+    def test_window_first_day_counts_whole(self, session):
+        """A mid-day ``now`` still counts the window's first day, on every backend."""
+        from datetime import date, datetime
+        from factories.projects import make_account, make_project
+        from factories.resources import make_resource
+        from factories.summaries import make_comp_charge_summary
+        from sam.queries.rolling_usage import trailing_window_charges
+        res = make_resource(session, commission_date=datetime(2000, 1, 1))
+        acct = make_account(session, project=make_project(session), resource=res)
+        for day, charges in ((date(2026, 9, 2), 1.0), (date(2026, 9, 3), 10.0), (date(2026, 10, 3), 100.0)):
+            make_comp_charge_summary(session, account=acct, activity_date=day, charges=charges)
+        info = {'key': acct.account_id, 'account_id': acct.account_id, 'resource_id': res.resource_id,
+                'activity_type': res.activity_type, 'start_date': datetime(2026, 1, 1),
+                'end_date': datetime(2026, 12, 31, 23, 59, 59)}
+        sums = trailing_window_charges(session, [info], 30, datetime(2026, 10, 3, 14, 48), subtree=False)
+        assert sums == {acct.account_id: 110.0}

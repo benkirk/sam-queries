@@ -6,22 +6,23 @@ names a facility row in its own Resource pane, and that row opens its tbody).
 Design record: docs/plans/ALLOCATIONS_SUNBURST.md.
 """
 import re
+from datetime import datetime
 
 import pytest
 
-from webapp.dashboards.allocations.blueprint import build_facility_trees, sunburst_rows
+from webapp.dashboards.allocations.blueprint import build_facility_trees, elapsed_weights, sunburst_rows
 
 from test_admin_table_conventions import _parse, _span
 
 
 def _type(name, amount, count=1):
-    return {'allocation_type': name, 'total_amount': amount, 'count': count, 'avg_amount': amount / count}
+    return {'allocation_type': name, 'total_amount': amount, 'count': count}
 
 
 FACILITIES = [(1, 'NCAR', True), (2, 'UNIV', True), (3, 'OLD', False), (4, 'WNA', True)]
 
 
-def _trees(resource_type='HPC'):
+def _trees(resource_type='HPC', elapsed=None):
     grouped = {'R': {'UNIV': [_type('Small', 30.0), _type('Large', 70.0)],
                      'NCAR': [_type('Labs', 100.0)],
                      'OLD': [_type('Legacy', 10.0)]}}
@@ -32,7 +33,7 @@ def _trees(resource_type='HPC'):
     usage = {'R': [{'facility': 'UNIV', 'total_used': 40.0}, {'facility': 'NCAR', 'total_used': 60.0}]}
     usage_by_type = {('R', 'UNIV', 'Small'): 10.0, ('R', 'UNIV', 'Large'): 30.0, ('R', 'NCAR', 'Labs'): 60.0}
     return build_facility_trees(grouped, overviews, rates, usage, usage_by_type,
-                                {'R': resource_type}, FACILITIES)['R']
+                                {'R': resource_type}, FACILITIES, elapsed)['R']
 
 
 def test_rows_follow_the_slot_order_and_slots_come_from_active_facilities():
@@ -45,10 +46,8 @@ def test_rows_follow_the_slot_order_and_slots_come_from_active_facilities():
 def test_shares_are_of_the_parent_row():
     ncar, univ, _ = _trees()
     assert univ['alloc_share'] == pytest.approx(75.0)
-    assert univ['used_share'] == pytest.approx(40.0)
     large = next(t for t in univ['types'] if t['name'] == 'Large')
     assert large['alloc_share'] == pytest.approx(75.0)
-    assert large['used_share'] == pytest.approx(75.0)
     assert ncar['types'][0]['alloc_share'] == pytest.approx(100.0)
 
 
@@ -58,10 +57,38 @@ def test_storage_charts_its_volume_not_a_rate():
     assert [t['alloc'] for t in univ['types']] == [70.0, 30.0]
 
 
-def test_a_facility_with_no_use_has_no_use_shares():
-    old = _trees()[2]
-    assert old['used'] == 0.0
-    assert old['types'][0]['used_share'] is None
+def test_rows_carry_remaining_and_percent_used():
+    ncar, univ, old = _trees()
+    assert (univ['remaining'], univ['pct_used']) == (60.0, pytest.approx(40.0))
+    large = next(t for t in univ['types'] if t['name'] == 'Large')
+    assert (large['remaining'], large['pct_used']) == (40.0, pytest.approx(30 / 70 * 100))
+    assert (old['used'], old['pct_used']) == (0.0, 0.0)
+    assert ncar['elapsed_pct'] is None    # no dated allocations
+
+
+def _row(facility, alloc_type, amount, start, end, **extra):
+    return {'resource': 'R', 'facility': facility, 'allocation_type': alloc_type,
+            'total_amount': amount, 'start_date': start, 'end_date': end, **extra}
+
+
+def test_elapsed_is_weighted_by_allocation_size():
+    at = datetime(2026, 7, 1)
+    weights = elapsed_weights([
+        _row('UNIV', 'Small', 30.0, datetime(2026, 1, 1), datetime(2027, 1, 1)),  # ~50%
+        _row('UNIV', 'Large', 70.0, datetime(2026, 7, 1), datetime(2027, 7, 1)),  # 0%
+        _row('UNIV', 'Large', 99.0, datetime(2026, 1, 1), None, is_open_ended=True),
+        _row('NCAR', 'Labs', 100.0, datetime(2025, 1, 1), datetime(2026, 1, 1)),  # ended: 100%
+    ], at)
+    assert ('R', 'UNIV', 'Large') in weights and weights[('R', 'UNIV', 'Large')] == (0.0, 70.0)
+    ncar, univ, _ = _trees(elapsed=weights)
+    assert ncar['elapsed_pct'] == pytest.approx(100.0)
+    assert univ['elapsed_pct'] == pytest.approx(30 * (181 / 365) / 100 * 100)
+
+
+def test_storage_rows_get_no_elapsed_tick():
+    weights = elapsed_weights([_row('NCAR', 'Labs', 100.0, datetime(2025, 1, 1), datetime(2026, 1, 1))],
+                              datetime(2026, 7, 1))
+    assert _trees('DISK', elapsed=weights)[0]['elapsed_pct'] is None
 
 
 def test_sunburst_rows_carry_the_measure():

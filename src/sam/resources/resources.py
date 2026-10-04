@@ -434,15 +434,6 @@ class DiskResourceRootDirectory(Base, SessionMixin, ActiveFlagMixin):
         self.session.flush()
         return self
 
-    def delete(self) -> None:
-        """Hard-delete this row. Does NOT commit.
-
-        Prefer soft-delete (``self.update(active=False)``) when ``ProjectDirectory``
-        rows under this root may already exist.
-        """
-        self.session.delete(self)
-        self.session.flush()
-
     def __str__(self):
         return f"{self.root_directory}"
 

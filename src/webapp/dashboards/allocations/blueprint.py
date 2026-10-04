@@ -34,7 +34,9 @@ from sam.queries.charges import (
     get_recent_charge_adjustments,
 )
 from sam.queries.usage_cache import (
-    cached_allocation_usage, cached_allocation_usage_rows, purge_usage_cache, usage_cache_info,
+    cached_allocation_burn, cached_allocation_usage, cached_allocation_usage_rows,
+    cached_charges_by_facility_type,
+    purge_usage_cache, usage_cache_info,
 )
 from sam.queries.lookups import find_project_by_code
 from sam.export import Column, build_workbook
@@ -52,9 +54,12 @@ from sam.resources.resources import Resource
 from ..charts import (
     generate_allocation_sunburst,
     generate_pace_chart_matplotlib,
-    PACE_WINDOW_DAYS,
 )
 from ..charts.theme import facility_slots
+from .burn import burn_key, burn_through, pace_segments
+from .calendar import (
+    calendar_group_burn, calendar_groups, calendar_months, calendar_rows, calendar_window,
+)
 
 from . import bp
 
@@ -244,20 +249,49 @@ def _share(part, whole):
     return part * 100 / whole if whole else None
 
 
+def elapsed_weights(rows, active_at):
+    """``{(resource, facility, type): (sum of amount x elapsed fraction, sum of amount)}``.
+
+    Open-ended and undated rows are left out. A multi-allocation row spans its
+    earliest start to its latest end, close enough for an aggregate tick.
+    """
+    weights = {}
+    for r in rows:
+        start, end = r.get('start_date'), r.get('end_date')
+        if r.get('is_open_ended') or not start or not end or end <= start:
+            continue
+        frac = min(max((active_at - start) / (end - start), 0.0), 1.0)
+        amount = r.get('total_amount') or 0.0
+        key = (r['resource'], r['facility'], r['allocation_type'])
+        w, a = weights.get(key, (0.0, 0.0))
+        weights[key] = (w + amount * frac, a + amount)
+    return weights
+
+
+def _usage_cols(row, weights):
+    """Remaining, % used and the amount-weighted % elapsed of a tree row, in place."""
+    row['remaining'] = row['total_amount'] - row['used']
+    row['pct_used'] = _share(row['used'], row['total_amount'])
+    row['elapsed_w'], row['elapsed_amount'] = weights
+    row['elapsed_pct'] = _share(row['elapsed_w'], row['elapsed_amount'])
+
+
 def build_facility_trees(grouped_data, overviews, type_rates, usage_overviews,
-                         usage_by_type, resource_types, facilities):
+                         usage_by_type, resource_types, facilities, elapsed_by_type=None):
     """{resource: [facility row with nested type rows]} for the tree table and sunbursts.
 
     ``facilities`` is ``[(facility_id, facility_name, is_active)]`` for every facility:
     slots come from the active ones, so a scoped user sees the same hues as everyone.
     A row's ``alloc`` is its annualized rate, or its data volume on storage; its
     shares are of the parent row (a facility of the resource, a type of its facility).
+    ``elapsed_by_type`` is `elapsed_weights` output; storage rows get no elapsed tick.
     """
+    elapsed_by_type = elapsed_by_type or {}
     ids = {name: fid for fid, name, _ in facilities}
     slots = facility_slots(fid for fid, _, active in facilities if active)
     trees = {}
     for rn, by_facility in grouped_data.items():
-        storage = resource_types.get(rn) in ('DISK', 'ARCHIVE')
+        storage = resource_types.get(rn) in _STORAGE_RESOURCE_TYPES
         overview = {o['facility']: o for o in overviews.get(rn, [])}
         used_by_fac = {o['facility']: o.get('total_used', 0.0) for o in usage_overviews.get(rn, [])}
         rows = []
@@ -269,26 +303,28 @@ def build_facility_trees(grouped_data, overviews, type_rates, usage_overviews,
             type_rows = []
             for t in sorted(types, key=lambda t: t['allocation_type']):
                 name = t['allocation_type']
-                type_rows.append({
+                row = {
                     'name': name, 'count': t['count'], 'total_amount': t['total_amount'],
-                    'avg': t.get('avg_amount'),
                     'alloc': t['total_amount'] if storage else type_rates.get((rn, fac, name), 0.0),
                     'used': usage_by_type.get((rn, fac, name), 0.0),
-                })
-            rows.append({
+                }
+                _usage_cols(row, (0.0, 0.0) if storage else elapsed_by_type.get((rn, fac, name), (0.0, 0.0)))
+                type_rows.append(row)
+            row = {
                 'id': fid, 'key': fid if fid is not None else fac, 'facility': fac,
                 'slot': slots.get(fid), 'count': count, 'total_amount': amount,
-                'avg': amount / count if count else None,
                 'alloc': amount if storage else ov.get('annualized_rate', 0.0),
                 'used': used_by_fac.get(fac, 0.0), 'types': type_rows,
-            })
+            }
+            _usage_cols(row, (sum(t['elapsed_w'] for t in type_rows),
+                              sum(t['elapsed_amount'] for t in type_rows)))
+            rows.append(row)
         rows.sort(key=lambda r: (r['slot'] is None, r['id'] is None, r['id'] or 0, r['facility']))
         total_alloc = sum(r['alloc'] for r in rows)
-        total_used = sum(r['used'] for r in rows)
         for r in rows:
-            r['alloc_share'], r['used_share'] = _share(r['alloc'], total_alloc), _share(r['used'], total_used)
+            r['alloc_share'] = _share(r['alloc'], total_alloc)
             for t in r['types']:
-                t['alloc_share'], t['used_share'] = _share(t['alloc'], r['alloc']), _share(t['used'], r['used'])
+                t['alloc_share'] = _share(t['alloc'], r['alloc'])
         trees[rn] = rows
     return trees
 
@@ -298,6 +334,24 @@ def sunburst_rows(tree, measure):
     return [{'id': r['id'], 'facility': r['facility'], 'slot': r['slot'], 'value': r[measure],
              'types': [{'name': t['name'], 'value': t[measure]} for t in r['types']]}
             for r in tree]
+
+
+def window_sunburst_rows(charges, facilities, scale):
+    """Two-ring input from `get_charges_by_facility_type` rows, each value times ``scale``,
+    facilities in `build_facility_trees` order so hues and positions match the rate ring."""
+    ids = {name: fid for fid, name, _ in facilities}
+    slots = facility_slots(fid for fid, _, active in facilities if active)
+    by_facility = {}
+    for row in charges:
+        types = by_facility.setdefault(row['facility'], {})
+        name = row['allocation_type'] or 'Unknown'
+        types[name] = types.get(name, 0.0) + row['charges'] * scale
+    rows = [{'id': ids.get(fac), 'facility': fac or 'Unknown', 'slot': slots.get(ids.get(fac)),
+             'value': sum(types.values()),
+             'types': [{'name': n, 'value': v} for n, v in sorted(types.items())]}
+            for fac, types in by_facility.items()]
+    rows.sort(key=lambda r: (r['slot'] is None, r['id'] is None, r['id'] or 0, r['facility']))
+    return rows
 
 
 def get_resource_types(session) -> Dict[str, str]:
@@ -314,6 +368,17 @@ def get_resource_types(session) -> Dict[str, str]:
         .all()
 
     return {r.resource_name: r.resource_type for r in resources}
+
+
+#: Resource types whose "used" is occupancy, not charges accruing over time.
+_STORAGE_RESOURCE_TYPES = ('DISK', 'ARCHIVE')
+#: Resource types whose charges accrue over time, so a month's burn means something.
+_BURN_RESOURCE_TYPES = ('HPC', 'DAV')
+
+
+def _resource_type(resource_name):
+    """A resource's type string ('HPC', 'DISK', ...); None for an unknown name."""
+    return get_resource_types(db.session).get(resource_name)
 
 
 @bp.route('/')
@@ -578,18 +643,21 @@ def projects():
         _usage=per_project_usage,
     )
 
-    facilities = [(f.facility_id, f.facility_name, f.is_active) for f in db.session.query(Facility)]
+    facilities = _facility_index()
     trees = build_facility_trees(grouped_data, all_overviews, type_annualized_rates,
-                                 all_usage_overviews, usage_by_type, resource_types, facilities)
+                                 all_usage_overviews, usage_by_type, resource_types, facilities,
+                                 elapsed_weights(per_project_usage, active_at))
     sunbursts = {}
     for rn, tree in trees.items():
-        storage = resource_types.get(rn) in ('DISK', 'ARCHIVE')
+        storage = resource_types.get(rn) in _STORAGE_RESOURCE_TYPES
         sunbursts[rn] = {
             'alloc': generate_allocation_sunburst(
                 sunburst_rows(tree, 'alloc'), center='Volume' if storage else 'Annual\nrate',
                 layout=layout, theme=theme),
+            # HPC/DAV usage loads as `htmx_used_sunburst`, over a trailing window.
             'used': generate_allocation_sunburst(
-                sunburst_rows(tree, 'used'), center='Used', layout=layout, theme=theme),
+                sunburst_rows(tree, 'used'), center='Used', layout=layout, theme=theme)
+            if storage else None,
         }
 
     # Pace charts render via HTMX, one loader per resource. Deferring the SVG
@@ -616,6 +684,37 @@ def projects():
 _VALID_PACE_SORT_BY = ('size', 'past', 'future')
 
 
+def _facility_index():
+    """``[(facility_id, facility_name, is_active)]`` for every facility, as `build_facility_trees` takes it."""
+    return [(f.facility_id, f.facility_name, f.is_active) for f in db.session.query(Facility)]
+
+
+def _facility_slot_names(facilities):
+    """``{facility_name: slot}`` over `_facility_index` output; slots from active facilities."""
+    slots = facility_slots(fid for fid, _, active in facilities if active)
+    return {name: slots.get(fid) for fid, name, _ in facilities}
+
+
+def _fragment_scope():
+    """``(active_at, requested_facilities, selected_facilities)`` for an htmx fragment.
+
+    Same active_at semantics as index(), but bad input falls back to today silently:
+    an HTMX swap into a pane is the wrong place for a top-level alert. The
+    facility clamp matches index(), so a WNA-scoped user gets WNA-only rows even
+    though the URL omits ?facilities=; unscoped users get None (no filter).
+    """
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    try:
+        active_at = datetime.strptime(request.args.get('active_at') or '', '%Y-%m-%d')
+    except ValueError:
+        active_at = today
+    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
+    requested = request.args.getlist('facilities')
+    selected = apply_facility_scope(requested, Permission.VIEW_PROJECTS,
+                                    default=(sorted(allowed) if allowed is not None else None))
+    return active_at, requested, selected
+
+
 @bp.route('/htmx/pace-chart/<resource_name>')
 @login_required
 @require_permission_any_facility(Permission.VIEW_PROJECTS)
@@ -631,37 +730,12 @@ def htmx_pace_chart(resource_name):
     if sort_by not in _VALID_PACE_SORT_BY:
         sort_by = 'size'
 
-    # Same active_at semantics as index(), but with no flash on bad
-    # input — an HTMX swap into a chart pane is the wrong place for a
-    # top-level alert. Silent fallback to today matches what callers
-    # would see if they hit the route with no arg at all.
-    active_at_str = request.args.get('active_at')
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    if active_at_str:
-        try:
-            active_at = datetime.strptime(active_at_str, '%Y-%m-%d')
-        except ValueError:
-            active_at = today
-    else:
-        active_at = today
+    active_at, requested_facilities, selected_facilities = _fragment_scope()
 
-    # Facility-scope clamp — identical shape to index() so a WNA-scoped
-    # user gets WNA-only rows on the chart even though the URL omits
-    # ?facilities=. Unscoped users get None -> no filter.
-    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
-    requested_facilities = request.args.getlist('facilities')
-    selected_facilities = apply_facility_scope(
-        requested_facilities, Permission.VIEW_PROJECTS,
-        default=(sorted(allowed) if allowed is not None else None),
-    )
-
-    # One row per allocation across the drawn window, so allocations that ended
-    # or start inside it get their bands. Disk keeps the active-only summary:
-    # its "used" is current occupancy, which an ended allocation does not have.
-    resource = Resource.get_by_name(db.session, resource_name)
-    is_disk = (resource is not None and resource.resource_type is not None
-               and resource.resource_type.resource_type == 'DISK')
-    if is_disk:
+    # The calendar's cache entries (rows and monthly charges over its 25-month
+    # window), so either view warms the other. Storage keeps the active-only summary,
+    # as the calendar does: its "used" is not charges accruing over the window.
+    if _resource_type(resource_name) in _STORAGE_RESOURCE_TYPES:
         per_project_usage = cached_allocation_usage(
             session=db.session,
             resource_name=[resource_name],
@@ -672,14 +746,13 @@ def htmx_pace_chart(resource_name):
             active_at=active_at,
             root_only=True,
         )
+        per_project_usage = filter_rows_by_facility(per_project_usage, selected_facilities)
+        per_project_usage = pace_segments(per_project_usage, None, _burn_through(active_at),
+                                          active_at)
     else:
-        window = timedelta(days=PACE_WINDOW_DAYS)
-        per_project_usage = cached_allocation_usage_rows(
-            db.session, resource_name=[resource_name],
-            window_start=active_at - window, window_end=active_at + window,
-            as_of=active_at,
-        )
-    per_project_usage = filter_rows_by_facility(per_project_usage, selected_facilities)
+        start, end, per_project_usage = _calendar_rows(resource_name, active_at, selected_facilities)
+        burns, through = _calendar_burn(resource_name, active_at, start, end)
+        per_project_usage = pace_segments(per_project_usage, burns, through, active_at)
 
     chart_svg = generate_pace_chart_matplotlib(
         per_project_usage, active_at, resource_name=resource_name,
@@ -713,6 +786,129 @@ def htmx_pace_chart(resource_name):
         active_at=active_at.strftime('%Y-%m-%d'),
         chart_dom_id=chart_dom_id,
         selector_kwargs=selector_kwargs,
+    )
+
+
+#: The Used sunburst's trailing windows, in days; the last is the default.
+_USED_WINDOW_DAYS = (30, 90, 180, 365)
+
+
+@bp.route('/htmx/used-sunburst/<resource_name>')
+@login_required
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
+def htmx_used_sunburst(resource_name):
+    """An HPC/DAV resource's Used sunburst: charges over a trailing window, across
+    allocation renewals, at an annual rate so it reads against the Annual rate ring."""
+    days = request.args.get('days', type=int)
+    if days not in _USED_WINDOW_DAYS:
+        days = _USED_WINDOW_DAYS[-1]
+    active_at, requested_facilities, selected_facilities = _fragment_scope()
+
+    charges = cached_charges_by_facility_type(
+        db.session, resource_names=[resource_name],
+        start=active_at - timedelta(days=days - 1), end=active_at)
+    charges = filter_rows_by_facility(charges, selected_facilities)
+    facilities = _facility_index()
+    chart_svg = generate_allocation_sunburst(
+        window_sunburst_rows(charges, facilities, 365 / days), center='Use\nrate',
+        layout=read_layout(), theme=read_theme())
+
+    selector_kwargs = {'active_at': active_at.strftime('%Y-%m-%d')}
+    if requested_facilities:   # carried forward, or a click widens a scoped chart
+        selector_kwargs['facilities'] = requested_facilities
+    return render_template(
+        'dashboards/allocations/partials/used_sunburst.html',
+        resource_name=resource_name, chart_svg=chart_svg, days=days,
+        window_days=_USED_WINDOW_DAYS, active_at=active_at,
+        chart_dom_id='used-sunburst-' + resource_name.replace(' ', '_'),
+        selector_kwargs=selector_kwargs,
+    )
+
+
+def _calendar_rows(resource_name, active_at, selected_facilities):
+    """The calendar's window and its allocation rows: one cached query per resource and date."""
+    start, end = calendar_window(active_at)
+    rows = cached_allocation_usage_rows(db.session, resource_name=[resource_name],
+                                        window_start=start, window_end=end, as_of=active_at)
+    rows = [r for r in filter_rows_by_facility(rows, selected_facilities) if r.get('facility')]
+    return start, end, rows
+
+
+def _calendar_mode(resource_type):
+    """``(burnable, mode)``: ``mode`` is 'burn' only when asked for on an HPC/DAV resource."""
+    burnable = resource_type in _BURN_RESOURCE_TYPES
+    return burnable, 'burn' if burnable and request.args.get('mode') == 'burn' else 'used'
+
+
+def _burn_through(active_at):
+    """Where burn shading stops for ``active_at``: `burn_through` against today's midnight."""
+    return burn_through(active_at, datetime.now().replace(hour=0, minute=0, second=0, microsecond=0))
+
+
+def _calendar_burn(resource_name, active_at, start, end):
+    """``(burns, through)``: the cached monthly charges up to ``through``, where shading stops."""
+    through = _burn_through(active_at)
+    return (cached_allocation_burn(db.session, resource_name=[resource_name], window_start=start,
+                                   window_end=end, as_of=through - timedelta(days=1)),
+            through)
+
+
+@bp.route('/htmx/calendar/<resource_name>')
+@login_required
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
+def htmx_calendar(resource_name):
+    """A resource's allocation calendar: month axis plus the facility -> type tree;
+    each type's project rows load lazily from `htmx_calendar_rows`."""
+    active_at, requested_facilities, selected_facilities = _fragment_scope()
+    start, end, rows = _calendar_rows(resource_name, active_at, selected_facilities)
+    burnable, mode = _calendar_mode(_resource_type(resource_name))
+    burns, through = (_calendar_burn(resource_name, active_at, start, end) if mode == 'burn'
+                      else (None, None))
+    facilities = _facility_index()
+    order = [name for _, name, _ in sorted(facilities, key=lambda f: (not f[2], f[0]))]
+    groups = calendar_groups(rows, order)
+    return render_template(
+        'dashboards/allocations/partials/calendar.html',
+        resource_name=resource_name, pane=resource_name.replace(' ', '_'),
+        mode=mode, burnable=burnable, burn_key=burn_key(),
+        strips=(calendar_group_burn(rows, groups, burns, start, end, through)
+                if burns is not None else None),
+        groups=groups, months=calendar_months(start, end),
+        days=(end - start).days, now_pct=(active_at - start) / (end - start) * 100,
+        slots=_facility_slot_names(facilities),
+        active_at=active_at.strftime('%Y-%m-%d'), active_at_dt=active_at,
+        charges_through=through - timedelta(days=1) if through is not None else None,
+        requested_facilities=requested_facilities,
+    )
+
+
+@bp.route('/htmx/calendar/<resource_name>/rows')
+@login_required
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
+def htmx_calendar_rows(resource_name):
+    """One facility/type group's project rows in the calendar."""
+    facility = request.args.get('facility', '')
+    allocation_type = request.args.get('allocation_type', '')
+    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
+    if allowed is not None and facility not in allowed:
+        abort(403)   # one named facility: out of scope is a forged URL, as in projects_fragment
+    active_at, _, selected_facilities = _fragment_scope()
+    start, end, rows = _calendar_rows(resource_name, active_at, selected_facilities)
+    rows = [r for r in rows
+            if r['facility'] == facility and (r['allocation_type'] or '') == allocation_type]
+    resource_type = _resource_type(resource_name)
+    _, mode = _calendar_mode(resource_type)
+    burns, through = (_calendar_burn(resource_name, active_at, start, end) if mode == 'burn'
+                      else (None, None))
+    if resource_type in _STORAGE_RESOURCE_TYPES:
+        # Its rows carry summed charges, not occupancy: draw the spans unfilled.
+        rows = [{**r, 'total_used': None} for r in rows]
+    return render_template(
+        'dashboards/allocations/partials/calendar_rows.html',
+        projects=calendar_rows(rows, start, end, active_at, burns=burns, through=through),
+        mode=mode,
+        slot=_facility_slot_names(_facility_index()).get(facility),
+        can_view_projects=True,  # route requires VIEW_PROJECTS
     )
 
 
@@ -1155,7 +1351,7 @@ def purge_cache():
 @login_required
 @require_permission(Permission.EDIT_ALLOCATIONS)
 def cache_status():
-    """Return usage cache statistics as JSON (admin/staff only)."""
+    """Usage cache statistics as JSON, one dict per bucket (admin/staff only)."""
     return jsonify(usage_cache_info())
 
 

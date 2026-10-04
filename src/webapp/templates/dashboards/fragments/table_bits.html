@@ -6,6 +6,8 @@
     {{ group_count(3) }}            count badge on a group header row
     {{ state_tag('decommissioned', title='Since 2024-01-31') }}
     {{ share_bar(31.0, slot=3) }}   bar + number; slot = facility color family
+    {{ tree_label_cell('UNIV', count=4) }}   chevron + name cell of a collapse-toggle row
+    {{ alloc_meter(53.0, elapsed_pct=48.0, slot=2) }}   % used bar with a time-elapsed tick
 #}
 
 {# Count on the left, create buttons on the right; sits above the table. #}
@@ -35,4 +37,26 @@
   <span class="share-num">{{ pct | fmt_pct(decimals=2) }}</span>
 </span>
 {%- endif -%}
+{%- endmacro %}
+
+{# Percent of an allocation used (may pass 100), with an optional tick at percent of time elapsed. #}
+{% macro alloc_meter(pct, elapsed_pct=None, slot=None, tint=False, title='') -%}
+{%- if pct is none -%}<span class="text-muted">—</span>
+{%- else -%}
+<span class="share"{% if title %} title="{{ title }}"{% endif %}>
+  <span class="share-bar meter{{ ' share-tint' if tint }}{{ ' meter-over' if pct > 100 }}{{ ' share-zero' if not pct }}{{ ' has-elapsed' if elapsed_pct is not none }}"
+        {%- if slot %} data-fs="{{ slot }}"{% endif %}
+        style="--share: {{ [[pct, 0] | max, 100] | min }}%{% if elapsed_pct is not none %}; --elapsed: {{ [[elapsed_pct, 0] | max, 100] | min }}%{% endif %}" aria-hidden="true"></span>
+  <span class="share-num">{{ pct | fmt_pct }}</span>
+</span>
+{%- endif -%}
+{%- endmacro %}
+
+{# The first cell of a tree row that toggles a collapse (the row carries collapse_toggle). #}
+{% macro tree_label_cell(label, depth=0, count=None, count_title='', cls='') -%}
+<td class="tree-cell{{ ' tree-d%d' % depth if depth }} text-nowrap{{ ' ' ~ cls if cls }}" style="--depth: {{ depth }};">
+    <i class="fa-solid fa-chevron-right small text-muted me-1 collapse-icon"></i>
+    {{- '' }}<span class="tree-label">{{ label }}</span>
+    {%- if count is not none %}{{ group_count(count, title=count_title) }}{% endif %}
+</td>
 {%- endmacro %}

@@ -1,0 +1,29 @@
+{# Used sunburst for an HPC/DAV resource: charges over a trailing window at an
+   annual rate. Same shape as pace_chart.html: the window pills live inside the
+   swap target, and data-chart-persist-* lets nav-view-persistence.js replay the
+   chosen `days` on the next load. `selector_kwargs` carries any facilities=
+   scope forward, or a click would widen a scoped chart. #}
+<div id="{{ chart_dom_id }}"
+     data-chart-persist-id="{{ chart_dom_id }}"
+     data-chart-persist-keys="days">
+    <div class="d-flex justify-content-center mb-2">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Usage window">
+            {% for d in window_days %}
+            <button type="button"
+                    class="btn {% if days == d %}btn-secondary active{% else %}btn-outline-secondary{% endif %}"
+                    hx-get="{{ url_for('allocations_dashboard.htmx_used_sunburst',
+                                       resource_name=resource_name, days=d, **selector_kwargs) }}"
+                    hx-target="#{{ chart_dom_id }}"
+                    hx-swap="outerHTML">
+                {{ '1 yr' if d == 365 else d ~ 'd' }}
+            </button>
+            {% endfor %}
+        </div>
+    </div>
+    {{ chart_svg | safe }}
+    <p class="text-muted small text-center mb-0">
+        {% if days == 365 %}Charges in the year to {{ active_at | fmt_date }},
+        {%- else %}Charges in the {{ days }} days to {{ active_at | fmt_date }}, at an annual rate,
+        {%- endif %} across allocation renewals.
+    </p>
+</div>

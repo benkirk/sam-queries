@@ -1,0 +1,66 @@
+{# One resource pane's charts: Share (two rings) and Pace pills. Included in the
+   resource loop of projects.html; reads resource_name, slug, pane, is_storage. #}
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/glossary.html' import g_roots_only %}
+<ul class="nav nav-pills justify-content-center my-3 alloc-view-pills"
+    id="alloc-view-{{ slug }}" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active py-1 px-3 small" id="share-{{ slug }}-tab"
+                data-bs-toggle="pill" data-bs-target="#share-{{ slug }}" data-alloc-view="share"
+                type="button" role="tab" aria-controls="share-{{ slug }}" aria-selected="true">Share</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link py-1 px-3 small" id="pace-{{ slug }}-tab"
+                data-bs-toggle="pill" data-bs-target="#pace-{{ slug }}" data-alloc-view="pace"
+                type="button" role="tab" aria-controls="pace-{{ slug }}" aria-selected="false">Pace</button>
+    </li>
+</ul>
+<div class="tab-content">
+    <div class="tab-pane fade show active" id="share-{{ slug }}" role="tabpanel">
+        <div class="row g-3 align-items-center">
+            <figure class="col-md-6 mb-0 sunburst-chart"
+                    aria-label="{{ 'Data volume' if is_storage else 'Annualized allocation rate' }} by facility and allocation type">
+                {{ sunbursts[resource_name].alloc | safe }}
+            </figure>
+            {% if is_storage %}
+            <figure class="col-md-6 mb-0 sunburst-chart" aria-label="Usage by facility and allocation type">
+                {{ sunbursts[resource_name].used | safe }}
+            </figure>
+            {% else %}
+            {# Usage over a trailing window (pills inside the fragment), so it reads
+               against the rate ring whatever each allocation's start date. intersect:
+               a hidden Resource pane never intersects, so only the shown tab fetches. #}
+            {% set _used_id = 'used-sunburst-' ~ resource_name|replace(' ', '_') %}
+            <figure class="col-md-6 mb-0 sunburst-chart"
+                    aria-label="Annual use rate by facility and allocation type">
+                <div hx-get="{{ url_for('allocations_dashboard.htmx_used_sunburst',
+                                        resource_name=resource_name, active_at=active_at,
+                                        facilities=selected_facilities or []) }}"
+                     hx-trigger="intersect once" hx-swap="outerHTML"
+                     data-chart-persist-id="{{ _used_id }}"
+                     data-chart-persist-keys="days">
+                    <p class="text-muted small text-center my-5">Loading usage…</p>
+                </div>
+            </figure>
+            {% endif %}
+        </div>
+    </div>
+    <div class="tab-pane fade" id="pace-{{ slug }}" role="tabpanel">
+        {# intersect: loads once the pill pane is shown. The persist id matches
+           the partial's, so nav-view-persistence.js replays the saved sort_by. #}
+        <div class="chart-container pace-chart"
+             hx-get="{{ url_for('allocations_dashboard.htmx_pace_chart',
+                                resource_name=resource_name, active_at=active_at, sort_by='size') }}"
+             hx-trigger="intersect once" hx-swap="innerHTML"
+             data-chart-persist-id="pace-chart-{{ pane }}"
+             data-chart-persist-keys="sort_by">
+            <div class="text-center text-muted py-5">
+                <i class="fa-solid fa-spinner fa-spin"></i> Loading chart…
+            </div>
+        </div>
+    </div>
+</div>
+<p class="small text-muted text-center mt-2 mb-0">
+    Charts and totals count root allocations only
+    {{ help_icon(g_roots_only(), rich=True, title='Roots only') }}
+</p>

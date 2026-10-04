@@ -1,0 +1,190 @@
+# Failing Closed
+
+What the review found, and the doors we shut.
+
+## Every browser write carries a token
+
+```html
+<meta name="htmx-config"
+      content='{"allowEval": false, "selfRequestsOnly": true}'>
+<body hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'>
+```
+
+- **Every POST, PUT and DELETE from a session needs the token.** htmx adds it to every
+  request from the page body.
+- **The session cookie** is `HttpOnly`, `SameSite=Lax`, and `Secure` in production; it lasts
+  12 hours, and so does the token.
+- **htmx only talks to us,** and never evaluates code.
+
+† 14 routes are exempt: an API key has no cookie to forge. Seven are `…/refresh`, which also
+take a session; a refresh is idempotent, so that trade-off is accepted.
+
+::: {.notes}
+src/webapp/templates/dashboards/base.html:18,30 (and a csrf-token meta tag at :9, which tests
+read). Flask-WTF CSRFProtect: src/webapp/extensions.py:9,18, src/webapp/run.py:175-189 (a
+failure returns JSON 400 under /api/, an htmx "session expired" fragment, or plain text).
+#296, 2026-06-10, the first response to the NRIT review. Cookie flags: src/webapp/config.py:313-326,
+353 (#105). WTF_CSRF_TIME_LIMIT=None, because the 1-hour default broke tabs left open. Exempt:
+the status collectors (4), XRAS (3), and the refreshes for disk_quota, directory_access, queue,
+project_access, wallclock_exemption, fstree_access and admin cache. Gate: tests/api/test_csrf.py.
+:::
+
+## One source of scripts: ours
+
+```text
+default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
+img-src 'self' data:; frame-ancestors 'self'; object-src 'none';
+base-uri 'self'; form-action 'self'
+```
+
+- Enforced from the first day, in June. `CSP_MODE=report-only` is the rollback, with no
+  rebuild.
+- No nonce: pages are cached per user, and a nonce would be stale on every hit. So no
+  template holds an inline script; behavior lives in our own JavaScript files.
+- A test scans every template. It started with 41 files of inline script; it allows none now.
+
+† Built from the asset registry, so it cannot drift from what the pages load.
+
+::: {.notes}
+src/webapp/utils/csp.py:60-89 (the directives; trimmed here: font-src, connect-src, frame-src
+are 'self'). Header set in src/webapp/utils/security_headers.py:30-62. #303, 2026-06-13: all
+'self', vendored assets, enforce by default. The only widening: Cloudflare Turnstile (script and
+frame) when configured, and the Google Calendar embed (frame). Inline styles are allowed:
+they cannot run code (the review accepted it). Handlers are delegated data-action listeners;
+per-swap setup runs in htmx.onLoad; data rides in non-executable JSON script blocks.
+Ratchet: tests/unit/gates/test_template_csp_lint.py, seeded 2026-06-12 with 41 files,
+ALLOWED_VIOLATIONS = {} now. It caught one real bug: a modal that closed itself with an inline
+script stuck open; it now closes on an HX-Trigger header (2026-09-03). Other headers:
+nosniff, Referrer-Policy strict-origin-when-cross-origin, CORP same-origin, Permissions-Policy
+(#312), HSTS one year in production. Gates: tests/unit/webapp/test_csp.py,
+test_security_headers.py.
+:::
+
+## No third-party origins {.vcenter scale="1.15"}
+
+- Bootstrap 5.3.8, htmx 2.0.10, Font Awesome 7.3.1 and Poppins live in the repo, each pinned
+  by its hash. CI re-hashes them.
+- Why not a CDN: allowing one lets an injected script tag load any package it hosts. And
+  browsers no longer share a CDN's cache between sites, so it isn't faster.
+- Updates follow a skill: read the changelog against the workarounds we rely on, then bump.
+  In September that bumped all four and dropped jQuery.
+
+::: {.notes}
+src/webapp/vendor_assets.py:28-62 (sha384 per entry point), templates use the vendor_css /
+vendor_js macros. tests/unit/gates/test_vendor_assets.py re-hashes the committed files and
+checks every asset is local. The browser checks no integrity attribute on local files; the
+downloads were checked once against the publisher's hash, then CI holds the line.
+src/webapp/static/vendor/README.md:9-19: self-hosting Poppins closed the one asset that could
+never carry SRI. .claude/skills/update-vendored-assets/SKILL.md. #522-#524, 2026-09-07:
+Bootstrap 5.3.3 to 5.3.8, htmx 2.0.4 to 2.0.10, Font Awesome 6 to 7.3.1, jQuery removed
+(~87 KB a page; its one user rewritten in plain JS). htmx 4 is deferred as high-risk. #303
+moved the first six CDN assets in, 2026-06-13.
+:::
+
+## Rate limits {.smaller .center .fill}
+
+| Who | Limit | Per | Applies to |
+|------------------------------|--------------------------|-------------|------------------------------------|
+| **Signing in** | 5/min, 20/h | IP | login, the sign-in callback, registration |
+| **Anonymous pages** | 30/min | IP | the front page, the login page |
+| **Signed-in users** | 200/min | user | everything else |
+| **API keys** | 120/min | IP | every key-only route |
+| **Registration mail** | 3/h each; 10/h in all | email, site | the registration form |
+| **The ingress** | 100/s, 200 open | site | everything |
+
+† Counted in Redis; a 429 carries `Retry-After`. Health checks are never limited.
+
+::: {.notes}
+src/webapp/limiter/__init__.py (Flask-Limiter, fixed window; key order apikey, user, ip at
+:35-53; Redis db 1, falls back to per-worker memory if Redis is down; the 429 handler at
+:175-228 logs the actor and records it in ratelimit:events). Defaults = production:
+src/webapp/config.py:85-92,186-192. API keys: src/webapp/utils/api_auth.py:220-224. Ingress:
+helm/values.yaml:96-101, burst x5. #251 (2026-05-11), #316 (2026-06-16). Dev raises every tier
+to 100,000/min except sign-in, so a load test there is real load. The dev load test sustained
+121-180 requests a second from one address with no 429s (DEV_LOAD_CAMPAIGN.md:66-70): nginx
+counts per worker process, so treat the ingress numbers as a floor. Admins can see and clear
+blocks on the admin page.
+:::
+
+## ⚠︎ We can't see the client's address {.vcenter scale="1.15"}
+
+- Every request arrives from 127.0.0.1. The address is lost before the app, and nothing on our
+  side can recover it.
+- So each per-IP limit is one bucket for everyone. One person's failed logins can lock everyone
+  out of sign-in for the window.
+- API keys too: their limit is checked before the key is known, so it counts per IP. All key
+  callers likely share 120 a minute.
+- What still holds: signed-in users count per user; registration has per-email and site-wide
+  caps, and a human check.
+
+† The fix is the platform team's, at the ingress, and would help every app behind it.
+
+::: {.notes}
+Confirmed 2026-06-15 with an off-VPN request: X-Forwarded-For arrives as 127.0.0.1, and so does
+the socket peer. ProxyFix (src/webapp/run.py:86-95, PROXYFIX_X_FOR=1) cannot recover it. The fix
+is ingress-nginx's forwarded headers (use-forwarded-headers, compute-full-forwarded-for) or the
+proxy protocol at the load balancer; open, with no ticket found. Ben has no access to the
+ingress logs. The API-key limit: src/webapp/utils/api_auth.py:220-224 keys on the IP because
+Flask-Limiter runs before the decorator sets the key's identity; the limiter docstring and
+RATE_LIMITING.md say per key (on the plan's fix-later list). The request log carries who= only
+for signed-in users and keys (src/webapp/request_timing.py:136-138).
+scripts/cirrus_weblog_audit.sh section 2 shows the symptom. Registration: Cloudflare Turnstile
+on the final submit (#606).
+:::
+
+## The NRIT review: before we left the VPN {.smaller .fill scale="0.9"}
+
+:::: {.columns}
+::: {.column width="50%"}
+We asked NRIT's web team to review the whole tree before SAMuel went on the public internet.
+182 items (15 P0, 55 P1, 112 P2), 54 strengths, and one headline: the app "fails open at the
+boundaries".
+
+Fixed in the first week:
+
+- prod refuses the no-login and any-password switches
+- permission gaps: the admin database view, allocation reads, resource details
+- CSRF, the CSP and the other headers
+- non-root pods, no service-account token; Redis reachable only from our pods
+
+:::
+::: {.column width="50%"}
+Still open:
+
+- collectors write zeros when they fail, and nothing alerts on it
+- no error tracking; sign-in is not in the audit log
+- CI actions pinned by tag, not hash; a personal token in four workflows
+- single sign-on matches a user by name, not a stable ID
+
+Fixed since: the secrets scanner pinned, the deploy branch locked, a read-only database
+browser, API keys held to each route's permission.
+
+A ZAP scan of 131 pages (June 15): no failures, 11 warnings; inline styles accepted.
+:::
+::::
+
+::: {.notes}
+Requested by Ben as the gate before exposing the webapp outside the VPN. Merged as #295
+(2026-06-10). docs/nrit-review-2026-05/: README.md (base b166d9b, 2026-05-14, "directional", ~10-14 hours),
+08_synthesis.md (the headline, 14 footguns), 08_action_register.md (every item by ID),
+10_zap_baseline-2026-06.md. Response: docs/plans/implemented/PRODUCTION_IMPROVEMENTS.md and
+-phase-B.md. P0s: 1 DISABLE_AUTH and 2 stub login in prod (#296); 3 Flask-Admin readable by any
+user (#296, then removed for the read-only /database browser, #620, ADMIN_DATABASE); 4
+allocations GET (#296); 5 and 6 two schema bugs (fixed); 7 collector zero-fill and 8 no
+collector alerting (open); 9 probes (existed); 10 TruffleHog at @main (pinned to a tag, #407);
+11 staging AWS keys and 13 public staging RDS (staging retired 2026-09-04; the Terraform
+remains); 12 cirrus branch (ruleset); 14 no Sentry (open); 15 audit log (stdout, 45-day
+cluster retention; a durable table deferred). Also #297 (non-root, seccomp, Redis
+NetworkPolicy), #303 CSP, #308 RBAC, #312 headers, #640 API keys checked per permission.
+P1-2: OIDC maps preferred_username's prefix to a SAM username
+(src/webapp/auth/providers.py:139-155), not Entra's oid. No tracker exists for the other ~150
+P1/P2 items.
+:::
+
+## TL;DR - failing closed {.vcenter scale="1.15"}
+
+- **A token on every browser write;** keys have no cookie to forge.
+- **Scripts come only from us,** and a test keeps inline script out.
+- **No third-party origins:** every asset is vendored and hash-pinned.
+- **Limits per user,** and per IP, once **the platform forwards the address**.
+- **The review's P0s are mostly closed;** the rest are **written down**.

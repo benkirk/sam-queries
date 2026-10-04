@@ -1,0 +1,7 @@
+```text
+  2 parent allocation(s) do not cover their carve-out children:
+  Parent     Resource   Parent amount   Carve-outs   Deficit   Raise parent to
+  NCGD0006   Derecho            54.0M        56.1M     2.10M             56.1M
+  NMMM0033   Derecho            33.5M        34.5M     1.00M             34.5M
+ No impossible allocation date windows
+```

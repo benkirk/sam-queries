@@ -1,0 +1,117 @@
+# At the Prompt
+
+Two commands for people, and JSON for the scripts that drive them.
+
+## Two commands, one shape {.smaller .center .fill}
+
+| Command | Does | Subcommands |
+|------------------------|------------------------|---------------------------------------------------|
+| `sam-search` | reads | user, project, allocations, accounting, contracts, awards |
+| `sam-admin` | reads, checks and writes | user, project, accounting, contracts, xras, rbac, tasks, cache, last-seen |
+| `sam-status` | shows one system's status | derecho, casper, jupyterhub; to be retired |
+
+† `sam-admin user` and `project` extend the search classes, so every read option is there too.
+
+::: {.notes}
+Entry points: pyproject.toml:63-65 (cli.cmds.search:cli, cli.cmds.admin:cli, system_status:main).
+sam-search: 6 subcommands, 66 options; sam-admin: 9 subcommands, 110 options (grep counts of
+@click.option, group options included). Inheritance: UserAdminCommand(UserSearchCommand) at
+src/cli/user/commands.py:221, ProjectAdminCommand(ProjectSearchCommand) at
+src/cli/project/commands.py:391; sam-admin has no allocations or awards, so "superset" holds per
+class, not per subcommand. Architecture: a Context (src/cli/core/context.py:17) that connects only
+when a command needs the database, BaseCommand subclasses (src/cli/core/base.py:9-92), builders that
+make plain dicts, and stateless display functions (src/cli/README.md:46-50). Plugins:
+require_plugin() (base.py:41-58) for accounting --jobs (job_history). sam-status is an argparse
+dashboard (src/system_status/cli.py:60-63); its removal is on the plan's fix-later list. Tests:
+tests/unit/cli/, 17 files, 243 tests.
+:::
+
+## One question, one line
+
+```text
+$ sam-search allocations --resource Derecho \
+      --project TOTAL --allocation-type TOTAL
+                Allocation Summary
+  Resource   Facility   Total Amount   Count
+ ────────────────────────────────────────────
+  Derecho    UNIV              3.33B     911
+  Derecho    ASD               68.6M       2
+  Derecho    CISL              94.9M      11
+  Derecho    NCAR              2.02B     136
+  Derecho    CSL                928M      19
+  Derecho    WNA               1.25B      61
+Grand Total: 1,140 allocations, 7.70B total allocation units
+```
+
+- `TOTAL` folds a grouping away: here every project and type, leaving facilities.
+- Numbers read as on the web pages; `SAM_RAW_OUTPUT=1` prints them exact.
+
+::: {.notes}
+Run 2026-10-03 against the obfuscated test database (port 3307); amounts are real, names are not.
+allocations accepts TOTAL for --resource, --facility, --allocation-type and --project, plus
+--total-{resources,facilities,types,projects}, --active-at, --show-usage (src/cli/cmds/search.py:224).
+Formatting: sam.fmt (exact up to 100,000, compact above); SAM_RAW_OUTPUT (src/config.py:45-47,
+src/sam/fmt.py:11,116,131).
+:::
+
+## Built for scripts
+
+```text
+$ sam-search --format json allocations --resource Derecho \
+      --project TOTAL --allocation-type TOTAL \
+    | jq -r '.rows[] | "\(.facility)\t\(.count)"' | head -3
+UNIV    911
+ASD     2
+CISL    11
+$ sam-search --format json project NOSUCH01; echo "exit=$?"
+{"kind": "project", "error": "not_found", "projcode": "NOSUCH01"}
+exit=1
+```
+
+- Every JSON reply names its `kind`; dates are ISO, amounts are plain numbers.
+- Exit codes: 0 found, 1 not found, 2 an error, or findings from a check.
+- Most writes refuse `--format json`: their output is for a person.
+- The same rules hold for `jobhist` in `hpc-usage-queries`, on purpose.
+
+::: {.notes}
+JSON output: src/cli/core/output.py:14-32 (dates to ISO, Decimal to float, sets to sorted lists,
+indent=2); the spec is docs/plans/implemented/CLI_JSON.md:92-124. The not-found reply above is
+pretty-printed in real life (indent=2); shown on one line to fit. Exit codes: src/cli/core/utils.py:7-10
+(EXIT_KEYBOARD_INTERRUPT=130 is defined but unused); audits such as project --validate and contracts
+--validate exit 2 when they find something (src/cli/README.md:144-145). Writes refuse JSON with
+json_unsupported_for_writes (src/cli/project/commands.py:137, src/cli/cmds/admin.py:849-855), except
+tasks --run and accounting --disk. Lockstep with jobhist: CLAUDE.md "Related projects"; no test
+enforces it. jobhist adds file exporters (dat, csv, md, json-file); SAMuel's CLIs print rich or json.
+:::
+
+## The operator's commands {.smaller .center .fill}
+
+| Command | Does | To try it safely |
+|----------------------------------|--------------------------------------------|----------------------|
+| `project --validate`, `--audit-trees` | checks one project, or every tree | read-only; exit 2 on findings |
+| `project --reconcile`, `--reconcile-lead-admin --all` | puts members on every live resource | `--dry-run` |
+| `accounting --comp`, `--disk` | posts charge summaries | `--dry-run` |
+| `tasks --run X`, `--force --occurrence` | runs, or replays, a scheduled task | `--dry-run` |
+| `rbac --effective`, `--diff`, `--grant`, `--revoke` | reads and edits the role catalog | the reads; writes have none |
+| `xras --readiness` and the other reports | XRAS boards from the sweep's snapshot | read-only |
+| `cache --refresh` | clears the running web app's caches | needs an API key |
+
+† All `sam-admin`; the reports and checks never write.
+
+::: {.notes}
+src/cli/cmds/admin.py: project (:85), contracts (:224), accounting (:290), cache (:627), xras (:709),
+tasks (:881), last-seen (:961), rbac (:978). Reconcile --dry-run uses a savepoint
+(src/cli/project/commands.py:465-467); accounting --dry-run (:304); tasks --dry-run writes no ledger
+rows (:892); --occurrence needs --force and takes a manual run key (:894-934). rbac writes (--seed,
+--seed-keys, --grant, --revoke, the last a stamp, not a delete) have no dry-run. The xras reports read
+the sweep's published snapshot (src/cli/xras/commands.py:247-286), so a laptop without one shows
+nothing. cache --refresh POSTs to /api/v1/admin/cache/refresh and needs SAM_API_USER and SAM_API_PASS
+(admin.py:639-694). Network: sam-search awards (NSF, USAspending) and contracts --check-sources.
+:::
+
+## TL;DR - at the prompt {.vcenter scale="1.15"}
+
+- **`sam-search` reads, `sam-admin` also writes,** extending the same user and project commands.
+- **TOTAL folds any grouping;** numbers read like the web pages.
+- **JSON with a kind, and three exit codes,** the same as `jobhist`.
+- **Most writes have a dry run;** the role catalog's don't.

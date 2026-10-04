@@ -1,0 +1,8 @@
+---
+title: "SAMuel, Appendix G"
+subtitle: "At the Prompt"
+author: "Ben Kirk, NCAR/CISL"
+date: last-modified
+---
+
+{{< include _G-cli.qmd >}}

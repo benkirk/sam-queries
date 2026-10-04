@@ -1,0 +1,8 @@
+---
+title: "SAMuel, Part 4"
+subtitle: "Who Talks to Whom"
+author: "Ben Kirk, NCAR/CISL"
+date: last-modified
+---
+
+{{< include _4-systems.qmd >}}

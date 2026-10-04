@@ -36,7 +36,14 @@
 {% if cache_state.usage %}
 <hr class="my-3">
 <div class="text-muted small mb-2"><strong>Allocation usage cache</strong></div>
-{{ cache_row(cache_state.usage) }}
+{% for _b in cache_state.usage %}
+  <div class="text-muted small mb-1">
+    {{ 'Calendar burn' if _b.name == 'allocation_burn' else 'Usage' }}
+    <code class="ms-1">{{ _b.name }}</code>
+  </div>
+  {{ cache_row(_b) }}
+  {% if not loop.last %}<div class="mb-2"></div>{% endif %}
+{% endfor %}
 {% endif %}
 
 {% if cache_state.scans %}

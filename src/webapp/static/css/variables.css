@@ -151,6 +151,14 @@
     --data-facility-5: #9a7b00;
     --data-facility-6: #6b46c1;
 
+    /* --- Calendar burn: diverging, under pace (blue) -> on pace (gray) -> over (red) ---
+       Adjacent steps >= 16.8 OKLab dE, >= 14.5 under protan/deutan/tritan; on --surface-card. */
+    --data-burn-0: #1f63b0;
+    --data-burn-1: #86b6e6;
+    --data-burn-2: #dde1e5;
+    --data-burn-3: #f0a07c;
+    --data-burn-4: #c0272d;
+
     /* --- Text --- */
     --text-primary:   #323133;   /* body copy */
     --text-primary-rgb: 50, 49, 51;
@@ -349,6 +357,14 @@
     --data-facility-4: #de4b80;
     --data-facility-5: #ad8d1c;
     --data-facility-6: #8f70e8;
+
+    /* --- Calendar burn: dark steps, adjacent >= 15.6 dE, >= 11.2 under CVD; the gray
+       midpoint is 1.6:1 on the facility rows' --surface-secondary, so on pace still shows. --- */
+    --data-burn-0: #7ab2fa;
+    --data-burn-1: #4a82c4;
+    --data-burn-2: #4b5664;
+    --data-burn-3: #b5614a;
+    --data-burn-4: #ff9a80;
 
     /* --- Text --- */
     --text-primary:     #e9ecef;
