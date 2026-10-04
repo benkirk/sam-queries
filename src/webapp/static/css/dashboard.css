@@ -1574,6 +1574,30 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     grid-column: 2 / -1;
 }
 
+/* Detail modals (transaction, adjustment, XRAS action): label and value columns. */
+.project-stats-box.stats-two-col {
+    grid-template-columns: auto minmax(0, 1fr);
+}
+
+/* A verbatim comment or payload inside a stat grid. */
+.stat-pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.85rem;
+    font-weight: normal;
+}
+
+.stat-pre-raw {
+    word-break: break-all;
+    font-size: 0.75rem;
+    max-height: 20rem;
+    overflow: auto;
+}
+
+.stat-value-plain {
+    font-weight: normal;
+}
+
 .stat-label {
     color: var(--text-tertiary);
     font-weight: var(--font-weight-semi-bold);
