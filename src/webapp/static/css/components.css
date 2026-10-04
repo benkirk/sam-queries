@@ -462,6 +462,10 @@ tr:hover > td .btn.btn-row-attention {
     background-size: calc(var(--depth, 0) * var(--tree-step)) 100%;
     background-position: 0.95rem 0;
 }
+/* A truncating tree cell still shows its indent plus an 8-character projcode. */
+.table td.tree-cell.tree-guides.cell-truncate {
+    min-width: calc(var(--depth, 0) * var(--tree-step) + 6.5rem);
+}
 .table td.tree-cell.tree-d2 {
     background-image: linear-gradient(var(--border-default), var(--border-default)),
                       linear-gradient(var(--border-default), var(--border-default));

@@ -92,6 +92,7 @@
        role="tabpanel"
        aria-labelledby="alloc-pill-{{ tab_idx }}">
 
+    <div class="table-responsive">
     <table class="table table-sm align-middle mb-0 project-alloc-tree">
       <thead class="table-subtle">
         <tr>
@@ -100,7 +101,7 @@
           <th class="col-num">Allocated</th>
           <th class="col-num">Used</th>
           <th class="col-num">Remaining</th>
-          <th class="col-shrink"><span class="visually-hidden">Actions</span></th>
+          <th class="col-shrink" aria-label="Actions"></th>
         </tr>
       </thead>
       {% for resource_name in tab_data.names %}
@@ -149,6 +150,7 @@
       {% endif %}
       {% endfor %}
     </table>
+    </div>
 
   </div>{# /tab-pane #}
   {% endfor %}
