@@ -175,3 +175,18 @@
     padding: 2rem;
     font-style: italic;
 }
+
+/* ===================================================================
+   Google Calendar embed (events_page.html)
+   =================================================================== */
+
+.calendar-embed {
+    display: block;
+    border: 0;
+}
+
+/* The embed is cross-origin, so its colors cannot be themed. Inverting it and
+   rotating hue by half a turn gives a dark grid with event colors roughly kept. */
+:root[data-bs-theme="dark"] .calendar-embed {
+    filter: invert(0.9) hue-rotate(180deg);
+}
