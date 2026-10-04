@@ -110,8 +110,13 @@ def test_modal_alerts_counts_only_modal_body_templates(tmp_path):
                   '<div class="alert alert-info"></div><div class="alert alert-warning"></div>{% endcall %}')
     card = _write(tmp_path, 'card.html', '<div class="card"><div class="alert alert-info"></div></div>')
     quiet = _write(tmp_path, 'quiet.html', '<div class="modal-body"><p>ok</p></div>')
-    assert [(r['file'].rsplit('/', 1)[1], r['count']) for r in inv.modal_alerts([form, card, quiet])] == [
-        ('form.html', 2)]
+    # A fragment swapped into an open modal body counts; the card whose rows open that modal does not.
+    swapped = _write(tmp_path, 'swapped.html', '<form hx-post="/x" hx-target="#auditDetailsModalBody">'
+                     '<div class="alert alert-info"></div></form>')
+    opener = _write(tmp_path, 'opener.html', '<div class="alert alert-info"></div>'
+                    '<tr data-bs-toggle="modal" hx-get="/x" hx-target="#auditDetailsModalBody"></tr>')
+    rows = inv.modal_alerts([form, card, quiet, swapped, opener])
+    assert [(r['file'].rsplit('/', 1)[1], r['count']) for r in rows] == [('form.html', 2), ('swapped.html', 1)]
 
 
 def test_js_dup_names_and_listeners(tmp_path):

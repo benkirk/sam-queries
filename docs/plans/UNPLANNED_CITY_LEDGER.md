@@ -528,7 +528,8 @@ accent headers everywhere; one PR; the three bugs first.
   deactivate; the XRAS merge and action forms.
 - [x] Submit buttons say the bare verb when the header names the thing (Ben, mid-sweep).
 - [x] The orphan usage modal is deleted (Ben). It replaced step 19.
-- [x] `modal-alerts` detector plus an equality ratchet (`test_template_detectors.py`, 20).
+- [x] `modal-alerts` detector plus an equality ratchet (`test_template_detectors.py`, 33: 20 in
+  the form and shell templates, 13 in the XRAS fragments that swap into the details modal).
 
 **Dialog natural height**, before -> after (light; 35 modals with both captures). Total:
 23,143 -> 20,698 at 1440px (-11%) and 29,968 -> 24,455 at 390px (-18%).

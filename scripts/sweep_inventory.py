@@ -264,14 +264,21 @@ def bs4_classes(template_files, css_files):
 
 
 _MODAL_BODY = re.compile(r'htmx_form\(|modal_title\(|class="modal-body')
+# A fragment that targets a modal body and carries no opener lives inside that modal (the XRAS forms).
+_MODAL_BODY_TARGET = re.compile(r'hx-target="#\w+ModalBody"')
+
+
+def _in_modal_body(text):
+    return bool(_MODAL_BODY.search(text)
+                or (_MODAL_BODY_TARGET.search(text) and 'data-bs-toggle="modal"' not in text))
 
 
 def modal_alerts(template_files):
-    """``class="alert`` per modal-body template (htmx_form, modal_title or .modal-body), worst first."""
+    """``class="alert`` per modal-body template, worst first."""
     rows = []
     for path in template_files:
         text = read(path)
-        if _MODAL_BODY.search(text) and text.count('class="alert'):
+        if _in_modal_body(text) and text.count('class="alert'):
             rows.append({"file": path.as_posix(), "count": text.count('class="alert')})
     return sorted(rows, key=lambda r: (-r["count"], r["file"]))
 

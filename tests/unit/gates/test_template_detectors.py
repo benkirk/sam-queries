@@ -36,7 +36,7 @@ def test_row_actions_are_btn_row(monkeypatch):
     assert not sites, 'Icon-only outline buttons in table cells; use .btn btn-row:\n  ' + '\n  '.join(sites)
 
 
-MODAL_ALERTS = 20   # equality ratchet: lower it when a modal sheds an alert; never raise it
+MODAL_ALERTS = 33   # equality ratchet: lower it when a modal sheds an alert; never raise it
 
 
 def test_modal_alert_count_only_goes_down(monkeypatch):
