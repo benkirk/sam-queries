@@ -128,3 +128,11 @@ def test_jscpd_is_skipped_without_npx(monkeypatch, capsys):
     monkeypatch.setattr(inv.shutil, 'which', lambda name: None)
     inv.run_jscpd('js')
     assert 'skipped, npx not found' in capsys.readouterr().out
+
+
+def test_plans_stale_is_skipped_without_git(monkeypatch, capsys):
+    real_which = inv.shutil.which
+    monkeypatch.setattr(inv.shutil, 'which', lambda name: None if name == 'git' else real_which(name))
+    monkeypatch.chdir(REPO)
+    assert inv.main(['--area', 'docs']) == 0
+    assert '== plans-stale: skipped, git not found' in capsys.readouterr().out

@@ -258,6 +258,9 @@ def plans_stale(plan_files, merged, last_touched, now, idle_days=PLAN_IDLE_DAYS)
 
 
 def _git_lines(*args):
+    """Output lines of a git command, [] on failure, None when git is not installed (the CI image)."""
+    if shutil.which("git") is None:
+        return None
     out = subprocess.run(["git", *args], capture_output=True, text=True)
     return out.stdout.splitlines() if out.returncode == 0 else []
 
@@ -268,8 +271,10 @@ def _plan_inputs(use_gh=False):
     Offline, a PR counts as merged when ``(#N)`` appears in a MERGED_REF commit message; that misses
     PRs squashed into a promotion with an empty body. ``use_gh`` asks ``gh pr list --state merged``.
     """
-    plans = [Path(p) for p in _git_lines("ls-files", f"{PLANS_ROOT.as_posix()}/*.md")
-             if Path(p).parent == PLANS_ROOT]
+    tracked = _git_lines("ls-files", f"{PLANS_ROOT.as_posix()}/*.md")
+    if tracked is None:
+        return None
+    plans = [Path(p) for p in tracked if Path(p).parent == PLANS_ROOT]
     ref = MERGED_REF if _git_lines("rev-parse", "--verify", "-q", MERGED_REF) else "HEAD"
     merged = None
     if use_gh and shutil.which("gh"):
@@ -287,8 +292,7 @@ def _plan_inputs(use_gh=False):
 
 
 def changed_since(rev):
-    out = subprocess.run(["git", "diff", "--name-only", rev], capture_output=True, text=True)
-    return {Path(p).as_posix() for p in out.stdout.split()}
+    return {Path(p).as_posix() for p in _git_lines("diff", "--name-only", rev) or []}
 
 
 def _touches(sites, changed):
@@ -332,8 +336,8 @@ def run(detectors, changed=None, use_gh=False):
                           "unused_actions": [r for r in dead["unused_actions"] if keep([r["file"]])],
                           "unregistered_actions": dead["unregistered_actions"] if changed is None else []}
     if "plans-stale" in detectors:
-        plans, merged, touched = _plan_inputs(use_gh)
-        out["plans-stale"] = plans_stale(plans, merged, touched, time.time())
+        inputs = _plan_inputs(use_gh)
+        out["plans-stale"] = None if inputs is None else plans_stale(*inputs, time.time())
     return out
 
 
@@ -395,7 +399,9 @@ def report(result, top):
             print(f"  action {name}  (in markup, never registered; may be a third-party widget's)")
         print(f"  total: {len(dead['globals'])} unreferenced globals, {len(dead['unused_actions'])} unused actions, "
               f"{len(dead['unregistered_actions'])} unregistered actions")
-    if "plans-stale" in result:
+    if "plans-stale" in result and result["plans-stale"] is None:
+        print("\n== plans-stale: skipped, git not found")
+    elif "plans-stale" in result:
         rows = result["plans-stale"]
         print(f"\n== plans-stale: top-level plans; RETIRE = every cited PR merged, no open "
               f"**Status:**, idle >= {PLAN_IDLE_DAYS} days")
