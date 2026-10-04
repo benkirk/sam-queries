@@ -24,18 +24,6 @@
 }
 
 /* ===================================================================
-   Stat Boxes (User Dashboard)
-   =================================================================== */
-
-.stat-box {
-    background: var(--surface-tertiary);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-sm);
-    padding: 15px;
-    text-align: center;
-}
-
-/* ===================================================================
    Progress Bar Sizes
    =================================================================== */
 
@@ -93,16 +81,8 @@
    Table Column Widths
    =================================================================== */
 
-.table-col-expand {
-    width: 30px;
-}
-
 .table-col-usage {
     width: 200px;
-}
-
-.table-col-actions {
-    width: 180px;
 }
 
 /* ===================================================================
@@ -119,20 +99,6 @@
 
 .expired-allocation {
     opacity: 0.6;
-}
-
-/* ===================================================================
-   Dropdowns
-   =================================================================== */
-
-.dropdown-list {
-    display: none;
-    max-height: 200px;
-    overflow-y: auto;
-}
-
-.dropdown-list.active {
-    display: block;
 }
 
 .scrollable-list {
@@ -163,14 +129,6 @@
     width: 1em;
     height: 1em;
     vertical-align: -0.125em;
-}
-
-/* ===================================================================
-   Spacing Utilities
-   =================================================================== */
-
-.section-spacing {
-    margin-top: 30px;
 }
 
 /* ===================================================================
@@ -388,11 +346,6 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
 /* A child row under a group header: its text lines up with the group label. */
 .table td.cell-child {
     padding-left: 1.85rem;
-}
-
-.table .col-chevron {
-    width: 1.5rem;
-    padding-right: 0;
 }
 
 /* text-overflow needs max-width:0 on an auto-layout table cell. */

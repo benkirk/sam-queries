@@ -112,17 +112,6 @@
 }
 
 /* ===================================================================
-   Status Severity Border Utilities
-   Used to replace inline style="border-left: ..." attributes.
-   !important matches Bootstrap's .border-start specificity.
-   =================================================================== */
-
-.border-status-success { border-left: 4px solid var(--bs-success) !important; }
-.border-status-info    { border-left: 4px solid var(--bs-info) !important; }
-.border-status-primary { border-left: 4px solid var(--bs-primary) !important; }
-.border-status-warning { border-left: 4px solid var(--bs-warning) !important; }
-
-/* ===================================================================
    Login Node Load Stack
    Three tightly-stacked micro progress bars (1min / 5min / 15min).
    When all three values are equal they read as a single bar.
