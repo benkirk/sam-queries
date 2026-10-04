@@ -5,7 +5,7 @@ A report, not a gate: it always exits 0, and every detector is a heuristic to re
 The totals line per detector is what one sweep compares with the last (docs/plans/UNPLANNED_CITY_LEDGER.md).
 
     scripts/sweep_inventory.py                     # every detector, whole tree
-    scripts/sweep_inventory.py --area css          # one area: py | js | css | templates
+    scripts/sweep_inventory.py --area css          # one area: py | js | css | templates | docs
     scripts/sweep_inventory.py --since origin/staging~5 --top 30
     scripts/sweep_inventory.py --json > inventory.json
     scripts/sweep_inventory.py --area js --jscpd   # also run jscpd through npx, when present
@@ -19,6 +19,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -43,6 +44,16 @@ _STATUS = re.compile(r"^\*\*Status:?\*?\*?:?\s*(.+)$", re.M | re.I)
 OPEN_STATUS = ("unbuilt", "deferred", "brainstorm", "sketch", "in progress", "not started")
 MIN_FUNCTION_NODES = 40   # smaller bodies repeat by accident (getters, one-line guards)
 _TOKEN = re.compile(r"[A-Za-z_][\w-]*")
+# Styled on purpose though nothing names them yet; css-dead reports these apart, and flags a stale entry.
+CSS_KEEP = {
+    "table-danger": "dark-mode guard for Bootstrap's contextual table variant",
+    "table-success": "dark-mode guard for Bootstrap's contextual table variant",
+}
+# A stem followed by an interpolation: Jinja {{ / ~, JS ${ / +, Python f-string { / %s.
+_DYNAMIC_STEM = re.compile(r"""([A-Za-z_][\w-]*-)(?=\{|\$\{|%s|['"]\s*[+~])""")
+_ATTR_OPEN = re.compile(r"""([\w:-]+)=\s*["'][^"'<>]*$""")
+_NOT_CLASS_ATTRS = ("id", "for", "name", "href")
+JSCPD_IGNORE_PATTERN = r"/\*\s*=+"   # section banners: every /* ==== */ pair otherwise reads as a clone
 
 
 def files(root, pattern):
@@ -148,25 +159,41 @@ def _selector_classes(selector):
     return set(re.findall(r"\.(-?[_a-zA-Z][\w-]*)", re.sub(r"\[[^\]]*\]", "", selector)))
 
 
-def css_dead(css_files, corpus_files):
+def _dynamic_stems(texts):
+    """Stems (``burn-``) built into a class at runtime; an ``id=``/``for=``/``data-*=`` value does not count."""
+    stems = set()
+    for text in texts:
+        for match in _DYNAMIC_STEM.finditer(text):
+            attr = _ATTR_OPEN.search(text, max(0, match.start() - 200), match.start())
+            if attr and (attr.group(1) in _NOT_CLASS_ATTRS or attr.group(1).startswith("data-")):
+                continue
+            stems.add(match.group(1))
+    return stems
+
+
+def css_dead(css_files, corpus_files, keep=CSS_KEEP):
     """Classes our CSS styles that no template, script or Python string names.
 
-    A class whose stem (``burn-`` for ``burn-3``) appears is marked ``dynamic``: likely built at runtime.
+    ``dynamic``: the class's stem (``burn-`` for ``burn-3``) is interpolated somewhere, so it is
+    likely built at runtime. ``kept``: the ``keep`` reason. ``stale_keeps``: keep entries no CSS styles.
     """
+    texts = [read(path) for path in corpus_files]
     seen = set()
-    for path in corpus_files:
-        seen.update(_TOKEN.findall(read(path)))
-    rows = []
+    for text in texts:
+        seen.update(_TOKEN.findall(text))
+    stems = _dynamic_stems(texts)
+    rows, styled = [], set()
     for path in css_files:
         defined = Counter()
         for selector, _ in _css_rules(read(path)):
             defined.update(_selector_classes(selector))
+        styled.update(defined)
         for cls in sorted(defined):
             if cls not in seen:
-                stem = cls.rpartition("-")[0] + "-"
                 rows.append({"class": cls, "file": path.as_posix(), "rules": defined[cls],
-                             "dynamic": stem != "-" and stem in seen})
-    return sorted(rows, key=lambda r: (r["dynamic"], r["file"], r["class"]))
+                             "dynamic": cls.rpartition("-")[0] + "-" in stems, "kept": keep.get(cls)})
+    rows.sort(key=lambda r: (bool(r["kept"]), r["dynamic"], r["file"], r["class"]))
+    return {"classes": rows, "stale_keeps": sorted(set(keep) - styled)}
 
 
 def css_shape(css_files):
@@ -319,7 +346,9 @@ def run(detectors, changed=None, use_gh=False):
     if "dup-functions" in detectors:
         out["dup-functions"] = [r for r in dup_functions(py) if keep(r["sites"])]
     if "css-dead" in detectors:
-        out["css-dead"] = [r for r in css_dead(css, corpus) if keep([r["file"]])]
+        dead = css_dead(css, corpus)
+        out["css-dead"] = {"classes": [r for r in dead["classes"] if keep([r["file"]])],
+                           "stale_keeps": dead["stale_keeps"] if changed is None else []}
     if "css-shape" in detectors:
         shape = css_shape(css)
         out["css-shape"] = {"files": [r for r in shape["files"] if keep([r["file"]])],
@@ -358,12 +387,16 @@ def report(result, top):
             print(f"  {r['size']:4d} nodes x{r['copies']}  " + " | ".join(r["sites"]))
         print(f"  total: {len(rows)} groups, {sum(r['copies'] - 1 for r in rows)} extra copies")
     if "css-dead" in result:
-        rows = result["css-dead"]
+        rows, stale = result["css-dead"]["classes"], result["css-dead"]["stale_keeps"]
         print("\n== css-dead: classes styled but never named (check dynamic names before deleting)")
         for r in rows[:top]:
-            tag = "  (dynamic?)" if r["dynamic"] else ""
+            tag = f"  (kept: {r['kept']})" if r["kept"] else "  (dynamic?)" if r["dynamic"] else ""
             print(f"  .{r['class']}  ({r['rules']} rule{'s' if r['rules'] != 1 else ''})  {r['file']}{tag}")
-        print(f"  total: {len(rows)} classes, {sum(r['dynamic'] for r in rows)} with a dynamic stem")
+        for cls in stale:
+            print(f"  .{cls}  (stale CSS_KEEP entry: no CSS styles it)")
+        dead = [r for r in rows if not r["kept"]]
+        print(f"  total: {len(dead)} classes, {sum(r['dynamic'] for r in dead)} with a dynamic stem, "
+              f"{len(rows) - len(dead)} kept, {len(stale)} stale keeps")
     if "css-shape" in result:
         shape = result["css-shape"]
         print("\n== css-shape: lines, rules and !important per file; repeated declaration blocks")
@@ -415,18 +448,37 @@ def report(result, top):
         print(f"  total: {len(rows)} plans, {sum(r['candidate'] for r in rows)} retirement candidates")
 
 
+def jscpd_pairs(report, cwd):
+    """Clone pairs from jscpd's JSON report as ``file:start-end <-> file:start-end (N lines)``."""
+    def site(f):
+        return f"{os.path.relpath(f['name'], cwd)}:{f['start']}-{f['end']}"
+    return [f"{site(d['firstFile'])} <-> {site(d['secondFile'])}  ({d['lines']} lines)"
+            for d in report.get("duplicates", [])]
+
+
 def run_jscpd(area):
-    """jscpd over the area's roots with the repo's .jscpd.json, when npx is installed."""
+    """jscpd over the area's roots with the repo's .jscpd.json, when npx is installed; every pair printed."""
     if shutil.which("npx") is None:
         print("\n== jscpd: skipped, npx not found")
         return
     roots = {"py": [PY_ROOT], "js": [JS_ROOT], "css": [CSS_ROOT], "templates": [TEMPLATE_ROOT]}
     paths = roots.get(area, [PY_ROOT, JS_ROOT, CSS_ROOT, TEMPLATE_ROOT])
-    cmd = ["npx", "--yes", "jscpd", "--config", ".jscpd.json", "--reporters", "console",
-           "--ignore", "**/vendor/**,**/__pycache__/**", *map(str, paths)]
+    cmd = ["npx", "--yes", "jscpd", "--config", ".jscpd.json", "--ignore", "**/vendor/**,**/__pycache__/**",
+           "--ignore-pattern", JSCPD_IGNORE_PATTERN, *map(str, paths)]
     print("\n== jscpd: " + " ".join(cmd))
-    proc = subprocess.run(cmd, capture_output=True, text=True, env={**os.environ, "NO_COLOR": "1"})
-    print("\n".join((proc.stdout or proc.stderr).splitlines()[-40:]))
+    with tempfile.TemporaryDirectory() as out_dir:
+        proc = subprocess.run([*cmd, "--reporters", "json", "--output", out_dir, "--silent", "--absolute"],
+                              capture_output=True, text=True)
+        try:
+            report = json.loads((Path(out_dir) / "jscpd-report.json").read_text())
+        except (OSError, ValueError):
+            print("\n".join((proc.stderr or proc.stdout).splitlines()[-20:]) or "  no report written")
+            return
+    for pair in jscpd_pairs(report, os.getcwd()):
+        print(f"  {pair}")
+    total = report["statistics"]["total"]
+    print(f"  total: {total['clones']} clones, {total['duplicatedLines']} of {total['lines']} lines "
+          f"({total['percentage']:.2f}%) in {total['sources']} files")
 
 
 def main(argv=None):
