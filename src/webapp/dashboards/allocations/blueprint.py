@@ -28,6 +28,7 @@ from sam.queries.allocations import (
     get_recent_allocation_transactions,
     _aggregate_usage_to_total,
 )
+from sam.queries.dashboard import allocation_timeline
 from sam.queries.charges import (
     CHARGE_ADJUSTMENT_SORT_COLUMNS,
     count_recent_charge_adjustments,
@@ -972,6 +973,31 @@ def htmx_calendar_rows(resource_name):
     )
 
 
+def _as_resource_row(row: Dict, resource_type: str, active_at: datetime) -> Dict:
+    """A usage-summary row in the resource-dict shape ``allocation_cells`` reads, plus its dates."""
+    start, end, used = row.get('start_date'), row.get('end_date'), row.get('total_used')
+    elapsed_pct, bar_state = allocation_timeline(start, end, active_at)
+    return {
+        'projcode': row['projcode'],
+        'resource_type': resource_type,
+        'allocated': row['total_amount'],
+        'used': used,
+        'remaining': row['total_amount'] - used if used is not None else None,
+        'percent_used': row.get('percent_used'),
+        'is_inheriting': row.get('is_inheriting', False),
+        'self_used': row.get('self_used'),
+        'self_percent_used': row.get('self_percent_used'),
+        'root_projcode': row.get('root_projcode'),
+        'annualized_rate': row.get('annualized_rate'),
+        'start_date': start,
+        'end_date': end,
+        'duration_days': row.get('duration_days'),
+        'elapsed_pct': elapsed_pct,
+        'bar_state': bar_state,
+        'days_left': (end - active_at).days if end and end >= active_at else None,
+    }
+
+
 @bp.route('/htmx/project_table')
 @login_required
 @require_permission_any_facility(Permission.VIEW_PROJECTS)
@@ -1030,27 +1056,16 @@ def projects_fragment():
     if not projects:
         return '<p class="text-muted mb-0">No active projects found</p>'
 
-    # Enrich with project titles
-    from sam.projects.projects import Project
-    for project_data in projects:
-        project = find_project_by_code(db.session, project_data['projcode'])
-        project_data['title'] = project.title if project else None
-
-    # Sort by used descending
-    projects.sort(key=lambda p: p.get('total_used', 0.0), reverse=True)
-
-    # Get resource type for conditional display
-    resource_types = get_resource_types(db.session)
-    resource_type = resource_types.get(resource, 'HPC')  # Default to HPC if not found
+    resource_type = get_resource_types(db.session).get(resource, 'HPC')
+    rows = [_as_resource_row(p, resource_type, active_at) for p in projects]
+    for row in rows:
+        project = find_project_by_code(db.session, row['projcode'])
+        row['title'] = project.title if project else None
+    rows.sort(key=lambda r: r['used'] or 0.0, reverse=True)
 
     return render_template(
         'dashboards/allocations/partials/project_table.html',
-        projects=projects,
-        resource=resource,
-        facility=facility,
-        allocation_type=allocation_type,
-        active_at=active_at.strftime('%Y-%m-%d'),
-        active_at_dt=active_at,
+        projects=rows,
         resource_type=resource_type,
         can_view_projects=True,  # route requires VIEW_PROJECTS
     )

@@ -110,7 +110,7 @@ class DashboardResource(TypedDict):
     # allocated), not cumulative TiB-year burn.
     activity_date: Optional[date]
 
-    # Timeline progress (mirrors allocations dashboard project_table.html)
+    # Timeline progress (allocation_timeline)
     elapsed_pct: float
     bar_state: str  # one of: 'no-dates', 'open-ended', 'expired', 'active', 'no-duration'
 
@@ -118,6 +118,21 @@ class DashboardResource(TypedDict):
     # have a non-null first_threshold or second_threshold; otherwise None)
     rolling_30: Optional[Dict]
     rolling_90: Optional[Dict]
+
+
+def allocation_timeline(start_date: Optional[datetime], end_date: Optional[datetime],
+                        now: datetime) -> tuple[float, str]:
+    """(elapsed_pct, bar_state) of an allocation period at ``now``; states as on DashboardResource."""
+    if not start_date:
+        return 0, 'no-dates'
+    if not end_date:
+        return 50, 'open-ended'
+    if end_date < now:
+        return 100, 'expired'
+    duration_days = (end_date - start_date).days
+    if duration_days <= 0:
+        return 0, 'no-duration'
+    return max(0.0, min(100.0, round((now - start_date).days / duration_days * 100, 1))), 'active'
 
 
 def _build_project_resources_data(project: Project,
@@ -191,24 +206,7 @@ def _build_project_resources_data(project: Project,
         end_str   = end_date.strftime('%Y-%m-%d')   if end_date   else 'open'
         date_group_key = f"{start_str}_{end_str}"
 
-        # Timeline progress (mirrors allocations dashboard project_table.html logic)
-        if not start_date:
-            elapsed_pct = 0
-            bar_state   = 'no-dates'
-        elif not end_date:
-            elapsed_pct = 50
-            bar_state   = 'open-ended'
-        elif end_date < now:
-            elapsed_pct = 100
-            bar_state   = 'expired'
-        else:
-            duration_days = (end_date - start_date).days
-            if duration_days > 0:
-                elapsed_pct = max(0.0, min(100.0, round((now - start_date).days / duration_days * 100, 1)))
-                bar_state   = 'active'
-            else:
-                elapsed_pct = 0
-                bar_state   = 'no-duration'
+        elapsed_pct, bar_state = allocation_timeline(start_date, end_date, now)
 
         rwin = rolling_usage.get(resource_name, {}).get('windows', {})
         resource_type = usage.get('resource_type', 'HPC')
@@ -599,23 +597,7 @@ def build_user_projects_resources_batched(
         end_str = query_alloc.end_date.strftime('%Y-%m-%d') if query_alloc.end_date else 'open'
         date_group_key = f"{start_str}_{end_str}"
 
-        if not start_date:
-            elapsed_pct = 0
-            bar_state = 'no-dates'
-        elif not query_alloc.end_date:
-            elapsed_pct = 50
-            bar_state = 'open-ended'
-        elif query_alloc.end_date < now:
-            elapsed_pct = 100
-            bar_state = 'expired'
-        else:
-            duration_days = (query_alloc.end_date - start_date).days
-            if duration_days > 0:
-                elapsed_pct = max(0.0, min(100.0, round((now - start_date).days / duration_days * 100, 1)))
-                bar_state = 'active'
-            else:
-                elapsed_pct = 0
-                bar_state = 'no-duration'
+        elapsed_pct, bar_state = allocation_timeline(start_date, query_alloc.end_date, now)
 
         if state is not None:
             stored = state[query_alloc.allocation_id].rolling_windows or {}
