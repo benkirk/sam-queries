@@ -96,6 +96,72 @@ carve-out of the parent's total. Usage still rolls up to the parent project,
 and the parent's amount is not adjusted.
 {%- endmacro %}
 
+{% macro g_carve_out() -%}
+A <strong>standalone</strong> sub-project allocation on its parent's resource: it
+has its own amount, and that amount counts against the parent's total. What
+the parent has not carved out is its <em>unallocated</em> remainder.
+{%- endmacro %}
+
+{% macro g_over_carved() -%}
+Sub-project carve-outs add up to <strong>more than this allocation's
+amount</strong>, so its unallocated remainder is negative. Saving is still
+allowed; check the amounts for charging consistency.
+<code>sam-admin project --audit-trees</code> lists every case.
+{%- endmacro %}
+
+{% macro g_relink() -%}
+Makes a standalone sub-project allocation <strong>shared</strong> again: its
+amount and dates are overwritten to match the parent project's allocation, and
+later edits to the parent apply here. It undoes a detach.
+{%- endmacro %}
+
+{% macro g_propagate() -%}
+Creates a <strong>shared</strong> allocation, linked to this one, for every
+active sub-project with no allocation on this resource. Sub-projects that
+already hold one, detached or not, are left alone.
+{%- endmacro %}
+
+{% macro g_align() -%}
+Sets every dated resource in the tree to <strong>one period</strong>: the
+earliest start to the latest end among the allocations active at the chosen
+date. Amounts are unchanged and open-ended allocations are left as they are.
+A wider period also widens the window usage is charged against.
+{%- endmacro %}
+
+{% macro g_grace_window() -%}
+After an allocation ends, access continues for a customary
+<strong>90 days</strong>, and SAM keeps showing the expired allocation through
+that window. A view of only expired allocations is not an active one.
+{%- endmacro %}
+
+
+{# Resources and facilities #}
+{% macro g_fair_share() -%}
+The share of a resource a group is entitled to <strong>relative to its
+parent</strong>: a facility's share of the machine, an allocation type's share
+of its facility. A resource can override a facility's default for that
+resource alone.
+{%- endmacro %}
+
+{% macro g_charging_exempt() -%}
+Jobs on this resource are not charged against allocations.
+{%- endmacro %}
+
+{% macro g_commission_dates() -%}
+Active from the <strong>commission date</strong> until the
+<strong>decommission date</strong>; no decommission date means still in
+service. Retiring sets the decommission date rather than deleting the row.
+{%- endmacro %}
+
+
+{# Account requests #}
+{% macro g_invite_link(ttl_days=None) -%}
+The emailed link asks for the person's <strong>phone, country and academic
+status</strong> and records their acceptance of the terms of use; the account
+team is told once they finish.{% if ttl_days %} Valid for {{ ttl_days }} days.{% endif %}
+Nobody is mailed if SAM already knows the address.
+{%- endmacro %}
+
 
 {% macro g_elapsed() -%}
 Marks how far through the allocation period today falls — a pacing reference,
