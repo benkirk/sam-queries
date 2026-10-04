@@ -41,8 +41,7 @@ from sam.queries.usage_cache import (
 )
 from sam import fmt
 from sam.dates import parse_ymd, parse_ymd_or, start_of_today
-from sam.queries.lookups import find_project_by_code
-from sam.queries.projects import project_panels
+from sam.queries.projects import project_panels, project_titles
 from sam.export import Column, build_workbook
 from sam.schemas.forms import CreateChargeAdjustmentForm
 from flask import abort
@@ -1057,10 +1056,9 @@ def projects_fragment():
         return '<p class="text-muted mb-0">No active projects found</p>'
 
     resource_type = get_resource_types(db.session).get(resource, 'HPC')
-    rows = [_as_resource_row(p, resource_type, active_at) for p in projects]
-    for row in rows:
-        project = find_project_by_code(db.session, row['projcode'])
-        row['title'] = project.title if project else None
+    titles = project_titles(db.session, (p['projcode'] for p in projects))
+    rows = [{**_as_resource_row(p, resource_type, active_at), 'title': titles.get(p['projcode'])}
+            for p in projects]
     rows.sort(key=lambda r: r['used'] or 0.0, reverse=True)
 
     return render_template(
