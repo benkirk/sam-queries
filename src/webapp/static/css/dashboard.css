@@ -532,11 +532,12 @@ body {
 }
 
 /* ============================================================================
-   HEADINGS — Unity NCAR typography. Sizes/weights/line-heights match Unity's
-   responsive scale. h1/h2 use ncar-navy in main content; h3-h6 inherit body.
+   HEADINGS — Unity's responsive scale, except h1: a page title is 1.75rem at
+   every width (Unity's 3rem desktop h1 cost a data page ~40px of height).
+   h1/h2 use ncar-navy in main content; h3-h6 inherit body.
    ========================================================================= */
 
-h1, .h1 { font-size: 1.875rem; line-height: 2.625rem; font-weight: var(--font-weight-semi-bold); }
+h1, .h1 { font-size: 1.75rem;  line-height: 2.25rem;  font-weight: var(--font-weight-bold); }
 h2, .h2 { font-size: 1.25rem;  line-height: 1.875rem; font-weight: var(--font-weight-semi-bold); }
 h3, .h3 { font-size: 1.125rem; line-height: 1.875rem; font-weight: var(--font-weight-semi-bold); }
 h4, .h4 { font-size: 1rem;     line-height: 1.5rem;   font-weight: var(--font-weight-semi-bold); }
@@ -544,7 +545,6 @@ h5, .h5 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-weight-semi-bold); }
 
 @media (min-width: 64rem) {
-    h1, .h1 { font-size: 3rem;     line-height: 3.75rem;  font-weight: var(--font-weight-bold); }
     h2, .h2 { font-size: 2.25rem;  line-height: 3rem;     font-weight: var(--font-weight-bold); }
     h3, .h3 { font-size: 1.875rem; line-height: 2.625rem; }
     h4, .h4 { font-size: 1.5rem;   line-height: 2.25rem; }
@@ -558,14 +558,27 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .page-header {
-    margin-bottom: 1.875rem;
-    padding-bottom: 1.25rem;
-    border-bottom: 3px solid var(--ncar-blue);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.5rem 1rem;
+    margin-bottom: 1rem;
+}
+
+.page-header h1 {
+    margin: 0;
 }
 
 .page-header p {
     color: var(--text-tertiary);
-    font-size: 1rem;
+    margin: 0.125rem 0 0;
+}
+
+.page-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 /* ============================================================================
@@ -1678,10 +1691,6 @@ tr.tree-node-current {
    ========================================================================= */
 
 @media (max-width: 768px) {
-    .page-header h1 {
-        font-size: 1.75rem;
-    }
-
     .card-body {
         padding: 16px;
     }
@@ -1695,13 +1704,6 @@ tr.tree-node-current {
 
     .table {
         font-size: 0.875rem;
-    }
-}
-
-@media (max-width: 576px) {
-
-    .page-header {
-        margin-bottom: 20px;
     }
 }
 

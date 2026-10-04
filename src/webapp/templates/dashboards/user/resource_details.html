@@ -1,4 +1,5 @@
 {% extends 'dashboards/base.html' %}
+{% from 'dashboards/fragments/page_header.html' import page_header %}
 {% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
 {% from 'dashboards/user/partials/_resource_details_macros.html' import jobs_button, jobs_collapse_row with context %}
 {% from 'dashboards/fragments/help.html' import term with context %}
@@ -252,17 +253,13 @@
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h1>
-        <i class="fa-solid fa-chart-line"></i> Resource Usage Details
-    </h1>
-    <p class="text-muted">
-        Project: <strong>{{ projcode }}</strong> | Resource: <strong>{{ resource_name }}</strong>
-        {% if has_children and scope != projcode %}
-        | Scope: <strong>{{ scope }}</strong>
-        {% endif %}
-    </p>
-</div>
+{% set header_desc %}
+    Project: <strong>{{ projcode }}</strong> | Resource: <strong>{{ resource_name }}</strong>
+    {% if has_children and scope != projcode %}
+    | Scope: <strong>{{ scope }}</strong>
+    {% endif %}
+{% endset %}
+{{ page_header('Resource Usage Details', icon='chart-line', description=header_desc) }}
 
 <!-- Resource Summary Card -->
 <div class="card mb-4">
