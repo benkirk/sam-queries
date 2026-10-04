@@ -122,9 +122,9 @@
 {# ── Modals & forms ──────────────────────────────────────────────────── #}
 <section id="modals" class="mb-5">
   <h2 class="h4 border-bottom pb-1 mb-3">Modals &amp; forms</h2>
-  {% call specimen('modals.modal_scaffold', 'create + edit variants (hidden until opened; confirm_modal is the base singleton)') %}
-    {{ modals.modal_scaffold('galleryDemoModal', 'Demo modal', 'cube', 'galleryDemoBody', variant='create') }}
-    {{ modals.modal_scaffold('galleryDemoEditModal', 'Edit demo', 'edit', 'galleryDemoEditBody', variant='edit', size='lg') }}
+  {% call specimen('modals.modal_scaffold', 'default + lg (hidden until opened; confirm_modal is the base singleton)') %}
+    {{ modals.modal_scaffold('galleryDemoModal', 'Demo modal', 'cube', 'galleryDemoBody') }}
+    {{ modals.modal_scaffold('galleryDemoEditModal', 'Edit demo', 'edit', 'galleryDemoEditBody', size='lg') }}
     <p class="text-muted mb-0">Two scaffolds rendered above (hidden). Openers appear in the
        <a href="#openers">inert openers</a> section.</p>
   {% endcall %}
