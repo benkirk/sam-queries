@@ -36,7 +36,7 @@ document.body.addEventListener('showToast', function (evt) {
     var d = evt.detail || {};
     var toastEl = document.getElementById('htmxToast');
     if (!toastEl) return;
-    toastEl.className = 'toast align-items-center border-0 text-bg-' + (d.variant || 'success');
+    toastEl.className = 'toast align-items-center toast-' + (d.variant || 'success');
     document.getElementById('htmxToastBody').textContent = d.message || 'Done.';
     bootstrap.Toast.getOrCreateInstance(toastEl, { delay: 3500 }).show();
 });
