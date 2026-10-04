@@ -2529,7 +2529,7 @@ class _EditAllocationHandler(_AllocationFormHandler):
     success_message = 'Allocation updated successfully.'
     exception_map = (
         (InheritingAllocationException, (
-            'A shared allocation cannot be edited directly: edit the parent '
+            "A shared allocation's amount and dates cannot be edited directly: edit the parent "
             'allocation (changes apply here automatically), or Detach this one first.')),
         (AllocationOverlapError, lambda e: str(e)),
     )

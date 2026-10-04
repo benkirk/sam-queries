@@ -8,6 +8,8 @@ error-path assertion here exercises the full handler lifecycle:
 form_input -> load -> clean -> render_errors with the route's own context.
 """
 
+import re
+
 import pytest
 from sqlalchemy import func
 from sqlalchemy.orm import aliased
@@ -282,6 +284,19 @@ class TestEditAllocationModalActions:
         assert 'confirmBreakInheritance' not in body and 'break_inheritance' not in body
         assert f'Detach allocation #{inheriting_allocation_id} from its parent?' in body
         assert 'OVERSPENT' in body
+
+    def test_shared_form_edits_the_description_only(self, auth_client, inheriting_allocation_id):
+        body = auth_client.get(
+            f'/admin/htmx/edit-allocation-form/{inheriting_allocation_id}').get_data(as_text=True)
+        fields = {name: tag for tag, name in re.findall(r'(<input[^>]*name="(\w+)"[^>]*>)', body)}
+        assert all(' disabled' in fields[name] for name in ('amount', 'start_date', 'end_date'))
+        assert ' disabled' not in fields['description']
+        assert ' disabled' not in re.search(r'<button type="submit"[^>]*>', body).group(0)
+
+    def test_shared_amount_is_refused_inline(self, auth_client, inheriting_allocation_id):
+        resp = auth_client.post(f'/admin/htmx/edit-allocation/{inheriting_allocation_id}',
+                                data={'amount': '5'})
+        self._assert_inline(resp, 'amount and dates cannot be edited directly')
 
     @pytest.mark.parametrize('rule', ['detach-allocation', 'link-allocation-to-parent',
                                       'propagate-allocation-to-remaining'])
