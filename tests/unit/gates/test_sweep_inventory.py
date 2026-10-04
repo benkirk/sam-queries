@@ -55,11 +55,15 @@ def test_dup_functions_finds_renamed_copies_only_above_the_size_floor(tmp_path):
 def test_css_dead_marks_dynamic_stems(tmp_path):
     css = _write(tmp_path, 'site.css', '/* .commented { } */\n.used { color: red }\n.gone, .burn-3 { margin: 0 }\n'
                  '@media (max-width: 10px) { .used .also-gone { padding: 0 } }\n'
-                 'a[href$=".pdf"] { color: blue }\n')
-    page = _write(tmp_path, 'page.html', '<div class="used burn-{{ n }}"></div>')
-    rows = inv.css_dead([css], [page])
-    assert [(r['class'], r['dynamic']) for r in rows] == [
-        ('also-gone', False), ('gone', False), ('burn-3', True)]
+                 'a[href$=".pdf"] { color: blue }\n.col-x, .sev-hi, .guard { margin: 0 }\n')
+    page = _write(tmp_path, 'page.html', '<div class="used burn-{{ n }}"></div>'
+                  '<input id="col-{{ i }}"><label for="col-{{ i }}"></label><b data-k="col-{{ i }}"></b>')
+    script = _write(tmp_path, 'page.js', "el.className = 'sev-' + level;\n")
+    dead = inv.css_dead([css], [page, script], keep={'guard': 'reason', 'retired': 'reason'})
+    assert [(r['class'], r['dynamic'], r['kept']) for r in dead['classes']] == [
+        ('also-gone', False, None), ('col-x', False, None), ('gone', False, None),
+        ('burn-3', True, None), ('sev-hi', True, None), ('guard', False, 'reason')]
+    assert dead['stale_keeps'] == ['retired']
 
 
 def test_css_shape_counts_and_repeated_blocks(tmp_path):
@@ -122,6 +126,12 @@ def test_runs_on_the_real_tree(monkeypatch, capsys):
     for detector in ('private-imports', 'dup-functions', 'css-dead', 'css-shape', 'inline-styles', 'js-dup', 'js-dead',
                      'plans-stale'):
         assert f'== {detector}:' in out
+
+
+def test_jscpd_pairs_prints_every_clone_with_paths(tmp_path):
+    report = {'duplicates': [{'firstFile': {'name': str(tmp_path / 'css' / 'a.css'), 'start': 3, 'end': 9},
+                              'secondFile': {'name': str(tmp_path / 'b.css'), 'start': 40, 'end': 46}, 'lines': 7}]}
+    assert inv.jscpd_pairs(report, str(tmp_path)) == ['css/a.css:3-9 <-> b.css:40-46  (7 lines)']
 
 
 def test_jscpd_is_skipped_without_npx(monkeypatch, capsys):

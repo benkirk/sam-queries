@@ -2,7 +2,7 @@
  * SAM Allocations Dashboard CSS
  * Styles specific to the allocations dashboard.
  *
- * Note: Shared .filter-sidebar styles live in dashboard.css (loaded sitewide
+ * Note: Shared .filter-sidebar styles live in filters.css (loaded sitewide
  * via base.html). Page-specific tweaks for the allocations layout stay here.
  */
 
@@ -36,50 +36,6 @@
 /* Pace chart breaks out of the 720px cap and fills the dashboard column */
 .chart-container.pace-chart svg {
     max-width: none;
-}
-
-/* ===================================================================
-   Sortable Table Headers
-   =================================================================== */
-
-.sortable-header {
-    cursor: pointer;
-    user-select: none;
-    white-space: nowrap;
-}
-
-.sortable-header::after {
-    content: ' \2195';
-    color: var(--text-tertiary);
-    font-size: 0.8em;
-}
-
-.sortable-header.sort-asc::after {
-    content: ' \2191';
-    color: var(--text-primary);
-}
-
-.sortable-header.sort-desc::after {
-    content: ' \2193';
-    color: var(--text-primary);
-}
-
-/* ===================================================================
-   Date Filter Form
-   =================================================================== */
-
-.date-filter-form {
-    margin-bottom: 1.5rem;
-}
-
-.resource-selector {
-    text-align: left;
-}
-
-.resource-selector .form-check {
-    text-align: left;
-    padding-left: 0;
-    margin-bottom: 0.5rem;
 }
 
 /* ===================================================================

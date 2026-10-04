@@ -1,7 +1,7 @@
 /**
  * SAM Auth/Login Page CSS — Unity NCAR style.
  * Thin layer on top of dashboard.css; defines only login-page-specific
- * chrome (centered container, page background, quick-login section).
+ * chrome (centered container, quick-login section).
  *
  * Design tokens are defined in variables.css; component rules (.btn,
  * .form-control, .alert, typography) come from dashboard.css.
@@ -11,25 +11,15 @@
    Body & Layout
    =================================================================== */
 
+/* The page color, wave watermark, font and min-height come from dashboard.css's body rule. */
 body {
-    /* Match the dashboard wave watermark so the login page reads as the
-       same app — same color, same image, same position triple. The flex
-       centering is the only login-specific addition. */
-    background-color: var(--surface-page);
-    background-image: url('../img/UCAR-Waves-Lines-Only-66.png');
-    background-position: 150% 0%;
-    background-repeat: repeat-y;
-    background-size: 53%;
-    min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: var(--font-family-default);
-    color: var(--text-primary);
 }
 
 /* ===================================================================
-   Login Container — flat editorial panel matching .card-bordered.
+   Login Container — flat editorial panel with a 1px hairline border.
    =================================================================== */
 
 .login-container {

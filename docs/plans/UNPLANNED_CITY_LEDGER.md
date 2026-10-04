@@ -16,6 +16,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 |---|---|---|---|---|---|---|---|
 | 2026-10-03 | `79f1a147` | 70 / 88 / 33 | 9 (10) | 38 (17) | 4,789 / 70 / 14 | 405 (106) | 5 / 4 |
 | 2026-10-03 | `5254c65b` + js sweep | 70 / 88 / 33 | 9 (10) | 38 (17) | 4,817 / 70 / 14 | 404 (105) | 5 / 4 |
+| 2026-10-04 | `0515333f` + css sweep | 70 / 88 / 33 | 9 (10) | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | 5 / 4 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -86,6 +87,43 @@ dispatcher (10 unrelated, cheaply guarded listeners; a dispatcher couples 5 file
 - [ ] The "strip overridden params from `detail.path`" clone in `layout-axis.js` and
   `nav-view-persistence.js` could be one helper.
 
+## 3. 2026-10-03: area sweep, `css`
+
+**Mode:** area, `src/webapp/static/css/` (9 files, 4,817 lines, 70 `!important`). **End commit:**
+`0515333f` (`origin/staging`, the merge of #722; planned stacked on it). Planning record:
+`docs/plans/CSS_SWEEP_HANDOFF.md`. Contract: nothing looks different. Proved with
+`ui_snapshots.py --styles` on a base server and the branch server: 13 pages (gallery, login,
+register, admin resources/organizations/institutions/projects, allocations, status, user
+dashboard, job history, `/database`) x 3 layouts x 2 themes, `--compare` reports 0 of 78
+captures differ. The same compare between the two servers before any CSS change was also 0.
+
+**Done, in this sweep's PR**, one commit each:
+
+- [x] 21 classes nothing names, deleted (10 `!important`), plus the banners they emptied.
+- [x] One `.sortable-header` rule: the `admin.css` and `allocations.css` copies of
+  `components.css`'s rule are gone.
+- [x] Login and register inherit the page watermark from `dashboard.css`'s `body` rule instead
+  of repeating it.
+- [x] The filter UI (facet chips, ladder range, filter sidebar, section toggle; 536 lines) moved
+  to `css/filters.css`, linked right after `dashboard.css`. `dashboard.css` is 1,916 lines.
+- [x] `test_css_dead.py` holds unnamed classes at zero.
+- [x] Skill friction, fixed first: css-dead stems count as dynamic only before an interpolation
+  (`id="col-{{ i }}"` had made `.col-chevron` look dynamic); `CSS_KEEP` with stale-keep
+  reporting; every jscpd pair printed from its JSON report (the console tail lost 8 of 18) with
+  the `/* ==== */` banners ignored (10 of 18 were banner noise); `ui_snapshots.py --styles` /
+  `--compare`; `scripts/dev_server_alt.sh` for the base server.
+
+**Tried and dropped:** jscpd's remaining 4 clones: the light/dark token block in `variables.css`
+(must exist under both the media query and `[data-bs-theme=dark]`), two button variants that
+override the same Bootstrap variables with different values, and an admin/status pair that is
+mostly a banner. The `!important` left on rules that must beat Bootstrap's own utilities (muted
+badges, text colors, tab counters).
+
+**Open from this sweep:**
+
+- [ ] PROJECT CARDS / PROJECT TREE (`dashboard.css`, about 240 lines) are user-dashboard
+  specific and could move to their own file. Not crowding anything today.
+
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
 Surfaced by the first run of `scripts/sweep_inventory.py`. Each item belongs to an area sweep;
@@ -102,12 +140,6 @@ nothing here has been read for intent yet.
   stores, `raw` and `_raw` in the integration and notify configs, the two
   `coerce_and_validate_dates` in the resources form schema, and the two `decorate` in the stacked
   chart family.
-- **css:** the `.sortable-header` rules are repeated in `admin.css`, `allocations.css` and
-  `components.css`.
-- **css:** `dashboard.css` is 2,489 lines with 60 `!important`; feature sections could move into
-  per-feature files the way `allocations.css` did.
-- **css:** 21 dead classes without a dynamic stem, for example `.logout-link`, `.date-filter-form`,
-  `.stat-box` and the `.border-status-*` set.
 - **docs:** `plans-stale --gh` on 2026-10-03 found no retirement candidates among 22 top-level
   plans. `ADMIN_TABLE_POLISH.md` and `ALLOCATIONS_SUNBURST.md` still say "implemented, in
   review" although their PRs have merged; they pass the 14-day idle bar on 2026-10-17.

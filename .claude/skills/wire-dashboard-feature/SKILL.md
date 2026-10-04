@@ -231,7 +231,10 @@ CLAUDE.md § Charts.
 6. Run the structural gates:
    `pytest tests/unit/gates/test_modal_shell_contract.py tests/unit/gates/test_collapse_trigger_rows.py tests/unit/gates/test_action_cells_nowrap.py tests/unit/gates/test_static_assets.py tests/unit/gates/test_template_csp_lint.py tests/unit/gates/test_css_tokens.py tests/unit/gates/test_route_map_parity.py`
    plus the feature's own tests. For a visible change, `scripts/ui_snapshots.py`
-   shoots the before and after folders in all six states.
+   shoots the before and after folders in all six states. For a change that must
+   NOT be visible (a CSS move or dedupe), add `--styles` to both runs and
+   `--compare before after`: zero differing elements is the proof. Serve the
+   before side with `scripts/dev_server_alt.sh <worktree> <port>`.
 7. If routes changed, regenerate the route-map snapshot
    (`ROUTE_MAP_REGEN=1 pytest tests/unit/gates/test_route_map_parity.py`) and commit
    the diff.

@@ -51,8 +51,10 @@ scripts/sweep_inventory.py --area docs --gh                # plans ready to reti
 Every detector is a lead, not a verdict. Read the code before reporting anything it lists.
 For `js` and `css`, always add `--jscpd`: in the js sweep the jscpd clone led to the bug, while
 `js-dup`'s shared names were mostly short local helpers (`has`, `sync`). `js-dead` reports
-`window.*` exports nothing else names and actions registered or used on one side only. Record
-the whole-tree totals line in the ledger's metrics table at the end of the sweep.
+`window.*` exports nothing else names and actions registered or used on one side only. jscpd
+prints every pair; one whose lines straddle a `/* ==== */` banner is still banner noise. A class
+styled on purpose before anything uses it goes in `CSS_KEEP` with its reason, not in a deletion.
+Record the whole-tree totals line in the ledger's metrics table at the end of the sweep.
 
 ## 4. Heuristic passes
 
@@ -68,7 +70,7 @@ Run each pass and collect findings. The examples are real.
 - **Convention drift.** Several idioms for one thing: the leaf-versus-subtree rule exists in
   three query modules, and date arguments are parsed several ways. Pick the house idiom and
   move the others to it. Grep the idiom across the layer before proposing.
-- **Delete.** Dead CSS classes (`css-dead`; check the dynamic stems), JS functions nothing calls
+- **Delete.** Dead CSS classes (`css-dead`, held at zero by `test_css_dead.py`), JS functions nothing calls
   (`js-dead`), compatibility shims whose callers are gone, and options no caller passes.
 - **Retire plans.** A top-level `docs/plans/*.md` whose PRs have merged and that nobody has
   touched lately moves to `docs/plans/implemented/` (`plans-stale`). The detector holds back
@@ -116,10 +118,12 @@ Rank by value over cost. Mark anything that changes behavior. Then stop and let 
 - **If output could move**, capture it before and after and compare: a parity capture of the
   affected functions on both MySQL and Postgres. Keep throwaway capture scripts untracked under
   `utils/profiling/`. #712's capture found a real backend inconsistency that no test covered.
-- **Front-end changes** get the same before/after, in a browser: run one probe against a server
-  on the old code and one on the branch (a second dev server from another worktree), and pin time
-  with Playwright's `page.clock.install` for date logic. Load `wire-dashboard-feature` for its
-  smoke and gate list.
+- **Front-end changes** get the same before/after, in a browser. Serve the old code from a
+  worktree with `scripts/dev_server_alt.sh <worktree> <port>` (outbound off, own Redis DB; never
+  copy a running server's env by hand) and the branch on another port. A change meant to look
+  the same is proved with `scripts/ui_snapshots.py --styles` on both, then `--compare before
+  after`, which must report zero differing elements. Pin time with Playwright's
+  `page.clock.install` for date logic. Load `wire-dashboard-feature` for its smoke and gates.
 - **Measure before claiming a speedup**, with repeats, on both backends. A change that measures
   flat is dropped and recorded, not shipped.
 - Run the gates the change touches: route-map parity, chart fingerprints, CSS tokens, docs, and
