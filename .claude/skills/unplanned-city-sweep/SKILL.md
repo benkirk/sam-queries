@@ -70,7 +70,7 @@ Run each pass and collect findings. The examples are real.
 - **Convention drift.** Several idioms for one thing: the leaf-versus-subtree rule exists in
   three query modules, and date arguments are parsed several ways. Pick the house idiom and
   move the others to it. Grep the idiom across the layer before proposing.
-- **Delete.** Dead CSS classes (`css-dead`; check the dynamic stems), JS functions nothing calls
+- **Delete.** Dead CSS classes (`css-dead`, held at zero by `test_css_dead.py`), JS functions nothing calls
   (`js-dead`), compatibility shims whose callers are gone, and options no caller passes.
 - **Retire plans.** A top-level `docs/plans/*.md` whose PRs have merged and that nobody has
   touched lately moves to `docs/plans/implemented/` (`plans-stale`). The detector holds back
