@@ -1,19 +1,20 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
-{% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
+{% from 'dashboards/shared/project_tree.html' import allocation_cells with context %}
+{% from 'dashboards/fragments/table_bits.html' import state_tag %}
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_usage_bar, g_contract_status with context %}
 
-{# Macro: Project Information Section #}
+{# Macro: Project Information Section; caller() fills the heading row's right end (Manage Project). #}
 {% macro render_project_info(project) %}
 <div class="project-stats-box mb-3">
-    <h6><i class="fa-solid fa-circle-info"></i> Project Information</h6>
+    <h6><i class="fa-solid fa-circle-info"></i> Project Information{% if caller %}<span class="ms-auto">{{ caller() }}</span>{% endif %}</h6>
     <div class="stat-item">
         <span class="stat-label">Status:</span>
         <span class="stat-value">
             {% if project.active %}
-                <span class="text-success fw-semibold">Active</span>
+                Active
             {% else %}
-                <span class="text-danger fw-semibold">Inactive</span>
+                <span class="text-danger-emphasis">Inactive</span>
                 {%- if project.inactivate_time %}
                 <span class="text-muted small">since {{ project.inactivate_time | fmt_date }}</span>
                 {%- endif %}
@@ -53,8 +54,8 @@
     <!-- Organizations — every link is shown, current first; a closed window is
          badged with its end date rather than hidden. -->
     {% if project.organizations %}
-    <div class="stat-item stat-item-block mt-2">
-      <span class="stat-label d-block mb-1">Organizations:</span>
+    <div class="stat-item stat-item-block stat-item-inline">
+      <span class="stat-label">Organizations:</span>
       <div class="stat-value text-body-emphasis text-detail">
         {% for po in project.organizations_current_first() %}
             {% set ancestors = po.organization.ancestry(include_self=False) %}
@@ -68,9 +69,9 @@
                 {{ status_badge('inactive', extra='ms-1') }}
                 {%- endif %}
                 {% if ancestors %}
-                <div class="text-muted small ms-1">
+                <span class="text-muted small ms-1">
                     {%- for a in ancestors %}<i class="fa-solid fa-angle-left mx-1 opacity-50" aria-hidden="true"></i><span title="{{ a.name }}">{{ a.acronym }}</span>{% endfor %}
-                </div>
+                </span>
                 {% endif %}
             </div>
         {% endfor %}
@@ -80,8 +81,8 @@
     <!-- Contracts — an expired grant is still the project's funding provenance,
          so nothing is filtered out; lapsed rows carry a dated badge. -->
     {% if project.contracts %}
-    <div class="stat-item stat-item-block mt-2">
-      <span class="stat-label d-block mb-1">
+    <div class="stat-item stat-item-block stat-item-inline">
+      <span class="stat-label">
         Contracts: {{ help_icon(g_contract_status(), rich=True) }}
       </span>
       {# The contract number opens #contractDetailsModal, but only for viewers
@@ -125,159 +126,87 @@
     {% endif %}
     <!-- Project directories list -->
     {% if project.active_directories %}
-    <div class="stat-item stat-item-block mt-2">
-      <span class="stat-label d-block mb-1">Directories:</span>
-      <div class="stat-value text-body-emphasis text-detail">
-        {% for dir in project.active_directories %}
-            <div class="mb-1">
-                <span class="fa-solid fa-folder text-warning me-1"></span>
-                <span><code>{{ dir }}</code></span>
-            </div>
-        {% endfor %}
+    <div class="stat-item stat-item-block stat-item-inline">
+      <span class="stat-label">Directories:</span>
+      <div class="stat-value text-detail">
+        {% for dir in project.active_directories %}<code class="me-3">{{ dir }}</code>{% endfor %}
       </div>
     </div>
     {% endif %}
 </div>
 {% endmacro %}
 
-{# Macro: Resources Table #}
+{# Macro: Resources Table — the same columns as Manage Project → Allocations
+   (shared/project_tree.html allocation_cells), one row per resource under a
+   date-group row. Rows open resource_details. #}
 {% macro render_project_resources(project, resources, usage_warning_threshold, usage_critical_threshold, show_clickable_rows=true, can_edit_allocations=false, admin_origin=false) %}
 {% if resources %}
-<div class="mt-3">
-    <h6 class="mb-2"><i class="fa-solid fa-server"></i> Resources:</h6>
-    <div class="table-responsive">
-        <table class="table table-sm table-bordered table-hover">
-            <thead class="table-subtle">
-                <tr>
-                    <th>Resource</th>
-                    <th style="min-width: 220px;">Allocation
-                        {{ help_icon(g_usage_bar(), rich=True, title='Allocation usage', placement='top') }}
-                    </th>
-                    {% if can_edit_allocations %}
-                    <th class="text-center" style="width: 80px;">Actions</th>
+{% set ncols = 6 if can_edit_allocations else 5 %}
+<div class="table-responsive mt-3">
+    <table class="table table-sm table-hover align-middle mb-0 project-resources">
+        <thead class="table-subtle">
+            <tr>
+                <th>Resource</th>
+                <th class="col-num">% used {{ help_icon(g_usage_bar(), rich=True, title='Allocation usage', placement='top') }}</th>
+                <th class="col-num">Allocated</th>
+                <th class="col-num">Used</th>
+                <th class="col-num">Remaining</th>
+                {% if can_edit_allocations %}<th class="col-shrink" aria-label="Actions"></th>{% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for key, group_resources in resources | groupby('date_group_key') %}
+            {% set first = group_resources | first %}
+            <tr class="table-subtle">
+                <td colspan="{{ ncols }}" class="small text-muted">
+                    {% if first.bar_state == 'no-dates' %}No date information
+                    {% else %}
+                    {{ first.start_date | fmt_date if first.start_date else '?' }} &rarr;
+                    {% if first.end_date %}{{ first.end_date | fmt_date }}{% elif first.bar_state == 'open-ended' %}open-ended{% else %}?{% endif %}
+                    {% if first.bar_state == 'expired' %}{{ state_tag('expired') }}
+                    {% elif first.days_until_expiration is not none and first.days_until_expiration >= 0 %}
+                    <span class="ms-2">{{ first.days_until_expiration | fmt_plural('day', 'days') }} left</span>
                     {% endif %}
-                </tr>
-            </thead>
-            <tbody>
-                {% for key, group_resources in resources | groupby('date_group_key') %}
-                    {# Date-bounds group header #}
-                    {% set first = group_resources | first %}
-                    {% set colspan = 3 if can_edit_allocations else 2 %}
-                    <tr class="date-group-header">
-                        <td colspan="{{ colspan }}" style="padding: 4px 10px;">
-                            {% if first.bar_state == 'no-dates' %}
-                                <span class="text-muted small">No date information</span>
-                            {% else %}
-                                <div class="progress progress-small mb-1">
-                                    <div class="progress-bar bg-secondary{% if first.bar_state in ['expired', 'open-ended'] %} opacity-50{% endif %}"
-                                         role="progressbar"
-                                         style="width: {{ first.elapsed_pct }}%;"></div>
-                                </div>
-                                <div class="d-flex justify-content-between">
-                                    <small class="text-muted">{{ first.start_date | fmt_date if first.start_date else '?' }}</small>
-                                    <small>
-                                        {% if first.bar_state == 'expired' %}
-                                            {{ status_badge('expired', small=True) }}
-                                        {% elif first.bar_state == 'open-ended' %}
-                                            {{ status_badge('open-ended', small=True) }}
-                                        {% elif first.days_until_expiration is not none and first.days_until_expiration >= 0 %}
-                                            <span class="text-muted small">{{ first.days_until_expiration }}d left</span>
-                                        {% endif %}
-                                    </small>
-                                    <small class="text-muted">{% if first.end_date %}{{ first.end_date | fmt_date }}{% elif first.bar_state == 'open-ended' %}∞{% else %}?{% endif %}</small>
-                                </div>
-                            {% endif %}
-                        </td>
-                    </tr>
-
-                    {# Resource rows (no date columns) #}
-                    {% for resource in group_resources %}
-                        {# Check if resource is expired #}
-                        {% set is_expired = resource.days_until_expiration is not none and resource.days_until_expiration < 0 %}
-                        {% set row_class = 'text-muted' if is_expired else '' %}
-
-                        {# When the card is rendered from the admin origin, mark the
-                           resource-detail link with ?from=admin so its back button can
-                           land back on the admin index with this projcode auto-loaded. #}
-                        {% set _detail_kwargs = {'projcode': project.projcode, 'resource': resource.resource_name} %}
-                        {% if admin_origin %}{% set _ = _detail_kwargs.update({'from': 'admin'}) %}{% endif %}
-                        <tr class="{% if show_clickable_rows %}resource-row cursor-pointer {% endif %}{{ row_class }}{% if is_expired %} expired-allocation{% endif %}"
-                            {% if show_clickable_rows %}data-action="navigate" data-href="{{ url_for('user_dashboard.resource_details', **_detail_kwargs) }}"{% endif %}>
-                            <td><strong>{{ resource.resource_name }}</strong></td>
-                            <td>
-                                <div class="d-flex justify-content-between small mb-1">
-                                    <span class="fw-semibold {% if not is_expired %}text-primary{% endif %}">{{ resource.allocated | fmt_number }}{% set _unit = resource.resource_type | alloc_unit(resource.allocated) %}{% if _unit %} {{ _unit }}{% endif %} allocated</span>
-                                    {% if first.bar_state == 'active' and first.days_until_expiration is not none and first.days_until_expiration >= 0 %}
-                                        <span class="text-body-emphasis">{{ first.days_until_expiration }}d remaining</span>
-                                    {% elif first.bar_state == 'expired' %}
-                                        <span class="text-muted">expired</span>
-                                    {% elif first.bar_state == 'open-ended' %}
-                                        <span class="text-muted">open-ended</span>
-                                    {% endif %}
-                                </div>
-                                <div class="position-relative">
-                                    {{ render_usage_bar(resource.percent_used,
-                                                        resource.self_percent_used if resource.is_inheriting else none,
-                                                        size_class='progress-large',
-                                                        show_label=True) }}
-                                    {% if first.bar_state == 'active' and resource.resource_type in ['HPC', 'DAV'] %}
-                                    <div class="elapsed-tick"
-                                         style="left: {{ first.elapsed_pct }}%;"
-                                         title="{{ first.elapsed_pct | fmt_pct }} of allocation period elapsed"></div>
-                                    {% endif %}
-                                </div>
-                                <div class="d-flex justify-content-between small mt-1">
-                                    <span class="{% if not is_expired %}text-warning{% endif %}">
-                                        {{ resource.used | fmt_number }} used{% if resource.is_inheriting and resource.self_used is not none %}
-                                        <span class="text-muted" title="This project's contribution to the shared pool">({{ resource.self_used | fmt_number }} yours)</span>
-                                        {% endif %}
-                                    </span>
-                                    <span class="{% if not is_expired %}text-success{% endif %}">{{ resource.remaining | fmt_number }} remaining</span>
-                                </div>
-                                {% if not is_expired and (
-                                    (resource.rolling_30 and resource.rolling_30.threshold_pct is not none) or
-                                    (resource.rolling_90 and resource.rolling_90.threshold_pct is not none)
-                                ) %}
-                                <div class="mt-2 pt-1 border-top border-secondary-subtle">
-                                    <small class="text-muted d-block mb-1">Rolling usage:</small>
-                                    {% for label, win in [('30d', resource.rolling_30), ('90d', resource.rolling_90)] %}
-                                    {% if win %}
-                                    <div class="d-flex justify-content-between small">
-                                      <span class="text-muted">{{ win.charges | fmt_number }}</span>
-                                      <span class="text-muted">{{ win.pct_of_prorated | fmt_pct }} of steady {{ label }} usage{% if win.threshold_pct is not none %} (vs. {{ win.threshold_pct }}% limit){% endif %}</span>
-                                    </div>
-                                    {% endif %}
-                                    {% endfor %}
-                                </div>
-                                {% endif %}
-                            </td>
-                            {% if can_edit_allocations %}
-                            <td class="text-center" data-stop-propagation>
-                                {% if resource.allocation_id and not resource.is_inheriting %}
-                                <button type="button" class="btn btn-row"
-                                        title="Edit allocation" aria-label="Edit allocation"
-                                        data-bs-toggle="modal" data-bs-target="#editAllocationModal"
-                                        hx-get="{{ url_for('user_dashboard.htmx_edit_allocation_form', allocation_id=resource.allocation_id) }}?projcode={{ project.projcode }}"
-                                        hx-target="#editAllocationFormContainer"
-                                        hx-swap="innerHTML"
-                                        data-stop-propagation>
-                                    <i class="fa-solid fa-pen-to-square"></i>
-                                </button>
-                                {% elif resource.allocation_id and resource.is_inheriting %}
-                                <span class="badge bg-secondary"
-                                      style="font-size:0.65rem;"
-                                      title="Shared allocation — edit via the master parent project">Shared</span>
-                                {% else %}
-                                <span class="text-muted small">No allocation</span>
-                                {% endif %}
-                            </td>
-                            {% endif %}
-                        </tr>
+                    {% endif %}
+                </td>
+            </tr>
+            {% for resource in group_resources | sort(attribute='resource_name') %}
+            {% set is_expired = resource.days_until_expiration is not none and resource.days_until_expiration < 0 %}
+            {% set _detail_kwargs = {'projcode': project.projcode, 'resource': resource.resource_name} %}
+            {% if admin_origin %}{% set _ = _detail_kwargs.update({'from': 'admin'}) %}{% endif %}
+            <tr class="{{ 'cursor-pointer' if show_clickable_rows }}{{ ' row-inactive' if is_expired }}"
+                {% if show_clickable_rows %}data-action="navigate" data-href="{{ url_for('user_dashboard.resource_details', **_detail_kwargs) }}"{% endif %}>
+                <td>
+                    <span class="fw-semibold">{{ resource.resource_name }}</span>
+                    {% if not is_expired %}
+                    {% for label, win in [('30d', resource.rolling_30), ('90d', resource.rolling_90)] if win and win.threshold_pct is not none %}
+                    <div class="small text-muted" title="{{ win.charges | fmt_number }} charged in the last {{ label }}">
+                        {{ label }}: {{ win.pct_of_prorated | fmt_pct }} of steady use (limit {{ win.threshold_pct }}%)
+                    </div>
                     {% endfor %}
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+                    {% endif %}
+                </td>
+                {{ allocation_cells(resource, true) }}
+                {% if can_edit_allocations %}
+                <td class="text-end text-nowrap" data-stop-propagation>
+                    {% if resource.allocation_id and not resource.is_inheriting %}
+                    <button type="button" class="btn btn-row"
+                            title="Edit allocation" aria-label="Edit allocation"
+                            data-bs-toggle="modal" data-bs-target="#editAllocationModal"
+                            hx-get="{{ url_for('user_dashboard.htmx_edit_allocation_form', allocation_id=resource.allocation_id) }}?projcode={{ project.projcode }}"
+                            hx-target="#editAllocationFormContainer"
+                            hx-swap="innerHTML"
+                            data-stop-propagation>
+                        <i class="fa-solid fa-pen-to-square"></i>
+                    </button>
+                    {% endif %}
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+            {% endfor %}
+        </tbody>
+    </table>
 </div>
 {% endif %}
 {% endmacro %}
@@ -435,21 +364,16 @@
 
         <div id="{{ card_id }}" class="collapse{{ ' show' if is_expanded else '' }}">
             <div class="card-body">
-                {# Manage Project button — top of the card body (matches the
-                   project-details modal) so long member lists / trees don't
-                   push it out of reach. Leads/admins also see it (they land
-                   on the same page with a constrained edit surface). #}
+                {# Manage Project sits in the info heading row, at the top of the body, so long
+                   member lists and trees cannot push it out of reach. Leads/admins see it too. #}
+                {% call render_project_info(project) %}
                 {% if can_act_on_project(Permission.EDIT_PROJECTS, project, include_ancestors=True) %}
-                <div class="d-flex justify-content-end mb-2">
-                    <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=project.projcode) }}"
-                       class="btn  btn-primary">
-                        <i class="fa-solid fa-pen-to-square"></i> Manage Project
-                    </a>
-                </div>
+                <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=project.projcode) }}"
+                   class="btn btn-sm btn-primary">
+                    <i class="fa-solid fa-pen-to-square"></i> Manage Project
+                </a>
                 {% endif %}
-
-                <!-- Project Info -->
-                {{ render_project_info(project) }}
+                {% endcall %}
 
                 <!-- Resources Section -->
                 {{ render_project_resources(project, resources, usage_warning_threshold, usage_critical_threshold, true, user_can_edit_allocations, admin_origin) }}

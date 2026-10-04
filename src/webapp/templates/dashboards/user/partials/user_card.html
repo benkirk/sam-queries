@@ -34,11 +34,9 @@
     <div class="card-body">
         <div class="row g-3">
         <div class="col-lg-6">
-        <div class="card inner-card h-100"
-             style="grid-template-columns: auto minmax(0, 1fr); align-content: start;">
-            <div class="card-header mb-4">
-                <h5><i class="fa-solid fa-id-card"></i> User Information</h5>
-            </div>
+        <div class="project-stats-box h-100 mb-0"
+             style="grid-template-columns: fit-content(10rem) minmax(0, 1fr); align-content: start;">
+            <h6><i class="fa-solid fa-id-card"></i> User Information</h6>
             <div class="stat-item">
                 <span class="stat-label">Username:</span>
                 <span class="stat-value">{{ sam_user.username }}</span>
@@ -65,8 +63,8 @@
             {% endif %}
 
             <!-- Emails -->
-            <div class="stat-item stat-item-block mt-2">
-                <span class="stat-label d-block mb-1">Email{{ 's' if sam_user.email_addresses|length != 1 else '' }}:</span>
+            <div class="stat-item stat-item-block stat-item-inline">
+                <span class="stat-label">Email{{ 's' if sam_user.email_addresses|length != 1 else '' }}:</span>
                 <div class="stat-value text-body-emphasis text-detail">
                     {% for email in sam_user.email_addresses %}
                     <div class="mb-1">
@@ -82,8 +80,8 @@
             </div>
 
             {% if sam_user.phones %}
-            <div class="stat-item stat-item-block mt-2">
-                <span class="stat-label d-block mb-1">Phone{{ 's' if sam_user.phones|length != 1 else '' }}:</span>
+            <div class="stat-item stat-item-block stat-item-inline">
+                <span class="stat-label">Phone{{ 's' if sam_user.phones|length != 1 else '' }}:</span>
                 <div class="stat-value text-body-emphasis text-detail">
                     {% for phone in sam_user.phones %}
                     <div class="mb-1">
@@ -105,10 +103,10 @@
 
             {% set active_insts = sam_user.active_institutions() %}
             {% if active_insts or (show_history and sam_user.institutions) %}
-            <div class="stat-item stat-item-block mt-2">
+            <div class="stat-item stat-item-block stat-item-inline">
                 {# Count-based plural, but the empty block takes "(s)" — "Institutions:
                    No current affiliation" would be asserting a plural that isn't there. #}
-                <span class="stat-label d-block mb-1">Institution{{ '(s)' if active_insts|length == 0 else ('' if active_insts|length == 1 else 's') }}:</span>
+                <span class="stat-label">Institution{{ '(s)' if active_insts|length == 0 else ('' if active_insts|length == 1 else 's') }}:</span>
                 <div class="stat-value text-body-emphasis text-detail">
                     {% for ui in active_insts %}
                     <div class="mb-1">
@@ -125,8 +123,8 @@
             {% if show_history %}
             {% set former_insts = sam_user.former_institutions() %}
             {% if former_insts %}
-            <div class="stat-item stat-item-block mt-2">
-                <span class="stat-label d-block mb-1">
+            <div class="stat-item stat-item-block stat-item-inline">
+                <span class="stat-label">
                     Former Institution{{ 's' if former_insts|length != 1 else '' }}:
                     {{ help_icon(g_former_affiliations(), rich=True) }}
                 </span>
@@ -148,8 +146,8 @@
 
             {% set active_orgs = sam_user.active_organizations() %}
             {% if active_orgs or (show_history and sam_user.organizations) %}
-            <div class="stat-item stat-item-block mt-2">
-                <span class="stat-label d-block mb-1">Organization{{ '(s)' if active_orgs|length == 0 else ('' if active_orgs|length == 1 else 's') }}:</span>
+            <div class="stat-item stat-item-block stat-item-inline">
+                <span class="stat-label">Organization{{ '(s)' if active_orgs|length == 0 else ('' if active_orgs|length == 1 else 's') }}:</span>
                 <div class="stat-value text-body-emphasis text-detail">
                     {% for uo in active_orgs %}
                     {% set ancestors = uo.organization.ancestry(include_self=False) %}
@@ -157,9 +155,9 @@
                         <span class="badge bg-body-tertiary text-body-emphasis border">{{ uo.organization.acronym }}</span>
                         <span class="text-muted">{{ uo.organization.name }}</span>
                         {% if ancestors %}
-                        <div class="text-muted small ms-1">
+                        <span class="text-muted small ms-1 text-nowrap">
                             {%- for a in ancestors %}<i class="fa-solid fa-angle-left mx-1 opacity-50" aria-hidden="true"></i><span title="{{ a.name }}">{{ a.acronym }}</span>{% endfor %}
-                        </div>
+                        </span>
                         {% endif %}
                     </div>
                     {% else %}
@@ -172,8 +170,8 @@
             {% if show_history %}
             {% set former_orgs = sam_user.former_organizations() %}
             {% if former_orgs %}
-            <div class="stat-item stat-item-block mt-2">
-                <span class="stat-label d-block mb-1">
+            <div class="stat-item stat-item-block stat-item-inline">
+                <span class="stat-label">
                     Former Organization{{ 's' if former_orgs|length != 1 else '' }}:
                     {{ help_icon(g_former_affiliations(), rich=True) }}
                 </span>
@@ -188,9 +186,9 @@
                             {%- else %} — ended {{ uo.end_date | fmt_date }}{% endif %}
                         </span>
                         {% if ancestors %}
-                        <div class="text-muted small ms-1">
+                        <span class="text-muted small ms-1 text-nowrap">
                             {%- for a in ancestors %}<i class="fa-solid fa-angle-left mx-1 opacity-50" aria-hidden="true"></i><span title="{{ a.name }}">{{ a.acronym }}</span>{% endfor %}
-                        </div>
+                        </span>
                         {% endif %}
                     </div>
                     {% endfor %}
@@ -202,15 +200,13 @@
         </div>
         </div>
         <div class="col-lg-6">
-        <div class="card inner-card h-100"
-             style="grid-template-columns: auto minmax(0, 1fr); align-content: start;">
-            <div class="card-header mb-4">
-                <h5><i class="fa-solid fa-sitemap"></i> Projects &amp; Groups</h5>
-            </div>
+        <div class="project-stats-box h-100 mb-0"
+             style="grid-template-columns: fit-content(10rem) minmax(0, 1fr); align-content: start;">
+            <h6><i class="fa-solid fa-sitemap"></i> Projects &amp; Groups</h6>
 
             <!-- Active projects -->
-            <div class="stat-item stat-item-block mt-2">
-                <span class="stat-label d-block mb-1">Active Projects:</span>
+            <div class="stat-item stat-item-block stat-item-inline">
+                <span class="stat-label">Active Projects:</span>
                 <div class="stat-value text-body-emphasis text-detail">
                     {% set active_projects = sam_user.active_projects() %}
                     {% if active_projects %}
@@ -247,8 +243,8 @@
             {% if is_admin and has_permission_any_facility(Permission.VIEW_PROJECTS) %}
             {% set former = sam_user.former_projects() %}
             {% if former.inactive or former.ended %}
-            <div class="stat-item stat-item-block mt-2">
-                <span class="stat-label d-block mb-1">
+            <div class="stat-item stat-item-block stat-item-inline">
+                <span class="stat-label">
                     Inactive / Former Projects: {{ help_icon(g_former_projects(), rich=True) }}
                 </span>
                 <div class="stat-value text-body-emphasis text-detail">
@@ -271,18 +267,18 @@
 
             <!-- Active groups (adhoc group membership, tabbed by access branch) -->
             {% if user_groups is not none %}
-            <div class="stat-item stat-item-block mt-2">
-                <span class="stat-label d-block mb-1">Active Groups:</span>
+            <div class="stat-item stat-item-block stat-item-inline">
+                <span class="stat-label">Active Groups:</span>
                 <div class="stat-value text-body-emphasis text-detail">
                     {% set branches = user_groups.keys() | list | sort %}
                     {% if branches %}
                     {% set tab_id = 'groupsTabs-' ~ sam_user.username %}
-                    <div class="btn-group btn-group-sm mb-2" role="tablist" id="{{ tab_id }}">
+                    <div class="btn-group btn-group-sm flex-wrap mb-2" role="tablist" id="{{ tab_id }}">
                         {% for branch in branches %}
                         {% set pane_id = 'groupsPane-' ~ sam_user.username ~ '-' ~ loop.index %}
                         <input type="radio" class="btn-check" name="{{ tab_id }}-options" id="{{ pane_id }}-tab"
                                autocomplete="off" {% if loop.first %}checked{% endif %}>
-                        <label class="btn btn-outline-primary"
+                        <label class="btn btn-outline-primary text-nowrap"
                                for="{{ pane_id }}-tab"
                                data-bs-toggle="pill"
                                data-bs-target="#{{ pane_id }}"
@@ -374,11 +370,24 @@
         <div class="d-flex justify-content-between align-items-center mb-2">
             <strong><i class="fa-solid fa-key"></i> SAM Permissions</strong>
         </div>
-        <div class="scrollable-list">
-            {% for perm in user_permissions | sort(attribute='value') %}
-            <span class="badge bg-info me-1 mb-1">{{ perm.value }}</span>
-            {% endfor %}
-        </div>
+        {# Grouped by verb (the name's first word); anything else is "other". #}
+        {% set verbs = ['view', 'edit', 'create', 'delete', 'manage'] %}
+        {% set by_verb = {} %}
+        {% for perm in user_permissions | sort(attribute='value') %}
+            {% set head, _, rest = perm.value.partition('_') %}
+            {% set verb = head if head in verbs and rest else 'other' %}
+            {% set _ = by_verb.setdefault(verb, []).append((rest if verb != 'other' else perm.value) | replace('_', ' ')) %}
+        {% endfor %}
+        <table class="table table-sm mb-0 perm-table">
+            <tbody>
+                {% for verb in verbs + ['other'] if by_verb.get(verb) %}
+                <tr>
+                    <th class="col-shrink text-muted fw-semibold">{{ verb }} <span class="fw-normal">({{ by_verb[verb] | length }})</span></th>
+                    <td class="small">{{ by_verb[verb] | join(', ') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
     {% endif %}
 
@@ -389,7 +398,7 @@
         <div class="d-flex justify-content-between align-items-center mb-2">
             <strong><i class="fa-solid fa-clock"></i> Wallclock Exemptions</strong>
             {% if is_admin and has_permission(Permission.EDIT_USERS) %}
-            <button class="btn  btn-primary"
+            <button class="btn btn-sm btn-primary"
                     data-bs-toggle="modal" data-bs-target="#addExemptionModal"
                     hx-get="{{ url_for('admin_dashboard.htmx_add_exemption_form', username=sam_user.username) }}"
                     hx-target="#addExemptionFormContainer"
@@ -414,7 +423,7 @@
                 </thead>
                 <tbody>
                     {% for ex in exemptions | sort(attribute='start_date', reverse=True) %}
-                    <tr class="{% if not ex.is_currently_active %}text-muted{% endif %}">
+                    <tr class="{% if not ex.is_currently_active %}row-inactive{% endif %}">
                         <td>{{ ex.queue.resource.resource_name }}</td>
                         <td>{{ ex.queue.queue_name }}</td>
                         <td>{{ ex.start_date | fmt_date }}</td>
@@ -429,6 +438,7 @@
                         {% if is_admin and has_permission(Permission.EDIT_USERS) %}
                         <td>
                             <button type="button" class="btn btn-row"
+                                    title="Edit exemption" aria-label="Edit exemption"
                                     data-bs-toggle="modal" data-bs-target="#editExemptionModal"
                                     hx-get="{{ url_for('admin_dashboard.htmx_edit_exemption_form', exemption_id=ex.wallclock_exemption_id) }}"
                                     hx-target="#editExemptionFormContainer"
@@ -457,7 +467,7 @@
               data-confirm-variant="warning" data-confirm-label="Impersonate">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="username" value="{{ sam_user.username }}">
-            <button type="submit" class="btn  btn-primary">
+            <button type="submit" class="btn btn-sm btn-primary">
                 <i class="fa-solid fa-user-secret"></i> Impersonate {{ sam_user.username }}
             </button>
         </form>

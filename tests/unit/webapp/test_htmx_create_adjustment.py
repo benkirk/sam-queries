@@ -57,8 +57,8 @@ class TestCreateAdjustmentFormEndpoint:
         resp = auth_client.get('/allocations/htmx/create_adjustment_form')
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
-        # Type names appear in <option> labels (and also in the .adj-intent
-        # boilerplate divs) — presence is enough; exact count is fragile.
+        # Type names appear in <option> labels (and in the Type popover) —
+        # presence is enough; exact count is fragile.
         for name in ('Refund', 'Credit', 'Debit', 'Reservation'):
             assert name in html
         # Storage-* types must not be offered.

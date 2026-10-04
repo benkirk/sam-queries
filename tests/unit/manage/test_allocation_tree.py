@@ -212,6 +212,39 @@ class TestUpdateAllocationGuard:
                 amount=child_allocation.amount + 1,
             )
 
+    def test_raises_on_child_dates(self, session, child_allocation, acting_user):
+        with pytest.raises(InheritingAllocationException):
+            update_allocation(
+                session,
+                allocation_id=child_allocation.allocation_id,
+                user_id=acting_user.user_id,
+                description="mine",
+                end_date=child_allocation.end_date + timedelta(days=30),
+            )
+
+    def test_child_description_is_its_own(self, session, child_allocation, parent_allocation,
+                                          acting_user):
+        amount, parent_description = child_allocation.amount, parent_allocation.description
+        update_allocation(
+            session,
+            allocation_id=child_allocation.allocation_id,
+            user_id=acting_user.user_id,
+            description="mine",
+        )
+        assert child_allocation.description == "mine"
+        assert child_allocation.is_inheriting and child_allocation.amount == amount
+        assert parent_allocation.description == parent_description
+        txn = (
+            session.query(AllocationTransaction)
+            .filter(
+                AllocationTransaction.allocation_id == child_allocation.allocation_id,
+                intent_filter(AllocationTransactionType.EDIT),
+            )
+            .order_by(AllocationTransaction.allocation_transaction_id.desc())
+            .first()
+        )
+        assert txn.transaction_amount == pytest.approx(0.0)   # replay still lands on amount
+
     def test_allows_root_update(self, session, flat_root_allocation, acting_user):
         new_amount = flat_root_allocation.amount + 1.0
         result = update_allocation(

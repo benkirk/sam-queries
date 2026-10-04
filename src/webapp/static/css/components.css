@@ -14,7 +14,7 @@
 /* Target the cells (> *), not the tr — Bootstrap 5.3 paints each <td> with a
    solid --bs-table-bg that covers any tr-level background color. This mirrors
    Bootstrap's own .table-hover > tbody > tr:hover > * pattern. The pale-teal
-   tint matches the .table-hover and .resource-row treatments elsewhere. */
+   tint matches the .table-hover treatment elsewhere. */
 .clickable-row > * {
     transition: background-color var(--transition-fast);
 }
@@ -37,10 +37,6 @@
 
 .progress-xlarge {
     height: 24px;
-}
-
-.progress-xxlarge {
-    height: 25px;
 }
 
 /* ===================================================================
@@ -87,15 +83,6 @@
 
 .cursor-pointer {
     cursor: pointer;
-}
-
-.expired-allocation {
-    opacity: 0.6;
-}
-
-.scrollable-list {
-    max-height: 200px;
-    overflow-y: auto;
 }
 
 /* ===================================================================
@@ -197,9 +184,9 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
    Pairs the global JS with its indicator so any `.sortable-header` shows a
    neutral up/down cue (click to sort) and an arrow for the active column. */
 .sortable-header { cursor: pointer; user-select: none; white-space: nowrap; }
-.sortable-header::after { content: ' \2195'; color: var(--text-tertiary); font-size: 0.8em; }
-.sortable-header.sort-asc::after { content: ' \2191'; color: var(--text-primary); }
-.sortable-header.sort-desc::after { content: ' \2193'; color: var(--text-primary); }
+.sortable-header::after { content: '\a0\2195'; color: var(--text-tertiary); font-size: 0.8em; }
+.sortable-header.sort-asc::after { content: '\a0\2191'; color: var(--text-primary); }
+.sortable-header.sort-desc::after { content: '\a0\2193'; color: var(--text-primary); }
 
 /* Secondary sort handle inside a sortable header (sortable_table.js):
    its own arrow for an alternate sort key on the same column, e.g.
@@ -297,6 +284,13 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
 .table .col-num {
     text-align: end;
     font-variant-numeric: tabular-nums;
+}
+
+/* A multi-word header wraps at its spaces when its column's figures are narrower than it.
+   A sort icon joins its last word with &nbsp; (sort_link.html, the ::after arrows). */
+.table th.col-shrink,
+.table th.col-num {
+    white-space: normal;
 }
 
 /* A child row under a group header: its text lines up with the group label. */
@@ -487,10 +481,22 @@ tr:hover > td .btn.btn-row-attention {
     text-align: right;
     font-variant-numeric: tabular-nums;
 }
+/* Every bar column (share_bar, alloc_meter) takes one of two widths, the same everywhere:
+   short below a desktop, and one shared desktop width at >= 1200px. */
+:root {
+    --bar-share-w: 3.5rem;
+    --bar-meter-w: 5rem;
+}
+@media (min-width: 1200px) {
+    :root {
+        --bar-share-w: 8rem;
+        --bar-meter-w: 8rem;
+    }
+}
 .share-bar {
     --share-color: var(--fs-color, var(--text-link));
     flex: none;
-    width: 3.5rem;
+    width: var(--bar-share-w);
     height: 0.375rem;
     border-radius: 0.1875rem;
     background:
@@ -504,20 +510,10 @@ tr:hover > td .btn.btn-row-attention {
 .share-bar.share-zero {
     background: var(--surface-secondary);
 }
-/* Time elapsed on a full-height usage bar (render_usage_bar); set left inline. */
-.elapsed-tick {
-    position: absolute;
-    top: -2px;
-    bottom: -2px;
-    width: 2px;
-    background: rgba(var(--text-primary-rgb), 0.55);
-    z-index: 2;
-    pointer-events: none;
-}
 /* % of an allocation used: a wider share bar; the tick marks % of its time elapsed. */
 .share-bar.meter {
     position: relative;
-    width: 5rem;
+    width: var(--bar-meter-w);
 }
 .share-bar.meter-over {
     --share-color: var(--danger-color);

@@ -1,10 +1,11 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/glossary.html' import g_commission_dates with context %}
 {% from 'dashboards/fragments/form_fields.html' import text_field, number_field, date_field, select_field with context %}
 {# htmx: Create Machine Form #}
 {% call htmx_form(
     url_for('admin_dashboard.htmx_machine_create'),
     '#createMachineFormContainer',
-    'Create Machine',
+    'Create',
     submit_icon='plus',
     errors=errors
 ) %}
@@ -38,7 +39,7 @@
                                 id='createMachineCPUs') }}
             </div>
             <div class="col-md-6">
-                {{ date_field('commission_date', 'Commission Date',
+                {{ date_field('commission_date', 'Commission Date', tip=g_commission_dates(), tip_rich=True,
                               id='createMachineCommission') }}
             </div>
         </div>

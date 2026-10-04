@@ -28,15 +28,16 @@
                       required=True,
                       maxlength=64,
                       placeholder='/glade/...',
-                      help='Filesystem prefix used to map project directories to this disk resource. Must be unique.',
+                      tip='The filesystem prefix that maps project directories to this disk resource.',
+                      help='Must be unique.',
                       id='addDiskRootPath') }}
 
         {{ checkbox_field('charging_exempt', 'Charging exempt',
-                          help='If checked, directories under this root do not incur disk charges.',
+                          tip='Directories under this root incur no disk charges.',
                           id='addDiskRootExempt') }}
 
         {{ checkbox_field('active', 'Active',
                           default=True,
-                          help='Uncheck to create as inactive (soft-deleted). Inactive roots remain visible to admins but are flagged disabled.',
+                          tip='Unchecked, the root is created inactive (soft-deleted): visible to admins, flagged disabled.',
                           id='addDiskRootActive') }}
 {% endcall %}

@@ -49,3 +49,13 @@ def test_compare_dirs_exits_nonzero_on_any_difference(tmp_path, capsys):
     assert snap.main(['--compare', str(tmp_path / 'a'), str(tmp_path / 'b')]) == 0
     assert snap.main(['--compare', str(tmp_path / 'a'), str(tmp_path / 'c')]) == 1
     assert 'html>body  color: red -> blue' in capsys.readouterr().out
+
+
+def test_parse_step_splits_fill_text_on_the_last_equals():
+    assert snap.parse_step('click:[data-bs-target="#x"]') == ('click', '[data-bs-target="#x"]', None)
+    assert snap.parse_step('wait:#card') == ('wait', '#card', None)
+    assert snap.parse_step('reveal:#tree .collapse') == ('reveal', '#tree .collapse', None)
+    assert snap.parse_step('fill:input[name="q"]=SCSG') == ('fill', 'input[name="q"]', 'SCSG')
+    for bad in ('hover:#x', 'click:', 'fill:#q'):
+        with pytest.raises(ValueError):
+            snap.parse_step(bad)

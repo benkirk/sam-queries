@@ -19,17 +19,26 @@
     submitted value from `form` automatically.
   * If two forms with the same field name might be loaded into the page DOM
     simultaneously, pass an explicit `id=` to disambiguate.
+  * `attrs` (select_field, date_field) is a dict of extra attributes on the
+    control, e.g. the hx-* of a field that refreshes a sibling fragment.
+  * `tip` puts a help_icon after the label: a hover tooltip, or a click popover
+    holding HTML with `tip_rich=True` (a glossary.g_* term). `help` stays for a
+    line the user must see while typing.
 #}
+{% from 'dashboards/fragments/help.html' import help_icon %}
 
 
 {# shared label helper #}
-{% macro _label(name, label, required=False, optional_text='(optional)', id=None, label_class='form-label') %}
+{% macro _label(name, label, required=False, optional_text='(optional)', id=None, label_class='form-label',
+                tip=None, tip_rich=False) %}
+    {%- if tip %}<div class="form-label-tip">{% endif %}
     <label for="{{ id or name }}" class="{{ label_class }}">
         {{ label }}
         {%- if required %} <span class="text-danger">*</span>
         {%- elif optional_text %} <span class="text-muted">{{ optional_text }}</span>
-        {%- endif %}
+        {%- endif -%}
     </label>
+    {%- if tip %}&nbsp;{{ help_icon(tip, rich=tip_rich, title=label if tip_rich else None) }}</div>{% endif %}
 {%- endmacro %}
 
 
@@ -64,11 +73,12 @@
 {% macro text_field(name, label, required=False, optional_text='(optional)',
                     maxlength=None, placeholder=None, help=None,
                     default='', id=None, type='text', label_class='form-label',
-                    disabled=False) %}
+                    disabled=False,
+                    tip=None, tip_rich=False) %}
 {%- set _id = id or name -%}
 {%- set _value = form.get(name) if form else default -%}
 <div class="mb-3">
-    {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class) }}
+    {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class, tip=tip, tip_rich=tip_rich) }}
     <input type="{{ type }}" class="form-control{{ _invalid(name) }}" id="{{ _id }}"
            name="{{ name }}"
            {%- if required %} required{% endif -%}
@@ -89,11 +99,12 @@
    still submits; without htmx it is a plain text input. #}
 {% macro datalist_field(name, label, search_url=None, options=None, required=False,
                         optional_text='(optional)', maxlength=None, placeholder=None, help=None,
-                        default='', id=None, label_class='form-label') %}
+                        default='', id=None, label_class='form-label',
+                        tip=None, tip_rich=False) %}
 {%- set _id = id or name -%}
 {%- set _value = form.get(name) if form else default -%}
 <div class="mb-3">
-    {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class) }}
+    {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class, tip=tip, tip_rich=tip_rich) }}
     <input type="text" class="form-control{{ _invalid(name) }}" id="{{ _id }}"
            name="{{ name }}" list="{{ _id }}-list" autocomplete="off"
            {%- if search_url %}
@@ -138,11 +149,12 @@
 {% macro number_field(name, label, required=False, optional_text='(optional)',
                       min=None, max=None, step=None, placeholder=None, help=None,
                       default='', id=None, label_class='form-label',
-                      disabled=False, data_attrs={}, help_html=None) %}
+                      disabled=False, data_attrs={}, help_html=None,
+                      tip=None, tip_rich=False) %}
 {%- set _id = id or name -%}
 {%- set _value = form.get(name) if form else default -%}
 <div class="mb-3">
-    {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class) }}
+    {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class, tip=tip, tip_rich=tip_rich) }}
     {%- if caller %}<div class="input-group">{% endif %}
     <input type="number" class="form-control{{ _invalid(name) }}" id="{{ _id }}"
            name="{{ name }}"
@@ -170,7 +182,8 @@
 #}
 {% macro date_field(name, label, required=False, optional_text='(optional)',
                     help=None, default='', id=None, label_class='form-label',
-                    disabled=False, min=None) %}
+                    disabled=False, min=None,
+                    tip=None, tip_rich=False, attrs=None) %}
 {%- set _id = id or name -%}
 {%- set _form_value = form.get(name) if form else None -%}
 {%- if _form_value is not none -%}
@@ -181,13 +194,14 @@
   {%- set _value = default or '' -%}
 {%- endif -%}
 <div class="mb-3">
-    {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class) }}
+    {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class, tip=tip, tip_rich=tip_rich) }}
     <input type="date" class="form-control{{ _invalid(name) }}" id="{{ _id }}"
            name="{{ name }}"
            {%- if required %} required{% endif -%}
            {%- if disabled %} disabled{% endif -%}
            {%- if min %} min="{{ min }}"{% endif %}
            value="{{ _value }}"
+           {%- for k, v in (attrs or {}).items() %} {{ k }}="{{ v }}"{% endfor %}
            {{- _aria(name, _id) }}>
     {{ _field_error(name, _id) }}
     {%- if help %}<small class="form-text text-muted">{{ help }}</small>{% endif %}
@@ -206,7 +220,8 @@
 #}
 {% macro datetime_field(name, label, required=False, optional_text='(optional)',
                         help=None, default='', id=None, label_class='form-label',
-                        disabled=False) %}
+                        disabled=False,
+                        tip=None, tip_rich=False) %}
 {%- set _id = id or name -%}
 {%- set _form_value = form.get(name) if form else None -%}
 {%- if _form_value is not none -%}
@@ -217,7 +232,7 @@
   {%- set _value = default or '' -%}
 {%- endif -%}
 <div class="mb-3">
-    {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class) }}
+    {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class, tip=tip, tip_rich=tip_rich) }}
     <input type="datetime-local" class="form-control{{ _invalid(name) }}" id="{{ _id }}"
            name="{{ name }}"
            {%- if required %} required{% endif -%}
@@ -233,11 +248,12 @@
 {# textarea #}
 {% macro textarea_field(name, label, required=False, optional_text='(optional)',
                         rows=3, maxlength=None, placeholder=None, help=None,
-                        default='', id=None, label_class='form-label') %}
+                        default='', id=None, label_class='form-label',
+                        tip=None, tip_rich=False) %}
 {%- set _id = id or name -%}
 {%- set _value = form.get(name) if form else default -%}
 <div class="mb-3">
-    {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class) }}
+    {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class, tip=tip, tip_rich=tip_rich) }}
     <textarea class="form-control{{ _invalid(name) }}" id="{{ _id }}" name="{{ name }}" rows="{{ rows }}"
               {%- if required %} required{% endif -%}
               {%- if maxlength %} maxlength="{{ maxlength }}"{% endif -%}
@@ -266,9 +282,18 @@
      either `label_attr` (single attribute) or `label_attrs` (list of
      attributes joined with `label_separator`, default ' — ').
 
+  An options tuple may carry a third item, a dict emitted as data-* attributes
+  on that <option>. `groups` is a list of (label, options) rendered as
+  <optgroup>s (an empty one is skipped); `attrs` is a dict of extra attributes
+  on the <select> (e.g. data-action-change).
+
   `placeholder` adds a leading empty <option> with the given text.
   `default` is the initially selected value (compared as string).
 #}
+{%- macro _option(opt, selected) -%}
+<option value="{{ opt[0] }}"{% if opt[0]|string == selected %} selected{% endif %}
+    {%- for k, v in (opt[2] if opt|length > 2 else {}).items() %} data-{{ k }}="{{ v }}"{% endfor %}>{{ opt[1] }}</option>
+{%- endmacro -%}
 {% macro select_field(name, label, options=None, items=None,
                       value_attr=None, label_attr=None, label_attrs=None,
                       label_separator=' — ',
@@ -276,12 +301,13 @@
                       placeholder=None, help=None, default='', id=None,
                       select_class='form-select', label_class='form-label',
                       hx_get=None, hx_target=None, hx_trigger=None,
-                      hx_swap=None, hx_include=None) %}
+                      hx_swap=None, hx_include=None,
+                      tip=None, tip_rich=False, groups=None, attrs=None, help_html=None) %}
 {%- set _id = id or name -%}
 {%- set _form_value = form.get(name) if form else None -%}
 {%- set _selected = (_form_value if _form_value is not none else default)|string -%}
 <div class="mb-3">
-    {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class) }}
+    {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class, tip=tip, tip_rich=tip_rich) }}
     <select class="{{ select_class }}{{ _invalid(name) }}" id="{{ _id }}" name="{{ name }}"
             {%- if required %} required{% endif %}
             {%- if hx_get %} hx-get="{{ hx_get }}"{% endif %}
@@ -289,13 +315,22 @@
             {%- if hx_trigger %} hx-trigger="{{ hx_trigger }}"{% endif %}
             {%- if hx_swap %} hx-swap="{{ hx_swap }}"{% endif %}
             {%- if hx_include %} hx-include="{{ hx_include }}"{% endif %}
+            {%- for k, v in (attrs or {}).items() %} {{ k }}="{{ v }}"{% endfor %}
             {{- _aria(name, _id) }}>
         {%- if placeholder is not none %}
         <option value="">{{ placeholder }}</option>
         {%- endif %}
-        {%- if options %}
-            {%- for value, opt_label in options %}
-        <option value="{{ value }}"{% if value|string == _selected %} selected{% endif %}>{{ opt_label }}</option>
+        {%- if groups %}
+            {%- for group_label, group_options in groups if group_options %}
+        <optgroup label="{{ group_label }}">
+                {%- for opt in group_options %}
+            {{ _option(opt, _selected) }}
+                {%- endfor %}
+        </optgroup>
+            {%- endfor %}
+        {%- elif options %}
+            {%- for opt in options %}
+        {{ _option(opt, _selected) }}
             {%- endfor %}
         {%- elif items %}
             {%- for item in items %}
@@ -314,7 +349,8 @@
         {%- endif %}
     </select>
     {{ _field_error(name, _id) }}
-    {%- if help %}<small class="form-text text-muted">{{ help }}</small>{% endif %}
+    {%- if help_html %}<small class="form-text">{{ help_html|safe }}</small>
+    {%- elif help %}<small class="form-text text-muted">{{ help }}</small>{% endif %}
 </div>
 {% endmacro %}
 
@@ -369,7 +405,7 @@
   On error re-render, uses presence of name in form. Used with {% call %},
   the caller's markup renders inline after the label (e.g. a preview button).
 #}
-{% macro checkbox_field(name, label, default=False, help=None, id=None) %}
+{% macro checkbox_field(name, label, default=False, help=None, id=None, tip=None, tip_rich=False) %}
 {%- set _id = id or name -%}
 {%- if form -%}
   {%- set _checked = form.get(name) -%}
@@ -380,7 +416,8 @@
     <input type="checkbox" class="form-check-input{{ _invalid(name) }}" id="{{ _id }}"
            name="{{ name }}" value="1"{% if _checked %} checked{% endif %}
            {{- _aria(name, _id) }}>
-    <label class="form-check-label" for="{{ _id }}">{{ label }}</label>
+    <label class="form-check-label{{ ' d-inline' if tip }}" for="{{ _id }}">{{ label }}</label>
+    {%- if tip %}&nbsp;{{ help_icon(tip, rich=tip_rich, title=label if tip_rich else None) }}{% endif %}
     {%- if caller is defined %} {{ caller() }}{% endif %}
     {{ _field_error(name, _id) }}
     {%- if help %}<small class="form-text text-muted d-block">{{ help }}</small>{% endif %}
@@ -435,7 +472,8 @@
                          search_class='form-control',
                          selected_id='', selected_label='',
                          id_prefix=None, label_class='form-label',
-                         wrapper_class='mb-3', help=None) %}
+                         wrapper_class='mb-3', help=None,
+                         tip=None, tip_rich=False) %}
 {%- set _prefix = id_prefix or ('fk_' ~ name) -%}
 {%- set _id_input = _prefix ~ '_id' -%}
 {%- set _badge_id = _prefix ~ '_badge' -%}
@@ -450,7 +488,7 @@
    siblings there, floating the label above the neighboring columns'.
    (A CSS override can't do it: Bootstrap utility margins are !important.) #}
 <div class="{{ wrapper_class }} fk-picker">
-    {{ _label(name, label, required=required, optional_text=optional_text, id=_search_id, label_class=label_class) }}
+    {{ _label(name, label, required=required, optional_text=optional_text, id=_search_id, label_class=label_class, tip=tip, tip_rich=tip_rich) }}
 
     <div id="{{ _selected_id }}" class="fk-picker-selected mb-1"
          {% if not _has_value %}style="display:none;"{% endif %}>

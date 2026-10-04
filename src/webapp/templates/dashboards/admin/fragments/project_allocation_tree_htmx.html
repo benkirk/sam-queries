@@ -17,6 +17,8 @@
 {% from 'dashboards/shared/project_tree.html' import project_tree_rows, allocation_cells, allocation_actions, usage_meter with context %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/table_bits.html' import tree_label_cell %}
+{% from 'dashboards/fragments/help.html' import term with context %}
+{% from 'dashboards/fragments/glossary.html' import g_grace_window with context %}
 
 {# Point-in-time status badge
    The "Active at" date picker that drives this lives in the parent template
@@ -36,17 +38,14 @@
 </div>
 {% endif %}
 
-{# Grace-window warning: an allocation stays visible for a customary 90 days
-   after it ends, so a view of only-expired allocations reads as active when
-   it is not. Set by _grace_window_end when every shown root allocation is
-   expired at active_at. #}
+{# Set by _grace_window_end when every shown root allocation is expired at active_at:
+   such a view exists only because of the post-expiry window and must not read as active. #}
 {% if grace_window_end %}
 <div class="alert alert-warning py-2 small mb-3" role="alert">
   <i class="fa-solid fa-triangle-exclamation me-1"></i>
   <strong>No allocation is active on {{ active_at }}.</strong>
-  The most recent allocation ended {{ grace_window_end | fmt_date }}; SAM shows
-  an expired allocation for a customary 90-day post-expiry access window, after
-  which it no longer appears.
+  The most recent ended {{ grace_window_end | fmt_date }} and is shown for its
+  {{ term('post-expiry window', g_grace_window(), rich=True, title='Post-expiry window') }}.
 </div>
 {% endif %}
 

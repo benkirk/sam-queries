@@ -224,5 +224,9 @@
     "allocations_sunburst_expanded_used_route": {
         "queries": 22,
         "notes": "measured 16 (2026-10-03): window charges by project (comp/dav + adjustments), project_panels and the facility index, cache off"
+    },
+    "allocations_project_table_route": {
+        "queries": 27,
+        "notes": "measured 18 (2026-10-04) on UNIV/Small, 239 rows, force_refresh; flat in rows (18 at 33 and 410 rows too). Was 495 (18 + 2 per row: one find_project_by_code per title), 837 at 410 rows"
     }
 }

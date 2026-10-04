@@ -91,6 +91,16 @@ Run each pass and collect findings. The examples are real.
     ran twice per click). Also look for `toISOString()` used as a local calendar date.
   - Prefer moving a feature's rules into its own file, as `allocations.css` did, over adding
     another section to `dashboard.css`.
+  - Tables: a header wider than its column's figures (measure the label against the widest
+    cell with a `Range`, never by eye). `.col-num` / `.col-shrink` headers wrap at their spaces
+    by default, so anything that must not lead a line (a sort icon, `#`) joins its word with
+    `&nbsp;`. `scripts/ui_snapshots.py --headers --layout desktop --layout mobile` over every
+    page is the proof (wire-dashboard-feature §7).
+  - Modals: an alert per fact, prose restating a glossary term beside its own icon, a read-only
+    pair restating the title (`modal-alerts`, ratcheted). Facts go in `.modal-facts`, help in
+    `tip=` / a term, identity in `modal_title`. Open the opener first: two "modals" in the
+    sweep had none (an orphan is a deletion). Prove it with `ui_snapshots.py --recipes`
+    heights before and after.
 - **Propagate.** List the shared pieces the window introduced: macros, chart families, JS
   modules, query helpers. For each, find an older surface doing the same job the old way. The
   sunburst started on the allocations page and then moved to job history; that is the shape to
