@@ -38,6 +38,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from sam.core.users import EmailAddress, User
+from sam.dates import parse_wire_date
 from sam.integration.xras import XrasActionLog, XrasRemediationEvent
 from sam.projects.projects import Project
 from sam.queries.xras_actions import XRAS_ACTION_STATUSES
@@ -527,15 +528,10 @@ def _waiting_since(first_seen: Optional[datetime],
     if first_seen is not None:
         candidates.append(first_seen.date())
     for action in actions:
-        raw = action.get('submit_date')
-        if not raw:
-            continue
-        try:
-            candidates.append(date.fromisoformat(str(raw)[:10]))
-        except ValueError:
-            # A feed that changes its date format must not take the card down;
-            # the row simply has no age, and renders as such.
-            continue
+        # A malformed date must not take the card down; the row simply has no age.
+        submitted = parse_wire_date(action.get('submit_date'))
+        if submitted is not None:
+            candidates.append(submitted)
     return min(candidates) if candidates else None
 
 

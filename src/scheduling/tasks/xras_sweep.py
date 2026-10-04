@@ -257,13 +257,9 @@ def overlaps_window(payload: dict, *, window_start: date) -> bool:
     ``YYYY-MM-DD`` and are compared as dates; no timezone reasoning applies to
     a calendar date.
     """
-    raw = payload.get('endDate')
-    if not raw:
-        return True
-    try:
-        return date.fromisoformat(str(raw)[:10]) >= window_start
-    except ValueError:
-        return True
+    from sam.dates import parse_wire_date   # lazy: importing sam loads every ORM model
+    end = parse_wire_date(payload.get('endDate'))
+    return end is None or end >= window_start
 
 
 def _resource_key_map(ctx, client, detail) -> Optional[dict]:

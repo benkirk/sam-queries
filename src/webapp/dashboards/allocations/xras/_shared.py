@@ -11,8 +11,8 @@ lifted verbatim from ``blueprint.py`` and the client/degrade infra verbatim
 from ``xras_remediation_routes.py`` — ``git blame -C`` follows both moves.
 """
 
-from datetime import date, datetime, timedelta
-from sam.dates import parse_ymd_or, start_of_today
+from datetime import datetime, timedelta
+from sam.dates import parse_wire_date, parse_ymd_or, start_of_today
 
 from flask import current_app, render_template
 
@@ -495,12 +495,8 @@ def _submitted_since(row, since):
     if not any(dates):
         return True
     for raw in dates:
-        if not raw:
-            return True
-        try:
-            if date.fromisoformat(str(raw)[:10]) >= start:
-                return True
-        except ValueError:
+        submitted = parse_wire_date(raw)
+        if submitted is None or submitted >= start:
             return True
     return False
 

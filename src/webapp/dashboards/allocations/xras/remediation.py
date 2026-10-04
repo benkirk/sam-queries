@@ -47,8 +47,8 @@ from sam.integration.xras_api import (
 from sam.manage import management_transaction
 from sam.manage import xras_remediation as remediation
 from sam.queries.mnemonic_console import search_mnemonic_codes
-from sam.queries.xras_requests import (BLOCKER_LABELS, _as_date,
-                                       is_pending_work, row_blockers)
+from sam.dates import parse_wire_date
+from sam.queries.xras_requests import BLOCKER_LABELS, is_pending_work, row_blockers
 from sam.schemas.forms import (
     XrasActionDatesForm,
     XrasActionFieldsForm,
@@ -1663,8 +1663,8 @@ def _dates_form_context(request_number, action_id, allocation_date_id=None):
         'request_number': request_number,
         'action_id': action_id,
         'allocation_date_id': allocation_date_id,
-        'begin_date': _as_date((target or {}).get('beginDate')),
-        'end_date': _as_date((target or {}).get('endDate')),
+        'begin_date': parse_wire_date((target or {}).get('beginDate')),
+        'end_date': parse_wire_date((target or {}).get('endDate')),
         'write_enabled': xras_write_configured(),
         'post_url': url_for('allocations_dashboard.xras_dates_edit',
                             request_number=request_number, action_id=action_id),

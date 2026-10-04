@@ -2,7 +2,8 @@
 
 Not in ``sam.fmt``: that module imports ``config``, which the webapp boot order cannot take here.
 """
-from datetime import datetime
+from datetime import date, datetime
+from typing import Any, Optional
 
 YMD = '%Y-%m-%d'
 
@@ -28,3 +29,15 @@ def parse_ymd_or(s, default=None, end_of_day=False):
 def start_of_today() -> datetime:
     """Midnight today, naive local like the database."""
     return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def parse_wire_date(value: Any) -> Optional[date]:
+    """A ``date``, ``datetime``, ``YYYY-MM-DD`` or ISO timestamp as a ``date``; ``None`` when missing or malformed."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    try:
+        return parse_ymd(str(value)[:10]).date() if value else None
+    except ValueError:
+        return None
