@@ -395,9 +395,21 @@ to `staging` once that merges.
   - permissions as a by-verb table, which fixes the chip row clipped by `.scrollable-list`.
   - `/user/info` goes from 2,001px to 1,726px; the admin user modal from 1,931px to 1,761px.
 
+- [x] Bar widths (Ben: "uniform treatment on desktop that is wider"): every `share_bar` and
+  `alloc_meter` column takes `--bar-share-w` / `--bar-meter-w`. Below 1200px those are 3.5rem
+  and 5rem; at ≥ 1200px both are 8rem. That covers the Allocations tree, the admin
+  facility/resource cards, Manage Project, the project card, and the status node-type and
+  JupyterHub tables. It replaces the per-table 7.5rem rule.
+
 **Tried and dropped:** nothing.
 
 **Open from this round:**
+
+- [ ] The Allocations project list (`allocations/partials/project_table.html`, loaded under a
+  type row) still draws `render_usage_bar` in one `colspan="6"` usage-and-dates cell behind six
+  sortable headers (`min-width:280px`). It should become `alloc_meter` plus real columns, which
+  means reworking its data-sort attributes. Resource Details and the usage modal also still use
+  `render_usage_bar`.
 
 - [ ] On a phone, the project card's resource table scrolls sideways inside its frame. The
   meter column could hide below md and show only the percentage.

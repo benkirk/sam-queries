@@ -478,10 +478,22 @@ tr:hover > td .btn.btn-row-attention {
     text-align: right;
     font-variant-numeric: tabular-nums;
 }
+/* Every bar column (share_bar, alloc_meter) takes one of two widths, the same everywhere:
+   short below a desktop, and one shared desktop width at >= 1200px. */
+:root {
+    --bar-share-w: 3.5rem;
+    --bar-meter-w: 5rem;
+}
+@media (min-width: 1200px) {
+    :root {
+        --bar-share-w: 8rem;
+        --bar-meter-w: 8rem;
+    }
+}
 .share-bar {
     --share-color: var(--fs-color, var(--text-link));
     flex: none;
-    width: 3.5rem;
+    width: var(--bar-share-w);
     height: 0.375rem;
     border-radius: 0.1875rem;
     background:
@@ -508,14 +520,7 @@ tr:hover > td .btn.btn-row-attention {
 /* % of an allocation used: a wider share bar; the tick marks % of its time elapsed. */
 .share-bar.meter {
     position: relative;
-    width: 5rem;
-}
-/* Project resources and the Manage Project tree have the width on a desktop: half again as long. */
-@media (min-width: 1200px) {
-    .project-resources .share-bar.meter,
-    .project-alloc-tree .share-bar.meter {
-        width: 7.5rem;
-    }
+    width: var(--bar-meter-w);
 }
 .share-bar.meter-over {
     --share-color: var(--danger-color);
