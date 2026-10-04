@@ -223,9 +223,13 @@ def htmx_project_create_form():
     )
 
 
+# Project create/edit and New Allocation Type (a CREATE_FACILITIES form) share the cascade.
+_PANEL_CASCADE_PERMISSIONS = (Permission.CREATE_PROJECTS, Permission.CREATE_FACILITIES)
+
+
 @bp.route('/htmx/panels-for-facility')
 @login_required
-@require_permission_any_facility(Permission.CREATE_PROJECTS)
+@require_permission_any_facility(*_PANEL_CASCADE_PERMISSIONS)
 def htmx_panels_for_facility():
     """Return <option> elements for the Panel select, filtered by facility.
 
@@ -241,15 +245,14 @@ def htmx_panels_for_facility():
     except (ValueError, TypeError):
         return '<option value="">— Select facility first —</option>'
 
-    # Facility-scope gate: a user with CREATE_PROJECTS only on WNA must
+    # Facility-scope gate: a user with either permission only on WNA must
     # not be able to discover NCAR panels by forging facility_id. Deny
     # at the source rather than filter the returned list silently.
     facility = db.session.get(Facility, facility_id_int)
     if facility is None:
         return '<option value="">— Select facility first —</option>'
-    if not has_permission_for_facility(
-        current_user, Permission.CREATE_PROJECTS, facility.facility_name,
-    ):
+    if not any(has_permission_for_facility(current_user, p, facility.facility_name)
+               for p in _PANEL_CASCADE_PERMISSIONS):
         abort(403)
 
     panels = (
