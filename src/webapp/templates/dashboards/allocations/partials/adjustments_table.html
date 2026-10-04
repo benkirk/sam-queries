@@ -11,37 +11,37 @@
 #}
 
 <div>
-    <table class="table table-sm table-striped table-hover mb-0 audit-table">
+    <table class="table table-sm table-hover align-middle mb-0 audit-table">
         <thead class="table-subtle">
             <tr>
-                <th style="white-space:nowrap;">{{ sort_link('adjustment_date', 'Date') }}</th>
-                <th>{{ sort_link('adjustment_type', 'Type') }}</th>
-                <th>{{ sort_link('projcode', 'Project') }}</th>
-                <th style="width:130px;">{{ sort_link('resource_name', 'Resource') }}</th>
-                <th class="text-end">{{ sort_link('amount', 'Amount', align='text-end') }}</th>
-                <th>{{ sort_link('username', 'Adjusted by') }}</th>
-                <th style="width:99%;">Comment</th>
+                <th class="col-shrink">{{ sort_link('adjustment_date', 'Date') }}</th>
+                <th class="col-shrink">{{ sort_link('adjustment_type', 'Type') }}</th>
+                <th class="col-shrink">{{ sort_link('projcode', 'Project') }}</th>
+                <th class="col-shrink">{{ sort_link('resource_name', 'Resource') }}</th>
+                <th class="col-num">{{ sort_link('amount', 'Amount', align='text-end') }}</th>
+                <th class="col-shrink">{{ sort_link('username', 'Adjusted by') }}</th>
+                <th>Comment</th>
             </tr>
         </thead>
         <tbody>
             {% for r in rows %}
-            <tr style="cursor:pointer;"
+            <tr class="cursor-pointer"
                 data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
                 hx-get="{{ url_for('allocations_dashboard.adjustment_details', adjustment_id=r.adjustment_id) }}"
                 hx-target="#auditDetailsModalBody"
                 hx-swap="innerHTML">
-                <td style="white-space:nowrap;">{{ r.adjustment_date | fmt_date }}</td>
+                <td class="text-nowrap">{{ r.adjustment_date | fmt_date }}</td>
                 <td>
                     <span class="badge bg-secondary">{{ r.adjustment_type }}</span>
                 </td>
                 <td>
                     {{ project_link(r.projcode, can_view_projects, stop_propagation=True) }}
                 </td>
-                <td style="max-width:130px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                <td class="text-nowrap"
                     title="{{ r.resource_name or '' }}">
                     {{ r.resource_name or '—' }}
                 </td>
-                <td class="text-end" style="white-space:nowrap;">
+                <td class="col-num">
                     {% if r.amount is not none %}
                         {% set cls = 'text-success' if r.amount > 0 else ('text-danger' if r.amount < 0 else '') %}
                         <span class="{{ cls }}">{{ r.amount | fmt_number }}</span>
@@ -52,9 +52,8 @@
                 <td>
                     {{ user_link(r.username, can_view_users, stop_propagation=True) }}
                 </td>
-                <td class="small text-muted"
-                    title="{{ r.comment or '' }}"
-                    style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                <td class="small text-muted cell-truncate"
+                    title="{{ r.comment or '' }}">
                     {{ r.comment or '' }}
                 </td>
             </tr>

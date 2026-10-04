@@ -19,27 +19,27 @@
 
 {% if allocation_transactions %}
 <div class="table-responsive">
-    <table class="table table-sm table-striped table-hover mb-0">
+    <table class="table table-sm table-hover align-middle mb-0">
         <thead class="table-subtle">
             <tr>
-                <th style="white-space:nowrap;">Date</th>
-                <th>Type
+                <th class="col-shrink">Date</th>
+                <th class="col-shrink">Type
                     {{ help_icon(g_txn_types(), rich=True, title='Transaction types', placement='top') }}
                 </th>
-                <th class="text-end">Amount</th>
-                <th>Effective</th>
-                <th>By</th>
-                <th style="width:99%;">Comment</th>
+                <th class="col-num">Amount</th>
+                <th class="col-shrink">Effective</th>
+                <th class="col-shrink">By</th>
+                <th>Comment</th>
             </tr>
         </thead>
         <tbody>
             {% for t in allocation_transactions %}
             <tr>
-                <td style="white-space:nowrap;">{{ t.creation_time | fmt_date }}</td>
+                <td class="text-nowrap">{{ t.creation_time | fmt_date }}</td>
                 <td>
                     <span class="badge bg-secondary">{{ t.transaction_type }}</span>
                 </td>
-                <td class="text-end" style="white-space:nowrap;">
+                <td class="col-num">
                     {% if t.transaction_amount is not none %}
                         {% set cls = 'text-success' if t.transaction_amount > 0 else ('text-danger' if t.transaction_amount < 0 else '') %}
                         <span class="{{ cls }}">{{ t.transaction_amount | fmt_number }}</span>
@@ -47,7 +47,7 @@
                         <span class="text-muted">—</span>
                     {% endif %}
                 </td>
-                <td class="small text-muted" style="white-space:nowrap;">
+                <td class="small text-muted text-nowrap">
                     {% if t.alloc_start_date %}start → {{ t.alloc_start_date | fmt_date }}{% endif %}
                     {% if t.alloc_start_date and t.alloc_end_date %}<br>{% endif %}
                     {% if t.alloc_end_date %}end → {{ t.alloc_end_date | fmt_date }}{% endif %}
@@ -56,9 +56,8 @@
                 <td>
                     {{ contract_user_link(t.user, can_view_users, compact=True) }}
                 </td>
-                <td class="small text-muted"
-                    title="{{ t.transaction_comment or '' }}"
-                    style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                <td class="small text-muted cell-truncate"
+                    title="{{ t.transaction_comment or '' }}">
                     {{ t.transaction_comment or '' }}
                 </td>
             </tr>
