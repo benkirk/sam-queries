@@ -87,7 +87,7 @@
         Each month of a bar is shaded by its charges against an even burn of the allocation over
         its whole span; group rows add up their allocations. A tick marks where its last-90-day rate
         would spend the balance at least 30 days before the end date. A faded end continues past the window.
-        Charges through {{ active_at_dt | fmt_date }}.
+        Charges through {{ charges_through | fmt_date }}, the last complete day.
         {% else %}
         Each bar spans an allocation and fills to its % used along its whole length; a faded end
         continues past the window. A fill short of the line ({{ active_at_dt | fmt_date }}) is under pace.

@@ -33,8 +33,11 @@ def burn_key():
 
 
 def burn_through(active_at, today):
-    """Where shading stops (exclusive): the end of the as-of day, or today's midnight if sooner,
-    because a day's charges land the day after."""
+    """Where shading stops (exclusive): the end of the as-of day, or today's midnight if sooner.
+
+    Today's charges accumulate hourly and are complete only at midnight; at this page's month
+    granularity a partial day overstates the current month, so today waits until tomorrow.
+    """
     return min(active_at.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1), today)
 
 
