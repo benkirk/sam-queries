@@ -238,7 +238,13 @@ def _shoot_modal(page, recipe, out, state, styles):
         dump = path.with_suffix('.styles.json.gz')
         dump.write_bytes(gzip.compress(json.dumps(page.evaluate(STYLE_DUMP_JS)).encode()))
     tag = page.add_style_tag(content=UNCLIP_CSS)
+    viewport = page.viewport_size   # a dialog taller than the window paints only what is on screen
+    tall = page.locator('.modal.show .modal-dialog').bounding_box()['height'] + 120
+    if tall > viewport['height']:
+        page.set_viewport_size({'width': viewport['width'], 'height': int(tall)})
+        page.wait_for_timeout(200)
     page.locator('.modal.show .modal-dialog').screenshot(path=str(path))
+    page.set_viewport_size(viewport)
     tag.evaluate('el => el.remove()')
     with (out / 'heights.tsv').open('a') as f:
         f.write(f"{name}\t{state}\t{size['height']}\t{size['natural']}\n")
