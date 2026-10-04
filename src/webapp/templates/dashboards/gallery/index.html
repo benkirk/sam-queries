@@ -155,7 +155,7 @@
         {{ ff.text_field('demo_bad', 'Text (invalid)', required=True) }}
         {{ ff.number_field('demo_number', 'Number', min=0, step=1, default='42', tip='A one-line hover tooltip (tip=).') }}
         {{ ff.date_field('demo_date', 'Date', tip='A click popover: simple <strong>HTML</strong> allowed (tip_rich=True).', tip_rich=True) }}
-        {{ ff.datetime_field('demo_datetime', 'Date &amp; time') }}
+        {{ ff.datetime_field('demo_datetime', 'Date & time') }}
         {{ ff.textarea_field('demo_textarea', 'Notes', rows=2) }}
         {# The suggestion endpoint lives on the Invitations blueprint, mounted only
            when ACCOUNT_INVITATIONS_ENABLED is on. #}
