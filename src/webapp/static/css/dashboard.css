@@ -1112,23 +1112,6 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     padding: 0.5rem;
 }
 
-/* Clickable table rows */
-.resource-row {
-    cursor: pointer;
-    transition: all var(--transition-fast);
-}
-
-.resource-row:hover {
-    background-color: rgba(var(--ncar-teal-rgb), 0.08) !important;
-    transform: scale(1.01);
-}
-
-/* Date-bounds group header row in resources table */
-.date-group-header td {
-    background-color: var(--surface-tertiary);
-    border-top: 2px solid var(--border-default) !important;
-}
-
 /* ============================================================================
    ALERTS
    ========================================================================= */

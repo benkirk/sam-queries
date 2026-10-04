@@ -38,8 +38,10 @@
 <td class="col-num" title="Used by this project; the pool has used {{ res.used | fmt_number }}">{{ res.self_used | fmt_number }}</td>
 <td class="col-num text-muted" title="{{ pool }}'s pool remaining">{{ res.remaining | fmt_number }}</td>
 {%- else -%}
-<td class="col-num">{{ usage_meter(res.percent_used, res.elapsed_pct) }}</td>
+{#- Time elapsed means something for a compute allocation, not for storage. -#}
+<td class="col-num">{{ usage_meter(res.percent_used, res.elapsed_pct if res.resource_type in ('HPC', 'DAV') else none) }}</td>
 <td class="col-num">{{ res.allocated | fmt_number }}
+  {%- set unit = res.resource_type | alloc_unit(res.allocated) if res.resource_type else '' %}{% if unit %} <span class="text-muted small">{{ unit }}</span>{% endif %}
   {%- if res.carve_residual %}
   <div class="small {{ 'text-danger-emphasis' if res.carve_residual.raw_residual < 0 else 'text-muted' }}">
     {{ term(res.carve_residual.raw_residual | fmt_number ~ ' unallocated', g_unallocated(), rich=True, title='Unallocated remainder') }}
