@@ -186,9 +186,38 @@
         }, 60);
     }
 
+    /**
+     * Expand modal (#chartExpandModal): a click on a [data-chart-expand] chart off
+     * any drill link clicks the host's opener, unless the opener is hidden (phones).
+     */
+    function expandFromChart(target) {
+        var svg = target.closest && target.closest('[data-chart-expand] svg');
+        if (!svg) return;
+        var opener = svg.closest('[data-chart-expand]')
+                        .querySelector('[data-chart-expand-opener]');
+        if (opener && opener.offsetParent !== null) opener.click();
+    }
+
+    // Reopening shows the spinner, never the previous chart while the next loads.
+    var expandLoading = null;
+    document.addEventListener('show.bs.modal', function (e) {
+        if (e.target.id !== 'chartExpandModal' || expandLoading) return;
+        var body = document.getElementById('chartExpandModalBody');
+        expandLoading = {body: body.innerHTML,
+                         title: document.getElementById('chartExpandModalTitle').textContent};
+    });
+    document.addEventListener('hidden.bs.modal', function (e) {
+        if (e.target.id !== 'chartExpandModal' || !expandLoading) return;
+        document.getElementById('chartExpandModalBody').innerHTML = expandLoading.body;
+        document.getElementById('chartExpandModalTitle').textContent = expandLoading.title;
+    });
+
     document.addEventListener('click', function (e) {
         var a = e.target.closest && e.target.closest('svg a');
-        if (!a) return;
+        if (!a) {
+            expandFromChart(e.target);
+            return;
+        }
         var href = a.getAttribute('href') || a.getAttribute('xlink:href');
         if (!href) return;
 
@@ -224,8 +253,18 @@
             var modalEl = document.getElementById(cfg.container);
             if (!modalEl || !window.htmx || !window.bootstrap) return;
             e.preventDefault();
-            htmx.ajax('GET', href, {target: '#' + cfg.body, swap: 'innerHTML'});
-            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            var open = function () {
+                htmx.ajax('GET', href, {target: '#' + cfg.body, swap: 'innerHTML'});
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            };
+            // Bootstrap does not stack modals: close the expand modal first.
+            var expand = a.closest('#chartExpandModal');
+            if (expand) {
+                expand.addEventListener('hidden.bs.modal', open, {once: true});
+                bootstrap.Modal.getOrCreateInstance(expand).hide();
+            } else {
+                open();
+            }
             return;
         }
     }, false);

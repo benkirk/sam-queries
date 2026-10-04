@@ -3,9 +3,13 @@
    swap target, and data-chart-persist-* lets nav-view-persistence.js replay the
    chosen `days` on the next load. `selector_kwargs` carries any facilities=
    scope forward, or a click would widen a scoped chart. #}
+{% from 'dashboards/fragments/chart_expand.html' import expand_button %}
 <div id="{{ chart_dom_id }}"
      data-chart-persist-id="{{ chart_dom_id }}"
      data-chart-persist-keys="days">
+    {# Here, not on the figure: the window it expands is this swap's `days`. #}
+    {{ expand_button(url_for('allocations_dashboard.htmx_sunburst_expanded', resource_name=resource_name,
+                             measure='used', days=days, **selector_kwargs)) }}
     <div class="d-flex justify-content-center mb-2">
         <div class="btn-group btn-group-sm" role="group" aria-label="Usage window">
             {% for d in window_days %}

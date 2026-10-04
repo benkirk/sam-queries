@@ -391,6 +391,12 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'projectDetailsModal', 'projectDetailsModalBody'],
     'project_members/fragments/members_table.html': [
         'addMemberModal', 'userDetailsModal', 'userDetailsModalBody'],
+    # The sunburst expand opener renders in allocations/projects.html (charts and the
+    # lazy Used ring) and, under the facility switch, the status Job History page;
+    # both include fragments/chart_expand_modal.html. The body's window pills target
+    # the open modal's body and carry no toggle.
+    'dashboards/fragments/chart_expand.html': ['chartExpandModal', 'chartExpandModalBody'],
+    'dashboards/fragments/chart_expanded.html': ['chartExpandModalBody'],
 }
 
 

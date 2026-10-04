@@ -120,3 +120,5 @@ card had. Lessons from that work apply directly.
   including it would double-count).
 - `pie.py` hit the chart-module 550-line cap at step 1; over-budget comments were
   compressed, and step 7 brought it to 478.
+- **Expanded view**: each sunburst opens a fullscreen facility / panel / project
+  chart; see `PANEL_SUNBURST.md`.

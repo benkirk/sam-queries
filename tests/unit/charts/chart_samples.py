@@ -282,6 +282,23 @@ _JOBS_FACILITY_SUNBURST = [
 ]
 
 
+# Facility / panel / project: two panels under NCAR, a 300-project long tail
+# under UNIV USS (its smallest fold into one "+N" wedge), and an Unknown.
+_PANEL_PROJECTS = {
+    'NMMM0043': 500.0, 'NMMM0063': 300.0, 'NRAL0032': 200.0, 'NACD0001': 90.0,
+    'UCUB0174': 400.0, 'UMIA0042': 250.0, 'P93300606': 350.0, 'ZZZZ0001': 40.0,
+    **{f'UTAIL{i:04d}': 300.0 / (i + 1) ** 2 for i in range(300)},
+}
+_PANEL_OF = {
+    'NMMM0043': (1, 'NCAR', 'NCAR Labs'), 'NMMM0063': (1, 'NCAR', 'NCAR Labs'),
+    'NRAL0032': (1, 'NCAR', 'NCAR-ARP'), 'NACD0001': (1, 'NCAR', 'NCAR-ARP'),
+    'UCUB0174': (2, 'UNIV', 'CHAP'), 'UMIA0042': (2, 'UNIV', 'CHAP'),
+    'P93300606': (3, 'CSL', 'CSLAP'),
+    **{f'UTAIL{i:04d}': (2, 'UNIV', 'UNIV USS') for i in range(300)},
+}
+_PANEL_SUNBURST = charts.panel_rows(_PANEL_PROJECTS, _PANEL_OF, {1: 1, 2: 2, 3: 3})
+
+
 CASES = [
     # --- 1. usage timeseries (flat) -------------------------------------
     ('usage_timeseries.charges', charts.generate_usage_timeseries_matplotlib,
@@ -407,4 +424,9 @@ CASES = [
      (_JOBS_FACILITY_SUNBURST,), {'center': 'CPU-h'}),
     ('jobs_facility_sunburst.empty', charts.generate_jobs_facility_sunburst,
      ([],), {'center': 'Jobs'}),
+
+    # --- 20. facility / panel / project expanded view (long tail folds to "+N")
+    ('panel_sunburst.normal', charts.generate_panel_sunburst,
+     (_PANEL_SUNBURST,), {'center': 'CPU-h'}),
+    ('panel_sunburst.empty', charts.generate_panel_sunburst, ([],), {'center': 'CPU-h'}),
 ]

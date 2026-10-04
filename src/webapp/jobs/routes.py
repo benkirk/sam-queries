@@ -28,15 +28,18 @@ from flask_login import login_required
 from sam.core.users import User
 from sam.projects.projects import Project
 from webapp.api.access_control import require_project_access
-from sam.queries.projects import project_facilities
+from sam import fmt
+from sam.queries.projects import project_facilities, project_panels
 from sam.resources.facilities import Facility
 from webapp.dashboards.charts import (
     generate_jobs_facility_sunburst,
+    generate_panel_sunburst,
+    panel_rows,
     generate_jobs_histogram,
     generate_jobs_timeseries_stacked,
     generate_jobs_usage_pie_chart,
 )
-from webapp.dashboards.charts.jobs_metrics import jobs_metric_value
+from webapp.dashboards.charts.jobs_metrics import JOBS_METRIC_LABELS, jobs_metric_value
 from webapp.dashboards.charts.theme import facility_slots
 from webapp.extensions import db
 from webapp.jobs import service
@@ -873,12 +876,16 @@ def _facility_rings(rows, metric, facility_of, slots, linked,
     return out
 
 
+def _active_facility_slots():
+    active = db.session.query(Facility.facility_id).filter(Facility.is_active)
+    return facility_slots(fid for (fid,) in active)
+
+
 def _facility_sunburst(usage, metric, *, layout, theme):
     """The By Project pie grouped by facility, from an untruncated rollup."""
     rows = usage.get('rows') or []
     facility_of = project_facilities(db.session, (r.get('value') for r in rows))
-    active = db.session.query(Facility.facility_id).filter(Facility.is_active)
-    slots = facility_slots(fid for (fid,) in active)
+    slots = _active_facility_slots()
     linked = {r.get('value') for r in rows[:_BY_USER_LIMIT]}
     data = _facility_rings(rows, metric, facility_of, slots, linked)
     return generate_jobs_facility_sunburst(data, _FACILITY_CENTER[metric],
@@ -2014,6 +2021,32 @@ def _panel_usage(ctx, fragment_url, *, mode, scope_for, log_label,
     )
 
 
+def _panel_by_project_expanded(ctx, fragment_url, *, mode, layout='desktop',
+                               theme='light', **_kw):
+    """HTMX fragment: the expand modal's facility / panel / project sunburst."""
+    template = 'dashboards/fragments/chart_expanded.html'
+    machine = ctx['machine']
+    metric = _parse_metric(_DEFAULT_METRIC_PIE)
+    title = f'{(machine or "").title()}: {JOBS_METRIC_LABELS[metric]} by facility, panel and project'
+    if machine is None or not is_enabled():
+        return render_template(template, title=title,
+                               chart_svg='<p class="text-muted text-center">Job history is unavailable.</p>')
+    filters = _parse_job_filters()
+    usage = service.jobs_usage_by_project(
+        machine, _agg_scope(mode, account_projcodes=ctx['account_projcodes']),
+        limit=None, sort_by=_USAGE_SORT_BY[metric], **filters)
+    values = {r['value']: jobs_metric_value(r, metric, 'cpu_hours')
+              for r in usage.get('rows') or [] if r.get('value')}
+    data = panel_rows(values, project_panels(db.session, values), _active_facility_slots())
+    start, end = filters.get('start'), filters.get('end')
+    caption = (f'Jobs from {fmt.date_str(start)} to {fmt.date_str(end) if end else "today"}.'
+               if start else '')
+    return render_template(
+        template, title=title, caption=caption,
+        chart_svg=generate_panel_sunburst(data, _FACILITY_CENTER[metric],
+                                          layout=layout, theme=theme))
+
+
 def _panel_histogram(ctx, fragment_url, *, mode, scope_for, log_label,
                      dimension, dimension_toggle=False,
                      jobs_fragment_url=None, layout='desktop',
@@ -2129,6 +2162,9 @@ _PANELS = declare_panels((
     PanelSpec(key='by_project', rule='/by-project', render=_panel_usage,
               kwargs={'entity_key': 'project'},
               siblings={'jobs_fragment_url': 'jobs'}),
+    # The By Project chart's expand modal; machine mode, where the facility switch lives.
+    PanelSpec(key='by_project_expanded', rule='/by-project/expanded',
+              render=_panel_by_project_expanded, modes=('machine',)),
     PanelSpec(key='wait_times', rule='/wait-times', render=_panel_histogram,
               kwargs={'dimension': 'wait', 'dimension_toggle': False},
               siblings={'jobs_fragment_url': 'jobs'}),

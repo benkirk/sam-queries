@@ -100,3 +100,35 @@ def test_switch_absent_on_by_user(app, auth_client, monkeypatch):
     body = auth_client.get('/dashboards/user/jobs/machine/derecho/by-user?by_facility=1')\
         .get_data(as_text=True)
     assert 'jobs-byfac-' not in body
+
+
+@pytest.fixture
+def panels(monkeypatch):
+    monkeypatch.setattr(routes, 'project_panels', lambda session, codes: {
+        'SCSG0001': (1, 'NCAR', 'CISL USS'), 'UABC0002': (2, 'UNIV', 'UNIV USS')})
+
+
+def test_by_facility_chart_carries_the_expand_opener(app, auth_client, monkeypatch, facilities):
+    _install_mock_plugin(app, monkeypatch, jobs_usage_by_return=_PROJECT_USAGE)
+    body = auth_client.get(f'{_URL}?metric=jobs').get_data(as_text=True)
+    assert 'data-chart-expand' in body
+    assert '/machine/derecho/by-project/expanded?metric=jobs' in body
+    assert 'hx-include="#jobs-' in body
+
+
+def test_expanded_fetches_every_project_by_panel(app, auth_client, monkeypatch, panels):
+    captured = _install_mock_plugin(app, monkeypatch, jobs_usage_by_return=_PROJECT_USAGE)
+    body = auth_client.get(f'{_URL}/expanded?metric=cpu_hours&start=2026-07-01')\
+        .get_data(as_text=True)
+    assert captured['last_jobs_usage_by'][1]['limit'] is None
+    assert 'id="chartExpandModalTitle" hx-swap-oob="true">Derecho: CPU-hours by facility' in body
+    assert '/user/project-details-modal/SCSG0001' in body     # project drill
+    assert 'CISL USS' in body and 'UNIV USS' in body          # panel ring
+    assert 'Jobs from 2026-07-01 to today.' in body
+    assert 'data-bs-toggle' not in body                       # in-modal: no toggles
+
+
+def test_expanded_is_machine_mode_only(app, auth_client, monkeypatch):
+    _install_mock_plugin(app, monkeypatch, jobs_usage_by_return=_PROJECT_USAGE)
+    assert auth_client.get('/dashboards/user/jobs/user/derecho/by-project/expanded')\
+        .status_code == 404
