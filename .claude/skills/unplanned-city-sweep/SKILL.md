@@ -45,9 +45,13 @@ Apply the unplanned-city litmus to the window as a whole, not per commit:
 scripts/sweep_inventory.py --since <end-commit> --top 30   # window mode
 scripts/sweep_inventory.py --area css --top 40             # area mode
 scripts/sweep_inventory.py --area js --jscpd               # add jscpd clones (npx)
+scripts/sweep_inventory.py --area docs --gh                # plans ready to retire (gh: merged PRs)
 ```
 
-Every detector is a lead, not a verdict. Read the code before reporting anything it lists. Record
+Every detector is a lead, not a verdict. Read the code before reporting anything it lists.
+For `js` and `css`, always add `--jscpd`: in the js sweep the jscpd clone led to the bug, while
+`js-dup`'s shared names were mostly short local helpers (`has`, `sync`). `js-dead` reports
+`window.*` exports nothing else names and actions registered or used on one side only. Record
 the whole-tree totals line in the ledger's metrics table at the end of the sweep.
 
 ## 4. Heuristic passes
@@ -64,12 +68,23 @@ Run each pass and collect findings. The examples are real.
 - **Convention drift.** Several idioms for one thing: the leaf-versus-subtree rule exists in
   three query modules, and date arguments are parsed several ways. Pick the house idiom and
   move the others to it. Grep the idiom across the layer before proposing.
-- **Delete.** Dead CSS classes (`css-dead`; check the dynamic stems), JS functions nothing calls,
-  compatibility shims whose callers are gone, and options no caller passes.
+- **Delete.** Dead CSS classes (`css-dead`; check the dynamic stems), JS functions nothing calls
+  (`js-dead`), compatibility shims whose callers are gone, and options no caller passes.
+- **Retire plans.** A top-level `docs/plans/*.md` whose PRs have merged and that nobody has
+  touched lately moves to `docs/plans/implemented/` (`plans-stale`). The detector holds back
+  any plan whose `**Status:**` line says unbuilt, deferred, brainstorm, sketch or in progress,
+  and it is only a lead: read the plan, and flip a stale "in review" Status line to what
+  shipped. `git mv`, then fix every reference. The docs gate catches back-ticked paths in docs
+  outside `docs/plans/`; grep the basename for the rest, including `.env.example`,
+  `scripts/sql/*.sql`, `tests/perf/baselines.json` and other plans (the #641 triage). Run
+  window mode right after the merge that lands a plan.
 - **Legibility.**
   - CSS: a feature section that has outgrown its shared file, `!important`, repeated
     declaration blocks (`css-shape`), and inline `style=""` (`inline-styles`).
   - JS: the same function in several files, and htmx listeners spread across files (`js-dup`).
+    A jscpd clone between two JS files can be two modules binding the *same markup*: grep the
+    templates for the selector before calling it duplication (the js sweep's admin-card sort
+    ran twice per click). Also look for `toISOString()` used as a local calendar date.
   - Prefer moving a feature's rules into its own file, as `allocations.css` did, over adding
     another section to `dashboard.css`.
 - **Propagate.** List the shared pieces the window introduced: macros, chart families, JS
@@ -101,6 +116,10 @@ Rank by value over cost. Mark anything that changes behavior. Then stop and let 
 - **If output could move**, capture it before and after and compare: a parity capture of the
   affected functions on both MySQL and Postgres. Keep throwaway capture scripts untracked under
   `utils/profiling/`. #712's capture found a real backend inconsistency that no test covered.
+- **Front-end changes** get the same before/after, in a browser: run one probe against a server
+  on the old code and one on the branch (a second dev server from another worktree), and pin time
+  with Playwright's `page.clock.install` for date logic. Load `wire-dashboard-feature` for its
+  smoke and gate list.
 - **Measure before claiming a speedup**, with repeats, on both backends. A change that measures
   flat is dropped and recorded, not shipped.
 - Run the gates the change touches: route-map parity, chart fingerprints, CSS tokens, docs, and
@@ -108,7 +127,8 @@ Rank by value over cost. Mark anything that changes behavior. Then stop and let 
 
 ## 7. Close out
 
-- Add a ledger entry: mode, range or area, end commit, done (with the PR), tried and dropped
+- Add a ledger entry: mode, range or area, end commit (in area mode, the `origin/staging` commit
+  the branch started from), done (with the PR), tried and dropped
   (with numbers), open items, and a metrics row from a whole-tree inventory run.
 - Move the unpicked findings onto the entry's open list or the untriaged list.
 - **Growth rule:** when a sweep meets a new class of problem, add the heuristic here, or a

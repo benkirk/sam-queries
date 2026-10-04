@@ -15,6 +15,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | date | end commit | private imports (helpers / sites / package-private) | dup-function groups (extra copies) | dead CSS classes (dynamic stem) | CSS lines / `!important` / repeated blocks | inline styles (templates) | JS shared names / shared events |
 |---|---|---|---|---|---|---|---|
 | 2026-10-03 | `79f1a147` | 70 / 88 / 33 | 9 (10) | 38 (17) | 4,789 / 70 / 14 | 405 (106) | 5 / 4 |
+| 2026-10-03 | `5254c65b` + js sweep | 70 / 88 / 33 | 9 (10) | 38 (17) | 4,817 / 70 / 14 | 404 (105) | 5 / 4 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -49,6 +50,42 @@ the allocations follow-ups handoff, item 2.
 - [ ] From the #707 review: calendar month figures live only in hover tooltips; the run-out tick
   shares the >= 2x color token; a new project with a few zero-charge days projects zero on Pace.
 
+## 2. 2026-10-03: area sweep, `js`
+
+**Mode:** area, `src/webapp/static/js/` (20 files, 3,575 lines). **End commit:** `5254c65b`
+(`origin/staging`). Run as a screening test of the skill: report short, most items dropped.
+Inventory: 5 shared names, 4 shared events, 3 jscpd clones (0.9% of lines). Every
+`registerAction` name has a template user. `js-dead`, added by this sweep, reads 1 unreferenced
+global before (`initLazyLoading`) and 0 / 0 / 1 after; the 1 is Turnstile's own
+`data-action="register"`.
+
+**Done, in this sweep's PR**, one commit each:
+
+- [x] Admin card sort ran twice per click. `admin-cards.js` re-bound the Machines and NSF
+  Programs headers that `sortable_table.js` already binds, so the column stayed descending.
+  Confirmed in a browser on the old and new code. The copy (a jscpd clone) is deleted.
+- [x] Date-range presets formatted local dates with `toISOString()` (UTC). At 20:30 Mountain a
+  30d click sent `end_date` one day ahead (measured with a pinned browser clock). It now uses
+  the local calendar fields.
+- [x] `SamCollapseChevron` retired. Its last caller, the Project Directories rows, uses the
+  house `.collapse-icon` rule instead. Dead `initLazyLoading()` and a duplicate `afterSwap`
+  binding in `sortable_table.js` are also removed.
+
+**Tried and dropped:** `writeCookie` twins (session cookie vs one-year `Secure` cookie, and
+`theme-toggle.js` loads alone on the login/register pages); `has()` twins (3 lines); merging
+`number-preview`/`path-preview` (shared wiring, no shared logic); one `htmx:afterSettle`
+dispatcher (10 unrelated, cheaply guarded listeners; a dispatcher couples 5 files); folding
+`show-user-details` into `show-detail-modal` (5 sites, cosmetic); the error-toast twins in
+`htmx-config.js`.
+
+**Open from this sweep:**
+
+- [ ] Hardcoded routes in JS: `dashboard-init.js` (`/admin/expirations`, `.../export`,
+  `/admin/project/`) and `modals.js` (`/status/htmx/outage/<id>/edit`). The house idiom is a
+  `url_for`-rendered `data-*-url` attribute.
+- [ ] The "strip overridden params from `detail.path`" clone in `layout-axis.js` and
+  `nav-view-persistence.js` could be one helper.
+
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
 Surfaced by the first run of `scripts/sweep_inventory.py`. Each item belongs to an area sweep;
@@ -71,10 +108,9 @@ nothing here has been read for intent yet.
   per-feature files the way `allocations.css` did.
 - **css:** 21 dead classes without a dynamic stem, for example `.logout-link`, `.date-filter-form`,
   `.stat-box` and the `.border-status-*` set.
-- **js:** `number-preview.js` and `path-preview.js` are near twins (`primeAll`, `updatePreview`,
-  and a jscpd clone). `writeCookie` is defined in both `layout-axis.js` and `theme-toggle.js`.
-- **js:** `htmx:afterSettle` has 10 listeners across 5 files, and `htmx:afterSwap` has 5 across 4.
-  One dispatcher in `htmx-config.js` might serve them all.
+- **docs:** `plans-stale --gh` on 2026-10-03 found no retirement candidates among 22 top-level
+  plans. `ADMIN_TABLE_POLISH.md` and `ALLOCATIONS_SUNBURST.md` still say "implemented, in
+  review" although their PRs have merged; they pass the 14-day idle bar on 2026-10-17.
 - **templates:** 405 inline `style=""` attributes; the project trees (`shared/project_tree.html`,
   the admin allocation tree) carry the most.
 
