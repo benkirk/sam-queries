@@ -4,7 +4,7 @@
 
 from sqlalchemy import Column, DateTime, Integer, UniqueConstraint, ForeignKey
 from sqlalchemy.orm import relationship
-from ..base import StatusBase, StatusSnapshotMixin, SessionMixin, QueueRollupMetricsMixin
+from ..base import StatusBase, StatusSnapshotMixin, SessionMixin, QueueRollupMetricsMixin, staged_name
 from .lookups import System, QueueDef, UserDef, ProjectCodeDef
 
 
@@ -102,53 +102,12 @@ class UserProjQueueStatus(StatusBase, StatusSnapshotMixin,
     queue = relationship(QueueDef, foreign_keys=[queue_id])
 
     # ------------------------------------------------------------------
-    # Backward-compat / collector-friendly property accessors.
-    # Mirror the pattern in queues.py: setters stage strings as
-    # _pending_* attributes; the before_flush listener resolves them.
+    # Backward-compat / collector-friendly accessors (see staged_name).
     # ------------------------------------------------------------------
-    @property
-    def system_name(self):
-        pending = self.__dict__.get('_pending_system_name')
-        if pending is not None:
-            return pending
-        return self.system.name if self.system is not None else None
-
-    @system_name.setter
-    def system_name(self, value):
-        self.__dict__['_pending_system_name'] = value
-
-    @property
-    def queue_name(self):
-        pending = self.__dict__.get('_pending_queue_name')
-        if pending is not None:
-            return pending
-        return self.queue.name if self.queue is not None else None
-
-    @queue_name.setter
-    def queue_name(self, value):
-        self.__dict__['_pending_queue_name'] = value
-
-    @property
-    def username(self):
-        pending = self.__dict__.get('_pending_username')
-        if pending is not None:
-            return pending
-        return self.user.username if self.user is not None else None
-
-    @username.setter
-    def username(self, value):
-        self.__dict__['_pending_username'] = value
-
-    @property
-    def project_code(self):
-        pending = self.__dict__.get('_pending_project_code')
-        if pending is not None:
-            return pending
-        return self.project.project_code if self.project is not None else None
-
-    @project_code.setter
-    def project_code(self, value):
-        self.__dict__['_pending_project_code'] = value
+    system_name = staged_name('system')
+    queue_name = staged_name('queue')
+    username = staged_name('user', 'username')
+    project_code = staged_name('project', 'project_code')
 
     def __str__(self):
         return (f"{self.username}/{self.project_code} on {self.queue_name} "
