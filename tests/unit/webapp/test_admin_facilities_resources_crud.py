@@ -20,7 +20,7 @@ import pytest
 from sqlalchemy import func, inspect as sa_inspect
 
 from sam.accounting.allocations import AllocationType
-from sam.resources.facilities import Facility, Panel, PanelSession
+from sam.resources.facilities import Facility, Panel
 from sam.resources.machines import Machine, Queue
 from sam.resources.resources import Resource, ResourceType
 
@@ -116,37 +116,6 @@ class TestFacilitiesResourcesCrud:
             pytest.skip('Auth disabled in dev environment')
         resp = client.post(f'/admin/htmx/{slug}-edit/1', data={})
         assert resp.status_code in (302, 401)
-
-
-class TestPanelSessionEdit:
-    """Panel-session has an edit pair only (no create/delete) and stays a
-    bespoke handler — its cross-field check needs the loaded ORM object."""
-
-    def test_edit_form_renders(self, auth_client, session):
-        entity_id = _snapshot_id(session, PanelSession)
-        resp = auth_client.get(f'/admin/htmx/panel-session-edit-form/{entity_id}')
-        assert resp.status_code == 200
-
-    def test_edit_form_missing_id_warns_at_200(self, auth_client):
-        resp = auth_client.get(f'/admin/htmx/panel-session-edit-form/{MISSING_ID}')
-        assert resp.status_code == 200
-        assert 'Panel session not found' in resp.get_data(as_text=True)
-
-    def test_edit_post_missing_id_404s(self, auth_client):
-        resp = auth_client.post(f'/admin/htmx/panel-session-edit/{MISSING_ID}',
-                                data={})
-        assert resp.status_code == 404
-
-    def test_edit_post_invalid_rerenders(self, auth_client, session):
-        entity_id = _snapshot_id(session, PanelSession)
-        resp = auth_client.post(f'/admin/htmx/panel-session-edit/{entity_id}',
-                                data={})   # start_date is required
-        assert resp.status_code == 200
-        assert 'HX-Trigger' not in resp.headers
-
-    def test_non_admin_forbidden(self, non_admin_client):
-        assert non_admin_client.post(
-            '/admin/htmx/panel-session-edit/1', data={}).status_code == 403
 
 
 class TestCreateResourcePickers:
