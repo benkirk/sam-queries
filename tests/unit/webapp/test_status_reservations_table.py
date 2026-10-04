@@ -22,9 +22,10 @@ def _render(app, rows, show_system=False):
 
 
 def test_same_day_window_prints_the_date_once(app):
-    # 14:00-18:00 UTC is 08:00-12:00 MDT on the same day.
+    # 14:00-18:00 UTC is 08:00-12:00 MDT on the same day. Rendered twice: its column, and under
+    # the name for phones.
     html = _render(app, [_row('latch', datetime(2030, 7, 8, 14), datetime(2030, 7, 8, 18), node_count=36)])
-    assert 'Mon Jul 8' in html and html.count('Jul 8') == 1
+    assert 'Mon Jul 8' in html and html.count('Jul 8') == 2
     assert '08:00&ndash;12:00 M' in html
 
 

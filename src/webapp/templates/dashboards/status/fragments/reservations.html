@@ -2,6 +2,7 @@
   PBS reservations as one table: the Derecho and Casper pages pass their own rows,
   the Events tab passes every system's with show_system. Times are stored naive-UTC
   (the parser converts cluster-local PBS output); to_local_dt turns them back.
+  On a phone the window moves under the name instead of scrolling out of view.
 #}
 {% macro reservation_window(res) -%}
 {% set start, end = res.start_time | to_local_dt, res.end_time | to_local_dt %}
@@ -26,7 +27,7 @@
                 {% if show_system %}<th class="col-shrink">System</th>{% endif %}
                 <th>Reservation</th>
                 <th class="col-num">Nodes</th>
-                <th class="col-shrink">Window</th>
+                <th class="col-shrink d-none d-md-table-cell">Window</th>
             </tr>
         </thead>
         <tbody>
@@ -36,6 +37,7 @@
                 <td>
                     <span class="fw-semibold">{{ res.reservation_name }}</span>
                     {% if res.is_active %}<span class="reservation-now"><span class="status-dot is-warning"></span>in progress</span>{% endif %}
+                    <div class="small d-md-none">{{ reservation_window(res) }}</div>
                     {% if res.description or (res.partition and res.partition != 'pbs-default') %}
                     <div class="small text-muted">
                         {% if res.description %}<span class="font-monospace">{{ res.description }}</span>{% endif %}
@@ -44,7 +46,7 @@
                     {% endif %}
                 </td>
                 <td class="col-num">{{ res.node_count | fmt_number if res.node_count else '—' }}</td>
-                <td class="col-shrink">{{ reservation_window(res) }}</td>
+                <td class="col-shrink d-none d-md-table-cell">{{ reservation_window(res) }}</td>
             </tr>
             {% endfor %}
         </tbody>
