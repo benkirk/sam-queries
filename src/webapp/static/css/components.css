@@ -173,9 +173,6 @@ svg a, svg a:hover, svg a:focus, svg a:visited {
     word-break: break-word;
 }
 
-/* project allocation tree (admin edit_project) */
-.btn-xs { padding: 0.1rem 0.35rem; font-size: 0.75rem; }
-
 /* Kill Bootstrap's height animation on <tbody> — looks jittery on table-row-groups.
    Zero transition-duration makes Bootstrap's getTransitionDurationFromElement() return 0,
    so .collapsing is removed immediately and the toggle snaps (same visual as d-none). */

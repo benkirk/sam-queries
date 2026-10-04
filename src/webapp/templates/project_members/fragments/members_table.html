@@ -128,8 +128,8 @@ hx-target="#userDetailsModalBody" hx-swap="innerHTML"
                     {% elif member.role == 'Admin' %}
                         {# Admin actions - only lead can change admin #}
                         {% if can_change_admin %}
-                        <button class="btn btn-sm btn-outline-warning"
-                                title="Remove admin role (keep as member)"
+                        <button type="button" class="btn btn-row"
+                                title="Remove admin role (keep as member)" aria-label="Remove admin role (keep as member)"
                                 hx-put="{{ url_for('project_members.htmx_change_admin', projcode=projcode) }}"
                                 hx-vals='{"admin_username": ""}'
                                 hx-target="#htmx-members-{{ projcode }}"
@@ -141,8 +141,8 @@ hx-target="#userDetailsModalBody" hx-swap="innerHTML"
                             <i class="fa-solid fa-user-minus"></i>
                         </button>
                         {% endif %}
-                        <button class="btn btn-sm btn-outline-danger"
-                                title="Remove from project"
+                        <button type="button" class="btn btn-row btn-row-danger"
+                                title="Remove from project" aria-label="Remove from project"
                                 hx-delete="{{ url_for('project_members.htmx_remove_member', projcode=projcode, username=member.username) }}"
                                 hx-target="#htmx-members-{{ projcode }}"
                                 hx-swap="innerHTML"
@@ -152,8 +152,8 @@ hx-target="#userDetailsModalBody" hx-swap="innerHTML"
                     {% else %}
                         {# Regular member actions #}
                         {% if can_change_admin %}
-                        <button class="btn btn-sm btn-outline-info"
-                                title="Make project admin"
+                        <button type="button" class="btn btn-row"
+                                title="Make project admin" aria-label="Make project admin"
                                 hx-put="{{ url_for('project_members.htmx_change_admin', projcode=projcode) }}"
                                 hx-vals='{"admin_username": "{{ member.username }}"}'
                                 hx-target="#htmx-members-{{ projcode }}"
@@ -170,8 +170,8 @@ hx-target="#userDetailsModalBody" hx-swap="innerHTML"
                             <p class="mb-0 text-muted small">A project can have only one admin. Project admins can control project membership.</p>
                         </template>
                         {% endif %}
-                        <button class="btn btn-sm btn-outline-danger"
-                                title="Remove from project"
+                        <button type="button" class="btn btn-row btn-row-danger"
+                                title="Remove from project" aria-label="Remove from project"
                                 hx-delete="{{ url_for('project_members.htmx_remove_member', projcode=projcode, username=member.username) }}"
                                 hx-target="#htmx-members-{{ projcode }}"
                                 hx-swap="innerHTML"

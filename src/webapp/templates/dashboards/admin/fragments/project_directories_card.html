@@ -140,8 +140,8 @@
                             title='Edit directory',
                             permission=Permission.EDIT_PROJECTS) }}
                         {% if has_permission(Permission.EDIT_PROJECTS) and pd.is_active %}
-                        <button class="btn btn-sm btn-outline-danger ms-1"
-                                title="Deactivate directory"
+                        <button type="button" class="btn btn-row btn-row-danger ms-1"
+                                title="Deactivate directory" aria-label="Deactivate directory"
                                 hx-post="{{ url_for('admin_dashboard.htmx_admin_project_directory_deactivate', pd_id=pd.project_directory_id) }}"
                                 hx-swap="none"
                                 hx-confirm="Deactivate directory &quot;{{ pd.directory_name }}&quot; on project {{ pd.project.projcode }}? This sets the end date to today."

@@ -96,6 +96,15 @@ def test_bs4_classes_skips_classes_our_css_styles(tmp_path):
         ('font-weight-bold', 'page.html:2'), ('ml-2', 'page.html:2'), ('thead-light', 'page.html:1')]
 
 
+def test_row_buttons_finds_icon_only_outline_buttons_in_cells(tmp_path):
+    page = _write(tmp_path, 'page.html',
+                  '<td><button class="btn btn-sm btn-outline-danger" title="x"><i class="fa-solid fa-trash"></i></button>\n'
+                  '<button class="btn btn-row"><i></i></button>'
+                  '<button class="btn btn-outline-danger">Merge</button></td>'
+                  '<div><button class="btn btn-outline-secondary"><i></i></button></div>')
+    assert [r['line'] for r in inv.row_buttons([page])] == [1]
+
+
 def test_js_dup_names_and_listeners(tmp_path):
     one = _write(tmp_path, 'one.js', "function sync() {}\nconst only = () => 1;\n"
                  "document.addEventListener('htmx:afterSwap', sync);\n")
@@ -140,7 +149,7 @@ def test_runs_on_the_real_tree(monkeypatch, capsys):
     assert inv.main(['--top', '3']) == 0
     out = capsys.readouterr().out
     for detector in ('private-imports', 'dup-functions', 'py-dup-names', 'css-dead', 'css-shape', 'inline-styles',
-                     'bs4-classes', 'js-dup', 'js-dead', 'plans-stale'):
+                     'bs4-classes', 'row-buttons', 'js-dup', 'js-dead', 'plans-stale'):
         assert f'== {detector}:' in out
 
 

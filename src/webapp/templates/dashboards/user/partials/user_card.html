@@ -428,7 +428,7 @@
                         <td>{{ ex.comment or '' }}</td>
                         {% if is_admin and has_permission(Permission.EDIT_USERS) %}
                         <td>
-                            <button class="btn  btn-outline-warning py-0"
+                            <button type="button" class="btn btn-row"
                                     data-bs-toggle="modal" data-bs-target="#editExemptionModal"
                                     hx-get="{{ url_for('admin_dashboard.htmx_edit_exemption_form', exemption_id=ex.wallclock_exemption_id) }}"
                                     hx-target="#editExemptionFormContainer"

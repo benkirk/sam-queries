@@ -89,8 +89,8 @@
             </td>
             <td class="text-end">
               {% if can_edit_governance %}
-              <button class="btn btn-sm btn-outline-danger"
-                      title="Remove organization link"
+              <button type="button" class="btn btn-row btn-row-danger"
+                      title="Remove organization link" aria-label="Remove organization link"
                       hx-post="{{ url_for('admin_dashboard.htmx_remove_project_organization', projcode=project.projcode, po_id=po.project_organization_id) }}"
                       hx-target="#linkedElementsContainer"
                       hx-swap="innerHTML"
@@ -198,8 +198,8 @@
             <td class="text-muted small">{{ pc.creation_time | fmt_date }}</td>
             <td class="text-end">
               {% if can_edit_governance %}
-              <button class="btn btn-sm btn-outline-danger"
-                      title="Remove contract link"
+              <button type="button" class="btn btn-row btn-row-danger"
+                      title="Remove contract link" aria-label="Remove contract link"
                       hx-post="{{ url_for('admin_dashboard.htmx_remove_project_contract', projcode=project.projcode, pc_id=pc.project_contract_id) }}"
                       hx-target="#linkedElementsContainer"
                       hx-swap="innerHTML"
@@ -307,8 +307,8 @@
             </td>
             <td class="text-end text-nowrap">
               {% if can_edit_governance %}
-              <button class="btn btn-sm btn-outline-secondary"
-                      title="Edit directory"
+              <button type="button" class="btn btn-row"
+                      title="Edit directory" aria-label="Edit directory"
                       data-bs-toggle="modal"
                       data-bs-target="#editProjectDirectoryModal"
                       hx-get="{{ url_for('admin_dashboard.htmx_admin_project_directory_edit_form', pd_id=pd.project_directory_id) }}"
@@ -316,8 +316,8 @@
                       hx-trigger="click">
                 <i class="fa-solid fa-pen-to-square"></i>
               </button>
-              <button class="btn btn-sm btn-outline-danger ms-1"
-                      title="Remove directory"
+              <button type="button" class="btn btn-row btn-row-danger ms-1"
+                      title="Remove directory" aria-label="Remove directory"
                       hx-post="{{ url_for('admin_dashboard.htmx_remove_project_directory', projcode=project.projcode, pd_id=pd.project_directory_id) }}"
                       hx-target="#linkedElementsContainer"
                       hx-swap="innerHTML"

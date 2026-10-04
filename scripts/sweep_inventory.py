@@ -33,7 +33,7 @@ PLANS_ROOT = Path("docs/plans")
 AREAS = {
     "py": ("private-imports", "dup-functions", "py-dup-names"),
     "css": ("css-dead", "css-shape"),
-    "templates": ("inline-styles", "bs4-classes"),
+    "templates": ("inline-styles", "bs4-classes", "row-buttons"),
     "js": ("js-dup", "js-dead"),
     "docs": ("plans-stale",),
 }
@@ -63,6 +63,8 @@ _BS4_ONLY = re.compile(   # Bootstrap 4 names that 5.3 dropped: on a template th
     r"|custom-(?:select|control|switch|range|file|checkbox|radio)[\w-]*|card-(?:deck|columns)|media-body"
     r"|input-group-(?:append|prepend)|embed-responsive[\w-]*|jumbotron|rounded-(?:left|right)")
 _CLASS_ATTR = re.compile(r"""class=["']([^"']*)["']""")
+_BUTTON = re.compile(r"<(button|a)\b[^>]*?class=\"(btn\b[^\"]*)\"[^>]*>(.*?)</\1>", re.S)
+_TEMPLATE_CODE = re.compile(r"<[^>]+>|\{[%#].*?[%#]\}", re.S)   # {{ }} renders text, so it stays
 JSCPD_IGNORE_PATTERN = r"/\*\s*=+"   # section banners: every /* ==== */ pair otherwise reads as a clone
 
 
@@ -261,6 +263,24 @@ def bs4_classes(template_files, css_files):
     return sorted(rows, key=lambda r: (-r["count"], r["class"]))
 
 
+def row_buttons(template_files):
+    """Icon-only outline buttons in a table cell: the row action the house draws as .btn-row."""
+    rows = []
+    for path in template_files:
+        text = read(path)
+        for m in _BUTTON.finditer(text):
+            classes = m.group(2).split()
+            if "btn-row" in classes or not any(c.startswith("btn-outline-") for c in classes):
+                continue
+            before = text[:m.start()]
+            if not before.rfind("<td") > max(before.rfind("</td>"), before.rfind("</tr>")):
+                continue
+            if _TEMPLATE_CODE.sub("", m.group(3)).strip():
+                continue   # a worded button: consequential verbs keep their words
+            rows.append({"file": path.as_posix(), "line": text.count("\n", 0, m.start()) + 1})
+    return rows
+
+
 _JS_DEFS = re.compile(r"(?:^|[\s;])function\s+([A-Za-z_$][\w$]*)\s*\("
                       r"|(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:function\b|\([^)]*\)\s*=>)",
                       re.M)
@@ -400,6 +420,8 @@ def run(detectors, changed=None, use_gh=False):
     if "bs4-classes" in detectors:
         rows = bs4_classes(files(TEMPLATE_ROOT, "*.html"), css)
         out["bs4-classes"] = [r for r in rows if keep(r["sites"])]
+    if "row-buttons" in detectors:
+        out["row-buttons"] = [r for r in row_buttons(files(TEMPLATE_ROOT, "*.html")) if keep([r["file"]])]
     if "js-dup" in detectors:
         dup = js_dup(files(JS_ROOT, "*.js"))
         out["js-dup"] = {"names": [r for r in dup["names"] if keep(r["files"])],
@@ -470,6 +492,12 @@ def report(result, top):
         for r in rows[:top]:
             print(f"  {r['count']:4d}  .{r['class']}  " + ", ".join(r["sites"][:3]))
         print(f"  total: {sum(r['count'] for r in rows)} uses of {len(rows)} classes")
+    if "row-buttons" in result:
+        rows = result["row-buttons"]
+        print("\n== row-buttons: icon-only outline buttons in table cells (the house row action is .btn-row)")
+        for r in rows[:top]:
+            print(f"  {r['file']}:{r['line']}")
+        print(f"  total: {len(rows)} buttons in {len({r['file'] for r in rows})} templates")
     if "js-dup" in result:
         dup = result["js-dup"]
         print("\n== js-dup: names defined in several files; htmx events listened for in several files")
