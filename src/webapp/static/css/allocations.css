@@ -2,7 +2,7 @@
  * SAM Allocations Dashboard CSS
  * Styles specific to the allocations dashboard.
  *
- * Note: Shared .filter-sidebar styles live in dashboard.css (loaded sitewide
+ * Note: Shared .filter-sidebar styles live in filters.css (loaded sitewide
  * via base.html). Page-specific tweaks for the allocations layout stay here.
  */
 
