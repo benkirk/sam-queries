@@ -1239,6 +1239,15 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     margin-bottom: 0;
 }
 
+/* Manage Project, linked elements: the inline pickers and the directory root select. */
+.le-picker {
+    min-width: 12.5rem;
+}
+
+.path-root-select {
+    max-width: 14em;
+}
+
 .detach-panel {
     margin-top: 0.5rem;
     padding: 0.75rem 0.875rem;
