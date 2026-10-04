@@ -489,7 +489,7 @@
                         {% elif arq.fulfilled %}
                         <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle" title="The account exists; the request is fulfilled">fulfilled</span>
                         {% elif arq.state == 'claimed' %}
-                        <span class="badge bg-info text-dark" title="Claimed by {{ arq.assignee }} on the Accounts queue">claimed · {{ arq.assignee }}</span>
+                        <span class="badge bg-info" title="Claimed by {{ arq.assignee }} on the Accounts queue">claimed · {{ arq.assignee }}</span>
                         {% elif arq.state == 'submitted' %}
                         <span class="badge bg-body-secondary text-body-secondary border" title="Open on the Accounts queue{% if arq.requested_at %}; sent to NUSD {{ arq.requested_at | fmt_date }}{% endif %}">{{ 'sent' if arq.requested_at else 'open' }}</span>
                         {% else %}

@@ -78,7 +78,7 @@
                     <div class="stat-item">
                         <span class="stat-label">Tags:</span>
                         <span class="stat-value">
-                            {% for t in group.tags %}<span class="badge bg-info text-dark">{{ t.tag }}</span>{% if not loop.last %} {% endif %}{% endfor %}
+                            {% for t in group.tags %}<span class="badge bg-info">{{ t.tag }}</span>{% if not loop.last %} {% endif %}{% endfor %}
                         </span>
                     </div>
                     {% endif %}

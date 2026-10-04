@@ -352,13 +352,13 @@
                                 </span>
                             {% elif days <= 14 %}
                                 {# Warning: 8-14 days #}
-                                <span class="badge bg-warning text-dark ms-2" title="Expires in {{ days }} days ({{ resource_list }})">
+                                <span class="badge bg-warning ms-2" title="Expires in {{ days }} days ({{ resource_list }})">
                                     <i class="fa-solid fa-triangle-exclamation"></i>
                                     {{ days }}d{% if count > 1 %} ({{ count }}){% endif %}
                                 </span>
                             {% elif days <= 30 %}
                                 {# Info: 15-30 days #}
-                                <span class="badge bg-info text-dark ms-2" title="Expires in {{ days }} days ({{ resource_list }})">
+                                <span class="badge bg-info ms-2" title="Expires in {{ days }} days ({{ resource_list }})">
                                     <i class="fa-solid fa-calendar"></i>
                                     {{ days }}d{% if count > 1 %} ({{ count }}){% endif %}
                                 </span>
@@ -377,7 +377,7 @@
                     {% if project.lead and project.lead.user_id == user.user_id %}
                         <span class="badge bg-primary"><i class="fa-solid fa-star"></i> Lead</span>
                     {% elif project.admin and project.admin.user_id == user.user_id %}
-                        <span class="badge bg-info text-dark"><i class="fa-solid fa-user-shield"></i> Admin</span>
+                        <span class="badge bg-info"><i class="fa-solid fa-user-shield"></i> Admin</span>
                     {% endif %}
                     {# Show usage warning if any resource exceeds thresholds #}
                     {% set max_usage = resources | map(attribute='percent_used') | max | default(0) %}
@@ -386,7 +386,7 @@
                             <i class="fa-solid fa-circle-exclamation"></i> {{ max_usage | round(0) | int }}% used
                         </span>
                     {% elif max_usage >= usage_warning_threshold %}
-                        <span class="badge bg-warning text-dark" title="Resource usage above {{ usage_warning_threshold }}%">
+                        <span class="badge bg-warning" title="Resource usage above {{ usage_warning_threshold }}%">
                             <i class="fa-solid fa-triangle-exclamation"></i> {{ max_usage | round(0) | int }}% used
                         </span>
                     {% endif %}

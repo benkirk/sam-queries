@@ -95,13 +95,13 @@
                             {% if c.active_in_pbs %}
                             <span class="badge bg-success ms-1">active in PBS</span>
                             {% elif c.defined_in_pbs %}
-                            <span class="badge bg-info text-dark ms-1">defined in PBS</span>
+                            <span class="badge bg-info ms-1">defined in PBS</span>
                             {% endif %}
                             {% if c.pbs_queue_type == 'Route' %}
                             <span class="badge bg-secondary ms-1">routing queue</span>
                             {% endif %}
                             {% if not c.ever_charged %}
-                            <span class="badge bg-warning text-dark ms-1">never charged</span>
+                            <span class="badge bg-warning ms-1">never charged</span>
                             {% endif %}
                             {% if c.queue.description %}
                             <div class="text-muted small">{{ c.queue.description }}</div>

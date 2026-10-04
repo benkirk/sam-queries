@@ -24,11 +24,11 @@
 {% if active_at != now_str %}
 <div class="mb-3">
   {% if active_at > now_str %}
-  <span class="badge bg-info text-dark">
+  <span class="badge bg-info">
     <i class="fa-solid fa-calendar-day me-1"></i>Future view: {{ active_at }}
   </span>
   {% else %}
-  <span class="badge bg-info text-dark">
+  <span class="badge bg-info">
     <i class="fa-solid fa-clock-rotate-left me-1"></i>Historical view: {{ active_at }}
   </span>
   {% endif %}

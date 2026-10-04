@@ -17,7 +17,7 @@
     <div class="card-header py-2 d-flex flex-wrap align-items-center gap-2">
         <strong>{{ card.label }}</strong>
         <span class="text-muted small">
-            {% for label in card.kinds %}<span class="badge bg-light text-dark">{{ label }}</span> {% endfor %}
+            {% for label in card.kinds %}<span class="badge bg-secondary">{{ label }}</span> {% endfor %}
         </span>
         {% if card.env['from'] or card.env.reply_to %}
         <span class="ms-auto small text-muted">
@@ -45,7 +45,7 @@
                     <td><code>{{ address }}</code></td>
                     <td>All {{ card.label | lower }}</td>
                     <td class="text-muted small">
-                        <span class="badge bg-light text-dark">deployment default</span>
+                        <span class="badge bg-secondary">deployment default</span>
                     </td>
                     <td class="text-end text-nowrap"></td>
                 </tr>
