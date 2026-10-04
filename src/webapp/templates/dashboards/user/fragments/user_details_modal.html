@@ -17,6 +17,7 @@
     </div>
 </div>
 
-{# The user card's group badges open this — it must be a sibling of the
-   user modal (page level), never nested inside it. #}
+{# The user card's group badges and exemption buttons open these — they must be
+   siblings of the user modal (page level), never nested inside it. #}
 {% include 'dashboards/user/fragments/group_members_modal.html' %}
+{% include 'dashboards/admin/fragments/exemption_modals.html' %}

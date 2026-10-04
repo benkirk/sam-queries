@@ -434,6 +434,26 @@ def test_htmx_fragment_shell_deps_match_pin():
     assert not msg, '\n'.join(msg)
 
 
+# Shell -> the fragment htmx loads into it. A page shipping the shell must ship that
+# fragment's pinned deps too; the pin alone never asks which pages host the fragment.
+SHELL_LOADS = {
+    'userDetailsModal': 'dashboards/user/partials/user_card.html',
+    'projectDetailsModal': 'dashboards/user/partials/project_card.html',
+}
+
+
+@pytest.mark.parametrize('page', PAGE_TEMPLATES)
+def test_hosted_fragment_deps_resolve(page):
+    """A page with a detail-modal shell also ships what the loaded card targets."""
+    ids = _ids_in_closure(page)
+    missing = {shell: sorted(set(HTMX_FRAGMENT_SHELL_DEPS[frag]) - ids)
+               for shell, frag in SHELL_LOADS.items() if shell in ids}
+    missing = {k: v for k, v in missing.items() if v}
+    assert not missing, (
+        f'{page} ships a modal whose loaded card targets shells the page lacks: {missing}. '
+        'Include them beside the modal shell (user_details_modal.html is the pattern).')
+
+
 # ---------------------------------------------------------------------------
 # 3. Rendered: the exact chain PR #378 broke
 # ---------------------------------------------------------------------------
@@ -495,6 +515,7 @@ def test_project_modal_page_list_is_complete():
     NOT_TOP_LEVEL = {
         'dashboards/admin/edit_project.html',       # /admin/project/<projcode>/edit
         'dashboards/user/resource_details.html',    # /user/resource/<name>
+        'dashboards/user/resource_details_disk.html',  # /user/resource/<name>, a disk
         'dashboards/user/jobs_explore_page.html',   # /user/jobs/explore
         'dashboards/status/queue_history.html',     # /status/<machine>/queues
         'db_browser/row.html',                      # /database/<source>/<table>/row?k.<col>=
@@ -545,6 +566,16 @@ def test_edit_project_page_ships_one_of_each(auth_client, active_project):
     assert html.count(PROJECT_MODAL_ID) == 1
     assert html.count(EDIT_MODAL_ID) == 1
     assert html.count(EDIT_CONTAINER_ID) == 1
+
+
+@pytest.mark.parametrize('url', ['/allocations/transactions', '/status/derecho', '/admin/resources'])
+def test_exemption_shells_ship_once(auth_client, url):
+    """The user card's exemption buttons open these on any host; the admin
+    Resources card's buttons use the same ids."""
+    html = auth_client.get(url).get_data(as_text=True)
+    for shell in ('addExemptionModal', 'addExemptionFormContainer',
+                  'editExemptionModal', 'editExemptionFormContainer'):
+        assert _id_count(html, f'id="{shell}"') == 1, f'{url}: {shell}'
 
 
 def test_project_details_fragment_targets_resolve(auth_client, active_project):
