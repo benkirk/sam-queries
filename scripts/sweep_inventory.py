@@ -30,7 +30,7 @@ AREAS = {
     "py": ("private-imports", "dup-functions"),
     "css": ("css-dead", "css-shape"),
     "templates": ("inline-styles",),
-    "js": ("js-dup",),
+    "js": ("js-dup", "js-dead"),
 }
 MIN_FUNCTION_NODES = 40   # smaller bodies repeat by accident (getters, one-line guards)
 _TOKEN = re.compile(r"[A-Za-z_][\w-]*")
@@ -208,6 +208,29 @@ def js_dup(js_files):
     return {"names": names, "listeners": listeners}
 
 
+_JS_GLOBALS = re.compile(r"window\.([A-Za-z_$][\w$]*)\s*=(?!=)")
+_JS_ACTIONS = re.compile(r"""registerAction\(\s*['"]([\w-]+)['"]""")
+_MARKUP_ACTIONS = re.compile(r"""data-action(?:-change|-input|-submit)?=\s*["']([\w-]+)["']""")
+
+
+def js_dead(js_files, corpus_files):
+    """``window.*`` exports no other file names, actions no markup uses, markup actions nothing registers."""
+    texts = {p.as_posix(): read(p) for p in corpus_files}
+    exports, registered = {}, {}
+    for path in js_files:
+        text = read(path)
+        for name in _JS_GLOBALS.findall(text):
+            exports.setdefault(name, path.as_posix())
+        for name in _JS_ACTIONS.findall(text):
+            registered.setdefault(name, path.as_posix())
+    used = {name for text in texts.values() for name in _MARKUP_ACTIONS.findall(text)}
+    markup = {name for k, text in texts.items() if not k.endswith(".js") for name in _MARKUP_ACTIONS.findall(text)}
+    globals_ = [{"name": n, "file": f} for n, f in sorted(exports.items())
+                if not any(re.search(rf"\b{re.escape(n)}\b", t) for k, t in texts.items() if k != f)]
+    unused = [{"name": n, "file": f} for n, f in sorted(registered.items()) if n not in used]
+    return {"globals": globals_, "unused_actions": unused, "unregistered_actions": sorted(markup - set(registered))}
+
+
 def changed_since(rev):
     out = subprocess.run(["git", "diff", "--name-only", rev], capture_output=True, text=True)
     return {Path(p).as_posix() for p in out.stdout.split()}
@@ -248,6 +271,11 @@ def run(detectors, changed=None):
         dup = js_dup(files(JS_ROOT, "*.js"))
         out["js-dup"] = {"names": [r for r in dup["names"] if keep(r["files"])],
                          "listeners": [r for r in dup["listeners"] if keep(list(r["files"]))]}
+    if "js-dead" in detectors:
+        dead = js_dead(files(JS_ROOT, "*.js"), corpus)
+        out["js-dead"] = {"globals": [r for r in dead["globals"] if keep([r["file"]])],
+                          "unused_actions": [r for r in dead["unused_actions"] if keep([r["file"]])],
+                          "unregistered_actions": dead["unregistered_actions"] if changed is None else []}
     return out
 
 
@@ -298,6 +326,17 @@ def report(result, top):
         for r in dup["listeners"][:top]:
             print(f"  {r['event']} x{r['registrations']}  " + ", ".join(r["files"]))
         print(f"  total: {len(dup['names'])} shared names, {len(dup['listeners'])} shared events")
+    if "js-dead" in result:
+        dead = result["js-dead"]
+        print("\n== js-dead: window.* exports nothing else names; registerAction names vs data-action markup")
+        for r in dead["globals"][:top]:
+            print(f"  window.{r['name']}  (no other file names it)  {r['file']}")
+        for r in dead["unused_actions"][:top]:
+            print(f"  action {r['name']}  (registered, no markup)  {r['file']}")
+        for name in dead["unregistered_actions"][:top]:
+            print(f"  action {name}  (in markup, never registered; may be a third-party widget's)")
+        print(f"  total: {len(dead['globals'])} unreferenced globals, {len(dead['unused_actions'])} unused actions, "
+              f"{len(dead['unregistered_actions'])} unregistered actions")
 
 
 def run_jscpd(area):

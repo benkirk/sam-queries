@@ -55,7 +55,9 @@ the allocations follow-ups handoff, item 2.
 **Mode:** area, `src/webapp/static/js/` (20 files, 3,575 lines). **End commit:** `5254c65b`
 (`origin/staging`). Run as a screening test of the skill: report short, most items dropped.
 Inventory: 5 shared names, 4 shared events, 3 jscpd clones (0.9% of lines). Every
-`registerAction` name has a template user.
+`registerAction` name has a template user. `js-dead`, added by this sweep, reads 1 unreferenced
+global before (`initLazyLoading`) and 0 / 0 / 1 after; the 1 is Turnstile's own
+`data-action="register"`.
 
 **Done, in this sweep's PR**, one commit each:
 

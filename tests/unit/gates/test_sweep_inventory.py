@@ -86,11 +86,23 @@ def test_js_dup_names_and_listeners(tmp_path):
     assert [(r['event'], r['registrations']) for r in dup['listeners']] == [('htmx:afterSwap', 2)]
 
 
+def test_js_dead_globals_and_actions(tmp_path):
+    lib = _write(tmp_path, 'lib.js', "window.usedGlobal = 1;\nwindow.orphan = function () {};\n"
+                 "if (window.orphan == null) {}\n"
+                 "registerAction('live', f);\nregisterAction('stale', f);\n")
+    caller = _write(tmp_path, 'caller.js', "usedGlobal();\n// e.g. <b data-action=\"doc-only\">\n")
+    page = _write(tmp_path, 'page.html', '<a data-action="live"></a><select data-action-change="ghost">')
+    dead = inv.js_dead([lib, caller], [lib, caller, page])
+    assert [r['name'] for r in dead['globals']] == ['orphan']
+    assert [r['name'] for r in dead['unused_actions']] == ['stale']
+    assert dead['unregistered_actions'] == ['ghost']
+
+
 def test_runs_on_the_real_tree(monkeypatch, capsys):
     monkeypatch.chdir(REPO)
     assert inv.main(['--top', '3']) == 0
     out = capsys.readouterr().out
-    for detector in ('private-imports', 'dup-functions', 'css-dead', 'css-shape', 'inline-styles', 'js-dup'):
+    for detector in ('private-imports', 'dup-functions', 'css-dead', 'css-shape', 'inline-styles', 'js-dup', 'js-dead'):
         assert f'== {detector}:' in out
 
 
