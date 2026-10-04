@@ -47,7 +47,7 @@
 
 {% if has_permission(Permission.EDIT_ALLOCATIONS) %}
 {{ modal_scaffold('createAdjustmentModal', 'Create Charge Adjustment', icon='plus',
-                  container_id='createAdjustmentFormContainer', size='lg') }}
+                  container_id='createAdjustmentFormContainer') }}
 {% endif %}
 
 {% endblock %}
