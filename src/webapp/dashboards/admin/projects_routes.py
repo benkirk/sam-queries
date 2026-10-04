@@ -2560,10 +2560,8 @@ class _EditAllocationHandler(_AllocationFormHandler):
     success_message = 'Allocation updated successfully.'
     exception_map = (
         (InheritingAllocationException, (
-            'Cannot directly edit a shared allocation. '
-            'Check "I understand — permanently break inheritance and allow '
-            'editing these fields" to detach it first, or edit the parent '
-            'allocation — changes are applied here automatically.')),
+            'A shared allocation cannot be edited directly: edit the parent '
+            'allocation (changes apply here automatically), or Detach this one first.')),
         (AllocationOverlapError, lambda e: str(e)),
     )
 
@@ -2597,15 +2595,8 @@ class _EditAllocationHandler(_AllocationFormHandler):
         return updates
 
     def perform(self, updates):
-        from sam.manage.allocations import update_allocation, detach_allocation
-        alloc_id = self.allocation.allocation_id
-        if (self.allocation.is_inheriting
-                and request.form.get('break_inheritance') == 'true'):
-            # DETACH then EDIT: two audit records — intentional.
-            # detach_allocation() calls session.flush() so is_inheriting is
-            # False in the identity map before update_allocation() runs.
-            detach_allocation(db.session, alloc_id, current_user.user_id)
-        update_allocation(db.session, alloc_id, current_user.user_id, **updates)
+        from sam.manage.allocations import update_allocation
+        update_allocation(db.session, self.allocation.allocation_id, current_user.user_id, **updates)
 
 
 @bp.route('/htmx/edit-allocation/<int:allocation_id>', methods=['POST'])
@@ -2625,6 +2616,13 @@ class _DetachAllocationHandler(_AllocationFormHandler):
     def perform(self, data):
         from sam.manage.allocations import detach_allocation
         detach_allocation(db.session, self.allocation.allocation_id, current_user.user_id)
+
+    def on_success(self, result):
+        # The form comes back standalone and editable, so detach-then-edit is one path.
+        return htmx_success(self.template,
+                            {'reloadAllocationTree': self.allocation.account.project.projcode},
+                            toast='Allocation detached: it is now standalone.',
+                            **_edit_allocation_context(self.allocation))
 
 
 class _LinkAllocationHandler(FlattenedFieldErrors, _AllocationFormHandler):

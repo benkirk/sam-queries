@@ -90,3 +90,14 @@
     </div>
 </div>
 {% endmacro %}
+
+
+{# A form fragment's own title, swapped over the scaffold's (out of band): name the
+   thing being edited in the header, not in a read-only grid in the body.
+   label_id is the scaffold's '<modal_id>Label'; meta is a muted suffix (an id). #}
+{% macro modal_title(label_id, title, icon, meta=None) -%}
+<h5 class="modal-title" id="{{ label_id }}" hx-swap-oob="true">
+    <i class="fa-solid fa-{{ icon }}"></i> {{ title }}
+    {%- if meta %} <span class="modal-title-meta">{{ meta }}</span>{% endif %}
+</h5>
+{%- endmacro %}

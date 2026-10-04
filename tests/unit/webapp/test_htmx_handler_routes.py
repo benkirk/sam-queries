@@ -274,6 +274,15 @@ class TestEditAllocationModalActions:
             f'/admin/htmx/propagate-allocation-to-remaining/{inheriting_allocation_id}')
         self._assert_inline(resp, 'A shared allocation cannot be propagated')
 
+    def test_shared_form_has_one_detach_path_and_keeps_its_warnings(
+            self, auth_client, inheriting_allocation_id):
+        body = auth_client.get(
+            f'/admin/htmx/edit-allocation-form/{inheriting_allocation_id}').get_data(as_text=True)
+        assert 'id="editAllocationModalLabel" hx-swap-oob="true"' in body   # identity in the title
+        assert 'confirmBreakInheritance' not in body and 'break_inheritance' not in body
+        assert f'Detach allocation #{inheriting_allocation_id} from its parent?' in body
+        assert 'OVERSPENT' in body
+
     @pytest.mark.parametrize('rule', ['detach-allocation', 'link-allocation-to-parent',
                                       'propagate-allocation-to-remaining'])
     def test_non_admin_forbidden(self, non_admin_client, standalone_allocation_id, rule):

@@ -1198,6 +1198,36 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     letter-spacing: 0.02em;
 }
 
+.modal-title-meta {
+    font-weight: normal;
+    color: var(--text-secondary);
+}
+
+/* Edit allocation: the allocation's relationships as one quiet list, not an alert apiece. */
+.alloc-facts {
+    list-style: none;
+    padding: 0.625rem 0.875rem;
+    margin: 0 0 1rem;
+    background-color: var(--surface-accent);
+    border-left: 3px solid var(--border-default);
+}
+
+.alloc-facts li + li {
+    margin-top: 0.375rem;
+}
+
+.alloc-facts li > .fa-solid {
+    width: 1.25em;
+    color: var(--text-secondary);
+}
+
+.detach-panel {
+    margin-top: 0.5rem;
+    padding: 0.75rem 0.875rem;
+    border-left: 3px solid var(--status-danger);
+    background-color: var(--surface-accent);
+}
+
 .modal-footer {
     border-top: 1px solid var(--border-default);
     padding: 0.875rem 1.25rem;
