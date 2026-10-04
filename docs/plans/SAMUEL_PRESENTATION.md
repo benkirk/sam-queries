@@ -1118,6 +1118,14 @@ Each phase closes with render → visual review → commit in this repo
 - **2026-10-03, Appendix G drafted** (5 slides, with CLI output from the 3307 test DB; see §4).
   Stacked on F's branch.
 
+- **2026-10-03, the pptx footnote bug fixed** (framework #26).
+  - **Cause:** `single-body.lua`'s 100% column wrapper (#22). Pandoc gave the table or image
+    the whole placeholder and dropped any text after it.
+  - **Fix:** paragraphs after one table or image now move into its caption, at the slide's
+    foot. Anything else after it splits onto its own slide, and `make qa` flags the count.
+  - **Result:** all 60 footnotes in the sources are now in the pptx; 211 slides, unchanged.
+  - The submodule pin moved to `05e7a0a`.
+
 ## 11. Voice, tone and the fun
 
 **SAMuel = SAM, updated for extended lifecycle.** That backronym is the deck's premise and its
@@ -1482,7 +1490,9 @@ branch and PR against `staging`. Tick an item once its fix merges, and note the 
   axis offset instead of KiB (My Data, Access history and File sizes). Found 2026-10-03.
 - [ ] **Two comments disagree on the sub-path scan time:** 30–120 s
   (`src/webapp/disk_scans/cache.py:9-11`) and 30–200 s (`src/webapp/disk_scans/routes.py:19-22`).
-- [ ] **Framework: pptx drops a † footnote that follows a table.** The text never reaches the
+- [x] **Framework: pptx drops a † footnote that follows a table.** Fixed 2026-10-03 by
+  quarto-docs-framework#26 (the pin moved here). It was any text after a table or image, not just
+  footnotes. The text never reaches the
   pptx: no shape on the slide carries it (checked with python-pptx). Examples are "The caches"
   and "Rate limits" in the combined deck, and the three table slides in Appendix E. PDF and HTML
   keep the footnotes. The slide count doesn't change, so `make qa` can't see it. Suspect
