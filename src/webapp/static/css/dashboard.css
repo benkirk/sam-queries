@@ -1239,6 +1239,12 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     margin-bottom: 0;
 }
 
+/* A long preview list inside a modal scrolls on its own (bulk deactivate, queue cleanup). */
+.scroll-list {
+    max-height: 20em;
+    overflow-y: auto;
+}
+
 /* Manage Project, linked elements: the inline pickers and the directory root select. */
 .le-picker {
     min-width: 12.5rem;
