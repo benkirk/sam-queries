@@ -2,7 +2,7 @@
   "allocation_sunburst.allocated": {
     "counts": {
       "a": 26,
-      "g": 41,
+      "g": 31,
       "path": 17,
       "text": 20,
       "use": 0
@@ -88,7 +88,7 @@
   "allocation_sunburst.allocated@dark": {
     "counts": {
       "a": 26,
-      "g": 41,
+      "g": 31,
       "path": 17,
       "text": 20,
       "use": 0
@@ -174,7 +174,7 @@
   "allocation_sunburst.allocated@mobile": {
     "counts": {
       "a": 26,
-      "g": 38,
+      "g": 28,
       "path": 17,
       "text": 17,
       "use": 0
@@ -257,7 +257,7 @@
   "allocation_sunburst.allocated@mobile@dark": {
     "counts": {
       "a": 26,
-      "g": 38,
+      "g": 28,
       "path": 17,
       "text": 17,
       "use": 0
@@ -340,7 +340,7 @@
   "allocation_sunburst.allocated@tablet": {
     "counts": {
       "a": 26,
-      "g": 41,
+      "g": 31,
       "path": 17,
       "text": 20,
       "use": 0
@@ -426,7 +426,7 @@
   "allocation_sunburst.allocated@tablet@dark": {
     "counts": {
       "a": 26,
-      "g": 41,
+      "g": 31,
       "path": 17,
       "text": 20,
       "use": 0
@@ -3762,7 +3762,7 @@
   "fair_share_sunburst.normal": {
     "counts": {
       "a": 33,
-      "g": 49,
+      "g": 34,
       "path": 24,
       "text": 22,
       "use": 0
@@ -3868,7 +3868,7 @@
   "fair_share_sunburst.normal@dark": {
     "counts": {
       "a": 33,
-      "g": 49,
+      "g": 34,
       "path": 24,
       "text": 22,
       "use": 0
@@ -3972,7 +3972,7 @@
   "fair_share_sunburst.normal@mobile": {
     "counts": {
       "a": 33,
-      "g": 45,
+      "g": 30,
       "path": 24,
       "text": 18,
       "use": 0
@@ -4072,7 +4072,7 @@
   "fair_share_sunburst.normal@mobile@dark": {
     "counts": {
       "a": 33,
-      "g": 45,
+      "g": 30,
       "path": 24,
       "text": 18,
       "use": 0
@@ -4172,7 +4172,7 @@
   "fair_share_sunburst.normal@tablet": {
     "counts": {
       "a": 33,
-      "g": 49,
+      "g": 34,
       "path": 24,
       "text": 22,
       "use": 0
@@ -4278,7 +4278,7 @@
   "fair_share_sunburst.normal@tablet@dark": {
     "counts": {
       "a": 33,
-      "g": 49,
+      "g": 34,
       "path": 24,
       "text": 22,
       "use": 0
@@ -4386,7 +4386,7 @@
   "jobs_facility_sunburst.normal": {
     "counts": {
       "a": 5,
-      "g": 45,
+      "g": 32,
       "path": 18,
       "text": 23,
       "use": 0
@@ -4461,7 +4461,7 @@
   "jobs_facility_sunburst.normal@dark": {
     "counts": {
       "a": 5,
-      "g": 45,
+      "g": 32,
       "path": 18,
       "text": 23,
       "use": 0
@@ -4532,7 +4532,7 @@
   "jobs_facility_sunburst.normal@mobile": {
     "counts": {
       "a": 5,
-      "g": 38,
+      "g": 25,
       "path": 18,
       "text": 16,
       "use": 0
@@ -4596,7 +4596,7 @@
   "jobs_facility_sunburst.normal@mobile@dark": {
     "counts": {
       "a": 5,
-      "g": 38,
+      "g": 25,
       "path": 18,
       "text": 16,
       "use": 0
@@ -4660,7 +4660,7 @@
   "jobs_facility_sunburst.normal@tablet": {
     "counts": {
       "a": 5,
-      "g": 45,
+      "g": 32,
       "path": 18,
       "text": 23,
       "use": 0
@@ -4735,7 +4735,7 @@
   "jobs_facility_sunburst.normal@tablet@dark": {
     "counts": {
       "a": 5,
-      "g": 45,
+      "g": 32,
       "path": 18,
       "text": 23,
       "use": 0

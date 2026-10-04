@@ -90,6 +90,10 @@ class TwoRingPie(PieChart):
         """Fill for a group's shortfall wedge; ``'none'`` draws it blank."""
         return 'none'
 
+    def part_tooltip(self, row, name, value):
+        """Hover text for one wedge: its legend cells; ``name`` None is the gap."""
+        return ' · '.join(self.legend_cells(name, value)) if name else None
+
     def _base(self, slot):
         palette = self.theme.facility_palette
         if slot and slot <= len(palette):
@@ -98,7 +102,7 @@ class TwoRingPie(PieChart):
 
     def draw(self, ax, layout, theme):
         bases = [self._base(r.get('slot')) for r in self.rows]
-        outer_vals, outer_colors, outer_names, outer_urls = [], [], [], []
+        outer_vals, outer_colors, outer_names, outer_urls, outer_rows = [], [], [], [], []
         for row, value, base in zip(self.rows, self.values, bases):
             parts, gap = self.parts(row, value)
             shades = shade_family(base, len(parts), lightest=0.55, toward=theme.shade_toward)
@@ -107,11 +111,13 @@ class TwoRingPie(PieChart):
                 outer_colors.append(shade)
                 outer_names.append(name)
                 outer_urls.append(self.part_url(row, name))
+                outer_rows.append(row)
             if gap > 1e-9 * max(value, 1):
                 outer_vals.append(gap)
                 outer_colors.append(self.gap_color(base, theme))
                 outer_names.append(None)
                 outer_urls.append(None)
+                outer_rows.append(row)
 
         common = dict(startangle=self.start_angle, counterclock=False)
         edge = {'edgecolor': theme.surface}
@@ -125,6 +131,10 @@ class TwoRingPie(PieChart):
         for wedge, url in zip(outer, outer_urls):
             if url is not None:
                 wedge.set_url(url)
+        for wedge, label, value in zip(inner, self.labels, self.values):
+            self.tooltip(wedge, ' · '.join(self.legend_cells(label, value)))
+        for wedge, row, name, value in zip(outer, outer_rows, outer_names, outer_vals):
+            self.tooltip(wedge, self.part_tooltip(row, name, value))
 
         size = self.autopct_fontsize
         self._label(ax, inner, self.labels, [self.percent(v) for v in self.values], bases,
@@ -247,3 +257,6 @@ class JobsFacilitySunburst(AllocationSunburst):
 
     def gap_color(self, base, theme):
         return shade_family(base, 2, lightest=0.8, toward=theme.shade_toward)[0]
+
+    def part_tooltip(self, row, name, value):
+        return super().part_tooltip(row, name or f'Other {row["facility"]} projects', value)
