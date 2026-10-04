@@ -19,6 +19,8 @@
     submitted value from `form` automatically.
   * If two forms with the same field name might be loaded into the page DOM
     simultaneously, pass an explicit `id=` to disambiguate.
+  * `attrs` (select_field, date_field) is a dict of extra attributes on the
+    control, e.g. the hx-* of a field that refreshes a sibling fragment.
   * `tip` puts a help_icon after the label: a hover tooltip, or a click popover
     holding HTML with `tip_rich=True` (a glossary.g_* term). `help` stays for a
     line the user must see while typing.
@@ -180,7 +182,7 @@
 {% macro date_field(name, label, required=False, optional_text='(optional)',
                     help=None, default='', id=None, label_class='form-label',
                     disabled=False, min=None,
-                    tip=None, tip_rich=False) %}
+                    tip=None, tip_rich=False, attrs=None) %}
 {%- set _id = id or name -%}
 {%- set _form_value = form.get(name) if form else None -%}
 {%- if _form_value is not none -%}
@@ -198,6 +200,7 @@
            {%- if disabled %} disabled{% endif -%}
            {%- if min %} min="{{ min }}"{% endif %}
            value="{{ _value }}"
+           {%- for k, v in (attrs or {}).items() %} {{ k }}="{{ v }}"{% endfor %}
            {{- _aria(name, _id) }}>
     {{ _field_error(name, _id) }}
     {%- if help %}<small class="form-text text-muted">{{ help }}</small>{% endif %}
