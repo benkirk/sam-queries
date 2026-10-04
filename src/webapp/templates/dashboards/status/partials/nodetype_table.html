@@ -2,15 +2,15 @@
 {# `hours`, when set, flows through into the row-click drill-down URL so the
    user's chosen time range survives sideways navigation between node types. #}
 <div class="table-responsive">
-    <table class="table table-sm table-bordered nodetype-table">
-        <thead class="thead-light">
+    <table class="table table-sm align-middle nodetype-table">
+        <thead class="table-subtle">
             <tr>
                 <th>Node Type</th>
                 <th>Specs</th>
-                <th>Total</th>
-                <th>Available</th>
-                <th>Down</th>
-                <th>Allocated</th>
+                <th class="col-num">Total</th>
+                <th class="col-num">Available</th>
+                <th class="col-num">Down</th>
+                <th class="col-num">Allocated</th>
                 <th>Utilization</th>
             </tr>
         </thead>
@@ -27,10 +27,10 @@
                         {% if nt.gpu_model %}<br>{{ nt.gpus_per_node }}x {{ nt.gpu_model }}{% endif %}
                     </small>
                 </td>
-                <td>{{ nt.nodes_total | fmt_number }}</td>
-                <td class="text-success">{{ nt.nodes_available | fmt_number }}</td>
-                <td class="text-danger">{{ nt.nodes_down | fmt_number }}</td>
-                <td class="text-warning">{{ nt.nodes_allocated | fmt_number }}</td>
+                <td class="col-num">{{ nt.nodes_total | fmt_number }}</td>
+                <td class="col-num">{{ nt.nodes_available | fmt_number }}</td>
+                <td class="col-num{{ ' text-danger' if nt.nodes_down }}">{{ nt.nodes_down | fmt_number }}</td>
+                <td class="col-num">{{ nt.nodes_allocated | fmt_number }}</td>
                 <td>
                     {% if nt.utilization_percent is not none %}
                     <div class="mb-1">

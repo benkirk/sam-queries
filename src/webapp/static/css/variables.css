@@ -296,6 +296,8 @@
        of two blues that only agree in light mode. */
     --bs-link-color:         var(--text-link);
     --bs-link-hover-color:   var(--text-title);
+    /* Hostnames, ids and addresses in <code>: heading ink, not Bootstrap's pink. */
+    --bs-code-color:         var(--text-heading);
 }
 
 
@@ -419,6 +421,7 @@
     --bs-tertiary-bg-rgb:  var(--surface-tertiary-rgb);
     --bs-link-color:       var(--text-link);
     --bs-link-hover-color: var(--ncar-cyan);
+    --bs-code-color:       var(--text-heading);
 
     /* Shadows are near-invisible on a dark page — a black blur on near-black
        reads as nothing, which loses every card and dropdown edge. Deepened

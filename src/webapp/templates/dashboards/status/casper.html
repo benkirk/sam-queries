@@ -38,57 +38,22 @@
         <!-- Compute Nodes by Type -->
         <h6 class="mb-3"><i class="fa-solid fa-server"></i> Compute Nodes</h6>
         <div class="row mb-4">
+            {% for part, label, icon in [('cpu', 'CPU', 'microchip'), ('gpu', 'GPU', 'server'), ('viz', 'VIZ', 'desktop')] %}
+            {% set down, reserved = casper_status | attr(part ~ '_nodes_down'), casper_status | attr(part ~ '_nodes_reserved') %}
             <div class="col-md-4">
                 <div class="metric-card">
                     <h6>
-                        <a href="{{ url_for('status_dashboard.partition_history', system='casper', partition='cpu') }}"
+                        <a href="{{ url_for('status_dashboard.partition_history', system='casper', partition=part) }}"
                            class="text-body-emphasis text-decoration-none">
-                            <i class="fa-solid fa-microchip"></i> CPU Nodes <i class="fa-solid fa-chart-line ms-1"></i>
+                            <i class="fa-solid fa-{{ icon }}"></i> {{ label }} Nodes <i class="fa-solid fa-chart-line ms-1"></i>
                         </a>
                     </h6>
-                    <div class="value">{{ casper_status.cpu_nodes_available }} / {{ casper_status.cpu_nodes_total }} Available</div>
-                    {% if casper_status.cpu_nodes_down > 0 %}
-                    <div class="text-danger mt-2">{{ casper_status.cpu_nodes_down }} node{{ '' if casper_status.cpu_nodes_down == 1 else 's' }} down</div>
-                    {% endif %}
-                    {% if casper_status.cpu_nodes_reserved > 0 %}
-                    <div class="text-warning mt-1">{{ casper_status.cpu_nodes_reserved }} node{{ '' if casper_status.cpu_nodes_reserved == 1 else 's' }} reserved</div>
-                    {% endif %}
+                    <div class="value">{{ casper_status | attr(part ~ '_nodes_available') }} / {{ casper_status | attr(part ~ '_nodes_total') }} Available</div>
+                    {% if down > 0 %}<div class="text-danger mt-2">{{ down | fmt_plural('node', 'nodes') }} down</div>{% endif %}
+                    {% if reserved > 0 %}<div class="text-secondary mt-1">{{ reserved | fmt_plural('node', 'nodes') }} reserved</div>{% endif %}
                 </div>
             </div>
-            <div class="col-md-4">
-                <div class="metric-card">
-                    <h6>
-                        <a href="{{ url_for('status_dashboard.partition_history', system='casper', partition='gpu') }}"
-                           class="text-body-emphasis text-decoration-none">
-                            <i class="fa-solid fa-server"></i> GPU Nodes <i class="fa-solid fa-chart-line ms-1"></i>
-                        </a>
-                    </h6>
-                    <div class="value">{{ casper_status.gpu_nodes_available }} / {{ casper_status.gpu_nodes_total }} Available</div>
-                    {% if casper_status.gpu_nodes_down > 0 %}
-                    <div class="text-danger mt-2">{{ casper_status.gpu_nodes_down }} node{{ '' if casper_status.gpu_nodes_down == 1 else 's' }} down</div>
-                    {% endif %}
-                    {% if casper_status.gpu_nodes_reserved > 0 %}
-                    <div class="text-warning mt-1">{{ casper_status.gpu_nodes_reserved }} node{{ '' if casper_status.gpu_nodes_reserved == 1 else 's' }} reserved</div>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="metric-card">
-                    <h6>
-                        <a href="{{ url_for('status_dashboard.partition_history', system='casper', partition='viz') }}"
-                           class="text-body-emphasis text-decoration-none">
-                            <i class="fa-solid fa-desktop"></i> VIZ Nodes <i class="fa-solid fa-chart-line ms-1"></i>
-                        </a>
-                    </h6>
-                    <div class="value">{{ casper_status.viz_nodes_available }} / {{ casper_status.viz_nodes_total }} Available</div>
-                    {% if casper_status.viz_nodes_down > 0 %}
-                    <div class="text-danger mt-2">{{ casper_status.viz_nodes_down }} node{{ '' if casper_status.viz_nodes_down == 1 else 's' }} down</div>
-                    {% endif %}
-                    {% if casper_status.viz_nodes_reserved > 0 %}
-                    <div class="text-warning mt-1">{{ casper_status.viz_nodes_reserved }} node{{ '' if casper_status.viz_nodes_reserved == 1 else 's' }} reserved</div>
-                    {% endif %}
-                </div>
-            </div>
+            {% endfor %}
         </div>
 
         <!-- Utilization -->

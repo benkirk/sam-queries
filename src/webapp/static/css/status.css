@@ -78,6 +78,11 @@
     font-size: 0.9rem;
 }
 
+/* First column of a header group (Jobs, Cores, GPUs, Nodes) in the queue table. */
+.queue-table .col-group-start {
+    border-left: 1px solid var(--border-default);
+}
+
 /* ===================================================================
    Outage Cards
    =================================================================== */
