@@ -175,11 +175,6 @@ svg a, svg a:hover, svg a:focus, svg a:visited {
 
 /* project allocation tree (admin edit_project) */
 .btn-xs { padding: 0.1rem 0.35rem; font-size: 0.75rem; }
-.alloc-resource-header:hover td { filter: brightness(0.96); }
-
-/* Caret rotation driven by Bootstrap's aria-expanded update */
-.alloc-resource-header .alloc-caret { transition: transform 0.15s ease; }
-.alloc-resource-header[aria-expanded="true"] .alloc-caret { transform: rotate(90deg); }
 
 /* Kill Bootstrap's height animation on <tbody> — looks jittery on table-row-groups.
    Zero transition-duration makes Bootstrap's getTransitionDurationFromElement() return 0,
@@ -462,6 +457,12 @@ tr:hover > td .btn.btn-row-attention {
 .table td.tree-cell.tree-d1 {
     background-image: linear-gradient(var(--border-default), var(--border-default));
     background-size: 1px 100%;
+    background-position: 0.95rem 0;
+}
+/* Guide lines at any depth: one 1px rule per ancestor level (project trees). */
+.table td.tree-cell.tree-guides {
+    background-image: repeating-linear-gradient(to right, var(--border-default) 0 1px, transparent 1px var(--tree-step));
+    background-size: calc(var(--depth, 0) * var(--tree-step)) 100%;
     background-position: 0.95rem 0;
 }
 .table td.tree-cell.tree-d2 {

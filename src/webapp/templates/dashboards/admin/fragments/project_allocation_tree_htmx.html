@@ -10,12 +10,13 @@
 
   Layout:
     - Bootstrap pill tabs, one per non-empty resource type (HPC/DAV, Disk, etc.)
-    - Within each tab: single table with multiple <tbody> sections
-      - One <tbody> per resource: a header row (collapsible on click) + a tree body
-      - All rows share the same <colgroup> -> progress bars align perfectly
+    - Within each tab: one table; per resource, a header row (a collapse toggle, so
+      no links or buttons in it) and a collapsible <tbody> of project_tree_rows.
+      A standalone project gets one plain row per resource instead.
 #}
-{% from 'dashboards/shared/project_tree.html' import render_project_tree, render_project_tree_rows, shared_badge with context %}
-{% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
+{% from 'dashboards/shared/project_tree.html' import project_tree_rows, allocation_cells, allocation_actions, usage_meter with context %}
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% from 'dashboards/fragments/table_bits.html' import tree_label_cell %}
 
 {# Point-in-time status badge
    The "Active at" date picker that drives this lives in the parent template
@@ -91,201 +92,62 @@
        role="tabpanel"
        aria-labelledby="alloc-pill-{{ tab_idx }}">
 
-    {#
-      Single table for the whole tab.  Every row — resource headers and project
-      tree rows — shares the same <colgroup>, so progress bars land in the same
-      column regardless of resource name length or tree depth.
-
-      Structure per resource:
-        <tbody>   <- header row (clickable, toggles tree body)
-          <tr class="alloc-resource-header"> ... </tr>
-        </tbody>
-        <tbody id="alloc-body-…">  <- tree rows (collapsible)
-          {{ render_project_tree_rows(...) }}
-        </tbody>
-    #}
-    <table class="table table-sm table-hover mb-0 border" style="table-layout:fixed;width:100%;">
-      <colgroup>
-        <col>                        {# resource/project name — fills remaining space #}
-        <col style="width:110px;">   {# progress bar #}
-        <col style="width:60px;">    {# % used #}
-        <col style="width:90px;">    {# allocated amount #}
-        <col style="width:90px;">    {# used amount #}
-        <col style="width:90px;">    {# remaining amount #}
-        <col style="width:110px;">   {# shared badge + edit button #}
-      </colgroup>
-
-      {# Column labels for the three amount columns — bare numbers alone are
-         ambiguous. Rendered once per tab table, above all resource sections. #}
-      <thead>
-        <tr class="small text-muted">
-          <th></th>
-          <th></th>
-          <th></th>
-          <th class="text-end fw-normal">Allocated</th>
-          <th class="text-end fw-normal">Used</th>
-          <th class="text-end fw-normal">Remaining</th>
-          <th></th>
+    <table class="table table-sm align-middle mb-0 project-alloc-tree">
+      <thead class="table-subtle">
+        <tr>
+          <th>{{ 'Resource' if is_standalone else 'Resource / project' }}</th>
+          <th class="col-num" title="The tick: time elapsed">% used</th>
+          <th class="col-num">Allocated</th>
+          <th class="col-num">Used</th>
+          <th class="col-num">Remaining</th>
+          <th class="col-shrink"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
-
       {% for resource_name in tab_data.names %}
       {%- set resource_slug = resource_name | lower | replace(' ', '-') | replace('/', '-') | replace('_', '-') -%}
       {%- set body_id = 'alloc-body-' ~ tab_idx ~ '-' ~ resource_slug -%}
       {%- set root_alloc = resources_by_projcode.get(root.projcode, {}).get(resource_name) -%}
-      {%- set pct = [root_alloc.percent_used, 100] | min if root_alloc else 0 -%}
-
       {% if is_standalone %}
-      {# Flat row — one per resource (no accordion, edit pencil at rest) #}
       <tbody>
-        <tr style="border-top: 1px solid var(--border-default);">
-
-          {# Col 1: resource name #}
-          <td class="fw-semibold py-2" style="vertical-align:middle;">
-            <i class="fa-solid fa-server text-primary me-2"></i>{{ resource_name }}
-          </td>
-
-          {# Cols 2+3: progress bar with % overlaid on the bar #}
-          <td colspan="2" style="padding:0.25rem 0.6rem; vertical-align:middle;">
-            {% if root_alloc %}
-            {{ render_usage_bar(root_alloc.percent_used,
-                                root_alloc.self_percent_used if root_alloc.is_inheriting else none,
-                                height='18px',
-                                show_label=True) }}
-            {% else %}
-            <span class="text-muted small"><em>— no allocation —</em></span>
-            {% endif %}
-          </td>
-
-          {# Col 4: allocated amount #}
-          <td class="text-end small" style="vertical-align:middle; white-space:nowrap;">
-            {% if root_alloc %}{{ root_alloc.allocated | fmt_number }}{% endif %}
-          </td>
-
-          {# Col 5: used amount #}
-          <td class="text-end small text-muted" style="vertical-align:middle; white-space:nowrap;">
-            {% if root_alloc %}{{ root_alloc.used | fmt_number }}{% endif %}
-          </td>
-
-          {# Col 6: remaining amount #}
-          <td class="text-end small text-muted" style="vertical-align:middle; white-space:nowrap;">
-            {% if root_alloc %}{{ root_alloc.remaining | fmt_number }}{% endif %}
-          </td>
-
-          {# Col 7: edit pencil (or shared badge for inherited allocations) #}
-          <td style="vertical-align:middle;">
-            {% if can_modify_allocations and root_alloc and root_alloc.allocation_id and not root_alloc.is_inheriting %}
-            <button class="btn btn-sm btn-outline-warning py-0 px-1"
-                    style="font-size:0.7rem;"
-                    hx-get="{{ url_for('admin_dashboard.htmx_edit_allocation_form', allocation_id=root_alloc.allocation_id) }}"
-                    hx-target="#editAllocationFormContainer"
-                    hx-trigger="click"
-                    data-bs-toggle="modal"
-                    data-bs-target="#editAllocationModal"
-                    title="Edit allocation" aria-label="Edit allocation">
-              <i class="fa-solid fa-pencil"></i>
-            </button>
-            {% elif root_alloc and root_alloc.is_inheriting %}
-            {{ shared_badge() }}
-            {% endif %}
-          </td>
+        <tr>
+          <td class="fw-semibold">{{ resource_name }}</td>
+          {{ allocation_cells(root_alloc, true) }}
+          {{ allocation_actions(root_alloc, true, can_modify_allocations and root_alloc and not root_alloc.is_inheriting) }}
         </tr>
       </tbody>
-
       {% else %}
-      {# Resource header row #}
+      {#- A collapse-toggle row: numbers only, no links or buttons (capture-phase data-api). -#}
       <tbody>
-        <tr class="table-secondary alloc-resource-header"
-            style="cursor:pointer; border-top: 2px solid var(--border-default);"
-            data-bs-toggle="collapse"
-            data-bs-target="#{{ body_id }}"
-            aria-expanded="false"
-            aria-controls="{{ body_id }}">
-
-          {# Col 1: resource name + caret #}
-          <td class="fw-semibold py-2" style="vertical-align:middle;">
-            <i class="fa-solid fa-chevron-right alloc-caret me-2 small text-muted"></i>
-            <i class="fa-solid fa-server text-primary me-1"></i>
-            {{ resource_name }}
-          </td>
-
-          {# Col 2: progress bar — same column as tree rows #}
-          <td style="padding:0.25rem 0.4rem; vertical-align:middle;">
-            {% if root_alloc %}
-            {{ render_usage_bar(root_alloc.percent_used,
-                                root_alloc.self_percent_used if root_alloc.is_inheriting else none,
-                                height='8px') }}
-            {% endif %}
-          </td>
-
-          {# Col 3: % used #}
-          <td class="text-end small text-muted" style="vertical-align:middle; white-space:nowrap;">
-            {% if root_alloc %}{{ root_alloc.percent_used | fmt_pct }} used{% endif %}
-          </td>
-
-          {# Col 4: allocated amount #}
-          <td class="text-end small text-muted" style="vertical-align:middle; white-space:nowrap;">
-            {% if root_alloc %}{{ root_alloc.allocated | fmt_number }}{% endif %}
-          </td>
-
-          {# Col 5: used amount #}
-          <td class="text-end small text-muted" style="vertical-align:middle; white-space:nowrap;">
-            {% if root_alloc %}{{ root_alloc.used | fmt_number }}{% endif %}
-          </td>
-
-          {# Col 6: remaining amount #}
-          <td class="text-end small text-muted" style="vertical-align:middle; white-space:nowrap;">
-            {% if root_alloc %}{{ root_alloc.remaining | fmt_number }}{% endif %}
-          </td>
-
-          {# Col 7: shared badge.  Deliberately NOT the interactive
-             shared_badge() popover here: the whole <tr> is a collapse
-             toggle and Bootstrap's data-api fires in capture phase, so a
-             focusable badge would toggle the accordion on every click.
-             The expanded tree rows below carry the explained badge. #}
-          <td style="vertical-align:middle;">
-            {% if root_alloc and root_alloc.is_inheriting %}
-            <span class="badge bg-secondary bg-opacity-25 text-body-emphasis border small">shared</span>
-            {% endif %}
-          </td>
+        <tr class="table-subtle fw-semibold cursor-pointer" {{ collapse_toggle(body_id) }}>
+          {{ tree_label_cell(resource_name) }}
+          {% if root_alloc %}
+          <td class="col-num fw-normal">{{ usage_meter(root_alloc.percent_used, root_alloc.elapsed_pct) }}</td>
+          <td class="col-num">{{ root_alloc.allocated | fmt_number }}</td>
+          <td class="col-num">{{ root_alloc.used | fmt_number }}</td>
+          <td class="col-num">{{ root_alloc.remaining | fmt_number }}</td>
+          {% else %}
+          <td class="col-num"></td><td class="col-num fw-normal text-muted">—</td><td class="col-num"></td><td class="col-num"></td>
+          {% endif %}
+          <td></td>
         </tr>
       </tbody>
-
-      {# Tree rows — collapsible tbody #}
-      {#  Build per-resource {projcode: resource_dict|None} lookup #}
       {%- set alloc_by_projcode = {} -%}
       {%- for pc, res_dict in resources_by_projcode.items() -%}
-        {%- if resource_name in res_dict -%}
-          {%- set _ = alloc_by_projcode.update({pc: res_dict[resource_name]}) -%}
-        {%- else -%}
-          {%- set _ = alloc_by_projcode.update({pc: none}) -%}
-        {%- endif -%}
+        {%- set _ = alloc_by_projcode.update({pc: res_dict.get(resource_name)}) -%}
       {%- endfor -%}
-
-      {#- Per-resource Exchange URL: only set for eligible resources; the
-          macro renders the button only on the current (edit-page) row. -#}
       {%- set _exchange_url = none -%}
       {%- if can_exchange and resource_name in exchange_eligible_resources -%}
         {%- set _exchange_url = url_for('admin_dashboard.htmx_exchange_allocation_form',
                                          projcode=projcode,
                                          resource_id=resource_id_by_name[resource_name]) -%}
       {%- endif -%}
-
       <tbody id="{{ body_id }}" class="collapse alloc-tree-body">
-        {{ render_project_tree_rows([root],
-                                     depth=0,
-                                     current_projcode=projcode,
-                                     alloc_by_projcode=alloc_by_projcode,
-                                     can_view=true,
-                                     can_edit_allocations=can_modify_allocations,
-                                     active_only=true,
-                                     usage_warning_threshold=75,
-                                     usage_critical_threshold=90,
-                                     exchange_url=_exchange_url) }}
+        {{ project_tree_rows([root], current_projcode=projcode, can_view=true, active_only=true,
+                             alloc_by_projcode=alloc_by_projcode, can_edit_allocations=can_modify_allocations,
+                             exchange_url=_exchange_url) }}
       </tbody>
-      {% endif %}{# /is_standalone #}
-
-      {% endfor %}{# /resource loop #}
+      {% endif %}
+      {% endfor %}
     </table>
 
   </div>{# /tab-pane #}
@@ -294,4 +156,3 @@
 
 {% endif %}
 
-{# styles extracted to static/css/components.css (CSP) #}

@@ -717,6 +717,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     font-size: inherit;
     line-height: inherit;
     vertical-align: baseline;
+    border: 0;   /* a link in a button's clothes: Unity's 3px button border added 6px to every row */
 }
 
 .btn-primary {
@@ -1610,15 +1611,6 @@ tr.tree-node-current {
     --bs-table-bg: var(--bs-warning-bg-subtle);
     --bs-table-color: var(--text-primary);
     color: var(--bs-table-color);
-}
-
-/* The other half of the same inline block: a node whose project is inactive.
- * `#6c757d` -> --text-secondary (#718096 light) is a declared shift; the 0.6
- * opacity is carried over exactly rather than rounded to Bootstrap's
- * `.opacity-50`, which would have moved light mode for no reason. */
-.tree-node-inactive {
-    color: var(--text-secondary);
-    opacity: 0.6;
 }
 
 /* ============================================================================
