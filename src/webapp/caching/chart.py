@@ -103,8 +103,8 @@ class ChartCache(CacheBase):
             return n
 
 
-def chart_cached(cache: ChartCache, key_fn: Optional[Callable] = None):
-    """Internal decorator factory used by the Caching facade.
+def chart_cached(cache: CacheBase, key_fn: Optional[Callable] = None):
+    """Internal decorator factory used by the Caching facade, for either chart backend.
 
     Wraps `fn` so calls hit `cache` first; on miss, computes the SVG and
     stores it. Exposes `cache_info` / `cache_clear` / `cache_bytes` on
