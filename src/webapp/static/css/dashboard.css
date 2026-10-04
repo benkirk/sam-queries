@@ -1412,17 +1412,10 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     font-weight: inherit;
 }
 
-/* Expanded (active) state: white surface with blue text — the "settled" look
-   matching .nav-tabs.active and .btn-group .btn-secondary.active. */
+/* Expanded: the accent surface, not a solid brand slab over the whole row. */
 .project-card .card-header[aria-expanded="true"] {
-    background-color: var(--ncar-blue);
-    color: var(--text-on-brand);
-    border-bottom-color: var(--ncar-gray-light);
-}
-
-.project-card .card-header[aria-expanded="true"] h5 i,
-.project-card .card-header[aria-expanded="true"] .accordion-chevron {
-    color: var(--text-on-brand) !important;
+    background-color: var(--surface-accent);
+    color: var(--text-title);
 }
 
 /* Accordion chevron — reusable affordance for any collapsible header.
@@ -1480,6 +1473,9 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .project-stats-box h6 {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
     color: var(--text-title);
     font-weight: 700;
     margin-bottom: 6px;
@@ -1512,6 +1508,24 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     grid-column: 1 / -1;
     padding: 2px 0;
     margin-top: 4px !important;
+}
+
+/* A multi-line value beside its label: the label takes the label track, the value spans the rest. */
+.stat-item-block.stat-item-inline {
+    display: contents;
+}
+
+.stat-item-inline > .stat-label,
+.stat-item-inline > .stat-value {
+    padding: 2px 0;
+}
+
+.stat-item-inline > .stat-label {
+    grid-column: 1;
+}
+
+.stat-item-inline > .stat-value {
+    grid-column: 2 / -1;
 }
 
 .stat-label {
