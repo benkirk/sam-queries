@@ -510,6 +510,13 @@ tr:hover > td .btn.btn-row-attention {
     position: relative;
     width: 5rem;
 }
+/* Project resources and the Manage Project tree have the width on a desktop: half again as long. */
+@media (min-width: 1200px) {
+    .project-resources .share-bar.meter,
+    .project-alloc-tree .share-bar.meter {
+        width: 7.5rem;
+    }
+}
 .share-bar.meter-over {
     --share-color: var(--danger-color);
 }
