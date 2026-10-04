@@ -1,0 +1,8 @@
+---
+title: "SAMuel, Appendix E"
+subtitle: "Where the Hours Went"
+author: "Ben Kirk, NCAR/CISL"
+date: last-modified
+---
+
+{{< include _E-jobs.qmd >}}

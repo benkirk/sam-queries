@@ -576,6 +576,19 @@ are in the slide notes.
 - **The NRIT review:** requested by Ben before SAMuel left the VPN; one dense page, with what's
   fixed, the ZAP scan, and what's still open. The reviewer is not named (public repo).
 
+### Appendix E — Where the Hours Went (Job History and Disk Scans; drafted 2026-10-03, 8 slides)
+
+The first of three appendices from the 2026-10-03 gap review (with F, the admin dashboard, and
+G, the CLIs). These two features had about 15 implemented plan docs but only one bullet each.
+- **Two questions users ask:** My Jobs and My Data, both plugins, both pinned server-side to the
+  signed-in user.
+- **My Jobs:** the activity chart and the job table (Ben's own Derecho jobs, a 1,024-node
+  all-to-all test). Also the six views, and a whole machine by project (facility rings,
+  project codes only).
+- **My Data:** the four tabs as a table. Its screenshot waits for the production shoot (§6):
+  Ben's local data is a few files.
+- **Where the data comes from:** `csg-postgres`, sizes, freshness, caching, slow cases.
+
 ## 5. Facts to resolve before they go on a slide
 
 - **The name:** the app, and Ben's March deck, say "Systems Accounting Manager". `CLAUDE.md`'s
@@ -624,6 +637,16 @@ are in the slide notes.
 - ⚠️ Don't run `docker compose config` in a session transcript: it prints the `.env` secrets.
 - Found while shooting: on mobile, the Rolling Consumption Rate gauge collapses and its axis
   labels overlap ("200%0%"). It's a webapp bug, not yet filed; the deck's shot crops it out.
+
+**Plugin pages and the admin dashboard need real data** (2026-10-03). The plugin databases are
+real, so the obfuscated `samuel-shots` instance runs with the plugins off. Appendix E's plugin
+shots are Ben's own views (pinned to the signed-in user) and one project-level chart.
+- **Follow-up, Ben's idea:** a production shoot for My Data (a busy Campaign Store user) and for
+  Appendix F (admin pages that are empty locally and full of addresses in production). The
+  proposal: Ben's own browser session (the claude-in-chrome skill), viewing only. Names and
+  emails are replaced in the DOM with `user_xxxxxxxx`-style placeholders before each capture,
+  rather than blurred afterwards. This would amend "never screenshot prod" above; it needs
+  Ben's sign-off.
 
 - **Playwright MCP** drives the local `samuel-dev` (:5050, `docker compose up samuel-dev --watch`)
   through stub Quick Login on obfuscated data. It captures desktop / mobile and light / dark
@@ -1048,6 +1071,16 @@ Each phase closes with render → visual review → commit in this repo
   - **Next:** once #702 merges, close the framework's draft `samuel` PR and delete its
     `samuel` branch.
 
+- **2026-10-03, gap review; Appendix E drafted.** Ben asked which capabilities the outline
+  missed. A review mapped the 166 slides against an inventory of about 50 capabilities.
+  Ben picked:
+  - E: Job History and Disk Scans;
+  - F: the admin dashboard;
+  - G: the CLIs.
+
+  RBAC, the XRAS operator side and developer onboarding are set aside. Appendix E is 8 slides
+  (see §4), with three screenshots from the local plugin data.
+
 ## 11. Voice, tone and the fun
 
 **SAMuel = SAM, updated for extended lifecycle.** That backronym is the deck's premise and its
@@ -1408,3 +1441,13 @@ branch and PR against `staging`. Tick an item once its fix merges, and note the 
 - [ ] **`JUPYTERHUB_API_URL`** is set in helm, but nothing in `src/` reads it.
 - [ ] **`_variables.yml` `api.legacy_compat` is "5"**: five frozen blueprints, plus
   `disk_quota` as a sixth legacy-shaped one. Part 1's wording is right; Part 4 says six shapes.
+- [ ] **Disk-scan histograms keep a GiB axis for tiny totals.** A user with 48 KiB sees a `1e-5`
+  axis offset instead of KiB (My Data, Access history and File sizes). Found 2026-10-03.
+- [ ] **Two comments disagree on the sub-path scan time:** 30–120 s
+  (`src/webapp/disk_scans/cache.py:9-11`) and 30–200 s (`src/webapp/disk_scans/routes.py:19-22`).
+- [ ] **Framework: pptx drops a † footnote that follows a table.** The text never reaches the
+  pptx: no shape on the slide carries it (checked with python-pptx). Examples are "The caches"
+  and "Rate limits" in the combined deck, and the three table slides in Appendix E. PDF and HTML
+  keep the footnotes. The slide count doesn't change, so `make qa` can't see it. Suspect
+  `single-body.lua`'s one-column wrapper, or pandoc's pptx writer, dropping the paragraph after a
+  table inside a column. Found 2026-10-03; fix in quarto-docs-framework, then move the pin.
