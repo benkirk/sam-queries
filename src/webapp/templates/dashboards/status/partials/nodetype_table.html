@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/table_bits.html' import alloc_meter %}
 {% macro nodetype_table(node_types, system='casper', hours=None) %}
 {# `hours`, when set, flows through into the row-click drill-down URL so the
    user's chosen time range survives sideways navigation between node types. #}
@@ -11,7 +12,7 @@
                 <th class="col-num">Available</th>
                 <th class="col-num">Down</th>
                 <th class="col-num">Allocated</th>
-                <th>Utilization</th>
+                <th class="col-shrink">Utilization</th>
             </tr>
         </thead>
         <tbody>
@@ -33,28 +34,14 @@
                 <td class="col-num">{{ nt.nodes_allocated | fmt_number }}</td>
                 <td>
                     {% if nt.utilization_percent is not none %}
-                    <div class="mb-1">
-                        <small class="text-muted">{{ 'GPU' if nt.gpu_model else 'CPU' }}:</small>
-                        <div class="progress progress-medium">
-                            <div class="progress-bar bg-{{ 'danger' if nt.utilization_percent >= 90 else 'warning' if nt.utilization_percent >= 75 else 'success' }}"
-                                 style="width: {{ nt.utilization_percent }}%">
-                                <small>{{ nt.utilization_percent|round(1) }}%</small>
-                            </div>
-                        </div>
+                    <div class="util-meters">
+                        <span class="text-muted small">{{ 'GPU' if nt.gpu_model else 'CPU' }}</span> {{ alloc_meter(nt.utilization_percent) }}
+                        {% if nt.memory_utilization_percent is not none %}
+                        <span class="text-muted small">Mem</span> {{ alloc_meter(nt.memory_utilization_percent) }}
+                        {% endif %}
                     </div>
-                    {% if nt.memory_utilization_percent is not none %}
-                    <div>
-                        <small class="text-muted">Mem:</small>
-                        <div class="progress progress-medium">
-                            <div class="progress-bar bg-{{ 'danger' if nt.memory_utilization_percent >= 90 else 'warning' if nt.memory_utilization_percent >= 75 else 'info' }}"
-                                 style="width: {{ nt.memory_utilization_percent }}%">
-                                <small>{{ nt.memory_utilization_percent|round(1) }}%</small>
-                            </div>
-                        </div>
-                    </div>
-                    {% endif %}
                     {% else %}
-                    N/A
+                    <span class="text-muted">—</span>
                     {% endif %}
                 </td>
             </tr>

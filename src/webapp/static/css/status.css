@@ -68,6 +68,20 @@
     color: var(--text-primary);
 }
 
+/* Utilization bars: one brand fill. Threshold colors stay on capacity bars, where full is bad. */
+.progress-bar.util {
+    background-color: var(--status-info);
+    color: var(--surface-card);
+}
+
+/* Label + meter pairs in the node-type table's Utilization cell. */
+.util-meters {
+    display: grid;
+    grid-template-columns: auto auto;
+    align-items: center;
+    gap: 0.125rem 0.5rem;
+}
+
 /* ===================================================================
    Tables
    =================================================================== */
