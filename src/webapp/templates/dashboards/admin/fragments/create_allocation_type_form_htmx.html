@@ -1,5 +1,6 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
-{% from 'dashboards/fragments/form_fields.html' import text_field, number_field with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, number_field, select_field with context %}
+{% from 'dashboards/fragments/glossary.html' import g_fair_share with context %}
 {# htmx: Create Allocation Type Form
    Facility -> Panel cascade (reuses htmx_panels_for_facility endpoint).
    Auto-selects panel if only one option for the chosen facility.
@@ -11,47 +12,22 @@
     submit_icon='plus',
     errors=errors
 ) %}
-        {# Cascading facility/panel selects kept inline — dynamic dependent options
-           with optional description suffix don't fit the generic select macro. #}
-        <div class="row g-2 mb-3">
+        {%- set ns = namespace(facilities=[], panels=[]) %}
+        {%- for f in facilities %}{% set ns.facilities = ns.facilities + [(f.facility_id, f.facility_name)] %}{% endfor %}
+        {%- for p in panels_for_facility or [] %}{% set ns.panels = ns.panels + [(p.panel_id, p.panel_name ~ (' — ' ~ p.description if p.description else ''))] %}{% endfor %}
+        <div class="row g-2">
             <div class="col-md-6">
-                <label for="createAllocTypeFacility" class="form-label fw-semibold">
-                    Facility <span class="text-danger">*</span>
-                </label>
-                <select class="form-select form-select-sm" id="createAllocTypeFacility"
-                        name="facility_id" required
-                        hx-get="{{ url_for('admin_dashboard.htmx_panels_for_facility') }}"
-                        hx-target="#createAllocTypePanel"
-                        hx-swap="innerHTML"
-                        hx-trigger="change"
-                        hx-include="#createAllocTypeFacility">
-                    <option value="">— Select —</option>
-                    {% for facility in facilities %}
-                    <option value="{{ facility.facility_id }}"
-                        {% if form and form.get('facility_id') == facility.facility_id|string %}selected{% endif %}>
-                        {{ facility.facility_name }}
-                    </option>
-                    {% endfor %}
-                </select>
+                {{ select_field('facility_id', 'Facility', options=ns.facilities, required=True,
+                                placeholder='— Select —', id='createAllocTypeFacility',
+                                hx_get=url_for('admin_dashboard.htmx_panels_for_facility'),
+                                hx_target='#createAllocTypePanel', hx_swap='innerHTML',
+                                hx_trigger='change', hx_include='#createAllocTypeFacility') }}
             </div>
             <div class="col-md-6">
-                <label for="createAllocTypePanel" class="form-label fw-semibold">
-                    Panel <span class="text-danger">*</span>
-                </label>
-                <select class="form-select form-select-sm" id="createAllocTypePanel"
-                        name="panel_id" required>
-                    {% if panels_for_facility %}
-                        <option value="">— Select —</option>
-                        {% for panel in panels_for_facility %}
-                        <option value="{{ panel.panel_id }}"
-                            {% if form and form.get('panel_id') == panel.panel_id|string %}selected{% endif %}>
-                            {{ panel.panel_name }}{% if panel.description %} — {{ panel.description }}{% endif %}
-                        </option>
-                        {% endfor %}
-                    {% else %}
-                        <option value="">— Select facility first —</option>
-                    {% endif %}
-                </select>
+                {# id createAllocTypePanel: form-helpers.js auto-selects a single option. #}
+                {{ select_field('panel_id', 'Panel', options=ns.panels, required=True,
+                                placeholder='— Select —' if ns.panels else '— Select facility first —',
+                                id='createAllocTypePanel') }}
             </div>
         </div>
 
@@ -68,7 +44,7 @@
                                 id='createAllocTypeAmount') }}
             </div>
             <div class="col-md-6">
-                {{ number_field('fair_share_percentage', 'Fair Share %',
+                {{ number_field('fair_share_percentage', 'Fair Share %', tip=g_fair_share(), tip_rich=True,
                                 optional_text='(optional, 0–100)',
                                 min=0, max=100, step=0.01,
                                 placeholder='e.g. 10.0',

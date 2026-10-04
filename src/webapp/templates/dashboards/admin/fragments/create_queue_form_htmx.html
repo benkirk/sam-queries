@@ -34,12 +34,9 @@
         {{ number_field('wall_clock_hours_limit', 'Wallclock Limit (hours)',
                         min=0, step='0.01',
                         placeholder='e.g. 24',
-                        help='Default wallclock limit for jobs in this queue. '
-                             'Leave blank for no limit.',
+                        tip='The default wallclock limit for jobs in this queue.',
+                        help='Leave blank for no limit.',
                         id='createQueueWCLimit') }}
 
-        <p class="text-muted small mb-0">
-            The queue starts today, and a charging factor of 1.0 is created
-            alongside it.
-        </p>
+        <p class="modal-lead mb-0">The queue starts today, with a charging factor of 1.0.</p>
 {% endcall %}

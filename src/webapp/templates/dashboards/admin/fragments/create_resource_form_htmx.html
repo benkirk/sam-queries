@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/glossary.html' import g_commission_dates, g_charging_exempt with context %}
 {% from 'dashboards/fragments/form_fields.html' import text_field, date_field, select_field, checkbox_field, fk_search_field with context %}
 {# htmx: Create Resource Form #}
 {% call htmx_form(
@@ -25,10 +26,10 @@
                       maxlength=255,
                       id='createResDescription') }}
 
-        {{ date_field('commission_date', 'Commission Date',
+        {{ date_field('commission_date', 'Commission Date', tip=g_commission_dates(), tip_rich=True,
                       id='createResCommission') }}
 
-        {{ checkbox_field('charging_exempt', 'Charging Exempt',
+        {{ checkbox_field('charging_exempt', 'Charging Exempt', tip=g_charging_exempt(),
                           id='createResChargingExempt') }}
 
         {{ fk_search_field('prim_sys_admin_user_id', 'Primary Sysadmin',

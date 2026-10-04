@@ -1,10 +1,13 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
-{% from 'dashboards/fragments/form_fields.html' import number_field, date_field, textarea_field, readonly_display with context %}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+{% from 'dashboards/fragments/form_fields.html' import number_field, date_field, textarea_field with context %}
 {#
   htmx: Edit Wallclock Exemption Form (loaded into #editExemptionFormContainer)
   Resource, queue, and start_date are read-only. Only end_date, time_limit_hours,
   and comment may be changed.
 #}
+
+{{ modal_title('editExemptionModalLabel', 'Exemption on ' ~ exemption.queue.resource.resource_name ~ ' ' ~ exemption.queue.queue_name, 'edit') }}
 
 {% call htmx_form(
     url_for('admin_dashboard.htmx_edit_exemption', exemption_id=exemption.wallclock_exemption_id),
@@ -13,14 +16,6 @@
     is_edit=True,
     errors=errors
 ) %}
-        <div class="row mb-3">
-            <div class="col-md-6">
-                {{ readonly_display('Resource', exemption.queue.resource.resource_name, muted=False, strong=True) }}
-            </div>
-            <div class="col-md-6">
-                {{ readonly_display('Queue', exemption.queue.queue_name, muted=False, strong=True) }}
-            </div>
-        </div>
 
         <div class="mb-3">
             <label class="form-label">Start Date</label>

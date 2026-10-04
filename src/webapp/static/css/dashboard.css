@@ -1680,6 +1680,16 @@ tr.tree-node-current {
     margin-bottom: 0.5rem;
 }
 
+/* A label with a tip= icon: inline, so the &nbsp; keeps the icon on its last word
+   when the label wraps (an inline-block label would push the icon to its own line). */
+.form-label-tip {
+    margin-bottom: 0.5rem;
+}
+
+.form-label-tip > .form-label {
+    display: inline;
+}
+
 .input-group-text {
     background-color: var(--ncar-blue);
     color: var(--text-on-brand);

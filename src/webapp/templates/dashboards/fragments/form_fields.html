@@ -31,13 +31,14 @@
 {# shared label helper #}
 {% macro _label(name, label, required=False, optional_text='(optional)', id=None, label_class='form-label',
                 tip=None, tip_rich=False) %}
+    {%- if tip %}<div class="form-label-tip">{% endif %}
     <label for="{{ id or name }}" class="{{ label_class }}">
         {{ label }}
         {%- if required %} <span class="text-danger">*</span>
         {%- elif optional_text %} <span class="text-muted">{{ optional_text }}</span>
-        {%- endif %}
+        {%- endif -%}
     </label>
-    {%- if tip %} {{ help_icon(tip, rich=tip_rich, title=label if tip_rich else None) }}{% endif %}
+    {%- if tip %}&nbsp;{{ help_icon(tip, rich=tip_rich, title=label if tip_rich else None) }}</div>{% endif %}
 {%- endmacro %}
 
 
@@ -415,8 +416,8 @@
     <input type="checkbox" class="form-check-input{{ _invalid(name) }}" id="{{ _id }}"
            name="{{ name }}" value="1"{% if _checked %} checked{% endif %}
            {{- _aria(name, _id) }}>
-    <label class="form-check-label" for="{{ _id }}">{{ label }}</label>
-    {%- if tip %} {{ help_icon(tip, rich=tip_rich, title=label if tip_rich else None) }}{% endif %}
+    <label class="form-check-label{{ ' d-inline' if tip }}" for="{{ _id }}">{{ label }}</label>
+    {%- if tip %}&nbsp;{{ help_icon(tip, rich=tip_rich, title=label if tip_rich else None) }}{% endif %}
     {%- if caller is defined %} {{ caller() }}{% endif %}
     {{ _field_error(name, _id) }}
     {%- if help %}<small class="form-text text-muted d-block">{{ help }}</small>{% endif %}

@@ -14,7 +14,7 @@
                       id='createResTypeName') }}
 
         {{ number_field('grace_period_days', 'Grace Period Days',
-                        min=0,
+                        min=0, tip='Days after an allocation ends that access remains.',
                         placeholder='0',
                         id='createResTypeGrace') }}
 {% endcall %}
