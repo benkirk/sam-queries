@@ -607,6 +607,19 @@ The admin side had one screenshot (Part 1's project editor) and bullets.
   notification log, addressing, role grants), and production shows real addresses. They wait
   for the production shoot (§6). The template editor and the task history are safe on any data.
 
+### Appendix G — At the Prompt (the CLIs; drafted 2026-10-03, 5 slides)
+
+CLI users are one of Part 1's five audiences, but had no slide.
+- **Two commands, one shape:** sam-search (6 subcommands), sam-admin (9), and sam-status (to be
+  retired).
+- **One question, one line:** `allocations ... --project TOTAL --allocation-type TOTAL`, real
+  output from the obfuscated test DB.
+- **Built for scripts:** `--format json` into `jq`, the not-found envelope with exit 1, exit codes,
+  and the shared conventions with `jobhist`.
+- **The operator's commands:** a table of what each does and how to try it safely (dry runs).
+- Fixed in Appendix A's notes: SAMuel has no ExporterRegistry (only `jobhist` does), and the
+  real command is `sam-search accounting --jobs`.
+
 ## 5. Facts to resolve before they go on a slide
 
 - **The name:** the app, and Ben's March deck, say "Systems Accounting Manager". `CLAUDE.md`'s
@@ -1102,6 +1115,9 @@ Each phase closes with render → visual review → commit in this repo
 - **2026-10-03, Appendix F drafted** (9 slides, text and tables only; see §4). It is stacked on
   E's branch, and its PR opens after #714 merges.
 
+- **2026-10-03, Appendix G drafted** (5 slides, with CLI output from the 3307 test DB; see §4).
+  Stacked on F's branch.
+
 ## 11. Voice, tone and the fun
 
 **SAMuel = SAM, updated for extended lifecycle.** That backronym is the deck's premise and its
@@ -1480,3 +1496,14 @@ branch and PR against `staging`. Tick an item once its fix merges, and note the 
 - [ ] **Last seen: the route admits a facility-scoped VIEW_USERS grant, but the tab needs a plain
   one** (`last_seen_routes.py:60-62` vs `base_admin_users.html:12-13`). A facility manager can open
   the URL but never sees the tab.
+- [ ] **ExporterRegistry is claimed but absent in SAM.** `CLAUDE.md` ("Same `ExporterRegistry`
+  interface") and `src/cli/README.md:15` say SAM has one; only `jobhist` does. SAM prints rich or
+  json (`search.py:45-46`; `CONTRACTS_CONSOLIDATION.md:120-121` already noted it).
+- [ ] **`src/cli/README.md` is stale.** Its tree (`:22-42`) misses `xras/`, `tasks/`,
+  `security/`, `last_seen/` and `notifications/`, and lists a `templates/` that isn't there. Its
+  test list (`:187-190`) names 2 of 17 files.
+- [ ] **CLI exit-code loose ends:** `EXIT_KEYBOARD_INTERRUPT=130` is defined
+  (`src/cli/core/utils.py:10`) but unused. `sam-admin accounting` usage errors exit 1
+  (`admin.py:422,429`), which means "not found" elsewhere.
+- [ ] **No test keeps the CLI conventions in lockstep with `jobhist`,** although CLAUDE.md
+  requires it.

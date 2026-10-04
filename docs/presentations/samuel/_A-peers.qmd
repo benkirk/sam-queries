@@ -35,7 +35,8 @@ together.
 github.com/benkirk/hpc-usage-queries. Both toolkits ship in one wheel; SAMuel installs it
 through its [hpc] extra and loads job_history and fs_scans as two plugins (sam/plugins.py).
 Shared conventions: the Context/BaseCommand hierarchy, EXIT_* codes, the JSON envelope with
-kind=, and ExporterRegistry. CLAUDE.md in both repos says to change them in lockstep.
+kind=. jobhist also has an exporter registry (dat, csv, md, json files); SAMuel's CLIs print
+rich or json only. CLAUDE.md in both repos says to change the shared parts in lockstep.
 :::
 
 ## `job_history`: logs to charges
@@ -101,7 +102,7 @@ fs_scans/parsers/{gpfs,lustre,posix}.py and a three-pass importer; the scan PBS 
 fs_scans/PBS/. helm/ is the cirrus-csg-postgres chart (2 instances, secrets from OpenBao);
 pg_service_ro.yaml is csg-postgres-ro.k8s.ucar.edu; scripts/cnpg_watch.sh. SAMuel calls
 require_plugin(): a missing package turns the jobs pages, My Jobs, disk scans and
-sam-search --jobs off, rather than failing.
+sam-search accounting --jobs off, rather than failing.
 :::
 
 ## `hpc-scheduling-tools`: SAM to PBS, kept apart {.vcenter scale="1.15"}
