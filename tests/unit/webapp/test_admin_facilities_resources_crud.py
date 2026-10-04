@@ -147,3 +147,31 @@ class TestPanelSessionEdit:
     def test_non_admin_forbidden(self, non_admin_client):
         assert non_admin_client.post(
             '/admin/htmx/panel-session-edit/1', data={}).status_code == 403
+
+
+class TestCreateResourcePickers:
+    """The Primary Sysadmin / Responsible Organization pickers reach Resource.create."""
+
+    def test_unknown_picker_ids_rerender_with_errors(self, auth_client, session):
+        resp = auth_client.post('/admin/htmx/resource-create', data={
+            'resource_name': 'PickerProbe',
+            'resource_type_id': _snapshot_id(session, ResourceType),
+            'prim_sys_admin_user_id': MISSING_ID,
+            'prim_responsible_org_id': MISSING_ID,
+        })
+        body = resp.get_data(as_text=True)
+        assert resp.status_code == 200
+        assert 'HX-Trigger' not in resp.headers
+        assert 'Selected primary sysadmin does not exist.' in body
+        assert 'Selected responsible organization does not exist.' in body
+
+    def test_create_sets_both_relationships(self, session):
+        from factories import make_organization, make_resource_type, make_user
+        user, org = make_user(session), make_organization(session)
+        resource = Resource.create(
+            session, resource_name='PickerProbe',
+            resource_type_id=make_resource_type(session).resource_type_id,
+            prim_sys_admin_user_id=user.user_id,
+            prim_responsible_org_id=org.organization_id)
+        assert resource.prim_sys_admin is user
+        assert resource.prim_responsible_org is org
