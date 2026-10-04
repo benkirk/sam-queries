@@ -141,7 +141,20 @@ class TestAllocateDownFormRoute:
             self, auth_client, snapshot_inheriting_alloc):
         resp = auth_client.get(_form_url(snapshot_inheriting_alloc.allocation_id))
         assert resp.status_code == 200
-        assert 'shared allocation' in resp.get_data(as_text=True).lower()
+        html = resp.get_data(as_text=True)
+        assert 'shared allocation' in html.lower()
+        # The notice retitles the modal, whose header may still name another allocation.
+        assert 'id="allocateDownModalLabel" hx-swap-oob="true"' in html
+        assert snapshot_inheriting_alloc.account.project.projcode in html
+
+    def test_exchange_notice_retitles_its_modal(self, auth_client, active_project):
+        resp = auth_client.get(
+            f'/admin/htmx/exchange-allocation-form/{active_project.projcode}/{_BOGUS}')
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert 'Resource not found' in html
+        assert 'id="exchangeAllocationModalLabel" hx-swap-oob="true"' in html
+        assert active_project.projcode in html
 
     def test_carve_parent_renders_form(self, auth_client, snapshot_carve_parent):
         alloc, frontier = snapshot_carve_parent

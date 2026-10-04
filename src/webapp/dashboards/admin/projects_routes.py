@@ -1274,6 +1274,25 @@ def _exchange_candidates(project, resource_id, active_at=None):
     return candidates, resource
 
 
+def _allocation_notice(kind, label_id, title, icon, meta, **ctx):
+    """Render the notice in place of an allocation form, retitling its modal."""
+    return render_template('dashboards/admin/fragments/allocation_form_notice_htmx.html',
+                           kind=kind, label_id=label_id, title=title, icon=icon, meta=meta, **ctx)
+
+
+def _exchange_notice(project, resource, kind):
+    title = f'Exchange on {resource.resource_name}' if resource else 'Exchange'
+    return _allocation_notice(kind, 'exchangeAllocationModalLabel', title, 'right-left',
+                              project.projcode)
+
+
+def _allocate_down_notice(allocation, kind, resource=None, **ctx):
+    resource = resource or allocation.account.resource
+    return _allocation_notice(kind, 'allocateDownModalLabel',
+                              f'Allocate down on {resource.resource_name}', 'turn-down',
+                              allocation.account.project.projcode, **ctx)
+
+
 @bp.route('/htmx/exchange-allocation-form/<projcode>/<int:resource_id>')
 @login_required
 @require_project_permission(Permission.EDIT_ALLOCATIONS)
@@ -1287,9 +1306,9 @@ def htmx_exchange_allocation_form(project, resource_id):
     active_at = _parse_active_at_arg(request.args.get('active_at', ''))
     candidates, resource = _exchange_candidates(project, resource_id, active_at=active_at)
     if resource is None:
-        return render_template('dashboards/admin/fragments/allocation_form_notice_htmx.html', kind='resource_missing')
+        return _exchange_notice(project, None, 'resource_missing')
     if len(candidates) < 2:
-        return render_template('dashboards/admin/fragments/allocation_form_notice_htmx.html', kind='exchange_needs_two')
+        return _exchange_notice(project, resource, 'exchange_needs_two')
     return render_template(
         'dashboards/admin/fragments/exchange_allocation_form_htmx.html',
         project=project,
@@ -1435,16 +1454,16 @@ def htmx_allocate_down_form(allocation):
     uncovered branch. The parent's own amount never changes.
     """
     if allocation.deleted or allocation.is_inheriting:
-        return render_template('dashboards/admin/fragments/allocation_form_notice_htmx.html', kind='shared')
+        return _allocate_down_notice(allocation, 'shared')
 
     frontier, bump_candidates, create_candidates, resource = \
         _allocate_down_context(allocation)
 
     if frontier.raw_residual < 0:
-        return render_template('dashboards/admin/fragments/allocation_form_notice_htmx.html', kind='over_carved',
-                               carve_total=frontier.carve_total, amount=allocation.amount)
+        return _allocate_down_notice(allocation, 'over_carved', resource=resource,
+                                    carve_total=frontier.carve_total, amount=allocation.amount)
     if frontier.residual <= 0 or not (bump_candidates or create_candidates):
-        return render_template('dashboards/admin/fragments/allocation_form_notice_htmx.html', kind='nothing')
+        return _allocate_down_notice(allocation, 'nothing', resource=resource)
 
     return render_template(
         'dashboards/admin/fragments/allocate_down_form_htmx.html',

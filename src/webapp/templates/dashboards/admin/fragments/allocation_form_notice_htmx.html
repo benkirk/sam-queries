@@ -1,7 +1,10 @@
 {#
   An allocation modal with nothing to offer (exchange, allocate down): say why and
-  what to do instead, in place of the form. kind selects the message.
+  what to do instead, in place of the form. kind selects the message; label_id, title,
+  icon and meta retitle the modal, whose header may still name the previous allocation.
 #}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+{{ modal_title(label_id, title, icon, meta=meta) }}
 <div class="modal-body modal-notice" role="status">
   {% if kind == 'resource_missing' %}
   <p>Resource not found.</p>
