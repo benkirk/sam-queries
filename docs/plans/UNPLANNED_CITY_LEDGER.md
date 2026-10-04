@@ -12,13 +12,15 @@ them. Tick an item when its fix merges.
 
 From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 
-| date | end commit | private imports (helpers / sites / package-private) | dup-function groups (extra copies) | py-dup-names (names / definitions) | dead CSS classes (dynamic stem) | CSS lines / `!important` / repeated blocks | inline styles (templates) | JS shared names / shared events |
-|---|---|---|---|---|---|---|---|---|
-| 2026-10-03 | `79f1a147` | 70 / 88 / 33 | 9 (10) | — | 38 (17) | 4,789 / 70 / 14 | 405 (106) | 5 / 4 |
-| 2026-10-03 | `5254c65b` + js sweep | 70 / 88 / 33 | 9 (10) | — | 38 (17) | 4,817 / 70 / 14 | 404 (105) | 5 / 4 |
-| 2026-10-04 | `0515333f` + css sweep | 70 / 88 / 33 | 9 (10) | — | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | 5 / 4 |
-| 2026-10-04 | `75f89900` (base, py) | 70 / 88 / 33 | 9 (10) | 17 / 59 | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | 5 / 4 |
-| 2026-10-04 | `75f89900` + py sweep | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | 5 / 4 |
+| date | end commit | private imports (helpers / sites / package-private) | dup-function groups (extra copies) | py-dup-names (names / definitions) | dead CSS classes (dynamic stem) | CSS lines / `!important` / repeated blocks | inline styles (templates) | bs4-classes (uses / classes) | JS shared names / shared events |
+|---|---|---|---|---|---|---|---|---|---|
+| 2026-10-03 | `79f1a147` | 70 / 88 / 33 | 9 (10) | — | 38 (17) | 4,789 / 70 / 14 | 405 (106) | — | 5 / 4 |
+| 2026-10-03 | `5254c65b` + js sweep | 70 / 88 / 33 | 9 (10) | — | 38 (17) | 4,817 / 70 / 14 | 404 (105) | — | 5 / 4 |
+| 2026-10-04 | `0515333f` + css sweep | 70 / 88 / 33 | 9 (10) | — | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | — | 5 / 4 |
+| 2026-10-04 | `75f89900` (base, py) | 70 / 88 / 33 | 9 (10) | 17 / 59 | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | — | 5 / 4 |
+| 2026-10-04 | `75f89900` + py sweep | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | — | 5 / 4 |
+| 2026-10-04 | `21e6bae5` (base, templates) | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | 20 / 3 | 5 / 4 |
+| 2026-10-04 | `21e6bae5` + templates sweep | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,621 / 57 / 10 | 323 (95) | 0 / 0 | 5 / 4 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -205,6 +207,99 @@ the two intended changes below. Perf tier: 64 passed before and after; `baseline
   `charts/stacked.py`.
 - [ ] `CacheBase` has no `bytes_used`, which `chart_cached` reads; both backends define it.
 
+## 5. 2026-10-04: area sweep, `templates` + `css` (aesthetic)
+
+**Mode:** area. Read `src/webapp/templates/` and `static/css/` for UX patterns the recent PRs
+introduced that older templates never adopted (#696/#697/#704–#707/#721).
+
+**End commit:** `21e6bae5` (`origin/staging`: the #724 promotion, which carries #725).
+
+**Contract:** unlike sweeps 1–4, this one is not "nothing looks different". The changes are
+visual on purpose, and each commit declares its change. `src/` across the branch is +578 / -916.
+
+**Proof:**
+- `scripts/ui_snapshots.py`, before and after, reviewed by eye. Before is a base worktree served
+  by `dev_server_alt.sh` on :5053; after is the branch on :5052. 13 pages × 3 layouts × 2 themes.
+- Contrast is measured in the page (WCAG ratio, both themes); spacing with
+  `getBoundingClientRect`.
+- Full MySQL suite green, except the known `reconcile_quotas` flake, which passes on rerun.
+- The webapp, status and gate tests are also green on postgres-test.
+
+**Brand stance (Ben):** honor the NSF NCAR brand guide without being bound by it.
+- Keep: Poppins; NCAR Blue `#0057C2`, Dark Blue `#00357A`, Space `#011837`, Aqua; orange and
+  yellow as small accents.
+- Unity is built for sparse marketing pages, with solid-fill alerts, solid-blue table heads and
+  18px cell padding. SAM's density is much higher.
+
+**Declared deviations from the brand guide and Unity:**
+- Alerts are tinted surfaces with a left rule, not Unity's solid fills. This follows the guide's
+  own "no accent as a large block" rule.
+- The guide has no red or green. Danger is `#c0272d` / `#ff8a7a` and success is `#2b8a4b` /
+  `#4cc77f` (`--status-*` tokens).
+- Compute utilization bars use one brand fill. Threshold colors stay only where full is bad:
+  filesystems and login-node load.
+- The Google Calendar embed is CSS-inverted in dark mode, so its event colors are approximate.
+
+**Done, in this sweep's PR**, one commit each (`src/` lines added / removed):
+
+- [x] Skill friction: the `bs4-classes` detector with a fixture test, the status pages in
+  `ui_snapshots.py` `DEFAULT_PAGES`, and an "aesthetic sweep" note in the skill.
+- [x] Alerts (+32 / -68): tinted surface plus left rule app-wide, with `--status-*` and
+  `--alert-tint` tokens. Body text is 9.3–12.2:1 and muted text at least 5.5:1, in both themes.
+- [x] Page titles (+80 / -103): one `fragments/page_header.html` macro across 9 pages; the h1
+  goes from 48px to 28px. On the status page, title to first content goes from 228px to 161px.
+- [x] Reservations (+97 / -94, plus +4 / -2 for phones): one `reservation_table` on Derecho,
+  Casper and Events. Rows are 62px, where each slab was 120–150px. A
+  `ResourceReservation.is_active` hybrid drives "in progress".
+- [x] Calendar (+15): a dark-mode filter on the cross-origin embed.
+- [x] Status tables (+97 / -146):
+  - the house table vocabulary;
+  - counts colored only when they mean something;
+  - `<code>` in heading ink instead of Bootstrap pink;
+  - outage actions as `btn-row` buttons.
+- [x] Utilization (+44 / -93): the brand fill; four tiles become one macro; the node-type cells
+  use `alloc_meter`.
+- [x] JupyterHub (+77 / -273):
+  - the shared `metric_card` / `util_card` macros;
+  - no jumbo icons, and the orphan heading is gone;
+  - inline styles go from 12 to 0;
+  - a shared `.status-dot`.
+- [x] Bootstrap 4 classes (+14 / -14): 20 uses down to 0, held there by `test_bs4_classes.py`.
+- [x] Audit-log tables (+102 / -109): seven ledgers on `col-shrink` / `col-num` /
+  `cell-truncate`; inline styles go from 50 to 1.
+- [x] Leftovers (+44 / -42): light and dark badges muted, redundant badge ink dropped, and
+  `opacity-50` becomes `row-inactive`.
+
+**Tried and dropped:**
+- Wrapping the reservation window on phones. It pushed the System column wider too, so the
+  window moves under the name instead.
+- Autosquashing that phone fix into the reservations commit. It conflicts with the JupyterHub
+  commit's `.status-dot` change, so it stays a separate commit.
+
+**Open from this sweep:**
+
+- [ ] The project trees, `shared/project_tree.html` and `admin/.../project_allocation_tree_htmx.html`.
+  - Today: 23 inline styles each, a nested table and px colgroups.
+  - Target: `tree-cell` + `col-num` + `btn-row` + `alloc_meter`.
+  - Ben wants this as a second round, planned with fresh context. Sweep 3's move of the
+    project-card CSS rides along.
+- [ ] Resource Details (user `resource_details*` and the day/user subtrees): nested tables, 13 raw
+  collapse toggles, and `td.text-end` instead of `col-num`.
+- [ ] `xras_request_detail.html`: its 15 small outline row buttons should be `btn-row`. The XRAS
+  cards are only half adopted (nested tables, `width:99%`).
+- [ ] The saturated `modal_scaffold` headers and the `text-bg-*` toasts. This is an app-wide
+  design call.
+  - Create: `bg-success`.
+  - Edit: `bg-warning`, which renders navy.
+  - Confirm: `bg-danger`.
+- [ ] Brand-drift tokens. `charts/theme.py` mirrors these, so a fix moves the chart fingerprints.
+  - `--ncar-light-blue` is really UCAR Aqua.
+  - `--info-color` is `#0056C2`, a step off NCAR Blue.
+  - `--success-color` and `--warning-color` are Tailwind colors.
+- [ ] The solid-blue `page_tabs` strip and `nav-pills`. Ben kept them this round.
+- [ ] A one-off failure in `tests/unit/gates tests/unit/webapp` that did not reproduce in two
+  reruns.
+
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
 Surfaced by the first run of `scripts/sweep_inventory.py`. Each item belongs to an area sweep;
@@ -215,8 +310,9 @@ nothing here has been read for intent yet.
 - **docs:** `plans-stale --gh` on 2026-10-03 found no retirement candidates among 22 top-level
   plans. `ADMIN_TABLE_POLISH.md` and `ALLOCATIONS_SUNBURST.md` still say "implemented, in
   review" although their PRs have merged; they pass the 14-day idle bar on 2026-10-17.
-- **templates:** 405 inline `style=""` attributes; the project trees (`shared/project_tree.html`,
-  the admin allocation tree) carry the most.
+- **templates:** sweep 5 took inline `style=""` from 404 to 323; the project trees
+  (`shared/project_tree.html`, the admin allocation tree) still carry the most, on sweep 5's
+  open list.
 
 ## Propagation candidates
 
