@@ -352,6 +352,21 @@ class TestRootsOnlySwitch:
         body = auth_client.get(self._url(pair, root_only=0)).data.decode()
         assert pair[0] in body and pair[1] in body
 
+    def test_a_pool_member_reads_from_its_root(self, auth_client, session):
+        pair = _a_pool_member(session)
+        body = auth_client.get(self._url(pair, root_only=0)).data.decode()
+        row = body[body.index(f'data-sort-value="{pair[1]}"'):]
+        row = row[:row.index('</tr>')]
+        assert '>from<' in row and pair[0] in row
+
+    def test_every_column_sorts_by_its_own_cell(self, auth_client, session):
+        body = auth_client.get(self._url(_a_pool_member(session))).data.decode()
+        assert 'data-sort-attr' not in body and 'colspan' not in body
+        head = body[body.index('<thead>'):body.index('</thead>')]
+        row = body[body.index('<tbody>'):]
+        row = row[:row.index('</tr>')]
+        assert head.count('sortable-header') == row.count('<td') == 10
+
     def test_the_page_renders_the_switch_on_and_threads_it(self, auth_client):
         body = auth_client.get('/allocations/projects').data.decode()
         assert 'name="root_only" value="1"' in body and 'checked' in body
@@ -1107,13 +1122,13 @@ class TestShowUsageToggle:
         assert response.status_code == 200
 
     def test_projects_fragment_usage_renders_progress_or_empty(self, auth_client):
-        """show_usage=true produces progress bars or the empty-state message."""
+        """show_usage=true produces usage meters or the empty-state message."""
         response = auth_client.get(
             '/allocations/htmx/project_table?resource=Derecho&facility=UNIV'
             '&allocation_type=Small&show_usage=true'
         )
         html = response.data.decode()
-        assert 'progress' in html or 'No active projects' in html
+        assert 'share-bar meter' in html or 'No active projects' in html
 
     def test_usage_no_crash_on_zero_usage_facilities(self, auth_client):
         """Facilities with zero usage must not crash the chart renderer."""
