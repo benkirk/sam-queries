@@ -21,7 +21,7 @@ DEFAULT_PAGES = [
     '/admin/resources', '/admin/resources?tab=machines', '/admin/resources?tab=queues',
     '/admin/organizations', '/admin/organizations?tab=institutions', '/admin/organizations?tab=areas',
     '/admin/contracts', '/admin/facilities', '/admin/account-requests', '/admin/events',
-    '/dev/gallery',
+    '/status/derecho', '/status/casper', '/status/jupyterhub', '/status/events', '/dev/gallery',
 ]
 LAYOUTS = {'mobile': (390, 844), 'tablet': (1024, 1366), 'desktop': (1440, 1000)}
 THEMES = ('light', 'dark')

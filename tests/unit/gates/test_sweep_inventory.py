@@ -87,6 +87,15 @@ def test_inline_styles_counts_per_template(tmp_path):
     assert [(r['file'].rsplit('/', 1)[1], r['count']) for r in inv.inline_styles([busy, clean])] == [('busy.html', 2)]
 
 
+def test_bs4_classes_skips_classes_our_css_styles(tmp_path):
+    page = _write(tmp_path, 'page.html', '<thead class="thead-light">\n<b class="ms-2 ml-2\n  font-weight-bold">'
+                  '<i class="float-left"></i>')
+    css = _write(tmp_path, 'app.css', '.float-left { float: left }\n')
+    rows = inv.bs4_classes([page], [css])
+    assert [(r['class'], r['sites'][0].rsplit('/', 1)[1]) for r in rows] == [
+        ('font-weight-bold', 'page.html:2'), ('ml-2', 'page.html:2'), ('thead-light', 'page.html:1')]
+
+
 def test_js_dup_names_and_listeners(tmp_path):
     one = _write(tmp_path, 'one.js', "function sync() {}\nconst only = () => 1;\n"
                  "document.addEventListener('htmx:afterSwap', sync);\n")
@@ -131,7 +140,7 @@ def test_runs_on_the_real_tree(monkeypatch, capsys):
     assert inv.main(['--top', '3']) == 0
     out = capsys.readouterr().out
     for detector in ('private-imports', 'dup-functions', 'py-dup-names', 'css-dead', 'css-shape', 'inline-styles',
-                     'js-dup', 'js-dead', 'plans-stale'):
+                     'bs4-classes', 'js-dup', 'js-dead', 'plans-stale'):
         assert f'== {detector}:' in out
 
 
