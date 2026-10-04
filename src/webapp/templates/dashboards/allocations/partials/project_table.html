@@ -2,6 +2,7 @@
     resource dicts from projects_fragment (_as_resource_row). -#}
 {% from 'dashboards/fragments/project_bits.html' import project_link with context %}
 {% from 'dashboards/shared/project_tree.html' import allocation_cells with context %}
+{% from 'dashboards/fragments/table_bits.html' import state_tag %}
 {% set is_storage = resource_type in ('DISK', 'ARCHIVE') %}
 {% set unit = resource_type | alloc_unit %}
 <div class="table-responsive">
@@ -24,7 +25,7 @@
     <tbody>
         {% for project in projects %}
         {% set open_ended = project.bar_state == 'open-ended' %}
-        <tr>
+        <tr{% if project.bar_state == 'expired' %} class="row-inactive"{% endif %}>
             <td class="col-shrink" data-sort-value="{{ project.projcode }}">
                 {{- project_link(project.projcode, can_view_projects, stop_propagation=True) -}}
             </td>
@@ -42,7 +43,9 @@
                 {{- project.end_date | fmt_date -}}
             </td>
             <td class="col-num" data-sort-value="{{ 99999 if open_ended else project.days_left if project.days_left is not none else -1 }}">
-                {{- project.days_left | fmt_number -}}
+                {%- if project.bar_state in ('expired', 'open-ended') %}{{ state_tag(project.bar_state) }}
+                {%- elif project.bar_state == 'no-dates' %}{{ state_tag('no dates') }}
+                {%- else %}{{ project.days_left | fmt_number }}{% endif -%}
             </td>
         </tr>
         {% endfor %}

@@ -379,6 +379,42 @@ class TestRootsOnlySwitch:
         assert 'root_only=0"' in body and 'root_only=1"' not in body
 
 
+class TestProjectListStates:
+    """The list's date states, rendered from _as_resource_row (no live snapshot row is expired)."""
+
+    NOW = datetime(2026, 7, 1)
+
+    def _row(self, html, projcode):
+        row = html[html.index(f'data-sort-value="{projcode}"'):]
+        return html[:html.index(f'data-sort-value="{projcode}"')].rsplit('<tr', 1)[1] + row[:row.index('</tr>')]
+
+    def test_states_tag_the_days_left_cell(self, app):
+        from flask import render_template
+        from webapp.dashboards.allocations.blueprint import _as_resource_row
+        base = {'total_amount': 100.0, 'total_used': 10.0, 'percent_used': 10.0}
+        rows = [_as_resource_row({**base, 'projcode': code, 'start_date': start, 'end_date': end},
+                                 'HPC', self.NOW)
+                for code, start, end in [
+                    ('XEXP0001', datetime(2025, 1, 1), datetime(2026, 1, 1)),
+                    ('XOPN0001', datetime(2026, 1, 1), None),
+                    ('XNOD0001', None, None),
+                    ('XACT0001', datetime(2026, 1, 1), datetime(2026, 12, 31)),
+                ]]
+        rows.append(_as_resource_row({'projcode': 'XNIL0001', 'total_amount': 5.0, 'total_used': None,
+                                      'start_date': datetime(2026, 1, 1), 'end_date': datetime(2026, 12, 31)},
+                                     'HPC', self.NOW))
+        with app.test_request_context():
+            html = render_template('dashboards/allocations/partials/project_table.html',
+                                   projects=rows, resource_type='HPC', can_view_projects=True)
+        expired, open_ended, no_dates, active, no_usage = (
+            self._row(html, c) for c in ('XEXP0001', 'XOPN0001', 'XNOD0001', 'XACT0001', 'XNIL0001'))
+        assert 'row-inactive' in expired and '>expired<' in expired
+        assert '>open-ended<' in open_ended and 'row-inactive' not in open_ended
+        assert '>no dates<' in no_dates
+        assert '>183<' in active and 'state-tag' not in active
+        assert no_usage.count('text-muted" data-sort-value="-1">—<') == 3
+
+
 class TestUsageModalRoute:
     """Tests for GET /allocations/usage/<projcode>/<resource>."""
 
