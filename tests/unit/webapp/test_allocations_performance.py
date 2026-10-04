@@ -415,31 +415,6 @@ class TestProjectListStates:
         assert no_usage.count('text-muted" data-sort-value="-1">—<') == 3
 
 
-class TestUsageModalRoute:
-    """Tests for GET /allocations/usage/<projcode>/<resource>."""
-
-    def test_known_project_returns_200(self, auth_client):
-        response = auth_client.get('/allocations/usage/SCSG0001/Derecho')
-        assert response.status_code == 200
-
-    def test_nonexistent_project_returns_error(self, auth_client):
-        response = auth_client.get('/allocations/usage/FAKE9999/Derecho')
-        # Route is now guarded by @require_project_access, which returns a
-        # 404 JSON body via get_project_or_404 on unknown projcodes
-        # (replaces the prior hand-rolled inline early return).
-        assert response.status_code == 404
-        assert b'not found' in response.data
-        assert b'FAKE9999' in response.data
-
-    def test_invalid_date_returns_error(self, auth_client):
-        response = auth_client.get('/allocations/usage/SCSG0001/Derecho?active_at=bad')
-        assert b'Invalid date format' in response.data
-
-    def test_no_allocation_returns_message(self, auth_client):
-        response = auth_client.get('/allocations/usage/SCSG0001/NonexistentResource')
-        assert response.status_code == 200
-
-
 class TestTransactionsFragmentRoute:
     """Tests for GET /allocations/transactions_fragment."""
 
@@ -1109,10 +1084,6 @@ class TestForceRefreshParameter:
             '/allocations/htmx/project_table?resource=Derecho&facility=UNIV'
             '&allocation_type=Small&force_refresh=true'
         )
-        assert response.status_code == 200
-
-    def test_usage_modal_force_refresh(self, auth_client):
-        response = auth_client.get('/allocations/usage/SCSG0001/Derecho?force_refresh=true')
         assert response.status_code == 200
 
 

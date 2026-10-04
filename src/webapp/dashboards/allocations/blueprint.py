@@ -1337,51 +1337,6 @@ def adjustment_details(adjustment_id: int):
     )
 
 
-@bp.route('/usage/<projcode>/<resource>')
-@login_required
-@require_project_access(include_ancestors=True)
-def usage_modal(project, resource: str):
-    """
-    AJAX fragment showing detailed usage for a specific project+resource.
-
-    Access: system VIEW_PROJECTS, direct project affiliation, or
-    lead/admin of any ancestor in the project tree.
-
-    Returns:
-        HTML fragment for Bootstrap modal body showing usage breakdown
-    """
-    active_at_str = request.args.get('active_at')
-
-    # Parse date
-    try:
-        active_at = parse_ymd(active_at_str) if active_at_str else start_of_today()
-    except ValueError:
-        return '<p class="text-danger mb-0">Invalid date format</p>'
-
-    # Get allocation with usage details
-    usage_data = cached_allocation_usage(
-        session=db.session,
-        resource_name=resource,
-        projcode=project.projcode,
-        active_only=True,
-        active_at=active_at
-    )
-
-    if not usage_data:
-        return '<p class="text-muted mb-0">No active allocation found</p>'
-
-    # Should only be one result
-    allocation_info = usage_data[0] if usage_data else None
-
-    return render_template(
-        'dashboards/allocations/partials/usage_modal.html',
-        project=project,
-        resource=resource,
-        allocation=allocation_info,
-        active_at=active_at.strftime('%Y-%m-%d')
-    )
-
-
 @bp.route('/cache/purge', methods=['POST'])
 @login_required
 @require_permission(Permission.EDIT_ALLOCATIONS)

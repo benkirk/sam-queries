@@ -1961,13 +1961,6 @@
     ]
   ],
   [
-    "allocations_dashboard.usage_modal",
-    "/allocations/usage/<projcode>/<resource>",
-    [
-      "GET"
-    ]
-  ],
-  [
     "allocations_dashboard.xras",
     "/allocations/xras",
     [

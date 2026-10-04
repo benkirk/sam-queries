@@ -139,25 +139,6 @@
 </div>
 {% endif %}
 
-<!-- Usage Modal -->
-<div class="modal fade" id="usageModal" tabindex="-1" role="dialog">
-    <div class="modal-dialog modal-lg modal-fullscreen-sm-down" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Allocation Usage Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body" id="usageModalBody">
-                <div class="text-center">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
 {% include 'dashboards/fragments/chart_expand_modal.html' %}
 
 {# Allocation management modals arrive with dashboards/shared/project_details_modal.html
