@@ -104,11 +104,28 @@
 }
 
 /* ===================================================================
-   Reservation Cards
+   Reservations (fragments/reservations.html)
    =================================================================== */
 
-.reservation-card {
-    border-left: 4px solid var(--ncar-light-blue);
+.reservation-table {
+    border-left: 3px solid var(--ncar-light-blue);
+}
+
+.reservation-now {
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    margin-left: 0.5rem;
+    white-space: nowrap;
+}
+
+.reservation-now::before {
+    content: "";
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    margin-right: 0.3rem;
+    border-radius: 50%;
+    background-color: var(--status-warning);
 }
 
 /* ===================================================================

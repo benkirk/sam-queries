@@ -1,8 +1,15 @@
 {% extends 'dashboards/status/base_status.html' %}
+{% from 'dashboards/status/fragments/reservations.html' import reservation_table %}
 
 {% block title %}Calendar &amp; Events - SAM{% endblock %}
 
 {% block status_content %}
 {% if upcoming_events %}{% include 'dashboards/status/fragments/upcoming_events.html' %}{% endif %}
-{% include 'dashboards/status/fragments/reservations.html' %}
+{{ reservation_table(reservations, show_system=True, heading='h5') }}
+
+{% if google_calendar_embed_url %}
+<h5 class="mb-2 mt-4"><i class="fa-solid fa-calendar"></i> Calendar</h5>
+<iframe class="calendar-embed" src="{{ google_calendar_embed_url }}" width="100%" height="600"
+        frameborder="0" scrolling="no"></iframe>
+{% endif %}
 {% endblock %}

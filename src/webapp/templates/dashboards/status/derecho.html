@@ -1,3 +1,4 @@
+{% from 'dashboards/status/fragments/reservations.html' import reservation_table %}
 {% import 'dashboards/status/partials/system_header.html' as header %}
 {% import 'dashboards/status/partials/login_nodes_table.html' as login %}
 {% import 'dashboards/status/partials/node_status.html' as nodes %}
@@ -79,35 +80,8 @@
         {% set _chart_system = 'derecho' %}
         {% include 'dashboards/status/partials/system_user_proj_chart_card.html' %}
 
-        <!-- Reservations -->
         {% set derecho_reservations = reservations|selectattr('system_name', 'equalto', 'derecho')|list %}
-        {% if derecho_reservations %}
-        <h6 class="mb-3 mt-4"><i class="fa-solid fa-calendar-days"></i> Maintenance &amp; Reservations</h6>
-        {% for res in derecho_reservations %}
-        <div class="alert alert-warning mb-3" role="alert">
-            <div class="d-flex justify-content-between align-items-start">
-                <div>
-                    <h6 class="alert-heading mb-2">
-                        <i class="fa-solid fa-wrench"></i> {{ res.reservation_name }}
-                    </h6>
-                    {% if res.description %}
-                    <p class="mb-2">{{ res.description }}</p>
-                    {% endif %}
-                    <div class="small text-muted">
-                        {% if res.node_count %}{{ res.node_count }} node{{ '' if res.node_count == 1 else 's' }}{% endif %}
-                        {% if res.partition %} - Partition: {{ res.partition }}{% endif %}
-                    </div>
-                </div>
-                <div class="text-end">
-                    {# PBS reservations are stored naive-UTC (parser anchors
-                       cluster-local PBS output to America/Denver and converts
-                       to UTC).  Convert back to display TZ for human reading. #}
-                    <div class="fw-bold">{{ res.start_time | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }} - {{ res.end_time | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }}</div>
-                </div>
-            </div>
-        </div>
-        {% endfor %}
-        {% endif %}
+        {% if derecho_reservations %}{{ reservation_table(derecho_reservations) }}{% endif %}
 
         <!-- Filesystems -->
         {% if derecho_filesystems %}

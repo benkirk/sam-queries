@@ -1,36 +1,56 @@
-<h5 class="mb-3"><i class="fa-solid fa-calendar-days"></i> Maintenance &amp; Reservations</h5>
-{% for res in reservations %}
-<div class="card reservation-card mb-3">
-    <div class="card-body">
-        <div class="d-flex justify-content-between">
-            <div>
-                <h6>
-                    <strong>{{ res.system_name|upper }}</strong> - {{ res.reservation_name }}
-                </h6>
-            </div>
-            <div class="text-muted">
-                {# PBS reservations are stored naive-UTC (parser anchors
-                   cluster-local PBS output to America/Denver and converts
-                   to UTC).  Convert back to display TZ for human reading. #}
-                {{ res.start_time | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }} - {{ res.end_time | to_local_dt | fmt_date(fmt='%Y-%m-%d %H:%M %Z') }}
-            </div>
-        </div>
-        {% if res.description %}
-        <p class="mb-2">{{ res.description }}</p>
-        {% endif %}
-        <div class="text-muted small">
-            {% if res.node_count %}{{ res.node_count }} {{ 'node' if res.node_count == 1 else 'nodes' }}{% endif %}
-            {% if res.partition %} - Partition: {{ res.partition }}{% endif %}
-        </div>
-    </div>
-</div>
-{% endfor %}
+{#
+  PBS reservations as one table: the Derecho and Casper pages pass their own rows,
+  the Events tab passes every system's with show_system. Times are stored naive-UTC
+  (the parser converts cluster-local PBS output); to_local_dt turns them back.
+#}
+{% macro reservation_window(res) -%}
+{% set start, end = res.start_time | to_local_dt, res.end_time | to_local_dt %}
+{%- if start.date() == end.date() -%}
+<span class="text-muted">{{ start | fmt_date(fmt='%a %b') }} {{ start.day }}</span>
+{{ start | fmt_date(fmt='%H:%M') }}&ndash;{{ end | fmt_date(fmt='%H:%M %Z') }}
+{%- else -%}
+<span class="text-muted">{{ start | fmt_date(fmt='%a %b') }} {{ start.day }}</span> {{ start | fmt_date(fmt='%H:%M') }}
+&ndash; <span class="text-muted">{{ end | fmt_date(fmt='%a %b') }} {{ end.day }}</span> {{ end | fmt_date(fmt='%H:%M %Z') }}
+{%- endif %}
+{%- endmacro %}
 
-{% if google_calendar_embed_url %}
-<div class="mt-4">
-    <h5 class="mb-3"><i class="fa-solid fa-calendar"></i> Calendar</h5>
-    <iframe src="{{ google_calendar_embed_url }}"
-            style="border: 0" width="100%" height="600"
-            frameborder="0" scrolling="no"></iframe>
+{% macro reservation_table(reservations, show_system=False, heading='h6') %}
+<{{ heading }} class="mb-2 mt-4"><i class="fa-solid fa-calendar-days"></i> Maintenance &amp; Reservations
+    {% if reservations %}<span class="badge bg-secondary count-badge ms-1">{{ reservations | length }}</span>{% endif %}
+</{{ heading }}>
+{% if reservations %}
+<div class="table-responsive reservation-table mb-3">
+    <table class="table table-sm align-middle mb-0">
+        <thead class="table-subtle">
+            <tr>
+                {% if show_system %}<th class="col-shrink">System</th>{% endif %}
+                <th>Reservation</th>
+                <th class="col-num">Nodes</th>
+                <th class="col-shrink">Window</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for res in reservations %}
+            <tr>
+                {% if show_system %}<td class="col-shrink">{{ res.system_name | title }}</td>{% endif %}
+                <td>
+                    <span class="fw-semibold">{{ res.reservation_name }}</span>
+                    {% if res.is_active %}<span class="reservation-now">in progress</span>{% endif %}
+                    {% if res.description or (res.partition and res.partition != 'pbs-default') %}
+                    <div class="small text-muted">
+                        {% if res.description %}<span class="font-monospace">{{ res.description }}</span>{% endif %}
+                        {% if res.partition and res.partition != 'pbs-default' %}<span class="ms-2">partition {{ res.partition }}</span>{% endif %}
+                    </div>
+                    {% endif %}
+                </td>
+                <td class="col-num">{{ res.node_count | fmt_number if res.node_count else '—' }}</td>
+                <td class="col-shrink">{{ reservation_window(res) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 </div>
+{% else %}
+<p class="text-muted small">No upcoming reservations.</p>
 {% endif %}
+{% endmacro %}
