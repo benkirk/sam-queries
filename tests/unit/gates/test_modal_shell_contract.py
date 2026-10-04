@@ -183,9 +183,18 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # The Invitations tab (loaded only into admin/edit_project.html, which
     # includes invitation_modals_htmx.html). Its openers target that shell; the
     # forms that land in it carry no toggle of their own.
-    'project_members/fragments/invitations_tab_htmx.html': ['invitationModal'],
+    'project_members/fragments/invitations_tab_htmx.html': [
+        'invitationFormContainer', 'invitationModal'],
     # Admin -> Events reuses that shell: admin/events.html includes it.
-    'dashboards/admin/fragments/events_card.html': ['invitationModal'],
+    'dashboards/admin/fragments/events_card.html': [
+        'invitationFormContainer', 'invitationModal'],
+    # Forms that re-render into their own scaffold container: edit allocation
+    # (every page shipping project_details_modal.html, plus resource_details),
+    # notify (admin/edit_project.html only) and add member (member_modals_htmx.html,
+    # included by base_admin, edit_project and user/accounts).
+    'dashboards/admin/fragments/edit_allocation_form_htmx.html': ['editAllocationFormContainer'],
+    'dashboards/admin/fragments/notify_project_form_htmx.html': ['notifyProjectFormContainer'],
+    'project_members/fragments/add_member_form_htmx.html': ['addMemberFormContainer'],
     'dashboards/admin/fragments/bulk_deactivate_project_directories_form_htmx.html': [
         'bulkDeactivateProjectDirectoriesFormContainer'],
     'dashboards/admin/fragments/bulk_deactivate_project_directories_preview_htmx.html': [
@@ -377,18 +386,19 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/fragments/user_rows.html': [
         'userDetailsModal', 'userDetailsModalBody'],
     'dashboards/shared/project_tree.html': [
-        'allocateDownModal', 'editAllocationModal', 'exchangeAllocationModal'],
+        'allocateDownFormContainer', 'allocateDownModal', 'editAllocationFormContainer',
+        'editAllocationModal', 'exchangeAllocationFormContainer', 'exchangeAllocationModal'],
     'dashboards/user/partials/jobs_histogram.html': [
         'projectDetailsModal', 'projectDetailsModalBody',
         'userDetailsModal', 'userDetailsModalBody'],
     'dashboards/user/partials/project_card.html': [
-        'contractDetailsModalBody', 'editAllocationModal'],
+        'contractDetailsModalBody', 'editAllocationFormContainer', 'editAllocationModal'],
     'dashboards/user/partials/user_card.html': [
         'addExemptionFormContainer', 'addExemptionModal',
         'editExemptionFormContainer', 'editExemptionModal', 'groupMembersModal',
         'projectDetailsModal', 'projectDetailsModalBody'],
     'project_members/fragments/members_table.html': [
-        'addMemberModal', 'userDetailsModal', 'userDetailsModalBody'],
+        'addMemberFormContainer', 'addMemberModal', 'userDetailsModal', 'userDetailsModalBody'],
     # The sunburst expand opener renders in allocations/projects.html (charts and the
     # lazy Used ring) and, under the facility switch, the status Job History page;
     # both include fragments/chart_expand_modal.html. The body's window pills target

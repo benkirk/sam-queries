@@ -1,5 +1,6 @@
 {% extends 'dashboards/base.html' %}
 {% from 'dashboards/admin/fragments/user_search_results_fk_htmx.html' import render_fk_search_results with context %}
+{% from 'dashboards/fragments/modals.html' import modal_scaffold %}
 {% from 'dashboards/fragments/page_header.html' import page_header %}
 {% from 'dashboards/fragments/table_bits.html' import state_tag %}
 
@@ -239,133 +240,21 @@
 </div>
 {% endif %}
 
-<!-- MODALS -->
-
-<!-- Add Allocations Modal (lazy-loaded) -->
-<div class="modal fade" id="addAllocationModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-fullscreen-sm-down">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="fa-solid fa-circle-plus"></i> Add Allocations</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div id="addAllocationFormContainer">
-        <div class="modal-body text-center text-muted py-3">
-          <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
-          <p class="mt-2">Loading…</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Extend Allocations Modal (lazy-loaded) -->
-<div class="modal fade" id="extendAllocationsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-fullscreen-sm-down">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="fa-solid fa-calendar-plus"></i> Extend Allocations</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div id="extendAllocationsFormContainer">
-        <div class="modal-body text-center text-muted py-3">
-          <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
-          <p class="mt-2">Loading…</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Align Allocations Modal (lazy-loaded) -->
-<div class="modal fade" id="alignAllocationsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-fullscreen-sm-down">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="fa-solid fa-arrows-left-right-to-line"></i> Align Allocations</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div id="alignAllocationsFormContainer">
-        <div class="modal-body text-center text-muted py-3">
-          <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
-          <p class="mt-2">Loading…</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Renew Allocations Modal (lazy-loaded) -->
-<div class="modal fade" id="renewAllocationsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-fullscreen-sm-down">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="fa-solid fa-rotate"></i> Renew Allocations</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div id="renewAllocationsFormContainer">
-        <div class="modal-body text-center text-muted py-3">
-          <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
-          <p class="mt-2">Loading…</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Notify Project Modal (lazy-loaded) -->
-<div class="modal fade" id="notifyProjectModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-fullscreen-sm-down">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="fa-solid fa-envelope"></i> Notify Project Leads</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div id="notifyProjectFormContainer">
-        <div class="modal-body text-center text-muted py-3">
-          <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
-          <p class="mt-2">Loading…</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Exchange Allocation Modal (lazy-loaded) -->
-<div class="modal fade" id="exchangeAllocationModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="fa-solid fa-right-left"></i> Exchange Allocation</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div id="exchangeAllocationFormContainer">
-        <div class="modal-body text-center text-muted py-3">
-          <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
-          <p class="mt-2">Loading…</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Allocate to Sub-project Modal (lazy-loaded) -->
-<div class="modal fade" id="allocateDownModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="fa-solid fa-turn-down"></i> Allocate to Sub-project</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div id="allocateDownFormContainer">
-        <div class="modal-body text-center text-muted py-3">
-          <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
-          <p class="mt-2">Loading…</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+<!-- MODALS: lazy-loaded -->
+{{ modal_scaffold('addAllocationModal', 'Add Allocations', icon='circle-plus',
+                  container_id='addAllocationFormContainer', size='lg') }}
+{{ modal_scaffold('extendAllocationsModal', 'Extend Allocations', icon='calendar-plus',
+                  container_id='extendAllocationsFormContainer', size='lg') }}
+{{ modal_scaffold('alignAllocationsModal', 'Align Allocations', icon='arrows-left-right-to-line',
+                  container_id='alignAllocationsFormContainer', size='lg') }}
+{{ modal_scaffold('renewAllocationsModal', 'Renew Allocations', icon='rotate',
+                  container_id='renewAllocationsFormContainer', size='lg') }}
+{{ modal_scaffold('notifyProjectModal', 'Notify Project Leads', icon='envelope',
+                  container_id='notifyProjectFormContainer', size='lg') }}
+{{ modal_scaffold('exchangeAllocationModal', 'Exchange Allocation', icon='right-left',
+                  container_id='exchangeAllocationFormContainer') }}
+{{ modal_scaffold('allocateDownModal', 'Allocate to Sub-project', icon='turn-down',
+                  container_id='allocateDownFormContainer') }}
 
 {# Also brings in the lazy-loaded #editAllocationModal used by the allocation
    tree's edit pencils. #}

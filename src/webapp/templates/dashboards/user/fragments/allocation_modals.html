@@ -1,25 +1,8 @@
+{% from 'dashboards/fragments/modals.html' import modal_scaffold %}
 {# Fragment: Allocation Management Modals (htmx version) #}
 
-<!-- Edit Allocation Modal — form loaded dynamically via htmx -->
-<div class="modal fade" id="editAllocationModal" tabindex="-1"
-     aria-labelledby="editAllocationModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="editAllocationModalLabel">
-                    <i class="fa-solid fa-pen-to-square"></i> Edit Allocation
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="editAllocationFormContainer">
-                <div class="modal-body text-center text-muted py-4" role="status">
-                    <i class="fa-solid fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
-                    <p class="mt-2">Loading allocation...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('editAllocationModal', 'Edit Allocation', icon='pen-to-square',
+                  container_id='editAllocationFormContainer') }}
 
 {#
   Refresh the project details modal (if open) after an allocation is updated.
