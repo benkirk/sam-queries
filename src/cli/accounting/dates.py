@@ -19,7 +19,7 @@ def _parse_last_spec(spec: str) -> int:
     return n
 
 
-def _validate_accounting_dates(
+def validate_accounting_dates(
     date_str: str | None,
     start: str | None,
     end: str | None,
@@ -42,7 +42,7 @@ def _validate_accounting_dates(
                 raise click.BadParameter(f"{name} must be in YYYY-MM-DD format")
 
 
-def _resolve_accounting_dates(
+def resolve_accounting_dates(
     date_str: str | None,
     start: str | None,
     end: str | None,

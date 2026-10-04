@@ -10,14 +10,14 @@ project-scoped operations (member changes, allocation edits, threshold
 tuning, etc.).
 
 The shared shape — "system permission OR project lead/admin (optionally
-walking ancestors)" — lives in ``_is_project_steward``. All public
+walking ancestors)" — lives in ``is_project_steward``. All public
 ``can_*`` helpers delegate to it so the rule set stays consistent.
 """
 
 from webapp.utils.rbac import has_permission, has_permission_for_facility, Permission
 
 
-def _is_project_steward(
+def is_project_steward(
     user,
     project,
     system_permission: Permission,
@@ -79,7 +79,7 @@ def _is_event_sponsor(user, event, project, system_permission: Permission) -> bo
     """Who may run an account-request event: a steward of its project (the
     tree walked, as for a subtree operation), or the event's one stored
     extra sponsor. Sponsorship adds no role, only that column."""
-    if _is_project_steward(user, project, system_permission, include_ancestors=True):
+    if is_project_steward(user, project, system_permission, include_ancestors=True):
         return True
     user_id = getattr(user, 'user_id', None)
     return (user_id is not None
@@ -93,7 +93,7 @@ def can_manage_events(user, project) -> bool:
     holder. Creating an event is operator-only -- see
     can_create_events. The predicate require_event_sponsor_access applies (that
     also admits the event's own extra sponsor)."""
-    return _is_project_steward(user, project, Permission.MANAGE_EVENTS,
+    return is_project_steward(user, project, Permission.MANAGE_EVENTS,
                                include_ancestors=True)
 
 
@@ -116,7 +116,7 @@ def can_access_edit_project_page(user, project) -> bool:
     per-field / per-action gates on each tab constrain what a non-admin
     steward can actually change.
     """
-    return _is_project_steward(user, project, Permission.EDIT_PROJECTS)
+    return is_project_steward(user, project, Permission.EDIT_PROJECTS)
 
 
 def can_edit_project_governance(user, project) -> bool:
@@ -140,7 +140,7 @@ def can_manage_project_members(user, project) -> bool:
     of the project or of any ancestor (the invitation routes, which add the
     same rows, already walk the tree).
     """
-    return _is_project_steward(user, project, Permission.EDIT_PROJECT_MEMBERS,
+    return is_project_steward(user, project, Permission.EDIT_PROJECT_MEMBERS,
                                include_ancestors=True)
 
 
@@ -212,7 +212,7 @@ def can_exchange_allocations(user, project) -> bool:
     leads — a lead of project A can exchange allocations among its
     children A1, A2 without acquiring new quota.
     """
-    return _is_project_steward(
+    return is_project_steward(
         user, project, Permission.EDIT_ALLOCATIONS, include_ancestors=True
     )
 
@@ -230,7 +230,7 @@ def can_allocate_residual(user, project) -> bool:
     quota. Kept as its own helper (not an alias) so the two operations can
     diverge later without a template audit.
     """
-    return _is_project_steward(
+    return is_project_steward(
         user, project, Permission.EDIT_ALLOCATIONS, include_ancestors=True
     )
 
@@ -243,7 +243,7 @@ def can_edit_consumption_threshold(user, project) -> bool:
     project admin. Does NOT walk ancestors — thresholds are scoped to
     the specific project.
     """
-    return _is_project_steward(user, project, Permission.EDIT_PROJECT_MEMBERS)
+    return is_project_steward(user, project, Permission.EDIT_PROJECT_MEMBERS)
 
 
 def get_user_role_in_project(user_id: int, project) -> str:

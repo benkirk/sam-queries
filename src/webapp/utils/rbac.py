@@ -328,7 +328,7 @@ def rbac_context_processor():
     # Late import to avoid the circular path
     # rbac -> project_permissions -> rbac at module import time.
     from webapp.utils.project_permissions import (
-        _is_project_steward, can_create_events,
+        is_project_steward, can_create_events,
     )
 
     def _can_act_on_project(permission, project, include_ancestors=False):
@@ -336,7 +336,7 @@ def rbac_context_processor():
             return False
         if current_user is None or not current_user.is_authenticated:
             return False
-        return _is_project_steward(
+        return is_project_steward(
             current_user, project, permission, include_ancestors=include_ancestors
         )
 

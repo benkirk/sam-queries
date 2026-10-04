@@ -36,7 +36,7 @@ from sam.queries.charges import (
 from sam.accounting.adjustments import ChargeAdjustmentType
 from sam.queries.dashboard import (
     _build_project_resources_data,
-    _build_user_projects_resources_batched,
+    build_user_projects_resources_batched,
     get_project_dashboard_data,
     get_resource_detail_data,
     get_user_dashboard_data,
@@ -251,7 +251,7 @@ class TestDashboardQueries:
         ghost = make_account(session, project=project, resource=other)
         make_allocation(session, account=ghost, amount=5.0, deleted=True)
 
-        batched = _build_user_projects_resources_batched(session, [project], active_at=now)
+        batched = build_user_projects_resources_batched(session, [project], active_at=now)
         rows = batched[project.project_id]
         assert [r['allocation_id'] for r in rows] == [ended.allocation_id]
         assert rows[0]['bar_state'] == 'expired'
@@ -273,7 +273,7 @@ class TestDashboardQueries:
 
         active_at = datetime.now()
 
-        batched = _build_user_projects_resources_batched(
+        batched = build_user_projects_resources_batched(
             session, projects, active_at=active_at,
         )
 
@@ -419,7 +419,7 @@ class TestDiskCapacityInDashboardData:
             bytes_used=50 * BYTES_PER_TIB, terabyte_years=4.2141,
         )
         per = _build_project_resources_data(project)
-        bat = _build_user_projects_resources_batched(session, [project])[project.project_id]
+        bat = build_user_projects_resources_batched(session, [project])[project.project_id]
         # Equivalence on the disk row's capacity fields.
         assert len(per) == len(bat)
         per_disk = next(r for r in per if r['resource_type'] == 'DISK')

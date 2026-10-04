@@ -22,7 +22,6 @@ from sam import fmt
 from webapp.caching.chart import content_hash
 from webapp.dashboards.charts import links, series as series_mod
 from webapp.dashboards.charts.base import BaseChart, cells_label
-from webapp.dashboards.charts.dualpanel import _to_display_tz
 from webapp.dashboards.charts.jobs_metrics import (
     JOBS_METRIC_LABELS, jobs_timeseries_series,
 )
@@ -413,7 +412,7 @@ class UserProjAreaChart(StackedSeriesChart):
 
     def x_values(self):
         from datetime import datetime
-        return [_to_display_tz(d) if isinstance(d, datetime) else d
+        return [series_mod.to_display_tz(d) if isinstance(d, datetime) else d
                 for d in (self.timeseries.get('dates') or [])]
 
     def legend_cells(self, band):

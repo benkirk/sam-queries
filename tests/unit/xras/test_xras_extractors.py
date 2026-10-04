@@ -825,7 +825,7 @@ class TestResolveMnemonicCode:
 
     def test_a_shadowed_second_institution_is_named_with_its_code(self, session):
         """kheyblom, 2026-08-27: a stale open row is first in DB order and unlinked,
-        while a newer one resolves. `_best_institution` keeps taking the first
+        while a newer one resolves. `best_institution` keeps taking the first
         (legacy parity); the 422 now says what the admin needs to know."""
         from factories import (make_institution, make_mnemonic_code, make_user,
                                make_user_institution)

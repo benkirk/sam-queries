@@ -22,7 +22,7 @@ from sam.resources.resources import Resource
 from sam.sqlcompat import sam_now
 from sam.queries.dashboard import (
     DashboardResource,
-    _build_user_projects_resources_batched,
+    build_user_projects_resources_batched,
 )
 
 #: An allocation that ended within this many days still gets a row — the
@@ -124,7 +124,7 @@ def project_allocation_state(session: Session, *, now: datetime,
     token = _PROJECTING.set(True)
     try:
         for chunk in _chunks(projects, CHUNK_SIZE):
-            by_project = _build_user_projects_resources_batched(session, chunk, active_at=now)
+            by_project = build_user_projects_resources_batched(session, chunk, active_at=now)
             for project in chunk:
                 for res in by_project.get(project.project_id, []):
                     if res['allocation_id'] is None:

@@ -36,8 +36,8 @@ from webapp.dashboards.charts.dualpanel import (  # noqa: F401
     DualPanelTimeSeriesChart,
     NodetypeHistoryChart,
     QueueHistoryChart,
-    _to_display_tz,
 )
+from webapp.dashboards.charts.series import to_display_tz as _to_display_tz  # noqa: F401
 from webapp.dashboards.charts.histogram import (  # noqa: F401
     CategoricalStackChart,
     DistributionHistogram,

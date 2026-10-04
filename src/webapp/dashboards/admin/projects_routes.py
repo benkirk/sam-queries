@@ -444,9 +444,9 @@ def htmx_project_lead_hint():
 
     # The same "first current affiliation" selectors the XRAS push uses, so the
     # suggested mnemonic and what XRAS mints resolve from the identical row.
-    from sam.xras.extractors import _best_institution, _best_organization
-    org = _best_organization(user)
-    institution = _best_institution(user)
+    from sam.xras.extractors import best_institution, best_organization
+    org = best_organization(user)
+    institution = best_institution(user)
     if not org and not institution:
         return render_template(
             'dashboards/admin/fragments/project_lead_hint_htmx.html',
@@ -858,7 +858,7 @@ def htmx_project_allocation_tree(project):
     """
     from collections import OrderedDict
     from datetime import datetime
-    from sam.queries.dashboard import _build_user_projects_resources_batched
+    from sam.queries.dashboard import build_user_projects_resources_batched
 
     # Parse optional active_at date; default to today.
     active_at_str = request.args.get('active_at', '').strip()
@@ -872,7 +872,7 @@ def htmx_project_allocation_tree(project):
     all_nodes = [n for n in ([root] + root.get_descendants()) if n.active]
     # One batched build for the whole tree (the per-node loop was the ~5.7 s
     # path); the batched builder also consults the read-model when fresh.
-    by_project = _build_user_projects_resources_batched(
+    by_project = build_user_projects_resources_batched(
         db.session, all_nodes, active_at=active_at,
     )
     resources_by_projcode = {
