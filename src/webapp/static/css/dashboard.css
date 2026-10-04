@@ -1157,8 +1157,14 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    stay untouched.
    ========================================================================= */
 
+/* Square corners. Bootstrap rounds the header and footer from their own inner
+   variable, so zeroing .modal-content alone left a white wedge in each top corner. */
+.modal {
+    --bs-modal-border-radius: 0;
+    --bs-modal-inner-border-radius: 0;
+}
+
 .modal-content {
-    border-radius: 0;
     border: 1px solid var(--border-default);
     box-shadow: var(--shadow-md);
 }
