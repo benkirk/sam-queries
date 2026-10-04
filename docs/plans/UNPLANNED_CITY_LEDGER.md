@@ -23,6 +23,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-04 | `21e6bae5` + templates sweep | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,621 / 57 / 10 | 323 (95) | 0 / 0 | — | 5 / 4 |
 | 2026-10-04 | `21e6bae5` + sweep 5 + trees round | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,615 / 57 / 10 | 263 (94) | 0 / 0 | 0 (from 22) | 5 / 4 |
 | 2026-10-04 | `21e6bae5` + sweeps 5–7 | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,603 / 54 / 10 | 257 (93) | 0 / 0 | 0 | 5 / 4 |
+| 2026-10-04 | `a75b9db7` + project list | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,610 / 54 / 10 | 255 (92) | 0 / 0 | 0 | 5 / 4 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -405,11 +406,11 @@ to `staging` once that merges.
 
 **Open from this round:**
 
-- [ ] The Allocations project list (`allocations/partials/project_table.html`, loaded under a
+- [x] The Allocations project list (`allocations/partials/project_table.html`, loaded under a
   type row) still draws `render_usage_bar` in one `colspan="6"` usage-and-dates cell behind six
   sortable headers (`min-width:280px`). It should become `alloc_meter` plus real columns, which
-  means reworking its data-sort attributes. Resource Details and the usage modal also still use
-  `render_usage_bar`.
+  means reworking its data-sort attributes. Done in entry 8. Resource Details and the usage
+  modal still use `render_usage_bar`.
 
 - [ ] On a phone, the project card's resource table scrolls sideways inside its frame. The
   meter column could hide below md and show only the percentage.
@@ -417,6 +418,58 @@ to `staging` once that merges.
   tabs and pills that sweep 5 kept.
 - [ ] `group_card.html`, `contract_card.html` and the transaction / adjustment / XRAS detail
   modals use `stat-item-block` with stacked labels. They could opt into `.stat-item-inline`.
+
+## 8. 2026-10-04: area sweep, `templates` round 4 (the Allocations project list)
+
+**Mode:** area, from `docs/plans/ALLOCATIONS_PROJECT_LIST_HANDOFF.md` (entry 7's open item).
+**Stacked on:** sweep 7's branch (`sweep-cards-2026-10`, end commit `a75b9db7`). **Contract:**
+aesthetic, with each commit declaring its change. `src/` is +123 / -192.
+
+**Done, in this round's PR**, one commit each:
+
+- [x] Adapter and lift (handoff step 3, landed first because the columns read it):
+  - `sam.queries.dashboard.allocation_timeline` replaces three copies of the elapsed / bar-state
+    rule: two in `dashboard.py` and 25 lines of Jinja in `project_table.html`.
+  - `projects_fragment` normalizes rows into the `allocation_cells` shape (`_as_resource_row`)
+    and no longer writes titles into the cached usage rows.
+  - `ui_snapshots --styles --compare` against the base: 0 of 6 captures differ.
+- [x] Columns (step 2):
+  - Project | Title | % used | Allocated | Used | Remaining | Annual rate | Start | End |
+    Days left, each cell carrying its own `data-sort-value`; the `data-sort-attr` indirection
+    is gone.
+  - `allocation_cells` gains opt-in `sort=` and `units=`, so a pool member reads "from <root>"
+    as everywhere else.
+  - Rows are 44px at 1440px (from ~76px) and 38px at 390px (from 69–212px). The page never
+    scrolls sideways.
+  - `.elapsed-tick` deleted: this list was its only user.
+- [x] States (step 4): expired / open-ended / no dates as a `state_tag` in Days left; expired
+  rows are `row-inactive`; no usage renders `allocation_cells(None)`.
+- [x] Title N+1 (step 5): `sam.queries.projects.project_titles`, one `IN` query.
+  - Route queries go from 18 + 2 per row (495 at 239 rows, 837 at 410) to a flat 18.
+  - Pinned by `test_allocations_project_table_route`, baseline 27.
+
+**Deviations from the handoff:**
+- Annual rate follows Remaining, so `allocation_cells` stays one call.
+- DISK/ARCHIVE drop "Data Volume", which repeated Allocated.
+- The unit sits in the Allocated header's title, not on 50 rows.
+- The usage bar loses its red / orange / green thresholds for the house meter: blue, red only
+  past 100%.
+- Step 6 had no commit of its own. Its one deletion had to ride with the columns commit to keep
+  `test_css_dead` green.
+
+**Tried and dropped:** the unit on every Allocated row. On a 50-row list it was noise and
+widened the column.
+
+**Open from this round:**
+
+- [ ] Resource Details (`user/resource_details.html`, `resource_details_disk.html`), the
+  allocations usage modal and the status filesystem table are the last `render_usage_bar` /
+  raw `.progress` holdouts.
+- [ ] The project list is still a nested table in a spanning cell, not rows of the tree table
+  (wire-dashboard §7). Its column set differs from the tree's, so folding it in would mean the
+  tree growing columns.
+- [ ] On a phone, the list's own `table-responsive` never scrolls. It sits in an auto-layout
+  cell, so the tree's wrapper scrolls the whole tree (1055px).
 
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
@@ -428,7 +481,7 @@ nothing here has been read for intent yet.
 - **docs:** `plans-stale --gh` on 2026-10-03 found no retirement candidates among 22 top-level
   plans. `ADMIN_TABLE_POLISH.md` and `ALLOCATIONS_SUNBURST.md` still say "implemented, in
   review" although their PRs have merged; they pass the 14-day idle bar on 2026-10-17.
-- **templates:** sweeps 5–7 took inline `style=""` from 404 to 257.
+- **templates:** sweeps 5–8 took inline `style=""` from 404 to 255.
 
 ## Propagation candidates
 
