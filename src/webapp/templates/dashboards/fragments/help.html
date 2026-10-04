@@ -59,10 +59,12 @@
    Renders <label> with a help cue. rich=True upgrades it to a click popover.
    extra_class lets a caller merge in additional classes (e.g. badge styling)
    while keeping the help-term cue and tooltip wiring.
+   stop_propagation=True inside a data-action row, or the click runs the row's action.
 #}
-{% macro term(label, text, rich=False, title=None, placement='top', extra_class='') -%}
+{% macro term(label, text, rich=False, title=None, placement='top', extra_class='', stop_propagation=False) -%}
 <span class="help-term{% if extra_class %} {{ extra_class }}{% endif %}"
       tabindex="0"
+      {%- if stop_propagation %} data-stop-propagation{% endif %}
       {%- if rich %}
       data-bs-toggle="popover"
       data-bs-trigger="focus"
