@@ -62,8 +62,9 @@ Run each pass and collect findings. The examples are real.
 
 - **Lift.** A `_private` helper imported from another module wants a public home in the layer
   both callers can reach (`private-imports`). So does the same helper written twice
-  (`dup-functions`, jscpd). Example: the rolling-window builders imported from
-  `rolling_usage.py` into fstree, folded into `batch_charges` in #712.
+  (`dup-functions`, jscpd). Helpers too small for `dup-functions` (env readers, date parsers)
+  show as one name defined in several modules (`py-dup-names`). Example: the rolling-window
+  builders imported from `rolling_usage.py` into fstree, folded into `batch_charges` in #712.
 - **Consolidate.** Three or more implementations of one concept go behind one facade, even at
   real refactor cost. The exception is when layer rules forbid it. Example: the bucketed caches
   behind `webapp.caching`; the usage cache was the last single-dict holdout.
