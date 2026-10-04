@@ -12,6 +12,8 @@ from datetime import datetime, timedelta
 from flask import jsonify, request
 from typing import Optional, Tuple, Any, Dict
 
+from sam.dates import parse_ymd as parse_input_start_date, parse_ymd_end_of_day as parse_input_end_date  # noqa: F401
+
 
 def register_error_handlers(blueprint):
     """
@@ -40,25 +42,6 @@ def register_error_handlers(blueprint):
     @blueprint.errorhandler(404)
     def not_found(e):
         return jsonify({'error': 'Resource not found'}), 404
-
-
-def parse_input_start_date(s: str, fmt: str = '%Y-%m-%d') -> datetime:
-    """Parse a YYYY-MM-DD form/API input string as start-of-day (midnight).
-
-    Use this for any start_date field coming from an HTML date input or API string.
-    """
-    return datetime.strptime(s, fmt)
-
-
-def parse_input_end_date(s: str, fmt: str = '%Y-%m-%d') -> datetime:
-    """Parse a YYYY-MM-DD form/API input string as end-of-day (23:59:59).
-
-    Use this for any end_date field coming from an HTML date input or API string.
-    Enforces the SAM convention that end dates are stored as end-of-day, not midnight.
-    The ``@validates('end_date')`` normalizer on ORM models provides a second
-    line of defense, but using this helper makes the intent explicit at the call site.
-    """
-    return datetime.strptime(s, fmt).replace(hour=23, minute=59, second=59)
 
 
 def parse_date_range(

@@ -55,11 +55,7 @@ class AddMemberForm(HtmxFormSchema):
     start_date = f.Date('%Y-%m-%d', load_default=None)
     end_date = f.Str(load_default=None)   # 23:59:59 convention applied in post_load
 
-    @post_load
-    def coerce_and_validate_dates(self, data, **kwargs):
-        data['end_date'] = self.normalize_end_date(data.get('end_date'))
-        self.assert_date_range(data.get('start_date'), data.get('end_date'))
-        return data
+    _date_range = ('start_date', 'end_date')
 
 
 class ChangeProjectAdminForm(HtmxFormSchema):
@@ -109,11 +105,7 @@ class EditAllocationForm(HtmxFormSchema):
     end_date = f.Str(load_default=None)   # 23:59:59 convention applied in post_load
     description = f.Str(load_default=None)
 
-    @post_load
-    def coerce_and_validate_dates(self, data, **kwargs):
-        data['end_date'] = self.normalize_end_date(data.get('end_date'))
-        self.assert_date_range(data.get('start_date'), data.get('end_date'))
-        return data
+    _date_range = ('start_date', 'end_date')
 
 
 class RenewAllocationsForm(HtmxFormSchema):
@@ -144,14 +136,7 @@ class RenewAllocationsForm(HtmxFormSchema):
     # Optional operator note rendered in the lead/admin email.
     operator_comment = f.Str(load_default=None, validate=v.Length(max=1000))
 
-    @post_load
-    def coerce_and_validate_dates(self, data, **kwargs):
-        data['new_end_date'] = self.normalize_end_date(data['new_end_date'])
-        self.assert_date_range(
-            data['new_start_date'], data['new_end_date'],
-            field='new_end_date',
-        )
-        return data
+    _date_range = ('new_start_date', 'new_end_date')
 
 
 class ExtendAllocationsForm(HtmxFormSchema):
@@ -170,10 +155,7 @@ class ExtendAllocationsForm(HtmxFormSchema):
     # Optional operator note rendered in the lead/admin email.
     operator_comment = f.Str(load_default=None, validate=v.Length(max=1000))
 
-    @post_load
-    def coerce_and_validate_dates(self, data, **kwargs):
-        data['new_end_date'] = self.normalize_end_date(data['new_end_date'])
-        return data
+    _date_range = (None, 'new_end_date')
 
 
 class AlignAllocationsForm(HtmxFormSchema):
@@ -261,8 +243,4 @@ class AddAllocationsForm(HtmxFormSchema):
     description = f.Str(load_default=None)
     apply_to_subprojects = f.Bool(load_default=False)
 
-    @post_load
-    def coerce_and_validate_dates(self, data, **kwargs):
-        data['end_date'] = self.normalize_end_date(data.get('end_date'))
-        self.assert_date_range(data.get('start_date'), data.get('end_date'))
-        return data
+    _date_range = ('start_date', 'end_date')

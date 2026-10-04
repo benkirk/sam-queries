@@ -10,6 +10,7 @@ after it (same kwargs, same error routing, same success responses).
 """
 
 import json
+from datetime import datetime
 
 import pytest
 from jinja2 import ChoiceLoader, DictLoader
@@ -361,3 +362,24 @@ class TestModalTriggers:
         first = modal_triggers('reloadX')
         first['mutated'] = True
         assert 'mutated' not in modal_triggers('reloadX')
+
+
+class TestDateRange:
+    """``_date_range`` on HtmxFormSchema: 23:59:59 end, end > start, malformed end is a field error."""
+
+    def test_end_is_end_of_day_and_must_follow_start(self):
+        from sam.schemas.forms import EditAllocationForm
+        data = EditAllocationForm().load({'amount': '1', 'start_date': '2026-01-01', 'end_date': '2026-12-31'})
+        assert data['end_date'] == datetime(2026, 12, 31, 23, 59, 59)
+        with pytest.raises(ValidationError) as e:
+            EditAllocationForm().load({'amount': '1', 'start_date': '2026-12-31', 'end_date': '2026-01-01'})
+        assert e.value.messages == {'end_date': ['End date must be after start date.']}
+
+    def test_end_only_and_malformed_end(self):
+        from sam.schemas.forms import AddMemberForm, ExtendAllocationsForm
+        data = ExtendAllocationsForm().load({'source_active_at': '2026-01-01', 'new_end_date': '2027-01-31',
+                                             'resource_ids': [1]})
+        assert data['new_end_date'] == datetime(2027, 1, 31, 23, 59, 59)
+        with pytest.raises(ValidationError) as e:
+            AddMemberForm().load({'username': 'x', 'end_date': '2026-13-45'})
+        assert e.value.messages == {'end_date': ['Invalid end date format.']}

@@ -20,7 +20,11 @@ Usage in a route handler:
 
 from datetime import datetime
 import marshmallow.fields as f
-from marshmallow import Schema, EXCLUDE, ValidationError, pre_load
+from marshmallow import Schema, EXCLUDE, ValidationError, post_load, pre_load
+
+from sam.dates import parse_ymd_end_of_day
+
+RANGE_MESSAGE = 'End date must be after start date.'
 
 
 class HtmxFormSchema(Schema):
@@ -34,6 +38,10 @@ class HtmxFormSchema(Schema):
       from ``request.form``) but moves it into the schema layer so every
       HTMX route benefits automatically.
     """
+
+    #: ``(start_field or None, end_field)``: the end gets 23:59:59, then must follow the start.
+    _date_range = None
+    _date_range_message = RANGE_MESSAGE
 
     class Meta:
         unknown = EXCLUDE
@@ -113,23 +121,30 @@ class HtmxFormSchema(Schema):
                 field_errors[field] = msgs
         return field_errors, form_level
 
-    @staticmethod
-    def normalize_end_date(end_str):
-        """Parse a YYYY-MM-DD form input into an end-of-day datetime, or None.
+    @post_load
+    def _normalize_date_range(self, data, **kwargs):
+        if self._date_range:
+            start, end = self._date_range
+            data[end] = self.normalize_end_date(data.get(end), field=end)
+            if start:
+                self.assert_date_range(data.get(start), data[end], field=end,
+                                       message=self._date_range_message)
+        return data
 
-        Accepts an empty string or None and returns None. Otherwise delegates to
-        parse_input_end_date which yields a 23:59:59 timestamp so date-range
-        comparisons against datetime fields are inclusive of the chosen day.
-        """
+    @staticmethod
+    def normalize_end_date(end_str, field='end_date'):
+        """A YYYY-MM-DD input as a 23:59:59 datetime, or None; a malformed one is a field error."""
         if not end_str:
             return None
-        from webapp.api.helpers import parse_input_end_date
-        return parse_input_end_date(end_str)
+        try:
+            return parse_ymd_end_of_day(end_str)
+        except ValueError:
+            raise ValidationError({field: ['Invalid end date format.']})
 
     @staticmethod
     def assert_date_range(start_date, end_date, *,
                           field='end_date',
-                          message='End date must be after start date.'):
+                          message=RANGE_MESSAGE):
         """Raise ValidationError if end_date <= start_date.
 
         `start_date` may be a date or datetime; it is normalized to a
