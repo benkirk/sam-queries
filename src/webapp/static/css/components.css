@@ -188,9 +188,9 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
    Pairs the global JS with its indicator so any `.sortable-header` shows a
    neutral up/down cue (click to sort) and an arrow for the active column. */
 .sortable-header { cursor: pointer; user-select: none; white-space: nowrap; }
-.sortable-header::after { content: ' \2195'; color: var(--text-tertiary); font-size: 0.8em; }
-.sortable-header.sort-asc::after { content: ' \2191'; color: var(--text-primary); }
-.sortable-header.sort-desc::after { content: ' \2193'; color: var(--text-primary); }
+.sortable-header::after { content: '\a0\2195'; color: var(--text-tertiary); font-size: 0.8em; }
+.sortable-header.sort-asc::after { content: '\a0\2191'; color: var(--text-primary); }
+.sortable-header.sort-desc::after { content: '\a0\2193'; color: var(--text-primary); }
 
 /* Secondary sort handle inside a sortable header (sortable_table.js):
    its own arrow for an alternate sort key on the same column, e.g.
@@ -288,6 +288,11 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
 .table .col-num {
     text-align: end;
     font-variant-numeric: tabular-nums;
+}
+
+/* A two-word header over narrow figures: wraps at its space so the column fits the figures. */
+.table th.th-stack {
+    white-space: normal;
 }
 
 /* A child row under a group header: its text lines up with the group label. */
