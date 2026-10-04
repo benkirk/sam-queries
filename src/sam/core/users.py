@@ -86,7 +86,7 @@ class User(Base, TimestampMixin, SessionMixin):
     email_addresses = relationship('EmailAddress', back_populates='user', lazy='selectin', order_by='EmailAddress.is_primary.desc()', cascade='all, delete-orphan')
     hpc_charge_summaries = relationship('HPCChargeSummary', back_populates='user')
     hpc_charges = relationship('HPCCharge', back_populates='user')
-    # PK order is what MySQL returns anyway; Postgres needs it said. xras _best_institution takes the first.
+    # PK order is what MySQL returns anyway; Postgres needs it said. xras best_institution takes the first.
     institutions = relationship('UserInstitution', back_populates='user', cascade='all, delete-orphan',
                                 order_by='UserInstitution.user_institution_id')
     led_projects = relationship('Project', foreign_keys='Project.project_lead_user_id', back_populates='lead', lazy='selectin')

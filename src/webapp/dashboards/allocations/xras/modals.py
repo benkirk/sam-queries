@@ -25,8 +25,6 @@ from sam.integration.xras_api import (
 from sam.queries.xras_accounts import is_placeholder, iter_roster_entries
 from sam.integration.xras import lookup_request_override
 from sam.queries.xras_requests import (
-    _as_date,
-    _text,
     actions_from_payload,
     person_roles_from_payload,
     request_family,
@@ -34,6 +32,8 @@ from sam.queries.xras_requests import (
     row_blockers,
 )
 from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
+from sam.dates import parse_wire_date
+from sam.text import strip_or_none
 from webapp.extensions import db
 from webapp.utils.htmx import htmx_modal_not_found
 from webapp.utils.rbac import Permission, has_permission, require_permission
@@ -128,8 +128,8 @@ def _detail_actions(payload):
             # them — fmt_date raises on a str. `allocation_date_id` is carried
             # through so the edit/remove editors can target one range.
             'dates': [{'allocation_date_id': d.get('allocationDateId'),
-                       'begin': _as_date(d.get('beginDate')),
-                       'end': _as_date(d.get('endDate')),
+                       'begin': parse_wire_date(d.get('beginDate')),
+                       'end': parse_wire_date(d.get('endDate')),
                        # Wire key is allocationDateType (resources[] use `type`).
                        'type': d.get('allocationDateType')}
                       for d in (action.get('allocationDates') or ())
@@ -147,8 +147,8 @@ def _detail_grants(payload):
         if not isinstance(g, dict):
             continue
         grants.append({**g,
-                       'begin': _as_date(g.get('beginDate')),
-                       'end': _as_date(g.get('endDate'))})
+                       'begin': parse_wire_date(g.get('beginDate')),
+                       'end': parse_wire_date(g.get('endDate'))})
     return grants
 
 
@@ -220,7 +220,7 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
         for action in _detail_actions(line):
             o = offers.get(action['action_id'], {})
             action['request_id'] = line.get('requestId')
-            action['request_type'] = _text(line.get('requestType'))
+            action['request_type'] = strip_or_none(line.get('requestType'))
             action['entry_date'] = o.get('entry_date')
             action['submit_date'] = o.get('submit_date')
             action['can_withdraw'] = bool(o.get('can_withdraw'))
@@ -519,7 +519,7 @@ def _opportunity_context(opportunity_id, *, back_request_number=None):
         'opportunity': opportunity,
         # Parsed here (like grants/dates) — the wire carries a raw ISO string
         # and the template's fmt_date raises on a str.
-        'announcement_date': _as_date(opportunity.get('announcementDate')),
+        'announcement_date': parse_wire_date(opportunity.get('announcementDate')),
         'back_url': back_url,
         'back_request_number': back_request_number,
         'configured': xras_api_configured(),

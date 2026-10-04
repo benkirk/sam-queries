@@ -143,9 +143,7 @@
     window.bindSortableTables = bindWithin;
 
     document.addEventListener('DOMContentLoaded', function () { bindWithin(document); });
-    document.body && document.body.addEventListener('htmx:afterSwap', function (e) {
+    document.body.addEventListener('htmx:afterSwap', function (e) {
         bindWithin(e.detail.target);
     });
-    // body may not exist yet at script-eval time; rebind on first DOM load too.
-    document.addEventListener('htmx:afterSwap', function (e) { bindWithin(e.detail.target); });
 })();

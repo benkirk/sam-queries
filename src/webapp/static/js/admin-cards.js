@@ -47,39 +47,6 @@
             });
     });
 
-    /* Sortable card tables (organization + resources cards)
-     * Distinct from sortable_table.js: these sort on data-sort-value
-     * cell attributes within multi-tbody card tables. Bound per swap —
-     * the <th> nodes are fresh each time, so no double-binding. */
-    function attachSorting(table) {
-        table.querySelectorAll('th.sortable-header').forEach(function (th) {
-            th.addEventListener('click', function () {
-                var colIndex = Array.from(th.parentNode.children).indexOf(th);
-                var sortType = th.dataset.sort;
-                var isAsc = !th.classList.contains('sort-asc');
-                table.querySelectorAll('th').forEach(function (h) {
-                    h.classList.remove('sort-asc', 'sort-desc');
-                });
-                th.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
-                var tbody = table.querySelector('tbody');
-                var rows = Array.from(tbody.querySelectorAll('tr'));
-                rows.sort(function (a, b) {
-                    var aVal = a.children[colIndex] ? a.children[colIndex].dataset.sortValue : '';
-                    var bVal = b.children[colIndex] ? b.children[colIndex].dataset.sortValue : '';
-                    if (sortType === 'numeric') {
-                        aVal = parseFloat(aVal) || 0;
-                        bVal = parseFloat(bVal) || 0;
-                        return isAsc ? aVal - bVal : bVal - aVal;
-                    }
-                    aVal = String(aVal || '').toLowerCase();
-                    bVal = String(bVal || '').toLowerCase();
-                    return isAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-                });
-                rows.forEach(function (r) { tbody.appendChild(r); });
-            });
-        });
-    }
-
     /* Institutions table (institutions_table.html)
      * Institution expand rows use a plain JS display toggle (not Bootstrap
      * collapse, since they're <tr>s nested inside the type tbody so they
@@ -179,16 +146,8 @@
             ? root : root.querySelector('#queueCleanupForm');
         if (cleanupForm) { initQueueCleanup(cleanupForm); }
 
-        if (has(root, '#organizationsTabsContent')) {
-            document.querySelectorAll('#organizationsTabsContent table').forEach(attachSorting);
-        }
-
         if (has(root, '#institutions-table')) {
             initInstitutions(root);
-        }
-
-        if (has(root, '#resourcesTabsContent')) {
-            document.querySelectorAll('#resourcesTabsContent table').forEach(attachSorting);
         }
     });
 })();

@@ -46,8 +46,8 @@ class NotificationTemplateOverride(Base, SessionMixin):
     @classmethod
     def create(cls, session, *, name: str, body: str,
                modified_by: str) -> 'NotificationTemplateOverride':
-        _require(name, 'name', _NAME_MAX)
-        _require(modified_by, 'modified_by', _USER_MAX)
+        require_text(name, 'name', _NAME_MAX)
+        require_text(modified_by, 'modified_by', _USER_MAX)
         if not isinstance(body, str):
             raise ValueError('body must be a string')
         row = cls(name=name, body=body, modified_by=modified_by,
@@ -57,7 +57,7 @@ class NotificationTemplateOverride(Base, SessionMixin):
         return row
 
     def update(self, *, body: str, modified_by: str) -> 'NotificationTemplateOverride':
-        _require(modified_by, 'modified_by', _USER_MAX)
+        require_text(modified_by, 'modified_by', _USER_MAX)
         if not isinstance(body, str):
             raise ValueError('body must be a string')
         self.body = body
@@ -74,7 +74,8 @@ class NotificationTemplateOverride(Base, SessionMixin):
                 f'by {self.modified_by} at {self.modified_time}>')
 
 
-def _require(value, field: str, max_len: int) -> None:
+def require_text(value, field: str, max_len: int) -> None:
+    """``ValueError`` when ``value`` is blank or longer than ``max_len``."""
     if not value or not str(value).strip():
         raise ValueError(f'{field} is required')
     if len(value) > max_len:

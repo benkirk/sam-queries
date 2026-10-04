@@ -6,6 +6,8 @@ from ..base import *
 import logging
 import re
 
+from ..sqlcompat import ci_like
+
 logger = logging.getLogger(__name__)
 
 #: The two orthographic drifts between a hand-kept mnemonic description and its
@@ -173,6 +175,14 @@ class Organization(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSe
         session.add(obj)
         session.flush()
         return obj
+
+    @classmethod
+    def search_by_pattern(cls, session, q: str, limit: int = 15) -> list['Organization']:
+        """Active organizations whose name or acronym contains ``q``, by name."""
+        like = f'%{q}%'
+        return (session.query(cls)
+                .filter(cls.is_active, ci_like(cls.name, like) | ci_like(cls.acronym, like))
+                .order_by(cls.name).limit(limit).all())
 
     def __str__(self):
         return f"{self.name} ({self.acronym})"

@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 
 from webapp.utils.project_permissions import (
-    _is_project_steward,
+    is_project_steward,
     can_allocate_residual,
     can_change_admin,
     can_edit_consumption_threshold,
@@ -173,7 +173,7 @@ class TestGetUserRoleInProject:
 
 
 # ---------------------------------------------------------------------------
-# Phase 2: _is_project_steward — central authorization primitive
+# Phase 2: is_project_steward — central authorization primitive
 # ---------------------------------------------------------------------------
 
 class TestCanManageEvents:
@@ -197,35 +197,35 @@ class TestCanManageEvents:
 
 
 class TestIsProjectSteward:
-    """All ``can_*`` helpers route through ``_is_project_steward``."""
+    """All ``can_*`` helpers route through ``is_project_steward``."""
 
     def test_system_permission_holder_passes_without_role_check(self):
         # 'admin-testing-only' grants every permission, including EDIT_ALLOCATIONS.
         user = create_mock_user(user_id=100, roles=['admin-testing-only'])
         project = create_mock_project(project_lead_user_id=1, project_admin_user_id=2)
-        assert _is_project_steward(user, project, Permission.EDIT_ALLOCATIONS)
+        assert is_project_steward(user, project, Permission.EDIT_ALLOCATIONS)
 
     def test_lead_passes_for_their_project(self):
         user = create_mock_user(user_id=42, roles=[])
         project = create_mock_project(project_lead_user_id=42)
-        assert _is_project_steward(user, project, Permission.EDIT_ALLOCATIONS)
+        assert is_project_steward(user, project, Permission.EDIT_ALLOCATIONS)
 
     def test_admin_passes_for_their_project(self):
         user = create_mock_user(user_id=42, roles=[])
         project = create_mock_project(project_lead_user_id=999, project_admin_user_id=42)
-        assert _is_project_steward(user, project, Permission.EDIT_ALLOCATIONS)
+        assert is_project_steward(user, project, Permission.EDIT_ALLOCATIONS)
 
     def test_outsider_blocked(self):
         user = create_mock_user(user_id=42, roles=[])
         project = create_mock_project(project_lead_user_id=999, project_admin_user_id=998)
-        assert not _is_project_steward(user, project, Permission.EDIT_ALLOCATIONS)
+        assert not is_project_steward(user, project, Permission.EDIT_ALLOCATIONS)
 
     def test_ancestor_lead_passes_when_include_ancestors(self):
         grandparent = create_mock_project(project_lead_user_id=42)
         parent = create_mock_project(project_lead_user_id=999, parent=grandparent)
         child = create_mock_project(project_lead_user_id=998, parent=parent)
         user = create_mock_user(user_id=42, roles=[])
-        assert _is_project_steward(
+        assert is_project_steward(
             user, child, Permission.EDIT_ALLOCATIONS, include_ancestors=True
         )
 
@@ -233,7 +233,7 @@ class TestIsProjectSteward:
         parent = create_mock_project(project_lead_user_id=42)
         child = create_mock_project(project_lead_user_id=999, parent=parent)
         user = create_mock_user(user_id=42, roles=[])
-        assert not _is_project_steward(
+        assert not is_project_steward(
             user, child, Permission.EDIT_ALLOCATIONS, include_ancestors=False
         )
 
@@ -241,7 +241,7 @@ class TestIsProjectSteward:
         parent = create_mock_project(project_lead_user_id=999, project_admin_user_id=42)
         child = create_mock_project(project_lead_user_id=998, parent=parent)
         user = create_mock_user(user_id=42, roles=[])
-        assert _is_project_steward(
+        assert is_project_steward(
             user, child, Permission.EDIT_ALLOCATIONS, include_ancestors=True
         )
 
@@ -251,7 +251,7 @@ class TestIsProjectSteward:
         user.roles = set()
         user.has_role = lambda r: False
         project = create_mock_project(project_lead_user_id=42)
-        assert not _is_project_steward(user, project, Permission.EDIT_ALLOCATIONS)
+        assert not is_project_steward(user, project, Permission.EDIT_ALLOCATIONS)
 
     def test_facility_scoped_user_passes_for_matching_facility(self, monkeypatch):
         # A user with no system perms and no project role, but a scoped
@@ -266,7 +266,7 @@ class TestIsProjectSteward:
             project_lead_user_id=1, project_admin_user_id=2,
             facility_name='WNA',
         )
-        assert _is_project_steward(user, project, Permission.EDIT_PROJECTS)
+        assert is_project_steward(user, project, Permission.EDIT_PROJECTS)
 
     def test_facility_scoped_user_blocked_for_other_facility(self, monkeypatch):
         # Scoped to WNA but project is NCAR -> no system perm, no role,
@@ -281,7 +281,7 @@ class TestIsProjectSteward:
             project_lead_user_id=1, project_admin_user_id=2,
             facility_name='NCAR',
         )
-        assert not _is_project_steward(user, project, Permission.EDIT_PROJECTS)
+        assert not is_project_steward(user, project, Permission.EDIT_PROJECTS)
 
     def test_facility_scoped_user_still_wins_via_lead_role(self, monkeypatch):
         # Scope doesn't cover the facility, but user is the project lead
@@ -297,7 +297,7 @@ class TestIsProjectSteward:
             project_lead_user_id=77, project_admin_user_id=None,
             facility_name='NCAR',
         )
-        assert _is_project_steward(user, project, Permission.EDIT_PROJECTS)
+        assert is_project_steward(user, project, Permission.EDIT_PROJECTS)
 
     def test_orphan_project_denies_scoped_user(self, monkeypatch):
         # facility_name=None means no allocation_type chain exists;
@@ -313,7 +313,7 @@ class TestIsProjectSteward:
             project_lead_user_id=1, project_admin_user_id=2,
             facility_name=None,
         )
-        assert not _is_project_steward(user, project, Permission.EDIT_PROJECTS)
+        assert not is_project_steward(user, project, Permission.EDIT_PROJECTS)
 
     def test_orphan_project_still_reachable_by_system_admin(self):
         # Regression guard: orphan projects must remain manageable by
@@ -323,7 +323,7 @@ class TestIsProjectSteward:
             project_lead_user_id=1, project_admin_user_id=2,
             facility_name=None,
         )
-        assert _is_project_steward(user, project, Permission.EDIT_PROJECTS)
+        assert is_project_steward(user, project, Permission.EDIT_PROJECTS)
 
 
 # ---------------------------------------------------------------------------

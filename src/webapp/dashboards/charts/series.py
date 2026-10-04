@@ -27,6 +27,8 @@ is the single place that rule lives.
 from dataclasses import dataclass
 from typing import Sequence
 
+from sam import fmt
+
 #: The conventional label for an aggregated remainder band. Producers emit it
 #: verbatim; it is never linkable and never consumes a palette slot.
 OTHERS = 'Others'
@@ -97,3 +99,8 @@ def assign_colors(series: Sequence[Series], palette, others_color,
         out.append(palette[idx % len(palette)])
         named_idx += 1
     return out
+
+
+def to_display_tz(naive_utc_ts):
+    """Naive-UTC -> naive-local (tzinfo stripped) so matplotlib plots the local clock."""
+    return fmt.to_local_dt(naive_utc_ts).replace(tzinfo=None)

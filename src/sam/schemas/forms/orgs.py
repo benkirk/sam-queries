@@ -126,11 +126,7 @@ class EditContractForm(HtmxFormSchema):
     contract_monitor_user_id = f.Int(load_default=None)
     nsf_program_id = f.Int(load_default=None)
 
-    @post_load
-    def coerce_and_validate_dates(self, data, **kwargs):
-        data['end_date'] = self.normalize_end_date(data.get('end_date'))
-        self.assert_date_range(data.get('start_date'), data.get('end_date'))
-        return data
+    _date_range = ('start_date', 'end_date')
 
 
 class CreateContractForm(HtmxFormSchema):
@@ -150,11 +146,7 @@ class CreateContractForm(HtmxFormSchema):
     contract_mode = f.Str(load_default='manual',
                           validate=v.OneOf(['manual', 'lookup']))
 
-    @post_load
-    def coerce_and_validate_dates(self, data, **kwargs):
-        data['end_date'] = self.normalize_end_date(data.get('end_date'))
-        self.assert_date_range(data.get('start_date'), data.get('end_date'))
-        return data
+    _date_range = ('start_date', 'end_date')
 
 
 class EditNsfProgramForm(HtmxFormSchema):

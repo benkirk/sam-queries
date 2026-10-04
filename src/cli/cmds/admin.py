@@ -21,7 +21,7 @@ from cli.project.commands import (
     ProjectTreeAuditCommand,
 )
 from cli.accounting.commands import AccountingAdminCommand
-from cli.accounting.dates import _validate_accounting_dates, _resolve_accounting_dates
+from cli.accounting.dates import validate_accounting_dates, resolve_accounting_dates
 from cli.contracts.commands import ContractsAuditCommand
 from cli.last_seen.commands import LastSeenCommand
 from cli.security.commands import RbacCommand
@@ -605,8 +605,8 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
         )
         sys.exit(1)
 
-    _validate_accounting_dates(date_str, start, end, today_flag, last)
-    start_date, end_date = _resolve_accounting_dates(date_str, start, end, today_flag, last)
+    validate_accounting_dates(date_str, start, end, today_flag, last)
+    start_date, end_date = resolve_accounting_dates(date_str, start, end, today_flag, last)
     command = AccountingAdminCommand(ctx)
     exit_code = command.execute(
         comp=comp,

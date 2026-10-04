@@ -19,7 +19,7 @@
   the button set (Search / Search+Reset / Apply), the icon, and the field-row
   alignment (align-items-start vs -end). So does anything hidden — put hidden
   inputs inside the call body, not around it, so the header keeps the collapse
-  as its immediate next sibling (the collapsed-state CSS in dashboard.css uses
+  as its immediate next sibling (the collapsed-state CSS in filters.css uses
   `:has(+ .collapse:not(.show))`). htmx submits them either way; visibility is
   irrelevant to a form GET.
 

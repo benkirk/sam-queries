@@ -478,7 +478,7 @@ def resolve_area_of_interest(session, action, errs: ActionErrors,
 # ---------------------------------------------------------------------------
 
 
-def _best_organization(user: User) -> Optional[Organization]:
+def best_organization(user: User) -> Optional[Organization]:
     """``User.getBestOrganization()`` — the first *current* ``user_organization``.
 
     "First" is DB order in both implementations; there is no tie-break, and a user
@@ -490,7 +490,7 @@ def _best_organization(user: User) -> Optional[Organization]:
     return next((uo.organization for uo in user.organizations if uo.is_active), None)
 
 
-def _best_institution(user: User):
+def best_institution(user: User):
     """``User.getBestInstitution()`` — the first current ``user_institution``."""
     return next((ui.institution for ui in user.institutions if ui.is_active), None)
 
@@ -517,7 +517,7 @@ def _select_institution(user: User, wire_org: Optional[str], lookup: dict):
     *uniquely* matches a current row and *resolves* to a code, prefer it — gated on
     resolving so the tie-break can only turn a failure into a success, never the reverse.
     """
-    first = _best_institution(user)
+    first = best_institution(user)
     if not wire_org:
         return first
     key = wire_org.casefold()
@@ -627,12 +627,12 @@ def resolve_mnemonic_code(session, action, errs: ActionErrors, *,
     opportunity = _clean(get_field(action, 'opportunityName')) or ''
 
     # Declared divergence: legacy falls through to the internal-PI string here.
-    if _best_institution(user) is None and _best_organization(user) is None:
+    if best_institution(user) is None and best_organization(user) is None:
         errs.report(e.no_current_affiliation_for_pi(pi_username))
         return None
 
     if opportunity.startswith('NCAR '):
-        org = _best_organization(user)
+        org = best_organization(user)
         lab = _lab_level_organization(_organization_parentage(org))
         code = MnemonicCode.resolve_for_organization(lab, lookup) if lab else None
         if code is None:
@@ -659,7 +659,7 @@ def resolve_mnemonic_code(session, action, errs: ActionErrors, *,
             return None
         return _mnemonic_row(session, code)
 
-    org = _best_organization(user)
+    org = best_organization(user)
     code = MnemonicCode.resolve_for_organization(org, lookup) if org else None
     if code is None:
         errs.report(e.mnemonic_internal_failed(pi_username, org.name if org else None))

@@ -111,7 +111,9 @@ ALLOWED = {
     #          the browser contrast assertions)
     # stragglers: -1 (.date-group-header's #f1f3f5 -> --surface-tertiary; the
     #          one light row background the dark theme could not reach)
-    'dashboard.css':   18,
+    # css sweep: -2 moved with the filter UI to filters.css (two white-on-navy text washes)
+    'dashboard.css':   16,
+    'filters.css':      2,
 }
 
 

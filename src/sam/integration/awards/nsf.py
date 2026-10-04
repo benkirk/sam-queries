@@ -22,6 +22,7 @@ from sam.integration.awards.base import (
     AwardProvider, AwardRecord, PersonRef,
 )
 from sam.integration.awards.client import AwardHttpClient
+from sam.text import strip_or_none
 
 logger = logging.getLogger(__name__)
 
@@ -80,14 +81,6 @@ def _parse_date(raw: Optional[str]):
         return None
 
 
-def _clean(value: Any) -> Optional[str]:
-    """Trim a string field; empty becomes ``None``."""
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
-
-
 class NsfAwardProvider(AwardProvider):
     """Full-fidelity provider for ``contract_source = 'NSF'``."""
 
@@ -137,7 +130,7 @@ class NsfAwardProvider(AwardProvider):
         awards = (payload.get('response') or {}).get('award') or []
         records = []
         for award in awards[:limit]:
-            award_id = _clean(award.get('id'))
+            award_id = strip_or_none(award.get('id'))
             if not award_id:
                 continue
             records.append(self._to_record(award, award_id))
@@ -150,22 +143,22 @@ class NsfAwardProvider(AwardProvider):
         # NSF returns the division abbreviation separately; SAM stores the
         # two joined ("AGS-1852977") for 2,109 of 2,162 NSF contracts, so
         # rebuilding it also normalizes the operator's stray whitespace.
-        div = _clean(award.get('divAbbr'))
+        div = strip_or_none(award.get('divAbbr'))
         number = f'{div}-{award_id}' if div else award_id
 
         pi_name = ' '.join(
-            part for part in (_clean(award.get('piFirstName')),
-                              _clean(award.get('piLastName')))
+            part for part in (strip_or_none(award.get('piFirstName')),
+                              strip_or_none(award.get('piLastName')))
             if part
         ) or None
-        pi = PersonRef(name=pi_name, email=_clean(award.get('piEmail')))
-        monitor = PersonRef(name=_clean(award.get('poName')),
-                            email=_clean(award.get('poEmail')))
+        pi = PersonRef(name=pi_name, email=strip_or_none(award.get('piEmail')))
+        monitor = PersonRef(name=strip_or_none(award.get('poName')),
+                            email=strip_or_none(award.get('poEmail')))
 
         return AwardRecord(
             provenance=NsfAwardProvider.name,
             contract_number=number,
-            title=_clean(award.get('title')),
+            title=strip_or_none(award.get('title')),
             start_date=_parse_date(award.get('startDate')),
             end_date=_parse_date(award.get('expDate')),
             url=AWARD_PAGE_URL.format(award_id=award_id),
@@ -173,7 +166,7 @@ class NsfAwardProvider(AwardProvider):
             # *account* string ("01002324DB NSF RESEARCH & RELATED ACTIVIT")
             # and 66 contracts already point at nsf_program rows created by
             # someone pasting it in. Do not repeat that.
-            program_name=_clean(award.get('fundProgramName')),
+            program_name=strip_or_none(award.get('fundProgramName')),
             pi=pi if pi else None,
             monitor=monitor if monitor else None,
             unavailable_fields=frozenset(),

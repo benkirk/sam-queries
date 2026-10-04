@@ -38,6 +38,7 @@ def search_projects_by_code_or_title(
     search_term: str,
     active: Optional[bool] = None,
     facility_names: Optional[List[str]] = None,
+    limit: Optional[int] = None,
 ) -> List[Project]:
     """Search projects by project code or title, optionally filtered by
     active status and/or a facility allowlist.
@@ -64,7 +65,7 @@ def search_projects_by_code_or_title(
             .join(Panel, AllocationType.panel_id == Panel.panel_id)\
             .join(Facility, Panel.facility_id == Facility.facility_id)\
             .filter(Facility.facility_name.in_(facility_names))
-    return query.all()
+    return query.limit(limit).all()
 
 
 def search_projects_by_title(session: Session, search_term: str) -> List[Project]:

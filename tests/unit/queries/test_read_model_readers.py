@@ -13,7 +13,7 @@ from sam.queries.allocation_state import db_now, project_allocation_state
 from sam.queries.allocations import get_allocation_summary_with_usage
 from sam.queries.dashboard import (
     _build_project_resources_data,
-    _build_user_projects_resources_batched,
+    build_user_projects_resources_batched,
     get_projects_dashboard_data,
 )
 from sam.summaries.allocation_state import AccountAllocationState
@@ -175,7 +175,7 @@ class TestDashboards:
         flag(True)
         request.getfixturevalue('armed')
         with pytest.raises(AssertionError, match='live rollup ran'):
-            _build_user_projects_resources_batched(session, [subtree_project],
+            build_user_projects_resources_batched(session, [subtree_project],
                                                    active_at=datetime(2024, 1, 15))
 
 

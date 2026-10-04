@@ -8,20 +8,13 @@
  * in static/js/register.js (no inline script — nonce-free CSP).
  */
 
+/* The page color, wave watermark, font and min-height come from dashboard.css's body rule. */
 .register-page {
-    background-color: var(--surface-page);
-    background-image: url('../img/UCAR-Waves-Lines-Only-66.png');
-    background-position: 150% 0%;
-    background-repeat: repeat-y;
-    background-size: 53%;
-    min-height: 100vh;
     margin: 0;
     padding: 2rem 1rem;
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    font-family: var(--font-family-default);
-    color: var(--text-primary);
 }
 
 .register-sheet {

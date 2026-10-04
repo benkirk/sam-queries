@@ -7,7 +7,7 @@ Each login node records availability, user load, and system metrics.
 
 from sqlalchemy import Column, Integer, Float, ForeignKey
 from sqlalchemy.orm import relationship
-from ..base import StatusBase, StatusSnapshotMixin, AvailabilityMixin, SessionMixin
+from ..base import StatusBase, StatusSnapshotMixin, AvailabilityMixin, SessionMixin, staged_name
 from .lookups import System, LoginNodeDef
 
 
@@ -69,38 +69,9 @@ class LoginNodeStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessio
     # ------------------------------------------------------------------
     # Backward-compat property accessors
     # ------------------------------------------------------------------
-    @property
-    def system_name(self):
-        pending = self.__dict__.get('_pending_system_name')
-        if pending is not None:
-            return pending
-        return self.system.name if self.system is not None else None
-
-    @system_name.setter
-    def system_name(self, value):
-        self.__dict__['_pending_system_name'] = value
-
-    @property
-    def node_name(self):
-        pending = self.__dict__.get('_pending_node_name')
-        if pending is not None:
-            return pending
-        return self.login_node_def.name if self.login_node_def is not None else None
-
-    @node_name.setter
-    def node_name(self, value):
-        self.__dict__['_pending_node_name'] = value
-
-    @property
-    def node_type(self):
-        pending = self.__dict__.get('_pending_node_type')
-        if pending is not None:
-            return pending
-        return self.login_node_def.node_type if self.login_node_def is not None else None
-
-    @node_type.setter
-    def node_type(self, value):
-        self.__dict__['_pending_node_type'] = value
+    system_name = staged_name('system')
+    node_name = staged_name('login_node_def')
+    node_type = staged_name('login_node_def', 'node_type')
 
     def __str__(self):
         return f"{self.node_name} ({self.system_name}, {self.node_type})"

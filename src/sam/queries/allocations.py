@@ -155,6 +155,14 @@ ALLOCATION_TRANSACTION_SORT_COLUMNS = {
 }
 
 
+def apply_scope_filters(query, *scopes):
+    """Each ``(column, value)`` as a filter: falsy or ``"TOTAL"`` adds none, a list is ``IN``, a scalar ``=``."""
+    for column, value in scopes:
+        if value and value != "TOTAL":
+            query = query.filter(column.in_(value) if isinstance(value, list) else column == value)
+    return query
+
+
 def _apply_transaction_filters(
     query,
     *,
@@ -181,29 +189,9 @@ def _apply_transaction_filters(
             AllocationTransaction.allocation_transaction_id == transaction_id
         )
 
-    if projcode and projcode != "TOTAL":
-        if isinstance(projcode, list):
-            query = query.filter(Project.projcode.in_(projcode))
-        else:
-            query = query.filter(Project.projcode == projcode)
-
-    if resource_name and resource_name != "TOTAL":
-        if isinstance(resource_name, list):
-            query = query.filter(Resource.resource_name.in_(resource_name))
-        else:
-            query = query.filter(Resource.resource_name == resource_name)
-
-    if facility_name and facility_name != "TOTAL":
-        if isinstance(facility_name, list):
-            query = query.filter(Facility.facility_name.in_(facility_name))
-        else:
-            query = query.filter(Facility.facility_name == facility_name)
-
-    if allocation_type and allocation_type != "TOTAL":
-        if isinstance(allocation_type, list):
-            query = query.filter(AllocationType.allocation_type.in_(allocation_type))
-        else:
-            query = query.filter(AllocationType.allocation_type == allocation_type)
+    query = apply_scope_filters(
+        query, (Project.projcode, projcode), (Resource.resource_name, resource_name),
+        (Facility.facility_name, facility_name), (AllocationType.allocation_type, allocation_type))
 
     if transaction_types is not None:
         if isinstance(transaction_types, (list, tuple, set)):
@@ -646,29 +634,9 @@ def get_allocation_summary(
         )
 
     # Apply specific filters
-    if resource_name and resource_name != "TOTAL":
-        if isinstance(resource_name, list):
-            query = query.filter(Resource.resource_name.in_(resource_name))
-        else:
-            query = query.filter(Resource.resource_name == resource_name)
-
-    if facility_name and facility_name != "TOTAL":
-        if isinstance(facility_name, list):
-            query = query.filter(Facility.facility_name.in_(facility_name))
-        else:
-            query = query.filter(Facility.facility_name == facility_name)
-
-    if allocation_type and allocation_type != "TOTAL":
-        if isinstance(allocation_type, list):
-            query = query.filter(AllocationType.allocation_type.in_(allocation_type))
-        else:
-            query = query.filter(AllocationType.allocation_type == allocation_type)
-
-    if projcode and projcode != "TOTAL":
-        if isinstance(projcode, list):
-            query = query.filter(Project.projcode.in_(projcode))
-        else:
-            query = query.filter(Project.projcode == projcode)
+    query = apply_scope_filters(
+        query, (Resource.resource_name, resource_name), (Facility.facility_name, facility_name),
+        (AllocationType.allocation_type, allocation_type), (Project.projcode, projcode))
 
     # Apply active_only filter
     if active_only:
@@ -813,29 +781,9 @@ def _fetch_all_allocations(
      .options(noload(Account.users))  # prevent selectin — account.users never accessed here
 
     # Apply shared filters (same semantics as get_allocation_summary)
-    if resource_name and resource_name != "TOTAL":
-        if isinstance(resource_name, list):
-            query = query.filter(Resource.resource_name.in_(resource_name))
-        else:
-            query = query.filter(Resource.resource_name == resource_name)
-
-    if facility_name and facility_name != "TOTAL":
-        if isinstance(facility_name, list):
-            query = query.filter(Facility.facility_name.in_(facility_name))
-        else:
-            query = query.filter(Facility.facility_name == facility_name)
-
-    if allocation_type and allocation_type != "TOTAL":
-        if isinstance(allocation_type, list):
-            query = query.filter(AllocationType.allocation_type.in_(allocation_type))
-        else:
-            query = query.filter(AllocationType.allocation_type == allocation_type)
-
-    if projcode and projcode != "TOTAL":
-        if isinstance(projcode, list):
-            query = query.filter(Project.projcode.in_(projcode))
-        else:
-            query = query.filter(Project.projcode == projcode)
+    query = apply_scope_filters(
+        query, (Resource.resource_name, resource_name), (Facility.facility_name, facility_name),
+        (AllocationType.allocation_type, allocation_type), (Project.projcode, projcode))
 
     if active_only:
         query = query.filter(

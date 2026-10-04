@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import (Any, Dict, Iterator, Mapping, Optional, Tuple)
 
+from sam.dates import parse_wire_date
 from sam.queries.xras_actions import canonical_action_type
 
 logger = logging.getLogger(__name__)
@@ -71,18 +72,8 @@ class Verdict:
     resolved: Optional[dict]
 
 
-def _parse_date(value: Any) -> Optional[date]:
-    """A ``%Y-%m-%d`` (or ISO datetime) wire string to a date, or None."""
-    if not value:
-        return None
-    try:
-        return datetime.strptime(str(value)[:10], '%Y-%m-%d').date()
-    except (ValueError, TypeError):
-        return None
-
-
 def _entry_date(action: dict) -> Optional[date]:
-    return _parse_date(action.get('entryDate') or action.get('submitDate'))
+    return parse_wire_date(action.get('entryDate') or action.get('submitDate'))
 
 
 def iter_candidate_actions(report_payload: dict, *,
@@ -113,8 +104,8 @@ def _best_dates(action: dict) -> Tuple[Optional[str], Optional[str], Optional[st
     for stage in _DATE_STAGE_ORDER:
         entry = by_type.get(stage)
         if entry and (entry.get('beginDate') or entry.get('endDate')):
-            begin = _parse_date(entry.get('beginDate'))
-            end = _parse_date(entry.get('endDate'))
+            begin = parse_wire_date(entry.get('beginDate'))
+            end = parse_wire_date(entry.get('endDate'))
             return (begin.strftime('%Y-%m-%d') if begin else None,
                     end.strftime('%Y-%m-%d') if end else None, stage)
     return None, None, None
@@ -253,7 +244,7 @@ def infer_applied(session, synthesis: Synthesis) -> Optional[dict]:
         return None
 
     if action_type == 'Extension':
-        end = _parse_date(get_field(action, 'actionEndDate'))
+        end = parse_wire_date(get_field(action, 'actionEndDate'))
         if end is None:
             return None
         now = datetime.now()

@@ -356,23 +356,10 @@ def _send_summary(notifier, ctx, *, detail: dict, messages: List,
 def _drop_already_notified(ledger, messages: List, logger) -> Tuple[List, int]:
     """Remove messages a previous run already delivered. Returns (kept, dropped).
 
-    WARNING: **This is permanent, and NOT redundant with ``Notifier``'s own dedup.**
-    The framework would also suppress these — but it would suppress them by
-    *recording a ``suppressed`` row for each one*. On a loaded week ~85% of
-    the selection is already-notified and on a quiet week essentially all of
-    it is, so leaving it to the framework writes on the order of **26,000
-    rows a year** into `notification_log` — the same table the admin
-    Notifications card, its facet chips, and the last-notified badge all read.
-
-    Dropping them here means a quiet week writes zero rows and reports
-    ``audience: 0``. Nothing is lost: the count is still in
-    ``TaskResult.detail``.
-
-    On a loaded week ~85% of the selection is already-notified and on a quiet
-    week essentially all of it is, so leaving this to the framework would write
-    on the order of **26,000 rows a year** into `notification_log` — the same
-    table the admin Notifications card, its facet chips, and the last-notified
-    badge all read.
+    Permanent, NOT redundant with ``Notifier``'s dedup (see the shared core). On a
+    loaded week ~85% of the selection is already-notified and on a quiet week
+    essentially all of it is, so leaving this to the framework would write on the
+    order of **26,000 ``suppressed`` rows a year** into `notification_log`.
 
     The **legacy** half of the key list is the only extra part here. Every
     manual CLI run before the rung label existed wrote

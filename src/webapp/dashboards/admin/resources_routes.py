@@ -28,7 +28,6 @@ from webapp.utils.rbac import (
     require_permission, require_permission_any_facility, Permission,
 )
 from sam.manage import management_transaction
-from sam.sqlcompat import ci_like
 from sam.resources.machines import Machine
 from sam.resources.resources import Resource, ResourceType
 from sam.schemas.forms.resources import (
@@ -591,16 +590,7 @@ def htmx_queue_cleanup(resource_id):
 def _search_organizations_fk(q, active_only):
     """Active-org FK search (e.g. prim_responsible_org_id on Resource)."""
     from sam.core.organizations import Organization
-    return (
-        db.session.query(Organization)
-        .filter(
-            Organization.is_active,
-            ci_like(Organization.name, f'%{q}%') | ci_like(Organization.acronym, f'%{q}%')
-        )
-        .order_by(Organization.name)
-        .limit(15)
-        .all()
-    )
+    return Organization.search_by_pattern(db.session, q)
 
 
 register_typeahead(

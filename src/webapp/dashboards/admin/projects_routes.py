@@ -6,6 +6,7 @@ Covers: Project creation (Phase A).  Edit/allocation management (Phase B).
 
 import calendar
 from datetime import datetime
+from sam.dates import parse_ymd, parse_ymd_end_of_day, parse_ymd_or
 
 from flask import render_template, request, redirect, url_for
 from webapp.utils.htmx import (htmx_success, htmx_success_message,
@@ -34,7 +35,6 @@ from webapp.utils.project_permissions import (
     can_allocate_residual,
 )
 from sam.manage import management_transaction
-from sam.sqlcompat import ci_like
 from sam.accounting.allocations import InheritingAllocationException
 from sam.manage.allocations import AllocationOverlapError
 from sam.core.groups import GidAllocation, NoAvailableGidError
@@ -317,16 +317,7 @@ def htmx_alloc_types_for_panel():
 
 def _search_orgs_for_project(q, active_only):
     from sam.core.organizations import Organization
-    return (
-        db.session.query(Organization)
-        .filter(
-            Organization.is_active,
-            ci_like(Organization.name, f'%{q}%') | ci_like(Organization.acronym, f'%{q}%')
-        )
-        .order_by(Organization.name)
-        .limit(15)
-        .all()
-    )
+    return Organization.search_by_pattern(db.session, q)
 
 
 def _search_contracts_for_project(q, active_only):
@@ -347,7 +338,7 @@ def _search_contracts_for_project(q, active_only):
 
 def _search_projects_for_parent(q, active_only):
     from sam.queries.projects import search_projects_by_code_or_title
-    return search_projects_by_code_or_title(db.session, q, active=True)[:10]
+    return search_projects_by_code_or_title(db.session, q, active=True, limit=10)
 
 
 register_typeahead(
@@ -453,9 +444,9 @@ def htmx_project_lead_hint():
 
     # The same "first current affiliation" selectors the XRAS push uses, so the
     # suggested mnemonic and what XRAS mints resolve from the identical row.
-    from sam.xras.extractors import _best_institution, _best_organization
-    org = _best_organization(user)
-    institution = _best_institution(user)
+    from sam.xras.extractors import best_institution, best_organization
+    org = best_organization(user)
+    institution = best_institution(user)
     if not org and not institution:
         return render_template(
             'dashboards/admin/fragments/project_lead_hint_htmx.html',
@@ -867,14 +858,11 @@ def htmx_project_allocation_tree(project):
     """
     from collections import OrderedDict
     from datetime import datetime
-    from sam.queries.dashboard import _build_user_projects_resources_batched
+    from sam.queries.dashboard import build_user_projects_resources_batched
 
     # Parse optional active_at date; default to today.
     active_at_str = request.args.get('active_at', '').strip()
-    try:
-        active_at = datetime.strptime(active_at_str, '%Y-%m-%d') if active_at_str else None
-    except ValueError:
-        active_at = None
+    active_at = parse_ymd_or(active_at_str)
     now_str = datetime.now().strftime('%Y-%m-%d')
     active_at_str = active_at.strftime('%Y-%m-%d') if active_at else now_str
 
@@ -884,7 +872,7 @@ def htmx_project_allocation_tree(project):
     all_nodes = [n for n in ([root] + root.get_descendants()) if n.active]
     # One batched build for the whole tree (the per-node loop was the ~5.7 s
     # path); the batched builder also consults the read-model when fresh.
-    by_project = _build_user_projects_resources_batched(
+    by_project = build_user_projects_resources_batched(
         db.session, all_nodes, active_at=active_at,
     )
     resources_by_projcode = {
@@ -1562,13 +1550,7 @@ def htmx_allocate_down(allocation):
 
 def _parse_active_at_arg(arg: str) -> datetime:
     """Parse the ?active_at=YYYY-MM-DD query arg; default to today on empty/invalid."""
-    arg = (arg or '').strip()
-    if arg:
-        try:
-            return datetime.strptime(arg, '%Y-%m-%d')
-        except ValueError:
-            pass
-    return datetime.now()
+    return parse_ymd_or((arg or '').strip(), datetime.now())
 
 
 def _grace_window_end(alloc_dicts):
@@ -1735,9 +1717,7 @@ def _renew_overlap(root, source_active_at, new_start_str, new_end_str, resource_
     """
     from sam.manage.renew import analyze_renew_overlap
     try:
-        new_start = datetime.strptime(new_start_str, '%Y-%m-%d')
-        new_end = datetime.strptime(new_end_str, '%Y-%m-%d').replace(
-            hour=23, minute=59, second=59)
+        new_start, new_end = parse_ymd(new_start_str), parse_ymd_end_of_day(new_end_str)
         rids = [int(v) for v in resource_ids if str(v).strip()]
     except (TypeError, ValueError):
         return None

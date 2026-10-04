@@ -19,6 +19,7 @@ from sqlalchemy import Column, DateTime, Integer, String, UniqueConstraint
 
 from sam.base import Base, SessionMixin
 from sam.notify.kinds import scope_family
+from sam.notify.template_store import require_text
 
 FIELDS = ('cc', 'bcc')
 _SCOPE_MAX = 48
@@ -62,7 +63,7 @@ class NotificationAddressing(Base, SessionMixin):
         scope_family(scope)
         if field not in FIELDS:
             raise ValueError(f'field must be one of {", ".join(FIELDS)}')
-        _require(created_by, 'created_by', _USER_MAX)
+        require_text(created_by, 'created_by', _USER_MAX)
         row = cls(scope=scope, field=field, address=normalize_address(address),
                   created_by=created_by, creation_time=datetime.now())
         session.add(row)
@@ -80,15 +81,8 @@ class NotificationAddressing(Base, SessionMixin):
 def normalize_address(address) -> str:
     """Trimmed and lower-cased; raises ``ValueError`` unless it looks like a mailbox."""
     value = (address or '').strip().lower()
-    _require(value, 'address', _ADDRESS_MAX)
+    require_text(value, 'address', _ADDRESS_MAX)
     local, sep, domain = value.partition('@')
     if not (local and sep and domain) or any(c.isspace() or c == ',' for c in value):
         raise ValueError(f'{address!r} is not an email address')
     return value
-
-
-def _require(value, field: str, max_len: int) -> None:
-    if not value or not str(value).strip():
-        raise ValueError(f'{field} is required')
-    if len(value) > max_len:
-        raise ValueError(f'{field} exceeds {max_len} characters')

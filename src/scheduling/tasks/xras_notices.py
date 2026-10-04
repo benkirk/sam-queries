@@ -378,22 +378,13 @@ def xras_notices(ctx) -> TaskResult:
 def _drop_already_notified(ledger, messages: List, logger) -> Tuple[List, int]:
     """Remove messages a previous run or an operator already delivered.
 
-    WARNING: **This is permanent, and NOT redundant with ``Notifier``'s own dedup.**
-    The framework would also suppress these — by *recording a ``suppressed``
-    row for each one*. This task wakes fifty times a week and most of those
-    runs have nothing new, so leaving it to the framework would write a steady
-    drip of rows into `notification_log`: the same table the admin
-    Notifications card, its facet chips and the last-notified badge all read.
-
-    Dropping them here means a quiet hour writes zero rows and reports
-    ``audience: 0``. Nothing is lost — the count is in ``TaskResult.detail``.
+    Permanent, NOT redundant with ``Notifier``'s dedup (see the shared core). This
+    task wakes ~fifty times a week and most runs have nothing new, so the rows this
+    pre-drop avoids would be the dominant write into `notification_log`.
 
     The row-level ``notified`` filter in :func:`select` catches most of these
     already; this is the per-**address** check, and it is what closes the race
     with an operator pressing Notify between the query and the send.
-
-    This task wakes ~fifty times a week and most runs have nothing new, so the
-    rows this pre-drop avoids are the dominant write into `notification_log`.
     Single key form, so no ``legacy_key`` — the shared core does the rest.
     """
     return drop_already_notified(ledger, messages, logger)

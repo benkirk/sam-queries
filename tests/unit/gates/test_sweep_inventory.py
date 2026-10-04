@@ -52,14 +52,25 @@ def test_dup_functions_finds_renamed_copies_only_above_the_size_floor(tmp_path):
     assert [s.split()[-1] for s in rows[0]['sites']] == ['first', 'second']
 
 
+def test_py_dup_names_strips_underscore_skips_generic_and_nested(tmp_path):
+    paths = [_write(tmp_path, f'm{i}.py', f'def {"_" * (i % 2)}parse_day(s): pass\ndef main(): pass\n'
+                    'class C:\n    def method(self): pass\n') for i in range(3)]
+    paths.append(_write(tmp_path, 'm3.py', 'def method(): pass\n'))
+    assert [(r['name'], r['modules']) for r in inv.py_dup_names(paths)] == [('parse_day', 3)]
+
+
 def test_css_dead_marks_dynamic_stems(tmp_path):
     css = _write(tmp_path, 'site.css', '/* .commented { } */\n.used { color: red }\n.gone, .burn-3 { margin: 0 }\n'
                  '@media (max-width: 10px) { .used .also-gone { padding: 0 } }\n'
-                 'a[href$=".pdf"] { color: blue }\n')
-    page = _write(tmp_path, 'page.html', '<div class="used burn-{{ n }}"></div>')
-    rows = inv.css_dead([css], [page])
-    assert [(r['class'], r['dynamic']) for r in rows] == [
-        ('also-gone', False), ('gone', False), ('burn-3', True)]
+                 'a[href$=".pdf"] { color: blue }\n.col-x, .sev-hi, .guard { margin: 0 }\n')
+    page = _write(tmp_path, 'page.html', '<div class="used burn-{{ n }}"></div>'
+                  '<input id="col-{{ i }}"><label for="col-{{ i }}"></label><b data-k="col-{{ i }}"></b>')
+    script = _write(tmp_path, 'page.js', "el.className = 'sev-' + level;\n")
+    dead = inv.css_dead([css], [page, script], keep={'guard': 'reason', 'retired': 'reason'})
+    assert [(r['class'], r['dynamic'], r['kept']) for r in dead['classes']] == [
+        ('also-gone', False, None), ('col-x', False, None), ('gone', False, None),
+        ('burn-3', True, None), ('sev-hi', True, None), ('guard', False, 'reason')]
+    assert dead['stale_keeps'] == ['retired']
 
 
 def test_css_shape_counts_and_repeated_blocks(tmp_path):
@@ -86,15 +97,59 @@ def test_js_dup_names_and_listeners(tmp_path):
     assert [(r['event'], r['registrations']) for r in dup['listeners']] == [('htmx:afterSwap', 2)]
 
 
+def test_js_dead_globals_and_actions(tmp_path):
+    lib = _write(tmp_path, 'lib.js', "window.usedGlobal = 1;\nwindow.orphan = function () {};\n"
+                 "if (window.orphan == null) {}\n"
+                 "registerAction('live', f);\nregisterAction('stale', f);\n")
+    caller = _write(tmp_path, 'caller.js', "usedGlobal();\n// e.g. <b data-action=\"doc-only\">\n")
+    page = _write(tmp_path, 'page.html', '<a data-action="live"></a><select data-action-change="ghost">')
+    dead = inv.js_dead([lib, caller], [lib, caller, page])
+    assert [r['name'] for r in dead['globals']] == ['orphan']
+    assert [r['name'] for r in dead['unused_actions']] == ['stale']
+    assert dead['unregistered_actions'] == ['ghost']
+
+
+def test_plans_stale_needs_merged_prs_and_idle_time(tmp_path):
+    day = 86400
+    done = _write(tmp_path, 'DONE.md', 'Shipped in #101 and #102; see docs/x.md#anchor.\n- [ ] polish\n')
+    open_ = _write(tmp_path, 'OPEN.md', 'Part 1 in #101, part 2 in #300.\n')
+    fresh = _write(tmp_path, 'FRESH.md', 'Shipped in #101.\n')
+    bare = _write(tmp_path, 'BARE.md', 'No PR yet.\n')
+    parked = _write(tmp_path, 'PARKED.md', '**Status: written down, deliberately unbuilt.** Cites #101.\n')
+    touched = {p.as_posix(): 0 for p in (done, open_, bare, parked)} | {fresh.as_posix(): 95 * day}
+    rows = inv.plans_stale([done, open_, fresh, bare, parked], {101, 102}, touched, now=100 * day)
+    by_name = {r['file'].rsplit('/', 1)[1]: r for r in rows}
+    assert [r['file'].rsplit('/', 1)[1] for r in rows if r['candidate']] == ['DONE.md']
+    assert by_name['DONE.md']['prs'] == [101, 102] and by_name['DONE.md']['open_boxes'] == 1
+    assert by_name['OPEN.md']['unmerged'] == [300]
+    assert by_name['FRESH.md']['idle_days'] == 5 and not by_name['BARE.md']['candidate']
+    assert by_name['PARKED.md']['status'].startswith('written down')
+
+
 def test_runs_on_the_real_tree(monkeypatch, capsys):
     monkeypatch.chdir(REPO)
     assert inv.main(['--top', '3']) == 0
     out = capsys.readouterr().out
-    for detector in ('private-imports', 'dup-functions', 'css-dead', 'css-shape', 'inline-styles', 'js-dup'):
+    for detector in ('private-imports', 'dup-functions', 'py-dup-names', 'css-dead', 'css-shape', 'inline-styles',
+                     'js-dup', 'js-dead', 'plans-stale'):
         assert f'== {detector}:' in out
+
+
+def test_jscpd_pairs_prints_every_clone_with_paths(tmp_path):
+    report = {'duplicates': [{'firstFile': {'name': str(tmp_path / 'css' / 'a.css'), 'start': 3, 'end': 9},
+                              'secondFile': {'name': str(tmp_path / 'b.css'), 'start': 40, 'end': 46}, 'lines': 7}]}
+    assert inv.jscpd_pairs(report, str(tmp_path)) == ['css/a.css:3-9 <-> b.css:40-46  (7 lines)']
 
 
 def test_jscpd_is_skipped_without_npx(monkeypatch, capsys):
     monkeypatch.setattr(inv.shutil, 'which', lambda name: None)
     inv.run_jscpd('js')
     assert 'skipped, npx not found' in capsys.readouterr().out
+
+
+def test_plans_stale_is_skipped_without_git(monkeypatch, capsys):
+    real_which = inv.shutil.which
+    monkeypatch.setattr(inv.shutil, 'which', lambda name: None if name == 'git' else real_which(name))
+    monkeypatch.chdir(REPO)
+    assert inv.main(['--area', 'docs']) == 0
+    assert '== plans-stale: skipped, git not found' in capsys.readouterr().out

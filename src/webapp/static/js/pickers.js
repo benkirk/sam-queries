@@ -18,8 +18,11 @@
 (function () {
     'use strict';
 
+    /* Local calendar date. NOT toISOString(): that is UTC, which names
+     * tomorrow after ~17:00 Mountain and breaks the preset highlight. */
     function fmtDate(d) {
-        return d.toISOString().slice(0, 10);
+        return [d.getFullYear(), d.getMonth() + 1, d.getDate()]
+            .map(function (n) { return String(n).padStart(2, '0'); }).join('-');
     }
 
     function hiddenParams(root, selector) {

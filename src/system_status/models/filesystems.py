@@ -4,7 +4,7 @@
 
 from sqlalchemy import Column, Integer, Float, UniqueConstraint, ForeignKey
 from sqlalchemy.orm import relationship
-from ..base import StatusBase, StatusSnapshotMixin, AvailabilityMixin, SessionMixin
+from ..base import StatusBase, StatusSnapshotMixin, AvailabilityMixin, SessionMixin, staged_name
 from .lookups import System, Filesystem as _LookupFilesystem
 
 
@@ -63,27 +63,8 @@ class FilesystemStatus(StatusBase, StatusSnapshotMixin, AvailabilityMixin, Sessi
     # ------------------------------------------------------------------
     # Backward-compat property accessors
     # ------------------------------------------------------------------
-    @property
-    def system_name(self):
-        pending = self.__dict__.get('_pending_system_name')
-        if pending is not None:
-            return pending
-        return self.system.name if self.system is not None else None
-
-    @system_name.setter
-    def system_name(self, value):
-        self.__dict__['_pending_system_name'] = value
-
-    @property
-    def filesystem_name(self):
-        pending = self.__dict__.get('_pending_filesystem_name')
-        if pending is not None:
-            return pending
-        return self.filesystem.name if self.filesystem is not None else None
-
-    @filesystem_name.setter
-    def filesystem_name(self, value):
-        self.__dict__['_pending_filesystem_name'] = value
+    system_name = staged_name('system')
+    filesystem_name = staged_name('filesystem')
 
     def __str__(self):
         return f"{self.filesystem_name} ({self.system_name}, {self.timestamp})"

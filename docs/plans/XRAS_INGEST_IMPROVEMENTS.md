@@ -195,7 +195,7 @@ corrections from the code, each of which changes the tool:
   their own bucket, not under-count them into "orgs to fix".
 
 So the **report** is a group-by over § 2.1's red verdicts whose messages fall in the
-mnemonic family: resolve the PI's `_best_institution` / `_best_organization`, rank by how
+mnemonic family: resolve the PI's `best_institution` / `best_organization`, rank by how
 many pending actions each would unblock, and a separate "no current organization" bucket.
 Build § 2.1 first; this is a CLI/card pivot of its output, not a second scan.
 

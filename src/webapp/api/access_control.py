@@ -25,7 +25,7 @@ from webapp.extensions import db
 from webapp.utils.rbac import has_permission, has_permission_for_facility, Permission
 from webapp.utils.project_permissions import (
     _is_event_sponsor,
-    _is_project_steward,
+    is_project_steward,
     can_change_admin,
     can_edit_consumption_threshold,
     can_manage_project_members,
@@ -237,7 +237,7 @@ def require_project_permission(
             if error:
                 return error
 
-            if not _is_project_steward(
+            if not is_project_steward(
                 current_user, project, permission, include_ancestors=include_ancestors
             ):
                 abort(403)
@@ -353,7 +353,7 @@ def require_allocation_permission(permission: Permission) -> Callable:
                 # Orphaned allocation — no project to authorize against.
                 abort(403)
 
-            if not _is_project_steward(
+            if not is_project_steward(
                 current_user, project, permission, include_ancestors=True
             ):
                 abort(403)

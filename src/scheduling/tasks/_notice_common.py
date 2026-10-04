@@ -34,18 +34,12 @@ def new_sam_session(existing):
 
 def positive_int_env(name: str, default: int,
                      env: Optional[dict] = None) -> int:
-    """Read ``$name`` as a positive int, else ``default``.
+    """Read ``$name`` per run as a positive int, else ``default``.
 
-    Read per run rather than at import, so a `values.yaml` change takes effect
-    on the next dispatch rather than the next pod restart — the
-    `cleanup_status.retention_days` pattern.
-
-    A missing, blank, non-numeric, zero **or negative** value all fall back to
-    the default. Zero or negative is refused rather than obeyed: for a send cap
-    it would abort every run including the ones that should send nothing, which
-    is indistinguishable from a broken query.
+    A passed ``env``, even ``{}``, replaces ``os.environ``. Zero or negative is refused, not obeyed: a zero cap or budget would do nothing
+    and still report success, which is indistinguishable from a broken query.
     """
-    raw = (env or os.environ).get(name)
+    raw = (env if env is not None else os.environ).get(name)
     if raw is None or not str(raw).strip():
         return default
     try:

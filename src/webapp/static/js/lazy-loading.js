@@ -40,21 +40,3 @@ document.addEventListener('show.bs.collapse', function(event) {
         loadLazyContainer(container);
     }
 });
-
-/**
- * Manually trigger lazy loading for containers that are already visible
- * but have not yet fetched their content.  Call this after injecting
- * dynamic HTML that may contain lazy-loadable sections (e.g. project cards
- * loaded into an admin panel).
- */
-function initLazyLoading() {
-    document.querySelectorAll('[data-load-url]:not([data-loaded="true"])').forEach(function(el) {
-        // Skip containers that are inside a collapsed (hidden) ancestor
-        if (!el.closest('.collapse:not(.show)')) {
-            loadLazyContainer(el);
-        }
-    });
-}
-
-// Expose globally so other scripts can call it after injecting content
-window.initLazyLoading = initLazyLoading;

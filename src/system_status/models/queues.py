@@ -4,7 +4,7 @@
 
 from sqlalchemy import Column, Integer, UniqueConstraint, ForeignKey
 from sqlalchemy.orm import relationship
-from ..base import StatusBase, StatusSnapshotMixin, SessionMixin, QueueRollupMetricsMixin
+from ..base import StatusBase, StatusSnapshotMixin, SessionMixin, QueueRollupMetricsMixin, staged_name
 from .lookups import System, QueueDef
 
 
@@ -62,27 +62,8 @@ class QueueStatus(StatusBase, StatusSnapshotMixin, QueueRollupMetricsMixin, Sess
     # ------------------------------------------------------------------
     # Backward-compat property accessors
     # ------------------------------------------------------------------
-    @property
-    def system_name(self):
-        pending = self.__dict__.get('_pending_system_name')
-        if pending is not None:
-            return pending
-        return self.system.name if self.system is not None else None
-
-    @system_name.setter
-    def system_name(self, value):
-        self.__dict__['_pending_system_name'] = value
-
-    @property
-    def queue_name(self):
-        pending = self.__dict__.get('_pending_queue_name')
-        if pending is not None:
-            return pending
-        return self.queue.name if self.queue is not None else None
-
-    @queue_name.setter
-    def queue_name(self, value):
-        self.__dict__['_pending_queue_name'] = value
+    system_name = staged_name('system')
+    queue_name = staged_name('queue')
 
     def __str__(self):
         return f"{self.queue_name} ({self.system_name}, {self.timestamp})"

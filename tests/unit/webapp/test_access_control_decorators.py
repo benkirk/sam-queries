@@ -13,7 +13,7 @@ Covers:
 These tests mock the DB lookups (`get_project_or_404`, `db.session.get`)
 so they don't depend on the snapshot fixture or factory-built rows.
 The integration risk for the decorators is low — they delegate to
-``_is_project_steward``, which has full unit-test coverage in
+``is_project_steward``, which has full unit-test coverage in
 ``test_project_permissions.py``.
 """
 
