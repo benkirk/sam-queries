@@ -15,7 +15,7 @@
                'calendar-plus') }}
 
 {% call htmx_form(post_url, '#invitationFormContainer',
-                  'Save' if event else 'Create event',
+                  'Save' if event else 'Create',
                   submit_icon='save' if event else 'plus', errors=errors) %}
     {% if project_search_url %}
     {{ fk_search_field('project_id', 'Project', project_search_url, required=True,

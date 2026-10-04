@@ -13,7 +13,7 @@
 {% call htmx_form(
     url_for('admin_dashboard.htmx_project_create'),
     '#createProjectFormContainer',
-    'Create Project',
+    'Create',
     submit_icon='folder-plus',
     errors=errors,
     disabled=not feature_flags.create_projects_enabled,
