@@ -27,6 +27,8 @@ date: last-modified
 
 {{< include _F-admin.qmd >}}
 
+{{< include _G-cli.qmd >}}
+
 ## Questions? {.closing}
 
 benkirk@ucar.edu
