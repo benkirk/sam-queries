@@ -8,11 +8,10 @@
 #}
 {% extends 'dashboards/base.html' %}
 {% from 'dashboards/fragments/page_tabs.html' import page_tabs %}
+{% from 'dashboards/fragments/page_header.html' import page_header %}
 
 {% block content %}
-<div class="mb-4">
-    <h1>User Dashboard</h1>
-</div>
+{{ page_header('User Dashboard') }}
 
 {% set accounts_label = user.username ~ "'s Accounts" if impersonator_id else 'My Accounts' %}
 {{ page_tabs([

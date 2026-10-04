@@ -1,0 +1,10 @@
+{# Page title row: icon + h1, optional muted description, optional right-hand actions (caller). #}
+{% macro page_header(title, icon='', description='') -%}
+<div class="page-header">
+    <div>
+        <h1>{% if icon %}<i class="fa-solid fa-{{ icon }}"></i> {% endif %}{{ title }}</h1>
+        {% if description %}<p>{{ description }}</p>{% endif %}
+    </div>
+    {% if caller %}<div class="page-header-actions">{{ caller() }}</div>{% endif %}
+</div>
+{%- endmacro %}

@@ -20,11 +20,11 @@
 {% macro _load_color(pct) %}{{ 'danger' if pct >= 90 else 'warning' if pct >= 75 else 'success' }}{% endmacro %}
 
 {% macro _render_login_table(nodes) %}
-<table class="table table-sm table-bordered">
-    <thead class="thead-light">
+<table class="table table-sm align-middle">
+    <thead class="table-subtle">
         <tr>
             <th>Node</th>
-            <th>Users</th>
+            <th class="col-num">Users</th>
             <th title="CPU load average — 1, 5, and 15 minute">Load avg</th>
         </tr>
     </thead>
@@ -35,10 +35,10 @@
             <td>
                 <code>{{ node.node_name }}</code>
                 {% if node.degraded %}
-                <span class="badge bg-warning text-dark ms-1">Degraded</span>
+                <span class="badge bg-warning ms-1">Degraded</span>
                 {% endif %}
             </td>
-            <td>{{ node.user_count if node.user_count is not none else 'N/A' }}</td>
+            <td class="col-num">{{ node.user_count if node.user_count is not none else 'N/A' }}</td>
             <td>
                 {% if node.load_1min is not none %}
                 {% set l1 = node.load_1min | round | int %}

@@ -83,13 +83,24 @@ Run each pass and collect findings. The examples are real.
   window mode right after the merge that lands a plan.
 - **Legibility.**
   - CSS: a feature section that has outgrown its shared file, `!important`, repeated
-    declaration blocks (`css-shape`), and inline `style=""` (`inline-styles`).
+    declaration blocks (`css-shape`), inline `style=""` (`inline-styles`), and Bootstrap 4
+    class names that style nothing under 5.3 (`bs4-classes`; `thead-light` was 15 silent no-ops).
   - JS: the same function in several files, and htmx listeners spread across files (`js-dup`).
     A jscpd clone between two JS files can be two modules binding the *same markup*: grep the
     templates for the selector before calling it duplication (the js sweep's admin-card sort
     ran twice per click). Also look for `toISOString()` used as a local calendar date.
   - Prefer moving a feature's rules into its own file, as `allocations.css` did, over adding
     another section to `dashboard.css`.
+  - Tables: a header wider than its column's figures (measure the label against the widest
+    cell with a `Range`, never by eye). `.col-num` / `.col-shrink` headers wrap at their spaces
+    by default, so anything that must not lead a line (a sort icon, `#`) joins its word with
+    `&nbsp;`. `scripts/ui_snapshots.py --headers --layout desktop --layout mobile` over every
+    page is the proof (wire-dashboard-feature §7).
+  - Modals: an alert per fact, prose restating a glossary term beside its own icon, a read-only
+    pair restating the title (`modal-alerts`, ratcheted). Facts go in `.modal-facts`, help in
+    `tip=` / a term, identity in `modal_title`. Open the opener first: two "modals" in the
+    sweep had none (an orphan is a deletion). Prove it with `ui_snapshots.py --recipes`
+    heights before and after.
 - **Propagate.** List the shared pieces the window introduced: macros, chart families, JS
   modules, query helpers. For each, find an older surface doing the same job the old way. The
   sunburst started on the allocations page and then moved to job history; that is the shape to
@@ -125,6 +136,11 @@ Rank by value over cost. Mark anything that changes behavior. Then stop and let 
   the same is proved with `scripts/ui_snapshots.py --styles` on both, then `--compare before
   after`, which must report zero differing elements. Pin time with Playwright's
   `page.clock.install` for date logic. Load `wire-dashboard-feature` for its smoke and gates.
+- **An aesthetic sweep** changes looks on purpose, so `--compare` cannot be its proof. Shoot
+  `ui_snapshots.py` before and after in all six states and review them by eye. Measure contrast
+  (WCAG ratio computed in the page, both themes) and spacing (`getBoundingClientRect`) rather
+  than judging a scaled screenshot. Name every departure from the NCAR brand or Unity in its
+  commit and in the ledger entry's deviations list.
 - **Measure before claiming a speedup**, with repeats, on both backends. A change that measures
   flat is dropped and recorded, not shipped.
 - Run the gates the change touches: route-map parity, chart fingerprints, CSS tokens, docs, and

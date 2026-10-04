@@ -11,28 +11,28 @@
 #}
 
 <div>
-    <table class="table table-sm table-striped table-hover mb-0 audit-table">
+    <table class="table table-sm table-hover align-middle mb-0 audit-table">
         <thead class="table-subtle">
             <tr>
-                <th style="white-space:nowrap;">{{ sort_link('creation_time', 'Date') }}</th>
-                <th>{{ sort_link('transaction_type', 'Type') }}</th>
-                <th>{{ sort_link('projcode', 'Project') }}</th>
-                <th style="width:140px;">{{ sort_link('resource_name', 'Resource') }}</th>
-                <th>{{ sort_link('facility', 'Facility') }}</th>
-                <th style="width:150px;">{{ sort_link('allocation_type', 'Alloc type') }}</th>
-                <th class="text-end">{{ sort_link('transaction_amount', 'Amount', align='text-end') }}</th>
-                <th>{{ sort_link('username', 'Processed by') }}</th>
-                <th style="width:99%;">Comment</th>
+                <th class="col-shrink">{{ sort_link('creation_time', 'Date') }}</th>
+                <th class="col-shrink">{{ sort_link('transaction_type', 'Type') }}</th>
+                <th class="col-shrink">{{ sort_link('projcode', 'Project') }}</th>
+                <th class="col-shrink">{{ sort_link('resource_name', 'Resource') }}</th>
+                <th class="col-shrink">{{ sort_link('facility', 'Facility') }}</th>
+                <th class="col-shrink">{{ sort_link('allocation_type', 'Alloc type') }}</th>
+                <th class="col-num">{{ sort_link('transaction_amount', 'Amount', align='text-end') }}</th>
+                <th class="col-shrink">{{ sort_link('username', 'Processed by') }}</th>
+                <th>Comment</th>
             </tr>
         </thead>
         <tbody>
             {% for r in rows %}
-            <tr style="cursor:pointer;"
+            <tr class="cursor-pointer"
                 data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
                 hx-get="{{ url_for('allocations_dashboard.transaction_details', transaction_id=r.transaction_id) }}"
                 hx-target="#auditDetailsModalBody"
                 hx-swap="innerHTML">
-                <td style="white-space:nowrap;">
+                <td class="text-nowrap">
                     {% if r.propagated %}
                     <i class="fa-solid fa-code-branch text-muted me-1"
                        title="Propagated from parent allocation"></i>
@@ -45,16 +45,16 @@
                 <td>
                     {{ project_link(r.projcode, can_view_projects, stop_propagation=True) }}
                 </td>
-                <td style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                <td class="text-nowrap"
                     title="{{ r.resource_name or '' }}">
                     {{ r.resource_name or '—' }}
                 </td>
                 <td>{{ r.facility or '—' }}</td>
-                <td style="max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                <td class="text-nowrap"
                     title="{{ r.allocation_type or '' }}">
                     {{ r.allocation_type or '—' }}
                 </td>
-                <td class="text-end" style="white-space:nowrap;">
+                <td class="col-num">
                     {% if r.transaction_amount is not none %}
                         {{ r.transaction_amount | fmt_number }}
                     {% else %}
@@ -64,9 +64,8 @@
                 <td>
                     {{ user_link(r.username, can_view_users, stop_propagation=True) }}
                 </td>
-                <td class="small text-muted"
-                    title="{{ r.transaction_comment or '' }}"
-                    style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                <td class="small text-muted cell-truncate"
+                    title="{{ r.transaction_comment or '' }}">
                     {{ r.transaction_comment or '' }}
                 </td>
             </tr>

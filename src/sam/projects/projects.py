@@ -1263,10 +1263,12 @@ class ProjectDirectory(Base, TimestampMixin, DateRangeMixin, SessionMixin):
         from datetime import datetime
         if not directory_name or not directory_name.strip():
             raise ValueError("directory_name is required")
+        # Floor to the second: MySQL DATETIME rounds half-up, and a start in the
+        # next second reads as not yet active to a query run straight after.
         obj = cls(
             project_id=project_id,
             directory_name=directory_name.strip(),
-            start_date=start_date or datetime.now(),
+            start_date=start_date or datetime.now().replace(microsecond=0),
         )
         session.add(obj)
         session.flush()

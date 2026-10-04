@@ -1,4 +1,5 @@
 {% extends 'dashboards/allocations/base_allocations.html' %}
+{% from 'dashboards/fragments/modals.html' import modal_scaffold %}
 {% from 'dashboards/fragments/audit_filters.html' import audit_filters %}
 
 {% block title %}Charge Adjustments - SAM{% endblock %}
@@ -45,24 +46,8 @@
 {% include 'dashboards/allocations/partials/audit_details_modal.html' %}
 
 {% if has_permission(Permission.EDIT_ALLOCATIONS) %}
-<!-- Create Adjustment modal ("Create Adjustment" button above) -->
-<div class="modal fade" id="createAdjustmentModal" tabindex="-1" role="dialog" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-fullscreen-sm-down" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="fa-solid fa-plus"></i> Create Charge Adjustment</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div id="createAdjustmentFormContainer">
-                <div class="modal-body text-center">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading…</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{{ modal_scaffold('createAdjustmentModal', 'Create Charge Adjustment', icon='plus',
+                  container_id='createAdjustmentFormContainer') }}
 {% endif %}
 
 {% endblock %}

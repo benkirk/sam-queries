@@ -5,13 +5,11 @@
  *     <thead>
  *       <th class="sortable-header" data-sort="text|numeric|date">Label</th>
  *       <th class="sortable-header sort-desc" data-sort="numeric">Default-sorted column</th>
- *       <th class="sortable-header text-center" data-sort="numeric"
- *           data-sort-attr="sort-usage">Spans-via-attr</th>
  *     </thead>
  *     <tbody>
  *       <tr>
  *         <td data-sort-value="alice">…</td>
- *         <td colspan="6" data-sort-usage="42">…</td>
+ *         <td data-sort-value="42">…</td>
  *       </tr>
  *     </tbody>
  *   </table>
@@ -26,8 +24,7 @@
  *
  * Initial display order comes from the server. Adding `sort-desc` /
  * `sort-asc` to a header just renders the arrow indicator; nothing is
- * re-sorted until a user clicks. Click toggles asc/desc; data-sort-attr
- * lets a single colspan cell carry sort keys for several columns.
+ * re-sorted until a user clicks. Click toggles asc/desc.
  *
  * Secondary sort handle (two sort keys in ONE column):
  *   <th class="sortable-header" data-sort="text">

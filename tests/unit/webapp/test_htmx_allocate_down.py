@@ -132,10 +132,10 @@ class TestAllocateDownFormRoute:
     def test_dedicated_allocation_renders(self, auth_client, snapshot_dedicated_alloc):
         resp = auth_client.get(_form_url(snapshot_dedicated_alloc.allocation_id))
         assert resp.status_code == 200
-        # Either the form (carve parent) or an informational alert (nothing
-        # to allocate / over-carved) — both are valid render paths.
+        # Either the form (carve parent) or the notice body (nothing to
+        # allocate / over-carved): both are valid render paths.
         html = resp.get_data(as_text=True)
-        assert 'alert' in html or 'Sub-project' in html
+        assert 'modal-notice' in html or 'Sub-project' in html
 
     def test_inheriting_allocation_renders_shared_notice(
             self, auth_client, snapshot_inheriting_alloc):

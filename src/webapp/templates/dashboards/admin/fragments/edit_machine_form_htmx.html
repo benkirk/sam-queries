@@ -1,10 +1,15 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
-{% from 'dashboards/fragments/form_fields.html' import text_field, number_field, date_field, readonly_display with context %}
+{% from 'dashboards/fragments/glossary.html' import g_commission_dates with context %}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, number_field, date_field with context %}
 {#
   htmx: Edit Machine Form (loaded into #editMachineFormContainer)
   Machine name and resource are read-only.
   Editable: description, cpus_per_node, commission_date, decommission_date.
 #}
+
+{{ modal_title('editMachineModalLabel', 'Edit ' ~ machine.name, 'microchip',
+               meta=machine.resource.resource_name if machine.resource else none) }}
 
 {% call htmx_form(
     url_for('admin_dashboard.htmx_machine_edit', machine_id=machine.machine_id),
@@ -13,14 +18,6 @@
     is_edit=True,
     errors=errors
 ) %}
-        <div class="row mb-3">
-            <div class="col-md-6">
-                {{ readonly_display('Machine Name', machine.name, muted=False, strong=True) }}
-            </div>
-            <div class="col-md-6">
-                {{ readonly_display('Resource', machine.resource.resource_name if machine.resource else '—') }}
-            </div>
-        </div>
 
         {{ text_field('description', 'Description',
                       optional_text='',
@@ -35,7 +32,7 @@
 
         <div class="row">
             <div class="col-md-6">
-                {{ date_field('commission_date', 'Commission Date',
+                {{ date_field('commission_date', 'Commission Date', tip=g_commission_dates(), tip_rich=True,
                               required=True,
                               default=machine.commission_date,
                               id='editMachineCommission') }}

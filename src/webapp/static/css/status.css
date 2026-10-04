@@ -53,6 +53,7 @@
     padding: 1rem;
     margin-bottom: 1rem;
     border-radius: var(--radius-sm);
+    height: calc(100% - 1rem);   /* tiles in one row share a height */
 }
 
 .metric-card h6 {
@@ -68,6 +69,20 @@
     color: var(--text-primary);
 }
 
+/* Utilization bars: one brand fill. Threshold colors stay on capacity bars, where full is bad. */
+.progress-bar.util {
+    background-color: var(--status-info);
+    color: var(--surface-card);
+}
+
+/* Label + meter pairs in the node-type table's Utilization cell. */
+.util-meters {
+    display: grid;
+    grid-template-columns: auto auto;
+    align-items: center;
+    gap: 0.125rem 0.5rem;
+}
+
 /* ===================================================================
    Tables
    =================================================================== */
@@ -76,6 +91,11 @@
 .filesystem-table,
 .nodetype-table {
     font-size: 0.9rem;
+}
+
+/* First column of a header group (Jobs, Cores, GPUs, Nodes) in the queue table. */
+.queue-table .col-group-start {
+    border-left: 1px solid var(--border-default);
 }
 
 /* ===================================================================
@@ -104,12 +124,33 @@
 }
 
 /* ===================================================================
-   Reservation Cards
+   Reservations (fragments/reservations.html)
    =================================================================== */
 
-.reservation-card {
-    border-left: 4px solid var(--ncar-light-blue);
+.reservation-table {
+    border-left: 3px solid var(--ncar-light-blue);
 }
+
+.reservation-now {
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    margin-left: 0.5rem;
+    white-space: nowrap;
+}
+
+/* A small status dot before a neutral label: the hue says what, the words say it too. */
+.status-dot {
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    margin-right: 0.3rem;
+    border-radius: 50%;
+    background-color: var(--status-info);
+}
+
+.status-dot.is-success { background-color: var(--status-success); }
+.status-dot.is-warning { background-color: var(--status-warning); }
+.status-dot.is-danger { background-color: var(--status-danger); }
 
 /* ===================================================================
    Login Node Load Stack
@@ -157,4 +198,19 @@
     color: var(--text-tertiary);
     padding: 2rem;
     font-style: italic;
+}
+
+/* ===================================================================
+   Google Calendar embed (events_page.html)
+   =================================================================== */
+
+.calendar-embed {
+    display: block;
+    border: 0;
+}
+
+/* The embed is cross-origin, so its colors cannot be themed. Inverting it and
+   rotating hue by half a turn gives a dark grid with event colors roughly kept. */
+:root[data-bs-theme="dark"] .calendar-embed {
+    filter: invert(0.9) hue-rotate(180deg);
 }

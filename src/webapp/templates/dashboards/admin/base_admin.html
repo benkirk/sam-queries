@@ -11,18 +11,14 @@
 #}
 {% extends 'dashboards/base.html' %}
 {% from 'dashboards/fragments/page_tabs.html' import page_tabs %}
+{% from 'dashboards/fragments/page_header.html' import page_header %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
 {% endblock %}
 
 {% block content %}
-<div class="row mb-4">
-    <div class="col-12">
-        <h1><i class="fa-solid fa-user-shield"></i> Admin Dashboard</h1>
-        <p class="text-muted">Administrative tools for managing users and projects</p>
-    </div>
-</div>
+{{ page_header('Admin Dashboard', icon='user-shield', description='Administrative tools for managing users and projects') }}
 
 {# The Projects tab stays highlighted on both /admin/projects and
    /admin/projects/directories — the sub-strip on those pages

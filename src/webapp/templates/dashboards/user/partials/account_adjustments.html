@@ -24,24 +24,24 @@
 
 {% if account_adjustments %}
 <div class="table-responsive">
-    <table class="table table-sm table-striped table-hover mb-0">
+    <table class="table table-sm table-hover align-middle mb-0">
         <thead class="table-subtle">
             <tr>
-                <th style="white-space:nowrap;">Date</th>
-                <th>Type</th>
-                <th class="text-end">Amount</th>
-                <th>Adjusted by</th>
-                <th style="width:99%;">Comment</th>
+                <th class="col-shrink">Date</th>
+                <th class="col-shrink">Type</th>
+                <th class="col-num">Amount</th>
+                <th class="col-shrink">Adjusted by</th>
+                <th>Comment</th>
             </tr>
         </thead>
         <tbody>
             {% for a in account_adjustments %}
             <tr>
-                <td style="white-space:nowrap;">{{ a.adjustment_date | fmt_date }}</td>
+                <td class="text-nowrap">{{ a.adjustment_date | fmt_date }}</td>
                 <td>
                     <span class="badge bg-secondary">{{ a.adjustment_type.type if a.adjustment_type else '—' }}</span>
                 </td>
-                <td class="text-end" style="white-space:nowrap;">
+                <td class="col-num">
                     {% if a.amount is not none %}
                         {% set cls = 'text-success' if a.amount > 0 else ('text-danger' if a.amount < 0 else '') %}
                         <span class="{{ cls }}">{{ a.amount | fmt_number }}</span>
@@ -52,9 +52,8 @@
                 <td>
                     {{ contract_user_link(a.adjusted_by, can_view_users, compact=True) }}
                 </td>
-                <td class="small text-muted"
-                    title="{{ a.comment or '' }}"
-                    style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                <td class="small text-muted cell-truncate"
+                    title="{{ a.comment or '' }}">
                     {{ a.comment or '' }}
                 </td>
             </tr>

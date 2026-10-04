@@ -51,22 +51,21 @@
 </div>
 
 <div id="scheduledTasksTable">
-    <table class="table table-sm table-striped table-hover mb-0 audit-table">
+    <table class="table table-sm table-hover align-middle mb-0 audit-table">
         <thead class="table-subtle">
             <tr>
-                <th style="white-space:nowrap;">Claimed (UTC)</th>
-                <th style="width:99%;">Task</th>
-                <th style="width:170px;">Occurrence</th>
-                <th style="width:120px;">State</th>
-                <th style="width:110px;">Trigger</th>
-                <th style="width:60px;" class="text-end">Try</th>
-                <th style="width:90px;" class="text-end">Took</th>
-                {# nowrap: a pod name is one token an operator pastes into
-                   `kubectl logs`, and the Task column's width:99% otherwise
-                   squeezes this to its minimum, breaking it at every hyphen
-                   and tripling every row's height. #}
-                <th style="white-space:nowrap;">Runner</th>
-                <th class="text-end" style="white-space:nowrap;">Actions</th>
+                <th class="col-shrink">Claimed (UTC)</th>
+                <th>Task</th>
+                <th class="col-shrink">Occurrence</th>
+                <th class="col-shrink">State</th>
+                <th class="col-shrink">Trigger</th>
+                <th class="col-num">Try</th>
+                <th class="col-num">Took</th>
+                {# col-shrink keeps nowrap: a pod name is one token an operator
+                   pastes into `kubectl logs`; broken at every hyphen it tripled
+                   every row's height. #}
+                <th class="col-shrink">Runner</th>
+                <th class="col-shrink text-end">Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -74,7 +73,7 @@
             <tr>
                 {# The column shows the date; the tooltip carries the time of
                    day, which is what separates a run from its retry. #}
-                <td style="white-space:nowrap;"
+                <td class="text-nowrap"
                     title="{{ r.claimed_at | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }} UTC">
                     {{ r.claimed_at | fmt_date }}
                 </td>
@@ -87,27 +86,27 @@
                    that vocabulary with an XRAS meaning ("parked for a human")
                    and would silently mislabel a manually triggered run. #}
                 <td><span class="badge bg-secondary">{{ r.trigger_type }}</span></td>
-                <td class="text-end {{ 'text-warning fw-semibold' if r.attempt > 1 }}"
+                <td class="col-num{{ ' fw-semibold' if r.attempt > 1 }}"
                     {% if r.attempt > 1 %}title="Reclaimed after a stale lease"{% endif %}>
                     {{ r.attempt }}
                 </td>
-                <td class="text-end text-muted small">
+                <td class="col-num text-muted small">
                     {% if r.duration_ms is not none %}
                     {{ (r.duration_ms / 1000) | round(1) }}s
                     {% else %}—{% endif %}
                 </td>
-                <td class="text-muted small" style="white-space:nowrap;">
+                <td class="text-muted small text-nowrap">
                     {% if r.runner_id %}
                     <code class="user-select-all small">{{ r.runner_id }}</code>
                     {{- copy_button(r.runner_id, label='Copy runner id', inline=true) }}
                     {% else %}—{% endif %}
                 </td>
-                <td class="text-end" style="white-space:nowrap;">
+                <td class="text-end text-nowrap">
                     {# Rendered only for the tier that can actually open it, so
                        the lower tier is never offered a control that 403s. #}
                     {% if has_permission(Permission.SYSTEM_ADMIN) %}
-                    <button class="btn btn-sm btn-outline-secondary"
-                            title="Run detail"
+                    <button class="btn btn-row" type="button"
+                            title="Run detail" aria-label="Run detail"
                             hx-get="{{ url_for('admin_dashboard.task_run_detail', task_run_id=r.task_run_id) }}"
                             hx-target="#auditDetailsModalBody"
                             hx-swap="innerHTML"

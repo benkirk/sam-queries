@@ -1,15 +1,21 @@
-{% macro metric_card(title, value, subtitle=none, progress_percent=none, progress_color='success') %}
+{# Status stat tiles. metric_card: muted title, large value, optional caller() below it.
+   util_card: a metric_card whose value is a percentage, with the brand utilization bar
+   (busy compute is the goal, so no traffic light) and an optional "used / total unit" line. #}
+{% macro metric_card(title, value, value_class='') -%}
 <div class="metric-card">
     <h6>{{ title }}</h6>
-    <div class="value">{{ value|safe }}</div>
-    {% if progress_percent is not none %}
-    <div class="progress mt-2">
-        <div class="progress-bar bg-{{ progress_color }}"
-             style="width: {{ progress_percent }}%"></div>
-    </div>
-    {% endif %}
-    {% if subtitle %}
-    <div class="text-muted small mt-1">{{ subtitle|safe }}</div>
-    {% endif %}
+    <div class="value{{ ' ' ~ value_class if value_class }}">{{ value }}</div>
+    {% if caller %}{{ caller() }}{% endif %}
 </div>
-{% endmacro %}
+{%- endmacro %}
+
+{% macro util_card(title, pct, used=none, total=none, unit='') -%}
+{% call metric_card(title, ((pct | default(0, true)) | round(1)) ~ '%') %}
+    <div class="progress mt-2">
+        <div class="progress-bar util" style="width: {{ pct | default(0, true) }}%"></div>
+    </div>
+    {% if used is defined and used is not none and total is defined and total is not none %}
+    <div class="text-muted small mt-1">{{ used | fmt_number }} / {{ total | fmt_number }} {{ unit }}</div>
+    {% endif %}
+{% endcall %}
+{%- endmacro %}

@@ -10,9 +10,9 @@ calls and htmx attributes are untouched.
 
 **Hard rule: an entity needing more than the spec expresses stays a
 bespoke route.** Do not grow this spec new axes to absorb one special
-case — the mnemonic-code create (DB uniqueness checks), the contract
-delete (retire-by-end_date), and the panel-session edit (ORM cross-field
-check) are examples that stay hand-written next to their specs.
+case — the mnemonic-code create (DB uniqueness checks) and the contract
+delete (retire-by-end_date) are examples that stay hand-written next to
+their specs.
 
 Behavioral contract preserved from the hand-written routes:
   * edit-form GET for a missing id -> warning div at 200 (htmx swaps it

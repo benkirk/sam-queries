@@ -1,5 +1,6 @@
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
 {% from 'dashboards/fragments/project_bits.html' import project_link with context %}
+{% from 'dashboards/fragments/table_bits.html' import state_tag %}
 {#
   Admin: Cross-project Project Directories card.
 
@@ -100,7 +101,7 @@
                         {{ rows|length }} director{{ 'ies' if rows|length != 1 else 'y' }}
                         {%- set _orphans = rows|selectattr('is_active')|rejectattr('project.is_active')|list|length %}
                         {% if _orphans %}
-                        <span class="badge bg-warning text-dark ms-2"
+                        <span class="badge bg-warning ms-2"
                               title="Active directories whose project is inactive">
                             <i class="fa-solid fa-link-slash"></i> {{ _orphans }} orphaned
                         </span>
@@ -112,7 +113,7 @@
             <tbody class="collapse" id="{{ group_id }}">
                 {% for pd in rows %}
                 {% set _orphan = pd.is_active and not pd.project.is_active %}
-                <tr class="table-secondary{% if not pd.is_active %} opacity-50{% endif %}{% if _orphan %} table-warning{% endif %}"
+                <tr class="table-secondary{% if not pd.is_active %} row-inactive{% endif %}{% if _orphan %} table-warning{% endif %}"
                     {% if _orphan %}title="Active directory linked to an inactive project"{% endif %}>
                     <td class="ps-4 font-monospace small">
                         {% if _orphan %}
@@ -120,11 +121,12 @@
                            title="Orphaned: project is inactive"></i>
                         {% endif %}
                         {{ pd.directory_name }}
+                        {% if not pd.is_active %}{{ state_tag('inactive') }}{% endif %}
                     </td>
                     <td>
                         {{ project_link(pd.project.projcode, can_view_projects, stop_propagation=True) }}
                         {% if _orphan %}
-                        <span class="badge bg-warning text-dark ms-1" title="Project is inactive">inactive project</span>
+                        <span class="badge bg-warning ms-1" title="Project is inactive">inactive project</span>
                         {% endif %}
                         <div class="text-muted small">{{ pd.project.title | truncate(60) }}</div>
                     </td>
@@ -138,8 +140,8 @@
                             title='Edit directory',
                             permission=Permission.EDIT_PROJECTS) }}
                         {% if has_permission(Permission.EDIT_PROJECTS) and pd.is_active %}
-                        <button class="btn btn-sm btn-outline-danger ms-1"
-                                title="Deactivate directory"
+                        <button type="button" class="btn btn-row btn-row-danger ms-1"
+                                title="Deactivate directory" aria-label="Deactivate directory"
                                 hx-post="{{ url_for('admin_dashboard.htmx_admin_project_directory_deactivate', pd_id=pd.project_directory_id) }}"
                                 hx-swap="none"
                                 hx-confirm="Deactivate directory &quot;{{ pd.directory_name }}&quot; on project {{ pd.project.projcode }}? This sets the end date to today."

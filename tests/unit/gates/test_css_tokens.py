@@ -112,7 +112,7 @@ ALLOWED = {
     # stragglers: -1 (.date-group-header's #f1f3f5 -> --surface-tertiary; the
     #          one light row background the dark theme could not reach)
     # css sweep: -2 moved with the filter UI to filters.css (two white-on-navy text washes)
-    'dashboard.css':   16,
+    'dashboard.css':   15,
     'filters.css':      2,
 }
 

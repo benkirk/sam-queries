@@ -46,7 +46,7 @@
                 <td class="text-nowrap">
                     {# Active is the default and unmarked; only the exceptions get a badge. #}
                     {% if r.status == 'not in SAM' %}<code>{{ r.username }}</code>
-                    <span class="badge bg-dark ms-1" style="font-size:0.7em;" title="No SAM user has this username">not in SAM</span>
+                    <span class="badge bg-secondary ms-1" title="No SAM user has this username">not in SAM</span>
                     {% else %}{{ user_link(r.username, True, compact=True) }}
                     {%- if r.status != 'active' %}{{ status_badge(r.status, extra='ms-1', small=True) }}{% endif %}{% endif %}
                 </td>

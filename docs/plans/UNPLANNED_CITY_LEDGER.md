@@ -12,13 +12,19 @@ them. Tick an item when its fix merges.
 
 From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 
-| date | end commit | private imports (helpers / sites / package-private) | dup-function groups (extra copies) | py-dup-names (names / definitions) | dead CSS classes (dynamic stem) | CSS lines / `!important` / repeated blocks | inline styles (templates) | JS shared names / shared events |
-|---|---|---|---|---|---|---|---|---|
-| 2026-10-03 | `79f1a147` | 70 / 88 / 33 | 9 (10) | — | 38 (17) | 4,789 / 70 / 14 | 405 (106) | 5 / 4 |
-| 2026-10-03 | `5254c65b` + js sweep | 70 / 88 / 33 | 9 (10) | — | 38 (17) | 4,817 / 70 / 14 | 404 (105) | 5 / 4 |
-| 2026-10-04 | `0515333f` + css sweep | 70 / 88 / 33 | 9 (10) | — | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | 5 / 4 |
-| 2026-10-04 | `75f89900` (base, py) | 70 / 88 / 33 | 9 (10) | 17 / 59 | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | 5 / 4 |
-| 2026-10-04 | `75f89900` + py sweep | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | 5 / 4 |
+| date | end commit | private imports (helpers / sites / package-private) | dup-function groups (extra copies) | py-dup-names (names / definitions) | dead CSS classes (dynamic stem) | CSS lines / `!important` / repeated blocks | inline styles (templates) | bs4-classes (uses / classes) | row-buttons | JS shared names / shared events | modal alerts (templates) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-10-03 | `79f1a147` | 70 / 88 / 33 | 9 (10) | — | 38 (17) | 4,789 / 70 / 14 | 405 (106) | — | — | 5 / 4 |
+| 2026-10-03 | `5254c65b` + js sweep | 70 / 88 / 33 | 9 (10) | — | 38 (17) | 4,817 / 70 / 14 | 404 (105) | — | — | 5 / 4 |
+| 2026-10-04 | `0515333f` + css sweep | 70 / 88 / 33 | 9 (10) | — | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | — | — | 5 / 4 |
+| 2026-10-04 | `75f89900` (base, py) | 70 / 88 / 33 | 9 (10) | 17 / 59 | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | — | — | 5 / 4 |
+| 2026-10-04 | `75f89900` + py sweep | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | — | — | 5 / 4 |
+| 2026-10-04 | `21e6bae5` (base, templates) | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | 20 / 3 | — | 5 / 4 |
+| 2026-10-04 | `21e6bae5` + templates sweep | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,621 / 57 / 10 | 323 (95) | 0 / 0 | — | 5 / 4 |
+| 2026-10-04 | `21e6bae5` + sweep 5 + trees round | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,615 / 57 / 10 | 263 (94) | 0 / 0 | 0 (from 22) | 5 / 4 |
+| 2026-10-04 | `21e6bae5` + sweeps 5–7 | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,603 / 54 / 10 | 257 (93) | 0 / 0 | 0 | 5 / 4 |
+| 2026-10-04 | `a75b9db7` + project list + headers | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,617 / 54 / 10 | 255 (92) | 0 / 0 | 0 | 5 / 4 | 52 (23) |
+| 2026-10-04 | `ede454cf` + modal sweep | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,699 / 50 / 10 | 216 (80) | 0 / 0 | 0 | 5 / 4 | 20 (14) |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -123,8 +129,9 @@ badges, text colors, tab counters).
 
 **Open from this sweep:**
 
-- [ ] PROJECT CARDS / PROJECT TREE (`dashboard.css`, about 240 lines) are user-dashboard
-  specific and could move to their own file. Not crowding anything today.
+- [x] PROJECT CARDS / PROJECT TREE (`dashboard.css`, about 240 lines) are user-dashboard
+  specific and could move to their own file. Not crowding anything today. Closed by sweep 6:
+  mostly shared rules, see its dropped list.
 
 ## 4. 2026-10-04: area sweep, `py`
 
@@ -205,6 +212,387 @@ the two intended changes below. Perf tier: 64 passed before and after; `baseline
   `charts/stacked.py`.
 - [ ] `CacheBase` has no `bytes_used`, which `chart_cached` reads; both backends define it.
 
+## 5. 2026-10-04: area sweep, `templates` + `css` (aesthetic)
+
+**Mode:** area. Read `src/webapp/templates/` and `static/css/` for UX patterns the recent PRs
+introduced that older templates never adopted (#696/#697/#704–#707/#721).
+
+**End commit:** `21e6bae5` (`origin/staging`: the #724 promotion, which carries #725).
+
+**Contract:** unlike sweeps 1–4, this one is not "nothing looks different". The changes are
+visual on purpose, and each commit declares its change. `src/` across the branch is +578 / -916.
+
+**Proof:**
+- `scripts/ui_snapshots.py`, before and after, reviewed by eye. Before is a base worktree served
+  by `dev_server_alt.sh` on :5053; after is the branch on :5052. 13 pages × 3 layouts × 2 themes.
+- Contrast is measured in the page (WCAG ratio, both themes); spacing with
+  `getBoundingClientRect`.
+- Full MySQL suite green, except the known `reconcile_quotas` flake, which passes on rerun.
+- The webapp, status and gate tests are also green on postgres-test.
+
+**Brand stance (Ben):** honor the NSF NCAR brand guide without being bound by it.
+- Keep: Poppins; NCAR Blue `#0057C2`, Dark Blue `#00357A`, Space `#011837`, Aqua; orange and
+  yellow as small accents.
+- Unity is built for sparse marketing pages, with solid-fill alerts, solid-blue table heads and
+  18px cell padding. SAM's density is much higher.
+
+**Declared deviations from the brand guide and Unity:**
+- Alerts are tinted surfaces with a left rule, not Unity's solid fills. This follows the guide's
+  own "no accent as a large block" rule.
+- The guide has no red or green. Danger is `#c0272d` / `#ff8a7a` and success is `#2b8a4b` /
+  `#4cc77f` (`--status-*` tokens).
+- Compute utilization bars use one brand fill. Threshold colors stay only where full is bad:
+  filesystems and login-node load.
+- The Google Calendar embed is CSS-inverted in dark mode, so its event colors are approximate.
+
+**Done, in this sweep's PR**, one commit each (`src/` lines added / removed):
+
+- [x] Skill friction: the `bs4-classes` detector with a fixture test, the status pages in
+  `ui_snapshots.py` `DEFAULT_PAGES`, and an "aesthetic sweep" note in the skill.
+- [x] Alerts (+32 / -68): tinted surface plus left rule app-wide, with `--status-*` and
+  `--alert-tint` tokens. Body text is 9.3–12.2:1 and muted text at least 5.5:1, in both themes.
+- [x] Page titles (+80 / -103): one `fragments/page_header.html` macro across 9 pages; the h1
+  goes from 48px to 28px. On the status page, title to first content goes from 228px to 161px.
+- [x] Reservations (+97 / -94, plus +4 / -2 for phones): one `reservation_table` on Derecho,
+  Casper and Events. Rows are 62px, where each slab was 120–150px. A
+  `ResourceReservation.is_active` hybrid drives "in progress".
+- [x] Calendar (+15): a dark-mode filter on the cross-origin embed.
+- [x] Status tables (+97 / -146):
+  - the house table vocabulary;
+  - counts colored only when they mean something;
+  - `<code>` in heading ink instead of Bootstrap pink;
+  - outage actions as `btn-row` buttons.
+- [x] Utilization (+44 / -93): the brand fill; four tiles become one macro; the node-type cells
+  use `alloc_meter`.
+- [x] JupyterHub (+77 / -273):
+  - the shared `metric_card` / `util_card` macros;
+  - no jumbo icons, and the orphan heading is gone;
+  - inline styles go from 12 to 0;
+  - a shared `.status-dot`.
+- [x] Bootstrap 4 classes (+14 / -14): 20 uses down to 0, held there by `test_bs4_classes.py`.
+- [x] Audit-log tables (+102 / -109): seven ledgers on `col-shrink` / `col-num` /
+  `cell-truncate`; inline styles go from 50 to 1.
+- [x] Leftovers (+44 / -42): light and dark badges muted, redundant badge ink dropped, and
+  `opacity-50` becomes `row-inactive`.
+
+**Tried and dropped:**
+- Wrapping the reservation window on phones. It pushed the System column wider too, so the
+  window moves under the name instead.
+- Autosquashing that phone fix into the reservations commit. It conflicts with the JupyterHub
+  commit's `.status-dot` change, so it stays a separate commit.
+
+**Open from this sweep:**
+
+- [x] The project trees, `shared/project_tree.html` and `admin/.../project_allocation_tree_htmx.html` (sweep 6).
+  - Today: 23 inline styles each, a nested table and px colgroups.
+  - Target: `tree-cell` + `col-num` + `btn-row` + `alloc_meter`.
+  - Ben wants this as a second round, planned with fresh context. Sweep 3's move of the
+    project-card CSS rides along.
+- [ ] Resource Details (user `resource_details*` and the day/user subtrees): nested tables, 13 raw
+  collapse toggles, and `td.text-end` instead of `col-num`.
+- [ ] `xras_request_detail.html`: its 15 small outline row buttons should be `btn-row`. The XRAS
+  cards are only half adopted (nested tables, `width:99%`).
+- [x] The saturated `modal_scaffold` headers (entry 9: quiet accent headers) and the `text-bg-*` toasts (still open). This is an app-wide
+  design call.
+  - Create: `bg-success`.
+  - Edit: `bg-warning`, which renders navy.
+  - Confirm: `bg-danger`.
+- [ ] Brand-drift tokens. `charts/theme.py` mirrors these, so a fix moves the chart fingerprints.
+  - `--ncar-light-blue` is really UCAR Aqua.
+  - `--info-color` is `#0056C2`, a step off NCAR Blue.
+  - `--success-color` and `--warning-color` are Tailwind colors.
+- [ ] The solid-blue `page_tabs` strip and `nav-pills`. Ben kept them this round.
+- [ ] A one-off failure in `tests/unit/gates tests/unit/webapp` that did not reproduce in two
+  reruns.
+
+## 6. 2026-10-04: area sweep, `templates` round 2 (the project trees)
+
+**Mode:** area. This is sweep 5's first open item, planned and run with sweep 5's context still
+loaded.
+
+**Stacked on:** sweep 5's branch (`sweep-templates-ux-2026-10`, end commit `21e6bae5`). Retarget
+to `staging` once that merges.
+
+**Contract:** aesthetic, like sweep 5; each commit declares its visual change.
+`src/` is +244 / -637.
+
+**Shared rows (Ben's call):** two variants were shown side by side, then a hybrid was picked.
+- *Muted pool numbers:* the pool's Allocated and Remaining in gray.
+- *Label only:* "from NCGD0006" in place of the numbers. Ben's objection: with the label alone,
+  a row has no quantitative reference once the owner's row has scrolled off the page.
+- *Hybrid (shipped):* Allocated says "from <owner>", Used is the project's own `self_used`, and
+  Remaining keeps the pool's remaining, muted.
+
+**Done, in this round's PR**, one commit each (`src/` lines added / removed):
+
+- [x] Project trees (+145 / -526): one `project_tree_rows` recursion for both trees, built on
+  `tree-cell` + new `.tree-guides` (guide lines at any depth), `alloc_meter`, `btn-row`,
+  `tree_label_cell` and `collapse_toggle`.
+  - Fixes the user hierarchy's all-bold, all-yellow bug: children were nested inside the
+    current node's `<li>`.
+  - The user hierarchy goes from 862px to 738px for 18 nodes.
+  - Deleted: the dead allocation branch of `render_project_tree`, the second recursion, and the
+    `.alloc-caret` / `.alloc-resource-header` / `.tree-node-inactive` CSS.
+  - `.btn-entity` loses Unity's 3px border, which added 6px to every row with an entity link.
+- [x] Row actions (+38 / -41): 22 icon-only outline buttons in table cells become `btn-row`.
+  A new `row-buttons` detector with a fixture test is held at zero by
+  `test_template_detectors.py`, which absorbs `test_bs4_classes.py`. Prompted by Ben: "many
+  places where an edit or delete button appears on subsequent rows with a fat border".
+- [x] Manage Project header (+19 / -32): one breadcrumb trail, where it had two; the shared
+  `page_header`; the toolbar back at `btn-sm`.
+- [x] Linked elements (+36 / -38): house table vocabulary, `hidden` instead of an inline
+  `display:none`; inline styles go from 17 to 3.
+- [x] Phones (+10 / -4): the tree is wrapped in `table-responsive`. A `visually-hidden` label in
+  a `<th>` (`position: absolute`) was escaping the scroll wrapper and stretching the page to
+  587px. Tree cells keep a projcode-wide minimum.
+
+**Tried and dropped:**
+- Moving the "PROJECT CARDS / PROJECT TREE" CSS (sweep 3's open item) into its own file. Most
+  of that section is shared rules: `.stat-item` / `.stat-label` (user and configuration cards),
+  `.accordion-chevron`, `.sam-fluid-1800`, and `.tree-list`, which Resource Details still uses.
+  A file named for project cards would mislabel half of it. Closing the item.
+
+**Open from this round:**
+
+- [ ] Resource Details scope pickers (`resource_details*.html`) still use nested `.tree-list`
+  `<li>`s, so they have the same inherited bold and tint under a current node. Moving them to
+  `project_tree_rows` would delete `.tree-list`.
+- [ ] 26 `class="btn  btn-…"` double-space leftovers in 13 templates: an old bulk `btn-sm`
+  removal whose reason isn't recorded. Several are pane-toolbar buttons that the house rule
+  says should be `btn-sm`.
+- [ ] `.tree-d1` / `.tree-d2` could become `.tree-guides`, which draws the same lines at any
+  depth. Prove it with `ui_snapshots.py --styles --compare`.
+- [ ] One test failure in `tests/unit/gates tests/unit/webapp` that did not reproduce on rerun,
+  seen twice across rounds 1 and 2.
+
+## 7. 2026-10-04: area sweep, `templates` round 3 (project and user cards and modals)
+
+**Mode:** area, run with sweeps 5–6 still in context. **Stacked on:** sweep 6's branch
+(`sweep-trees-2026-10`). **Contract:** aesthetic, with each commit declaring its change.
+`src/` is +186 / -266. Full MySQL suite: 10,595 passed, 0 failed.
+
+**Ben's picks:**
+- The project card and modal show resources in the tree-table columns.
+- The user card groups SAM permissions by verb.
+
+**Done, in this round's PR**, one commit each (`src/` lines added / removed):
+
+- [x] Resources (+73 / -158): `render_project_resources`, which serves the user card, the admin
+  card and the project modal, uses the Manage Project columns and the shared `allocation_cells`.
+  - A shared allocation reads the same everywhere.
+  - Rows are about 45px; they were 70–87px across three lines.
+  - "361d remaining" appears once per date group, not on every row.
+  - `allocation_cells` gains units and shows the elapsed tick only for HPC/DAV.
+- [x] Card shell and info (+57 / -57):
+  - the expanded header is the accent surface, not a solid blue slab;
+  - Manage Project goes into the info heading via a `caller()` slot;
+  - org ancestry is inline and directories sit on one line;
+  - multi-line labels go in the label column via opt-in `.stat-item-inline`;
+  - the modal sorts resources by name like the card.
+  - SCSG0001's card goes from 1,587px to 954px; the modal from 1,564px to 905px.
+- [x] User card (+56 / -51):
+  - the `project-stats-box` panels, with labels beside values in a `fit-content(10rem)`
+    label column;
+  - `btn-row` edits for GID and shell;
+  - permissions as a by-verb table, which fixes the chip row clipped by `.scrollable-list`.
+  - `/user/info` goes from 2,001px to 1,726px; the admin user modal from 1,931px to 1,761px.
+
+- [x] Bar widths (Ben: "uniform treatment on desktop that is wider"): every `share_bar` and
+  `alloc_meter` column takes `--bar-share-w` / `--bar-meter-w`. Below 1200px those are 3.5rem
+  and 5rem; at ≥ 1200px both are 8rem. That covers the Allocations tree, the admin
+  facility/resource cards, Manage Project, the project card, and the status node-type and
+  JupyterHub tables. It replaces the per-table 7.5rem rule.
+
+**Tried and dropped:** nothing.
+
+**Open from this round:**
+
+- [x] The Allocations project list (`allocations/partials/project_table.html`, loaded under a
+  type row) still draws `render_usage_bar` in one `colspan="6"` usage-and-dates cell behind six
+  sortable headers (`min-width:280px`). It should become `alloc_meter` plus real columns, which
+  means reworking its data-sort attributes. Done in entry 8. Resource Details and the usage
+  modal still use `render_usage_bar`.
+
+- [ ] On a phone, the project card's resource table scrolls sideways inside its frame. The
+  meter column could hide below md and show only the percentage.
+- [ ] The user card's group branch switch is still the solid-blue toggle bar, like the page
+  tabs and pills that sweep 5 kept.
+- [ ] `group_card.html`, `contract_card.html` and the transaction / adjustment / XRAS detail
+  modals use `stat-item-block` with stacked labels. They could opt into `.stat-item-inline`.
+  The three detail modals did in entry 9; the two cards remain.
+
+## 8. 2026-10-04: area sweep, `templates` round 4 (the Allocations project list)
+
+**Mode:** area, from `docs/plans/ALLOCATIONS_PROJECT_LIST_HANDOFF.md` (entry 7's open item).
+**Stacked on:** sweep 7's branch (`sweep-cards-2026-10`, end commit `a75b9db7`). **Contract:**
+aesthetic, with each commit declaring its change. `src/` is +123 / -192.
+
+**Done, in this round's PR**, one commit each:
+
+- [x] Adapter and lift (handoff step 3, landed first because the columns read it):
+  - `sam.queries.dashboard.allocation_timeline` replaces three copies of the elapsed / bar-state
+    rule: two in `dashboard.py` and 25 lines of Jinja in `project_table.html`.
+  - `projects_fragment` normalizes rows into the `allocation_cells` shape (`_as_resource_row`)
+    and no longer writes titles into the cached usage rows.
+  - `ui_snapshots --styles --compare` against the base: 0 of 6 captures differ.
+- [x] Columns (step 2):
+  - Project | Title | % used | Allocated | Used | Remaining | Annual rate | Start | End |
+    Days left, each cell carrying its own `data-sort-value`; the `data-sort-attr` indirection
+    is gone.
+  - `allocation_cells` gains opt-in `sort=` and `units=`, so a pool member reads "from <root>"
+    as everywhere else.
+  - Rows are 44px at 1440px (from ~76px) and 38px at 390px (from 69–212px). The page never
+    scrolls sideways.
+  - `.elapsed-tick` deleted: this list was its only user.
+- [x] States (step 4): expired / open-ended / no dates as a `state_tag` in Days left; expired
+  rows are `row-inactive`; no usage renders `allocation_cells(None)`.
+- [x] Title N+1 (step 5): `sam.queries.projects.project_titles`, one `IN` query.
+  - Route queries go from 18 + 2 per row (495 at 239 rows, 837 at 410) to a flat 18.
+  - Pinned by `test_allocations_project_table_route`, baseline 27.
+- [x] Header wrapping (Ben: "Annual rate" and "Days left" set their columns' widths; then
+  "sweep this for consistency"):
+  - A multi-word `.col-num` / `.col-shrink` header wraps at its spaces, app-wide, so a column
+    sizes to its figures. Where the content is wider (share bars, meters) nothing changes.
+  - Measured column width before -> after, at 1440px:
+    - the tree's Annual rate: 115 -> 76;
+    - Default amount: 146 -> 80; Wallclock limit: 146 -> 105;
+    - Processed by: 145 -> 100; Adjusted by: 136 -> 95;
+    - Used / Capacity (TiB): 93 -> 63 / 130 -> 90.
+  - Wrapping exposed sort icons orphaned on a second line (Font Awesome's `inline-block` is a
+    break point) and a bare `#` leading a line. `sort_link` / `sort_header` and the `::after`
+    arrows now join the icon with `&nbsp;`, and "Request #" / "Contract #" bind the `#`.
+  - Orphan check across 34 pages at two widths: 0 new.
+
+**Deviations from the handoff:**
+- Annual rate follows Remaining, so `allocation_cells` stays one call.
+- DISK/ARCHIVE drop "Data Volume", which repeated Allocated.
+- The unit sits in the Allocated header's title, not on 50 rows.
+- The usage bar loses its red / orange / green thresholds for the house meter: blue, red only
+  past 100%.
+- Step 6 had no commit of its own. Its one deletion had to ride with the columns commit to keep
+  `test_css_dead` green.
+
+**Tried and dropped:** the unit on every Allocated row. On a 50-row list it was noise and
+widened the column.
+
+**Open from this round:**
+
+- [ ] Resource Details (`user/resource_details.html`, `resource_details_disk.html`), the
+  allocations usage modal and the status filesystem table are the last `render_usage_bar` /
+  raw `.progress` holdouts. The usage modal was an orphan and is deleted (entry 9).
+- [ ] The project list is still a nested table in a spanning cell, not rows of the tree table
+  (wire-dashboard §7). Its column set differs from the tree's, so folding it in would mean the
+  tree growing columns.
+- [ ] On a phone, the list's own `table-responsive` never scrolls. It sits in an auto-layout
+  cell, so the tree's wrapper scrolls the whole tree (1055px).
+- [ ] Headers outside the column roles (no `.col-num` / `.col-shrink`) keep Bootstrap's
+  wrapping and no `&nbsp;` icon join. jobs, disk scans and the members table carry their own
+  sort markup; the orphan check found nothing there today.
+
+## 9. 2026-10-04: area sweep, `templates` round 5 (the modals)
+
+**Mode:** area, from `docs/plans/MODAL_SWEEP_HANDOFF.md`. **Stacked on:** sweep 8's branch
+(`alloc-project-list-2026-10`, #729 open; end commit `ede454cf`). **PR:** #730 (draft).
+**Contract:** aesthetic; each commit declares its change with dialog heights from
+`ui_snapshots.py --recipes` (42 modals, 1440px and 390px, both themes). Ben's calls: quiet
+accent headers everywhere; one PR; the three bugs first.
+
+**Done, in this round's PR**, one commit each:
+
+- [x] Bugs, each with a regression test:
+  - Create Resource's two pickers reach the row. The schema dropped them; the ORM always
+    accepted them.
+  - Detach / re-link / propagate errors render inline. They were 400s that htmx never swaps.
+  - The orphan panel-session edit is deleted.
+- [x] `ui_snapshots.py --modal` / `--step` / `--recipes`: shoots the open dialog and prints
+  `height` / `natural`, the latter being what a fullscreen phone dialog needs unclipped.
+  It retries a suspended navigation and grows the window for a tall dialog.
+- [x] Shared chrome:
+  - one `--surface-accent` header (10.41:1 light, 8.81:1 dark);
+  - danger ink for a destructive confirm only;
+  - square corners;
+  - footer buttons sized to the dialog;
+  - the ten lazy hand-rolled shells on `modal_scaffold`.
+- [x] Shared pieces:
+  - `form_fields` `tip=` / `tip_rich=`;
+  - `select_field` option data, `groups=`, `attrs=`, `help_html=`;
+  - `date_field` `attrs=`;
+  - `htmx_form` `submit_id=`;
+  - `modals.modal_title` (the identity in the header);
+  - `.modal-facts` (facts as one quiet panel);
+  - ten glossary terms;
+  - `email_preview.delivery_banner`.
+- [x] Per-modal passes: edit allocation; exchange and allocate down; renew / extend / align;
+  add allocation and notify; the tree and linked elements; the admin CRUD family;
+  invitations; add member; create adjustment; the detail modals; queue cleanup and bulk
+  deactivate; the XRAS merge and action forms.
+- [x] Submit buttons say the bare verb when the header names the thing (Ben, mid-sweep).
+- [x] The orphan usage modal is deleted (Ben). It replaced step 19.
+- [x] `modal-alerts` detector plus an equality ratchet (`test_template_detectors.py`, 33: 20 in
+  the form and shell templates, 13 in the XRAS fragments that swap into the details modal).
+
+**Dialog natural height**, before -> after (light; 35 modals with both captures). Total:
+23,143 -> 20,698 at 1440px (-11%) and 29,968 -> 24,455 at 390px (-18%).
+
+| modal | 1440px | 390px |
+|---|---|---|
+| edit allocation, shared | 764 -> 637 | 1078 -> 798 |
+| edit allocation, carve-out child | 788 -> 597 | 1054 -> 731 |
+| edit allocation, pool root | 790 -> 627 | 1056 -> 812 |
+| edit allocation, carve-out root | 690 -> 589 | 908 -> 723 |
+| user edit allocation | 585 -> 499 | 733 -> 612 |
+| exchange | 551 -> 427 | 593 -> 454 |
+| allocate down | 675 -> 583 | 757 -> 658 |
+| add allocations | 1145 -> 1015 | 1514 -> 1075 |
+| renew | 900 -> 843 | 1258 -> 1001 |
+| extend | 897 -> 877 | 1204 -> 926 |
+| align | 596 -> 511 | 806 -> 655 |
+| notify | 1963 -> 1996 | 2360 -> 2332 |
+| invite | 800 -> 729 | 1126 -> 929 |
+| new event | 1178 -> 1003 | 1584 -> 1185 |
+| add member | 493 -> 500 | 713 -> 631 |
+| create adjustment | 683 -> 651 | 793 -> 705 |
+| transaction / adjustment details | 679 -> 639 / 539 -> 499 | unchanged |
+| fair-share override | 428 -> 279 | 581 -> 303 |
+| resource edit | 524 -> 405 | 718 -> 494 |
+| machine / queue edit | 545 -> 451 / 607 -> 513 | 739 -> 513 / 763 -> 537 |
+| facility / panel / allocation type edit | 475 -> 381 / 389 -> 295 / 475 -> 381 | 607 -> 381 / 521 -> 295 / 607 -> 381 |
+| resource create | 655 -> 733 | 827 -> 811 |
+
+**Deviations from the handoff:**
+- The danger header is danger ink plus a rule, not a fill: white on vermilion measured 3.84:1.
+- Notify keeps its own delivery banner, now the shared macro: with a Skip first row, the pane
+  shows a note and no banner.
+- Bulk deactivate stays hand-rolled: its Back button re-fetches step 1, which `htmx_form`'s
+  Cancel cannot express.
+- Step 6 had one more shell (`allocations/adjustments.html`).
+- Step 15 measured and did not fold: only 11-15 lines per create/edit pair are shared, so a
+  `mode=` template is no shorter.
+- Step 19 became a deletion.
+- Institution and organization keep their read-only pair (an id plus a type or parent, not a
+  name).
+- Resource create grows: its fields stack at the default width.
+- The add-member commit message gives 484 / 653; the true heights are 508 / 701.
+
+**Tried and dropped:**
+- Bare `tip=` icons after an inline-block label: a wrapped label orphaned the icon. Fixed with
+  `.form-label-tip` and `&nbsp;`.
+- A term inside "emailed a link": tests pin the phrase. A help icon follows it instead.
+
+**Open from this round:**
+
+- [ ] Resource edit cannot set the primary sysadmin or responsible organization
+  (`EditResourceForm`, `Resource.update`).
+- [ ] `htmx_panels_for_facility` is gated on `CREATE_PROJECTS`, but allocation-type create is
+  `CREATE_FACILITIES`. A holder of only the latter gets a 403 on the cascade.
+- [ ] The hand-rolled detail shells (project, user, contract, audit, chart expand, outage)
+  could share a static-body scaffold.
+- [ ] The XRAS forms' own footers keep the page-size buttons (they are not `.modal-footer`).
+- [ ] Extend's resource table scrolls sideways at 390px now that its dates no longer wrap.
+- [ ] The `text-bg-*` toasts are still saturated.
+- [ ] `test_ticket_card::test_a_request_without_tickets_renders_no_ticket_row` fails under
+  xdist on some runs (passes serially), as does `test_db_browser_killswitch` on postgres-test.
+
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
 Surfaced by the first run of `scripts/sweep_inventory.py`. Each item belongs to an area sweep;
@@ -215,8 +603,7 @@ nothing here has been read for intent yet.
 - **docs:** `plans-stale --gh` on 2026-10-03 found no retirement candidates among 22 top-level
   plans. `ADMIN_TABLE_POLISH.md` and `ALLOCATIONS_SUNBURST.md` still say "implemented, in
   review" although their PRs have merged; they pass the 14-day idle bar on 2026-10-17.
-- **templates:** 405 inline `style=""` attributes; the project trees (`shared/project_tree.html`,
-  the admin allocation tree) carry the most.
+- **templates:** sweeps 5–8 took inline `style=""` from 404 to 255.
 
 ## Propagation candidates
 

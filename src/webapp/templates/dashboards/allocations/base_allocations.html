@@ -7,16 +7,14 @@
 #}
 {% extends 'dashboards/base.html' %}
 {% from 'dashboards/fragments/page_tabs.html' import page_tabs %}
+{% from 'dashboards/fragments/page_header.html' import page_header %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/allocations.css') }}">
 {% endblock %}
 
 {% block content %}
-<!-- Page Header -->
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1><i class="fa-solid fa-chart-pie"></i> Allocations Dashboard</h1>
-</div>
+{{ page_header('Allocations Dashboard', icon='chart-pie') }}
 
 {{ page_tabs([
     {'endpoint': 'allocations_dashboard.projects',     'label': 'Projects',     'icon': 'fa-solid fa-folder-open'},

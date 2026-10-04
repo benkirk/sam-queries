@@ -18,14 +18,12 @@
 
     <div class="modal-body">
         {% if not prefix.endswith('/') %}
-        <div class="alert alert-warning">
+        <p class="small text-warning-emphasis">
             <i class="fa-solid fa-triangle-exclamation"></i>
-            Prefix <code>{{ prefix }}</code> doesn't end with a trailing slash.
-            Match semantics still respect path segments
-            (so <code>{{ prefix }}/...</code> patterns are matched, but
-            <code>{{ prefix }}foo</code>-style siblings are not), but a
+            <code>{{ prefix }}</code> has no trailing slash. Matching still respects path segments
+            (<code>{{ prefix }}/...</code> matches, <code>{{ prefix }}foo</code> does not), but a
             trailing slash is the safer convention.
-        </div>
+        </p>
         {% endif %}
 
         {% if matches %}
@@ -33,7 +31,7 @@
             <strong>{{ matches|length }} active director{{ 'ies' if matches|length != 1 else 'y' }}</strong>
             match prefix <code>{{ prefix }}</code>:
         </p>
-        <ul class="font-monospace small mb-3" style="max-height: 18em; overflow-y: auto;">
+        <ul class="font-monospace small mb-3 scroll-list">
             {% for pd in matches[:25] %}
             <li>
                 {{ pd.directory_name }}
@@ -53,9 +51,7 @@
             This action cannot be undone.
         </div>
         {% else %}
-        <div class="alert alert-info mb-0">
-            No active directories match prefix <code>{{ prefix }}</code>.
-        </div>
+        <p class="mb-0">No active directories match prefix <code>{{ prefix }}</code>.</p>
         {% endif %}
 
         {% if errors %}
@@ -73,7 +69,7 @@
             <i class="fa-solid fa-arrow-left"></i> Back
         </button>
         {% if matches %}
-        <button type="submit" class="btn btn-outline-primary">
+        <button type="submit" class="btn btn-danger">
             <i class="fa-solid fa-trash-can"></i>
             Deactivate {{ matches|length }} director{{ 'ies' if matches|length != 1 else 'y' }}
         </button>

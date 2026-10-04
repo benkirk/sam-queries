@@ -39,18 +39,18 @@
 </div>
 
 <div id="notificationsTable">
-    <table class="table table-sm table-striped table-hover mb-0 audit-table">
+    <table class="table table-sm table-hover align-middle mb-0 audit-table">
         <thead class="table-subtle">
             <tr>
-                <th style="white-space:nowrap;">Time</th>
-                <th style="width:140px;">Kind</th>
-                <th style="width:120px;">Status</th>
-                <th style="width:90px;">Channel</th>
-                <th style="width:220px;">Recipient</th>
-                <th style="width:99%;">Subject</th>
-                <th style="width:110px;">Project</th>
-                <th style="width:120px;">Requested by</th>
-                <th class="text-end" style="white-space:nowrap;">Actions</th>
+                <th class="col-shrink">Time</th>
+                <th class="col-shrink">Kind</th>
+                <th class="col-shrink">Status</th>
+                <th class="col-shrink">Channel</th>
+                <th class="col-shrink">Recipient</th>
+                <th>Subject</th>
+                <th class="col-shrink">Project</th>
+                <th class="col-shrink">Requested by</th>
+                <th class="col-shrink text-end">Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -58,7 +58,7 @@
             <tr>
                 {# The column shows the date; the tooltip carries the time of
                    day, which is what separates a batch sent in one second. #}
-                <td style="white-space:nowrap;"
+                <td class="text-nowrap"
                     title="{{ r.creation_time | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}">
                     {{ r.creation_time | fmt_date }}
                 </td>
@@ -76,14 +76,14 @@
                     </div>
                     {% endif %}
                 </td>
-                <td class="small">{{ r.subject or '—' }}</td>
+                <td class="small cell-truncate" title="{{ r.subject or '' }}">{{ r.subject or '—' }}</td>
                 <td>
                     {{ project_link(r.projcode, can_view_projects, admin=True, compact=True) }}
                 </td>
                 <td class="text-muted small">{{ r.requested_by }}</td>
-                <td class="text-end" style="white-space:nowrap;">
-                    <button class="btn btn-sm btn-outline-secondary"
-                            title="Delivery detail"
+                <td class="text-end text-nowrap">
+                    <button class="btn btn-row" type="button"
+                            title="Delivery detail" aria-label="Delivery detail"
                             hx-get="{{ url_for('admin_dashboard.notification_detail', log_id=r.notification_log_id) }}"
                             hx-target="#auditDetailsModalBody"
                             hx-swap="innerHTML"

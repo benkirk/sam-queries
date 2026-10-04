@@ -21,8 +21,8 @@
 <div class="d-flex flex-wrap gap-2 mb-3">
     {{ status_badge(row.status) }}
     <span class="badge bg-secondary">{{ row.kind }}</span>
-    <span class="badge bg-light text-dark">{{ row.channel }}</span>
-    <span class="badge bg-light text-dark">via {{ row.transport }}</span>
+    <span class="badge bg-secondary">{{ row.channel }}</span>
+    <span class="badge bg-secondary">via {{ row.transport }}</span>
 </div>
 
 <dl class="config-stats small mb-3">
@@ -32,7 +32,7 @@
         <span class="text-muted">— {{ row.recipient_name }}</span>
         {% endif %}
         {% if row.recipient_role %}
-        <span class="badge bg-light text-dark ms-1">{{ row.recipient_role }}</span>
+        <span class="badge bg-secondary ms-1">{{ row.recipient_role }}</span>
         {% endif %}
     </dd>
 

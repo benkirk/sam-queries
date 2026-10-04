@@ -4,33 +4,31 @@
 {# `hours`, when set, flows through into the row-click drill-down URL so the
    user's chosen time range survives sideways navigation between queues. #}
 <div class="table-responsive">
-    <table class="table table-sm table-bordered queue-table">
-        <thead class="thead-dark">
+    <table class="table table-sm align-middle queue-table">
+        <thead class="table-subtle">
             <tr>
                 <th>Queue</th>
-                <th>Users</th>
-                <th colspan="3" class="text-center">Jobs
+                <th class="col-num">Users</th>
+                <th colspan="3" class="text-center col-group-start">Jobs
                     {{ help_icon(g_queue_states(), rich=True, title='Scheduler states', placement='top') }}
                 </th>
-                <th colspan="3" class="text-center">Cores</th>
-                {% if show_gpus %}<th colspan="3" class="text-center">GPUs</th>{% endif %}
-                <th>Nodes</th>
+                <th colspan="3" class="text-center col-group-start">Cores</th>
+                {% if show_gpus %}<th colspan="3" class="text-center col-group-start">GPUs</th>{% endif %}
+                <th class="col-num col-group-start">Nodes</th>
             </tr>
-        </thead>
-        <thead class="thead-light">
             <tr>
                 <th></th>
                 <th></th>
-                <th>Running</th>
-                <th>Pending</th>
-                <th>Held</th>
-                <th>Running</th>
-                <th>Pending</th>
-                <th>Held</th>
-                {% if show_gpus %}<th>Running</th>{% endif %}
-                {% if show_gpus %}<th>Pending</th>{% endif %}
-                {% if show_gpus %}<th>Held</th>{% endif %}
-                <th>Allocated</th>
+                <th class="col-num col-group-start">Running</th>
+                <th class="col-num">Pending</th>
+                <th class="col-num">Held</th>
+                <th class="col-num col-group-start">Running</th>
+                <th class="col-num">Pending</th>
+                <th class="col-num">Held</th>
+                {% if show_gpus %}<th class="col-num col-group-start">Running</th>{% endif %}
+                {% if show_gpus %}<th class="col-num">Pending</th>{% endif %}
+                {% if show_gpus %}<th class="col-num">Held</th>{% endif %}
+                <th class="col-num col-group-start">Allocated</th>
             </tr>
         </thead>
         <tbody>
@@ -39,17 +37,17 @@
             {% if hours %}{% set _ = _qh_kwargs.update({'hours': hours}) %}{% endif %}
             <tr class="clickable-row" data-action="navigate" data-href="{{ url_for('status_dashboard.queue_history', **_qh_kwargs) }}" title="Click to view history for {{ queue.queue_name }}">
                 <td><strong>{{ queue.queue_name }}</strong></td>
-                <td>{{ queue.active_users | fmt_number }}</td>
-                <td>{{ queue.running_jobs | fmt_number }}</td>
-                <td>{{ queue.pending_jobs | fmt_number }}</td>
-                <td>{{ queue.held_jobs | fmt_number }}</td>
-                <td>{{ queue.cores_allocated | fmt_number }}</td>
-                <td>{{ queue.cores_pending | fmt_number }}</td>
-                <td>{{ queue.cores_held | fmt_number }}</td>
-                {% if show_gpus %}<td>{{ queue.gpus_allocated | fmt_number }}</td>{% endif %}
-                {% if show_gpus %}<td>{{ queue.gpus_pending | fmt_number }}</td>{% endif %}
-                {% if show_gpus %}<td>{{ queue.gpus_held | fmt_number }}</td>{% endif %}
-                <td>{{ queue.nodes_allocated | fmt_number }}</td>
+                <td class="col-num">{{ queue.active_users | fmt_number }}</td>
+                <td class="col-num col-group-start">{{ queue.running_jobs | fmt_number }}</td>
+                <td class="col-num">{{ queue.pending_jobs | fmt_number }}</td>
+                <td class="col-num">{{ queue.held_jobs | fmt_number }}</td>
+                <td class="col-num col-group-start">{{ queue.cores_allocated | fmt_number }}</td>
+                <td class="col-num">{{ queue.cores_pending | fmt_number }}</td>
+                <td class="col-num">{{ queue.cores_held | fmt_number }}</td>
+                {% if show_gpus %}<td class="col-num col-group-start">{{ queue.gpus_allocated | fmt_number }}</td>{% endif %}
+                {% if show_gpus %}<td class="col-num">{{ queue.gpus_pending | fmt_number }}</td>{% endif %}
+                {% if show_gpus %}<td class="col-num">{{ queue.gpus_held | fmt_number }}</td>{% endif %}
+                <td class="col-num col-group-start">{{ queue.nodes_allocated | fmt_number }}</td>
             </tr>
             {% endfor %}
         </tbody>

@@ -1,10 +1,14 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/modals.html' import modal_title %}
 {% from 'dashboards/fragments/form_fields.html' import text_field, number_field, date_field, readonly_display with context %}
 {#
   htmx: Edit Queue Form (loaded into #editQueueFormContainer)
   Queue name, resource, and start_date are read-only.
   Editable: description, wall_clock_hours_limit, end_date.
 #}
+
+{{ modal_title('editQueueModalLabel', 'Edit ' ~ queue.queue_name, 'list-ol',
+               meta=queue.resource.resource_name if queue.resource else none) }}
 
 {% call htmx_form(
     url_for('admin_dashboard.htmx_queue_edit', queue_id=queue.queue_id),
@@ -13,22 +17,8 @@
     is_edit=True,
     errors=errors
 ) %}
-        <div class="row mb-3">
-            <div class="col-md-6">
-                {{ readonly_display('Queue Name', queue.queue_name, muted=False, strong=True) }}
-            </div>
-            <div class="col-md-6">
-                {{ readonly_display('Resource', queue.resource.resource_name if queue.resource else '—') }}
-            </div>
-        </div>
 
-        <div class="mb-3">
-            <label class="form-label">Start Date</label>
-            <div class="form-control-plaintext text-muted">
-                {{ queue.start_date | fmt_date }}
-                <small>(cannot be changed)</small>
-            </div>
-        </div>
+        <div class="mb-3">{{ readonly_display('Start Date', queue.start_date | fmt_date) }}</div>
 
         {{ text_field('description', 'Description',
                       optional_text='',
