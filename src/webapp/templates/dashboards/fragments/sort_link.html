@@ -23,12 +23,12 @@
     <a class="text-decoration-none {{ align }}" href="#"
        data-action="set-sort-submit" data-form-id="{{ form_id }}"
        data-sort-by="{{ col }}" data-sort-dir="{{ next_dir }}">
-        {{ label }}
-        {% if is_active %}
+        {{ label }}&nbsp;
+        {%- if is_active -%}
             <i class="fa-solid fa-caret-{{ 'up' if sort['sort_dir'] == 'asc' else 'down' }} ms-1"></i>
-        {% else %}
+        {%- else -%}
             <i class="fa-solid fa-sort text-muted small ms-1"></i>
-        {% endif %}
+        {%- endif %}
     </a>
 {% else %}
     {{ label }}
@@ -46,16 +46,16 @@
        hx-target="#{{ target_id }}"
        hx-include="#{{ form_id }}"
        hx-swap="innerHTML">
-        {{ label }}
-        {% if is_active %}
-            {% if sort['sort_dir'] == 'asc' %}
+        {{ label }}&nbsp;
+        {%- if is_active -%}
+            {%- if sort['sort_dir'] == 'asc' -%}
                 <i class="fa-solid fa-caret-up ms-1"></i>
-            {% else %}
+            {%- else -%}
                 <i class="fa-solid fa-caret-down ms-1"></i>
-            {% endif %}
-        {% else %}
+            {%- endif -%}
+        {%- else -%}
             <i class="fa-solid fa-sort text-muted small ms-1"></i>
-        {% endif %}
+        {%- endif %}
     </a>
 {% else %}
     {{ label }}

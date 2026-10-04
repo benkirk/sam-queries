@@ -290,8 +290,10 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
     font-variant-numeric: tabular-nums;
 }
 
-/* A two-word header over narrow figures: wraps at its space so the column fits the figures. */
-.table th.th-stack {
+/* A multi-word header wraps at its spaces when its column's figures are narrower than it.
+   A sort icon joins its last word with &nbsp; (sort_link.html, the ::after arrows). */
+.table th.col-shrink,
+.table th.col-num {
     white-space: normal;
 }
 
