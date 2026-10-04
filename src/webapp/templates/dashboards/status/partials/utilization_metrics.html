@@ -1,29 +1,14 @@
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
 {% from 'dashboards/fragments/glossary.html' import g_utilization with context %}
-{# Busy compute is the goal, so the bars are one brand fill (.progress-bar.util), not a traffic light. #}
-{% macro _util_card(col_width, label, pct, used, total, unit, help='') %}
-<div class="col-md-{{ col_width }}">
-    <div class="metric-card">
-        <h6>{{ label }} Utilization {{ help }}</h6>
-        <div class="value">{{ (pct | default(0, true)) | round(1) }}%</div>
-        <div class="progress mt-2">
-            <div class="progress-bar util" style="width: {{ pct | default(0, true) }}%"></div>
-        </div>
-        {% if used is defined and total is defined %}
-        <div class="text-muted small mt-1">{{ used | fmt_number }} / {{ total | fmt_number }} {{ unit }}</div>
-        {% endif %}
-    </div>
-</div>
-{% endmacro %}
-
+{% from 'dashboards/status/partials/metric_card.html' import util_card %}
 {% macro utilization_metrics(status, show_memory=true, show_gpus=true, show_viz=false) %}
 {% set num_cols = 1 + (1 if show_gpus else 0) + (1 if show_viz else 0) + (1 if show_memory else 0) %}
-{% set w = 12 // num_cols %}
+{% set col = 'col-md-%d' % (12 // num_cols) %}
 <div class="row mb-4">
-    {{ _util_card(w, 'CPU', status.cpu_utilization_percent, status.cpu_cores_allocated, status.cpu_cores_total, 'cores',
-                  help_icon(g_utilization(), rich=True, title='Utilization', placement='top')) }}
-    {% if show_gpus %}{{ _util_card(w, 'GPU', status.gpu_utilization_percent, status.gpu_count_allocated, status.gpu_count_total, 'GPUs') }}{% endif %}
-    {% if show_viz %}{{ _util_card(w, 'VIZ', status.viz_utilization_percent, status.viz_count_allocated, status.viz_count_total, 'VIZ GPUs') }}{% endif %}
-    {% if show_memory %}{{ _util_card(w, 'Memory', status.memory_utilization_percent, status.memory_allocated_gb, status.memory_total_gb, 'GB') }}{% endif %}
+    <div class="{{ col }}">{{ util_card('CPU Utilization ' ~ help_icon(g_utilization(), rich=True, title='Utilization', placement='top'),
+                                        status.cpu_utilization_percent, status.cpu_cores_allocated, status.cpu_cores_total, 'cores') }}</div>
+    {% if show_gpus %}<div class="{{ col }}">{{ util_card('GPU Utilization', status.gpu_utilization_percent, status.gpu_count_allocated, status.gpu_count_total, 'GPUs') }}</div>{% endif %}
+    {% if show_viz %}<div class="{{ col }}">{{ util_card('VIZ Utilization', status.viz_utilization_percent, status.viz_count_allocated, status.viz_count_total, 'VIZ GPUs') }}</div>{% endif %}
+    {% if show_memory %}<div class="{{ col }}">{{ util_card('Memory Utilization', status.memory_utilization_percent, status.memory_allocated_gb, status.memory_total_gb, 'GB') }}</div>{% endif %}
 </div>
 {% endmacro %}

@@ -53,6 +53,7 @@
     padding: 1rem;
     margin-bottom: 1rem;
     border-radius: var(--radius-sm);
+    height: calc(100% - 1rem);   /* tiles in one row share a height */
 }
 
 .metric-card h6 {
@@ -137,15 +138,19 @@
     white-space: nowrap;
 }
 
-.reservation-now::before {
-    content: "";
+/* A small status dot before a neutral label: the hue says what, the words say it too. */
+.status-dot {
     display: inline-block;
     width: 0.5rem;
     height: 0.5rem;
     margin-right: 0.3rem;
     border-radius: 50%;
-    background-color: var(--status-warning);
+    background-color: var(--status-info);
 }
+
+.status-dot.is-success { background-color: var(--status-success); }
+.status-dot.is-warning { background-color: var(--status-warning); }
+.status-dot.is-danger { background-color: var(--status-danger); }
 
 /* ===================================================================
    Login Node Load Stack

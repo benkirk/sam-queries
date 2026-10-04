@@ -35,7 +35,7 @@
                 {% if show_system %}<td class="col-shrink">{{ res.system_name | title }}</td>{% endif %}
                 <td>
                     <span class="fw-semibold">{{ res.reservation_name }}</span>
-                    {% if res.is_active %}<span class="reservation-now">in progress</span>{% endif %}
+                    {% if res.is_active %}<span class="reservation-now"><span class="status-dot is-warning"></span>in progress</span>{% endif %}
                     {% if res.description or (res.partition and res.partition != 'pbs-default') %}
                     <div class="small text-muted">
                         {% if res.description %}<span class="font-monospace">{{ res.description }}</span>{% endif %}
