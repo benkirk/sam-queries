@@ -35,10 +35,12 @@ from sam.queries.charges import (
 )
 from sam.queries.usage_cache import (
     cached_allocation_burn, cached_allocation_usage, cached_allocation_usage_rows,
-    cached_charges_by_facility_type,
+    cached_charges_by_facility_type, cached_charges_by_project,
     purge_usage_cache, usage_cache_info,
 )
+from sam import fmt
 from sam.queries.lookups import find_project_by_code
+from sam.queries.projects import project_panels
 from sam.export import Column, build_workbook
 from sam.schemas.forms import CreateChargeAdjustmentForm
 from flask import abort
@@ -53,6 +55,8 @@ from sam.resources.facilities import Facility
 from sam.resources.resources import Resource
 from ..charts import (
     generate_allocation_sunburst,
+    generate_panel_sunburst,
+    panel_rows,
     generate_pace_chart_matplotlib,
 )
 from ..charts.theme import facility_slots
@@ -823,6 +827,68 @@ def htmx_used_sunburst(resource_name):
         chart_dom_id='used-sunburst-' + resource_name.replace(' ', '_'),
         selector_kwargs=selector_kwargs,
     )
+
+
+#: The expand modal's measures: the Annual rate (or Volume) ring, or the Used ring.
+_EXPAND_MEASURES = ('alloc', 'used')
+
+
+@bp.route('/htmx/sunburst-expanded/<resource_name>')
+@login_required
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
+def htmx_sunburst_expanded(resource_name):
+    """The expand modal: one sunburst's measure per project, by facility and panel.
+    Rates and volumes count root allocations only; HPC/DAV usage is the Used ring's window."""
+    measure = request.args.get('measure')
+    if measure not in _EXPAND_MEASURES:
+        measure = 'alloc'
+    active_at, requested_facilities, selected_facilities = _fragment_scope()
+    storage = _resource_type(resource_name) in _STORAGE_RESOURCE_TYPES
+    selector_kwargs = {'active_at': active_at.strftime('%Y-%m-%d')}
+    if requested_facilities:
+        selector_kwargs['facilities'] = requested_facilities
+
+    windows, caption = [], ''
+    if measure == 'used' and not storage:
+        days = request.args.get('days', type=int)
+        if days not in _USED_WINDOW_DAYS:
+            days = _USED_WINDOW_DAYS[-1]
+        charges = cached_charges_by_project(
+            db.session, resource_names=[resource_name],
+            start=active_at - timedelta(days=days - 1), end=active_at)
+        values = {code: c * 365 / days for code, c in charges.items()}
+        center, what = 'Use\nrate', 'annual use rate'
+        windows = [('1 yr' if d == 365 else f'{d}d',
+                    url_for('allocations_dashboard.htmx_sunburst_expanded', resource_name=resource_name,
+                            measure='used', days=d, **selector_kwargs), d == days)
+                   for d in _USED_WINDOW_DAYS]
+        caption = (f'Charges in the {"year" if days == 365 else f"{days} days"} to '
+                   f'{fmt.date_str(active_at)}, at an annual rate.')
+    else:
+        rows = cached_allocation_usage(
+            session=db.session, resource_name=[resource_name], facility_name=None,
+            allocation_type=None, projcode=None, active_only=True, active_at=active_at,
+            root_only=True)
+        key = 'total_used' if measure == 'used' else 'total_amount' if storage else 'annualized_rate'
+        values = {}
+        for r in filter_rows_by_facility(rows, selected_facilities):
+            values[r['projcode']] = values.get(r['projcode'], 0.0) + (r.get(key) or 0.0)
+        center, what = {('alloc', True): ('Volume', 'data volume'),
+                        ('alloc', False): ('Annual\nrate', 'annualized allocation rate'),
+                        ('used', True): ('Used', 'usage')}[measure, storage]
+        caption = 'Root allocations only.'
+
+    panels = project_panels(db.session, values)
+    if selected_facilities is not None:
+        allowed = set(selected_facilities)
+        values = {code: v for code, v in values.items() if panels.get(code, (0, None))[1] in allowed}
+    slots = facility_slots(fid for fid, _, active in _facility_index() if active)
+    chart_svg = generate_panel_sunburst(panel_rows(values, panels, slots), center=center,
+                                        layout=read_layout(), theme=read_theme())
+    return render_template(
+        'dashboards/fragments/chart_expanded.html', chart_svg=chart_svg,
+        title=f'{resource_name}: {what} by facility, panel and project',
+        windows=windows, caption=caption)
 
 
 def _calendar_rows(resource_name, active_at, selected_facilities):

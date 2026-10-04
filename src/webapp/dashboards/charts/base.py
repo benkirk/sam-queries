@@ -217,7 +217,7 @@ class BaseChart:
             patch.set_url(url)
             text.set_url(url)
 
-    def draw_table_legend(self, ax, rows, colors, urls, layout, theme) -> bool:
+    def draw_table_legend(self, ax, rows, colors, urls, layout, theme, indents=None) -> bool:
         """Legend as aligned columns: swatch + name left, numbers right-aligned so
         they compare down the column. Columns after the second are drawn muted; a
         row's URL rides its swatch and every cell. Returns False, drawing nothing,
@@ -231,15 +231,18 @@ class BaseChart:
             area._text.set_url(url)
             return area
 
-        def name(text, color, url):
-            swatch = DrawingArea(size * 1.4, size, 0, 0)
-            rect = Rectangle((0, size * 0.2), size * 1.4, size * 0.6, facecolor=color, edgecolor='none')
+        def name(text, color, url, indent):
+            swatch = DrawingArea(size * (1.4 + indent), size, 0, 0)
+            rect = Rectangle((size * indent, size * 0.2), size * 1.4, size * 0.6,
+                             facecolor=color, edgecolor='none')
             rect.set_url(url)
             swatch.add_artist(rect)
             return HPacker(children=[swatch, cell(text, url)], sep=size * 0.6, align='center')
 
         sep = size * 0.55
-        columns = [VPacker(children=[name(r[0], c, u) for r, c, u in zip(rows, colors, urls)],
+        indents = indents or [0] * len(rows)
+        columns = [VPacker(children=[name(r[0], c, u, i)
+                                     for r, c, u, i in zip(rows, colors, urls, indents)],
                            sep=sep, align='left')]
         for j in range(1, len(rows[0])):
             columns.append(VPacker(children=[cell(r[j], u, alpha=1.0 if j == 1 else 0.7)

@@ -1,0 +1,20 @@
+{# Fullscreen shell for an expanded chart (the facility / panel / project sunburst).
+   Openers live on the card: data-bs-toggle + hx-get -> #chartExpandModalBody. The
+   body fragment (fragments/chart_expanded.html) sets the title out of band. #}
+<div class="modal fade" id="chartExpandModal" tabindex="-1"
+     aria-labelledby="chartExpandModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h5 class="modal-title" id="chartExpandModalTitle">Facilities, panels and projects</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="chartExpandModalBody">
+                <div class="text-center text-muted py-5" role="status" data-chart-expand-loading>
+                    <i class="fa-solid fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
+                    <p class="mt-2">Loading…</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

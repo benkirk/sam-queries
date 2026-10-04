@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from factories import make_account, make_project, make_resource
 from factories.projects import make_charge_adjustment
 from factories.summaries import make_comp_charge_summary
-from sam.queries.charges import get_charges_by_facility_type
+from sam.queries.charges import get_charges_by_facility_type, get_charges_by_project
 
 END = datetime(2026, 9, 30)
 
@@ -48,3 +48,18 @@ def test_project_without_a_type_groups_under_none(session):
 
 def test_no_resources(session):
     assert get_charges_by_facility_type(session, [], END, END) == []
+
+
+def test_by_project_splits_what_by_facility_type_sums(session):
+    resource, a = _setup(session)
+    b = make_account(session, project=make_project(session, facility_name='WNA'), resource=resource)
+    make_comp_charge_summary(session, account=a, activity_date=END, charges=4.0)
+    make_comp_charge_summary(session, account=b, activity_date=END, charges=6.0)
+    make_charge_adjustment(session, account=b, amount=-1.0, adjustment_date=END)
+    by_project = get_charges_by_project(session, [resource.resource_name], END - timedelta(days=1), END)
+    assert by_project == {a.project.projcode: 4.0, b.project.projcode: 5.0}
+    assert sum(by_project.values()) == sum(_totals(session, resource).values())
+
+
+def test_by_project_no_resources(session):
+    assert get_charges_by_project(session, [], END, END) == {}

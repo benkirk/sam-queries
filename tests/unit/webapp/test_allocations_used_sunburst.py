@@ -68,7 +68,8 @@ def test_ninety_days_annualizes(auth_client, captured):
 def test_facility_filter_narrows_and_survives_the_pills(auth_client, captured):
     body = auth_client.get(f'{_URL}?facilities=UNIV').get_data(as_text=True)
     assert [r['facility'] for r in captured['rows']] == ['UNIV']
-    assert body.count('facilities=UNIV') == 4
+    assert len(re.findall(r'used-sunburst/Derecho\?[^"]*facilities=UNIV', body)) == 4
+    assert re.search(r'sunburst-expanded/Derecho\?[^"]*facilities=UNIV', body)
 
 
 def test_unauthenticated_redirects(client):

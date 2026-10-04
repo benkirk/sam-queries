@@ -510,16 +510,14 @@ def get_user_breakdown_for_project(session, projcode: str,
     ]
 
 
-def get_charges_by_facility_type(session: Session, resource_names: List[str],
-                                 start: datetime, end: datetime) -> List[Dict[str, Any]]:
-    """``[{resource, facility, allocation_type, charges}]`` over ``[start, end]``, adjustments included.
+def _window_charge_totals(session: Session, resource_names: List[str],
+                          start: datetime, end: datetime, *group_cols) -> Dict[tuple, float]:
+    """``{group key: charges}`` over ``[start, end]`` from comp + dav summaries and adjustments.
 
     Not clipped to allocation dates: an account spans its project's renewals, so a
     window reads the same either side of a reset. Projects group by their current
     facility and type; a project with no type has facility and type ``None``.
     """
-    if not resource_names:
-        return []
     lo = datetime.combine(start.date(), datetime.min.time())
     hi = datetime.combine(end.date(), datetime.min.time()) + timedelta(days=1)   # half-open: adjustment_date is a DateTime
     totals: Dict[tuple, float] = {}
@@ -527,8 +525,7 @@ def get_charges_by_facility_type(session: Session, resource_names: List[str],
                              (DavChargeSummary.charges, DavChargeSummary.activity_date),
                              (ChargeAdjustment.amount, ChargeAdjustment.adjustment_date)):
         source = date_col.class_
-        rows = session.query(Resource.resource_name, Facility.facility_name,
-                             AllocationType.allocation_type, func.sum(amount))\
+        rows = session.query(*group_cols, func.sum(amount))\
             .select_from(source)\
             .join(Account, source.account_id == Account.account_id)\
             .join(Resource, Account.resource_id == Resource.resource_id)\
@@ -538,13 +535,31 @@ def get_charges_by_facility_type(session: Session, resource_names: List[str],
             .outerjoin(Facility, Panel.facility_id == Facility.facility_id)\
             .filter(Resource.resource_name.in_(resource_names),
                     date_col >= lo, date_col < hi)\
-            .group_by(Resource.resource_name, Facility.facility_name, AllocationType.allocation_type)\
+            .group_by(*group_cols)\
             .all()
-        for resource, facility, alloc_type, total in rows:
-            key = (resource, facility, alloc_type)
-            totals[key] = totals.get(key, 0.0) + float(total or 0)
+        for *key, total in rows:
+            totals[tuple(key)] = totals.get(tuple(key), 0.0) + float(total or 0)
+    return totals
+
+
+def get_charges_by_facility_type(session: Session, resource_names: List[str],
+                                 start: datetime, end: datetime) -> List[Dict[str, Any]]:
+    """``[{resource, facility, allocation_type, charges}]`` over ``[start, end]``, adjustments included."""
+    if not resource_names:
+        return []
+    totals = _window_charge_totals(session, resource_names, start, end, Resource.resource_name,
+                                   Facility.facility_name, AllocationType.allocation_type)
     return [{'resource': r, 'facility': f, 'allocation_type': t, 'charges': c}
             for (r, f, t), c in totals.items()]
+
+
+def get_charges_by_project(session: Session, resource_names: List[str],
+                           start: datetime, end: datetime) -> Dict[str, float]:
+    """``{projcode: charges}`` over ``[start, end]``: `get_charges_by_facility_type` per project."""
+    if not resource_names:
+        return {}
+    totals = _window_charge_totals(session, resource_names, start, end, Project.projcode)
+    return {code: c for (code,), c in totals.items()}
 
 
 def get_charges_by_projcode(

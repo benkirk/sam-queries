@@ -446,3 +446,19 @@ def test_allocations_pace_route(auth_client, route_count_queries):
     """Pace reads the calendar's rows and month sums: the same statements as Burn."""
     _route_within("allocations_pace_route", auth_client, route_count_queries,
                   '/allocations/htmx/pace-chart/Derecho?active_at=2026-10-03&sort_by=size')
+
+
+# ---------------------------------------------------------------------------
+# Sunburst expand modal: one usage (or window-charge) fetch, one project_panels
+# query and the facility index, never a per-project query.
+# ---------------------------------------------------------------------------
+
+def test_allocations_sunburst_expanded_route(auth_client, route_count_queries):
+    _route_within("allocations_sunburst_expanded_route", auth_client, route_count_queries,
+                  '/allocations/htmx/sunburst-expanded/Derecho?active_at=2026-10-03&measure=alloc')
+
+
+def test_allocations_sunburst_expanded_used_route(auth_client, route_count_queries):
+    _route_within("allocations_sunburst_expanded_used_route", auth_client, route_count_queries,
+                  '/allocations/htmx/sunburst-expanded/Derecho?active_at=2026-10-03'
+                  '&measure=used&days=90')

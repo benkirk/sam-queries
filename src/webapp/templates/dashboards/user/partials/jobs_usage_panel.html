@@ -3,6 +3,7 @@
           JOBS_METRIC_NOUNS %}
 {% from 'dashboards/fragments/help.html' import term with context %}
 {% from 'dashboards/fragments/glossary.html' import g_cpu_hours with context %}
+{% from 'dashboards/fragments/chart_expand.html' import expand_button %}
 {#
   Usage-rollup fragment — a per-entity pie + drillable rows. Serves BOTH the
   By User and By Project tabs; they were byte-for-byte the same panel apart
@@ -95,7 +96,13 @@
        clickable (set_url sentinels -> svg-chart-links.js) and expand the
        matching row below. #}
     {% if pie_svg %}
-    <div class="d-flex justify-content-center mb-3 jobs-user-pie">
+    <div class="d-flex justify-content-center mb-3 jobs-user-pie"
+         {% if facility_toggle %}data-chart-expand{% endif %}>
+      {% if facility_toggle %}
+      {{ expand_button(url_for('jobs.by_project_expanded_machine_fragment', machine=machine,
+                               metric=metric),
+                       include='#jobs-' ~ entity.form_key ~ '-params-' ~ target_id) }}
+      {% endif %}
       {{ pie_svg | safe }}
     </div>
     {% endif %}
