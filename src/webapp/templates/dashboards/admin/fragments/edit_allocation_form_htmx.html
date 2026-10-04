@@ -32,7 +32,7 @@
 ) %}
   {% if not allocation.is_active %}<p class="mb-2">{{ state_tag('expired' if allocation.end_date else 'inactive') }}</p>{% endif %}
 
-  <ul class="alloc-facts">
+  <ul class="modal-facts">
   {% if allocation.is_inheriting %}
     <li>
       <i class="fa-solid fa-lock" aria-hidden="true"></i>

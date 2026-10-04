@@ -38,7 +38,7 @@
     submit_class='btn-outline-success',
     errors=errors
 ) %}
-  <ul class="alloc-facts">
+  <ul class="modal-facts">
     <li>
       {{ term('Unallocated', g_unallocated(), rich=True, title='Unallocated remainder') }}:
       <strong>{{ frontier.residual | fmt_number }}</strong> of {{ allocation.amount | fmt_number }}

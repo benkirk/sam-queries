@@ -1203,8 +1203,8 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     color: var(--text-secondary);
 }
 
-/* Edit allocation: the allocation's relationships as one quiet list, not an alert apiece. */
-.alloc-facts {
+/* A modal's facts as one quiet panel (a list, or a block), not an alert apiece. */
+.modal-facts {
     list-style: none;
     padding: 0.625rem 0.875rem;
     margin: 0 0 1rem;
@@ -1212,11 +1212,11 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     border-left: 3px solid var(--border-default);
 }
 
-.alloc-facts li + li {
+.modal-facts li + li {
     margin-top: 0.375rem;
 }
 
-.alloc-facts li > .fa-solid {
+.modal-facts li > .fa-solid {
     width: 1.25em;
     color: var(--text-secondary);
 }
