@@ -171,10 +171,10 @@ not a usage threshold. Usage to the left of this line means you're under pace.
 
 {% macro g_usage_bar() -%}
 The filled portion is consumed usage against the allocated total. On a
-<em>shared</em> allocation, the lighter inner segment (and "(N yours)") is this
-project's own share of a pool drawn down by sibling projects too. The vertical
-marker shows how far through the allocation period today falls — a pacing
-reference, not a threshold.
+<em>shared</em> allocation it is this project's own use of a pool that sibling
+projects draw down too. The vertical marker, on compute allocations, shows how
+far through the allocation period today falls — a pacing reference, not a
+threshold.
 {%- endmacro %}
 
 
