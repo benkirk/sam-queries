@@ -19,6 +19,7 @@ from sqlalchemy import (
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from ..base import ActiveFlagMixin, Base, SessionMixin
+from sam.text import strip_or_none
 
 
 #: ``account_request.state``. Fulfilled is deliberately not a state: a row is
@@ -41,16 +42,6 @@ CREATED_BY_SWEEP = 'task:xras_sweep'
 EVENT_CODE_RE = re.compile(r'^[A-Z0-9][A-Z0-9-]{2,31}$')
 
 _UNSET = object()
-
-
-def _clean(value, *, width: Optional[int] = None) -> Optional[str]:
-    """Strip; empty becomes None; optionally clip to a column width."""
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    return text[:width] if width else text
 
 
 #----------------------------------------------------------------------------
@@ -121,7 +112,7 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
                opens_at=None, closes_at=None, listed=False, invite_only=False,
                clock=None):
         """Flushes, does not commit; the caller owns the transaction."""
-        name = _clean(name, width=128)
+        name = strip_or_none(name, width=128)
         if not name:
             raise ValueError('an event needs a name')
         if not isinstance(accounts_needed_by, date):
@@ -132,7 +123,7 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
         event = cls(
             event_code=cls.normalize_code(event_code),
             name=name,
-            instructions=_clean(instructions),
+            instructions=strip_or_none(instructions),
             project_id=int(project_id),
             extra_sponsor_user_id=extra_sponsor_user_id,
             accounts_needed_by=accounts_needed_by,
@@ -140,7 +131,7 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
             closes_at=closes_at,
             listed=bool(listed),
             invite_only=bool(invite_only),
-            created_by=_clean(created_by, width=35),
+            created_by=strip_or_none(created_by, width=35),
             creation_time=now,
             modified_time=now,
         )
@@ -155,12 +146,12 @@ class AccountRequestEvent(Base, ActiveFlagMixin, SessionMixin):
                listed=None, invite_only=None):
         """Sentinel-gated so a caller can clear the window, sponsor or instructions."""
         if name is not None:
-            cleaned = _clean(name, width=128)
+            cleaned = strip_or_none(name, width=128)
             if not cleaned:
                 raise ValueError('an event needs a name')
             self.name = cleaned
         if instructions is not _UNSET:
-            self.instructions = _clean(instructions)
+            self.instructions = strip_or_none(instructions)
         if accounts_needed_by is not None:
             self.accounts_needed_by = accounts_needed_by
         if opens_at is not _UNSET:
@@ -331,45 +322,45 @@ class AccountRequest(Base, SessionMixin):
                 f"expected one of {', '.join(ACCOUNT_REQUEST_PURPOSES)}")
         if purpose == 'enrollment' and project_id is None:
             raise ValueError('an enrollment request needs a project_id')
-        if purpose == 'submission' and not _clean(xras_username):
+        if purpose == 'submission' and not strip_or_none(xras_username):
             raise ValueError('a submission request needs an xras_username')
         if purpose == 'standalone' and project_id is not None:
             raise ValueError('a standalone request carries no project_id')
-        address = _clean(email, width=255)
+        address = strip_or_none(email, width=255)
         if not address or '@' not in address:
             raise ValueError(f'not an email address: {email!r}')
-        first, last = _clean(first_name, width=64), _clean(last_name, width=64)
+        first, last = strip_or_none(first_name, width=64), strip_or_none(last_name, width=64)
         if not first or not last:
             raise ValueError('first_name and last_name are required')
-        creator = _clean(created_by, width=35)
+        creator = strip_or_none(created_by, width=35)
         if not creator:
             raise ValueError('created_by is required')
         now = clock or datetime.now()
-        placeholder = _clean(xras_username, width=64)
+        placeholder = strip_or_none(xras_username, width=64)
         row = cls(
             email=address.lower(),
             first_name=first,
-            middle_name=_clean(middle_name, width=64),
+            middle_name=strip_or_none(middle_name, width=64),
             last_name=last,
-            organization=_clean(organization, width=128),
-            academic_status=_clean(academic_status, width=64),
-            residence_country=_clean(residence_country, width=64),
-            orcid=_clean(orcid, width=19),
-            phone=_clean(phone, width=32),
-            desired_username=_clean(desired_username, width=64),
+            organization=strip_or_none(organization, width=128),
+            academic_status=strip_or_none(academic_status, width=64),
+            residence_country=strip_or_none(residence_country, width=64),
+            orcid=strip_or_none(orcid, width=19),
+            phone=strip_or_none(phone, width=32),
+            desired_username=strip_or_none(desired_username, width=64),
             purpose=purpose,
             project_id=project_id,
             sponsor_user_id=sponsor_user_id,
             event_id=event_id,
             xras_username=placeholder.lower() if placeholder else None,
             state='submitted',
-            comment=_clean(comment),
-            purpose_note=_clean(purpose_note, width=500),
+            comment=strip_or_none(comment),
+            purpose_note=strip_or_none(purpose_note, width=500),
             created_by=creator,
             verified_at=now if verified_by else None,
-            verified_by=_clean(verified_by, width=35),
-            source_ip=_clean(source_ip, width=45),
-            eula_sha=_clean(eula_sha, width=40) if eula_accepted_at else None,
+            verified_by=strip_or_none(verified_by, width=35),
+            source_ip=strip_or_none(source_ip, width=45),
+            eula_sha=strip_or_none(eula_sha, width=40) if eula_accepted_at else None,
             eula_accepted_at=eula_accepted_at,
             creation_time=now,
             modified_time=now,
@@ -387,7 +378,7 @@ class AccountRequest(Base, SessionMixin):
     def claim(self, by):
         self._require_open('claim')
         self.state = 'claimed'
-        self.assignee = _clean(by, width=35)
+        self.assignee = strip_or_none(by, width=35)
         self.session.flush()
         return self
 
@@ -400,12 +391,12 @@ class AccountRequest(Base, SessionMixin):
 
     def _close(self, state: str, verb: str, by, reason, clock=None):
         self._require_open(verb)
-        cleaned = _clean(reason, width=255)
+        cleaned = strip_or_none(reason, width=255)
         if not cleaned:
             raise ValueError(f'a reason is required to {verb} a request')
         self.state = state
         self.assignee = None
-        self.closed_by = _clean(by, width=35)
+        self.closed_by = strip_or_none(by, width=35)
         self.closed_at = clock or datetime.now()
         self.closed_reason = cleaned
         self.session.flush()
@@ -449,7 +440,7 @@ class AccountRequest(Base, SessionMixin):
     def mark_verified(self, by, clock=None):
         """``by`` is ``'self'`` for the mail round trip, else the vouching operator."""
         self.verified_at = clock or datetime.now()
-        self.verified_by = _clean(by, width=35)
+        self.verified_by = strip_or_none(by, width=35)
         self.verify_code_hash = None
         self.verify_expires_at = None
         self.session.flush()
@@ -489,14 +480,14 @@ class AccountRequest(Base, SessionMixin):
             raise ValueError('cannot complete a fulfilled request')
         for key, width in self.INVITE_FIELDS.items():
             if key in fields:
-                setattr(self, key, _clean(fields[key], width=width))
+                setattr(self, key, strip_or_none(fields[key], width=width))
         if not self.first_name or not self.last_name:
             raise ValueError('first_name and last_name are required')
         self.completed_at = clock or datetime.now()
-        self.eula_sha = _clean(eula_sha, width=40)
+        self.eula_sha = strip_or_none(eula_sha, width=40)
         self.eula_accepted_at = accepted_at
         if source_ip:
-            self.source_ip = _clean(source_ip, width=45)
+            self.source_ip = strip_or_none(source_ip, width=45)
         self.session.flush()
         return self
 
@@ -519,7 +510,7 @@ class AccountRequest(Base, SessionMixin):
         return self
 
     def record_fulfill_error(self, message):
-        self.fulfill_error = _clean(message, width=255)
+        self.fulfill_error = strip_or_none(message, width=255)
         self.session.flush()
         return self
 
@@ -577,7 +568,7 @@ class EventEnrollment(Base, SessionMixin):
             return existing
         now = clock or datetime.now()
         row = cls(event_id=event_id, user_id=user.user_id, upid=user.upid,
-                  source=source, created_by=_clean(by, width=35) or source,
+                  source=source, created_by=strip_or_none(by, width=35) or source,
                   enrolled_at=now, creation_time=now, modified_time=now)
         session.add(row)
         session.flush()

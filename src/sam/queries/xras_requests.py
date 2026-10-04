@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Any, Dict, List, Mapping, Optional
+from sam.text import strip_or_none
 
 from sam.integration.xras_api.vocabulary import (
     ADMIN_ROLE_TYPE_ID,
@@ -83,13 +84,6 @@ def _as_date(value: Any):
         return None
 
 
-def _text(value: Any) -> Optional[str]:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
-
-
 def _display_name(person: Dict[str, Any]) -> Optional[str]:
     parts = [person.get('firstName'), person.get('lastName')]
     return ' '.join(p for p in (str(x or '').strip() for x in parts) if p) or None
@@ -104,14 +98,14 @@ def roster_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     rows: List[Dict[str, Any]] = []
     for person, roles in iter_roster_entries(payload):
-        username = _text(person.get('username'))
+        username = strip_or_none(person.get('username'))
         if not username:
             continue
         for role in roles:
             rows.append({
                 'role_id': role.get('roleId'),
                 'role_type_id': role.get('roleTypeId'),
-                'role_type': _text(role.get('role')),
+                'role_type': strip_or_none(role.get('role')),
                 'username': username,
                 'name': _display_name(person),
                 # Display metadata, not a filter: an ended role stays listed
@@ -176,10 +170,10 @@ def actions_from_payload(payload: Dict[str, Any],
             # action with no id cannot support a single button — and a None
             # here is a BuildError that costs the whole card, not the row.
             continue
-        status = _text(action.get('actionStatus'))
+        status = strip_or_none(action.get('actionStatus'))
         rows.append({
             'action_id': action.get('actionId'),
-            'action_type': _text(action.get('actionType')),
+            'action_type': strip_or_none(action.get('actionType')),
             'action_status': status,
             'submit_date': _as_date(action.get('submitDate')),
             # The recency signal: an Extension's own submitDate is often null, so
@@ -354,7 +348,7 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
     """
     if not isinstance(payload, dict):
         return None
-    number = _text(payload.get('requestNumber'))
+    number = strip_or_none(payload.get('requestNumber'))
     request_id = payload.get('requestId')
     if not number or request_id is None:
         # Both are load-bearing and for different reasons: writes key on the
@@ -375,8 +369,8 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
     return {
         'request_number': number,
         'request_id': request_id,
-        'status': _text(payload.get('requestStatus')),
-        'request_type': _text(payload.get('requestType')),
+        'status': strip_or_none(payload.get('requestStatus')),
+        'request_type': strip_or_none(payload.get('requestType')),
         'submit_date': _as_date(payload.get('submitDate')),
         # The date the operator cares about: when the current handoff was
         # submitted, not when the request was first created years ago.
@@ -385,7 +379,7 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
         'end_date': _as_date(payload.get('endDate')),
         'pending_push': bool(pending_push),
         'opportunity_id': payload.get('opportunityId'),
-        'opportunity_name': _text(payload.get('opportunity_name')
+        'opportunity_name': strip_or_none(payload.get('opportunity_name')
                                   or payload.get('opportunityName')),
         # username and name off the one resolved row, so they cannot pair one
         # person's login with another's name.
@@ -527,25 +521,25 @@ def person_roles_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
         for req in group.get('requests') or ():
             if not isinstance(req, dict):
                 continue
-            number = _text(req.get('requestNumber'))
+            number = strip_or_none(req.get('requestNumber'))
             if not number:
                 continue
             proj = projects.get(number)
             if proj is None:
                 proj = projects[number] = {
                     'request_number': number,
-                    'title': _text(req.get('requestTitle')),
-                    'allocation_type': _text(req.get('allocationType')),
-                    'opportunity': _text(req.get('opportunity')),
-                    'pi': _text(req.get('pi')),
-                    'pi_username': _text(req.get('piUsername')),
+                    'title': strip_or_none(req.get('requestTitle')),
+                    'allocation_type': strip_or_none(req.get('allocationType')),
+                    'opportunity': strip_or_none(req.get('opportunity')),
+                    'pi': strip_or_none(req.get('pi')),
+                    'pi_username': strip_or_none(req.get('piUsername')),
                     'actions': [],
                 }
                 order.append(number)
             proj['actions'].append({
                 # The feed spells the id both ways; take either.
                 'request_id': req.get('requestId') or req.get('requestID'),
-                'action_type': _text(req.get('actionType')),
+                'action_type': strip_or_none(req.get('actionType')),
                 'begin_date': _as_date(req.get('beginDate')),
                 'end_date': _as_date(req.get('endDate')),
                 'activity_date': _as_date(req.get('updateDate')),
@@ -559,7 +553,7 @@ def person_roles_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
             proj['actions'].sort(key=lambda a: a.get('activity_date') or date.min)
             proj['activity_date'] = proj['actions'][-1].get('activity_date')
         groups.append({
-            'role_name': _text(group.get('roleName')),
+            'role_name': strip_or_none(group.get('roleName')),
             'projects': sorted(
                 (projects[n] for n in order),
                 key=lambda p: p.get('activity_date') or date.min, reverse=True)})
