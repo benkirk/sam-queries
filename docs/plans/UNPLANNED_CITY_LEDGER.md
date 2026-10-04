@@ -22,6 +22,7 @@ From `scripts/sweep_inventory.py`, whole tree, run at the end commit.
 | 2026-10-04 | `21e6bae5` (base, templates) | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,631 / 59 / 10 | 404 (105) | 20 / 3 | — | 5 / 4 |
 | 2026-10-04 | `21e6bae5` + templates sweep | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,621 / 57 / 10 | 323 (95) | 0 / 0 | — | 5 / 4 |
 | 2026-10-04 | `21e6bae5` + sweep 5 + trees round | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,615 / 57 / 10 | 263 (94) | 0 / 0 | 0 (from 22) | 5 / 4 |
+| 2026-10-04 | `21e6bae5` + sweeps 5–7 | 61 / 70 / 33 | 3 (4) | 14 / 46 | 15 (15), 2 kept | 4,603 / 54 / 10 | 257 (93) | 0 / 0 | 0 | 5 / 4 |
 
 ## 1. 2026-10-03: allocations views, window sweep
 
@@ -362,6 +363,49 @@ to `staging` once that merges.
 - [ ] One test failure in `tests/unit/gates tests/unit/webapp` that did not reproduce on rerun,
   seen twice across rounds 1 and 2.
 
+## 7. 2026-10-04: area sweep, `templates` round 3 (project and user cards and modals)
+
+**Mode:** area, run with sweeps 5–6 still in context. **Stacked on:** sweep 6's branch
+(`sweep-trees-2026-10`). **Contract:** aesthetic, with each commit declaring its change.
+`src/` is +186 / -266. Full MySQL suite: 10,595 passed, 0 failed.
+
+**Ben's picks:**
+- The project card and modal show resources in the tree-table columns.
+- The user card groups SAM permissions by verb.
+
+**Done, in this round's PR**, one commit each (`src/` lines added / removed):
+
+- [x] Resources (+73 / -158): `render_project_resources`, which serves the user card, the admin
+  card and the project modal, uses the Manage Project columns and the shared `allocation_cells`.
+  - A shared allocation reads the same everywhere.
+  - Rows are about 45px; they were 70–87px across three lines.
+  - "361d remaining" appears once per date group, not on every row.
+  - `allocation_cells` gains units and shows the elapsed tick only for HPC/DAV.
+- [x] Card shell and info (+57 / -57):
+  - the expanded header is the accent surface, not a solid blue slab;
+  - Manage Project goes into the info heading via a `caller()` slot;
+  - org ancestry is inline and directories sit on one line;
+  - multi-line labels go in the label column via opt-in `.stat-item-inline`;
+  - the modal sorts resources by name like the card.
+  - SCSG0001's card goes from 1,587px to 954px; the modal from 1,564px to 905px.
+- [x] User card (+56 / -51):
+  - the `project-stats-box` panels, with labels beside values in a `fit-content(10rem)`
+    label column;
+  - `btn-row` edits for GID and shell;
+  - permissions as a by-verb table, which fixes the chip row clipped by `.scrollable-list`.
+  - `/user/info` goes from 2,001px to 1,726px; the admin user modal from 1,931px to 1,761px.
+
+**Tried and dropped:** nothing.
+
+**Open from this round:**
+
+- [ ] On a phone, the project card's resource table scrolls sideways inside its frame. The
+  meter column could hide below md and show only the percentage.
+- [ ] The user card's group branch switch is still the solid-blue toggle bar, like the page
+  tabs and pills that sweep 5 kept.
+- [ ] `group_card.html`, `contract_card.html` and the transaction / adjustment / XRAS detail
+  modals use `stat-item-block` with stacked labels. They could opt into `.stat-item-inline`.
+
 ## Untriaged: first whole-tree inventory, 2026-10-03
 
 Surfaced by the first run of `scripts/sweep_inventory.py`. Each item belongs to an area sweep;
@@ -372,7 +416,7 @@ nothing here has been read for intent yet.
 - **docs:** `plans-stale --gh` on 2026-10-03 found no retirement candidates among 22 top-level
   plans. `ADMIN_TABLE_POLISH.md` and `ALLOCATIONS_SUNBURST.md` still say "implemented, in
   review" although their PRs have merged; they pass the 14-day idle bar on 2026-10-17.
-- **templates:** sweeps 5 and 6 took inline `style=""` from 404 to 263.
+- **templates:** sweeps 5–7 took inline `style=""` from 404 to 257.
 
 ## Propagation candidates
 
