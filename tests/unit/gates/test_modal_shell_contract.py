@@ -188,11 +188,9 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # Admin -> Events reuses that shell: admin/events.html includes it.
     'dashboards/admin/fragments/events_card.html': [
         'invitationFormContainer', 'invitationModal'],
-    # Forms whose in-body buttons re-render into their own scaffold container: edit
-    # allocation (every page shipping project_details_modal.html, plus resource_details)
-    # and add member (member_modals_htmx.html, in base_admin, edit_project, user/accounts).
+    # Edit allocation's in-body buttons re-render into its own scaffold container (every
+    # page shipping project_details_modal.html, plus resource_details).
     'dashboards/admin/fragments/edit_allocation_form_htmx.html': ['editAllocationFormContainer'],
-    'project_members/fragments/add_member_form_htmx.html': ['addMemberFormContainer'],
     'dashboards/admin/fragments/bulk_deactivate_project_directories_form_htmx.html': [
         'bulkDeactivateProjectDirectoriesFormContainer'],
     'dashboards/admin/fragments/bulk_deactivate_project_directories_preview_htmx.html': [

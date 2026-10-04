@@ -325,7 +325,7 @@
         document.getElementById('htmxSelectedUserName').textContent =
             d.displayName + ' (' + d.username + ')';
         document.getElementById('htmxSelectedUserEmail').textContent = d.email || '';
-        document.getElementById('htmxSelectedUserDisplay').style.display = 'block';
+        document.getElementById('htmxSelectedUserDisplay').hidden = false;
         document.getElementById('htmxUserSearchResults').innerHTML = '';
         document.getElementById('htmxUserSearch').value = '';
         document.getElementById('htmxAddMemberSubmitBtn').disabled = false;
@@ -333,7 +333,7 @@
 
     registerAction('member-clear-user', function () {
         document.getElementById('htmxSelectedUsername').value = '';
-        document.getElementById('htmxSelectedUserDisplay').style.display = 'none';
+        document.getElementById('htmxSelectedUserDisplay').hidden = true;
         document.getElementById('htmxAddMemberSubmitBtn').disabled = true;
         document.getElementById('htmxUserSearch').focus();
     });

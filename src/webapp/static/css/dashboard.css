@@ -1248,6 +1248,19 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     max-width: 14em;
 }
 
+/* A picked entity awaiting submit (Add member): one quiet row, not an alert. */
+.picked-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--surface-accent);
+}
+
+.picked-item[hidden] {
+    display: none;
+}
+
 .detach-panel {
     margin-top: 0.5rem;
     padding: 0.75rem 0.875rem;
