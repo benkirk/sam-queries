@@ -148,13 +148,13 @@
 {# ── Form fields ─────────────────────────────────────────────────────── #}
 <section id="form-fields" class="mb-5">
   <h2 class="h4 border-bottom pb-1 mb-3">Form fields</h2>
-  {% call specimen('form_fields.*', 'the full field set; demo_bad shows the invalid state, plus form_errors_panel') %}
+  {% call specimen('form_fields.*', 'the full field set; demo_bad shows the invalid state, Number and Date a tip=, plus form_errors_panel') %}
     <div class="row">
       <div class="col-md-6">
         {{ ff.text_field('demo_text', 'Text', help='A short help line.') }}
         {{ ff.text_field('demo_bad', 'Text (invalid)', required=True) }}
-        {{ ff.number_field('demo_number', 'Number', min=0, step=1, default='42') }}
-        {{ ff.date_field('demo_date', 'Date') }}
+        {{ ff.number_field('demo_number', 'Number', min=0, step=1, default='42', tip='A one-line hover tooltip (tip=).') }}
+        {{ ff.date_field('demo_date', 'Date', tip='A click popover: simple <strong>HTML</strong> allowed (tip_rich=True).', tip_rich=True) }}
         {{ ff.datetime_field('demo_datetime', 'Date &amp; time') }}
         {{ ff.textarea_field('demo_textarea', 'Notes', rows=2) }}
         {# The suggestion endpoint lives on the Invitations blueprint, mounted only
