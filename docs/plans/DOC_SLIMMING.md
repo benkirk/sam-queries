@@ -118,7 +118,7 @@ the edit rule for the sprint itself.
   `webapp/utils/static_assets.py` (87 lines over 29 lines of code),
   `webapp/api/xras/recheck.py` (75), `webapp/api/xras/roles.py` (71).
 - `helm/values.yaml`, `.env.example`, `compose.yaml`, `containers/sam-sql-dev/Dockerfile`.
-- `src/webapp/static/js/{layout-axis,theme-toggle,collapse-chevron,nav-view-persistence}.js`.
+- `src/webapp/static/js/{layout-axis,theme-toggle,nav-view-persistence}.js`.
 - `sql/driver.sh` — ~30 of its 36 "comment" lines are commented-out shell. Dead code.
 - `CLAUDE.md`. Emoji + spelling sweeps also cover `tests/` and Jinja `{# #}` comments.
 

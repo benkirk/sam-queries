@@ -500,10 +500,6 @@
         if (has(root, '#projcodeHidden')) { initCreateProjectForm(); }
         if (has(root, '#contractLookupRow')) { initCreateContractForm(); }
         if (has(root, '#exchangeFromProject')) { initExchangeForm(root); }
-
-        if (has(root, '.pd-res-collapse-icon')) {
-            SamCollapseChevron.attach('#projectDirectoriesSection', '.pd-res-collapse-icon');
-        }
     });
 
     /* A page opened from a data-blocker link carries data-auto-open-create=
